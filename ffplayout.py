@@ -34,34 +34,13 @@ from xml.dom import minidom
 from xml.parsers.expat import ExpatError
 
 
+# ------------------------------------------------------------------------------
+# read variables from config file
+# ------------------------------------------------------------------------------
+
 # read config
 cfg = configparser.ConfigParser()
 cfg.read("/etc/ffplayout/ffplayout.conf")
-
-
-# get different time informations
-def cur_ts(time_value, day):
-    start_clock = datetime.now().strftime('%H:%M:%S')
-    start_h, start_m, start_s = re.split(':', start_clock)
-    time_in_sec = int(start_h) * 3600 + int(start_m) * 60 + int(start_s)
-
-    if time_value == 't_hour':
-        return start_h
-    elif time_value == 't_full':
-        return time_in_sec
-    elif time_value == 't_date':
-        t_from_cfg = int(cfg.get('PLAYLIST', 'day_start'))
-        if int(start_h) < t_from_cfg and day != 'today':
-            yesterday = date.today() - timedelta(1)
-            list_date = yesterday.strftime('%Y-%m-%d')
-        else:
-            list_date = datetime.now().strftime('%Y-%m-%d')
-
-        return list_date
-
-# ------------------------------------------------------------------------------
-# read values from config file
-# ------------------------------------------------------------------------------
 
 
 class _mail:
@@ -86,9 +65,6 @@ class _pre_comp:
 class _playlist:
     path = cfg.get('PLAYLIST', 'playlist_path')
     start = int(cfg.get('PLAYLIST', 'day_start'))
-
-    if cur_ts('t_full', '0') > 0 and cur_ts('t_full', '0') < start:
-        start += 86400
 
 
 class _buffer:
@@ -120,6 +96,26 @@ class _playout:
 # ------------------------------------------------------------------------------
 # global functions
 # ------------------------------------------------------------------------------
+
+# get different time informations
+def cur_ts(time_value, day):
+    start_clock = datetime.now().strftime('%H:%M:%S')
+    start_h, start_m, start_s = re.split(':', start_clock)
+    time_in_sec = int(start_h) * 3600 + int(start_m) * 60 + int(start_s)
+
+    if time_value == 't_hour':
+        return start_h
+    elif time_value == 't_full':
+        return time_in_sec
+    elif time_value == 't_date':
+        if int(start_h) < int(_playlist.start) and day != 'today':
+            yesterday = date.today() - timedelta(1)
+            list_date = yesterday.strftime('%Y-%m-%d')
+        else:
+            list_date = datetime.now().strftime('%Y-%m-%d')
+
+        return list_date
+
 
 # send error messages to email addresses
 def send_mail(message, path):
@@ -271,7 +267,11 @@ def get_from_playlist(last_time, list_date, seek_in_clip):
 
 # independent thread for clip preparation
 def play_clips(out_file):
-    last_time = cur_ts('t_full', '0')
+    if cur_ts('t_full', '0') > 0 and cur_ts('t_full', '0') < _playlist.start:
+        last_time = int(cur_ts('t_full', '0')) + 86400
+    else:
+        last_time = cur_ts('t_full', '0')
+
     list_date = cur_ts('t_date', '0')
     seek_in_clip = True
 
