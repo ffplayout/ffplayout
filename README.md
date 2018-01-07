@@ -2,7 +2,7 @@
 ================
 
 
-This is a 24/7 streaming solution based on python and ffmpeg.
+This is a streaming solution based on python and ffmpeg.
 
 The goal is to play for every day an xml playlist, while the current playlist is still editable.
 
@@ -18,10 +18,10 @@ Features
 - overlay a logo
 - trim and fade the last clip, to get full 24 hours, if the duration is less then 6 seconds add a blank clip
 - set custom day start, so you can have playlist for example: from 6am to 6am, instate of 0am to 12pm
-- minimal system requirements and no special tools
+- normal system requirements and no special tools
     - we only need **ffmpeg**, **ffprobe** and a buffer tool like **mbuffer** or **pv**
     - no GPU power is needed
-    - ram and cpu depends on video resolution, I recommend minimum 4 cores and 3.5GB ram for 576p
+    - ram and cpu depends on video resolution, minimum 4 threads and 3GB ram for 576p are recommend
 - python version 3.5 and up
 
 XML Playlist Example
@@ -46,5 +46,21 @@ XML Playlist Example
 </smil>
 ```
 
+Installation
+-----
+- install ffmpeg, ffprobe and mbuffer
+- copy, or symlink, ffplayout.py to **/usr/local/bin/**
+- copy, or symlink, ffplayout.conf to **/etc/ffplayout/**
+- copy ffplayout.service to **/etc/systemd/system/**
+- change user in service file
+- create playlists folder, in that format: **/playlists/year/month**
+- set variables in config file to your needs
+- use **get_playlist_from_subfolders.sh /path/to/*.mp4s** as a starting point for your playlists (path in script needs to change)
+- activate service and start it: **sudo systemctl enable ffplayout && sudo systemctl start ffplayout**
+
+
+
+
 This project is still in progress!
 -----
+Change from one day to the next is broken at the moment
