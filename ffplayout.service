@@ -1,0 +1,14 @@
+[Unit]
+Description=python and ffmpeg based playout
+After=network.target
+
+[Service]
+PIDFile=/tmp/ffplayout.pid
+ExecStart=/usr/local/bin/ffplayout.py
+ExecStop=/bin/kill -s QUIT $MAINPID
+Restart=always
+User=user
+Group=user
+
+[Install]
+WantedBy=multi-user.target
