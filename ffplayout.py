@@ -34,6 +34,11 @@ from xml.dom import minidom
 from xml.parsers.expat import ExpatError
 
 
+# read config
+cfg = configparser.ConfigParser()
+cfg.read("/etc/ffplayout/ffplayout.conf")
+
+
 # get different time informations
 def cur_ts(time_value, day):
     start_clock = datetime.now().strftime('%H:%M:%S')
@@ -57,11 +62,6 @@ def cur_ts(time_value, day):
 # ------------------------------------------------------------------------------
 # read values from config file
 # ------------------------------------------------------------------------------
-
-
-# read config
-cfg = configparser.ConfigParser()
-cfg.read("/etc/ffplayout/ffplayout.conf")
 
 
 class _mail:
