@@ -165,8 +165,8 @@ def check_path(f_o_l, in_file, duration, seek_t):
     elif f_o_l == 'dummy_l':
         error_message = 'XML Playlist is not valid!'
 
-    if not in_path.is_file() or f_o_l == 'dummy_l' or f_o_l == 'dummy_p':
-        if f_o_l != 'dummy_p':
+    if not in_path.is_file() or f_o_l == 'dummy_l' or f_o_l == 'dummy_c':
+        if f_o_l != 'dummy_c':
             send_mail(error_message, in_path)
 
         out_path = [
@@ -195,7 +195,7 @@ def check_path(f_o_l, in_file, duration, seek_t):
 # ------------------------------------------------------------------------------
 
 # read values from xml playlist
-def get_from_playlist(last_time, list_date, seek_in_clip):
+def get_from_playlist(last_time, list_date, seek_clip):
     # path to current playlist
     l_y, l_m, l_d = re.split('-', list_date)
     c_p = '{}/{}/{}/{}.xml'.format(_playlist.path, l_y, l_m, list_date)
@@ -211,7 +211,7 @@ def get_from_playlist(last_time, list_date, seek_in_clip):
         except ExpatError:
             src_cmd = check_path('dummy_l', c_p, 300, 0.00)
 
-            return src_cmd, last_time, list_date, seek_in_clip
+            return src_cmd, last_time, list_date, seek_clip
 
         clip_ls = xmldoc.getElementsByTagName('video')
 
@@ -230,23 +230,23 @@ def get_from_playlist(last_time, list_date, seek_in_clip):
                 clip_in = re.sub('s', '', clip_ls[i].attributes['in'].value)
                 tmp_dur = float(clip_dur) - float(clip_in)
 
+                clip_start = _playlist.start * 3600 - 5
+                list_date = cur_ts('t_date', 'today')
+                get_time = cur_ts('t_full', '0')
+
                 if tmp_dur > 6.00:
                     src_cmd = check_path('file', clip_path, clip_dur, clip_in)
                 elif tmp_dur > 1.00:
                     src_cmd = check_path('dummy_c', clip_path, tmp_dur, 0.00)
                 else:
-                    src_cmd = check_path('dummy_c', clip_path, 1, 0.00)
-
-                clip_start = _playlist.start * 3600 - 5
-                list_date = cur_ts('t_date', 'today')
-                get_time = cur_ts('t_full', '0')
+                    src_cmd = 'next'
 
                 # check if we are in time
                 if int(get_time) > int(clip_start) + 10:
                     send_mail('we are out of time...:', get_time)
 
             # all other clips in playlist
-            elif seek_in_clip is True:
+            elif seek_clip is True:
                 # first time we end up here
                 if float(last_time) < float(clip_start) + float(clip_dur):
                     # calculate seek time
@@ -255,33 +255,39 @@ def get_from_playlist(last_time, list_date, seek_in_clip):
 
                     src_cmd = check_path('file', clip_path, clip_len, seek_t)
 
-                    seek_in_clip = False
+                    seek_clip = False
                     break
             else:
                 if float(last_time) < float(clip_start):
                     src_cmd = check_path('file', clip_path, clip_dur, 0.00)
                     break
 
-    return src_cmd, clip_start, list_date, seek_in_clip
+    return src_cmd, clip_start, list_date, seek_clip
 
 
 # independent thread for clip preparation
 def play_clips(out_file):
-    if cur_ts('t_full', '0') > 0 and cur_ts('t_full', '0') < _playlist.start:
+    if cur_ts('t_full', '0') > 0 and \
+            cur_ts('t_full', '0') < int(_playlist.start) * 3600:
         last_time = int(cur_ts('t_full', '0')) + 86400
     else:
         last_time = cur_ts('t_full', '0')
 
     list_date = cur_ts('t_date', '0')
-    seek_in_clip = True
+    seek_clip = True
 
     # infinit loop
     # send current file from xml playlist to stdin from buffer
     while True:
         try:
-            src_cmd, last_time, list_date, seek_in_clip = get_from_playlist(
-                last_time, list_date, seek_in_clip
+            src_cmd, last_time, list_date, seek_clip = get_from_playlist(
+                last_time, list_date, seek_clip
             )
+
+            if src_cmd == 'next':
+                src_cmd, last_time, list_date, seek_clip = get_from_playlist(
+                    last_time, list_date, seek_clip
+                )
 
             # tm_str = str(timedelta(seconds=int(float(last_time))))
             # print('[{}] current play command:\n{}\n'.format(tm_str, src_cmd))
