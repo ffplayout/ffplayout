@@ -30,8 +30,8 @@ from shutil import copyfileobj
 from subprocess import Popen, PIPE
 from threading import Thread
 from time import sleep
-from xml.dom import minidom
-from xml.parsers.expat import ExpatError
+from types import SimpleNamespace
+import xml.etree.ElementTree as ET
 
 
 # ------------------------------------------------------------------------------
@@ -43,78 +43,80 @@ cfg = configparser.ConfigParser()
 cfg.read("/etc/ffplayout/ffplayout.conf")
 
 
-class _mail:
-    server = cfg.get('MAIL', 'smpt_server')
-    port = cfg.get('MAIL', 'smpt_port')
-    s_addr = cfg.get('MAIL', 'sender_addr')
-    s_pass = cfg.get('MAIL', 'sender_pass')
-    recip = cfg.get('MAIL', 'recipient')
+_mail = SimpleNamespace(
+    server=cfg.get('MAIL', 'smpt_server'),
+    port=cfg.getint('MAIL', 'smpt_port'),
+    s_addr=cfg.get('MAIL', 'sender_addr'),
+    s_pass=cfg.get('MAIL', 'sender_pass'),
+    recip=cfg.get('MAIL', 'recipient')
+)
+
+_pre_comp = SimpleNamespace(
+    w=cfg.getint('PRE_COMPRESS', 'width'),
+    h=cfg.getint('PRE_COMPRESS', 'height'),
+    aspect=cfg.getfloat('PRE_COMPRESS', 'width') /
+    cfg.getfloat('PRE_COMPRESS', 'height'),
+    fps=cfg.getint('PRE_COMPRESS', 'fps'),
+    v_bitrate=cfg.getint('PRE_COMPRESS', 'v_bitrate'),
+    v_bufsize=cfg.getint('PRE_COMPRESS', 'v_bitrate') / 2,
+    a_bitrate=cfg.getint('PRE_COMPRESS', 'a_bitrate'),
+    a_sample=cfg.getint('PRE_COMPRESS', 'a_sample'),
+)
+
+_playlist = SimpleNamespace(
+    path=cfg.get('PLAYLIST', 'playlist_path'),
+    start=cfg.getint('PLAYLIST', 'day_start')
+)
+
+_buffer = SimpleNamespace(
+    length=cfg.getint('BUFFER', 'buffer_length'),
+    cli=cfg.get('BUFFER', 'buffer_cli'),
+    cmd=literal_eval(cfg.get('BUFFER', 'buffer_cmd'))
+)
+
+_playout = SimpleNamespace(
+    name=cfg.get('OUT', 'service_name'),
+    provider=cfg.get('OUT', 'service_provider'),
+    out_addr=cfg.get('OUT', 'out_addr'),
+    post_comp_video=literal_eval(cfg.get('OUT', 'post_comp_video')),
+    post_comp_audio=literal_eval(cfg.get('OUT', 'post_comp_audio')),
+    post_comp_extra=literal_eval(cfg.get('OUT', 'post_comp_extra'))
+)
+
+# set logo filtergraph
+if Path(cfg.get('OUT', 'logo')).is_file():
+    _playout.logo = ['-thread_queue_size', '512', '-i', cfg.get('OUT', 'logo')]
+    _playout.filter = [
+        '-filter_complex', '[0:v][1:v]' + cfg.get('OUT', 'logo_o') + '[o]',
+        '-map', '[o]', '-map', '0:a'
+    ]
+else:
+    _playout.logo = []
+    _playout.filter = []
 
 
-class _pre_comp:
-    w = cfg.get('PRE_COMPRESS', 'width')
-    h = cfg.get('PRE_COMPRESS', 'height')
-    aspect = float(w) / float(h)
-    fps = cfg.get('PRE_COMPRESS', 'fps')
-    v_bitrate = cfg.get('PRE_COMPRESS', 'v_bitrate')
-    v_bufsize = int(v_bitrate) / 2
-    a_bitrate = cfg.get('PRE_COMPRESS', 'a_bitrate')
-    a_sample = cfg.get('PRE_COMPRESS', 'a_sample')
+# ------------------------------------------------------------------------------
+# global helper functions
+# ------------------------------------------------------------------------------
 
-
-class _playlist:
-    path = cfg.get('PLAYLIST', 'playlist_path')
-    start = int(cfg.get('PLAYLIST', 'day_start'))
-
-
-class _buffer:
-    length = cfg.get('BUFFER', 'buffer_length')
-    cli = cfg.get('BUFFER', 'buffer_cli')
-    cmd = literal_eval(cfg.get('BUFFER', 'buffer_cmd'))
-
-
-class _playout:
-    name = cfg.get('OUT', 'service_name')
-    provider = cfg.get('OUT', 'service_provider')
-    out_addr = cfg.get('OUT', 'out_addr')
-
-    # set logo filtergraph
-    if Path(cfg.get('OUT', 'logo')).is_file():
-        logo_path = ['-thread_queue_size', '512', '-i', cfg.get('OUT', 'logo')]
-        logo_graph = [
-            '-filter_complex', '[0:v][1:v]' + cfg.get('OUT', 'logo_o') + '[o]',
-            '-map', '[o]', '-map', '0:a'
-        ]
+# get time
+def get_time(time_format):
+    t = datetime.today()
+    if time_format == 'hour':
+        return t.hour
+    elif time_format == 'full_sec':
+        return t.hour * 3600 + t.minute * 60 + t.second
     else:
-        logo_path = []
-        logo_graph = []
-    post_comp_video = literal_eval(cfg.get('OUT', 'post_comp_video'))
-    post_comp_audio = literal_eval(cfg.get('OUT', 'post_comp_audio'))
-    post_comp_extra = literal_eval(cfg.get('OUT', 'post_comp_extra'))
+        return t.strftime("%H:%M:%S")
 
 
-# ------------------------------------------------------------------------------
-# global functions
-# ------------------------------------------------------------------------------
-
-# get different time informations
-def cur_ts(time_value, day):
-    start_clock = datetime.now().strftime('%H:%M:%S')
-    start_h, start_m, start_s = re.split(':', start_clock)
-    time_in_sec = int(start_h) * 3600 + int(start_m) * 60 + int(start_s)
-
-    if time_value == 't_hour':
-        return start_h
-    elif time_value == 't_full':
-        return time_in_sec
-    elif time_value == 't_date':
-        if int(start_h) < int(_playlist.start) and day != 'today':
-            yesterday = date.today() - timedelta(1)
-            list_date = yesterday.strftime('%Y-%m-%d')
-        else:
-            list_date = datetime.now().strftime('%Y-%m-%d')
-
-        return list_date
+# get date
+def get_date(seek_day):
+    if get_time('hour') < _playlist.start and seek_day:
+        yesterday = date.today() - timedelta(1)
+        return yesterday.strftime('%Y-%m-%d')
+    else:
+        return datetime.now().strftime('%Y-%m-%d')
 
 
 # send error messages to email addresses
@@ -138,10 +140,7 @@ def send_mail(message, path):
 
 # calculating the size for the buffer in bytes
 def calc_buffer_size():
-    total_size = (int(_pre_comp.v_bitrate) + int(_pre_comp.a_bitrate)) * \
-        int(_buffer.length)
-
-    return int(total_size)
+    return (_pre_comp.v_bitrate + _pre_comp.a_bitrate) * _buffer.length
 
 
 # check if processes a well
@@ -155,39 +154,58 @@ def check_process(watch_proc, terminate_proc):
 
 # check if path exist,
 # when not send email and generate blackclip
-def check_path(f_o_l, in_file, duration, seek_t):
+def check_file_exist(in_file):
     in_path = Path(in_file)
 
-    if f_o_l == 'list':
-        error_message = 'Plylist does not exist:'
-    elif f_o_l == 'file':
-        error_message = 'File does not exist:'
-    elif f_o_l == 'dummy_l':
-        error_message = 'XML Playlist is not valid!'
-
-    if not in_path.is_file() or f_o_l == 'dummy_l' or f_o_l == 'dummy_c':
-        if f_o_l != 'dummy_c':
-            send_mail(error_message, in_path)
-
-        out_path = [
-            '-f', 'lavfi', '-i',
-            'color=s={}x{}:d={}'.format(
-                _pre_comp.w, _pre_comp.h, duration
-            ),
-            '-f', 'lavfi', '-i', 'anullsrc=r=' + _pre_comp.a_sample,
-            '-shortest'
-        ]
+    if in_path.is_file():
+        return True
     else:
-        if float(seek_t) > 0.00:
-            out_path = [
-                '-ss', str(seek_t), '-i', in_file,
-                '-vf', 'fade=in:st=0:d=0.5',
-                '-af', 'afade=in:st=0:d=0.5'
-            ]
-        else:
-            out_path = ['-i', in_file]
+        send_mail('File does not exist{}:'.format(get_time('str')), in_path)
+        return False
 
-    return out_path
+
+def seek_in_clip(in_file, seek_t):
+    return [
+        '-ss', str(seek_t), '-i', in_file,
+        '-vf', 'fade=in:st=0:d=0.5', '-af', 'afade=in:st=0:d=0.5'
+    ]
+
+
+def gen_dummy(duration):
+    return [
+        '-f', 'lavfi', '-i',
+        'color=s={}x{}:d={}'.format(
+            _pre_comp.w, _pre_comp.h, duration
+        ),
+        '-f', 'lavfi', '-i', 'anullsrc=r=' + _pre_comp.a_sample, '-shortest'
+    ]
+
+
+# last clip can be a filler
+# so we get the IN point and calculate the new duration
+# if the new duration is smaller then 6 sec put a blank clip
+def prepare_last_clip(in_node, start):
+    clip_path = in_node.get('src')
+    clip_len = in_node.get('dur').rstrip('s')
+    clip_in = in_node.get('in').rstrip('s')
+    tmp_dur = float(clip_len) - float(clip_in)
+    current_time = get_time('full_sec')
+
+    # check if we are in time
+    if get_time('full_sec') > start + 10:
+        send_mail('we are out of time...:', current_time)
+
+    if tmp_dur > 6.00:
+        if check_file_exist():
+            src_cmd = seek_in_clip(clip_path, clip_in)
+        else:
+            src_cmd = gen_dummy(tmp_dur)
+    elif tmp_dur > 1.00:
+        src_cmd = gen_dummy(tmp_dur)
+    else:
+        src_cmd = 'next'
+
+    return src_cmd
 
 
 # ------------------------------------------------------------------------------
@@ -195,98 +213,79 @@ def check_path(f_o_l, in_file, duration, seek_t):
 # ------------------------------------------------------------------------------
 
 # read values from xml playlist
-def get_from_playlist(last_time, list_date, seek_clip):
+def get_from_playlist(last_time, list_date, seek):
     # path to current playlist
-    l_y, l_m, l_d = re.split('-', list_date)
-    c_p = '{}/{}/{}/{}.xml'.format(_playlist.path, l_y, l_m, list_date)
+    year, month, day = re.split('-', list_date)
+    xml_path = '{}/{}/{}/{}.xml'.format(
+        _playlist.path, year, month, list_date
+    )
 
-    src_cmd = check_path('list', c_p, 300, 0.00)
+    if check_file_exist(xml_path):
+        xml_root = ET.parse(xml_path).getroot()
+        clip_nodes = xml_root.findall('body/video')
 
-    if '-shortest' in src_cmd:
-        clip_start = last_time
+        # all clips in playlist except last one
+        for clip_node in clip_nodes[:-1]:
+            clip_path = clip_node.get('src')
+            clip_start = re.sub('[a-z=]', '', clip_node.get('clipBegin'))
+            clip_len = clip_node.get('dur').rstrip('s')
 
-    else:
-        try:
-            xmldoc = minidom.parse(c_p)
-        except ExpatError:
-            src_cmd = check_path('dummy_l', c_p, 300, 0.00)
-
-            return src_cmd, last_time, list_date, seek_clip
-
-        clip_ls = xmldoc.getElementsByTagName('video')
-
-        for i in range(len(clip_ls)):
-            clip_start = re.sub(
-                '[a-z=]', '', clip_ls[i].attributes['clipBegin'].value
-            )
-            clip_dur = re.sub('s', '', clip_ls[i].attributes['dur'].value)
-            clip_path = clip_ls[i].attributes['src'].value
-
-            # last clip in playlist
-            if i == len(clip_ls) - 1:
-                # last clip can be a filler
-                # so we get the IN point and calculate the new duration
-                # if the new duration is smaller then 6 sec put a blank clip
-                clip_in = re.sub('s', '', clip_ls[i].attributes['in'].value)
-                tmp_dur = float(clip_dur) - float(clip_in)
-
-                clip_start = _playlist.start * 3600 - 5
-                list_date = cur_ts('t_date', 'today')
-                get_time = cur_ts('t_full', '0')
-
-                if tmp_dur > 6.00:
-                    src_cmd = check_path('file', clip_path, clip_dur, clip_in)
-                elif tmp_dur > 1.00:
-                    src_cmd = check_path('dummy_c', clip_path, tmp_dur, 0.00)
-                else:
-                    src_cmd = 'next'
-
-                # check if we are in time
-                if int(get_time) > int(clip_start) + 10:
-                    send_mail('we are out of time...:', get_time)
-
-            # all other clips in playlist
-            elif seek_clip is True:
+            if seek:
                 # first time we end up here
-                if float(last_time) < float(clip_start) + float(clip_dur):
+                if float(last_time) < float(clip_start) + float(clip_len):
                     # calculate seek time
                     seek_t = float(last_time) - float(clip_start)
-                    clip_len = float(clip_dur) - seek_t
 
-                    src_cmd = check_path('file', clip_path, clip_len, seek_t)
+                    if check_file_exist(clip_path):
+                        src_cmd = seek_in_clip(clip_path, seek_t)
+                    else:
+                        src_cmd = gen_dummy(float(clip_len) - seek_t)
 
-                    seek_clip = False
+                    seek = False
                     break
             else:
                 if float(last_time) < float(clip_start):
-                    src_cmd = check_path('file', clip_path, clip_dur, 0.00)
-                    break
+                    if check_file_exist(clip_path):
+                        src_cmd = ['-i', clip_path]
+                    else:
+                        src_cmd = gen_dummy(clip_len)
 
-    return src_cmd, clip_start, list_date, seek_clip
+                    break
+        # last clip in playlist
+        else:
+            clip_start = _playlist.start * 3600 - 5
+            src_cmd = prepare_last_clip(clip_nodes[-1], clip_start)
+            list_date = get_date(False)
+
+    else:
+        src_cmd = gen_dummy(300)
+        return src_cmd, last_time + 300, list_date, seek
+
+    return src_cmd, clip_start, get_date(True), seek
 
 
 # independent thread for clip preparation
 def play_clips(out_file):
-    if cur_ts('t_full', '0') > 0 and \
-            cur_ts('t_full', '0') < int(_playlist.start) * 3600:
-        last_time = int(cur_ts('t_full', '0')) + 86400
+    if get_time('full_sec') > 0 and \
+            get_time('full_sec') < _playlist.start * 3600:
+        last_time = get_time('full_sec') + 86400
     else:
-        last_time = cur_ts('t_full', '0')
+        last_time = get_time('full_sec')
 
-    list_date = cur_ts('t_date', '0')
-    seek_clip = True
+    list_date = get_date(True)
+    seek = True
 
     # infinit loop
     # send current file from xml playlist to stdin from buffer
     while True:
         try:
-            src_cmd, last_time, list_date, seek_clip = get_from_playlist(
-                last_time, list_date, seek_clip
+            src_cmd, last_time, list_date, seek = get_from_playlist(
+                last_time, list_date, seek
             )
 
             if src_cmd == 'next':
-                src_cmd, last_time, list_date, seek_clip = get_from_playlist(
-                    last_time, list_date, seek_clip
+                src_cmd, last_time, list_date, seek = get_from_playlist(
+                    last_time, list_date, seek
                 )
 
             # tm_str = str(timedelta(seconds=int(float(last_time))))
@@ -309,8 +308,7 @@ def play_clips(out_file):
                     '-ar', str(_pre_comp.a_sample), '-ac', '2', '-f', 'mpegts',
                     '-threads', '2', '-'
                 ],
-                stdout=PIPE,
-                stderr=PIPE
+                stdout=PIPE
             )
 
             copyfileobj(filePiper.stdout, out_file)
@@ -336,21 +334,20 @@ def main():
                     'ffmpeg', '-v', 'error', '-hide_banner', '-re',
                     '-fflags', '+igndts', '-i', 'pipe:0', '-fflags', '+genpts'
                 ] +
-                list(_playout.logo_path) +
-                list(_playout.logo_graph) +
+                list(_playout.logo) +
+                list(_playout.filter) +
                 list(_playout.post_comp_video) +
                 list(_playout.post_comp_audio) +
                 [
                     '-metadata', 'service_name=' + _playout.name,
                     '-metadata', 'service_provider=' + _playout.provider,
-                    '-metadata', 'year=' + cur_ts('t_date', 'today')
+                    '-metadata', 'year=' + get_date(False)
                 ] +
                 list(_playout.post_comp_extra) +
                 [
                     _playout.out_addr
                 ],
-                stdin=mbuffer.stdout,
-                stdout=PIPE
+                stdin=mbuffer.stdout
             )
 
             play_thread = Thread(
