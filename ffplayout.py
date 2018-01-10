@@ -19,12 +19,16 @@
 
 
 import configparser
+import logging
 import re
 import smtplib
+import sys
+from argparse import ArgumentParser
 from ast import literal_eval
 from datetime import datetime, date, timedelta
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 from shutil import copyfileobj
 from subprocess import Popen, PIPE
@@ -49,6 +53,11 @@ _mail = SimpleNamespace(
     s_addr=cfg.get('MAIL', 'sender_addr'),
     s_pass=cfg.get('MAIL', 'sender_pass'),
     recip=cfg.get('MAIL', 'recipient')
+)
+
+_log = SimpleNamespace(
+    path=cfg.get('LOGGING', 'log_file'),
+    level=cfg.get('LOGGING', 'log_level')
 )
 
 _pre_comp = SimpleNamespace(
@@ -96,6 +105,49 @@ else:
 
 
 # ------------------------------------------------------------------------------
+# logging
+# ------------------------------------------------------------------------------
+
+stdin_parser = ArgumentParser(description="python and ffmpeg based playout")
+stdin_parser.add_argument(
+    "-l", "--log", help="file to write log to (default '" + _log.path + "')"
+)
+
+# If the log file is specified on the command line then override the default
+stdin_args = stdin_parser.parse_args()
+if stdin_args.log:
+        _log.path = stdin_args.log
+
+logger = logging.getLogger(__name__)
+logger.setLevel(_log.level)
+handler = TimedRotatingFileHandler(_log.path, when="midnight", backupCount=5)
+formatter = logging.Formatter('%(asctime)s %(levelname)-8s %(message)s')
+handler.setFormatter(formatter)
+logger.addHandler(handler)
+
+
+# capture stdout and sterr in the log
+class ffplayout_logger(object):
+        def __init__(self, logger, level):
+                self.logger = logger
+                self.level = level
+
+        def write(self, message):
+                # Only log if there is a message (not just a new line)
+                if message.rstrip() != "":
+                        self.logger.log(self.level, message.rstrip())
+
+        def flush(self):
+            pass
+
+
+# Replace stdout with logging to file at INFO level
+sys.stdout = ffplayout_logger(logger, logging.INFO)
+# Replace stderr with logging to file at ERROR level
+sys.stderr = ffplayout_logger(logger, logging.ERROR)
+
+
+# ------------------------------------------------------------------------------
 # global helper functions
 # ------------------------------------------------------------------------------
 
@@ -135,7 +187,7 @@ def send_mail(message, path):
         server.sendmail(_mail.s_addr, _mail.recip, text)
         server.quit()
     else:
-        print('{}\n{}\n'.format(message, path))
+        logger.info('{}\n{}\n'.format(message, path))
 
 
 # calculating the size for the buffer in bytes
@@ -293,7 +345,7 @@ def play_clips(out_file):
             else:
                 tm_str = str(timedelta(seconds=int(last_time)))
 
-            print('[{}] current play command:\n{}\n'.format(tm_str, src_cmd))
+            logger.info('play at "{}":  {}'.format(tm_str, src_cmd))
 
             filePiper = Popen(
                 [
