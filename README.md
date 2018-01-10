@@ -63,4 +63,3 @@ Installation
 
 This project is still in progress!
 -----
-Change from one day to the next is broken at the moment
