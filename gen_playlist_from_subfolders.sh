@@ -39,7 +39,7 @@ while read -r line; do
 	clipPath=$(echo "$line" | sed 's/&/&amp;/g')
 	clipDuration=$( ffprobe -v error -show_format  "$line" | awk -F= '/duration/{ print $2 }' )
 
-	printf '\t\t<video src="%s" clipBegin="npt=%ss" dur="%ss" in="%ss" out="%ss"/>\n' "$clipPath" "$listStart" "$clipDuration" "0.0" "$clipDuration"  >> "$trunk/$playlist"
+	printf '\t\t<video src="%s" clipBegin="%ss" dur="%ss" in="%ss" out="%ss"/>\n' "$clipPath" "$listStart" "$clipDuration" "0.0" "$clipDuration"  >> "$trunk/$playlist"
 
 	# add start time
 	listStart="$( awk -v lS="$listStart" -v cD="$clipDuration" 'BEGIN{ print lS + cD }' )"
