@@ -160,7 +160,7 @@ def check_file_exist(in_file):
     if in_path.is_file():
         return True
     else:
-        send_mail('File does not exist{}:'.format(get_time('str')), in_path)
+        send_mail('File does not exist ({}):'.format(get_time('str')), in_path)
         return False
 
 
@@ -186,9 +186,9 @@ def gen_dummy(duration):
 # if the new duration is smaller then 6 sec put a blank clip
 def prepare_last_clip(in_node, start):
     clip_path = in_node.get('src')
-    clip_len = in_node.get('dur').rstrip('s')
-    clip_in = in_node.get('in').rstrip('s')
-    tmp_dur = float(clip_len) - float(clip_in)
+    clip_len = float(in_node.get('dur').rstrip('s'))
+    clip_in = float(in_node.get('in').rstrip('s'))
+    tmp_dur = clip_len - clip_in
     current_time = get_time('full_sec')
 
     # check if we are in time
@@ -227,24 +227,24 @@ def get_from_playlist(last_time, list_date, seek):
         # all clips in playlist except last one
         for clip_node in clip_nodes[:-1]:
             clip_path = clip_node.get('src')
-            clip_start = re.sub('[a-z=]', '', clip_node.get('clipBegin'))
-            clip_len = clip_node.get('dur').rstrip('s')
+            clip_start = float(clip_node.get('clipBegin').rstrip('s'))
+            clip_len = float(clip_node.get('dur').rstrip('s'))
 
             if seek:
                 # first time we end up here
-                if float(last_time) < float(clip_start) + float(clip_len):
+                if last_time < clip_start + clip_len:
                     # calculate seek time
-                    seek_t = float(last_time) - float(clip_start)
+                    seek_t = last_time - clip_start
 
                     if check_file_exist(clip_path):
                         src_cmd = seek_in_clip(clip_path, seek_t)
                     else:
-                        src_cmd = gen_dummy(float(clip_len) - seek_t)
+                        src_cmd = gen_dummy(clip_len - seek_t)
 
                     seek = False
                     break
             else:
-                if float(last_time) < float(clip_start):
+                if last_time < clip_start:
                     if check_file_exist(clip_path):
                         src_cmd = ['-i', clip_path]
                     else:
@@ -253,7 +253,7 @@ def get_from_playlist(last_time, list_date, seek):
                     break
         # last clip in playlist
         else:
-            clip_start = _playlist.start * 3600 - 5
+            clip_start = float(_playlist.start * 3600 - 5)
             src_cmd = prepare_last_clip(clip_nodes[-1], clip_start)
             list_date = get_date(False)
 
@@ -268,9 +268,9 @@ def get_from_playlist(last_time, list_date, seek):
 def play_clips(out_file):
     if get_time('full_sec') > 0 and \
             get_time('full_sec') < _playlist.start * 3600:
-        last_time = get_time('full_sec') + 86400
+        last_time = float(get_time('full_sec') + 86400)
     else:
-        last_time = get_time('full_sec')
+        last_time = float(get_time('full_sec'))
 
     list_date = get_date(True)
     seek = True
@@ -288,8 +288,12 @@ def play_clips(out_file):
                     last_time, list_date, seek
                 )
 
-            # tm_str = str(timedelta(seconds=int(float(last_time))))
-            # print('[{}] current play command:\n{}\n'.format(tm_str, src_cmd))
+            if last_time > 86400:
+                tm_str = str(timedelta(seconds=int(last_time - 86400)))
+            else:
+                tm_str = str(timedelta(seconds=int(last_time)))
+
+            print('[{}] current play command:\n{}\n'.format(tm_str, src_cmd))
 
             filePiper = Popen(
                 [
