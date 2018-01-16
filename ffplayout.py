@@ -29,7 +29,7 @@ from datetime import datetime, date, timedelta
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from logging.handlers import TimedRotatingFileHandler
-from pathlib import Path
+from os import path
 from shutil import copyfileobj
 from subprocess import Popen, PIPE
 from threading import Thread
@@ -93,7 +93,7 @@ _playout = SimpleNamespace(
 )
 
 # set logo filtergraph
-if Path(cfg.get('OUT', 'logo')).is_file():
+if path.exists(cfg.get('OUT', 'logo')):
     _playout.logo = ['-thread_queue_size', '512', '-i', cfg.get('OUT', 'logo')]
     _playout.filter = [
         '-filter_complex', '[0:v][1:v]' + cfg.get('OUT', 'logo_o') + '[o]',
@@ -121,7 +121,7 @@ if stdin_args.log:
 logger = logging.getLogger(__name__)
 logger.setLevel(_log.level)
 handler = TimedRotatingFileHandler(_log.path, when="midnight", backupCount=5)
-formatter = logging.Formatter('%(asctime)s %(levelname)-8s %(message)s')
+formatter = logging.Formatter('[%(asctime)s] [%(levelname)s]  %(message)s')
 handler.setFormatter(formatter)
 logger.addHandler(handler)
 
@@ -207,12 +207,10 @@ def check_process(watch_proc, terminate_proc):
 # check if path exist,
 # when not send email and generate blackclip
 def check_file_exist(in_file):
-    in_path = Path(in_file)
-
-    if in_path.is_file():
+    if path.exists(in_file):
         return True
     else:
-        send_mail('File does not exist ({}):'.format(get_time('str')), in_path)
+        send_mail('File does not exist ({}):'.format(get_time('str')), in_file)
         return False
 
 
@@ -248,14 +246,14 @@ def prepare_last_clip(in_node, start):
         send_mail('we are out of time...:', current_time)
 
     if tmp_dur > 6.00:
-        if check_file_exist():
+        if check_file_exist(clip_path):
             src_cmd = seek_in_clip(clip_path, clip_in)
         else:
             src_cmd = gen_dummy(tmp_dur)
     elif tmp_dur > 1.00:
         src_cmd = gen_dummy(tmp_dur)
     else:
-        src_cmd = 'next'
+        src_cmd = None
 
     return src_cmd
 
@@ -265,88 +263,90 @@ def prepare_last_clip(in_node, start):
 # ------------------------------------------------------------------------------
 
 # read values from xml playlist
-def get_from_playlist(last_time, list_date, seek):
-    # path to current playlist
-    year, month, day = re.split('-', list_date)
-    xml_path = '{}/{}/{}/{}.xml'.format(
-        _playlist.path, year, month, list_date
-    )
+def iter_src_commands():
+    last_time = get_time('full_sec')
+    if 0 <= last_time < _playlist.start * 3600:
+        last_time += 86400
+    list_date = get_date(True)
+    chk_date = list_date
+    last_mod_time = 0.00
+    seek = True
 
-    if check_file_exist(xml_path):
-        xml_root = ET.parse(xml_path).getroot()
-        clip_nodes = xml_root.findall('body/video')
+    while True:
+        year, month, _day = re.split('-', list_date)
+        xml_path = path.join(_playlist.path, year, month, list_date + '.xml')
 
-        # all clips in playlist except last one
-        for clip_node in clip_nodes[:-1]:
-            clip_path = clip_node.get('src')
-            clip_start = float(clip_node.get('clipBegin').rstrip('s'))
-            clip_len = float(clip_node.get('dur').rstrip('s'))
-
-            if seek:
-                # first time we end up here
-                if last_time < clip_start + clip_len:
-                    # calculate seek time
-                    seek_t = last_time - clip_start
-
-                    if check_file_exist(clip_path):
-                        src_cmd = seek_in_clip(clip_path, seek_t)
-                    else:
-                        src_cmd = gen_dummy(clip_len - seek_t)
-
-                    seek = False
-                    break
+        if check_file_exist(xml_path):
+            # check last modification from playlist
+            if chk_date == list_date:
+                mod_time = path.getmtime(xml_path)
+                if mod_time > last_mod_time:
+                    xml_root = ET.parse(open(xml_path, "r")).getroot()
+                    clip_nodes = xml_root.findall('body/video')
+                    last_mod_time = mod_time
             else:
-                if last_time < clip_start:
-                    if check_file_exist(clip_path):
-                        src_cmd = ['-i', clip_path]
-                    else:
-                        src_cmd = gen_dummy(clip_len)
+                chk_date = list_date
+                mod_time = path.getmtime(xml_path)
+                last_mod_time = mod_time
+                xml_root = ET.parse(open(xml_path, "r")).getroot()
+                clip_nodes = xml_root.findall('body/video')
 
-                    break
-        # last clip in playlist
+            # all clips in playlist except last one
+            for clip_node in clip_nodes[:-1]:
+                clip_path = clip_node.get('src')
+                clip_start = float(clip_node.get('clipBegin').rstrip('s'))
+                clip_len = float(clip_node.get('dur').rstrip('s'))
+
+                if seek:
+                    # first time we end up here
+                    if last_time < clip_start + clip_len:
+                        # calculate seek time
+                        seek_t = last_time - clip_start
+
+                        if check_file_exist(clip_path):
+                            src_cmd = seek_in_clip(clip_path, seek_t)
+                        else:
+                            src_cmd = gen_dummy(clip_len - seek_t)
+                        seek = False
+
+                        last_time = clip_start
+                        break
+                else:
+                    if last_time < clip_start:
+                        if check_file_exist(clip_path):
+                            src_cmd = ['-i', clip_path]
+                        else:
+                            src_cmd = gen_dummy(clip_len)
+
+                        last_time = clip_start
+                        break
+            # last clip in playlist
+            else:
+                clip_start = float(_playlist.start * 3600 - 5)
+                src_cmd = prepare_last_clip(clip_nodes[-1], clip_start)
+                last_time = clip_start
+                list_date = get_date(True)
         else:
-            clip_start = float(_playlist.start * 3600 - 5)
-            src_cmd = prepare_last_clip(clip_nodes[-1], clip_start)
-            list_date = get_date(False)
+            src_cmd = gen_dummy(300)
+            last_time += 300
 
-    else:
-        src_cmd = gen_dummy(300)
-        return src_cmd, last_time + 300, list_date, seek
-
-    return src_cmd, clip_start, get_date(True), seek
+        if src_cmd is not None:
+            yield src_cmd, last_time
 
 
 # independent thread for clip preparation
-def play_clips(out_file):
-    if get_time('full_sec') > 0 and \
-            get_time('full_sec') < _playlist.start * 3600:
-        last_time = float(get_time('full_sec') + 86400)
-    else:
-        last_time = float(get_time('full_sec'))
-
-    list_date = get_date(True)
-    seek = True
-
+def play_clips(out_file, iter_src_commands):
     # infinit loop
     # send current file from xml playlist to stdin from buffer
-    while True:
+    for src_cmd, last_time in iter_src_commands:
+        if last_time > 86400:
+            tm_str = str(timedelta(seconds=int(last_time - 86400)))
+        else:
+            tm_str = str(timedelta(seconds=int(last_time)))
+
+        logger.info('play at "{}":  {}'.format(tm_str, src_cmd))
+
         try:
-            src_cmd, last_time, list_date, seek = get_from_playlist(
-                last_time, list_date, seek
-            )
-
-            if src_cmd == 'next':
-                src_cmd, last_time, list_date, seek = get_from_playlist(
-                    last_time, list_date, seek
-                )
-
-            if last_time > 86400:
-                tm_str = str(timedelta(seconds=int(last_time - 86400)))
-            else:
-                tm_str = str(timedelta(seconds=int(last_time)))
-
-            logger.info('play at "{}":  {}'.format(tm_str, src_cmd))
-
             filePiper = Popen(
                 [
                     'ffmpeg', '-v', 'error', '-hide_banner', '-nostats'
@@ -373,6 +373,7 @@ def play_clips(out_file):
 
 
 def main():
+    year, month, _day = re.split('-', get_date(False))
     try:
         # open a buffer for the streaming pipeline
         # stdin get the files loop
@@ -397,7 +398,7 @@ def main():
                 [
                     '-metadata', 'service_name=' + _playout.name,
                     '-metadata', 'service_provider=' + _playout.provider,
-                    '-metadata', 'year=' + get_date(False)
+                    '-metadata', 'year=' + year
                 ] +
                 list(_playout.post_comp_extra) +
                 [
@@ -407,7 +408,10 @@ def main():
             )
 
             play_thread = Thread(
-                name='play_clips', target=play_clips, args=(mbuffer.stdin,)
+                name='play_clips', target=play_clips, args=(
+                    mbuffer.stdin,
+                    iter_src_commands(),
+                )
             )
             play_thread.daemon = True
             play_thread.start()
