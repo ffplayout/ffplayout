@@ -214,6 +214,7 @@ def check_file_exist(in_file):
         return False
 
 
+# first start seeks to right time in clip
 def seek_in_clip(in_file, seek_t):
     return [
         '-ss', str(seek_t), '-i', in_file,
@@ -221,6 +222,7 @@ def seek_in_clip(in_file, seek_t):
     ]
 
 
+# generate a dummy clip, with black color and empty audiotrack
 def gen_dummy(duration):
     return [
         '-f', 'lavfi', '-i',
@@ -255,7 +257,7 @@ def prepare_last_clip(in_node, start):
     else:
         src_cmd = None
 
-    return src_cmd, tmp_dur
+    return src_cmd
 
 
 # ------------------------------------------------------------------------------
@@ -315,7 +317,7 @@ def iter_src_commands():
             # last clip in playlist
             else:
                 clip_start = float(_playlist.start * 3600 - 5)
-                src_cmd, clip_len = prepare_last_clip(
+                src_cmd, prepare_last_clip(
                     clip_nodes[-1], clip_start
                 )
                 last_time = clip_start
@@ -324,6 +326,7 @@ def iter_src_commands():
         else:
             src_cmd = gen_dummy(300)
             last_time += 300
+            last_mod_time = 0.00
 
         if src_cmd is not None:
             yield src_cmd, last_time
