@@ -317,7 +317,7 @@ def iter_src_commands():
             # last clip in playlist
             else:
                 clip_start = float(_playlist.start * 3600 - 5)
-                src_cmd, prepare_last_clip(
+                src_cmd = prepare_last_clip(
                     clip_nodes[-1], clip_start
                 )
                 last_time = clip_start
