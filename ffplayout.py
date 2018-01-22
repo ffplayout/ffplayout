@@ -67,7 +67,7 @@ _pre_comp = SimpleNamespace(
     cfg.getfloat('PRE_COMPRESS', 'height'),
     fps=cfg.getint('PRE_COMPRESS', 'fps'),
     v_bitrate=cfg.getint('PRE_COMPRESS', 'v_bitrate'),
-    v_bufsize=cfg.getint('PRE_COMPRESS', 'v_bitrate') / 2,
+    v_bufsize=cfg.getint('PRE_COMPRESS', 'v_bitrate'),
     a_bitrate=cfg.getint('PRE_COMPRESS', 'a_bitrate'),
     a_sample=cfg.getint('PRE_COMPRESS', 'a_sample'),
 )
@@ -255,7 +255,7 @@ def prepare_last_clip(in_node, start):
     else:
         src_cmd = None
 
-    return src_cmd
+    return src_cmd, tmp_dur
 
 
 # ------------------------------------------------------------------------------
@@ -267,29 +267,21 @@ def iter_src_commands():
     last_time = get_time('full_sec')
     if 0 <= last_time < _playlist.start * 3600:
         last_time += 86400
-    list_date = get_date(True)
-    chk_date = list_date
     last_mod_time = 0.00
     seek = True
 
     while True:
+        list_date = get_date(True)
         year, month, _day = re.split('-', list_date)
         xml_path = path.join(_playlist.path, year, month, list_date + '.xml')
 
         if check_file_exist(xml_path):
             # check last modification from playlist
-            if chk_date == list_date:
-                mod_time = path.getmtime(xml_path)
-                if mod_time > last_mod_time:
-                    xml_root = ET.parse(open(xml_path, "r")).getroot()
-                    clip_nodes = xml_root.findall('body/video')
-                    last_mod_time = mod_time
-            else:
-                chk_date = list_date
-                mod_time = path.getmtime(xml_path)
-                last_mod_time = mod_time
+            mod_time = path.getmtime(xml_path)
+            if mod_time > last_mod_time:
                 xml_root = ET.parse(open(xml_path, "r")).getroot()
                 clip_nodes = xml_root.findall('body/video')
+                last_mod_time = mod_time
 
             # all clips in playlist except last one
             for clip_node in clip_nodes[:-1]:
@@ -323,9 +315,12 @@ def iter_src_commands():
             # last clip in playlist
             else:
                 clip_start = float(_playlist.start * 3600 - 5)
-                src_cmd = prepare_last_clip(clip_nodes[-1], clip_start)
+                src_cmd, clip_len = prepare_last_clip(
+                    clip_nodes[-1], clip_start
+                )
                 last_time = clip_start
                 list_date = get_date(True)
+                last_mod_time = 0.00
         else:
             src_cmd = gen_dummy(300)
             last_time += 300
@@ -349,20 +344,21 @@ def play_clips(out_file, iter_src_commands):
         try:
             filePiper = Popen(
                 [
-                    'ffmpeg', '-v', 'error', '-hide_banner', '-nostats'
+                    'ffmpeg', '-v', 'warning', '-hide_banner', '-nostats'
                 ] + src_cmd +
                 [
                     '-s', '{}x{}'.format(_pre_comp.w, _pre_comp.h),
                     '-aspect', str(_pre_comp.aspect),
                     '-pix_fmt', 'yuv420p', '-r', str(_pre_comp.fps),
+                    '-af', 'apad', '-shortest',
                     '-c:v', 'mpeg2video', '-g', '12', '-bf', '2',
                     '-b:v', '{}k'.format(_pre_comp.v_bitrate),
                     '-minrate', '{}k'.format(_pre_comp.v_bitrate),
                     '-maxrate', '{}k'.format(_pre_comp.v_bitrate),
                     '-bufsize', '{}k'.format(_pre_comp.v_bufsize),
                     '-c:a', 'mp2', '-b:a', '{}k'.format(_pre_comp.a_bitrate),
-                    '-ar', str(_pre_comp.a_sample), '-ac', '2', '-f', 'mpegts',
-                    '-threads', '2', '-'
+                    '-ar', str(_pre_comp.a_sample), '-ac', '2',
+                    '-threads', '2', '-f', 'mpegts', '-'
                 ],
                 stdout=PIPE
             )
@@ -388,8 +384,9 @@ def main():
             # playout to rtmp
             playout = Popen(
                 [
-                    'ffmpeg', '-v', 'error', '-hide_banner', '-re',
-                    '-fflags', '+igndts', '-i', 'pipe:0', '-fflags', '+genpts'
+                    'ffmpeg', '-v', 'info', '-hide_banner', '-nostats', '-re',
+                    '-fflags', '+igndts', '-thread_queue_size', '512',
+                    '-i', 'pipe:0', '-fflags', '+genpts'
                 ] +
                 list(_playout.logo) +
                 list(_playout.filter) +
