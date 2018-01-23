@@ -172,13 +172,13 @@ def get_date(seek_day):
 
 
 # send error messages to email addresses
-def send_mail(message, path):
+def send_mail(message, time, path):
     if _mail.recip:
         msg = MIMEMultipart()
         msg['From'] = _mail.s_addr
         msg['To'] = _mail.recip
         msg['Subject'] = "Playout Error"
-        msg.attach(MIMEText('{}\n{}\n'.format(message, path), 'plain'))
+        msg.attach(MIMEText('{} {}\n{}'.format(time, message, path), 'plain'))
         text = msg.as_string()
 
         server = smtplib.SMTP(_mail.server, int(_mail.port))
@@ -187,7 +187,7 @@ def send_mail(message, path):
         server.sendmail(_mail.s_addr, _mail.recip, text)
         server.quit()
     else:
-        logger.info('{}\n{}\n'.format(message, path))
+        logger.error('{} {}'.format(message, path))
 
 
 # calculating the size for the buffer in bytes
@@ -210,7 +210,7 @@ def check_file_exist(in_file):
     if path.exists(in_file):
         return True
     else:
-        send_mail('File does not exist ({}):'.format(get_time('str')), in_file)
+        send_mail('File not exist:', get_time(None), in_file)
         return False
 
 
@@ -229,7 +229,8 @@ def gen_dummy(duration):
         'color=s={}x{}:d={}'.format(
             _pre_comp.w, _pre_comp.h, duration
         ),
-        '-f', 'lavfi', '-i', 'anullsrc=r=' + _pre_comp.a_sample, '-shortest'
+        '-f', 'lavfi', '-i', 'anullsrc=r=' + str(_pre_comp.a_sample),
+        '-shortest'
     ]
 
 
@@ -245,7 +246,7 @@ def prepare_last_clip(in_node, start):
 
     # check if we are in time
     if get_time('full_sec') > start + 10:
-        send_mail('we are out of time...:', current_time)
+        send_mail('we are out of time...:', current_time, None)
 
     if tmp_dur > 6.00:
         if check_file_exist(clip_path):
@@ -327,6 +328,7 @@ def iter_src_commands():
             src_cmd = gen_dummy(300)
             last_time += 300
             last_mod_time = 0.00
+            seek = True
 
         if src_cmd is not None:
             yield src_cmd, last_time
