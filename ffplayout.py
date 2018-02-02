@@ -271,6 +271,7 @@ def iter_src_commands():
     if 0 <= last_time < _playlist.start * 3600:
         last_time += 86400
     last_mod_time = 0.00
+    time_diff = 0.00
     seek = True
 
     while True:
@@ -296,12 +297,14 @@ def iter_src_commands():
                     # first time we end up here
                     if last_time < clip_start + clip_len:
                         # calculate seek time
-                        seek_t = last_time - clip_start
+                        seek_t = last_time - clip_start + time_diff
 
                         if check_file_exist(clip_path):
                             src_cmd = seek_in_clip(clip_path, seek_t)
                         else:
                             src_cmd = gen_dummy(clip_len - seek_t)
+
+                        time_diff = 0.00
                         seek = False
 
                         last_time = clip_start
@@ -328,6 +331,13 @@ def iter_src_commands():
             src_cmd = gen_dummy(300)
             last_time += 300
             last_mod_time = 0.00
+
+            if last_time > 86400:
+                time_val = last_time - 86400
+            else:
+                time_val = last_time
+
+            time_diff = time_val - get_time('full_sec')
             seek = True
 
         if src_cmd is not None:
@@ -349,7 +359,7 @@ def play_clips(out_file, iter_src_commands):
         try:
             filePiper = Popen(
                 [
-                    'ffmpeg', '-v', 'warning', '-hide_banner', '-nostats'
+                    'ffmpeg', '-v', 'error', '-hide_banner', '-nostats'
                 ] + src_cmd +
                 [
                     '-s', '{}x{}'.format(_pre_comp.w, _pre_comp.h),
