@@ -67,3 +67,4 @@ TODO
 - time sync check and correction
 - check empty playlist
 - check when clip or playlist got lost while playling (?)
+- add support for clip out point, in playlist
