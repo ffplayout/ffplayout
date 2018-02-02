@@ -68,3 +68,4 @@ TODO
 - check empty playlist
 - check when clip or playlist got lost while playling (?)
 - add support for clip out point, in playlist
+- make playlist more simple - we don't need a smil like way...
