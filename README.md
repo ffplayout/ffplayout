@@ -21,7 +21,7 @@ Features
 - normal system requirements and no special tools
     - we only need **ffmpeg**, **ffprobe** and a buffer tool like **mbuffer** or **pv**
     - no GPU power is needed
-    - ram and cpu depends on video resolution, minimum 4 threads and 3GB ram for 576p are recommend
+    - ram and cpu depends on video resolution, minimum 4 threads and 3GB ram for 720p are recommend
 - python version 3.5 and up
 
 XML Playlist Example
