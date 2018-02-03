@@ -214,11 +214,30 @@ def check_file_exist(in_file):
         return False
 
 
-# first start seeks to right time in clip
-def seek_in_clip(in_file, seek_t):
-    return [
-        '-ss', str(seek_t), '-i', in_file,
-        '-vf', 'fade=in:st=0:d=0.5', '-af', 'afade=in:st=0:d=0.5'
+# seek in clip and cut the end
+def seek_in_cut_end(in_file, duration, seek, out):
+    if seek > 0.00:
+        inpoint = ['-ss', str(seek)]
+        fade_in_vid = 'fade=in:st=0:d=0.5'
+        fade_in_aud = 'afade=in:st=0:d=0.5'
+    else:
+        inpoint = []
+        fade_in_vid = 'null'
+        fade_in_aud = 'anull'
+
+    if out < duration:
+        fade_out_time = duration - out - seek - 1.0
+        cut_end = ['-t', duration - out - seek]
+        fade_out_vid = 'fade=out:st=' + str(fade_out_time) + ':d=1.0'
+        fade_out_aud = 'afade=out:st=' + str(fade_out_time) + ':d=1.0'
+    else:
+        cut_end = []
+        fade_out_vid = 'null'
+        fade_out_aud = 'anull'
+
+    return inpoint + ['-i', in_file] + cut_end + [
+        '-vf', fade_in_vid + ',' + fade_out_vid,
+        '-af', fade_in_aud + ',' + fade_out_aud
     ]
 
 
@@ -234,23 +253,35 @@ def gen_dummy(duration):
     ]
 
 
+# prepare input clip
+def prepare_input(src, duration, seek, out):
+    if check_file_exist(src):
+        if seek > 0.00 or out < duration:
+            src_cmd = seek_in_cut_end(src, duration, seek, out)
+        else:
+            src_cmd = ['-i', src]
+    else:
+        if seek > 0.00:
+            duration = duration - seek
+        if out < duration:
+            duration = duration - out
+        src_cmd = gen_dummy(duration)
+    return src_cmd
+
+
 # last clip can be a filler
 # so we get the IN point and calculate the new duration
 # if the new duration is smaller then 6 sec put a blank clip
 def prepare_last_clip(in_node, start):
-    clip_path = in_node.get('src')
-    clip_len = float(in_node.get('dur'))
-    clip_in = float(in_node.get('in'))
-    tmp_dur = clip_len - clip_in
-    current_time = get_time('full_sec')
-
-    # check if we are in time
-    if get_time('full_sec') > start + 10:
-        send_mail('we are out of time...:', current_time, None)
+    src = in_node.get('src')
+    duration = float(in_node.get('dur'))
+    seek = float(in_node.get('in'))
+    out = float(in_node.get('out'))
+    tmp_dur = duration - seek
 
     if tmp_dur > 6.00:
-        if check_file_exist(clip_path):
-            src_cmd = seek_in_clip(clip_path, clip_in)
+        if check_file_exist(src):
+            src_cmd = seek_in_cut_end(src, duration, seek, out)
         else:
             src_cmd = gen_dummy(tmp_dur)
     elif tmp_dur > 1.00:
@@ -272,7 +303,7 @@ def iter_src_commands():
         last_time += 86400
     last_mod_time = 0.00
     time_diff = 0.00
-    seek = True
+    first_in = True
 
     while True:
         list_date = get_date(True)
@@ -289,42 +320,36 @@ def iter_src_commands():
 
             # all clips in playlist except last one
             for clip_node in clip_nodes[:-1]:
-                clip_path = clip_node.get('src')
-                clip_start = float(clip_node.get('begin'))
-                clip_len = float(clip_node.get('dur'))
+                src = clip_node.get('src')
+                begin = float(clip_node.get('begin'))
+                duration = float(clip_node.get('dur'))
+                seek = float(clip_node.get('in'))
+                out = float(clip_node.get('out'))
 
-                if seek:
+                if first_in:
                     # first time we end up here
-                    if last_time < clip_start + clip_len:
+                    if last_time < begin + duration:
                         # calculate seek time
-                        seek_t = last_time - clip_start + time_diff
-
-                        if check_file_exist(clip_path):
-                            src_cmd = seek_in_clip(clip_path, seek_t)
-                        else:
-                            src_cmd = gen_dummy(clip_len - seek_t)
+                        init_seek = last_time - begin + seek + time_diff
+                        src_cmd = prepare_input(src, duration, init_seek, out)
 
                         time_diff = 0.00
-                        seek = False
+                        first_in = False
 
-                        last_time = clip_start
+                        last_time = begin
                         break
                 else:
-                    if last_time < clip_start:
-                        if check_file_exist(clip_path):
-                            src_cmd = ['-i', clip_path]
-                        else:
-                            src_cmd = gen_dummy(clip_len)
-
-                        last_time = clip_start
+                    if last_time < begin:
+                        src_cmd = prepare_input(src, duration, seek, out)
+                        last_time = begin
                         break
             # last clip in playlist
             else:
-                clip_start = float(_playlist.start * 3600 - 5)
+                begin = float(_playlist.start * 3600 - 5)
                 src_cmd = prepare_last_clip(
-                    clip_nodes[-1], clip_start
+                    clip_nodes[-1], begin
                 )
-                last_time = clip_start
+                last_time = begin
                 list_date = get_date(True)
                 last_mod_time = 0.00
         else:
@@ -338,7 +363,7 @@ def iter_src_commands():
                 time_val = last_time
 
             time_diff = time_val - get_time('full_sec')
-            seek = True
+            first_in = True
 
         if src_cmd is not None:
             yield src_cmd, last_time
