@@ -227,7 +227,7 @@ def seek_in_cut_end(in_file, duration, seek, out):
 
     if out < duration:
         fade_out_time = duration - out - seek - 1.0
-        cut_end = ['-t', duration - out - seek]
+        cut_end = ['-t', str(duration - out - seek)]
         fade_out_vid = 'fade=out:st=' + str(fade_out_time) + ':d=1.0'
         fade_out_aud = 'afade=out:st=' + str(fade_out_time) + ':d=1.0'
     else:
