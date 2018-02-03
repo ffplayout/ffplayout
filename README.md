@@ -28,22 +28,23 @@ XML Playlist Example
 -----
 
 ```xml
-<smil>
-	<head>
-		<meta name="author" content="Author"/>
-		<meta name="title" content="Title"/>
-		<meta name="copyright" content="(c)2018 company"/>
+<playlist>
+    <head>
+		<meta name="author" content="example"/>
+		<meta name="title" content="Live Stream"/>
+		<meta name="copyright" content="(c)2018 example.org"/>
+		<meta name="date" content="2018-02-03"/>
 	</head>
 	<body>
-		<video src="/path/clip_01.mkv" clipBegin="21600s" dur="18.000000s" in="0.00" out="18.000000s"/>
-		<video src="/path/clip_02.mkv" clipBegin="21618s" dur="18.111000s" in="0.00" out="18.111000s"/>
-		<video src="/path/clip_03.mkv" clipBegin="21636.1s" dur="247.896000s" in="0.00" out="247.896000s"/>
-		<video src="/path/clip_04.mkv" clipBegin="21884s" dur="483.114000s" in="0.00" out="483.114000s"/>
-		<video src="/path/clip_05.mkv" clipBegin="22367.1s" dur="20.108000s" in="0.00" out="20.108000s"/>
-		<video src="/path/clip  &amp; specials.mkv" clipBegin="22387.2s" dur="203.290000s" in="0.00" out="203.290000s"/>
-		<video src="/path/clip_06.mkv" clipBegin="22590.5s" dur="335.087000s" in="300.00" out="335.087000s"/>
-	</body>
-</smil>
+    	<video src="/path/clip_01.mkv" begin="21600" dur="18.000000" in="0.00" out="18.000000"/>
+    	<video src="/path/clip_02.mkv" begin="21618" dur="18.111000" in="0.00" out="18.111000"/>
+    	<video src="/path/clip_03.mkv" begin="21636.1" dur="247.896000" in="0.00" out="247.896000"/>
+    	<video src="/path/clip_04.mkv" begin="21884" dur="483.114000" in="0.00" out="483.114000"/>
+    	<video src="/path/clip_05.mkv" begin="22367.1" dur="20.108000" in="0.00" out="20.108000"/>
+    	<video src="/path/clip  &amp; specials.mkv" begin="22387.2" dur="203.290000" in="0.00" out="203.290000"/>
+    	<video src="/path/clip_06.mkv" begin="22590.5" dur="335.087000" in="300.00" out="335.087000"/>
+    </body>
+</playlist>
 ```
 
 Installation
@@ -68,4 +69,3 @@ TODO
 - check empty playlist
 - check when clip or playlist got lost while playling (?)
 - add support for clip out point, in playlist
-- make playlist more simple - we don't need a smil like way...
