@@ -239,8 +239,8 @@ def gen_dummy(duration):
 # if the new duration is smaller then 6 sec put a blank clip
 def prepare_last_clip(in_node, start):
     clip_path = in_node.get('src')
-    clip_len = float(in_node.get('dur').rstrip('s'))
-    clip_in = float(in_node.get('in').rstrip('s'))
+    clip_len = float(in_node.get('dur'))
+    clip_in = float(in_node.get('in'))
     tmp_dur = clip_len - clip_in
     current_time = get_time('full_sec')
 
@@ -290,8 +290,8 @@ def iter_src_commands():
             # all clips in playlist except last one
             for clip_node in clip_nodes[:-1]:
                 clip_path = clip_node.get('src')
-                clip_start = float(clip_node.get('clipBegin').rstrip('s'))
-                clip_len = float(clip_node.get('dur').rstrip('s'))
+                clip_start = float(clip_node.get('begin'))
+                clip_len = float(clip_node.get('dur'))
 
                 if seek:
                     # first time we end up here
