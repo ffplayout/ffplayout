@@ -272,7 +272,7 @@ def prepare_input(src, duration, seek, out):
 # last clip can be a filler
 # so we get the IN point and calculate the new duration
 # if the new duration is smaller then 6 sec put a blank clip
-def prepare_last_clip(in_node, start):
+def prepare_last_clip(in_node):
     src = in_node.get('src')
     duration = float(in_node.get('dur'))
     seek = float(in_node.get('in'))
@@ -317,6 +317,7 @@ def iter_src_commands():
                 xml_root = ET.parse(open(xml_path, "r")).getroot()
                 clip_nodes = xml_root.findall('body/video')
                 last_mod_time = mod_time
+                logger.info('open: ' + xml_path)
 
             # all clips in playlist except last one
             for clip_node in clip_nodes[:-1]:
@@ -343,20 +344,23 @@ def iter_src_commands():
                         src_cmd = prepare_input(src, duration, seek, out)
                         last_time = begin
                         break
-            # last clip in playlist
             else:
-                begin = float(_playlist.start * 3600 - 5)
-                src_cmd = prepare_last_clip(
-                    clip_nodes[-1], begin
-                )
+                # last clip in playlist
+                src_cmd = prepare_last_clip(clip_nodes[-1])
                 last_time = begin
                 list_date = get_date(True)
                 last_mod_time = 0.00
         else:
+            # when we have no playlist for the current day,
+            # then we generate a black clip
+            # and calculate the seek in time, for when the playlist comes back
             src_cmd = gen_dummy(300)
             last_time += 300
             last_mod_time = 0.00
 
+            # there is still material in the buffer,
+            # so we have to calculate the right seek time for the new playlist
+            # time_diff: is the real time what we have in buffer
             if last_time > 86400:
                 time_val = last_time - 86400
             else:
