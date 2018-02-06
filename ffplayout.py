@@ -304,9 +304,21 @@ def iter_src_commands():
     last_mod_time = 0.00
     time_diff = 0.00
     first_in = True
+    last_out = False
+    time_in_buffer = 0.0
 
     while True:
-        list_date = get_date(True)
+        # switch playlist after last clip from day befor
+        if last_out:
+            if time_in_buffer > float(_buffer.length):
+                # wait to sync time
+                wait = time_in_buffer - float(_buffer.length)
+                sleep(wait)
+            list_date = get_date(False)
+            last_out = False
+        else:
+            list_date = get_date(True)
+
         year, month, _day = re.split('-', list_date)
         xml_path = path.join(_playlist.path, year, month, list_date + '.xml')
 
@@ -346,11 +358,18 @@ def iter_src_commands():
                         break
             else:
                 # last clip in playlist
+                if last_time > 86400:
+                    add_sec = 86400
+                else:
+                    add_sec = 0
+                # calculate real time in buffer
+                time_in_buffer = last_time - get_time('full_sec') + add_sec
                 begin = float(_playlist.start * 3600 - 5)
                 src_cmd = prepare_last_clip(clip_nodes[-1])
                 last_time = begin
                 list_date = get_date(True)
                 last_mod_time = 0.00
+                last_out = True
         else:
             # when we have no playlist for the current day,
             # then we generate a black clip
