@@ -313,6 +313,7 @@ def iter_src_commands():
             if time_in_buffer > float(_buffer.length):
                 # wait to sync time
                 wait = time_in_buffer - float(_buffer.length)
+                logger.info('Wait for: ' + wait + ' seconds.')
                 sleep(wait)
             list_date = get_date(False)
             last_out = False
@@ -363,7 +364,7 @@ def iter_src_commands():
                 else:
                     add_sec = 0
                 # calculate real time in buffer
-                time_in_buffer = last_time - get_time('full_sec') + add_sec
+                time_in_buffer = last_time - get_time('full_sec') - add_sec
                 begin = float(_playlist.start * 3600 - 5)
                 src_cmd = prepare_last_clip(clip_nodes[-1])
                 last_time = begin
