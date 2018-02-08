@@ -313,7 +313,7 @@ def iter_src_commands():
             if time_in_buffer > float(_buffer.length):
                 # wait to sync time
                 wait = time_in_buffer - float(_buffer.length)
-                logger.info('Wait for: ' + wait + ' seconds.')
+                logger.info('Wait for: ' + str(wait) + ' seconds.')
                 sleep(wait)
             list_date = get_date(False)
             last_out = False
