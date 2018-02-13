@@ -172,7 +172,7 @@ def get_date(seek_day):
 
 
 # send error messages to email addresses
-def send_mail(message, time, path):
+def mail_or_log(message, time, path):
     if _mail.recip:
         msg = MIMEMultipart()
         msg['From'] = _mail.s_addr
@@ -190,9 +190,9 @@ def send_mail(message, time, path):
         logger.error('{} {}'.format(message, path))
 
 
-# calculating the size for the buffer in bytes
+# calculating the size for the buffer in KB
 def calc_buffer_size():
-    return (_pre_comp.v_bitrate + _pre_comp.a_bitrate) * _buffer.length
+    return (_pre_comp.v_bitrate + _pre_comp.a_bitrate) * 0.125 * _buffer.length
 
 
 # check if processes a well
@@ -210,13 +210,12 @@ def check_file_exist(in_file):
     if path.exists(in_file):
         return True
     else:
-        send_mail('File not exist:', get_time(None), in_file)
         return False
 
 
 # seek in clip and cut the end
 def seek_in_cut_end(in_file, duration, seek, out):
-    if seek > 0.00:
+    if seek > 0.0:
         inpoint = ['-ss', str(seek)]
         fade_in_vid = 'fade=in:st=0:d=0.5'
         fade_in_aud = 'afade=in:st=0:d=0.5'
@@ -256,12 +255,12 @@ def gen_dummy(duration):
 # prepare input clip
 def prepare_input(src, duration, seek, out):
     if check_file_exist(src):
-        if seek > 0.00 or out < duration:
+        if seek > 0.0 or out < duration:
             src_cmd = seek_in_cut_end(src, duration, seek, out)
         else:
             src_cmd = ['-i', src]
     else:
-        if seek > 0.00:
+        if seek > 0.0:
             duration = duration - seek
         if out < duration:
             duration = duration - out
@@ -272,24 +271,82 @@ def prepare_input(src, duration, seek, out):
 # last clip can be a filler
 # so we get the IN point and calculate the new duration
 # if the new duration is smaller then 6 sec put a blank clip
-def prepare_last_clip(in_node):
-    src = in_node.get('src')
-    duration = float(in_node.get('dur'))
-    seek = float(in_node.get('in'))
-    out = float(in_node.get('out'))
-    tmp_dur = duration - seek
+# we have to validate here to, that a last clip exists in the playlist
+def prepare_last_clip(clip_nodes):
+    if clip_nodes:
+        last_node = clip_nodes[-1]
+        src = last_node.get('src')
+        begin = is_float(last_node.get('begin'), get_time('full_sec'), True)
+        duration = is_float(last_node.get('dur'), 300, True)
+        seek = is_float(last_node.get('in'), 0, True)
+        out = is_float(last_node.get('out'), 300, True)
+        first = False
+        last = True
+    else:
+        src = None
+        begin = get_time('full_sec')
+        duration = 300.0
+        seek = 0.0
+        out = duration
+        first = True
+        last = False
+        mail_or_log(
+            'Playlist has no valid entries!',
+            get_time(None), get_date(True)
+        )
 
-    if tmp_dur > 6.00:
+    tmp_dur = out - seek
+
+    if tmp_dur > 6.0:
         if check_file_exist(src):
             src_cmd = seek_in_cut_end(src, duration, seek, out)
         else:
             src_cmd = gen_dummy(tmp_dur)
-    elif tmp_dur > 1.00:
+    elif tmp_dur > 1.0:
         src_cmd = gen_dummy(tmp_dur)
     else:
         src_cmd = None
 
-    return src_cmd
+    return src_cmd, begin, first, last
+
+
+# test if value is float
+def is_float(value, text, convert):
+    try:
+        float(value)
+        if convert:
+            return float(value)
+        else:
+            return ''
+    except ValueError:
+        return text
+
+
+# check all variables in xml playlist
+# and test if file path exist
+def validate_xml(xml_nodes):
+    error = ''
+
+    for xml_node in xml_nodes:
+        if check_file_exist(xml_node.get('src')):
+            a = ''
+        else:
+            a = 'File not exist! '
+
+        b = is_float(xml_node.get('begin'), 'No Start Time! ', False)
+        c = is_float(xml_node.get('dur'), 'No Duration! ', False)
+        d = is_float(xml_node.get('in'), 'No In Value! ', False)
+        e = is_float(xml_node.get('out'), 'No Out Value! ', False)
+
+        line = a + b + c + d + e
+        if line:
+            error += line + 'In line: ' + str(xml_node.attrib) + '\n'
+
+    if error:
+        mail_or_log(
+            'Validation error, check xml playlist, values are missing:\n',
+            get_time(None), error
+        )
 
 
 # ------------------------------------------------------------------------------
@@ -301,22 +358,22 @@ def iter_src_commands():
     last_time = get_time('full_sec')
     if 0 <= last_time < _playlist.start * 3600:
         last_time += 86400
-    last_mod_time = 0.00
-    time_diff = 0.00
-    first_in = True
-    last_out = False
-    time_in_buffer = 0.0
+    last_mod_time = 0.0
+    time_diff = 0.0
+    first = True
+    last = False
+    time_difference = 0.0
 
     while True:
         # switch playlist after last clip from day befor
-        if last_out:
-            if time_in_buffer > float(_buffer.length):
+        if last:
+            if time_difference > float(_buffer.length):
                 # wait to sync time
-                wait = time_in_buffer - float(_buffer.length)
+                wait = time_difference - float(_buffer.length)
                 logger.info('Wait for: ' + str(wait) + ' seconds.')
                 sleep(wait)
             list_date = get_date(False)
-            last_out = False
+            last = False
         else:
             list_date = get_date(True)
 
@@ -332,23 +389,32 @@ def iter_src_commands():
                 last_mod_time = mod_time
                 logger.info('open: ' + xml_path)
 
+                # validate xml values in new Thread
+                validate_thread = Thread(
+                    name='validate_xml', target=validate_xml, args=(
+                        clip_nodes,
+                    )
+                )
+                validate_thread.daemon = True
+                validate_thread.start()
+
             # all clips in playlist except last one
             for clip_node in clip_nodes[:-1]:
                 src = clip_node.get('src')
-                begin = float(clip_node.get('begin'))
-                duration = float(clip_node.get('dur'))
-                seek = float(clip_node.get('in'))
-                out = float(clip_node.get('out'))
+                begin = is_float(clip_node.get('begin'), last_time, True)
+                duration = is_float(clip_node.get('dur'), 300, True)
+                seek = is_float(clip_node.get('in'), 0, True)
+                out = is_float(clip_node.get('out'), 300, True)
 
-                if first_in:
+                if first:
                     # first time we end up here
                     if last_time < begin + duration:
                         # calculate seek time
                         init_seek = last_time - begin + seek + time_diff
                         src_cmd = prepare_input(src, duration, init_seek, out)
 
-                        time_diff = 0.00
-                        first_in = False
+                        time_diff = 0.0
+                        first = False
 
                         last_time = begin
                         break
@@ -359,25 +425,26 @@ def iter_src_commands():
                         break
             else:
                 # last clip in playlist
+                src_cmd, begin, first, last = prepare_last_clip(clip_nodes)
+
                 if last_time > 86400:
-                    add_sec = 86400
-                else:
-                    add_sec = 0
+                    begin -= 86400.0
+
                 # calculate real time in buffer
-                time_in_buffer = last_time - get_time('full_sec') - add_sec
-                begin = float(_playlist.start * 3600 - 5)
-                src_cmd = prepare_last_clip(clip_nodes[-1])
-                last_time = begin
+                time_difference = begin - get_time('full_sec')
+                last_time = float(_playlist.start * 3600 - 5)
+
                 list_date = get_date(True)
-                last_mod_time = 0.00
-                last_out = True
+                last_mod_time = 0.0
         else:
             # when we have no playlist for the current day,
             # then we generate a black clip
             # and calculate the seek in time, for when the playlist comes back
             src_cmd = gen_dummy(300)
             last_time += 300
-            last_mod_time = 0.00
+            last_mod_time = 0.0
+
+            mail_or_log('Playlist not exist:', get_time(None), xml_path)
 
             # there is still material in the buffer,
             # so we have to calculate the right seek time for the new playlist
@@ -388,7 +455,7 @@ def iter_src_commands():
                 time_val = last_time
 
             time_diff = time_val - get_time('full_sec')
-            first_in = True
+            first = True
 
         if src_cmd is not None:
             yield src_cmd, last_time
@@ -425,7 +492,8 @@ def play_clips(out_file, iter_src_commands):
                     '-ar', str(_pre_comp.a_sample), '-ac', '2',
                     '-threads', '2', '-f', 'mpegts', '-'
                 ],
-                stdout=PIPE
+                stdout=PIPE,
+                bufsize=0
             )
 
             copyfileobj(filePiper.stdout, out_file)
@@ -443,7 +511,8 @@ def main():
             [_buffer.cli] + list(_buffer.cmd) +
             [str(calc_buffer_size()) + 'k'],
             stdin=PIPE,
-            stdout=PIPE
+            stdout=PIPE,
+            bufsize=0
         )
         try:
             # playout to rtmp
@@ -466,7 +535,8 @@ def main():
                 [
                     _playout.out_addr
                 ],
-                stdin=mbuffer.stdout
+                stdin=mbuffer.stdout,
+                bufsize=0
             )
 
             play_thread = Thread(

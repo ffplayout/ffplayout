@@ -11,7 +11,6 @@ Features
 -----
 
 - have all values in a separate config file
-- try to be as simple as possible
 - dynamic playlist
 - replace missing playlist or clip with a blank clip
 - send emails with error message
@@ -64,7 +63,5 @@ Installation
 
 TODO
 -----
-- better xml validation
-- time sync check and correction
-- check empty playlist
-- check when clip or playlist got lost while playling (?)
+- time sync correction
+- check when clip or playlist got lost while playling (maybe not possible)
