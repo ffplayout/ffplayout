@@ -266,15 +266,33 @@ def src_or_dummy(src, duration, seek, out):
         return gen_dummy(out - seek)
 
 
+# compare clip play time with real time,
+# to see if we are sync
+def check_sync(begin):
+    time_now = get_time('full_sec')
+    start = float(_playlist.start * 3600)
+
+    t_dist = begin - time_now
+    if 0 <= time_now < start:
+        t_dist -= 86400.0
+
+    # check that we are in tolerance time
+    if not _buffer.length - 8 < t_dist < _buffer.length + 8:
+        mail_or_log(
+            'Playlist is not sync!', get_time(None),
+            str(t_dist) + ' seconds async.'
+        )
+
+
 # prepare input clip
 # check begin and length from clip
 # return clip only if we are in 24 hours time range
 def gen_input(src, begin, duration, seek, out, last):
     test_time = 86400.0
-    start_time = float(_playlist.start * 3600)
+    start = float(_playlist.start * 3600)
 
     if begin + out - seek > test_time:
-        begin -= start_time
+        begin -= start
 
     playlist_length = begin + out - seek
 
@@ -435,16 +453,7 @@ def iter_src_commands():
                         last_time = begin
                         last = False
 
-                    t_dist = begin - get_time('full_sec')
-                    if 0 <= get_time('full_sec') < _playlist.start * 3600:
-                        t_dist -= 86400
-
-                    # check that we are in tolerance time
-                    if not _buffer.length - 8 < t_dist < _buffer.length + 8:
-                        mail_or_log(
-                            'Playlist is not sync!', get_time(None),
-                            str(t_dist) + ' seconds async.'
-                        )
+                    check_sync(begin)
 
                     src_cmd = gen_input(
                         src, begin, duration, seek, out, last
