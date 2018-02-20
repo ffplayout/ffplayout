@@ -66,6 +66,9 @@ _pre_comp = SimpleNamespace(
     aspect=cfg.getfloat('PRE_COMPRESS', 'width') /
     cfg.getfloat('PRE_COMPRESS', 'height'),
     fps=cfg.getint('PRE_COMPRESS', 'fps'),
+    v_bitrate=cfg.getint('PRE_COMPRESS', 'v_bitrate'),
+    v_bufsize=cfg.getint('PRE_COMPRESS', 'v_bitrate'),
+    a_bitrate=cfg.getint('PRE_COMPRESS', 'a_bitrate'),
     a_sample=cfg.getint('PRE_COMPRESS', 'a_sample')
 )
 
@@ -192,9 +195,13 @@ def mail_or_log(message, time, path):
 
 # calculating the size for the buffer in KB
 def calc_buffer_size():
+    # TODO: this calculation is only important when we compress in rawvideo
+    """
     v_size = _pre_comp.w * _pre_comp.h * 3 / 2 * _pre_comp.fps * _buffer.length
     a_size = (_pre_comp.a_sample * 16 * 2 * _buffer.length) / 8
     return (v_size + a_size) / 1024
+    """
+    return (_pre_comp.v_bitrate + _pre_comp.a_bitrate) * 0.125 * _buffer.length
 
 
 # check if processes a well
@@ -273,7 +280,7 @@ def check_sync(begin):
     start = float(_playlist.start * 3600)
 
     t_dist = begin - time_now
-    if 0 <= time_now < start:
+    if 0 <= time_now < start and not begin == start:
         t_dist -= 86400.0
 
     # check that we are in tolerance time
@@ -507,10 +514,14 @@ def play_clips(out_file, iter_src_commands):
                     '-aspect', str(_pre_comp.aspect),
                     '-pix_fmt', 'yuv420p', '-r', str(_pre_comp.fps),
                     '-af', 'apad', '-shortest',
-                    '-c:v', 'rawvideo',
-                    '-c:a', 'pcm_s16le',
+                    '-c:v', 'mpeg2video', '-intra',
+                    '-b:v', '{}k'.format(_pre_comp.v_bitrate),
+                    '-minrate', '{}k'.format(_pre_comp.v_bitrate),
+                    '-maxrate', '{}k'.format(_pre_comp.v_bitrate),
+                    '-bufsize', '{}k'.format(_pre_comp.v_bufsize),
+                    '-c:a', 'mp2', '-b:a', '{}k'.format(_pre_comp.a_bitrate),
                     '-ar', str(_pre_comp.a_sample), '-ac', '2',
-                    '-threads', '2', '-f', 'avi', '-'
+                    '-threads', '2', '-f', 'mpegts', '-'
                 ],
                 stdout=PIPE,
                 bufsize=0
@@ -539,7 +550,8 @@ def main():
             playout = Popen(
                 [
                     'ffmpeg', '-v', 'info', '-hide_banner', '-nostats', '-re',
-                    '-thread_queue_size', '256', '-i', 'pipe:0'
+                    '-thread_queue_size', '256', '-fflags', '+igndts',
+                    '-i', 'pipe:0', '-fflags', '+genpts'
                 ] +
                 list(_playout.logo) +
                 list(_playout.filter) +
