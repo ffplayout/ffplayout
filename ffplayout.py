@@ -295,20 +295,21 @@ def check_sync(begin):
 # check begin and length from clip
 # return clip only if we are in 24 hours time range
 def gen_input(src, begin, duration, seek, out, last):
-    test_time = 86400.0
+    ref_time = 86400.0
     start = float(_playlist.start * 3600)
+    time = get_time('full_sec')
 
-    if begin + out - seek > test_time:
+    if begin + out - seek > ref_time:
         begin -= start
 
     playlist_length = begin + out - seek
 
-    if playlist_length <= test_time and not last:
+    if playlist_length <= ref_time and not last:
         # when we are in the 24 houre range, get the clip
         return src_or_dummy(src, duration, seek, out)
-    elif playlist_length < test_time and last:
+    elif playlist_length < ref_time and last:
         # when last clip is passed and we still have too much time left
-        diff = test_time - playlist_length
+        diff = ref_time - playlist_length
 
         if duration < diff:
             mail_or_log(
@@ -324,15 +325,21 @@ def gen_input(src, begin, duration, seek, out, last):
     else:
         # when we over the 24 hours range,
         # calculate time and try to correct them
-        diff = playlist_length - test_time
-        new_len = out - seek - diff
+        # real_diff is not 100% accurat
+        # a 1024x576 stream have around 2.9 seconds extra in buffer
+        real_diff = _buffer.length + 2.9 + out - seek + time - start
+
+        if out - seek > real_diff:
+            new_len = out - seek - real_diff
+        else:
+            new_len = out - seek
         if new_len > 6.0:
             if src == _playlist.filler:
                 # when filler is something like a clock,
                 # is better to start the clip later, to play until end
-                src_cmd = src_or_dummy(src, duration, seek + diff, out)
+                src_cmd = src_or_dummy(src, duration, seek + real_diff, out)
             else:
-                src_cmd = src_or_dummy(src, duration, seek, out - diff)
+                src_cmd = src_or_dummy(src, duration, seek, out - real_diff)
         elif new_len > 1.0:
             src_cmd = gen_dummy(new_len)
         else:
@@ -456,6 +463,7 @@ def iter_src_commands():
                         last_time = float(_playlist.start * 3600 - 5)
                         last_mod_time = 0.0
                         last = True
+
                     else:
                         last_time = begin
                         last = False
