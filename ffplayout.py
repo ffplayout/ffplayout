@@ -435,7 +435,7 @@ def iter_src_commands():
                 validate_thread(clip_nodes)
                 last_node = clip_nodes[-1]
 
-            # all clips in playlist except last one
+            # loop through all clips in playlist
             for clip_node in clip_nodes:
                 src = clip_node.get('src')
                 begin = is_float(clip_node.get('begin'), last_time, True)
@@ -502,8 +502,7 @@ def iter_src_commands():
 
 # independent thread for clip preparation
 def play_clips(out_file, iter_src_commands):
-    # infinit loop
-    # send current file from xml playlist to stdin from buffer
+    # send current file from xml playlist to buffer stdin
     for src_cmd, last_time in iter_src_commands:
         if last_time > 86400:
             tm_str = str(timedelta(seconds=int(last_time - 86400)))

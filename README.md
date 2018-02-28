@@ -63,5 +63,4 @@ Installation
 
 TODO
 -----
-- time sync correction
 - check when clip or playlist got lost while playling (maybe not possible)
