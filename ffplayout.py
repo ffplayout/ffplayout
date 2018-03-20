@@ -80,6 +80,7 @@ _playlist = SimpleNamespace(
 
 _buffer = SimpleNamespace(
     length=cfg.getint('BUFFER', 'buffer_length'),
+    tol=cfg.getfloat('BUFFER', 'buffer_tolerance'),
     cli=cfg.get('BUFFER', 'buffer_cli'),
     cmd=literal_eval(cfg.get('BUFFER', 'buffer_cmd'))
 )
@@ -278,74 +279,79 @@ def src_or_dummy(src, duration, seek, out):
 def check_sync(begin):
     time_now = get_time('full_sec')
     start = float(_playlist.start * 3600)
+    tolerance = _buffer.tol * 2
 
     t_dist = begin - time_now
     if 0 <= time_now < start and not begin == start:
         t_dist -= 86400.0
 
     # check that we are in tolerance time
-    if not _buffer.length - 8 < t_dist < _buffer.length + 8:
+    if not _buffer.length - tolerance < t_dist < _buffer.length + tolerance:
         mail_or_log(
             'Playlist is not sync!', get_time(None),
-            str(t_dist) + ' seconds async.'
+            str(t_dist) + ' seconds async'
         )
 
 
 # prepare input clip
 # check begin and length from clip
 # return clip only if we are in 24 hours time range
-def gen_input(src, begin, duration, seek, out, last):
-    ref_time = 86400.0
+def gen_input(src, begin, dur, seek, out, last):
     start = float(_playlist.start * 3600)
+    day_in_sec = 86400.0
+    ref_time = day_in_sec + start
     time = get_time('full_sec')
 
-    if begin + out - seek > ref_time:
-        begin -= start
+    if 0 <= time < start:
+        time += day_in_sec
 
-    playlist_length = begin + out - seek
+    # calculate time difference to see if we are sync
+    time_diff = _buffer.length + _buffer.tol + out - seek + time
 
-    if playlist_length <= ref_time and not last:
+    if (time_diff <= ref_time or begin < day_in_sec) and not last:
         # when we are in the 24 houre range, get the clip
-        return src_or_dummy(src, duration, seek, out)
-    elif playlist_length < ref_time and last:
+        return src_or_dummy(src, dur, seek, out), None
+    elif time_diff < ref_time and last:
         # when last clip is passed and we still have too much time left
-        diff = ref_time - playlist_length
+        # check if duration is larger then out - seek
+        time_diff = _buffer.length + _buffer.tol + dur + time
+        new_len = dur - (time_diff - ref_time)
+        logger.info('we are under time, new_len is: {}'.format(new_len))
 
-        if duration < diff:
-            mail_or_log(
-                'Last clip is not long enough', get_time(None),
-                str(diff - duration) + ' seconds are missing.'
-            )
-            src_cmd = src_or_dummy(src, duration, 0, duration)
-        else:
-            if src == _playlist.filler:
-                src_cmd = src_or_dummy(src, duration, duration - diff, out)
-            else:
-                src_cmd = src_or_dummy(src, duration, 0, duration - diff)
-    else:
-        # when we over the 24 hours range,
-        # calculate time and try to correct them
-        # real_diff is not 100% accurat
-        # a 1024x576 stream have around 2.9 seconds extra in buffer
-        real_diff = _buffer.length + 2.9 + out - seek + time - start
-
-        if out - seek > real_diff:
-            new_len = out - seek - real_diff
-        else:
-            new_len = out - seek
-        if new_len > 6.0:
+        if time_diff >= ref_time:
             if src == _playlist.filler:
                 # when filler is something like a clock,
-                # is better to start the clip later, to play until end
-                src_cmd = src_or_dummy(src, duration, seek + real_diff, out)
+                # is better to start the clip later and to play until end
+                src_cmd = src_or_dummy(src, dur, dur - new_len, dur)
             else:
-                src_cmd = src_or_dummy(src, duration, seek, out - real_diff)
+                src_cmd = src_or_dummy(src, dur, 0, new_len)
+        else:
+            # TODO: fix missing time
+            src_cmd = src_or_dummy(src, dur, 0, dur)
+
+            mail_or_log(
+                'playlist is not long enough', get_time(None),
+                str(new_len) + ' seconds needed.'
+            )
+
+        return src_cmd, new_len - dur
+
+    elif time_diff > ref_time:
+        new_len = out - seek - (time_diff - ref_time)
+        # when we over the 24 hours range, trim clip
+        logger.info('we are over time, new_len is: {}'.format(new_len))
+
+        if new_len > 5.0:
+            if src == _playlist.filler:
+                src_cmd = src_or_dummy(src, dur, out - new_len, out)
+            else:
+                src_cmd = src_or_dummy(src, dur, seek, new_len)
         elif new_len > 1.0:
             src_cmd = gen_dummy(new_len)
         else:
             src_cmd = None
 
-        return src_cmd
+        return src_cmd, 0.0
 
 
 # test if value is float
@@ -392,18 +398,26 @@ def validate_thread(clip_nodes):
     validate.start()
 
 
-def exeption(last_time, message, path):
-    src_cmd = gen_dummy(300)
-    # there is still material in the buffer,
-    # so we have to calculate the right seek time for the new playlist
-    if last_time > 86400:
-        last_time -= 86400
+def exeption(message, dummy_length, path, last):
+    src_cmd = gen_dummy(dummy_length)
 
-    time_diff = last_time - get_time('full_sec')
-    last_time = get_time('full_sec')
+    if last:
+        last_time = float(_playlist.start * 3600 - 5)
+        first = False
+    else:
+        last_time = (
+            get_time('full_sec') + dummy_length +
+            _buffer.length + _buffer.tol
+        )
+
+        if 0 <= last_time < _playlist.start * 3600:
+            last_time += 86400
+
+        first = True
+
     mail_or_log(message, get_time(None), path)
 
-    return src_cmd, last_time, time_diff
+    return src_cmd, last_time, first
 
 
 # ------------------------------------------------------------------------------
@@ -416,9 +430,10 @@ def iter_src_commands():
     if 0 <= last_time < _playlist.start * 3600:
         last_time += 86400
     last_mod_time = 0.0
-    time_diff = 0.0
     first = True
+    last = False
     list_date = get_date(True)
+    dummy_length = 60
 
     while True:
         year, month, day = re.split('-', list_date)
@@ -439,80 +454,92 @@ def iter_src_commands():
             for clip_node in clip_nodes:
                 src = clip_node.get('src')
                 begin = is_float(clip_node.get('begin'), last_time, True)
-                duration = is_float(clip_node.get('dur'), 300, True)
+                duration = is_float(clip_node.get('dur'), 60, True)
                 seek = is_float(clip_node.get('in'), 0, True)
-                out = is_float(clip_node.get('out'), 300, True)
+                out = is_float(clip_node.get('out'), 60, True)
 
                 # first time we end up here
-                if first and last_time + time_diff < begin + duration:
+                if first and last_time < begin + duration:
                     # calculate seek time
-                    seek = last_time - begin + seek + time_diff
-                    src_cmd = gen_input(
+                    seek = last_time - begin + seek
+                    src_cmd, time_left = gen_input(
                         src, begin, duration, seek, out, False
                     )
 
-                    time_diff = 0.0
                     first = False
                     last_time = begin
                     break
                 elif last_time < begin:
                     if clip_node == last_node:
-                        # after last item is loaded,
-                        # set right values for new playlist
-                        list_date = get_date(False)
-                        last_time = float(_playlist.start * 3600 - 5)
-                        last_mod_time = 0.0
                         last = True
-
                     else:
-                        last_time = begin
                         last = False
 
                     check_sync(begin)
 
-                    src_cmd = gen_input(
+                    src_cmd, time_left = gen_input(
                         src, begin, duration, seek, out, last
                     )
+
+                    if time_left is None:
+                        # normal behavior
+                        last_time = begin
+                    elif time_left > 0.0:
+                        # when playlist is finish and we have time left
+                        last_time = begin
+                        list_date = get_date(False)
+                        dummy_length = time_left
+
+                    else:
+                        # when there is no time left and we are in time,
+                        # set right values for new playlist
+                        list_date = get_date(False)
+                        last_time = float(_playlist.start * 3600 - 5)
+                        last_mod_time = 0.0
 
                     break
             else:
                 # when playlist exist but is empty, or not long enough,
                 # generate dummy and send log
-                src_cmd, last_time, time_diff = exeption(
-                    last_time, 'Playlist is not valid!', xml_path
+                src_cmd, last_time, first = exeption(
+                    'Playlist is not valid!', dummy_length, xml_path, last
                 )
 
-                first = True
+                begin = last_time
+                last = False
+                dummy_length = 60
                 last_mod_time = 0.0
 
         else:
             # when we have no playlist for the current day,
             # then we generate a black clip
             # and calculate the seek in time, for when the playlist comes back
-            src_cmd, last_time, time_diff = exeption(
-                last_time, 'Playlist not exist:', xml_path
+            src_cmd, last_time, first = exeption(
+                'Playlist not exist:', dummy_length, xml_path, last
             )
 
-            first = True
+            begin = last_time
+            last = False
+            dummy_length = 60
             last_mod_time = 0.0
 
         if src_cmd is not None:
-            yield src_cmd, last_time
+            yield src_cmd, begin
 
 
 # independent thread for clip preparation
 def play_clips(out_file, iter_src_commands):
     # send current file from xml playlist to buffer stdin
-    for src_cmd, last_time in iter_src_commands:
-        if last_time > 86400:
-            tm_str = str(timedelta(seconds=int(last_time - 86400)))
+    for src_cmd, begin in iter_src_commands:
+        if begin > 86400:
+            tm_str = str(timedelta(seconds=int(begin - 86400)))
         else:
-            tm_str = str(timedelta(seconds=int(last_time)))
+            tm_str = str(timedelta(seconds=int(begin)))
 
         logger.info('play at "{}":  {}'.format(tm_str, src_cmd))
 
         try:
-            filePiper = Popen(
+            file_piper = Popen(
                 [
                     'ffmpeg', '-v', 'error', '-hide_banner', '-nostats'
                 ] + src_cmd +
@@ -534,9 +561,9 @@ def play_clips(out_file, iter_src_commands):
                 bufsize=0
             )
 
-            copyfileobj(filePiper.stdout, out_file)
+            copyfileobj(file_piper.stdout, out_file)
         finally:
-            filePiper.wait()
+            file_piper.wait()
 
 
 def main():
