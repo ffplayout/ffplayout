@@ -263,15 +263,22 @@ def gen_dummy(duration):
 
 
 # when source path exist, generate input with seek and out time
-# when path not exist, get dummy clip
-def src_or_dummy(src, duration, seek, out):
+# when path not exist, generate dummy clip
+def src_or_dummy(src, duration, seek, out, dummy_len=None):
     if check_file_exist(src):
         if seek > 0.0 or out < duration:
             return seek_in_cut_end(src, duration, seek, out)
         else:
             return ['-i', src]
     else:
-        return gen_dummy(out - seek)
+        mail_or_log(
+            'Clip not exist:', get_time(None),
+            src
+        )
+        if dummy_len:
+            return gen_dummy(dummy_len)
+        else:
+            return gen_dummy(out - seek)
 
 
 # compare clip play time with real time,
@@ -310,7 +317,7 @@ def gen_input(src, begin, dur, seek, out, last):
 
     if (time_diff <= ref_time or begin < day_in_sec) and not last:
         # when we are in the 24 houre range, get the clip
-        return src_or_dummy(src, dur, seek, out), None
+        return src_or_dummy(src, dur, seek, out, 20), None
     elif time_diff < ref_time and last:
         # when last clip is passed and we still have too much time left
         # check if duration is larger then out - seek
@@ -326,11 +333,10 @@ def gen_input(src, begin, dur, seek, out, last):
             else:
                 src_cmd = src_or_dummy(src, dur, 0, new_len)
         else:
-            # TODO: fix missing time
             src_cmd = src_or_dummy(src, dur, 0, dur)
 
             mail_or_log(
-                'playlist is not long enough', get_time(None),
+                'playlist is not long enough:', get_time(None),
                 str(new_len) + ' seconds needed.'
             )
 
@@ -366,12 +372,33 @@ def is_float(value, text, convert):
         return text
 
 
+# check last item, when it is None or a dummy clip,
+# set true and seek in playlist
+def check_last_item(src_cmd, last_time, last):
+    if None in src_cmd and not last:
+        first = True
+        last_time = get_time('full_sec')
+        if 0 <= last_time < _playlist.start * 3600:
+            last_time += 86400
+
+    elif 'lavfi' in src_cmd and not last:
+        first = True
+        last_time = get_time('full_sec') + _buffer.length + _buffer.tol
+        if 0 <= last_time < _playlist.start * 3600:
+            last_time += 86400
+    else:
+        first = False
+
+    return first, last_time
+
+
 # validate xml values in new Thread
 # and test if file path exist
 def validate_thread(clip_nodes):
     def check_xml(xml_nodes):
         error = ''
 
+        # check if all values are valid
         for xml_node in xml_nodes:
             if check_file_exist(xml_node.get('src')):
                 a = ''
@@ -389,8 +416,20 @@ def validate_thread(clip_nodes):
 
         if error:
             mail_or_log(
-                'Validation error, check xml playlist, values are missing:\n',
-                get_time(None), error
+                'Validation error, check xml playlist, values are missing!',
+                get_time(None), ":\n" + error
+            )
+
+        # check if playlist is long enough
+        last_begin = is_float(clip_nodes[-1].get('begin'), 0, True)
+        last_duration = is_float(clip_nodes[-1].get('dur'), 0, True)
+        start = float(_playlist.start * 3600)
+        total_play_time = last_begin + last_duration - start
+
+        if total_play_time < 86395.0:
+            mail_or_log(
+                'xml playlist is not long enough!',
+                get_time(None), "total play time is: " + str(total_play_time)
             )
 
     validate = Thread(name='check_xml', target=check_xml, args=(clip_nodes,))
@@ -398,16 +437,17 @@ def validate_thread(clip_nodes):
     validate.start()
 
 
-def exeption(message, dummy_length, path, last):
-    src_cmd = gen_dummy(dummy_length)
+# exaption gets called, when there is no playlist,
+# or the playlist is not long enough
+def exeption(message, dummy_len, path, last):
+    src_cmd = gen_dummy(dummy_len)
 
     if last:
         last_time = float(_playlist.start * 3600 - 5)
         first = False
     else:
         last_time = (
-            get_time('full_sec') + dummy_length +
-            _buffer.length + _buffer.tol
+            get_time('full_sec') + dummy_len + _buffer.length + _buffer.tol
         )
 
         if 0 <= last_time < _playlist.start * 3600:
@@ -426,14 +466,12 @@ def exeption(message, dummy_length, path, last):
 
 # read values from xml playlist
 def iter_src_commands():
-    last_time = get_time('full_sec')
-    if 0 <= last_time < _playlist.start * 3600:
-        last_time += 86400
+    last_time = None
     last_mod_time = 0.0
-    first = True
+    src_cmd = [None]
     last = False
     list_date = get_date(True)
-    dummy_length = 60
+    dummy_len = 60
 
     while True:
         year, month, day = re.split('-', list_date)
@@ -443,20 +481,26 @@ def iter_src_commands():
             # check last modification from playlist
             mod_time = path.getmtime(xml_path)
             if mod_time > last_mod_time:
-                xml_root = ET.parse(open(xml_path, "r")).getroot()
+                xml_file = open(xml_path, "r")
+                xml_root = ET.parse(xml_file).getroot()
                 clip_nodes = xml_root.findall('body/video')
+                xml_file.close()
                 last_mod_time = mod_time
                 logger.info('open: ' + xml_path)
                 validate_thread(clip_nodes)
                 last_node = clip_nodes[-1]
 
+            # when last clip is None or a dummy,
+            # we have to jump to the right place in the playlist
+            first, last_time = check_last_item(src_cmd, last_time, last)
+
             # loop through all clips in playlist
             for clip_node in clip_nodes:
                 src = clip_node.get('src')
                 begin = is_float(clip_node.get('begin'), last_time, True)
-                duration = is_float(clip_node.get('dur'), 60, True)
+                duration = is_float(clip_node.get('dur'), dummy_len, True)
                 seek = is_float(clip_node.get('in'), 0, True)
-                out = is_float(clip_node.get('out'), 60, True)
+                out = is_float(clip_node.get('out'), dummy_len, True)
 
                 # first time we end up here
                 if first and last_time < begin + duration:
@@ -488,7 +532,7 @@ def iter_src_commands():
                         # when playlist is finish and we have time left
                         last_time = begin
                         list_date = get_date(False)
-                        dummy_length = time_left
+                        dummy_len = time_left
 
                     else:
                         # when there is no time left and we are in time,
@@ -502,12 +546,12 @@ def iter_src_commands():
                 # when playlist exist but is empty, or not long enough,
                 # generate dummy and send log
                 src_cmd, last_time, first = exeption(
-                    'Playlist is not valid!', dummy_length, xml_path, last
+                    'Playlist is not valid!', dummy_len, xml_path, last
                 )
 
-                begin = last_time
+                begin = get_time('full_sec') + _buffer.length + _buffer.tol
                 last = False
-                dummy_length = 60
+                dummy_len = 60
                 last_mod_time = 0.0
 
         else:
@@ -515,12 +559,12 @@ def iter_src_commands():
             # then we generate a black clip
             # and calculate the seek in time, for when the playlist comes back
             src_cmd, last_time, first = exeption(
-                'Playlist not exist:', dummy_length, xml_path, last
+                'Playlist not exist:', dummy_len, xml_path, last
             )
 
-            begin = last_time
+            begin = get_time('full_sec') + _buffer.length + _buffer.tol
             last = False
-            dummy_length = 60
+            dummy_len = 60
             last_mod_time = 0.0
 
         if src_cmd is not None:
