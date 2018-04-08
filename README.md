@@ -58,9 +58,3 @@ Installation
 - use **get_playlist_from_subfolders.sh /path/to/*.mp4s** as a starting point for your playlists (path in script needs to change)
 - activate service and start it: **sudo systemctl enable ffplayout && sudo systemctl start ffplayout**
 
-
-
-
-TODO
------
-- check when clip or playlist got lost while playling (maybe not possible)
