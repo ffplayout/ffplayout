@@ -1,0 +1,15 @@
+clips/
+media
+media/
+public
+public/
+ADtvMedia
+ADtvMedia/
+live
+live/
+playlists
+playlists/
+tmp
+tmp/
+._*
+._**
