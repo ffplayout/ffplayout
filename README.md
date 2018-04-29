@@ -6,6 +6,7 @@ This is a streaming solution based on python and ffmpeg.
 
 The goal is to play for every day an xml playlist, while the current playlist is still editable.
 
+#### Check [ffplayout-gui](https://github.com/jb-alvarado/ffplayout-gui): web-based GUI for ffplayout.
 
 Features
 -----
