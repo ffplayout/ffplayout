@@ -51,10 +51,10 @@ Installation
 - install ffmpeg, ffprobe and mbuffer
 - copy, or symlink, ffplayout.py to **/usr/local/bin/**
 - copy, or symlink, ffplayout.conf to **/etc/ffplayout/**
+- ceate folder with correct perissions for logging (check config)
 - copy ffplayout.service to **/etc/systemd/system/**
 - change user in service file
 - create playlists folder, in that format: **/playlists/year/month**
 - set variables in config file to your needs
 - use **get_playlist_from_subfolders.sh /path/to/*.mp4s** as a starting point for your playlists (path in script needs to change)
 - activate service and start it: **sudo systemctl enable ffplayout && sudo systemctl start ffplayout**
-
