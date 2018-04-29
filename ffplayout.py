@@ -44,8 +44,10 @@ import xml.etree.ElementTree as ET
 
 # read config
 cfg = configparser.ConfigParser()
-cfg.read("/etc/ffplayout/ffplayout.conf")
-
+if path.exists("/etc/ffplayout/ffplayout.conf"):
+    cfg.read("/etc/ffplayout/ffplayout.conf")
+else:
+    cfg.read("ffplayout.conf")
 
 _mail = SimpleNamespace(
     server=cfg.get('MAIL', 'smpt_server'),
@@ -69,13 +71,16 @@ _pre_comp = SimpleNamespace(
     v_bitrate=cfg.getint('PRE_COMPRESS', 'v_bitrate'),
     v_bufsize=cfg.getint('PRE_COMPRESS', 'v_bitrate'),
     a_bitrate=cfg.getint('PRE_COMPRESS', 'a_bitrate'),
-    a_sample=cfg.getint('PRE_COMPRESS', 'a_sample')
+    a_sample=cfg.getint('PRE_COMPRESS', 'a_sample'),
+    copy=cfg.getboolean('PRE_COMPRESS', 'copy_mode'),
+    copy_settings=literal_eval(cfg.get('PRE_COMPRESS', 'ffmpeg_copy_settings'))
 )
 
 _playlist = SimpleNamespace(
     path=cfg.get('PLAYLIST', 'playlist_path'),
     start=cfg.getint('PLAYLIST', 'day_start'),
-    filler=cfg.get('PLAYLIST', 'filler_clip')
+    filler=cfg.get('PLAYLIST', 'filler_clip'),
+    blackclip=cfg.get('PLAYLIST', 'blackclip')
 )
 
 _buffer = SimpleNamespace(
@@ -91,7 +96,8 @@ _playout = SimpleNamespace(
     out_addr=cfg.get('OUT', 'out_addr'),
     post_comp_video=literal_eval(cfg.get('OUT', 'post_comp_video')),
     post_comp_audio=literal_eval(cfg.get('OUT', 'post_comp_audio')),
-    post_comp_extra=literal_eval(cfg.get('OUT', 'post_comp_extra'))
+    post_comp_extra=literal_eval(cfg.get('OUT', 'post_comp_extra')),
+    post_comp_copy=literal_eval(cfg.get('OUT', 'post_comp_copy'))
 )
 
 # set logo filtergraph
@@ -244,22 +250,28 @@ def seek_in_cut_end(in_file, duration, seek, out):
         fade_out_vid = 'null'
         fade_out_aud = 'anull'
 
-    return inpoint + ['-i', in_file] + cut_end + [
-        '-vf', fade_in_vid + ',' + fade_out_vid,
-        '-af', fade_in_aud + ',' + fade_out_aud
-    ]
+    if _pre_comp.copy:
+        return inpoint + ['-i', in_file] + cut_end
+    else:
+        return inpoint + ['-i', in_file] + cut_end + [
+            '-vf', fade_in_vid + ',' + fade_out_vid,
+            '-af', fade_in_aud + ',' + fade_out_aud
+        ]
 
 
 # generate a dummy clip, with black color and empty audiotrack
 def gen_dummy(duration):
-    return [
-        '-f', 'lavfi', '-i',
-        'color=s={}x{}:d={}'.format(
-            _pre_comp.w, _pre_comp.h, duration
-        ),
-        '-f', 'lavfi', '-i', 'anullsrc=r=' + str(_pre_comp.a_sample),
-        '-shortest'
-    ]
+    if _pre_comp.copy:
+        return ['-i', _playlist.blackclip]
+    else:
+        return [
+            '-f', 'lavfi', '-i',
+            'color=s={}x{}:d={}'.format(
+                _pre_comp.w, _pre_comp.h, duration
+            ),
+            '-f', 'lavfi', '-i', 'anullsrc=r=' + str(_pre_comp.a_sample),
+            '-shortest'
+        ]
 
 
 # when source path exist, generate input with seek and out time
@@ -275,7 +287,7 @@ def src_or_dummy(src, duration, seek, out, dummy_len=None):
             'Clip not exist:', get_time(None),
             src
         )
-        if dummy_len:
+        if dummy_len and not _pre_comp.copy:
             return gen_dummy(dummy_len)
         else:
             return gen_dummy(out - seek)
@@ -416,8 +428,8 @@ def validate_thread(clip_nodes):
 
         if error:
             mail_or_log(
-                'Validation error, check xml playlist, values are missing!',
-                get_time(None), ":\n" + error
+                'Validation error, check xml playlist, values are missing:\n',
+                get_time(None), error
             )
 
         # check if playlist is long enough
@@ -582,25 +594,29 @@ def play_clips(out_file, iter_src_commands):
 
         logger.info('play at "{}":  {}'.format(tm_str, src_cmd))
 
+        if _pre_comp.copy:
+            ff_pre_settings = _pre_comp.copy_settings
+        else:
+            ff_pre_settings = [
+                '-s', '{}x{}'.format(_pre_comp.w, _pre_comp.h),
+                '-aspect', str(_pre_comp.aspect),
+                '-pix_fmt', 'yuv420p', '-r', str(_pre_comp.fps),
+                '-af', 'apad', '-shortest',
+                '-c:v', 'mpeg2video', '-intra',
+                '-b:v', '{}k'.format(_pre_comp.v_bitrate),
+                '-minrate', '{}k'.format(_pre_comp.v_bitrate),
+                '-maxrate', '{}k'.format(_pre_comp.v_bitrate),
+                '-bufsize', '{}k'.format(_pre_comp.v_bufsize),
+                '-c:a', 'mp2', '-b:a', '{}k'.format(_pre_comp.a_bitrate),
+                '-ar', str(_pre_comp.a_sample), '-ac', '2',
+                '-threads', '2', '-f', 'mpegts', '-'
+            ]
+
         try:
             file_piper = Popen(
                 [
                     'ffmpeg', '-v', 'error', '-hide_banner', '-nostats'
-                ] + src_cmd +
-                [
-                    '-s', '{}x{}'.format(_pre_comp.w, _pre_comp.h),
-                    '-aspect', str(_pre_comp.aspect),
-                    '-pix_fmt', 'yuv420p', '-r', str(_pre_comp.fps),
-                    '-af', 'apad', '-shortest',
-                    '-c:v', 'mpeg2video', '-intra',
-                    '-b:v', '{}k'.format(_pre_comp.v_bitrate),
-                    '-minrate', '{}k'.format(_pre_comp.v_bitrate),
-                    '-maxrate', '{}k'.format(_pre_comp.v_bitrate),
-                    '-bufsize', '{}k'.format(_pre_comp.v_bufsize),
-                    '-c:a', 'mp2', '-b:a', '{}k'.format(_pre_comp.a_bitrate),
-                    '-ar', str(_pre_comp.a_sample), '-ac', '2',
-                    '-threads', '2', '-f', 'mpegts', '-'
-                ],
+                ] + src_cmd + list(ff_pre_settings),
                 stdout=PIPE,
                 bufsize=0
             )
@@ -625,16 +641,21 @@ def main():
         )
         try:
             # playout to rtmp
-            playout = Popen(
-                [
+            if _pre_comp.copy:
+                playout_pre = [
+                    'ffmpeg', '-v', 'info', '-hide_banner', '-nostats', '-re',
+                    '-i', 'pipe:0', '-c', 'copy'
+                ] + list(_playout.post_comp_copy)
+            else:
+                playout_pre = [
                     'ffmpeg', '-v', 'info', '-hide_banner', '-nostats', '-re',
                     '-thread_queue_size', '256', '-fflags', '+igndts',
                     '-i', 'pipe:0', '-fflags', '+genpts'
-                ] +
-                list(_playout.logo) +
-                list(_playout.filter) +
-                list(_playout.post_comp_video) +
-                list(_playout.post_comp_audio) +
+                ] + list(_playout.logo) + list(_playout.filter) + list(
+                    _playout.post_comp_video) + list(_playout.post_comp_audio)
+
+            playout = Popen(
+                list(playout_pre) +
                 [
                     '-metadata', 'service_name=' + _playout.name,
                     '-metadata', 'service_provider=' + _playout.provider,
