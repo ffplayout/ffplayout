@@ -63,8 +63,8 @@ _log = SimpleNamespace(
 _pre_comp = SimpleNamespace(
     w=cfg.getint('PRE_COMPRESS', 'width'),
     h=cfg.getint('PRE_COMPRESS', 'height'),
-    aspect=cfg.getfloat('PRE_COMPRESS', 'width') /
-    cfg.getfloat('PRE_COMPRESS', 'height'),
+    aspect=cfg.getfloat(
+        'PRE_COMPRESS', 'width') / cfg.getfloat('PRE_COMPRESS', 'height'),
     fps=cfg.getint('PRE_COMPRESS', 'fps'),
     v_bitrate=cfg.getint('PRE_COMPRESS', 'v_bitrate'),
     v_bufsize=cfg.getint('PRE_COMPRESS', 'v_bitrate'),
@@ -586,8 +586,8 @@ def play_clips(out_file, iter_src_commands):
             file_piper = Popen(
                 [
                     'ffmpeg', '-v', 'error', '-hide_banner', '-nostats'
-                ] + src_cmd +
-                [
+                ] + src_cmd
+                + [
                     '-s', '{}x{}'.format(_pre_comp.w, _pre_comp.h),
                     '-aspect', str(_pre_comp.aspect),
                     '-pix_fmt', 'yuv420p', '-r', str(_pre_comp.fps),
@@ -617,8 +617,8 @@ def main():
         # stdin get the files loop
         # stdout pipes to ffmpeg rtmp streaming
         mbuffer = Popen(
-            [_buffer.cli] + list(_buffer.cmd) +
-            [str(calc_buffer_size()) + 'k'],
+            [_buffer.cli] + list(_buffer.cmd)
+            + [str(calc_buffer_size()) + 'k'],
             stdin=PIPE,
             stdout=PIPE,
             bufsize=0
@@ -630,18 +630,18 @@ def main():
                     'ffmpeg', '-v', 'info', '-hide_banner', '-nostats', '-re',
                     '-thread_queue_size', '256', '-fflags', '+igndts',
                     '-i', 'pipe:0', '-fflags', '+genpts'
-                ] +
-                list(_playout.logo) +
-                list(_playout.filter) +
-                list(_playout.post_comp_video) +
-                list(_playout.post_comp_audio) +
-                [
+                ]
+                + list(_playout.logo)
+                + list(_playout.filter)
+                + list(_playout.post_comp_video)
+                + list(_playout.post_comp_audio)
+                + [
                     '-metadata', 'service_name=' + _playout.name,
                     '-metadata', 'service_provider=' + _playout.provider,
                     '-metadata', 'year=' + year
-                ] +
-                list(_playout.post_comp_extra) +
-                [
+                ]
+                + list(_playout.post_comp_extra)
+                + [
                     _playout.out_addr
                 ],
                 stdin=mbuffer.stdout,
