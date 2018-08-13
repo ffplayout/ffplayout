@@ -65,8 +65,8 @@ _log = SimpleNamespace(
 _pre_comp = SimpleNamespace(
     w=cfg.getint('PRE_COMPRESS', 'width'),
     h=cfg.getint('PRE_COMPRESS', 'height'),
-    aspect=cfg.getfloat('PRE_COMPRESS', 'width') /
-    cfg.getfloat('PRE_COMPRESS', 'height'),
+    aspect=cfg.getfloat(
+        'PRE_COMPRESS', 'width') / cfg.getfloat('PRE_COMPRESS', 'height'),
     fps=cfg.getint('PRE_COMPRESS', 'fps'),
     v_bitrate=cfg.getint('PRE_COMPRESS', 'v_bitrate'),
     v_bufsize=cfg.getint('PRE_COMPRESS', 'v_bitrate'),
@@ -633,8 +633,9 @@ def main():
         # stdin get the files loop
         # stdout pipes to ffmpeg rtmp streaming
         mbuffer = Popen(
-            [_buffer.cli] + list(_buffer.cmd) +
-            [str(calc_buffer_size()) + 'k'],
+            [_buffer.cli]
+            + list(_buffer.cmd)
+            + [str(calc_buffer_size()) + 'k'],
             stdin=PIPE,
             stdout=PIPE,
             bufsize=0
@@ -655,14 +656,14 @@ def main():
                     _playout.post_comp_video) + list(_playout.post_comp_audio)
 
             playout = Popen(
-                list(playout_pre) +
-                [
+                list(playout_pre)
+                + [
                     '-metadata', 'service_name=' + _playout.name,
                     '-metadata', 'service_provider=' + _playout.provider,
                     '-metadata', 'year=' + year
-                ] +
-                list(_playout.post_comp_extra) +
-                [
+                ]
+                + list(_playout.post_comp_extra)
+                + [
                     _playout.out_addr
                 ],
                 stdin=mbuffer.stdout,
