@@ -18,6 +18,7 @@ Features
 - overlay a logo
 - trim and fade the last clip, to get full 24 hours, if the duration is less then 6 seconds add a blank clip
 - set custom day start, so you can have playlist for example: from 6am to 6am, instate of 0am to 12pm
+- copy mode, for more infos take a look in the wiki
 - normal system requirements and no special tools
     - we only need **ffmpeg**, **ffprobe** and a buffer tool like **mbuffer** or **pv**
     - no GPU power is needed
