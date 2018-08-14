@@ -80,7 +80,8 @@ _playlist = SimpleNamespace(
     path=cfg.get('PLAYLIST', 'playlist_path'),
     start=cfg.getint('PLAYLIST', 'day_start'),
     filler=cfg.get('PLAYLIST', 'filler_clip'),
-    blackclip=cfg.get('PLAYLIST', 'blackclip')
+    blackclip=cfg.get('PLAYLIST', 'blackclip'),
+    shift=cfg.get('PLAYLIST', 'time_shift')
 )
 
 _buffer = SimpleNamespace(
@@ -509,7 +510,8 @@ def iter_src_commands():
             # loop through all clips in playlist
             for clip_node in clip_nodes:
                 src = clip_node.get('src')
-                begin = is_float(clip_node.get('begin'), last_time, True)
+                begin = is_float(
+                    clip_node.get('begin'), last_time, True) + _playlist.shift
                 duration = is_float(clip_node.get('dur'), dummy_len, True)
                 seek = is_float(clip_node.get('in'), 0, True)
                 out = is_float(clip_node.get('out'), dummy_len, True)
