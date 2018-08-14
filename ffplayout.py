@@ -81,7 +81,7 @@ _playlist = SimpleNamespace(
     start=cfg.getint('PLAYLIST', 'day_start'),
     filler=cfg.get('PLAYLIST', 'filler_clip'),
     blackclip=cfg.get('PLAYLIST', 'blackclip'),
-    shift=cfg.get('PLAYLIST', 'time_shift')
+    shift=cfg.getint('PLAYLIST', 'time_shift')
 )
 
 _buffer = SimpleNamespace(
@@ -563,7 +563,9 @@ def iter_src_commands():
                     'Playlist is not valid!', dummy_len, xml_path, last
                 )
 
-                begin = get_time('full_sec') + _buffer.length + _buffer.tol
+                begin = get_time(
+                    'full_sec'
+                    ) + _buffer.length + _buffer.tol + _playlist.shift
                 last = False
                 dummy_len = 60
                 last_mod_time = 0.0
@@ -576,7 +578,8 @@ def iter_src_commands():
                 'Playlist not exist:', dummy_len, xml_path, last
             )
 
-            begin = get_time('full_sec') + _buffer.length + _buffer.tol
+            begin = get_time(
+                'full_sec') + _buffer.length + _buffer.tol + _playlist.shift
             last = False
             dummy_len = 60
             last_mod_time = 0.0
