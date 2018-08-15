@@ -82,7 +82,7 @@ _playlist = SimpleNamespace(
     filler=cfg.get('PLAYLIST', 'filler_clip'),
     blackclip=cfg.get('PLAYLIST', 'blackclip'),
     shift=cfg.getint('PLAYLIST', 'time_shift'),
-    map_ext=literal_eval(cfg.get('PLAYLIST', 'map_extension'))
+    map_ext=cfg.get('PLAYLIST', 'map_extension')
 )
 
 _buffer = SimpleNamespace(
