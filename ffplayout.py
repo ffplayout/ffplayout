@@ -81,7 +81,8 @@ _playlist = SimpleNamespace(
     start=cfg.getint('PLAYLIST', 'day_start'),
     filler=cfg.get('PLAYLIST', 'filler_clip'),
     blackclip=cfg.get('PLAYLIST', 'blackclip'),
-    shift=cfg.getint('PLAYLIST', 'time_shift')
+    shift=cfg.getint('PLAYLIST', 'time_shift'),
+    map_ext=literal_eval(cfg.get('PLAYLIST', 'map_extension'))
 )
 
 _buffer = SimpleNamespace(
@@ -298,7 +299,7 @@ def src_or_dummy(src, duration, seek, out, dummy_len=None):
 # to see if we are sync
 def check_sync(begin):
     time_now = get_time('full_sec')
-    start = float(_playlist.start * 3600)
+    start = float(_playlist.start * 3600) + _playlist.shift
     tolerance = _buffer.tol * 2
 
     t_dist = begin - time_now
@@ -317,7 +318,7 @@ def check_sync(begin):
 # check begin and length from clip
 # return clip only if we are in 24 hours time range
 def gen_input(src, begin, dur, seek, out, last):
-    start = float(_playlist.start * 3600)
+    start = float(_playlist.start * 3600) + _playlist.shift
     day_in_sec = 86400.0
     ref_time = day_in_sec + start
     time = get_time('full_sec')
@@ -390,14 +391,14 @@ def is_float(value, text, convert):
 def check_last_item(src_cmd, last_time, last):
     if None in src_cmd and not last:
         first = True
-        last_time = get_time('full_sec')
-        if 0 <= last_time < _playlist.start * 3600:
+        last_time = get_time('full_sec') + _playlist.shift
+        if 0 <= last_time < _playlist.start * 3600 + _playlist.shift:
             last_time += 86400
 
     elif 'lavfi' in src_cmd and not last:
         first = True
         last_time = get_time('full_sec') + _buffer.length + _buffer.tol
-        if 0 <= last_time < _playlist.start * 3600:
+        if 0 <= last_time < _playlist.start * 3600 + _playlist.shift:
             last_time += 86400
     else:
         first = False
@@ -413,7 +414,13 @@ def validate_thread(clip_nodes):
 
         # check if all values are valid
         for xml_node in xml_nodes:
-            if check_file_exist(xml_node.get('src')):
+            if _playlist.map_ext:
+                node_src = xml_node.get('src').replace(
+                    _playlist.map_ext[0], _playlist.map_ext[1])
+            else:
+                node_src = xml_node.get('src')
+
+            if check_file_exist(node_src):
                 a = ''
             else:
                 a = 'File not exist! '
@@ -436,7 +443,7 @@ def validate_thread(clip_nodes):
         # check if playlist is long enough
         last_begin = is_float(clip_nodes[-1].get('begin'), 0, True)
         last_duration = is_float(clip_nodes[-1].get('dur'), 0, True)
-        start = float(_playlist.start * 3600)
+        start = float(_playlist.start * 3600) + _playlist.shift
         total_play_time = last_begin + last_duration - start
 
         if total_play_time < 86395.0:
@@ -456,14 +463,15 @@ def exeption(message, dummy_len, path, last):
     src_cmd = gen_dummy(dummy_len)
 
     if last:
-        last_time = float(_playlist.start * 3600 - 5)
+        last_time = float(_playlist.start * 3600 - 5) + _playlist.shift
         first = False
     else:
         last_time = (
             get_time('full_sec') + dummy_len + _buffer.length + _buffer.tol
+            + _playlist.shift
         )
 
-        if 0 <= last_time < _playlist.start * 3600:
+        if 0 <= last_time < (_playlist.start + _playlist.shift) * 3600:
             last_time += 86400
 
         first = True
@@ -509,7 +517,13 @@ def iter_src_commands():
 
             # loop through all clips in playlist
             for clip_node in clip_nodes:
-                src = clip_node.get('src')
+                if _playlist.map_ext:
+                    node_src = clip_node.get('src').replace(
+                        _playlist.map_ext[0], _playlist.map_ext[1])
+                else:
+                    node_src = clip_node.get('src')
+
+                src = node_src
                 begin = is_float(
                     clip_node.get('begin'), last_time, True) + _playlist.shift
                 duration = is_float(clip_node.get('dur'), dummy_len, True)
@@ -552,7 +566,8 @@ def iter_src_commands():
                         # when there is no time left and we are in time,
                         # set right values for new playlist
                         list_date = get_date(False)
-                        last_time = float(_playlist.start * 3600 - 5)
+                        last_time = float(
+                            _playlist.start * 3600 - 5) + _playlist.shift
                         last_mod_time = 0.0
 
                     break
