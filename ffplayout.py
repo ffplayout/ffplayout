@@ -78,10 +78,10 @@ _pre_comp = SimpleNamespace(
 
 _playlist = SimpleNamespace(
     path=cfg.get('PLAYLIST', 'playlist_path'),
-    start=cfg.getfloat('PLAYLIST', 'day_start'),
+    start=cfg.getint('PLAYLIST', 'day_start'),
     filler=cfg.get('PLAYLIST', 'filler_clip'),
     blackclip=cfg.get('PLAYLIST', 'blackclip'),
-    shift=cfg.getint('PLAYLIST', 'time_shift'),
+    shift=cfg.getfloat('PLAYLIST', 'time_shift'),
     map_ext=cfg.get('PLAYLIST', 'map_extension')
 )
 
