@@ -81,7 +81,7 @@ _playlist = SimpleNamespace(
     start=cfg.getint('PLAYLIST', 'day_start'),
     filler=cfg.get('PLAYLIST', 'filler_clip'),
     blackclip=cfg.get('PLAYLIST', 'blackclip'),
-    shift=cfg.getfloat('PLAYLIST', 'time_shift'),
+    shift=cfg.getint('PLAYLIST', 'time_shift'),
     map_ext=cfg.get('PLAYLIST', 'map_extension')
 )
 
@@ -568,8 +568,7 @@ def iter_src_commands():
                         # when there is no time left and we are in time,
                         # set right values for new playlist
                         list_date = get_date(False)
-                        last_time = float(
-                            _playlist.start * 3600 - 5)
+                        last_time = float(_playlist.start * 3600 - 5)
                         last_mod_time = 0.0
 
                     break
@@ -580,9 +579,7 @@ def iter_src_commands():
                     'Playlist is not valid!', dummy_len, xml_path, last
                 )
 
-                begin = get_time(
-                    'full_sec'
-                    ) + _buffer.length + _buffer.tol
+                begin = get_time('full_sec') + _buffer.length + _buffer.tol
                 last = False
                 dummy_len = 60
                 last_mod_time = 0.0
@@ -595,8 +592,7 @@ def iter_src_commands():
                 'Playlist not exist:', dummy_len, xml_path, last
             )
 
-            begin = get_time(
-                'full_sec') + _buffer.length + _buffer.tol
+            begin = get_time('full_sec') + _buffer.length + _buffer.tol
             last = False
             dummy_len = 60
             last_mod_time = 0.0
@@ -667,17 +663,15 @@ def main():
                 playout_pre = [
                     'ffmpeg', '-v', 'info', '-hide_banner', '-nostats', '-re',
                     '-i', 'pipe:0', '-c', 'copy'
-                ] + list(_playout.post_comp_copy)
+                ] + _playout.post_comp_copy
             else:
                 playout_pre = [
                     'ffmpeg', '-v', 'info', '-hide_banner', '-nostats', '-re',
                     '-thread_queue_size', '256', '-fflags', '+igndts',
                     '-i', 'pipe:0', '-fflags', '+genpts'
-                ]
-                + list(_playout.logo)
-                + list(_playout.filter)
-                + list(_playout.post_comp_video)
-                + list(_playout.post_comp_audio)
+                ] + _playout.logo + _playout.filter + \
+                    _playout.post_comp_video + \
+                    _playout.post_comp_audio
 
             playout = Popen(
                 list(playout_pre)
@@ -685,8 +679,7 @@ def main():
                     '-metadata', 'service_name=' + _playout.name,
                     '-metadata', 'service_provider=' + _playout.provider,
                     '-metadata', 'year=' + year
-                ]
-                + list(_playout.post_comp_extra)
+                ] + list(_playout.post_comp_extra)
                 + [
                     _playout.out_addr
                 ],
