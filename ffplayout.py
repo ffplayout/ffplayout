@@ -415,8 +415,9 @@ def validate_thread(clip_nodes):
         # check if all values are valid
         for xml_node in xml_nodes:
             if _playlist.map_ext:
+                _ext = literal_eval(_playlist.map_ext)
                 node_src = xml_node.get('src').replace(
-                    _playlist.map_ext[0], _playlist.map_ext[1])
+                    _ext[0], _ext[1])
             else:
                 node_src = xml_node.get('src')
 
@@ -518,8 +519,9 @@ def iter_src_commands():
             # loop through all clips in playlist
             for clip_node in clip_nodes:
                 if _playlist.map_ext:
+                    _ext = literal_eval(_playlist.map_ext)
                     node_src = clip_node.get('src').replace(
-                        _playlist.map_ext[0], _playlist.map_ext[1])
+                        _ext[0], _ext[1])
                 else:
                     node_src = clip_node.get('src')
 
