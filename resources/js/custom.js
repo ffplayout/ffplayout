@@ -285,31 +285,33 @@ function jump_and_colorize_title(jump) {
             time_in_seconds += 86400
         }
 
-        if ($('#playlistBody').attr('listday') === list_date.format("YYYY-MM-DD")) {
-            for (var i = 0; i < play_items.length; i++) {
-                play_begin = parseFloat($(play_items[i]).attr('begin'));
-                play_dur = parseFloat($(play_items[i]).attr('dur'));
-                if (play_begin + play_dur >= time_in_seconds) {
-                    // jump to position only after page load
-                    if (jump) {
-                        $('#list-container').animate({
-                            scrollTop: $('#playlistBody li:nth-child(' + (i-1) + ')').position().top
-                        }, 500, "easeOutQuint");
-                    }
+        $.get("resources/list_op.php?time_shift=get", function(shift) {
+            if ($('#playlistBody').attr('listday') === list_date.format("YYYY-MM-DD")) {
+                for (var i = 0; i < play_items.length; i++) {
+                    play_begin = parseFloat($(play_items[i]).attr('begin')) - parseFloat(shift);
+                    play_dur = parseFloat($(play_items[i]).attr('dur'));
+                    if (play_begin + play_dur >= time_in_seconds) {
+                        // jump to position only after page load
+                        if (jump) {
+                            $('#list-container').animate({
+                                scrollTop: $('#playlistBody li:nth-child(' + (i-1) + ')').position().top
+                            }, 500, "easeOutQuint");
+                        }
 
-                    // colorize items
-                    $(play_items[i]).addClass('current_item');
-                    $(play_items[i+1]).addClass('next_item');
-                    $('.list-item:gt('+(i+1)+')').addClass('last_items');
-                    break;
+                        // colorize items
+                        $(play_items[i]).addClass('current_item');
+                        $(play_items[i+1]).addClass('next_item');
+                        $('.list-item:gt('+(i+1)+')').addClass('last_items');
+                        break;
+                    }
+                }
+            } else {
+                // scroll to playlist top
+                if (jump) {
+                    $('#list-container').animate({scrollTop: 0}, 500, "easeOutQuint");
                 }
             }
-        } else {
-            // scroll to playlist top
-            if (jump) {
-                $('#list-container').animate({scrollTop: 0}, 500, "easeOutQuint");
-            }
-        }
+        });
     });
 }
 
