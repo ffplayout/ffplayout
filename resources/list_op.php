@@ -28,6 +28,21 @@ if(!empty($_GET['clips_root'])) {
     echo $root;
 }
 
+// get time_shift
+if (!empty($_GET['time_shift'])) {
+    $get_ini = get_config();
+    $get_shift = "/^time_shift.*\$/m";
+    preg_match_all($get_shift, $get_ini, $shift_arr);
+    $line_shift = implode("\n", $shift_arr[0]);
+    $time_shift = explode("= ", $line_shift)[1];
+
+    if(empty($time_shift)) {
+        echo 0;
+    } else {
+        echo $time_shift;
+    }
+}
+
 /* -----------------------------------------------------------------------------
 xml playlist operations
 ------------------------------------------------------------------------------*/
