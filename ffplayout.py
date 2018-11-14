@@ -22,21 +22,22 @@ import configparser
 import logging
 import re
 import smtplib
+import socket
 import sys
+import xml.etree.ElementTree as ET
 from argparse import ArgumentParser
 from ast import literal_eval
-from datetime import datetime, date, timedelta
+from datetime import date, datetime, timedelta
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.utils import formatdate
 from logging.handlers import TimedRotatingFileHandler
 from os import path
 from shutil import copyfileobj
-from subprocess import Popen, PIPE
+from subprocess import PIPE, Popen
 from threading import Thread
 from time import sleep
 from types import SimpleNamespace
-import xml.etree.ElementTree as ET
-
 
 # ------------------------------------------------------------------------------
 # read variables from config file
@@ -191,14 +192,28 @@ def mail_or_log(message, time, path):
         msg['From'] = _mail.s_addr
         msg['To'] = _mail.recip
         msg['Subject'] = "Playout Error"
+        msg["Date"] = formatdate(localtime=True)
         msg.attach(MIMEText('{} {}\n{}'.format(time, message, path), 'plain'))
         text = msg.as_string()
 
-        server = smtplib.SMTP(_mail.server, int(_mail.port))
-        server.starttls()
-        server.login(_mail.s_addr, _mail.s_pass)
-        server.sendmail(_mail.s_addr, _mail.recip, text)
-        server.quit()
+        try:
+            server = smtplib.SMTP(_mail.server, _mail.port)
+        except socket.error as err:
+            logger.error(err)
+            server = None
+
+        if server is not None:
+            server.starttls()
+            try:
+                login = server.login(_mail.s_addr, _mail.s_pass)
+            except smtplib.SMTPAuthenticationError as serr:
+                logger.error(serr)
+                login = None
+
+            if login is not None:
+                server.sendmail(_mail.s_addr, _mail.recip, text)
+                server.quit()
+
     else:
         logger.error('{} {}'.format(message, path))
 
@@ -301,7 +316,7 @@ def src_or_dummy(src, duration, seek, out, dummy_len=None):
 def check_sync(begin):
     time_now = get_time('full_sec')
     start = float(_playlist.start * 3600)
-    tolerance = _buffer.tol * 2
+    tolerance = _buffer.tol * 4
 
     t_dist = begin - time_now
     if 0 <= time_now < start and not begin == start:
