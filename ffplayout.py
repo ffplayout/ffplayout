@@ -226,7 +226,8 @@ def calc_buffer_size():
     a_size = (_pre_comp.a_sample * 16 * 2 * _buffer.length) / 8
     return (v_size + a_size) / 1024
     """
-    return (_pre_comp.v_bitrate + _pre_comp.a_bitrate) * 0.125 * _buffer.length
+    return int(
+        (_pre_comp.v_bitrate + _pre_comp.a_bitrate) * 0.125 * _buffer.length)
 
 
 # check if processes a well
