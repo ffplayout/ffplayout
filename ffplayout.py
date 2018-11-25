@@ -94,6 +94,7 @@ _buffer = SimpleNamespace(
 )
 
 _playout = SimpleNamespace(
+    preview=cfg.getboolean('OUT', 'preview'),
     name=cfg.get('OUT', 'service_name'),
     provider=cfg.get('OUT', 'service_provider'),
     out_addr=cfg.get('OUT', 'out_addr'),
@@ -666,6 +667,7 @@ def main():
         # open a buffer for the streaming pipeline
         # stdin get the files loop
         # stdout pipes to ffmpeg rtmp streaming
+        # TODO: replace with Queue or BytesIO?
         mbuffer = Popen(
             [_buffer.cli] + list(_buffer.cmd)
             + [str(calc_buffer_size()) + 'k'],
@@ -674,34 +676,48 @@ def main():
             bufsize=0
         )
         try:
-            # playout to rtmp
-            if _pre_comp.copy:
-                playout_pre = [
-                    'ffmpeg', '-v', 'info', '-hide_banner', '-nostats', '-re',
-                    '-i', 'pipe:0', '-c', 'copy'
-                ] + _playout.post_comp_copy
+            if _playout.preview:
+                # preview playout to player
+                try:
+                    playout = Popen(
+                        ['ffplay', '-i', 'pipe:0'],
+                        stdin=mbuffer.stdout,
+                        bufsize=0
+                        )
+                except OSError as e:
+                    logger.error(e)
+                    mbuffer.terminate()
+                    sys.exit(1)
             else:
-                playout_pre = [
-                    'ffmpeg', '-v', 'info', '-hide_banner', '-nostats', '-re',
-                    '-thread_queue_size', '256', '-fflags', '+igndts',
-                    '-i', 'pipe:0', '-fflags', '+genpts'
-                ] + _playout.logo + _playout.filter + \
-                    _playout.post_comp_video + \
-                    _playout.post_comp_audio
+                # playout to rtmp
+                if _pre_comp.copy:
+                    playout_pre = [
+                        'ffmpeg', '-v', 'info', '-hide_banner', '-nostats',
+                        '-re', '-i', 'pipe:0', '-c', 'copy'
+                    ] + _playout.post_comp_copy
+                else:
+                    playout_pre = [
+                        'ffmpeg', '-v', 'info', '-hide_banner', '-nostats',
+                        '-re', '-thread_queue_size', '256',
+                        '-fflags', '+igndts', '-i', 'pipe:0',
+                        '-fflags', '+genpts'
+                    ] + _playout.logo + _playout.filter + \
+                        _playout.post_comp_video + \
+                        _playout.post_comp_audio
 
-            playout = Popen(
-                list(playout_pre)
-                + [
-                    '-metadata', 'service_name=' + _playout.name,
-                    '-metadata', 'service_provider=' + _playout.provider,
-                    '-metadata', 'year=' + year
-                ] + list(_playout.post_comp_extra)
-                + [
-                    _playout.out_addr
-                ],
-                stdin=mbuffer.stdout,
-                bufsize=0
-            )
+                playout = Popen(
+                    list(playout_pre)
+                    + [
+                        '-metadata', 'service_name=' + _playout.name,
+                        '-metadata', 'service_provider=' + _playout.provider,
+                        '-metadata', 'year=' + year
+                    ] + list(_playout.post_comp_extra)
+                    + [
+                        _playout.out_addr
+                    ],
+                    stdin=mbuffer.stdout,
+                    bufsize=0
+                )
 
             play_thread = Thread(
                 name='play_clips', target=play_clips, args=(
