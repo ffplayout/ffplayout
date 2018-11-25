@@ -678,16 +678,11 @@ def main():
         try:
             if _playout.preview:
                 # preview playout to player
-                try:
-                    playout = Popen(
-                        ['ffplay', '-i', 'pipe:0'],
-                        stdin=mbuffer.stdout,
-                        bufsize=0
-                        )
-                except OSError as e:
-                    logger.error(e)
-                    mbuffer.terminate()
-                    sys.exit(1)
+                playout = Popen(
+                    ['ffplay', '-i', 'pipe:0'],
+                    stdin=mbuffer.stdout,
+                    bufsize=0
+                    )
             else:
                 # playout to rtmp
                 if _pre_comp.copy:
