@@ -4,3 +4,4 @@ server.py
 **temp
 **playlists
 *.log*
+.DS_Store
