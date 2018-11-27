@@ -232,10 +232,14 @@ def calc_buffer_size():
 
 
 # check if processes a well
-def check_process(watch_proc, terminate_proc):
+def check_process(watch_proc, terminate_proc, play_thread):
     while True:
         sleep(4)
         if watch_proc.poll() is not None:
+            terminate_proc.terminate()
+            break
+
+        if not play_thread.is_alive():
             terminate_proc.terminate()
             break
 
@@ -253,12 +257,8 @@ def check_file_exist(in_file):
 def seek_in_cut_end(in_file, duration, seek, out):
     if seek > 0.0:
         inpoint = ['-ss', str(seek)]
-        fade_in_vid = 'fade=in:st=0:d=0.5'
-        fade_in_aud = 'afade=in:st=0:d=0.5'
     else:
         inpoint = []
-        fade_in_vid = 'null'
-        fade_in_aud = 'anull'
 
     if out < duration:
         fade_out_time = out - seek - 1.0
@@ -274,8 +274,8 @@ def seek_in_cut_end(in_file, duration, seek, out):
         return inpoint + ['-i', in_file] + cut_end
     else:
         return inpoint + ['-i', in_file] + cut_end + [
-            '-vf', fade_in_vid + ',' + fade_out_vid,
-            '-af', fade_in_aud + ',' + fade_out_aud
+            '-vf', fade_out_vid,
+            '-af', fade_out_aud
         ]
 
 
@@ -407,7 +407,7 @@ def is_float(value, text, convert):
 # check last item, when it is None or a dummy clip,
 # set true and seek in playlist
 def check_last_item(src_cmd, last_time, last):
-    if None in src_cmd and not last:
+    if src_cmd is None and not last:
         first = True
         last_time = get_time('full_sec')
         if 0 <= last_time < _playlist.start * 3600:
@@ -507,7 +507,7 @@ def exeption(message, dummy_len, path, last):
 def iter_src_commands():
     last_time = None
     last_mod_time = 0.0
-    src_cmd = [None]
+    src_cmd = None
     last = False
     list_date = get_date(True)
     dummy_len = 60
@@ -560,7 +560,7 @@ def iter_src_commands():
                     first = False
                     last_time = begin
                     break
-                elif last_time < begin:
+                elif last_time and last_time < begin:
                     if clip_node == last_node:
                         last = True
                     else:
@@ -723,7 +723,7 @@ def main():
             play_thread.daemon = True
             play_thread.start()
 
-            check_process(playout, mbuffer)
+            check_process(playout, mbuffer, play_thread)
         finally:
             playout.wait()
     finally:
