@@ -236,10 +236,14 @@ def check_process(watch_proc, terminate_proc, play_thread):
     while True:
         sleep(4)
         if watch_proc.poll() is not None:
+            logger.error(
+                'postprocess is not alive anymore, terminate ffplayout!')
             terminate_proc.terminate()
             break
 
         if not play_thread.is_alive():
+            logger.error(
+                'preprocess is not alive anymore, terminate ffplayout!')
             terminate_proc.terminate()
             break
 
