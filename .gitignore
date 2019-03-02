@@ -5,3 +5,5 @@ server.py
 **playlists
 *.log*
 .DS_Store
+__pycache__/
+*-orig.*
