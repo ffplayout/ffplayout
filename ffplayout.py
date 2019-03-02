@@ -221,12 +221,6 @@ def mail_or_log(message, time, path):
 
 # calculating the size for the buffer in KB
 def calc_buffer_size():
-    # TODO: this calculation is only important when we compress in rawvideo
-    """
-    v_size = _pre_comp.w * _pre_comp.h * 3 / 2 * _pre_comp.fps * _buffer.length
-    a_size = (_pre_comp.a_sample * 16 * 2 * _buffer.length) / 8
-    return (v_size + a_size) / 1024
-    """
     return int(
         (_pre_comp.v_bitrate + _pre_comp.a_bitrate) * 0.125 * _buffer.length)
 
@@ -671,7 +665,6 @@ def main():
         # open a buffer for the streaming pipeline
         # stdin get the files loop
         # stdout pipes to ffmpeg rtmp streaming
-        # TODO: replace with Queue or BytesIO?
         mbuffer = Popen(
             [_buffer.cli] + list(_buffer.cmd)
             + [str(calc_buffer_size()) + 'k'],
