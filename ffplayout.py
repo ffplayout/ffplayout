@@ -34,7 +34,7 @@ from email.utils import formatdate
 from logging.handlers import TimedRotatingFileHandler
 from os import path
 from shutil import copyfileobj
-from subprocess import PIPE, Popen
+from subprocess import check_output, PIPE, Popen
 from threading import Thread
 from time import sleep
 from types import SimpleNamespace
@@ -73,6 +73,7 @@ _pre_comp = SimpleNamespace(
     v_bufsize=cfg.getint('PRE_COMPRESS', 'v_bitrate'),
     a_bitrate=cfg.getint('PRE_COMPRESS', 'a_bitrate'),
     a_sample=cfg.getint('PRE_COMPRESS', 'a_sample'),
+    protocols=cfg.get('PRE_COMPRESS', 'live_protocols'),
     copy=cfg.getboolean('PRE_COMPRESS', 'copy_mode'),
     copy_settings=literal_eval(cfg.get('PRE_COMPRESS', 'ffmpeg_copy_settings'))
 )
@@ -242,7 +243,7 @@ def check_process(watch_proc, terminate_proc, play_thread):
             break
 
 
-# check if path exist,
+# check if input file exist,
 # when not send email and generate blackclip
 def check_file_exist(in_file):
     if path.exists(in_file):
@@ -259,22 +260,23 @@ def seek_in_cut_end(in_file, duration, seek, out):
         inpoint = []
 
     if out < duration:
-        fade_out_time = out - seek - 1.0
+        length = out - seek - 1.0
         cut_end = ['-t', str(out - seek)]
-        fade_out_vid = 'fade=out:st=' + str(fade_out_time) + ':d=1.0'
-        fade_out_aud = 'afade=out:st=' + str(fade_out_time) + ':d=1.0'
+        fade_out_vid = '[0:v]fade=out:st=' + str(length) + ':d=1.0;'
+        fade_out_aud = '[0:a]afade=out:st=' + str(length) + ':d=1.0'
+        shorten = []
     else:
         cut_end = []
-        fade_out_vid = 'null'
-        fade_out_aud = 'anull'
+        fade_out_vid = ''
+        fade_out_aud = '[0:a]apad'
+        shorten = ['-shortest']
 
     if _pre_comp.copy:
         return inpoint + ['-i', in_file] + cut_end
     else:
         return inpoint + ['-i', in_file] + cut_end + [
-            '-vf', fade_out_vid,
-            '-af', fade_out_aud
-        ]
+            '-filter_complex', fade_out_vid + fade_out_aud
+            ] + shorten
 
 
 # generate a dummy clip, with black color and empty audiotrack
@@ -295,11 +297,40 @@ def gen_dummy(duration):
 # when source path exist, generate input with seek and out time
 # when path not exist, generate dummy clip
 def src_or_dummy(src, duration, seek, out, dummy_len=None):
-    if check_file_exist(src):
+    prefix = src.split('://')[0]
+
+    # check if input is a live source
+    if prefix and prefix in _pre_comp.protocols:
+        cmd = [
+            'ffprobe', '-v', 'error', '-show_entries', 'format=duration',
+            '-of', 'default=noprint_wrappers=1:nokey=1', src]
+        output = check_output(cmd)
+        live_duration = is_float(output, False, True)
+
+        if '404' in output.decode('utf-8'):
+            mail_or_log(
+                'Clip not exist:', get_time(None),
+                src
+            )
+            if dummy_len and not _pre_comp.copy:
+                return gen_dummy(dummy_len)
+            else:
+                return gen_dummy(out - seek)
+        elif live_duration:
+            if seek > 0.0 or out < duration:
+                return seek_in_cut_end(src, duration, seek, out)
+            else:
+                return ['-i', src, '-filter_complex', '[0:a]apad', '-shortest']
+        else:
+            # no duration found, so we set duration to 24 hours,
+            # to be sure that out point will cut the lenght
+            return seek_in_cut_end(src, 86400, 0, out)
+
+    elif check_file_exist(src):
         if seek > 0.0 or out < duration:
             return seek_in_cut_end(src, duration, seek, out)
         else:
-            return ['-i', src]
+            return ['-i', src, '-filter_complex', '[0:a]apad', '-shortest']
     else:
         mail_or_log(
             'Clip not exist:', get_time(None),
@@ -437,7 +468,20 @@ def validate_thread(clip_nodes):
             else:
                 node_src = xml_node.get('src')
 
-            if check_file_exist(node_src):
+            prefix = node_src.split('://')[0]
+
+            if prefix and prefix in _pre_comp.protocols:
+                cmd = [
+                    'ffprobe', '-v', 'error',
+                    '-show_entries', 'format=duration',
+                    '-of', 'default=noprint_wrappers=1:nokey=1', node_src]
+                output = check_output(cmd)
+
+                if '404' in output.decode('utf-8'):
+                    a = 'Stream not exist! '
+                else:
+                    a = ''
+            elif check_file_exist(node_src):
                 a = ''
             else:
                 a = 'File not exist! '
@@ -634,7 +678,6 @@ def play_clips(out_file, iter_src_commands):
                 '-s', '{}x{}'.format(_pre_comp.w, _pre_comp.h),
                 '-aspect', str(_pre_comp.aspect),
                 '-pix_fmt', 'yuv420p', '-r', str(_pre_comp.fps),
-                '-af', 'apad', '-shortest',
                 '-c:v', 'mpeg2video', '-intra',
                 '-b:v', '{}k'.format(_pre_comp.v_bitrate),
                 '-minrate', '{}k'.format(_pre_comp.v_bitrate),
@@ -675,8 +718,9 @@ def main():
         try:
             if _playout.preview:
                 # preview playout to player
-                playout = Popen(
-                    ['ffplay', '-i', 'pipe:0'],
+                playout = Popen([
+                    'ffplay', '-v', 'error',
+                    '-hide_banner', '-nostats', '-i', 'pipe:0'],
                     stdin=mbuffer.stdout,
                     bufsize=0
                     )
