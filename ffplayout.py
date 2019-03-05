@@ -71,8 +71,6 @@ _pre_comp = SimpleNamespace(
     fps=cfg.getint('PRE_COMPRESS', 'fps'),
     v_bitrate=cfg.getint('PRE_COMPRESS', 'v_bitrate'),
     v_bufsize=cfg.getint('PRE_COMPRESS', 'v_bitrate'),
-    a_bitrate=cfg.getint('PRE_COMPRESS', 'a_bitrate'),
-    a_sample=cfg.getint('PRE_COMPRESS', 'a_sample'),
     protocols=cfg.get('PRE_COMPRESS', 'live_protocols'),
     copy=cfg.getboolean('PRE_COMPRESS', 'copy_mode'),
     copy_settings=literal_eval(cfg.get('PRE_COMPRESS', 'ffmpeg_copy_settings'))
@@ -223,7 +221,7 @@ def mail_or_log(message, time, path):
 # calculating the size for the buffer in KB
 def calc_buffer_size():
     return int(
-        (_pre_comp.v_bitrate + _pre_comp.a_bitrate) * 0.125 * _buffer.length)
+        (_pre_comp.v_bitrate * 0.125 + 281.25) * _buffer.length)
 
 
 # check if processes a well
@@ -262,21 +260,21 @@ def seek_in_cut_end(in_file, duration, seek, out):
     if out < duration:
         length = out - seek - 1.0
         cut_end = ['-t', str(out - seek)]
-        fade_out_vid = '[0:v]fade=out:st=' + str(length) + ':d=1.0;'
-        fade_out_aud = '[0:a]afade=out:st=' + str(length) + ':d=1.0'
-        shorten = []
+        fade_out_vid = '[0:v]fade=out:st=' + str(length) + ':d=1.0[v];'
+        fade_out_aud = '[0:a]afade=out:st=' + str(length) + ':d=1.0[a]'
+        end = ['-map', '[v]', '-map', '[a]']
     else:
         cut_end = []
         fade_out_vid = ''
-        fade_out_aud = '[0:a]apad'
-        shorten = ['-shortest']
+        fade_out_aud = '[0:a]apad[a]'
+        end = ['-shortest', '-map', '0:v', '-map', '[a]']
 
     if _pre_comp.copy:
         return inpoint + ['-i', in_file] + cut_end
     else:
         return inpoint + ['-i', in_file] + cut_end + [
             '-filter_complex', fade_out_vid + fade_out_aud
-            ] + shorten
+            ] + end
 
 
 # generate a dummy clip, with black color and empty audiotrack
@@ -289,7 +287,7 @@ def gen_dummy(duration):
             'color=s={}x{}:d={}'.format(
                 _pre_comp.w, _pre_comp.h, duration
             ),
-            '-f', 'lavfi', '-i', 'anullsrc=r=' + str(_pre_comp.a_sample),
+            '-f', 'lavfi', '-i', 'anullsrc=r=48000',
             '-shortest'
         ]
 
@@ -320,17 +318,21 @@ def src_or_dummy(src, duration, seek, out, dummy_len=None):
             if seek > 0.0 or out < duration:
                 return seek_in_cut_end(src, duration, seek, out)
             else:
-                return ['-i', src, '-filter_complex', '[0:a]apad', '-shortest']
+                return [
+                    '-i', src, '-filter_complex', '[0:a]apad[a]',
+                    '-shortest', '-map', '0:v', '-map', '[a]']
         else:
             # no duration found, so we set duration to 24 hours,
             # to be sure that out point will cut the lenght
-            return seek_in_cut_end(src, 86400, 0, out)
+            return seek_in_cut_end(src, 86400, 0, out - seek)
 
     elif check_file_exist(src):
         if seek > 0.0 or out < duration:
             return seek_in_cut_end(src, duration, seek, out)
         else:
-            return ['-i', src, '-filter_complex', '[0:a]apad', '-shortest']
+            return [
+                '-i', src, '-filter_complex', '[0:a]apad[a]',
+                '-shortest', '-map', '0:v', '-map', '[a]']
     else:
         mail_or_log(
             'Clip not exist:', get_time(None),
@@ -682,11 +684,12 @@ def play_clips(out_file, iter_src_commands):
                 '-b:v', '{}k'.format(_pre_comp.v_bitrate),
                 '-minrate', '{}k'.format(_pre_comp.v_bitrate),
                 '-maxrate', '{}k'.format(_pre_comp.v_bitrate),
-                '-bufsize', '{}k'.format(_pre_comp.v_bufsize),
-                '-c:a', 'mp2', '-b:a', '{}k'.format(_pre_comp.a_bitrate),
-                '-ar', str(_pre_comp.a_sample), '-ac', '2',
+                '-bufsize', '{}k'.format(_pre_comp.v_bufsize / 2),
+                '-c:a', 's302m', '-strict', '-2', '-ar', '48000', '-ac', '2',
                 '-threads', '2', '-f', 'mpegts', '-'
             ]
+
+        print(src_cmd, ff_pre_settings)
 
         try:
             file_piper = Popen(
