@@ -45,7 +45,7 @@ JSON Playlist Example
             "in": 0,
             "out": 149,
             "duration": 149,
-            "source": "https://clips.vorwaerts-gmbh.de/big_buck_bunny.webm"
+            "source": "/Media/clip2.mp4"
         },
 
         {
@@ -58,8 +58,8 @@ JSON Playlist Example
         {
             "in": 0,
             "out": 2531.36,
-            "duration": 0,
-            "source": "rtmp://srs.discovery.stream/live/stream"
+            "duration": 2531.36,
+            "source": "/Media/clip4.mp4"
         }
     ]
 }
@@ -87,7 +87,7 @@ You can use sources from url or live stream in that way:
             "in": 0,
             "out": 2531.36,
             "duration": 0,
-            "source": "rtmp://srs.discovery.stream/live/stream"
+            "source": "rtmp://example.org/live/stream"
         }
 ...
 ```
