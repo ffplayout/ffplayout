@@ -20,11 +20,12 @@
 
 import configparser
 import logging
+import json
+import os
 import re
 import smtplib
 import socket
 import sys
-import xml.etree.ElementTree as ET
 from argparse import ArgumentParser
 from ast import literal_eval
 from datetime import date, datetime, timedelta
@@ -32,7 +33,6 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import formatdate
 from logging.handlers import TimedRotatingFileHandler
-from os import path
 from shutil import copyfileobj
 from subprocess import check_output, PIPE, Popen
 from threading import Thread
@@ -45,7 +45,7 @@ from types import SimpleNamespace
 
 # read config
 cfg = configparser.ConfigParser()
-if path.exists("/etc/ffplayout/ffplayout.conf"):
+if os.path.exists("/etc/ffplayout/ffplayout.conf"):
     cfg.read("/etc/ffplayout/ffplayout.conf")
 else:
     cfg.read("ffplayout.conf")
@@ -104,7 +104,7 @@ _playout = SimpleNamespace(
 )
 
 # set logo filtergraph
-if path.exists(cfg.get('OUT', 'logo')):
+if os.path.exists(cfg.get('OUT', 'logo')):
     _playout.logo = ['-thread_queue_size', '16', '-i', cfg.get('OUT', 'logo')]
     _playout.filter = [
         '-filter_complex', '[0:v][1:v]' + cfg.get('OUT', 'logo_o') + '[o]',
@@ -244,7 +244,7 @@ def check_process(watch_proc, terminate_proc, play_thread):
 # check if input file exist,
 # when not send email and generate blackclip
 def check_file_exist(in_file):
-    if path.exists(in_file):
+    if os.path.exists(in_file):
         return True
     else:
         return False
@@ -302,10 +302,9 @@ def src_or_dummy(src, duration, seek, out, dummy_len=None):
         cmd = [
             'ffprobe', '-v', 'error', '-show_entries', 'format=duration',
             '-of', 'default=noprint_wrappers=1:nokey=1', src]
-        output = check_output(cmd)
-        live_duration = is_float(output, False, True)
+        live_duration = check_output(cmd)
 
-        if '404' in output.decode('utf-8'):
+        if '404' in live_duration.decode('utf-8'):
             mail_or_log(
                 'Clip not exist:', get_time(None),
                 src
@@ -314,9 +313,9 @@ def src_or_dummy(src, duration, seek, out, dummy_len=None):
                 return gen_dummy(dummy_len)
             else:
                 return gen_dummy(out - seek)
-        elif live_duration:
-            if seek > 0.0 or out < duration:
-                return seek_in_cut_end(src, duration, seek, out)
+        elif is_float(live_duration):
+            if seek > 0.0 or out < live_duration:
+                return seek_in_cut_end(src, live_duration, seek, out)
             else:
                 return [
                     '-i', src, '-filter_complex', '[0:a]apad[a]',
@@ -424,15 +423,12 @@ def gen_input(src, begin, dur, seek, out, last):
 
 
 # test if value is float
-def is_float(value, text, convert):
+def is_float(value):
     try:
         float(value)
-        if convert:
-            return float(value)
-        else:
-            return ''
+        return True
     except ValueError:
-        return text
+        return False
 
 
 # check last item, when it is None or a dummy clip,
@@ -455,67 +451,91 @@ def check_last_item(src_cmd, last_time, last):
     return first, last_time
 
 
-# validate xml values in new Thread
+# check begin and length
+def check_start_and_length(json_nodes, counter):
+    # check start time and set begin
+    if "begin" in json_nodes:
+        h, m, s = json_nodes["begin"].split(':')
+        if is_float(h) and is_float(m) and is_float(s):
+            begin = float(h) * 3600 + float(m) * 60 + float(s)
+        else:
+            begin = -100.0
+    else:
+        begin = -100.0
+
+    # check if playlist is long enough
+    if "length" in json_nodes:
+        l_h, l_m, l_s = json_nodes["length"].split(':')
+        if is_float(l_h) and is_float(l_m) and is_float(l_s):
+            length = float(l_h) * 3600 + float(l_m) * 60 + float(l_s)
+
+            start = float(_playlist.start * 3600)
+
+            total_play_time = begin + counter - start
+
+            if total_play_time < length - 5:
+                mail_or_log(
+                    'json playlist is not long enough!',
+                    get_time(None), "total play time is: "
+                    + str(timedelta(seconds=total_play_time))
+                )
+
+
+# validate json values in new Thread
 # and test if file path exist
 def validate_thread(clip_nodes):
-    def check_xml(xml_nodes):
+    def check_json(json_nodes):
         error = ''
+        counter = 0
 
         # check if all values are valid
-        for xml_node in xml_nodes:
+        for node in json_nodes["program"]:
             if _playlist.map_ext:
                 _ext = literal_eval(_playlist.map_ext)
-                node_src = xml_node.get('src').replace(
+                source = node["source"].replace(
                     _ext[0], _ext[1])
             else:
-                node_src = xml_node.get('src')
+                source = node["source"]
 
-            prefix = node_src.split('://')[0]
+            prefix = source.split('://')[0]
 
             if prefix and prefix in _pre_comp.protocols:
                 cmd = [
                     'ffprobe', '-v', 'error',
                     '-show_entries', 'format=duration',
-                    '-of', 'default=noprint_wrappers=1:nokey=1', node_src]
+                    '-of', 'default=noprint_wrappers=1:nokey=1', source]
                 output = check_output(cmd)
 
                 if '404' in output.decode('utf-8'):
                     a = 'Stream not exist! '
                 else:
                     a = ''
-            elif check_file_exist(node_src):
+            elif check_file_exist(source):
                 a = ''
             else:
                 a = 'File not exist! '
 
-            b = is_float(xml_node.get('begin'), 'No Start Time! ', False)
-            c = is_float(xml_node.get('dur'), 'No Duration! ', False)
-            d = is_float(xml_node.get('in'), 'No In Value! ', False)
-            e = is_float(xml_node.get('out'), 'No Out Value! ', False)
+            if is_float(node["in"]) and is_float(node["out"]):
+                b = ''
+                counter += node["out"] - node["in"]
+            else:
+                b = 'Missing Value! '
 
-            line = a + b + c + d + e
+            c = '' if is_float(node["duration"]) else 'No DURATION Value! '
+
+            line = a + b + c
             if line:
-                error += line + 'In line: ' + str(xml_node.attrib) + '\n'
+                error += line + 'In line: ' + str(node) + '\n'
 
         if error:
             mail_or_log(
-                'Validation error, check xml playlist, values are missing:\n',
+                'Validation error, check json playlist, values are missing:\n',
                 get_time(None), error
             )
 
-        # check if playlist is long enough
-        last_begin = is_float(clip_nodes[-1].get('begin'), 0, True)
-        last_duration = is_float(clip_nodes[-1].get('dur'), 0, True)
-        start = float(_playlist.start * 3600)
-        total_play_time = last_begin + last_duration - start
+        check_start_and_length(json_nodes, counter)
 
-        if total_play_time < 86395.0:
-            mail_or_log(
-                'xml playlist is not long enough!',
-                get_time(None), "total play time is: " + str(total_play_time)
-            )
-
-    validate = Thread(name='check_xml', target=check_xml, args=(clip_nodes,))
+    validate = Thread(name='check_json', target=check_json, args=(clip_nodes,))
     validate.daemon = True
     validate.start()
 
@@ -547,7 +567,8 @@ def exeption(message, dummy_len, path, last):
 # main functions
 # ------------------------------------------------------------------------------
 
-# read values from xml playlist
+# TODO: this function is to messy, and should be rewrited as a class
+# read values from json playlist
 def iter_src_commands():
     last_time = None
     last_mod_time = 0.0
@@ -558,40 +579,50 @@ def iter_src_commands():
 
     while True:
         year, month, day = re.split('-', list_date)
-        xml_path = path.join(_playlist.path, year, month, list_date + '.xml')
+        json_file = os.path.join(
+            _playlist.path, year, month, list_date + '.json')
 
-        if check_file_exist(xml_path):
+        if check_file_exist(json_file):
             # check last modification from playlist
-            mod_time = path.getmtime(xml_path)
+            mod_time = os.path.getmtime(json_file)
             if mod_time > last_mod_time:
-                xml_file = open(xml_path, "r")
-                xml_root = ET.parse(xml_file).getroot()
-                clip_nodes = xml_root.findall('body/video')
-                xml_file.close()
+                with open(json_file) as f:
+                    clip_nodes = json.load(f)
+
                 last_mod_time = mod_time
-                logger.info('open: ' + xml_path)
+                logger.info('open: ' + json_file)
                 validate_thread(clip_nodes)
-                last_node = clip_nodes[-1]
 
             # when last clip is None or a dummy,
             # we have to jump to the right place in the playlist
             first, last_time = check_last_item(src_cmd, last_time, last)
 
+            if "begin" in clip_nodes:
+                h, m, s = clip_nodes["begin"].split(':')
+                if is_float(h) and is_float(m) and is_float(s):
+                    begin = float(h) * 3600 + float(m) * 60 + float(s)
+                else:
+                    begin = last_time
+            else:
+                # when clip_nodes["begin"] is not set in playlist,
+                # start from current time
+                begin = get_time('full_sec')
+
             # loop through all clips in playlist
-            for clip_node in clip_nodes:
+            # TODO: index we need for blend out logo on ad
+            for index, clip_node in enumerate(clip_nodes["program"]):
                 if _playlist.map_ext:
                     _ext = literal_eval(_playlist.map_ext)
-                    node_src = clip_node.get('src').replace(
+                    src = clip_node["source"].replace(
                         _ext[0], _ext[1])
                 else:
-                    node_src = clip_node.get('src')
+                    src = clip_node["source"]
 
-                src = node_src
-                begin = is_float(
-                    clip_node.get('begin'), last_time, True)
-                duration = is_float(clip_node.get('dur'), dummy_len, True)
-                seek = is_float(clip_node.get('in'), 0, True)
-                out = is_float(clip_node.get('out'), dummy_len, True)
+                seek = clip_node["in"] if is_float(clip_node["in"]) else 0
+                out = clip_node["out"] if \
+                    is_float(clip_node["out"]) else dummy_len
+                duration = clip_node["duration"] if \
+                    is_float(clip_node["duration"]) else dummy_len
 
                 # first time we end up here
                 if first and last_time < begin + duration:
@@ -603,9 +634,10 @@ def iter_src_commands():
 
                     first = False
                     last_time = begin
+
                     break
                 elif last_time and last_time < begin:
-                    if clip_node == last_node:
+                    if clip_node == clip_nodes["program"][-1]:
                         last = True
                     else:
                         last = False
@@ -633,11 +665,20 @@ def iter_src_commands():
                         last_mod_time = 0.0
 
                     break
+
+                begin += out - seek
             else:
+                # when we reach currect end, stop script
+                if "begin" not in clip_nodes or \
+                    "length" not in clip_nodes and \
+                        begin < get_time('full_sec'):
+                    logger.info('Playlist reach End!')
+                    return
+
                 # when playlist exist but is empty, or not long enough,
                 # generate dummy and send log
                 src_cmd, last_time, first = exeption(
-                    'Playlist is not valid!', dummy_len, xml_path, last
+                    'Playlist is not valid!', dummy_len, json_file, last
                 )
 
                 begin = get_time('full_sec') + _buffer.length + _buffer.tol
@@ -650,7 +691,7 @@ def iter_src_commands():
             # then we generate a black clip
             # and calculate the seek in time, for when the playlist comes back
             src_cmd, last_time, first = exeption(
-                'Playlist not exist:', dummy_len, xml_path, last
+                'Playlist not exist:', dummy_len, json_file, last
             )
 
             begin = get_time('full_sec') + _buffer.length + _buffer.tol
@@ -664,7 +705,7 @@ def iter_src_commands():
 
 # independent thread for clip preparation
 def play_clips(out_file, iter_src_commands):
-    # send current file from xml playlist to buffer stdin
+    # send current file from json playlist to buffer stdin
     for src_cmd, begin in iter_src_commands:
         if begin > 86400:
             tm_str = str(timedelta(seconds=int(begin - 86400)))
@@ -688,8 +729,6 @@ def play_clips(out_file, iter_src_commands):
                 '-c:a', 's302m', '-strict', '-2', '-ar', '48000', '-ac', '2',
                 '-threads', '2', '-f', 'mpegts', '-'
             ]
-
-        print(src_cmd, ff_pre_settings)
 
         try:
             file_piper = Popen(

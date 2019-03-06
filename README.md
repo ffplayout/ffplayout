@@ -4,7 +4,7 @@
 
 This is a streaming solution based on python and ffmpeg.
 
-The goal is to play for every day an xml playlist, while the current playlist is still editable.
+The goal is to play for every day an json playlist, while the current playlist is still editable.
 
 #### Check [ffplayout-gui](https://github.com/jb-alvarado/ffplayout-gui): web-based GUI for ffplayout.
 
@@ -25,28 +25,50 @@ Features
     - ram and cpu depends on video resolution, minimum 4 threads and 3GB ram for 720p are recommend
 - python version 3.5 and up
 
-XML Playlist Example
+JSON Playlist Example
 -----
 
-```xml
-<playlist>
-    <head>
-        <meta name="author" content="example"/>
-        <meta name="title" content="Live Stream"/>
-        <meta name="copyright" content="(c)2018 example.org"/>
-        <meta name="date" content="2018-02-03"/>
-    </head>
-    <body>
-        <video src="/path/clip_01.mkv" begin="21600" dur="18.000000" in="0.00" out="18.000000"/>
-        <video src="/path/clip_02.mkv" begin="21618" dur="18.111000" in="0.00" out="18.111000"/>
-        <video src="/path/clip_03.mkv" begin="21636.1" dur="247.896000" in="0.00" out="247.896000"/>
-        <video src="/path/clip_04.mkv" begin="21884" dur="483.114000" in="0.00" out="483.114000"/>
-        <video src="/path/clip_05.mkv" begin="22367.1" dur="20.108000" in="0.00" out="20.108000"/>
-        <video src="/path/clip  &amp; specials.mkv" begin="22387.2" dur="203.290000" in="0.00" out="203.290000"/>
-        <video src="/path/clip_06.mkv" begin="22590.5" dur="335.087000" in="300.00" out="335.087000"/>
-    </body>
-</playlist>
+```json
+{
+    "channel": "Test 1",
+    "date": "2019-03-05",
+    "begin": "06:00:00.000",
+    "length": "24:00:00.000",
+    "program": [{
+            "in": 0,
+            "out": 647.68,
+            "duration": 647.68,
+            "source": "/Media/clip1.mp4"
+        },
+
+        {
+            "in": 0,
+            "out": 149,
+            "duration": 149,
+            "source": "/Media/clip2.mp4"
+        },
+
+        {
+            "in": 0,
+            "out": 114.72,
+            "duration": 114.72,
+            "source": "/Media/clip3.mp4"
+        },
+
+        {
+            "in": 0,
+            "out": 2531.36,
+            "duration": 2531.36,
+            "source": "/Media/clip4.mp4"
+        }
+    ]
+}
 ```
+
+`"begin"` and `"length"` are optional, when you leave **begin** blank, length check will be ignored and the playlist starts from the begin, without time awareness. If you leave **length** blank, the validation will not check if the real length of the playlist will match the length value.
+
+#### Warning:
+(Endless) streaming over multiple days will only work when the playlist have **both** keys and the **length** of the playlist is **24 hours**. If you need only some hours for every day, use a cron job, or something similar.
 
 Installation
 -----
