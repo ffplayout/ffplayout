@@ -45,7 +45,7 @@ JSON Playlist Example
             "in": 0,
             "out": 149,
             "duration": 149,
-            "source": "/Media/clip2.mp4"
+            "source": "https://clips.vorwaerts-gmbh.de/big_buck_bunny.webm"
         },
 
         {
@@ -58,8 +58,8 @@ JSON Playlist Example
         {
             "in": 0,
             "out": 2531.36,
-            "duration": 2531.36,
-            "source": "/Media/clip4.mp4"
+            "duration": 0,
+            "source": "rtmp://srs.discovery.stream/live/stream"
         }
     ]
 }
@@ -69,6 +69,31 @@ JSON Playlist Example
 
 #### Warning:
 (Endless) streaming over multiple days will only work when the playlist have **both** keys and the **length** of the playlist is **24 hours**. If you need only some hours for every day, use a cron job, or something similar.
+
+Source from URL / Live Stream
+-----
+You can use sources from url or live stream in that way:
+
+```json
+...
+        {
+            "in": 0,
+            "out": 149,
+            "duration": 149,
+            "source": "https://clips.vorwaerts-gmbh.de/big_buck_bunny.webm"
+        },
+...
+        {
+            "in": 0,
+            "out": 2531.36,
+            "duration": 0,
+            "source": "rtmp://srs.discovery.stream/live/stream"
+        }
+...
+```
+But be careful with it, better test it multiple times!
+
+More informations in [wiki](https://github.com/jb-alvarado/ffplayout/wiki/Live-Source)
 
 Installation
 -----
