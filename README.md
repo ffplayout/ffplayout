@@ -93,7 +93,7 @@ You can use sources from url or live stream in that way:
 ```
 But be careful with it, better test it multiple times!
 
-More informations in [wiki](https://github.com/jb-alvarado/ffplayout/wiki/Live-Source)
+More informations in [wiki](https://github.com/jb-alvarado/ffplayout/wiki/URL---Live-Source)
 
 Installation
 -----
