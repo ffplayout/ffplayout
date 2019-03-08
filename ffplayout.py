@@ -19,8 +19,8 @@
 
 
 import configparser
-import logging
 import json
+import logging
 import os
 import re
 import smtplib
@@ -34,7 +34,7 @@ from email.mime.text import MIMEText
 from email.utils import formatdate
 from logging.handlers import TimedRotatingFileHandler
 from shutil import copyfileobj
-from subprocess import check_output, PIPE, Popen
+from subprocess import PIPE, Popen, check_output
 from threading import Thread
 from time import sleep
 from types import SimpleNamespace
@@ -51,6 +51,7 @@ else:
     cfg.read("ffplayout.conf")
 
 _mail = SimpleNamespace(
+    subject=cfg.get('MAIL', 'subject'),
     server=cfg.get('MAIL', 'smpt_server'),
     port=cfg.getint('MAIL', 'smpt_port'),
     s_addr=cfg.get('MAIL', 'sender_addr'),
@@ -139,17 +140,17 @@ logger.addHandler(handler)
 
 # capture stdout and sterr in the log
 class ffplayout_logger(object):
-        def __init__(self, logger, level):
-                self.logger = logger
-                self.level = level
+    def __init__(self, logger, level):
+        self.logger = logger
+        self.level = level
 
-        def write(self, message):
-                # Only log if there is a message (not just a new line)
-                if message.rstrip() != "":
-                        self.logger.log(self.level, message.rstrip())
+    def write(self, message):
+        # Only log if there is a message (not just a new line)
+        if message.rstrip() != "":
+            self.logger.log(self.level, message.rstrip())
 
-        def flush(self):
-            pass
+    def flush(self):
+        pass
 
 
 # Replace stdout with logging to file at INFO level
@@ -191,7 +192,7 @@ def mail_or_log(message, time, path):
         msg = MIMEMultipart()
         msg['From'] = _mail.s_addr
         msg['To'] = _mail.recip
-        msg['Subject'] = "Playout Error"
+        msg['Subject'] = _mail.subject
         msg["Date"] = formatdate(localtime=True)
         msg.attach(MIMEText('{} {}\n{}'.format(time, message, path), 'plain'))
         text = msg.as_string()
@@ -589,179 +590,178 @@ def validate_thread(clip_nodes):
     validate.start()
 
 
-# exaption gets called, when there is no playlist,
-# or the playlist is not long enough
-def exeption(message, dummy_len, path, last):
-    src_cmd = gen_dummy(dummy_len)
-
-    if last:
-        last_time = float(_playlist.start * 3600 - 5)
-        first = False
-    else:
-        last_time = (
-            get_time('full_sec') + dummy_len + _buffer.length + _buffer.tol
-        )
-
-        if 0 <= last_time < _playlist.start * 3600:
-            last_time += 86400
-
-        first = True
-
-    mail_or_log(message, get_time(None), path)
-
-    return src_cmd, last_time, first
-
-
 # ------------------------------------------------------------------------------
 # main functions
 # ------------------------------------------------------------------------------
 
-# TODO: this function is to messy, and should be rewrited as a class
 # read values from json playlist
-def iter_src_commands():
-    last_time = None
-    last_mod_time = 0.0
-    src_cmd = None
-    last = False
-    list_date = get_date(True)
-    dummy_len = 60
+class GetSourceIter:
+    def __init__(self):
+        self.last_time = None
+        self.last_mod_time = 0.0
+        self.json_file = None
+        self.clip_nodes = None
+        self.src_cmd = None
+        self.first = True
+        self.last = False
+        self.list_date = get_date(True)
+        self.dummy_len = 60
+        self.begin = 0
 
-    while True:
-        year, month, day = re.split('-', list_date)
-        json_file = os.path.join(
-            _playlist.path, year, month, list_date + '.json')
+    def get_playlist(self):
+        year, month, day = re.split('-', self.list_date)
+        self.json_file = os.path.join(
+         _playlist.path, year, month, self.list_date + '.json')
 
-        if check_file_exist(json_file):
+        if check_file_exist(self.json_file):
             # check last modification from playlist
-            mod_time = os.path.getmtime(json_file)
-            if mod_time > last_mod_time:
-                with open(json_file) as f:
-                    clip_nodes = json.load(f)
+            mod_time = os.path.getmtime(self.json_file)
+            if mod_time > self.last_mod_time:
+                with open(self.json_file) as f:
+                    self.clip_nodes = json.load(f)
 
-                last_mod_time = mod_time
-                logger.info('open: ' + json_file)
-                validate_thread(clip_nodes)
+            self.last_mod_time = mod_time
+            logger.info('open: ' + self.json_file)
+            validate_thread(self.clip_nodes)
+        else:
+            # when we have no playlist for the current day,
+            # then we generate a black clip
+            # and calculate the seek in time, for when the playlist comes back
+            self.error_handling('Playlist not exist:')
+
+    def error_handling(self, message):
+        self.src_cmd = gen_dummy(self.dummy_len)
+
+        if self.last:
+            self.last_time = float(_playlist.start * 3600 - 5)
+            self.first = False
+        else:
+            self.last_time = (
+                get_time('full_sec') + self.dummy_len
+                + _buffer.length + _buffer.tol
+            )
+
+            if 0 <= self.last_time < _playlist.start * 3600:
+                self.last_time += 86400
+
+            self.first = True
+
+        mail_or_log(message, get_time(None), self.json_file)
+
+        self.begin = get_time('full_sec') + _buffer.length + _buffer.tol
+        self.last = False
+        self.dummy_len = 60
+        self.last_mod_time = 0.0
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        while True:
+            self.get_playlist()
+
+            if self.clip_nodes is None:
+                return self.src_cmd
 
             # when last clip is None or a dummy,
             # we have to jump to the right place in the playlist
-            first, last_time = check_last_item(src_cmd, last_time, last)
+            self.first, self.last_time = check_last_item(
+                self.src_cmd, self.last_time, self.last)
 
-            if "begin" in clip_nodes:
-                h, m, s = clip_nodes["begin"].split(':')
+            if "begin" in self.clip_nodes:
+                h, m, s = self.clip_nodes["begin"].split(':')
                 if is_float(h) and is_float(m) and is_float(s):
-                    begin = float(h) * 3600 + float(m) * 60 + float(s)
+                    self.begin = float(h) * 3600 + float(m) * 60 + float(s)
                 else:
-                    begin = last_time
+                    self.begin = self.last_time
             else:
                 # when clip_nodes["begin"] is not set in playlist,
                 # start from current time
-                begin = get_time('full_sec')
+                self.begin = get_time('full_sec')
 
             # loop through all clips in playlist
             # TODO: index we need for blend out logo on ad
-            for index, clip_node in enumerate(clip_nodes["program"]):
+            for index, node in enumerate(self.clip_nodes["program"]):
                 if _playlist.map_ext:
                     _ext = literal_eval(_playlist.map_ext)
-                    src = clip_node["source"].replace(
+                    src = node["source"].replace(
                         _ext[0], _ext[1])
                 else:
-                    src = clip_node["source"]
+                    src = node["source"]
 
-                seek = clip_node["in"] if is_float(clip_node["in"]) else 0
-                out = clip_node["out"] if \
-                    is_float(clip_node["out"]) else dummy_len
-                duration = clip_node["duration"] if \
-                    is_float(clip_node["duration"]) else dummy_len
+                seek = node["in"] if is_float(node["in"]) else 0
+                out = node["out"] if is_float(node["out"]) else self.dummy_len
+                duration = node["duration"] if \
+                    is_float(node["duration"]) else self.dummy_len
 
                 # first time we end up here
-                if first and last_time < begin + duration:
+                if self.first and self.last_time < self.begin + duration:
                     # calculate seek time
-                    seek = last_time - begin + seek
-                    src_cmd, time_left = gen_input(
-                        src, begin, duration, seek, out, False
+                    seek = self.last_time - self.begin + seek
+                    self.src_cmd, self.time_left = gen_input(
+                        src, self.begin, duration, seek, out, False
                     )
 
-                    first = False
-                    last_time = begin
-
+                    self.first = False
+                    self.last_time = self.begin
                     break
-                elif last_time and last_time < begin:
-                    if clip_node == clip_nodes["program"][-1]:
+                elif self.last_time and self.last_time < self.begin:
+                    if node == self.clip_nodes["program"][-1]:
                         last = True
                     else:
                         last = False
 
-                    check_sync(begin)
+                    check_sync(self.begin)
 
-                    src_cmd, time_left = gen_input(
-                        src, begin, duration, seek, out, last
+                    self.src_cmd, self.time_left = gen_input(
+                        src, self.begin, duration, seek, out, last
                     )
 
-                    if time_left is None:
+                    if self.time_left is None:
                         # normal behavior
-                        last_time = begin
-                    elif time_left > 0.0:
+                        self.last_time = self.begin
+                    elif self.time_left > 0.0:
                         # when playlist is finish and we have time left
-                        last_time = begin
-                        list_date = get_date(False)
-                        dummy_len = time_left
+                        self.list_date = get_date(False)
+                        self.last_time = self.begin
+                        self.dummy_len = self.time_left
 
                     else:
                         # when there is no time left and we are in time,
                         # set right values for new playlist
-                        list_date = get_date(False)
-                        last_time = float(_playlist.start * 3600 - 5)
-                        last_mod_time = 0.0
+                        self.list_date = get_date(False)
+                        self.last_time = float(_playlist.start * 3600 - 5)
+                        self.last_mod_time = 0.0
 
                     break
 
-                begin += out - seek
+                self.begin += out - seek
             else:
                 # when we reach currect end, stop script
-                if "begin" not in clip_nodes or \
-                    "length" not in clip_nodes and \
-                        begin < get_time('full_sec'):
+                if "begin" not in self.clip_nodes or \
+                    "length" not in self.clip_nodes and \
+                        self.begin < get_time('full_sec'):
                     logger.info('Playlist reach End!')
                     return
 
                 # when playlist exist but is empty, or not long enough,
                 # generate dummy and send log
-                src_cmd, last_time, first = exeption(
-                    'Playlist is not valid!', dummy_len, json_file, last
-                )
+                self.error_handling('Playlist is not valid!')
 
-                begin = get_time('full_sec') + _buffer.length + _buffer.tol
-                last = False
-                dummy_len = 60
-                last_mod_time = 0.0
-
-        else:
-            # when we have no playlist for the current day,
-            # then we generate a black clip
-            # and calculate the seek in time, for when the playlist comes back
-            src_cmd, last_time, first = exeption(
-                'Playlist not exist:', dummy_len, json_file, last
-            )
-
-            begin = get_time('full_sec') + _buffer.length + _buffer.tol
-            last = False
-            dummy_len = 60
-            last_mod_time = 0.0
-
-        if src_cmd is not None:
-            yield src_cmd, begin
+            if self.src_cmd is not None:
+                return self.src_cmd
 
 
 # independent thread for clip preparation
-def play_clips(out_file, iter_src_commands):
-    # send current file from json playlist to buffer stdin
-    for src_cmd, begin in iter_src_commands:
-        if begin > 86400:
-            tm_str = str(timedelta(seconds=int(begin - 86400)))
-        else:
-            tm_str = str(timedelta(seconds=int(begin)))
+def play_clips(out_file, GetSourceIter):
+    # send current file to buffer stdin
+    iter = GetSourceIter
 
-        logger.info('play at "{}":  {}'.format(tm_str, src_cmd))
+    while True:
+        src_cmd = next(iter)
+
+        if not src_cmd:
+            break
 
         if _pre_comp.copy:
             ff_pre_settings = _pre_comp.copy_settings
@@ -780,6 +780,8 @@ def play_clips(out_file, iter_src_commands):
             ]
 
         try:
+            logger.info('play: {}'.format(src_cmd))
+
             file_piper = Popen(
                 [
                     'ffmpeg', '-v', 'error', '-hide_banner', '-nostats'
@@ -791,6 +793,7 @@ def play_clips(out_file, iter_src_commands):
             copyfileobj(file_piper.stdout, out_file)
         finally:
             file_piper.wait()
+            break
 
 
 def main():
@@ -849,7 +852,7 @@ def main():
             play_thread = Thread(
                 name='play_clips', target=play_clips, args=(
                     mbuffer.stdin,
-                    iter_src_commands(),
+                    GetSourceIter(),
                 )
             )
             play_thread.daemon = True
