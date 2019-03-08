@@ -220,8 +220,40 @@ def mail_or_log(message, time, path):
 
 # calculating the size for the buffer in KB
 def calc_buffer_size():
-    return int(
-        (_pre_comp.v_bitrate * 0.125 + 281.25) * _buffer.length)
+    # in copy mode files has normally smaller bit rate,
+    # so we calculate the size different
+    if _pre_comp.copy:
+        list_date = get_date(True)
+        year, month, day = re.split('-', list_date)
+        json_file = os.path.join(
+            _playlist.path, year, month, list_date + '.json')
+
+        if check_file_exist(json_file):
+            with open(json_file) as f:
+                clip_nodes = json.load(f)
+
+            if _playlist.map_ext:
+                _ext = literal_eval(_playlist.map_ext)
+                source = clip_nodes["program"][0]["source"].replace(
+                    _ext[0], _ext[1])
+            else:
+                source = clip_nodes["program"][0]["source"]
+
+            cmd = [
+                'ffprobe', '-v', 'error', '-show_entries', 'format=bit_rate',
+                '-of', 'default=noprint_wrappers=1:nokey=1', source]
+            bite_rate = check_output(cmd).decode('utf-8')
+
+            if is_int(bite_rate):
+                bite_rate = int(bite_rate) / 1024
+            else:
+                bite_rate = 4000
+
+            return int(bite_rate * 0.125 * _buffer.length)
+        else:
+            return 5000
+    else:
+        return int((_pre_comp.v_bitrate * 0.125 + 281.25) * _buffer.length)
 
 
 # check if processes a well
@@ -297,6 +329,13 @@ def gen_dummy(duration):
 def src_or_dummy(src, duration, seek, out, dummy_len=None):
     prefix = src.split('://')[0]
 
+    if _pre_comp.copy:
+        add_filter = []
+    else:
+        add_filter = [
+            '-filter_complex', '[0:a]apad[a]',
+            '-shortest', '-map', '0:v', '-map', '[a]']
+
     # check if input is a live source
     if prefix and prefix in _pre_comp.protocols:
         cmd = [
@@ -317,9 +356,7 @@ def src_or_dummy(src, duration, seek, out, dummy_len=None):
             if seek > 0.0 or out < live_duration:
                 return seek_in_cut_end(src, live_duration, seek, out)
             else:
-                return [
-                    '-i', src, '-filter_complex', '[0:a]apad[a]',
-                    '-shortest', '-map', '0:v', '-map', '[a]']
+                return ['-i', src] + add_filter
         else:
             # no duration found, so we set duration to 24 hours,
             # to be sure that out point will cut the lenght
@@ -329,9 +366,7 @@ def src_or_dummy(src, duration, seek, out, dummy_len=None):
         if seek > 0.0 or out < duration:
             return seek_in_cut_end(src, duration, seek, out)
         else:
-            return [
-                '-i', src, '-filter_complex', '[0:a]apad[a]',
-                '-shortest', '-map', '0:v', '-map', '[a]']
+            return ['-i', src]  + add_filter
     else:
         mail_or_log(
             'Clip not exist:', get_time(None),
@@ -426,6 +461,15 @@ def gen_input(src, begin, dur, seek, out, last):
 def is_float(value):
     try:
         float(value)
+        return True
+    except ValueError:
+        return False
+
+
+# test if value is int
+def is_int(value):
+    try:
+        int(value)
         return True
     except ValueError:
         return False
