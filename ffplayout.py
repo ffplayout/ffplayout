@@ -366,7 +366,7 @@ def src_or_dummy(src, duration, seek, out, dummy_len=None):
         if seek > 0.0 or out < duration:
             return seek_in_cut_end(src, duration, seek, out)
         else:
-            return ['-i', src]  + add_filter
+            return ['-i', src] + add_filter
     else:
         mail_or_log(
             'Clip not exist:', get_time(None),
@@ -383,7 +383,12 @@ def src_or_dummy(src, duration, seek, out, dummy_len=None):
 def check_sync(begin):
     time_now = get_time('full_sec')
     start = float(_playlist.start * 3600)
-    tolerance = _buffer.tol * 4
+
+    # in copy mode buffer length can not be calculatet correctly...
+    if _pre_comp.copy:
+        tolerance = 60
+    else:
+        tolerance = _buffer.tol * 4
 
     t_dist = begin - time_now
     if 0 <= time_now < start and not begin == start:
