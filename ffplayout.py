@@ -653,15 +653,13 @@ class GetSourceIter:
         self.dummy_len = 60
         self.last_mod_time = 0.0
 
-    def __iter__(self):
-        return self
-
-    def __next__(self):
+    def next(self):
         while True:
             self.get_playlist()
 
             if self.clip_nodes is None:
-                return self.src_cmd
+                yield self.src_cmd
+                continue
 
             # when last clip is None or a dummy,
             # we have to jump to the right place in the playlist
@@ -749,7 +747,7 @@ class GetSourceIter:
                 self.error_handling('Playlist is not valid!')
 
             if self.src_cmd is not None:
-                return self.src_cmd
+                yield self.src_cmd
 
 
 # independent thread for clip preparation
@@ -757,12 +755,7 @@ def play_clips(out_file, GetSourceIter):
     # send current file to buffer stdin
     iter = GetSourceIter
 
-    while True:
-        src_cmd = next(iter)
-
-        if not src_cmd:
-            break
-
+    for src_cmd in iter.next():
         if _pre_comp.copy:
             ff_pre_settings = _pre_comp.copy_settings
         else:
@@ -793,7 +786,6 @@ def play_clips(out_file, GetSourceIter):
             copyfileobj(file_piper.stdout, out_file)
         finally:
             file_piper.wait()
-            break
 
 
 def main():
