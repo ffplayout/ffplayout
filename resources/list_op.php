@@ -44,7 +44,7 @@ if (!empty($_GET['time_shift'])) {
 }
 
 /* -----------------------------------------------------------------------------
-xml playlist operations
+json playlist operations
 ------------------------------------------------------------------------------*/
 
 // file extension to filter
@@ -60,21 +60,28 @@ $except = array(
 
 $ext = implode('|', $except);
 
-// read from xml file
+// read from json file
 // formate the values and generate readeble output
-if(!empty($_GET['xml_path'])) {
-    $xml_date = $_GET['xml_path'];
-    $date_str = explode('-', $xml_date);
+if(!empty($_GET['json_path'])) {
+    $json_date = $_GET['json_path'];
+    $date_str = explode('-', $json_date);
     $get_ini = get_config();
     $get_dir = "/^playlist_path.*\$/m";
     preg_match_all($get_dir, $get_ini, $matches);
     $line = implode("\n", $matches[0]);
     $path_root = explode("= ", $line)[1];
 
-    $xml_path = $path_root . "/" . $date_str[0] . "/" . $date_str[1] . "/" . $xml_date . ".xml";
+    $json_path = $path_root . "/" . $date_str[0] . "/" . $date_str[1] . "/" . $json_date . ".json";
 
-    if (file_exists($xml_path)) {
-        $xml = simplexml_load_file($xml_path) or die("Error: Cannot create object");
+    if (file_exists($json_path)) {
+        $content = file_get_contents($json_path) or die("Error: Cannot create object");
+        $json = json_decode($content, true);
+
+        list($hh, $mm, $ss) = explode(":", $json["begin"]);
+        list($l_hh, $l_mm, $l_ss) = explode(":", $json["length"]);
+
+        $start = $hh * 3600 + $mm * 60 + $ss;
+        $length = $l_hh * 3600 + $l_mm * 60 + $l_ss;
 
         $src_re = array();
         $src_re[0] = '/# [0-9-]+.('.$ext.')$/';
@@ -82,19 +89,21 @@ if(!empty($_GET['xml_path'])) {
         $src_re[2] = '/.('.$ext.')$/';
         $src_re[3] = '/^# /';
 
-        foreach($xml->body[0]->video as $video) {
-            $src       = preg_replace('/^\//', '', $video['src']);
-            $src_arr   = explode('/', $src);
-            $name      = preg_replace($src_re, '', end($src_arr));
-            $name      = str_replace('§', '?', $name);
-            $clipBegin = $video['begin'];
-            $begin     = gmdate("H:i:s", intval($clipBegin));
-            $dur       = $video['dur'];
-            $duration  = gmdate("H:i:s", intval($dur));
-            $in        = $video['in'];
-            $in_p      = gmdate("H:i:s", intval($in));
-            $out       = $video['out'];
-            $out_p     = gmdate("H:i:s", intval($out));
+        foreach($json["program"] as $video) {
+            $src            = preg_replace('/^\//', '', $video['source']);
+            $src_arr        = explode('/', $src);
+            $name           = preg_replace($src_re, '', end($src_arr));
+            $name           = str_replace('§', '?', $name);
+            $clipBegin      = $start;
+            $begin          = gmdate("H:i:s", intval($clipBegin));
+            $dur            = $video['duration'];
+            $duration       = gmdate("H:i:s", intval($dur));
+            $in             = $video['in'];
+            $in_p           = gmdate("H:i:s", intval($in));
+            $out            = $video['out'];
+            $out_p          = gmdate("H:i:s", intval($out));
+
+            $start += $out - $in;
 
             $play      = '<a href="#" data-href="' .  $src . '" class="file-play"><i class="fa fa-play-circle file-op"></i></a>';
 
@@ -136,7 +145,7 @@ if(!empty($_GET['xml_path'])) {
 
 // generate object from dragged item
 if(!empty($_GET['li_path'])) {
-    $path = urldecode($_GET['li_path']);
+    $path = rawurldecode($_GET['li_path']);
 
     $src_re = array();
     $src_re[0] = '/# [0-9-]+.('.$ext.')$/';
@@ -181,34 +190,46 @@ if(!empty($_POST['save'])) {
     preg_match_all($get_dir, $get_ini, $matches);
     $line = implode("\n", $matches[0]);
     $path_root = explode("= ", $line)[1];
-    $xml_path = $path_root . "/" . $date_str[0] . "/" . $date_str[1];
-    $xml_output = $xml_path . "/" . $date . ".xml";
+    $json_path = $path_root . "/" . $date_str[0] . "/" . $date_str[1];
+    $json_output = $json_path . "/" . $date . ".json";
 
-    // create xml head
-    $xml_str = sprintf('<playlist>
-    <head>
-        <meta name="author" content="example"/>
-        <meta name="title" content="Live Stream"/>
-        <meta name="copyright" content="(c)%s example.org"/>
-        <meta name="date" content="%s"/>
-    </head>
-    <body>%s', $date_str[0], $date, "\n");
+    $beginRaw = round($raw_arr[0]->begin);
+    $start = sprintf('%02d:%02d:%02d', ($beginRaw/3600),($beginRaw/60%60), $beginRaw%60);
 
-    // create xml video element
+    // prepare header
+    $list = array(
+        "channel" => "Test 1",
+         "date" => $date,
+         "begin" => $start,
+         "length" => "24:00:00.000",
+         "program" => []
+    );
+
+    $length = 0;
+
+    // create json video element
     foreach($raw_arr as $rawline) {
-        $formated_src = str_replace('&', '&amp;', $rawline->src);
-        $xml_str .= sprintf('        <video src="%s" begin="%s" dur="%s" in="%s" out="%s"/>%s', $formated_src, $rawline->begin, $rawline->dur, $rawline->in, $rawline->out, "\n");
+        $clipItem = array(
+            "in" => floatval($rawline->in),
+            "out" => floatval($rawline->out),
+            "duration" => floatval($rawline->dur),
+            "source" => intval($rawline->src)
+        );
+
+        $list["program"][] = $clipItem;
+
+        $length += round($rawline->out - $rawline->in);
     }
 
-    // crate xml end
-    $xml_str .= "    </body>\n</playlist>\n";
+    $list["program"]["length"] = sprintf('%02d:%02d:%02d', ($length/3600),($length/60%60), $length%60);
 
-    if (!is_dir($xml_path)) {
-        mkdir($xml_path, 0777, true);
+    if (!is_dir($json_path)) {
+        mkdir($json_path, 0777, true);
     }
 
-    file_put_contents($xml_output, $xml_str);
-    printf('Save playlist "%s.xml" done...', $date);
+    file_put_contents($json_output, json_encode(
+        $list, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT));
+    printf('Save playlist "%s.json" done...', $date);
 }
 
 // fill playlist to 24 hours
@@ -224,38 +245,56 @@ if(!empty($_POST['fill_playlist'])) {
     preg_match_all($get_dir, $get_ini, $matches);
     $line = implode("\n", $matches[0]);
     $path_root = explode("= ", $line)[1];
-    $xml_path = $path_root . "/" . $date_str[0] . "/" . $date_str[1];
-    $xml_output = $xml_path . "/" . $list_date . ".xml";
+    $json_path = $path_root . "/" . $date_str[0] . "/" . $date_str[1];
+    $json_output = $json_path . "/" . $list_date . ".json";
 
-    $fill = shell_exec("./sh/fill.sh '".$list_date."' '".$diff_len."' '".$start_time."'");
+    $fill = shell_exec("./sh/fill.sh '".$diff_len."'");
 
-    // create xml head
-    $xml_str = sprintf('<playlist>
-    <head>
-        <meta name="author" content="example"/>
-        <meta name="title" content="Live Stream"/>
-        <meta name="copyright" content="(c)%s example.org"/>
-        <meta name="date" content="%s"/>
-    </head>
-    <body>%s', $date_str[0], $list_date, "\n");
+    $beginRaw = round($raw_arr[0]->begin);
+    $start = sprintf('%02d:%02d:%02d', ($beginRaw/3600),($beginRaw/60%60), $beginRaw%60);
 
-    // create xml video element
+    // prepare header
+    $list = array(
+        "channel" => "Test 1",
+         "date" => $list_date,
+         "begin" => $start,
+         "length" => "24:00:00.000",
+         "program" => []
+    );
+
+    // create json video element
     foreach($raw_arr as $rawline) {
-        $formated_src = str_replace('&', '&amp;', $rawline->src);
-        $xml_str .= sprintf('        <video src="%s" begin="%s" dur="%s" in="%s" out="%s"/>%s', $formated_src, $rawline->begin, $rawline->dur, $rawline->in, $rawline->out, "\n");
+        $clipItem = array(
+            "in" => floatval($rawline->in),
+            "out" => floatval($rawline->out),
+            "duration" => floatval($rawline->dur),
+            "source" => $rawline->src
+        );
+
+        $list["program"][] = $clipItem;
     }
 
-    // add filled clips
-    $xml_str .= $fill;
+    foreach(preg_split("/((\r?\n)|(\r\n?))/", $fill) as $line){
+        $line_arr = explode('|', $line);
 
-    // crate xml end
-    $xml_str .= "    </body>\n</playlist>\n";
+        $clipItem = array(
+            "in" => floatval($line_arr[0]),
+            "out" => floatval($line_arr[1]),
+            "duration" => floatval($line_arr[2]),
+            "source" => $line_arr[3]
+        );
 
-    if (!is_dir($xml_path)) {
-        mkdir($xml_path, 0777, true);
+        if ($line_arr[3]) {
+            $list["program"][] = $clipItem;
+        }
     }
 
-    file_put_contents($xml_output, $xml_str);
-    printf('Filled and save playlist "%s.xml" done...', $list_date);
+    if (!is_dir($json_path)) {
+        mkdir($json_path, 0777, true);
+    }
+
+    file_put_contents($json_output, json_encode(
+        $list, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT));
+    printf('Filled and save playlist "%s.json" done...', $list_date);
 }
 ?>

@@ -4,7 +4,7 @@ global functions
 
 // modal function:
 // display an overlay window for warings, clip previews, etc.
-function modal(btOK, btCan, video, title, content, x, y) {
+function modal(btOK, btCan, video, title, content, x, y, callback) {
     if (video) {
         text = '<video id="preview_player" class="video-js" controls preload="auto" autoplay="true" data-setup={}> <source src="' + content + '" type="video/mp4" /> </video>';
     } else {
@@ -28,6 +28,7 @@ function modal(btOK, btCan, video, title, content, x, y) {
                 click: function() {
                     $('#preview_player').remove()
                     $(this).dialog("close");
+                    callback(true);
                 }
             },
             {
@@ -36,6 +37,7 @@ function modal(btOK, btCan, video, title, content, x, y) {
 
                 click: function() {
                     $(this).dialog("close");
+                    callback(false);
                 }
             }
         ]
@@ -75,10 +77,10 @@ $('.calender').pignoseCalendar({
 
             if (date[0].format('YYYY-MM-DD') === list_date.format('YYYY-MM-DD')) {
                 $('#playlistBody').attr('listday', list_date.format('YYYY-MM-DD'));
-                get_xml(list_date.format('YYYY-MM-DD'), true);
+                get_json(list_date.format('YYYY-MM-DD'), true);
             } else {
                 $('#playlistBody').attr('listday', date[0].format('YYYY-MM-DD'));
-                get_xml(date[0].format('YYYY-MM-DD'), true);
+                get_json(date[0].format('YYYY-MM-DD'), true);
             }
         });
     }
@@ -128,7 +130,7 @@ function init_browse_click() {
         var current_element = $(this);
         var rawpath = current_element.closest('li').attr('data-href').replace(/^\?dir=/g, current_element);
 
-        modal(true, null, true, decodeURIComponent(rawpath.split("/").pop()), rawpath, 1039, 716);
+        modal(true, null, true, decodeURIComponent(rawpath.split("/").pop()), rawpath, 1039, 716, function(result) {});
 
         e.preventDefault();
     });
@@ -157,7 +159,7 @@ window.onload = function() {
         // write playlist date to list attribute, for later use
         $('#playlistBody').attr('listday', list_date.format("YYYY-MM-DD"));
         // read playlist from current day
-        get_xml(list_date.format("YYYY-MM-DD"), true);
+        get_json(list_date.format("YYYY-MM-DD"), true);
     });
 }
 
@@ -173,7 +175,7 @@ function init_list_op() {
         var file_path = $(this).attr('data-href');
         var play_URL = encodeURIComponent(file_path);
 
-        modal(true, null, true, decodeURIComponent(file_path.split("/").pop()), play_URL, 1039, 716);
+        modal(true, null, true, decodeURIComponent(file_path.split("/").pop()), play_URL, 1039, 716, function(result) {});
 
         e.preventDefault();
     });
@@ -192,7 +194,7 @@ function init_list_op() {
             setTimeout(enableButton, 1000);
             return true;
         } else {
-            modal(true, null, null, "Delete Item", "Removing items is limited to every second.", 'auto', 'auto');
+            modal(true, null, null, "Delete Item", "Removing items is limited to every second.", 'auto', 'auto', function(result) {});
         }
     });
 
@@ -201,7 +203,7 @@ function init_list_op() {
         var in_seconds = moment.duration($(this).val()).asSeconds();
         var in_duration = $(this).closest('ul').parent().attr('dur');
         if (in_seconds > in_duration) {
-            modal(true, null, null, "Seek in Video", "Seek Value is bigger then Duration!<br/>Please fix that...", 'auto', 'auto');
+            modal(true, null, null, "Seek in Video", "Seek Value is bigger then Duration!<br/>Please fix that...", 'auto', 'auto', function(result) {});
             $(this).val("00:00:00");
         } else {
             $(this).closest('ul').parent().attr('in', in_seconds);
@@ -215,7 +217,7 @@ function init_list_op() {
         var out_seconds = moment.duration($(this).val()).asSeconds();
         var out_dur = $(this).closest('ul').parent().attr('dur');
         if (out_seconds > out_dur) {
-            modal(true, null, null, "Cut Video", "Cut Value is bigger then Duration!<br/>Please fix that...", 'auto', 'auto');
+            modal(true, null, null, "Cut Video", "Cut Value is bigger then Duration!<br/>Please fix that...", 'auto', 'auto', function(result) {});
             $(this).val(cur_val);
         } else {
             $(this).closest('ul').parent().attr('out', out_seconds);
@@ -226,13 +228,13 @@ function init_list_op() {
     // reset button
     $('#bt_reset').click(function() {
         // scroll to playlist top
-        get_xml($('#playlistBody').attr('listday'), false);
+        get_json($('#playlistBody').attr('listday'), false);
     });
 }
 
 // read formated playlist from php function
-function get_xml(date, jump) {
-    $.get("resources/list_op.php?xml_path=" + date, function(result) {
+function get_json(date, jump) {
+    $.get("resources/list_op.php?json_path=" + date, function(result) {
         $('#playlistBody').html(result);
         init_list_op();
         if (jump) {
@@ -400,10 +402,10 @@ $('#bt_start').click(function() {
         type: "POST",
         data: "playout=start",
         beforeSend: function() {
-            modal(false, null, null, "Start Playout", '<div style="text-align:center; min-width: 120px"><img src="resources/img/35.png" height="46" width="46"></div>', 'auto', 'auto');
+            modal(false, null, null, "Start Playout", '<div style="text-align:center; min-width: 120px"><img src="resources/img/35.png" height="46" width="46"></div>', 'auto', 'auto', function(result) {});
         },
         success: function(result) {
-            modal(true, null, null, "Start Playout", '<div style="text-align:center;min-width: 120px">' + result + '</div>', 'auto', 'auto');
+            modal(true, null, null, "Start Playout", '<div style="text-align:center;min-width: 120px">' + result + '</div>', 'auto', 'auto', function(result) {});
 
             videojs('myStream').play();
             get_track_list(true);
@@ -414,47 +416,24 @@ $('#bt_start').click(function() {
 
 // stop stream
 $('#bt_stop').click(function() {
-    $('#dialog-confirm').html("Are you really sure, you want to do this?");
-    $("#dialog-confirm").dialog({
-        title: "Stop Playout",
-        resizable: false,
-        height: 'auto',
-        width: 'auto',
-        modal: true,
-        buttons: [{
-                id: "button-ok",
-                text: "Ok",
+    modal(true, true, null, "Stop Playout", '<div style="text-align:center;min-width: 120px">Are you really sure, you want to do this?</div>', 'auto', 'auto', function(result) {
+        if (result) {
+            $.ajax({
+                url: "resources/player.php",
+                type: "POST",
+                data: "playout=stop",
+                beforeSend: function() {
+                    modal(false, null, null, "Stop Playout", '<div style="text-align:center; min-width: 120px"><img src="resources/img/35.png" height="46" width="46"></div>', 'auto', 'auto', function(result) {});
+                },
+                success: function(result) {
+                    modal(true, null, null, "Stop Playout", '<div style="text-align:center;min-width: 120px">' + result + '</div>', 'auto', 'auto', function(result) {});
 
-                click: function() {
-                    $.ajax({
-                        url: "resources/player.php",
-                        type: "POST",
-                        data: "playout=stop",
-                        beforeSend: function() {
-                            modal(false, null, null, "Stop Playout", '<div style="text-align:center; min-width: 120px"><img src="resources/img/35.png" height="46" width="46"></div>', 'auto', 'auto');
-                        },
-                        success: function(result) {
-                            modal(true, null, null, "Stop Playout", '<div style="text-align:center;min-width: 120px">' + result + '</div>', 'auto', 'auto');
-
-                            videojs('myStream').pause();
-                            get_track_list(false);
-                        },
-                    });
-                }
-            },
-            {
-                id: "button-cancel",
-                text: "Cancel",
-
-                click: function() {
-                    $(this).dialog("close");
-                }
-            }
-        ]
+                    videojs('myStream').pause();
+                    get_track_list(false);
+                },
+            });
+        }
     });
-
-
-
 });
 
 /* -----------------------------------------------------------------------------
@@ -535,9 +514,9 @@ $(document).ready(function() {
         var over_length = last_start - start_time + last_out - last_in - 86400;
 
         if (over_length > 0) {
-            modal(true, null, null, "Save Playlist", "Playtime from Playlist is to long!<br/><b>Difference:</b> " + over_length, 'auto', 'auto');
+            modal(true, null, null, "Save Playlist", "Playtime from Playlist is to long!<br/><b>Difference:</b> " + over_length, 'auto', 'auto', function(result) {});
         } else if (over_length < -6) {
-            modal(true, null, null, "Save Playlist", "Playtime from Playlist is to short!<br/><b>Difference:</b> " + over_length, 'auto', 'auto');
+            modal(true, null, null, "Save Playlist", "Playtime from Playlist is to short!<br/><b>Difference:</b> " + over_length, 'auto', 'auto', function(result) {});
         } else {
             var save_list = [];
             $('#playlistBody li.list-item').each(function(){
@@ -558,7 +537,7 @@ $(document).ready(function() {
                url: "resources/list_op.php",
                data: "date=" + date + "&save=" + json,
                success: function(result) {
-                   modal(true, null, null, "Save Playlist", result, 'auto', 'auto');
+                   modal(true, null, null, "Save Playlist", result, 'auto', 'auto', function(result) {});
                }
            });
         }
@@ -573,11 +552,11 @@ $(document).ready(function() {
         var missed_length = last_start - start_time + last_out - last_in - 86400;
 
         if (missed_length > 0) {
-            modal(true, null, null, "Fill Playlist", "Playtime from Playlist is to long!<br/><b>Difference:</b> " + missed_length, 'auto', 'auto');
+            modal(true, null, null, "Fill Playlist", "Playtime from Playlist is to long!<br/><b>Difference:</b> " + missed_length, 'auto', 'auto', function(result) {});
         } else if (missed_length > -6) {
-            modal(true, null, null, "Fill Playlist", "Playtime from Playlist is in range!<br/><b>No change will made...</b>", 'auto', 'auto');
+            modal(true, null, null, "Fill Playlist", "Playtime from Playlist is in range!<br/><b>No change will made...</b>", 'auto', 'auto', function(result) {});
         } else if (missed_length < -2700) {
-            modal(true, null, null, "Fill Playlist", "Missed length to fill is bigger then 45 minutes!<br/><b>Please add more clips...</b>", 'auto', 'auto');
+            modal(true, null, null, "Fill Playlist", "Missed length to fill is bigger then 45 minutes!<br/><b>Please add more clips...</b>", 'auto', 'auto', function(result) {});
         } else {
             date = $('#playlistBody').attr('listday');
             var save_list = [];
@@ -597,15 +576,15 @@ $(document).ready(function() {
             $.ajax({
                type: "POST",
                url: "resources/list_op.php",
-               data: "fill_playlist=" + date + "&diff_len=" + Math.abs(missed_length) + "&start_time=" + (last_start + last_out - last_in ) + "&old_list=" + json,
+               data: "fill_playlist=" + date + "&diff_len=" + Math.abs(missed_length) + "&start_time=" + (last_start + last_out - last_in) + "&old_list=" + json,
                beforeSend: function() {
-                   modal(null, null, null, "Fill Playlist", "Filling Playlist in progress...", 'auto', 'auto');
+                   modal(null, null, null, "Fill Playlist", "Filling Playlist in progress...", 'auto', 'auto', function(result) {});
                },
                success: function(result) {
                   // console.log(result);
                   $('#dialog-confirm').dialog("close");
-                  modal(true, null, null, "Fill Playlist", result + "<br/><b>Filled Time:</b> " + moment.utc(Math.abs(missed_length) * 1000).format('HH:mm:ss'), 'auto', 'auto');
-                  get_xml(date, false);
+                  modal(true, null, null, "Fill Playlist", result + "<br/><b>Filled Time:</b> " + moment.utc(Math.abs(missed_length) * 1000).format('HH:mm:ss'), 'auto', 'auto', function(result) {});
+                  get_json(date, false);
                }
            });
         }
