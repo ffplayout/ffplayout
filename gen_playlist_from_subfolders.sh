@@ -27,7 +27,7 @@ playlist="$listDate.json"
 [[ -d "$trunk" ]] || mkdir -p "$trunk"
 
 c="0"
-count=$( find "$src" -name "*.mp4" | WC -l )
+count=$( find "$src" -name "*.mp4" | wc -l )
 
 # build Head for playlist
 printf  '{
