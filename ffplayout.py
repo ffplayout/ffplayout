@@ -617,12 +617,12 @@ class GetSourceIter:
             # check last modification from playlist
             mod_time = os.path.getmtime(self.json_file)
             if mod_time > self.last_mod_time:
-                with open(self.json_file) as f:
+                with open(self.json_file, 'r') as f:
                     self.clip_nodes = json.load(f)
 
-            self.last_mod_time = mod_time
-            logger.info('open: ' + self.json_file)
-            validate_thread(self.clip_nodes)
+                self.last_mod_time = mod_time
+                logger.info('open: ' + self.json_file)
+                validate_thread(self.clip_nodes)
         else:
             # when we have no playlist for the current day,
             # then we generate a black clip
@@ -666,6 +666,7 @@ class GetSourceIter:
             self.first, self.last_time = check_last_item(
                 self.src_cmd, self.last_time, self.last)
 
+            # get start time from playlist
             if "begin" in self.clip_nodes:
                 h, m, s = self.clip_nodes["begin"].split(':')
                 if is_float(h) and is_float(m) and is_float(s):
@@ -705,14 +706,14 @@ class GetSourceIter:
                     break
                 elif self.last_time and self.last_time < self.begin:
                     if node == self.clip_nodes["program"][-1]:
-                        last = True
+                        self.last = True
                     else:
-                        last = False
+                        self.last = False
 
                     check_sync(self.begin)
 
                     self.src_cmd, self.time_left = gen_input(
-                        src, self.begin, duration, seek, out, last
+                        src, self.begin, duration, seek, out, self.last
                     )
 
                     if self.time_left is None:
@@ -753,7 +754,7 @@ class GetSourceIter:
 # independent thread for clip preparation
 def play_clips(out_file, GetSourceIter):
     # send current file to buffer stdin
-    iter = GetSourceIter
+    iter = GetSourceIter()
 
     for src_cmd in iter.next():
         if _pre_comp.copy:
@@ -844,7 +845,7 @@ def main():
             play_thread = Thread(
                 name='play_clips', target=play_clips, args=(
                     mbuffer.stdin,
-                    GetSourceIter(),
+                    GetSourceIter,
                 )
             )
             play_thread.daemon = True
