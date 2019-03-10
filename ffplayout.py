@@ -22,7 +22,6 @@ import configparser
 import json
 import logging
 import os
-import re
 import smtplib
 import socket
 import sys
@@ -71,7 +70,7 @@ _pre_comp = SimpleNamespace(
         'PRE_COMPRESS', 'width') / cfg.getfloat('PRE_COMPRESS', 'height'),
     fps=cfg.getint('PRE_COMPRESS', 'fps'),
     v_bitrate=cfg.getint('PRE_COMPRESS', 'v_bitrate'),
-    v_bufsize=cfg.getint('PRE_COMPRESS', 'v_bitrate'),
+    v_bufsize=cfg.getint('PRE_COMPRESS', 'v_bitrate') / 2,
     protocols=cfg.get('PRE_COMPRESS', 'live_protocols'),
     copy=cfg.getboolean('PRE_COMPRESS', 'copy_mode'),
     copy_settings=literal_eval(cfg.get('PRE_COMPRESS', 'ffmpeg_copy_settings'))
@@ -139,7 +138,7 @@ logger.addHandler(handler)
 
 
 # capture stdout and sterr in the log
-class ffplayout_logger(object):
+class PlayoutLogger(object):
     def __init__(self, logger, level):
         self.logger = logger
         self.level = level
@@ -154,9 +153,9 @@ class ffplayout_logger(object):
 
 
 # Replace stdout with logging to file at INFO level
-sys.stdout = ffplayout_logger(logger, logging.INFO)
+sys.stdout = PlayoutLogger(logger, logging.INFO)
 # Replace stderr with logging to file at ERROR level
-sys.stderr = ffplayout_logger(logger, logging.ERROR)
+sys.stderr = PlayoutLogger(logger, logging.ERROR)
 
 
 # ------------------------------------------------------------------------------
@@ -187,7 +186,7 @@ def get_date(seek_day):
 
 
 # send error messages to email addresses
-def mail_or_log(message, time, path):
+def mailer(message, time, path):
     if _mail.recip:
         msg = MIMEMultipart()
         msg['From'] = _mail.s_addr
@@ -225,11 +224,11 @@ def calc_buffer_size():
     # so we calculate the size different
     if _pre_comp.copy:
         list_date = get_date(True)
-        year, month, day = re.split('-', list_date)
+        year, month, day = list_date.split('-')
         json_file = os.path.join(
             _playlist.path, year, month, list_date + '.json')
 
-        if check_file_exist(json_file):
+        if file_exist(json_file):
             with open(json_file) as f:
                 clip_nodes = json.load(f)
 
@@ -258,25 +257,25 @@ def calc_buffer_size():
 
 
 # check if processes a well
-def check_process(watch_proc, terminate_proc, play_thread):
+def check_process(play_thread, playout, mbuffer):
     while True:
         sleep(4)
-        if watch_proc.poll() is not None:
+        if playout.poll() is not None:
             logger.error(
                 'postprocess is not alive anymore, terminate ffplayout!')
-            terminate_proc.terminate()
+            mbuffer.terminate()
             break
 
         if not play_thread.is_alive():
             logger.error(
                 'preprocess is not alive anymore, terminate ffplayout!')
-            terminate_proc.terminate()
+            mbuffer.terminate()
             break
 
 
 # check if input file exist,
 # when not send email and generate blackclip
-def check_file_exist(in_file):
+def file_exist(in_file):
     if os.path.exists(in_file):
         return True
     else:
@@ -345,10 +344,8 @@ def src_or_dummy(src, duration, seek, out, dummy_len=None):
         live_duration = check_output(cmd)
 
         if '404' in live_duration.decode('utf-8'):
-            mail_or_log(
-                'Clip not exist:', get_time(None),
-                src
-            )
+            mailer('Clip not exist:', get_time(None), src)
+            logger.error('Clip not exist: {}'.format(src))
             if dummy_len and not _pre_comp.copy:
                 return gen_dummy(dummy_len)
             else:
@@ -363,16 +360,14 @@ def src_or_dummy(src, duration, seek, out, dummy_len=None):
             # to be sure that out point will cut the lenght
             return seek_in_cut_end(src, 86400, 0, out - seek)
 
-    elif check_file_exist(src):
+    elif file_exist(src):
         if seek > 0.0 or out < duration:
             return seek_in_cut_end(src, duration, seek, out)
         else:
             return ['-i', src] + add_filter
     else:
-        mail_or_log(
-            'Clip not exist:', get_time(None),
-            src
-        )
+        mailer('Clip not exist:', get_time(None), src)
+        logger.error('Clip not exist: {}'.format(src))
         if dummy_len and not _pre_comp.copy:
             return gen_dummy(dummy_len)
         else:
@@ -397,10 +392,11 @@ def check_sync(begin):
 
     # check that we are in tolerance time
     if not _buffer.length - tolerance < t_dist < _buffer.length + tolerance:
-        mail_or_log(
+        mailer(
             'Playlist is not sync!', get_time(None),
             str(t_dist) + ' seconds async'
         )
+        logger.error('Playlist is {} seconds async!'.format(t_dist))
 
 
 # prepare input clip
@@ -438,10 +434,11 @@ def gen_input(src, begin, dur, seek, out, last):
         else:
             src_cmd = src_or_dummy(src, dur, 0, dur)
 
-            mail_or_log(
-                'playlist is not long enough:', get_time(None),
+            mailer(
+                'Playlist is not long enough:', get_time(None),
                 str(new_len) + ' seconds needed.'
             )
+            logger.error('Playlist is {} seconds to short'.format(new_len))
 
         return src_cmd, new_len - dur
 
@@ -524,11 +521,13 @@ def check_start_and_length(json_nodes, counter):
             total_play_time = begin + counter - start
 
             if total_play_time < length - 5:
-                mail_or_log(
+                mailer(
                     'json playlist is not long enough!',
                     get_time(None), "total play time is: "
                     + str(timedelta(seconds=total_play_time))
                 )
+                logger.error('Playlist is only {} long!'.format(
+                    timedelta(seconds=total_play_time)))
 
 
 # validate json values in new Thread
@@ -560,7 +559,7 @@ def validate_thread(clip_nodes):
                     a = 'Stream not exist! '
                 else:
                     a = ''
-            elif check_file_exist(source):
+            elif file_exist(source):
                 a = ''
             else:
                 a = 'File not exist! '
@@ -578,10 +577,14 @@ def validate_thread(clip_nodes):
                 error += line + 'In line: ' + str(node) + '\n'
 
         if error:
-            mail_or_log(
+            mailer(
                 'Validation error, check json playlist, values are missing:\n',
                 get_time(None), error
             )
+            logger.error(
+                'Playlist Validation error, values are missing: {}'.format(
+                    error)
+                )
 
         check_start_and_length(json_nodes, counter)
 
@@ -609,11 +612,11 @@ class GetSourceIter:
         self.begin = 0
 
     def get_playlist(self):
-        year, month, day = re.split('-', self.list_date)
+        year, month, day = self.list_dat.split('-')
         self.json_file = os.path.join(
          _playlist.path, year, month, self.list_date + '.json')
 
-        if check_file_exist(self.json_file):
+        if file_exist(self.json_file):
             # check last modification from playlist
             mod_time = os.path.getmtime(self.json_file)
             if mod_time > self.last_mod_time:
@@ -646,7 +649,8 @@ class GetSourceIter:
 
             self.first = True
 
-        mail_or_log(message, get_time(None), self.json_file)
+        mailer(message, get_time(None), self.json_file)
+        logger.error('{} {}'.format(message, self.json_file))
 
         self.begin = get_time('full_sec') + _buffer.length + _buffer.tol
         self.last = False
@@ -768,7 +772,7 @@ def play_clips(out_file, GetSourceIter):
                 '-b:v', '{}k'.format(_pre_comp.v_bitrate),
                 '-minrate', '{}k'.format(_pre_comp.v_bitrate),
                 '-maxrate', '{}k'.format(_pre_comp.v_bitrate),
-                '-bufsize', '{}k'.format(_pre_comp.v_bufsize / 2),
+                '-bufsize', '{}k'.format(_pre_comp.v_bufsize),
                 '-c:a', 's302m', '-strict', '-2', '-ar', '48000', '-ac', '2',
                 '-threads', '2', '-f', 'mpegts', '-'
             ]
@@ -790,7 +794,7 @@ def play_clips(out_file, GetSourceIter):
 
 
 def main():
-    year, month, _day = re.split('-', get_date(False))
+    year = get_date(False).split('-')[0]
     try:
         # open a buffer for the streaming pipeline
         # stdin get the files loop
@@ -851,7 +855,7 @@ def main():
             play_thread.daemon = True
             play_thread.start()
 
-            check_process(playout, mbuffer, play_thread)
+            check_process(play_thread, playout, mbuffer)
         finally:
             playout.wait()
     finally:
