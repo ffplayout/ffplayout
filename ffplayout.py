@@ -50,7 +50,7 @@ else:
     cfg.read("ffplayout.conf")
 
 _general = SimpleNamespace(
-    stop=cfg.get('GENERAL', 'stop_on_error'),
+    stop=cfg.getboolean('GENERAL', 'stop_on_error'),
     threshold=cfg.getfloat('GENERAL', 'stop_threshold')
 )
 
@@ -337,6 +337,13 @@ def gen_dummy(duration):
 def src_or_dummy(src, duration, seek, out, dummy_len=None):
     prefix = src.split('://')[0]
 
+    if _pre_comp.copy:
+        add_filter = []
+    else:
+        add_filter = [
+            '-filter_complex', '[0:a]apad[a]',
+            '-shortest', '-map', '0:v', '-map', '[a]']
+
     # check if input is a live source
     if prefix in _pre_comp.protocols:
         cmd = [
@@ -352,14 +359,20 @@ def src_or_dummy(src, duration, seek, out, dummy_len=None):
             else:
                 return gen_dummy(out - seek)
         elif is_float(live_duration):
-            return seek_in_cut_end(src, live_duration, seek, out)
+            if seek > 0.0 or out < live_duration:
+                return seek_in_cut_end(src, live_duration, seek, out)
+            else:
+                return ['-i', src] + add_filter
         else:
             # no duration found, so we set duration to 24 hours,
             # to be sure that out point will cut the lenght
             return seek_in_cut_end(src, 86400, 0, out - seek)
 
     elif file_exist(src):
-        return seek_in_cut_end(src, duration, seek, out)
+        if seek > 0.0 or out < duration:
+            return seek_in_cut_end(src, duration, seek, out)
+        else:
+            return ['-i', src] + add_filter
     else:
         mailer('Clip not exist:', get_time(None), src)
         logger.error('Clip not exist: {}'.format(src))
@@ -393,9 +406,9 @@ def check_sync(begin):
         )
         logger.error('Playlist is {} seconds async!'.format(t_dist))
 
-    if _general.stop and t_dist > _general.threshold:
+    if _general.stop and abs(t_dist) > _general.threshold:
         logger.error('Sync tolerance value exceeded, program is terminated')
-        exit()
+        sys.exit(1)
 
 
 # prepare input clip
