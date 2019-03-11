@@ -337,13 +337,6 @@ def gen_dummy(duration):
 def src_or_dummy(src, duration, seek, out, dummy_len=None):
     prefix = src.split('://')[0]
 
-    if _pre_comp.copy:
-        add_filter = []
-    else:
-        add_filter = [
-            '-filter_complex', '[0:a]apad[a]',
-            '-shortest', '-map', '0:v', '-map', '[a]']
-
     # check if input is a live source
     if prefix in _pre_comp.protocols:
         cmd = [
@@ -359,20 +352,14 @@ def src_or_dummy(src, duration, seek, out, dummy_len=None):
             else:
                 return gen_dummy(out - seek)
         elif is_float(live_duration):
-            if seek > 0.0 or out < live_duration:
-                return seek_in_cut_end(src, live_duration, seek, out)
-            else:
-                return ['-i', src] + add_filter
+            return seek_in_cut_end(src, live_duration, seek, out)
         else:
             # no duration found, so we set duration to 24 hours,
             # to be sure that out point will cut the lenght
             return seek_in_cut_end(src, 86400, 0, out - seek)
 
     elif file_exist(src):
-        if seek > 0.0 or out < duration:
-            return seek_in_cut_end(src, duration, seek, out)
-        else:
-            return ['-i', src] + add_filter
+        return seek_in_cut_end(src, duration, seek, out)
     else:
         mailer('Clip not exist:', get_time(None), src)
         logger.error('Clip not exist: {}'.format(src))
@@ -707,9 +694,9 @@ class GetSourceIter:
                     src = node["source"]
 
                 seek = node["in"] if is_float(node["in"]) else 0
-                out = node["out"] if is_float(node["out"]) else self.dummy_len
                 duration = node["duration"] if \
                     is_float(node["duration"]) else self.dummy_len
+                out = node["out"] if is_float(node["out"]) else duration
 
                 # first time we end up here
                 if self.first and self.last_time < self.begin + duration:
