@@ -49,6 +49,11 @@ if os.path.exists("/etc/ffplayout/ffplayout.conf"):
 else:
     cfg.read("ffplayout.conf")
 
+_general = SimpleNamespace(
+    stop=cfg.get('GENERAL', 'stop_on_error'),
+    threshold=cfg.get('GENERAL', 'stop_threshold')
+)
+
 _mail = SimpleNamespace(
     subject=cfg.get('MAIL', 'subject'),
     server=cfg.get('MAIL', 'smpt_server'),
@@ -394,6 +399,10 @@ def check_sync(begin):
             str(t_dist) + ' seconds async'
         )
         logger.error('Playlist is {} seconds async!'.format(t_dist))
+
+    if _general.stop and t_dist > _general.threshold:
+        logger.error('Sync tolerance value exceeded, program is terminated')
+        exit()
 
 
 # prepare input clip
