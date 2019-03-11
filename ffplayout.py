@@ -305,7 +305,7 @@ def seek_in_cut_end(in_file, duration, seek, out):
         end = ['-map', '[v]', '-map', '[a]']
     else:
         cut_end = []
-        fade_out_vid = 'null[v];'
+        fade_out_vid = '{}null[v];'.format(fade_in_v)
         fade_out_aud = '{}apad[a]'.format(fade_in_a)
         end = ['-shortest', '-map', '[v]', '-map', '[a]']
 
