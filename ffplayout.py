@@ -285,23 +285,29 @@ def file_exist(in_file):
 
 
 # seek in clip and cut the end
+# TODO: should first file be fade in?
+# by logo blending we have to change this, maybe a filter gen class
 def seek_in_cut_end(in_file, duration, seek, out):
     if seek > 0.0:
         inpoint = ['-ss', str(seek)]
+        fade_in_v = '[0:v]fade=in:st=0:d=0.5,'
+        fade_in_a = '[0:a]afade=in:st=0:d=0.5,'
     else:
         inpoint = []
+        fade_in_v = '[0:v]'
+        fade_in_a = '[0:a]'
 
     if out < duration:
         length = out - seek - 1.0
         cut_end = ['-t', str(out - seek)]
-        fade_out_vid = '[0:v]fade=out:st=' + str(length) + ':d=1.0[v];'
-        fade_out_aud = '[0:a]afade=out:st=' + str(length) + ':d=1.0[a]'
+        fade_out_vid = '{}fade=out:st={}:d=1.0[v];'.format(fade_in_v, length)
+        fade_out_aud = '{}afade=out:st={}:d=1.0[a]'.format(fade_in_a, length)
         end = ['-map', '[v]', '-map', '[a]']
     else:
         cut_end = []
-        fade_out_vid = ''
-        fade_out_aud = '[0:a]apad[a]'
-        end = ['-shortest', '-map', '0:v', '-map', '[a]']
+        fade_out_vid = 'null[v];'
+        fade_out_aud = '{}apad[a]'.format(fade_in_a)
+        end = ['-shortest', '-map', '[v]', '-map', '[a]']
 
     if _pre_comp.copy:
         return inpoint + ['-i', in_file] + cut_end
@@ -339,7 +345,7 @@ def src_or_dummy(src, duration, seek, out, dummy_len=None):
             '-shortest', '-map', '0:v', '-map', '[a]']
 
     # check if input is a live source
-    if prefix and prefix in _pre_comp.protocols:
+    if prefix in _pre_comp.protocols:
         cmd = [
             'ffprobe', '-v', 'error', '-show_entries', 'format=duration',
             '-of', 'default=noprint_wrappers=1:nokey=1', src]
@@ -396,7 +402,7 @@ def check_sync(begin):
     if not _buffer.length - tolerance < t_dist < _buffer.length + tolerance:
         mailer(
             'Playlist is not sync!', get_time(None),
-            str(t_dist) + ' seconds async'
+            '{} seconds async'.format(t_dist)
         )
         logger.error('Playlist is {} seconds async!'.format(t_dist))
 
@@ -442,7 +448,7 @@ def gen_input(src, begin, dur, seek, out, last):
 
             mailer(
                 'Playlist is not long enough:', get_time(None),
-                str(new_len) + ' seconds needed.'
+                '{} seconds needed.'.format(new_len)
             )
             logger.error('Playlist is {} seconds to short'.format(new_len))
 
@@ -529,8 +535,8 @@ def check_start_and_length(json_nodes, counter):
             if total_play_time < length - 5:
                 mailer(
                     'json playlist is not long enough!',
-                    get_time(None), "total play time is: "
-                    + str(timedelta(seconds=total_play_time))
+                    get_time(None), "total play time is: {}".format(
+                        timedelta(seconds=total_play_time))
                 )
                 logger.error('Playlist is only {} long!'.format(
                     timedelta(seconds=total_play_time)))
@@ -559,7 +565,7 @@ def validate_thread(clip_nodes):
 
             prefix = source.split('://')[0]
 
-            if prefix and prefix in _pre_comp.protocols:
+            if prefix in _pre_comp.protocols:
                 cmd = [
                     'ffprobe', '-v', 'error',
                     '-show_entries', 'format=duration',
@@ -586,7 +592,7 @@ def validate_thread(clip_nodes):
             line = a + b + c
             if line:
                 logger.error('Validation error in line: {}'.format(line))
-                error += line + 'In line: ' + str(node) + '\n'
+                error += line + 'In line: {}\n'.format(node)
 
         if error:
             mailer(
@@ -809,7 +815,7 @@ def main():
         # stdout pipes to ffmpeg rtmp streaming
         mbuffer = Popen(
             [_buffer.cli] + list(_buffer.cmd)
-            + [str(calc_buffer_size()) + 'k'],
+            + ['{}k'.format(calc_buffer_size())],
             stdin=PIPE,
             stdout=PIPE,
             bufsize=0
