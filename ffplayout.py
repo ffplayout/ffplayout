@@ -612,7 +612,7 @@ class GetSourceIter:
         self.begin = 0
 
     def get_playlist(self):
-        year, month, day = self.list_dat.split('-')
+        year, month, day = self.list_date.split('-')
         self.json_file = os.path.join(
          _playlist.path, year, month, self.list_date + '.json')
 
