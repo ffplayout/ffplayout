@@ -51,7 +51,7 @@ else:
 
 _general = SimpleNamespace(
     stop=cfg.get('GENERAL', 'stop_on_error'),
-    threshold=cfg.get('GENERAL', 'stop_threshold')
+    threshold=cfg.getfloat('GENERAL', 'stop_threshold')
 )
 
 _mail = SimpleNamespace(
