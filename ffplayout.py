@@ -214,9 +214,6 @@ def mailer(message, time, path):
                 server.sendmail(_mail.s_addr, _mail.recip, text)
                 server.quit()
 
-    else:
-        logger.error('{} {}'.format(message, path))
-
 
 # calculating the size for the buffer in KB
 def calc_buffer_size():
@@ -532,6 +529,11 @@ def check_start_and_length(json_nodes, counter):
 
 # validate json values in new Thread
 # and test if file path exist
+# TODO: we need better and unique validation,
+# now it is messy - the file get readed twice
+# and values get multiple time evaluate
+# IDEA: open one time the playlist,
+# not in a thread and build from it a new clean dictionary
 def validate_thread(clip_nodes):
     def check_json(json_nodes):
         error = ''
@@ -574,6 +576,7 @@ def validate_thread(clip_nodes):
 
             line = a + b + c
             if line:
+                logger.error('Validation error in line: {}'.format(line))
                 error += line + 'In line: ' + str(node) + '\n'
 
         if error:
@@ -581,10 +584,6 @@ def validate_thread(clip_nodes):
                 'Validation error, check json playlist, values are missing:\n',
                 get_time(None), error
             )
-            logger.error(
-                'Playlist Validation error, values are missing: {}'.format(
-                    error)
-                )
 
         check_start_and_length(json_nodes, counter)
 
