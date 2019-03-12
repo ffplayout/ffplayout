@@ -38,28 +38,26 @@ JSON Playlist Example
             "in": 0,
             "out": 647.68,
             "duration": 647.68,
-            "source": "/Media/clip1.mp4"
-        },
-
-        {
+            "source": "/Media/clip1.mp4",
+            "category": "music"
+        }, {
             "in": 0,
             "out": 149,
             "duration": 149,
-            "source": "/Media/clip2.mp4"
-        },
-
-        {
+            "source": "/Media/clip2.mp4",
+            "category": "movie"
+        }, {
             "in": 0,
             "out": 114.72,
             "duration": 114.72,
-            "source": "/Media/clip3.mp4"
-        },
-
-        {
+            "source": "/Media/clip3.mp4",
+            "category": "advertisement"
+        }, {
             "in": 0,
             "out": 2531.36,
             "duration": 2531.36,
-            "source": "/Media/clip4.mp4"
+            "source": "/Media/clip4.mp4",
+            "category": ""
         }
     ]
 }
