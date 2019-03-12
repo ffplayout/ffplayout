@@ -301,7 +301,7 @@ def seek_in_cut_end(file, duration, seek, out):
         length = out - seek - 1.0
         cut_end = ['-t', str(out - seek)]
         video_chain.append('fade=out:st={}:d=1.0'.format(length))
-        audio_chain.append('afade=out:st={}:d=1.0'.format(length))
+        audio_chain.append('apad,afade=out:st={}:d=1.0'.format(length))
     else:
         cut_end = []
         audio_chain.append('apad')
@@ -609,7 +609,7 @@ def validate_thread(clip_nodes):
 # read values from json playlist
 class GetSourceIter:
     def __init__(self):
-        self.last_time = None
+        self.last_time = 0.0
         self.last_mod_time = 0.0
         self.json_file = None
         self.clip_nodes = None
@@ -618,7 +618,8 @@ class GetSourceIter:
         self.last = False
         self.list_date = get_date(True)
         self.dummy_len = 60
-        self.begin = 0
+        self.has_begin = False
+        self.init_time = get_time('full_sec')
 
     def get_playlist(self):
         year, month, day = self.list_date.split('-')
@@ -640,6 +641,15 @@ class GetSourceIter:
             # then we generate a black clip
             # and calculate the seek in time, for when the playlist comes back
             self.error_handling('Playlist not exist:')
+
+        # when begin is in playlist, get start time from it
+        if "begin" in self.clip_nodes:
+            h, m, s = self.clip_nodes["begin"].split(':')
+            if is_float(h) and is_float(m) and is_float(s):
+                self.has_begin = True
+                self.init_time = float(h) * 3600 + float(m) * 60 + float(s)
+        else:
+            self.has_begin = False
 
     def error_handling(self, message):
         self.src_cmd = gen_dummy(self.dummy_len)
@@ -679,17 +689,7 @@ class GetSourceIter:
             self.first, self.last_time = check_last_item(
                 self.src_cmd, self.last_time, self.last)
 
-            # get start time from playlist
-            if "begin" in self.clip_nodes:
-                h, m, s = self.clip_nodes["begin"].split(':')
-                if is_float(h) and is_float(m) and is_float(s):
-                    self.begin = float(h) * 3600 + float(m) * 60 + float(s)
-                else:
-                    self.begin = self.last_time
-            else:
-                # when clip_nodes["begin"] is not set in playlist,
-                # start from current time
-                self.begin = get_time('full_sec')
+            self.begin = self.init_time
 
             # loop through all clips in playlist
             # TODO: index we need for blend out logo on ad
@@ -708,8 +708,10 @@ class GetSourceIter:
 
                 # first time we end up here
                 if self.first and self.last_time < self.begin + duration:
-                    # calculate seek time
-                    seek = self.last_time - self.begin + seek
+                    if self.has_begin:
+                        # calculate seek time
+                        seek = self.last_time - self.begin + seek
+
                     self.src_cmd, self.time_left = gen_input(
                         src, self.begin, duration, seek, out, False
                     )
@@ -717,13 +719,14 @@ class GetSourceIter:
                     self.first = False
                     self.last_time = self.begin
                     break
-                elif self.last_time and self.last_time < self.begin:
-                    if node == self.clip_nodes["program"][-1]:
+                elif self.last_time < self.begin:
+                    if index + 1 == len(self.clip_nodes["program"]):
                         self.last = True
                     else:
                         self.last = False
 
-                    check_sync(self.begin)
+                    if self.has_begin:
+                        check_sync(self.begin)
 
                     self.src_cmd, self.time_left = gen_input(
                         src, self.begin, duration, seek, out, self.last
