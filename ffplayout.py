@@ -155,58 +155,8 @@ sys.stderr = PlayoutLogger(logger, logging.ERROR)
 
 
 # ------------------------------------------------------------------------------
-# global helper functions
+# mail sender
 # ------------------------------------------------------------------------------
-
-# get time
-def get_time(time_format):
-    t = datetime.today() + timedelta(seconds=_playlist.shift)
-    if time_format == 'hour':
-        return t.hour
-    elif time_format == 'full_sec':
-        sec = float(t.hour * 3600 + t.minute * 60 + t.second)
-        micro = float(t.microsecond) / 1000000
-        return sec + micro
-    else:
-        return t.strftime("%H:%M:%S")
-
-
-# get date
-def get_date(seek_day):
-    d = date.today() + timedelta(seconds=_playlist.shift)
-    if get_time('hour') < _playlist.start and seek_day:
-        yesterday = d - timedelta(1)
-        return yesterday.strftime('%Y-%m-%d')
-    else:
-        return d.strftime('%Y-%m-%d')
-
-
-# check if input file exist,
-# when not send email and generate blackclip
-def file_exist(in_file):
-    if os.path.exists(in_file):
-        return True
-    else:
-        return False
-
-
-# test if value is float
-def is_float(value):
-    try:
-        float(value)
-        return True
-    except ValueError:
-        return False
-
-
-# test if value is int
-def is_int(value):
-    try:
-        int(value)
-        return True
-    except ValueError:
-        return False
-
 
 # send error messages to email addresses
 def mailer(message, time, path):
@@ -236,6 +186,59 @@ def mailer(message, time, path):
             if login is not None:
                 server.sendmail(_mail.s_addr, _mail.recip, text)
                 server.quit()
+
+
+# ------------------------------------------------------------------------------
+# global helper functions
+# ------------------------------------------------------------------------------
+
+# get time
+def get_time(time_format):
+    t = datetime.today() + timedelta(seconds=_playlist.shift)
+    if time_format == 'hour':
+        return t.hour
+    elif time_format == 'full_sec':
+        sec = float(t.hour * 3600 + t.minute * 60 + t.second)
+        micro = float(t.microsecond) / 1000000
+        return sec + micro
+    else:
+        return t.strftime("%H:%M:%S")
+
+
+# get date
+def get_date(seek_day):
+    d = date.today() + timedelta(seconds=_playlist.shift)
+    if get_time('hour') < _playlist.start and seek_day:
+        yesterday = d - timedelta(1)
+        return yesterday.strftime('%Y-%m-%d')
+    else:
+        return d.strftime('%Y-%m-%d')
+
+
+# check if input file exist
+def file_exist(in_file):
+    if os.path.exists(in_file):
+        return True
+    else:
+        return False
+
+
+# test if value is float
+def is_float(value):
+    try:
+        float(value)
+        return True
+    except ValueError:
+        return False
+
+
+# test if value is int
+def is_int(value):
+    try:
+        int(value)
+        return True
+    except ValueError:
+        return False
 
 
 # calculating the size for the buffer in KB
@@ -569,9 +572,8 @@ def gen_input(src, begin, dur, seek, out, last):
 
 
 # blend logo and fade in / fade out
-def build_filtergraph(first, duration, seek, out, ad, ad_last, ad_next):
+def build_filtergraph(first, duration, seek, out, ad, ad_last, ad_next, dummy):
     length = out - seek - 1.0
-    logo_input = []
     logo_chain = []
     logo_filter = []
     video_chain = []
@@ -603,8 +605,9 @@ def build_filtergraph(first, duration, seek, out, ad, ad_last, ad_next):
 
     if os.path.exists(_pre_comp.logo):
         if not ad:
-            logo_input = ['-thread_queue_size', '16', '-i', _pre_comp.logo]
-            logo_chain.append('[1:v]trim=duration={}'.format(out - seek))
+            opacity = 'format=rgba,colorchannelmixer=aa=0.7'
+            logo_chain.append('movie={},{},trim=duration={}'.format(
+                    _pre_comp.logo, opacity, out - seek))
         if ad_last:
             logo_chain.append('fade=in:st=0:d=1.0:alpha=1')
         if ad_next:
@@ -613,9 +616,10 @@ def build_filtergraph(first, duration, seek, out, ad, ad_last, ad_next):
         if not ad:
             logo_filter = '{}[l];[v][l]{}[logo]'.format(
                     ','.join(logo_chain), _pre_comp.logo_filter)
-            video_map = ['-map', '[logo]']
         else:
             logo_filter = '[v]null[logo]'
+    else:
+        logo_filter = '[v]null[logo]'
 
     video_filter = [
         '-filter_complex', '[0:v]{};{};{}'.format(
@@ -623,8 +627,10 @@ def build_filtergraph(first, duration, seek, out, ad, ad_last, ad_next):
 
     if _pre_comp.copy:
         return []
+    elif dummy:
+        return video_filter + video_map
     else:
-        return logo_input + video_filter + audio_filter + video_map + audio_map
+        return video_filter + audio_filter + video_map + audio_map
 
 
 # ------------------------------------------------------------------------------
@@ -669,7 +675,7 @@ class GetSourceIter:
             self.error_handling('Playlist not exist:')
 
         # when begin is in playlist, get start time from it
-        if "begin" in self.clip_nodes:
+        if self.clip_nodes and "begin" in self.clip_nodes:
             h, m, s = self.clip_nodes["begin"].split(':')
             if is_float(h) and is_float(m) and is_float(s):
                 self.has_begin = True
@@ -707,7 +713,10 @@ class GetSourceIter:
             self.get_playlist()
 
             if self.clip_nodes is None:
-                yield self.src_cmd, []
+                self.filtergraph = build_filtergraph(
+                    self.first, self.dummy_len, 0,
+                    self.dummy_len, False, False, False, True)
+                yield self.src_cmd, self.filtergraph
                 continue
 
             # when last clip is None or a dummy,
@@ -756,10 +765,14 @@ class GetSourceIter:
                         src, self.begin, duration, seek, out, False
                     )
 
-                    self.filtergraph = build_filtergraph(
-                        self.first, duration, seek, out, ad, ad_last, ad_next)
+                    if 'anullsrc=r=48000' in self.src_cmd:
+                        is_dummy = True
+                    else:
+                        is_dummy = False
 
-                    # print(self.src_cmd, self.filtergraph)
+                    self.filtergraph = build_filtergraph(
+                        self.first, duration, seek, out,
+                        ad, ad_last, ad_next, is_dummy)
 
                     self.first = False
                     self.last_time = self.begin
@@ -777,8 +790,14 @@ class GetSourceIter:
                         src, self.begin, duration, seek, out, self.last
                     )
 
+                    if 'anullsrc=r=48000' in self.src_cmd:
+                        is_dummy = True
+                    else:
+                        is_dummy = False
+
                     self.filtergraph = build_filtergraph(
-                        self.first, duration, seek, out, ad, ad_last, ad_next)
+                        self.first, duration, seek, out,
+                        ad, ad_last, ad_next, is_dummy)
 
                     if self.time_left is None:
                         # normal behavior
