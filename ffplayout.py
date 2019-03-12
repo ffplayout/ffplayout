@@ -790,7 +790,12 @@ def play_clips(out_file, GetSourceIter):
             ]
 
         try:
-            logger.info('play: {}'.format(src_cmd))
+            if src_cmd[0] == '-i':
+                current_file = src_cmd[1]
+            else:
+                current_file = src_cmd[3]
+
+            logger.info('play: "{}"'.format(current_file))
 
             file_piper = Popen(
                 [
