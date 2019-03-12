@@ -76,6 +76,8 @@ _pre_comp = SimpleNamespace(
     fps=cfg.getint('PRE_COMPRESS', 'fps'),
     v_bitrate=cfg.getint('PRE_COMPRESS', 'v_bitrate'),
     v_bufsize=cfg.getint('PRE_COMPRESS', 'v_bitrate') / 2,
+    logo=cfg.get('PRE_COMPRESS', 'logo'),
+    logo_filter=cfg.get('PRE_COMPRESS', 'logo_filter'),
     protocols=cfg.get('PRE_COMPRESS', 'live_protocols'),
     copy=cfg.getboolean('PRE_COMPRESS', 'copy_mode'),
     copy_settings=literal_eval(cfg.get('PRE_COMPRESS', 'ffmpeg_copy_settings'))
@@ -107,17 +109,6 @@ _playout = SimpleNamespace(
     post_comp_extra=literal_eval(cfg.get('OUT', 'post_comp_extra')),
     post_comp_copy=literal_eval(cfg.get('OUT', 'post_comp_copy'))
 )
-
-# set logo filtergraph
-if os.path.exists(cfg.get('OUT', 'logo')):
-    _playout.logo = ['-thread_queue_size', '16', '-i', cfg.get('OUT', 'logo')]
-    _playout.filter = [
-        '-filter_complex', '[0:v][1:v]' + cfg.get('OUT', 'logo_o') + '[o]',
-        '-map', '[o]', '-map', '0:a'
-    ]
-else:
-    _playout.logo = []
-    _playout.filter = []
 
 
 # ------------------------------------------------------------------------------
@@ -188,6 +179,33 @@ def get_date(seek_day):
         return yesterday.strftime('%Y-%m-%d')
     else:
         return d.strftime('%Y-%m-%d')
+
+
+# check if input file exist,
+# when not send email and generate blackclip
+def file_exist(in_file):
+    if os.path.exists(in_file):
+        return True
+    else:
+        return False
+
+
+# test if value is float
+def is_float(value):
+    try:
+        float(value)
+        return True
+    except ValueError:
+        return False
+
+
+# test if value is int
+def is_int(value):
+    try:
+        int(value)
+        return True
+    except ValueError:
+        return False
 
 
 # send error messages to email addresses
@@ -275,108 +293,6 @@ def check_process(play_thread, playout, mbuffer):
             break
 
 
-# check if input file exist,
-# when not send email and generate blackclip
-def file_exist(in_file):
-    if os.path.exists(in_file):
-        return True
-    else:
-        return False
-
-
-# seek in clip and cut the end
-# TODO: should first file be fade in?
-# by logo blending we have to change this, maybe a filter gen class
-def seek_in_cut_end(file, duration, seek, out):
-    video_chain = []
-    audio_chain = []
-    if seek > 0.0:
-        inpoint = ['-ss', str(seek)]
-        video_chain.append('fade=in:st=0:d=0.5')
-        audio_chain.append('afade=in:st=0:d=0.5')
-    else:
-        inpoint = []
-
-    if out < duration:
-        length = out - seek - 1.0
-        cut_end = ['-t', str(out - seek)]
-        video_chain.append('fade=out:st={}:d=1.0'.format(length))
-        audio_chain.append('apad,afade=out:st={}:d=1.0'.format(length))
-    else:
-        cut_end = []
-        audio_chain.append('apad')
-
-    if video_chain:
-        video_filter = [
-            '-filter_complex', '[0:v]{}[v]'.format(','.join(video_chain)),
-            '-map', '[v]'
-            ]
-    else:
-        video_filter = ['-map', '0:v']
-
-    audio_filter = [
-        '-filter_complex', '[0:a]{}[a]'.format(','.join(audio_chain)),
-        '-shortest', '-map', '[a]'
-        ]
-
-    if _pre_comp.copy:
-        return inpoint + ['-i', file] + cut_end
-    else:
-        return inpoint + ['-i', file] + cut_end + video_filter + audio_filter
-
-
-# generate a dummy clip, with black color and empty audiotrack
-def gen_dummy(duration):
-    if _pre_comp.copy:
-        return ['-i', _playlist.blackclip]
-    else:
-        return [
-            '-f', 'lavfi', '-i',
-            'color=s={}x{}:d={}'.format(
-                _pre_comp.w, _pre_comp.h, duration
-            ),
-            '-f', 'lavfi', '-i', 'anullsrc=r=48000',
-            '-shortest'
-        ]
-
-
-# when source path exist, generate input with seek and out time
-# when path not exist, generate dummy clip
-def src_or_dummy(src, duration, seek, out, dummy_len=None):
-    prefix = src.split('://')[0]
-
-    # check if input is a live source
-    if prefix in _pre_comp.protocols:
-        cmd = [
-            'ffprobe', '-v', 'error', '-show_entries', 'format=duration',
-            '-of', 'default=noprint_wrappers=1:nokey=1', src]
-        live_duration = check_output(cmd)
-
-        if '404' in live_duration.decode('utf-8'):
-            mailer('Clip not exist:', get_time(None), src)
-            logger.error('Clip not exist: {}'.format(src))
-            if dummy_len and not _pre_comp.copy:
-                return gen_dummy(dummy_len)
-            else:
-                return gen_dummy(out - seek)
-        elif is_float(live_duration):
-            return seek_in_cut_end(src, live_duration, seek, out)
-        else:
-            # no duration found, so we set duration to 24 hours,
-            # to be sure that out point will cut the lenght
-            return seek_in_cut_end(src, 86400, 0, out - seek)
-
-    elif file_exist(src):
-        return seek_in_cut_end(src, duration, seek, out)
-    else:
-        mailer('Clip not exist:', get_time(None), src)
-        logger.error('Clip not exist: {}'.format(src))
-        if dummy_len and not _pre_comp.copy:
-            return gen_dummy(dummy_len)
-        else:
-            return gen_dummy(out - seek)
-
-
 # compare clip play time with real time,
 # to see if we are sync
 def check_sync(begin):
@@ -404,85 +320,6 @@ def check_sync(begin):
     if _general.stop and abs(t_dist - _buffer.length) > _general.threshold:
         logger.error('Sync tolerance value exceeded, program is terminated')
         sys.exit(1)
-
-
-# prepare input clip
-# check begin and length from clip
-# return clip only if we are in 24 hours time range
-def gen_input(src, begin, dur, seek, out, last):
-    start = float(_playlist.start * 3600)
-    day_in_sec = 86400.0
-    ref_time = day_in_sec + start
-    time = get_time('full_sec')
-
-    if 0 <= time < start:
-        time += day_in_sec
-
-    # calculate time difference to see if we are sync
-    time_diff = _buffer.length + _buffer.tol + out - seek + time
-
-    if (time_diff <= ref_time or begin < day_in_sec) and not last:
-        # when we are in the 24 houre range, get the clip
-        return src_or_dummy(src, dur, seek, out, 20), None
-    elif time_diff < ref_time and last:
-        # when last clip is passed and we still have too much time left
-        # check if duration is larger then out - seek
-        time_diff = _buffer.length + _buffer.tol + dur + time
-        new_len = dur - (time_diff - ref_time)
-        logger.info('we are under time, new_len is: {}'.format(new_len))
-
-        if time_diff >= ref_time:
-            if src == _playlist.filler:
-                # when filler is something like a clock,
-                # is better to start the clip later and to play until end
-                src_cmd = src_or_dummy(src, dur, dur - new_len, dur)
-            else:
-                src_cmd = src_or_dummy(src, dur, 0, new_len)
-        else:
-            src_cmd = src_or_dummy(src, dur, 0, dur)
-
-            mailer(
-                'Playlist is not long enough:', get_time(None),
-                '{} seconds needed.'.format(new_len)
-            )
-            logger.error('Playlist is {} seconds to short'.format(new_len))
-
-        return src_cmd, new_len - dur
-
-    elif time_diff > ref_time:
-        new_len = out - seek - (time_diff - ref_time)
-        # when we over the 24 hours range, trim clip
-        logger.info('we are over time, new_len is: {}'.format(new_len))
-
-        if new_len > 5.0:
-            if src == _playlist.filler:
-                src_cmd = src_or_dummy(src, dur, out - new_len, out)
-            else:
-                src_cmd = src_or_dummy(src, dur, seek, new_len)
-        elif new_len > 1.0:
-            src_cmd = gen_dummy(new_len)
-        else:
-            src_cmd = None
-
-        return src_cmd, 0.0
-
-
-# test if value is float
-def is_float(value):
-    try:
-        float(value)
-        return True
-    except ValueError:
-        return False
-
-
-# test if value is int
-def is_int(value):
-    try:
-        int(value)
-        return True
-    except ValueError:
-        return False
 
 
 # check last item, when it is None or a dummy clip,
@@ -602,6 +439,194 @@ def validate_thread(clip_nodes):
     validate.start()
 
 
+# seek in clip
+def seek_in(seek):
+    if seek > 0.0:
+        return ['-ss', str(seek)]
+    else:
+        return []
+
+
+# cut clip length
+def cut_end(duration, seek, out):
+    if out < duration:
+        return ['-t', str(out - seek)]
+    else:
+        return []
+
+
+# generate a dummy clip, with black color and empty audiotrack
+def gen_dummy(duration):
+    if _pre_comp.copy:
+        return ['-i', _playlist.blackclip]
+    else:
+        return [
+            '-f', 'lavfi', '-i',
+            'color=s={}x{}:d={}'.format(
+                _pre_comp.w, _pre_comp.h, duration
+            ),
+            '-f', 'lavfi', '-i', 'anullsrc=r=48000',
+            '-shortest'
+        ]
+
+
+# when source path exist, generate input with seek and out time
+# when path not exist, generate dummy clip
+def src_or_dummy(src, duration, seek, out, dummy_len=None):
+    prefix = src.split('://')[0]
+
+    # check if input is a live source
+    if prefix in _pre_comp.protocols:
+        cmd = [
+            'ffprobe', '-v', 'error', '-show_entries', 'format=duration',
+            '-of', 'default=noprint_wrappers=1:nokey=1', src]
+        duration = check_output(cmd)
+
+        if '404' in duration.decode('utf-8'):
+            mailer('Clip not exist:', get_time(None), src)
+            logger.error('Clip not exist: {}'.format(src))
+            if dummy_len and not _pre_comp.copy:
+                return gen_dummy(dummy_len)
+            else:
+                return gen_dummy(out - seek)
+        elif is_float(duration):
+            return seek_in(seek) + ['-i', src] + cut_end(duration, seek, out)
+        else:
+            # no duration found, so we set duration to 24 hours,
+            # to be sure that out point will cut the lenght
+            return ['-i', src] + cut_end(86400, 0, out - seek)
+
+    elif file_exist(src):
+        return seek_in(seek) + ['-i', src] + cut_end(duration, seek, out)
+    else:
+        mailer('Clip not exist:', get_time(None), src)
+        logger.error('Clip not exist: {}'.format(src))
+        if dummy_len and not _pre_comp.copy:
+            return gen_dummy(dummy_len)
+        else:
+            return gen_dummy(out - seek)
+
+
+# prepare input clip
+# check begin and length from clip
+# return clip only if we are in 24 hours time range
+def gen_input(src, begin, dur, seek, out, last):
+    start = float(_playlist.start * 3600)
+    day_in_sec = 86400.0
+    ref_time = day_in_sec + start
+    time = get_time('full_sec')
+
+    if 0 <= time < start:
+        time += day_in_sec
+
+    # calculate time difference to see if we are sync
+    time_diff = _buffer.length + _buffer.tol + out - seek + time
+
+    if (time_diff <= ref_time or begin < day_in_sec) and not last:
+        # when we are in the 24 houre range, get the clip
+        return src_or_dummy(src, dur, seek, out, 20), None
+    elif time_diff < ref_time and last:
+        # when last clip is passed and we still have too much time left
+        # check if duration is larger then out - seek
+        time_diff = _buffer.length + _buffer.tol + dur + time
+        new_len = dur - (time_diff - ref_time)
+        logger.info('we are under time, new_len is: {}'.format(new_len))
+
+        if time_diff >= ref_time:
+            if src == _playlist.filler:
+                # when filler is something like a clock,
+                # is better to start the clip later and to play until end
+                src_cmd = src_or_dummy(src, dur, dur - new_len, dur)
+            else:
+                src_cmd = src_or_dummy(src, dur, 0, new_len)
+        else:
+            src_cmd = src_or_dummy(src, dur, 0, dur)
+
+            mailer(
+                'Playlist is not long enough:', get_time(None),
+                '{} seconds needed.'.format(new_len)
+            )
+            logger.error('Playlist is {} seconds to short'.format(new_len))
+
+        return src_cmd, new_len - dur
+
+    elif time_diff > ref_time:
+        new_len = out - seek - (time_diff - ref_time)
+        # when we over the 24 hours range, trim clip
+        logger.info('we are over time, new_len is: {}'.format(new_len))
+
+        if new_len > 5.0:
+            if src == _playlist.filler:
+                src_cmd = src_or_dummy(src, dur, out - new_len, out)
+            else:
+                src_cmd = src_or_dummy(src, dur, seek, new_len)
+        elif new_len > 1.0:
+            src_cmd = gen_dummy(new_len)
+        else:
+            src_cmd = None
+
+        return src_cmd, 0.0
+
+
+# blend logo and fade in / fade out
+def build_filtergraph(first, duration, seek, out, ad, ad_last, ad_next):
+    length = out - seek - 1.0
+    logo_input = []
+    logo_chain = []
+    logo_filter = []
+    video_chain = []
+    audio_chain = []
+    video_map = ['-map', '[logo]']
+
+    scale = 'scale={}:{},setdar=dar={}[s]'.format(
+        _pre_comp.w, _pre_comp.h, _pre_comp.aspect)
+
+    if seek > 0.0 and not first:
+        video_chain.append('fade=in:st=0:d=0.5')
+        audio_chain.append('afade=in:st=0:d=0.5')
+
+    if out < duration:
+        video_chain.append('fade=out:st={}:d=1.0'.format(length))
+        audio_chain.append('apad,afade=out:st={}:d=1.0'.format(length))
+    else:
+        audio_chain.append('apad')
+
+    if video_chain:
+        video_fade = '[s]{}[v]'.format(','.join(video_chain))
+    else:
+        video_fade = '[s]null[v]'
+
+    audio_filter = [
+        '-filter_complex', '[0:a]{}[a]'.format(','.join(audio_chain))]
+
+    audio_map = ['-shortest', '-map', '[a]']
+
+    if os.path.exists(_pre_comp.logo):
+        if not ad:
+            logo_input = ['-thread_queue_size', '16', '-i', _pre_comp.logo]
+            logo_chain.append('[1:v]trim=duration={}'.format(out - seek))
+        if ad_last:
+            logo_chain.append('fade=in:st=0:d=1.0:alpha=1')
+        if ad_next:
+            logo_chain.append('fade=out:st={}:d=1.0:alpha=1'.format(length))
+
+        if not ad:
+            logo_filter = '{}[l];[v][l]{}[logo]'.format(
+                    ','.join(logo_chain), _pre_comp.logo_filter)
+            video_map = ['-map', '[logo]']
+        else:
+            logo_filter = '[v]null[logo]'
+
+    video_filter = [
+        '-filter_complex', '[0:v]{};{};{}'.format(
+            scale, video_fade, logo_filter)]
+
+    if _pre_comp.copy:
+        return []
+    else:
+        return logo_input + video_filter + audio_filter + video_map + audio_map
+
+
 # ------------------------------------------------------------------------------
 # main functions
 # ------------------------------------------------------------------------------
@@ -614,6 +639,7 @@ class GetSourceIter:
         self.json_file = None
         self.clip_nodes = None
         self.src_cmd = None
+        self.filtergraph = []
         self.first = True
         self.last = False
         self.list_date = get_date(True)
@@ -681,7 +707,7 @@ class GetSourceIter:
             self.get_playlist()
 
             if self.clip_nodes is None:
-                yield self.src_cmd
+                yield self.src_cmd, []
                 continue
 
             # when last clip is None or a dummy,
@@ -692,7 +718,6 @@ class GetSourceIter:
             self.begin = self.init_time
 
             # loop through all clips in playlist
-            # TODO: index we need for blend out logo on ad
             for index, node in enumerate(self.clip_nodes["program"]):
                 if _playlist.map_ext:
                     _ext = literal_eval(_playlist.map_ext)
@@ -706,6 +731,21 @@ class GetSourceIter:
                     is_float(node["duration"]) else self.dummy_len
                 out = node["out"] if is_float(node["out"]) else duration
 
+                if 'category' in node:
+                    if index - 1 >= 0:
+                        last_node = self.clip_nodes["program"][index - 1]
+                    else:
+                        last_node = "noad"
+
+                    if index + 2 <= len(self.clip_nodes["program"]):
+                        next_node = self.clip_nodes["program"][index + 1]
+                    else:
+                        next_node = "noad"
+
+                    ad = True if node["category"] == 'advertisement' else False
+                    ad_last = True if last_node == 'advertisement' else False
+                    ad_next = True if next_node == 'advertisement' else False
+
                 # first time we end up here
                 if self.first and self.last_time < self.begin + duration:
                     if self.has_begin:
@@ -715,6 +755,11 @@ class GetSourceIter:
                     self.src_cmd, self.time_left = gen_input(
                         src, self.begin, duration, seek, out, False
                     )
+
+                    self.filtergraph = build_filtergraph(
+                        self.first, duration, seek, out, ad, ad_last, ad_next)
+
+                    # print(self.src_cmd, self.filtergraph)
 
                     self.first = False
                     self.last_time = self.begin
@@ -731,6 +776,9 @@ class GetSourceIter:
                     self.src_cmd, self.time_left = gen_input(
                         src, self.begin, duration, seek, out, self.last
                     )
+
+                    self.filtergraph = build_filtergraph(
+                        self.first, duration, seek, out, ad, ad_last, ad_next)
 
                     if self.time_left is None:
                         # normal behavior
@@ -764,7 +812,7 @@ class GetSourceIter:
                 self.error_handling('Playlist is not valid!')
 
             if self.src_cmd is not None:
-                yield self.src_cmd
+                yield self.src_cmd, self.filtergraph
 
 
 # independent thread for clip preparation
@@ -772,13 +820,11 @@ def play_clips(out_file, GetSourceIter):
     # send current file to buffer stdin
     iter = GetSourceIter()
 
-    for src_cmd in iter.next():
+    for src_cmd, filtergraph in iter.next():
         if _pre_comp.copy:
             ff_pre_settings = _pre_comp.copy_settings
         else:
-            ff_pre_settings = [
-                '-s', '{}x{}'.format(_pre_comp.w, _pre_comp.h),
-                '-aspect', str(_pre_comp.aspect),
+            ff_pre_settings = filtergraph + [
                 '-pix_fmt', 'yuv420p', '-r', str(_pre_comp.fps),
                 '-c:v', 'mpeg2video', '-intra',
                 '-b:v', '{}k'.format(_pre_comp.v_bitrate),
@@ -845,8 +891,7 @@ def main():
                         '-re', '-thread_queue_size', '256',
                         '-fflags', '+igndts', '-i', 'pipe:0',
                         '-fflags', '+genpts'
-                    ] + _playout.logo + _playout.filter + \
-                        _playout.post_comp_video + \
+                    ] + _playout.post_comp_video + \
                         _playout.post_comp_audio
 
                 playout = Popen(
