@@ -287,34 +287,42 @@ def file_exist(in_file):
 # seek in clip and cut the end
 # TODO: should first file be fade in?
 # by logo blending we have to change this, maybe a filter gen class
-def seek_in_cut_end(in_file, duration, seek, out):
+def seek_in_cut_end(file, duration, seek, out):
+    video_chain = []
+    audio_chain = []
     if seek > 0.0:
         inpoint = ['-ss', str(seek)]
-        fade_in_v = '[0:v]fade=in:st=0:d=0.5,'
-        fade_in_a = '[0:a]afade=in:st=0:d=0.5,'
+        video_chain.append('fade=in:st=0:d=0.5')
+        audio_chain.append('afade=in:st=0:d=0.5')
     else:
         inpoint = []
-        fade_in_v = '[0:v]'
-        fade_in_a = '[0:a]'
 
     if out < duration:
         length = out - seek - 1.0
         cut_end = ['-t', str(out - seek)]
-        fade_out_vid = '{}fade=out:st={}:d=1.0[v];'.format(fade_in_v, length)
-        fade_out_aud = '{}afade=out:st={}:d=1.0[a]'.format(fade_in_a, length)
-        end = ['-map', '[v]', '-map', '[a]']
+        video_chain.append('fade=out:st={}:d=1.0'.format(length))
+        audio_chain.append('afade=out:st={}:d=1.0'.format(length))
     else:
         cut_end = []
-        fade_out_vid = '{}null[v];'.format(fade_in_v)
-        fade_out_aud = '{}apad[a]'.format(fade_in_a)
-        end = ['-shortest', '-map', '[v]', '-map', '[a]']
+        audio_chain.append('apad')
+
+    if video_chain:
+        video_filter = [
+            '-filter_complex', '[0:v]{}[v]'.format(','.join(video_chain)),
+            '-map', '[v]'
+            ]
+    else:
+        video_filter = ['-map', '0:v']
+
+    audio_filter = [
+        '-filter_complex', '[0:a]{}[a]'.format(','.join(audio_chain)),
+        '-shortest', '-map', '[a]'
+        ]
 
     if _pre_comp.copy:
-        return inpoint + ['-i', in_file] + cut_end
+        return inpoint + ['-i', file] + cut_end
     else:
-        return inpoint + ['-i', in_file] + cut_end + [
-            '-filter_complex', fade_out_vid + fade_out_aud
-            ] + end
+        return inpoint + ['-i', file] + cut_end + video_filter + audio_filter
 
 
 # generate a dummy clip, with black color and empty audiotrack
@@ -337,13 +345,6 @@ def gen_dummy(duration):
 def src_or_dummy(src, duration, seek, out, dummy_len=None):
     prefix = src.split('://')[0]
 
-    if _pre_comp.copy:
-        add_filter = []
-    else:
-        add_filter = [
-            '-filter_complex', '[0:a]apad[a]',
-            '-shortest', '-map', '0:v', '-map', '[a]']
-
     # check if input is a live source
     if prefix in _pre_comp.protocols:
         cmd = [
@@ -359,20 +360,14 @@ def src_or_dummy(src, duration, seek, out, dummy_len=None):
             else:
                 return gen_dummy(out - seek)
         elif is_float(live_duration):
-            if seek > 0.0 or out < live_duration:
-                return seek_in_cut_end(src, live_duration, seek, out)
-            else:
-                return ['-i', src] + add_filter
+            return seek_in_cut_end(src, live_duration, seek, out)
         else:
             # no duration found, so we set duration to 24 hours,
             # to be sure that out point will cut the lenght
             return seek_in_cut_end(src, 86400, 0, out - seek)
 
     elif file_exist(src):
-        if seek > 0.0 or out < duration:
-            return seek_in_cut_end(src, duration, seek, out)
-        else:
-            return ['-i', src] + add_filter
+        return seek_in_cut_end(src, duration, seek, out)
     else:
         mailer('Clip not exist:', get_time(None), src)
         logger.error('Clip not exist: {}'.format(src))
@@ -406,7 +401,7 @@ def check_sync(begin):
         )
         logger.error('Playlist is {} seconds async!'.format(t_dist))
 
-    if _general.stop and abs(t_dist) > _general.threshold:
+    if _general.stop and abs(t_dist - _buffer.length) > _general.threshold:
         logger.error('Sync tolerance value exceeded, program is terminated')
         sys.exit(1)
 
@@ -538,7 +533,7 @@ def check_start_and_length(json_nodes, counter):
                     get_time(None), "total play time is: {}".format(
                         timedelta(seconds=total_play_time))
                 )
-                logger.error('Playlist is only {} long!'.format(
+                logger.error('Playlist is only {} hours long!'.format(
                     timedelta(seconds=total_play_time)))
 
 
