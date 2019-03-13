@@ -33,7 +33,7 @@ from email.mime.text import MIMEText
 from email.utils import formatdate
 from logging.handlers import TimedRotatingFileHandler
 from shutil import copyfileobj
-from subprocess import PIPE, Popen, check_output
+from subprocess import PIPE, CalledProcessError, Popen, check_output
 from threading import Thread
 from time import sleep
 from types import SimpleNamespace
@@ -405,9 +405,13 @@ def validate_thread(clip_nodes):
                     'ffprobe', '-v', 'error',
                     '-show_entries', 'format=duration',
                     '-of', 'default=noprint_wrappers=1:nokey=1', source]
-                output = check_output(cmd)
 
-                if '404' in output.decode('utf-8'):
+                try:
+                    output = check_output(cmd).decode('utf-8')
+                except CalledProcessError:
+                    output = '404'
+
+                if '404' in output:
                     a = 'Stream not exist! '
                 else:
                     a = ''
@@ -465,8 +469,8 @@ def gen_dummy(duration):
     else:
         return [
             '-f', 'lavfi', '-i',
-            'color=s={}x{}:d={}'.format(
-                _pre_comp.w, _pre_comp.h, duration
+            'color=s={}x{}:d={}:r={}'.format(
+                _pre_comp.w, _pre_comp.h, duration, _pre_comp.fps
             ),
             '-f', 'lavfi', '-i', 'anullsrc=r=48000',
             '-shortest'
@@ -476,38 +480,23 @@ def gen_dummy(duration):
 # when source path exist, generate input with seek and out time
 # when path not exist, generate dummy clip
 def src_or_dummy(src, duration, seek, out, dummy_len=None):
-    prefix = src.split('://')[0]
+    if src:
+        prefix = src.split('://')[0]
 
-    # check if input is a live source
-    if prefix in _pre_comp.protocols:
-        cmd = [
-            'ffprobe', '-v', 'error', '-show_entries', 'format=duration',
-            '-of', 'default=noprint_wrappers=1:nokey=1', src]
-        duration = check_output(cmd)
-
-        if '404' in duration.decode('utf-8'):
+        # check if input is a live source
+        if prefix in _pre_comp.protocols:
+            return seek_in(seek) + ['-i', src] + cut_end(duration, seek, out)
+        elif file_exist(src):
+            return seek_in(seek) + ['-i', src] + cut_end(duration, seek, out)
+        else:
             mailer('Clip not exist:', get_time(None), src)
             logger.error('Clip not exist: {}'.format(src))
             if dummy_len and not _pre_comp.copy:
                 return gen_dummy(dummy_len)
             else:
                 return gen_dummy(out - seek)
-        elif is_float(duration):
-            return seek_in(seek) + ['-i', src] + cut_end(duration, seek, out)
-        else:
-            # no duration found, so we set duration to 24 hours,
-            # to be sure that out point will cut the lenght
-            return ['-i', src] + cut_end(86400, 0, out - seek)
-
-    elif file_exist(src):
-        return seek_in(seek) + ['-i', src] + cut_end(duration, seek, out)
     else:
-        mailer('Clip not exist:', get_time(None), src)
-        logger.error('Clip not exist: {}'.format(src))
-        if dummy_len and not _pre_comp.copy:
-            return gen_dummy(dummy_len)
-        else:
-            return gen_dummy(out - seek)
+        return gen_dummy(dummy_len)
 
 
 # prepare input clip
@@ -606,8 +595,10 @@ def build_filtergraph(first, duration, seek, out, ad, ad_last, ad_next, dummy):
     if os.path.exists(_pre_comp.logo):
         if not ad:
             opacity = 'format=rgba,colorchannelmixer=aa=0.7'
-            logo_chain.append('movie={},{},trim=duration={}'.format(
-                    _pre_comp.logo, opacity, out - seek))
+            loop = 'loop=loop={}:size=1:start=0'.format(
+                    (out - seek) * _pre_comp.fps)
+            logo_chain.append('movie={},{},{}'.format(
+                    _pre_comp.logo, loop, opacity))
         if ad_last:
             logo_chain.append('fade=in:st=0:d=1.0:alpha=1')
         if ad_next:
@@ -649,9 +640,18 @@ class GetSourceIter:
         self.first = True
         self.last = False
         self.list_date = get_date(True)
+        self.is_dummy = False
         self.dummy_len = 60
         self.has_begin = False
         self.init_time = get_time('full_sec')
+
+        self.src = None
+        self.seek = 0
+        self.out = 60
+        self.duration = 60
+        self.ad = False
+        self.ad_last = False
+        self.ad_next = False
 
     def get_playlist(self):
         year, month, day = self.list_date.split('-')
@@ -683,6 +683,100 @@ class GetSourceIter:
         else:
             self.has_begin = False
 
+    def url_or_live_source(self):
+        prefix = self.src.split('://')[0]
+
+        # check if input is a live source
+        if prefix in _pre_comp.protocols:
+            cmd = [
+                'ffprobe', '-v', 'error', '-show_entries', 'format=duration',
+                '-of', 'default=noprint_wrappers=1:nokey=1', self.src]
+
+            try:
+                output = check_output(cmd).decode('utf-8')
+            except CalledProcessError:
+                output = None
+
+            if not output:
+                self.duration = 60
+                mailer('Clip not exist:', get_time(None), self.src)
+                logger.error('Clip not exist: {}'.format(self.src))
+                if self.dummy_len and not _pre_comp.copy:
+                    self.src = None
+                else:
+                    self.src = None
+                    self.dummy_len = 20
+            elif is_float(output):
+                self.duration = float(output)
+            else:
+                self.duration = 86400
+                self.out = self.out - self.seek
+                self.seek = 0
+
+    def map_extension(self, node):
+        if _playlist.map_ext:
+            _ext = literal_eval(_playlist.map_ext)
+            self.src = node["source"].replace(
+                _ext[0], _ext[1])
+        else:
+            self.src = node["source"]
+
+    def clip_length(self, node):
+        if is_float(node["in"]):
+            self.seek = node["in"]
+        else:
+            self.seek = 0
+
+        if is_float(node["duration"]):
+            self.duration = node["duration"]
+        else:
+            self.duration = self.dummy_len
+
+        if is_float(node["out"]):
+            self.out = node["out"]
+        else:
+            self.out = self.duration
+
+    def get_category(self, index, node):
+        if 'category' in node:
+            if index - 1 >= 0:
+                last_category = self.clip_nodes[
+                    "program"][index - 1]["category"]
+            else:
+                last_category = "noad"
+
+            if index + 2 <= len(self.clip_nodes["program"]):
+                next_category = self.clip_nodes[
+                    "program"][index + 1]["category"]
+            else:
+                next_category = "noad"
+
+            if node["category"] == 'advertisement':
+                self.ad = True
+            else:
+                self.ad = False
+
+            if last_category == 'advertisement':
+                self.ad_last = True
+            else:
+                self.ad_last = False
+
+            if next_category == 'advertisement':
+                self.ad_next = True
+            else:
+                self.ad_next = False
+
+    def set_filtergraph(self):
+        self.filtergraph = build_filtergraph(
+            self.first, self.duration, self.seek, self.out,
+            self.ad, self.ad_last, self.ad_next, self.is_dummy)
+
+    def check_source(self):
+        if 'anullsrc=r=48000' in self.src_cmd:
+            self.is_dummy = True
+        else:
+            self.is_dummy = False
+
     def error_handling(self, message):
         self.src_cmd = gen_dummy(self.dummy_len)
 
@@ -713,9 +807,7 @@ class GetSourceIter:
             self.get_playlist()
 
             if self.clip_nodes is None:
-                self.filtergraph = build_filtergraph(
-                    self.first, self.dummy_len, 0,
-                    self.dummy_len, False, False, False, True)
+                self.set_filtergraph()
                 yield self.src_cmd, self.filtergraph
                 continue
 
@@ -728,51 +820,25 @@ class GetSourceIter:
 
             # loop through all clips in playlist
             for index, node in enumerate(self.clip_nodes["program"]):
-                if _playlist.map_ext:
-                    _ext = literal_eval(_playlist.map_ext)
-                    src = node["source"].replace(
-                        _ext[0], _ext[1])
-                else:
-                    src = node["source"]
-
-                seek = node["in"] if is_float(node["in"]) else 0
-                duration = node["duration"] if \
-                    is_float(node["duration"]) else self.dummy_len
-                out = node["out"] if is_float(node["out"]) else duration
-
-                if 'category' in node:
-                    if index - 1 >= 0:
-                        last_node = self.clip_nodes["program"][index - 1]
-                    else:
-                        last_node = "noad"
-
-                    if index + 2 <= len(self.clip_nodes["program"]):
-                        next_node = self.clip_nodes["program"][index + 1]
-                    else:
-                        next_node = "noad"
-
-                    ad = True if node["category"] == 'advertisement' else False
-                    ad_last = True if last_node == 'advertisement' else False
-                    ad_next = True if next_node == 'advertisement' else False
+                self.map_extension(node)
+                self.clip_length(node)
 
                 # first time we end up here
-                if self.first and self.last_time < self.begin + duration:
+                if self.first and \
+                        self.last_time < self.begin + self.out - self.seek:
                     if self.has_begin:
                         # calculate seek time
-                        seek = self.last_time - self.begin + seek
+                        self.seek = self.last_time - self.begin + self.seek
 
+                    self.url_or_live_source()
                     self.src_cmd, self.time_left = gen_input(
-                        src, self.begin, duration, seek, out, False
+                        self.src, self.begin, self.duration,
+                        self.seek, self.out, False
                     )
 
-                    if 'anullsrc=r=48000' in self.src_cmd:
-                        is_dummy = True
-                    else:
-                        is_dummy = False
-
-                    self.filtergraph = build_filtergraph(
-                        self.first, duration, seek, out,
-                        ad, ad_last, ad_next, is_dummy)
+                    self.check_source()
+                    self.get_category(index, node)
+                    self.set_filtergraph()
 
                     self.first = False
                     self.last_time = self.begin
@@ -786,18 +852,15 @@ class GetSourceIter:
                     if self.has_begin:
                         check_sync(self.begin)
 
+                    self.url_or_live_source()
                     self.src_cmd, self.time_left = gen_input(
-                        src, self.begin, duration, seek, out, self.last
+                        self.src, self.begin, self.duration,
+                        self.seek, self.out, self.last
                     )
 
-                    if 'anullsrc=r=48000' in self.src_cmd:
-                        is_dummy = True
-                    else:
-                        is_dummy = False
-
-                    self.filtergraph = build_filtergraph(
-                        self.first, duration, seek, out,
-                        ad, ad_last, ad_next, is_dummy)
+                    self.check_source()
+                    self.get_category(index, node)
+                    self.set_filtergraph()
 
                     if self.time_left is None:
                         # normal behavior
@@ -817,7 +880,7 @@ class GetSourceIter:
 
                     break
 
-                self.begin += out - seek
+                self.begin += self.out - self.seek
             else:
                 # when we reach currect end, stop script
                 if "begin" not in self.clip_nodes or \
