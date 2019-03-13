@@ -78,7 +78,7 @@ You can use sources from url or live stream in that way:
             "in": 0,
             "out": 149,
             "duration": 149,
-            "source": "https://clips.vorwaerts-gmbh.de/big_buck_bunny.webm"
+            "source": "https://example.org/big_buck_bunny.webm"
         },
 ...
         {
