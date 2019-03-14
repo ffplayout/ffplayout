@@ -1,6 +1,7 @@
 **ffplayout**
 ================
-
+[![made-with-python](https://img.shields.io/badge/Made%20with-Python-1f425f.svg)](https://www.python.org/)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
 This is a streaming solution based on python and ffmpeg.
 
@@ -18,9 +19,9 @@ Features
 - overlay a logo
 - trim and fade the last clip, to get full 24 hours, if the duration is less then 6 seconds add a blank clip
 - set custom day start, so you can have playlist for example: from 6am to 6am, instate of 0am to 12pm
-- copy mode, for more infos take a look in the wiki
+- copy mode, for more infos take a look in the [Wiki](https://github.com/jb-alvarado/ffplayout/wiki/Copy-Mode)
 - normal system requirements and no special tools
-    - we only need **ffmpeg**, **ffprobe** and a buffer tool like **mbuffer** or **pv**
+    - we only need **ffmpeg**, **ffprobe** and a buffer tool like **mbuffer**, **pv** or [pipebuffer](https://github.com/jb-alvarado/pipebuffer/releases)
     - no GPU power is needed
     - ram and cpu depends on video resolution, minimum 4 threads and 3GB ram for 720p are recommend
 - python version 3.5 and up
@@ -39,13 +40,11 @@ JSON Playlist Example
             "out": 647.68,
             "duration": 647.68,
             "source": "/Media/clip1.mp4",
-            "category": "music"
         }, {
             "in": 0,
             "out": 149,
             "duration": 149,
             "source": "/Media/clip2.mp4",
-            "category": "movie"
         }, {
             "in": 0,
             "out": 114.72,
@@ -91,7 +90,7 @@ You can use sources from url or live stream in that way:
 ```
 But be careful with it, better test it multiple times!
 
-More informations in [wiki](https://github.com/jb-alvarado/ffplayout/wiki/URL---Live-Source)
+More informations in [Wiki](https://github.com/jb-alvarado/ffplayout/wiki/URL---Live-Source)
 
 Installation
 -----
