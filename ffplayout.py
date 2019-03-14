@@ -412,21 +412,21 @@ def validate_thread(clip_nodes):
                     output = '404'
 
                 if '404' in output:
-                    a = 'Stream not exist! '
+                    a = 'Stream not exist: {}\n'.format(source)
                 else:
                     a = ''
             elif file_exist(source):
                 a = ''
             else:
-                a = 'File not exist! '
+                a = 'File not exist: {}\n'.format(source)
 
             if is_float(node["in"]) and is_float(node["out"]):
                 b = ''
                 counter += node["out"] - node["in"]
             else:
-                b = 'Missing Value! '
+                b = 'Missing Value in: {}\n'.format(node)
 
-            c = '' if is_float(node["duration"]) else 'No DURATION Value! '
+            c = '' if is_float(node["duration"]) else 'No duration Value! '
 
             line = a + b + c
             if line:
@@ -807,6 +807,7 @@ class GetSourceIter:
             self.get_playlist()
 
             if self.clip_nodes is None:
+                self.is_dummy = True
                 self.set_filtergraph()
                 yield self.src_cmd, self.filtergraph
                 continue
