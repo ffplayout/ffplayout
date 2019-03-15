@@ -364,12 +364,16 @@ def check_start_and_length(json_nodes, counter):
             length = float(l_h) * 3600 + float(l_m) * 60 + float(l_s)
 
             start = float(_playlist.start * 3600)
-
             total_play_time = begin + counter - start
+
+            if "date" in json_nodes:
+                date = json_nodes["date"]
+            else:
+                date = get_date(True)
 
             if total_play_time < length - 5:
                 mailer(
-                    'json playlist is not long enough!',
+                    'json playlist ({}) is not long enough!'.format(date),
                     get_time(None), "total play time is: {}".format(
                         timedelta(seconds=total_play_time))
                 )
