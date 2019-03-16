@@ -782,6 +782,7 @@ class GetSourceIter:
             self.is_dummy = False
 
     def error_handling(self, message):
+        self.is_dummy = True
         self.src_cmd = gen_dummy(self.dummy_len)
 
         if self.last:
