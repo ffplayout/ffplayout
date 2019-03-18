@@ -115,15 +115,22 @@ _playout = SimpleNamespace(
 # logging
 # ------------------------------------------------------------------------------
 
-stdin_parser = ArgumentParser(description="python and ffmpeg based playout")
+stdin_parser = ArgumentParser(
+    description="python and ffmpeg based playout",
+    epilog="don't use parameters if you want to take the settings from config")
+
 stdin_parser.add_argument(
-    "-l", "--log", help="file to write log to (default '" + _log.path + "')"
+    "-l", "--log", help="file path for logfile"
+)
+
+stdin_parser.add_argument(
+    "-f", "--file", help="playlist file"
 )
 
 # If the log file is specified on the command line then override the default
 stdin_args = stdin_parser.parse_args()
 if stdin_args.log:
-        _log.path = stdin_args.log
+    _log.path = stdin_args.log
 
 logger = logging.getLogger(__name__)
 logger.setLevel(_log.level)
@@ -651,16 +658,19 @@ class GetSourceIter:
 
         self.src = None
         self.seek = 0
-        self.out = 60
-        self.duration = 60
+        self.out = 20
+        self.duration = 20
         self.ad = False
         self.ad_last = False
         self.ad_next = False
 
     def get_playlist(self):
-        year, month, day = self.list_date.split('-')
-        self.json_file = os.path.join(
-         _playlist.path, year, month, self.list_date + '.json')
+        if stdin_args.file:
+            self.json_file = stdin_args.file
+        else:
+            year, month, day = self.list_date.split('-')
+            self.json_file = os.path.join(
+             _playlist.path, year, month, self.list_date + '.json')
 
         if file_exist(self.json_file):
             # check last modification from playlist
