@@ -645,7 +645,7 @@ class GetSourceIter:
         self.last = False
         self.list_date = get_date(True)
         self.is_dummy = False
-        self.dummy_len = 60
+        self.dummy_len = 20
         self.has_begin = False
         self.init_time = get_time('full_sec')
 
@@ -782,7 +782,11 @@ class GetSourceIter:
             self.is_dummy = False
 
     def error_handling(self, message):
+        self.seek = 0.0
+        self.out = self.dummy_len
         self.src_cmd = gen_dummy(self.dummy_len)
+        self.is_dummy = True
+        self.set_filtergraph()
 
         if self.last:
             self.last_time = float(_playlist.start * 3600 - 5)
@@ -801,9 +805,10 @@ class GetSourceIter:
         mailer(message, get_time(None), self.json_file)
         logger.error('{} {}'.format(message, self.json_file))
 
+        self.list_date = get_date(True)
         self.begin = get_time('full_sec') + _buffer.length + _buffer.tol
         self.last = False
-        self.dummy_len = 60
+        self.dummy_len = 20
         self.last_mod_time = 0.0
 
     def next(self):
