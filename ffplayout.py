@@ -85,12 +85,16 @@ _pre_comp = SimpleNamespace(
 
 _playlist = SimpleNamespace(
     path=cfg.get('PLAYLIST', 'playlist_path'),
-    start=cfg.getint('PLAYLIST', 'day_start'),
+    t=cfg.get('PLAYLIST', 'day_start').split(':'),
+    start=0,
     filler=cfg.get('PLAYLIST', 'filler_clip'),
     blackclip=cfg.get('PLAYLIST', 'blackclip'),
     shift=cfg.getint('PLAYLIST', 'time_shift'),
     map_ext=cfg.get('PLAYLIST', 'map_extension')
 )
+
+_playlist.start = float(_playlist.t[0]) * 3600 + float(_playlist.t[1]) * 60 \
+    + float(_playlist.t[2])
 
 _buffer = SimpleNamespace(
     length=cfg.getint('BUFFER', 'buffer_length'),
@@ -208,6 +212,8 @@ def get_time(time_format):
         sec = float(t.hour * 3600 + t.minute * 60 + t.second)
         micro = float(t.microsecond) / 1000000
         return sec + micro
+    elif time_format == 'stamp':
+        return float(datetime.now().timestamp())
     else:
         return t.strftime("%H:%M:%S")
 
@@ -215,7 +221,7 @@ def get_time(time_format):
 # get date
 def get_date(seek_day):
     d = date.today() + timedelta(seconds=_playlist.shift)
-    if get_time('hour') < _playlist.start and seek_day:
+    if get_time('full_sec') < _playlist.start and seek_day:
         yesterday = d - timedelta(1)
         return yesterday.strftime('%Y-%m-%d')
     else:
@@ -307,7 +313,6 @@ def check_process(play_thread, playout, mbuffer):
 # to see if we are sync
 def check_sync(begin):
     time_now = get_time('full_sec')
-    start = float(_playlist.start * 3600)
 
     # in copy mode buffer length can not be calculatet correctly...
     if _pre_comp.copy:
@@ -316,7 +321,7 @@ def check_sync(begin):
         tolerance = _buffer.tol * 4
 
     t_dist = begin - time_now
-    if 0 <= time_now < start and not begin == start:
+    if 0 <= time_now < _playlist.start and not begin == _playlist.start:
         t_dist -= 86400.0
 
     # check that we are in tolerance time
@@ -327,6 +332,8 @@ def check_sync(begin):
         )
         logger.error('Playlist is {} seconds async!'.format(t_dist))
 
+    print('t_dist:', t_dist)
+
     if _general.stop and abs(t_dist - _buffer.length) > _general.threshold:
         logger.error('Sync tolerance value exceeded, program is terminated')
         sys.exit(1)
@@ -334,17 +341,18 @@ def check_sync(begin):
 
 # check last item, when it is None or a dummy clip,
 # set true and seek in playlist
+# TODO: remove this function
 def check_last_item(src_cmd, last_time, last):
     if src_cmd is None and not last:
         first = True
         last_time = get_time('full_sec')
-        if 0 <= last_time < _playlist.start * 3600:
+        if 0 <= last_time < _playlist.start:
             last_time += 86400
 
     elif 'lavfi' in src_cmd and not last:
         first = True
         last_time = get_time('full_sec') + _buffer.length + _buffer.tol
-        if 0 <= last_time < _playlist.start * 3600:
+        if 0 <= last_time < _playlist.start:
             last_time += 86400
     else:
         first = False
@@ -370,8 +378,7 @@ def check_start_and_length(json_nodes, counter):
         if is_float(l_h) and is_float(l_m) and is_float(l_s):
             length = float(l_h) * 3600 + float(l_m) * 60 + float(l_s)
 
-            start = float(_playlist.start * 3600)
-            total_play_time = begin + counter - start
+            total_play_time = begin + counter - _playlist.start
 
             if "date" in json_nodes:
                 date = json_nodes["date"]
@@ -514,12 +521,11 @@ def src_or_dummy(src, duration, seek, out, dummy_len=None):
 # check begin and length from clip
 # return clip only if we are in 24 hours time range
 def gen_input(src, begin, dur, seek, out, last):
-    start = float(_playlist.start * 3600)
     day_in_sec = 86400.0
-    ref_time = day_in_sec + start
+    ref_time = day_in_sec + _playlist.start
     time = get_time('full_sec')
 
-    if 0 <= time < start:
+    if 0 <= time < _playlist.start:
         time += day_in_sec
 
     # calculate time difference to see if we are sync
@@ -642,7 +648,11 @@ def build_filtergraph(first, duration, seek, out, ad, ad_last, ad_next, dummy):
 # read values from json playlist
 class GetSourceIter:
     def __init__(self):
-        self.last_time = 0.0
+        self.last_time = get_time('full_sec')
+
+        if 0 <= self.last_time < _playlist.start:
+            self.last_time += 86400
+
         self.last_mod_time = 0.0
         self.json_file = None
         self.clip_nodes = None
@@ -655,6 +665,8 @@ class GetSourceIter:
         self.dummy_len = 20
         self.has_begin = False
         self.init_time = get_time('full_sec')
+        self.last_error = ''
+        self.timestamp = get_time('stamp')
 
         self.src = None
         self.seek = 0
@@ -786,40 +798,51 @@ class GetSourceIter:
             self.ad, self.ad_last, self.ad_next, self.is_dummy)
 
     def check_source(self):
-        if 'anullsrc=r=48000' in self.src_cmd:
+        if self.src_cmd and 'anullsrc=r=48000' in self.src_cmd:
             self.is_dummy = True
         else:
             self.is_dummy = False
 
     def error_handling(self, message):
         self.seek = 0.0
-        self.out = self.dummy_len
+        self.out = 20
+        self.dummy_len = 20
+
+        day_in_sec = 86400.0
+        ref_time = day_in_sec + _playlist.start
+        time = get_time('full_sec')
+
+        if 0 <= time < _playlist.start:
+            time += day_in_sec
+
+        time_diff = _buffer.length + _buffer.tol + self.dummy_len + time
+        new_len = self.dummy_len - (time_diff - ref_time)
+        print('new_len', new_len)
+
+        if new_len <= 20:
+            self.out = abs(new_len)
+            self.dummy_len = abs(new_len)
+            self.list_date = get_date(False)
+            self.last_mod_time = 0.0
+            self.first = False
+
+            self.last_time = 0.0
+        else:
+            self.list_date = get_date(True)
+
         self.src_cmd = gen_dummy(self.dummy_len)
         self.is_dummy = True
         self.set_filtergraph()
 
-        if self.last:
-            self.last_time = float(_playlist.start * 3600 - 5)
-            self.first = False
-        else:
-            self.last_time = (
-                get_time('full_sec') + self.dummy_len
-                + _buffer.length + _buffer.tol
-            )
+        if get_time('stamp') - self.timestamp > 3600 \
+                and message != self.last_error:
+            self.last_error = message
+            mailer(message, get_time(None), self.json_file)
+            self.timestamp = get_time('stamp')
 
-            if 0 <= self.last_time < _playlist.start * 3600:
-                self.last_time += 86400
-
-            self.first = True
-
-        mailer(message, get_time(None), self.json_file)
         logger.error('{} {}'.format(message, self.json_file))
 
-        self.list_date = get_date(True)
-        self.begin = get_time('full_sec') + _buffer.length + _buffer.tol
         self.last = False
-        self.dummy_len = 20
-        self.last_mod_time = 0.0
 
     def next(self):
         while True:
@@ -830,11 +853,6 @@ class GetSourceIter:
                 self.set_filtergraph()
                 yield self.src_cmd, self.filtergraph
                 continue
-
-            # when last clip is None or a dummy,
-            # we have to jump to the right place in the playlist
-            self.first, self.last_time = check_last_item(
-                self.src_cmd, self.last_time, self.last)
 
             self.begin = self.init_time
 
@@ -866,6 +884,7 @@ class GetSourceIter:
                 elif self.last_time < self.begin:
                     if index + 1 == len(self.clip_nodes["program"]):
                         self.last = True
+                        print("LAST")
                     else:
                         self.last = False
 
@@ -895,7 +914,7 @@ class GetSourceIter:
                         # when there is no time left and we are in time,
                         # set right values for new playlist
                         self.list_date = get_date(False)
-                        self.last_time = float(_playlist.start * 3600 - 5)
+                        self.last_time = _playlist.start - 5
                         self.last_mod_time = 0.0
 
                     break
