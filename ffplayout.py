@@ -318,46 +318,25 @@ def check_sync(begin):
     if _pre_comp.copy:
         tolerance = 60
     else:
-        tolerance = _buffer.tol * 4
+        tolerance = _buffer.tol
 
-    t_dist = begin - time_now
+    check_time = _buffer.length + tolerance
+
+    t_dist = begin - time_now - _buffer.length - _buffer.tol
     if 0 <= time_now < _playlist.start and not begin == _playlist.start:
         t_dist -= 86400.0
 
     # check that we are in tolerance time
-    if not _buffer.length - tolerance < t_dist < _buffer.length + tolerance:
+    if not check_time * -1 < t_dist < check_time:
         mailer(
             'Playlist is not sync!', get_time(None),
             '{} seconds async'.format(t_dist)
         )
         logger.error('Playlist is {} seconds async!'.format(t_dist))
 
-    print('t_dist:', t_dist)
-
-    if _general.stop and abs(t_dist - _buffer.length) > _general.threshold:
+    if _general.stop and abs(t_dist) > _general.threshold:
         logger.error('Sync tolerance value exceeded, program is terminated')
         sys.exit(1)
-
-
-# check last item, when it is None or a dummy clip,
-# set true and seek in playlist
-# TODO: remove this function
-def check_last_item(src_cmd, last_time, last):
-    if src_cmd is None and not last:
-        first = True
-        last_time = get_time('full_sec')
-        if 0 <= last_time < _playlist.start:
-            last_time += 86400
-
-    elif 'lavfi' in src_cmd and not last:
-        first = True
-        last_time = get_time('full_sec') + _buffer.length + _buffer.tol
-        if 0 <= last_time < _playlist.start:
-            last_time += 86400
-    else:
-        first = False
-
-    return first, last_time
 
 
 # check begin and length
@@ -473,7 +452,7 @@ def seek_in(seek):
 
 
 # cut clip length
-def cut_end(duration, seek, out):
+def set_length(duration, seek, out):
     if out < duration:
         return ['-t', str(out - seek)]
     else:
@@ -483,12 +462,13 @@ def cut_end(duration, seek, out):
 # generate a dummy clip, with black color and empty audiotrack
 def gen_dummy(duration):
     if _pre_comp.copy:
-        return ['-i', _playlist.blackclip]
+        return ['-i', _playlist.blackclip, '-t', str(duration)]
     else:
+        noise = 'geq=random(1)*40:128:128'
         return [
             '-f', 'lavfi', '-i',
-            'color=s={}x{}:d={}:r={}'.format(
-                _pre_comp.w, _pre_comp.h, duration, _pre_comp.fps
+            'nullsrc=s={}x{}:d={}:r={},{},format=pix_fmts=yuv420p'.format(
+                _pre_comp.w, _pre_comp.h, duration, _pre_comp.fps, noise
             ),
             '-f', 'lavfi', '-i', 'anullsrc=r=48000',
             '-shortest'
@@ -497,15 +477,15 @@ def gen_dummy(duration):
 
 # when source path exist, generate input with seek and out time
 # when path not exist, generate dummy clip
-def src_or_dummy(src, duration, seek, out, dummy_len=None):
+def src_or_dummy(src, dur, seek, out, dummy_len=None):
     if src:
         prefix = src.split('://')[0]
 
         # check if input is a live source
         if prefix in _pre_comp.protocols:
-            return seek_in(seek) + ['-i', src] + cut_end(duration, seek, out)
+            return seek_in(seek) + ['-i', src] + set_length(dur, seek, out)
         elif file_exist(src):
-            return seek_in(seek) + ['-i', src] + cut_end(duration, seek, out)
+            return seek_in(seek) + ['-i', src] + set_length(dur, seek, out)
         else:
             mailer('Clip not exist:', get_time(None), src)
             logger.error('Clip not exist: {}'.format(src))
@@ -636,7 +616,7 @@ def build_filtergraph(first, duration, seek, out, ad, ad_last, ad_next, dummy):
     if _pre_comp.copy:
         return []
     elif dummy:
-        return video_filter + video_map
+        return video_filter + video_map + ['-map', '1:a']
     else:
         return video_filter + audio_filter + video_map + audio_map
 
@@ -724,7 +704,7 @@ class GetSourceIter:
                 output = None
 
             if not output:
-                self.duration = 60
+                self.duration = 20
                 mailer('Clip not exist:', get_time(None), self.src)
                 logger.error('Clip not exist: {}'.format(self.src))
                 if self.dummy_len and not _pre_comp.copy:
@@ -807,6 +787,7 @@ class GetSourceIter:
         self.seek = 0.0
         self.out = 20
         self.dummy_len = 20
+        self.ad = False
 
         day_in_sec = 86400.0
         ref_time = day_in_sec + _playlist.start
@@ -817,9 +798,8 @@ class GetSourceIter:
 
         time_diff = _buffer.length + _buffer.tol + self.dummy_len + time
         new_len = self.dummy_len - (time_diff - ref_time)
-        print('new_len', new_len)
 
-        if new_len <= 20:
+        if new_len <= 1800:
             self.out = abs(new_len)
             self.dummy_len = abs(new_len)
             self.list_date = get_date(False)
@@ -884,7 +864,6 @@ class GetSourceIter:
                 elif self.last_time < self.begin:
                     if index + 1 == len(self.clip_nodes["program"]):
                         self.last = True
-                        print("LAST")
                     else:
                         self.last = False
 
@@ -909,6 +888,8 @@ class GetSourceIter:
                         self.list_date = get_date(False)
                         self.last_time = self.begin
                         self.dummy_len = self.time_left
+
+                        self.error_handling('Playlist is not valid!')
 
                     else:
                         # when there is no time left and we are in time,
