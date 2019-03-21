@@ -464,13 +464,15 @@ def gen_dummy(duration):
     if _pre_comp.copy:
         return ['-i', _playlist.blackclip, '-t', str(duration)]
     else:
-        noise = 'geq=random(1)*40:128:128'
+        color = '#121212'
+        noise = 'noise=alls=50:allf=t+u,hue=s=0'
         return [
             '-f', 'lavfi', '-i',
-            'nullsrc=s={}x{}:d={}:r={},{},format=pix_fmts=yuv420p'.format(
-                _pre_comp.w, _pre_comp.h, duration, _pre_comp.fps, noise
+            'color=c={}:s={}x{}:d={}:r={},{},format=pix_fmts=yuv420p'.format(
+                color, _pre_comp.w, _pre_comp.h, duration, _pre_comp.fps, noise
             ),
-            '-f', 'lavfi', '-i', 'anullsrc=r=48000',
+            '-f', 'lavfi', '-i', 'anoisesrc=d={}:c=pink:r=48000:a=0.01'.format(
+                duration),
             '-shortest'
         ]
 
@@ -786,6 +788,7 @@ class GetSourceIter:
     def error_handling(self, message):
         self.seek = 0.0
         self.out = 20
+        self.duration = 20
         self.dummy_len = 20
         self.ad = False
 
@@ -801,6 +804,7 @@ class GetSourceIter:
 
         if new_len <= 1800:
             self.out = abs(new_len)
+            self.duration = 20
             self.dummy_len = abs(new_len)
             self.list_date = get_date(False)
             self.last_mod_time = 0.0
@@ -923,6 +927,7 @@ def play_clips(out_file, GetSourceIter):
     iter = GetSourceIter()
 
     for src_cmd, filtergraph in iter.next():
+        print(src_cmd, filtergraph)
         if _pre_comp.copy:
             ff_pre_settings = _pre_comp.copy_settings
         else:
