@@ -928,7 +928,6 @@ def play_clips(out_file, GetSourceIter):
     iter = GetSourceIter()
 
     for src_cmd, filtergraph in iter.next():
-        print(src_cmd, filtergraph)
         if _pre_comp.copy:
             ff_pre_settings = _pre_comp.copy_settings
         else:
