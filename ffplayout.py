@@ -465,11 +465,12 @@ def gen_dummy(duration):
         return ['-i', _playlist.blackclip, '-t', str(duration)]
     else:
         color = '#121212'
-        noise = 'noise=alls=50:allf=t+u,hue=s=0'
+        # TODO: add noise could be an config option
+        # noise = 'noise=alls=50:allf=t+u,hue=s=0'
         return [
             '-f', 'lavfi', '-i',
-            'color=c={}:s={}x{}:d={}:r={},{},format=pix_fmts=yuv420p'.format(
-                color, _pre_comp.w, _pre_comp.h, duration, _pre_comp.fps, noise
+            'color=c={}:s={}x{}:d={}:r={},format=pix_fmts=yuv420p'.format(
+                color, _pre_comp.w, _pre_comp.h, duration, _pre_comp.fps
             ),
             '-f', 'lavfi', '-i', 'anoisesrc=d={}:c=pink:r=48000:a=0.01'.format(
                 duration),
