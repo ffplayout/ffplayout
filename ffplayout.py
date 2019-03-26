@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 
 # This file is part of ffplayout.
 #
@@ -409,25 +410,25 @@ def validate_thread(clip_nodes):
                     output = '404'
 
                 if '404' in output:
-                    a = 'Stream not exist: {}\n'.format(source)
+                    a = 'Stream not exist:" {}"\n'.format(source)
                 else:
                     a = ''
             elif file_exist(source):
                 a = ''
             else:
-                a = 'File not exist: {}\n'.format(source)
+                a = 'File not exist: "{}"\n'.format(source)
 
             if is_float(node["in"]) and is_float(node["out"]):
                 b = ''
                 counter += node["out"] - node["in"]
             else:
-                b = 'Missing Value in: {}\n'.format(node)
+                b = 'Missing Value in: "{}"\n'.format(node)
 
             c = '' if is_float(node["duration"]) else 'No duration Value! '
 
             line = a + b + c
             if line:
-                logger.error('Validation error in line: {}'.format(line))
+                logger.error('Validation error :: {}'.format(line))
                 error += line + 'In line: {}\n'.format(node)
 
         if error:
@@ -516,7 +517,7 @@ def gen_input(src, begin, dur, seek, out, last):
 
     if (time_diff <= ref_time or begin < day_in_sec) and not last:
         # when we are in the 24 houre range, get the clip
-        return src_or_dummy(src, dur, seek, out, 20), None
+        return src_or_dummy(src, dur, seek, out, out - seek), None
     elif time_diff < ref_time and last:
         # when last clip is passed and we still have too much time left
         # check if duration is larger then out - seek
@@ -671,7 +672,7 @@ class GetSourceIter:
             # check last modification from playlist
             mod_time = os.path.getmtime(self.json_file)
             if mod_time > self.last_mod_time:
-                with open(self.json_file, 'r') as f:
+                with open(self.json_file, 'r', encoding='utf-8') as f:
                     self.clip_nodes = json.load(f)
 
                 self.last_mod_time = mod_time
@@ -781,7 +782,7 @@ class GetSourceIter:
             self.ad, self.ad_last, self.ad_next, self.is_dummy)
 
     def check_source(self):
-        if self.src_cmd and 'anullsrc=r=48000' in self.src_cmd:
+        if self.src_cmd and 'lavfi' in self.src_cmd:
             self.is_dummy = True
         else:
             self.is_dummy = False
