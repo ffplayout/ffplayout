@@ -481,7 +481,7 @@ def gen_dummy(duration):
 
 # when source path exist, generate input with seek and out time
 # when path not exist, generate dummy clip
-def src_or_dummy(src, dur, seek, out, dummy_len=None):
+def src_or_dummy(src, dur, seek, out):
     if src:
         prefix = src.split('://')[0]
 
@@ -493,12 +493,9 @@ def src_or_dummy(src, dur, seek, out, dummy_len=None):
         else:
             mailer('Clip not exist:', get_time(None), src)
             logger.error('Clip not exist: {}'.format(src))
-            if dummy_len and not _pre_comp.copy:
-                return gen_dummy(dummy_len)
-            else:
-                return gen_dummy(out - seek)
+            return gen_dummy(out - seek)
     else:
-        return gen_dummy(dummy_len)
+        return gen_dummy(out - seek)
 
 
 # prepare input clip
@@ -646,7 +643,6 @@ class GetSourceIter:
         self.last = False
         self.list_date = get_date(True)
         self.is_dummy = False
-        self.dummy_len = 20
         self.has_begin = False
         self.init_time = get_time('full_sec')
         self.last_error = ''
@@ -711,11 +707,8 @@ class GetSourceIter:
                 self.duration = 20
                 mailer('Clip not exist:', get_time(None), self.src)
                 logger.error('Clip not exist: {}'.format(self.src))
-                if self.dummy_len and not _pre_comp.copy:
-                    self.src = None
-                else:
-                    self.src = None
-                    self.dummy_len = 20
+                self.src = None
+                self.out = 20
             elif is_float(output):
                 self.duration = float(output)
             else:
@@ -740,7 +733,7 @@ class GetSourceIter:
         if is_float(node["duration"]):
             self.duration = node["duration"]
         else:
-            self.duration = self.dummy_len
+            self.duration = 20
 
         if is_float(node["out"]):
             self.out = node["out"]
@@ -791,7 +784,6 @@ class GetSourceIter:
         self.seek = 0.0
         self.out = 20
         self.duration = 20
-        self.dummy_len = 20
         self.ad = False
 
         day_in_sec = 86400.0
@@ -801,13 +793,12 @@ class GetSourceIter:
         if 0 <= time < _playlist.start:
             time += day_in_sec
 
-        time_diff = _buffer.length + _buffer.tol + self.dummy_len + time
-        new_len = self.dummy_len - (time_diff - ref_time)
+        time_diff = _buffer.length + _buffer.tol + self.out - self.seek + time
+        new_len = self.out - self.seek - (time_diff - ref_time)
 
         if new_len <= 1800:
             self.out = abs(new_len)
-            self.duration = 20
-            self.dummy_len = abs(new_len)
+            self.duration = abs(new_len)
             self.list_date = get_date(False)
             self.last_mod_time = 0.0
             self.first = False
@@ -816,7 +807,7 @@ class GetSourceIter:
         else:
             self.list_date = get_date(True)
 
-        self.src_cmd = gen_dummy(self.dummy_len)
+        self.src_cmd = gen_dummy(self.out - self.seek)
         self.is_dummy = True
         self.set_filtergraph()
 
@@ -893,7 +884,7 @@ class GetSourceIter:
                         # when playlist is finish and we have time left
                         self.list_date = get_date(False)
                         self.last_time = self.begin
-                        self.dummy_len = self.time_left
+                        self.out = self.time_left
 
                         self.error_handling('Playlist is not valid!')
 
