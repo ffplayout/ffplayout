@@ -473,7 +473,7 @@ def gen_dummy(duration):
             'color=c={}:s={}x{}:d={}:r={},format=pix_fmts=yuv420p'.format(
                 color, _pre_comp.w, _pre_comp.h, duration, _pre_comp.fps
             ),
-            '-f', 'lavfi', '-i', 'anoisesrc=d={}:c=pink:r=48000:a=0.01'.format(
+            '-f', 'lavfi', '-i', 'anoisesrc=d={}:c=pink:r=48000:a=0.05'.format(
                 duration),
             '-shortest'
         ]
@@ -514,7 +514,7 @@ def gen_input(src, begin, dur, seek, out, last):
 
     if (time_diff <= ref_time or begin < day_in_sec) and not last:
         # when we are in the 24 houre range, get the clip
-        return src_or_dummy(src, dur, seek, out, out - seek), None
+        return src_or_dummy(src, dur, seek, out), None
     elif time_diff < ref_time and last:
         # when last clip is passed and we still have too much time left
         # check if duration is larger then out - seek
