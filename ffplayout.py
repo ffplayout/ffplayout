@@ -806,6 +806,7 @@ class GetSourceIter:
             self.last_time = 0.0
         else:
             self.list_date = get_date(True)
+            self.last_time += self.out - self.seek
 
         self.src_cmd = gen_dummy(self.out - self.seek)
         self.is_dummy = True
