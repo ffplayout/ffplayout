@@ -222,7 +222,7 @@ def get_time(time_format):
 # get date
 def get_date(seek_day):
     d = date.today() + timedelta(seconds=_playlist.shift)
-    if get_time('full_sec') < _playlist.start and seek_day:
+    if seek_day and get_time('full_sec') < _playlist.start:
         yesterday = d - timedelta(1)
         return yesterday.strftime('%Y-%m-%d')
     else:
@@ -266,7 +266,7 @@ def calc_buffer_size():
             _playlist.path, year, month, list_date + '.json')
 
         if file_exist(json_file):
-            with open(json_file) as f:
+            with open(json_file, 'r', encoding='utf-8') as f:
                 clip_nodes = json.load(f)
 
             if _playlist.map_ext:
@@ -299,13 +299,13 @@ def check_process(play_thread, playout, mbuffer):
         sleep(4)
         if playout.poll() is not None:
             logger.error(
-                'postprocess is not alive anymore, terminate ffplayout!')
+                'post-process is not alive anymore, terminate ffplayout!')
             mbuffer.terminate()
             break
 
         if not play_thread.is_alive():
             logger.error(
-                'preprocess is not alive anymore, terminate ffplayout!')
+                'pre-process is not alive anymore, terminate ffplayout!')
             mbuffer.terminate()
             break
 
@@ -321,19 +321,19 @@ def check_sync(begin):
     else:
         tolerance = _buffer.tol
 
-    t_dist = begin - time_now
+    time_distance = begin - time_now
     if 0 <= time_now < _playlist.start and not begin == _playlist.start:
-        t_dist -= 86400.0
+        time_distance -= 86400.0
 
     # check that we are in tolerance time
-    if abs(t_dist) > _buffer.length + tolerance:
+    if abs(time_distance) > _buffer.length + tolerance:
         mailer(
             'Playlist is not sync!', get_time(None),
-            '{} seconds async'.format(t_dist)
+            '{} seconds async'.format(time_distance)
         )
-        logger.warning('Playlist is {} seconds async!'.format(t_dist))
+        logger.warning('Playlist is {} seconds async!'.format(time_distance))
 
-        if _general.stop and abs(t_dist) > _general.threshold:
+        if _general.stop and abs(time_distance) > _general.threshold:
             logger.error('Sync tolerance value exceeded, program terminated!')
             sys.exit(1)
 
