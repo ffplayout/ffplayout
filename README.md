@@ -21,7 +21,7 @@ Features
 - set custom day start, so you can have playlist for example: from 6am to 6am, instate of 0am to 12pm
 - copy mode, for more infos take a look in the [Wiki](https://github.com/jb-alvarado/ffplayout/wiki/Copy-Mode)
 - normal system requirements and no special tools
-    - we only need **ffmpeg**, **ffprobe** and a buffer tool like **mbuffer**, **pv** or [pipebuffer](https://github.com/jb-alvarado/pipebuffer/releases)
+    - we only need **ffmpeg**, **ffprobe** and a buffer tool like **mbuffer**, **pv** or [pipebuffer](https://github.com/ffplayout/pipebuffer/releases)
     - no GPU power is needed
     - ram and cpu depends on video resolution, minimum 4 threads and 3GB ram for 720p are recommend
 - python version 3.5 and up
