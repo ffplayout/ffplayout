@@ -317,27 +317,25 @@ def check_sync(begin):
 
     # in copy mode buffer length can not be calculatet correctly...
     if _pre_comp.copy:
-        tolerance = 60
+        tolerance = 80
     else:
         tolerance = _buffer.tol
 
-    check_time = _buffer.length + tolerance
-
-    t_dist = begin - time_now - _buffer.length - _buffer.tol
+    t_dist = begin - time_now
     if 0 <= time_now < _playlist.start and not begin == _playlist.start:
         t_dist -= 86400.0
 
     # check that we are in tolerance time
-    if not check_time * -1 < t_dist < check_time:
+    if abs(t_dist) > _buffer.length + tolerance:
         mailer(
             'Playlist is not sync!', get_time(None),
             '{} seconds async'.format(t_dist)
         )
-        logger.error('Playlist is {} seconds async!'.format(t_dist))
+        logger.warning('Playlist is {} seconds async!'.format(t_dist))
 
-    if _general.stop and abs(t_dist) > _general.threshold:
-        logger.error('Sync tolerance value exceeded, program is terminated')
-        sys.exit(1)
+        if _general.stop and abs(t_dist) > _general.threshold:
+            logger.error('Sync tolerance value exceeded, program terminated!')
+            sys.exit(1)
 
 
 # check begin and length
@@ -689,6 +687,30 @@ class GetSourceIter:
         else:
             self.has_begin = False
 
+    def get_clip_in_out(self, node):
+        if is_float(node["in"]):
+            self.seek = node["in"]
+        else:
+            self.seek = 0
+
+        if is_float(node["duration"]):
+            self.duration = node["duration"]
+        else:
+            self.duration = 20
+
+        if is_float(node["out"]):
+            self.out = node["out"]
+        else:
+            self.out = self.duration
+
+    def map_extension(self, node):
+        if _playlist.map_ext:
+            _ext = literal_eval(_playlist.map_ext)
+            self.src = node["source"].replace(
+                _ext[0], _ext[1])
+        else:
+            self.src = node["source"]
+
     def url_or_live_source(self):
         prefix = self.src.split('://')[0]
 
@@ -716,29 +738,17 @@ class GetSourceIter:
                 self.out = self.out - self.seek
                 self.seek = 0
 
-    def map_extension(self, node):
-        if _playlist.map_ext:
-            _ext = literal_eval(_playlist.map_ext)
-            self.src = node["source"].replace(
-                _ext[0], _ext[1])
-        else:
-            self.src = node["source"]
+    def get_input(self):
+        self.src_cmd, self.time_left = gen_input(
+            self.src, self.begin, self.duration,
+            self.seek, self.out, self.last
+        )
 
-    def clip_length(self, node):
-        if is_float(node["in"]):
-            self.seek = node["in"]
+    def is_source_dummy(self):
+        if self.src_cmd and 'lavfi' in self.src_cmd:
+            self.is_dummy = True
         else:
-            self.seek = 0
-
-        if is_float(node["duration"]):
-            self.duration = node["duration"]
-        else:
-            self.duration = 20
-
-        if is_float(node["out"]):
-            self.out = node["out"]
-        else:
-            self.out = self.duration
+            self.is_dummy = False
 
     def get_category(self, index, node):
         if 'category' in node:
@@ -773,12 +783,6 @@ class GetSourceIter:
         self.filtergraph = build_filtergraph(
             self.first, self.duration, self.seek, self.out,
             self.ad, self.ad_last, self.ad_next, self.is_dummy)
-
-    def check_source(self):
-        if self.src_cmd and 'lavfi' in self.src_cmd:
-            self.is_dummy = True
-        else:
-            self.is_dummy = False
 
     def error_handling(self, message):
         self.seek = 0.0
@@ -836,8 +840,7 @@ class GetSourceIter:
 
             # loop through all clips in playlist
             for index, node in enumerate(self.clip_nodes["program"]):
-                self.map_extension(node)
-                self.clip_length(node)
+                self.get_clip_in_out(node)
 
                 # first time we end up here
                 if self.first and \
@@ -846,13 +849,10 @@ class GetSourceIter:
                         # calculate seek time
                         self.seek = self.last_time - self.begin + self.seek
 
+                    self.map_extension(node)
                     self.url_or_live_source()
-                    self.src_cmd, self.time_left = gen_input(
-                        self.src, self.begin, self.duration,
-                        self.seek, self.out, False
-                    )
-
-                    self.check_source()
+                    self.get_input()
+                    self.is_source_dummy()
                     self.get_category(index, node)
                     self.set_filtergraph()
 
@@ -868,13 +868,10 @@ class GetSourceIter:
                     if self.has_begin:
                         check_sync(self.begin)
 
+                    self.map_extension(node)
                     self.url_or_live_source()
-                    self.src_cmd, self.time_left = gen_input(
-                        self.src, self.begin, self.duration,
-                        self.seek, self.out, self.last
-                    )
-
-                    self.check_source()
+                    self.get_input()
+                    self.is_source_dummy()
                     self.get_category(index, node)
                     self.set_filtergraph()
 
