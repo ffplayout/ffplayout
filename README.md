@@ -1,11 +1,11 @@
-**ffplayout**
+**ffplayout-engine**
 ================
 [![made-with-python](https://img.shields.io/badge/Made%20with-Python-1f425f.svg)](https://www.python.org/)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
 This is a streaming solution based on python and ffmpeg.
 
-The goal is to play for every day an json playlist, while the current playlist is still editable.
+The goal is to play for every day an *json* playlist, while the current playlist is still editable.
 
 #### Check [ffplayout-gui](https://github.com/ffplayout/ffplayout-gui): web-based GUI for ffplayout.
 
