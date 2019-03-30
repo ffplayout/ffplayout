@@ -7,7 +7,7 @@ This is a streaming solution based on python and ffmpeg.
 
 The goal is to play for every day an json playlist, while the current playlist is still editable.
 
-#### Check [ffplayout-gui](https://github.com/jb-alvarado/ffplayout-gui): web-based GUI for ffplayout.
+#### Check [ffplayout-gui](https://github.com/ffplayout/ffplayout-gui): web-based GUI for ffplayout.
 
 Features
 -----
@@ -19,7 +19,7 @@ Features
 - overlay a logo
 - trim and fade the last clip, to get full 24 hours, if the duration is less then 6 seconds add a blank clip
 - set custom day start, so you can have playlist for example: from 6am to 6am, instate of 0am to 12pm
-- copy mode, for more infos take a look in the [Wiki](https://github.com/jb-alvarado/ffplayout/wiki/Copy-Mode)
+- copy mode, for more infos take a look in the [Wiki](https://github.com/ffplayout/ffplayout-engine/wiki/Copy-Mode)
 - normal system requirements and no special tools
     - we only need **ffmpeg**, **ffprobe** and a buffer tool like **mbuffer**, **pv** or [pipebuffer](https://github.com/ffplayout/pipebuffer/releases)
     - no GPU power is needed
@@ -90,7 +90,7 @@ You can use sources from url or live stream in that way:
 ```
 But be careful with it, better test it multiple times!
 
-More informations in [Wiki](https://github.com/jb-alvarado/ffplayout/wiki/URL---Live-Source)
+More informations in [Wiki](https://github.com/ffplayout/ffplayout-engine/wiki/URL---Live-Source)
 
 Installation
 -----
