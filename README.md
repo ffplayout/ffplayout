@@ -14,16 +14,16 @@ Features
 
 - have all values in a separate config file
 - dynamic playlist
-- replace missing playlist or clip with a blank clip
+- replace missing playlist or clip with a dummy clip
 - send emails with error message
 - overlay a logo
-- trim and fade the last clip, to get full 24 hours, if the duration is less then 6 seconds add a blank clip
+- trim and fade the last clip, to get full 24 hours, if the duration is less then 6 seconds add a dummy clip
 - set custom day start, so you can have playlist for example: from 6am to 6am, instate of 0am to 12pm
-- copy mode, for more infos take a look in the [Wiki](https://github.com/ffplayout/ffplayout-engine/wiki/Copy-Mode)
+- copy mode, for more info's take a look in the [Wiki](https://github.com/ffplayout/ffplayout-engine/wiki/Copy-Mode)
 - normal system requirements and no special tools
     - we only need **ffmpeg**, **ffprobe** and a buffer tool like **mbuffer**, **pv** or [pipebuffer](https://github.com/ffplayout/pipebuffer/releases)
     - no GPU power is needed
-    - ram and cpu depends on video resolution, minimum 4 threads and 3GB ram for 720p are recommend
+    - RAM and CPU depends on video resolution, minimum 4 threads and 3GB RAM for 720p are recommend
 - python version 3.5 and up
 
 JSON Playlist Example
@@ -65,7 +65,7 @@ JSON Playlist Example
 `"begin"` and `"length"` are optional, when you leave **begin** blank, length check will be ignored and the playlist starts from the begin, without time awareness. If you leave **length** blank, the validation will not check if the real length of the playlist will match the length value.
 
 #### Warning:
-(Endless) streaming over multiple days will only work when the playlist have **both** keys and the **length** of the playlist is **24 hours**. If you need only some hours for every day, use a cron job, or something similar.
+(Endless) streaming over multiple days will only work when the playlist have **both** keys and the **length** of the playlist is **24 hours**. If you need only some hours for every day, use a *cron* job, or something similar.
 
 Source from URL / Live Stream
 -----
@@ -94,10 +94,10 @@ More informations in [Wiki](https://github.com/ffplayout/ffplayout-engine/wiki/U
 
 Installation
 -----
-- install ffmpeg, ffprobe and mbuffer
+- install ffmpeg, ffprobe and a buffer tool
 - copy, or symlink, ffplayout.py to **/usr/local/bin/**
 - copy, or symlink, ffplayout.conf to **/etc/ffplayout/**
-- ceate folder with correct perissions for logging (check config)
+- create folder with correct permissions for logging (check config)
 - copy ffplayout.service to **/etc/systemd/system/**
 - change user in service file
 - create playlists folder, in that format: **/playlists/year/month**
