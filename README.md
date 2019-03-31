@@ -21,7 +21,7 @@ Features
 - set custom day start, so you can have playlist for example: from 6am to 6am, instate of 0am to 12pm
 - copy mode, for more info's take a look in the [Wiki](https://github.com/ffplayout/ffplayout-engine/wiki/Copy-Mode)
 - normal system requirements and no special tools
-    - we only need **ffmpeg**, **ffprobe** and a buffer tool like **mbuffer**, **pv** or [pipebuffer](https://github.com/ffplayout/pipebuffer/releases)
+    - we only need **ffmpeg**, **ffprobe** (**ffplay** if you want to play on desktop) and a buffer tool like **mbuffer**, **pv** or [pipebuffer](https://github.com/ffplayout/pipebuffer/releases)
     - no GPU power is needed
     - RAM and CPU depends on video resolution, minimum 4 threads and 3GB RAM for 720p are recommend
 - python version 3.5 and up
@@ -116,3 +116,5 @@ The entire command could look like this:
 ```
 python3 ffplayout.py -l ~/ffplayout.log -f ~/playlist.json
 ```
+
+For playing on desktop set `preview = True` in config under `[OUT]`.
