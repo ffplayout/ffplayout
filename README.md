@@ -105,7 +105,7 @@ Installation
 - use **get_playlist_from_subfolders.sh /path/to/*.mp4s** as a starting point for your playlists (path in script needs to change)
 - activate service and start it: **sudo systemctl enable ffplayout && sudo systemctl start ffplayout**
 
-Start with arguments
+Start with Arguments
 -----
 ffplayout also allows the passing of parameters:
 - `-l, --log` for user-defined log file
@@ -117,4 +117,6 @@ The entire command could look like this:
 python3 ffplayout.py -l ~/ffplayout.log -f ~/playlist.json
 ```
 
+Preview Mode on Desktop 
+-----
 For playing on desktop set `preview = True` in config under `[OUT]`.
