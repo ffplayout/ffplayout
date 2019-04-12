@@ -472,8 +472,7 @@ def gen_dummy(duration):
                 color, _pre_comp.w, _pre_comp.h, duration, _pre_comp.fps
             ),
             '-f', 'lavfi', '-i', 'anoisesrc=d={}:c=pink:r=48000:a=0.05'.format(
-                duration),
-            '-shortest'
+                duration)
         ]
 
 
@@ -574,9 +573,9 @@ def build_filtergraph(first, duration, seek, out, ad, ad_last, ad_next, dummy):
 
     if out < duration:
         video_chain.append('fade=out:st={}:d=1.0'.format(length))
-        audio_chain.append('apad,afade=out:st={}:d=1.0'.format(length))
+        audio_chain.append('afade=out:st={}:d=1.0'.format(length))
     else:
-        audio_chain.append('apad')
+        audio_chain.append('anull')
 
     if video_chain:
         video_fade = '[s]{}[v]'.format(','.join(video_chain))
@@ -586,7 +585,7 @@ def build_filtergraph(first, duration, seek, out, ad, ad_last, ad_next, dummy):
     audio_filter = [
         '-filter_complex', '[0:a]{}[a]'.format(','.join(audio_chain))]
 
-    audio_map = ['-shortest', '-map', '[a]']
+    audio_map = ['-map', '[a]']
 
     if os.path.exists(_pre_comp.logo):
         if not ad:
