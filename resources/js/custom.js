@@ -352,10 +352,9 @@ $('#bt_sys').click(function() {
 /* -----------------------------------------------------------------------------
 header functions
 ------------------------------------------------------------------------------*/
-var intervalId = null;
 
 function get_track_list(interval) {
-    var begin, src, dur, seek, out, time_left;
+    var begin, seek, out, time_left;
 
     $.get("resources/player.php?track=get", function(result) {
         function get_track() {
@@ -368,11 +367,10 @@ function get_track_list(interval) {
                 time_in_seconds += 86400.0;
             }
 
-            $.each(json, function (index, value) {
-                begin = parseFloat(value['begin'][0]);
-                dur = parseFloat(value['dur'][0]);
-                seek = parseFloat(value['in'][0]);
-                out = parseFloat(value['out'][0]);
+            $.each(json, function (_index, value) {
+                begin = parseFloat(value['begin']);
+                seek = parseFloat(value['in']);
+                out = parseFloat(value['out']);
 
                 if (time_in_seconds < begin + out - seek ) {
                     time_left = begin + out - seek - time_in_seconds;
@@ -387,7 +385,6 @@ function get_track_list(interval) {
         } else {
             clearInterval(refreshIntervalId);
         }
-
     });
 }
 
