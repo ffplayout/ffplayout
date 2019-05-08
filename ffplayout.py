@@ -276,15 +276,19 @@ def calc_buffer_size():
             else:
                 source = clip_nodes["program"][0]["source"]
 
-            cmd = [
-                'ffprobe', '-v', 'error', '-show_entries', 'format=bit_rate',
-                '-of', 'default=noprint_wrappers=1:nokey=1', source]
-            bite_rate = check_output(cmd).decode('utf-8')
+            if file_exist(source):
+                cmd = [
+                    'ffprobe', '-v', 'error',
+                    '-show_entries', 'format=bit_rate',
+                    '-of', 'default=noprint_wrappers=1:nokey=1', source]
+                bite_rate = check_output(cmd).decode('utf-8')
 
-            if is_int(bite_rate):
-                bite_rate = int(bite_rate) / 1024
+                if is_int(bite_rate):
+                    bite_rate = int(bite_rate) / 1024
+                else:
+                    bite_rate = 1300
             else:
-                bite_rate = 4000
+                bite_rate = 1300
 
             return int(bite_rate * 0.125 * _buffer.length)
         else:
