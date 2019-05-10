@@ -45,10 +45,10 @@ from types import SimpleNamespace
 
 # read config
 cfg = configparser.ConfigParser()
-if os.path.exists("/etc/ffplayout/ffplayout.conf"):
-    cfg.read("/etc/ffplayout/ffplayout.conf")
+if os.path.exists('/etc/ffplayout/ffplayout.conf'):
+    cfg.read('/etc/ffplayout/ffplayout.conf')
 else:
-    cfg.read("ffplayout.conf")
+    cfg.read('ffplayout.conf')
 
 _general = SimpleNamespace(
     stop=cfg.getboolean('GENERAL', 'stop_on_error'),
@@ -61,7 +61,8 @@ _mail = SimpleNamespace(
     port=cfg.getint('MAIL', 'smpt_port'),
     s_addr=cfg.get('MAIL', 'sender_addr'),
     s_pass=cfg.get('MAIL', 'sender_pass'),
-    recip=cfg.get('MAIL', 'recipient')
+    recip=cfg.get('MAIL', 'recipient'),
+    level=cfg.get('MAIL', 'mail_level')
 )
 
 _log = SimpleNamespace(
@@ -121,15 +122,15 @@ _playout = SimpleNamespace(
 # ------------------------------------------------------------------------------
 
 stdin_parser = ArgumentParser(
-    description="python and ffmpeg based playout",
+    description='python and ffmpeg based playout',
     epilog="don't use parameters if you want to take the settings from config")
 
 stdin_parser.add_argument(
-    "-l", "--log", help="file path for logfile"
+    '-l', '--log', help='file path for logfile'
 )
 
 stdin_parser.add_argument(
-    "-f", "--file", help="playlist file"
+    '-f', '--file', help='playlist file'
 )
 
 # If the log file is specified on the command line then override the default
@@ -139,7 +140,7 @@ if stdin_args.log:
 
 logger = logging.getLogger(__name__)
 logger.setLevel(_log.level)
-handler = TimedRotatingFileHandler(_log.path, when="midnight", backupCount=5)
+handler = TimedRotatingFileHandler(_log.path, when='midnight', backupCount=5)
 formatter = logging.Formatter('[%(asctime)s] [%(levelname)s]  %(message)s')
 handler.setFormatter(formatter)
 logger.addHandler(handler)
@@ -153,7 +154,7 @@ class PlayoutLogger(object):
 
     def write(self, message):
         # Only log if there is a message (not just a new line)
-        if message.rstrip() != "":
+        if message.rstrip() != '':
             self.logger.log(self.level, message.rstrip())
 
     def flush(self):
@@ -170,34 +171,58 @@ sys.stderr = PlayoutLogger(logger, logging.ERROR)
 # mail sender
 # ------------------------------------------------------------------------------
 
-# send error messages to email addresses
-def mailer(message, time, path):
-    if _mail.recip:
-        msg = MIMEMultipart()
-        msg['From'] = _mail.s_addr
-        msg['To'] = _mail.recip
-        msg['Subject'] = _mail.subject
-        msg["Date"] = formatdate(localtime=True)
-        msg.attach(MIMEText('{} {}\n{}'.format(time, message, path), 'plain'))
-        text = msg.as_string()
+class Mailer:
+    def __init__(self):
+        self.level = _mail.level
+        self.time = None
 
-        try:
-            server = smtplib.SMTP(_mail.server, _mail.port)
-        except socket.error as err:
-            logger.error(err)
-            server = None
+    def current_time(self):
+        self.time = get_time(None)
 
-        if server is not None:
-            server.starttls()
+    def send_mail(self, msg):
+        if _mail.recip:
+            self.current_time()
+
+            message = MIMEMultipart()
+            message['From'] = _mail.s_addr
+            message['To'] = _mail.recip
+            message['Subject'] = _mail.subject
+            message['Date'] = formatdate(localtime=True)
+            message.attach(MIMEText('{} {}'.format(self.time, msg), 'plain'))
+            text = message.as_string()
+
             try:
-                login = server.login(_mail.s_addr, _mail.s_pass)
-            except smtplib.SMTPAuthenticationError as serr:
-                logger.error(serr)
-                login = None
+                server = smtplib.SMTP(_mail.server, _mail.port)
+            except socket.error as err:
+                logger.error(err)
+                server = None
 
-            if login is not None:
-                server.sendmail(_mail.s_addr, _mail.recip, text)
-                server.quit()
+            if server is not None:
+                server.starttls()
+                try:
+                    login = server.login(_mail.s_addr, _mail.s_pass)
+                except smtplib.SMTPAuthenticationError as serr:
+                    logger.error(serr)
+                    login = None
+
+                if login is not None:
+                    server.sendmail(_mail.s_addr, _mail.recip, text)
+                    server.quit()
+
+    def info(self, msg):
+        if self.level in ['INFO']:
+            self.send_mail(msg)
+
+    def warning(self, msg):
+        if self.level in ['INFO', 'WARNING']:
+            self.send_mail(msg)
+
+    def error(self, msg):
+        if self.level in ['INFO', 'WARNING', 'ERROR']:
+            self.send_mail(msg)
+
+
+mailer = Mailer()
 
 
 # ------------------------------------------------------------------------------
@@ -216,7 +241,7 @@ def get_time(time_format):
     elif time_format == 'stamp':
         return float(datetime.now().timestamp())
     else:
-        return t.strftime("%H:%M:%S")
+        return t.strftime('%H:%M:%S')
 
 
 # get date
@@ -286,12 +311,15 @@ def calc_buffer_size():
                 if is_int(bite_rate):
                     bite_rate = int(bite_rate) / 1024
                 else:
+                    logger.debug('No Bitrate for calculating buffer size')
                     bite_rate = 1300
             else:
+                logger.debug('File for calculating buffer size not exist')
                 bite_rate = 1300
 
             return int(bite_rate * 0.125 * _buffer.length)
         else:
+            logger.debug('Playist for calculating buffer size not exist')
             return 5000
     else:
         return int((_pre_comp.v_bitrate * 0.125 + 281.25) * _buffer.length)
@@ -331,10 +359,8 @@ def check_sync(begin):
 
     # check that we are in tolerance time
     if abs(time_distance) > _buffer.length + tolerance:
-        mailer(
-            'Playlist is not sync!', get_time(None),
-            '{} seconds async'.format(time_distance)
-        )
+        mailer.warning(
+            'Playlist is not sync!\n{} seconds async'.format(time_distance))
         logger.warning('Playlist is {} seconds async!'.format(time_distance))
 
         if _general.stop and abs(time_distance) > _general.threshold:
@@ -345,7 +371,7 @@ def check_sync(begin):
 # check begin and length
 def check_start_and_length(json_nodes, counter):
     # check start time and set begin
-    if "begin" in json_nodes:
+    if 'begin' in json_nodes:
         h, m, s = json_nodes["begin"].split(':')
         if is_float(h) and is_float(m) and is_float(s):
             begin = float(h) * 3600 + float(m) * 60 + float(s)
@@ -355,22 +381,23 @@ def check_start_and_length(json_nodes, counter):
         begin = -100.0
 
     # check if playlist is long enough
-    if "length" in json_nodes:
+    if 'length' in json_nodes:
         l_h, l_m, l_s = json_nodes["length"].split(':')
         if is_float(l_h) and is_float(l_m) and is_float(l_s):
             length = float(l_h) * 3600 + float(l_m) * 60 + float(l_s)
 
             total_play_time = begin + counter - _playlist.start
 
-            if "date" in json_nodes:
+            if 'date' in json_nodes:
                 date = json_nodes["date"]
             else:
                 date = get_date(True)
 
             if total_play_time < length - 5:
-                mailer(
-                    'json playlist ({}) is not long enough!'.format(date),
-                    get_time(None), "total play time is: {}".format(
+                mailer.error(
+                    'Playlist ({}) is not long enough!\n'
+                    'total play time is: {}'.format(
+                        date,
                         timedelta(seconds=total_play_time))
                 )
                 logger.error('Playlist is only {} hours long!'.format(
@@ -412,7 +439,7 @@ def validate_thread(clip_nodes):
                     output = '404'
 
                 if '404' in output:
-                    a = 'Stream not exist:" {}"\n'.format(source)
+                    a = 'Stream not exist: "{}"\n'.format(source)
                 else:
                     a = ''
             elif file_exist(source):
@@ -434,9 +461,9 @@ def validate_thread(clip_nodes):
                 error += line + 'In line: {}\n'.format(node)
 
         if error:
-            mailer(
-                'Validation error, check json playlist, values are missing:\n',
-                get_time(None), error
+            mailer.error(
+                'Validation error, check JSON playlist, '
+                'values are missing:\n{}'.format(error)
             )
 
         check_start_and_length(json_nodes, counter)
@@ -492,7 +519,7 @@ def src_or_dummy(src, dur, seek, out):
         elif file_exist(src):
             return seek_in(seek) + ['-i', src] + set_length(dur, seek, out)
         else:
-            mailer('Clip not exist:', get_time(None), src)
+            mailer.error('Clip not exist:\n{}'.format(src))
             logger.error('Clip not exist: {}'.format(src))
             return gen_dummy(out - seek)
     else:
@@ -533,9 +560,9 @@ def gen_input(src, begin, dur, seek, out, last):
         else:
             src_cmd = src_or_dummy(src, dur, 0, dur)
 
-            mailer(
-                'Playlist is not long enough:', get_time(None),
-                '{} seconds needed.'.format(new_len)
+            mailer.error(
+                'Playlist is not long enough:\n{} seconds needed.'.format(
+                    new_len)
             )
             logger.error('Playlist is {} seconds to short'.format(new_len))
 
@@ -682,7 +709,7 @@ class GetSourceIter:
             self.error_handling('Playlist not exist:')
 
         # when begin is in playlist, get start time from it
-        if self.clip_nodes and "begin" in self.clip_nodes:
+        if self.clip_nodes and 'begin' in self.clip_nodes:
             h, m, s = self.clip_nodes["begin"].split(':')
             if is_float(h) and is_float(m) and is_float(s):
                 self.has_begin = True
@@ -730,7 +757,7 @@ class GetSourceIter:
 
             if not output:
                 self.duration = 20
-                mailer('Clip not exist:', get_time(None), self.src)
+                mailer.error('Clip not exist:\n{}'.format(self.src))
                 logger.error('Clip not exist: {}'.format(self.src))
                 self.src = None
                 self.out = 20
@@ -759,13 +786,13 @@ class GetSourceIter:
                 last_category = self.clip_nodes[
                     "program"][index - 1]["category"]
             else:
-                last_category = "noad"
+                last_category = 'noad'
 
             if index + 2 <= len(self.clip_nodes["program"]):
                 next_category = self.clip_nodes[
                     "program"][index + 1]["category"]
             else:
-                next_category = "noad"
+                next_category = 'noad'
 
             if node["category"] == 'advertisement':
                 self.ad = True
@@ -822,7 +849,7 @@ class GetSourceIter:
         if get_time('stamp') - self.timestamp > 3600 \
                 and message != self.last_error:
             self.last_error = message
-            mailer(message, get_time(None), self.json_file)
+            mailer.error('{}\n{}'.format(message, self.json_file))
             self.timestamp = get_time('stamp')
 
         logger.error('{} {}'.format(message, self.json_file))
@@ -901,8 +928,8 @@ class GetSourceIter:
                 self.begin += self.out - self.seek
             else:
                 # when we reach currect end, stop script
-                if "begin" not in self.clip_nodes or \
-                    "length" not in self.clip_nodes and \
+                if 'begin' not in self.clip_nodes or \
+                    'length' not in self.clip_nodes and \
                         self.begin < get_time('full_sec'):
                     logger.info('Playlist reach End!')
                     return
