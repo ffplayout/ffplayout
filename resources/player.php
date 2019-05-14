@@ -82,8 +82,8 @@ if(!empty($_GET['track'])) {
 }
 
 // start / stop playout
-if(!empty($_GET['playout'])) {
-    $state = $_GET['playout'];
+if(!empty($_POST['playout'])) {
+    $state = $_POST['playout'];
 
     if ($state === "start") {
         $out = shell_exec("./sh/playout.sh start");
