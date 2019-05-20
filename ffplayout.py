@@ -353,7 +353,7 @@ def check_sync(begin):
     else:
         tolerance = _buffer.tol
 
-    time_distance = begin - time_now
+    time_distance = begin - time_now - (_buffer.length + tolerance)
     if 0 <= time_now < _playlist.start and not begin == _playlist.start:
         time_distance -= 86400.0
 
