@@ -99,8 +99,6 @@ _playlist.start = float(_playlist.t[0]) * 3600 + float(_playlist.t[1]) * 60 \
     + float(_playlist.t[2])
 
 _buffer = SimpleNamespace(
-    length=cfg.getint('BUFFER', 'buffer_length'),
-    tol=cfg.getfloat('BUFFER', 'buffer_tolerance'),
     cli=cfg.get('BUFFER', 'buffer_cli'),
     cmd=literal_eval(cfg.get('BUFFER', 'buffer_cmd'))
 )
@@ -317,12 +315,13 @@ def calc_buffer_size():
                 logger.debug('File for calculating buffer size not exist')
                 bite_rate = 1300
 
-            return int(bite_rate * 0.125 * _buffer.length)
+            return int(bite_rate * 0.125 * 5)
         else:
             logger.debug('Playist for calculating buffer size not exist')
             return 5000
     else:
-        return int((_pre_comp.v_bitrate * 0.125 + 281.25) * _buffer.length)
+        # we calculate the buffer size for 5 seconds
+        return int((_pre_comp.v_bitrate * 0.125 + 281.25) * 5)
 
 
 # check if processes a well
@@ -351,14 +350,15 @@ def check_sync(begin):
     if _pre_comp.copy:
         tolerance = 80
     else:
-        tolerance = _buffer.tol
+        # around 2.5 seconds is in ffmpeg buffer
+        tolerance = 2.5
 
-    time_distance = begin - time_now - (_buffer.length + tolerance)
+    time_distance = begin - time_now - (5 + tolerance)
     if 0 <= time_now < _playlist.start and not begin == _playlist.start:
         time_distance -= 86400.0
 
     # check that we are in tolerance time
-    if abs(time_distance) > _buffer.length + tolerance:
+    if abs(time_distance) > 5 + tolerance:
         mailer.warning(
             'Playlist is not sync!\n{} seconds async'.format(time_distance))
         logger.warning('Playlist is {} seconds async!'.format(time_distance))
@@ -538,7 +538,7 @@ def gen_input(src, begin, dur, seek, out, last):
         time += day_in_sec
 
     # calculate time difference to see if we are sync
-    time_diff = _buffer.length + _buffer.tol + out - seek + time
+    time_diff = 7.5 + out - seek + time
 
     if (time_diff <= ref_time or begin < day_in_sec) and not last:
         # when we are in the 24 houre range, get the clip
@@ -546,7 +546,7 @@ def gen_input(src, begin, dur, seek, out, last):
     elif time_diff < ref_time and last:
         # when last clip is passed and we still have too much time left
         # check if duration is larger then out - seek
-        time_diff = _buffer.length + _buffer.tol + dur + time
+        time_diff = 7.5 + dur + time
         new_len = dur - (time_diff - ref_time)
         logger.info('we are under time, new_len is: {}'.format(new_len))
 
@@ -827,7 +827,7 @@ class GetSourceIter:
         if 0 <= time < _playlist.start:
             time += day_in_sec
 
-        time_diff = _buffer.length + _buffer.tol + self.out - self.seek + time
+        time_diff = 7.5 + self.out - self.seek + time
         new_len = self.out - self.seek - (time_diff - ref_time)
 
         if new_len <= 1800:
