@@ -5,3 +5,4 @@
 .DS_Store
 __pycache__/
 *-orig.*
+*.json
