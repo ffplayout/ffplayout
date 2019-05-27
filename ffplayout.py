@@ -34,7 +34,6 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import formatdate
 from logging.handlers import TimedRotatingFileHandler
-from shutil import copyfileobj
 from subprocess import PIPE, CalledProcessError, Popen, check_output
 from threading import Thread
 from time import sleep
@@ -280,52 +279,6 @@ def is_int(value):
         return False
 
 
-# calculating the size for the buffer in KB
-def calc_buffer_size():
-    # in copy mode files has normally smaller bit rate,
-    # so we calculate the size different
-    if _pre_comp.copy:
-        list_date = get_date(True)
-        year, month, day = list_date.split('-')
-        json_file = os.path.join(
-            _playlist.path, year, month, list_date + '.json')
-
-        if file_exist(json_file):
-            with open(json_file, 'r', encoding='utf-8') as f:
-                clip_nodes = json.load(f)
-
-            if _playlist.map_ext:
-                _ext = literal_eval(_playlist.map_ext)
-                source = clip_nodes["program"][0]["source"].replace(
-                    _ext[0], _ext[1])
-            else:
-                source = clip_nodes["program"][0]["source"]
-
-            if file_exist(source):
-                cmd = [
-                    'ffprobe', '-v', 'error',
-                    '-show_entries', 'format=bit_rate',
-                    '-of', 'default=noprint_wrappers=1:nokey=1', source]
-                bite_rate = check_output(cmd).decode('utf-8')
-
-                if is_int(bite_rate):
-                    bite_rate = int(bite_rate) / 1024
-                else:
-                    logger.debug('No Bitrate for calculating buffer size')
-                    bite_rate = 1300
-            else:
-                logger.debug('File for calculating buffer size not exist')
-                bite_rate = 1300
-
-            return int(bite_rate * 0.125 * 5)
-        else:
-            logger.debug('Playist for calculating buffer size not exist')
-            return 5000
-    else:
-        # we calculate the buffer size for 5 seconds
-        return int((_pre_comp.v_bitrate * 0.125 + 281.25) * 5)
-
-
 # check if processes a well
 def check_process(play_thread, playout):
     while True:
@@ -542,7 +495,7 @@ def gen_input(src, begin, dur, seek, out, last):
         time += day_in_sec
 
     # calculate time difference to see if we are sync
-    time_diff = 7.5 + out - seek + time
+    time_diff = out - seek + time
 
     if (time_diff <= ref_time or begin < day_in_sec) and not last:
         # when we are in the 24 houre range, get the clip
@@ -550,7 +503,7 @@ def gen_input(src, begin, dur, seek, out, last):
     elif time_diff < ref_time and last:
         # when last clip is passed and we still have too much time left
         # check if duration is larger then out - seek
-        time_diff = 7.5 + dur + time
+        time_diff = dur + time
         new_len = dur - (time_diff - ref_time)
         logger.info('we are under time, new_len is: {}'.format(new_len))
 
@@ -831,7 +784,7 @@ class GetSourceIter:
         if 0 <= time < _playlist.start:
             time += day_in_sec
 
-        time_diff = 7.5 + self.out - self.seek + time
+        time_diff = self.out - self.seek + time
         new_len = self.out - self.seek - (time_diff - ref_time)
 
         if new_len <= 1800:
