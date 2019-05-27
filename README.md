@@ -102,7 +102,7 @@ Installation
 - change user in service file
 - create playlists folder, in that format: **/playlists/year/month**
 - set variables in config file to your needs
-- use **get_playlist_from_subfolders.sh /path/to/*.mp4s** as a starting point for your playlists (path in script needs to change)
+- use **get_playlist_from_subfolders.sh /path/to/mp4s/** as a starting point for your playlists (path in script needs to change)
 - activate service and start it: **sudo systemctl enable ffplayout && sudo systemctl start ffplayout**
 
 Start with Arguments
