@@ -271,12 +271,12 @@ def is_int(value):
 
 # compare clip play time with real time,
 # to see if we are sync
-def check_sync(begin):
+def check_sync(begin, buffer):
     time_now = get_time('full_sec')
 
     # around 2.5 seconds is in ffmpeg buffer
     # TODO: more tests for a good value
-    tolerance = 15
+    tolerance = 40
 
     time_distance = begin - time_now
     if 0 <= time_now < _playlist.start and not begin == _playlist.start:
@@ -293,6 +293,7 @@ def check_sync(begin):
 
         if _general.stop and abs(time_distance) > _general.threshold:
             logger.error('Sync tolerance value exceeded, program terminated!')
+            buffer.put(None)
             sys.exit(1)
 
 
@@ -457,7 +458,7 @@ def src_or_dummy(src, dur, seek, out):
 # prepare input clip
 # check begin and length from clip
 # return clip only if we are in 24 hours time range
-def gen_input(src, begin, dur, seek, out, last):
+def gen_input(has_begin, src, begin, dur, seek, out, last):
     day_in_sec = 86400.0
     ref_time = day_in_sec + _playlist.start
     time = get_time('full_sec')
@@ -468,7 +469,9 @@ def gen_input(src, begin, dur, seek, out, last):
     # calculate time difference to see if we are sync
     time_diff = out - seek + time
 
-    if (time_diff <= ref_time or begin < day_in_sec) and not last:
+    if not has_begin:
+        return src_or_dummy(src, dur, seek, out), None
+    elif (time_diff <= ref_time or begin < day_in_sec) and not last:
         # when we are in the 24 houre range, get the clip
         return src_or_dummy(src, dur, seek, out), None
     elif time_diff < ref_time and last:
@@ -583,8 +586,9 @@ def build_filtergraph(first, duration, seek, out, ad, ad_last, ad_next, dummy):
 # ------------------------------------------------------------------------------
 
 # read values from json playlist
-class GetSourceIter:
-    def __init__(self):
+class GetSourceIter(object):
+    def __init__(self, buffer):
+        self.buffer = buffer
         self.last_time = get_time('full_sec')
 
         if 0 <= self.last_time < _playlist.start:
@@ -698,7 +702,7 @@ class GetSourceIter:
 
     def get_input(self):
         self.src_cmd, self.time_left = gen_input(
-            self.src, self.begin, self.duration,
+            self.has_begin, self.src, self.begin, self.duration,
             self.seek, self.out, self.last
         )
 
@@ -824,7 +828,7 @@ class GetSourceIter:
                         self.last = False
 
                     if self.has_begin:
-                        check_sync(self.begin)
+                        check_sync(self.begin, self.buffer)
 
                     self.map_extension(node)
                     self.url_or_live_source()
@@ -873,7 +877,7 @@ class GetSourceIter:
 # independent thread for clip preparation
 def play_clips(buffer, GetSourceIter):
     # send current file to buffer stdin
-    get_source = GetSourceIter()
+    get_source = GetSourceIter(buffer)
 
     for src_cmd, filtergraph in get_source.next():
         if _pre_comp.copy:
@@ -914,6 +918,9 @@ def play_clips(buffer, GetSourceIter):
         finally:
             decoder.wait()
 
+    else:
+        buffer.put(None)
+
 
 def main():
     year = get_date(False).split('-')[0]
@@ -922,7 +929,7 @@ def main():
     # stdin get the files loop
     # stdout pipes to ffmpeg rtmp streaming
     # TODO: have an eye on maxsize
-    buffer = Queue(maxsize=12)
+    buffer = Queue(maxsize=120)
     try:
         if _playout.preview:
             # preview playout to player
@@ -972,7 +979,6 @@ def main():
 
         # TODO: this needs to be changed,
         # while True is bad, it needs a check to be able to exit
-        # with this loop we also end up never in the check_process function
         while True:
             data = buffer.get()
             if not data:
