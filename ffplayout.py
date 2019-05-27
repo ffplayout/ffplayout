@@ -958,10 +958,7 @@ def play_clips(buffer, GetSourceIter):
             ff_pre_settings = filtergraph + [
                 '-pix_fmt', 'yuv420p', '-r', str(_pre_comp.fps),
                 '-c:v', 'mpeg2video', '-intra',
-                '-b:v', '{}k'.format(_pre_comp.v_bitrate),
-                '-minrate', '{}k'.format(_pre_comp.v_bitrate),
-                '-maxrate', '{}k'.format(_pre_comp.v_bitrate),
-                '-bufsize', '{}k'.format(_pre_comp.v_bufsize),
+                '-q:v', '2',
                 '-c:a', 's302m', '-strict', '-2', '-ar', '48000', '-ac', '2',
                 '-threads', '2', '-f', 'mpegts', '-'
             ]
@@ -993,7 +990,6 @@ def play_clips(buffer, GetSourceIter):
             print(traceback.format_exc())
 
         finally:
-            buffer.put(None)
             decoder.wait()
 
 
