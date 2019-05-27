@@ -351,9 +351,10 @@ def check_sync(begin):
         tolerance = 80
     else:
         # around 2.5 seconds is in ffmpeg buffer
-        tolerance = 2.5
+        # TODO: more tests for a good value
+        tolerance = 15
 
-    time_distance = begin - time_now - (5 + tolerance)
+    time_distance = begin - time_now
     if 0 <= time_now < _playlist.start and not begin == _playlist.start:
         time_distance -= 86400.0
 
@@ -361,7 +362,7 @@ def check_sync(begin):
     print(time_distance)
 
     # check that we are in tolerance time
-    if abs(time_distance) > 5 + tolerance:
+    if abs(time_distance) > tolerance:
         mailer.warning(
             'Playlist is not sync!\n{} seconds async'.format(time_distance))
         logger.warning('Playlist is {} seconds async!'.format(time_distance))
