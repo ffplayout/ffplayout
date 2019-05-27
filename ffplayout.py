@@ -36,7 +36,6 @@ from email.utils import formatdate
 from logging.handlers import TimedRotatingFileHandler
 from subprocess import PIPE, CalledProcessError, Popen, check_output
 from threading import Thread
-from time import sleep
 from types import SimpleNamespace
 from queue import Queue
 
@@ -77,8 +76,6 @@ _pre_comp = SimpleNamespace(
     aspect=cfg.getfloat(
         'PRE_COMPRESS', 'width') / cfg.getfloat('PRE_COMPRESS', 'height'),
     fps=cfg.getint('PRE_COMPRESS', 'fps'),
-    v_bitrate=cfg.getint('PRE_COMPRESS', 'v_bitrate'),
-    v_bufsize=cfg.getint('PRE_COMPRESS', 'v_bitrate') / 2,
     logo=cfg.get('PRE_COMPRESS', 'logo'),
     logo_filter=cfg.get('PRE_COMPRESS', 'logo_filter'),
     protocols=cfg.get('PRE_COMPRESS', 'live_protocols'),
@@ -99,11 +96,6 @@ _playlist = SimpleNamespace(
 _playlist.start = float(_playlist.t[0]) * 3600 + float(_playlist.t[1]) * 60 \
     + float(_playlist.t[2])
 
-_buffer = SimpleNamespace(
-    cli=cfg.get('BUFFER', 'buffer_cli'),
-    cmd=literal_eval(cfg.get('BUFFER', 'buffer_cmd'))
-)
-
 _playout = SimpleNamespace(
     preview=cfg.getboolean('OUT', 'preview'),
     name=cfg.get('OUT', 'service_name'),
@@ -117,7 +109,7 @@ _playout = SimpleNamespace(
 
 
 # ------------------------------------------------------------------------------
-# logging
+# logging and argument parsing
 # ------------------------------------------------------------------------------
 
 stdin_parser = ArgumentParser(
@@ -228,7 +220,6 @@ mailer = Mailer()
 # global helper functions
 # ------------------------------------------------------------------------------
 
-# get time
 def get_time(time_format):
     t = datetime.today() + timedelta(seconds=_playlist.shift)
     if time_format == 'hour':
@@ -243,7 +234,6 @@ def get_time(time_format):
         return t.strftime('%H:%M:%S')
 
 
-# get date
 def get_date(seek_day):
     d = date.today() + timedelta(seconds=_playlist.shift)
     if seek_day and get_time('full_sec') < _playlist.start:
@@ -279,33 +269,14 @@ def is_int(value):
         return False
 
 
-# check if processes a well
-def check_process(play_thread, playout):
-    while True:
-        sleep(4)
-        if playout.poll() is not None:
-            logger.error(
-                'post-process is not alive anymore, terminate ffplayout!')
-            break
-
-        if not play_thread.is_alive():
-            logger.error(
-                'pre-process is not alive anymore, terminate ffplayout!')
-            break
-
-
 # compare clip play time with real time,
 # to see if we are sync
 def check_sync(begin):
     time_now = get_time('full_sec')
 
-    # in copy mode buffer length can not be calculatet correctly...
-    if _pre_comp.copy:
-        tolerance = 80
-    else:
-        # around 2.5 seconds is in ffmpeg buffer
-        # TODO: more tests for a good value
-        tolerance = 15
+    # around 2.5 seconds is in ffmpeg buffer
+    # TODO: more tests for a good value
+    tolerance = 15
 
     time_distance = begin - time_now
     if 0 <= time_now < _playlist.start and not begin == _playlist.start:
@@ -1010,7 +981,6 @@ def main():
 
             playout.stdin.write(data)
 
-        check_process(play_thread, playout)
     finally:
         playout.wait()
 
