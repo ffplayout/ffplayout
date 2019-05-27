@@ -910,8 +910,7 @@ def play_clips(buffer, GetSourceIter):
         else:
             ff_pre_settings = filtergraph + [
                 '-pix_fmt', 'yuv420p', '-r', str(_pre_comp.fps),
-                '-c:v', 'mpeg2video', '-intra',
-                '-q:v', '2',
+                '-c:v', 'mpeg2video', '-intra', '-q:v', '2',
                 '-c:a', 's302m', '-strict', '-2', '-ar', '48000', '-ac', '2',
                 '-threads', '2', '-f', 'mpegts', '-'
             ]
@@ -924,7 +923,6 @@ def play_clips(buffer, GetSourceIter):
 
             logger.info('play: "{}"'.format(current_file))
 
-            # TODO: stderr and stdin only when they are used
             decoder = Popen(
                 [
                     'ffmpeg', '-v', 'error', '-hide_banner', '-nostats'
