@@ -978,19 +978,21 @@ def play_clips(buffer, GetSourceIter):
                 [
                     'ffmpeg', '-v', 'error', '-hide_banner', '-nostats'
                 ] + src_cmd + list(ff_pre_settings),
-                stdout=PIPE,
-                stderr=PIPE,
-                stdin=PIPE
+                stdout=PIPE
             )
 
-            for package in iter(decoder.stdout.readline, ''):
-                buffer.put(package)
+            for data in iter(decoder.stdout.readline, ''):
+                if not data:
+                    break
+
+                buffer.put(data)
 
         # TODO: make this nicer
         except Exception:
             print(traceback.format_exc())
 
         finally:
+            buffer.put(None)
             decoder.wait()
 
 
@@ -1053,8 +1055,12 @@ def main():
         # while True is bad, it needs a check to be able to exit
         # with this loop we also end up never in the check_process function
         while True:
-            line = buffer.get()
-            playout.stdin.write(line)
+            data = buffer.get()
+            if not data:
+                playout.terminate()
+                break
+
+            playout.stdin.write(data)
 
         check_process(play_thread, playout)
     finally:
