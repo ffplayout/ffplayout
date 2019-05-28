@@ -277,8 +277,7 @@ def check_sync(begin, buffer):
     time_now = get_time('full_sec')
 
     # around 2.5 seconds is in ffmpeg buffer
-    # TODO: more tests for a good value
-    tolerance = 40
+    tolerance = 7
 
     time_distance = begin - time_now
     if 0 <= time_now < _playlist.start and not begin == _playlist.start:
@@ -911,6 +910,9 @@ def play_clips(buffer, GetSourceIter):
                 stdout=PIPE
             )
 
+            # 65536 is the linux pipe buffer size,
+            # but this number is not divisible by 188 (the mpeg-ts packet size)
+            # so we take the next smaller number 65424 for reading
             while True:
                 data = decoder.stdout.read(65424)
                 if not data:
@@ -932,7 +934,6 @@ def main():
     year = get_date(False).split('-')[0]
 
     # the Queue connects pre- and post- compression
-    # TODO: have an eye on maxsize
     buffer = Queue(maxsize=56)
     try:
         if _playout.preview:
@@ -976,8 +977,7 @@ def main():
         play_thread.daemon = True
         play_thread.start()
 
-        # TODO: this needs to be changed,
-        # while True is bad, it needs a check to be able to exit
+        # get data from Queue and write them to post process
         while True:
             data = buffer.get()
             if not data:
