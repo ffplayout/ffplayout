@@ -76,6 +76,8 @@ _pre_comp = SimpleNamespace(
     aspect=cfg.getfloat(
         'PRE_COMPRESS', 'width') / cfg.getfloat('PRE_COMPRESS', 'height'),
     fps=cfg.getint('PRE_COMPRESS', 'fps'),
+    v_bitrate=cfg.getint('PRE_COMPRESS', 'v_bitrate'),
+    v_bufsize=cfg.getint('PRE_COMPRESS', 'v_bitrate') / 2,
     logo=cfg.get('PRE_COMPRESS', 'logo'),
     logo_filter=cfg.get('PRE_COMPRESS', 'logo_filter'),
     protocols=cfg.get('PRE_COMPRESS', 'live_protocols'),
@@ -885,7 +887,11 @@ def play_clips(buffer, GetSourceIter):
         else:
             ff_pre_settings = filtergraph + [
                 '-pix_fmt', 'yuv420p', '-r', str(_pre_comp.fps),
-                '-c:v', 'mpeg2video', '-intra', '-q:v', '2',
+                '-c:v', 'mpeg2video', '-intra',
+                '-b:v', '{}k'.format(_pre_comp.v_bitrate),
+                '-minrate', '{}k'.format(_pre_comp.v_bitrate),
+                '-maxrate', '{}k'.format(_pre_comp.v_bitrate),
+                '-bufsize', '{}k'.format(_pre_comp.v_bufsize),
                 '-c:a', 's302m', '-strict', '-2', '-ar', '48000', '-ac', '2',
                 '-threads', '2', '-f', 'mpegts', '-'
             ]
@@ -905,7 +911,8 @@ def play_clips(buffer, GetSourceIter):
                 stdout=PIPE
             )
 
-            for data in iter(decoder.stdout.readline, ''):
+            while True:
+                data = decoder.stdout.read(188)
                 if not data:
                     break
 
