@@ -26,7 +26,6 @@ import os
 import smtplib
 import socket
 import sys
-import traceback
 from argparse import ArgumentParser
 from ast import literal_eval
 from datetime import date, datetime, timedelta
@@ -877,6 +876,20 @@ def main():
     get_source = GetSourceIter()
     year = get_date(False).split('-')[0]
 
+    if _pre_comp.copy:
+        ff_pre_settings = _pre_comp.copy_settings
+    else:
+        ff_pre_settings = [
+            '-pix_fmt', 'yuv420p', '-r', str(_pre_comp.fps),
+            '-c:v', 'mpeg2video', '-intra',
+            '-b:v', '{}k'.format(_pre_comp.v_bitrate),
+            '-minrate', '{}k'.format(_pre_comp.v_bitrate),
+            '-maxrate', '{}k'.format(_pre_comp.v_bitrate),
+            '-bufsize', '{}k'.format(_pre_comp.v_bufsize),
+            '-c:a', 's302m', '-strict', '-2',
+            '-ar', '48000', '-ac', '2',
+            '-threads', '2', '-f', 'mpegts', '-']
+
     try:
         if _playout.preview:
             # preview playout to player
@@ -885,8 +898,7 @@ def main():
                 '-hide_banner', '-nostats', '-i', 'pipe:0'],
                 stderr=None,
                 stdin=PIPE,
-                stdout=None,
-                bufsize=0
+                stdout=None
                 )
         else:
             # playout to rtmp
@@ -903,32 +915,15 @@ def main():
                 ] + _playout.post_comp_video + _playout.post_comp_audio
 
             playout = Popen(
-                list(playout_pre)
-                + [
+                playout_pre + [
                     '-metadata', 'service_name=' + _playout.name,
                     '-metadata', 'service_provider=' + _playout.provider,
-                    '-metadata', 'year=' + year
-                ] + list(_playout.post_comp_extra)
-                + [_playout.out_addr],
-                stdin=PIPE, bufsize=0
+                    '-metadata', 'year={}'.format(year)
+                ] + _playout.post_comp_extra + [_playout.out_addr],
+                stdin=PIPE
             )
 
         for src_cmd, filtergraph in get_source.next():
-            if _pre_comp.copy:
-                ff_pre_settings = _pre_comp.copy_settings
-            else:
-                ff_pre_settings = filtergraph + [
-                    '-pix_fmt', 'yuv420p', '-r', str(_pre_comp.fps),
-                    '-c:v', 'mpeg2video', '-intra',
-                    '-b:v', '{}k'.format(_pre_comp.v_bitrate),
-                    '-minrate', '{}k'.format(_pre_comp.v_bitrate),
-                    '-maxrate', '{}k'.format(_pre_comp.v_bitrate),
-                    '-bufsize', '{}k'.format(_pre_comp.v_bufsize),
-                    '-c:a', 's302m', '-strict', '-2',
-                    '-ar', '48000', '-ac', '2',
-                    '-threads', '2', '-f', 'mpegts', '-'
-                ]
-
             if src_cmd[0] == '-i':
                 current_file = src_cmd[1]
             else:
@@ -936,12 +931,10 @@ def main():
 
             logger.info('play: "{}"'.format(current_file))
 
-            with Popen(
-                [
-                    'ffmpeg', '-v', 'error', '-hide_banner', '-nostats'
-                ] + src_cmd + list(ff_pre_settings),
-                stdout=PIPE, bufsize=0
-            ) as decoder:
+            with Popen([
+                'ffmpeg', '-v', 'error', '-hide_banner', '-nostats'
+                ] + src_cmd + filtergraph + ff_pre_settings,
+                    stdout=PIPE) as decoder:
                 copyfileobj(decoder.stdout, playout.stdin)
 
     finally:
