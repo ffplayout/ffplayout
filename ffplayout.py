@@ -272,7 +272,7 @@ def is_int(value):
 
 # compare clip play time with real time,
 # to see if we are sync
-def check_sync(begin):
+def check_sync(begin, playout):
     time_now = get_time('full_sec')
 
     # around 2.5 seconds is in ffmpeg buffer
@@ -293,6 +293,7 @@ def check_sync(begin):
 
         if _general.stop and abs(time_distance) > _general.threshold:
             logger.error('Sync tolerance value exceeded, program terminated!')
+            playout.terminate()
             sys.exit(1)
 
 
@@ -585,8 +586,9 @@ def build_filtergraph(first, duration, seek, out, ad, ad_last, ad_next, dummy):
 # ------------------------------------------------------------------------------
 
 # read values from json playlist
-class GetSourceIter:
-    def __init__(self):
+class GetSourceIter(object):
+    def __init__(self, playout):
+        self._playout = playout
         self.last_time = get_time('full_sec')
 
         if 0 <= self.last_time < _playlist.start:
@@ -826,7 +828,7 @@ class GetSourceIter:
                         self.last = False
 
                     if self.has_begin:
-                        check_sync(self.begin)
+                        check_sync(self.begin, self._playout)
 
                     self.map_extension(node)
                     self.url_or_live_source()
@@ -873,7 +875,6 @@ class GetSourceIter:
 
 
 def main():
-    get_source = GetSourceIter()
     year = get_date(False).split('-')[0]
 
     if _pre_comp.copy:
@@ -922,6 +923,8 @@ def main():
                 ] + _playout.post_comp_extra + [_playout.out_addr],
                 stdin=PIPE
             )
+
+        get_source = GetSourceIter(playout)
 
         for src_cmd, filtergraph in get_source.next():
             if src_cmd[0] == '-i':
