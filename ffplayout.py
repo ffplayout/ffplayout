@@ -912,15 +912,14 @@ def play_clips(buffer, GetSourceIter):
             )
 
             while True:
-                data = decoder.stdout.read(188)
+                data = decoder.stdout.read(65424)
                 if not data:
                     break
 
                 buffer.put(data)
 
-        # TODO: make this nicer
         except Exception:
-            print(traceback.format_exc())
+            logger.error(traceback.format_exc())
 
         finally:
             decoder.wait()
@@ -932,11 +931,9 @@ def play_clips(buffer, GetSourceIter):
 def main():
     year = get_date(False).split('-')[0]
 
-    # open a buffer for the streaming pipeline
-    # stdin get the files loop
-    # stdout pipes to ffmpeg rtmp streaming
+    # the Queue connects pre- and post- compression
     # TODO: have an eye on maxsize
-    buffer = Queue(maxsize=120)
+    buffer = Queue(maxsize=56)
     try:
         if _playout.preview:
             # preview playout to player
@@ -959,8 +956,7 @@ def main():
                     'ffmpeg', '-v', 'info', '-hide_banner', '-nostats',
                     '-re', '-thread_queue_size', '256',
                     '-i', 'pipe:0'
-                ] + _playout.post_comp_video + \
-                    _playout.post_comp_audio
+                ] + _playout.post_comp_video + _playout.post_comp_audio
 
             playout = Popen(
                 list(playout_pre)
@@ -969,18 +965,14 @@ def main():
                     '-metadata', 'service_provider=' + _playout.provider,
                     '-metadata', 'year=' + year
                 ] + list(_playout.post_comp_extra)
-                + [
-                    _playout.out_addr
-                ],
+                + [_playout.out_addr],
                 stdin=PIPE,
             )
 
         play_thread = Thread(
             name='play_clips', target=play_clips, args=(
-                buffer,
-                GetSourceIter,
+                buffer, GetSourceIter,)
             )
-        )
         play_thread.daemon = True
         play_thread.start()
 
