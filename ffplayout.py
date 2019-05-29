@@ -50,6 +50,7 @@ else:
     cfg.read('ffplayout.conf')
 
 _general = SimpleNamespace(
+    tolerance=cfg.getint('GENERAL', 'sync_tolerance'),
     stop=cfg.getboolean('GENERAL', 'stop_on_error'),
     threshold=cfg.getfloat('GENERAL', 'stop_threshold')
 )
@@ -275,18 +276,12 @@ def is_int(value):
 def check_sync(begin, playout):
     time_now = get_time('full_sec')
 
-    # around 2.5 seconds is in ffmpeg buffer
-    tolerance = 7
-
     time_distance = begin - time_now
     if 0 <= time_now < _playlist.start and not begin == _playlist.start:
         time_distance -= 86400.0
 
-    # TODO: this is only for debugging
-    print(time_distance)
-
     # check that we are in tolerance time
-    if abs(time_distance) > tolerance:
+    if abs(time_distance) > _general.tolerance:
         mailer.warning(
             'Playlist is not sync!\n{} seconds async'.format(time_distance))
         logger.warning('Playlist is {} seconds async!'.format(time_distance))
@@ -871,7 +866,7 @@ class GetSourceIter(object):
                 self.error_handling('Playlist is not valid!')
 
             if self.src_cmd is not None:
-                yield self.src_cmd, self.filtergraph
+                yield self.src_cmd + self.filtergraph
 
 
 def main():
@@ -926,7 +921,7 @@ def main():
 
         get_source = GetSourceIter(playout)
 
-        for src_cmd, filtergraph in get_source.next():
+        for src_cmd in get_source.next():
             if src_cmd[0] == '-i':
                 current_file = src_cmd[1]
             else:
@@ -936,7 +931,7 @@ def main():
 
             with Popen([
                 'ffmpeg', '-v', 'error', '-hide_banner', '-nostats'
-                ] + src_cmd + filtergraph + ff_pre_settings,
+                ] + src_cmd + ff_pre_settings,
                     stdout=PIPE) as decoder:
                 copyfileobj(decoder.stdout, playout.stdin)
 
