@@ -464,9 +464,8 @@ def gen_input(has_begin, src, begin, dur, seek, out, last):
     # calculate time difference to see if we are sync
     time_diff = out - seek + time
 
-    if not has_begin:
-        return src_or_dummy(src, dur, seek, out), None
-    elif (time_diff <= ref_time or begin < day_in_sec) and not last:
+    if ((time_diff <= ref_time or begin < day_in_sec) and not last) \
+            or not has_begin:
         # when we are in the 24 houre range, get the clip
         return src_or_dummy(src, dur, seek, out), None
     elif time_diff < ref_time and last:
