@@ -50,7 +50,6 @@ else:
     cfg.read('ffplayout.conf')
 
 _general = SimpleNamespace(
-    tolerance=cfg.getint('GENERAL', 'sync_tolerance'),
     stop=cfg.getboolean('GENERAL', 'stop_on_error'),
     threshold=cfg.getfloat('GENERAL', 'stop_threshold')
 )
@@ -273,7 +272,7 @@ def is_int(value):
 
 # compare clip play time with real time,
 # to see if we are sync
-def check_sync(begin, playout):
+def check_sync(begin, encoder):
     time_now = get_time('full_sec')
 
     time_distance = begin - time_now
@@ -281,15 +280,13 @@ def check_sync(begin, playout):
         time_distance -= 86400.0
 
     # check that we are in tolerance time
-    if abs(time_distance) > _general.tolerance:
-        mailer.warning(
-            'Playlist is not sync!\n{} seconds async'.format(time_distance))
-        logger.warning('Playlist is {} seconds async!'.format(time_distance))
-
-        if _general.stop and abs(time_distance) > _general.threshold:
-            logger.error('Sync tolerance value exceeded, program terminated!')
-            playout.terminate()
-            sys.exit(1)
+    if _general.stop and abs(time_distance) > _general.threshold:
+        mailer.error(
+            'Sync tolerance value exceeded with {} seconds,\n'
+            'program terminated!'.format(time_distance))
+        logger.error('Sync tolerance value exceeded, program terminated!')
+        encoder.terminate()
+        sys.exit(1)
 
 
 # check begin and length
@@ -581,8 +578,8 @@ def build_filtergraph(first, duration, seek, out, ad, ad_last, ad_next, dummy):
 
 # read values from json playlist
 class GetSourceIter(object):
-    def __init__(self, playout):
-        self._playout = playout
+    def __init__(self, encoder):
+        self._encoder = encoder
         self.last_time = get_time('full_sec')
 
         if 0 <= self.last_time < _playlist.start:
@@ -822,7 +819,7 @@ class GetSourceIter(object):
                         self.last = False
 
                     if self.has_begin:
-                        check_sync(self.begin, self._playout)
+                        check_sync(self.begin, self._encoder)
 
                     self.map_extension(node)
                     self.url_or_live_source()
@@ -888,29 +885,26 @@ def main():
     try:
         if _playout.preview:
             # preview playout to player
-            playout = Popen([
-                'ffplay',
-                '-hide_banner', '-nostats', '-i', 'pipe:0'],
-                stderr=None,
-                stdin=PIPE,
-                stdout=None
+            encoder = Popen([
+                'ffplay', '-hide_banner', '-nostats', '-i', 'pipe:0'],
+                stderr=None, stdin=PIPE, stdout=None
                 )
         else:
             # playout to rtmp
             if _pre_comp.copy:
-                playout_pre = [
+                encoder_cmd = [
                     'ffmpeg', '-v', 'info', '-hide_banner', '-nostats',
                     '-re', '-i', 'pipe:0', '-c', 'copy'
                 ] + _playout.post_comp_copy
             else:
-                playout_pre = [
+                encoder_cmd = [
                     'ffmpeg', '-v', 'info', '-hide_banner', '-nostats',
                     '-re', '-thread_queue_size', '256',
                     '-i', 'pipe:0'
                 ] + _playout.post_comp_video + _playout.post_comp_audio
 
-            playout = Popen(
-                playout_pre + [
+            encoder = Popen(
+                encoder_cmd + [
                     '-metadata', 'service_name=' + _playout.name,
                     '-metadata', 'service_provider=' + _playout.provider,
                     '-metadata', 'year={}'.format(year)
@@ -918,7 +912,7 @@ def main():
                 stdin=PIPE
             )
 
-        get_source = GetSourceIter(playout)
+        get_source = GetSourceIter(encoder)
 
         for src_cmd in get_source.next():
             if src_cmd[0] == '-i':
@@ -932,10 +926,10 @@ def main():
                 'ffmpeg', '-v', 'error', '-hide_banner', '-nostats'
                 ] + src_cmd + ff_pre_settings,
                     stdout=PIPE) as decoder:
-                copyfileobj(decoder.stdout, playout.stdin)
+                copyfileobj(decoder.stdout, encoder.stdin)
 
     finally:
-        playout.wait()
+        encoder.wait()
 
 
 if __name__ == '__main__':
