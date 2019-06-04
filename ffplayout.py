@@ -27,7 +27,6 @@ import smtplib
 import socket
 import sys
 from argparse import ArgumentParser
-from ast import literal_eval
 from datetime import date, datetime, timedelta
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -81,7 +80,7 @@ _pre_comp = SimpleNamespace(
     logo_filter=cfg.get('PRE_COMPRESS', 'logo_filter'),
     protocols=cfg.get('PRE_COMPRESS', 'live_protocols'),
     copy=cfg.getboolean('PRE_COMPRESS', 'copy_mode'),
-    copy_settings=literal_eval(cfg.get('PRE_COMPRESS', 'ffmpeg_copy_settings'))
+    copy_settings=json.loads(cfg.get('PRE_COMPRESS', 'ffmpeg_copy_settings'))
 )
 
 _playlist = SimpleNamespace(
@@ -91,7 +90,7 @@ _playlist = SimpleNamespace(
     filler=cfg.get('PLAYLIST', 'filler_clip'),
     blackclip=cfg.get('PLAYLIST', 'blackclip'),
     shift=cfg.getint('PLAYLIST', 'time_shift'),
-    map_ext=cfg.get('PLAYLIST', 'map_extension')
+    map_ext=json.loads(cfg.get('PLAYLIST', 'map_extension'))
 )
 
 _playlist.start = float(_playlist.t[0]) * 3600 + float(_playlist.t[1]) * 60 \
@@ -102,10 +101,10 @@ _playout = SimpleNamespace(
     name=cfg.get('OUT', 'service_name'),
     provider=cfg.get('OUT', 'service_provider'),
     out_addr=cfg.get('OUT', 'out_addr'),
-    post_comp_video=literal_eval(cfg.get('OUT', 'post_comp_video')),
-    post_comp_audio=literal_eval(cfg.get('OUT', 'post_comp_audio')),
-    post_comp_extra=literal_eval(cfg.get('OUT', 'post_comp_extra')),
-    post_comp_copy=literal_eval(cfg.get('OUT', 'post_comp_copy'))
+    post_comp_video=json.loads(cfg.get('OUT', 'post_comp_video')),
+    post_comp_audio=json.loads(cfg.get('OUT', 'post_comp_audio')),
+    post_comp_extra=json.loads(cfg.get('OUT', 'post_comp_extra')),
+    post_comp_copy=json.loads(cfg.get('OUT', 'post_comp_copy'))
 )
 
 
@@ -340,13 +339,14 @@ def validate_thread(clip_nodes):
         # check if all values are valid
         for node in json_nodes["program"]:
             if _playlist.map_ext:
-                _ext = literal_eval(_playlist.map_ext)
                 source = node["source"].replace(
-                    _ext[0], _ext[1])
+                    _playlist.map_ext[0], _playlist.map_ext[1])
             else:
                 source = node["source"]
 
             prefix = source.split('://')[0]
+
+            missing = []
 
             if prefix in _pre_comp.protocols:
                 cmd = [
@@ -360,26 +360,22 @@ def validate_thread(clip_nodes):
                     output = '404'
 
                 if '404' in output:
-                    a = 'Stream not exist: "{}"\n'.format(source)
-                else:
-                    a = ''
-            elif file_exist(source):
-                a = ''
-            else:
-                a = 'File not exist: "{}"\n'.format(source)
+                    missing.append('Stream not exist: "{}"'.format(source))
+            elif not file_exist(source):
+                missing.append('File not exist: "{}"'.format(source))
 
             if is_float(node["in"]) and is_float(node["out"]):
-                b = ''
                 counter += node["out"] - node["in"]
             else:
-                b = 'Missing Value in: "{}"\n'.format(node)
+                missing.append('Missing Value in: "{}"'.format(node))
 
-            c = '' if is_float(node["duration"]) else 'No duration Value! '
+            if not is_float(node["duration"]):
+                missing.append('No duration Value!')
 
-            line = a + b + c
+            line = '\n'.join(missing)
             if line:
                 logger.error('Validation error :: {}'.format(line))
-                error += line + 'In line: {}\n'.format(node)
+                error += line + '\nIn line: {}\n\n'.format(node)
 
         if error:
             mailer.error(
@@ -658,9 +654,8 @@ class GetSourceIter(object):
 
     def map_extension(self, node):
         if _playlist.map_ext:
-            _ext = literal_eval(_playlist.map_ext)
             self.src = node["source"].replace(
-                _ext[0], _ext[1])
+                _playlist.map_ext[0], _playlist.map_ext[1])
         else:
             self.src = node["source"]
 
@@ -786,7 +781,7 @@ class GetSourceIter(object):
             if self.clip_nodes is None:
                 self.is_dummy = True
                 self.set_filtergraph()
-                yield self.src_cmd, self.filtergraph
+                yield self.src_cmd + self.filtergraph
                 continue
 
             self.begin = self.init_time
@@ -880,7 +875,7 @@ def main():
             '-bufsize', '{}k'.format(_pre_comp.v_bufsize),
             '-c:a', 's302m', '-strict', '-2',
             '-ar', '48000', '-ac', '2',
-            '-threads', '2', '-f', 'mpegts', '-']
+            '-f', 'mpegts', '-']
 
     try:
         if _playout.preview:
