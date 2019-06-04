@@ -21,13 +21,13 @@ Features and Requirements
 - set custom day start, so you can have playlist for example: from 6am to 6am, instate of 0am to 12pm
 - copy mode, for more info's take a look in the [Wiki](https://github.com/ffplayout/ffplayout-engine/wiki/Copy-Mode)
 - normal system requirements and no special tools
-    - we only need **ffmpeg**, **ffprobe** (**ffplay** if you want to play on desktop)
+    - we only need **ffmpeg** and **ffprobe** (**ffplay** if you want to play on desktop)
     - no GPU power is needed
     - RAM and CPU depends on video resolution, minimum 4 threads and 3GB RAM for 720p are recommend
 - python version 3.5 and up
 
 #### Why not more features?
-- ffplayout follows the principle: stability before features!
+- ffplayout follows the principle: stability over features!
 - ffplayout must be able to run in containers and VMs without problems, so it should be resource-efficient and not use GPU features
 - if you have a great feature that needs to be integrated and can be done with ffmpeg - feel free to submit code
 - besides that, you can also check the [TODO](https://github.com/ffplayout/ffplayout-engine/projects/1) to see if more is planned
@@ -101,11 +101,11 @@ More informations in [Wiki](https://github.com/ffplayout/ffplayout-engine/wiki/U
 Installation
 -----
 - install ffmpeg, ffprobe (and ffplay if you need the preview mode)
-- copy, or symlink, ffplayout.py to **/usr/local/bin/**
-- copy, or symlink, ffplayout.conf to **/etc/ffplayout/**
+- copy ffplayout.py to **/usr/local/bin/**
+- copy ffplayout.conf to **/etc/ffplayout/**
 - create folder with correct permissions for logging (check config)
 - copy ffplayout.service to **/etc/systemd/system/**
-- change user in service file
+- change user in **/etc/systemd/system/ffplayout.service**
 - create playlists folder, in that format: **/playlists/year/month**
 - set variables in config file to your needs
 - use **get_playlist_from_subfolders.sh /path/to/mp4s/** as a starting point for your playlists (path in script needs to change)
