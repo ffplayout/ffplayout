@@ -5,11 +5,11 @@
 
 This is a streaming solution based on python and ffmpeg.
 
-The goal is to play for every day an *json* playlist, while the current playlist is still editable.
+The purpose with ffplayout is to provide a 24/7 streaming solution that plays a *json* playlist for every day, while keeping the current playlist editable.
 
 #### Check [ffplayout-gui](https://github.com/ffplayout/ffplayout-gui): web-based GUI for ffplayout.
 
-Features
+Features and Requirements
 -----
 
 - have all values in a separate config file
@@ -25,6 +25,12 @@ Features
     - no GPU power is needed
     - RAM and CPU depends on video resolution, minimum 4 threads and 3GB RAM for 720p are recommend
 - python version 3.5 and up
+
+#### Why not more features?
+- ffplayout follows the principle: stability before features!
+- ffplayout must be able to run in containers and VMs without problems, so it should be resource-efficient and not use GPU features
+- if you have a great feature that needs to be integrated and can be done with ffmpeg - feel free to submit code
+- besides that, you can also check the [TODO](https://github.com/ffplayout/ffplayout-engine/projects/1) to see if more is planned
 
 JSON Playlist Example
 -----
