@@ -43,7 +43,7 @@ from types import SimpleNamespace
 
 # read config
 cfg = configparser.ConfigParser()
-if os.path.exists('/etc/ffplayout/ffplayout.conf'):
+if os.path.isfile('/etc/ffplayout/ffplayout.conf'):
     cfg.read('/etc/ffplayout/ffplayout.conf')
 else:
     cfg.read('ffplayout.conf')
@@ -243,14 +243,6 @@ def get_date(seek_day):
         return d.strftime('%Y-%m-%d')
 
 
-# check if input file exist
-def file_exist(in_file):
-    if os.path.exists(in_file):
-        return True
-    else:
-        return False
-
-
 # test if value is float
 def is_float(value):
     try:
@@ -361,7 +353,7 @@ def validate_thread(clip_nodes):
 
                 if '404' in output:
                     missing.append('Stream not exist: "{}"'.format(source))
-            elif not file_exist(source):
+            elif not os.path.isfile(source):
                 missing.append('File not exist: "{}"'.format(source))
 
             if is_float(node["in"]) and is_float(node["out"]):
@@ -433,7 +425,7 @@ def src_or_dummy(src, dur, seek, out):
         # check if input is a live source
         if prefix in _pre_comp.protocols:
             return seek_in(seek) + ['-i', src] + set_length(dur, seek, out)
-        elif file_exist(src):
+        elif os.path.isfile(src):
             return seek_in(seek) + ['-i', src] + set_length(dur, seek, out)
         else:
             mailer.error('Clip not exist:\n{}'.format(src))
@@ -536,7 +528,7 @@ def build_filtergraph(first, duration, seek, out, ad, ad_last, ad_next, dummy):
 
     audio_map = ['-map', '[a]']
 
-    if os.path.exists(_pre_comp.logo):
+    if os.path.isfile(_pre_comp.logo):
         if not ad:
             opacity = 'format=rgba,colorchannelmixer=aa=0.7'
             loop = 'loop=loop={}:size=1:start=0'.format(
@@ -611,7 +603,7 @@ class GetSourceIter(object):
             self.json_file = os.path.join(
              _playlist.path, year, month, self.list_date + '.json')
 
-        if file_exist(self.json_file):
+        if os.path.isfile(self.json_file):
             # check last modification from playlist
             mod_time = os.path.getmtime(self.json_file)
             if mod_time > self.last_mod_time:
