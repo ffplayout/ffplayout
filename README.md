@@ -9,28 +9,34 @@ The purpose with ffplayout is to provide a 24/7 broadcasting solution that plays
 
 #### Check [ffplayout-gui](https://github.com/ffplayout/ffplayout-gui): web-based GUI for ffplayout.
 
-Features and Requirements
+Features
 -----
 
 - have all values in a separate config file
 - dynamic playlist
 - replace missing playlist or clip with a dummy clip
+- playing clips from watched folder
 - send emails with error message
 - overlay a logo
 - trim and fade the last clip, to get full 24 hours, if the duration is less then 6 seconds add a dummy clip
 - set custom day start, so you can have playlist for example: from 6am to 6am, instate of 0am to 12pm
 - copy mode, for more info's take a look in the [Wiki](https://github.com/ffplayout/ffplayout-engine/wiki/Copy-Mode)
 - normal system requirements and no special tools
-    - we only need **ffmpeg** and **ffprobe** (**ffplay** if you want to play on desktop)
-    - no GPU power is needed
-    - RAM and CPU depends on video resolution, minimum 4 threads and 3GB RAM for 720p are recommend
-- python version 3.5 and up
+- no GPU power is needed
+- stream to server or play on desktop
 
 #### Why not more features?
 - ffplayout follows the principle: stability over features!
 - ffplayout must be able to run in containers and VMs without problems, so it should be resource-efficient and not use GPU features
 - if you have a great feature that needs to be integrated and can be done with ffmpeg - feel free to submit code
 - besides that, you can also check the [TODO](https://github.com/ffplayout/ffplayout-engine/projects/1) to see if more is planned
+
+Requirements
+-----
+- python version 3.5+
+- python module **watchdog**
+- **ffmpeg** and **ffprobe** (**ffplay** if you want to play on desktop)
+- RAM and CPU depends on video resolution, minimum 4 threads and 3GB RAM for 720p are recommend
 
 JSON Playlist Example
 -----
