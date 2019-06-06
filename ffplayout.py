@@ -20,12 +20,15 @@
 
 
 import configparser
+import glob
 import json
 import logging
 import os
+import random
 import smtplib
 import socket
 import sys
+import time
 from argparse import ArgumentParser
 from datetime import date, datetime, timedelta
 from email.mime.multipart import MIMEMultipart
@@ -36,6 +39,9 @@ from shutil import copyfileobj
 from subprocess import PIPE, CalledProcessError, Popen, check_output
 from threading import Thread
 from types import SimpleNamespace
+
+from watchdog.events import PatternMatchingEventHandler
+from watchdog.observers import Observer
 
 # ------------------------------------------------------------------------------
 # read variables from config file
@@ -50,7 +56,8 @@ else:
 
 _general = SimpleNamespace(
     stop=cfg.getboolean('GENERAL', 'stop_on_error'),
-    threshold=cfg.getfloat('GENERAL', 'stop_threshold')
+    threshold=cfg.getfloat('GENERAL', 'stop_threshold'),
+    playlist_mode=cfg.getboolean('GENERAL', 'playlist_mode')
 )
 
 _mail = SimpleNamespace(
@@ -95,6 +102,12 @@ _playlist = SimpleNamespace(
 
 _playlist.start = float(_playlist.t[0]) * 3600 + float(_playlist.t[1]) * 60 \
     + float(_playlist.t[2])
+
+_folder = SimpleNamespace(
+    storage=cfg.get('FOLDER', 'storage'),
+    extensions=json.loads(cfg.get('FOLDER', 'extensions')),
+    shuffle=cfg.getboolean('FOLDER', 'shuffle')
+)
 
 _playout = SimpleNamespace(
     preview=cfg.getboolean('OUT', 'preview'),
@@ -561,6 +574,124 @@ def build_filtergraph(first, duration, seek, out, ad, ad_last, ad_next, dummy):
 
 
 # ------------------------------------------------------------------------------
+# folder watcher
+# ------------------------------------------------------------------------------
+
+class MediaStore:
+    """
+    fill media list for playing
+    MediaWatch will interact with add and remove
+    """
+
+    def __init__(self, extensions):
+        self._extensions = extensions
+        self.store = []
+
+    def fill(self, folder):
+        for ext in self._extensions:
+            self.store.extend(
+                glob.glob(os.path.join(folder, '**', ext), recursive=True))
+
+        self.sort()
+
+    def add(self, file):
+        self.store.append(file)
+        self.sort()
+
+    def remove(self, file):
+        self.store.remove(file)
+        self.sort()
+
+    def sort(self):
+        # sort list for sorted playing
+        self.store = sorted(self.store)
+
+
+class MediaWatcher:
+    """
+    watch given folder for file changes and update media list
+    """
+
+    def __init__(self, path, extensions, media):
+        self._path = path
+        self._media = media
+
+        self.event_handler = PatternMatchingEventHandler(patterns=extensions)
+        self.event_handler.on_created = self.on_created
+        self.event_handler.on_moved = self.on_moved
+        self.event_handler.on_deleted = self.on_deleted
+
+        self.observer = Observer()
+        self.observer.schedule(self.event_handler, self._path, recursive=True)
+
+        self.observer.start()
+
+    def on_created(self, event):
+        # add file to media list only if it is completely copied
+        file_size = -1
+        while file_size != os.path.getsize(event.src_path):
+            file_size = os.path.getsize(event.src_path)
+            time.sleep(1)
+
+        self._media.add(event.src_path)
+
+        print('Add file to media list: "{}"'.format(event.src_path))
+
+    def on_moved(self, event):
+        self._media.remove(event.src_path)
+        self._media.add(event.dest_path)
+
+        print('Moved file from "{}" to "{}"'.format(event.src_path,
+                                                    event.dest_path))
+
+    def on_deleted(self, event):
+        self._media.remove(event.src_path)
+
+        print('Removed file from media list: "{}"'.format(event.src_path))
+
+    def stop(self):
+        self.observer.stop()
+        self.observer.join()
+
+
+class GetSource:
+    """
+    give next clip, depending on shuffle mode
+    """
+
+    def __init__(self, media, shuffle):
+        self._media = media
+        self._shuffle = shuffle
+
+        self.last_played = []
+        self.index = 0
+
+        self.filtergraph = build_filtergraph(False, 0.0, 0.0, 0.0, False,
+                                             False, False, False)
+
+    def next(self):
+        while True:
+            if self._shuffle:
+                clip = random.choice(self._media.store)
+
+                if len(self.last_played) > len(self._media.store) / 2:
+                    self.last_played.pop(0)
+
+                if clip not in self.last_played:
+                    self.last_played.append(clip)
+                    yield ['-i', clip] + self.filtergraph
+
+            else:
+                while self.index < len(self._media.store):
+                    yield [
+                        '-i', self._media.store[self.index]
+                        ] + self.filtergraph
+                    self.index += 1
+                else:
+                    self.index = 0
+
+
+# ------------------------------------------------------------------------------
 # main functions
 # ------------------------------------------------------------------------------
 
@@ -899,7 +1030,14 @@ def main():
                 stdin=PIPE
             )
 
-        get_source = GetSourceIter(encoder)
+        if _general.playlist_mode:
+            get_source = GetSourceIter(encoder)
+        else:
+            media = MediaStore(_folder.extensions)
+            media.fill(_folder.storage)
+
+            MediaWatcher(_folder.storage, _folder.extensions, media)
+            get_source = GetSource(media, _folder.shuffle)
 
         for src_cmd in get_source.next():
             if src_cmd[0] == '-i':
