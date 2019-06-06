@@ -1061,7 +1061,7 @@ def main():
                     ] + src_cmd + ff_pre_settings,
                         stdout=PIPE) as decoder:
                     copyfileobj(decoder.stdout, encoder.stdin)
-        except (KeyboardInterrupt, SystemExit):
+        except (KeyboardInterrupt, SystemExit, BrokenPipeError):
             logger.warning('program terminated')
             watcher.stop()
             decoder.terminate()
