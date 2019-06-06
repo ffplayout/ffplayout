@@ -26,6 +26,7 @@ import logging
 import os
 import random
 import smtplib
+import signal
 import socket
 import sys
 import time
@@ -983,6 +984,13 @@ class GetSourceIter(object):
                 yield self.src_cmd + self.filtergraph
 
 
+def handle_exit(sig, frame):
+    raise(SystemExit)
+
+
+signal.signal(signal.SIGTERM, handle_exit)
+
+
 def main():
     year = get_date(False).split('-')[0]
 
@@ -1036,22 +1044,28 @@ def main():
             media = MediaStore(_folder.extensions)
             media.fill(_folder.storage)
 
-            MediaWatcher(_folder.storage, _folder.extensions, media)
+            watcher = MediaWatcher(_folder.storage, _folder.extensions, media)
             get_source = GetSource(media, _folder.shuffle)
 
-        for src_cmd in get_source.next():
-            if src_cmd[0] == '-i':
-                current_file = src_cmd[1]
-            else:
-                current_file = src_cmd[3]
+        try:
+            for src_cmd in get_source.next():
+                if src_cmd[0] == '-i':
+                    current_file = src_cmd[1]
+                else:
+                    current_file = src_cmd[3]
 
-            logger.info('play: "{}"'.format(current_file))
+                logger.info('play: "{}"'.format(current_file))
 
-            with Popen([
-                'ffmpeg', '-v', 'error', '-hide_banner', '-nostats'
-                ] + src_cmd + ff_pre_settings,
-                    stdout=PIPE) as decoder:
-                copyfileobj(decoder.stdout, encoder.stdin)
+                with Popen([
+                    'ffmpeg', '-v', 'error', '-hide_banner', '-nostats'
+                    ] + src_cmd + ff_pre_settings,
+                        stdout=PIPE) as decoder:
+                    copyfileobj(decoder.stdout, encoder.stdin)
+        except (KeyboardInterrupt, SystemExit):
+            logger.warning('program terminated')
+            watcher.stop()
+            decoder.terminate()
+            encoder.terminate()
 
     finally:
         encoder.wait()
