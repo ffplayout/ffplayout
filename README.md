@@ -3,8 +3,6 @@
 [![made-with-python](https://img.shields.io/badge/Made%20with-Python-1f425f.svg)](https://www.python.org/)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
-This is a playout application based on python and ffmpeg.
-
 The purpose with ffplayout is to provide a 24/7 broadcasting solution that plays a *json* playlist for every day, while keeping the current playlist editable.
 
 #### Check [ffplayout-gui](https://github.com/ffplayout/ffplayout-gui): web-based GUI for ffplayout.
