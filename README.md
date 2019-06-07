@@ -15,7 +15,7 @@ Features
 - have all values in a separate config file
 - dynamic playlist
 - replace missing playlist or clip with a dummy clip
-- playing clips from watched folder
+- playing clips from [watched folder](https://github.com/ffplayout/ffplayout-engine/wiki/Watch-Folder)
 - send emails with error message
 - overlay a logo
 - trim and fade the last clip, to get full 24 hours, if the duration is less then 6 seconds add a dummy clip
