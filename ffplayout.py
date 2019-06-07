@@ -1023,7 +1023,9 @@ def main():
         if _playout.preview:
             # preview playout to player
             encoder = Popen([
-                'ffplay', '-hide_banner', '-nostats', '-i', 'pipe:0'],
+                'ffplay', '-hide_banner', '-nostats', '-i', 'pipe:0',
+                '-vf', "drawtext=enable='gte(t,3)':box=1:boxcolor=0x000000@0xcc:boxborderw=8:fontsize=24:fontcolor=white:textfile=live.txt:reload=1:y=(h-line_h)*0\,9:x=w-w/8*mod(t\,8*(w+tw)/w)"
+                ],
                 stderr=None, stdin=PIPE, stdout=None
                 )
         else:
