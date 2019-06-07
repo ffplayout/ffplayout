@@ -1050,6 +1050,7 @@ def main():
             watcher = None
             get_source = GetSourceIter(encoder)
         else:
+            logger.info("start folder mode")
             media = MediaStore(_folder.extensions)
             media.fill(_folder.storage)
 
