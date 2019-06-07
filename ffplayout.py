@@ -234,6 +234,24 @@ mailer = Mailer()
 # global helper functions
 # ------------------------------------------------------------------------------
 
+def handle_sigterm(sig, frame):
+    raise(SystemExit)
+
+
+signal.signal(signal.SIGTERM, handle_sigterm)
+
+
+def terminate_processes(decoder, encoder, watcher):
+    if decoder.poll() is None:
+        decoder.terminate()
+
+    if encoder.poll() is None:
+        encoder.terminate()
+
+    if watcher:
+        watcher.stop()
+
+
 def get_time(time_format):
     t = datetime.today() + timedelta(seconds=_playlist.shift)
     if time_format == 'hour':
@@ -984,13 +1002,6 @@ class GetSourceIter(object):
                 yield self.src_cmd + self.filtergraph
 
 
-def handle_exit(sig, frame):
-    raise(SystemExit)
-
-
-signal.signal(signal.SIGTERM, handle_exit)
-
-
 def main():
     year = get_date(False).split('-')[0]
 
@@ -1039,6 +1050,7 @@ def main():
             )
 
         if _general.playlist_mode:
+            watcher = None
             get_source = GetSourceIter(encoder)
         else:
             media = MediaStore(_folder.extensions)
@@ -1061,11 +1073,18 @@ def main():
                     ] + src_cmd + ff_pre_settings,
                         stdout=PIPE) as decoder:
                     copyfileobj(decoder.stdout, encoder.stdin)
-        except (KeyboardInterrupt, SystemExit, BrokenPipeError):
+
+        except BrokenPipeError:
+            logger.error('Broken Pipe!')
+            terminate_processes(decoder, encoder, watcher)
+
+        except SystemExit:
+            logger.info("got close command")
+            terminate_processes(decoder, encoder, watcher)
+
+        except KeyboardInterrupt:
             logger.warning('program terminated')
-            watcher.stop()
-            decoder.terminate()
-            encoder.terminate()
+            terminate_processes(decoder, encoder, watcher)
 
     finally:
         encoder.wait()
