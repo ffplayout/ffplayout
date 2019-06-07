@@ -41,9 +41,6 @@ from subprocess import PIPE, CalledProcessError, Popen, check_output
 from threading import Thread
 from types import SimpleNamespace
 
-from watchdog.events import PatternMatchingEventHandler
-from watchdog.observers import Observer
-
 # ------------------------------------------------------------------------------
 # read variables from config file
 # ------------------------------------------------------------------------------
@@ -1091,4 +1088,8 @@ def main():
 
 
 if __name__ == '__main__':
+    if not _general.playlist_mode:
+        from watchdog.events import PatternMatchingEventHandler
+        from watchdog.observers import Observer
+
     main()
