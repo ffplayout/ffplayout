@@ -32,7 +32,7 @@ Features
 Requirements
 -----
 - python version 3.5+
-- python module **watchdog** (onyl when playlist_mode = False)
+- python module **watchdog** (onyl when `playlist_mode = False`)
 - **ffmpeg** and **ffprobe** (**ffplay** if you want to play on desktop)
 - RAM and CPU depends on video resolution, minimum 4 threads and 3GB RAM for 720p are recommend
 
