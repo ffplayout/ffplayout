@@ -112,7 +112,6 @@ _folder = SimpleNamespace(
 
 _text = SimpleNamespace(
     show=cfg.getboolean('TEXT', 'show'),
-    enable=cfg.get('TEXT', 'enable'),
     box=cfg.get('TEXT', 'box'),
     boxcolor=cfg.get('TEXT', 'boxcolor'),
     boxborderw=cfg.get('TEXT', 'boxborderw'),
@@ -1035,12 +1034,12 @@ def main():
 
     if _text.show:
         overlay = [
-            '-vf', ("drawtext=enable='{}':box={}:boxcolor='{}':"
-                    "boxborderw={}:fontsize={}:fontcolor={}:fontfile='{}':"
-                    "textfile={}:reload=1:x='{}':y='{}'").format(
-                        _text.enable, _text.box, _text.boxcolor,
-                        _text.boxborderw, _text.fontsize, _text.fontcolor,
-                        _text.fontfile, _text.textfile, _text.x,  _text.y)
+            '-vf', ("drawtext=box={}:boxcolor='{}':boxborderw={}:fontsize={}"
+                    ":fontcolor={}:fontfile='{}':textfile={}:reload=1"
+                    ":x='{}':y='{}'").format(
+                        _text.box, _text.boxcolor, _text.boxborderw,
+                        _text.fontsize, _text.fontcolor, _text.fontfile,
+                        _text.textfile, _text.x,  _text.y)
         ]
     else:
         overlay = []
