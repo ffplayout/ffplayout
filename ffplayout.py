@@ -41,9 +41,6 @@ from subprocess import PIPE, CalledProcessError, Popen, check_output
 from threading import Thread
 from types import SimpleNamespace
 
-from watchdog.events import PatternMatchingEventHandler
-from watchdog.observers import Observer
-
 # ------------------------------------------------------------------------------
 # read variables from config file
 # ------------------------------------------------------------------------------
@@ -667,19 +664,19 @@ class MediaWatcher:
 
         self._media.add(event.src_path)
 
-        print('Add file to media list: "{}"'.format(event.src_path))
+        logger.info('Add file to media list: "{}"'.format(event.src_path))
 
     def on_moved(self, event):
         self._media.remove(event.src_path)
         self._media.add(event.dest_path)
 
-        print('Moved file from "{}" to "{}"'.format(event.src_path,
-                                                    event.dest_path))
+        logger.info('Move file from "{}" to "{}"'.format(event.src_path,
+                                                         event.dest_path))
 
     def on_deleted(self, event):
         self._media.remove(event.src_path)
 
-        print('Removed file from media list: "{}"'.format(event.src_path))
+        logger.info('Remove file from media list: "{}"'.format(event.src_path))
 
     def stop(self):
         self.observer.stop()
@@ -1080,6 +1077,7 @@ def main():
             watcher = None
             get_source = GetSourceIter(encoder)
         else:
+            logger.info("start folder mode")
             media = MediaStore(_folder.extensions)
             media.fill(_folder.storage)
 
@@ -1118,4 +1116,8 @@ def main():
 
 
 if __name__ == '__main__':
+    if not _general.playlist_mode:
+        from watchdog.events import PatternMatchingEventHandler
+        from watchdog.observers import Observer
+
     main()
