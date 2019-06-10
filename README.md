@@ -3,8 +3,6 @@
 [![made-with-python](https://img.shields.io/badge/Made%20with-Python-1f425f.svg)](https://www.python.org/)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
-This is a playout application based on python and ffmpeg.
-
 The purpose with ffplayout is to provide a 24/7 broadcasting solution that plays a *json* playlist for every day, while keeping the current playlist editable.
 
 #### Check [ffplayout-gui](https://github.com/ffplayout/ffplayout-gui): web-based GUI for ffplayout.
@@ -15,7 +13,7 @@ Features
 - have all values in a separate config file
 - dynamic playlist
 - replace missing playlist or clip with a dummy clip
-- playing clips from watched folder
+- playing clips from [watched folder](https://github.com/ffplayout/ffplayout-engine/wiki/Watch-Folder)
 - send emails with error message
 - overlay a logo
 - trim and fade the last clip, to get full 24 hours, if the duration is less then 6 seconds add a dummy clip
@@ -34,7 +32,7 @@ Features
 Requirements
 -----
 - python version 3.5+
-- python module **watchdog**
+- python module **watchdog** (onyl when `playlist_mode = False`)
 - **ffmpeg** and **ffprobe** (**ffplay** if you want to play on desktop)
 - RAM and CPU depends on video resolution, minimum 4 threads and 3GB RAM for 720p are recommend
 
