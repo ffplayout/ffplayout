@@ -108,14 +108,13 @@ _folder = SimpleNamespace(
 )
 
 _text = SimpleNamespace(
-    show=cfg.getboolean('TEXT', 'show'),
-    box=cfg.get('TEXT', 'box'),
-    boxcolor=cfg.get('TEXT', 'boxcolor'),
-    boxborderw=cfg.get('TEXT', 'boxborderw'),
+    textfile=cfg.get('TEXT', 'textfile'),
     fontsize=cfg.get('TEXT', 'fontsize'),
     fontcolor=cfg.get('TEXT', 'fontcolor'),
     fontfile=cfg.get('TEXT', 'fontfile'),
-    textfile=cfg.get('TEXT', 'textfile'),
+    box=cfg.get('TEXT', 'box'),
+    boxcolor=cfg.get('TEXT', 'boxcolor'),
+    boxborderw=cfg.get('TEXT', 'boxborderw'),
     x=cfg.get('TEXT', 'x'),
     y=cfg.get('TEXT', 'y')
 )
@@ -1029,7 +1028,8 @@ def main():
             '-ar', '48000', '-ac', '2',
             '-f', 'mpegts', '-']
 
-    if _text.show:
+    if os.path.isfile(_text.textfile):
+        logger.info('Use text file "{}" for overlay'.format(_text.textfile))
         overlay = [
             '-vf', ("drawtext=box={}:boxcolor='{}':boxborderw={}:fontsize={}"
                     ":fontcolor={}:fontfile='{}':textfile={}:reload=1"
