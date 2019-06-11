@@ -16,6 +16,7 @@ Features
 - playing clips from [watched folder](https://github.com/ffplayout/ffplayout-engine/wiki/Watch-Folder)
 - send emails with error message
 - overlay a logo
+- overlay scrolling text
 - trim and fade the last clip, to get full 24 hours, if the duration is less then 6 seconds add a dummy clip
 - set custom day start, so you can have playlist for example: from 6am to 6am, instate of 0am to 12pm
 - copy mode, for more info's take a look in the [Wiki](https://github.com/ffplayout/ffplayout-engine/wiki/Copy-Mode)
