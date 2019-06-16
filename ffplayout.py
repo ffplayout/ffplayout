@@ -1054,7 +1054,8 @@ def main():
             if _pre_comp.copy:
                 encoder_cmd = [
                     'ffmpeg', '-v', 'info', '-hide_banner', '-nostats',
-                    '-re', '-i', 'pipe:0', '-c', 'copy'
+                    '-re', '-thread_queue_size', '256',
+                    '-i', 'pipe:0', '-c', 'copy'
                 ] + _playout.post_comp_copy
             else:
                 encoder_cmd = [
