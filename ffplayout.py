@@ -1028,18 +1028,18 @@ def main():
             '-ar', '48000', '-ac', '2',
             '-f', 'mpegts', '-']
 
-    if os.path.isfile(_text.textfile):
-        logger.info('Use text file "{}" for overlay'.format(_text.textfile))
-        overlay = [
-            '-vf', ("drawtext=box={}:boxcolor='{}':boxborderw={}:fontsize={}"
-                    ":fontcolor={}:fontfile='{}':textfile={}:reload=1"
-                    ":x='{}':y='{}'").format(
-                        _text.box, _text.boxcolor, _text.boxborderw,
-                        _text.fontsize, _text.fontcolor, _text.fontfile,
-                        _text.textfile, _text.x,  _text.y)
-        ]
-    else:
-        overlay = []
+        if os.path.isfile(_text.textfile):
+            logger.info('Overlay text file: "{}"'.format(_text.textfile))
+            overlay = [
+                '-vf', ("drawtext=box={}:boxcolor='{}':boxborderw={}"
+                        ":fontsize={}:fontcolor={}:fontfile='{}':textfile={}"
+                        ":reload=1:x='{}':y='{}'").format(
+                            _text.box, _text.boxcolor, _text.boxborderw,
+                            _text.fontsize, _text.fontcolor, _text.fontfile,
+                            _text.textfile, _text.x,  _text.y)
+            ]
+        else:
+            overlay = []
 
     try:
         if _playout.preview:
