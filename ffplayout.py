@@ -94,7 +94,7 @@ _playlist = SimpleNamespace(
     start=0,
     filler=cfg.get('PLAYLIST', 'filler_clip'),
     blackclip=cfg.get('PLAYLIST', 'blackclip'),
-    shift=cfg.getint('PLAYLIST', 'time_shift'),
+    shift=cfg.getfloat('PLAYLIST', 'time_shift'),
     map_ext=json.loads(cfg.get('PLAYLIST', 'map_extension'))
 )
 
@@ -266,9 +266,8 @@ def get_time(time_format):
     if time_format == 'hour':
         return t.hour
     elif time_format == 'full_sec':
-        sec = float(t.hour * 3600 + t.minute * 60 + t.second)
-        micro = float(t.microsecond) / 1000000
-        return sec + micro
+        return t.hour * 3600 + t.minute * 60 + t.second \
+             + t.microsecond / 1000000
     elif time_format == 'stamp':
         return float(datetime.now().timestamp())
     else:
