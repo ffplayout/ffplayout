@@ -1111,6 +1111,10 @@ def main():
             logger.warning('program terminated')
             terminate_processes(decoder, encoder, watcher)
 
+        # close encoder when nothing is to do anymore
+        if encoder.poll() is None:
+            encoder.terminate()
+
     finally:
         encoder.wait()
 
