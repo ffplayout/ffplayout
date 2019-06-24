@@ -24,12 +24,6 @@ Features
 - no GPU power is needed
 - stream to server or play on desktop
 
-#### Why not more features?
-- ffplayout follows the principle: stability over features!
-- ffplayout must be able to run in containers and VMs without problems, so it should be resource-efficient and not use GPU features
-- if you have a great feature that needs to be integrated and can be done with ffmpeg - feel free to submit code
-- besides that, you can also check the [TODO](https://github.com/ffplayout/ffplayout-engine/projects/1) to see if more is planned
-
 Requirements
 -----
 - python version 3.5+
