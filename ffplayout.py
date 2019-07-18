@@ -95,7 +95,6 @@ _playlist = SimpleNamespace(
     filler=cfg.get('PLAYLIST', 'filler_clip'),
     blackclip=cfg.get('PLAYLIST', 'blackclip'),
     shift=cfg.getfloat('PLAYLIST', 'time_shift'),
-    map_ext=json.loads(cfg.get('PLAYLIST', 'map_extension'))
 )
 
 _playlist.start = float(_playlist.t[0]) * 3600 + float(_playlist.t[1]) * 60 \
@@ -370,14 +369,8 @@ def validate_thread(clip_nodes):
 
         # check if all values are valid
         for node in json_nodes["program"]:
-            if _playlist.map_ext:
-                source = node["source"].replace(
-                    _playlist.map_ext[0], _playlist.map_ext[1])
-            else:
-                source = node["source"]
-
+            source = node["source"]
             prefix = source.split('://')[0]
-
             missing = []
 
             if prefix in _pre_comp.protocols:
@@ -802,13 +795,6 @@ class GetSourceIter(object):
         else:
             self.out = self.duration
 
-    def map_extension(self, node):
-        if _playlist.map_ext:
-            self.src = node["source"].replace(
-                _playlist.map_ext[0], _playlist.map_ext[1])
-        else:
-            self.src = node["source"]
-
     def url_or_live_source(self):
         prefix = self.src.split('://')[0]
 
@@ -947,7 +933,8 @@ class GetSourceIter(object):
                         # calculate seek time
                         self.seek = self.last_time - self.begin + self.seek
 
-                    self.map_extension(node)
+                    self.src = node["source"]
+
                     self.url_or_live_source()
                     self.get_input()
                     self.is_source_dummy()
@@ -966,7 +953,8 @@ class GetSourceIter(object):
                     if self.has_begin:
                         check_sync(self.begin, self._encoder)
 
-                    self.map_extension(node)
+                    self.src = node["source"]
+
                     self.url_or_live_source()
                     self.get_input()
                     self.is_source_dummy()
