@@ -18,6 +18,7 @@ Features
 - overlay a logo
 - overlay scrolling text
 - trim and fade the last clip, to get full 24 hours
+- when playlist is not 24 hours long, loop filler clip until time is full 
 - set custom day start, so you can have playlist for example: from 6am to 6am, instate of 0am to 12pm
 - copy mode, for more info's take a look in the [Wiki](https://github.com/ffplayout/ffplayout-engine/wiki/Copy-Mode)
 - normal system requirements and no special tools
