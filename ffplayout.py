@@ -23,6 +23,7 @@ import configparser
 import glob
 import json
 import logging
+import math
 import os
 import random
 import smtplib
@@ -30,6 +31,7 @@ import signal
 import socket
 import sys
 import time
+
 from argparse import ArgumentParser
 from datetime import date, datetime, timedelta
 from email.mime.multipart import MIMEMultipart
@@ -441,6 +443,41 @@ def gen_dummy(duration):
         ]
 
 
+# when playlist is not 24 hours long, we generate a loop from filler clip
+def gen_filler_loop(duration):
+    if not _playlist.filler:
+        # when no filler is set, generate a dummy
+        logger.warning('No filler is set!')
+        return gen_dummy(duration)
+    else:
+        # get duration from filler
+        cmd = [
+            'ffprobe', '-v', 'error', '-show_entries', 'format=duration',
+            '-of', 'default=noprint_wrappers=1:nokey=1', _playlist.filler]
+
+        try:
+            f_dur = float(check_output(cmd).decode('utf-8'))
+        except (CalledProcessError, ValueError):
+            f_dur = None
+
+        if f_dur:
+            if f_dur > duration:
+                # cut filler
+                logger.info('Generate filler with {} seconds'.format(duration))
+                return ['-i', _playlist.filler] + set_length(
+                    f_dur, 0, duration)
+            else:
+                # loop filles n times
+                loop_count = math.ceil(duration / f_dur)
+                logger.info('Loop filler {} times, total duration: {}'.format(
+                    loop_count, duration))
+                return ['-stream_loop', str(loop_count),
+                        '-i', _playlist.filler, '-t', str(duration)]
+        else:
+            logger.error("Can't get filler length, generate dummy!")
+            return gen_dummy(duration)
+
+
 # when source path exist, generate input with seek and out time
 # when path not exist, generate dummy clip
 def src_or_dummy(src, dur, seek, out):
@@ -763,7 +800,7 @@ class GetSourceIter(object):
             # when we have no playlist for the current day,
             # then we generate a black clip
             # and calculate the seek in time, for when the playlist comes back
-            self.error_handling('Playlist not exist:')
+            self.eof_handling('Playlist not exist:', False)
 
         # when _playlist.start is set, use start time
         if self.clip_nodes and _playlist.start:
@@ -861,7 +898,7 @@ class GetSourceIter(object):
             self.first, self.duration, self.seek, self.out,
             self.ad, self.ad_last, self.ad_next, self.is_dummy)
 
-    def error_handling(self, message):
+    def eof_handling(self, message, filler):
         self.seek = 0.0
         self.out = 20
         self.duration = 20
@@ -892,8 +929,15 @@ class GetSourceIter(object):
             self.list_date = get_date(True)
             self.last_time += self.out - self.seek
 
-        self.src_cmd = gen_dummy(self.out - self.seek)
-        self.is_dummy = True
+        if filler:
+            self.src_cmd = gen_filler_loop(self.out - self.seek)
+
+            if _playlist.filler:
+                self.is_dummy = False
+                self.duration += 1
+        else:
+            self.src_cmd = gen_dummy(self.out - self.seek)
+            self.is_dummy = True
         self.set_filtergraph()
 
         if get_time('stamp') - self.timestamp > 3600 \
@@ -966,7 +1010,8 @@ class GetSourceIter(object):
                         self.last_time = self.begin
                         self.out = self.time_left
 
-                        self.error_handling('Playlist is not valid!')
+                        self.eof_handling(
+                            'Playlist is not long enough!', False)
 
                     else:
                         # when there is no time left and we are in time,
@@ -979,16 +1024,17 @@ class GetSourceIter(object):
 
                 self.begin += self.out - self.seek
             else:
-                # when we reach currect end, stop script
-                if 'begin' not in self.clip_nodes or \
-                    'length' not in self.clip_nodes and \
-                        self.begin < get_time('full_sec'):
+                if not _playlist.start or 'length' not in self.clip_nodes:
+                    # when we reach currect end, stop script
                     logger.info('Playlist reach End!')
                     return
 
-                # when playlist exist but is empty, or not long enough,
-                # generate dummy and send log
-                self.error_handling('Playlist is not valid!')
+                elif self.begin == self.init_time:
+                    # no clip was played, generate dummy
+                    self.eof_handling('Playlist is empty!', False)
+                else:
+                    # playlist is not long enough, play filler
+                    self.eof_handling('Playlist is not long enough!', True)
 
             if self.src_cmd is not None:
                 yield self.src_cmd + self.filtergraph
