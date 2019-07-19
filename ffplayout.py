@@ -88,17 +88,19 @@ _pre_comp = SimpleNamespace(
     copy_settings=json.loads(cfg.get('PRE_COMPRESS', 'ffmpeg_copy_settings'))
 )
 
+stime = cfg.get('PLAYLIST', 'day_start').split(':')
+
+if stime[0] and stime[1] and stime[2]:
+    start_t = float(stime[0]) * 3600 + float(stime[1]) * 60 + float(stime[2])
+else:
+    start_t = None
+
 _playlist = SimpleNamespace(
     path=cfg.get('PLAYLIST', 'playlist_path'),
-    t=cfg.get('PLAYLIST', 'day_start').split(':'),
-    start=0,
+    start=start_t,
     filler=cfg.get('PLAYLIST', 'filler_clip'),
     blackclip=cfg.get('PLAYLIST', 'blackclip'),
-    shift=cfg.getfloat('PLAYLIST', 'time_shift'),
 )
-
-_playlist.start = float(_playlist.t[0]) * 3600 + float(_playlist.t[1]) * 60 \
-    + float(_playlist.t[2])
 
 _folder = SimpleNamespace(
     storage=cfg.get('FOLDER', 'storage'),
@@ -261,7 +263,7 @@ def terminate_processes(decoder, encoder, watcher):
 
 
 def get_time(time_format):
-    t = datetime.today() + timedelta(seconds=_playlist.shift)
+    t = datetime.today()
     if time_format == 'hour':
         return t.hour
     elif time_format == 'full_sec':
@@ -274,8 +276,8 @@ def get_time(time_format):
 
 
 def get_date(seek_day):
-    d = date.today() + timedelta(seconds=_playlist.shift)
-    if seek_day and get_time('full_sec') < _playlist.start:
+    d = date.today()
+    if _playlist.start and seek_day and get_time('full_sec') < _playlist.start:
         yesterday = d - timedelta(1)
         return yesterday.strftime('%Y-%m-%d')
     else:
@@ -306,7 +308,8 @@ def check_sync(begin, encoder):
     time_now = get_time('full_sec')
 
     time_distance = begin - time_now
-    if 0 <= time_now < _playlist.start and not begin == _playlist.start:
+    if _playlist.start and 0 <= time_now < _playlist.start and \
+            not begin == _playlist.start:
         time_distance -= 86400.0
 
     # check that we are in tolerance time
@@ -320,39 +323,28 @@ def check_sync(begin, encoder):
 
 
 # check begin and length
-def check_start_and_length(json_nodes, counter):
-    # check start time and set begin
-    if 'begin' in json_nodes:
-        h, m, s = json_nodes["begin"].split(':')
-        if is_float(h) and is_float(m) and is_float(s):
-            begin = float(h) * 3600 + float(m) * 60 + float(s)
-        else:
-            begin = -100.0
-    else:
-        begin = -100.0
+def check_start_and_length(json_nodes, total_play_time):
+    if _playlist.start:
+        # check if playlist is long enough
+        if 'length' in json_nodes:
+            l_h, l_m, l_s = json_nodes["length"].split(':')
+            if is_float(l_h) and is_float(l_m) and is_float(l_s):
+                length = float(l_h) * 3600 + float(l_m) * 60 + float(l_s)
 
-    # check if playlist is long enough
-    if 'length' in json_nodes:
-        l_h, l_m, l_s = json_nodes["length"].split(':')
-        if is_float(l_h) and is_float(l_m) and is_float(l_s):
-            length = float(l_h) * 3600 + float(l_m) * 60 + float(l_s)
+                if 'date' in json_nodes:
+                    date = json_nodes["date"]
+                else:
+                    date = get_date(True)
 
-            total_play_time = begin + counter - _playlist.start
-
-            if 'date' in json_nodes:
-                date = json_nodes["date"]
-            else:
-                date = get_date(True)
-
-            if total_play_time < length - 5:
-                mailer.error(
-                    'Playlist ({}) is not long enough!\n'
-                    'total play time is: {}'.format(
-                        date,
-                        timedelta(seconds=total_play_time))
-                )
-                logger.error('Playlist is only {} hours long!'.format(
-                    timedelta(seconds=total_play_time)))
+                if total_play_time < length - 5:
+                    mailer.error(
+                        'Playlist ({}) is not long enough!\n'
+                        'total play time is: {}'.format(
+                            date,
+                            timedelta(seconds=total_play_time))
+                    )
+                    logger.error('Playlist is only {} hours long!'.format(
+                        timedelta(seconds=total_play_time)))
 
 
 # validate json values in new Thread
@@ -473,11 +465,14 @@ def src_or_dummy(src, dur, seek, out):
 # return clip only if we are in 24 hours time range
 def gen_input(has_begin, src, begin, dur, seek, out, last):
     day_in_sec = 86400.0
-    ref_time = day_in_sec + _playlist.start
+    ref_time = day_in_sec
     time = get_time('full_sec')
 
-    if 0 <= time < _playlist.start:
-        time += day_in_sec
+    if _playlist.start:
+        ref_time = day_in_sec + _playlist.start
+
+        if 0 <= time < _playlist.start:
+            time += day_in_sec
 
     # calculate time difference to see if we are sync
     time_diff = out - seek + time
@@ -721,7 +716,7 @@ class GetSourceIter(object):
         self._encoder = encoder
         self.last_time = get_time('full_sec')
 
-        if 0 <= self.last_time < _playlist.start:
+        if _playlist.start and 0 <= self.last_time < _playlist.start:
             self.last_time += 86400
 
         self.last_mod_time = 0.0
@@ -770,12 +765,10 @@ class GetSourceIter(object):
             # and calculate the seek in time, for when the playlist comes back
             self.error_handling('Playlist not exist:')
 
-        # when begin is in playlist, get start time from it
-        if self.clip_nodes and 'begin' in self.clip_nodes:
-            h, m, s = self.clip_nodes["begin"].split(':')
-            if is_float(h) and is_float(m) and is_float(s):
-                self.has_begin = True
-                self.init_time = float(h) * 3600 + float(m) * 60 + float(s)
+        # when _playlist.start is set, use start time
+        if self.clip_nodes and _playlist.start:
+            self.has_begin = True
+            self.init_time = _playlist.start
         else:
             self.has_begin = False
 
@@ -875,11 +868,14 @@ class GetSourceIter(object):
         self.ad = False
 
         day_in_sec = 86400.0
-        ref_time = day_in_sec + _playlist.start
+        ref_time = day_in_sec
         time = get_time('full_sec')
 
-        if 0 <= time < _playlist.start:
-            time += day_in_sec
+        if _playlist.start:
+            ref_time = day_in_sec + _playlist.start
+
+            if 0 <= time < _playlist.start:
+                time += day_in_sec
 
         time_diff = self.out - self.seek + time
         new_len = self.out - self.seek - (time_diff - ref_time)
