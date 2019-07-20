@@ -26,12 +26,11 @@ import logging
 import math
 import os
 import random
-import smtplib
 import signal
+import smtplib
 import socket
 import sys
 import time
-
 from argparse import ArgumentParser
 from datetime import date, datetime, timedelta
 from email.mime.multipart import MIMEMultipart
@@ -324,29 +323,27 @@ def check_sync(begin, encoder):
         sys.exit(1)
 
 
-# check begin and length
-def check_start_and_length(json_nodes, total_play_time):
-    if _playlist.start:
-        # check if playlist is long enough
-        if 'length' in json_nodes:
-            l_h, l_m, l_s = json_nodes["length"].split(':')
-            if is_float(l_h) and is_float(l_m) and is_float(l_s):
-                length = float(l_h) * 3600 + float(l_m) * 60 + float(l_s)
+# check if playlist is long enough
+def check_length(json_nodes, total_play_time):
+    if 'length' in json_nodes:
+        l_h, l_m, l_s = json_nodes["length"].split(':')
+        if is_float(l_h) and is_float(l_m) and is_float(l_s):
+            length = float(l_h) * 3600 + float(l_m) * 60 + float(l_s)
 
-                if 'date' in json_nodes:
-                    date = json_nodes["date"]
-                else:
-                    date = get_date(True)
+            if 'date' in json_nodes:
+                date = json_nodes["date"]
+            else:
+                date = get_date(True)
 
-                if total_play_time < length - 5:
-                    mailer.error(
-                        'Playlist ({}) is not long enough!\n'
-                        'total play time is: {}'.format(
-                            date,
-                            timedelta(seconds=total_play_time))
-                    )
-                    logger.error('Playlist is only {} hours long!'.format(
-                        timedelta(seconds=total_play_time)))
+            if total_play_time < length - 5:
+                mailer.error(
+                    'Playlist ({}) is not long enough!\n'
+                    'total play time is: {}'.format(
+                        date,
+                        timedelta(seconds=total_play_time))
+                )
+                logger.error('Playlist is only {} hours long!'.format(
+                    timedelta(seconds=total_play_time)))
 
 
 # validate json values in new Thread
@@ -402,7 +399,7 @@ def validate_thread(clip_nodes):
                 'values are missing:\n{}'.format(error)
             )
 
-        check_start_and_length(json_nodes, counter)
+        check_length(json_nodes, counter)
 
     validate = Thread(name='check_json', target=check_json, args=(clip_nodes,))
     validate.daemon = True

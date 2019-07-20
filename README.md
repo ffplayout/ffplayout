@@ -18,7 +18,7 @@ Features
 - overlay a logo
 - overlay scrolling text
 - trim and fade the last clip, to get full 24 hours
-- when playlist is not 24 hours long, loop filler clip until time is full 
+- when playlist is not 24 hours long, loop filler clip until time is full
 - set custom day start, so you can have playlist for example: from 6am to 6am, instate of 0am to 12pm
 - copy mode, for more info's take a look in the [Wiki](https://github.com/ffplayout/ffplayout-engine/wiki/Copy-Mode)
 - normal system requirements and no special tools
@@ -67,7 +67,7 @@ JSON Playlist Example
 }
 ```
 
-`"length"` are optional, when you leave **day_start** in config blank, length check will be ignored and the playlist starts from the begin, without time awareness. If you leave **length** blank, the validation will not check if the real length of the playlist will match the length value.
+`"length"` are optional, when you leave it blank, there will be no check if real playlist length is correct.
 
 #### Warning:
 (Endless) streaming over multiple days will only work when config have **day_start** value and the **length** value of the playlist is **24 hours**. If you need only some hours for every day, use a *cron* job, or something similar.
