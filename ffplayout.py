@@ -70,6 +70,7 @@ _mail = SimpleNamespace(
 )
 
 _log = SimpleNamespace(
+    to_file=cfg.getboolean('LOGGING', 'log_to_file'),
     path=cfg.get('LOGGING', 'log_file'),
     level=cfg.get('LOGGING', 'log_level')
 )
@@ -159,7 +160,11 @@ logger.setLevel(_log.level)
 handler = TimedRotatingFileHandler(_log.path, when='midnight', backupCount=5)
 formatter = logging.Formatter('[%(asctime)s] [%(levelname)s]  %(message)s')
 handler.setFormatter(formatter)
-logger.addHandler(handler)
+
+if _log.to_file:
+    logger.addHandler(handler)
+else:
+    logger.addHandler(logging.StreamHandler())
 
 
 # capture stdout and sterr in the log
@@ -364,7 +369,7 @@ def validate_thread(clip_nodes):
             prefix = source.split('://')[0]
             missing = []
 
-            if prefix in _pre_comp.protocols:
+            if source and prefix in _pre_comp.protocols:
                 cmd = [
                     'ffprobe', '-v', 'error',
                     '-show_entries', 'format=duration',
@@ -826,22 +831,21 @@ class GetSourceIter(object):
         prefix = self.src.split('://')[0]
 
         # check if input is a live source
-        if prefix in _pre_comp.protocols:
+        if self.src and prefix in _pre_comp.protocols:
             cmd = [
                 'ffprobe', '-v', 'error', '-show_entries', 'format=duration',
                 '-of', 'default=noprint_wrappers=1:nokey=1', self.src]
 
             try:
                 output = check_output(cmd).decode('utf-8')
-            except CalledProcessError:
+            except CalledProcessError as err:
+                logger.error("ffprobe error: {}".format(err))
                 output = None
 
             if not output:
-                self.duration = 20
                 mailer.error('Clip not exist:\n{}'.format(self.src))
                 logger.error('Clip not exist: {}'.format(self.src))
                 self.src = None
-                self.out = 20
             elif is_float(output):
                 self.duration = float(output)
             else:
