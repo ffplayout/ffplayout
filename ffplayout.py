@@ -55,8 +55,7 @@ else:
 
 _general = SimpleNamespace(
     stop=cfg.getboolean('GENERAL', 'stop_on_error'),
-    threshold=cfg.getfloat('GENERAL', 'stop_threshold'),
-    playlist_mode=cfg.getboolean('GENERAL', 'playlist_mode')
+    threshold=cfg.getfloat('GENERAL', 'stop_threshold')
 )
 
 _mail = SimpleNamespace(
@@ -98,16 +97,17 @@ else:
     start_t = None
 
 _playlist = SimpleNamespace(
-    path=cfg.get('PLAYLIST', 'playlist_path'),
-    start=start_t,
-    filler=cfg.get('PLAYLIST', 'filler_clip'),
-    blackclip=cfg.get('PLAYLIST', 'blackclip'),
+    mode=cfg.getboolean('PLAYLIST', 'playlist_mode'),
+    path=cfg.get('PLAYLIST', 'path'),
+    start=start_t
 )
 
-_folder = SimpleNamespace(
-    storage=cfg.get('FOLDER', 'storage'),
-    extensions=json.loads(cfg.get('FOLDER', 'extensions')),
-    shuffle=cfg.getboolean('FOLDER', 'shuffle')
+_storage = SimpleNamespace(
+    path=cfg.get('STORAGE', 'path'),
+    filler=cfg.get('STORAGE', 'filler_clip'),
+    blackclip=cfg.get('STORAGE', 'blackclip'),
+    extensions=json.loads(cfg.get('STORAGE', 'extensions')),
+    shuffle=cfg.getboolean('STORAGE', 'shuffle')
 )
 
 _text = SimpleNamespace(
@@ -430,7 +430,7 @@ def set_length(duration, seek, out):
 # generate a dummy clip, with black color and empty audiotrack
 def gen_dummy(duration):
     if _pre_comp.copy:
-        return ['-i', _playlist.blackclip, '-t', str(duration)]
+        return ['-i', _storage.blackclip, '-t', str(duration)]
     else:
         color = '#121212'
         # TODO: add noise could be an config option
@@ -447,7 +447,7 @@ def gen_dummy(duration):
 
 # when playlist is not 24 hours long, we generate a loop from filler clip
 def gen_filler_loop(duration):
-    if not _playlist.filler:
+    if not _storage.filler:
         # when no filler is set, generate a dummy
         logger.warning('No filler is set!')
         return gen_dummy(duration)
@@ -455,7 +455,7 @@ def gen_filler_loop(duration):
         # get duration from filler
         cmd = [
             'ffprobe', '-v', 'error', '-show_entries', 'format=duration',
-            '-of', 'default=noprint_wrappers=1:nokey=1', _playlist.filler]
+            '-of', 'default=noprint_wrappers=1:nokey=1', _storage.filler]
 
         try:
             f_dur = float(check_output(cmd).decode('utf-8'))
@@ -466,7 +466,7 @@ def gen_filler_loop(duration):
             if f_dur > duration:
                 # cut filler
                 logger.info('Generate filler with {} seconds'.format(duration))
-                return ['-i', _playlist.filler] + set_length(
+                return ['-i', _storage.filler] + set_length(
                     f_dur, 0, duration)
             else:
                 # loop filles n times
@@ -474,7 +474,7 @@ def gen_filler_loop(duration):
                 logger.info('Loop filler {} times, total duration: {}'.format(
                     loop_count, duration))
                 return ['-stream_loop', str(loop_count),
-                        '-i', _playlist.filler, '-t', str(duration)]
+                        '-i', _storage.filler, '-t', str(duration)]
         else:
             logger.error("Can't get filler length, generate dummy!")
             return gen_dummy(duration)
@@ -528,7 +528,7 @@ def gen_input(has_begin, src, begin, dur, seek, out, last):
         logger.info('we are under time, new_len is: {}'.format(new_len))
 
         if time_diff >= ref_time:
-            if src == _playlist.filler:
+            if src == _storage.filler:
                 # when filler is something like a clock,
                 # is better to start the clip later and to play until end
                 src_cmd = src_or_dummy(src, dur, dur - new_len, dur)
@@ -551,7 +551,7 @@ def gen_input(has_begin, src, begin, dur, seek, out, last):
         logger.info('we are over time, new_len is: {}'.format(new_len))
 
         if new_len > 5.0:
-            if src == _playlist.filler:
+            if src == _storage.filler:
                 src_cmd = src_or_dummy(src, dur, out - new_len, out)
             else:
                 src_cmd = src_or_dummy(src, dur, seek, new_len)
@@ -933,7 +933,7 @@ class GetSourceIter(object):
         if filler:
             self.src_cmd = gen_filler_loop(self.out - self.seek)
 
-            if _playlist.filler:
+            if _storage.filler:
                 self.is_dummy = False
                 self.duration += 1
         else:
@@ -1104,16 +1104,16 @@ def main():
                 stdin=PIPE
             )
 
-        if _general.playlist_mode:
+        if _playlist.mode:
             watcher = None
             get_source = GetSourceIter(encoder)
         else:
             logger.info("start folder mode")
-            media = MediaStore(_folder.extensions)
-            media.fill(_folder.storage)
+            media = MediaStore(_storage.extensions)
+            media.fill(_storage.path)
 
-            watcher = MediaWatcher(_folder.storage, _folder.extensions, media)
-            get_source = GetSource(media, _folder.shuffle)
+            watcher = MediaWatcher(_storage.path, _storage.extensions, media)
+            get_source = GetSource(media, _storage.shuffle)
 
         try:
             for src_cmd in get_source.next():
@@ -1151,7 +1151,7 @@ def main():
 
 
 if __name__ == '__main__':
-    if not _general.playlist_mode:
+    if not _playlist.mode:
         from watchdog.events import PatternMatchingEventHandler
         from watchdog.observers import Observer
 
