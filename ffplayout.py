@@ -18,7 +18,7 @@
 
 # ------------------------------------------------------------------------------
 
-
+import requests
 import configparser
 import glob
 import json
@@ -788,7 +788,9 @@ class GetSourceIter(object):
             self.json_file = os.path.join(
              _playlist.path, year, month, self.list_date + '.json')
 
-        if os.path.isfile(self.json_file):
+        if self.json_file.find('://') > 0:
+            self.clip_nodes = requests.get(self.json_file).json()
+        elif os.path.isfile(self.json_file):
             # check last modification from playlist
             mod_time = os.path.getmtime(self.json_file)
             if mod_time > self.last_mod_time:
