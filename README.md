@@ -44,12 +44,12 @@ JSON Playlist Example
             "in": 0,
             "out": 647.68,
             "duration": 647.68,
-            "source": "/Media/clip1.mp4",
+            "source": "/Media/clip1.mp4"
         }, {
             "in": 0,
             "out": 149,
             "duration": 149,
-            "source": "/Media/clip2.mp4",
+            "source": "/Media/clip2.mp4"
         }, {
             "in": 0,
             "out": 114.72,
