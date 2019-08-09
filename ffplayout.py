@@ -75,18 +75,16 @@ _log = SimpleNamespace(
 )
 
 _pre_comp = SimpleNamespace(
+    copy=cfg.getboolean('PRE_COMPRESS', 'copy_mode'),
     w=cfg.getint('PRE_COMPRESS', 'width'),
     h=cfg.getint('PRE_COMPRESS', 'height'),
-    aspect=cfg.getfloat(
-        'PRE_COMPRESS', 'width') / cfg.getfloat('PRE_COMPRESS', 'height'),
+    aspect=cfg.getfloat('PRE_COMPRESS', 'aspect'),
     fps=cfg.getint('PRE_COMPRESS', 'fps'),
-    v_bitrate=cfg.getint('PRE_COMPRESS', 'v_bitrate'),
-    v_bufsize=cfg.getint('PRE_COMPRESS', 'v_bitrate') / 2,
+    v_bitrate=cfg.getint('PRE_COMPRESS', 'width') * 50,
+    v_bufsize=cfg.getint('PRE_COMPRESS', 'width') * 50 / 2,
     logo=cfg.get('PRE_COMPRESS', 'logo'),
     logo_filter=cfg.get('PRE_COMPRESS', 'logo_filter'),
-    protocols=cfg.get('PRE_COMPRESS', 'live_protocols'),
-    copy=cfg.getboolean('PRE_COMPRESS', 'copy_mode'),
-    copy_settings=json.loads(cfg.get('PRE_COMPRESS', 'ffmpeg_copy_settings'))
+    protocols=cfg.get('PRE_COMPRESS', 'live_protocols')
 )
 
 stime = cfg.get('PLAYLIST', 'day_start').split(':')
@@ -351,13 +349,8 @@ def check_length(json_nodes, total_play_time):
                     timedelta(seconds=total_play_time)))
 
 
-# validate json values in new Thread
-# and test if file path exist
-# TODO: we need better and unique validation,
-# now it is messy - the file get readed twice
-# and values get multiple time evaluate
-# IDEA: open one time the playlist,
-# not in a thread and build from it a new clean dictionary
+# validate json values in new thread
+# and test if source paths exist
 def validate_thread(clip_nodes):
     def check_json(json_nodes):
         error = ''
@@ -564,6 +557,7 @@ def gen_input(has_begin, src, begin, dur, seek, out, last):
 
 
 # blend logo and fade in / fade out
+# TODO: simple deinterlace, pad and fps conversion, if is necessary
 def build_filtergraph(first, duration, seek, out, ad, ad_last, ad_next, dummy):
     length = out - seek - 1.0
     logo_chain = []
@@ -1043,9 +1037,10 @@ class GetSourceIter(object):
 
 def main():
     year = get_date(False).split('-')[0]
+    overlay = []
 
     if _pre_comp.copy:
-        ff_pre_settings = _pre_comp.copy_settings
+        ff_pre_settings = ["-c", "copy", "-f", "mpegts", "-"]
     else:
         ff_pre_settings = [
             '-pix_fmt', 'yuv420p', '-r', str(_pre_comp.fps),
@@ -1068,8 +1063,6 @@ def main():
                             _text.fontsize, _text.fontcolor, _text.fontfile,
                             _text.textfile, _text.x,  _text.y)
             ]
-        else:
-            overlay = []
 
     try:
         if _playout.preview:
