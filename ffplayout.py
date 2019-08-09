@@ -145,7 +145,11 @@ stdin_parser.add_argument(
 )
 
 stdin_parser.add_argument(
-    '-f', '--file', help='playlist file'
+    '-p', '--playlist', help='path from playlist'
+)
+
+stdin_parser.add_argument(
+    '-f', '--folder', help='play folder content'
 )
 
 # If the log file is specified on the command line then override the default
@@ -775,8 +779,8 @@ class GetSourceIter(object):
         self.ad_next = False
 
     def get_playlist(self):
-        if stdin_args.file:
-            self.json_file = stdin_args.file
+        if stdin_args.playlist:
+            self.json_file = stdin_args.playlist
         else:
             year, month, day = self.list_date.split('-')
             self.json_file = os.path.join(
@@ -1097,7 +1101,7 @@ def main():
                 stdin=PIPE
             )
 
-        if _playlist.mode:
+        if _playlist.mode and not stdin_args.folder:
             watcher = None
             get_source = GetSourceIter(encoder)
         else:
@@ -1144,7 +1148,7 @@ def main():
 
 
 if __name__ == '__main__':
-    if not _playlist.mode:
+    if not _playlist.mode or stdin_args.folder:
         from watchdog.events import PatternMatchingEventHandler
         from watchdog.observers import Observer
 
