@@ -114,12 +114,13 @@ Start with Arguments
 -----
 ffplayout also allows the passing of parameters:
 - `-l, --log` for user-defined log file
-- `-f, --file` for playlist file
+- `-p, --playlist` for playlist file
+- `-f, --folder` use folder for playing
 
-The entire command could look like this:
+You can run the command like:
 
 ```
-python3 ffplayout.py -l ~/ffplayout.log -f ~/playlist.json
+python3 ffplayout.py -l ~/ffplayout.log -p ~/playlist.json
 ```
 
 Preview Mode on Desktop
