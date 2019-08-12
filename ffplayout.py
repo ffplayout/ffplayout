@@ -23,10 +23,12 @@ import configparser
 import glob
 import json
 import logging
+import math
 import os
 import random
-import smtplib
 import signal
+import ssl
+import smtplib
 import socket
 import sys
 import time
@@ -40,6 +42,7 @@ from shutil import copyfileobj
 from subprocess import PIPE, CalledProcessError, Popen, check_output
 from threading import Thread
 from types import SimpleNamespace
+from urllib import request
 
 # ------------------------------------------------------------------------------
 # read variables from config file
@@ -54,8 +57,7 @@ else:
 
 _general = SimpleNamespace(
     stop=cfg.getboolean('GENERAL', 'stop_on_error'),
-    threshold=cfg.getfloat('GENERAL', 'stop_threshold'),
-    playlist_mode=cfg.getboolean('GENERAL', 'playlist_mode')
+    threshold=cfg.getfloat('GENERAL', 'stop_threshold')
 )
 
 _mail = SimpleNamespace(
@@ -69,42 +71,43 @@ _mail = SimpleNamespace(
 )
 
 _log = SimpleNamespace(
+    to_file=cfg.getboolean('LOGGING', 'log_to_file'),
     path=cfg.get('LOGGING', 'log_file'),
     level=cfg.get('LOGGING', 'log_level')
 )
 
 _pre_comp = SimpleNamespace(
+    copy=cfg.getboolean('PRE_COMPRESS', 'copy_mode'),
     w=cfg.getint('PRE_COMPRESS', 'width'),
     h=cfg.getint('PRE_COMPRESS', 'height'),
-    aspect=cfg.getfloat(
-        'PRE_COMPRESS', 'width') / cfg.getfloat('PRE_COMPRESS', 'height'),
+    aspect=cfg.getfloat('PRE_COMPRESS', 'aspect'),
     fps=cfg.getint('PRE_COMPRESS', 'fps'),
-    v_bitrate=cfg.getint('PRE_COMPRESS', 'v_bitrate'),
-    v_bufsize=cfg.getint('PRE_COMPRESS', 'v_bitrate') / 2,
+    v_bitrate=cfg.getint('PRE_COMPRESS', 'width') * 50,
+    v_bufsize=cfg.getint('PRE_COMPRESS', 'width') * 50 / 2,
     logo=cfg.get('PRE_COMPRESS', 'logo'),
     logo_filter=cfg.get('PRE_COMPRESS', 'logo_filter'),
-    protocols=cfg.get('PRE_COMPRESS', 'live_protocols'),
-    copy=cfg.getboolean('PRE_COMPRESS', 'copy_mode'),
-    copy_settings=json.loads(cfg.get('PRE_COMPRESS', 'ffmpeg_copy_settings'))
+    protocols=cfg.get('PRE_COMPRESS', 'live_protocols')
 )
+
+stime = cfg.get('PLAYLIST', 'day_start').split(':')
+
+if stime[0] and stime[1] and stime[2]:
+    start_t = float(stime[0]) * 3600 + float(stime[1]) * 60 + float(stime[2])
+else:
+    start_t = None
 
 _playlist = SimpleNamespace(
-    path=cfg.get('PLAYLIST', 'playlist_path'),
-    t=cfg.get('PLAYLIST', 'day_start').split(':'),
-    start=0,
-    filler=cfg.get('PLAYLIST', 'filler_clip'),
-    blackclip=cfg.get('PLAYLIST', 'blackclip'),
-    shift=cfg.getfloat('PLAYLIST', 'time_shift'),
-    map_ext=json.loads(cfg.get('PLAYLIST', 'map_extension'))
+    mode=cfg.getboolean('PLAYLIST', 'playlist_mode'),
+    path=cfg.get('PLAYLIST', 'path'),
+    start=start_t
 )
 
-_playlist.start = float(_playlist.t[0]) * 3600 + float(_playlist.t[1]) * 60 \
-    + float(_playlist.t[2])
-
-_folder = SimpleNamespace(
-    storage=cfg.get('FOLDER', 'storage'),
-    extensions=json.loads(cfg.get('FOLDER', 'extensions')),
-    shuffle=cfg.getboolean('FOLDER', 'shuffle')
+_storage = SimpleNamespace(
+    path=cfg.get('STORAGE', 'path'),
+    filler=cfg.get('STORAGE', 'filler_clip'),
+    blackclip=cfg.get('STORAGE', 'blackclip'),
+    extensions=json.loads(cfg.get('STORAGE', 'extensions')),
+    shuffle=cfg.getboolean('STORAGE', 'shuffle')
 )
 
 _text = SimpleNamespace(
@@ -144,7 +147,11 @@ stdin_parser.add_argument(
 )
 
 stdin_parser.add_argument(
-    '-f', '--file', help='playlist file'
+    '-p', '--playlist', help='path from playlist'
+)
+
+stdin_parser.add_argument(
+    '-f', '--folder', help='play folder content'
 )
 
 # If the log file is specified on the command line then override the default
@@ -157,7 +164,11 @@ logger.setLevel(_log.level)
 handler = TimedRotatingFileHandler(_log.path, when='midnight', backupCount=5)
 formatter = logging.Formatter('[%(asctime)s] [%(levelname)s]  %(message)s')
 handler.setFormatter(formatter)
-logger.addHandler(handler)
+
+if _log.to_file:
+    logger.addHandler(handler)
+else:
+    logger.addHandler(logging.StreamHandler())
 
 
 # capture stdout and sterr in the log
@@ -262,7 +273,7 @@ def terminate_processes(decoder, encoder, watcher):
 
 
 def get_time(time_format):
-    t = datetime.today() + timedelta(seconds=_playlist.shift)
+    t = datetime.today()
     if time_format == 'hour':
         return t.hour
     elif time_format == 'full_sec':
@@ -275,8 +286,8 @@ def get_time(time_format):
 
 
 def get_date(seek_day):
-    d = date.today() + timedelta(seconds=_playlist.shift)
-    if seek_day and get_time('full_sec') < _playlist.start:
+    d = date.today()
+    if _playlist.start and seek_day and get_time('full_sec') < _playlist.start:
         yesterday = d - timedelta(1)
         return yesterday.strftime('%Y-%m-%d')
     else:
@@ -307,7 +318,8 @@ def check_sync(begin, encoder):
     time_now = get_time('full_sec')
 
     time_distance = begin - time_now
-    if 0 <= time_now < _playlist.start and not begin == _playlist.start:
+    if _playlist.start and 0 <= time_now < _playlist.start and \
+            not begin == _playlist.start:
         time_distance -= 86400.0
 
     # check that we are in tolerance time
@@ -320,25 +332,12 @@ def check_sync(begin, encoder):
         sys.exit(1)
 
 
-# check begin and length
-def check_start_and_length(json_nodes, counter):
-    # check start time and set begin
-    if 'begin' in json_nodes:
-        h, m, s = json_nodes["begin"].split(':')
-        if is_float(h) and is_float(m) and is_float(s):
-            begin = float(h) * 3600 + float(m) * 60 + float(s)
-        else:
-            begin = -100.0
-    else:
-        begin = -100.0
-
-    # check if playlist is long enough
+# check if playlist is long enough
+def check_length(json_nodes, total_play_time):
     if 'length' in json_nodes:
         l_h, l_m, l_s = json_nodes["length"].split(':')
         if is_float(l_h) and is_float(l_m) and is_float(l_s):
             length = float(l_h) * 3600 + float(l_m) * 60 + float(l_s)
-
-            total_play_time = begin + counter - _playlist.start
 
             if 'date' in json_nodes:
                 date = json_nodes["date"]
@@ -356,13 +355,8 @@ def check_start_and_length(json_nodes, counter):
                     timedelta(seconds=total_play_time)))
 
 
-# validate json values in new Thread
-# and test if file path exist
-# TODO: we need better and unique validation,
-# now it is messy - the file get readed twice
-# and values get multiple time evaluate
-# IDEA: open one time the playlist,
-# not in a thread and build from it a new clean dictionary
+# validate json values in new thread
+# and test if source paths exist
 def validate_thread(clip_nodes):
     def check_json(json_nodes):
         error = ''
@@ -370,17 +364,11 @@ def validate_thread(clip_nodes):
 
         # check if all values are valid
         for node in json_nodes["program"]:
-            if _playlist.map_ext:
-                source = node["source"].replace(
-                    _playlist.map_ext[0], _playlist.map_ext[1])
-            else:
-                source = node["source"]
-
+            source = node["source"]
             prefix = source.split('://')[0]
-
             missing = []
 
-            if prefix in _pre_comp.protocols:
+            if source and prefix in _pre_comp.protocols:
                 cmd = [
                     'ffprobe', '-v', 'error',
                     '-show_entries', 'format=duration',
@@ -415,7 +403,7 @@ def validate_thread(clip_nodes):
                 'values are missing:\n{}'.format(error)
             )
 
-        check_start_and_length(json_nodes, counter)
+        check_length(json_nodes, counter)
 
     validate = Thread(name='check_json', target=check_json, args=(clip_nodes,))
     validate.daemon = True
@@ -441,7 +429,7 @@ def set_length(duration, seek, out):
 # generate a dummy clip, with black color and empty audiotrack
 def gen_dummy(duration):
     if _pre_comp.copy:
-        return ['-i', _playlist.blackclip, '-t', str(duration)]
+        return ['-i', _storage.blackclip, '-t', str(duration)]
     else:
         color = '#121212'
         # TODO: add noise could be an config option
@@ -454,6 +442,41 @@ def gen_dummy(duration):
             '-f', 'lavfi', '-i', 'anoisesrc=d={}:c=pink:r=48000:a=0.05'.format(
                 duration)
         ]
+
+
+# when playlist is not 24 hours long, we generate a loop from filler clip
+def gen_filler_loop(duration):
+    if not _storage.filler:
+        # when no filler is set, generate a dummy
+        logger.warning('No filler is set!')
+        return gen_dummy(duration)
+    else:
+        # get duration from filler
+        cmd = [
+            'ffprobe', '-v', 'error', '-show_entries', 'format=duration',
+            '-of', 'default=noprint_wrappers=1:nokey=1', _storage.filler]
+
+        try:
+            f_dur = float(check_output(cmd).decode('utf-8'))
+        except (CalledProcessError, ValueError):
+            f_dur = None
+
+        if f_dur:
+            if f_dur > duration:
+                # cut filler
+                logger.info('Generate filler with {} seconds'.format(duration))
+                return ['-i', _storage.filler] + set_length(
+                    f_dur, 0, duration)
+            else:
+                # loop filles n times
+                loop_count = math.ceil(duration / f_dur)
+                logger.info('Loop filler {} times, total duration: {}'.format(
+                    loop_count, duration))
+                return ['-stream_loop', str(loop_count),
+                        '-i', _storage.filler, '-t', str(duration)]
+        else:
+            logger.error("Can't get filler length, generate dummy!")
+            return gen_dummy(duration)
 
 
 # when source path exist, generate input with seek and out time
@@ -480,11 +503,14 @@ def src_or_dummy(src, dur, seek, out):
 # return clip only if we are in 24 hours time range
 def gen_input(has_begin, src, begin, dur, seek, out, last):
     day_in_sec = 86400.0
-    ref_time = day_in_sec + _playlist.start
+    ref_time = day_in_sec
     time = get_time('full_sec')
 
-    if 0 <= time < _playlist.start:
-        time += day_in_sec
+    if _playlist.start:
+        ref_time = day_in_sec + _playlist.start
+
+        if 0 <= time < _playlist.start:
+            time += day_in_sec
 
     # calculate time difference to see if we are sync
     time_diff = out - seek + time
@@ -501,7 +527,7 @@ def gen_input(has_begin, src, begin, dur, seek, out, last):
         logger.info('we are under time, new_len is: {}'.format(new_len))
 
         if time_diff >= ref_time:
-            if src == _playlist.filler:
+            if src == _storage.filler:
                 # when filler is something like a clock,
                 # is better to start the clip later and to play until end
                 src_cmd = src_or_dummy(src, dur, dur - new_len, dur)
@@ -524,7 +550,7 @@ def gen_input(has_begin, src, begin, dur, seek, out, last):
         logger.info('we are over time, new_len is: {}'.format(new_len))
 
         if new_len > 5.0:
-            if src == _playlist.filler:
+            if src == _storage.filler:
                 src_cmd = src_or_dummy(src, dur, out - new_len, out)
             else:
                 src_cmd = src_or_dummy(src, dur, seek, new_len)
@@ -537,6 +563,7 @@ def gen_input(has_begin, src, begin, dur, seek, out, last):
 
 
 # blend logo and fade in / fade out
+# TODO: simple deinterlace, pad and fps conversion, if is necessary
 def build_filtergraph(first, duration, seek, out, ad, ad_last, ad_next, dummy):
     length = out - seek - 1.0
     logo_chain = []
@@ -728,7 +755,7 @@ class GetSourceIter(object):
         self._encoder = encoder
         self.last_time = get_time('full_sec')
 
-        if 0 <= self.last_time < _playlist.start:
+        if _playlist.start and 0 <= self.last_time < _playlist.start:
             self.last_time += 86400
 
         self.last_mod_time = 0.0
@@ -754,14 +781,33 @@ class GetSourceIter(object):
         self.ad_next = False
 
     def get_playlist(self):
-        if stdin_args.file:
-            self.json_file = stdin_args.file
+        if stdin_args.playlist:
+            self.json_file = stdin_args.playlist
         else:
             year, month, day = self.list_date.split('-')
             self.json_file = os.path.join(
              _playlist.path, year, month, self.list_date + '.json')
 
-        if os.path.isfile(self.json_file):
+        if '://' in self.json_file:
+            self.json_file = self.json_file.replace('\\', '/')
+
+            try:
+                req = request.urlopen(self.json_file,
+                                      timeout=1,
+                                      context=ssl._create_unverified_context())
+                b_time = req.headers['last-modified']
+                temp_time = time.strptime(b_time, "%a, %d %b %Y %I:%M:%S %Z")
+                mod_time = time.mktime(temp_time)
+
+                if mod_time > self.last_mod_time:
+                    self.clip_nodes = json.load(req)
+                    self.last_mod_time = mod_time
+                    logger.info('open: ' + self.json_file)
+                    validate_thread(self.clip_nodes)
+            except (request.URLError, socket.timeout):
+                self.eof_handling('Get playlist from url failed!', False)
+
+        elif os.path.isfile(self.json_file):
             # check last modification from playlist
             mod_time = os.path.getmtime(self.json_file)
             if mod_time > self.last_mod_time:
@@ -775,14 +821,12 @@ class GetSourceIter(object):
             # when we have no playlist for the current day,
             # then we generate a black clip
             # and calculate the seek in time, for when the playlist comes back
-            self.error_handling('Playlist not exist:')
+            self.eof_handling('Playlist not exist:', False)
 
-        # when begin is in playlist, get start time from it
-        if self.clip_nodes and 'begin' in self.clip_nodes:
-            h, m, s = self.clip_nodes["begin"].split(':')
-            if is_float(h) and is_float(m) and is_float(s):
-                self.has_begin = True
-                self.init_time = float(h) * 3600 + float(m) * 60 + float(s)
+        # when _playlist.start is set, use start time
+        if self.clip_nodes and _playlist.start:
+            self.has_begin = True
+            self.init_time = _playlist.start
         else:
             self.has_begin = False
 
@@ -802,33 +846,25 @@ class GetSourceIter(object):
         else:
             self.out = self.duration
 
-    def map_extension(self, node):
-        if _playlist.map_ext:
-            self.src = node["source"].replace(
-                _playlist.map_ext[0], _playlist.map_ext[1])
-        else:
-            self.src = node["source"]
-
     def url_or_live_source(self):
         prefix = self.src.split('://')[0]
 
         # check if input is a live source
-        if prefix in _pre_comp.protocols:
+        if self.src and prefix in _pre_comp.protocols:
             cmd = [
                 'ffprobe', '-v', 'error', '-show_entries', 'format=duration',
                 '-of', 'default=noprint_wrappers=1:nokey=1', self.src]
 
             try:
                 output = check_output(cmd).decode('utf-8')
-            except CalledProcessError:
+            except CalledProcessError as err:
+                logger.error("ffprobe error: {}".format(err))
                 output = None
 
             if not output:
-                self.duration = 20
                 mailer.error('Clip not exist:\n{}'.format(self.src))
                 logger.error('Clip not exist: {}'.format(self.src))
                 self.src = None
-                self.out = 20
             elif is_float(output):
                 self.duration = float(output)
             else:
@@ -882,18 +918,21 @@ class GetSourceIter(object):
             self.first, self.duration, self.seek, self.out,
             self.ad, self.ad_last, self.ad_next, self.is_dummy)
 
-    def error_handling(self, message):
+    def eof_handling(self, message, filler):
         self.seek = 0.0
         self.out = 20
         self.duration = 20
         self.ad = False
 
         day_in_sec = 86400.0
-        ref_time = day_in_sec + _playlist.start
+        ref_time = day_in_sec
         time = get_time('full_sec')
 
-        if 0 <= time < _playlist.start:
-            time += day_in_sec
+        if _playlist.start:
+            ref_time = day_in_sec + _playlist.start
+
+            if 0 <= time < _playlist.start:
+                time += day_in_sec
 
         time_diff = self.out - self.seek + time
         new_len = self.out - self.seek - (time_diff - ref_time)
@@ -910,8 +949,15 @@ class GetSourceIter(object):
             self.list_date = get_date(True)
             self.last_time += self.out - self.seek
 
-        self.src_cmd = gen_dummy(self.out - self.seek)
-        self.is_dummy = True
+        if filler:
+            self.src_cmd = gen_filler_loop(self.out - self.seek)
+
+            if _storage.filler:
+                self.is_dummy = False
+                self.duration += 1
+        else:
+            self.src_cmd = gen_dummy(self.out - self.seek)
+            self.is_dummy = True
         self.set_filtergraph()
 
         if get_time('stamp') - self.timestamp > 3600 \
@@ -947,7 +993,8 @@ class GetSourceIter(object):
                         # calculate seek time
                         self.seek = self.last_time - self.begin + self.seek
 
-                    self.map_extension(node)
+                    self.src = node["source"]
+
                     self.url_or_live_source()
                     self.get_input()
                     self.is_source_dummy()
@@ -966,7 +1013,8 @@ class GetSourceIter(object):
                     if self.has_begin:
                         check_sync(self.begin, self._encoder)
 
-                    self.map_extension(node)
+                    self.src = node["source"]
+
                     self.url_or_live_source()
                     self.get_input()
                     self.is_source_dummy()
@@ -982,7 +1030,8 @@ class GetSourceIter(object):
                         self.last_time = self.begin
                         self.out = self.time_left
 
-                        self.error_handling('Playlist is not valid!')
+                        self.eof_handling(
+                            'Playlist is not long enough!', False)
 
                     else:
                         # when there is no time left and we are in time,
@@ -995,16 +1044,17 @@ class GetSourceIter(object):
 
                 self.begin += self.out - self.seek
             else:
-                # when we reach currect end, stop script
-                if 'begin' not in self.clip_nodes or \
-                    'length' not in self.clip_nodes and \
-                        self.begin < get_time('full_sec'):
+                if not _playlist.start or 'length' not in self.clip_nodes:
+                    # when we reach currect end, stop script
                     logger.info('Playlist reach End!')
                     return
 
-                # when playlist exist but is empty, or not long enough,
-                # generate dummy and send log
-                self.error_handling('Playlist is not valid!')
+                elif self.begin == self.init_time:
+                    # no clip was played, generate dummy
+                    self.eof_handling('Playlist is empty!', False)
+                else:
+                    # playlist is not long enough, play filler
+                    self.eof_handling('Playlist is not long enough!', True)
 
             if self.src_cmd is not None:
                 yield self.src_cmd + self.filtergraph
@@ -1012,9 +1062,10 @@ class GetSourceIter(object):
 
 def main():
     year = get_date(False).split('-')[0]
+    overlay = []
 
     if _pre_comp.copy:
-        ff_pre_settings = _pre_comp.copy_settings
+        ff_pre_settings = ["-c", "copy", "-f", "mpegts", "-"]
     else:
         ff_pre_settings = [
             '-pix_fmt', 'yuv420p', '-r', str(_pre_comp.fps),
@@ -1027,18 +1078,16 @@ def main():
             '-ar', '48000', '-ac', '2',
             '-f', 'mpegts', '-']
 
-    if os.path.isfile(_text.textfile):
-        logger.info('Use text file "{}" for overlay'.format(_text.textfile))
-        overlay = [
-            '-vf', ("drawtext=box={}:boxcolor='{}':boxborderw={}:fontsize={}"
-                    ":fontcolor={}:fontfile='{}':textfile={}:reload=1"
-                    ":x='{}':y='{}'").format(
-                        _text.box, _text.boxcolor, _text.boxborderw,
-                        _text.fontsize, _text.fontcolor, _text.fontfile,
-                        _text.textfile, _text.x,  _text.y)
-        ]
-    else:
-        overlay = []
+        if os.path.isfile(_text.textfile):
+            logger.info('Overlay text file: "{}"'.format(_text.textfile))
+            overlay = [
+                '-vf', ("drawtext=box={}:boxcolor='{}':boxborderw={}"
+                        ":fontsize={}:fontcolor={}:fontfile='{}':textfile={}"
+                        ":reload=1:x='{}':y='{}'").format(
+                            _text.box, _text.boxcolor, _text.boxborderw,
+                            _text.fontsize, _text.fontcolor, _text.fontfile,
+                            _text.textfile, _text.x,  _text.y)
+            ]
 
     try:
         if _playout.preview:
@@ -1053,7 +1102,8 @@ def main():
             if _pre_comp.copy:
                 encoder_cmd = [
                     'ffmpeg', '-v', 'info', '-hide_banner', '-nostats',
-                    '-re', '-i', 'pipe:0', '-c', 'copy'
+                    '-re', '-thread_queue_size', '256',
+                    '-i', 'pipe:0', '-c', 'copy'
                 ] + _playout.post_comp_copy
             else:
                 encoder_cmd = [
@@ -1072,16 +1122,16 @@ def main():
                 stdin=PIPE
             )
 
-        if _general.playlist_mode:
+        if _playlist.mode and not stdin_args.folder:
             watcher = None
             get_source = GetSourceIter(encoder)
         else:
             logger.info("start folder mode")
-            media = MediaStore(_folder.extensions)
-            media.fill(_folder.storage)
+            media = MediaStore(_storage.extensions)
+            media.fill(_storage.path)
 
-            watcher = MediaWatcher(_folder.storage, _folder.extensions, media)
-            get_source = GetSource(media, _folder.shuffle)
+            watcher = MediaWatcher(_storage.path, _storage.extensions, media)
+            get_source = GetSource(media, _storage.shuffle)
 
         try:
             for src_cmd in get_source.next():
@@ -1110,12 +1160,16 @@ def main():
             logger.warning('program terminated')
             terminate_processes(decoder, encoder, watcher)
 
+        # close encoder when nothing is to do anymore
+        if encoder.poll() is None:
+            encoder.terminate()
+
     finally:
         encoder.wait()
 
 
 if __name__ == '__main__':
-    if not _general.playlist_mode:
+    if not _playlist.mode or stdin_args.folder:
         from watchdog.events import PatternMatchingEventHandler
         from watchdog.observers import Observer
 
