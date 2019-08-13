@@ -27,9 +27,9 @@ import math
 import os
 import random
 import signal
-import ssl
 import smtplib
 import socket
+import ssl
 import sys
 import time
 from argparse import ArgumentParser
@@ -796,7 +796,7 @@ class GetSourceIter(object):
                                       timeout=1,
                                       context=ssl._create_unverified_context())
                 b_time = req.headers['last-modified']
-                temp_time = time.strptime(b_time, "%a, %d %b %Y %I:%M:%S %Z")
+                temp_time = time.strptime(b_time, "%a, %d %b %Y %H:%M:%S %Z")
                 mod_time = time.mktime(temp_time)
 
                 if mod_time > self.last_mod_time:
