@@ -929,11 +929,15 @@ class GetSourceIter(object):
             self.last_time += self.out - self.seek
 
         if filler:
-            self.src_cmd = gen_filler_loop(self.out - self.seek)
+            self.out = day_in_sec - self.begin
+            self.duration = day_in_sec - self.begin
+            self.src_cmd = gen_filler_loop(self.duration)
 
             if _storage.filler:
                 self.is_dummy = False
                 self.duration += 1
+            else:
+                self.is_dummy = True
         else:
             self.src_cmd = gen_dummy(self.out - self.seek)
             self.is_dummy = True
@@ -1023,7 +1027,8 @@ class GetSourceIter(object):
 
                 self.begin += self.out - self.seek
             else:
-                if not _playlist.start or 'length' not in self.clip_nodes:
+                if not is_float(_playlist.start) or \
+                        'length' not in self.clip_nodes:
                     # when we reach currect end, stop script
                     logger.info('Playlist reach End!')
                     return
