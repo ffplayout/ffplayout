@@ -766,7 +766,6 @@ class GetSourceIter(object):
         self.list_date = get_date(True)
         self.is_dummy = False
         self.has_begin = False
-        self.init_time = get_time('full_sec')
         self.last_error = ''
         self.timestamp = get_time('stamp')
 
@@ -777,6 +776,14 @@ class GetSourceIter(object):
         self.ad = False
         self.ad_last = False
         self.ad_next = False
+
+        # when _playlist.start is set, use start time
+        if is_float(_playlist.start):
+            self.has_begin = True
+            self.init_time = _playlist.start
+        else:
+            self.has_begin = False
+            self.init_time = get_time('full_sec')
 
     def get_playlist(self):
         if stdin_args.playlist:
@@ -801,13 +808,6 @@ class GetSourceIter(object):
             # then we generate a black clip
             # and calculate the seek in time, for when the playlist comes back
             self.eof_handling('Playlist not exist:', False)
-
-        # when _playlist.start is set, use start time
-        if self.clip_nodes and _playlist.start:
-            self.has_begin = True
-            self.init_time = _playlist.start
-        else:
-            self.has_begin = False
 
     def get_clip_in_out(self, node):
         if is_float(node["in"]):
