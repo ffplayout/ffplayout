@@ -359,7 +359,6 @@ $('#bt_sys').click(function() {
 /* -----------------------------------------------------------------------------
 header functions
 ------------------------------------------------------------------------------*/
-var intervalId = null;
 
 function get_track_list(interval) {
     var begin, seek, out, time_left;

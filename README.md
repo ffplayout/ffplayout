@@ -1,7 +1,7 @@
 ffplayout-gui
 =====
 
-Web-based graphical user interface for [ffplayout](https://github.com/jb-alvarado/ffplayout).
+Web-based graphical user interface for [ffplayout-engine](https://github.com/ffplayout/ffplayout-engine).
 
 ![ffplayout-gui](./ffplayout-gui.png)
 
