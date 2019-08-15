@@ -52,12 +52,16 @@ function modal(btOK, btCan, video, title, content, x, y, callback) {
 }
 
 //get date
-function get_date(hour, seek_day) {
-    var raw_date = moment();
-    if (raw_date.format("H") < parseInt(hour) && seek_day) {
-        return raw_date.add(-1, 'days');
+function get_date(t, seek_day) {
+    var datetime = moment();
+    var l_time = t.split(":");
+    l_stamp = parseInt(l_time[0]) * 3600 + parseInt(l_time[1]) * 60 + parseInt(l_time[2]);
+    t_stamp = moment.duration(datetime.format("H:M:S")).asSeconds();
+
+    if (l_stamp > 0 && l_stamp > t_stamp && seek_day) {
+        return datetime.add(-1, 'days');
     } else {
-        return raw_date;
+        return datetime;
     }
 }
 
@@ -137,12 +141,12 @@ function init_browse_click() {
 }
 
 // call php script to navigatge to the selected folder on the server
-function browse(current_data) {
-    $.get("functions.php" + current_data + "&head=get", function(data) {
+function browse(c_data) {
+    $.get("functions.php" + c_data + "&head=get", function(data) {
         $('#browserHead').html(data);
     });
 
-    $.get("functions.php" + current_data + "&ul=get", function(data) {
+    $.get("functions.php" + c_data + "&ul=get", function(data) {
         $('#rootDirectory').html(data);
         init_browse_click();
     });
@@ -151,13 +155,17 @@ function browse(current_data) {
 // first page load will open the media directory
 window.onload = function() {
     $.get("resources/list_op.php?clips_root=get", function(result) {
-        browse("?dir=" + result);
+        browse("?dir=" + result.replace(/^\//g, ''));
     });
 
     $.get("resources/list_op.php?list_start=get", function(result) {
+        var l_time = result.split(":");
+        var l_stamp = parseInt(l_time[0]) * 3600 + parseInt(l_time[1]) * 60 + parseInt(l_time[2]);
+
         var list_date = get_date(result, true);
         // write playlist date to list attribute, for later use
         $('#playlistBody').attr('listday', list_date.format("YYYY-MM-DD"));
+        $('#playlistBody').attr('liststart', l_stamp);
         // read playlist from current day
         get_json(list_date.format("YYYY-MM-DD"), true);
     });
@@ -252,7 +260,8 @@ function reorder_playlist() {
     // get start time from: /etc/ffplayout/ffplayout.conf
     $.get("resources/list_op.php?list_start=get", function(result) {
         var reorder = document.getElementById("playlistBody").getElementsByClassName("list-item");
-        var start_time = parseFloat(result * 3600);
+        var l_time = result.split(":");
+        var start_time = parseFloat(l_time[0]) * 3600 + parseFloat(l_time[1]) * 60 + parseFloat(l_time[2]);
         var time_format, cur_in, cur_out;
 
         for (var i = 0; i < reorder.length; i++) {
@@ -281,39 +290,37 @@ function jump_and_colorize_title(jump) {
     var play_begin, play_dur;
 
     $.get("resources/list_op.php?list_start=get", function(result) {
-        list_date = get_date(result, true);
+        var list_date = get_date(result, true);
 
         if (list_date.format("H") < parseInt(result)) {
             time_in_seconds += 86400
         }
 
-        $.get("resources/list_op.php?time_shift=get", function(shift) {
-            if ($('#playlistBody').attr('listday') === list_date.format("YYYY-MM-DD")) {
-                for (var i = 0; i < play_items.length; i++) {
-                    play_begin = parseFloat($(play_items[i]).attr('begin')) - parseFloat(shift);
-                    play_dur = parseFloat($(play_items[i]).attr('dur'));
-                    if (play_begin + play_dur >= time_in_seconds) {
-                        // jump to position only after page load
-                        if (jump) {
-                            $('#list-container').animate({
-                                scrollTop: $('#playlistBody li:nth-child(' + (i-1) + ')').position().top
-                            }, 500, "easeOutQuint");
-                        }
-
-                        // colorize items
-                        $(play_items[i]).addClass('current_item');
-                        $(play_items[i+1]).addClass('next_item');
-                        $('.list-item:gt('+(i+1)+')').addClass('last_items');
-                        break;
+        if ($('#playlistBody').attr('listday') === list_date.format("YYYY-MM-DD")) {
+            for (var i = 0; i < play_items.length; i++) {
+                play_begin = parseFloat($(play_items[i]).attr('begin'));
+                play_dur = parseFloat($(play_items[i]).attr('dur'));
+                if (play_begin + play_dur >= time_in_seconds) {
+                    // jump to position only after page load
+                    if (jump) {
+                        $('#list-container').animate({
+                            scrollTop: $('#playlistBody li:nth-child(' + (i-1) + ')').position().top
+                        }, 500, "easeOutQuint");
                     }
-                }
-            } else {
-                // scroll to playlist top
-                if (jump) {
-                    $('#list-container').animate({scrollTop: 0}, 500, "easeOutQuint");
+
+                    // colorize items
+                    $(play_items[i]).addClass('current_item');
+                    $(play_items[i+1]).addClass('next_item');
+                    $('.list-item:gt('+(i+1)+')').addClass('last_items');
+                    break;
                 }
             }
-        });
+        } else {
+            // scroll to playlist top
+            if (jump) {
+                $('#list-container').animate({scrollTop: 0}, 500, "easeOutQuint");
+            }
+        }
     });
 }
 
@@ -355,24 +362,24 @@ header functions
 var intervalId = null;
 
 function get_track_list(interval) {
-    var begin, src, dur, seek, out, time_left;
+    var begin, seek, out, time_left;
 
     $.get("resources/player.php?track=get", function(result) {
         function get_track() {
             var moment_time = moment().format('HH:mm:ss');
             var time_in_seconds = parseFloat(moment.duration(moment_time).asSeconds());
             var json = $.parseJSON(result);
-            var playlist_start = parseFloat(json[0]['start'][0]);
+            var playlist_start = parseFloat($('#playlistBody').attr('liststart'));
 
-            if (0.0 <= time_in_seconds && time_in_seconds < playlist_start * 3600.0) {
+            if (0.0 <= time_in_seconds && time_in_seconds < playlist_start) {
                 time_in_seconds += 86400.0;
             }
 
-            $.each(json, function (index, value) {
-                begin = parseFloat(value['begin'][0]);
-                dur = parseFloat(value['dur'][0]);
-                seek = parseFloat(value['in'][0]);
-                out = parseFloat(value['out'][0]);
+            begin = playlist_start;
+
+            $.each(json, function (_index, value) {
+                seek = parseFloat(value['in']);
+                out = parseFloat(value['out']);
 
                 if (time_in_seconds < begin + out - seek ) {
                     time_left = begin + out - seek - time_in_seconds;
@@ -380,6 +387,8 @@ function get_track_list(interval) {
                     $('#title').html((value['src']));
                     return false;
                 }
+
+                begin += out - seek;
             });
         }
         if (interval) {
@@ -387,7 +396,6 @@ function get_track_list(interval) {
         } else {
             clearInterval(refreshIntervalId);
         }
-
     });
 }
 
@@ -521,7 +529,6 @@ $(document).ready(function() {
             var save_list = [];
             $('#playlistBody li.list-item').each(function(){
                 save_list.push({
-                    begin:$(this).attr('begin'),
                     src:$(this).attr('src'),
                     dur:$(this).attr('dur'),
                     in:$(this).attr('in'),
@@ -562,7 +569,6 @@ $(document).ready(function() {
             var save_list = [];
             $('#playlistBody li.list-item').each(function(){
                 save_list.push({
-                    begin:$(this).attr('begin'),
                     src:$(this).attr('src'),
                     dur:$(this).attr('dur'),
                     in:$(this).attr('in'),
@@ -581,7 +587,6 @@ $(document).ready(function() {
                    modal(null, null, null, "Fill Playlist", "Filling Playlist in progress...", 'auto', 'auto', function(result) {});
                },
                success: function(result) {
-                  // console.log(result);
                   $('#dialog-confirm').dialog("close");
                   modal(true, null, null, "Fill Playlist", result + "<br/><b>Filled Time:</b> " + moment.utc(Math.abs(missed_length) * 1000).format('HH:mm:ss'), 'auto', 'auto', function(result) {});
                   get_json(date, false);

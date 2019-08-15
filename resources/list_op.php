@@ -5,43 +5,22 @@ read values from ffplayout config file
 ------------------------------------------------------------------------------*/
 
 // get config file
-function get_config() {
-    return file_get_contents("/etc/ffplayout/ffplayout.conf");
+function get_ini() {
+    return parse_ini_file("/etc/ffplayout/ffplayout.conf", TRUE, INI_SCANNER_RAW);
 }
 
 // get start time
 if(!empty($_GET['list_start'])) {
-    $get_ini = get_config();
-    $get_start = "/^day_start.*\$/m";
-    preg_match_all($get_start, $get_ini, $matches);
-    $line = implode("\n", $matches[0]);
-    echo explode("= ", $line)[1];
+    $ini = get_ini();
+    echo $ini['PLAYLIST']['day_start'];
 }
 
 // get clips root directory
 if(!empty($_GET['clips_root'])) {
-    $get_ini = get_config();
-    $get_root = "/^clips_root.*\$/m";
-    preg_match_all($get_root, $get_ini, $matches);
-    $line = implode("\n", $matches[0]);
-    $root = substr(explode("= ", $line)[1], 1);
-    echo $root;
+    $ini = get_ini();
+    echo $ini['STORAGE']['path'];
 }
 
-// get time_shift
-if (!empty($_GET['time_shift'])) {
-    $get_ini = get_config();
-    $get_shift = "/^time_shift.*\$/m";
-    preg_match_all($get_shift, $get_ini, $shift_arr);
-    $line_shift = implode("\n", $shift_arr[0]);
-    $time_shift = explode("= ", $line_shift)[1];
-
-    if(empty($time_shift)) {
-        echo 0;
-    } else {
-        echo $time_shift;
-    }
-}
 
 /* -----------------------------------------------------------------------------
 json playlist operations
@@ -65,19 +44,16 @@ $ext = implode('|', $except);
 if(!empty($_GET['json_path'])) {
     $json_date = $_GET['json_path'];
     $date_str = explode('-', $json_date);
-    $get_ini = get_config();
-    $get_dir = "/^playlist_path.*\$/m";
-    preg_match_all($get_dir, $get_ini, $matches);
-    $line = implode("\n", $matches[0]);
-    $path_root = explode("= ", $line)[1];
+    $ini = get_ini();
+    $dir = $ini['PLAYLIST']['path'];
 
-    $json_path = $path_root . "/" . $date_str[0] . "/" . $date_str[1] . "/" . $json_date . ".json";
+    $json_path = $dir . "/" . $date_str[0] . "/" . $date_str[1] . "/" . $json_date . ".json";
 
     if (file_exists($json_path)) {
         $content = file_get_contents($json_path) or die("Error: Cannot create object");
         $json = json_decode($content, true);
 
-        list($hh, $mm, $ss) = explode(":", $json["begin"]);
+        list($hh, $mm, $ss) = explode(":", $ini['PLAYLIST']['day_start']);
         list($l_hh, $l_mm, $l_ss) = explode(":", $json["length"]);
 
         $start = $hh * 3600 + $mm * 60 + $ss;
@@ -185,22 +161,15 @@ if(!empty($_POST['save'])) {
     $date = $_POST['date'];
     $date_str = explode('-', $date);
     // get save path
-    $get_ini = get_config();
-    $get_dir = "/^playlist_path.*\$/m";
-    preg_match_all($get_dir, $get_ini, $matches);
-    $line = implode("\n", $matches[0]);
-    $path_root = explode("= ", $line)[1];
-    $json_path = $path_root . "/" . $date_str[0] . "/" . $date_str[1];
+    $ini = get_ini();
+    $dir = $ini['PLAYLIST']['path'];
+    $json_path = $dir . "/" . $date_str[0] . "/" . $date_str[1];
     $json_output = $json_path . "/" . $date . ".json";
-
-    $beginRaw = round($raw_arr[0]->begin);
-    $start = sprintf('%02d:%02d:%02d', ($beginRaw/3600),($beginRaw/60%60), $beginRaw%60);
 
     // prepare header
     $list = array(
         "channel" => "Test 1",
          "date" => $date,
-         "begin" => $start,
          "length" => "24:00:00.000",
          "program" => []
     );
@@ -232,69 +201,4 @@ if(!empty($_POST['save'])) {
     printf('Save playlist "%s.json" done...', $date);
 }
 
-// fill playlist to 24 hours
-if(!empty($_POST['fill_playlist'])) {
-    $list_date = $_POST['fill_playlist'];
-    $diff_len = $_POST['diff_len'];
-    $start_time = $_POST['start_time'];
-    $raw_arr = json_decode(urldecode($_POST['old_list']));
-
-    $get_ini = get_config();
-    $date_str = explode('-', $list_date);
-    $get_dir = "/^playlist_path.*\$/m";
-    preg_match_all($get_dir, $get_ini, $matches);
-    $line = implode("\n", $matches[0]);
-    $path_root = explode("= ", $line)[1];
-    $json_path = $path_root . "/" . $date_str[0] . "/" . $date_str[1];
-    $json_output = $json_path . "/" . $list_date . ".json";
-
-    $fill = shell_exec("./sh/fill.sh '".$diff_len."'");
-
-    $beginRaw = round($raw_arr[0]->begin);
-    $start = sprintf('%02d:%02d:%02d', ($beginRaw/3600),($beginRaw/60%60), $beginRaw%60);
-
-    // prepare header
-    $list = array(
-        "channel" => "Test 1",
-         "date" => $list_date,
-         "begin" => $start,
-         "length" => "24:00:00.000",
-         "program" => []
-    );
-
-    // create json video element
-    foreach($raw_arr as $rawline) {
-        $clipItem = array(
-            "in" => floatval($rawline->in),
-            "out" => floatval($rawline->out),
-            "duration" => floatval($rawline->dur),
-            "source" => $rawline->src
-        );
-
-        $list["program"][] = $clipItem;
-    }
-
-    foreach(preg_split("/((\r?\n)|(\r\n?))/", $fill) as $line){
-        $line_arr = explode('|', $line);
-
-        $clipItem = array(
-            "in" => floatval($line_arr[0]),
-            "out" => floatval($line_arr[1]),
-            "duration" => floatval($line_arr[2]),
-            "source" => $line_arr[3]
-        );
-
-        if ($line_arr[3]) {
-            $list["program"][] = $clipItem;
-        }
-    }
-
-    if (!is_dir($json_path)) {
-        mkdir($json_path, 0777, true);
-    }
-
-    file_put_contents($json_output, json_encode(
-        $list, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT));
-    printf('Filled and save playlist "%s.json" done...', $list_date);
-}
 ?>
