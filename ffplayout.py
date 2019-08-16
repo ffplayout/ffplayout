@@ -325,7 +325,9 @@ def check_sync(begin, encoder):
         mailer.error(
             'Sync tolerance value exceeded with {} seconds,\n'
             'program terminated!'.format(time_distance))
-        logger.error('Sync tolerance value exceeded, program terminated!')
+        logger.error(
+            'Sync tolerance value exceeded with {}, program terminated!'
+            ).format(time_distance)
         encoder.terminate()
         sys.exit(1)
 
