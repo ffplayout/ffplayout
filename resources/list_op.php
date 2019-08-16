@@ -182,15 +182,16 @@ if(!empty($_POST['save'])) {
             "in" => floatval($rawline->in),
             "out" => floatval($rawline->out),
             "duration" => floatval($rawline->dur),
-            "source" => intval($rawline->src)
+            "source" => "/" . $rawline->src
         );
 
         $list["program"][] = $clipItem;
 
-        $length += round($rawline->out - $rawline->in);
+        // TODO: add real length?
+        //$length += round($rawline->out - $rawline->in);
     }
 
-    $list["program"]["length"] = sprintf('%02d:%02d:%02d', ($length/3600),($length/60%60), $length%60);
+    //$list["length"] = sprintf('%02d:%02d:%02d', ($length/3600),($length/60%60), $length%60);
 
     if (!is_dir($json_path)) {
         mkdir($json_path, 0777, true);

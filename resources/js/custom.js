@@ -520,11 +520,13 @@ $(document).ready(function() {
         var last_out = parseFloat($('.list-item').last().attr('out'));
         var over_length = last_start - start_time + last_out - last_in - 86400;
 
+        /* TODO: no length check for now
         if (over_length > 0) {
             modal(true, null, null, "Save Playlist", "Playtime from Playlist is to long!<br/><b>Difference:</b> " + over_length, 'auto', 'auto', function(result) {});
         } else if (over_length < -6) {
             modal(true, null, null, "Save Playlist", "Playtime from Playlist is to short!<br/><b>Difference:</b> " + over_length, 'auto', 'auto', function(result) {});
         } else {
+        */
             var save_list = [];
             $('#playlistBody li.list-item').each(function(){
                 save_list.push({
@@ -546,7 +548,7 @@ $(document).ready(function() {
                    modal(true, null, null, "Save Playlist", result, 'auto', 'auto', function(result) {});
                }
            });
-        }
+        //}
     });
 
     // fill end of playlist to get full 24 hours
