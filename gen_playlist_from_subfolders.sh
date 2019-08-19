@@ -50,6 +50,6 @@ while read -r line; do
 
 	printf '\t\t"in": 0,\n\t\t"out": %s,\n\t\t"duration": %s,\n\t\t"source": "%s"\n\t%s\n' "$clipDuration" "$clipDuration" "$clipPath" "$last" >> "$trunk/$playlist"
 
-done < <( find "$src" -name "*.mp4" )
+done < <( find "$src" -name "*.mp4" | sort -R)
 
 printf "}\n" >> "$trunk/$playlist"
