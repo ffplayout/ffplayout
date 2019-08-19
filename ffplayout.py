@@ -29,6 +29,7 @@ import random
 import signal
 import smtplib
 import socket
+import ssl
 import sys
 import time
 from argparse import ArgumentParser
@@ -41,6 +42,7 @@ from shutil import copyfileobj
 from subprocess import PIPE, CalledProcessError, Popen, check_output
 from threading import Thread
 from types import SimpleNamespace
+from urllib import request
 
 # ------------------------------------------------------------------------------
 # read variables from config file
@@ -795,7 +797,26 @@ class GetSourceIter(object):
             self.json_file = os.path.join(
              _playlist.path, year, month, self.list_date + '.json')
 
-        if os.path.isfile(self.json_file):
+        if '://' in self.json_file:
+            self.json_file = self.json_file.replace('\\', '/')
+
+            try:
+                req = request.urlopen(self.json_file,
+                                      timeout=1,
+                                      context=ssl._create_unverified_context())
+                b_time = req.headers['last-modified']
+                temp_time = time.strptime(b_time, "%a, %d %b %Y %H:%M:%S %Z")
+                mod_time = time.mktime(temp_time)
+
+                if mod_time > self.last_mod_time:
+                    self.clip_nodes = json.load(req)
+                    self.last_mod_time = mod_time
+                    logger.info('open: ' + self.json_file)
+                    validate_thread(self.clip_nodes)
+            except (request.URLError, socket.timeout):
+                self.eof_handling('Get playlist from url failed!', False)
+
+        elif os.path.isfile(self.json_file):
             # check last modification from playlist
             mod_time = os.path.getmtime(self.json_file)
             if mod_time > self.last_mod_time:
