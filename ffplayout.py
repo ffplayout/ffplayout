@@ -45,12 +45,41 @@ from types import SimpleNamespace
 from urllib import request
 
 # ------------------------------------------------------------------------------
+# argument parsing
+# ------------------------------------------------------------------------------
+
+stdin_parser = ArgumentParser(
+    description='python and ffmpeg based playout',
+    epilog="don't use parameters if you want to use this settings from config")
+
+stdin_parser.add_argument(
+    '-c', '--config', help='file path to ffplayout.conf'
+)
+
+stdin_parser.add_argument(
+    '-f', '--folder', help='play folder content'
+)
+
+stdin_parser.add_argument(
+    '-l', '--log', help='file path for logfile'
+)
+
+stdin_parser.add_argument(
+    '-p', '--playlist', help='path from playlist'
+)
+
+stdin_args = stdin_parser.parse_args()
+
+# ------------------------------------------------------------------------------
 # read variables from config file
 # ------------------------------------------------------------------------------
 
 # read config
 cfg = configparser.ConfigParser()
-if os.path.isfile('/etc/ffplayout/ffplayout.conf'):
+
+if stdin_args.config:
+    cfg.read(stdin_args.config)
+elif os.path.isfile('/etc/ffplayout/ffplayout.conf'):
     cfg.read('/etc/ffplayout/ffplayout.conf')
 else:
     cfg.read('ffplayout.conf')
@@ -135,27 +164,10 @@ _playout = SimpleNamespace(
 
 
 # ------------------------------------------------------------------------------
-# logging and argument parsing
+# logging
 # ------------------------------------------------------------------------------
 
-stdin_parser = ArgumentParser(
-    description='python and ffmpeg based playout',
-    epilog="don't use parameters if you want to take the settings from config")
-
-stdin_parser.add_argument(
-    '-l', '--log', help='file path for logfile'
-)
-
-stdin_parser.add_argument(
-    '-p', '--playlist', help='path from playlist'
-)
-
-stdin_parser.add_argument(
-    '-f', '--folder', help='play folder content'
-)
-
 # If the log file is specified on the command line then override the default
-stdin_args = stdin_parser.parse_args()
 if stdin_args.log:
     _log.path = stdin_args.log
 
