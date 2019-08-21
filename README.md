@@ -113,9 +113,10 @@ Installation
 Start with Arguments
 -----
 ffplayout also allows the passing of parameters:
+- `-c, --config` use given config file
+- `-f, --folder` use folder for playing
 - `-l, --log` for user-defined log file
 - `-p, --playlist` for playlist file
-- `-f, --folder` use folder for playing
 
 You can run the command like:
 
