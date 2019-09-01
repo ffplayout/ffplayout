@@ -114,6 +114,7 @@ _pre_comp = SimpleNamespace(
     v_bitrate=cfg.getint('PRE_COMPRESS', 'width') * 50,
     v_bufsize=cfg.getint('PRE_COMPRESS', 'width') * 50 / 2,
     logo=cfg.get('PRE_COMPRESS', 'logo'),
+    opacity=cfg.get('PRE_COMPRESS', 'logo_opacity'),
     logo_filter=cfg.get('PRE_COMPRESS', 'logo_filter'),
     protocols=cfg.get('PRE_COMPRESS', 'live_protocols')
 )
@@ -260,6 +261,41 @@ class Mailer:
 
 
 mailer = Mailer()
+
+
+# ------------------------------------------------------------------------------
+# probe media infos
+# ------------------------------------------------------------------------------
+
+class MediaProbe:
+    def load(self, file):
+        self.format = None
+        self.audio = []
+        self.video = []
+
+        cmd = ['ffprobe', '-v', 'quiet', '-print_format',
+               'json', '-show_format', '-show_streams', file]
+
+        info = json.loads(check_output(cmd).decode(encoding='UTF-8'))
+
+        self.format = info['format']
+
+        for stream in info['streams']:
+            if stream['codec_type'] == 'audio':
+                self.audio.append(stream)
+
+            if stream['codec_type'] == 'video':
+                if 'display_aspect_ratio' not in stream:
+                        stream['aspect'] = float(
+                            stream['width']) / float(stream['height'])
+                else:
+                    w, h = stream['display_aspect_ratio'].split(':')
+                    stream['aspect'] = float(w) / float(h)
+
+                a, b = stream['r_frame_rate'].split('/')
+                stream['fps'] = float(a) / float(b)
+
+                self.video.append(stream)
 
 
 # ------------------------------------------------------------------------------
@@ -576,66 +612,177 @@ def gen_input(has_begin, src, begin, dur, seek, out, last):
         return src_cmd, 0.0
 
 
-# blend logo and fade in / fade out
-# TODO: simple deinterlace, pad and fps conversion, if is necessary
-def build_filtergraph(first, duration, seek, out, ad, ad_last, ad_next, dummy):
-    length = out - seek - 1.0
-    logo_chain = []
-    logo_filter = []
+# ------------------------------------------------------------------------------
+# building filters,
+# when is needed add individuell filters to match output format
+# ------------------------------------------------------------------------------
+
+def deinterlace_filter(probe):
+    """
+    when material is interlaced,
+    set deinterlacing filter
+    """
+    filter_chain = []
+
+    if 'field_order' in probe.video[0] and \
+            probe.video[0]['field_order'] != 'progressive':
+        filter_chain.append('yadif=0:-1:0')
+
+    return filter_chain
+
+
+def pad_filter(probe):
+    """
+    if source and target aspect is different,
+    fix it with pillarbox or letterbox
+    """
+    filter_chain = []
+
+    if not math.isclose(probe.video[0]['aspect'],
+                        _pre_comp.aspect, abs_tol=0.03):
+        if probe.video[0]['aspect'] < _pre_comp.aspect:
+            filter_chain.append(
+                'pad=ih*{}/{}/sar:ih:(ow-iw)/2:(oh-ih)/2'.format(_pre_comp.w,
+                                                                 _pre_comp.h))
+        elif probe.video[0]['aspect'] > _pre_comp.aspect:
+            filter_chain.append(
+                'pad=iw:iw*{}/{}/sar:(ow-iw)/2:(oh-ih)/2'.format(_pre_comp.h,
+                                                                 _pre_comp.w))
+
+    return filter_chain
+
+
+def fps_filter(probe):
+    """
+    changing frame rate
+    """
+    filter_chain = []
+
+    if probe.video[0]['fps'] != _pre_comp.fps:
+        filter_chain.append('framerate=fps={}'.format(_pre_comp.fps))
+
+    return filter_chain
+
+
+def scale_filter(probe):
+    """
+    if target resolution is different to source add scale filter,
+    apply also an aspect filter, when is different
+    """
+    filter_chain = []
+
+    if int(probe.video[0]['width']) != _pre_comp.w or \
+            int(probe.video[0]['height']) != _pre_comp.h:
+        filter_chain.append('scale={}:{}'.format(_pre_comp.w, _pre_comp.h))
+
+    if probe.video[0]['aspect'] != _pre_comp.aspect:
+        filter_chain.append('setdar=dar={}'.format(_pre_comp.aspect))
+
+    return filter_chain
+
+
+def fade_filter(first, duration, seek, out, track=''):
+    """
+    fade in/out video, when is cutted at the begin or end
+    """
+    filter_chain = []
+
+    if seek > 0.0 and not first:
+        filter_chain.append('{}fade=in:st=0:d=0.5'.format(track))
+
+    if out < duration:
+        filter_chain.append('{}fade=out:st={}:d=1.0'.format(track,
+                                                            out - seek - 1.0))
+
+    return filter_chain
+
+
+def overlay_filter(duration, ad, ad_last, ad_next):
+    """
+    overlay logo: when is an ad don't overlay,
+    when ad is comming next fade logo out,
+    when clip before was an ad fade logo in
+    """
+    logo_filter = '[v]null[logo]'
+
+    if os.path.isfile(_pre_comp.logo) and not ad:
+        logo_chain = []
+        opacity = 'format=rgba,colorchannelmixer=aa={}'.format(
+            _pre_comp.opacity)
+        loop = 'loop=loop={}:size=1:start=0'.format(
+                duration * _pre_comp.fps)
+        logo_chain.append('movie={},{},{}'.format(
+                _pre_comp.logo, loop, opacity))
+        if ad_last:
+            logo_chain.append('fade=in:st=0:d=1.0:alpha=1')
+        if ad_next:
+            logo_chain.append('fade=out:st={}:d=1.0:alpha=1'.format(
+                duration - 1))
+
+        logo_filter = '{}[l];[v][l]{}[logo]'.format(
+            ','.join(logo_chain), _pre_comp.logo_filter)
+
+        return logo_filter
+
+
+def add_audio(probe, duration):
+    """
+    when clip has no audio we generate an audio line
+    """
+    line = []
+
+    if not probe.audio:
+        line = [
+            'aevalsrc=0:channel_layout=2:duration={}:sample_rate={}'.format(
+                duration, 48000)]
+
+    return line
+
+
+def build_filtergraph(first, duration, seek, out, ad, ad_last, ad_next, dummy,
+                      probe):
+    """
+    build final filter graph, with video and audio chain
+    """
+    if _pre_comp.copy:
+        return []
+
     video_chain = []
     audio_chain = []
     video_map = ['-map', '[logo]']
 
-    scale = 'scale={}:{},setdar=dar={}[s]'.format(
-        _pre_comp.w, _pre_comp.h, _pre_comp.aspect)
+    if not dummy:
+        video_chain += deinterlace_filter(probe)
+        video_chain += pad_filter(probe)
+        video_chain += fps_filter(probe)
+        video_chain += scale_filter(probe)
+        video_chain += fade_filter(first, duration, seek, out)
 
-    if seek > 0.0 and not first:
-        video_chain.append('fade=in:st=0:d=0.5')
-        audio_chain.append('afade=in:st=0:d=0.5')
-
-    if out < duration:
-        video_chain.append('fade=out:st={}:d=1.0'.format(length))
-        audio_chain.append('afade=out:st={}:d=1.0'.format(length))
-    else:
-        audio_chain.append('anull')
+        audio_chain += add_audio(probe, out - seek)
 
     if video_chain:
-        video_fade = '[s]{}[v]'.format(','.join(video_chain))
+        video_filter = '{}[v]'.format(','.join(video_chain))
     else:
-        video_fade = '[s]null[v]'
+        video_filter = 'null[v]'
 
-    audio_filter = [
-        '-filter_complex', '[0:a]{}[a]'.format(','.join(audio_chain))]
-
-    audio_map = ['-map', '[a]']
-
-    if os.path.isfile(_pre_comp.logo):
-        if not ad:
-            opacity = 'format=rgba,colorchannelmixer=aa=0.7'
-            loop = 'loop=loop={}:size=1:start=0'.format(
-                    (out - seek) * _pre_comp.fps)
-            logo_chain.append('movie={},{},{}'.format(
-                    _pre_comp.logo, loop, opacity))
-        if ad_last:
-            logo_chain.append('fade=in:st=0:d=1.0:alpha=1')
-        if ad_next:
-            logo_chain.append('fade=out:st={}:d=1.0:alpha=1'.format(length))
-
-        if not ad:
-            logo_filter = '{}[l];[v][l]{}[logo]'.format(
-                    ','.join(logo_chain), _pre_comp.logo_filter)
-        else:
-            logo_filter = '[v]null[logo]'
-    else:
-        logo_filter = '[v]null[logo]'
-
+    logo_filter = overlay_filter(out - seek, ad, ad_last, ad_next)
     video_filter = [
-        '-filter_complex', '[0:v]{};{};{}'.format(
-            scale, video_fade, logo_filter)]
+        '-filter_complex', '[0:v]{};{}'.format(
+            video_filter, logo_filter)]
 
-    if _pre_comp.copy:
-        return []
-    elif dummy:
+    if not audio_chain:
+        audio_chain.append('[0:a]anull')
+        audio_chain += fade_filter(first, duration, seek, out, 'a')
+
+    if audio_chain:
+        audio_filter = [
+            '-filter_complex', '{}[a]'.format(','.join(audio_chain))]
+        audio_map = ['-map', '[a]']
+    else:
+        audio_filter = []
+        audio_map = ['-map', '0:a']
+
+    if dummy:
         return video_filter + video_map + ['-map', '1:a']
     else:
         return video_filter + audio_filter + video_map + audio_map
@@ -733,9 +880,7 @@ class GetSource:
 
         self.last_played = []
         self.index = 0
-
-        self.filtergraph = build_filtergraph(False, 0.0, 0.0, 0.0, False,
-                                             False, False, False)
+        self.probe = MediaProbe()
 
     def next(self):
         while True:
@@ -747,13 +892,25 @@ class GetSource:
 
                 if clip not in self.last_played:
                     self.last_played.append(clip)
-                    yield ['-i', clip] + self.filtergraph
+                    self.probe.load(clip)
+                    filtergraph = build_filtergraph(
+                        False, float(self.probe.video[0]['duration']), 0.0,
+                        float(self.probe.video[0]['duration']), False, False,
+                        False, False, self.probe)
+
+                    yield ['-i', clip] + filtergraph
 
             else:
                 while self.index < len(self._media.store):
+                    self.probe.load(self._media.store[self.index])
+                    filtergraph = build_filtergraph(
+                        False, float(self.probe.video[0]['duration']), 0.0,
+                        float(self.probe.video[0]['duration']), False, False,
+                        False, False, self.probe)
+
                     yield [
                         '-i', self._media.store[self.index]
-                        ] + self.filtergraph
+                        ] + filtergraph
                     self.index += 1
                 else:
                     self.index = 0
@@ -776,6 +933,7 @@ class GetSourceIter(object):
         self.json_file = None
         self.clip_nodes = None
         self.src_cmd = None
+        self.probe = MediaProbe()
         self.filtergraph = []
         self.first = True
         self.last = False
@@ -930,7 +1088,7 @@ class GetSourceIter(object):
     def set_filtergraph(self):
         self.filtergraph = build_filtergraph(
             self.first, self.duration, self.seek, self.out,
-            self.ad, self.ad_last, self.ad_next, self.is_dummy)
+            self.ad, self.ad_last, self.ad_next, self.is_dummy, self.probe)
 
     def eof_handling(self, message, filler):
         self.seek = 0.0
@@ -1012,6 +1170,7 @@ class GetSourceIter(object):
                         self.seek = self.last_time - self.begin + self.seek
 
                     self.src = node["source"]
+                    self.probe.load(self.src)
 
                     self.url_or_live_source()
                     self.get_input()
@@ -1032,6 +1191,7 @@ class GetSourceIter(object):
                         check_sync(self.begin, self._encoder)
 
                     self.src = node["source"]
+                    self.probe.load(self.src)
 
                     self.url_or_live_source()
                     self.get_input()
@@ -1147,9 +1307,15 @@ def main():
         else:
             logger.info("start folder mode")
             media = MediaStore(_storage.extensions)
-            media.fill(_storage.path)
 
-            watcher = MediaWatcher(_storage.path, _storage.extensions, media)
+            if stdin_args.folder:
+                folder = stdin_args.folder
+            else:
+                folder = _storage.path
+
+            media.fill(folder)
+
+            watcher = MediaWatcher(folder, _storage.extensions, media)
             get_source = GetSource(media, _storage.shuffle)
 
         try:
