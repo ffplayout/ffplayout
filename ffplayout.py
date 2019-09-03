@@ -798,14 +798,21 @@ class MediaStore:
     MediaWatch will interact with add and remove
     """
 
-    def __init__(self, extensions):
-        self._extensions = extensions
+    def __init__(self):
         self.store = []
 
-    def fill(self, folder):
-        for ext in self._extensions:
+        if stdin_args.folder:
+            self.folder = stdin_args.folder
+        else:
+            self.folder = _storage.path
+
+        self.fill()
+
+    def fill(self):
+        for ext in _storage.extensions:
             self.store.extend(
-                glob.glob(os.path.join(folder, '**', ext), recursive=True))
+                glob.glob(os.path.join(self.folder, '**', ext),
+                          recursive=True))
 
         self.sort()
 
@@ -1306,16 +1313,8 @@ def main():
             get_source = GetSourceIter(encoder)
         else:
             logger.info("start folder mode")
-            media = MediaStore(_storage.extensions)
-
-            if stdin_args.folder:
-                folder = stdin_args.folder
-            else:
-                folder = _storage.path
-
-            media.fill(folder)
-
-            watcher = MediaWatcher(folder, _storage.extensions, media)
+            media = MediaStore()
+            watcher = MediaWatcher(media.folder, _storage.extensions, media)
             get_source = GetSource(media, _storage.shuffle)
 
         try:
