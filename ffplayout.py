@@ -739,6 +739,33 @@ def add_audio(probe, duration):
     return line
 
 
+def extend_audio(probe, duration):
+    """
+    check audio duration, is it shorter then clip duration - pad it
+    """
+    pad_filter = []
+
+    if probe.audio and 'duration' in probe.audio[0] and \
+            duration > float(probe.audio[0]['duration']) + 0.3:
+        pad_filter.append('apad=whole_dur={}'.format(duration))
+
+    return pad_filter
+
+
+def extend_video(probe, duration):
+    """
+    check video duration, is is shorter then clip duration - pad it
+    """
+    pad_filter = []
+
+    if 'duration' in probe.video[0] and \
+            duration > float(probe.video[0]['duration']) + 0.3:
+        pad_filter.append('tpad=stop_mode=add:stop_duration={}'.format(
+            duration - float(probe.video[0]['duration'])))
+
+    return pad_filter
+
+
 def build_filtergraph(first, duration, seek, out, ad, ad_last, ad_next, dummy,
                       probe):
     """
@@ -756,6 +783,7 @@ def build_filtergraph(first, duration, seek, out, ad, ad_last, ad_next, dummy,
         video_chain += pad_filter(probe)
         video_chain += fps_filter(probe)
         video_chain += scale_filter(probe)
+        video_chain += extend_video(probe, out - seek)
         video_chain += fade_filter(first, duration, seek, out)
 
         audio_chain += add_audio(probe, out - seek)
@@ -772,6 +800,7 @@ def build_filtergraph(first, duration, seek, out, ad, ad_last, ad_next, dummy,
 
     if not audio_chain:
         audio_chain.append('[0:a]anull')
+        audio_chain += extend_audio(probe, out - seek)
         audio_chain += fade_filter(first, duration, seek, out, 'a')
 
     if audio_chain:
@@ -901,8 +930,8 @@ class GetSource:
                     self.last_played.append(clip)
                     self.probe.load(clip)
                     filtergraph = build_filtergraph(
-                        False, float(self.probe.video[0]['duration']), 0.0,
-                        float(self.probe.video[0]['duration']), False, False,
+                        False, float(self.probe.format['duration']), 0.0,
+                        float(self.probe.format['duration']), False, False,
                         False, False, self.probe)
 
                     yield ['-i', clip] + filtergraph
@@ -911,8 +940,8 @@ class GetSource:
                 while self.index < len(self._media.store):
                     self.probe.load(self._media.store[self.index])
                     filtergraph = build_filtergraph(
-                        False, float(self.probe.video[0]['duration']), 0.0,
-                        float(self.probe.video[0]['duration']), False, False,
+                        False, float(self.probe.format['duration']), 0.0,
+                        float(self.probe.format['duration']), False, False,
                         False, False, self.probe)
 
                     yield [
