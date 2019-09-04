@@ -24,6 +24,15 @@ Features
 - normal system requirements and no special tools
 - no GPU power is needed
 - stream to server or play on desktop
+- add filters to input, if is necessary to match output stream:
+    - **yadif** (deinterlacing)
+    - **pad** (add borders to fit aspect)
+    - **framerate** (to change fps)
+    - **scale** (to fit resolution)
+    - **aevalsrc** (if video have no audio)
+    - **apad** (add silence if audio duration is to short)
+    - **tpad** (add black frames if video duration is to short - **needs ffmpeg v4.2+**)
+
 
 Requirements
 -----
