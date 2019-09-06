@@ -373,11 +373,12 @@ def check_sync(begin, encoder):
     # check that we are in tolerance time
     if _general.stop and abs(time_distance) > _general.threshold:
         mailer.error(
-            'Sync tolerance value exceeded with {} seconds,\n'
+            'Sync tolerance value exceeded with {0:.2f} seconds,\n'
             'program terminated!'.format(time_distance))
         logger.error(
-            'Sync tolerance value exceeded with {}, program terminated!'
-            ).format(time_distance)
+            ('Sync tolerance value exceeded with '
+             '{0:.2f} seconds, program terminated!').format(time_distance)
+            )
         encoder.terminate()
         sys.exit(1)
 
@@ -514,14 +515,16 @@ def gen_filler_loop(duration):
         if f_dur:
             if f_dur > duration:
                 # cut filler
-                logger.info('Generate filler with {} seconds'.format(duration))
+                logger.info(
+                    'Generate filler with {0:.2f} seconds'.format(duration))
                 return ['-i', _storage.filler] + set_length(
                     f_dur, 0, duration)
             else:
                 # loop filles n times
                 loop_count = math.ceil(duration / f_dur)
-                logger.info('Loop filler {} times, total duration: {}'.format(
-                    loop_count, duration))
+                logger.info(
+                    'Loop filler {} times, total duration: {0:.2f}'.format(
+                        loop_count, duration))
                 return ['-stream_loop', str(loop_count),
                         '-i', _storage.filler, '-t', str(duration)]
         else:
@@ -961,9 +964,10 @@ class GetSourceIter(object):
     def __init__(self, encoder):
         self._encoder = encoder
         self.last_time = get_time('full_sec')
+        self.day_in_sec = 86400.0
 
         if _playlist.start and 0 <= self.last_time < _playlist.start:
-            self.last_time += 86400
+            self.last_time += self.day_in_sec
 
         self.last_mod_time = 0.0
         self.json_file = None
@@ -1076,7 +1080,7 @@ class GetSourceIter(object):
             elif is_float(output):
                 self.duration = float(output)
             else:
-                self.duration = 86400
+                self.duration = self.day_in_sec
                 self.out = self.out - self.seek
                 self.seek = 0
 
@@ -1128,38 +1132,28 @@ class GetSourceIter(object):
 
     def eof_handling(self, message, filler):
         self.seek = 0.0
-        self.out = 20
-        self.duration = 20
         self.ad = False
 
-        day_in_sec = 86400.0
-        ref_time = day_in_sec
+        ref_time = self.day_in_sec
         time = get_time('full_sec')
 
         if _playlist.start:
-            ref_time = day_in_sec + _playlist.start
+            ref_time = self.day_in_sec + _playlist.start
 
             if 0 <= time < _playlist.start:
-                time += day_in_sec
+                time += self.day_in_sec
 
         time_diff = self.out - self.seek + time
         new_len = self.out - self.seek - (time_diff - ref_time)
 
-        if new_len <= 1800:
-            self.out = abs(new_len)
-            self.duration = abs(new_len)
-            self.list_date = get_date(False)
-            self.last_mod_time = 0.0
-            self.first = False
-
-            self.last_time = 0.0
-        else:
-            self.list_date = get_date(True)
-            self.last_time += self.out - self.seek
+        self.out = abs(new_len)
+        self.duration = abs(new_len)
+        self.list_date = get_date(False)
+        self.last_mod_time = 0.0
+        self.first = False
+        self.last_time = 0.0
 
         if filler:
-            self.out = day_in_sec - self.begin
-            self.duration = day_in_sec - self.begin
             self.src_cmd = gen_filler_loop(self.duration)
 
             if _storage.filler:
@@ -1168,7 +1162,7 @@ class GetSourceIter(object):
             else:
                 self.is_dummy = True
         else:
-            self.src_cmd = gen_dummy(self.out - self.seek)
+            self.src_cmd = gen_dummy(self.durationk)
             self.is_dummy = True
         self.set_filtergraph()
 
@@ -1348,6 +1342,7 @@ def main():
 
         try:
             for src_cmd in get_source.next():
+                logger.debug('src_cmd: "{}"'.format(src_cmd))
                 if src_cmd[0] == '-i':
                     current_file = src_cmd[1]
                 else:
