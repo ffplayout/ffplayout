@@ -486,8 +486,9 @@ def gen_filler_loop(duration):
             else:
                 # loop filles n times
                 loop_count = math.ceil(duration / f_dur)
-                logger.info('Loop filler {} times, total duration: {}'.format(
-                    loop_count, duration))
+                logger.info(
+                    'Loop filler {} times, total duration: {0:.2f}'.format(
+                        loop_count, duration))
                 return ['-stream_loop', str(loop_count),
                         '-i', _storage.filler, '-t', str(duration)]
         else:
