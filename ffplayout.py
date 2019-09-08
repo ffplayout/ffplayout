@@ -106,7 +106,6 @@ _log = SimpleNamespace(
 )
 
 _pre_comp = SimpleNamespace(
-    copy=cfg.getboolean('PRE_COMPRESS', 'copy_mode'),
     w=cfg.getint('PRE_COMPRESS', 'width'),
     h=cfg.getint('PRE_COMPRESS', 'height'),
     aspect=cfg.getfloat('PRE_COMPRESS', 'aspect'),
@@ -135,7 +134,6 @@ _playlist = SimpleNamespace(
 _storage = SimpleNamespace(
     path=cfg.get('STORAGE', 'path'),
     filler=cfg.get('STORAGE', 'filler_clip'),
-    blackclip=cfg.get('STORAGE', 'blackclip'),
     extensions=json.loads(cfg.get('STORAGE', 'extensions')),
     shuffle=cfg.getboolean('STORAGE', 'shuffle')
 )
@@ -159,8 +157,7 @@ _playout = SimpleNamespace(
     out_addr=cfg.get('OUT', 'out_addr'),
     post_comp_video=json.loads(cfg.get('OUT', 'post_comp_video')),
     post_comp_audio=json.loads(cfg.get('OUT', 'post_comp_audio')),
-    post_comp_extra=json.loads(cfg.get('OUT', 'post_comp_extra')),
-    post_comp_copy=json.loads(cfg.get('OUT', 'post_comp_copy'))
+    post_comp_extra=json.loads(cfg.get('OUT', 'post_comp_extra'))
 )
 
 
@@ -479,20 +476,17 @@ def set_length(duration, seek, out):
 
 # generate a dummy clip, with black color and empty audiotrack
 def gen_dummy(duration):
-    if _pre_comp.copy:
-        return ['-i', _storage.blackclip, '-t', str(duration)]
-    else:
-        color = '#121212'
-        # TODO: add noise could be an config option
-        # noise = 'noise=alls=50:allf=t+u,hue=s=0'
-        return [
-            '-f', 'lavfi', '-i',
-            'color=c={}:s={}x{}:d={}:r={},format=pix_fmts=yuv420p'.format(
-                color, _pre_comp.w, _pre_comp.h, duration, _pre_comp.fps
-            ),
-            '-f', 'lavfi', '-i', 'anoisesrc=d={}:c=pink:r=48000:a=0.05'.format(
-                duration)
-        ]
+    color = '#121212'
+    # TODO: add noise could be an config option
+    # noise = 'noise=alls=50:allf=t+u,hue=s=0'
+    return [
+        '-f', 'lavfi', '-i',
+        'color=c={}:s={}x{}:d={}:r={},format=pix_fmts=yuv420p'.format(
+            color, _pre_comp.w, _pre_comp.h, duration, _pre_comp.fps
+        ),
+        '-f', 'lavfi', '-i', 'anoisesrc=d={}:c=pink:r=48000:a=0.05'.format(
+            duration)
+    ]
 
 
 # when playlist is not 24 hours long, we generate a loop from filler clip
@@ -774,9 +768,6 @@ def build_filtergraph(first, duration, seek, out, ad, ad_last, ad_next, dummy,
     """
     build final filter graph, with video and audio chain
     """
-    if _pre_comp.copy:
-        return []
-
     video_chain = []
     audio_chain = []
     video_map = ['-map', '[logo]']
@@ -866,17 +857,18 @@ class MediaWatcher:
     watch given folder for file changes and update media list
     """
 
-    def __init__(self, path, extensions, media):
-        self._path = path
+    def __init__(self, media):
         self._media = media
 
-        self.event_handler = PatternMatchingEventHandler(patterns=extensions)
+        self.event_handler = PatternMatchingEventHandler(
+            patterns=_storage.extensions)
         self.event_handler.on_created = self.on_created
         self.event_handler.on_moved = self.on_moved
         self.event_handler.on_deleted = self.on_deleted
 
         self.observer = Observer()
-        self.observer.schedule(self.event_handler, self._path, recursive=True)
+        self.observer.schedule(self.event_handler, self._media.folder,
+                               recursive=True)
 
         self.observer.start()
 
@@ -913,9 +905,8 @@ class GetSource:
     give next clip, depending on shuffle mode
     """
 
-    def __init__(self, media, shuffle):
+    def __init__(self, media):
         self._media = media
-        self._shuffle = shuffle
 
         self.last_played = []
         self.index = 0
@@ -923,7 +914,7 @@ class GetSource:
 
     def next(self):
         while True:
-            if self._shuffle:
+            if _storage.shuffle:
                 clip = random.choice(self._media.store)
 
                 if len(self.last_played) > len(self._media.store) / 2:
@@ -1273,63 +1264,44 @@ def main():
     year = get_date(False).split('-')[0]
     overlay = []
 
-    if _pre_comp.copy:
-        ff_pre_settings = ["-c", "copy", "-f", "mpegts", "-"]
-    else:
-        ff_pre_settings = [
-            '-pix_fmt', 'yuv420p', '-r', str(_pre_comp.fps),
-            '-c:v', 'mpeg2video', '-intra',
-            '-b:v', '{}k'.format(_pre_comp.v_bitrate),
-            '-minrate', '{}k'.format(_pre_comp.v_bitrate),
-            '-maxrate', '{}k'.format(_pre_comp.v_bitrate),
-            '-bufsize', '{}k'.format(_pre_comp.v_bufsize),
-            '-c:a', 's302m', '-strict', '-2',
-            '-ar', '48000', '-ac', '2',
-            '-f', 'mpegts', '-']
+    ff_pre_settings = [
+        '-pix_fmt', 'yuv420p', '-r', str(_pre_comp.fps),
+        '-c:v', 'mpeg2video', '-intra',
+        '-b:v', '{}k'.format(_pre_comp.v_bitrate),
+        '-minrate', '{}k'.format(_pre_comp.v_bitrate),
+        '-maxrate', '{}k'.format(_pre_comp.v_bitrate),
+        '-bufsize', '{}k'.format(_pre_comp.v_bufsize),
+        '-c:a', 's302m', '-strict', '-2',
+        '-ar', '48000', '-ac', '2',
+        '-f', 'mpegts', '-']
 
-        if os.path.isfile(_text.textfile):
-            logger.info('Overlay text file: "{}"'.format(_text.textfile))
-            overlay = [
-                '-vf', ("drawtext=box={}:boxcolor='{}':boxborderw={}"
-                        ":fontsize={}:fontcolor={}:fontfile='{}':textfile={}"
-                        ":reload=1:x='{}':y='{}'").format(
-                            _text.box, _text.boxcolor, _text.boxborderw,
-                            _text.fontsize, _text.fontcolor, _text.fontfile,
-                            _text.textfile, _text.x,  _text.y)
-            ]
+    if os.path.isfile(_text.textfile):
+        logger.info('Overlay text file: "{}"'.format(_text.textfile))
+        overlay = [
+            '-vf', ("drawtext=box={}:boxcolor='{}':boxborderw={}"
+                    ":fontsize={}:fontcolor={}:fontfile='{}':textfile={}"
+                    ":reload=1:x='{}':y='{}'").format(
+                        _text.box, _text.boxcolor, _text.boxborderw,
+                        _text.fontsize, _text.fontcolor, _text.fontfile,
+                        _text.textfile, _text.x, _text.y)
+        ]
 
     try:
         if _playout.preview:
             # preview playout to player
             encoder = Popen([
                 'ffplay', '-hide_banner', '-nostats', '-i', 'pipe:0'
-                ] + overlay,
-                stderr=None, stdin=PIPE, stdout=None
-                )
+                ] + overlay, stderr=None, stdin=PIPE, stdout=None)
         else:
-            # playout to rtmp
-            if _pre_comp.copy:
-                encoder_cmd = [
-                    'ffmpeg', '-v', 'info', '-hide_banner', '-nostats',
-                    '-re', '-thread_queue_size', '256',
-                    '-i', 'pipe:0', '-c', 'copy'
-                ] + _playout.post_comp_copy
-            else:
-                encoder_cmd = [
-                    'ffmpeg', '-v', 'info', '-hide_banner', '-nostats',
-                    '-re', '-thread_queue_size', '256',
-                    '-i', 'pipe:0'
-                ] + overlay + _playout.post_comp_video \
-                    + _playout.post_comp_audio
-
-            encoder = Popen(
-                encoder_cmd + [
+            encoder = Popen([
+                'ffmpeg', '-v', 'info', '-hide_banner', '-nostats',
+                '-re', '-thread_queue_size', '256',
+                '-i', 'pipe:0'] + overlay + _playout.post_comp_video
+                + _playout.post_comp_audio + [
                     '-metadata', 'service_name=' + _playout.name,
                     '-metadata', 'service_provider=' + _playout.provider,
                     '-metadata', 'year={}'.format(year)
-                ] + _playout.post_comp_extra + [_playout.out_addr],
-                stdin=PIPE
-            )
+                ] + _playout.post_comp_extra + [_playout.out_addr], stdin=PIPE)
 
         if _playlist.mode and not stdin_args.folder:
             watcher = None
@@ -1337,8 +1309,8 @@ def main():
         else:
             logger.info("start folder mode")
             media = MediaStore()
-            watcher = MediaWatcher(media.folder, _storage.extensions, media)
-            get_source = GetSource(media, _storage.shuffle)
+            watcher = MediaWatcher(media)
+            get_source = GetSource(media)
 
         try:
             for src_cmd in get_source.next():
