@@ -25,19 +25,19 @@ Features
 - stream to server or play on desktop
 - add filters to input, if is necessary to match output stream:
     - **yadif** (deinterlacing)
-    - **pad** (add borders to fit aspect)
-    - **framerate** (to change fps)
-    - **scale** (to fit resolution)
+    - **pad** (letterbox or pillarbox to fit aspect)
+    - **framerate** (change fps)
+    - **scale** (fit target resolution)
     - **aevalsrc** (if video have no audio)
     - **apad** (add silence if audio duration is to short)
-    - **tpad** (add black frames if video duration is to short - **needs ffmpeg v4.2+**)
+    - **tpad** (add black frames if video duration is to short)
 
 
 Requirements
 -----
 - python version 3.6+
-- python module **watchdog** (onyl when `playlist_mode = False`)
-- **ffmpeg** and **ffprobe** (**ffplay** if you want to play on desktop)
+- python module **watchdog** (only when `playlist_mode = False`)
+- **ffmpeg v4.2+** and **ffprobe** (**ffplay** if you want to play on desktop)
 - RAM and CPU depends on video resolution, minimum 4 threads and 3GB RAM for 720p are recommend
 
 JSON Playlist Example
@@ -115,7 +115,7 @@ Installation
 - change user in **/etc/systemd/system/ffplayout.service**
 - create playlists folder, in that format: **/playlists/year/month**
 - set variables in config file to your needs
-- use **get_playlist_from_subfolders.sh /path/to/mp4s/** as a starting point for your playlists (path in script needs to change)
+- use **gen_playlist_from_subfolders.sh /path/to/mp4s/** as a starting point for your playlists (path in script needs to change)
 - activate service and start it: **sudo systemctl enable ffplayout && sudo systemctl start ffplayout**
 
 Start with Arguments
