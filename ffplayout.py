@@ -181,8 +181,10 @@ else:
     logger.addHandler(logging.StreamHandler())
 
 
-# capture stdout and sterr in the log
 class PlayoutLogger(object):
+    """
+    capture stdout and sterr in the log
+    """
     def __init__(self, logger, level):
         self.logger = logger
         self.level = level
@@ -207,6 +209,9 @@ sys.stderr = PlayoutLogger(logger, logging.ERROR)
 # ------------------------------------------------------------------------------
 
 class Mailer:
+    """
+    mailer class for log messages, with level selector
+    """
     def __init__(self):
         self.level = _mail.level
         self.time = None
@@ -265,6 +270,10 @@ mailer = Mailer()
 # ------------------------------------------------------------------------------
 
 class MediaProbe:
+    """
+    get infos about media file, similare to mediainfo
+    """
+
     def load(self, file):
         self.format = None
         self.audio = []
@@ -300,6 +309,9 @@ class MediaProbe:
 # ------------------------------------------------------------------------------
 
 def handle_sigterm(sig, frame):
+    """
+    handler for ctrl+c signal
+    """
     raise(SystemExit)
 
 
@@ -307,6 +319,9 @@ signal.signal(signal.SIGTERM, handle_sigterm)
 
 
 def terminate_processes(decoder, encoder, watcher):
+    """
+    kill orphaned processes
+    """
     if decoder.poll() is None:
         decoder.terminate()
 
@@ -318,10 +333,15 @@ def terminate_processes(decoder, encoder, watcher):
 
 
 def get_time(time_format):
+    """
+    get different time formats:
+        - full_sec > current time in seconds
+        - stamp > current date time in seconds
+        - else > current time in HH:MM:SS
+    """
     t = datetime.today()
-    if time_format == 'hour':
-        return t.hour
-    elif time_format == 'full_sec':
+
+    if time_format == 'full_sec':
         return t.hour * 3600 + t.minute * 60 + t.second \
              + t.microsecond / 1000000
     elif time_format == 'stamp':
@@ -331,6 +351,11 @@ def get_time(time_format):
 
 
 def get_date(seek_day):
+    """
+    get date for correct playlist,
+    when _playlist.start and seek_day is set:
+    check if playlist date must be from yesterday
+    """
     d = date.today()
     if _playlist.start and seek_day and get_time('full_sec') < _playlist.start:
         yesterday = d - timedelta(1)
@@ -339,8 +364,10 @@ def get_date(seek_day):
         return d.strftime('%Y-%m-%d')
 
 
-# test if value is float
 def is_float(value):
+    """
+    test if value is float
+    """
     try:
         float(value)
         return True
@@ -348,8 +375,10 @@ def is_float(value):
         return False
 
 
-# test if value is int
 def is_int(value):
+    """
+    test if value is int
+    """
     try:
         int(value)
         return True
@@ -357,9 +386,23 @@ def is_int(value):
         return False
 
 
-# compare clip play time with real time,
-# to see if we are sync
+def valid_json(file):
+    """
+    simple json validation
+    """
+    try:
+        json_object = json.load(file)
+        return json_object
+    except ValueError:
+        logger.error("Playlist {} is not JSON conform".format(file))
+        return None
+
+
 def check_sync(begin, encoder):
+    """
+    compare clip play time with real time,
+    to see if we are sync
+    """
     time_now = get_time('full_sec')
 
     time_distance = begin - time_now
@@ -380,8 +423,10 @@ def check_sync(begin, encoder):
         sys.exit(1)
 
 
-# check if playlist is long enough
 def check_length(json_nodes, total_play_time):
+    """
+    check if playlist is long enough
+    """
     if 'length' in json_nodes:
         l_h, l_m, l_s = json_nodes["length"].split(':')
         if is_float(l_h) and is_float(l_m) and is_float(l_s):
@@ -403,9 +448,11 @@ def check_length(json_nodes, total_play_time):
                     timedelta(seconds=total_play_time)))
 
 
-# validate json values in new thread
-# and test if source paths exist
 def validate_thread(clip_nodes):
+    """
+    validate json values in new thread
+    and test if source paths exist
+    """
     def check_json(json_nodes):
         error = ''
         counter = 0
@@ -458,26 +505,32 @@ def validate_thread(clip_nodes):
     validate.start()
 
 
-# seek in clip
 def seek_in(seek):
+    """
+    seek in clip
+    """
     if seek > 0.0:
         return ['-ss', str(seek)]
     else:
         return []
 
 
-# cut clip length
 def set_length(duration, seek, out):
+    """
+    set new clip length
+    """
     if out < duration:
         return ['-t', str(out - seek)]
     else:
         return []
 
 
-# generate a dummy clip, with black color and empty audiotrack
 def gen_dummy(duration):
+    """
+    generate a dummy clip, with black color and empty audiotrack
+    """
     color = '#121212'
-    # TODO: add noise could be an config option
+    # IDEA: add noise could be an config option
     # noise = 'noise=alls=50:allf=t+u,hue=s=0'
     return [
         '-f', 'lavfi', '-i',
@@ -489,8 +542,10 @@ def gen_dummy(duration):
     ]
 
 
-# when playlist is not 24 hours long, we generate a loop from filler clip
 def gen_filler_loop(duration):
+    """
+    when playlist is not 24 hours long, we generate a loop from filler clip
+    """
     if not _storage.filler:
         # when no filler is set, generate a dummy
         logger.warning('No filler is set!')
@@ -526,9 +581,11 @@ def gen_filler_loop(duration):
             return gen_dummy(duration)
 
 
-# when source path exist, generate input with seek and out time
-# when path not exist, generate dummy clip
 def src_or_dummy(src, dur, seek, out):
+    """
+    when source path exist, generate input with seek and out time
+    when path not exist, generate dummy clip
+    """
     if src:
         prefix = src.split('://')[0]
 
@@ -545,10 +602,12 @@ def src_or_dummy(src, dur, seek, out):
         return gen_dummy(out - seek)
 
 
-# prepare input clip
-# check begin and length from clip
-# return clip only if we are in 24 hours time range
 def gen_input(has_begin, src, begin, dur, seek, out, last):
+    """
+    prepare input clip
+    check begin and length from clip
+    return clip only if we are in 24 hours time range
+    """
     day_in_sec = 86400.0
     ref_time = day_in_sec
     time = get_time('full_sec')
@@ -950,8 +1009,12 @@ class GetSource:
 # main functions
 # ------------------------------------------------------------------------------
 
-# read values from json playlist
 class GetSourceIter(object):
+    """
+    read values from json playlist,
+    get current clip in time,
+    set ffmpeg source command
+    """
     def __init__(self, encoder):
         self._encoder = encoder
         self.last_time = get_time('full_sec')
@@ -1010,7 +1073,7 @@ class GetSourceIter(object):
                 mod_time = time.mktime(temp_time)
 
                 if mod_time > self.last_mod_time:
-                    self.clip_nodes = json.load(req)
+                    self.clip_nodes = valid_json(req)
                     self.last_mod_time = mod_time
                     logger.info('open: ' + self.json_file)
                     validate_thread(self.clip_nodes)
@@ -1022,7 +1085,7 @@ class GetSourceIter(object):
             mod_time = os.path.getmtime(self.json_file)
             if mod_time > self.last_mod_time:
                 with open(self.json_file, 'r', encoding='utf-8') as f:
-                    self.clip_nodes = json.load(f)
+                    self.clip_nodes = valid_json(f)
 
                 self.last_mod_time = mod_time
                 logger.info('open: ' + self.json_file)
@@ -1261,6 +1324,10 @@ class GetSourceIter(object):
 
 
 def main():
+    """
+    pipe ffmpeg pre-process to final ffmpeg post-process,
+    or play with ffplay
+    """
     year = get_date(False).split('-')[0]
     overlay = []
 
