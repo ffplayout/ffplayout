@@ -185,6 +185,7 @@ class PlayoutLogger(object):
     """
     capture stdout and sterr in the log
     """
+
     def __init__(self, logger, level):
         self.logger = logger
         self.level = level
@@ -212,6 +213,7 @@ class Mailer:
     """
     mailer class for log messages, with level selector
     """
+
     def __init__(self):
         self.level = _mail.level
         self.time = None
@@ -779,7 +781,7 @@ def overlay_filter(duration, ad, ad_last, ad_next):
         logo_filter = '{}[l];[v][l]{}[logo]'.format(
             ','.join(logo_chain), _pre_comp.logo_filter)
 
-        return logo_filter
+    return logo_filter
 
 
 def add_audio(probe, duration):
@@ -1016,6 +1018,7 @@ class GetSourceIter(object):
     get current clip in time,
     set ffmpeg source command
     """
+
     def __init__(self, encoder):
         self._encoder = encoder
         self.last_time = get_time('full_sec')
