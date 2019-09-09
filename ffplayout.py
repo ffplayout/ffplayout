@@ -731,7 +731,8 @@ def scale_filter(probe):
             int(probe.video[0]['height']) != _pre_comp.h:
         filter_chain.append('scale={}:{}'.format(_pre_comp.w, _pre_comp.h))
 
-    if probe.video[0]['aspect'] != _pre_comp.aspect:
+    if not math.isclose(probe.video[0]['aspect'],
+                        _pre_comp.aspect, abs_tol=0.03):
         filter_chain.append('setdar=dar={}'.format(_pre_comp.aspect))
 
     return filter_chain
