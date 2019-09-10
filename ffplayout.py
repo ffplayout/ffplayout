@@ -294,8 +294,8 @@ class MediaProbe:
 
             if stream['codec_type'] == 'video':
                 if 'display_aspect_ratio' not in stream:
-                        stream['aspect'] = float(
-                            stream['width']) / float(stream['height'])
+                    stream['aspect'] = float(
+                        stream['width']) / float(stream['height'])
                 else:
                     w, h = stream['display_aspect_ratio'].split(':')
                     stream['aspect'] = float(w) / float(h)
