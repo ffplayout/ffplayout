@@ -115,6 +115,10 @@ _pre_comp = SimpleNamespace(
     logo=cfg.get('PRE_COMPRESS', 'logo'),
     opacity=cfg.get('PRE_COMPRESS', 'logo_opacity'),
     logo_filter=cfg.get('PRE_COMPRESS', 'logo_filter'),
+    add_loudnorm=cfg.getboolean('PRE_COMPRESS', 'add_loudnorm'),
+    loud_i=cfg.getfloat('PRE_COMPRESS', 'loud_I'),
+    loud_tp=cfg.getfloat('PRE_COMPRESS', 'loud_TP'),
+    loud_lra=cfg.getfloat('PRE_COMPRESS', 'loud_LRA'),
     protocols=cfg.get('PRE_COMPRESS', 'live_protocols')
 )
 
@@ -798,6 +802,20 @@ def add_audio(probe, duration):
     return line
 
 
+def add_loudnorm(probe):
+    """
+    add single pass loudnorm filter to audio line
+    """
+    loud_filter = []
+
+    if probe.audio and _pre_comp.add_loudnorm:
+        loud_filter = [('loudnorm=I={}:TP={}:LRA={},asetnsamples=n=1024:p=1,'
+                        'aresample=48000').format(
+            _pre_comp.loud_i, _pre_comp.loud_tp, _pre_comp.loud_lra)]
+
+    return loud_filter
+
+
 def extend_audio(probe, duration):
     """
     check audio duration, is it shorter then clip duration - pad it
@@ -856,6 +874,7 @@ def build_filtergraph(first, duration, seek, out, ad, ad_last, ad_next, dummy,
 
     if not audio_chain:
         audio_chain.append('[0:a]anull')
+        audio_chain += add_loudnorm(probe)
         audio_chain += extend_audio(probe, out - seek)
         audio_chain += fade_filter(first, duration, seek, out, 'a')
 
@@ -1342,8 +1361,7 @@ def main():
         '-minrate', '{}k'.format(_pre_comp.v_bitrate),
         '-maxrate', '{}k'.format(_pre_comp.v_bitrate),
         '-bufsize', '{}k'.format(_pre_comp.v_bufsize),
-        '-c:a', 's302m', '-strict', '-2',
-        '-ar', '48000', '-ac', '2',
+        '-c:a', 's302m', '-strict', '-2', '-ar', '48000', '-ac', '2',
         '-f', 'mpegts', '-']
 
     if os.path.isfile(_text.textfile):
