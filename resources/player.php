@@ -44,9 +44,8 @@ if(!empty($_GET['track'])) {
         $content = file_get_contents($json_path) or die("Error: Cannot create object");
         $json = json_decode($content, true);
 
-        list($hh, $mm, $ss) = explode(":", $json["begin"]);
         list($l_hh, $l_mm, $l_ss) = explode(":", $json["length"]);
-        $begin = $hh * 3600 + $mm * 60 + $ss;
+        $begin = $start_time;
         $length = $l_hh * 3600 + $l_mm * 60 + $l_ss;
 
         $src_re = array();
