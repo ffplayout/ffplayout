@@ -807,11 +807,14 @@ def add_loudnorm(probe):
     add single pass loudnorm filter to audio line
     """
     loud_filter = []
+    a_samples = int(192000 / _pre_comp.fps)
 
     if probe.audio and _pre_comp.add_loudnorm:
-        loud_filter = [('loudnorm=I={}:TP={}:LRA={},asetnsamples=n=1024:p=1,'
-                        'aresample=48000').format(
-            _pre_comp.loud_i, _pre_comp.loud_tp, _pre_comp.loud_lra)]
+        loud_filter = [('loudnorm=I={}:TP={}:LRA={},'
+                        'asetnsamples=n={}').format(_pre_comp.loud_i,
+                                                    _pre_comp.loud_tp,
+                                                    _pre_comp.loud_lra,
+                                                    a_samples)]
 
     return loud_filter
 
