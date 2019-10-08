@@ -795,6 +795,7 @@ def add_audio(probe, duration):
     line = []
 
     if not probe.audio:
+        logger.warning('Clip has no audio!')
         line = [
             'aevalsrc=0:channel_layout=2:duration={}:sample_rate={}'.format(
                 duration, 48000)]
