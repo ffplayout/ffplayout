@@ -592,23 +592,18 @@ def src_or_dummy(src, dur, seek, out):
     when source path exist, generate input with seek and out time
     when path not exist, generate dummy clip
     """
-    if src:
-        prefix = src.split('://')[0]
+    prefix = src.split('://')[0]
 
-        # check if input is a live source
-        if prefix in _pre_comp.protocols:
-            return seek_in(seek) + ['-i', src] + set_length(dur, seek, out)
-        elif os.path.isfile(src):
-            return seek_in(seek) + ['-i', src] + set_length(dur, seek, out)
-        else:
-            mailer.error('Clip not exist:\n{}'.format(src))
-            logger.error('Clip not exist: {}'.format(src))
-            return gen_dummy(out - seek)
+    # check if input is a live source
+    if src and prefix in _pre_comp.protocols or os.path.isfile(src):
+        return seek_in(seek) + ['-i', src] + set_length(dur, seek, out)
     else:
+        mailer.error('Clip not exist:\n{}'.format(src))
+        logger.error('Clip not exist: {}'.format(src))
         return gen_dummy(out - seek)
 
 
-def gen_input(has_begin, src, begin, dur, seek, out, last):
+def gen_input(src, begin, dur, seek, out, last):
     """
     prepare input clip
     check begin and length from clip
@@ -616,42 +611,36 @@ def gen_input(has_begin, src, begin, dur, seek, out, last):
     """
     day_in_sec = 86400.0
     ref_time = day_in_sec
-    time = get_time('full_sec')
+    current_time = get_time('full_sec')
 
     if _playlist.start:
         ref_time = day_in_sec + _playlist.start
 
-        if 0 <= time < _playlist.start:
-            time += day_in_sec
+        if 0 <= current_time < _playlist.start:
+            current_time += day_in_sec
 
     # calculate time difference to see if we are sync
-    time_diff = out - seek + time
+    time_diff = out - seek + current_time
 
     if ((time_diff <= ref_time or begin < day_in_sec) and not last) \
-            or not has_begin:
+            or not _playlist.start:
         # when we are in the 24 houre range, get the clip
         return src_or_dummy(src, dur, seek, out), None
     elif time_diff < ref_time and last:
         # when last clip is passed and we still have too much time left
         # check if duration is larger then out - seek
-        time_diff = dur + time
+        time_diff = dur + current_time
         new_len = dur - (time_diff - ref_time)
-        logger.info('we are under time, new_len is: {}'.format(new_len))
 
         if time_diff >= ref_time:
-            if src == _storage.filler:
-                # when filler is something like a clock,
-                # is better to start the clip later and to play until end
-                src_cmd = src_or_dummy(src, dur, dur - new_len, dur)
-            else:
-                src_cmd = src_or_dummy(src, dur, 0, new_len)
+            logger.info('we are under time, new_len is: {}'.format(new_len))
+            src_cmd = src_or_dummy(src, dur, 0, new_len)
         else:
             src_cmd = src_or_dummy(src, dur, 0, dur)
 
             mailer.error(
                 'Playlist is not long enough:\n{} seconds needed.'.format(
-                    new_len)
-            )
+                    new_len))
             logger.error('Playlist is {} seconds to short'.format(new_len))
 
         return src_cmd, new_len - dur
@@ -661,17 +650,21 @@ def gen_input(has_begin, src, begin, dur, seek, out, last):
         # when we over the 24 hours range, trim clip
         logger.info('we are over time, new_len is: {}'.format(new_len))
 
+        # When calculated length from last clip is longer then 5 seconds,
+        # we use the clip. When the length is less then 5 and bigger the 1
+        # second we generate a black clip and when is less the a seconds
+        # we skip the clip.
         if new_len > 5.0:
-            if src == _storage.filler:
-                src_cmd = src_or_dummy(src, dur, out - new_len, out)
-            else:
-                src_cmd = src_or_dummy(src, dur, seek, new_len)
+            src_cmd = src_or_dummy(src, dur, seek, new_len)
         elif new_len > 1.0:
             src_cmd = gen_dummy(new_len)
         else:
             src_cmd = None
 
         return src_cmd, 0.0
+
+    else:
+        return None, 0.0
 
 
 # ------------------------------------------------------------------------------
@@ -866,6 +859,12 @@ def build_filtergraph(first, duration, seek, out, ad, ad_last, ad_next, dummy,
 
         audio_chain += add_audio(probe, out - seek)
 
+        if not audio_chain:
+            audio_chain.append('[0:a]anull')
+            audio_chain += add_loudnorm(probe)
+            audio_chain += extend_audio(probe, out - seek)
+            audio_chain += fade_filter(first, duration, seek, out, 'a')
+
     if video_chain:
         video_filter = '{}[v]'.format(','.join(video_chain))
     else:
@@ -875,12 +874,6 @@ def build_filtergraph(first, duration, seek, out, ad, ad_last, ad_next, dummy,
     video_filter = [
         '-filter_complex', '[0:v]{};{}'.format(
             video_filter, logo_filter)]
-
-    if not audio_chain:
-        audio_chain.append('[0:a]anull')
-        audio_chain += add_loudnorm(probe)
-        audio_chain += extend_audio(probe, out - seek)
-        audio_chain += fade_filter(first, duration, seek, out, 'a')
 
     if audio_chain:
         audio_filter = [
@@ -1044,11 +1037,16 @@ class GetSourceIter(object):
 
     def __init__(self, encoder):
         self._encoder = encoder
-        self.last_time = get_time('full_sec')
+        self.init_time = get_time('full_sec')
+        self.last_time = self.init_time
         self.day_in_sec = 86400.0
 
-        if _playlist.start and 0 <= self.last_time < _playlist.start:
-            self.last_time += self.day_in_sec
+        # when _playlist.start is set, use start time
+        if _playlist.start:
+            self.init_time = _playlist.start
+
+            if 0 <= self.last_time < _playlist.start:
+                self.last_time += self.day_in_sec
 
         self.last_mod_time = 0.0
         self.json_file = None
@@ -1060,7 +1058,6 @@ class GetSourceIter(object):
         self.last = False
         self.list_date = get_date(True)
         self.is_dummy = False
-        self.has_begin = False
         self.last_error = ''
         self.timestamp = get_time('stamp')
 
@@ -1071,14 +1068,6 @@ class GetSourceIter(object):
         self.ad = False
         self.ad_last = False
         self.ad_next = False
-
-        # when _playlist.start is set, use start time
-        if is_float(_playlist.start):
-            self.has_begin = True
-            self.init_time = _playlist.start
-        else:
-            self.has_begin = False
-            self.init_time = get_time('full_sec')
 
     def get_playlist(self):
         if stdin_args.playlist:
@@ -1167,7 +1156,7 @@ class GetSourceIter(object):
 
     def get_input(self):
         self.src_cmd, self.time_left = gen_input(
-            self.has_begin, self.src, self.begin, self.duration,
+            self.src, self.begin, self.duration,
             self.seek, self.out, self.last
         )
 
@@ -1243,7 +1232,7 @@ class GetSourceIter(object):
             else:
                 self.is_dummy = True
         else:
-            self.src_cmd = gen_dummy(self.durationk)
+            self.src_cmd = gen_dummy(self.duration)
             self.is_dummy = True
         self.set_filtergraph()
 
@@ -1276,7 +1265,7 @@ class GetSourceIter(object):
                 # first time we end up here
                 if self.first and \
                         self.last_time < self.begin + self.out - self.seek:
-                    if self.has_begin:
+                    if _playlist.start:
                         # calculate seek time
                         self.seek = self.last_time - self.begin + self.seek
 
@@ -1298,7 +1287,7 @@ class GetSourceIter(object):
                     else:
                         self.last = False
 
-                    if self.has_begin:
+                    if _playlist.start:
                         check_sync(self.begin, self._encoder)
 
                     self.src = node["source"]
@@ -1333,8 +1322,7 @@ class GetSourceIter(object):
 
                 self.begin += self.out - self.seek
             else:
-                if not is_float(_playlist.start) or \
-                        'length' not in self.clip_nodes:
+                if not _playlist.start or 'length' not in self.clip_nodes:
                     # when we reach currect end, stop script
                     logger.info('Playlist reach End!')
                     return
