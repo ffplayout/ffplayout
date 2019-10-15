@@ -18,6 +18,7 @@ Features
 - overlay a logo
 - overlay scrolling text
 - EBU R128 loudness normalization (single pass)
+- loop clip in playlist which `out` value is higher then its `duration`, see also [Loop Clip](https://github.com/ffplayout/ffplayout-engine/wiki/Loop-Clip)
 - trim and fade the last clip, to get full 24 hours
 - when playlist is not 24 hours long, loop filler clip until time is full
 - set custom day start, so you can have playlist for example: from 6am to 6am, instate of 0am to 12pm
@@ -123,6 +124,7 @@ Start with Arguments
 -----
 ffplayout also allows the passing of parameters:
 - `-c, --config` use given config file
+- `-d, --desktop` preview on desktop
 - `-f, --folder` use folder for playing
 - `-l, --log` for user-defined log file
 - `-p, --playlist` for playlist file
@@ -130,9 +132,9 @@ ffplayout also allows the passing of parameters:
 You can run the command like:
 
 ```
-python3 ffplayout.py -l ~/ffplayout.log -p ~/playlist.json
+python3 ffplayout.py -l ~/ffplayout.log -p ~/playlist.json -d
 ```
 
-Preview Mode on Desktop
+Play on Desktop
 -----
-For playing on desktop set `preview = True` in config under `[OUT]`.
+For playing on desktop use `-d` argument or set `preview = True` in config under `[OUT]`.
