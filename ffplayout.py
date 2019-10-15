@@ -645,13 +645,14 @@ def gen_input(src, begin, dur, seek, out, last):
         new_len = dur - (time_diff - ref_time)
 
         if time_diff >= ref_time:
-            logger.info('we are under time, new_len is: {}'.format(new_len))
+            logger.info('we are under time, new_len is: {0:.2f}'.format(
+                new_len))
             src_cmd = src_or_dummy(src, dur, 0, new_len)
         else:
             src_cmd = src_or_dummy(src, dur, 0, dur)
 
             mailer.error(
-                'Playlist is not long enough:\n{} seconds needed.'.format(
+                'Playlist is not long enough:\n{0:.2f} seconds needed.'.format(
                     new_len))
             logger.error('Playlist is {} seconds to short'.format(new_len))
 
@@ -660,14 +661,20 @@ def gen_input(src, begin, dur, seek, out, last):
     elif time_diff > ref_time:
         new_len = out - seek - (time_diff - ref_time)
         # when we over the 24 hours range, trim clip
-        logger.info('we are over time, new_len is: {}'.format(new_len))
+        logger.info('we are over time, new_len is: {0:.2f}'.format(new_len))
 
         # When calculated length from last clip is longer then 5 seconds,
         # we use the clip. When the length is less then 5 and bigger the 1
         # second we generate a black clip and when is less the a seconds
         # we skip the clip.
         if new_len > 5.0:
-            src_cmd = src_or_dummy(src, dur, seek, new_len)
+            new_seek = 0
+
+            if seek > 0:
+                new_len = out
+                new_seek = out - new_len
+
+            src_cmd = src_or_dummy(src, dur, new_seek, new_len)
         elif new_len > 1.0:
             src_cmd = gen_dummy(new_len)
         else:
