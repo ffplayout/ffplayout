@@ -535,6 +535,16 @@ def set_length(duration, seek, out):
         return []
 
 
+def loop_input(source, src_duration, target_duration):
+    # loop filles n times
+    loop_count = math.ceil(target_duration / src_duration)
+    logger.info(
+        'Loop "{0}" {1} times, total duration: {2:.2f}'.format(
+            source, loop_count, target_duration))
+    return ['-stream_loop', str(loop_count),
+            '-i', source, '-t', str(target_duration)]
+
+
 def gen_dummy(duration):
     """
     generate a dummy clip, with black color and empty audiotrack
@@ -552,7 +562,7 @@ def gen_dummy(duration):
     ]
 
 
-def gen_filler_loop(duration):
+def gen_filler(duration):
     """
     when playlist is not 24 hours long, we generate a loop from filler clip
     """
@@ -567,25 +577,20 @@ def gen_filler_loop(duration):
             '-of', 'default=noprint_wrappers=1:nokey=1', _storage.filler]
 
         try:
-            f_dur = float(check_output(cmd).decode('utf-8'))
+            file_duration = float(check_output(cmd).decode('utf-8'))
         except (CalledProcessError, ValueError):
-            f_dur = None
+            file_duration = None
 
-        if f_dur:
-            if f_dur > duration:
+        if file_duration:
+            if file_duration > duration:
                 # cut filler
                 logger.info(
                     'Generate filler with {0:.2f} seconds'.format(duration))
                 return ['-i', _storage.filler] + set_length(
-                    f_dur, 0, duration)
+                    file_duration, 0, duration)
             else:
-                # loop filles n times
-                loop_count = math.ceil(duration / f_dur)
-                logger.info(
-                    'Loop filler {} times, total duration: {0:.2f}'.format(
-                        loop_count, duration))
-                return ['-stream_loop', str(loop_count),
-                        '-i', _storage.filler, '-t', str(duration)]
+                # loop file n times
+                return loop_input(_storage.filler, file_duration, duration)
         else:
             logger.error("Can't get filler length, generate dummy!")
             return gen_dummy(duration)
@@ -600,7 +605,10 @@ def src_or_dummy(src, dur, seek, out):
 
     # check if input is a live source
     if src and prefix in _pre_comp.protocols or os.path.isfile(src):
-        return seek_in(seek) + ['-i', src] + set_length(dur, seek, out)
+        if out > dur:
+            return loop_input(src, dur, out)
+        else:
+            return seek_in(seek) + ['-i', src] + set_length(dur, seek, out)
     else:
         mailer.error('Clip not exist:\n{}'.format(src))
         logger.error('Clip not exist: {}'.format(src))
@@ -830,22 +838,23 @@ def extend_audio(probe, duration):
     return pad_filter
 
 
-def extend_video(probe, duration):
+def extend_video(probe, duration, target_duration):
     """
     check video duration, is is shorter then clip duration - pad it
     """
     pad_filter = []
 
     if 'duration' in probe.video[0] and \
-            duration > float(probe.video[0]['duration']) + 0.3:
+        target_duration < duration > float(
+            probe.video[0]['duration']) + 0.3:
         pad_filter.append('tpad=stop_mode=add:stop_duration={}'.format(
             duration - float(probe.video[0]['duration'])))
 
     return pad_filter
 
 
-def build_filtergraph(first, duration, seek, out, ad, ad_last, ad_next, dummy,
-                      probe):
+def build_filtergraph(first, duration, seek, out, ad,
+                      ad_last, ad_next, dummy, probe):
     """
     build final filter graph, with video and audio chain
     """
@@ -853,12 +862,15 @@ def build_filtergraph(first, duration, seek, out, ad, ad_last, ad_next, dummy,
     audio_chain = []
     video_map = ['-map', '[logo]']
 
+    if out > duration:
+        seek = 0
+
     if not dummy:
         video_chain += deinterlace_filter(probe)
         video_chain += pad_filter(probe)
         video_chain += fps_filter(probe)
         video_chain += scale_filter(probe)
-        video_chain += extend_video(probe, out - seek)
+        video_chain += extend_video(probe, duration, out - seek)
         video_chain += fade_filter(first, duration, seek, out)
 
         audio_chain += add_audio(probe, out - seek)
@@ -1228,11 +1240,12 @@ class GetSourceIter(object):
         self.last_time = 0.0
 
         if filler:
-            self.src_cmd = gen_filler_loop(self.duration)
+            self.src_cmd = gen_filler(self.duration)
 
             if _storage.filler:
                 self.is_dummy = False
                 self.duration += 1
+                self.probe.load(_storage.filler)
             else:
                 self.is_dummy = True
         else:
