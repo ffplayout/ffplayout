@@ -38,7 +38,6 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import formatdate
 from logging.handlers import TimedRotatingFileHandler
-from shutil import copyfileobj
 from subprocess import PIPE, CalledProcessError, Popen, check_output
 from threading import Thread
 from types import SimpleNamespace
@@ -1431,7 +1430,12 @@ def main():
                     'ffmpeg', '-v', 'error', '-hide_banner', '-nostats'
                     ] + src_cmd + ff_pre_settings,
                         stdout=PIPE) as decoder:
-                    copyfileobj(decoder.stdout, encoder.stdin)
+
+                    while True:
+                        buf = decoder.stdout.read(65424)
+                        if not buf:
+                            break
+                        encoder.stdin.write(buf)
 
         except BrokenPipeError:
             logger.error('Broken Pipe!')
