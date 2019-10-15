@@ -1433,7 +1433,7 @@ def main():
 
                     while True:
                         buf = decoder.stdout.read(65424)
-                        if not buf:
+                        if not buf and decoder.poll() is not None:
                             break
                         encoder.stdin.write(buf)
 
