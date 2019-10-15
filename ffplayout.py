@@ -57,6 +57,10 @@ stdin_parser.add_argument(
 )
 
 stdin_parser.add_argument(
+    '-d', '--desktop', help='preview on desktop', action='store_true'
+)
+
+stdin_parser.add_argument(
     '-f', '--folder', help='play folder content'
 )
 
@@ -1368,7 +1372,7 @@ def main():
         ]
 
     try:
-        if _playout.preview:
+        if _playout.preview or stdin_args.desktop:
             # preview playout to player
             encoder = Popen([
                 'ffplay', '-hide_banner', '-nostats', '-i', 'pipe:0'
