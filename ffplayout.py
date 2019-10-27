@@ -663,7 +663,7 @@ def gen_input(src, begin, dur, seek, out, last):
         logger.info('we are over time, new_len is: {0:.2f}'.format(new_len))
 
         # When calculated length from last clip is longer then 5 seconds,
-        # we use the clip. When the length is less then 5 and bigger the 1
+        # we use the clip. When the length is less then 5 and bigger then 1
         # second we generate a black clip and when is less the a seconds
         # we skip the clip.
         if new_len > 5.0:
@@ -755,16 +755,16 @@ def scale_filter(probe):
     return filter_chain
 
 
-def fade_filter(first, duration, seek, out, track=''):
+def fade_filter(duration, seek, out, track=''):
     """
     fade in/out video, when is cutted at the begin or end
     """
     filter_chain = []
 
-    if seek > 0.0 and not first:
+    if seek > 0.0:
         filter_chain.append('{}fade=in:st=0:d=0.5'.format(track))
 
-    if out < duration:
+    if out != duration:
         filter_chain.append('{}fade=out:st={}:d=1.0'.format(track,
                                                             out - seek - 1.0))
 
@@ -859,8 +859,7 @@ def extend_video(probe, duration, target_duration):
     return pad_filter
 
 
-def build_filtergraph(first, duration, seek, out, ad,
-                      ad_last, ad_next, dummy, probe):
+def build_filtergraph(duration, seek, out, ad, ad_last, ad_next, dummy, probe):
     """
     build final filter graph, with video and audio chain
     """
@@ -877,7 +876,7 @@ def build_filtergraph(first, duration, seek, out, ad,
         video_chain += fps_filter(probe)
         video_chain += scale_filter(probe)
         video_chain += extend_video(probe, duration, out - seek)
-        video_chain += fade_filter(first, duration, seek, out)
+        video_chain += fade_filter(duration, seek, out)
 
         audio_chain += add_audio(probe, out - seek)
 
@@ -885,7 +884,7 @@ def build_filtergraph(first, duration, seek, out, ad,
             audio_chain.append('[0:a]anull')
             audio_chain += add_loudnorm(probe)
             audio_chain += extend_audio(probe, out - seek)
-            audio_chain += fade_filter(first, duration, seek, out, 'a')
+            audio_chain += fade_filter(duration, seek, out, 'a')
 
     if video_chain:
         video_filter = '{}[v]'.format(','.join(video_chain))
@@ -1024,7 +1023,7 @@ class GetSource:
                     self.last_played.append(clip)
                     self.probe.load(clip)
                     filtergraph = build_filtergraph(
-                        False, float(self.probe.format['duration']), 0.0,
+                        float(self.probe.format['duration']), 0.0,
                         float(self.probe.format['duration']), False, False,
                         False, False, self.probe)
 
@@ -1034,7 +1033,7 @@ class GetSource:
                 while self.index < len(self._media.store):
                     self.probe.load(self._media.store[self.index])
                     filtergraph = build_filtergraph(
-                        False, float(self.probe.format['duration']), 0.0,
+                        float(self.probe.format['duration']), 0.0,
                         float(self.probe.format['duration']), False, False,
                         False, False, self.probe)
 
@@ -1219,8 +1218,8 @@ class GetSourceIter(object):
 
     def set_filtergraph(self):
         self.filtergraph = build_filtergraph(
-            self.first, self.duration, self.seek, self.out,
-            self.ad, self.ad_last, self.ad_next, self.is_dummy, self.probe)
+            self.duration, self.seek, self.out, self.ad, self.ad_last,
+            self.ad_next, self.is_dummy, self.probe)
 
     def eof_handling(self, message, filler):
         self.seek = 0.0
@@ -1242,6 +1241,7 @@ class GetSourceIter(object):
         self.duration = abs(new_len)
         self.list_date = get_date(False)
         self.last_mod_time = 0.0
+        # TODO: remove -> self.first?
         self.first = False
         self.last_time = 0.0
 
