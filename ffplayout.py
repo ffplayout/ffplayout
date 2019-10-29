@@ -638,68 +638,77 @@ def gen_input(src, begin, dur, seek, out, last):
     check begin and length from clip
     return clip only if we are in 24 hours time range
     """
-    day_in_sec = 86400.0
-    ref_time = day_in_sec
-    current_time = get_time('full_sec')
 
-    if _playlist.start:
-        ref_time = day_in_sec + _playlist.start
-
-        if 0 <= current_time < _playlist.start:
-            current_time += day_in_sec
-
-    # calculate time difference to see if we are sync
-    time_diff = out - seek + current_time
-
-    if ((time_diff <= ref_time or begin < day_in_sec) and not last) \
-            or not _playlist.start:
-        # when we are in the 24 houre range, get the clip
+    if not _playlist.start:
         return src_or_dummy(src, dur, seek, out), None
-    elif time_diff < ref_time and last:
-        # when last clip is passed and we still have too much time left
-        # check if duration is larger then out - seek
-        time_diff = dur + current_time
-        new_len = dur - (time_diff - ref_time)
+    else:
+        ref_time = 86400.0 + _playlist.start
+        new_seek = 0
 
-        if time_diff >= ref_time:
-            messenger.info('we are under time, new_len is: {0:.2f}'.format(
-                new_len))
-            src_cmd = src_or_dummy(src, dur, 0, new_len)
-        else:
-            src_cmd = src_or_dummy(src, dur, 0, dur)
+        if begin + (out - seek) < ref_time:
+            if not last:
+                # when we are in the 24 houre range, get the clip
+                return src_or_dummy(src, dur, seek, out), None
+            else:
+                # when last clip is reached and we under ref_time,
+                # check if out/duration is long enough
+                if out >= dur and begin + out > ref_time:
+                    new_len = begin + out - ref_time
+                elif begin + dur > ref_time:
+                    new_len = begin + dur - ref_time
+                else:
+                    missing_secs = abs(begin + out - ref_time)
+                    messenger.error(
+                        'Playlist is not long enough:'
+                        '\n{0:.2f} seconds needed.'.format(missing_secs))
 
-            messenger.error(
-                'Playlist is not long enough:\n{0:.2f} seconds needed.'.format(
+                    src_cmd = src_or_dummy(src, dur, 0, dur)
+                    return src_cmd, missing_secs
+
+                messenger.info('we are under time, new_len is: {0:.2f}'.format(
                     new_len))
 
-        return src_cmd, new_len - dur
+                if seek > 0:
+                    new_seek = out - new_len
+                    new_len = out
 
-    elif time_diff > ref_time:
-        new_len = out - seek - (time_diff - ref_time)
-        # when we over the 24 hours range, trim clip
-        messenger.info('we are over time, new_len is: {0:.2f}'.format(new_len))
+                src_cmd = src_or_dummy(src, dur, new_seek, new_len)
+                return src_cmd, 0.0
 
-        # When calculated length from last clip is longer then 5 seconds,
-        # we use the clip. When the length is less then 5 and bigger then 1
-        # second we generate a black clip and when is less the a seconds
-        # we skip the clip.
-        if new_len > 5.0:
-            new_seek = 0
+        elif begin > ref_time:
+            messenger.info(
+                'start time is over 24 hours, skip clip:\n{}'.format(src))
+            return None, 0.0
 
-            if seek > 0:
-                new_len = out
-                new_seek = out - new_len
+        elif begin + (out - seek) > ref_time:
+            # when we over the 24 hours range, trim clip
+            new_len = begin + (out - seek) - ref_time
 
-            src_cmd = src_or_dummy(src, dur, new_seek, new_len)
-        elif new_len > 1.0:
-            src_cmd = gen_dummy(new_len)
+            # When calculated length from last clip is longer then 5 seconds,
+            # we use the clip. When the length is less then 5 and bigger then 1
+            # second we generate a black clip and when is less the a seconds
+            # we skip the clip.
+            if new_len > 5.0:
+                messenger.info(
+                    'we are over time, new_len is: {0:.2f}'.format(new_len))
+                new_seek = 0
+
+                if seek > 0:
+                    new_seek = out - new_len
+                    new_len = out
+
+                src_cmd = src_or_dummy(src, dur, new_seek, new_len)
+            elif new_len > 1.0:
+                src_cmd = gen_dummy(new_len)
+            else:
+                messenger.info(
+                    'last clip less then a second long, skip:\n{}'.format(src))
+                src_cmd = None
+
+            return src_cmd, 0.0
+
         else:
-            src_cmd = None
-
-        return src_cmd, 0.0
-
-    else:
-        return None, 0.0
+            return None, 0.0
 
 
 # ------------------------------------------------------------------------------
