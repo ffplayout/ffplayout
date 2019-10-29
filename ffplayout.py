@@ -271,7 +271,29 @@ class Mailer:
             self.send_mail(msg)
 
 
-mailer = Mailer()
+class Messenger:
+    """
+    all logging and mail messages end up here,
+    from here they go to logger and mailer
+    """
+
+    def __init__(self):
+        self._mailer = Mailer()
+
+    def debug(self, msg):
+        logger.debug(msg.replace('\\n', ' '))
+
+    def info(self, msg):
+        logger.info(msg.replace('\\n', ' '))
+        self._mailer.info(msg)
+
+    def warning(self, msg):
+        logger.warning(msg.replace('\\n', ' '))
+        self._mailer.warning(msg)
+
+    def error(self, msg):
+        logger.error(msg.replace('\\n', ' '))
+        self._mailer.error(msg)
 
 
 # ------------------------------------------------------------------------------
@@ -284,12 +306,13 @@ class MediaProbe:
     """
 
     def load(self, file):
+        self.src = file
         self.format = None
         self.audio = []
         self.video = []
 
         cmd = ['ffprobe', '-v', 'quiet', '-print_format',
-               'json', '-show_format', '-show_streams', file]
+               'json', '-show_format', '-show_streams', self.src]
 
         info = json.loads(check_output(cmd).decode(encoding='UTF-8'))
 
@@ -403,7 +426,7 @@ def valid_json(file):
         json_object = json.load(file)
         return json_object
     except ValueError:
-        logger.error("Playlist {} is not JSON conform".format(file))
+        Messenger.error("Playlist {} is not JSON conform".format(file))
         return None
 
 
@@ -421,13 +444,9 @@ def check_sync(begin, encoder):
 
     # check that we are in tolerance time
     if _general.stop and abs(time_distance) > _general.threshold:
-        mailer.error(
+        Messenger.error(
             'Sync tolerance value exceeded with {0:.2f} seconds,\n'
             'program terminated!'.format(time_distance))
-        logger.error(
-            ('Sync tolerance value exceeded with '
-             '{0:.2f} seconds, program terminated!').format(time_distance)
-            )
         encoder.terminate()
         sys.exit(1)
 
@@ -447,14 +466,12 @@ def check_length(json_nodes, total_play_time):
                 date = get_date(True)
 
             if total_play_time < length - 5:
-                mailer.error(
+                Messenger.error(
                     'Playlist ({}) is not long enough!\n'
-                    'total play time is: {}'.format(
+                    'Total play time is: {}'.format(
                         date,
                         timedelta(seconds=total_play_time))
                 )
-                logger.error('Playlist is only {} hours long!'.format(
-                    timedelta(seconds=total_play_time)))
 
 
 def validate_thread(clip_nodes):
@@ -498,11 +515,10 @@ def validate_thread(clip_nodes):
 
             line = '\n'.join(missing)
             if line:
-                logger.error('Validation error :: {}'.format(line))
                 error += line + '\nIn line: {}\n\n'.format(node)
 
         if error:
-            mailer.error(
+            Messenger.error(
                 'Validation error, check JSON playlist, '
                 'values are missing:\n{}'.format(error)
             )
@@ -537,7 +553,7 @@ def set_length(duration, seek, out):
 def loop_input(source, src_duration, target_duration):
     # loop filles n times
     loop_count = math.ceil(target_duration / src_duration)
-    logger.info(
+    Messenger.info(
         'Loop "{0}" {1} times, total duration: {2:.2f}'.format(
             source, loop_count, target_duration))
     return ['-stream_loop', str(loop_count),
@@ -567,7 +583,7 @@ def gen_filler(duration):
     """
     if not _storage.filler:
         # when no filler is set, generate a dummy
-        logger.warning('No filler is set!')
+        Messenger.warning('No filler is set!')
         return gen_dummy(duration)
     else:
         # get duration from filler
@@ -583,7 +599,7 @@ def gen_filler(duration):
         if file_duration:
             if file_duration > duration:
                 # cut filler
-                logger.info(
+                Messenger.info(
                     'Generate filler with {0:.2f} seconds'.format(duration))
                 return ['-i', _storage.filler] + set_length(
                     file_duration, 0, duration)
@@ -591,7 +607,7 @@ def gen_filler(duration):
                 # loop file n times
                 return loop_input(_storage.filler, file_duration, duration)
         else:
-            logger.error("Can't get filler length, generate dummy!")
+            Messenger.error("Can't get filler length, generate dummy!")
             return gen_dummy(duration)
 
 
@@ -609,8 +625,7 @@ def src_or_dummy(src, dur, seek, out):
         else:
             return seek_in(seek) + ['-i', src] + set_length(dur, seek, out)
     else:
-        mailer.error('Clip not exist:\n{}'.format(src))
-        logger.error('Clip not exist: {}'.format(src))
+        Messenger.error('Clip not exist:\n{}'.format(src))
         return gen_dummy(out - seek)
 
 
@@ -644,23 +659,22 @@ def gen_input(src, begin, dur, seek, out, last):
         new_len = dur - (time_diff - ref_time)
 
         if time_diff >= ref_time:
-            logger.info('we are under time, new_len is: {0:.2f}'.format(
+            Messenger.info('we are under time, new_len is: {0:.2f}'.format(
                 new_len))
             src_cmd = src_or_dummy(src, dur, 0, new_len)
         else:
             src_cmd = src_or_dummy(src, dur, 0, dur)
 
-            mailer.error(
+            Messenger.error(
                 'Playlist is not long enough:\n{0:.2f} seconds needed.'.format(
                     new_len))
-            logger.error('Playlist is {} seconds to short'.format(new_len))
 
         return src_cmd, new_len - dur
 
     elif time_diff > ref_time:
         new_len = out - seek - (time_diff - ref_time)
         # when we over the 24 hours range, trim clip
-        logger.info('we are over time, new_len is: {0:.2f}'.format(new_len))
+        Messenger.info('we are over time, new_len is: {0:.2f}'.format(new_len))
 
         # When calculated length from last clip is longer then 5 seconds,
         # we use the clip. When the length is less then 5 and bigger then 1
@@ -806,7 +820,7 @@ def add_audio(probe, duration):
     line = []
 
     if not probe.audio:
-        logger.warning('Clip has no audio!')
+        Messenger.warning('Clip "{}" has no audio!'.format(probe.src))
         line = [
             'aevalsrc=0:channel_layout=2:duration={}:sample_rate={}'.format(
                 duration, 48000)]
@@ -980,19 +994,20 @@ class MediaWatcher:
 
         self._media.add(event.src_path)
 
-        logger.info('Add file to media list: "{}"'.format(event.src_path))
+        Messenger.info('Add file to media list: "{}"'.format(event.src_path))
 
     def on_moved(self, event):
         self._media.remove(event.src_path)
         self._media.add(event.dest_path)
 
-        logger.info('Move file from "{}" to "{}"'.format(event.src_path,
-                                                         event.dest_path))
+        Messenger.info('Move file from "{}" to "{}"'.format(event.src_path,
+                                                            event.dest_path))
 
     def on_deleted(self, event):
         self._media.remove(event.src_path)
 
-        logger.info('Remove file from media list: "{}"'.format(event.src_path))
+        Messenger.info(
+            'Remove file from media list: "{}"'.format(event.src_path))
 
     def stop(self):
         self.observer.stop()
@@ -1112,7 +1127,7 @@ class GetSourceIter(object):
                 if mod_time > self.last_mod_time:
                     self.clip_nodes = valid_json(req)
                     self.last_mod_time = mod_time
-                    logger.info('open: ' + self.json_file)
+                    Messenger.info('open: ' + self.json_file)
                     validate_thread(self.clip_nodes)
             except (request.URLError, socket.timeout):
                 self.eof_handling('Get playlist from url failed!', False)
@@ -1125,7 +1140,7 @@ class GetSourceIter(object):
                     self.clip_nodes = valid_json(f)
 
                 self.last_mod_time = mod_time
-                logger.info('open: ' + self.json_file)
+                Messenger.info('open: ' + self.json_file)
                 validate_thread(self.clip_nodes)
         else:
             # when we have no playlist for the current day,
@@ -1161,12 +1176,11 @@ class GetSourceIter(object):
             try:
                 output = check_output(cmd).decode('utf-8')
             except CalledProcessError as err:
-                logger.error("ffprobe error: {}".format(err))
+                Messenger.error("ffprobe error: {}".format(err))
                 output = None
 
             if not output:
-                mailer.error('Clip not exist:\n{}'.format(self.src))
-                logger.error('Clip not exist: {}'.format(self.src))
+                Messenger.error('Clip not exist:\n{}'.format(self.src))
                 self.src = None
             elif is_float(output):
                 self.duration = float(output)
@@ -1241,7 +1255,6 @@ class GetSourceIter(object):
         self.duration = abs(new_len)
         self.list_date = get_date(False)
         self.last_mod_time = 0.0
-        # TODO: remove -> self.first?
         self.first = False
         self.last_time = 0.0
 
@@ -1262,10 +1275,10 @@ class GetSourceIter(object):
         if get_time('stamp') - self.timestamp > 3600 \
                 and message != self.last_error:
             self.last_error = message
-            mailer.error('{}\n{}'.format(message, self.json_file))
+            Messenger.error('{}\n{}'.format(message, self.json_file))
             self.timestamp = get_time('stamp')
 
-        logger.error('{} {}'.format(message, self.json_file))
+        Messenger.error('{} {}'.format(message, self.json_file))
 
         self.last = False
 
@@ -1347,7 +1360,7 @@ class GetSourceIter(object):
             else:
                 if not _playlist.start or 'length' not in self.clip_nodes:
                     # when we reach currect end, stop script
-                    logger.info('Playlist reach End!')
+                    Messenger.info('Playlist reach End!')
                     return
 
                 elif self.begin == self.init_time:
@@ -1380,7 +1393,7 @@ def main():
         '-f', 'mpegts', '-']
 
     if os.path.isfile(_text.textfile):
-        logger.info('Overlay text file: "{}"'.format(_text.textfile))
+        Messenger.info('Overlay text file: "{}"'.format(_text.textfile))
         overlay = [
             '-vf', ("drawtext=box={}:boxcolor='{}':boxborderw={}"
                     ":fontsize={}:fontcolor={}:fontfile='{}':textfile={}"
@@ -1411,20 +1424,20 @@ def main():
             watcher = None
             get_source = GetSourceIter(encoder)
         else:
-            logger.info("start folder mode")
+            Messenger.info("start folder mode")
             media = MediaStore()
             watcher = MediaWatcher(media)
             get_source = GetSource(media)
 
         try:
             for src_cmd in get_source.next():
-                logger.debug('src_cmd: "{}"'.format(src_cmd))
+                Messenger.debug('src_cmd: "{}"'.format(src_cmd))
                 if src_cmd[0] == '-i':
                     current_file = src_cmd[1]
                 else:
                     current_file = src_cmd[3]
 
-                logger.info('play: "{}"'.format(current_file))
+                Messenger.info('play: "{}"'.format(current_file))
 
                 with Popen([
                     'ffmpeg', '-v', 'error', '-hide_banner', '-nostats'
@@ -1438,15 +1451,15 @@ def main():
                         encoder.stdin.write(buf)
 
         except BrokenPipeError:
-            logger.error('Broken Pipe!')
+            Messenger.error('Broken Pipe!')
             terminate_processes(decoder, encoder, watcher)
 
         except SystemExit:
-            logger.info("got close command")
+            Messenger.info("got close command")
             terminate_processes(decoder, encoder, watcher)
 
         except KeyboardInterrupt:
-            logger.warning('program terminated')
+            Messenger.warning('program terminated')
             terminate_processes(decoder, encoder, watcher)
 
         # close encoder when nothing is to do anymore
