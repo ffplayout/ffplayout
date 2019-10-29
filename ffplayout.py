@@ -281,18 +281,18 @@ class Messenger:
         self._mailer = Mailer()
 
     def debug(self, msg):
-        logger.debug(msg.replace('\\n', ' '))
+        logger.debug(msg.replace('\n', ' '))
 
     def info(self, msg):
-        logger.info(msg.replace('\\n', ' '))
+        logger.info(msg.replace('\n', ' '))
         self._mailer.info(msg)
 
     def warning(self, msg):
-        logger.warning(msg.replace('\\n', ' '))
+        logger.warning(msg.replace('\n', ' '))
         self._mailer.warning(msg)
 
     def error(self, msg):
-        logger.error(msg.replace('\\n', ' '))
+        logger.error(msg.replace('\n', ' '))
         self._mailer.error(msg)
 
 
