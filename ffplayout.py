@@ -115,6 +115,7 @@ _pre_comp = SimpleNamespace(
     fps=cfg.getint('PRE_COMPRESS', 'fps'),
     v_bitrate=cfg.getint('PRE_COMPRESS', 'width') * 50,
     v_bufsize=cfg.getint('PRE_COMPRESS', 'width') * 50 / 2,
+    add_logo=cfg.getboolean('PRE_COMPRESS', 'add_logo'),
     logo=cfg.get('PRE_COMPRESS', 'logo'),
     opacity=cfg.get('PRE_COMPRESS', 'logo_opacity'),
     logo_filter=cfg.get('PRE_COMPRESS', 'logo_filter'),
@@ -146,6 +147,7 @@ _storage = SimpleNamespace(
 )
 
 _text = SimpleNamespace(
+    add_text=cfg.getboolean('TEXT', 'add_text'),
     textfile=cfg.get('TEXT', 'textfile'),
     fontsize=cfg.get('TEXT', 'fontsize'),
     fontcolor=cfg.get('TEXT', 'fontcolor'),
@@ -805,7 +807,7 @@ def overlay_filter(duration, ad, ad_last, ad_next):
     """
     logo_filter = '[v]null[logo]'
 
-    if os.path.isfile(_pre_comp.logo) and not ad:
+    if _pre_comp.add_logo and os.path.isfile(_pre_comp.logo) and not ad:
         logo_chain = []
         opacity = 'format=rgba,colorchannelmixer=aa={}'.format(
             _pre_comp.opacity)
@@ -1404,7 +1406,7 @@ def main():
         '-c:a', 's302m', '-strict', '-2', '-ar', '48000', '-ac', '2',
         '-f', 'mpegts', '-']
 
-    if os.path.isfile(_text.textfile):
+    if _text.add_text and os.path.isfile(_text.textfile):
         messenger.info('Overlay text file: "{}"'.format(_text.textfile))
         overlay = [
             '-vf', ("drawtext=box={}:boxcolor='{}':boxborderw={}"
