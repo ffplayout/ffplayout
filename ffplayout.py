@@ -77,98 +77,109 @@ stdin_args = stdin_parser.parse_args()
 # read variables from config file
 # ------------------------------------------------------------------------------
 
-# read config
-cfg = configparser.ConfigParser()
+_general = SimpleNamespace()
+_mail = SimpleNamespace()
+_log = SimpleNamespace()
+_pre_comp = SimpleNamespace()
+_playlist = SimpleNamespace()
+_storage = SimpleNamespace()
+_text = SimpleNamespace()
+_playout = SimpleNamespace()
 
-if stdin_args.config:
-    cfg.read(stdin_args.config)
-elif os.path.isfile('/etc/ffplayout/ffplayout.conf'):
-    cfg.read('/etc/ffplayout/ffplayout.conf')
-else:
-    cfg.read('ffplayout.conf')
+_init = SimpleNamespace(load=True)
 
-_general = SimpleNamespace(
-    stop=cfg.getboolean('GENERAL', 'stop_on_error'),
-    threshold=cfg.getfloat('GENERAL', 'stop_threshold')
-)
 
-_mail = SimpleNamespace(
-    subject=cfg.get('MAIL', 'subject'),
-    server=cfg.get('MAIL', 'smpt_server'),
-    port=cfg.getint('MAIL', 'smpt_port'),
-    s_addr=cfg.get('MAIL', 'sender_addr'),
-    s_pass=cfg.get('MAIL', 'sender_pass'),
-    recip=cfg.get('MAIL', 'recipient'),
-    level=cfg.get('MAIL', 'mail_level')
-)
+def load_config():
+    """
+    this function can reload most settings from configuration file,
+    the change does not take effect immediately, but with the after next file,
+    some settings cannot be changed - like resolution, aspect, or output
+    """
+    cfg = configparser.ConfigParser()
 
-_log = SimpleNamespace(
-    to_file=cfg.getboolean('LOGGING', 'log_to_file'),
-    path=cfg.get('LOGGING', 'log_file'),
-    level=cfg.get('LOGGING', 'log_level')
-)
+    if stdin_args.config:
+        cfg.read(stdin_args.config)
+    elif os.path.isfile('/etc/ffplayout/ffplayout.conf'):
+        cfg.read('/etc/ffplayout/ffplayout.conf')
+    else:
+        cfg.read('ffplayout.conf')
 
-_pre_comp = SimpleNamespace(
-    w=cfg.getint('PRE_COMPRESS', 'width'),
-    h=cfg.getint('PRE_COMPRESS', 'height'),
-    aspect=cfg.getfloat('PRE_COMPRESS', 'aspect'),
-    fps=cfg.getint('PRE_COMPRESS', 'fps'),
-    v_bitrate=cfg.getint('PRE_COMPRESS', 'width') * 50,
-    v_bufsize=cfg.getint('PRE_COMPRESS', 'width') * 50 / 2,
-    add_logo=cfg.getboolean('PRE_COMPRESS', 'add_logo'),
-    logo=cfg.get('PRE_COMPRESS', 'logo'),
-    opacity=cfg.get('PRE_COMPRESS', 'logo_opacity'),
-    logo_filter=cfg.get('PRE_COMPRESS', 'logo_filter'),
-    add_loudnorm=cfg.getboolean('PRE_COMPRESS', 'add_loudnorm'),
-    loud_i=cfg.getfloat('PRE_COMPRESS', 'loud_I'),
-    loud_tp=cfg.getfloat('PRE_COMPRESS', 'loud_TP'),
-    loud_lra=cfg.getfloat('PRE_COMPRESS', 'loud_LRA'),
-    protocols=cfg.get('PRE_COMPRESS', 'live_protocols')
-)
+    _general.stop = cfg.getboolean('GENERAL', 'stop_on_error')
+    _general.threshold = cfg.getfloat('GENERAL', 'stop_threshold')
 
-stime = cfg.get('PLAYLIST', 'day_start').split(':')
+    _mail.subject = cfg.get('MAIL', 'subject')
+    _mail.server = cfg.get('MAIL', 'smpt_server')
+    _mail.port = cfg.getint('MAIL', 'smpt_port')
+    _mail.s_addr = cfg.get('MAIL', 'sender_addr')
+    _mail.s_pass = cfg.get('MAIL', 'sender_pass')
+    _mail.recip = cfg.get('MAIL', 'recipient')
+    _mail.level = cfg.get('MAIL', 'mail_level')
 
-if stime[0] and stime[1] and stime[2]:
-    start_t = float(stime[0]) * 3600 + float(stime[1]) * 60 + float(stime[2])
-else:
-    start_t = None
+    _pre_comp.add_logo = cfg.getboolean('PRE_COMPRESS', 'add_logo')
+    _pre_comp.logo = cfg.get('PRE_COMPRESS', 'logo')
+    _pre_comp.opacity = cfg.get('PRE_COMPRESS', 'logo_opacity')
+    _pre_comp.logo_filter = cfg.get('PRE_COMPRESS', 'logo_filter')
+    _pre_comp.add_loudnorm = cfg.getboolean('PRE_COMPRESS', 'add_loudnorm')
+    _pre_comp.loud_i = cfg.getfloat('PRE_COMPRESS', 'loud_I')
+    _pre_comp.loud_tp = cfg.getfloat('PRE_COMPRESS', 'loud_TP')
+    _pre_comp.loud_lra = cfg.getfloat('PRE_COMPRESS', 'loud_LRA')
+    _pre_comp.protocols = cfg.get('PRE_COMPRESS', 'live_protocols')
 
-_playlist = SimpleNamespace(
-    mode=cfg.getboolean('PLAYLIST', 'playlist_mode'),
-    path=cfg.get('PLAYLIST', 'path'),
-    start=start_t
-)
+    stime = cfg.get('PLAYLIST', 'day_start').split(':')
 
-_storage = SimpleNamespace(
-    path=cfg.get('STORAGE', 'path'),
-    filler=cfg.get('STORAGE', 'filler_clip'),
-    extensions=json.loads(cfg.get('STORAGE', 'extensions')),
-    shuffle=cfg.getboolean('STORAGE', 'shuffle')
-)
+    if stime[0] and stime[1] and stime[2]:
+        start_t = float(stime[0]) * 3600 \
+            + float(stime[1]) * 60 + float(stime[2])
+    else:
+        start_t = None
 
-_text = SimpleNamespace(
-    add_text=cfg.getboolean('TEXT', 'add_text'),
-    textfile=cfg.get('TEXT', 'textfile'),
-    fontsize=cfg.get('TEXT', 'fontsize'),
-    fontcolor=cfg.get('TEXT', 'fontcolor'),
-    fontfile=cfg.get('TEXT', 'fontfile'),
-    box=cfg.get('TEXT', 'box'),
-    boxcolor=cfg.get('TEXT', 'boxcolor'),
-    boxborderw=cfg.get('TEXT', 'boxborderw'),
-    x=cfg.get('TEXT', 'x'),
-    y=cfg.get('TEXT', 'y')
-)
+    _playlist.mode = cfg.getboolean('PLAYLIST', 'playlist_mode')
+    _playlist.path = cfg.get('PLAYLIST', 'path')
+    _playlist.start = start_t
 
-_playout = SimpleNamespace(
-    preview=cfg.getboolean('OUT', 'preview'),
-    name=cfg.get('OUT', 'service_name'),
-    provider=cfg.get('OUT', 'service_provider'),
-    out_addr=cfg.get('OUT', 'out_addr'),
-    post_comp_video=json.loads(cfg.get('OUT', 'post_comp_video')),
-    post_comp_audio=json.loads(cfg.get('OUT', 'post_comp_audio')),
-    post_comp_extra=json.loads(cfg.get('OUT', 'post_comp_extra'))
-)
+    _storage.path = cfg.get('STORAGE', 'path')
+    _storage.filler = cfg.get('STORAGE', 'filler_clip')
+    _storage.extensions = json.loads(cfg.get('STORAGE', 'extensions'))
+    _storage.shuffle = cfg.getboolean('STORAGE', 'shuffle')
 
+    _text.add_text = cfg.getboolean('TEXT', 'add_text')
+    _text.textfile = cfg.get('TEXT', 'textfile')
+    _text.fontsize = cfg.get('TEXT', 'fontsize')
+    _text.fontcolor = cfg.get('TEXT', 'fontcolor')
+    _text.fontfile = cfg.get('TEXT', 'fontfile')
+    _text.box = cfg.get('TEXT', 'box')
+    _text.boxcolor = cfg.get('TEXT', 'boxcolor')
+    _text.boxborderw = cfg.get('TEXT', 'boxborderw')
+    _text.x = cfg.get('TEXT', 'x')
+    _text.y = cfg.get('TEXT', 'y')
+
+    if _init.load:
+        _log.to_file = cfg.getboolean('LOGGING', 'log_to_file')
+        _log.path = cfg.get('LOGGING', 'log_file')
+        _log.level = cfg.get('LOGGING', 'log_level')
+
+        _pre_comp.w = cfg.getint('PRE_COMPRESS', 'width')
+        _pre_comp.h = cfg.getint('PRE_COMPRESS', 'height')
+        _pre_comp.aspect = cfg.getfloat('PRE_COMPRESS', 'aspect')
+        _pre_comp.fps = cfg.getint('PRE_COMPRESS', 'fps')
+        _pre_comp.v_bitrate = cfg.getint('PRE_COMPRESS', 'width') * 50
+        _pre_comp.v_bufsize = cfg.getint('PRE_COMPRESS', 'width') * 50 / 2
+
+        _playout.preview = cfg.getboolean('OUT', 'preview')
+        _playout.name = cfg.get('OUT', 'service_name')
+        _playout.provider = cfg.get('OUT', 'service_provider')
+        _playout.out_addr = cfg.get('OUT', 'out_addr')
+        _playout.post_comp_video = json.loads(
+            cfg.get('OUT', 'post_comp_video'))
+        _playout.post_comp_audio = json.loads(
+            cfg.get('OUT', 'post_comp_audio'))
+        _playout.post_comp_extra = json.loads(
+            cfg.get('OUT', 'post_comp_extra'))
+
+        _init.load = False
+
+
+load_config()
 
 # ------------------------------------------------------------------------------
 # logging
@@ -352,7 +363,16 @@ def handle_sigterm(sig, frame):
     raise(SystemExit)
 
 
+def handle_sighub(sig, frame):
+    """
+    handling SIGHUB signal for reload configuration
+    """
+    messenger.info('reload config file')
+    load_config()
+
+
 signal.signal(signal.SIGTERM, handle_sigterm)
+signal.signal(signal.SIGHUP, handle_sighub)
 
 
 def terminate_processes(decoder, encoder, watcher):
