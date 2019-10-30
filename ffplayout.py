@@ -121,6 +121,20 @@ def load_config():
     else:
         cfg.read('ffplayout.conf')
 
+    if stdin_args.start:
+        if stdin_args.start == 'now':
+            start_t = None
+        elif validate_time:
+            stime = stdin_args.start.split(':')
+            start_t = str_to_sec(stime)
+    else:
+        stime = cfg.get('PLAYLIST', 'day_start').split(':')
+
+        if stime[0] and stime[1] and stime[2]:
+            start_t = str_to_sec(stime)
+        else:
+            start_t = None
+
     _general.stop = cfg.getboolean('GENERAL', 'stop_on_error')
     _general.threshold = cfg.getfloat('GENERAL', 'stop_threshold')
 
@@ -141,20 +155,6 @@ def load_config():
     _pre_comp.loud_tp = cfg.getfloat('PRE_COMPRESS', 'loud_TP')
     _pre_comp.loud_lra = cfg.getfloat('PRE_COMPRESS', 'loud_LRA')
     _pre_comp.protocols = cfg.get('PRE_COMPRESS', 'live_protocols')
-
-    if stdin_args.start:
-        if stdin_args.start == 'now':
-            start_t = None
-        elif validate_time:
-            stime = stdin_args.start.split(':')
-            start_t = str_to_sec(stime)
-    else:
-        stime = cfg.get('PLAYLIST', 'day_start').split(':')
-
-        if stime[0] and stime[1] and stime[2]:
-            start_t = str_to_sec(stime)
-        else:
-            start_t = None
 
     _playlist.mode = cfg.getboolean('PLAYLIST', 'playlist_mode')
     _playlist.path = cfg.get('PLAYLIST', 'path')
