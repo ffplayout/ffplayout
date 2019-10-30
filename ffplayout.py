@@ -71,6 +71,11 @@ stdin_parser.add_argument(
     '-p', '--playlist', help='path from playlist'
 )
 
+stdin_parser.add_argument(
+    '-s', '--start',
+    help='start time in "hh:mm:ss", "now" for start with first'
+)
+
 stdin_args = stdin_parser.parse_args()
 
 # ------------------------------------------------------------------------------
@@ -96,6 +101,18 @@ def load_config():
     some settings cannot be changed - like resolution, aspect, or output
     """
     cfg = configparser.ConfigParser()
+
+    def validate_time(t):
+        timeformat = "%H:%M:%S"
+        try:
+            datetime.datetime.strptime(t, timeformat)
+            return True
+        except ValueError:
+            messenger.error('wrong time format!')
+            sys.exit(1)
+
+    def str_to_sec(s):
+        return float(s[0]) * 3600 + float(s[1]) * 60 + float(s[2])
 
     if stdin_args.config:
         cfg.read(stdin_args.config)
@@ -125,13 +142,19 @@ def load_config():
     _pre_comp.loud_lra = cfg.getfloat('PRE_COMPRESS', 'loud_LRA')
     _pre_comp.protocols = cfg.get('PRE_COMPRESS', 'live_protocols')
 
-    stime = cfg.get('PLAYLIST', 'day_start').split(':')
-
-    if stime[0] and stime[1] and stime[2]:
-        start_t = float(stime[0]) * 3600 \
-            + float(stime[1]) * 60 + float(stime[2])
+    if stdin_args.start:
+        if stdin_args.start == 'now':
+            start_t = None
+        elif validate_time:
+            stime = stdin_args.start.split(':')
+            start_t = str_to_sec(stime)
     else:
-        start_t = None
+        stime = cfg.get('PLAYLIST', 'day_start').split(':')
+
+        if stime[0] and stime[1] and stime[2]:
+            start_t = str_to_sec(stime)
+        else:
+            start_t = None
 
     _playlist.mode = cfg.getboolean('PLAYLIST', 'playlist_mode')
     _playlist.path = cfg.get('PLAYLIST', 'path')
@@ -366,13 +389,16 @@ def handle_sigterm(sig, frame):
 def handle_sighub(sig, frame):
     """
     handling SIGHUB signal for reload configuration
+    Linux/macOS only
     """
     messenger.info('reload config file')
     load_config()
 
 
 signal.signal(signal.SIGTERM, handle_sigterm)
-signal.signal(signal.SIGHUP, handle_sighub)
+
+if os.name == 'posix':
+    signal.signal(signal.SIGHUP, handle_sighub)
 
 
 def terminate_processes(decoder, encoder, watcher):
