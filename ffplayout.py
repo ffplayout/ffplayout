@@ -641,56 +641,28 @@ def gen_input(src, begin, dur, seek, out, last):
     return clip only if we are in 24 hours time range
     """
 
-    if not _playlist.start:
-        return src_or_dummy(src, dur, seek, out), None
-    else:
+    if _playlist.start:
         ref_time = 86400.0 + _playlist.start
         new_seek = 0
 
-        if begin + (out - seek) < ref_time:
-            if not last:
-                # when we are in the 24 houre range, get the clip
-                return src_or_dummy(src, dur, seek, out), None
-            else:
-                # when last clip is reached and we under ref_time,
-                # check if out/duration is long enough
-                if out >= dur and begin + out > ref_time:
-                    new_len = begin + out - ref_time
-                elif begin + dur > ref_time:
-                    new_len = begin + dur - ref_time
-                else:
-                    missing_secs = abs(begin + out - ref_time)
-                    messenger.error(
-                        'Playlist is not long enough:'
-                        '\n{0:.2f} seconds needed.'.format(missing_secs))
-
-                    src_cmd = src_or_dummy(src, dur, 0, dur)
-                    return src_cmd, missing_secs
-
-                messenger.info('we are under time, new_len is: {0:.2f}'.format(
-                    new_len))
-
-                if seek > 0:
-                    new_seek = out - new_len
-                    new_len = out
-
-                src_cmd = src_or_dummy(src, dur, new_seek, new_len)
-                return src_cmd, 0.0
+        if begin + (out - seek) < ref_time and not last:
+            # when we are in the 24 houre range, get the clip
+            return src_or_dummy(src, dur, seek, out), out, False
 
         elif begin > ref_time:
             messenger.info(
                 'start time is over 24 hours, skip clip:\n{}'.format(src))
-            return None, 0.0
+            return None, 0.0, True
 
         elif begin + (out - seek) > ref_time:
             # when we over the 24 hours range, trim clip
-            new_len = begin + (out - seek) - ref_time
+            new_len = ref_time - begin
 
-            # When calculated length from last clip is longer then 5 seconds,
-            # we use the clip. When the length is less then 5 and bigger then 1
+            # When calculated length from last clip is longer then 4 seconds,
+            # we use the clip. When the length is less then 4 and bigger then 1
             # second we generate a black clip and when is less the a seconds
             # we skip the clip.
-            if new_len > 5.0:
+            if new_len > 4.0:
                 messenger.info(
                     'we are over time, new_len is: {0:.2f}'.format(new_len))
                 new_seek = 0
@@ -707,10 +679,37 @@ def gen_input(src, begin, dur, seek, out, last):
                     'last clip less then a second long, skip:\n{}'.format(src))
                 src_cmd = None
 
-            return src_cmd, 0.0
+            return src_cmd, new_len, True
+
+        elif begin + (out - seek) < ref_time and last:
+            # when last clip is reached and we under ref_time,
+            # check if out/duration is long enough
+            if begin + out > ref_time:
+                new_len = ref_time - begin
+
+                messenger.info(
+                    'we are under time, new_len is: {0:.2f}'.format(
+                        new_len))
+
+                if seek > 0:
+                    new_seek = out - new_len
+                    new_len = out
+
+                src_cmd = src_or_dummy(src, dur, new_seek, new_len)
+                return src_cmd, new_len, True
+            else:
+                missing_secs = abs(begin + out - ref_time)
+                messenger.error(
+                    'Playlist is not long enough:'
+                    '\n{0:.2f} seconds needed.'.format(missing_secs))
+
+                src_cmd = src_or_dummy(src, dur, 0, out)
+                return src_cmd, out, False
 
         else:
-            return None, 0.0
+            return None, True
+    else:
+        return src_or_dummy(src, dur, seek, out), out, False
 
 
 # ------------------------------------------------------------------------------
@@ -1204,7 +1203,7 @@ class GetSourceIter(object):
                 self.seek = 0
 
     def get_input(self):
-        self.src_cmd, self.time_left = gen_input(
+        self.src_cmd, self.out, self.next_playlist = gen_input(
             self.src, self.begin, self.duration,
             self.seek, self.out, self.last
         )
@@ -1349,18 +1348,9 @@ class GetSourceIter(object):
                     self.get_category(index, node)
                     self.set_filtergraph()
 
-                    if self.time_left is None:
+                    if not self.next_playlist:
                         # normal behavior
                         self.last_time = self.begin
-                    elif self.time_left > 0.0:
-                        # when playlist is finish and we have time left
-                        self.list_date = get_date(False)
-                        self.last_time = self.begin
-                        self.out = self.time_left
-
-                        self.eof_handling(
-                            'Playlist is not long enough!', False)
-
                     else:
                         # when there is no time left and we are in time,
                         # set right values for new playlist
