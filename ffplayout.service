@@ -4,6 +4,7 @@ After=network.target
 
 [Service]
 ExecStart=/usr/local/bin/ffplayout.py
+ExecReload=/bin/kill -1 $MAINPID
 Restart=always
 RestartSec=1
 User=user
