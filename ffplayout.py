@@ -44,6 +44,15 @@ from threading import Thread
 from types import SimpleNamespace
 from urllib import request
 
+try:
+    import colorama
+
+    from watchdog.events import PatternMatchingEventHandler
+    from watchdog.observers import Observer
+
+    colorama.init()
+except ImportError:
+    print('some modules are not installed, ffplayout may or may not work')
 # ------------------------------------------------------------------------------
 # argument parsing
 # ------------------------------------------------------------------------------
@@ -394,7 +403,14 @@ class MediaProbe:
         cmd = ['ffprobe', '-v', 'quiet', '-print_format',
                'json', '-show_format', '-show_streams', self.src]
 
-        info = json.loads(check_output(cmd).decode(encoding='UTF-8'))
+        try:
+            info = json.loads(check_output(cmd).decode('UTF-8'))
+        except CalledProcessError:
+            messenger.error('MediaProbe error in: {}'.format(self.src))
+            self.audio.append(None)
+            self.video.append(None)
+
+            return
 
         self.format = info['format']
 
@@ -706,13 +722,19 @@ def src_or_dummy(src, dur, seek, out):
     when source path exist, generate input with seek and out time
     when path not exist, generate dummy clip
     """
-    prefix = src.split('://')[0]
 
     # check if input is a live source
-    if src and prefix in _pre_comp.protocols or os.path.isfile(src):
+    if src and src.split('://')[0] in _pre_comp.protocols:
+        if seek > 0.0:
+            messenger.warning(
+                'seek in live source "{}" not supported!'.format(src))
+        return ['-i', src] + set_length(dur, seek, out)
+    elif src and os.path.isfile(src):
         if out > dur:
             if seek > 0.0:
-                return seek_in(seek) + ['-i', src] + set_length(dur, seek, dur)
+                messenger.warning(
+                    'seek in looped source "{}" not supported!'.format(src))
+                return ['-i', src] + set_length(dur, seek, out - seek)
             else:
                 # FIXME: when list starts with looped clip,
                 # the logo length will be wrong
@@ -720,7 +742,7 @@ def src_or_dummy(src, dur, seek, out):
         else:
             return seek_in(seek) + ['-i', src] + set_length(dur, seek, out)
     else:
-        messenger.error('Clip not exist:\n{}'.format(src))
+        messenger.error('clip/URL not exist:\n{}'.format(src))
         return gen_dummy(out - seek)
 
 
@@ -1267,7 +1289,7 @@ class GetSourceIter:
                 output = None
 
             if not output:
-                messenger.error('Clip not exist:\n{}'.format(self.src))
+                messenger.error('URL not exist:\n{}'.format(self.src))
                 self.src = None
             elif is_float(output):
                 self.duration = float(output)
@@ -1549,8 +1571,4 @@ def main():
 
 
 if __name__ == '__main__':
-    if not _playlist.mode or stdin_args.folder:
-        from watchdog.events import PatternMatchingEventHandler
-        from watchdog.observers import Observer
-
     main()
