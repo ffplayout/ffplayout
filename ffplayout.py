@@ -104,17 +104,12 @@ def load_config():
     """
     cfg = configparser.ConfigParser()
 
-    def validate_time(t):
-        timeformat = "%H:%M:%S"
-        try:
-            datetime.strptime(t, timeformat)
-            return True
-        except ValueError:
-            print('wrong time format!')
-            sys.exit(1)
-
     def str_to_sec(s):
-        return float(s[0]) * 3600 + float(s[1]) * 60 + float(s[2])
+        s = s.split(':')
+        try:
+            return float(s[0]) * 3600 + float(s[1]) * 60 + float(s[2])
+        except ValueError:
+            return None
 
     if stdin_args.config:
         cfg.read(stdin_args.config)
@@ -124,24 +119,11 @@ def load_config():
         cfg.read('ffplayout.conf')
 
     if stdin_args.start:
-        if stdin_args.start == 'now':
-            p_start = None
-        elif validate_time(stdin_args.start):
-            p_start = str_to_sec(stdin_args.start.split(':'))
+        p_start = str_to_sec(stdin_args.start)
     else:
-        stime = cfg.get('PLAYLIST', 'day_start')
+        p_start = str_to_sec(cfg.get('PLAYLIST', 'day_start'))
 
-        if validate_time(stime):
-            p_start = str_to_sec(stime.split(':'))
-        else:
-            p_start = None
-
-    ltime = cfg.get('PLAYLIST', 'length').split(':')
-
-    if ltime[0] and ltime[1] and ltime[2]:
-        p_length = str_to_sec(ltime)
-    else:
-        p_length = None
+    p_length = str_to_sec(cfg.get('PLAYLIST', 'length'))
 
     _general.stop = cfg.getboolean('GENERAL', 'stop_on_error')
     _general.threshold = cfg.getfloat('GENERAL', 'stop_threshold')
