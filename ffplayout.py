@@ -26,6 +26,7 @@ import logging
 import math
 import os
 import random
+import re
 import signal
 import smtplib
 import socket
@@ -208,20 +209,66 @@ load_config()
 # logging
 # ------------------------------------------------------------------------------
 
+
+class CustomFormatter(logging.Formatter):
+    """
+    Logging Formatter to add colors and count warning / errors
+    """
+
+    grey = '\x1b[38;21m'
+    darkgrey = '\x1b[30;1m'
+    yellow = '\x1b[33;21m'
+    red = '\x1b[31;21m'
+    magenta = '\x1b[35;5m'
+    green = '\x1b[32;5m'
+    blue = '\x1b[34;1m'
+    cyan = '\x1b[36;5m'
+    reset = '\x1b[0m'
+
+    timestamp = darkgrey + '[%(asctime)s]' + reset
+    level = '[%(levelname)s]' + reset
+    message = grey + '  %(message)s' + reset
+
+    FORMATS = {
+        logging.DEBUG: timestamp + blue + level + message + reset,
+        logging.INFO: timestamp + green + level + message + reset,
+        logging.WARNING: timestamp + yellow + level + message + reset,
+        logging.ERROR: timestamp + red + level + message + reset
+    }
+
+    def format_message(self, msg):
+        if '"' in msg and '[' in msg:
+            msg = re.sub('(".*?")', self.cyan + r'\1' + self.reset, msg)
+        elif '/' in msg:
+            msg = re.sub('("?/.*?)', self.magenta + r'\1', msg)
+
+        return msg
+
+    def format(self, record):
+        record.msg = self.format_message(record.getMessage())
+        log_fmt = self.FORMATS.get(record.levelno)
+        formatter = logging.Formatter(log_fmt)
+        return formatter.format(record)
+
+
 # If the log file is specified on the command line then override the default
 if stdin_args.log:
     _log.path = stdin_args.log
 
 logger = logging.getLogger(__name__)
 logger.setLevel(_log.level)
-handler = TimedRotatingFileHandler(_log.path, when='midnight', backupCount=5)
+file_handler = TimedRotatingFileHandler(_log.path, when='midnight',
+                                        backupCount=5)
+console_handler = logging.StreamHandler()
 formatter = logging.Formatter('[%(asctime)s] [%(levelname)s]  %(message)s')
-handler.setFormatter(formatter)
+
 
 if _log.to_file:
-    logger.addHandler(handler)
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
 else:
-    logger.addHandler(logging.StreamHandler())
+    console_handler.setFormatter(CustomFormatter())
+    logger.addHandler(console_handler)
 
 
 class PlayoutLogger(object):
