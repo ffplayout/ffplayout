@@ -107,10 +107,10 @@ def load_config():
     def validate_time(t):
         timeformat = "%H:%M:%S"
         try:
-            datetime.datetime.strptime(t, timeformat)
+            datetime.strptime(t, timeformat)
             return True
         except ValueError:
-            messenger.error('wrong time format!')
+            print('wrong time format!')
             sys.exit(1)
 
     def str_to_sec(s):
@@ -125,17 +125,23 @@ def load_config():
 
     if stdin_args.start:
         if stdin_args.start == 'now':
-            start_t = None
-        elif validate_time:
-            stime = stdin_args.start.split(':')
-            start_t = str_to_sec(stime)
+            p_start = None
+        elif validate_time(stdin_args.start):
+            p_start = str_to_sec(stdin_args.start.split(':'))
     else:
-        stime = cfg.get('PLAYLIST', 'day_start').split(':')
+        stime = cfg.get('PLAYLIST', 'day_start')
 
-        if stime[0] and stime[1] and stime[2]:
-            start_t = str_to_sec(stime)
+        if validate_time(stime):
+            p_start = str_to_sec(stime.split(':'))
         else:
-            start_t = None
+            p_start = None
+
+    ltime = cfg.get('PLAYLIST', 'length').split(':')
+
+    if ltime[0] and ltime[1] and ltime[2]:
+        p_length = str_to_sec(ltime)
+    else:
+        p_length = None
 
     _general.stop = cfg.getboolean('GENERAL', 'stop_on_error')
     _general.threshold = cfg.getfloat('GENERAL', 'stop_threshold')
@@ -160,7 +166,8 @@ def load_config():
 
     _playlist.mode = cfg.getboolean('PLAYLIST', 'playlist_mode')
     _playlist.path = cfg.get('PLAYLIST', 'path')
-    _playlist.start = start_t
+    _playlist.start = p_start
+    _playlist.length = p_length
 
     _storage.path = cfg.get('STORAGE', 'path')
     _storage.filler = cfg.get('STORAGE', 'filler_clip')
@@ -559,23 +566,20 @@ def check_length(json_nodes, total_play_time):
     """
     check if playlist is long enough
     """
-    if 'length' in json_nodes:
-        l_h, l_m, l_s = json_nodes["length"].split(':')
-        if is_float(l_h) and is_float(l_m) and is_float(l_s):
-            length = float(l_h) * 3600 + float(l_m) * 60 + float(l_s)
+    if _playlist.length:
+        if 'date' in json_nodes:
+            date = json_nodes["date"]
+        else:
+            date = get_date(True)
 
-            if 'date' in json_nodes:
-                date = json_nodes["date"]
-            else:
-                date = get_date(True)
-
-            if total_play_time < length - 5:
-                messenger.error(
-                    'Playlist ({}) is not long enough!\n'
-                    'Total play time is: {}'.format(
-                        date,
-                        timedelta(seconds=total_play_time))
-                )
+        if total_play_time < _playlist.length - 5:
+            messenger.error(
+                'Playlist ({}) is not long enough!\n'
+                'Total play time is: {}, target length is: {}'.format(
+                    date,
+                    timedelta(seconds=total_play_time),
+                    timedelta(seconds=_playlist.length))
+            )
 
 
 def validate_thread(clip_nodes):
@@ -1450,7 +1454,7 @@ class GetSourceIter:
 
                 self.begin += self.out - self.seek
             else:
-                if not _playlist.start or 'length' not in self.clip_nodes:
+                if not _playlist.start or not _playlist.length:
                     # when we reach currect end, stop script
                     messenger.info('Playlist reach End!')
                     return
