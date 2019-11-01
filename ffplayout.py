@@ -845,6 +845,10 @@ def build_filtergraph(first, duration, seek, out, ad, ad_last, ad_next, dummy,
 
         audio_chain += add_audio(probe, out - seek)
 
+        if not audio_chain:
+            audio_chain.append('[0:a]anull')
+            audio_chain += extend_audio(probe, out - seek)
+
     if video_chain:
         video_filter = '{}[v]'.format(','.join(video_chain))
     else:
@@ -855,12 +859,9 @@ def build_filtergraph(first, duration, seek, out, ad, ad_last, ad_next, dummy,
         '-filter_complex', '[0:v]{};{}'.format(
             video_filter, logo_filter)]
 
-    if not audio_chain:
-        audio_chain.append('[0:a]anull')
-        audio_chain += extend_audio(probe, out - seek)
+    if audio_chain:
         audio_chain += fade_filter(first, duration, seek, out, 'a')
 
-    if audio_chain:
         audio_filter = [
             '-filter_complex', '{}[a]'.format(','.join(audio_chain))]
         audio_map = ['-map', '[a]']
@@ -1215,7 +1216,7 @@ class GetSourceIter(object):
         if filler:
             self.src_cmd = gen_filler_loop(self.duration)
 
-            if _storage.filler:
+            if _storage.filler and os.path.isfile(_storage.filler):
                 self.is_dummy = False
                 self.duration += 1
             else:
