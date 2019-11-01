@@ -665,7 +665,7 @@ def gen_input(has_begin, src, begin, dur, seek, out, last):
             if src == _storage.filler:
                 src_cmd = src_or_dummy(src, dur, out - new_len, out)
             else:
-                src_cmd = src_or_dummy(src, dur, seek, new_len + seek)
+                src_cmd = src_or_dummy(src, dur, seek, new_out)
         elif new_len > 1.5:
             src_cmd = gen_dummy(new_len)
         else:
