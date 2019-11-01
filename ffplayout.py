@@ -1222,7 +1222,7 @@ class GetSourceIter(object):
             else:
                 self.is_dummy = True
         else:
-            self.src_cmd = gen_dummy(self.durationk)
+            self.src_cmd = gen_dummy(self.duration)
             self.is_dummy = True
         self.set_filtergraph()
 
