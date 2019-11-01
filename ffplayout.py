@@ -118,6 +118,7 @@ def load_config():
         try:
             return float(s[0]) * 3600 + float(s[1]) * 60 + float(s[2])
         except ValueError:
+            print('wrong time format!')
             return None
 
     if stdin_args.config:
@@ -462,10 +463,10 @@ def terminate_processes(watcher=None):
     """
     kill orphaned processes
     """
-    if _ff.decoder.poll() is None:
+    if hasattr(_ff, 'decoder') and _ff.decoder.poll() is None:
         _ff.decoder.terminate()
 
-    if _ff.encoder.poll() is None:
+    if hasattr(_ff, 'encoder') and _ff.encoder.poll() is None:
         _ff.encoder.terminate()
 
     if watcher:
@@ -759,34 +760,31 @@ def gen_input(src, begin, dur, seek, out, last):
         if begin > day_in_sec:
             begin -= _playlist.start
 
-        new_seek = 0
-
-        if begin + (out - seek) < day_in_sec and not last:
+        if begin + out < day_in_sec and not last:
             # when we are in the 24 houre range, get the clip
-            return src_or_dummy(src, dur, seek, out), out, False
+            return src_or_dummy(src, dur, seek, out), seek, out, False
 
         elif begin > day_in_sec:
             messenger.info(
                 'start time is over 24 hours, skip clip:\n{}'.format(src))
-            return None, 0.0, True
+            return None, 0, 0, True
 
-        if begin + (out - seek) > day_in_sec or last:
-            new_len = day_in_sec - begin
+        if begin + out > day_in_sec or last:
+            new_len = day_in_sec - (begin + seek)
+            new_out = new_len
 
-            # When calculated length from last clip is longer then 4 seconds,
+            messenger.info(
+                'we are over time, new_len is: {0:.2f}'.format(new_len))
+
+            # When calculated length from clip is longer then 4 seconds,
             # we use the clip. When the length is less then 4 and bigger then 1
             # second we generate a black clip and when is less the a seconds
             # we skip the clip.
             if new_len > 4.0:
-                messenger.info(
-                    'we are over time, new_len is: {0:.2f}'.format(new_len))
-                new_seek = 0
-
                 if seek > 0:
-                    new_seek = out - new_len
-                    new_len = out
+                    new_out = new_len + seek
 
-                src_cmd = src_or_dummy(src, dur, new_seek, new_len)
+                src_cmd = src_or_dummy(src, dur, seek, new_out)
             elif new_len > 1.0:
                 src_cmd = gen_dummy(new_len)
             elif new_len > 0.0:
@@ -799,14 +797,14 @@ def gen_input(src, begin, dur, seek, out, last):
                     'Playlist is not long enough:'
                     '\n{0:.2f} seconds needed.'.format(missing_secs))
                 src_cmd = src_or_dummy(src, dur, 0, out)
-                return src_cmd, out, False
+                return src_cmd, seek, out, False
 
-            return src_cmd, new_len, True
+            return src_cmd, seek, new_out, True
 
         else:
-            return None, True
+            return None, 0, 0, True
     else:
-        return src_or_dummy(src, dur, seek, out), out, False
+        return src_or_dummy(src, dur, seek, out), seek, out, False
 
 
 # ------------------------------------------------------------------------------
@@ -1299,7 +1297,7 @@ class GetSourceIter:
                 self.seek = 0
 
     def get_input(self):
-        self.src_cmd, self.out, self.next_playlist = gen_input(
+        self.src_cmd, self.seek, self.out, self.next_playlist = gen_input(
             self.src, self.begin, self.duration,
             self.seek, self.out, self.last
         )
@@ -1343,6 +1341,17 @@ class GetSourceIter:
         self.filtergraph = build_filtergraph(
             self.duration, self.seek, self.out, self.ad, self.ad_last,
             self.ad_next, self.is_dummy, self.probe)
+
+    def check_time_left(self):
+        if not self.next_playlist:
+            # normal behavior
+            self.last_time = self.begin
+        else:
+            # when there is no time left and we are in time,
+            # set right values for new playlist
+            self.list_date = get_date(False)
+            self.last_time = _playlist.start - 5
+            self.last_mod_time = 0.0
 
     def eof_handling(self, message, filler):
         self.seek = 0.0
@@ -1422,9 +1431,9 @@ class GetSourceIter:
                     self.is_source_dummy()
                     self.get_category(index, node)
                     self.set_filtergraph()
+                    self.check_time_left()
 
                     self.first = False
-                    self.last_time = self.begin
                     break
                 elif self.last_time < self.begin:
                     if index + 1 == len(self.clip_nodes["program"]):
@@ -1443,16 +1452,7 @@ class GetSourceIter:
                     self.is_source_dummy()
                     self.get_category(index, node)
                     self.set_filtergraph()
-
-                    if not self.next_playlist:
-                        # normal behavior
-                        self.last_time = self.begin
-                    else:
-                        # when there is no time left and we are in time,
-                        # set right values for new playlist
-                        self.list_date = get_date(False)
-                        self.last_time = _playlist.start - 5
-                        self.last_mod_time = 0.0
+                    self.check_time_left()
 
                     break
 
