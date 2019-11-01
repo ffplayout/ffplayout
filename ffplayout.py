@@ -626,7 +626,7 @@ def gen_input(has_begin, src, begin, dur, seek, out, last):
     if ((time_diff <= ref_time or begin < day_in_sec) and not last) \
             or not has_begin:
         # when we are in the 24 houre range, get the clip
-        return src_or_dummy(src, dur, seek, out), None
+        return src_or_dummy(src, dur, seek, out), seek, out, None
     elif time_diff < ref_time and last:
         # when last clip is passed and we still have too much time left
         # check if duration is larger then out - seek
@@ -650,24 +650,28 @@ def gen_input(has_begin, src, begin, dur, seek, out, last):
             )
             logger.error('Playlist is {} seconds to short'.format(new_len))
 
-        return src_cmd, new_len - dur
+        return src_cmd, seek, new_len, new_len - dur
 
     elif time_diff > ref_time:
-        new_len = out - seek - (time_diff - ref_time)
         # when we over the 24 hours range, trim clip
+        new_len = out - seek - (time_diff - ref_time)
+        new_out = new_len
         logger.info('we are over time, new_len is: {}'.format(new_len))
 
         if new_len > 5.0:
+            if seek > 0.0:
+                new_out = new_len + seek
+
             if src == _storage.filler:
                 src_cmd = src_or_dummy(src, dur, out - new_len, out)
             else:
-                src_cmd = src_or_dummy(src, dur, seek, new_len)
-        elif new_len > 1.0:
+                src_cmd = src_or_dummy(src, dur, seek, new_len + seek)
+        elif new_len > 1.5:
             src_cmd = gen_dummy(new_len)
         else:
             src_cmd = None
 
-        return src_cmd, 0.0
+        return src_cmd, seek, new_out, 0.0
 
 
 # ------------------------------------------------------------------------------
@@ -1145,7 +1149,7 @@ class GetSourceIter(object):
                 self.seek = 0
 
     def get_input(self):
-        self.src_cmd, self.time_left = gen_input(
+        self.src_cmd, self.seek, self.out, self.time_left = gen_input(
             self.has_begin, self.src, self.begin, self.duration,
             self.seek, self.out, self.last
         )
@@ -1189,6 +1193,25 @@ class GetSourceIter(object):
         self.filtergraph = build_filtergraph(
             self.first, self.duration, self.seek, self.out,
             self.ad, self.ad_last, self.ad_next, self.is_dummy, self.probe)
+
+    def check_time_left(self):
+        if self.time_left is None:
+            # normal behavior
+            self.last_time = self.begin
+        elif self.time_left > 0.0:
+            # when playlist is finish and we have time left
+            self.list_date = get_date(False)
+            self.last_time = self.begin
+            self.out = self.time_left
+
+            self.eof_handling(
+                'Playlist is not long enough!', False)
+        else:
+            # when there is no time left and we are in time,
+            # set right values for new playlist
+            self.list_date = get_date(False)
+            self.last_time = _playlist.start - 1
+            self.last_mod_time = 0.0
 
     def eof_handling(self, message, filler):
         self.seek = 0.0
@@ -1269,7 +1292,8 @@ class GetSourceIter(object):
                     self.set_filtergraph()
 
                     self.first = False
-                    self.last_time = self.begin
+                    self.check_time_left()
+
                     break
                 elif self.last_time < self.begin:
                     if index + 1 == len(self.clip_nodes["program"]):
@@ -1288,25 +1312,7 @@ class GetSourceIter(object):
                     self.is_source_dummy()
                     self.get_category(index, node)
                     self.set_filtergraph()
-
-                    if self.time_left is None:
-                        # normal behavior
-                        self.last_time = self.begin
-                    elif self.time_left > 0.0:
-                        # when playlist is finish and we have time left
-                        self.list_date = get_date(False)
-                        self.last_time = self.begin
-                        self.out = self.time_left
-
-                        self.eof_handling(
-                            'Playlist is not long enough!', False)
-
-                    else:
-                        # when there is no time left and we are in time,
-                        # set right values for new playlist
-                        self.list_date = get_date(False)
-                        self.last_time = _playlist.start - 5
-                        self.last_mod_time = 0.0
+                    self.check_time_left()
 
                     break
 
