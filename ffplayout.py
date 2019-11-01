@@ -45,12 +45,12 @@ from types import SimpleNamespace
 from urllib import request
 
 try:
-    import colorama
+    if os.name != 'posix':
+        import colorama
+        colorama.init()
 
     from watchdog.events import PatternMatchingEventHandler
     from watchdog.observers import Observer
-
-    colorama.init()
 except ImportError:
     print('some modules are not installed, ffplayout may or may not work')
 # ------------------------------------------------------------------------------
