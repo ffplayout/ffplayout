@@ -547,7 +547,8 @@ def check_sync(begin):
     time_now = get_time('full_sec')
 
     time_distance = begin - time_now
-    if _playlist.start and begin > 86400.0:
+    if _playlist.start and time_now < _playlist.start and \
+            not begin == _playlist.start:
         time_distance -= 86400.0
 
     messenger.debug('time_distance: {}'.format(time_distance))
@@ -755,22 +756,19 @@ def gen_input(src, begin, dur, seek, out, last):
     """
 
     if _playlist.start:
-        day_in_sec = 86400.0
+        ref_time = 86400.0 + _playlist.start
 
-        if begin > day_in_sec:
-            begin -= _playlist.start
-
-        if begin + out < day_in_sec and not last:
+        if begin + out < ref_time and not last:
             # when we are in the 24 houre range, get the clip
             return src_or_dummy(src, dur, seek, out), seek, out, False
 
-        elif begin > day_in_sec:
+        elif begin > ref_time:
             messenger.info(
                 'start time is over 24 hours, skip clip:\n{}'.format(src))
             return None, 0, 0, True
 
-        if begin + out > day_in_sec or last:
-            new_len = day_in_sec - (begin + seek)
+        if begin + out > ref_time or last:
+            new_len = ref_time - (begin + seek)
             new_out = new_len
 
             messenger.info(
@@ -792,7 +790,7 @@ def gen_input(src, begin, dur, seek, out, last):
                     'last clip less then a second long, skip:\n{}'.format(src))
                 src_cmd = None
             else:
-                missing_secs = abs(begin + out - day_in_sec)
+                missing_secs = abs(begin + out - ref_time)
                 messenger.error(
                     'Playlist is not long enough:'
                     '\n{0:.2f} seconds needed.'.format(missing_secs))
@@ -1188,7 +1186,7 @@ class GetSourceIter:
         if _playlist.start:
             self.init_time = _playlist.start
 
-            if 0 <= self.last_time < _playlist.start:
+            if self.last_time < _playlist.start:
                 self.last_time += self.day_in_sec
 
         self.last_mod_time = 0.0
@@ -1363,7 +1361,7 @@ class GetSourceIter:
         if _playlist.start:
             ref_time = self.day_in_sec + _playlist.start
 
-            if 0 <= time < _playlist.start:
+            if time < _playlist.start:
                 time += self.day_in_sec
 
         time_diff = self.out - self.seek + time
