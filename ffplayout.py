@@ -241,7 +241,8 @@ class CustomFormatter(logging.Formatter):
         if '"' in msg and '[' in msg:
             msg = re.sub('(".*?")', self.cyan + r'\1' + self.reset, msg)
         elif '/' in msg or '\\' in msg:
-            msg = re.sub(r'(["\w.:]+/|["\w.:]+\\.*?)', self.magenta + r'\1', msg)
+            msg = re.sub(
+                r'(["\w.:]+/|["\w.:]+\\.*?)', self.magenta + r'\1', msg)
         elif re.search(r'\d', msg):
             msg = re.sub(
                 '([0-9.]+)', self.brightyellow + r'\1' + self.reset, msg)
