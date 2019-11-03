@@ -217,8 +217,7 @@ class CustomFormatter(logging.Formatter):
 
     grey = '\x1b[38;1m'
     darkgrey = '\x1b[30;1m'
-    yellow = '\x1b[33m'
-    brightyellow = '\x1b[33;1m'
+    yellow = '\x1b[33;1m'
     red = '\x1b[31;1m'
     magenta = '\x1b[35;1m'
     green = '\x1b[32;1m'
@@ -245,7 +244,7 @@ class CustomFormatter(logging.Formatter):
                 r'(["\w.:]+/|["\w.:]+\\.*?)', self.magenta + r'\1', msg)
         elif re.search(r'\d', msg):
             msg = re.sub(
-                '([0-9.]+)', self.brightyellow + r'\1' + self.reset, msg)
+                '([0-9.:-]+)', self.yellow + r'\1' + self.reset, msg)
 
         return msg
 
@@ -540,29 +539,6 @@ def valid_json(file):
         return None
 
 
-def check_sync(begin):
-    """
-    compare clip play time with real time,
-    to see if we are sync
-    """
-    time_now = get_time('full_sec')
-
-    time_distance = begin - time_now
-    if _playlist.start and time_now < _playlist.start and \
-            not begin == _playlist.start:
-        time_distance -= 86400.0
-
-    messenger.debug('time_distance: {}'.format(time_distance))
-
-    # check that we are in tolerance time
-    if _general.stop and abs(time_distance) > _general.threshold:
-        messenger.error(
-            'Sync tolerance value exceeded with {0:.2f} seconds,\n'
-            'program terminated!'.format(time_distance))
-        terminate_processes()
-        sys.exit(1)
-
-
 def check_length(json_nodes, total_play_time):
     """
     check if playlist is long enough
@@ -757,45 +733,60 @@ def gen_input(src, begin, dur, seek, out, last):
     """
 
     if _playlist.start:
-        ref_time = 86400.0 + _playlist.start
+        day_in_sec = 86400.0
+        ref_time = day_in_sec + _playlist.start
+        current_time = get_time('full_sec')
 
-        if begin + out < ref_time and not last:
+        if _playlist.start >= current_time:
+            current_time += day_in_sec
+
+        time_delta = begin + seek - current_time
+
+        if not begin == _playlist.start:
+            messenger.debug('time_delta: {}'.format(time_delta))
+
+            # check that we are in tolerance time
+            if _general.stop and abs(time_delta) > _general.threshold:
+                messenger.error(
+                    'Sync tolerance value exceeded with {0:.2f} seconds,\n'
+                    'program terminated!'.format(time_delta))
+                terminate_processes()
+                sys.exit(1)
+
+        if begin + out + time_delta < ref_time and not last:
             # when we are in the 24 houre range, get the clip
             return src_or_dummy(src, dur, seek, out), seek, out, False
 
-        elif begin > ref_time:
+        elif begin + time_delta > ref_time:
             messenger.info(
                 'start time is over 24 hours, skip clip:\n{}'.format(src))
             return None, 0, 0, True
 
-        if begin + out > ref_time or last:
-            new_len = ref_time - (begin + seek)
-            new_out = new_len
+        elif begin + out + time_delta > ref_time or last:
+            new_out = ref_time - (begin + time_delta) + 3
+            new_length = new_out - seek
 
             messenger.info(
-                'we are over time, new_len is: {0:.2f}'.format(new_len))
+                'we are over time, new length is: {0:.2f}'.format(new_length))
 
             # When calculated length from clip is longer then 4 seconds,
             # we use the clip. When the length is less then 4 and bigger then 1
             # second we generate a black clip and when is less the a seconds
             # we skip the clip.
-            if new_len > 4.0:
-                if seek > 0:
-                    new_out = new_len + seek
-
+            if new_length > 4.0:
                 src_cmd = src_or_dummy(src, dur, seek, new_out)
-            elif new_len > 1.0:
-                src_cmd = gen_dummy(new_len)
-            elif new_len > 0.0:
+            elif new_length > 1.0:
+                src_cmd = gen_dummy(new_length)
+            elif new_length > 0.0:
                 messenger.info(
                     'last clip less then a second long, skip:\n{}'.format(src))
                 src_cmd = None
             else:
-                missing_secs = abs(begin + out - ref_time)
+                missing_secs = abs(ref_time - new_length)
                 messenger.error(
                     'Playlist is not long enough:'
                     '\n{0:.2f} seconds needed.'.format(missing_secs))
-                src_cmd = src_or_dummy(src, dur, 0, out)
+                src_cmd = src_or_dummy(src, dur, seek, out)
                 return src_cmd, seek, out, False
 
             return src_cmd, seek, new_out, True
@@ -1349,7 +1340,7 @@ class GetSourceIter:
             # when there is no time left and we are in time,
             # set right values for new playlist
             self.list_date = get_date(False)
-            self.last_time = _playlist.start - 5
+            self.last_time = _playlist.start - 1
             self.last_mod_time = 0.0
 
     def eof_handling(self, message, filler):
@@ -1378,7 +1369,7 @@ class GetSourceIter:
         if filler:
             self.src_cmd = gen_filler(self.duration)
 
-            if _storage.filler:
+            if _storage.filler and os.path.isfile(_storage.filler):
                 self.is_dummy = False
                 self.duration += 1
                 self.probe.load(_storage.filler)
@@ -1411,7 +1402,7 @@ class GetSourceIter:
 
             self.begin = self.init_time
 
-            # loop through all clips in playlist
+            # loop through all clips in playlist and get correct clip in time
             for index, node in enumerate(self.clip_nodes["program"]):
                 self.get_clip_in_out(node)
 
@@ -1439,9 +1430,6 @@ class GetSourceIter:
                         self.last = True
                     else:
                         self.last = False
-
-                    if _playlist.start:
-                        check_sync(self.begin)
 
                     self.src = node["source"]
                     self.probe.load(self.src)
