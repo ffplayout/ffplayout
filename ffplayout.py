@@ -215,15 +215,15 @@ class CustomFormatter(logging.Formatter):
     Logging Formatter to add colors and count warning / errors
     """
 
-    grey = '\x1b[38;21m'
+    grey = '\x1b[38;1m'
     darkgrey = '\x1b[30;1m'
     yellow = '\x1b[33m'
     brightyellow = '\x1b[33;1m'
-    red = '\x1b[31;21m'
-    magenta = '\x1b[35;5m'
-    green = '\x1b[32;5m'
+    red = '\x1b[31;1m'
+    magenta = '\x1b[35;1m'
+    green = '\x1b[32;1m'
     blue = '\x1b[34;1m'
-    cyan = '\x1b[36;5m'
+    cyan = '\x1b[36;1m'
     reset = '\x1b[0m'
 
     timestamp = darkgrey + '[%(asctime)s]' + reset
@@ -262,13 +262,13 @@ if stdin_args.log:
 
 logger = logging.getLogger(__name__)
 logger.setLevel(_log.level)
-file_handler = TimedRotatingFileHandler(_log.path, when='midnight',
-                                        backupCount=5)
 console_handler = logging.StreamHandler()
 formatter = logging.Formatter('[%(asctime)s] [%(levelname)s]  %(message)s')
 
 
 if _log.to_file:
+    file_handler = TimedRotatingFileHandler(_log.path, when='midnight',
+                                            backupCount=5)
     file_handler.setFormatter(formatter)
     logger.addHandler(file_handler)
 else:
