@@ -78,6 +78,10 @@ stdin_parser.add_argument(
 )
 
 stdin_parser.add_argument(
+    '--loop', help='loop playlist infinitely', action='store_true'
+)
+
+stdin_parser.add_argument(
     '-p', '--playlist', help='path from playlist'
 )
 
@@ -114,12 +118,15 @@ def load_config():
     cfg = configparser.ConfigParser()
 
     def str_to_sec(s):
-        s = s.split(':')
-        try:
-            return float(s[0]) * 3600 + float(s[1]) * 60 + float(s[2])
-        except ValueError:
-            print('Wrong time format!')
+        if s in ['now', None, '']:
             return None
+        else:
+            s = s.split(':')
+            try:
+                return float(s[0]) * 3600 + float(s[1]) * 60 + float(s[2])
+            except ValueError:
+                print('Wrong time format!')
+                sys.exit(1)
 
     if stdin_args.config:
         cfg.read(stdin_args.config)
@@ -733,12 +740,15 @@ def gen_input(src, begin, dur, seek, out, first, last):
     """
 
     if _playlist.start:
-        day_in_sec = 86400.0
-        ref_time = day_in_sec + _playlist.start
+        if _playlist.length:
+            target_playtime = _playlist.length
+        else:
+            target_playtime = 86400.0
+        ref_time = target_playtime + _playlist.start
         current_time = get_time('full_sec')
 
         if _playlist.start >= current_time and not begin == _playlist.start:
-            current_time += day_in_sec
+            current_time += target_playtime
 
         if first:
             time_delta = begin + seek - current_time
@@ -755,17 +765,24 @@ def gen_input(src, begin, dur, seek, out, first, last):
             terminate_processes()
             sys.exit(1)
 
-        if begin + out + time_delta < ref_time and not last:
+        if (begin + out + time_delta < ref_time and not last) \
+                or not _playlist.length:
             # when we are in the 24 houre range, get the clip
             return src_or_dummy(src, dur, seek, out), seek, out, False
 
         elif begin + time_delta > ref_time:
             messenger.info(
-                'Start time is over 24 hours, skip clip:\n{}'.format(src))
+                'Start time is over {}, skip clip:\n{}'.format(
+                    timedelta(seconds=_playlist.length), src))
             return None, 0, 0, True
 
         elif begin + out + time_delta > ref_time or last:
             new_out = ref_time - (begin + time_delta)
+
+            # prevent looping
+            if new_out > dur:
+                new_out = dur
+
             new_length = new_out - seek
 
             messenger.info(
@@ -1174,14 +1191,18 @@ class GetSourceIter:
     def __init__(self):
         self.init_time = get_time('full_sec')
         self.last_time = self.init_time
-        self.day_in_sec = 86400.0
+
+        if _playlist.length:
+            self.total_playtime = _playlist.length
+        else:
+            self.total_playtime = 86400.0
 
         # when _playlist.start is set, use start time
         if _playlist.start:
             self.init_time = _playlist.start
 
             if self.last_time < _playlist.start:
-                self.last_time += self.day_in_sec
+                self.last_time += self.total_playtime
 
         self.last_mod_time = 0.0
         self.json_file = None
@@ -1284,7 +1305,7 @@ class GetSourceIter:
             elif is_float(output):
                 self.duration = float(output)
             else:
-                self.duration = self.day_in_sec
+                self.duration = self.total_playtime
                 self.out = self.out - self.seek
                 self.seek = 0
 
@@ -1334,31 +1355,38 @@ class GetSourceIter:
             self.duration, self.seek, self.out, self.ad, self.ad_last,
             self.ad_next, self.is_dummy, self.probe)
 
-    def check_time_left(self):
+    def check_for_next_playlist(self):
         if not self.next_playlist:
-            # normal behavior
+            # normal behavior, when no new playlist is needed
             self.last_time = self.begin
+        elif self.next_playlist and _playlist.length != 86400.0:
+            # get sure that no new clip will be loaded
+            self.last_time = 86400.0 * 2
         else:
             # when there is no time left and we are in time,
             # set right values for new playlist
             self.list_date = get_date(False)
-            self.last_time = _playlist.start - 1
             self.last_mod_time = 0.0
+
+            if _playlist.start:
+                self.last_time = _playlist.start - 1
+            else:
+                self.last_time = get_time('full_sec') - 1
 
     def eof_handling(self, message, filler):
         self.seek = 0.0
         self.ad = False
 
-        ref_time = self.day_in_sec
-        time = get_time('full_sec')
+        ref_time = self.total_playtime
+        current_time = get_time('full_sec')
 
         if _playlist.start:
-            ref_time = self.day_in_sec + _playlist.start
+            ref_time = self.total_playtime + _playlist.start
 
-            if time < _playlist.start:
-                time += self.day_in_sec
+            if current_time < _playlist.start:
+                current_time += self.total_playtime
 
-        time_diff = self.out - self.seek + time
+        time_diff = self.out - self.seek + current_time
         new_len = self.out - self.seek - (time_diff - ref_time)
 
         self.out = abs(new_len)
@@ -1423,7 +1451,7 @@ class GetSourceIter:
                     self.is_source_dummy()
                     self.get_category(index, node)
                     self.set_filtergraph()
-                    self.check_time_left()
+                    self.check_for_next_playlist()
 
                     self.first = False
                     break
@@ -1441,17 +1469,21 @@ class GetSourceIter:
                     self.is_source_dummy()
                     self.get_category(index, node)
                     self.set_filtergraph()
-                    self.check_time_left()
+                    self.check_for_next_playlist()
 
                     break
 
                 self.begin += self.out - self.seek
             else:
-                if not _playlist.start or not _playlist.length:
-                    # when we reach currect end, stop script
-                    messenger.info('Playlist reach End!')
-                    return
-
+                if stdin_args.loop:
+                    self.check_for_next_playlist()
+                    self.init_time = self.last_time + 1
+                    self.src_cmd = None
+                elif not _playlist.start or not _playlist.length or \
+                        not stdin_args.loop:
+                    # when we reach playlist end, stop script
+                    messenger.info('Playlist reached end!')
+                    return None
                 elif self.begin == self.init_time:
                     # no clip was played, generate dummy
                     self.eof_handling('Playlist is empty!', False)
