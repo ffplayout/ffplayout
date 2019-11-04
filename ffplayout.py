@@ -52,7 +52,7 @@ try:
     from watchdog.events import PatternMatchingEventHandler
     from watchdog.observers import Observer
 except ImportError:
-    print('some modules are not installed, ffplayout may or may not work')
+    print('Some modules are not installed, ffplayout may or may not work')
 # ------------------------------------------------------------------------------
 # argument parsing
 # ------------------------------------------------------------------------------
@@ -102,7 +102,7 @@ _text = SimpleNamespace()
 _playout = SimpleNamespace()
 
 _init = SimpleNamespace(load=True)
-_ff = SimpleNamespace()
+_ff = SimpleNamespace(decoder=None, encoder=None)
 
 
 def load_config():
@@ -118,7 +118,7 @@ def load_config():
         try:
             return float(s[0]) * 3600 + float(s[1]) * 60 + float(s[2])
         except ValueError:
-            print('wrong time format!')
+            print('Wrong time format!')
             return None
 
     if stdin_args.config:
@@ -241,7 +241,7 @@ class CustomFormatter(logging.Formatter):
             msg = re.sub('(".*?")', self.cyan + r'\1' + self.reset, msg)
         elif '/' in msg or '\\' in msg:
             msg = re.sub(
-                r'(["\w.:]+/|["\w.:]+\\.*?)', self.magenta + r'\1', msg)
+                r'(["\w.:/]+/|["\w.:]+\\.*?)', self.magenta + r'\1', msg)
         elif re.search(r'\d', msg):
             msg = re.sub(
                 '([0-9.:-]+)', self.yellow + r'\1' + self.reset, msg)
@@ -449,7 +449,7 @@ def handle_sighub(sig, frame):
     handling SIGHUB signal for reload configuration
     Linux/macOS only
     """
-    messenger.info('reload config file')
+    messenger.info('Reload config file')
     load_config()
 
 
@@ -463,10 +463,10 @@ def terminate_processes(watcher=None):
     """
     kill orphaned processes
     """
-    if hasattr(_ff, 'decoder') and _ff.decoder.poll() is None:
+    if _ff.decoder and _ff.decoder.poll() is None:
         _ff.decoder.terminate()
 
-    if hasattr(_ff, 'encoder') and _ff.encoder.poll() is None:
+    if _ff.encoder and _ff.encoder.poll() is None:
         _ff.encoder.terminate()
 
     if watcher:
@@ -706,13 +706,13 @@ def src_or_dummy(src, dur, seek, out):
     if src and src.split('://')[0] in _pre_comp.protocols:
         if seek > 0.0:
             messenger.warning(
-                'seek in live source "{}" not supported!'.format(src))
+                'Seek in live source "{}" not supported!'.format(src))
         return ['-i', src] + set_length(dur, seek, out)
     elif src and os.path.isfile(src):
         if out > dur:
             if seek > 0.0:
                 messenger.warning(
-                    'seek in looped source "{}" not supported!'.format(src))
+                    'Seek in looped source "{}" not supported!'.format(src))
                 return ['-i', src] + set_length(dur, seek, out - seek)
             else:
                 # FIXME: when list starts with looped clip,
@@ -721,11 +721,11 @@ def src_or_dummy(src, dur, seek, out):
         else:
             return seek_in(seek) + ['-i', src] + set_length(dur, seek, out)
     else:
-        messenger.error('clip/URL not exist:\n{}'.format(src))
+        messenger.error('Clip/URL not exist:\n{}'.format(src))
         return gen_dummy(out - seek)
 
 
-def gen_input(src, begin, dur, seek, out, last):
+def gen_input(src, begin, dur, seek, out, first, last):
     """
     prepare input clip
     check begin and length from clip
@@ -737,21 +737,23 @@ def gen_input(src, begin, dur, seek, out, last):
         ref_time = day_in_sec + _playlist.start
         current_time = get_time('full_sec')
 
-        if _playlist.start >= current_time:
+        if _playlist.start >= current_time and not begin == _playlist.start:
             current_time += day_in_sec
 
-        time_delta = begin + seek - current_time
+        if first:
+            time_delta = begin + seek - current_time
+        else:
+            time_delta = begin - current_time
 
-        if not begin == _playlist.start:
-            messenger.debug('time_delta: {}'.format(time_delta))
+        messenger.debug('time_delta: {}'.format(time_delta))
 
-            # check that we are in tolerance time
-            if _general.stop and abs(time_delta) > _general.threshold:
-                messenger.error(
-                    'Sync tolerance value exceeded with {0:.2f} seconds,\n'
-                    'program terminated!'.format(time_delta))
-                terminate_processes()
-                sys.exit(1)
+        # check that we are in tolerance time
+        if _general.stop and abs(time_delta) > _general.threshold:
+            messenger.error(
+                'Sync tolerance value exceeded with {0:.2f} seconds,\n'
+                'program terminated!'.format(time_delta))
+            terminate_processes()
+            sys.exit(1)
 
         if begin + out + time_delta < ref_time and not last:
             # when we are in the 24 houre range, get the clip
@@ -759,15 +761,15 @@ def gen_input(src, begin, dur, seek, out, last):
 
         elif begin + time_delta > ref_time:
             messenger.info(
-                'start time is over 24 hours, skip clip:\n{}'.format(src))
+                'Start time is over 24 hours, skip clip:\n{}'.format(src))
             return None, 0, 0, True
 
         elif begin + out + time_delta > ref_time or last:
-            new_out = ref_time - (begin + time_delta) + 3
+            new_out = ref_time - (begin + time_delta)
             new_length = new_out - seek
 
             messenger.info(
-                'we are over time, new length is: {0:.2f}'.format(new_length))
+                'We are over time, new length is: {0:.2f}'.format(new_length))
 
             # When calculated length from clip is longer then 4 seconds,
             # we use the clip. When the length is less then 4 and bigger then 1
@@ -779,7 +781,7 @@ def gen_input(src, begin, dur, seek, out, last):
                 src_cmd = gen_dummy(new_length)
             elif new_length > 0.0:
                 messenger.info(
-                    'last clip less then a second long, skip:\n{}'.format(src))
+                    'Last clip less then a second long, skip:\n{}'.format(src))
                 src_cmd = None
             else:
                 missing_secs = abs(ref_time - new_length)
@@ -1224,7 +1226,7 @@ class GetSourceIter:
                 if mod_time > self.last_mod_time:
                     self.clip_nodes = valid_json(req)
                     self.last_mod_time = mod_time
-                    messenger.info('open: ' + self.json_file)
+                    messenger.info('Open: ' + self.json_file)
                     validate_thread(self.clip_nodes)
             except (request.URLError, socket.timeout):
                 self.eof_handling('Get playlist from url failed!', False)
@@ -1237,7 +1239,7 @@ class GetSourceIter:
                     self.clip_nodes = valid_json(f)
 
                 self.last_mod_time = mod_time
-                messenger.info('open: ' + self.json_file)
+                messenger.info('Open: ' + self.json_file)
                 validate_thread(self.clip_nodes)
         else:
             # when we have no playlist for the current day,
@@ -1289,7 +1291,7 @@ class GetSourceIter:
     def get_input(self):
         self.src_cmd, self.seek, self.out, self.next_playlist = gen_input(
             self.src, self.begin, self.duration,
-            self.seek, self.out, self.last
+            self.seek, self.out, self.first, self.last
         )
 
     def is_source_dummy(self):
@@ -1511,7 +1513,7 @@ def main():
             watcher = None
             get_source = GetSourceIter()
         else:
-            messenger.info("start folder mode")
+            messenger.info('Start folder mode')
             media = MediaStore()
             watcher = MediaWatcher(media)
             get_source = GetSource(media)
@@ -1524,7 +1526,7 @@ def main():
                 else:
                     current_file = src_cmd[3]
 
-                messenger.info('play: "{}"'.format(current_file))
+                messenger.info('Play: "{}"'.format(current_file))
 
                 with Popen([
                     'ffmpeg', '-v', 'error', '-hide_banner', '-nostats'
@@ -1542,11 +1544,11 @@ def main():
             terminate_processes(watcher)
 
         except SystemExit:
-            messenger.info("got close command")
+            messenger.info('Got close command')
             terminate_processes(watcher)
 
         except KeyboardInterrupt:
-            messenger.warning('program terminated')
+            messenger.warning('Program terminated')
             terminate_processes(watcher)
 
         # close encoder when nothing is to do anymore
