@@ -19,6 +19,7 @@ Features
 - overlay scrolling text
 - **EBU R128 loudness** normalization (single pass)
 - loop clip in playlist which `out` value is higher then its `duration`, see also [Loop Clip](https://github.com/ffplayout/ffplayout-engine/wiki/Loop-Clip)
+- loop playlist infinitely
 - trim and fade the last clip, to get full 24 hours
 - when playlist is not 24 hours long, loop filler clip until time is full
 - set custom day start, so you can have playlist for example: from 6am to 6am, instate of 0am to 12pm
@@ -126,6 +127,7 @@ ffplayout also allows the passing of parameters:
 - `-d, --desktop` preview on desktop
 - `-f, --folder` use folder for playing
 - `-l, --log` for user-defined log file
+- `--loop` loop playlist infinitely
 - `-p, --playlist` for playlist file
 - `-s, --start` set start time for playlist begin
 
