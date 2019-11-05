@@ -732,6 +732,41 @@ def src_or_dummy(src, dur, seek, out):
         return gen_dummy(out - seek)
 
 
+def get_delta(begin, seek, first):
+    """
+    get difference between current time and begin from clip in playlist
+    """
+    if _playlist.length:
+        target_playtime = _playlist.length
+    else:
+        target_playtime = 86400.0
+
+    current_time = get_time('full_sec')
+
+    if _playlist.start >= current_time and not begin == _playlist.start:
+        current_time += target_playtime
+
+    if first:
+        time_delta = begin + seek - current_time
+    else:
+        time_delta = begin - current_time
+
+    if math.isclose(time_delta, 86400.0, abs_tol=6):
+        time_delta -= 86400.0
+
+    # check that we are in tolerance time
+    if _general.stop and abs(time_delta) > _general.threshold:
+        messenger.error(
+            'Sync tolerance value exceeded with {0:.2f} seconds,\n'
+            'program terminated!'.format(time_delta))
+        terminate_processes()
+        sys.exit(1)
+
+    messenger.debug('time_delta: {}'.format(time_delta))
+
+    return target_playtime, time_delta
+
+
 def gen_input(src, begin, dur, seek, out, first, last):
     """
     prepare input clip
@@ -740,30 +775,10 @@ def gen_input(src, begin, dur, seek, out, first, last):
     """
 
     if _playlist.start:
-        if _playlist.length:
-            target_playtime = _playlist.length
-        else:
-            target_playtime = 86400.0
+        # TODO: there is no rule at then moment,
+        # when no _playlist.start is set, but _playlist.length exists
+        target_playtime, time_delta = get_delta(begin, seek, first)
         ref_time = target_playtime + _playlist.start
-        current_time = get_time('full_sec')
-
-        if _playlist.start >= current_time and not begin == _playlist.start:
-            current_time += target_playtime
-
-        if first:
-            time_delta = begin + seek - current_time
-        else:
-            time_delta = begin - current_time
-
-        messenger.debug('time_delta: {}'.format(time_delta))
-
-        # check that we are in tolerance time
-        if _general.stop and abs(time_delta) > _general.threshold:
-            messenger.error(
-                'Sync tolerance value exceeded with {0:.2f} seconds,\n'
-                'program terminated!'.format(time_delta))
-            terminate_processes()
-            sys.exit(1)
 
         if (begin + out + time_delta < ref_time and not last) \
                 or not _playlist.length:
@@ -773,7 +788,7 @@ def gen_input(src, begin, dur, seek, out, first, last):
         elif begin + time_delta > ref_time:
             messenger.info(
                 'Start time is over {}, skip clip:\n{}'.format(
-                    timedelta(seconds=_playlist.length), src))
+                    timedelta(seconds=target_playtime), src))
             return None, 0, 0, True
 
         elif begin + out + time_delta > ref_time or last:
@@ -782,6 +797,8 @@ def gen_input(src, begin, dur, seek, out, first, last):
 
             if seek > 0:
                 new_out = seek + new_length
+            else:
+                new_out = new_length
             # prevent looping
             if new_out > dur:
                 new_out = dur
