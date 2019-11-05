@@ -777,22 +777,23 @@ def gen_input(src, begin, dur, seek, out, first, last):
             return None, 0, 0, True
 
         elif begin + out + time_delta > ref_time or last:
-            new_out = ref_time - (begin + time_delta)
+            new_length = ref_time - (begin + time_delta)
+            new_out = out
 
+            if seek > 0:
+                new_out = seek + new_length
             # prevent looping
             if new_out > dur:
                 new_out = dur
 
-            new_length = new_out - seek
-
             messenger.info(
                 'We are over time, new length is: {0:.2f}'.format(new_length))
 
-            # When calculated length from clip is longer then 4 seconds,
-            # we use the clip. When the length is less then 4 and bigger then 1
+            # When calculated length from clip is longer then 3 seconds,
+            # we use the clip. When the length is less then 3 and bigger then 1
             # second we generate a black clip and when is less the a seconds
             # we skip the clip.
-            if new_length > 4.0:
+            if new_length > 3.0:
                 src_cmd = src_or_dummy(src, dur, seek, new_out)
             elif new_length > 1.0:
                 src_cmd = gen_dummy(new_length)
@@ -801,7 +802,7 @@ def gen_input(src, begin, dur, seek, out, first, last):
                     'Last clip less then a second long, skip:\n{}'.format(src))
                 src_cmd = None
             else:
-                missing_secs = abs(ref_time - new_length)
+                missing_secs = abs(new_length - dur)
                 messenger.error(
                     'Playlist is not long enough:'
                     '\n{0:.2f} seconds needed.'.format(missing_secs))
