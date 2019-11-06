@@ -18,7 +18,6 @@
 
 # ------------------------------------------------------------------------------
 
-
 import configparser
 import glob
 import json
@@ -53,6 +52,8 @@ try:
     from watchdog.observers import Observer
 except ImportError:
     print('Some modules are not installed, ffplayout may or may not work')
+
+
 # ------------------------------------------------------------------------------
 # argument parsing
 # ------------------------------------------------------------------------------
@@ -91,6 +92,29 @@ stdin_parser.add_argument(
 )
 
 stdin_args = stdin_parser.parse_args()
+
+
+# ------------------------------------------------------------------------------
+# clock
+# ------------------------------------------------------------------------------
+
+def get_time(time_format):
+    """
+    get different time formats:
+        - full_sec > current time in seconds
+        - stamp > current date time in seconds
+        - else > current time in HH:MM:SS
+    """
+    t = datetime.today()
+
+    if time_format == 'full_sec':
+        return t.hour * 3600 + t.minute * 60 + t.second \
+             + t.microsecond / 1000000
+    elif time_format == 'stamp':
+        return float(datetime.now().timestamp())
+    else:
+        return t.strftime('%H:%M:%S')
+
 
 # ------------------------------------------------------------------------------
 # read variables from config file
@@ -139,6 +163,9 @@ def load_config():
         p_start = str_to_sec(stdin_args.start)
     else:
         p_start = str_to_sec(cfg.get('PLAYLIST', 'day_start'))
+
+    if not p_start:
+        p_start = get_time('full_sec')
 
     p_length = str_to_sec(cfg.get('PLAYLIST', 'length'))
 
@@ -212,10 +239,10 @@ def load_config():
 
 load_config()
 
+
 # ------------------------------------------------------------------------------
 # logging
 # ------------------------------------------------------------------------------
-
 
 class CustomFormatter(logging.Formatter):
     """
@@ -480,24 +507,6 @@ def terminate_processes(watcher=None):
         watcher.stop()
 
 
-def get_time(time_format):
-    """
-    get different time formats:
-        - full_sec > current time in seconds
-        - stamp > current date time in seconds
-        - else > current time in HH:MM:SS
-    """
-    t = datetime.today()
-
-    if time_format == 'full_sec':
-        return t.hour * 3600 + t.minute * 60 + t.second \
-             + t.microsecond / 1000000
-    elif time_format == 'stamp':
-        return float(datetime.now().timestamp())
-    else:
-        return t.strftime('%H:%M:%S')
-
-
 def get_date(seek_day):
     """
     get date for correct playlist,
@@ -556,7 +565,7 @@ def check_length(json_nodes, total_play_time):
         else:
             date = get_date(True)
 
-        if total_play_time < _playlist.length - 5:
+        if total_play_time < _playlist.length - 5 and not stdin_args.loop:
             messenger.error(
                 'Playlist ({}) is not long enough!\n'
                 'Total play time is: {}, target length is: {}'.format(
@@ -754,84 +763,100 @@ def get_delta(begin, seek, first):
     if math.isclose(time_delta, 86400.0, abs_tol=6):
         time_delta -= 86400.0
 
-    # check that we are in tolerance time
-    if _general.stop and abs(time_delta) > _general.threshold:
-        messenger.error(
-            'Sync tolerance value exceeded with {0:.2f} seconds,\n'
-            'program terminated!'.format(time_delta))
-        terminate_processes()
-        sys.exit(1)
+    if not first and not stdin_args.loop:
+        # check that we are in tolerance time
+        if _general.stop and abs(time_delta) > _general.threshold:
+            messenger.error(
+                'Sync tolerance value exceeded with {0:.2f} seconds,\n'
+                'program terminated!'.format(time_delta))
+            terminate_processes()
+            sys.exit(1)
 
-    messenger.debug('time_delta: {}'.format(time_delta))
+        messenger.debug('time_delta: {}'.format(time_delta))
 
     return target_playtime, time_delta
 
 
-def gen_input(src, begin, dur, seek, out, first, last):
+def handle_list_end(time_delta, ref_time, src, begin, dur, seek, out):
+    """
+    when we come to last clip in playlist,
+    or when we reached total playtime,
+    we end up here
+    """
+    new_length = ref_time - (begin + time_delta)
+    new_out = out
+    new_playlist = True
+
+    if seek > 0:
+        new_out = seek + new_length
+    else:
+        new_out = new_length
+    # prevent looping
+    if new_out > dur:
+        new_out = dur
+    else:
+        messenger.info(
+            'We are over time, new length is: {0:.2f}'.format(new_length))
+
+    # When calculated length from clip is longer then 3 seconds,
+    # we use the clip. When the length is less then 3 and bigger then 1
+    # second we generate a black clip and when is less the a seconds
+    # we skip the clip.
+    if new_length > 3.0:
+        src_cmd = src_or_dummy(src, dur, seek, new_out)
+    elif new_length > 1.0:
+        src_cmd = gen_dummy(new_length)
+    elif new_length > 0.0:
+        messenger.info(
+            'Last clip less then a second long, skip:\n{}'.format(src))
+        src_cmd = None
+    else:
+        missing_secs = abs(new_length - dur)
+        new_out = out
+        new_playlist = False
+        src_cmd = src_or_dummy(src, dur, seek, out)
+        messenger.error(
+            'Playlist is not long enough:'
+            '\n{0:.2f} seconds needed.'.format(missing_secs))
+
+    new_playlist = False
+
+    return src_cmd, seek, new_out, new_playlist
+
+
+def timed_source(src, begin, dur, seek, out, first, last):
     """
     prepare input clip
     check begin and length from clip
     return clip only if we are in 24 hours time range
     """
 
-    if _playlist.start:
-        # TODO: there is no rule at then moment,
-        # when no _playlist.start is set, but _playlist.length exists
-        target_playtime, time_delta = get_delta(begin, seek, first)
-        ref_time = target_playtime + _playlist.start
+    target_playtime, time_delta = get_delta(begin, seek, first)
+    ref_time = target_playtime + _playlist.start
 
-        if (begin + out + time_delta < ref_time and not last) \
-                or not _playlist.length:
-            # when we are in the 24 houre range, get the clip
-            return src_or_dummy(src, dur, seek, out), seek, out, False
+    if first:
+        new_seek = abs(time_delta)
+        if 1 > new_seek:
+            new_seek = 0
+        return src_or_dummy(src, dur, new_seek, out), new_seek, out, False
 
-        elif begin + time_delta > ref_time:
-            messenger.info(
-                'Start time is over {}, skip clip:\n{}'.format(
-                    timedelta(seconds=target_playtime), src))
-            return None, 0, 0, True
-
-        elif begin + out + time_delta > ref_time or last:
-            new_length = ref_time - (begin + time_delta)
-            new_out = out
-
-            if seek > 0:
-                new_out = seek + new_length
-            else:
-                new_out = new_length
-            # prevent looping
-            if new_out > dur:
-                new_out = dur
-
-            messenger.info(
-                'We are over time, new length is: {0:.2f}'.format(new_length))
-
-            # When calculated length from clip is longer then 3 seconds,
-            # we use the clip. When the length is less then 3 and bigger then 1
-            # second we generate a black clip and when is less the a seconds
-            # we skip the clip.
-            if new_length > 3.0:
-                src_cmd = src_or_dummy(src, dur, seek, new_out)
-            elif new_length > 1.0:
-                src_cmd = gen_dummy(new_length)
-            elif new_length > 0.0:
-                messenger.info(
-                    'Last clip less then a second long, skip:\n{}'.format(src))
-                src_cmd = None
-            else:
-                missing_secs = abs(new_length - dur)
-                messenger.error(
-                    'Playlist is not long enough:'
-                    '\n{0:.2f} seconds needed.'.format(missing_secs))
-                src_cmd = src_or_dummy(src, dur, seek, out)
-                return src_cmd, seek, out, False
-
-            return src_cmd, seek, new_out, True
-
-        else:
-            return None, 0, 0, True
-    else:
+    if (begin + out + time_delta < ref_time and not last) \
+            or not _playlist.length or stdin_args.loop:
+        # when we are in the 24 houre range, get the clip
         return src_or_dummy(src, dur, seek, out), seek, out, False
+
+    elif begin + time_delta > ref_time:
+        messenger.info(
+            'Start time is over {}, skip clip:\n{}'.format(
+                timedelta(seconds=target_playtime), src))
+        return None, 0, 0, True
+
+    elif begin + out + time_delta > ref_time or last:
+        return handle_list_end(time_delta, ref_time, src,
+                               begin, dur, seek, out)
+
+    else:
+        return None, 0, 0, True
 
 
 # ------------------------------------------------------------------------------
@@ -1207,20 +1232,16 @@ class GetSourceIter:
     """
 
     def __init__(self):
-        self.init_time = get_time('full_sec')
-        self.last_time = self.init_time
+        self.init_time = _playlist.start
+        self.last_time = get_time('full_sec')
 
         if _playlist.length:
             self.total_playtime = _playlist.length
         else:
             self.total_playtime = 86400.0
 
-        # when _playlist.start is set, use start time
-        if _playlist.start:
-            self.init_time = _playlist.start
-
-            if self.last_time < _playlist.start:
-                self.last_time += self.total_playtime
+        if self.last_time < _playlist.start:
+            self.last_time += self.total_playtime
 
         self.last_mod_time = 0.0
         self.json_file = None
@@ -1328,7 +1349,7 @@ class GetSourceIter:
                 self.seek = 0
 
     def get_input(self):
-        self.src_cmd, self.seek, self.out, self.next_playlist = gen_input(
+        self.src_cmd, self.seek, self.out, self.next_playlist = timed_source(
             self.src, self.begin, self.duration,
             self.seek, self.out, self.first, self.last
         )
@@ -1438,6 +1459,18 @@ class GetSourceIter:
 
         self.last = False
 
+    def peperation_task(self, index, node):
+        # call functions in order to prepare source and filter
+        self.src = node["source"]
+        self.probe.load(self.src)
+
+        self.url_or_live_source()
+        self.get_input()
+        self.is_source_dummy()
+        self.get_category(index, node)
+        self.set_filtergraph()
+        self.check_for_next_playlist()
+
     def next(self):
         while True:
             self.get_playlist()
@@ -1457,20 +1490,8 @@ class GetSourceIter:
                 # first time we end up here
                 if self.first and \
                         self.last_time < self.begin + self.out - self.seek:
-                    if _playlist.start:
-                        # calculate seek time
-                        self.seek = self.last_time - self.begin + self.seek
 
-                    self.src = node["source"]
-                    self.probe.load(self.src)
-
-                    self.url_or_live_source()
-                    self.get_input()
-                    self.is_source_dummy()
-                    self.get_category(index, node)
-                    self.set_filtergraph()
-                    self.check_for_next_playlist()
-
+                    self.peperation_task(index, node)
                     self.first = False
                     break
                 elif self.last_time < self.begin:
@@ -1479,16 +1500,7 @@ class GetSourceIter:
                     else:
                         self.last = False
 
-                    self.src = node["source"]
-                    self.probe.load(self.src)
-
-                    self.url_or_live_source()
-                    self.get_input()
-                    self.is_source_dummy()
-                    self.get_category(index, node)
-                    self.set_filtergraph()
-                    self.check_for_next_playlist()
-
+                    self.peperation_task(index, node)
                     break
 
                 self.begin += self.out - self.seek
@@ -1497,8 +1509,7 @@ class GetSourceIter:
                     self.check_for_next_playlist()
                     self.init_time = self.last_time + 1
                     self.src_cmd = None
-                elif not _playlist.start or not _playlist.length or \
-                        not stdin_args.loop:
+                elif not _playlist.length and not stdin_args.loop:
                     # when we reach playlist end, stop script
                     messenger.info('Playlist reached end!')
                     return None
