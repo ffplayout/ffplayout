@@ -42,6 +42,7 @@ from subprocess import PIPE, CalledProcessError, Popen, check_output
 from threading import Thread
 from types import SimpleNamespace
 from urllib import request
+from threading import Thread
 
 try:
     if os.name != 'posix':
@@ -505,6 +506,14 @@ def terminate_processes(watcher=None):
 
     if watcher:
         watcher.stop()
+
+
+def decoder_error_reader(pipe):
+    try:
+        for line in pipe.stderr:
+            messenger.error('ffmpeg decoder: {}'.format(line.decode("utf-8")))
+    except ValueError:
+        pass
 
 
 def get_date(seek_day):
@@ -1586,7 +1595,12 @@ def main():
                 with Popen([
                     'ffmpeg', '-v', 'error', '-hide_banner', '-nostats'
                     ] + src_cmd + ff_pre_settings,
-                        stdout=PIPE) as _ff.decoder:
+                        stdout=PIPE, stderr=PIPE) as _ff.decoder:
+
+                    err_thread = Thread(target=decoder_error_reader,
+                                        args=(_ff.decoder,))
+                    err_thread.daemon = True
+                    err_thread.start()
 
                     while True:
                         buf = _ff.decoder.stdout.read(65424)
