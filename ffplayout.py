@@ -514,7 +514,7 @@ def get_date(seek_day):
     check if playlist date must be from yesterday
     """
     d = date.today()
-    if _playlist.start and seek_day and get_time('full_sec') < _playlist.start:
+    if seek_day and get_time('full_sec') < _playlist.start:
         yesterday = d - timedelta(1)
         return yesterday.strftime('%Y-%m-%d')
     else:
@@ -818,8 +818,6 @@ def handle_list_end(time_delta, ref_time, src, begin, dur, seek, out):
         messenger.error(
             'Playlist is not long enough:'
             '\n{0:.2f} seconds needed.'.format(missing_secs))
-
-    new_playlist = False
 
     return src_cmd, seek, new_out, new_playlist
 
@@ -1406,24 +1404,17 @@ class GetSourceIter:
             # set right values for new playlist
             self.list_date = get_date(False)
             self.last_mod_time = 0.0
-
-            if _playlist.start:
-                self.last_time = _playlist.start - 1
-            else:
-                self.last_time = get_time('full_sec') - 1
+            self.last_time = _playlist.start - 1
 
     def eof_handling(self, message, filler):
         self.seek = 0.0
         self.ad = False
 
-        ref_time = self.total_playtime
+        ref_time = self.total_playtime + _playlist.start
         current_time = get_time('full_sec')
 
-        if _playlist.start:
-            ref_time = self.total_playtime + _playlist.start
-
-            if current_time < _playlist.start:
-                current_time += self.total_playtime
+        if current_time < _playlist.start:
+            current_time += self.total_playtime
 
         time_diff = self.out - self.seek + current_time
         new_len = self.out - self.seek - (time_diff - ref_time)
@@ -1435,7 +1426,7 @@ class GetSourceIter:
         self.first = False
         self.last_time = 0.0
 
-        if filler:
+        if filler and self.out > 2:
             self.src_cmd = gen_filler(self.duration)
 
             if _storage.filler and os.path.isfile(_storage.filler):
