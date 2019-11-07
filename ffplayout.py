@@ -802,11 +802,11 @@ def handle_list_end(time_delta, ref_time, src, begin, dur, seek, out):
     # we use the clip. When the length is less then 3 and bigger then 1
     # second we generate a black clip and when is less the a seconds
     # we skip the clip.
-    if new_length > 3.0:
+    if dur > new_length > 3.0:
         src_cmd = src_or_dummy(src, dur, seek, new_out)
-    elif new_length > 1.0:
+    elif dur > new_length > 1.0:
         src_cmd = gen_dummy(new_length)
-    elif new_length > 0.0:
+    elif dur > new_length > 0.0:
         messenger.info(
             'Last clip less then a second long, skip:\n{}'.format(src))
         src_cmd = None
@@ -1426,27 +1426,30 @@ class GetSourceIter:
         self.first = False
         self.last_time = 0.0
 
-        if filler and self.out > 2:
-            self.src_cmd = gen_filler(self.duration)
+        if self.duration > 2:
+            if filler:
+                self.src_cmd = gen_filler(self.duration)
 
-            if _storage.filler and os.path.isfile(_storage.filler):
-                self.is_dummy = False
-                self.duration += 1
-                self.probe.load(_storage.filler)
+                if _storage.filler and os.path.isfile(_storage.filler):
+                    self.is_dummy = False
+                    self.duration += 1
+                    self.probe.load(_storage.filler)
+                else:
+                    self.is_dummy = True
             else:
+                self.src_cmd = gen_dummy(self.duration)
                 self.is_dummy = True
+            self.set_filtergraph()
+
+            # send messege only when is new or an half hour is pass
+            if message != self.last_error \
+                    or get_time('stamp') - self.timestamp > 1800:
+                messenger.error('{}\n{}'.format(message, self.json_file))
+                self.timestamp = get_time('stamp')
+                self.last_error = message
         else:
-            self.src_cmd = gen_dummy(self.duration)
-            self.is_dummy = True
-        self.set_filtergraph()
-
-        if get_time('stamp') - self.timestamp > 3600 \
-                and message != self.last_error:
-            self.last_error = message
-            messenger.error('{}\n{}'.format(message, self.json_file))
-            self.timestamp = get_time('stamp')
-
-        messenger.error('{} {}'.format(message, self.json_file))
+            self.src_cmd = None
+            self.next_playlist = True
 
         self.last = False
 
