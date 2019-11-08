@@ -79,7 +79,7 @@ stdin_parser.add_argument(
 )
 
 stdin_parser.add_argument(
-    '--loop', help='loop playlist infinitely', action='store_true'
+    '-i', '--loop', help='loop playlist infinitely', action='store_true'
 )
 
 stdin_parser.add_argument(
@@ -89,6 +89,11 @@ stdin_parser.add_argument(
 stdin_parser.add_argument(
     '-s', '--start',
     help='start time in "hh:mm:ss", "now" for start with first'
+)
+
+stdin_parser.add_argument(
+    '-t', '--length',
+    help='set length in "hh:mm:ss", "none" for no length check'
 )
 
 stdin_args = stdin_parser.parse_args()
@@ -117,7 +122,7 @@ def get_time(time_format):
 
 
 # ------------------------------------------------------------------------------
-# read variables from config file
+# default variables and values from config file
 # ------------------------------------------------------------------------------
 
 _general = SimpleNamespace()
@@ -132,6 +137,9 @@ _playout = SimpleNamespace()
 _init = SimpleNamespace(load=True)
 _ff = SimpleNamespace(decoder=None, encoder=None)
 
+_WINDOWS = os.name == 'nt'
+COPY_BUFSIZE = 1024 * 1024 if _WINDOWS else 64 * 1024
+
 
 def load_config():
     """
@@ -142,7 +150,7 @@ def load_config():
     cfg = configparser.ConfigParser()
 
     def str_to_sec(s):
-        if s in ['now', None, '']:
+        if s in ['now', '', None, 'none']:
             return None
         else:
             s = s.split(':')
@@ -167,7 +175,10 @@ def load_config():
     if not p_start:
         p_start = get_time('full_sec')
 
-    p_length = str_to_sec(cfg.get('PLAYLIST', 'length'))
+    if stdin_args.length:
+        p_length = str_to_sec(stdin_args.length)
+    else:
+        p_length = str_to_sec(cfg.get('PLAYLIST', 'length'))
 
     _general.stop = cfg.getboolean('GENERAL', 'stop_on_error')
     _general.threshold = cfg.getfloat('GENERAL', 'stop_threshold')
@@ -264,10 +275,10 @@ class CustomFormatter(logging.Formatter):
     message = grey + '  %(message)s' + reset
 
     FORMATS = {
-        logging.DEBUG: timestamp + blue + level + message + reset,
-        logging.INFO: timestamp + green + level + message + reset,
+        logging.DEBUG: timestamp + blue + level + '  ' + message + reset,
+        logging.INFO: timestamp + green + level + '   ' + message + reset,
         logging.WARNING: timestamp + yellow + level + message + reset,
-        logging.ERROR: timestamp + red + level + message + reset
+        logging.ERROR: timestamp + red + level + '  ' + message + reset
     }
 
     def format_message(self, msg):
@@ -509,9 +520,9 @@ def terminate_processes(watcher=None):
         watcher.stop()
 
 
-def decoder_error_reader(pipe):
+def decoder_error_reader(std_errors):
     try:
-        for line in pipe.stderr:
+        for line in std_errors:
             messenger.error('[decoder] {}'.format(line.decode("utf-8")))
     except ValueError:
         pass
@@ -563,6 +574,18 @@ def valid_json(file):
     except ValueError:
         messenger.error("Playlist {} is not JSON conform".format(file))
         return None
+
+
+def check_sync(delta):
+    """
+    check that we are in tolerance time
+    """
+    if _general.stop and abs(delta) > _general.threshold:
+        messenger.error(
+            'Sync tolerance value exceeded with {0:.2f} seconds,\n'
+            'program terminated!'.format(delta))
+        terminate_processes()
+        sys.exit(1)
 
 
 def check_length(json_nodes, total_play_time):
@@ -751,49 +774,54 @@ def src_or_dummy(src, dur, seek, out):
         return gen_dummy(out - seek)
 
 
-def get_delta(begin, seek, first):
+def get_current_delta(begin, target_playtime):
     """
     get difference between current time and begin from clip in playlist
     """
-    if _playlist.length:
-        target_playtime = _playlist.length
-    else:
-        target_playtime = 86400.0
-
     current_time = get_time('full_sec')
 
     if _playlist.start >= current_time and not begin == _playlist.start:
         current_time += target_playtime
 
-    if first:
-        time_delta = begin + seek - current_time
+    current_delta = begin - current_time
+
+    if math.isclose(current_delta, 86400.0, abs_tol=6):
+        current_delta -= 86400.0
+
+    return current_delta
+
+
+def handle_list_init(current_delta, total_delta, src, dur, seek, out):
+    """
+    # handle init clip, but this clip can be the last one in playlist,
+    # this we have to figure out and calculate the right length
+    """
+    new_seek = abs(current_delta) + seek
+    new_out = out
+
+    if 1 > new_seek:
+        new_seek = 0
+
+    if out - new_seek > total_delta:
+        new_out = total_delta + new_seek
+
+    if total_delta > new_out - new_seek > 1:
+        return src_or_dummy(
+            src, dur, new_seek, new_out), new_seek, new_out, False
+
+    elif new_out - new_seek > 1:
+        return src_or_dummy(
+            src, dur, new_seek, new_out), new_seek, new_out, True
     else:
-        time_delta = begin - current_time
-
-    if math.isclose(time_delta, 86400.0, abs_tol=6):
-        time_delta -= 86400.0
-
-    if not first and not stdin_args.loop:
-        # check that we are in tolerance time
-        if _general.stop and abs(time_delta) > _general.threshold:
-            messenger.error(
-                'Sync tolerance value exceeded with {0:.2f} seconds,\n'
-                'program terminated!'.format(time_delta))
-            terminate_processes()
-            sys.exit(1)
-
-        messenger.debug('time_delta: {}'.format(time_delta))
-
-    return target_playtime, time_delta
+        return None, 0, 0, True
 
 
-def handle_list_end(time_delta, ref_time, src, begin, dur, seek, out):
+def handle_list_end(new_length, src, begin, dur, seek, out):
     """
     when we come to last clip in playlist,
     or when we reached total playtime,
     we end up here
     """
-    new_length = ref_time - (begin + time_delta)
     new_out = out
     new_playlist = True
 
@@ -838,33 +866,41 @@ def timed_source(src, begin, dur, seek, out, first, last):
     check begin and length from clip
     return clip only if we are in 24 hours time range
     """
+    if _playlist.length:
+        target_playtime = _playlist.length
+    else:
+        target_playtime = 86400.0
 
-    target_playtime, time_delta = get_delta(begin, seek, first)
+    current_delta = get_current_delta(begin, target_playtime)
     ref_time = target_playtime + _playlist.start
+    total_delta = ref_time - begin + current_delta
 
     if first:
-        new_seek = abs(time_delta)
-        if 1 > new_seek:
-            new_seek = 0
-        return src_or_dummy(src, dur, new_seek, out), new_seek, out, False
-
-    if (begin + out + time_delta < ref_time and not last) \
-            or not _playlist.length or stdin_args.loop:
-        # when we are in the 24 houre range, get the clip
-        return src_or_dummy(src, dur, seek, out), seek, out, False
-
-    elif begin + time_delta > ref_time:
-        messenger.info(
-            'Start time is over {}, skip clip:\n{}'.format(
-                timedelta(seconds=target_playtime), src))
-        return None, 0, 0, True
-
-    elif begin + out + time_delta > ref_time or last:
-        return handle_list_end(time_delta, ref_time, src,
-                               begin, dur, seek, out)
+        return handle_list_init(current_delta, total_delta,
+                                src, dur, seek, out)
 
     else:
-        return None, 0, 0, True
+        if not stdin_args.loop:
+            check_sync(current_delta)
+            messenger.debug('current_delta: {:f}'.format(current_delta))
+            messenger.debug('total_delta: {:f}'.format(total_delta))
+
+        if (total_delta > out - seek and not last) \
+                or stdin_args.loop or not _playlist.length:
+            # when we are in the 24 houre range, get the clip
+            return src_or_dummy(src, dur, seek, out), seek, out, False
+
+        elif total_delta <= 0:
+            messenger.info(
+                'Start time is over {}, skip clip:\n{}'.format(
+                    timedelta(seconds=target_playtime), src))
+            return None, 0, 0, True
+
+        elif total_delta < out - seek or last:
+            return handle_list_end(total_delta, src, begin, dur, seek, out)
+
+        else:
+            return None, 0, 0, True
 
 
 # ------------------------------------------------------------------------------
@@ -1599,13 +1635,13 @@ def main():
                         stdout=PIPE, stderr=PIPE) as _ff.decoder:
 
                     err_thread = Thread(target=decoder_error_reader,
-                                        args=(_ff.decoder,))
+                                        args=(_ff.decoder.stderr,))
                     err_thread.daemon = True
                     err_thread.start()
 
                     while True:
-                        buf = _ff.decoder.stdout.read(65424)
-                        if not buf and _ff.decoder.poll() is not None:
+                        buf = _ff.decoder.stdout.read(COPY_BUFSIZE)
+                        if not buf:
                             break
                         _ff.encoder.stdin.write(buf)
 
