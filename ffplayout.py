@@ -42,7 +42,6 @@ from subprocess import PIPE, CalledProcessError, Popen, check_output
 from threading import Thread
 from types import SimpleNamespace
 from urllib import request
-from threading import Thread
 
 try:
     if os.name != 'posix':
@@ -274,6 +273,8 @@ class CustomFormatter(logging.Formatter):
     def format_message(self, msg):
         if '"' in msg and '[' in msg:
             msg = re.sub('(".*?")', self.cyan + r'\1' + self.reset, msg)
+        elif '[decoder]' in msg:
+            msg = re.sub(r'(\[decoder\])', self.red + r'\1' + self.reset, msg)
         elif '/' in msg or '\\' in msg:
             msg = re.sub(
                 r'(["\w.:/]+/|["\w.:]+\\.*?)', self.magenta + r'\1', msg)
@@ -511,7 +512,7 @@ def terminate_processes(watcher=None):
 def decoder_error_reader(pipe):
     try:
         for line in pipe.stderr:
-            messenger.error('ffmpeg decoder: {}'.format(line.decode("utf-8")))
+            messenger.error('[decoder] {}'.format(line.decode("utf-8")))
     except ValueError:
         pass
 
