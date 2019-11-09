@@ -1218,7 +1218,7 @@ class MediaWatcher:
         self.observer.join()
 
 
-class GetSource:
+class GetSourceFromFolder:
     """
     give next clip, depending on shuffle mode
     """
@@ -1268,7 +1268,7 @@ class GetSource:
 # main functions
 # ------------------------------------------------------------------------------
 
-class GetSourceIter:
+class GetSourceFromPlaylist:
     """
     read values from json playlist,
     get current clip in time,
@@ -1586,12 +1586,12 @@ def main():
 
         if _playlist.mode and not stdin_args.folder:
             watcher = None
-            get_source = GetSourceIter()
+            get_source = GetSourceFromPlaylist()
         else:
             messenger.info('Start folder mode')
             media = MediaStore()
             watcher = MediaWatcher(media)
-            get_source = GetSource(media)
+            get_source = GetSourceFromFolder(media)
 
         try:
             for src_cmd in get_source.next():
