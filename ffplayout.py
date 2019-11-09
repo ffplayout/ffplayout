@@ -880,7 +880,7 @@ def timed_source(src, begin, dur, seek, out, first, last):
                                 src, dur, seek, out)
 
     else:
-        if not stdin_args.loop:
+        if not stdin_args.loop and _playlist.length:
             check_sync(current_delta)
             messenger.debug('current_delta: {:f}'.format(current_delta))
             messenger.debug('total_delta: {:f}'.format(total_delta))
