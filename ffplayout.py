@@ -199,7 +199,6 @@ def load_config():
     _pre_comp.loud_i = cfg.getfloat('PRE_COMPRESS', 'loud_I')
     _pre_comp.loud_tp = cfg.getfloat('PRE_COMPRESS', 'loud_TP')
     _pre_comp.loud_lra = cfg.getfloat('PRE_COMPRESS', 'loud_LRA')
-    _pre_comp.protocols = cfg.get('PRE_COMPRESS', 'live_protocols')
 
     _playlist.mode = cfg.getboolean('PLAYLIST', 'playlist_mode')
     _playlist.path = cfg.get('PLAYLIST', 'path')
@@ -437,24 +436,33 @@ messenger = Messenger()
 # probe media infos
 # ------------------------------------------------------------------------------
 
+
 class MediaProbe:
     """
     get infos about media file, similare to mediainfo
     """
 
     def load(self, file):
+        self.remote_source = ['http', 'https', 'ftp', 'rtmp', 'rtmpe',
+                              'rtmps', 'rtp', 'rtsp', 'srt', 'tcp', 'udp']
         self.src = file
         self.format = None
         self.audio = []
         self.video = []
+
+        if self.src and self.src.split('://')[0] in self.remote_source:
+            self.is_remote = True
+        else:
+            self.is_remote = False
 
         cmd = ['ffprobe', '-v', 'quiet', '-print_format',
                'json', '-show_format', '-show_streams', self.src]
 
         try:
             info = json.loads(check_output(cmd).decode('UTF-8'))
-        except CalledProcessError:
-            messenger.error('MediaProbe error in: {}'.format(self.src))
+        except CalledProcessError as err:
+            messenger.error('MediaProbe error in: "{}"\n {}'.format(self.src,
+                                                                    err))
             self.audio.append(None)
             self.video.append(None)
 
@@ -616,25 +624,16 @@ def validate_thread(clip_nodes):
     def check_json(json_nodes):
         error = ''
         counter = 0
+        probe = MediaProbe()
 
         # check if all values are valid
         for node in json_nodes["program"]:
             source = node["source"]
-            prefix = source.split('://')[0]
+            probe.load(source)
             missing = []
 
-            if source and prefix in _pre_comp.protocols:
-                cmd = [
-                    'ffprobe', '-v', 'error',
-                    '-show_entries', 'format=duration',
-                    '-of', 'default=noprint_wrappers=1:nokey=1', source]
-
-                try:
-                    output = check_output(cmd).decode('utf-8')
-                except CalledProcessError:
-                    output = '404'
-
-                if '404' in output:
+            if probe.is_remote:
+                if not probe.video[0]:
                     missing.append('Stream not exist: "{}"'.format(source))
             elif not os.path.isfile(source):
                 missing.append('File not exist: "{}"'.format(source))
@@ -745,18 +744,18 @@ def gen_filler(duration):
             return gen_dummy(duration)
 
 
-def src_or_dummy(src, dur, seek, out):
+def src_or_dummy(probe, src, dur, seek, out):
     """
     when source path exist, generate input with seek and out time
     when path not exist, generate dummy clip
     """
 
-    # check if input is a live source
-    if src and src.split('://')[0] in _pre_comp.protocols:
+    # check if input is a remote source
+    if probe.is_remote and probe.video[0]:
         if seek > 0.0:
             messenger.warning(
                 'Seek in live source "{}" not supported!'.format(src))
-        return ['-i', src] + set_length(dur, seek, out)
+        return ['-i', src] + set_length(86400.0, seek, out)
     elif src and os.path.isfile(src):
         if out > dur:
             if seek > 0.0:
@@ -791,7 +790,7 @@ def get_current_delta(begin, target_playtime):
     return current_delta
 
 
-def handle_list_init(current_delta, total_delta, src, dur, seek, out):
+def handle_list_init(current_delta, total_delta, seek, out):
     """
     # handle init clip, but this clip can be the last one in playlist,
     # this we have to figure out and calculate the right length
@@ -806,17 +805,15 @@ def handle_list_init(current_delta, total_delta, src, dur, seek, out):
         new_out = total_delta + new_seek
 
     if total_delta > new_out - new_seek > 1:
-        return src_or_dummy(
-            src, dur, new_seek, new_out), new_seek, new_out, False
+        return new_seek, new_out, False
 
     elif new_out - new_seek > 1:
-        return src_or_dummy(
-            src, dur, new_seek, new_out), new_seek, new_out, True
+        return new_seek, new_out, True
     else:
-        return None, 0, 0, True
+        return 0, 0, True
 
 
-def handle_list_end(new_length, src, begin, dur, seek, out):
+def handle_list_end(probe, new_length, src, begin, dur, seek, out):
     """
     when we come to last clip in playlist,
     or when we reached total playtime,
@@ -841,7 +838,7 @@ def handle_list_end(new_length, src, begin, dur, seek, out):
     # second we generate a black clip and when is less the a seconds
     # we skip the clip.
     if dur > new_length > 3.0:
-        src_cmd = src_or_dummy(src, dur, seek, new_out)
+        src_cmd = src_or_dummy(probe, src, dur, seek, new_out)
     elif dur > new_length > 1.0:
         src_cmd = gen_dummy(new_length)
     elif dur > new_length > 0.0:
@@ -852,7 +849,7 @@ def handle_list_end(new_length, src, begin, dur, seek, out):
         missing_secs = abs(new_length - dur)
         new_out = out
         new_playlist = False
-        src_cmd = src_or_dummy(src, dur, seek, out)
+        src_cmd = src_or_dummy(probe, src, dur, seek, out)
         messenger.error(
             'Playlist is not long enough:'
             '\n{0:.2f} seconds needed.'.format(missing_secs))
@@ -860,7 +857,7 @@ def handle_list_end(new_length, src, begin, dur, seek, out):
     return src_cmd, seek, new_out, new_playlist
 
 
-def timed_source(src, begin, dur, seek, out, first, last):
+def timed_source(probe, src, begin, dur, seek, out, first, last):
     """
     prepare input clip
     check begin and length from clip
@@ -876,8 +873,10 @@ def timed_source(src, begin, dur, seek, out, first, last):
     total_delta = ref_time - begin + current_delta
 
     if first:
-        return handle_list_init(current_delta, total_delta,
-                                src, dur, seek, out)
+        _seek, _out, new_list = handle_list_init(current_delta, total_delta,
+                                                 seek, out)
+        return src_or_dummy(probe, src, dur,
+                            _seek, _out), _seek, _out, new_list
 
     else:
         if not stdin_args.loop and _playlist.length:
@@ -888,7 +887,7 @@ def timed_source(src, begin, dur, seek, out, first, last):
         if (total_delta > out - seek and not last) \
                 or stdin_args.loop or not _playlist.length:
             # when we are in the 24 houre range, get the clip
-            return src_or_dummy(src, dur, seek, out), seek, out, False
+            return src_or_dummy(probe, src, dur, seek, out), seek, out, False
 
         elif total_delta <= 0:
             messenger.info(
@@ -897,7 +896,8 @@ def timed_source(src, begin, dur, seek, out, first, last):
             return None, 0, 0, True
 
         elif total_delta < out - seek or last:
-            return handle_list_end(total_delta, src, begin, dur, seek, out)
+            return handle_list_end(probe, total_delta, src,
+                                   begin, dur, seek, out)
 
         else:
             return None, 0, 0, True
@@ -1367,34 +1367,9 @@ class GetSourceIter:
         else:
             self.out = self.duration
 
-    def url_or_live_source(self):
-        prefix = self.src.split('://')[0]
-
-        # check if input is a live source
-        if self.src and prefix in _pre_comp.protocols:
-            cmd = [
-                'ffprobe', '-v', 'error', '-show_entries', 'format=duration',
-                '-of', 'default=noprint_wrappers=1:nokey=1', self.src]
-
-            try:
-                output = check_output(cmd).decode('utf-8')
-            except CalledProcessError as err:
-                messenger.error("ffprobe error: {}".format(err))
-                output = None
-
-            if not output:
-                messenger.error('URL not exist:\n{}'.format(self.src))
-                self.src = None
-            elif is_float(output):
-                self.duration = float(output)
-            else:
-                self.duration = self.total_playtime
-                self.out = self.out - self.seek
-                self.seek = 0
-
     def get_input(self):
         self.src_cmd, self.seek, self.out, self.next_playlist = timed_source(
-            self.src, self.begin, self.duration,
+            self.probe, self.src, self.begin, self.duration,
             self.seek, self.out, self.first, self.last
         )
 
@@ -1504,7 +1479,6 @@ class GetSourceIter:
         self.src = node["source"]
         self.probe.load(self.src)
 
-        self.url_or_live_source()
         self.get_input()
         self.is_source_dummy()
         self.get_category(index, node)
