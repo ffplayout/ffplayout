@@ -455,6 +455,12 @@ class MediaProbe:
         else:
             self.is_remote = False
 
+            if not self.src or not os.path.isfile(self.src):
+                self.audio.append(None)
+                self.video.append(None)
+
+                return
+
         cmd = ['ffprobe', '-v', 'quiet', '-print_format',
                'json', '-show_format', '-show_streams', self.src]
 
@@ -1077,7 +1083,7 @@ def extend_video(probe, duration, target_duration):
     return pad_filter
 
 
-def build_filtergraph(duration, seek, out, ad, ad_last, ad_next, dummy, probe):
+def build_filtergraph(duration, seek, out, ad, ad_last, ad_next, probe):
     """
     build final filter graph, with video and audio chain
     """
@@ -1088,7 +1094,7 @@ def build_filtergraph(duration, seek, out, ad, ad_last, ad_next, dummy, probe):
     if out > duration:
         seek = 0
 
-    if not dummy:
+    if probe.video[0]:
         video_chain += deinterlace_filter(probe)
         video_chain += pad_filter(probe)
         video_chain += fps_filter(probe)
@@ -1122,10 +1128,10 @@ def build_filtergraph(duration, seek, out, ad, ad_last, ad_next, dummy, probe):
         audio_filter = []
         audio_map = ['-map', '0:a']
 
-    if dummy:
-        return video_filter + video_map + ['-map', '1:a']
-    else:
+    if probe.video[0]:
         return video_filter + audio_filter + video_map + audio_map
+    else:
+        return video_filter + video_map + ['-map', '1:a']
 
 
 # ------------------------------------------------------------------------------
@@ -1296,7 +1302,6 @@ class GetSourceFromPlaylist:
         self.first = True
         self.last = False
         self.list_date = get_date(True)
-        self.is_dummy = False
         self.last_error = ''
         self.timestamp = get_time('stamp')
 
@@ -1373,12 +1378,6 @@ class GetSourceFromPlaylist:
             self.seek, self.out, self.first, self.last
         )
 
-    def is_source_dummy(self):
-        if self.src_cmd and 'lavfi' in self.src_cmd:
-            self.is_dummy = True
-        else:
-            self.is_dummy = False
-
     def get_category(self, index, node):
         if 'category' in node:
             if index - 1 >= 0:
@@ -1411,7 +1410,7 @@ class GetSourceFromPlaylist:
     def set_filtergraph(self):
         self.filtergraph = build_filtergraph(
             self.duration, self.seek, self.out, self.ad, self.ad_last,
-            self.ad_next, self.is_dummy, self.probe)
+            self.ad_next, self.probe)
 
     def check_for_next_playlist(self):
         if not self.next_playlist:
@@ -1448,18 +1447,13 @@ class GetSourceFromPlaylist:
         self.last_time = 0.0
 
         if self.duration > 2:
-            if filler:
+            if filler and _storage.filler and os.path.isfile(_storage.filler):
                 self.src_cmd = gen_filler(self.duration)
-
-                if _storage.filler and os.path.isfile(_storage.filler):
-                    self.is_dummy = False
-                    self.duration += 1
-                    self.probe.load(_storage.filler)
-                else:
-                    self.is_dummy = True
+                self.duration += 1
+                self.probe.load(_storage.filler)
             else:
                 self.src_cmd = gen_dummy(self.duration)
-                self.is_dummy = True
+                self.probe.load(None)
             self.set_filtergraph()
 
             # send messege only when is new or an half hour is pass
@@ -1480,7 +1474,6 @@ class GetSourceFromPlaylist:
         self.probe.load(self.src)
 
         self.get_input()
-        self.is_source_dummy()
         self.get_category(index, node)
         self.set_filtergraph()
         self.check_for_next_playlist()
@@ -1490,7 +1483,6 @@ class GetSourceFromPlaylist:
             self.get_playlist()
 
             if self.clip_nodes is None:
-                self.is_dummy = True
                 self.set_filtergraph()
                 yield self.src_cmd + self.filtergraph
                 continue
