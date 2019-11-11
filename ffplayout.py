@@ -311,7 +311,7 @@ console_handler = logging.StreamHandler()
 formatter = logging.Formatter('[%(asctime)s] [%(levelname)s]  %(message)s')
 
 
-if _log.to_file:
+if _log.to_file and _log.path != 'none':
     file_handler = TimedRotatingFileHandler(_log.path, when='midnight',
                                             backupCount=5)
     file_handler.setFormatter(formatter)

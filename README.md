@@ -127,7 +127,7 @@ ffplayout also allows the passing of parameters:
 - `-c, --config` use given config file
 - `-d, --desktop` preview on desktop
 - `-f, --folder` use folder for playing
-- `-l, --log` for user-defined log file
+- `-l, --log` for user-defined log file, *none* for console output
 - `-i, --loop` loop playlist infinitely
 - `-p, --playlist` for playlist file
 - `-s, --start` set start time in *hh:mm:ss*, *now* for start with first'
