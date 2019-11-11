@@ -321,37 +321,13 @@ else:
     logger.addHandler(console_handler)
 
 
-class PlayoutLogger(object):
-    """
-    capture stdout and sterr in the log
-    """
-
-    def __init__(self, logger, level):
-        self.logger = logger
-        self.level = level
-
-    def write(self, message):
-        # Only log if there is a message (not just a new line)
-        if message.rstrip() != '':
-            self.logger.log(self.level, message.rstrip())
-
-    def flush(self):
-        pass
-
-
-# Replace stdout with logging to file at INFO level
-sys.stdout = PlayoutLogger(logger, logging.INFO)
-# Replace stderr with logging to file at ERROR level
-sys.stderr = PlayoutLogger(logger, logging.ERROR)
-
-
 # ------------------------------------------------------------------------------
 # mail sender
 # ------------------------------------------------------------------------------
 
 class Mailer:
     """
-    mailer class for log messages, with level selector
+    mailer class for sending log messages, with level selector
     """
 
     def __init__(self):
@@ -545,7 +521,7 @@ def decoder_error_reader(std_errors):
 def get_date(seek_day):
     """
     get date for correct playlist,
-    when _playlist.start and seek_day is set:
+    when seek_day is set:
     check if playlist date must be from yesterday
     """
     d = date.today()
@@ -602,24 +578,19 @@ def check_sync(delta):
         sys.exit(1)
 
 
-def check_length(json_nodes, total_play_time):
+def check_length(total_play_time):
     """
     check if playlist is long enough
     """
-    if _playlist.length:
-        if 'date' in json_nodes:
-            date = json_nodes["date"]
-        else:
-            date = get_date(True)
-
-        if total_play_time < _playlist.length - 5 and not stdin_args.loop:
-            messenger.error(
-                'Playlist ({}) is not long enough!\n'
-                'Total play time is: {}, target length is: {}'.format(
-                    date,
-                    timedelta(seconds=total_play_time),
-                    timedelta(seconds=_playlist.length))
-            )
+    if _playlist.length and total_play_time < _playlist.length - 5 \
+            and not stdin_args.loop:
+        messenger.error(
+            'Playlist ({}) is not long enough!\n'
+            'Total play time is: {}, target length is: {}'.format(
+                get_date(True),
+                timedelta(seconds=total_play_time),
+                timedelta(seconds=_playlist.length))
+        )
 
 
 def validate_thread(clip_nodes):
@@ -662,7 +633,7 @@ def validate_thread(clip_nodes):
                 'values are missing:\n{}'.format(error)
             )
 
-        check_length(json_nodes, counter)
+        check_length(counter)
 
     validate = Thread(name='check_json', target=check_json, args=(clip_nodes,))
     validate.daemon = True
@@ -720,34 +691,30 @@ def gen_filler(duration):
     """
     when playlist is not 24 hours long, we generate a loop from filler clip
     """
-    if not _storage.filler:
-        # when no filler is set, generate a dummy
-        messenger.warning('No filler is set!')
-        return gen_dummy(duration)
-    else:
-        # get duration from filler
-        cmd = [
-            'ffprobe', '-v', 'error', '-show_entries', 'format=duration',
-            '-of', 'default=noprint_wrappers=1:nokey=1', _storage.filler]
+    probe = MediaProbe()
+    probe.load(_storage.filler)
 
-        try:
-            file_duration = float(check_output(cmd).decode('utf-8'))
-        except (CalledProcessError, ValueError):
-            file_duration = None
-
-        if file_duration:
-            if file_duration > duration:
+    if probe.format:
+        if 'duration' in probe.format:
+            filler_duration = float(probe.format['duration'])
+            if filler_duration > duration:
                 # cut filler
                 messenger.info(
                     'Generate filler with {0:.2f} seconds'.format(duration))
-                return ['-i', _storage.filler] + set_length(
-                    file_duration, 0, duration)
+                return probe, ['-i', _storage.filler] + set_length(
+                    filler_duration, 0, duration)
             else:
                 # loop file n times
-                return loop_input(_storage.filler, file_duration, duration)
+                return probe, loop_input(_storage.filler,
+                                         filler_duration, duration)
         else:
             messenger.error("Can't get filler length, generate dummy!")
-            return gen_dummy(duration)
+            return probe, gen_dummy(duration)
+
+    else:
+        # when no filler is set, generate a dummy
+        messenger.warning('No filler is set!')
+        return probe, gen_dummy(duration)
 
 
 def src_or_dummy(probe, src, dur, seek, out):
@@ -779,11 +746,16 @@ def src_or_dummy(probe, src, dur, seek, out):
         return gen_dummy(out - seek)
 
 
-def get_current_delta(begin, target_playtime):
+def get_delta(begin):
     """
     get difference between current time and begin from clip in playlist
     """
     current_time = get_time('full_sec')
+
+    if _playlist.length:
+        target_playtime = _playlist.length
+    else:
+        target_playtime = 86400.0
 
     if _playlist.start >= current_time and not begin == _playlist.start:
         current_time += target_playtime
@@ -793,7 +765,10 @@ def get_current_delta(begin, target_playtime):
     if math.isclose(current_delta, 86400.0, abs_tol=6):
         current_delta -= 86400.0
 
-    return current_delta
+    ref_time = target_playtime + _playlist.start
+    total_delta = ref_time - begin + current_delta
+
+    return current_delta, total_delta
 
 
 def handle_list_init(current_delta, total_delta, seek, out):
@@ -839,17 +814,11 @@ def handle_list_end(probe, new_length, src, begin, dur, seek, out):
         messenger.info(
             'We are over time, new length is: {0:.2f}'.format(new_length))
 
-    # When calculated length from clip is longer then 3 seconds,
-    # we use the clip. When the length is less then 3 and bigger then 1
-    # second we generate a black clip and when is less the a seconds
-    # we skip the clip.
-    if dur > new_length > 3.0:
+    if dur > new_length > 1.5:
         src_cmd = src_or_dummy(probe, src, dur, seek, new_out)
-    elif dur > new_length > 1.0:
-        src_cmd = gen_dummy(new_length)
     elif dur > new_length > 0.0:
         messenger.info(
-            'Last clip less then a second long, skip:\n{}'.format(src))
+            'Last clip less then 1.5 second long, skip:\n{}'.format(src))
         src_cmd = None
     else:
         missing_secs = abs(new_length - dur)
@@ -869,20 +838,17 @@ def timed_source(probe, src, begin, dur, seek, out, first, last):
     check begin and length from clip
     return clip only if we are in 24 hours time range
     """
-    if _playlist.length:
-        target_playtime = _playlist.length
-    else:
-        target_playtime = 86400.0
-
-    current_delta = get_current_delta(begin, target_playtime)
-    ref_time = target_playtime + _playlist.start
-    total_delta = ref_time - begin + current_delta
+    current_delta, total_delta = get_delta(begin)
 
     if first:
         _seek, _out, new_list = handle_list_init(current_delta, total_delta,
                                                  seek, out)
-        return src_or_dummy(probe, src, dur,
-                            _seek, _out), _seek, _out, new_list
+        if _out > 1.0:
+            return src_or_dummy(probe, src, dur, _seek, _out), \
+                _seek, _out, new_list
+        else:
+            messenger.warning('Clip less then a second, skip:\n{}'.format(src))
+            return None, 0, 0, True
 
     else:
         if not stdin_args.loop and _playlist.length:
@@ -897,8 +863,7 @@ def timed_source(probe, src, begin, dur, seek, out, first, last):
 
         elif total_delta <= 0:
             messenger.info(
-                'Start time is over {}, skip clip:\n{}'.format(
-                    timedelta(seconds=target_playtime), src))
+                'Start time is over playtime, skip clip:\n{}'.format(src))
             return None, 0, 0, True
 
         elif total_delta < out - seek or last:
@@ -1426,34 +1391,21 @@ class GetSourceFromPlaylist:
             self.last_mod_time = 0.0
             self.last_time = _playlist.start - 1
 
-    def eof_handling(self, message, filler):
+    def eof_handling(self, message, fill):
         self.seek = 0.0
         self.ad = False
 
-        ref_time = self.total_playtime + _playlist.start
-        current_time = get_time('full_sec')
+        current_delta, total_delta = get_delta(self.begin)
 
-        if current_time < _playlist.start:
-            current_time += self.total_playtime
-
-        time_diff = self.out - self.seek + current_time
-        new_len = self.out - self.seek - (time_diff - ref_time)
-
-        self.out = abs(new_len)
-        self.duration = abs(new_len)
+        self.out = abs(total_delta)
+        self.duration = abs(total_delta) + 1
         self.list_date = get_date(False)
         self.last_mod_time = 0.0
         self.first = False
         self.last_time = 0.0
 
-        if self.duration > 2:
-            if filler and _storage.filler and os.path.isfile(_storage.filler):
-                self.src_cmd = gen_filler(self.duration)
-                self.duration += 1
-                self.probe.load(_storage.filler)
-            else:
-                self.src_cmd = gen_dummy(self.duration)
-                self.probe.load(None)
+        if self.duration > 2 and fill:
+            self.probe, self.src_cmd = gen_filler(self.duration)
             self.set_filtergraph()
 
             # send messege only when is new or an half hour is pass
