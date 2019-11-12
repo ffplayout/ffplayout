@@ -146,13 +146,13 @@ def ffmpeg_libs():
     check which external libs are compiled in ffmpeg,
     for using them later
     """
-    cmd = ['ffprobe', '-version']
+    cmd = ['ffmpeg', '-version']
     libs = []
 
     try:
         info = check_output(cmd).decode('UTF-8')
     except CalledProcessError as err:
-        messenger.error('ffprobe - libs could not be readed!\n'
+        messenger.error('ffmpeg - libs could not be readed!\n'
                         'Processing is not possible. Error:\n{}'.format(err))
         sys.exit(1)
 
