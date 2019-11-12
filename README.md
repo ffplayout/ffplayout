@@ -27,7 +27,7 @@ Features
 - no GPU power is needed
 - stream to server or play on desktop
 - on posix systems ffplayout can reload config with *SIGHUP*
-- logging to file, or colored output to console
+- logging to files, or colored output to console
 - add filters to input, if is necessary to match output stream:
     - **yadif** (deinterlacing)
     - **pad** (letterbox or pillarbox to fit aspect)
@@ -83,9 +83,9 @@ JSON Playlist Example
 #### Warning:
 (Endless) streaming over multiple days will only work when config have **day_start** value and the **length** value is **24 hours**. If you need only some hours for every day, use a *cron* job, or something similar.
 
-Source from URL / Live Stream
+Remote source from URL
 -----
-You can use sources from url or live stream in that way:
+You can use sources from remote URL in that way:
 
 ```json
 ...
@@ -94,19 +94,11 @@ You can use sources from url or live stream in that way:
             "out": 149,
             "duration": 149,
             "source": "https://example.org/big_buck_bunny.webm"
-        },
-...
-        {
-            "in": 0,
-            "out": 2531.36,
-            "duration": 0,
-            "source": "rtmp://example.org/live/stream"
         }
-...
 ```
 But be careful with it, better test it multiple times!
 
-More informations in [Wiki](https://github.com/ffplayout/ffplayout-engine/wiki/URL---Live-Source)
+More informations in [Wiki](https://github.com/ffplayout/ffplayout-engine/wiki/Remote-URL-Source)
 
 Installation
 -----
@@ -127,7 +119,7 @@ ffplayout also allows the passing of parameters:
 - `-c, --config` use given config file
 - `-d, --desktop` preview on desktop
 - `-f, --folder` use folder for playing
-- `-l, --log` for user-defined log file, *none* for console output
+- `-l, --log` for user-defined log path, *none* for console output
 - `-i, --loop` loop playlist infinitely
 - `-p, --playlist` for playlist file
 - `-s, --start` set start time in *hh:mm:ss*, *now* for start with first'
@@ -136,7 +128,7 @@ ffplayout also allows the passing of parameters:
 You can run the command like:
 
 ```
-python3 ffplayout.py -l ~/ffplayout.log -p ~/playlist.json -d -s now -t none
+python3 ffplayout.py -l ~/ -p ~/playlist.json -d -s now -t none
 ```
 
 Play on Desktop

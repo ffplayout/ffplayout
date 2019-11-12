@@ -122,7 +122,7 @@ def get_time(time_format):
 
 
 # ------------------------------------------------------------------------------
-# default variables and values from config file
+# default variables and values
 # ------------------------------------------------------------------------------
 
 _general = SimpleNamespace()
@@ -139,6 +139,36 @@ _ff = SimpleNamespace(decoder=None, encoder=None)
 
 _WINDOWS = os.name == 'nt'
 COPY_BUFSIZE = 1024 * 1024 if _WINDOWS else 64 * 1024
+
+
+def ffmpeg_libs():
+    """
+    check which external libs are compiled in ffmpeg,
+    for using them later
+    """
+    cmd = ['ffprobe', '-version']
+    libs = []
+
+    try:
+        info = check_output(cmd).decode('UTF-8')
+    except CalledProcessError as err:
+        messenger.error('ffprobe - libs could not be readed!\n'
+                        'Processing is not possible. Error:\n{}'.format(err))
+        sys.exit(1)
+
+    for line in info.split('\n'):
+        if 'configuration:' in line:
+            configs = line.split()
+
+            for cfg in configs:
+                if '--enable-lib' in cfg:
+                    libs.append(cfg.replace('--enable-', ''))
+            break
+
+    return libs
+
+
+FF_LIBS = ffmpeg_libs()
 
 
 def load_config():
@@ -223,8 +253,9 @@ def load_config():
 
     if _init.load:
         _log.to_file = cfg.getboolean('LOGGING', 'log_to_file')
-        _log.path = cfg.get('LOGGING', 'log_file')
+        _log.path = cfg.get('LOGGING', 'log_path')
         _log.level = cfg.get('LOGGING', 'log_level')
+        _log.ff_level = cfg.get('LOGGING', 'ffmpeg_level')
 
         _pre_comp.w = cfg.getint('PRE_COMPRESS', 'width')
         _pre_comp.h = cfg.getint('PRE_COMPRESS', 'height')
@@ -284,7 +315,9 @@ class CustomFormatter(logging.Formatter):
         if '"' in msg and '[' in msg:
             msg = re.sub('(".*?")', self.cyan + r'\1' + self.reset, msg)
         elif '[decoder]' in msg:
-            msg = re.sub(r'(\[decoder\])', self.red + r'\1' + self.reset, msg)
+            msg = re.sub(r'(\[decoder\])', self.reset + r'\1', msg)
+        elif '[encoder]' in msg:
+            msg = re.sub(r'(\[encoder\])', self.reset + r'\1', msg)
         elif '/' in msg or '\\' in msg:
             msg = re.sub(
                 r'(["\w.:/]+/|["\w.:]+\\.*?)', self.magenta + r'\1', msg)
@@ -305,20 +338,49 @@ class CustomFormatter(logging.Formatter):
 if stdin_args.log:
     _log.path = stdin_args.log
 
-logger = logging.getLogger(__name__)
-logger.setLevel(_log.level)
-console_handler = logging.StreamHandler()
-formatter = logging.Formatter('[%(asctime)s] [%(levelname)s]  %(message)s')
-
+playout_logger = logging.getLogger('playout')
+playout_logger.setLevel(_log.level)
+decoder_logger = logging.getLogger('decoder')
+decoder_logger.setLevel(_log.ff_level)
+encoder_logger = logging.getLogger('encoder')
+encoder_logger.setLevel(_log.ff_level)
 
 if _log.to_file and _log.path != 'none':
-    file_handler = TimedRotatingFileHandler(_log.path, when='midnight',
-                                            backupCount=5)
-    file_handler.setFormatter(formatter)
-    logger.addHandler(file_handler)
+    if _log.path and os.path.isdir(_log.path):
+        playout_log = os.path.join(_log.path, 'ffplayout.log')
+        decoder_log = os.path.join(_log.path, 'decoder.log')
+        encoder_log = os.path.join(_log.path, 'encoder.log')
+    else:
+        playout_log = os.path.join(os.getcwd(), 'ffplayout.log')
+        decoder_log = os.path.join(os.getcwd(), 'ffdecoder.log')
+        encoder_log = os.path.join(os.getcwd(), 'ffencoder.log')
+
+    formatter = logging.Formatter('[%(asctime)s] [%(levelname)s]  %(message)s')
+    p_file_handler = TimedRotatingFileHandler(playout_log, when='midnight',
+                                              backupCount=5)
+    d_file_handler = TimedRotatingFileHandler(decoder_log, when='midnight',
+                                              backupCount=5)
+    e_file_handler = TimedRotatingFileHandler(encoder_log, when='midnight',
+                                              backupCount=5)
+
+    p_file_handler.setFormatter(formatter)
+    d_file_handler.setFormatter(formatter)
+    e_file_handler.setFormatter(formatter)
+    playout_logger.addHandler(p_file_handler)
+    decoder_logger.addHandler(d_file_handler)
+    encoder_logger.addHandler(e_file_handler)
+
+    DEC_PREFIX = ''
+    ENC_PREFIX = ''
 else:
+    console_handler = logging.StreamHandler()
     console_handler.setFormatter(CustomFormatter())
-    logger.addHandler(console_handler)
+    playout_logger.addHandler(console_handler)
+    decoder_logger.addHandler(console_handler)
+    encoder_logger.addHandler(console_handler)
+
+    DEC_PREFIX = '[decoder] '
+    ENC_PREFIX = '[encoder] '
 
 
 # ------------------------------------------------------------------------------
@@ -352,7 +414,7 @@ class Mailer:
             try:
                 server = smtplib.SMTP(_mail.server, _mail.port)
             except socket.error as err:
-                logger.error(err)
+                playout_logger.error(err)
                 server = None
 
             if server is not None:
@@ -360,7 +422,7 @@ class Mailer:
                 try:
                     login = server.login(_mail.s_addr, _mail.s_pass)
                 except smtplib.SMTPAuthenticationError as serr:
-                    logger.error(serr)
+                    playout_logger.error(serr)
                     login = None
 
                 if login is not None:
@@ -390,18 +452,18 @@ class Messenger:
         self._mailer = Mailer()
 
     def debug(self, msg):
-        logger.debug(msg.replace('\n', ' '))
+        playout_logger.debug(msg.replace('\n', ' '))
 
     def info(self, msg):
-        logger.info(msg.replace('\n', ' '))
+        playout_logger.info(msg.replace('\n', ' '))
         self._mailer.info(msg)
 
     def warning(self, msg):
-        logger.warning(msg.replace('\n', ' '))
+        playout_logger.warning(msg.replace('\n', ' '))
         self._mailer.warning(msg)
 
     def error(self, msg):
-        logger.error(msg.replace('\n', ' '))
+        playout_logger.error(msg.replace('\n', ' '))
         self._mailer.error(msg)
 
 
@@ -412,15 +474,13 @@ messenger = Messenger()
 # probe media infos
 # ------------------------------------------------------------------------------
 
-
 class MediaProbe:
     """
     get infos about media file, similare to mediainfo
     """
 
     def load(self, file):
-        self.remote_source = ['http', 'https', 'ftp', 'rtmp', 'rtmpe',
-                              'rtmps', 'rtp', 'rtsp', 'srt', 'tcp', 'udp']
+        self.remote_source = ['http', 'https', 'ftp', 'smb', 'sftp']
         self.src = file
         self.format = None
         self.audio = []
@@ -510,10 +570,18 @@ def terminate_processes(watcher=None):
         watcher.stop()
 
 
-def decoder_error_reader(std_errors):
+def ffmpeg_stderr_reader(std_errors, logger, prefix):
     try:
         for line in std_errors:
-            messenger.error('[decoder] {}'.format(line.decode("utf-8")))
+            if _log.ff_level == 'INFO':
+                logger.info('{}{}'.format(
+                    prefix, line.decode("utf-8").rstrip()))
+            elif _log.ff_level == 'WARNING':
+                logger.warning('{}{}'.format(
+                    prefix, line.decode("utf-8").rstrip()))
+            else:
+                logger.error('{}{}'.format(
+                    prefix, line.decode("utf-8").rstrip()))
     except ValueError:
         pass
 
@@ -874,6 +942,21 @@ def timed_source(probe, src, begin, dur, seek, out, first, last):
             return None, 0, 0, True
 
 
+def pre_audio_codec():
+    """
+    when add_loudnorm is False we use a different audio encoder,
+    s302m has higher quality, but is experimental
+    and works not well together with the loudnorm filter
+    """
+    if _pre_comp.add_loudnorm:
+        acodec = 'libtwolame' if 'libtwolame' in FF_LIBS else 'mp2'
+        audio = ['-c:a', acodec, '-b:a', '384k', '-ar', '48000', '-ac', '2']
+    else:
+        audio = ['-c:a', 's302m', '-strict', '-2', '-ar', '48000', '-ac', '2']
+
+    return audio
+
+
 # ------------------------------------------------------------------------------
 # building filters,
 # when is needed add individuell filters to match output format
@@ -1008,14 +1091,10 @@ def add_loudnorm(probe):
     add single pass loudnorm filter to audio line
     """
     loud_filter = []
-    a_samples = int(192000 / _pre_comp.fps)
 
     if probe.audio and _pre_comp.add_loudnorm:
-        loud_filter = [('loudnorm=I={}:TP={}:LRA={},'
-                        'asetnsamples=n={}').format(_pre_comp.loud_i,
-                                                    _pre_comp.loud_tp,
-                                                    _pre_comp.loud_lra,
-                                                    a_samples)]
+        loud_filter = [('loudnorm=I={}:TP={}:LRA={}').format(
+            _pre_comp.loud_i, _pre_comp.loud_tp, _pre_comp.loud_lra)]
 
     return loud_filter
 
@@ -1496,9 +1575,8 @@ def main():
         '-b:v', '{}k'.format(_pre_comp.v_bitrate),
         '-minrate', '{}k'.format(_pre_comp.v_bitrate),
         '-maxrate', '{}k'.format(_pre_comp.v_bitrate),
-        '-bufsize', '{}k'.format(_pre_comp.v_bufsize),
-        '-c:a', 's302m', '-strict', '-2', '-ar', '48000', '-ac', '2',
-        '-f', 'mpegts', '-']
+        '-bufsize', '{}k'.format(_pre_comp.v_bufsize)
+        ] + pre_audio_codec() + ['-f', 'mpegts', '-']
 
     if _text.add_text and os.path.isfile(_text.textfile):
         messenger.info('Overlay text file: "{}"'.format(_text.textfile))
@@ -1516,17 +1594,24 @@ def main():
             # preview playout to player
             _ff.encoder = Popen([
                 'ffplay', '-hide_banner', '-nostats', '-i', 'pipe:0'
-                ] + overlay, stderr=None, stdin=PIPE, stdout=None)
+                ] + overlay, stderr=PIPE, stdin=PIPE, stdout=None)
         else:
             _ff.encoder = Popen([
-                'ffmpeg', '-v', 'info', '-hide_banner', '-nostats',
-                '-re', '-thread_queue_size', '256',
+                'ffmpeg', '-v', _log.ff_level.lower(), '-hide_banner',
+                '-nostats', '-re', '-thread_queue_size', '256',
                 '-i', 'pipe:0'] + overlay + _playout.post_comp_video
                 + _playout.post_comp_audio + [
                     '-metadata', 'service_name=' + _playout.name,
                     '-metadata', 'service_provider=' + _playout.provider,
                     '-metadata', 'year={}'.format(year)
-                ] + _playout.post_comp_extra + [_playout.out_addr], stdin=PIPE)
+                ] + _playout.post_comp_extra + [_playout.out_addr],
+                stdin=PIPE, stderr=PIPE)
+
+        enc_err_thread = Thread(target=ffmpeg_stderr_reader,
+                                args=(_ff.encoder.stderr, encoder_logger,
+                                      ENC_PREFIX))
+        enc_err_thread.daemon = True
+        enc_err_thread.start()
 
         if _playlist.mode and not stdin_args.folder:
             watcher = None
@@ -1548,14 +1633,16 @@ def main():
                 messenger.info('Play: "{}"'.format(current_file))
 
                 with Popen([
-                    'ffmpeg', '-v', 'error', '-hide_banner', '-nostats'
-                    ] + src_cmd + ff_pre_settings,
+                    'ffmpeg', '-v', _log.ff_level.lower(), '-hide_banner',
+                    '-nostats'] + src_cmd + ff_pre_settings,
                         stdout=PIPE, stderr=PIPE) as _ff.decoder:
 
-                    err_thread = Thread(target=decoder_error_reader,
-                                        args=(_ff.decoder.stderr,))
-                    err_thread.daemon = True
-                    err_thread.start()
+                    dec_err_thread = Thread(target=ffmpeg_stderr_reader,
+                                            args=(_ff.decoder.stderr,
+                                                  decoder_logger,
+                                                  DEC_PREFIX))
+                    dec_err_thread.daemon = True
+                    dec_err_thread.start()
 
                     while True:
                         buf = _ff.decoder.stdout.read(COPY_BUFSIZE)
