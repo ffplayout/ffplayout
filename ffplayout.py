@@ -18,7 +18,6 @@
 
 # ------------------------------------------------------------------------------
 
-
 import configparser
 import glob
 import json
@@ -26,6 +25,7 @@ import logging
 import math
 import os
 import random
+import re
 import signal
 import smtplib
 import socket
@@ -38,11 +38,21 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import formatdate
 from logging.handlers import TimedRotatingFileHandler
-from shutil import copyfileobj
 from subprocess import PIPE, CalledProcessError, Popen, check_output
 from threading import Thread
 from types import SimpleNamespace
 from urllib import request
+
+try:
+    if os.name != 'posix':
+        import colorama
+        colorama.init()
+
+    from watchdog.events import PatternMatchingEventHandler
+    from watchdog.observers import Observer
+except ImportError:
+    print('Some modules are not installed, ffplayout may or may not work')
+
 
 # ------------------------------------------------------------------------------
 # argument parsing
@@ -57,6 +67,10 @@ stdin_parser.add_argument(
 )
 
 stdin_parser.add_argument(
+    '-d', '--desktop', help='preview on desktop', action='store_true'
+)
+
+stdin_parser.add_argument(
     '-f', '--folder', help='play folder content'
 )
 
@@ -65,144 +79,308 @@ stdin_parser.add_argument(
 )
 
 stdin_parser.add_argument(
+    '-i', '--loop', help='loop playlist infinitely', action='store_true'
+)
+
+stdin_parser.add_argument(
     '-p', '--playlist', help='path from playlist'
+)
+
+stdin_parser.add_argument(
+    '-s', '--start',
+    help='start time in "hh:mm:ss", "now" for start with first'
+)
+
+stdin_parser.add_argument(
+    '-t', '--length',
+    help='set length in "hh:mm:ss", "none" for no length check'
 )
 
 stdin_args = stdin_parser.parse_args()
 
+
 # ------------------------------------------------------------------------------
-# read variables from config file
+# clock
 # ------------------------------------------------------------------------------
 
-# read config
-cfg = configparser.ConfigParser()
+def get_time(time_format):
+    """
+    get different time formats:
+        - full_sec > current time in seconds
+        - stamp > current date time in seconds
+        - else > current time in HH:MM:SS
+    """
+    t = datetime.today()
 
-if stdin_args.config:
-    cfg.read(stdin_args.config)
-elif os.path.isfile('/etc/ffplayout/ffplayout.conf'):
-    cfg.read('/etc/ffplayout/ffplayout.conf')
-else:
-    cfg.read('ffplayout.conf')
+    if time_format == 'full_sec':
+        return t.hour * 3600 + t.minute * 60 + t.second \
+             + t.microsecond / 1000000
+    elif time_format == 'stamp':
+        return float(datetime.now().timestamp())
+    else:
+        return t.strftime('%H:%M:%S')
 
-_general = SimpleNamespace(
-    stop=cfg.getboolean('GENERAL', 'stop_on_error'),
-    threshold=cfg.getfloat('GENERAL', 'stop_threshold')
-)
 
-_mail = SimpleNamespace(
-    subject=cfg.get('MAIL', 'subject'),
-    server=cfg.get('MAIL', 'smpt_server'),
-    port=cfg.getint('MAIL', 'smpt_port'),
-    s_addr=cfg.get('MAIL', 'sender_addr'),
-    s_pass=cfg.get('MAIL', 'sender_pass'),
-    recip=cfg.get('MAIL', 'recipient'),
-    level=cfg.get('MAIL', 'mail_level')
-)
+# ------------------------------------------------------------------------------
+# default variables and values
+# ------------------------------------------------------------------------------
 
-_log = SimpleNamespace(
-    to_file=cfg.getboolean('LOGGING', 'log_to_file'),
-    path=cfg.get('LOGGING', 'log_file'),
-    level=cfg.get('LOGGING', 'log_level')
-)
+_general = SimpleNamespace()
+_mail = SimpleNamespace()
+_log = SimpleNamespace()
+_pre_comp = SimpleNamespace()
+_playlist = SimpleNamespace()
+_storage = SimpleNamespace()
+_text = SimpleNamespace()
+_playout = SimpleNamespace()
 
-_pre_comp = SimpleNamespace(
-    w=cfg.getint('PRE_COMPRESS', 'width'),
-    h=cfg.getint('PRE_COMPRESS', 'height'),
-    aspect=cfg.getfloat('PRE_COMPRESS', 'aspect'),
-    fps=cfg.getint('PRE_COMPRESS', 'fps'),
-    v_bitrate=cfg.getint('PRE_COMPRESS', 'width') * 50,
-    v_bufsize=cfg.getint('PRE_COMPRESS', 'width') * 50 / 2,
-    logo=cfg.get('PRE_COMPRESS', 'logo'),
-    opacity=cfg.get('PRE_COMPRESS', 'logo_opacity'),
-    logo_filter=cfg.get('PRE_COMPRESS', 'logo_filter'),
-    protocols=cfg.get('PRE_COMPRESS', 'live_protocols')
-)
+_init = SimpleNamespace(load=True)
+_ff = SimpleNamespace(decoder=None, encoder=None)
 
-stime = cfg.get('PLAYLIST', 'day_start').split(':')
+_WINDOWS = os.name == 'nt'
+COPY_BUFSIZE = 1024 * 1024 if _WINDOWS else 64 * 1024
 
-if stime[0] and stime[1] and stime[2]:
-    start_t = float(stime[0]) * 3600 + float(stime[1]) * 60 + float(stime[2])
-else:
-    start_t = None
 
-_playlist = SimpleNamespace(
-    mode=cfg.getboolean('PLAYLIST', 'playlist_mode'),
-    path=cfg.get('PLAYLIST', 'path'),
-    start=start_t
-)
+def ffmpeg_libs():
+    """
+    check which external libs are compiled in ffmpeg,
+    for using them later
+    """
+    cmd = ['ffmpeg', '-version']
+    libs = []
 
-_storage = SimpleNamespace(
-    path=cfg.get('STORAGE', 'path'),
-    filler=cfg.get('STORAGE', 'filler_clip'),
-    extensions=json.loads(cfg.get('STORAGE', 'extensions')),
-    shuffle=cfg.getboolean('STORAGE', 'shuffle')
-)
+    try:
+        info = check_output(cmd).decode('UTF-8')
+    except CalledProcessError as err:
+        messenger.error('ffmpeg - libs could not be readed!\n'
+                        'Processing is not possible. Error:\n{}'.format(err))
+        sys.exit(1)
 
-_text = SimpleNamespace(
-    textfile=cfg.get('TEXT', 'textfile'),
-    fontsize=cfg.get('TEXT', 'fontsize'),
-    fontcolor=cfg.get('TEXT', 'fontcolor'),
-    fontfile=cfg.get('TEXT', 'fontfile'),
-    box=cfg.get('TEXT', 'box'),
-    boxcolor=cfg.get('TEXT', 'boxcolor'),
-    boxborderw=cfg.get('TEXT', 'boxborderw'),
-    x=cfg.get('TEXT', 'x'),
-    y=cfg.get('TEXT', 'y')
-)
+    for line in info.split('\n'):
+        if 'configuration:' in line:
+            configs = line.split()
 
-_playout = SimpleNamespace(
-    preview=cfg.getboolean('OUT', 'preview'),
-    name=cfg.get('OUT', 'service_name'),
-    provider=cfg.get('OUT', 'service_provider'),
-    out_addr=cfg.get('OUT', 'out_addr'),
-    post_comp_video=json.loads(cfg.get('OUT', 'post_comp_video')),
-    post_comp_audio=json.loads(cfg.get('OUT', 'post_comp_audio')),
-    post_comp_extra=json.loads(cfg.get('OUT', 'post_comp_extra'))
-)
+            for cfg in configs:
+                if '--enable-lib' in cfg:
+                    libs.append(cfg.replace('--enable-', ''))
+            break
+
+    return libs
+
+
+FF_LIBS = ffmpeg_libs()
+
+
+def load_config():
+    """
+    this function can reload most settings from configuration file,
+    the change does not take effect immediately, but with the after next file,
+    some settings cannot be changed - like resolution, aspect, or output
+    """
+    cfg = configparser.ConfigParser()
+
+    def str_to_sec(s):
+        if s in ['now', '', None, 'none']:
+            return None
+        else:
+            s = s.split(':')
+            try:
+                return float(s[0]) * 3600 + float(s[1]) * 60 + float(s[2])
+            except ValueError:
+                print('Wrong time format!')
+                sys.exit(1)
+
+    if stdin_args.config:
+        cfg.read(stdin_args.config)
+    elif os.path.isfile('/etc/ffplayout/ffplayout.conf'):
+        cfg.read('/etc/ffplayout/ffplayout.conf')
+    else:
+        cfg.read('ffplayout.conf')
+
+    if stdin_args.start:
+        p_start = str_to_sec(stdin_args.start)
+    else:
+        p_start = str_to_sec(cfg.get('PLAYLIST', 'day_start'))
+
+    if not p_start:
+        p_start = get_time('full_sec')
+
+    if stdin_args.length:
+        p_length = str_to_sec(stdin_args.length)
+    else:
+        p_length = str_to_sec(cfg.get('PLAYLIST', 'length'))
+
+    _general.stop = cfg.getboolean('GENERAL', 'stop_on_error')
+    _general.threshold = cfg.getfloat('GENERAL', 'stop_threshold')
+
+    _mail.subject = cfg.get('MAIL', 'subject')
+    _mail.server = cfg.get('MAIL', 'smpt_server')
+    _mail.port = cfg.getint('MAIL', 'smpt_port')
+    _mail.s_addr = cfg.get('MAIL', 'sender_addr')
+    _mail.s_pass = cfg.get('MAIL', 'sender_pass')
+    _mail.recip = cfg.get('MAIL', 'recipient')
+    _mail.level = cfg.get('MAIL', 'mail_level')
+
+    _pre_comp.add_logo = cfg.getboolean('PRE_COMPRESS', 'add_logo')
+    _pre_comp.logo = cfg.get('PRE_COMPRESS', 'logo')
+    _pre_comp.opacity = cfg.get('PRE_COMPRESS', 'logo_opacity')
+    _pre_comp.logo_filter = cfg.get('PRE_COMPRESS', 'logo_filter')
+    _pre_comp.add_loudnorm = cfg.getboolean('PRE_COMPRESS', 'add_loudnorm')
+    _pre_comp.loud_i = cfg.getfloat('PRE_COMPRESS', 'loud_I')
+    _pre_comp.loud_tp = cfg.getfloat('PRE_COMPRESS', 'loud_TP')
+    _pre_comp.loud_lra = cfg.getfloat('PRE_COMPRESS', 'loud_LRA')
+
+    _playlist.mode = cfg.getboolean('PLAYLIST', 'playlist_mode')
+    _playlist.path = cfg.get('PLAYLIST', 'path')
+    _playlist.start = p_start
+    _playlist.length = p_length
+
+    _storage.path = cfg.get('STORAGE', 'path')
+    _storage.filler = cfg.get('STORAGE', 'filler_clip')
+    _storage.extensions = json.loads(cfg.get('STORAGE', 'extensions'))
+    _storage.shuffle = cfg.getboolean('STORAGE', 'shuffle')
+
+    _text.add_text = cfg.getboolean('TEXT', 'add_text')
+    _text.textfile = cfg.get('TEXT', 'textfile')
+    _text.fontsize = cfg.get('TEXT', 'fontsize')
+    _text.fontcolor = cfg.get('TEXT', 'fontcolor')
+    _text.fontfile = cfg.get('TEXT', 'fontfile')
+    _text.box = cfg.get('TEXT', 'box')
+    _text.boxcolor = cfg.get('TEXT', 'boxcolor')
+    _text.boxborderw = cfg.get('TEXT', 'boxborderw')
+    _text.x = cfg.get('TEXT', 'x')
+    _text.y = cfg.get('TEXT', 'y')
+
+    if _init.load:
+        _log.to_file = cfg.getboolean('LOGGING', 'log_to_file')
+        _log.path = cfg.get('LOGGING', 'log_path')
+        _log.level = cfg.get('LOGGING', 'log_level')
+        _log.ff_level = cfg.get('LOGGING', 'ffmpeg_level')
+
+        _pre_comp.w = cfg.getint('PRE_COMPRESS', 'width')
+        _pre_comp.h = cfg.getint('PRE_COMPRESS', 'height')
+        _pre_comp.aspect = cfg.getfloat('PRE_COMPRESS', 'aspect')
+        _pre_comp.fps = cfg.getint('PRE_COMPRESS', 'fps')
+        _pre_comp.v_bitrate = cfg.getint('PRE_COMPRESS', 'width') * 50
+        _pre_comp.v_bufsize = cfg.getint('PRE_COMPRESS', 'width') * 50 / 2
+
+        _playout.preview = cfg.getboolean('OUT', 'preview')
+        _playout.name = cfg.get('OUT', 'service_name')
+        _playout.provider = cfg.get('OUT', 'service_provider')
+        _playout.out_addr = cfg.get('OUT', 'out_addr')
+        _playout.post_comp_video = json.loads(
+            cfg.get('OUT', 'post_comp_video'))
+        _playout.post_comp_audio = json.loads(
+            cfg.get('OUT', 'post_comp_audio'))
+        _playout.post_comp_extra = json.loads(
+            cfg.get('OUT', 'post_comp_extra'))
+
+        _init.load = False
+
+
+load_config()
 
 
 # ------------------------------------------------------------------------------
 # logging
 # ------------------------------------------------------------------------------
 
+class CustomFormatter(logging.Formatter):
+    """
+    Logging Formatter to add colors and count warning / errors
+    """
+
+    grey = '\x1b[38;1m'
+    darkgrey = '\x1b[30;1m'
+    yellow = '\x1b[33;1m'
+    red = '\x1b[31;1m'
+    magenta = '\x1b[35;1m'
+    green = '\x1b[32;1m'
+    blue = '\x1b[34;1m'
+    cyan = '\x1b[36;1m'
+    reset = '\x1b[0m'
+
+    timestamp = darkgrey + '[%(asctime)s]' + reset
+    level = '[%(levelname)s]' + reset
+    message = grey + '  %(message)s' + reset
+
+    FORMATS = {
+        logging.DEBUG: timestamp + blue + level + '  ' + message + reset,
+        logging.INFO: timestamp + green + level + '   ' + message + reset,
+        logging.WARNING: timestamp + yellow + level + message + reset,
+        logging.ERROR: timestamp + red + level + '  ' + message + reset
+    }
+
+    def format_message(self, msg):
+        if '"' in msg and '[' in msg:
+            msg = re.sub('(".*?")', self.cyan + r'\1' + self.reset, msg)
+        elif '[decoder]' in msg:
+            msg = re.sub(r'(\[decoder\])', self.reset + r'\1', msg)
+        elif '[encoder]' in msg:
+            msg = re.sub(r'(\[encoder\])', self.reset + r'\1', msg)
+        elif '/' in msg or '\\' in msg:
+            msg = re.sub(
+                r'(["\w.:/]+/|["\w.:]+\\.*?)', self.magenta + r'\1', msg)
+        elif re.search(r'\d', msg):
+            msg = re.sub(
+                '([0-9.:-]+)', self.yellow + r'\1' + self.reset, msg)
+
+        return msg
+
+    def format(self, record):
+        record.msg = self.format_message(record.getMessage())
+        log_fmt = self.FORMATS.get(record.levelno)
+        formatter = logging.Formatter(log_fmt)
+        return formatter.format(record)
+
+
 # If the log file is specified on the command line then override the default
 if stdin_args.log:
     _log.path = stdin_args.log
 
-logger = logging.getLogger(__name__)
-logger.setLevel(_log.level)
-handler = TimedRotatingFileHandler(_log.path, when='midnight', backupCount=5)
-formatter = logging.Formatter('[%(asctime)s] [%(levelname)s]  %(message)s')
-handler.setFormatter(formatter)
+playout_logger = logging.getLogger('playout')
+playout_logger.setLevel(_log.level)
+decoder_logger = logging.getLogger('decoder')
+decoder_logger.setLevel(_log.ff_level)
+encoder_logger = logging.getLogger('encoder')
+encoder_logger.setLevel(_log.ff_level)
 
-if _log.to_file:
-    logger.addHandler(handler)
+if _log.to_file and _log.path != 'none':
+    if _log.path and os.path.isdir(_log.path):
+        playout_log = os.path.join(_log.path, 'ffplayout.log')
+        decoder_log = os.path.join(_log.path, 'decoder.log')
+        encoder_log = os.path.join(_log.path, 'encoder.log')
+    else:
+        playout_log = os.path.join(os.getcwd(), 'ffplayout.log')
+        decoder_log = os.path.join(os.getcwd(), 'ffdecoder.log')
+        encoder_log = os.path.join(os.getcwd(), 'ffencoder.log')
+
+    formatter = logging.Formatter('[%(asctime)s] [%(levelname)s]  %(message)s')
+    p_file_handler = TimedRotatingFileHandler(playout_log, when='midnight',
+                                              backupCount=5)
+    d_file_handler = TimedRotatingFileHandler(decoder_log, when='midnight',
+                                              backupCount=5)
+    e_file_handler = TimedRotatingFileHandler(encoder_log, when='midnight',
+                                              backupCount=5)
+
+    p_file_handler.setFormatter(formatter)
+    d_file_handler.setFormatter(formatter)
+    e_file_handler.setFormatter(formatter)
+    playout_logger.addHandler(p_file_handler)
+    decoder_logger.addHandler(d_file_handler)
+    encoder_logger.addHandler(e_file_handler)
+
+    DEC_PREFIX = ''
+    ENC_PREFIX = ''
 else:
-    logger.addHandler(logging.StreamHandler())
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(CustomFormatter())
+    playout_logger.addHandler(console_handler)
+    decoder_logger.addHandler(console_handler)
+    encoder_logger.addHandler(console_handler)
 
-
-class PlayoutLogger(object):
-    """
-    capture stdout and sterr in the log
-    """
-
-    def __init__(self, logger, level):
-        self.logger = logger
-        self.level = level
-
-    def write(self, message):
-        # Only log if there is a message (not just a new line)
-        if message.rstrip() != '':
-            self.logger.log(self.level, message.rstrip())
-
-    def flush(self):
-        pass
-
-
-# Replace stdout with logging to file at INFO level
-sys.stdout = PlayoutLogger(logger, logging.INFO)
-# Replace stderr with logging to file at ERROR level
-sys.stderr = PlayoutLogger(logger, logging.ERROR)
+    DEC_PREFIX = '[decoder] '
+    ENC_PREFIX = '[encoder] '
 
 
 # ------------------------------------------------------------------------------
@@ -211,7 +389,7 @@ sys.stderr = PlayoutLogger(logger, logging.ERROR)
 
 class Mailer:
     """
-    mailer class for log messages, with level selector
+    mailer class for sending log messages, with level selector
     """
 
     def __init__(self):
@@ -236,7 +414,7 @@ class Mailer:
             try:
                 server = smtplib.SMTP(_mail.server, _mail.port)
             except socket.error as err:
-                logger.error(err)
+                playout_logger.error(err)
                 server = None
 
             if server is not None:
@@ -244,7 +422,7 @@ class Mailer:
                 try:
                     login = server.login(_mail.s_addr, _mail.s_pass)
                 except smtplib.SMTPAuthenticationError as serr:
-                    logger.error(serr)
+                    playout_logger.error(serr)
                     login = None
 
                 if login is not None:
@@ -264,7 +442,32 @@ class Mailer:
             self.send_mail(msg)
 
 
-mailer = Mailer()
+class Messenger:
+    """
+    all logging and mail messages end up here,
+    from here they go to logger and mailer
+    """
+
+    def __init__(self):
+        self._mailer = Mailer()
+
+    def debug(self, msg):
+        playout_logger.debug(msg.replace('\n', ' '))
+
+    def info(self, msg):
+        playout_logger.info(msg.replace('\n', ' '))
+        self._mailer.info(msg)
+
+    def warning(self, msg):
+        playout_logger.warning(msg.replace('\n', ' '))
+        self._mailer.warning(msg)
+
+    def error(self, msg):
+        playout_logger.error(msg.replace('\n', ' '))
+        self._mailer.error(msg)
+
+
+messenger = Messenger()
 
 
 # ------------------------------------------------------------------------------
@@ -277,14 +480,35 @@ class MediaProbe:
     """
 
     def load(self, file):
+        self.remote_source = ['http', 'https', 'ftp', 'smb', 'sftp']
+        self.src = file
         self.format = None
         self.audio = []
         self.video = []
 
-        cmd = ['ffprobe', '-v', 'quiet', '-print_format',
-               'json', '-show_format', '-show_streams', file]
+        if self.src and self.src.split('://')[0] in self.remote_source:
+            self.is_remote = True
+        else:
+            self.is_remote = False
 
-        info = json.loads(check_output(cmd).decode(encoding='UTF-8'))
+            if not self.src or not os.path.isfile(self.src):
+                self.audio.append(None)
+                self.video.append(None)
+
+                return
+
+        cmd = ['ffprobe', '-v', 'quiet', '-print_format',
+               'json', '-show_format', '-show_streams', self.src]
+
+        try:
+            info = json.loads(check_output(cmd).decode('UTF-8'))
+        except CalledProcessError as err:
+            messenger.error('MediaProbe error in: "{}"\n {}'.format(self.src,
+                                                                    err))
+            self.audio.append(None)
+            self.video.append(None)
+
+            return
 
         self.format = info['format']
 
@@ -317,49 +541,59 @@ def handle_sigterm(sig, frame):
     raise(SystemExit)
 
 
+def handle_sighub(sig, frame):
+    """
+    handling SIGHUB signal for reload configuration
+    Linux/macOS only
+    """
+    messenger.info('Reload config file')
+    load_config()
+
+
 signal.signal(signal.SIGTERM, handle_sigterm)
 
+if os.name == 'posix':
+    signal.signal(signal.SIGHUP, handle_sighub)
 
-def terminate_processes(decoder, encoder, watcher):
+
+def terminate_processes(watcher=None):
     """
     kill orphaned processes
     """
-    if decoder.poll() is None:
-        decoder.terminate()
+    if _ff.decoder and _ff.decoder.poll() is None:
+        _ff.decoder.terminate()
 
-    if encoder.poll() is None:
-        encoder.terminate()
+    if _ff.encoder and _ff.encoder.poll() is None:
+        _ff.encoder.terminate()
 
     if watcher:
         watcher.stop()
 
 
-def get_time(time_format):
-    """
-    get different time formats:
-        - full_sec > current time in seconds
-        - stamp > current date time in seconds
-        - else > current time in HH:MM:SS
-    """
-    t = datetime.today()
-
-    if time_format == 'full_sec':
-        return t.hour * 3600 + t.minute * 60 + t.second \
-             + t.microsecond / 1000000
-    elif time_format == 'stamp':
-        return float(datetime.now().timestamp())
-    else:
-        return t.strftime('%H:%M:%S')
+def ffmpeg_stderr_reader(std_errors, logger, prefix):
+    try:
+        for line in std_errors:
+            if _log.ff_level == 'INFO':
+                logger.info('{}{}'.format(
+                    prefix, line.decode("utf-8").rstrip()))
+            elif _log.ff_level == 'WARNING':
+                logger.warning('{}{}'.format(
+                    prefix, line.decode("utf-8").rstrip()))
+            else:
+                logger.error('{}{}'.format(
+                    prefix, line.decode("utf-8").rstrip()))
+    except ValueError:
+        pass
 
 
 def get_date(seek_day):
     """
     get date for correct playlist,
-    when _playlist.start and seek_day is set:
+    when seek_day is set:
     check if playlist date must be from yesterday
     """
     d = date.today()
-    if _playlist.start and seek_day and get_time('full_sec') < _playlist.start:
+    if seek_day and get_time('full_sec') < _playlist.start:
         yesterday = d - timedelta(1)
         return yesterday.strftime('%Y-%m-%d')
     else:
@@ -396,58 +630,35 @@ def valid_json(file):
         json_object = json.load(file)
         return json_object
     except ValueError:
-        logger.error("Playlist {} is not JSON conform".format(file))
+        messenger.error("Playlist {} is not JSON conform".format(file))
         return None
 
 
-def check_sync(begin, encoder):
+def check_sync(delta):
     """
-    compare clip play time with real time,
-    to see if we are sync
+    check that we are in tolerance time
     """
-    time_now = get_time('full_sec')
-
-    time_distance = begin - time_now
-    if _playlist.start and 0 <= time_now < _playlist.start and \
-            not begin == _playlist.start:
-        time_distance -= 86400.0
-
-    # check that we are in tolerance time
-    if _general.stop and abs(time_distance) > _general.threshold:
-        mailer.error(
+    if _general.stop and abs(delta) > _general.threshold:
+        messenger.error(
             'Sync tolerance value exceeded with {0:.2f} seconds,\n'
-            'program terminated!'.format(time_distance))
-        logger.error(
-            ('Sync tolerance value exceeded with '
-             '{0:.2f} seconds, program terminated!').format(time_distance)
-            )
-        encoder.terminate()
+            'program terminated!'.format(delta))
+        terminate_processes()
         sys.exit(1)
 
 
-def check_length(json_nodes, total_play_time):
+def check_length(total_play_time):
     """
     check if playlist is long enough
     """
-    if 'length' in json_nodes:
-        l_h, l_m, l_s = json_nodes["length"].split(':')
-        if is_float(l_h) and is_float(l_m) and is_float(l_s):
-            length = float(l_h) * 3600 + float(l_m) * 60 + float(l_s)
-
-            if 'date' in json_nodes:
-                date = json_nodes["date"]
-            else:
-                date = get_date(True)
-
-            if total_play_time < length - 5:
-                mailer.error(
-                    'Playlist ({}) is not long enough!\n'
-                    'total play time is: {}'.format(
-                        date,
-                        timedelta(seconds=total_play_time))
-                )
-                logger.error('Playlist is only {} hours long!'.format(
-                    timedelta(seconds=total_play_time)))
+    if _playlist.length and total_play_time < _playlist.length - 5 \
+            and not stdin_args.loop:
+        messenger.error(
+            'Playlist ({}) is not long enough!\n'
+            'Total play time is: {}, target length is: {}'.format(
+                get_date(True),
+                timedelta(seconds=total_play_time),
+                timedelta(seconds=_playlist.length))
+        )
 
 
 def validate_thread(clip_nodes):
@@ -458,25 +669,16 @@ def validate_thread(clip_nodes):
     def check_json(json_nodes):
         error = ''
         counter = 0
+        probe = MediaProbe()
 
         # check if all values are valid
         for node in json_nodes["program"]:
             source = node["source"]
-            prefix = source.split('://')[0]
+            probe.load(source)
             missing = []
 
-            if source and prefix in _pre_comp.protocols:
-                cmd = [
-                    'ffprobe', '-v', 'error',
-                    '-show_entries', 'format=duration',
-                    '-of', 'default=noprint_wrappers=1:nokey=1', source]
-
-                try:
-                    output = check_output(cmd).decode('utf-8')
-                except CalledProcessError:
-                    output = '404'
-
-                if '404' in output:
+            if probe.is_remote:
+                if not probe.video[0]:
                     missing.append('Stream not exist: "{}"'.format(source))
             elif not os.path.isfile(source):
                 missing.append('File not exist: "{}"'.format(source))
@@ -491,16 +693,15 @@ def validate_thread(clip_nodes):
 
             line = '\n'.join(missing)
             if line:
-                logger.error('Validation error :: {}'.format(line))
                 error += line + '\nIn line: {}\n\n'.format(node)
 
         if error:
-            mailer.error(
+            messenger.error(
                 'Validation error, check JSON playlist, '
                 'values are missing:\n{}'.format(error)
             )
 
-        check_length(json_nodes, counter)
+        check_length(counter)
 
     validate = Thread(name='check_json', target=check_json, args=(clip_nodes,))
     validate.daemon = True
@@ -527,6 +728,16 @@ def set_length(duration, seek, out):
         return []
 
 
+def loop_input(source, src_duration, target_duration):
+    # loop filles n times
+    loop_count = math.ceil(target_duration / src_duration)
+    messenger.info(
+        'Loop "{0}" {1} times, total duration: {2:.2f}'.format(
+            source, loop_count, target_duration))
+    return ['-stream_loop', str(loop_count),
+            '-i', source, '-t', str(target_duration)]
+
+
 def gen_dummy(duration):
     """
     generate a dummy clip, with black color and empty audiotrack
@@ -544,134 +755,206 @@ def gen_dummy(duration):
     ]
 
 
-def gen_filler_loop(duration):
+def gen_filler(duration):
     """
     when playlist is not 24 hours long, we generate a loop from filler clip
     """
-    if not _storage.filler:
-        # when no filler is set, generate a dummy
-        logger.warning('No filler is set!')
-        return gen_dummy(duration)
-    else:
-        # get duration from filler
-        cmd = [
-            'ffprobe', '-v', 'error', '-show_entries', 'format=duration',
-            '-of', 'default=noprint_wrappers=1:nokey=1', _storage.filler]
+    probe = MediaProbe()
+    probe.load(_storage.filler)
 
-        try:
-            f_dur = float(check_output(cmd).decode('utf-8'))
-        except (CalledProcessError, ValueError):
-            f_dur = None
-
-        if f_dur:
-            if f_dur > duration:
+    if probe.format:
+        if 'duration' in probe.format:
+            filler_duration = float(probe.format['duration'])
+            if filler_duration > duration:
                 # cut filler
-                logger.info(
+                messenger.info(
                     'Generate filler with {0:.2f} seconds'.format(duration))
-                return ['-i', _storage.filler] + set_length(
-                    f_dur, 0, duration)
+                return probe, ['-i', _storage.filler] + set_length(
+                    filler_duration, 0, duration)
             else:
-                # loop filles n times
-                loop_count = math.ceil(duration / f_dur)
-                logger.info(
-                    'Loop filler {} times, total duration: {0:.2f}'.format(
-                        loop_count, duration))
-                return ['-stream_loop', str(loop_count),
-                        '-i', _storage.filler, '-t', str(duration)]
+                # loop file n times
+                return probe, loop_input(_storage.filler,
+                                         filler_duration, duration)
         else:
-            logger.error("Can't get filler length, generate dummy!")
-            return gen_dummy(duration)
+            messenger.error("Can't get filler length, generate dummy!")
+            return probe, gen_dummy(duration)
+
+    else:
+        # when no filler is set, generate a dummy
+        messenger.warning('No filler is set!')
+        return probe, gen_dummy(duration)
 
 
-def src_or_dummy(src, dur, seek, out):
+def src_or_dummy(probe, src, dur, seek, out):
     """
     when source path exist, generate input with seek and out time
     when path not exist, generate dummy clip
     """
-    if src:
-        prefix = src.split('://')[0]
 
-        # check if input is a live source
-        if prefix in _pre_comp.protocols:
-            return seek_in(seek) + ['-i', src] + set_length(dur, seek, out)
-        elif os.path.isfile(src):
-            return seek_in(seek) + ['-i', src] + set_length(dur, seek, out)
+    # check if input is a remote source
+    if probe.is_remote and probe.video[0]:
+        if seek > 0.0:
+            messenger.warning(
+                'Seek in live source "{}" not supported!'.format(src))
+        return ['-i', src] + set_length(86400.0, seek, out)
+    elif src and os.path.isfile(src):
+        if out > dur:
+            if seek > 0.0:
+                messenger.warning(
+                    'Seek in looped source "{}" not supported!'.format(src))
+                return ['-i', src] + set_length(dur, seek, out - seek)
+            else:
+                # FIXME: when list starts with looped clip,
+                # the logo length will be wrong
+                return loop_input(src, dur, out)
         else:
-            mailer.error('Clip not exist:\n{}'.format(src))
-            logger.error('Clip not exist: {}'.format(src))
-            return gen_dummy(out - seek)
+            return seek_in(seek) + ['-i', src] + set_length(dur, seek, out)
     else:
+        messenger.error('Clip/URL not exist:\n{}'.format(src))
         return gen_dummy(out - seek)
 
 
-def gen_input(has_begin, src, begin, dur, seek, out, last):
+def get_delta(begin):
+    """
+    get difference between current time and begin from clip in playlist
+    """
+    current_time = get_time('full_sec')
+
+    if _playlist.length:
+        target_playtime = _playlist.length
+    else:
+        target_playtime = 86400.0
+
+    if _playlist.start >= current_time and not begin == _playlist.start:
+        current_time += target_playtime
+
+    current_delta = begin - current_time
+
+    if math.isclose(current_delta, 86400.0, abs_tol=6):
+        current_delta -= 86400.0
+
+    ref_time = target_playtime + _playlist.start
+    total_delta = ref_time - begin + current_delta
+
+    return current_delta, total_delta
+
+
+def handle_list_init(current_delta, total_delta, seek, out):
+    """
+    # handle init clip, but this clip can be the last one in playlist,
+    # this we have to figure out and calculate the right length
+    """
+    new_seek = abs(current_delta) + seek
+    new_out = out
+
+    if 1 > new_seek:
+        new_seek = 0
+
+    if out - new_seek > total_delta:
+        new_out = total_delta + new_seek
+
+    if total_delta > new_out - new_seek > 1:
+        return new_seek, new_out, False
+
+    elif new_out - new_seek > 1:
+        return new_seek, new_out, True
+    else:
+        return 0, 0, True
+
+
+def handle_list_end(probe, new_length, src, begin, dur, seek, out):
+    """
+    when we come to last clip in playlist,
+    or when we reached total playtime,
+    we end up here
+    """
+    new_out = out
+    new_playlist = True
+
+    if seek > 0:
+        new_out = seek + new_length
+    else:
+        new_out = new_length
+    # prevent looping
+    if new_out > dur:
+        new_out = dur
+    else:
+        messenger.info(
+            'We are over time, new length is: {0:.2f}'.format(new_length))
+
+    if dur > new_length > 1.5:
+        src_cmd = src_or_dummy(probe, src, dur, seek, new_out)
+    elif dur > new_length > 0.0:
+        messenger.info(
+            'Last clip less then 1.5 second long, skip:\n{}'.format(src))
+        src_cmd = None
+    else:
+        missing_secs = abs(new_length - dur)
+        new_out = out
+        new_playlist = False
+        src_cmd = src_or_dummy(probe, src, dur, seek, out)
+        messenger.error(
+            'Playlist is not long enough:'
+            '\n{0:.2f} seconds needed.'.format(missing_secs))
+
+    return src_cmd, seek, new_out, new_playlist
+
+
+def timed_source(probe, src, begin, dur, seek, out, first, last):
     """
     prepare input clip
     check begin and length from clip
     return clip only if we are in 24 hours time range
     """
-    day_in_sec = 86400.0
-    ref_time = day_in_sec
-    time = get_time('full_sec')
+    current_delta, total_delta = get_delta(begin)
 
-    if _playlist.start:
-        ref_time = day_in_sec + _playlist.start
-
-        if 0 <= time < _playlist.start:
-            time += day_in_sec
-
-    # calculate time difference to see if we are sync
-    time_diff = out - seek + time
-
-    if ((time_diff <= ref_time or begin < day_in_sec) and not last) \
-            or not has_begin:
-        # when we are in the 24 houre range, get the clip
-        return src_or_dummy(src, dur, seek, out), seek, out, None
-    elif time_diff < ref_time and last:
-        # when last clip is passed and we still have too much time left
-        # check if duration is larger then out - seek
-        time_diff = dur + time
-        new_len = dur - (time_diff - ref_time)
-        logger.info('we are under time, new_len is: {}'.format(new_len))
-
-        if time_diff >= ref_time:
-            if src == _storage.filler:
-                # when filler is something like a clock,
-                # is better to start the clip later and to play until end
-                src_cmd = src_or_dummy(src, dur, dur - new_len, dur)
-            else:
-                src_cmd = src_or_dummy(src, dur, 0, new_len)
+    if first:
+        _seek, _out, new_list = handle_list_init(current_delta, total_delta,
+                                                 seek, out)
+        if _out > 1.0:
+            return src_or_dummy(probe, src, dur, _seek, _out), \
+                _seek, _out, new_list
         else:
-            src_cmd = src_or_dummy(src, dur, 0, dur)
+            messenger.warning('Clip less then a second, skip:\n{}'.format(src))
+            return None, 0, 0, True
 
-            mailer.error(
-                'Playlist is not long enough:\n{} seconds needed.'.format(
-                    new_len)
-            )
-            logger.error('Playlist is {} seconds to short'.format(new_len))
+    else:
+        if not stdin_args.loop and _playlist.length:
+            check_sync(current_delta)
+            messenger.debug('current_delta: {:f}'.format(current_delta))
+            messenger.debug('total_delta: {:f}'.format(total_delta))
 
-        return src_cmd, seek, new_len, new_len - dur
+        if (total_delta > out - seek and not last) \
+                or stdin_args.loop or not _playlist.length:
+            # when we are in the 24 houre range, get the clip
+            return src_or_dummy(probe, src, dur, seek, out), seek, out, False
 
-    elif time_diff > ref_time:
-        # when we over the 24 hours range, trim clip
-        new_len = out - seek - (time_diff - ref_time)
-        new_out = new_len
-        logger.info('we are over time, new_len is: {}'.format(new_len))
+        elif total_delta <= 0:
+            messenger.info(
+                'Start time is over playtime, skip clip:\n{}'.format(src))
+            return None, 0, 0, True
 
-        if new_len > 5.0:
-            if seek > 0.0:
-                new_out = new_len + seek
+        elif total_delta < out - seek or last:
+            return handle_list_end(probe, total_delta, src,
+                                   begin, dur, seek, out)
 
-            if src == _storage.filler:
-                src_cmd = src_or_dummy(src, dur, out - new_len, out)
-            else:
-                src_cmd = src_or_dummy(src, dur, seek, new_out)
-        elif new_len > 1.5:
-            src_cmd = gen_dummy(new_len)
         else:
-            src_cmd = None
+            return None, 0, 0, True
 
-        return src_cmd, seek, new_out, 0.0
+
+def pre_audio_codec():
+    """
+    when add_loudnorm is False we use a different audio encoder,
+    s302m has higher quality, but is experimental
+    and works not well together with the loudnorm filter
+    """
+    if _pre_comp.add_loudnorm:
+        acodec = 'libtwolame' if 'libtwolame' in FF_LIBS else 'mp2'
+        audio = ['-c:a', acodec, '-b:a', '384k', '-ar', '48000', '-ac', '2']
+    else:
+        audio = ['-c:a', 's302m', '-strict', '-2', '-ar', '48000', '-ac', '2']
+
+    return audio
 
 
 # ------------------------------------------------------------------------------
@@ -744,16 +1027,16 @@ def scale_filter(probe):
     return filter_chain
 
 
-def fade_filter(first, duration, seek, out, track=''):
+def fade_filter(duration, seek, out, track=''):
     """
     fade in/out video, when is cutted at the begin or end
     """
     filter_chain = []
 
-    if seek > 0.0 and not first:
+    if seek > 0.0:
         filter_chain.append('{}fade=in:st=0:d=0.5'.format(track))
 
-    if out < duration:
+    if out != duration:
         filter_chain.append('{}fade=out:st={}:d=1.0'.format(track,
                                                             out - seek - 1.0))
 
@@ -768,7 +1051,7 @@ def overlay_filter(duration, ad, ad_last, ad_next):
     """
     logo_filter = '[v]null[logo]'
 
-    if os.path.isfile(_pre_comp.logo) and not ad:
+    if _pre_comp.add_logo and os.path.isfile(_pre_comp.logo) and not ad:
         logo_chain = []
         opacity = 'format=rgba,colorchannelmixer=aa={}'.format(
             _pre_comp.opacity)
@@ -795,12 +1078,25 @@ def add_audio(probe, duration):
     line = []
 
     if not probe.audio:
-        logger.warning('Clip has no audio!')
+        messenger.warning('Clip "{}" has no audio!'.format(probe.src))
         line = [
             'aevalsrc=0:channel_layout=2:duration={}:sample_rate={}'.format(
                 duration, 48000)]
 
     return line
+
+
+def add_loudnorm(probe):
+    """
+    add single pass loudnorm filter to audio line
+    """
+    loud_filter = []
+
+    if probe.audio and _pre_comp.add_loudnorm:
+        loud_filter = [('loudnorm=I={}:TP={}:LRA={}').format(
+            _pre_comp.loud_i, _pre_comp.loud_tp, _pre_comp.loud_lra)]
+
+    return loud_filter
 
 
 def extend_audio(probe, duration):
@@ -816,22 +1112,22 @@ def extend_audio(probe, duration):
     return pad_filter
 
 
-def extend_video(probe, duration):
+def extend_video(probe, duration, target_duration):
     """
     check video duration, is is shorter then clip duration - pad it
     """
     pad_filter = []
 
     if 'duration' in probe.video[0] and \
-            duration > float(probe.video[0]['duration']) + 0.3:
+        target_duration < duration > float(
+            probe.video[0]['duration']) + 0.3:
         pad_filter.append('tpad=stop_mode=add:stop_duration={}'.format(
             duration - float(probe.video[0]['duration'])))
 
     return pad_filter
 
 
-def build_filtergraph(first, duration, seek, out, ad, ad_last, ad_next, dummy,
-                      probe):
+def build_filtergraph(duration, seek, out, ad, ad_last, ad_next, probe):
     """
     build final filter graph, with video and audio chain
     """
@@ -839,19 +1135,24 @@ def build_filtergraph(first, duration, seek, out, ad, ad_last, ad_next, dummy,
     audio_chain = []
     video_map = ['-map', '[logo]']
 
-    if not dummy:
+    if out > duration:
+        seek = 0
+
+    if probe.video[0]:
         video_chain += deinterlace_filter(probe)
         video_chain += pad_filter(probe)
         video_chain += fps_filter(probe)
         video_chain += scale_filter(probe)
-        video_chain += extend_video(probe, out - seek)
-        video_chain += fade_filter(first, duration, seek, out)
+        video_chain += extend_video(probe, duration, out - seek)
+        video_chain += fade_filter(duration, seek, out)
 
         audio_chain += add_audio(probe, out - seek)
 
         if not audio_chain:
             audio_chain.append('[0:a]anull')
+            audio_chain += add_loudnorm(probe)
             audio_chain += extend_audio(probe, out - seek)
+            audio_chain += fade_filter(duration, seek, out, 'a')
 
     if video_chain:
         video_filter = '{}[v]'.format(','.join(video_chain))
@@ -864,8 +1165,6 @@ def build_filtergraph(first, duration, seek, out, ad, ad_last, ad_next, dummy,
             video_filter, logo_filter)]
 
     if audio_chain:
-        audio_chain += fade_filter(first, duration, seek, out, 'a')
-
         audio_filter = [
             '-filter_complex', '{}[a]'.format(','.join(audio_chain))]
         audio_map = ['-map', '[a]']
@@ -873,10 +1172,10 @@ def build_filtergraph(first, duration, seek, out, ad, ad_last, ad_next, dummy,
         audio_filter = []
         audio_map = ['-map', '0:a']
 
-    if dummy:
-        return video_filter + video_map + ['-map', '1:a']
-    else:
+    if probe.video[0]:
         return video_filter + audio_filter + video_map + audio_map
+    else:
+        return video_filter + video_map + ['-map', '1:a']
 
 
 # ------------------------------------------------------------------------------
@@ -949,26 +1248,27 @@ class MediaWatcher:
 
         self._media.add(event.src_path)
 
-        logger.info('Add file to media list: "{}"'.format(event.src_path))
+        messenger.info('Add file to media list: "{}"'.format(event.src_path))
 
     def on_moved(self, event):
         self._media.remove(event.src_path)
         self._media.add(event.dest_path)
 
-        logger.info('Move file from "{}" to "{}"'.format(event.src_path,
-                                                         event.dest_path))
+        messenger.info('Move file from "{}" to "{}"'.format(event.src_path,
+                                                            event.dest_path))
 
     def on_deleted(self, event):
         self._media.remove(event.src_path)
 
-        logger.info('Remove file from media list: "{}"'.format(event.src_path))
+        messenger.info(
+            'Remove file from media list: "{}"'.format(event.src_path))
 
     def stop(self):
         self.observer.stop()
         self.observer.join()
 
 
-class GetSource:
+class GetSourceFromFolder:
     """
     give next clip, depending on shuffle mode
     """
@@ -992,7 +1292,7 @@ class GetSource:
                     self.last_played.append(clip)
                     self.probe.load(clip)
                     filtergraph = build_filtergraph(
-                        False, float(self.probe.format['duration']), 0.0,
+                        float(self.probe.format['duration']), 0.0,
                         float(self.probe.format['duration']), False, False,
                         False, False, self.probe)
 
@@ -1002,7 +1302,7 @@ class GetSource:
                 while self.index < len(self._media.store):
                     self.probe.load(self._media.store[self.index])
                     filtergraph = build_filtergraph(
-                        False, float(self.probe.format['duration']), 0.0,
+                        float(self.probe.format['duration']), 0.0,
                         float(self.probe.format['duration']), False, False,
                         False, False, self.probe)
 
@@ -1018,20 +1318,24 @@ class GetSource:
 # main functions
 # ------------------------------------------------------------------------------
 
-class GetSourceIter(object):
+class GetSourceFromPlaylist:
     """
     read values from json playlist,
     get current clip in time,
     set ffmpeg source command
     """
 
-    def __init__(self, encoder):
-        self._encoder = encoder
+    def __init__(self):
+        self.init_time = _playlist.start
         self.last_time = get_time('full_sec')
-        self.day_in_sec = 86400.0
 
-        if _playlist.start and 0 <= self.last_time < _playlist.start:
-            self.last_time += self.day_in_sec
+        if _playlist.length:
+            self.total_playtime = _playlist.length
+        else:
+            self.total_playtime = 86400.0
+
+        if self.last_time < _playlist.start:
+            self.last_time += self.total_playtime
 
         self.last_mod_time = 0.0
         self.json_file = None
@@ -1042,8 +1346,6 @@ class GetSourceIter(object):
         self.first = True
         self.last = False
         self.list_date = get_date(True)
-        self.is_dummy = False
-        self.has_begin = False
         self.last_error = ''
         self.timestamp = get_time('stamp')
 
@@ -1054,14 +1356,6 @@ class GetSourceIter(object):
         self.ad = False
         self.ad_last = False
         self.ad_next = False
-
-        # when _playlist.start is set, use start time
-        if is_float(_playlist.start):
-            self.has_begin = True
-            self.init_time = _playlist.start
-        else:
-            self.has_begin = False
-            self.init_time = get_time('full_sec')
 
     def get_playlist(self):
         if stdin_args.playlist:
@@ -1085,7 +1379,7 @@ class GetSourceIter(object):
                 if mod_time > self.last_mod_time:
                     self.clip_nodes = valid_json(req)
                     self.last_mod_time = mod_time
-                    logger.info('open: ' + self.json_file)
+                    messenger.info('Open: ' + self.json_file)
                     validate_thread(self.clip_nodes)
             except (request.URLError, socket.timeout):
                 self.eof_handling('Get playlist from url failed!', False)
@@ -1098,7 +1392,7 @@ class GetSourceIter(object):
                     self.clip_nodes = valid_json(f)
 
                 self.last_mod_time = mod_time
-                logger.info('open: ' + self.json_file)
+                messenger.info('Open: ' + self.json_file)
                 validate_thread(self.clip_nodes)
         else:
             # when we have no playlist for the current day,
@@ -1122,43 +1416,11 @@ class GetSourceIter(object):
         else:
             self.out = self.duration
 
-    def url_or_live_source(self):
-        prefix = self.src.split('://')[0]
-
-        # check if input is a live source
-        if self.src and prefix in _pre_comp.protocols:
-            cmd = [
-                'ffprobe', '-v', 'error', '-show_entries', 'format=duration',
-                '-of', 'default=noprint_wrappers=1:nokey=1', self.src]
-
-            try:
-                output = check_output(cmd).decode('utf-8')
-            except CalledProcessError as err:
-                logger.error("ffprobe error: {}".format(err))
-                output = None
-
-            if not output:
-                mailer.error('Clip not exist:\n{}'.format(self.src))
-                logger.error('Clip not exist: {}'.format(self.src))
-                self.src = None
-            elif is_float(output):
-                self.duration = float(output)
-            else:
-                self.duration = self.day_in_sec
-                self.out = self.out - self.seek
-                self.seek = 0
-
     def get_input(self):
-        self.src_cmd, self.seek, self.out, self.time_left = gen_input(
-            self.has_begin, self.src, self.begin, self.duration,
-            self.seek, self.out, self.last
+        self.src_cmd, self.seek, self.out, self.next_playlist = timed_source(
+            self.probe, self.src, self.begin, self.duration,
+            self.seek, self.out, self.first, self.last
         )
-
-    def is_source_dummy(self):
-        if self.src_cmd and 'lavfi' in self.src_cmd:
-            self.is_dummy = True
-        else:
-            self.is_dummy = False
 
     def get_category(self, index, node):
         if 'category' in node:
@@ -1191,109 +1453,83 @@ class GetSourceIter(object):
 
     def set_filtergraph(self):
         self.filtergraph = build_filtergraph(
-            self.first, self.duration, self.seek, self.out,
-            self.ad, self.ad_last, self.ad_next, self.is_dummy, self.probe)
+            self.duration, self.seek, self.out, self.ad, self.ad_last,
+            self.ad_next, self.probe)
 
-    def check_time_left(self):
-        if self.time_left is None:
-            # normal behavior
+    def check_for_next_playlist(self):
+        if not self.next_playlist:
+            # normal behavior, when no new playlist is needed
             self.last_time = self.begin
-        elif self.time_left > 0.0:
-            # when playlist is finish and we have time left
-            self.list_date = get_date(False)
-            self.last_time = self.begin
-            self.out = self.time_left
-
-            self.eof_handling(
-                'Playlist is not long enough!', False)
+        elif self.next_playlist and _playlist.length != 86400.0:
+            # get sure that no new clip will be loaded
+            self.last_time = 86400.0 * 2
         else:
             # when there is no time left and we are in time,
             # set right values for new playlist
             self.list_date = get_date(False)
-            self.last_time = _playlist.start - 1
             self.last_mod_time = 0.0
+            self.last_time = _playlist.start - 1
 
-    def eof_handling(self, message, filler):
+    def eof_handling(self, message, fill):
         self.seek = 0.0
         self.ad = False
 
-        ref_time = self.day_in_sec
-        time = get_time('full_sec')
+        current_delta, total_delta = get_delta(self.begin)
 
-        if _playlist.start:
-            ref_time = self.day_in_sec + _playlist.start
-
-            if 0 <= time < _playlist.start:
-                time += self.day_in_sec
-
-        time_diff = self.out - self.seek + time
-        new_len = self.out - self.seek - (time_diff - ref_time)
-
-        self.out = abs(new_len)
-        self.duration = abs(new_len)
+        self.out = abs(total_delta)
+        self.duration = abs(total_delta) + 1
         self.list_date = get_date(False)
         self.last_mod_time = 0.0
         self.first = False
         self.last_time = 0.0
 
-        if filler:
-            self.src_cmd = gen_filler_loop(self.duration)
+        if self.duration > 2 and fill:
+            self.probe, self.src_cmd = gen_filler(self.duration)
+            self.set_filtergraph()
 
-            if _storage.filler and os.path.isfile(_storage.filler):
-                self.is_dummy = False
-                self.duration += 1
-            else:
-                self.is_dummy = True
+            # send messege only when is new or an half hour is pass
+            if message != self.last_error \
+                    or get_time('stamp') - self.timestamp > 1800:
+                messenger.error('{}\n{}'.format(message, self.json_file))
+                self.timestamp = get_time('stamp')
+                self.last_error = message
         else:
-            self.src_cmd = gen_dummy(self.duration)
-            self.is_dummy = True
-        self.set_filtergraph()
-
-        if get_time('stamp') - self.timestamp > 3600 \
-                and message != self.last_error:
-            self.last_error = message
-            mailer.error('{}\n{}'.format(message, self.json_file))
-            self.timestamp = get_time('stamp')
-
-        logger.error('{} {}'.format(message, self.json_file))
+            self.src_cmd = None
+            self.next_playlist = True
 
         self.last = False
+
+    def peperation_task(self, index, node):
+        # call functions in order to prepare source and filter
+        self.src = node["source"]
+        self.probe.load(self.src)
+
+        self.get_input()
+        self.get_category(index, node)
+        self.set_filtergraph()
+        self.check_for_next_playlist()
 
     def next(self):
         while True:
             self.get_playlist()
 
             if self.clip_nodes is None:
-                self.is_dummy = True
                 self.set_filtergraph()
                 yield self.src_cmd + self.filtergraph
                 continue
 
             self.begin = self.init_time
 
-            # loop through all clips in playlist
+            # loop through all clips in playlist and get correct clip in time
             for index, node in enumerate(self.clip_nodes["program"]):
                 self.get_clip_in_out(node)
 
                 # first time we end up here
                 if self.first and \
                         self.last_time < self.begin + self.out - self.seek:
-                    if self.has_begin:
-                        # calculate seek time
-                        self.seek = self.last_time - self.begin + self.seek
 
-                    self.src = node["source"]
-                    self.probe.load(self.src)
-
-                    self.url_or_live_source()
-                    self.get_input()
-                    self.is_source_dummy()
-                    self.get_category(index, node)
-                    self.set_filtergraph()
-
+                    self.peperation_task(index, node)
                     self.first = False
-                    self.check_time_left()
-
                     break
                 elif self.last_time < self.begin:
                     if index + 1 == len(self.clip_nodes["program"]):
@@ -1301,29 +1537,19 @@ class GetSourceIter(object):
                     else:
                         self.last = False
 
-                    if self.has_begin:
-                        check_sync(self.begin, self._encoder)
-
-                    self.src = node["source"]
-                    self.probe.load(self.src)
-
-                    self.url_or_live_source()
-                    self.get_input()
-                    self.is_source_dummy()
-                    self.get_category(index, node)
-                    self.set_filtergraph()
-                    self.check_time_left()
-
+                    self.peperation_task(index, node)
                     break
 
                 self.begin += self.out - self.seek
             else:
-                if not is_float(_playlist.start) or \
-                        'length' not in self.clip_nodes:
-                    # when we reach currect end, stop script
-                    logger.info('Playlist reach End!')
-                    return
-
+                if stdin_args.loop:
+                    self.check_for_next_playlist()
+                    self.init_time = self.last_time + 1
+                    self.src_cmd = None
+                elif not _playlist.length and not stdin_args.loop:
+                    # when we reach playlist end, stop script
+                    messenger.info('Playlist reached end!')
+                    return None
                 elif self.begin == self.init_time:
                     # no clip was played, generate dummy
                     self.eof_handling('Playlist is empty!', False)
@@ -1349,13 +1575,11 @@ def main():
         '-b:v', '{}k'.format(_pre_comp.v_bitrate),
         '-minrate', '{}k'.format(_pre_comp.v_bitrate),
         '-maxrate', '{}k'.format(_pre_comp.v_bitrate),
-        '-bufsize', '{}k'.format(_pre_comp.v_bufsize),
-        '-c:a', 's302m', '-strict', '-2',
-        '-ar', '48000', '-ac', '2',
-        '-f', 'mpegts', '-']
+        '-bufsize', '{}k'.format(_pre_comp.v_bufsize)
+        ] + pre_audio_codec() + ['-f', 'mpegts', '-']
 
-    if os.path.isfile(_text.textfile):
-        logger.info('Overlay text file: "{}"'.format(_text.textfile))
+    if _text.add_text and os.path.isfile(_text.textfile):
+        messenger.info('Overlay text file: "{}"'.format(_text.textfile))
         overlay = [
             '-vf', ("drawtext=box={}:boxcolor='{}':boxborderw={}"
                     ":fontsize={}:fontcolor={}:fontfile='{}':textfile={}"
@@ -1366,70 +1590,85 @@ def main():
         ]
 
     try:
-        if _playout.preview:
+        if _playout.preview or stdin_args.desktop:
             # preview playout to player
-            encoder = Popen([
+            _ff.encoder = Popen([
                 'ffplay', '-hide_banner', '-nostats', '-i', 'pipe:0'
-                ] + overlay, stderr=None, stdin=PIPE, stdout=None)
+                ] + overlay, stderr=PIPE, stdin=PIPE, stdout=None)
         else:
-            encoder = Popen([
-                'ffmpeg', '-v', 'info', '-hide_banner', '-nostats',
-                '-re', '-thread_queue_size', '256',
+            _ff.encoder = Popen([
+                'ffmpeg', '-v', _log.ff_level.lower(), '-hide_banner',
+                '-nostats', '-re', '-thread_queue_size', '256',
                 '-i', 'pipe:0'] + overlay + _playout.post_comp_video
                 + _playout.post_comp_audio + [
                     '-metadata', 'service_name=' + _playout.name,
                     '-metadata', 'service_provider=' + _playout.provider,
                     '-metadata', 'year={}'.format(year)
-                ] + _playout.post_comp_extra + [_playout.out_addr], stdin=PIPE)
+                ] + _playout.post_comp_extra + [_playout.out_addr],
+                stdin=PIPE, stderr=PIPE)
+
+        enc_err_thread = Thread(target=ffmpeg_stderr_reader,
+                                args=(_ff.encoder.stderr, encoder_logger,
+                                      ENC_PREFIX))
+        enc_err_thread.daemon = True
+        enc_err_thread.start()
 
         if _playlist.mode and not stdin_args.folder:
             watcher = None
-            get_source = GetSourceIter(encoder)
+            get_source = GetSourceFromPlaylist()
         else:
-            logger.info("start folder mode")
+            messenger.info('Start folder mode')
             media = MediaStore()
             watcher = MediaWatcher(media)
-            get_source = GetSource(media)
+            get_source = GetSourceFromFolder(media)
 
         try:
             for src_cmd in get_source.next():
-                logger.debug('src_cmd: "{}"'.format(src_cmd))
+                messenger.debug('src_cmd: "{}"'.format(src_cmd))
                 if src_cmd[0] == '-i':
                     current_file = src_cmd[1]
                 else:
                     current_file = src_cmd[3]
 
-                logger.info('play: "{}"'.format(current_file))
+                messenger.info('Play: "{}"'.format(current_file))
 
                 with Popen([
-                    'ffmpeg', '-v', 'error', '-hide_banner', '-nostats'
-                    ] + src_cmd + ff_pre_settings,
-                        stdout=PIPE) as decoder:
-                    copyfileobj(decoder.stdout, encoder.stdin)
+                    'ffmpeg', '-v', _log.ff_level.lower(), '-hide_banner',
+                    '-nostats'] + src_cmd + ff_pre_settings,
+                        stdout=PIPE, stderr=PIPE) as _ff.decoder:
+
+                    dec_err_thread = Thread(target=ffmpeg_stderr_reader,
+                                            args=(_ff.decoder.stderr,
+                                                  decoder_logger,
+                                                  DEC_PREFIX))
+                    dec_err_thread.daemon = True
+                    dec_err_thread.start()
+
+                    while True:
+                        buf = _ff.decoder.stdout.read(COPY_BUFSIZE)
+                        if not buf:
+                            break
+                        _ff.encoder.stdin.write(buf)
 
         except BrokenPipeError:
-            logger.error('Broken Pipe!')
-            terminate_processes(decoder, encoder, watcher)
+            messenger.error('Broken Pipe!')
+            terminate_processes(watcher)
 
         except SystemExit:
-            logger.info("got close command")
-            terminate_processes(decoder, encoder, watcher)
+            messenger.info('Got close command')
+            terminate_processes(watcher)
 
         except KeyboardInterrupt:
-            logger.warning('program terminated')
-            terminate_processes(decoder, encoder, watcher)
+            messenger.warning('Program terminated')
+            terminate_processes(watcher)
 
         # close encoder when nothing is to do anymore
-        if encoder.poll() is None:
-            encoder.terminate()
+        if _ff.encoder.poll() is None:
+            _ff.encoder.terminate()
 
     finally:
-        encoder.wait()
+        _ff.encoder.wait()
 
 
 if __name__ == '__main__':
-    if not _playlist.mode or stdin_args.folder:
-        from watchdog.events import PatternMatchingEventHandler
-        from watchdog.observers import Observer
-
     main()
