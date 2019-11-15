@@ -17,12 +17,17 @@ Features
 - send emails with error message
 - overlay a logo
 - overlay scrolling text
+- **EBU R128 loudness** normalization (single pass) (experimental)
+- loop clip in playlist which `out` value is higher then its `duration`, see also [Loop Clip](https://github.com/ffplayout/ffplayout-engine/wiki/Loop-Clip)
+- loop playlist infinitely
 - trim and fade the last clip, to get full 24 hours
 - when playlist is not 24 hours long, loop filler clip until time is full
 - set custom day start, so you can have playlist for example: from 6am to 6am, instate of 0am to 12pm
 - normal system requirements and no special tools
 - no GPU power is needed
 - stream to server or play on desktop
+- on posix systems ffplayout can reload config with *SIGHUP*
+- logging to files, or colored output to console
 - add filters to input, if is necessary to match output stream:
     - **yadif** (deinterlacing)
     - **pad** (letterbox or pillarbox to fit aspect)
@@ -37,6 +42,7 @@ Requirements
 -----
 - python version 3.6+
 - python module **watchdog** (only when `playlist_mode = False`)
+- python module **colorama** if you are on windows
 - **ffmpeg v4.2+** and **ffprobe** (**ffplay** if you want to play on desktop)
 - RAM and CPU depends on video resolution, minimum 4 threads and 3GB RAM for 720p are recommend
 
@@ -47,7 +53,6 @@ JSON Playlist Example
 {
     "channel": "Test 1",
     "date": "2019-03-05",
-    "length": "24:00:00.000",
     "program": [{
             "in": 0,
             "out": 647.68,
@@ -75,14 +80,12 @@ JSON Playlist Example
 }
 ```
 
-`"length"` are optional, when you leave it blank, there will be no check if real playlist length is correct.
-
 #### Warning:
-(Endless) streaming over multiple days will only work when config have **day_start** value and the **length** value of the playlist is **24 hours**. If you need only some hours for every day, use a *cron* job, or something similar.
+(Endless) streaming over multiple days will only work when config have **day_start** value and the **length** value is **24 hours**. If you need only some hours for every day, use a *cron* job, or something similar.
 
-Source from URL / Live Stream
+Remote source from URL
 -----
-You can use sources from url or live stream in that way:
+You can use sources from remote URL in that way:
 
 ```json
 ...
@@ -91,19 +94,11 @@ You can use sources from url or live stream in that way:
             "out": 149,
             "duration": 149,
             "source": "https://example.org/big_buck_bunny.webm"
-        },
-...
-        {
-            "in": 0,
-            "out": 2531.36,
-            "duration": 0,
-            "source": "rtmp://example.org/live/stream"
         }
-...
 ```
 But be careful with it, better test it multiple times!
 
-More informations in [Wiki](https://github.com/ffplayout/ffplayout-engine/wiki/URL---Live-Source)
+More informations in [Wiki](https://github.com/ffplayout/ffplayout-engine/wiki/Remote-URL-Source)
 
 Installation
 -----
@@ -122,16 +117,20 @@ Start with Arguments
 -----
 ffplayout also allows the passing of parameters:
 - `-c, --config` use given config file
+- `-d, --desktop` preview on desktop
 - `-f, --folder` use folder for playing
-- `-l, --log` for user-defined log file
+- `-l, --log` for user-defined log path, *none* for console output
+- `-i, --loop` loop playlist infinitely
 - `-p, --playlist` for playlist file
+- `-s, --start` set start time in *hh:mm:ss*, *now* for start with first'
+- `-t, --length` set length in *hh:mm:ss*, *none* for no length check
 
 You can run the command like:
 
 ```
-python3 ffplayout.py -l ~/ffplayout.log -p ~/playlist.json
+python3 ffplayout.py -l ~/ -p ~/playlist.json -d -s now -t none
 ```
 
-Preview Mode on Desktop
+Play on Desktop
 -----
-For playing on desktop set `preview = True` in config under `[OUT]`.
+For playing on desktop use `-d` argument or set `preview = True` in config under `[OUT]`.
