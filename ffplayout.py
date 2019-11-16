@@ -141,36 +141,6 @@ _WINDOWS = os.name == 'nt'
 COPY_BUFSIZE = 1024 * 1024 if _WINDOWS else 64 * 1024
 
 
-def ffmpeg_libs():
-    """
-    check which external libs are compiled in ffmpeg,
-    for using them later
-    """
-    cmd = ['ffmpeg', '-version']
-    libs = []
-
-    try:
-        info = check_output(cmd).decode('UTF-8')
-    except CalledProcessError as err:
-        messenger.error('ffmpeg - libs could not be readed!\n'
-                        'Processing is not possible. Error:\n{}'.format(err))
-        sys.exit(1)
-
-    for line in info.split('\n'):
-        if 'configuration:' in line:
-            configs = line.split()
-
-            for cfg in configs:
-                if '--enable-lib' in cfg:
-                    libs.append(cfg.replace('--enable-', ''))
-            break
-
-    return libs
-
-
-FF_LIBS = ffmpeg_libs()
-
-
 def load_config():
     """
     this function can reload most settings from configuration file,
@@ -468,6 +438,40 @@ class Messenger:
 
 
 messenger = Messenger()
+
+
+# ------------------------------------------------------------------------------
+# check ffmpeg libs
+# ------------------------------------------------------------------------------
+
+def ffmpeg_libs():
+    """
+    check which external libs are compiled in ffmpeg,
+    for using them later
+    """
+    cmd = ['ffmpeg', '-version']
+    libs = []
+
+    try:
+        info = check_output(cmd).decode('UTF-8')
+    except CalledProcessError as err:
+        messenger.error('ffmpeg - libs could not be readed!\n'
+                        'Processing is not possible. Error:\n{}'.format(err))
+        sys.exit(1)
+
+    for line in info.split('\n'):
+        if 'configuration:' in line:
+            configs = line.split()
+
+            for cfg in configs:
+                if '--enable-lib' in cfg:
+                    libs.append(cfg.replace('--enable-', ''))
+            break
+
+    return libs
+
+
+FF_LIBS = ffmpeg_libs()
 
 
 # ------------------------------------------------------------------------------
@@ -1114,7 +1118,7 @@ def extend_audio(probe, duration):
 
 def extend_video(probe, duration, target_duration):
     """
-    check video duration, is is shorter then clip duration - pad it
+    check video duration, is it shorter then clip duration - pad it
     """
     pad_filter = []
 
