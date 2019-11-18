@@ -2,20 +2,33 @@
 error_reporting(E_ALL);
 ini_set('display_errors', 'On');
 
+// get config file
+function get_ini() {
+    return parse_ini_file("/etc/ffplayout/ffplayout.conf", TRUE, INI_SCANNER_RAW);
+}
+
+function printer($file) {
+    $ini = get_ini();
+    $log_file = $ini['LOGGING']['log_path'] . $file;
+    $open_log = fopen($log_file, "r") or die("Unable to open file!");
+    echo fread($open_log,filesize($log_file));
+    fclose($open_log);
+}
+
 // get playout log
 if(!empty($_GET['log_from'])) {
     $log_from = $_GET['log_from'];
 
     if ($log_from === "playing") {
-        $get_ini = file_get_contents("/etc/ffplayout/ffplayout.conf");
-        $get_path = "/^log_file.*\$/m";
-        preg_match_all($get_path, $get_ini, $matches);
-        $line = implode("\n", $matches[0]);
-        $log_file = explode("= ", $line)[1];
+         printer("/ffplayout.log");
+    }
 
-        $open_log = fopen($log_file, "r") or die("Unable to open file!");
-        echo fread($open_log,filesize($log_file));
-        fclose($open_log);
+    if ($log_from === "decoder") {
+        printer("/decoder.log");
+    }
+
+    if ($log_from === "encoder") {
+        printer("/encoder.log");
     }
 
     if ($log_from === "system") {

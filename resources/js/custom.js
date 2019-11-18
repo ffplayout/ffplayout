@@ -344,13 +344,35 @@ function get_log(logtype) {
 $('#bt_play').click(function() {
     $(this).addClass("active");
     $('#bt_sys').removeClass("active");
+    $('#bt_enc').removeClass("active");
+    $('#bt_dec').removeClass("active");
 
     get_log("playing");
+});
+
+$('#bt_dec').click(function() {
+    $(this).addClass("active");
+    $('#bt_sys').removeClass("active");
+    $('#bt_enc').removeClass("active");
+    $('#bt_play').removeClass("active");
+
+    get_log("decoder");
+});
+
+$('#bt_enc').click(function() {
+    $(this).addClass("active");
+    $('#bt_sys').removeClass("active");
+    $('#bt_dec').removeClass("active");
+    $('#bt_play').removeClass("active");
+
+    get_log("encoder");
 });
 
 $('#bt_sys').click(function() {
     $(this).addClass("active");
     $('#bt_play').removeClass("active");
+    $('#bt_enc').removeClass("active");
+    $('#bt_dec').removeClass("active");
 
     get_log("system");
 });
