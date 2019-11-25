@@ -1363,6 +1363,7 @@ class GetSourceFromPlaylist:
         self.list_date = get_date(True)
 
         self.src = None
+        self.begin = 0
         self.seek = 0
         self.out = 20
         self.duration = 20
@@ -1521,7 +1522,7 @@ class GetSourceFromPlaylist:
             self.get_playlist()
 
             if self.clip_nodes is None:
-                self.set_filtergraph()
+                self.eof_handling('Playlist is empty!', True)
                 yield self.src_cmd + self.filtergraph
                 continue
 
