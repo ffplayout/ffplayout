@@ -31,6 +31,7 @@ import smtplib
 import socket
 import ssl
 import sys
+import tempfile
 import time
 from argparse import ArgumentParser
 from datetime import date, datetime, timedelta
@@ -366,14 +367,18 @@ class Mailer:
         self.level = _mail.level
         self.time = None
         self.timestamp = get_time('stamp')
-        self.last_error = None
         self.rate_limit = 600
+        self.temp_msg = os.path.join(tempfile.gettempdir(), 'ffplayout.txt')
 
     def current_time(self):
         self.time = get_time(None)
 
     def send_mail(self, msg):
         if _mail.recip:
+            # write message to temp file for rate limit
+            with open(self.temp_msg, 'w+') as f:
+                f.write(msg)
+
             self.current_time()
 
             message = MIMEMultipart()
@@ -402,25 +407,31 @@ class Mailer:
                     server.sendmail(_mail.s_addr, _mail.recip, text)
                     server.quit()
 
-    def send_if_new(self, msg):
+    def check_if_new(self, msg):
         # send messege only when is new or the rate_limit is pass
-        if msg != self.last_error \
-                or get_time('stamp') - self.timestamp > self.rate_limit:
+        if os.path.isfile(self.temp_msg):
+            mod_time = os.path.getmtime(self.temp_msg)
+
+            with open(self.temp_msg, 'r', encoding='utf-8') as f:
+                last_msg = f.read()
+
+                if msg != last_msg \
+                        or get_time('stamp') - mod_time > self.rate_limit:
+                    self.send_mail(msg)
+        else:
             self.send_mail(msg)
-            self.timestamp = get_time('stamp')
-            self.last_error = msg
 
     def info(self, msg):
         if self.level in ['INFO']:
-            self.send_if_new(msg)
+            self.check_if_new(msg)
 
     def warning(self, msg):
         if self.level in ['INFO', 'WARNING']:
-            self.send_if_new(msg)
+            self.check_if_new(msg)
 
     def error(self, msg):
         if self.level in ['INFO', 'WARNING', 'ERROR']:
-            self.send_if_new(msg)
+            self.check_if_new(msg)
 
 
 class Messenger:
