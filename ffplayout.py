@@ -365,6 +365,9 @@ class Mailer:
     def __init__(self):
         self.level = _mail.level
         self.time = None
+        self.timestamp = get_time('stamp')
+        self.last_error = None
+        self.rate_limit = 600
 
     def current_time(self):
         self.time = get_time(None)
@@ -399,17 +402,25 @@ class Mailer:
                     server.sendmail(_mail.s_addr, _mail.recip, text)
                     server.quit()
 
+    def send_if_new(self, msg):
+        # send messege only when is new or the rate_limit is pass
+        if msg != self.last_error \
+                or get_time('stamp') - self.timestamp > self.rate_limit:
+            self.send_mail(msg)
+            self.timestamp = get_time('stamp')
+            self.last_error = msg
+
     def info(self, msg):
         if self.level in ['INFO']:
-            self.send_mail(msg)
+            self.send_if_new(msg)
 
     def warning(self, msg):
         if self.level in ['INFO', 'WARNING']:
-            self.send_mail(msg)
+            self.send_if_new(msg)
 
     def error(self, msg):
         if self.level in ['INFO', 'WARNING', 'ERROR']:
-            self.send_mail(msg)
+            self.send_if_new(msg)
 
 
 class Messenger:
@@ -1350,8 +1361,6 @@ class GetSourceFromPlaylist:
         self.first = True
         self.last = False
         self.list_date = get_date(True)
-        self.last_error = ''
-        self.timestamp = get_time('stamp')
 
         self.src = None
         self.seek = 0
@@ -1491,12 +1500,6 @@ class GetSourceFromPlaylist:
             self.probe, self.src_cmd = gen_filler(self.duration)
             self.set_filtergraph()
 
-            # send messege only when is new or an half hour is pass
-            if message != self.last_error \
-                    or get_time('stamp') - self.timestamp > 1800:
-                messenger.error('{}\n{}'.format(message, self.json_file))
-                self.timestamp = get_time('stamp')
-                self.last_error = message
         else:
             self.src_cmd = None
             self.next_playlist = True
