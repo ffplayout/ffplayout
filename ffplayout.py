@@ -1320,7 +1320,7 @@ class GetSourceFromFolder:
                     filtergraph = build_filtergraph(
                         float(self.probe.format['duration']), 0.0,
                         float(self.probe.format['duration']), False, False,
-                        False, False, self.probe)
+                        False, self.probe)
 
                     yield ['-i', clip] + filtergraph
 
@@ -1330,7 +1330,7 @@ class GetSourceFromFolder:
                     filtergraph = build_filtergraph(
                         float(self.probe.format['duration']), 0.0,
                         float(self.probe.format['duration']), False, False,
-                        False, False, self.probe)
+                        False, self.probe)
 
                     yield [
                         '-i', self._media.store[self.index]
