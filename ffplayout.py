@@ -326,7 +326,8 @@ if _log.to_file and _log.path != 'none':
         decoder_log = os.path.join(os.getcwd(), 'ffdecoder.log')
         encoder_log = os.path.join(os.getcwd(), 'ffencoder.log')
 
-    formatter = logging.Formatter('[%(asctime)s] [%(levelname)s]  %(message)s')
+    p_format = logging.Formatter('[%(asctime)s] [%(levelname)s]  %(message)s')
+    f_format = logging.Formatter('[%(asctime)s]  %(message)s')
     p_file_handler = TimedRotatingFileHandler(playout_log, when='midnight',
                                               backupCount=5)
     d_file_handler = TimedRotatingFileHandler(decoder_log, when='midnight',
@@ -334,9 +335,9 @@ if _log.to_file and _log.path != 'none':
     e_file_handler = TimedRotatingFileHandler(encoder_log, when='midnight',
                                               backupCount=5)
 
-    p_file_handler.setFormatter(formatter)
-    d_file_handler.setFormatter(formatter)
-    e_file_handler.setFormatter(formatter)
+    p_file_handler.setFormatter(p_format)
+    d_file_handler.setFormatter(f_format)
+    e_file_handler.setFormatter(f_format)
     playout_logger.addHandler(p_file_handler)
     decoder_logger.addHandler(d_file_handler)
     encoder_logger.addHandler(e_file_handler)
