@@ -1231,7 +1231,10 @@ class MediaStore:
                 glob.glob(os.path.join(self.folder, '**', ext),
                           recursive=True))
 
-        self.sort()
+        if _storage.shuffle:
+            self.rand()
+        else:
+            self.sort()
 
     def add(self, file):
         self.store.append(file)
@@ -1244,6 +1247,10 @@ class MediaStore:
     def sort(self):
         # sort list for sorted playing
         self.store = sorted(self.store)
+
+    def rand(self):
+        # random sort list for playing
+        random.shuffle(self.store)
 
 
 class MediaWatcher:
@@ -1309,36 +1316,19 @@ class GetSourceFromFolder:
 
     def next(self):
         while True:
-            if _storage.shuffle:
-                clip = random.choice(self._media.store)
+            while self.index < len(self._media.store):
+                self.probe.load(self._media.store[self.index])
+                filtergraph = build_filtergraph(
+                    float(self.probe.format['duration']), 0.0,
+                    float(self.probe.format['duration']), False, False,
+                    False, self.probe)
 
-                if len(self.last_played) > len(self._media.store) / 2:
-                    self.last_played.pop(0)
-
-                if clip not in self.last_played:
-                    self.last_played.append(clip)
-                    self.probe.load(clip)
-                    filtergraph = build_filtergraph(
-                        float(self.probe.format['duration']), 0.0,
-                        float(self.probe.format['duration']), False, False,
-                        False, self.probe)
-
-                    yield ['-i', clip] + filtergraph
-
+                yield [
+                    '-i', self._media.store[self.index]
+                    ] + filtergraph
+                self.index += 1
             else:
-                while self.index < len(self._media.store):
-                    self.probe.load(self._media.store[self.index])
-                    filtergraph = build_filtergraph(
-                        float(self.probe.format['duration']), 0.0,
-                        float(self.probe.format['duration']), False, False,
-                        False, self.probe)
-
-                    yield [
-                        '-i', self._media.store[self.index]
-                        ] + filtergraph
-                    self.index += 1
-                else:
-                    self.index = 0
+                self.index = 0
 
 
 # ------------------------------------------------------------------------------
