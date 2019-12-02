@@ -1031,7 +1031,7 @@ def fps_filter(probe):
     filter_chain = []
 
     if probe.video[0]['fps'] != _pre_comp.fps:
-        filter_chain.append('framerate=fps={}'.format(_pre_comp.fps))
+        filter_chain.append('fps={}'.format(_pre_comp.fps))
 
     return filter_chain
 
@@ -1082,17 +1082,16 @@ def overlay_filter(duration, ad, ad_last, ad_next):
         logo_chain = []
         opacity = 'format=rgba,colorchannelmixer=aa={}'.format(
             _pre_comp.opacity)
-        loop = 'loop=loop={}:size=1:start=0'.format(
-                duration * _pre_comp.fps)
-        logo_chain.append('movie={},{},{}'.format(
-                _pre_comp.logo, loop, opacity))
+        loop = 'loop=loop=-1:size=1:start=0'
+        logo_chain.append(
+            'movie={},{},{}'.format(_pre_comp.logo, loop, opacity))
         if ad_last:
             logo_chain.append('fade=in:st=0:d=1.0:alpha=1')
         if ad_next:
             logo_chain.append('fade=out:st={}:d=1.0:alpha=1'.format(
                 duration - 1))
 
-        logo_filter = '{}[l];[v][l]{}[logo]'.format(
+        logo_filter = '{}[l];[v][l]{}:shortest=1[logo]'.format(
             ','.join(logo_chain), _pre_comp.logo_filter)
 
     return logo_filter
@@ -1231,7 +1230,10 @@ class MediaStore:
                 glob.glob(os.path.join(self.folder, '**', ext),
                           recursive=True))
 
-        self.sort()
+        if _storage.shuffle:
+            self.rand()
+        else:
+            self.sort()
 
     def add(self, file):
         self.store.append(file)
@@ -1244,6 +1246,10 @@ class MediaStore:
     def sort(self):
         # sort list for sorted playing
         self.store = sorted(self.store)
+
+    def rand(self):
+        # random sort list for playing
+        random.shuffle(self.store)
 
 
 class MediaWatcher:
@@ -1309,36 +1315,19 @@ class GetSourceFromFolder:
 
     def next(self):
         while True:
-            if _storage.shuffle:
-                clip = random.choice(self._media.store)
+            while self.index < len(self._media.store):
+                self.probe.load(self._media.store[self.index])
+                filtergraph = build_filtergraph(
+                    float(self.probe.format['duration']), 0.0,
+                    float(self.probe.format['duration']), False, False,
+                    False, self.probe)
 
-                if len(self.last_played) > len(self._media.store) / 2:
-                    self.last_played.pop(0)
-
-                if clip not in self.last_played:
-                    self.last_played.append(clip)
-                    self.probe.load(clip)
-                    filtergraph = build_filtergraph(
-                        float(self.probe.format['duration']), 0.0,
-                        float(self.probe.format['duration']), False, False,
-                        False, self.probe)
-
-                    yield ['-i', clip] + filtergraph
-
+                yield [
+                    '-i', self._media.store[self.index]
+                    ] + filtergraph
+                self.index += 1
             else:
-                while self.index < len(self._media.store):
-                    self.probe.load(self._media.store[self.index])
-                    filtergraph = build_filtergraph(
-                        float(self.probe.format['duration']), 0.0,
-                        float(self.probe.format['duration']), False, False,
-                        False, self.probe)
-
-                    yield [
-                        '-i', self._media.store[self.index]
-                        ] + filtergraph
-                    self.index += 1
-                else:
-                    self.index = 0
+                self.index = 0
 
 
 # ------------------------------------------------------------------------------
