@@ -1031,7 +1031,7 @@ def fps_filter(probe):
     filter_chain = []
 
     if probe.video[0]['fps'] != _pre_comp.fps:
-        filter_chain.append('framerate=fps={}'.format(_pre_comp.fps))
+        filter_chain.append('fps={}'.format(_pre_comp.fps))
 
     return filter_chain
 
@@ -1082,14 +1082,16 @@ def overlay_filter(duration, ad, ad_last, ad_next):
         logo_chain = []
         opacity = 'format=rgba,colorchannelmixer=aa={}'.format(
             _pre_comp.opacity)
-        logo_chain.append('movie={},{}'.format(_pre_comp.logo, opacity))
+        loop = 'loop=loop=-1:size=1:start=0'
+        logo_chain.append(
+            'movie={},{},{}'.format(_pre_comp.logo, loop, opacity))
         if ad_last:
             logo_chain.append('fade=in:st=0:d=1.0:alpha=1')
         if ad_next:
             logo_chain.append('fade=out:st={}:d=1.0:alpha=1'.format(
                 duration - 1))
 
-        logo_filter = '{}[l];[v][l]{}[logo]'.format(
+        logo_filter = '{}[l];[v][l]{}:shortest=1[logo]'.format(
             ','.join(logo_chain), _pre_comp.logo_filter)
 
     return logo_filter
@@ -1654,7 +1656,6 @@ def main():
                     while True:
                         buf = _ff.decoder.stdout.read(COPY_BUFSIZE)
                         if not buf:
-                            messenger.debug('Buffer is empty')
                             break
                         _ff.encoder.stdin.write(buf)
 
