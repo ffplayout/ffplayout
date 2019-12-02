@@ -1082,10 +1082,7 @@ def overlay_filter(duration, ad, ad_last, ad_next):
         logo_chain = []
         opacity = 'format=rgba,colorchannelmixer=aa={}'.format(
             _pre_comp.opacity)
-        loop = 'loop=loop={}:size=1:start=0'.format(
-                duration * _pre_comp.fps)
-        logo_chain.append('movie={},{},{}'.format(
-                _pre_comp.logo, loop, opacity))
+        logo_chain.append('movie={},{}'.format(_pre_comp.logo, opacity))
         if ad_last:
             logo_chain.append('fade=in:st=0:d=1.0:alpha=1')
         if ad_next:
@@ -1657,6 +1654,7 @@ def main():
                     while True:
                         buf = _ff.decoder.stdout.read(COPY_BUFSIZE)
                         if not buf:
+                            messenger.debug('Buffer is empty')
                             break
                         _ff.encoder.stdin.write(buf)
 
