@@ -16,7 +16,7 @@ Features
 - playing clips from [watched folder](https://github.com/ffplayout/ffplayout-engine/wiki/Watch-Folder)
 - send emails with error message
 - overlay a logo
-- overlay scrolling text
+- overlay text, controllable through [messenger](https://github.com/ffplayout/messenger) over libzmq
 - **EBU R128 loudness** normalization (single pass) (experimental)
 - loop clip in playlist which `out` value is higher then its `duration`, see also [Loop Clip](https://github.com/ffplayout/ffplayout-engine/wiki/Loop-Clip)
 - loop playlist infinitely
@@ -44,6 +44,7 @@ Requirements
 - python module **watchdog** (only when `playlist_mode = False`)
 - python module **colorama** if you are on windows
 - **ffmpeg v4.2+** and **ffprobe** (**ffplay** if you want to play on desktop)
+- if you want to overlay text, ffmpeg needs to have **libzmq**
 - RAM and CPU depends on video resolution, minimum 4 threads and 3GB RAM for 720p are recommend
 
 JSON Playlist Example
