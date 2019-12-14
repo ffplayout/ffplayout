@@ -212,15 +212,8 @@ def load_config():
     _storage.shuffle = cfg.getboolean('STORAGE', 'shuffle')
 
     _text.add_text = cfg.getboolean('TEXT', 'add_text')
-    _text.textfile = cfg.get('TEXT', 'textfile')
-    _text.fontsize = cfg.get('TEXT', 'fontsize')
-    _text.fontcolor = cfg.get('TEXT', 'fontcolor')
+    _text.address = cfg.get('TEXT', 'bind_address')
     _text.fontfile = cfg.get('TEXT', 'fontfile')
-    _text.box = cfg.get('TEXT', 'box')
-    _text.boxcolor = cfg.get('TEXT', 'boxcolor')
-    _text.boxborderw = cfg.get('TEXT', 'boxborderw')
-    _text.x = cfg.get('TEXT', 'x')
-    _text.y = cfg.get('TEXT', 'y')
 
     if _init.load:
         _log.to_file = cfg.getboolean('LOGGING', 'log_to_file')
@@ -1587,15 +1580,13 @@ def main():
         '-bufsize', '{}k'.format(_pre_comp.v_bufsize)
         ] + pre_audio_codec() + ['-f', 'mpegts', '-']
 
-    if _text.add_text and os.path.isfile(_text.textfile):
-        messenger.info('Overlay text file: "{}"'.format(_text.textfile))
+    if _text.add_text:
+        messenger.info('Using drawtext node, listening on address: {}'.format(
+            _text.address
+        ))
         overlay = [
-            '-vf', ("drawtext=box={}:boxcolor='{}':boxborderw={}"
-                    ":fontsize={}:fontcolor={}:fontfile='{}':textfile={}"
-                    ":reload=1:x='{}':y='{}'").format(
-                        _text.box, _text.boxcolor, _text.boxborderw,
-                        _text.fontsize, _text.fontcolor, _text.fontfile,
-                        _text.textfile, _text.x, _text.y)
+            '-vf', "null,zmq=b='{}',drawtext=text='':fontfile='{}'".format(
+                _text.address.replace(':', '\\:'), _text.fontfile)
         ]
 
     try:
