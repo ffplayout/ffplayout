@@ -11,9 +11,6 @@ class Config(APIView):
             parser = IniParser()
             parser.read('/etc/ffplayout/ffplayout.conf')
 
-            print(dir(parser))
-            print(parser.as_dict())
-
             return Response(parser.as_dict())
         else:
             return Response({"success": False})
