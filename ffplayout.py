@@ -902,14 +902,21 @@ def handle_list_end(probe, new_length, src, begin, dur, seek, out):
         messenger.info(
             'We are over time, new length is: {0:.2f}'.format(new_length))
 
-    if dur > new_length > 1.5:
+    missing_secs = abs(new_length - (dur - seek))
+
+    if dur > new_length > 1.5 and dur - seek >= new_length:
         src_cmd = src_or_dummy(probe, src, dur, seek, new_out)
     elif dur > new_length > 0.0:
         messenger.info(
             'Last clip less then 1.5 second long, skip:\n{}'.format(src))
         src_cmd = None
+
+        if new_length > dur - seek:
+            new_playlist = False
+            messenger.error(
+                'Reach playlist end,\n{0:.2f} seconds needed.'.format(
+                    missing_secs))
     else:
-        missing_secs = abs(new_length - dur)
         new_out = out
         new_playlist = False
         src_cmd = src_or_dummy(probe, src, dur, seek, out)
