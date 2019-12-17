@@ -1674,6 +1674,8 @@ def main():
             _ff.encoder.terminate()
 
     finally:
+        if _ff.encoder.poll() is None:
+            _ff.encoder.terminate()
         _ff.encoder.wait()
 
 
