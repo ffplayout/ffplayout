@@ -31,7 +31,7 @@ Features
 - add filters to input, if is necessary to match output stream:
     - **yadif** (deinterlacing)
     - **pad** (letterbox or pillarbox to fit aspect)
-    - **framerate** (change fps)
+    - **fps** (change fps)
     - **scale** (fit target resolution)
     - **aevalsrc** (if video have no audio)
     - **apad** (add silence if audio duration is to short)
