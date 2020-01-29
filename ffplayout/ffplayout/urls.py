@@ -28,7 +28,12 @@ router = routers.DefaultRouter()
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('api/', include(router.urls)),
     path('api/config/', views.Config.as_view()),
-    path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
-    path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path('api-auth/', include(
+         'rest_framework.urls', namespace='rest_framework')),
+    path('auth/token/', TokenObtainPairView.as_view(),
+         name='token_obtain_pair'),
+    path('auth/token/refresh/', TokenRefreshView.as_view(),
+         name='token_refresh')
 ]
