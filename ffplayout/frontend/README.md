@@ -4,6 +4,11 @@
 
 ## Build Setup
 
+create `.env`file with `API_URL`, for example:
+```
+API_URL="http://localhost:8000"
+```
+
 ``` bash
 # install dependencies
 $ npm run install
