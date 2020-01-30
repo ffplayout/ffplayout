@@ -4,7 +4,7 @@ from django.conf import settings
 from rest_framework.views import APIView
 from rest_framework.response import Response
 
-from .utils import IniParser
+from .utils import IniParser, SystemStats
 
 
 class Config(APIView):
@@ -24,5 +24,19 @@ class Config(APIView):
                 return Response({
                     "success": False,
                     "error": "ffpayout engine config file not found!"})
+        else:
+            return Response({"success": False})
+
+
+class Statistics(APIView):
+    """
+    get system statistics: cpu, ram, etc.
+    for reading, endpoint is: http://127.0.0.1:8000/api/stats/?stats=all
+    """
+
+    def get(self, request, *args, **kwargs):
+        if 'stats' in request.GET.dict() \
+                and request.GET.dict()['stats'] == 'all':
+            return Response(SystemStats().all())
         else:
             return Response({"success": False})

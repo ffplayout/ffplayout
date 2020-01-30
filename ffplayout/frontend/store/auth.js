@@ -37,7 +37,6 @@ export const actions = {
         }
         await this.$axios.post('auth/token/', payload)
             .then((response) => {
-                console.log('obtainToken: ', response)
                 commit('UPADTE_TOKEN', { token: response.data.access, refresh: response.data.refresh })
                 commit('UPDATE_IS_LOGIN', true)
             })
@@ -47,11 +46,11 @@ export const actions = {
     },
     async refreshToken ({ commit, state }) {
         const payload = {
-            refresh: state.jwtRefresh
+            refresh: state.jwtRefresh,
+            progress: false
         }
         const response = await this.$axios.post('auth/token/refresh/', payload)
 
-        console.log('refreshToken: ', response)
         commit('UPADTE_TOKEN', { token: response.data.access })
         commit('UPDATE_IS_LOGIN', true)
     },
@@ -68,18 +67,14 @@ export const actions = {
             if (expire_token - timestamp > 0) {
                 // DO NOTHING, DO NOT REFRESH
                 commit('UPDATE_IS_LOGIN', true)
-                console.log('token is valid, for: ' + Math.floor(expire_token - timestamp) + ' seconds')
             } else if (expire_refresh - timestamp > 0) {
                 await dispatch('refreshToken')
-                console.log('update token')
             } else {
                 // PROMPT USER TO RE-LOGIN, THIS ELSE CLAUSE COVERS THE CONDITION WHERE A TOKEN IS EXPIRED AS WELL
                 commit('UPDATE_IS_LOGIN', false)
-                console.log('new login')
             }
         } else {
             commit('UPDATE_IS_LOGIN', false)
-            console.log('new login')
         }
     }
 }

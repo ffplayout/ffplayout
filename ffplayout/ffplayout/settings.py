@@ -154,3 +154,6 @@ STATIC_URL = '/static/'
 
 # path to ffplayout engine config
 FFPLAYOUT_CONFIG = '/etc/ffplayout/ffplayout.conf'
+
+# used network interface for statistics: eth0, eno1, etc.
+NET_INTERFACE = 'br0'
