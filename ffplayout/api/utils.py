@@ -1,11 +1,12 @@
 import configparser
-
+import os
 from platform import uname
 from time import sleep
 
 from django.conf import settings
 
 import psutil
+from natsort import natsorted
 
 
 def sizeof_fmt(num, suffix='B'):
@@ -117,8 +118,26 @@ class SystemStats:
         }
 
 
+def set_root(path):
+    # prevent access to root file system
+    root = os.path.dirname(settings.MEDIA_FOLDER)
+    return path.lstrip(root)
+
+
+def get_media_path(dir=None):
+    if not dir:
+        if not os.path.isdir(settings.MEDIA_FOLDER):
+            return ''
+        dir = settings.MEDIA_FOLDER
+    else:
+        dir = os.path.join(os.path.dirname(settings.MEDIA_FOLDER), dir)
+    for root, dirs, files in os.walk(dir, topdown=True):
+        return [set_root(root), natsorted(dirs), natsorted(files)]
+
+
 if __name__ == '__main__':
-    print('ALL: ', SystemStats().all())
+    result = hasattr(SystemStats(), 'system')
+    print(result)
     exit()
     print('CPU: ', SystemStats.cpu())
     print('RAM: ', SystemStats.ram())

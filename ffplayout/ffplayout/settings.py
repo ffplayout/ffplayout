@@ -157,3 +157,5 @@ FFPLAYOUT_CONFIG = '/etc/ffplayout/ffplayout.conf'
 
 # used network interface for statistics: eth0, eno1, etc.
 NET_INTERFACE = 'br0'
+
+MEDIA_FOLDER = '/mnt/playout/ADtvMedia'

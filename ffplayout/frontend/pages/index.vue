@@ -131,7 +131,9 @@
                     <div class="actions">
                         <b-button-group class="actions-grp">
                             <b-button>Control</b-button>
-                            <b-button to="/media">Media</b-button>
+                            <b-button to="/media">
+                                Media
+                            </b-button>
                             <b-button>Logging</b-button>
                             <b-button>Configure</b-button>
                             <b-button @click="logout()">
