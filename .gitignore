@@ -9,3 +9,4 @@ __pycache__/
 tests/
 .pytest_cache/
 venv/
+log/
