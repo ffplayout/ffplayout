@@ -24,9 +24,7 @@ from threading import Thread
 
 from ffplayout.folder import GetSourceFromFolder, MediaStore, MediaWatcher
 from ffplayout.playlist import GetSourceFromPlaylist
-from ffplayout.utils import (COPY_BUFSIZE, DEC_PREFIX, ENC_PREFIX, _ff, _log,
-                             _playlist, _playout, _pre_comp, _text,
-                             decoder_logger, encoder_logger,
+from ffplayout.utils import (_ff, _log, _playlist, _playout, _pre_comp, _text,
                              ffmpeg_stderr_reader, get_date, messenger,
                              pre_audio_codec, stdin_args, terminate_processes)
 
@@ -36,6 +34,9 @@ try:
         colorama.init()
 except ImportError:
     print('colorama import failed, no colored console output on windows...')
+
+_WINDOWS = os.name == 'nt'
+COPY_BUFSIZE = 1024 * 1024 if _WINDOWS else 64 * 1024
 
 
 # ------------------------------------------------------------------------------
@@ -86,8 +87,7 @@ def main():
                 stdin=PIPE, stderr=PIPE)
 
         enc_err_thread = Thread(target=ffmpeg_stderr_reader,
-                                args=(_ff.encoder.stderr, encoder_logger,
-                                      ENC_PREFIX))
+                                args=(_ff.encoder.stderr, False))
         enc_err_thread.daemon = True
         enc_err_thread.start()
 
@@ -116,9 +116,7 @@ def main():
                         stdout=PIPE, stderr=PIPE) as _ff.decoder:
 
                     dec_err_thread = Thread(target=ffmpeg_stderr_reader,
-                                            args=(_ff.decoder.stderr,
-                                                  decoder_logger,
-                                                  DEC_PREFIX))
+                                            args=(_ff.decoder.stderr, True))
                     dec_err_thread.daemon = True
                     dec_err_thread.start()
 
