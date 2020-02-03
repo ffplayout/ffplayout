@@ -327,9 +327,12 @@ if _log.to_file and _log.path != 'none':
         decoder_log = os.path.join(_log.path, 'decoder.log')
         encoder_log = os.path.join(_log.path, 'encoder.log')
     else:
-        playout_log = os.path.join(os.getcwd(), 'ffplayout.log')
-        decoder_log = os.path.join(os.getcwd(), 'ffdecoder.log')
-        encoder_log = os.path.join(os.getcwd(), 'ffencoder.log')
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        log_dir = os.path.join(base_dir, 'log')
+        os.makedirs(log_dir, exist_ok=True)
+        playout_log = os.path.join(log_dir, 'ffplayout.log')
+        decoder_log = os.path.join(log_dir, 'ffdecoder.log')
+        encoder_log = os.path.join(log_dir, 'ffencoder.log')
 
     p_format = logging.Formatter('[%(asctime)s] [%(levelname)s]  %(message)s')
     f_format = logging.Formatter('[%(asctime)s]  %(message)s')
