@@ -212,15 +212,8 @@ def load_config():
     _storage.shuffle = cfg.getboolean('STORAGE', 'shuffle')
 
     _text.add_text = cfg.getboolean('TEXT', 'add_text')
-    _text.textfile = cfg.get('TEXT', 'textfile')
-    _text.fontsize = cfg.get('TEXT', 'fontsize')
-    _text.fontcolor = cfg.get('TEXT', 'fontcolor')
+    _text.address = cfg.get('TEXT', 'bind_address')
     _text.fontfile = cfg.get('TEXT', 'fontfile')
-    _text.box = cfg.get('TEXT', 'box')
-    _text.boxcolor = cfg.get('TEXT', 'boxcolor')
-    _text.boxborderw = cfg.get('TEXT', 'boxborderw')
-    _text.x = cfg.get('TEXT', 'x')
-    _text.y = cfg.get('TEXT', 'y')
 
     if _init.load:
         _log.to_file = cfg.getboolean('LOGGING', 'log_to_file')
@@ -909,14 +902,21 @@ def handle_list_end(probe, new_length, src, begin, dur, seek, out):
         messenger.info(
             'We are over time, new length is: {0:.2f}'.format(new_length))
 
-    if dur > new_length > 1.5:
+    missing_secs = abs(new_length - (dur - seek))
+
+    if dur > new_length > 1.5 and dur - seek >= new_length:
         src_cmd = src_or_dummy(probe, src, dur, seek, new_out)
     elif dur > new_length > 0.0:
         messenger.info(
             'Last clip less then 1.5 second long, skip:\n{}'.format(src))
         src_cmd = None
+
+        if missing_secs > 2:
+            new_playlist = False
+            messenger.error(
+                'Reach playlist end,\n{0:.2f} seconds needed.'.format(
+                    missing_secs))
     else:
-        missing_secs = abs(new_length - dur)
         new_out = out
         new_playlist = False
         src_cmd = src_or_dummy(probe, src, dur, seek, out)
@@ -1587,15 +1587,13 @@ def main():
         '-bufsize', '{}k'.format(_pre_comp.v_bufsize)
         ] + pre_audio_codec() + ['-f', 'mpegts', '-']
 
-    if _text.add_text and os.path.isfile(_text.textfile):
-        messenger.info('Overlay text file: "{}"'.format(_text.textfile))
+    if _text.add_text:
+        messenger.info('Using drawtext node, listening on address: {}'.format(
+            _text.address
+        ))
         overlay = [
-            '-vf', ("drawtext=box={}:boxcolor='{}':boxborderw={}"
-                    ":fontsize={}:fontcolor={}:fontfile='{}':textfile={}"
-                    ":reload=1:x='{}':y='{}'").format(
-                        _text.box, _text.boxcolor, _text.boxborderw,
-                        _text.fontsize, _text.fontcolor, _text.fontfile,
-                        _text.textfile, _text.x, _text.y)
+            '-vf', "null,zmq=b='{}',drawtext=text='':fontfile='{}'".format(
+                _text.address.replace(':', '\\:'), _text.fontfile)
         ]
 
     try:
@@ -1676,6 +1674,8 @@ def main():
             _ff.encoder.terminate()
 
     finally:
+        if _ff.encoder.poll() is None:
+            _ff.encoder.terminate()
         _ff.encoder.wait()
 
 
