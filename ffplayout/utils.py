@@ -123,9 +123,6 @@ _playout = SimpleNamespace()
 _init = SimpleNamespace(load=True)
 _ff = SimpleNamespace(decoder=None, encoder=None)
 
-_WINDOWS = os.name == 'nt'
-COPY_BUFSIZE = 1024 * 1024 if _WINDOWS else 64 * 1024
-
 
 def str_to_sec(s):
     if s in ['now', '', None, 'none']:
@@ -590,7 +587,14 @@ def terminate_processes(watcher=None):
         watcher.stop()
 
 
-def ffmpeg_stderr_reader(std_errors, logger, prefix):
+def ffmpeg_stderr_reader(std_errors, decoder):
+    if decoder:
+        logger = decoder_logger
+        prefix = DEC_PREFIX
+    else:
+        logger = encoder_logger
+        prefix = ENC_PREFIX
+
     try:
         for line in std_errors:
             if _log.ff_level == 'INFO':
