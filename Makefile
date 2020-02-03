@@ -7,6 +7,11 @@ init:
 
 	@echo ""
 	@echo "-------------------------------------------------------------------"
-	@echo "packages for ffplayout installed in \"$(current_dir)/venv\""
+	@echo "external packages for ffplayout installed in \"$(current_dir)/venv\""
 	@echo ""
-	@echo "run \"$(current_dir)/venv/bin/python\" \"$(current_dir)/ffplayout.py\""
+	@echo "run: \"$(current_dir)/venv/bin/python\" \"$(current_dir)/ffplayout.py\""
+	@echo ""
+	@echo "or:"
+	@echo "source ./venv/bin/activate"
+	@echo "./ffplayout.py"
+	@echo ""
