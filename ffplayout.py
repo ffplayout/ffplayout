@@ -35,7 +35,7 @@ try:
         import colorama
         colorama.init()
 except ImportError:
-    print('Some modules are not installed, ffplayout may or may not work')
+    print('colorama import failed, no colored console output on windows...')
 
 
 # ------------------------------------------------------------------------------
