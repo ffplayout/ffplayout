@@ -104,10 +104,13 @@ More informations in [Wiki](https://github.com/ffplayout/ffplayout-engine/wiki/R
 Installation
 -----
 - install ffmpeg, ffprobe (and ffplay if you need the preview mode)
-- copy ffplayout.py to **/usr/local/bin/**
-- copy ffplayout.conf to **/etc/ffplayout/**
+- `cd` to **/opt/**
+- clone repo: `git clone https://github.com/ffplayout/ffplayout-engine.git`
+- `cd ffplayout-engine`
+- run **make**
+- copy ffplayout.yml to **/etc/ffplayout/**
 - create folder with correct permissions for logging (check config)
-- copy docs/ffplayout.service to **/etc/systemd/system/**
+- copy **docs/ffplayout.service** to **/etc/systemd/system/**
 - change user in **/etc/systemd/system/ffplayout.service**
 - create playlists folder, in that format: **/playlists/year/month**
 - set variables in config file to your needs
@@ -129,7 +132,7 @@ ffplayout also allows the passing of parameters:
 You can run the command like:
 
 ```
-python3 ffplayout.py -l ~/ -p ~/playlist.json -d -s now -t none
+./ffplayout.py -l none -p ~/playlist.json -d -s now -t none
 ```
 
 Play on Desktop
