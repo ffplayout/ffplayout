@@ -107,11 +107,11 @@ Installation
 - copy ffplayout.py to **/usr/local/bin/**
 - copy ffplayout.conf to **/etc/ffplayout/**
 - create folder with correct permissions for logging (check config)
-- copy ffplayout.service to **/etc/systemd/system/**
+- copy docs/ffplayout.service to **/etc/systemd/system/**
 - change user in **/etc/systemd/system/ffplayout.service**
 - create playlists folder, in that format: **/playlists/year/month**
 - set variables in config file to your needs
-- use **gen_playlist_from_subfolders.sh /path/to/mp4s/** as a starting point for your playlists (path in script needs to change)
+- use **docs/gen_playlist_from_subfolders.sh /path/to/mp4s/** as a starting point for your playlists (path in script needs to change)
 - activate service and start it: **sudo systemctl enable ffplayout && sudo systemctl start ffplayout**
 
 Start with Arguments
