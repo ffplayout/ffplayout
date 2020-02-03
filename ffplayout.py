@@ -18,7 +18,6 @@
 
 # ------------------------------------------------------------------------------
 
-import configparser
 import glob
 import json
 import logging
@@ -33,6 +32,7 @@ import ssl
 import sys
 import tempfile
 import time
+import yaml
 from argparse import ArgumentParser
 from datetime import date, datetime, timedelta
 from email.mime.multipart import MIMEMultipart
@@ -142,36 +142,52 @@ _WINDOWS = os.name == 'nt'
 COPY_BUFSIZE = 1024 * 1024 if _WINDOWS else 64 * 1024
 
 
+def str_to_sec(s):
+    if s in ['now', '', None, 'none']:
+        return None
+    else:
+        s = s.split(':')
+        try:
+            return float(s[0]) * 3600 + float(s[1]) * 60 + float(s[2])
+        except ValueError:
+            print('Wrong time format!')
+            sys.exit(1)
+
+
+def read_config(path):
+    with open(path, 'r') as config_file:
+        return yaml.safe_load(config_file)
+
+
+def dict_to_list(d):
+    li = []
+
+    for key, value in d.items():
+        if value:
+            li += ['-{}'.format(key), str(value)]
+        else:
+            li += ['-{}'.format(key)]
+    return li
+
+
 def load_config():
     """
     this function can reload most settings from configuration file,
     the change does not take effect immediately, but with the after next file,
     some settings cannot be changed - like resolution, aspect, or output
     """
-    cfg = configparser.ConfigParser()
-
-    def str_to_sec(s):
-        if s in ['now', '', None, 'none']:
-            return None
-        else:
-            s = s.split(':')
-            try:
-                return float(s[0]) * 3600 + float(s[1]) * 60 + float(s[2])
-            except ValueError:
-                print('Wrong time format!')
-                sys.exit(1)
 
     if stdin_args.config:
-        cfg.read(stdin_args.config)
-    elif os.path.isfile('/etc/ffplayout/ffplayout.conf'):
-        cfg.read('/etc/ffplayout/ffplayout.conf')
+        cfg = read_config(stdin_args.config)
+    elif os.path.isfile('/etc/ffplayout/ffplayout.yml'):
+        cfg = read_config('/etc/ffplayout/ffplayout.yml')
     else:
-        cfg.read('ffplayout.conf')
+        cfg = read_config('ffplayout.yml')
 
     if stdin_args.start:
         p_start = str_to_sec(stdin_args.start)
     else:
-        p_start = str_to_sec(cfg.get('PLAYLIST', 'day_start'))
+        p_start = str_to_sec(cfg['playlist']['day_start'])
 
     if not p_start:
         p_start = get_time('full_sec')
@@ -179,65 +195,61 @@ def load_config():
     if stdin_args.length:
         p_length = str_to_sec(stdin_args.length)
     else:
-        p_length = str_to_sec(cfg.get('PLAYLIST', 'length'))
+        p_length = str_to_sec(cfg['playlist']['length'])
 
-    _general.stop = cfg.getboolean('GENERAL', 'stop_on_error')
-    _general.threshold = cfg.getfloat('GENERAL', 'stop_threshold')
+    _general.stop = cfg['general']['stop_on_error']
+    _general.threshold = cfg['general']['stop_threshold']
 
-    _mail.subject = cfg.get('MAIL', 'subject')
-    _mail.server = cfg.get('MAIL', 'smpt_server')
-    _mail.port = cfg.getint('MAIL', 'smpt_port')
-    _mail.s_addr = cfg.get('MAIL', 'sender_addr')
-    _mail.s_pass = cfg.get('MAIL', 'sender_pass')
-    _mail.recip = cfg.get('MAIL', 'recipient')
-    _mail.level = cfg.get('MAIL', 'mail_level')
+    _mail.subject = cfg['mail']['subject']
+    _mail.server = cfg['mail']['smpt_server']
+    _mail.port = cfg['mail']['smpt_port']
+    _mail.s_addr = cfg['mail']['sender_addr']
+    _mail.s_pass = cfg['mail']['sender_pass']
+    _mail.recip = cfg['mail']['recipient']
+    _mail.level = cfg['mail']['mail_level']
 
-    _pre_comp.add_logo = cfg.getboolean('PRE_COMPRESS', 'add_logo')
-    _pre_comp.logo = cfg.get('PRE_COMPRESS', 'logo')
-    _pre_comp.opacity = cfg.get('PRE_COMPRESS', 'logo_opacity')
-    _pre_comp.logo_filter = cfg.get('PRE_COMPRESS', 'logo_filter')
-    _pre_comp.add_loudnorm = cfg.getboolean('PRE_COMPRESS', 'add_loudnorm')
-    _pre_comp.loud_i = cfg.getfloat('PRE_COMPRESS', 'loud_I')
-    _pre_comp.loud_tp = cfg.getfloat('PRE_COMPRESS', 'loud_TP')
-    _pre_comp.loud_lra = cfg.getfloat('PRE_COMPRESS', 'loud_LRA')
+    _pre_comp.add_logo = cfg['pre_compress']['add_logo']
+    _pre_comp.logo = cfg['pre_compress']['logo']
+    _pre_comp.opacity = cfg['pre_compress']['logo_opacity']
+    _pre_comp.logo_filter = cfg['pre_compress']['logo_filter']
+    _pre_comp.add_loudnorm = cfg['pre_compress']['add_loudnorm']
+    _pre_comp.loud_i = cfg['pre_compress']['loud_I']
+    _pre_comp.loud_tp = cfg['pre_compress']['loud_TP']
+    _pre_comp.loud_lra = cfg['pre_compress']['loud_LRA']
 
-    _playlist.mode = cfg.getboolean('PLAYLIST', 'playlist_mode')
-    _playlist.path = cfg.get('PLAYLIST', 'path')
+    _playlist.mode = cfg['playlist']['playlist_mode']
+    _playlist.path = cfg['playlist']['path']
     _playlist.start = p_start
     _playlist.length = p_length
 
-    _storage.path = cfg.get('STORAGE', 'path')
-    _storage.filler = cfg.get('STORAGE', 'filler_clip')
-    _storage.extensions = json.loads(cfg.get('STORAGE', 'extensions'))
-    _storage.shuffle = cfg.getboolean('STORAGE', 'shuffle')
+    _storage.path = cfg['storage']['path']
+    _storage.filler = cfg['storage']['filler_clip']
+    _storage.extensions = cfg['storage']['extensions']
+    _storage.shuffle = cfg['storage']['shuffle']
 
-    _text.add_text = cfg.getboolean('TEXT', 'add_text')
-    _text.address = cfg.get('TEXT', 'bind_address')
-    _text.fontfile = cfg.get('TEXT', 'fontfile')
+    _text.add_text = cfg['text']['add_text']
+    _text.address = cfg['text']['bind_address']
+    _text.fontfile = cfg['text']['fontfile']
 
     if _init.load:
-        _log.to_file = cfg.getboolean('LOGGING', 'log_to_file')
-        _log.path = cfg.get('LOGGING', 'log_path')
-        _log.level = cfg.get('LOGGING', 'log_level')
-        _log.ff_level = cfg.get('LOGGING', 'ffmpeg_level')
+        _log.to_file = cfg['logging']['log_to_file']
+        _log.path = cfg['logging']['log_path']
+        _log.level = cfg['logging']['log_level']
+        _log.ff_level = cfg['logging']['ffmpeg_level']
 
-        _pre_comp.w = cfg.getint('PRE_COMPRESS', 'width')
-        _pre_comp.h = cfg.getint('PRE_COMPRESS', 'height')
-        _pre_comp.aspect = cfg.getfloat('PRE_COMPRESS', 'aspect')
-        _pre_comp.fps = cfg.getint('PRE_COMPRESS', 'fps')
-        _pre_comp.v_bitrate = cfg.getint('PRE_COMPRESS', 'width') * 50
-        _pre_comp.v_bufsize = cfg.getint('PRE_COMPRESS', 'width') * 50 / 2
+        _pre_comp.w = cfg['pre_compress']['width']
+        _pre_comp.h = cfg['pre_compress']['height']
+        _pre_comp.aspect = cfg['pre_compress']['aspect']
+        _pre_comp.fps = cfg['pre_compress']['fps']
+        _pre_comp.v_bitrate = cfg['pre_compress']['width'] * 50
+        _pre_comp.v_bufsize = cfg['pre_compress']['width'] * 50 / 2
 
-        _playout.preview = cfg.getboolean('OUT', 'preview')
-        _playout.name = cfg.get('OUT', 'service_name')
-        _playout.provider = cfg.get('OUT', 'service_provider')
-        _playout.out_addr = cfg.get('OUT', 'out_addr')
-        _playout.post_comp_video = json.loads(
-            cfg.get('OUT', 'post_comp_video'))
-        _playout.post_comp_audio = json.loads(
-            cfg.get('OUT', 'post_comp_audio'))
-        _playout.post_comp_extra = json.loads(
-            cfg.get('OUT', 'post_comp_extra'))
+        _playout.preview = cfg['out']['preview']
+        _playout.name = cfg['out']['service_name']
+        _playout.provider = cfg['out']['service_provider']
+        _playout.post_comp_param = dict_to_list(
+            cfg['out']['post_ffmpeg_param'])
+        _playout.out_addr = cfg['out']['out_addr']
 
         _init.load = False
 
@@ -1606,12 +1618,11 @@ def main():
             _ff.encoder = Popen([
                 'ffmpeg', '-v', _log.ff_level.lower(), '-hide_banner',
                 '-nostats', '-re', '-thread_queue_size', '256',
-                '-i', 'pipe:0'] + overlay + _playout.post_comp_video
-                + _playout.post_comp_audio + [
+                '-i', 'pipe:0'] + overlay + [
                     '-metadata', 'service_name=' + _playout.name,
                     '-metadata', 'service_provider=' + _playout.provider,
                     '-metadata', 'year={}'.format(year)
-                ] + _playout.post_comp_extra + [_playout.out_addr],
+                ] + _playout.post_comp_param + [_playout.out_addr],
                 stdin=PIPE, stderr=PIPE)
 
         enc_err_thread = Thread(target=ffmpeg_stderr_reader,
