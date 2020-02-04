@@ -103,19 +103,7 @@ More informations in [Wiki](https://github.com/ffplayout/ffplayout-engine/wiki/R
 
 Installation
 -----
-- install ffmpeg, ffprobe (and ffplay if you need the preview mode)
-- `cd` to **/opt/**
-- clone repo: `git clone https://github.com/ffplayout/ffplayout-engine.git`
-- `cd ffplayout-engine`
-- run **make**
-- copy ffplayout.yml to **/etc/ffplayout/**
-- create folder with correct permissions for logging (check config)
-- copy **docs/ffplayout.service** to **/etc/systemd/system/**
-- change user in **/etc/systemd/system/ffplayout.service**
-- create playlists folder, in that format: **/playlists/year/month**
-- set variables in config file to your needs
-- use **docs/gen_playlist_from_subfolders.sh /path/to/mp4s/** as a starting point for your playlists (path in script needs to change)
-- activate service and start it: **sudo systemctl enable ffplayout && sudo systemctl start ffplayout**
+Check [INSTALL.md](docs/INSTALL.md)
 
 Start with Arguments
 -----
