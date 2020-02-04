@@ -4,12 +4,11 @@ After=network.target
 
 [Service]
 ExecStart=/opt/ffplayout-engine/venv/bin/python /opt/ffplayout-engine/ffplayout.py
-
 ExecReload=/bin/kill -1 $MAINPID
 Restart=always
 RestartSec=1
-User=user
-Group=user
+User=root
+Group=root
 
 [Install]
 WantedBy=multi-user.target
