@@ -15,7 +15,7 @@ Installation
 - clone repo: `git clone https://github.com/ffplayout/ffplayout-engine.git`
 - `cd ffplayout-engine`
 - run `make`
-- run `make install USER=www-data`, use any other user which need write access
+- run `sudo make install USER=www-data`, use any other user which need write access
 - create playlists folder, in that format: **/playlists/year/month**
 - set variables in config file to your needs
 - use `docs/gen_playlist_from_subfolders.sh /path/to/mp4s/` as a starting point for your playlists (path in script needs to change)
@@ -27,4 +27,4 @@ Cleanup
 
 Deinstallation
 -----
-- run `make uninstall` it will remove all created folders (also the **ffplayout.yml** configuration file!)
+- run `sudo make uninstall` it will remove all created folders (also the **ffplayout.yml** configuration file!)
