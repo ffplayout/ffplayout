@@ -44,7 +44,7 @@ mail:
 
 
 # Logging to file
-# if log_to_file = False > log to console
+# if log_to_file: False > log to console
 # path to /var/log/ only if you run this program as deamon
 # log_level can be: DEBUG, INFO, WARNING, ERROR
 # ffmpeg_level can be: INFO, WARNING, ERROR
@@ -61,7 +61,7 @@ logging:
 # aspect mus be a float number
 # logo is only used if the path exist
 # with logo_opacity logo can make transparent
-# with logo_filter = overlay=W-w-12:12 you can modify the logo position
+# with logo_filter: overlay=W-w-12:12 you can modify the logo position
 # with use_loudnorm you can activate single pass EBU R128 loudness normalization
 # loud_* can adjust the loudnorm filter
 # INFO: output is progressive!
