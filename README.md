@@ -41,7 +41,7 @@ Features
 Requirements
 -----
 - python version 3.6+
-- python module **watchdog** (only when `playlist_mode = False`)
+- python module **watchdog** (only when `playlist_mode: False`)
 - python module **colorama** if you are on windows
 - **ffmpeg v4.2+** and **ffprobe** (**ffplay** if you want to play on desktop)
 - if you want to overlay text, ffmpeg needs to have **libzmq**
@@ -125,4 +125,4 @@ You can run the command like:
 
 Play on Desktop
 -----
-For playing on desktop use `-d` argument or set `preview = True` in config under `[OUT]`.
+For playing on desktop use `-d` argument or set `preview: True` in config under `out:`.
