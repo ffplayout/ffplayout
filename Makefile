@@ -26,7 +26,7 @@ install:
 		install -d -o $(USER) -g $(USER) /opt/ffplayout-engine/; \
 		cp -r docs ffplayout venv "/opt/ffplayout-engine/"; \
 		chown $(USER):$(USER) -R "/opt/ffplayout-engine/"; \
-		install -m 644 -o $(USER) -g $(USER) ffplayout.py "/opt/ffplayout-engine/"; \
+		install -m 755 -o $(USER) -g $(USER) ffplayout.py "/opt/ffplayout-engine/"; \
 	fi
 	install -d /etc/ffplayout/
 	install -d -o $(USER) -g $(USER) /var/log/ffplayout/
