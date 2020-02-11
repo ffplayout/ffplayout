@@ -7,3 +7,6 @@ __pycache__/
 *-orig.*
 *.json
 tests/
+.pytest_cache/
+venv/
+log/
