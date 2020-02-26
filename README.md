@@ -31,7 +31,7 @@ Features
 - add filters to input, if is necessary to match output stream:
     - **yadif** (deinterlacing)
     - **pad** (letterbox or pillarbox to fit aspect)
-    - **framerate** (change fps)
+    - **fps** (change fps)
     - **scale** (fit target resolution)
     - **aevalsrc** (if video have no audio)
     - **apad** (add silence if audio duration is to short)
@@ -41,7 +41,7 @@ Features
 Requirements
 -----
 - python version 3.6+
-- python module **watchdog** (only when `playlist_mode = False`)
+- python module **watchdog** (only when `playlist_mode: False`)
 - python module **colorama** if you are on windows
 - **ffmpeg v4.2+** and **ffprobe** (**ffplay** if you want to play on desktop)
 - if you want to overlay text, ffmpeg needs to have **libzmq**
@@ -103,16 +103,7 @@ More informations in [Wiki](https://github.com/ffplayout/ffplayout-engine/wiki/R
 
 Installation
 -----
-- install ffmpeg, ffprobe (and ffplay if you need the preview mode)
-- copy ffplayout.py to **/usr/local/bin/**
-- copy ffplayout.conf to **/etc/ffplayout/**
-- create folder with correct permissions for logging (check config)
-- copy ffplayout.service to **/etc/systemd/system/**
-- change user in **/etc/systemd/system/ffplayout.service**
-- create playlists folder, in that format: **/playlists/year/month**
-- set variables in config file to your needs
-- use **gen_playlist_from_subfolders.sh /path/to/mp4s/** as a starting point for your playlists (path in script needs to change)
-- activate service and start it: **sudo systemctl enable ffplayout && sudo systemctl start ffplayout**
+Check [INSTALL.md](docs/INSTALL.md)
 
 Start with Arguments
 -----
@@ -129,9 +120,9 @@ ffplayout also allows the passing of parameters:
 You can run the command like:
 
 ```
-python3 ffplayout.py -l ~/ -p ~/playlist.json -d -s now -t none
+./ffplayout.py -l none -p ~/playlist.json -d -s now -t none
 ```
 
 Play on Desktop
 -----
-For playing on desktop use `-d` argument or set `preview = True` in config under `[OUT]`.
+For playing on desktop use `-d` argument or set `preview: True` in config under `out:`.

@@ -1,0 +1,3 @@
+watchdog
+colorama
+pyyaml
