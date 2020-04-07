@@ -7,7 +7,7 @@
                     <div class="header">
                         <h1>ffplayout</h1>
                     </div>
-                    <b-form @submit.prevent="login" class="login-form">
+                    <b-form class="login-form" @submit.prevent="login">
                         <p v-if="formError" class="error">
                             {{ formError }}
                         </p>
@@ -130,7 +130,9 @@
 
                     <div class="actions">
                         <b-button-group class="actions-grp">
-                            <b-button>Control</b-button>
+                            <b-button to="/control">
+                                Control
+                            </b-button>
                             <b-button to="/media">
                                 Media
                             </b-button>

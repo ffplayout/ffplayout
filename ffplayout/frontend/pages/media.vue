@@ -6,8 +6,8 @@
                     <b-breadcrumb>
                         <b-breadcrumb-item
                             v-for="(crumb, index) in crumbs"
-                            :active="index === crumbs.length - 1"
                             :key="crumb.key"
+                            :active="index === crumbs.length - 1"
                             @click="getPath(crumb.path)"
                         >
                             {{ crumb.text }}
