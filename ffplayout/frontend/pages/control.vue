@@ -2,8 +2,8 @@
     <div>
         <b-container class="control-container">
             <b-row>
-                <b-col cols="3" class="player-col">
-                    <b-aspect aspect="16:9">
+                <b-col cols="3">
+                    <b-aspect class="player-col" aspect="16:9">
                         Player
                     </b-aspect>
                 </b-col>
@@ -11,8 +11,8 @@
                     control
                 </b-col>
             </b-row>
-            <b-row>
-                <b-col cols="3" class="browser-col">
+            <splitpanes class="default-theme pane-row">
+                <pane min-size="20" size="24">
                     <div v-if="folderTree.tree" class="browser-div">
                         <div>
                             <b-breadcrumb>
@@ -34,16 +34,25 @@
                                 class="browser-item"
                             >
                                 <b-link @click="getPath(`${folderTree.tree[0]}/${folder}`)">
-                                    {{ folder }}
+                                    <b-icon-folder-fill class="browser-icons" /> {{ folder }}
+                                </b-link>
+                            </b-list-group-item>
+                            <b-list-group-item
+                                v-for="file in folderTree.tree[2]"
+                                :key="file.key"
+                                class="browser-item"
+                            >
+                                <b-link>
+                                    <b-icon-film class="browser-icons" /> {{ file }}
                                 </b-link>
                             </b-list-group-item>
                         </b-list-group>
                     </div>
-                </b-col>
-                <b-col cols="9" class="playlist-col">
-                    playlist
-                </b-col>
-            </b-row>
+                </pane>
+                <pane>
+                    <h2>Playlist</h2>
+                </pane>
+            </splitpanes>
         </b-container>
     </div>
 </template>
@@ -73,10 +82,11 @@ export default {
 }
 </script>
 
-<style>
+<style lang="scss">
 .control-container {
     max-width: 100%;
     margin: .5em;
+    padding: 0;
 }
 
 .player-col {
@@ -84,9 +94,42 @@ export default {
     min-width: 300px;
 }
 
+.pane-row {
+    margin: 8px 0 0 0;
+}
+
+.browser-div {
+    width: 100%;
+}
+
 .browser-list {
     max-height: 600px;
     overflow-y: scroll;
+}
+
+.splitpanes__pane {
+    width: 30%;
+}
+
+.splitpanes.default-theme .splitpanes__pane {
+    background-color: $dark;
+    box-shadow: 0 0 10px rgba(0, 0, 0, .2) inset;
+    justify-content: center;
+    align-items: center;
+    display: flex;
+    position: relative;
+}
+
+.default-theme.splitpanes--vertical > .splitpanes__splitter, .default-theme .splitpanes--vertical > .splitpanes__splitter {
+    border-left: 1px solid $dark;
+}
+
+.splitpanes.default-theme .splitpanes__splitter {
+    background-color: $dark;
+}
+
+.splitpanes.default-theme .splitpanes__splitter::after, .splitpanes.default-theme .splitpanes__splitter::before {
+    background-color: rgba(136, 136, 136, 0.38);
 }
 
 </style>
