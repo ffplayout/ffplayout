@@ -36,12 +36,15 @@ export default {
      ** Global CSS
      */
     css: [
-        '@/assets/css/bootstrap.min.css'
+        '@/assets/css/bootstrap.min.css',
+        '@/assets/css/globals.css'
     ],
     /*
      ** Plugins to load before mounting the App
      */
-    plugins: [],
+    plugins: [
+        { src: '~plugins/splitpanes.js', ssr: false }
+    ],
     /*
      ** Nuxt.js dev-modules
      */
@@ -55,11 +58,12 @@ export default {
     modules: [
         // Doc: https://bootstrap-vue.js.org
         'bootstrap-vue/nuxt',
-        // Doc: https://axios.nuxtjs.org/usage
         '@nuxtjs/axios',
+        '@nuxtjs/style-resources',
         // Doc: https://github.com/nuxt-community/dotenv-module
         '@nuxtjs/dotenv'
     ],
+
     /*
      ** Axios module configuration
      ** See https://axios.nuxtjs.org/options
@@ -68,9 +72,19 @@ export default {
         baseURL: process.env.API_URL
     },
 
+    /*
+    styleResources: {
+        scss: [
+            '@/assets/css/_variables.scss',
+        ]
+    },
+    */
+
     bootstrapVue: {
         bootstrapCSS: false,
+        icons: true
     },
+
     /*
      ** Build configuration
      */
