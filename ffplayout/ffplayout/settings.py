@@ -158,4 +158,8 @@ FFPLAYOUT_CONFIG = '/etc/ffplayout/ffplayout.conf'
 # used network interface for statistics: eth0, eno1, etc.
 NET_INTERFACE = 'br0'
 
+# Disk for frontpage statistics
+MEDIA_DISK = '/mnt/playout'
+
 MEDIA_FOLDER = '/mnt/playout/ADtvMedia'
+MEDIA_EXTENSIONS = ['.avi', '.mkv', '.m4v', '.mp4', '.webm', '.mov', '.mxf', '.mpg', '.mpeg', '.ts']

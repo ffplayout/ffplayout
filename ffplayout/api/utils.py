@@ -72,7 +72,7 @@ class SystemStats:
         }
 
     def disk(self):
-        root = psutil.disk_usage('/')
+        root = psutil.disk_usage(settings.MEDIA_DISK)
         return {
             'disk_total': [root.total, sizeof_fmt(root.total)],
             'disk_used': [root.used, sizeof_fmt(root.used)],
@@ -130,9 +130,28 @@ def get_media_path(dir=None):
             return ''
         dir = settings.MEDIA_FOLDER
     else:
+        if '/..' in dir:
+            dir = '/'.join(dir.split('/')[:-2])
+            # prevent deeper access
+            dir = dir.replace('/../', '/')
+
         dir = os.path.join(os.path.dirname(settings.MEDIA_FOLDER), dir)
     for root, dirs, files in os.walk(dir, topdown=True):
-        return [set_root(root), natsorted(dirs), natsorted(files)]
+        media_files = []
+
+        for file in files:
+            if os.path.splitext(file)[1] in settings.MEDIA_EXTENSIONS:
+                media_files.append(file)
+
+        dirs = natsorted(dirs)
+
+        if root != settings.MEDIA_FOLDER:
+            dirs.insert(0, '..')
+
+        if not dirs:
+            dirs = ['..']
+
+        return [set_root(root), dirs, natsorted(media_files)]
 
 
 if __name__ == '__main__':
