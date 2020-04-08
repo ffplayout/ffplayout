@@ -72,13 +72,11 @@ export default {
         baseURL: process.env.API_URL
     },
 
-    /*
     styleResources: {
         scss: [
             '@/assets/css/_variables.scss',
         ]
     },
-    */
 
     bootstrapVue: {
         bootstrapCSS: false,
