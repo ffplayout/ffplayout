@@ -25,7 +25,7 @@
                                     class="browser-item"
                                 >
                                     <b-link @click="getPath(`${folderTree.tree[0]}/${folder}`)">
-                                        {{ folder }}
+                                        <b-icon-folder-fill class="browser-icons" /> {{ folder }}
                                     </b-link>
                                 </b-list-group-item>
                             </b-list-group>
@@ -40,7 +40,7 @@
                                     class="browser-item"
                                 >
                                     <b-link>
-                                        {{ file }}
+                                        <b-icon-film class="browser-icons" />  {{ file }}
                                     </b-link>
                                 </b-list-group-item>
                             </b-list-group>
@@ -103,9 +103,4 @@ export default {
     border-radius: 5px;
 }
 
-.browser-item {
-    background: none;
-    padding: .3em;
-    border: none;
-}
 </style>
