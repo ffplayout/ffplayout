@@ -4,3 +4,4 @@ djangorestframework
 djangorestframework-simplejwt
 natsort
 psutil
+pyyaml

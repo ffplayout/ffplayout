@@ -1,10 +1,11 @@
 asgiref==3.2.3
-Django==3.0.2
+Django==3.0.5
 django-cors-headers==3.2.1
 djangorestframework==3.11.0
 djangorestframework-simplejwt==4.4.0
 natsort==7.0.1
-psutil==5.6.7
+psutil==5.7.0
 PyJWT==1.7.1
 pytz==2019.3
+PyYAML==5.3.1
 sqlparse==0.3.0
