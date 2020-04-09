@@ -127,18 +127,18 @@ out:
     preview: False
     service_name: "Live Stream"
     service_provider: "example.org"
-    post_ffmpeg_param:
-        c:v: "libx264"
-        crf: "23"
-        x264-params: "keyint=50:min-keyint=25:scenecut=-1"
-        maxrate: "1300k"
-        bufsize: "2600k"
-        preset: "medium"
-        profile:v: "Main"
-        level: "3.1"
-        c:a: "aac"
-        ar: "44100"
-        b:a: "128k"
-        flags: +global_header
-        f: "flv"
+    post_ffmpeg_param: >-
+        -c:v libx264
+        -crf 23
+        -x264-params keyint=50:min-keyint=25:scenecut=-1
+        -maxrate 1300k
+        -bufsize 2600k
+        -preset medium
+        -profile:v Main
+        -level 3.1
+        -c:a aac
+        -ar 44100
+        -b:a 128k
+        -flags +global_header
+        -f flv
     out_addr: "rtmp://localhost/live/stream"

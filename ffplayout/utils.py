@@ -140,17 +140,6 @@ def read_config(path):
         return yaml.safe_load(config_file)
 
 
-def dict_to_list(d):
-    li = []
-
-    for key, value in d.items():
-        if value:
-            li += ['-{}'.format(key), str(value)]
-        else:
-            li += ['-{}'.format(key)]
-    return li
-
-
 def load_config():
     """
     this function can reload most settings from configuration file,
@@ -228,8 +217,8 @@ def load_config():
         _playout.preview = cfg['out']['preview']
         _playout.name = cfg['out']['service_name']
         _playout.provider = cfg['out']['service_provider']
-        _playout.post_comp_param = dict_to_list(
-            cfg['out']['post_ffmpeg_param'])
+        print(cfg['out']['post_ffmpeg_param'].split(' '))
+        _playout.post_comp_param = cfg['out']['post_ffmpeg_param'].split(' ')
         _playout.out_addr = cfg['out']['out_addr']
 
         _init.load = False
