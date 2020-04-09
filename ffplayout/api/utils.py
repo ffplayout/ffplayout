@@ -1,4 +1,3 @@
-import configparser
 import os
 from platform import uname
 from time import sleep
@@ -15,19 +14,6 @@ def sizeof_fmt(num, suffix='B'):
             return "%3.1f%s%s" % (num, unit, suffix)
         num /= 1024.0
     return "%.1f%s%s" % (num, 'Yi', suffix)
-
-
-class IniParser(configparser.ConfigParser):
-    """
-    config output as json
-    """
-
-    def as_dict(self):
-        d = dict(self._sections)
-        for k in d:
-            d[k] = dict(self._defaults, **d[k])
-            d[k].pop('__name__', None)
-        return d
 
 
 class SystemStats:
