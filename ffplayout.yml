@@ -106,8 +106,8 @@ storage:
     filler_path: "/mediaStorage/filler/filler-clips"
     filler_clip: "/mediaStorage/filler/filler.mp4"
     extensions:
-        - "*.mp4"
-        - "*.mkv"
+        - ".mp4"
+        - ".mkv"
     shuffle: True
 
 

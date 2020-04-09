@@ -52,7 +52,7 @@ class MediaStore:
     def fill(self):
         for ext in _storage.extensions:
             self.store.extend(
-                glob.glob(os.path.join(self.folder, '**', ext),
+                glob.glob(os.path.join(self.folder, '**', '*{}'.format(ext)),
                           recursive=True))
 
         if _storage.shuffle:
