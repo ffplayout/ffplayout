@@ -137,7 +137,9 @@
                                 Media
                             </b-button>
                             <b-button>Logging</b-button>
-                            <b-button>Configure</b-button>
+                            <b-button to="/configure">
+                                Configure
+                            </b-button>
                             <b-button @click="logout()">
                                 Logout
                             </b-button>
