@@ -44,7 +44,8 @@
                             v-else-if="Array.isArray(prop)"
                             v-model="config[key][name]"
                             input-id="tags-basic"
-                            placeholder="add item..."
+                            separator=" ,;"
+                            :placeholder="`add ${name}...`"
                             class="mb-2"
                         />
                         <b-form-input v-else :id="name" v-model="config[key][name]" :value="prop" />
@@ -80,8 +81,9 @@ export default {
     },
 
     methods: {
-        onSubmit (evt) {
+        async onSubmit (evt) {
             evt.preventDefault()
+            await this.$store.dispatch('auth/inspectToken')
             this.$store.dispatch('config/setConfig', this.config)
         }
     }

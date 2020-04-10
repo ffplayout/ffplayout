@@ -1,17 +1,7 @@
-import os
-
-import yaml
-
-from django.conf import settings
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .utils import SystemStats, get_media_path
-
-
-def read_config(path):
-    with open(path, 'r') as config_file:
-        return yaml.safe_load(config_file)
+from .utils import read_yaml, write_yaml, SystemStats, get_media_path
 
 
 class Config(APIView):
@@ -22,9 +12,10 @@ class Config(APIView):
 
     def get(self, request, *args, **kwargs):
         if 'config' in request.GET.dict():
-            if os.path.isfile(settings.FFPLAYOUT_CONFIG):
-                yaml = read_config(settings.FFPLAYOUT_CONFIG)
-                return Response(yaml)
+            yaml_input = read_yaml()
+
+            if yaml_input:
+                return Response(yaml_input)
             else:
                 return Response({
                     "success": False,
@@ -34,8 +25,8 @@ class Config(APIView):
 
     def post(self, request, *args, **kwargs):
         if 'data' in request.data:
-            # TODO: do save data to config
-            print(request.data['data'])
+            write_yaml(request.data['data'])
+            return Response({"success": True})
 
         return Response({"success": False})
 

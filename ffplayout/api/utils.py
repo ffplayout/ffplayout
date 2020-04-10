@@ -2,10 +2,23 @@ import os
 from platform import uname
 from time import sleep
 
-from django.conf import settings
-
 import psutil
+import yaml
+
+from django.conf import settings
 from natsort import natsorted
+
+
+def read_yaml():
+    if os.path.isfile(settings.FFPLAYOUT_CONFIG):
+        with open(settings.FFPLAYOUT_CONFIG, 'r') as config_file:
+            return yaml.safe_load(config_file)
+
+
+def write_yaml(data):
+    if os.path.isfile(settings.FFPLAYOUT_CONFIG):
+        with open(settings.FFPLAYOUT_CONFIG, 'w') as outfile:
+            yaml.dump(data, outfile, default_flow_style=False, sort_keys=False)
 
 
 def sizeof_fmt(num, suffix='B'):
