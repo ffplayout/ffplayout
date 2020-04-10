@@ -5,7 +5,6 @@ import yaml
 from django.conf import settings
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework.permissions import AllowAny
 
 from .utils import SystemStats, get_media_path
 
@@ -16,7 +15,6 @@ def read_config(path):
 
 
 class Config(APIView):
-    permission_classes = (AllowAny,)
     """
     read and write config from ffplayout engine
     for reading endpoint is: http://127.0.0.1:8000/api/config/?config
@@ -35,11 +33,9 @@ class Config(APIView):
             return Response({"success": False})
 
     def post(self, request, *args, **kwargs):
-        if 'config' in request.POST.dict():
-            pass
-        print(request.query_params)
-        print(args)
-        print(kwargs)
+        if 'data' in request.data:
+            # TODO: do save data to config
+            print(request.data['data'])
 
         return Response({"success": False})
 
