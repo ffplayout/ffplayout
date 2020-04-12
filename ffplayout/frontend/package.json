@@ -16,10 +16,11 @@
     "@nuxtjs/dotenv": "^1.4.1",
     "bootstrap": "^4.4.1",
     "bootstrap-vue": "^2.10.1",
-    "dayjs": "^1.8.23",
     "jwt-decode": "^2.2.0",
     "nuxt": "^2.12.2",
-    "splitpanes": "^2.2.1"
+    "nuxt-dayjs-module": "^1.1.2",
+    "splitpanes": "^2.2.1",
+    "vue2-perfect-scrollbar": "^1.5.0"
   },
   "devDependencies": {
     "@nuxtjs/eslint-config": "^2.0.2",
