@@ -30,6 +30,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', include(router.urls)),
     path('api/config/', views.Config.as_view()),
+    path('api/playlist/', views.Playlist.as_view()),
     path('api/stats/', views.Statistics.as_view()),
     path('api/media/', views.Media.as_view()),
     path('api-auth/', include(
