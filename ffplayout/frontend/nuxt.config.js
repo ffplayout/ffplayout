@@ -43,6 +43,7 @@ export default {
      ** Plugins to load before mounting the App
      */
     plugins: [
+        { src: '~plugins/scrollbar.js', ssr: false },
         { src: '~plugins/splitpanes.js', ssr: false }
     ],
     /*
@@ -61,7 +62,8 @@ export default {
         '@nuxtjs/axios',
         '@nuxtjs/style-resources',
         // Doc: https://github.com/nuxt-community/dotenv-module
-        '@nuxtjs/dotenv'
+        '@nuxtjs/dotenv',
+        'nuxt-dayjs-module'
     ],
 
     /*
