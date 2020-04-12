@@ -27,30 +27,91 @@
                             </b-breadcrumb>
                         </div>
 
-                        <b-list-group class="browser-list">
-                            <b-list-group-item
-                                v-for="folder in folderTree.tree[1]"
-                                :key="folder.key"
-                                class="browser-item"
-                            >
-                                <b-link @click="getPath(`${folderTree.tree[0]}/${folder}`)">
-                                    <b-icon-folder-fill class="browser-icons" /> {{ folder }}
-                                </b-link>
-                            </b-list-group-item>
-                            <b-list-group-item
-                                v-for="file in folderTree.tree[2]"
-                                :key="file.key"
-                                class="browser-item"
-                            >
-                                <b-link>
-                                    <b-icon-film class="browser-icons" /> {{ file }}
-                                </b-link>
-                            </b-list-group-item>
-                        </b-list-group>
+                        <perfect-scrollbar>
+                            <!-- class="browser-list" -->
+                            <b-list-group>
+                                <b-list-group-item
+                                    v-for="folder in folderTree.tree[1]"
+                                    :key="folder.key"
+                                    class="browser-item"
+                                >
+                                    <b-link @click="getPath(`${folderTree.tree[0]}/${folder}`)">
+                                        <b-icon-folder-fill class="browser-icons" /> {{ folder }}
+                                    </b-link>
+                                </b-list-group-item>
+                                <b-list-group-item
+                                    v-for="file in folderTree.tree[2]"
+                                    :key="file.key"
+                                    class="browser-item"
+                                >
+                                    <b-link>
+                                        <b-icon-film class="browser-icons" /> {{ file }}
+                                    </b-link>
+                                </b-list-group-item>
+                            </b-list-group>
+                        </perfect-scrollbar>
                     </div>
                 </pane>
                 <pane>
-                    <h2>Playlist</h2>
+                    <div class="playlist-container">
+                        <b-datepicker v-model="today" class="date-div" />
+                        <b-list-group>
+                            <b-list-group-item>
+                                <b-row class="playlist-row">
+                                    <b-col cols="1">
+                                        Start
+                                    </b-col>
+                                    <b-col cols="6">
+                                        File
+                                    </b-col>
+                                    <b-col cols="1" class="text-center">
+                                        Play
+                                    </b-col>
+                                    <b-col cols="1">
+                                        Duration
+                                    </b-col>
+                                    <b-col cols="1">
+                                        In
+                                    </b-col>
+                                    <b-col cols="1">
+                                        Out
+                                    </b-col>
+                                    <b-col cols="1" class="text-center">
+                                        Delete
+                                    </b-col>
+                                </b-row>
+                            </b-list-group-item>
+                        </b-list-group>
+                        <perfect-scrollbar>
+                            <b-list-group v-if="playlist">
+                                <b-list-group-item v-for="item in playlist.program" :key="item.key">
+                                    <b-row class="playlist-row">
+                                        <b-col cols="1">
+                                            {{ item.begin | secondsToTime }}
+                                        </b-col>
+                                        <b-col cols="6">
+                                            {{ item.source | filename }}
+                                        </b-col>
+                                        <b-col cols="1" class="text-center">
+                                            <b-icon-play-fill />
+                                        </b-col>
+                                        <b-col cols="1" text>
+                                            {{ item.duration | secondsToTime }}
+                                        </b-col>
+                                        <b-col cols="1">
+                                            {{ item.in | secondsToTime }}
+                                        </b-col>
+                                        <b-col cols="1">
+                                            {{ item.out | secondsToTime }}
+                                        </b-col>
+                                        <b-col cols="1" class="text-center">
+                                            <b-icon-x-circle-fill />
+                                        </b-col>
+                                    </b-row>
+                                </b-list-group-item>
+                            </b-list-group>
+                        </perfect-scrollbar>
+                    </div>
                 </pane>
             </splitpanes>
         </b-container>
@@ -65,18 +126,51 @@ export default {
 
     components: {},
 
-    computed: {
-        ...mapState('media', ['crumbs', 'folderTree'])
+    filters: {
+        filename (path) {
+            const pathArr = path.split('/')
+            return pathArr[pathArr.length - 1]
+        },
+        secondsToTime (sec) {
+            return new Date(sec * 1000).toISOString().substr(11, 8)
+        }
     },
 
-    created () {
-        this.getPath('')
+    data () {
+        return {
+            today: this.$dayjs().format('YYYY-MM-DD')
+        }
+    },
+
+    computed: {
+        ...mapState('config', ['config']),
+        ...mapState('media', ['crumbs', 'folderTree']),
+        ...mapState('playlist', ['playlist'])
+    },
+
+    watch: {
+        today (date) {
+            this.getPlaylist()
+        }
+    },
+
+    async created () {
+        await this.getPath('')
+        await this.getConfig()
+        await this.getPlaylist()
     },
 
     methods: {
+        async getConfig () {
+            await this.$store.dispatch('config/getConfig')
+        },
         async getPath (path) {
             await this.$store.dispatch('auth/inspectToken')
             await this.$store.dispatch('media/getTree', path)
+        },
+        async getPlaylist () {
+            await this.$store.dispatch('auth/inspectToken')
+            await this.$store.dispatch('playlist/getPlaylist', { dayStart: this.config.playlist.day_start, date: this.today })
         }
     }
 }
@@ -84,9 +178,9 @@ export default {
 
 <style lang="scss">
 .control-container {
+    width: auto;
     max-width: 100%;
     margin: .5em;
-    padding: 0;
 }
 
 .player-col {
@@ -100,6 +194,18 @@ export default {
 
 .browser-div {
     width: 100%;
+}
+
+.date-div {
+    width: 250px;
+}
+
+.playlist-container {
+    width: 100%;
+}
+
+.browser-div .ps, .playlist-container .ps {
+    height: 600px;
 }
 
 .browser-list {
