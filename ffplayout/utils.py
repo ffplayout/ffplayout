@@ -217,7 +217,6 @@ def load_config():
         _playout.preview = cfg['out']['preview']
         _playout.name = cfg['out']['service_name']
         _playout.provider = cfg['out']['service_provider']
-        print(cfg['out']['post_ffmpeg_param'].split(' '))
         _playout.post_comp_param = cfg['out']['post_ffmpeg_param'].split(' ')
         _playout.out_addr = cfg['out']['out_addr']
 
