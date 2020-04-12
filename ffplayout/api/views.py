@@ -1,7 +1,8 @@
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .utils import read_yaml, write_yaml, SystemStats, get_media_path
+from .utils import (SystemStats, get_media_path, read_yaml, write_yaml,
+                    read_json)
 
 
 class Config(APIView):
@@ -20,6 +21,34 @@ class Config(APIView):
                 return Response({
                     "success": False,
                     "error": "ffpayout engine config file not found!"})
+        else:
+            return Response({"success": False})
+
+    def post(self, request, *args, **kwargs):
+        if 'data' in request.data:
+            write_yaml(request.data['data'])
+            return Response({"success": True})
+
+        return Response({"success": False})
+
+
+class Playlist(APIView):
+    """
+    read and write config from ffplayout engine
+    for reading endpoint: http://127.0.0.1:8000/api/playlist/?date=2020-04-12
+    """
+
+    def get(self, request, *args, **kwargs):
+        if 'date' in request.GET.dict():
+            date = request.GET.dict()['date']
+            json_input = read_json(date)
+
+            if json_input:
+                return Response(json_input)
+            else:
+                return Response({
+                    "success": False,
+                    "error": "Playlist from {} not found!".format(date)})
         else:
             return Response({"success": False})
 

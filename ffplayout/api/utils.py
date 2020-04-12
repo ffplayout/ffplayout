@@ -1,4 +1,5 @@
 import os
+import json
 from platform import uname
 from time import sleep
 
@@ -18,7 +19,17 @@ def read_yaml():
 def write_yaml(data):
     if os.path.isfile(settings.FFPLAYOUT_CONFIG):
         with open(settings.FFPLAYOUT_CONFIG, 'w') as outfile:
-            yaml.dump(data, outfile, default_flow_style=False, sort_keys=False)
+            yaml.dump(data, outfile, default_flow_style=False,
+                      sort_keys=False, indent=4)
+
+
+def read_json(date):
+    config = read_yaml()['playlist']['path']
+    y, m, d = date.split('-')
+    input = os.path.join(config, y, m, '{}.json'.format(date))
+    if os.path.isfile(input):
+        with open(input, 'r') as playlist:
+            return json.load(playlist)
 
 
 def sizeof_fmt(num, suffix='B'):
@@ -119,32 +130,35 @@ class SystemStats:
 
 def set_root(path):
     # prevent access to root file system
-    root = os.path.dirname(settings.MEDIA_FOLDER)
-    return path.lstrip(root)
+    dir = os.path.dirname(
+        read_yaml()['storage']['path'].replace('\\', '/').rstrip('/'))
+
+    return path.replace(dir, '').strip('/')
 
 
 def get_media_path(dir=None):
+    config = read_yaml()
+    media_dir = config['storage']['path'].replace('\\', '/').rstrip('/')
     if not dir:
-        if not os.path.isdir(settings.MEDIA_FOLDER):
+        if not os.path.isdir(media_dir):
             return ''
-        dir = settings.MEDIA_FOLDER
+        dir = media_dir
     else:
         if '/..' in dir:
             dir = '/'.join(dir.split('/')[:-2])
-            # prevent deeper access
-            dir = dir.replace('/../', '/')
 
-        dir = os.path.join(os.path.dirname(settings.MEDIA_FOLDER), dir)
+        dir = os.path.join(os.path.dirname(media_dir),
+                           os.path.abspath('/' + dir).strip('/'))
     for root, dirs, files in os.walk(dir, topdown=True):
         media_files = []
 
         for file in files:
-            if os.path.splitext(file)[1] in settings.MEDIA_EXTENSIONS:
+            if os.path.splitext(file)[1] in config['storage']['extensions']:
                 media_files.append(file)
 
         dirs = natsorted(dirs)
 
-        if root != settings.MEDIA_FOLDER:
+        if root != media_dir:
             dirs.insert(0, '..')
 
         if not dirs:
