@@ -15,12 +15,21 @@
                         v-for="(prop, name, idx) in item"
                         :key="idx"
                         label-cols-sm="2"
-                        :label="(typeof prop === 'boolean') ? '' : name"
+                        :label="(typeof prop === 'boolean' || name === 'helptext') ? '' : name"
                         label-align-sm="right"
                         :label-for="name"
                     >
+                        <b-form-textarea
+                            v-if="name === 'helptext'"
+                            id="textarea-plaintext"
+                            plaintext
+                            :value="prop"
+                            rows="2"
+                            max-rows="8"
+                            class="text-area"
+                        />
                         <b-form-checkbox
-                            v-if="typeof prop === 'boolean'"
+                            v-else-if="typeof prop === 'boolean'"
                             :id="name"
                             v-model="config[key][name]"
                             :name="name"
@@ -32,6 +41,7 @@
                             :id="name"
                             v-model="config[key][name]"
                             type="number"
+                            class="input-field"
                         />
                         <b-form-input
                             v-else-if="typeof prop === 'number'"
@@ -39,6 +49,7 @@
                             v-model="config[key][name]"
                             type="number"
                             step="0.001"
+                            class="input-field"
                         />
                         <b-form-tags
                             v-else-if="Array.isArray(prop)"
@@ -57,21 +68,33 @@
                 </b-button>
             </b-form>
         </b-container>
+        <Login :show="showLogin" />
     </div>
 </template>
 
 <script>
+import Login from '@/components/Login.vue'
+
 export default {
     name: 'Configure',
 
-    components: {},
+    components: {
+        Login
+    },
 
     async asyncData ({ app, store }) {
         await store.dispatch('auth/inspectToken')
-        await store.dispatch('config/getConfig')
+        let login = false
+
+        if (store.state.auth.isLogin) {
+            await store.dispatch('config/getConfig')
+        } else {
+            login = true
+        }
 
         return {
-            config: store.state.config.config
+            config: store.state.config.config,
+            showLogin: login
         }
     },
 
@@ -92,11 +115,19 @@ export default {
 
 <style lang="scss">
 .config-container {
-    margin: 2em auto 0;
+    margin: 2em auto 2em auto;
     padding: 0;
 }
 
 .config-group {
     margin-bottom: 2em;
+}
+
+.input-field {
+    max-width: 200px;
+}
+
+.text-area {
+    overflow-y: hidden !important;
 }
 </style>
