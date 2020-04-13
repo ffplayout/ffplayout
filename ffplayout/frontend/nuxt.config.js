@@ -43,6 +43,7 @@ export default {
      ** Plugins to load before mounting the App
      */
     plugins: [
+        { src: '~/plugins/filters' },
         { src: '~plugins/scrollbar.js', ssr: false },
         { src: '~plugins/splitpanes.js', ssr: false }
     ],
