@@ -11,6 +11,11 @@
                     control
                 </b-col>
             </b-row>
+            <b-row>
+                <b-col>
+                    <b-datepicker v-model="today" class="date-div" />
+                </b-col>
+            </b-row>
             <splitpanes class="default-theme pane-row">
                 <pane min-size="20" size="24">
                     <div v-if="folderTree.tree" class="browser-div">
@@ -45,7 +50,8 @@
                                     class="browser-item"
                                 >
                                     <b-link>
-                                        <b-icon-film class="browser-icons" /> {{ file }}
+                                        <b-icon-film class="browser-icons" /> {{ file.file }}
+                                        <span class="duration">{{ file.duration | toMin }}</span>
                                     </b-link>
                                 </b-list-group-item>
                             </b-list-group>
@@ -54,7 +60,6 @@
                 </pane>
                 <pane>
                     <div class="playlist-container">
-                        <b-datepicker v-model="today" class="date-div" />
                         <b-list-group>
                             <b-list-group-item>
                                 <b-row class="playlist-row">
@@ -83,8 +88,8 @@
                             </b-list-group-item>
                         </b-list-group>
                         <perfect-scrollbar>
-                            <b-list-group v-if="playlist">
-                                <b-list-group-item v-for="item in playlist.program" :key="item.key">
+                            <b-list-group>
+                                <b-list-group-item v-for="item in playlist" :key="item.key">
                                     <b-row class="playlist-row">
                                         <b-col cols="1">
                                             {{ item.begin | secondsToTime }}
@@ -198,6 +203,7 @@ export default {
 
 .date-div {
     width: 250px;
+    float: right;
 }
 
 .playlist-container {
