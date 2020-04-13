@@ -4,4 +4,5 @@ djangorestframework
 djangorestframework-simplejwt
 natsort
 psutil
+pymediainfo
 pyyaml
