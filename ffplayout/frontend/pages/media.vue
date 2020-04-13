@@ -40,7 +40,8 @@
                                     class="browser-item"
                                 >
                                     <b-link>
-                                        <b-icon-film class="browser-icons" />  {{ file }}
+                                        <b-icon-film class="browser-icons" />  {{ file.file }}
+                                        <span class="duration">{{ file.duration | toMin }}</span>
                                     </b-link>
                                 </b-list-group-item>
                             </b-list-group>
@@ -49,6 +50,20 @@
                 </b-row>
             </div>
         </b-container>
+        <b-form @submit="onSubmit">
+            <b-form-file
+                v-model="inputFile"
+                :state="Boolean(inputFile)"
+                placeholder="Choose a file or drop it here..."
+                drop-placeholder="Drop file here..."
+            />
+            <b-button type="submit" variant="primary">
+                Submit
+            </b-button>
+        </b-form>
+        <div class="mt-3">
+            Selected file: {{ inputFile ? inputFile.name : '' }}
+        </div>
     </div>
 </template>
 
@@ -59,6 +74,12 @@ export default {
     name: 'Media',
 
     components: {},
+
+    data () {
+        return {
+            inputFile: null
+        }
+    },
 
     computed: {
         ...mapState('media', ['crumbs', 'folderTree'])
@@ -72,6 +93,22 @@ export default {
         async getPath (path) {
             await this.$store.dispatch('auth/inspectToken')
             await this.$store.dispatch('media/getTree', path)
+        },
+
+        onSubmit (evt) {
+            evt.preventDefault()
+            console.log(this.inputFile)
+            const config = {
+                onUploadProgress: (progressEvent) => {
+                    const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total)
+                    console.log(percentCompleted)
+                },
+                headers: { Authorization: 'Bearer ' + this.$store.state.auth.jwtToken }
+            }
+
+            this.$axios.put('/upload/?path=/ffplayout/test.mp4', this.inputFile, config)
+                .then(res => console.log(res))
+                .catch(err => console.log(err))
         }
     }
 }

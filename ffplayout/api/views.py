@@ -1,8 +1,9 @@
+from rest_framework.parsers import FileUploadParser, JSONParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .utils import (SystemStats, get_media_path, read_yaml, write_yaml,
-                    read_json)
+from .utils import (SystemStats, get_media_path, read_json, read_yaml,
+                    write_yaml)
 
 
 class Config(APIView):
@@ -10,6 +11,7 @@ class Config(APIView):
     read and write config from ffplayout engine
     for reading endpoint is: http://127.0.0.1:8000/api/config/?config
     """
+    parser_classes = [JSONParser]
 
     def get(self, request, *args, **kwargs):
         if 'config' in request.GET.dict():
@@ -90,3 +92,15 @@ class Media(APIView):
             return Response({'tree': get_media_path()})
         else:
             return Response({"success": False})
+
+
+class FileUpload(APIView):
+    parser_classes = [FileUploadParser]
+
+    def put(self, request, filename, format=None):
+        file_obj = request.data['file']
+        print(filename)
+        with open(filename, 'wb+') as outfile:
+            for chunk in file_obj.chunks():
+                outfile.write(chunk)
+        return Response(status=204)

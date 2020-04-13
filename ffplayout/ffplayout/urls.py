@@ -14,7 +14,7 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.contrib import admin
-from django.urls import include, path
+from django.urls import include, path, re_path
 
 from rest_framework import routers
 from api import views
@@ -38,5 +38,6 @@ urlpatterns = [
     path('auth/token/', TokenObtainPairView.as_view(),
          name='token_obtain_pair'),
     path('auth/token/refresh/', TokenRefreshView.as_view(),
-         name='token_refresh')
+         name='token_refresh'),
+    re_path(r'^upload/(?P<filename>[^/]+)$',  views.FileUpload.as_view())
 ]
