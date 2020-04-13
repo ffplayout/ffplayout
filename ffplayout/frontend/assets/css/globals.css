@@ -7,3 +7,13 @@
 .browser-icons {
     margin-right: .5em;
 }
+
+.breadcrumb {
+    background-color: #32383e;
+    background-image: none;
+}
+
+.duration {
+    float: right;
+    margin-right: 1em;
+}
