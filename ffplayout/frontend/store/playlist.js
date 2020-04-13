@@ -13,22 +13,17 @@ export const actions = {
         console.log(date)
         const response = await this.$axios.get(`api/playlist/?date=${date}`, { headers: { Authorization: 'Bearer ' + rootState.auth.jwtToken } })
 
-        console.log(dayStart)
-
         const [h, m, s] = dayStart.split(':')
         let begin = parseFloat(h) * 3600 + parseFloat(m) * 60 + parseFloat(s)
-        console.log(begin)
 
-        if (response.data) {
+        if (response.data && response.data.program) {
             for (const item of response.data.program) {
                 item.begin = begin
 
                 begin += (item.out - item.in)
             }
 
-            console.log(response.data)
-
-            commit('UPDATE_PLAYLIST', response.data)
+            commit('UPDATE_PLAYLIST', response.data.program)
         }
     }
 }
