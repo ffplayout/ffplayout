@@ -1,10 +1,11 @@
-import os
 import json
+import os
 from platform import uname
 from time import sleep
 
 import psutil
 import yaml
+from pymediainfo import MediaInfo
 
 from django.conf import settings
 from natsort import natsorted
@@ -154,7 +155,16 @@ def get_media_path(dir=None):
 
         for file in files:
             if os.path.splitext(file)[1] in config['storage']['extensions']:
-                media_files.append(file)
+                media_info = MediaInfo.parse(os.path.join(root, file))
+                duration = 0
+                for track in media_info.tracks:
+                    if track.track_type == 'General':
+                        try:
+                            duration = float(track.to_data()["duration"]) / 1000
+                            break
+                        except KeyError:
+                            pass
+                media_files.append({'file': file, 'duration': duration})
 
         dirs = natsorted(dirs)
 
@@ -164,7 +174,8 @@ def get_media_path(dir=None):
         if not dirs:
             dirs = ['..']
 
-        return [set_root(root), dirs, natsorted(media_files)]
+        return [set_root(root), dirs, natsorted(media_files,
+                                                key=lambda x: x['file'])]
 
 
 if __name__ == '__main__':
