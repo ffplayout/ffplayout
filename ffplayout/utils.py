@@ -300,8 +300,8 @@ if _log.to_file and _log.path != 'none':
         log_dir = os.path.join(base_dir, 'log')
         os.makedirs(log_dir, exist_ok=True)
         playout_log = os.path.join(log_dir, 'ffplayout.log')
-        decoder_log = os.path.join(log_dir, 'ffdecoder.log')
-        encoder_log = os.path.join(log_dir, 'ffencoder.log')
+        decoder_log = os.path.join(log_dir, 'decoder.log')
+        encoder_log = os.path.join(log_dir, 'encoder.log')
 
     p_format = logging.Formatter('[%(asctime)s] [%(levelname)s]  %(message)s')
     f_format = logging.Formatter('[%(asctime)s]  %(message)s')
