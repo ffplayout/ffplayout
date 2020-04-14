@@ -1,3 +1,6 @@
+import os
+from urllib.parse import unquote
+
 from rest_framework.parsers import FileUploadParser, JSONParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -98,9 +101,12 @@ class FileUpload(APIView):
     parser_classes = [FileUploadParser]
 
     def put(self, request, filename, format=None):
+        root = read_yaml()['storage']['path']
         file_obj = request.data['file']
-        print(filename)
-        with open(filename, 'wb+') as outfile:
+        filename = unquote(filename)
+        path = unquote(request.query_params['path']).split('/')[1:]
+
+        with open(os.path.join(root, *path, filename), 'wb') as outfile:
             for chunk in file_obj.chunks():
                 outfile.write(chunk)
         return Response(status=204)
