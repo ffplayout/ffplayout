@@ -95,9 +95,10 @@ export default {
             await this.$store.dispatch('media/getTree', path)
         },
 
-        onSubmit (evt) {
+        async onSubmit (evt) {
             evt.preventDefault()
-            console.log(this.inputFile)
+            await this.$store.dispatch('auth/inspectToken')
+
             const config = {
                 onUploadProgress: (progressEvent) => {
                     const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total)
@@ -106,7 +107,11 @@ export default {
                 headers: { Authorization: 'Bearer ' + this.$store.state.auth.jwtToken }
             }
 
-            this.$axios.put('/upload/?path=/ffplayout/test.mp4', this.inputFile, config)
+            this.$axios.put(
+                `/upload/${encodeURIComponent(this.inputFile.name)}?path=${encodeURIComponent(this.crumbs.map(e => e.text).join('/'))}`,
+                this.inputFile,
+                config
+            )
                 .then(res => console.log(res))
                 .catch(err => console.log(err))
         }
