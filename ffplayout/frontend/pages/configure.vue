@@ -69,18 +69,19 @@
                                         {{ name }}
                                     </b-form-checkbox>
                                     <b-form-input
-                                        v-else-if="typeof prop === 'number' && Number.isInteger(prop)"
-                                        :id="name"
-                                        v-model="configPlayout[key][name]"
-                                        type="number"
-                                        class="input-field"
-                                    />
-                                    <b-form-input
-                                        v-else-if="typeof prop === 'number'"
+                                        v-else-if="prop && prop.toString().match(/^-?\d+[.,]\d+$/)"
                                         :id="name"
                                         v-model="configPlayout[key][name]"
                                         type="number"
                                         step="0.001"
+                                        class="input-field"
+                                    />
+                                    <b-form-input
+                                        v-else-if="prop && !isNaN(prop)"
+                                        :id="name"
+                                        v-model="configPlayout[key][name]"
+                                        type="number"
+                                        step="1"
                                         class="input-field"
                                     />
                                     <b-form-tags
