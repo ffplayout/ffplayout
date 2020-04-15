@@ -1,5 +1,6 @@
 <template>
     <div>
+        <Menu />
         <b-container class="control-container">
             <b-row>
                 <b-col cols="3">
@@ -13,7 +14,7 @@
             </b-row>
             <b-row>
                 <b-col>
-                    <b-datepicker v-model="today" class="date-div" />
+                    <b-datepicker v-model="today" size="sm" class="date-div" offset="-35px" />
                 </b-col>
             </b-row>
             <splitpanes class="default-theme pane-row">
@@ -125,11 +126,14 @@
 
 <script>
 import { mapState } from 'vuex'
+import Menu from '@/components/Menu.vue'
 
 export default {
     name: 'Control',
 
-    components: {},
+    components: {
+        Menu
+    },
 
     filters: {
         filename (path) {
@@ -148,7 +152,7 @@ export default {
     },
 
     computed: {
-        ...mapState('config', ['config']),
+        ...mapState('config', ['configPlayout']),
         ...mapState('media', ['crumbs', 'folderTree']),
         ...mapState('playlist', ['playlist'])
     },
@@ -167,7 +171,7 @@ export default {
 
     methods: {
         async getConfig () {
-            await this.$store.dispatch('config/getConfig')
+            await this.$store.dispatch('config/getPlayoutConfig')
         },
         async getPath (path) {
             await this.$store.dispatch('auth/inspectToken')
@@ -175,7 +179,7 @@ export default {
         },
         async getPlaylist () {
             await this.$store.dispatch('auth/inspectToken')
-            await this.$store.dispatch('playlist/getPlaylist', { dayStart: this.config.playlist.day_start, date: this.today })
+            await this.$store.dispatch('playlist/getPlaylist', { dayStart: this.configPlayout.playlist.day_start, date: this.today })
         }
     }
 }
@@ -185,7 +189,6 @@ export default {
 .control-container {
     width: auto;
     max-width: 100%;
-    margin: .5em;
 }
 
 .player-col {
