@@ -24,7 +24,7 @@ def write_yaml(data):
     config = GuiSettings.objects.filter(id=1).values()[0]
 
     if os.path.isfile(config['playout_config']):
-        with open(config['playoutConfig'], 'w') as outfile:
+        with open(config['playout_config'], 'w') as outfile:
             yaml.dump(data, outfile, default_flow_style=False,
                       sort_keys=False, indent=4)
 
