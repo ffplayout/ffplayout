@@ -148,12 +148,3 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/3.0/howto/static-files/
 
 STATIC_URL = '/static/'
-
-# path to ffplayout engine config
-FFPLAYOUT_CONFIG = '/etc/ffplayout/ffplayout.yml'
-
-# used network interface for statistics: eth0, eno1, etc.
-NET_INTERFACE = 'br0'
-
-# Disk for frontpage statistics
-MEDIA_DISK = '/'
