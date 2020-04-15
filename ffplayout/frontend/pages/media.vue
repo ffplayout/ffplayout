@@ -1,5 +1,6 @@
 <template>
     <div>
+        <Menu />
         <b-container class="browser">
             <div v-if="folderTree.tree" class="browser">
                 <div>
@@ -69,11 +70,14 @@
 
 <script>
 import { mapState } from 'vuex'
+import Menu from '@/components/Menu.vue'
 
 export default {
     name: 'Media',
 
-    components: {},
+    components: {
+        Menu
+    },
 
     data () {
         return {
