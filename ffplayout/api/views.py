@@ -1,12 +1,46 @@
 import os
 from urllib.parse import unquote
 
+from django.contrib.auth.models import User
+from django_filters import rest_framework as filters
+from rest_framework import viewsets
 from rest_framework.parsers import FileUploadParser, JSONParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from api.models import GuiSettings
+from api.serializers import GuiSettingsSerializer, UserSerializer
+
 from .utils import (SystemStats, get_media_path, read_json, read_yaml,
                     write_yaml)
+
+
+class CurrentUserView(APIView):
+    def get(self, request):
+        serializer = UserSerializer(request.user)
+        return Response(serializer.data)
+
+
+class UserFilter(filters.FilterSet):
+
+    class Meta:
+        model = User
+        fields = ['username']
+
+
+class UserViewSet(viewsets.ModelViewSet):
+    queryset = User.objects.all()
+    serializer_class = UserSerializer
+    filter_backends = (filters.DjangoFilterBackend,)
+    filterset_class = UserFilter
+
+
+class GuiSettingsViewSet(viewsets.ModelViewSet):
+    """
+    API endpoint that allows media to be viewed.
+    """
+    queryset = GuiSettings.objects.all()
+    serializer_class = GuiSettingsSerializer
 
 
 class Config(APIView):
@@ -17,7 +51,7 @@ class Config(APIView):
     parser_classes = [JSONParser]
 
     def get(self, request, *args, **kwargs):
-        if 'config' in request.GET.dict():
+        if 'configPlayout' in request.GET.dict():
             yaml_input = read_yaml()
 
             if yaml_input:
@@ -72,10 +106,11 @@ class Statistics(APIView):
     """
 
     def get(self, request, *args, **kwargs):
+        stats = SystemStats()
         if 'stats' in request.GET.dict() and request.GET.dict()['stats'] \
-                and hasattr(SystemStats(), request.GET.dict()['stats']):
+                and hasattr(stats, request.GET.dict()['stats']):
             return Response(
-                getattr(SystemStats(), request.GET.dict()['stats'])())
+                getattr(stats, request.GET.dict()['stats'])())
         else:
             return Response({"success": False})
 

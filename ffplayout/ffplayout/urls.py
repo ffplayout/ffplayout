@@ -25,6 +25,8 @@ from rest_framework_simplejwt.views import (
 )
 
 router = routers.DefaultRouter()
+router.register(r'users', views.UserViewSet)
+router.register(r'guisettings', views.GuiSettingsViewSet, 'guisettings')
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -32,6 +34,7 @@ urlpatterns = [
     path('api/config/', views.Config.as_view()),
     path('api/playlist/', views.Playlist.as_view()),
     path('api/stats/', views.Statistics.as_view()),
+    path('api/current/user/', views.CurrentUserView.as_view()),
     path('api/media/', views.Media.as_view()),
     path('api-auth/', include(
          'rest_framework.urls', namespace='rest_framework')),

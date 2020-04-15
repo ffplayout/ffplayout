@@ -7,19 +7,24 @@ import psutil
 import yaml
 from pymediainfo import MediaInfo
 
-from django.conf import settings
+from api.models import GuiSettings
+
 from natsort import natsorted
 
 
 def read_yaml():
-    if os.path.isfile(settings.FFPLAYOUT_CONFIG):
-        with open(settings.FFPLAYOUT_CONFIG, 'r') as config_file:
+    config = GuiSettings.objects.filter(id=1).values()[0]
+
+    if os.path.isfile(config['playout_config']):
+        with open(config['playout_config'], 'r') as config_file:
             return yaml.safe_load(config_file)
 
 
 def write_yaml(data):
-    if os.path.isfile(settings.FFPLAYOUT_CONFIG):
-        with open(settings.FFPLAYOUT_CONFIG, 'w') as outfile:
+    config = GuiSettings.objects.filter(id=1).values()[0]
+
+    if os.path.isfile(config['playout_config']):
+        with open(config['playoutConfig'], 'w') as outfile:
             yaml.dump(data, outfile, default_flow_style=False,
                       sort_keys=False, indent=4)
 
@@ -43,7 +48,7 @@ def sizeof_fmt(num, suffix='B'):
 
 class SystemStats:
     def __init__(self):
-        pass
+        self.config = GuiSettings.objects.filter(id=1).values()[0]
 
     def all(self):
         return {
@@ -83,7 +88,7 @@ class SystemStats:
         }
 
     def disk(self):
-        root = psutil.disk_usage(settings.MEDIA_DISK)
+        root = psutil.disk_usage(self.config['media_disk'])
         return {
             'disk_total': [root.total, sizeof_fmt(root.total)],
             'disk_used': [root.used, sizeof_fmt(root.used)],
@@ -102,20 +107,20 @@ class SystemStats:
     def net_speed(self):
         net = psutil.net_if_stats()
 
-        if settings.NET_INTERFACE not in net:
+        if self.config['net_interface'] not in net:
             return {
                 'net_speed_send': 'no network interface set!',
                 'net_speed_recv': 'no network interface set!'
             }
 
-        net = psutil.net_io_counters(pernic=True)[settings.NET_INTERFACE]
+        net = psutil.net_io_counters(pernic=True)[self.config['net_interface']]
 
         send_start = net.bytes_sent
         recv_start = net.bytes_recv
 
         sleep(1)
 
-        net = psutil.net_io_counters(pernic=True)[settings.NET_INTERFACE]
+        net = psutil.net_io_counters(pernic=True)[self.config['net_interface']]
 
         send_end = net.bytes_sent
         recv_end = net.bytes_recv
@@ -160,7 +165,8 @@ def get_media_path(dir=None):
                 for track in media_info.tracks:
                     if track.track_type == 'General':
                         try:
-                            duration = float(track.to_data()["duration"]) / 1000
+                            duration = float(
+                                track.to_data()["duration"]) / 1000
                             break
                         except KeyError:
                             pass

@@ -1,3 +1,13 @@
 from django.contrib import admin
 
-# Register your models here.
+from api.models import GuiSettings
+
+
+class GuiSettingsAdmin(admin.ModelAdmin):
+
+    class Meta:
+        model = GuiSettings
+        fields = '__all__'
+
+
+admin.site.register(GuiSettings, GuiSettingsAdmin)
