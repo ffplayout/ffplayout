@@ -17,3 +17,22 @@
     float: right;
     margin-right: 1em;
 }
+
+.form-control, #tags-basic, .custom-select {
+    color: #e4e4e4;
+    background-color: #32383E;
+}
+
+.form-control:disabled, .form-control[readonly] {
+    color: #b4b4b4;
+    background-color:#485159;
+}
+
+.custom-select {
+    background: #32383E url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' width='4' height='5' viewBox='0 0 4 5'%3e%3cpath fill='rgb(228, 228, 228)' d='M2 0L0 2h4zm0 5L0 3h4z'/%3e%3c/svg%3e") no-repeat right 1rem center/8px 10px;
+}
+
+.form-control:focus, .form-control.focus, .b-form-tags.focus, .custom-select:focus {
+    color: #f5f5f5;
+    background-color: #424a53;
+}
