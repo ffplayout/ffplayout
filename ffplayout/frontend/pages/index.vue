@@ -130,17 +130,19 @@
 
                     <div class="actions">
                         <b-button-group class="actions-grp">
-                            <b-button to="/control">
+                            <b-button to="/control" variant="primary">
                                 Control
                             </b-button>
-                            <b-button to="/media">
+                            <b-button to="/media" variant="primary">
                                 Media
                             </b-button>
-                            <b-button>Logging</b-button>
-                            <b-button to="/configure">
+                            <b-button to="logging" variant="primary">
+                                Logging
+                            </b-button>
+                            <b-button to="/configure" variant="primary">
                                 Configure
                             </b-button>
-                            <b-button @click="logout()">
+                            <b-button variant="primary" @click="logout()">
                                 Logout
                             </b-button>
                         </b-button-group>
