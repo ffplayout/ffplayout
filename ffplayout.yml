@@ -16,7 +16,7 @@ mail:
     smpt_server: "mail.example.org"
     smpt_port: 587
     sender_addr: "ffplayout@example.org"
-    sender_pass: "12345"
+    sender_pass: "abc123"
     recipient:
     mail_level: "ERROR"
 
