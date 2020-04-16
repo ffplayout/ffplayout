@@ -209,7 +209,10 @@ export default {
             }
         },
 
-        sysStats () {
+        async sysStats () {
+            const response = await this.$axios.get('api/stats/?stats=all', { headers: { Authorization: 'Bearer ' + this.$store.state.auth.jwtToken }, progress: false })
+            this.stat = response.data
+
             this.interval = setInterval(async () => {
                 await this.$store.dispatch('auth/inspectToken')
                 const response = await this.$axios.get('api/stats/?stats=all', { headers: { Authorization: 'Bearer ' + this.$store.state.auth.jwtToken }, progress: false })
