@@ -15,7 +15,7 @@ from natsort import natsorted
 def read_yaml():
     config = GuiSettings.objects.filter(id=1).values()[0]
 
-    if os.path.isfile(config['playout_config']):
+    if config and os.path.isfile(config['playout_config']):
         with open(config['playout_config'], 'r') as config_file:
             return yaml.safe_load(config_file)
 
@@ -142,8 +142,11 @@ def set_root(path):
     return path.replace(dir, '').strip('/')
 
 
-def get_media_path(dir=None):
+def get_media_path(extensions, dir=None):
     config = read_yaml()
+    extensions = extensions.split(' ')
+    playout_extensions = config['storage']['extensions']
+    gui_extensions = [x for x in extensions if x not in playout_extensions]
     media_dir = config['storage']['path'].replace('\\', '/').rstrip('/')
     if not dir:
         if not os.path.isdir(media_dir):
@@ -159,7 +162,8 @@ def get_media_path(dir=None):
         media_files = []
 
         for file in files:
-            if os.path.splitext(file)[1] in config['storage']['extensions']:
+            ext = os.path.splitext(file)[1]
+            if ext in playout_extensions:
                 media_info = MediaInfo.parse(os.path.join(root, file))
                 duration = 0
                 for track in media_info.tracks:
@@ -171,6 +175,8 @@ def get_media_path(dir=None):
                         except KeyError:
                             pass
                 media_files.append({'file': file, 'duration': duration})
+            elif ext in gui_extensions:
+                media_files.append({'file': file, 'duration': ''})
 
         dirs = natsorted(dirs)
 
