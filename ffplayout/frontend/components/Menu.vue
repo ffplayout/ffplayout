@@ -2,13 +2,16 @@
     <div>
         <div class="menu">
             <b-button-group size="sm">
+                <b-button to="/" variant="primary">
+                    Home
+                </b-button>
                 <b-button to="control" variant="primary">
                     Control
                 </b-button>
                 <b-button to="media" variant="primary">
                     Media
                 </b-button>
-                <b-button to="loggin" variant="primary">
+                <b-button to="logging" variant="primary">
                     Logging
                 </b-button>
                 <b-button to="configure" variant="primary">
