@@ -38,12 +38,16 @@ export const actions = {
             commit('UPDATE_NET_CHOICES', choices)
         }
         if (response.data) {
-            commit('UPDATE_GUI_CONFIG', response.data)
+            response.data[0].extra_extensions = response.data[0].extra_extensions.split(' ')
+            commit('UPDATE_GUI_CONFIG', response.data[0])
         }
     },
 
     async setGuiConfig ({ commit, state, rootState }, obj) {
-        await this.$axios.put('api/guisettings/1/', obj, { headers: { Authorization: 'Bearer ' + rootState.auth.jwtToken } })
+        const stringObj = JSON.parse(JSON.stringify(obj))
+        stringObj.extra_extensions = obj.extra_extensions.join(' ')
+        const update = await this.$axios.put('api/guisettings/1/', stringObj, { headers: { Authorization: 'Bearer ' + rootState.auth.jwtToken } })
+        return update
     },
 
     async getPlayoutConfig ({ commit, state, rootState }) {
@@ -55,7 +59,8 @@ export const actions = {
     },
 
     async setPlayoutConfig ({ commit, state, rootState }, obj) {
-        await this.$axios.post('api/config/?configPlayout', { data: obj }, { headers: { Authorization: 'Bearer ' + rootState.auth.jwtToken } })
+        const update = await this.$axios.post('api/config/?configPlayout', { data: obj }, { headers: { Authorization: 'Bearer ' + rootState.auth.jwtToken } })
+        return update
     },
 
     async getUserConfig ({ commit, state, rootState }) {
@@ -66,11 +71,12 @@ export const actions = {
             commit('SET_CURRENT_USER', user.data.username)
         }
         if (response.data) {
-            commit('UPDATE_USER_CONFIG', response.data)
+            commit('UPDATE_USER_CONFIG', response.data[0])
         }
     },
 
-    async setUserConfig ({ commit, state, rootState }, { user, obj }) {
-        await this.$axios.put(`api/config/?username=${user}`, { data: obj }, { headers: { Authorization: 'Bearer ' + rootState.auth.jwtToken } })
+    async setUserConfig ({ commit, state, rootState }, obj) {
+        const update = await this.$axios.put(`api/users/${obj.id}/`, obj, { headers: { Authorization: 'Bearer ' + rootState.auth.jwtToken } })
+        return update
     }
 }
