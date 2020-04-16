@@ -17,11 +17,11 @@ export const mutations = {
 }
 
 export const actions = {
-    async getTree ({ commit, dispatch, state, rootState }, path) {
+    async getTree ({ commit, dispatch, state, rootState }, { extensions, path }) {
         if ((path !== state.currentPath || !state.folderTree)) {
             const crumbs = []
             let root = '/'
-            const response = await this.$axios.get(`api/media/?path=${path}`, { headers: { Authorization: 'Bearer ' + rootState.auth.jwtToken } })
+            const response = await this.$axios.get(`api/media/?extensions=${extensions}&path=${path}`, { headers: { Authorization: 'Bearer ' + rootState.auth.jwtToken } })
 
             if (response.data.tree) {
                 const pathArr = response.data.tree[0].split('/')
