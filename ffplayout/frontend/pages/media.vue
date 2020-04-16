@@ -2,6 +2,13 @@
     <div>
         <Menu />
         <b-container class="browser">
+            <loading
+                :active.sync="isLoading"
+                :can-cancel="false"
+                :is-full-page="false"
+                background-color="#485159"
+                color="#ff9c36"
+            />
             <div v-if="folderTree.tree" class="browser">
                 <div>
                     <b-breadcrumb>
@@ -9,7 +16,7 @@
                             v-for="(crumb, index) in crumbs"
                             :key="crumb.key"
                             :active="index === crumbs.length - 1"
-                            @click="getPath(crumb.path)"
+                            @click="getPath(extensions, crumb.path)"
                         >
                             {{ crumb.text }}
                         </b-breadcrumb-item>
@@ -25,7 +32,7 @@
                                     :key="folder.key"
                                     class="browser-item"
                                 >
-                                    <b-link @click="getPath(`${folderTree.tree[0]}/${folder}`)">
+                                    <b-link @click="getPath(extensions, `${folderTree.tree[0]}/${folder}`)">
                                         <b-icon-folder-fill class="browser-icons" /> {{ folder }}
                                     </b-link>
                                 </b-list-group-item>
@@ -51,6 +58,7 @@
                 </b-row>
             </div>
         </b-container>
+        <!--
         <b-form @submit="onSubmit">
             <b-form-file
                 v-model="inputFile"
@@ -65,6 +73,7 @@
         <div class="mt-3">
             Selected file: {{ inputFile ? inputFile.name : '' }}
         </div>
+        -->
     </div>
 </template>
 
@@ -81,22 +90,32 @@ export default {
 
     data () {
         return {
+            isLoading: false,
+            extensions: '',
             inputFile: null
         }
     },
 
     computed: {
+        ...mapState('config', ['configGui', 'configPlayout']),
         ...mapState('media', ['crumbs', 'folderTree'])
     },
 
-    created () {
-        this.getPath('')
+    async created () {
+        await this.$store.dispatch('auth/inspectToken')
+        await this.$store.dispatch('config/getGuiConfig')
+        await this.$store.dispatch('config/getPlayoutConfig')
+
+        this.extensions = [...this.configPlayout.storage.extensions, ...this.configGui.extra_extensions].join(' ')
+        this.getPath(this.extensions, '')
     },
 
     methods: {
-        async getPath (path) {
+        async getPath (extensions, path) {
+            this.isLoading = true
             await this.$store.dispatch('auth/inspectToken')
-            await this.$store.dispatch('media/getTree', path)
+            await this.$store.dispatch('media/getTree', { extensions, path })
+            this.isLoading = false
         },
 
         async onSubmit (evt) {
@@ -148,5 +167,4 @@ export default {
     border: 1px solid #000;
     border-radius: 5px;
 }
-
 </style>
