@@ -122,12 +122,17 @@ class Media(APIView):
     """
 
     def get(self, request, *args, **kwargs):
-        if 'path' in request.GET.dict() and request.GET.dict()['path']:
-            return Response({'tree': get_media_path(
-                request.GET.dict()['path']
-            )})
-        elif 'path' in request.GET.dict():
-            return Response({'tree': get_media_path()})
+        if 'extensions' in request.GET.dict():
+            extensions = request.GET.dict()['extensions']
+
+            if 'path' in request.GET.dict() and request.GET.dict()['path']:
+                return Response({'tree': get_media_path(
+                    extensions, request.GET.dict()['path']
+                )})
+            elif 'path' in request.GET.dict():
+                return Response({'tree': get_media_path(extensions)})
+            else:
+                return Response({"success": False})
         else:
             return Response({"success": False})
 
