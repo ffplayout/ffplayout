@@ -44,8 +44,10 @@ export default {
      */
     plugins: [
         { src: '~/plugins/filters' },
+        { src: '~plugins/video.js', ssr: false },
         { src: '~plugins/scrollbar.js', ssr: false },
-        { src: '~plugins/splitpanes.js', ssr: false }
+        { src: '~plugins/splitpanes.js', ssr: false },
+        { src: '~plugins/loading.js', ssr: false }
     ],
     /*
      ** Nuxt.js dev-modules
