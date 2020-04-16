@@ -18,7 +18,7 @@
     margin-right: 1em;
 }
 
-.form-control, #tags-basic, .custom-select {
+.form-control, .tags-list ul li div input, .custom-select {
     color: #e4e4e4;
     background-color: #32383E;
 }
@@ -35,4 +35,8 @@
 .form-control:focus, .form-control.focus, .b-form-tags.focus, .custom-select:focus {
     color: #f5f5f5;
     background-color: #424a53;
+}
+
+.alert {
+    margin-bottom: 0;
 }
