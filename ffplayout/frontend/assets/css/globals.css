@@ -1,3 +1,11 @@
+#__nuxt, #__layout, #__layout > div {
+    height: 100%
+}
+
+.breadcrumb {
+    margin-bottom: .2em;
+}
+
 .browser-item {
     background: none;
     padding: .1em;
@@ -39,4 +47,8 @@
 
 .alert {
     margin-bottom: 0;
+}
+
+.ps__rail-y:hover {
+    background-color: none;
 }
