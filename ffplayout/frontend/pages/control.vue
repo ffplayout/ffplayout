@@ -1,23 +1,37 @@
 <template>
-    <div>
+    <div style="height:99%;">
         <Menu />
         <b-container class="control-container">
-            <b-row>
+            <b-row class="control-row">
                 <b-col cols="3">
                     <b-aspect class="player-col" aspect="16:9">
                         <video-player v-if="videoOptions.sources" reference="videoPlayer" :options="videoOptions" />
                     </b-aspect>
                 </b-col>
                 <b-col cols="9" class="control-col">
-                    control
+                    <b-row style="height:100%;">
+                        <b-col class="time-col">
+                            <div class="time-str">
+                                {{ timeStr }}
+                            </div>
+                        </b-col>
+                        <b-col class="time-col">
+                            <div class="time-str">
+                                {{ timeLeft }}
+                            </div>
+                        </b-col>
+                        <b-col>
+                            control
+                        </b-col>
+                    </b-row>
                 </b-col>
             </b-row>
-            <b-row>
+            <b-row class="date-row">
                 <b-col>
                     <b-datepicker v-model="today" size="sm" class="date-div" offset="-35px" />
                 </b-col>
             </b-row>
-            <splitpanes class="default-theme pane-row">
+            <splitpanes class="list-row default-theme pane-row">
                 <pane min-size="20" size="24">
                     <loading
                         :active.sync="isLoading"
@@ -58,19 +72,22 @@
                                     :key="file.key"
                                     class="browser-item"
                                 >
-                                    <b-link>
-                                        <b-row>
-                                            <b-col cols="1" class="browser-icons-col">
-                                                <b-icon-film class="browser-icons" />
-                                            </b-col>
-                                            <b-col class="browser-item-text">
-                                                {{ file.file }}
-                                            </b-col>
-                                            <b-col cols="1" class="browser-dur-col">
-                                                <span class="duration">{{ file.duration | toMin }}</span>
-                                            </b-col>
-                                        </b-row>
-                                    </b-link>
+                                    <b-row>
+                                        <b-col cols="1" class="browser-icons-col">
+                                            <b-icon-film class="browser-icons" />
+                                        </b-col>
+                                        <b-col class="browser-item-text">
+                                            {{ file.file }}
+                                        </b-col>
+                                        <b-col cols="1" class="browser-play-col">
+                                            <b-link @click="showModal(`/${folderTree.tree[0]}/${file.file}`)">
+                                                <b-icon-play-fill />
+                                            </b-link>
+                                        </b-col>
+                                        <b-col cols="1" class="browser-dur-col">
+                                            <span class="duration">{{ file.duration | toMin }}</span>
+                                        </b-col>
+                                    </b-row>
                                 </b-list-group-item>
                             </b-list-group>
                         </perfect-scrollbar>
@@ -108,7 +125,7 @@
                         <perfect-scrollbar>
                             <b-list-group>
                                 <b-list-group-item v-for="item in playlist" :key="item.key">
-                                    <b-row class="playlist-row">
+                                    <b-row class="playlist-row" :data-in="item.in" :data-out="item.out">
                                         <b-col cols="1">
                                             {{ item.begin | secondsToTime }}
                                         </b-col>
@@ -145,7 +162,7 @@
             ref="prev-modal"
             size="xl"
             centered
-            title="Preview"
+            :title="`Preview: ${previewSource}`"
             hide-footer
         >
             <video-player v-if="previewOptions" reference="previewPlayer" :options="previewOptions" />
@@ -189,7 +206,7 @@ export default {
     computed: {
         ...mapState('config', ['configGui', 'configPlayout']),
         ...mapState('media', ['crumbs', 'folderTree']),
-        ...mapState('playlist', ['playlist'])
+        ...mapState('playlist', ['playlist', 'timeStr', 'timeLeft'])
     },
 
     watch: {
@@ -200,7 +217,6 @@ export default {
 
     async created () {
         await this.getConfig()
-        await this.getPlaylist()
 
         this.extensions = this.configPlayout.storage.extensions.join(' ')
 
@@ -219,6 +235,8 @@ export default {
                 }
             ]
         }
+
+        await this.getPlaylist()
     },
 
     methods: {
@@ -238,6 +256,8 @@ export default {
             await this.$store.dispatch('playlist/getPlaylist', { dayStart: this.configPlayout.playlist.day_start, date: this.today })
         },
         showModal (src) {
+            console.log(src)
+            this.previewSource = src.split('/').slice(-1)[0]
             this.previewOptions = {
                 liveui: false,
                 controls: true,
@@ -261,6 +281,39 @@ export default {
 .control-container {
     width: auto;
     max-width: 100%;
+    height: 97%;
+}
+
+.control-row {
+    height: 25%;
+    min-height: 260px;
+    max-height: 280px;
+}
+
+.time-col {
+    position: relative;
+    height: 100%;
+    min-height: 260px;
+    max-height: 280px;
+    text-align: center;
+}
+
+.time-str {
+    position: relative;
+    top: 45%;
+    -webkit-transform: translateY(-50%);
+    -ms-transform: translateY(-50%);
+    transform: translateY(-50%);
+    font-size: 8em;
+}
+
+.date-row {
+    height: 3%;
+    min-height: 32px;
+}
+
+.list-row {
+    height: 68%;
 }
 
 .player-col {
@@ -269,11 +322,12 @@ export default {
 }
 
 .pane-row {
-    margin: 8px 0 0 0;
+    margin: 0;
 }
 
 .browser-div {
     width: 100%;
+    max-height: 100%;
 }
 
 .date-div {
@@ -283,22 +337,36 @@ export default {
 
 .playlist-container {
     width: 100%;
+    height: 100%;
 }
 
 .browser-icons-col {
     max-width: 10px;
 }
 
-.browser-dur-col {
-    min-width: 110px;
+.browser-play-col {
+    max-width: 15px;
+    text-align: center;
+    margin: 0;
+    padding: 0;
 }
 
-.browser-div .ps, .playlist-container .ps {
-    height: 600px;
+.browser-dur-col {
+    min-width: 95px;
+    margin: 0;
+    padding: 0 10px 0 0;
+}
+
+.browser-div .ps {
+    height: 93.5%;
+}
+
+.playlist-container .ps {
+    height: 94.5%;
 }
 
 .browser-list {
-    max-height: 600px;
+    max-height: 93%;
     overflow-y: scroll;
 }
 
