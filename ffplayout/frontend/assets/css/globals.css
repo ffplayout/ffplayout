@@ -52,3 +52,10 @@
 .ps__rail-y:hover {
     background-color: none;
 }
+
+@font-face{
+    font-family: "DigitalNumbers-Regular";
+    src: url("~@/assets/fonts/DigitalNumbers-Regular.woff2") format("woff2");
+    font-weight: normal;
+    font-style: normal;
+}
