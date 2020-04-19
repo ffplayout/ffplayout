@@ -8,7 +8,6 @@ import yaml
 from pymediainfo import MediaInfo
 
 from api.models import GuiSettings
-
 from natsort import natsorted
 
 
