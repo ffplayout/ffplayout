@@ -10,17 +10,29 @@
                 </b-col>
                 <b-col cols="9" class="control-col">
                     <b-row style="height:100%;">
-                        <b-col class="time-col">
-                            <div class="time-str">
-                                {{ timeStr }}
+                        <b-col cols="8">
+                            <b-row>
+                                <b-col class="time-col">
+                                    <div class="time-str">
+                                        {{ timeStr }}
+                                    </div>
+                                </b-col>
+                                <b-col class="time-col">
+                                    <div class="time-str">
+                                        {{ timeLeft }}
+                                    </div>
+                                </b-col>
+                            </b-row>
+                            <div class="current-clip">
+                                <div class="current-clip-text">
+                                    {{ currentClip | filename }}
+                                </div>
+                                <div class="current-clip-progress">
+                                    <b-progress :value="progressValue" variant="warning" />
+                                </div>
                             </div>
                         </b-col>
-                        <b-col class="time-col">
-                            <div class="time-str">
-                                {{ timeLeft }}
-                            </div>
-                        </b-col>
-                        <b-col>
+                        <b-col cols="4">
                             control
                         </b-col>
                     </b-row>
@@ -183,8 +195,10 @@ export default {
 
     filters: {
         filename (path) {
-            const pathArr = path.split('/')
-            return pathArr[pathArr.length - 1]
+            if (path) {
+                const pathArr = path.split('/')
+                return pathArr[pathArr.length - 1]
+            }
         },
         secondsToTime (sec) {
             return new Date(sec * 1000).toISOString().substr(11, 8)
@@ -206,7 +220,7 @@ export default {
     computed: {
         ...mapState('config', ['configGui', 'configPlayout']),
         ...mapState('media', ['crumbs', 'folderTree']),
-        ...mapState('playlist', ['playlist', 'timeStr', 'timeLeft'])
+        ...mapState('playlist', ['playlist', 'timeStr', 'timeLeft', 'currentClip', 'progressValue'])
     },
 
     watch: {
@@ -291,20 +305,24 @@ export default {
 }
 
 .time-col {
-    position: relative;
-    height: 100%;
-    min-height: 260px;
-    max-height: 280px;
+    background: #32383E;
+    margin-right: .5em;
     text-align: center;
+    border-radius: 0.25rem;
 }
 
 .time-str {
-    position: relative;
-    top: 45%;
-    -webkit-transform: translateY(-50%);
-    -ms-transform: translateY(-50%);
-    transform: translateY(-50%);
-    font-size: 8em;
+    font-family: 'DigitalNumbers-Regular';
+    font-size: 5em;
+    letter-spacing: -.15em;
+}
+
+.current-clip {
+    background: #32383E;
+    height: 40%;
+    margin: .5em .5em 0 0;
+    padding: 15px;
+    border-radius: 0.25rem;
 }
 
 .date-row {

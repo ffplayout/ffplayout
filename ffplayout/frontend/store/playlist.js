@@ -4,6 +4,32 @@ function timeToSeconds (time) {
     return parseInt(t[0]) * 3600 + parseInt(t[1]) * 60 + parseInt(t[2])
 }
 
+function secToHMS (sec) {
+    let hours = Math.floor(sec / 3600)
+    sec %= 3600
+    let minutes = Math.floor(sec / 60)
+    let seconds = sec % 60
+
+    minutes = String(minutes).padStart(2, '0')
+    hours = String(hours).padStart(2, '0')
+    seconds = String(parseInt(seconds)).padStart(2, '0')
+    return hours + ':' + minutes + ':' + seconds
+}
+
+// sleep timer
+function sleep (ms) {
+    return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+/*
+const counte = (function main (counter) {
+    console.log(counter)
+
+    if (counter < 20) {
+        setTimeout(main, 1000, counter + 1)
+    }
+})(0)
+*/
 export const state = () => ({
     playlist: null,
     clockStart: true,
@@ -21,7 +47,7 @@ export const mutations = {
         state.clockStart = bol
     },
     SET_PROGRESS_VALUE (state, value) {
-        state.clockStart = value
+        state.progressValue = value
     },
     SET_CURRENT_CLIP (state, clip) {
         state.currentClip = clip
@@ -54,11 +80,6 @@ export const actions = {
     },
 
     async animClock ({ commit, dispatch, state, rootState }) {
-        // sleep timer
-        function sleep (ms) {
-            return new Promise(resolve => setTimeout(resolve, ms))
-        }
-
         let start = timeToSeconds(rootState.config.configPlayout.playlist.day_start)
         let time
 
@@ -67,7 +88,6 @@ export const actions = {
 
             // loop over clips in program list from today
             for (let i = 0; i < state.playlist.length; i++) {
-                let breakOut = false
                 const duration = state.playlist[i].out - state.playlist[i].in
                 let playTime = timeToSeconds(this.$dayjs().format('HH:mm:ss')) - start
                 let updateSrc = true
@@ -76,28 +96,20 @@ export const actions = {
                 while (playTime <= duration) {
                     if (updateSrc) {
                         commit('SET_CURRENT_CLIP', state.playlist[i].source)
-                        console.log(state.currentClip)
                         updateSrc = false
                     }
-                    await sleep(1000)
+
                     const pValue = playTime * 100 / duration
-                    if (pValue < state.progressValue) {
-                        breakOut = true
-                        break
-                    }
 
                     time = this.$dayjs().format('HH:mm:ss')
                     commit('SET_PROGRESS_VALUE', pValue)
                     commit('SET_TIME', time)
-                    playTime = timeToSeconds(time) - start
-                    commit('SET_TIME_LEFT', new Date((duration - playTime) * 1000).toISOString().substr(11, 8))
+                    playTime += 1
+                    commit('SET_TIME_LEFT', secToHMS(duration - playTime))
+                    await sleep(1000)
                 }
 
                 start += duration
-
-                if (breakOut) {
-                    break
-                }
 
                 // reset progress
                 commit('SET_PROGRESS_VALUE', 0)
