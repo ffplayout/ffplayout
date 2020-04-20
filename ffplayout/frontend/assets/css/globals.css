@@ -1,5 +1,12 @@
-#__nuxt, #__layout, #__layout > div {
+#__nuxt, #__layout, #__layout > div, #__layout > div > div {
     height: 100%
+}
+
+@font-face{
+    font-family: "DigitalNumbers-Regular";
+    src: url("~@/assets/fonts/DigitalNumbers-Regular.woff2") format("woff2");
+    font-weight: normal;
+    font-style: normal;
 }
 
 .breadcrumb {
@@ -17,7 +24,7 @@
 }
 
 .breadcrumb {
-    background-color: #32383e;
+    background-color: #32383E;
     background-image: none;
 }
 
@@ -45,6 +52,16 @@
     background-color: #424a53;
 }
 
+.custom-file-label {
+    background-color: #424a53;
+    color: #f5f5f5;
+}
+
+.custom-file-label::after {
+    background-color: #32383E;
+    color: #f5f5f5;
+}
+
 .alert {
     margin-bottom: 0;
 }
@@ -53,9 +70,44 @@
     background-color: none;
 }
 
-@font-face{
-    font-family: "DigitalNumbers-Regular";
-    src: url("~@/assets/fonts/DigitalNumbers-Regular.woff2") format("woff2");
-    font-weight: normal;
-    font-style: normal;
+.browser-icons-col {
+    max-width: 10px;
+}
+
+.browser-play-col {
+    max-width: 15px;
+    text-align: center;
+    margin: 0;
+    padding: 0;
+}
+
+.browser-dur-col {
+    min-width: 95px;
+    margin: 0;
+    padding: 0 10px 0 0;
+}
+
+.browser-div .ps {
+    height: 100%;
+}
+
+.playlist-container .ps {
+    height: 94.5%;
+}
+
+.browser-list {
+    max-height: 93%;
+    overflow-y: scroll;
+}
+
+.browser-item-text {
+    display: inline-block;
+    max-width: 95%;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.progress-bar {
+    background-color: #ff9c36
 }
