@@ -42,5 +42,6 @@ urlpatterns = [
          name='token_obtain_pair'),
     path('auth/token/refresh/', TokenRefreshView.as_view(),
          name='token_refresh'),
-    re_path(r'^upload/(?P<filename>[^/]+)$',  views.FileUpload.as_view())
+    re_path(r'^upload/(?P<filename>[^/]+)$',  views.FileUpload.as_view()),
+    path('delete/', views.FileDelete.as_view())
 ]

@@ -1,4 +1,6 @@
 import os
+import shutil
+
 from urllib.parse import unquote
 
 from django.contrib.auth.models import User
@@ -150,3 +152,29 @@ class FileUpload(APIView):
             for chunk in file_obj.chunks():
                 outfile.write(chunk)
         return Response(status=204)
+
+
+class FileDelete(APIView):
+
+    def delete(self, request, *args, **kwargs):
+        if 'file' in request.GET.dict() and 'path' in request.GET.dict():
+            root = read_yaml()['storage']['path']
+            _file = request.GET.dict()['file']
+            _path = os.path.join(
+                *(request.GET.dict()['path'].split(os.path.sep)[2:]))
+            fullPath = os.path.join(root, _path)
+
+            if not _file or _file == 'null':
+                print(fullPath)
+                print('------------------------')
+                if os.path.isdir(fullPath):
+                    shutil.rmtree(fullPath, ignore_errors=True)
+                else:
+                    Response(status=404)
+            elif os.path.isfile(os.path.join(fullPath, _file)):
+                os.remove(os.path.join(fullPath, _file))
+                return Response(status=200)
+            else:
+                Response(status=404)
+        else:
+            return Response(status=404)
