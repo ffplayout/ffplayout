@@ -270,8 +270,8 @@ export default {
             await this.$store.dispatch('playlist/getPlaylist', { dayStart: this.configPlayout.playlist.day_start, date: this.today })
         },
         showModal (src) {
-            console.log(src)
             this.previewSource = src.split('/').slice(-1)[0]
+            const ext = this.previewSource.split('.').slice(-1)[0]
             this.previewOptions = {
                 liveui: false,
                 controls: true,
@@ -280,7 +280,7 @@ export default {
                 preload: 'auto',
                 sources: [
                     {
-                        type: 'video/mp4',
+                        type: `video/${ext}`,
                         src: encodeURIComponent(src)
                     }
                 ]
@@ -356,44 +356,6 @@ export default {
 .playlist-container {
     width: 100%;
     height: 100%;
-}
-
-.browser-icons-col {
-    max-width: 10px;
-}
-
-.browser-play-col {
-    max-width: 15px;
-    text-align: center;
-    margin: 0;
-    padding: 0;
-}
-
-.browser-dur-col {
-    min-width: 95px;
-    margin: 0;
-    padding: 0 10px 0 0;
-}
-
-.browser-div .ps {
-    height: 93.5%;
-}
-
-.playlist-container .ps {
-    height: 94.5%;
-}
-
-.browser-list {
-    max-height: 93%;
-    overflow-y: scroll;
-}
-
-.browser-item-text {
-    display: inline-block;
-    max-width: 95%;
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
 }
 
 .ps__thumb-x {
