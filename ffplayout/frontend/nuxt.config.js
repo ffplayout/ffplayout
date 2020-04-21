@@ -1,7 +1,7 @@
 require('dotenv').config()
 
 export default {
-    mode: 'spa',
+    mode: 'universal',
     /*
      ** Headers of the page
      */
@@ -66,6 +66,7 @@ export default {
         '@nuxtjs/style-resources',
         // Doc: https://github.com/nuxt-community/dotenv-module
         '@nuxtjs/dotenv',
+        'cookie-universal-nuxt',
         'nuxt-dayjs-module'
     ],
 
