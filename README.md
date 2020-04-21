@@ -1,7 +1,9 @@
 ffplayout-gui
 =====
 
-This is only a placeholder for v2.0.0
+This is the dev version v2.0.0 from ffplayout GUI.
+
+**This version is not ready to use!!**
 
 ## concept previews:
 
