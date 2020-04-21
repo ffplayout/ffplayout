@@ -89,9 +89,14 @@
                         </div>
                     </pane>
                 </splitpanes>
-                <b-button class="upload-button" variant="primary" @click="showUploadModal()">
-                    File Upload
-                </b-button>
+                <b-button-group class="media-button">
+                    <b-button variant="primary" @click="showCreateFolderModal()">
+                        <b-icon-folder-plus />
+                    </b-button>
+                    <b-button variant="primary" @click="showUploadModal()">
+                        <b-icon-upload />
+                    </b-button>
+                </b-button-group>
             </div>
         </b-container>
         <b-modal
@@ -104,6 +109,33 @@
         >
             <b-img v-if="isImage" :src="previewSource" fluid :alt="previewName" />
             <video-player v-else-if="!isImage && previewOptions" reference="previewPlayer" :options="previewOptions" />
+        </b-modal>
+
+        <b-modal
+            id="folder-modal"
+            ref="folder-modal"
+            size="xl"
+            centered
+            title="Create Folder"
+            hide-footer
+        >
+            <b-form @submit="onSubmitCreateFolder" @reset="onCancelCreateFolder">
+                <b-form-input
+                    id="folder-name"
+                    v-model="folderName"
+                    type="text"
+                    required
+                    placeholder="Enter a unique folder name"
+                />
+                <div class="media-button">
+                    <b-button type="submit" variant="primary">
+                        Create
+                    </b-button>
+                    <b-button type="reset" variant="primary">
+                        Cancel
+                    </b-button>
+                </div>
+            </b-form>
         </b-modal>
 
         <b-modal
@@ -150,7 +182,7 @@
                         </b-row>
                     </b-col>
                     <b-col cols="2">
-                        <div class="upload-button">
+                        <div class="media-button">
                             <b-button type="submit" variant="primary">
                                 Upload
                             </b-button>
@@ -167,7 +199,7 @@
                 Are you sure that you want to delete:<br>
                 <strong>{{ previewName }}</strong>
             </p>
-            <div class="upload-button">
+            <div class="media-button">
                 <b-button variant="primary" @click="deleteFileOrFolder()">
                     Ok
                 </b-button>
@@ -194,6 +226,7 @@ export default {
         return {
             isLoading: false,
             extensions: '',
+            folderName: '',
             inputFiles: null,
             previewOptions: {},
             previewComp: null,
@@ -233,6 +266,29 @@ export default {
             this.isLoading = false
         },
 
+        showCreateFolderModal () {
+            this.$root.$emit('bv::show::modal', 'folder-modal')
+        },
+
+        async onSubmitCreateFolder (evt) {
+            evt.preventDefault()
+            await this.$store.dispatch('auth/inspectToken')
+
+            await this.$axios.post(
+                'api/media/op/',
+                { folder: this.folderName, path: this.crumbs.map(e => e.text).join('/') },
+                { headers: { Authorization: 'Bearer ' + this.$store.state.auth.jwtToken } }
+            )
+
+            this.$root.$emit('bv::hide::modal', 'folder-modal')
+            this.getPath(this.extensions, this.lastPath)
+        },
+
+        onCancelCreateFolder (evt) {
+            evt.preventDefault()
+            this.$root.$emit('bv::hide::modal', 'folder-modal')
+        },
+
         showUploadModal () {
             this.uploadTask = ''
             this.currentProgress = 0
@@ -267,7 +323,7 @@ export default {
                 }
 
                 await this.$axios.put(
-                    `/upload/${encodeURIComponent(file.name)}?path=${encodeURIComponent(this.crumbs.map(e => e.text).join('/'))}`,
+                    `api/media/upload/${encodeURIComponent(file.name)}?path=${encodeURIComponent(this.crumbs.map(e => e.text).join('/'))}`,
                     file,
                     config
                 )
@@ -281,6 +337,7 @@ export default {
 
             this.uploadTask = 'Done...'
             this.getPath(this.extensions, this.lastPath)
+            this.$root.$emit('bv::hide::modal', 'upload-modal')
         },
 
         onResetUpload (evt) {
@@ -338,20 +395,20 @@ export default {
         async deleteFileOrFolder () {
             await this.$store.dispatch('auth/inspectToken')
             let file
+            let pathName
 
             if (this.deleteType === 'File') {
                 file = this.deleteSource.split('/').slice(-1)[0]
+                pathName = this.deleteSource.substring(0, this.deleteSource.lastIndexOf('/') + 1)
             } else {
                 file = null
+                pathName = this.deleteSource
             }
 
-            const pathName = this.deleteSource.substring(0, this.deleteSource.lastIndexOf('/') + 1)
-
             await this.$axios.delete(
-                `/delete/?file=${encodeURIComponent(file)}&path=${encodeURIComponent(pathName)}`,
+                `api/media/op/?file=${encodeURIComponent(file)}&path=${encodeURIComponent(pathName)}`,
                 { headers: { Authorization: 'Bearer ' + this.$store.state.auth.jwtToken } }
             )
-                .then(response => console.log(response))
                 .catch(err => console.log(err))
 
             this.$root.$emit('bv::hide::modal', 'delete-modal')
@@ -421,7 +478,7 @@ export default {
     padding: .5em;
 }
 
-.upload-button {
+.media-button {
     float: right;
     margin-top: 1em;
 }
