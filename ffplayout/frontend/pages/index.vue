@@ -170,9 +170,7 @@ export default {
         this.init()
     },
     beforeDestroy () {
-        if (this.interval) {
-            clearInterval(this.interval)
-        }
+        clearInterval(this.interval)
     },
     methods: {
         async init () {
@@ -195,6 +193,8 @@ export default {
             }
         },
         async logout () {
+            clearInterval(this.interval)
+
             try {
                 await this.$store.commit('auth/REMOVE_TOKEN')
                 await this.$store.commit('auth/UPDATE_IS_LOGIN', false)
@@ -213,11 +213,13 @@ export default {
             const response = await this.$axios.get('api/stats/?stats=all', { headers: { Authorization: 'Bearer ' + this.$store.state.auth.jwtToken }, progress: false })
             this.stat = response.data
 
-            this.interval = setInterval(async () => {
-                await this.$store.dispatch('auth/inspectToken')
-                const response = await this.$axios.get('api/stats/?stats=all', { headers: { Authorization: 'Bearer ' + this.$store.state.auth.jwtToken }, progress: false })
-                this.stat = response.data
-            }, 2000)
+            if (process.browser) {
+                this.interval = setInterval(async () => {
+                    await this.$store.dispatch('auth/inspectToken')
+                    const response = await this.$axios.get('api/stats/?stats=all', { headers: { Authorization: 'Bearer ' + this.$store.state.auth.jwtToken }, progress: false })
+                    this.stat = response.data
+                }, 2000)
+            }
         }
     }
 }
