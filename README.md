@@ -10,3 +10,6 @@ This is only a placeholder for v2.0.0
 
 #### Landing Page
 ![landing](/docs/landing-page.png)
+
+#### Media Page
+![landing](/docs/media.png)
