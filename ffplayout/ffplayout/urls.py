@@ -36,12 +36,12 @@ urlpatterns = [
     path('api/stats/', views.Statistics.as_view()),
     path('api/current/user/', views.CurrentUserView.as_view()),
     path('api/media/', views.Media.as_view()),
+    re_path(r'^api/media/upload/(?P<filename>[^/]+)$',  views.FileUpload.as_view()),
+    path('api/media/op/', views.FileOperations.as_view()),
     path('api-auth/', include(
          'rest_framework.urls', namespace='rest_framework')),
     path('auth/token/', TokenObtainPairView.as_view(),
          name='token_obtain_pair'),
     path('auth/token/refresh/', TokenRefreshView.as_view(),
-         name='token_refresh'),
-    re_path(r'^upload/(?P<filename>[^/]+)$',  views.FileUpload.as_view()),
-    path('delete/', views.FileDelete.as_view())
+         name='token_refresh')
 ]
