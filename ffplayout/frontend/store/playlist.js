@@ -34,9 +34,9 @@ export const state = () => ({
     playlist: null,
     clockStart: true,
     progressValue: 0,
-    currentClip: null,
-    timeStr: null,
-    timeLeft: null
+    currentClip: 'No clips is playing',
+    timeStr: '00:00:00',
+    timeLeft: '00:00:00'
 })
 
 export const mutations = {
@@ -77,7 +77,8 @@ export const actions = {
             commit('UPDATE_PLAYLIST', response.data.program)
 
             if (process.browser) {
-                dispatch('animClock')
+                // TODO: find a better way for non-blocking animation
+                // dispatch('animClock')
             }
         }
     },
