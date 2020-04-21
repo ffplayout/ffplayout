@@ -13,3 +13,9 @@ This is only a placeholder for v2.0.0
 
 #### Media Page
 ![landing](/docs/media.png)
+
+#### Media Page / Upload
+![landing](/docs/media-upload.png)
+
+#### Configuration Page / GUI
+![landing](/docs/config-gui.png)
