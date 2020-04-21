@@ -2,25 +2,23 @@
 import jwt_decode from 'jwt-decode'
 
 export const state = () => ({
-    jwtToken: localStorage.getItem('token'),
-    jwtRefresh: localStorage.getItem('refresh'),
+    jwtToken: '',
+    jwtRefresh: '',
     isLogin: false
 })
 
 // mutate values in state
 export const mutations = {
     UPADTE_TOKEN (state, obj) {
-        localStorage.setItem('token', obj.token)
         state.jwtToken = obj.token
 
         if (obj.refresh) {
-            localStorage.setItem('refresh', obj.refresh)
             state.jwtRefresh = obj.refresh
         }
     },
     REMOVE_TOKEN (state) {
-        localStorage.removeItem('token')
-        localStorage.removeItem('refresh')
+        this.$cookies.remove('token')
+        this.$cookies.remove('refresh')
         state.jwtToken = null
         state.jwtRefresh = null
     },
@@ -39,6 +37,14 @@ export const actions = {
             .then((response) => {
                 commit('UPADTE_TOKEN', { token: response.data.access, refresh: response.data.refresh })
                 commit('UPDATE_IS_LOGIN', true)
+                this.$cookies.set('token', response.data.access, {
+                    path: '/',
+                    maxAge: 60 * 60 * 24 * 365
+                })
+                this.$cookies.set('refresh', response.data.refresh, {
+                    path: '/',
+                    maxAge: 60 * 60 * 24 * 365
+                })
             })
             .catch((error) => {
                 console.log(error)
@@ -56,9 +62,11 @@ export const actions = {
     },
 
     async inspectToken ({ commit, dispatch, state }) {
-        const token = state.jwtToken
-        const refresh = state.jwtRefresh
+        const token = this.$cookies.get('token')
+        const refresh = this.$cookies.get('refresh')
+
         if (token && refresh) {
+            commit('UPADTE_TOKEN', { token, refresh })
             const decoded_token = jwt_decode(token)
             const decoded_refresh = jwt_decode(refresh)
             const timestamp = Date.now() / 1000
