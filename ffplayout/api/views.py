@@ -1,17 +1,15 @@
 import os
 import shutil
-
 from urllib.parse import unquote
 
+from api.models import GuiSettings
+from api.serializers import GuiSettingsSerializer, UserSerializer
 from django.contrib.auth.models import User
 from django_filters import rest_framework as filters
 from rest_framework import viewsets
 from rest_framework.parsers import FileUploadParser, JSONParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
-
-from api.models import GuiSettings
-from api.serializers import GuiSettingsSerializer, UserSerializer
 
 from .utils import (SystemStats, get_media_path, read_json, read_yaml,
                     write_yaml)
@@ -154,7 +152,7 @@ class FileUpload(APIView):
         return Response(status=204)
 
 
-class FileDelete(APIView):
+class FileOperations(APIView):
 
     def delete(self, request, *args, **kwargs):
         if 'file' in request.GET.dict() and 'path' in request.GET.dict():
@@ -165,10 +163,9 @@ class FileDelete(APIView):
             fullPath = os.path.join(root, _path)
 
             if not _file or _file == 'null':
-                print(fullPath)
-                print('------------------------')
                 if os.path.isdir(fullPath):
                     shutil.rmtree(fullPath, ignore_errors=True)
+                    return Response(status=200)
                 else:
                     Response(status=404)
             elif os.path.isfile(os.path.join(fullPath, _file)):
@@ -176,5 +173,21 @@ class FileDelete(APIView):
                 return Response(status=200)
             else:
                 Response(status=404)
+        else:
+            return Response(status=404)
+
+    def post(self, request, *args, **kwargs):
+        if 'folder' in request.data and 'path' in request.data:
+            root = read_yaml()['storage']['path']
+            folder = request.data['folder']
+            _path = request.data['path'].split(os.path.sep)
+            _path = '' if len(_path) == 1 else os.path.join(*_path[1:])
+            fullPath = os.path.join(root, _path, folder)
+
+            try:
+                os.mkdir(fullPath)
+                return Response(status=200)
+            except OSError:
+                Response(status=500)
         else:
             return Response(status=404)
