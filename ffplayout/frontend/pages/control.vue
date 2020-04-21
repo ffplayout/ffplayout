@@ -1,17 +1,17 @@
 <template>
-    <div style="height:99%;">
+    <div style="height:100%;">
         <Menu />
         <b-container class="control-container">
             <b-row class="control-row">
-                <b-col cols="3">
-                    <b-aspect class="player-col" aspect="16:9">
+                <b-col cols="3" class="player-col">
+                    <b-aspect aspect="16:9">
                         <video-player v-if="videoOptions.sources" reference="videoPlayer" :options="videoOptions" />
                     </b-aspect>
                 </b-col>
-                <b-col cols="9" class="control-col">
-                    <b-row style="height:100%;">
+                <b-col class="control-col">
+                    <b-row class="control-col">
                         <b-col cols="8">
-                            <b-row>
+                            <b-row class="time-row">
                                 <b-col class="time-col">
                                     <div class="time-str">
                                         {{ timeStr }}
@@ -22,15 +22,16 @@
                                         {{ timeLeft }}
                                     </div>
                                 </b-col>
+                                <div class="w-100" />
+                                <b-col class="current-clip" align-self="end">
+                                    <div class="current-clip-text">
+                                        {{ currentClip | filename }}
+                                    </div>
+                                    <div class="current-clip-progress">
+                                        <b-progress :value="progressValue" variant="warning" />
+                                    </div>
+                                </b-col>
                             </b-row>
-                            <div class="current-clip">
-                                <div class="current-clip-text">
-                                    {{ currentClip | filename }}
-                                </div>
-                                <div class="current-clip-progress">
-                                    <b-progress :value="progressValue" variant="warning" />
-                                </div>
-                            </div>
                         </b-col>
                         <b-col cols="4">
                             control
@@ -295,48 +296,62 @@ export default {
 .control-container {
     width: auto;
     max-width: 100%;
-    height: 97%;
+    height: calc(100% - 40px);
 }
 
 .control-row {
-    height: 25%;
-    min-height: 260px;
-    max-height: 280px;
+    height: 288px;
+}
+
+.player-col {
+    max-width: 542px;
+    min-width: 380px;
+}
+
+.control-col {
+    height: 100%;
+}
+
+.time-row {
+    height: 50%;
+    min-width: 470px;
 }
 
 .time-col {
+    position: relative;
     background: #32383E;
-    margin-right: .5em;
+    margin: 0 6px 4px 0;
     text-align: center;
     border-radius: 0.25rem;
+    height: 100%;
 }
 
 .time-str {
+    position: relative;
+    top: 50%;
+    -webkit-transform: translateY(-50%);
+    -ms-transform: translateY(-50%);
+    transform: translateY(-50%);
     font-family: 'DigitalNumbers-Regular';
-    font-size: 5em;
+    font-size: 4.5em;
     letter-spacing: -.15em;
 }
 
 .current-clip {
     background: #32383E;
-    height: 40%;
-    margin: .5em .5em 0 0;
+    height: 50%;
+    margin-right: 6px;
     padding: 15px;
     border-radius: 0.25rem;
 }
 
 .date-row {
-    height: 3%;
-    min-height: 32px;
+    height: 40px;
+    padding-top: 3px;
 }
 
 .list-row {
-    height: 68%;
-}
-
-.player-col {
-    background: black;
-    min-width: 300px;
+    height: calc(100% - 368px);
 }
 
 .pane-row {
