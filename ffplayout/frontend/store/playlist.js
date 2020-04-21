@@ -75,7 +75,10 @@ export const actions = {
             }
 
             commit('UPDATE_PLAYLIST', response.data.program)
-            dispatch('animClock')
+
+            if (process.browser) {
+                dispatch('animClock')
+            }
         }
     },
 
