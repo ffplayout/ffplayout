@@ -11,7 +11,7 @@
                 <b-col class="control-col">
                     <b-row class="control-col">
                         <b-col cols="8">
-                            <b-row class="time-row">
+                            <b-row class="stats-row">
                                 <b-col class="time-col">
                                     <div class="time-str">
                                         {{ timeStr }}
@@ -33,8 +33,38 @@
                                 </b-col>
                             </b-row>
                         </b-col>
-                        <b-col cols="4">
-                            control
+                        <b-col cols="4" class="control-unit-col">
+                            <b-row class="control-unit-row">
+                                <b-col>
+                                    <div>
+                                        <b-button class="control-button control-button-play" variant="primary">
+                                            <b-icon-play />
+                                        </b-button>
+                                    </div>
+                                </b-col>
+                                <b-col>
+                                    <div>
+                                        <b-button class="control-button control-button-stop" variant="primary">
+                                            <b-icon-stop />
+                                        </b-button>
+                                    </div>
+                                </b-col>
+                                <div class="w-100" />
+                                <b-col>
+                                    <div>
+                                        <b-button class="control-button control-button-reload" variant="primary">
+                                            <b-icon-arrow-repeat />
+                                        </b-button>
+                                    </div>
+                                </b-col>
+                                <b-col>
+                                    <div>
+                                        <b-button class="control-button control-button-restart" variant="primary">
+                                            <b-icon-arrow-clockwise />
+                                        </b-button>
+                                    </div>
+                                </b-col>
+                            </b-row>
                         </b-col>
                     </b-row>
                 </b-col>
@@ -111,7 +141,7 @@
                         <b-list-group>
                             <b-list-group-item>
                                 <b-row class="playlist-row">
-                                    <b-col cols="1">
+                                    <b-col cols="1" class="timecode">
                                         Start
                                     </b-col>
                                     <b-col cols="6">
@@ -120,13 +150,13 @@
                                     <b-col cols="1" class="text-center">
                                         Play
                                     </b-col>
-                                    <b-col cols="1">
+                                    <b-col cols="1" class="timecode">
                                         Duration
                                     </b-col>
-                                    <b-col cols="1">
+                                    <b-col cols="1" class="timecode">
                                         In
                                     </b-col>
-                                    <b-col cols="1">
+                                    <b-col cols="1" class="timecode">
                                         Out
                                     </b-col>
                                     <b-col cols="1" class="text-center">
@@ -139,7 +169,7 @@
                             <b-list-group>
                                 <b-list-group-item v-for="item in playlist" :key="item.key">
                                     <b-row class="playlist-row" :data-in="item.in" :data-out="item.out">
-                                        <b-col cols="1">
+                                        <b-col cols="1" class="timecode">
                                             {{ item.begin | secondsToTime }}
                                         </b-col>
                                         <b-col cols="6">
@@ -150,13 +180,13 @@
                                                 <b-icon-play-fill />
                                             </b-link>
                                         </b-col>
-                                        <b-col cols="1" text>
+                                        <b-col cols="1" text class="timecode">
                                             {{ item.duration | secondsToTime }}
                                         </b-col>
-                                        <b-col cols="1">
+                                        <b-col cols="1" class="timecode">
                                             {{ item.in | secondsToTime }}
                                         </b-col>
-                                        <b-col cols="1">
+                                        <b-col cols="1" class="timecode">
                                             {{ item.out | secondsToTime }}
                                         </b-col>
                                         <b-col cols="1" class="text-center">
@@ -300,30 +330,32 @@ export default {
 }
 
 .control-row {
-    height: 288px;
+    min-height: 254px;
 }
 
 .player-col {
     max-width: 542px;
     min-width: 380px;
+    margin-bottom: 6px;
 }
 
 .control-col {
     height: 100%;
+    min-height: 254px;
 }
 
-.time-row {
-    height: 50%;
+.stats-row {
+    height: 100%;
     min-width: 470px;
 }
 
 .time-col {
     position: relative;
     background: #32383E;
-    margin: 0 6px 4px 0;
+    height: calc(50% - 3px);
+    margin: 0 6px 6px 0;
     text-align: center;
     border-radius: 0.25rem;
-    height: 100%;
 }
 
 .time-str {
@@ -334,24 +366,110 @@ export default {
     transform: translateY(-50%);
     font-family: 'DigitalNumbers-Regular';
     font-size: 4.5em;
-    letter-spacing: -.15em;
+    letter-spacing: -.18em;
+    padding-right: 14px;
 }
 
 .current-clip {
     background: #32383E;
-    height: 50%;
+    height: calc(50% - 3px);
     margin-right: 6px;
     padding: 15px;
     border-radius: 0.25rem;
 }
 
+.current-clip-text {
+    height: 70%;
+}
+
+.current-clip-progress {
+    top: 80%;
+}
+
+.control-unit-col {
+    min-width: 380px;
+}
+
+.control-unit-row {
+    background: #32383E;
+    height: 100%;
+    margin-right: 0;
+    border-radius: 0.25rem;
+    text-align: center;
+}
+
+.control-unit-row .col {
+    position: relative;
+    height: 50%;
+    min-height: 90px;
+}
+
+.control-unit-row .col div {
+    position: relative;
+    top: 50%;
+    -webkit-transform: translateY(-50%);
+    -ms-transform: translateY(-50%);
+    transform: translateY(-50%);
+    height: 80%;
+}
+
+.control-button {
+    font-size: 3em;
+    line-height: 0;
+    width: 80%;
+    height: 100%;
+}
+
+.control-button-play {
+    color: #43c32e;
+}
+.control-button-stop {
+    color: #d01111;
+}
+.control-button-reload {
+    color: #ed7c06;
+}
+.control-button-restart {
+    color: #f6e502;
+}
+
+@media (max-width: 1555px) {
+    .control-col {
+        height: 100%;
+        min-height: 294px;
+    }
+    .time-col {
+        height: calc(33.3% - 3px);
+        margin: 0 0 6px 0;
+    }
+    .current-clip {
+        height: calc(33.3% - 3px);
+        margin-right: 0;
+    }
+    .control-unit-row {
+        margin-right: -15px;
+    }
+    .control-unit-col {
+        flex: 0 0 66.6666666667%;
+        max-width: 66.6666666667%;
+        margin: 9px 0 0 0;
+    }
+}
+
+@media (max-width: 849px) {
+    .stats-row {
+        min-width: 380px;
+    }
+}
+
 .date-row {
-    height: 40px;
-    padding-top: 3px;
+    height: 44px;
+    padding-top: 5px;
 }
 
 .list-row {
-    height: calc(100% - 368px);
+    height: calc(100% - 40px - 254px - 46px);
+    min-height: 300px;
 }
 
 .pane-row {
@@ -400,6 +518,10 @@ export default {
 
 .splitpanes.default-theme .splitpanes__splitter::after, .splitpanes.default-theme .splitpanes__splitter::before {
     background-color: rgba(136, 136, 136, 0.38);
+}
+
+.timecode {
+    min-width: 56px;
 }
 
 </style>
