@@ -136,6 +136,9 @@
                             <b-button to="/media" variant="primary">
                                 Media
                             </b-button>
+                            <b-button to="/message" variant="primary">
+                                Message
+                            </b-button>
                             <b-button to="logging" variant="primary">
                                 Logging
                             </b-button>
