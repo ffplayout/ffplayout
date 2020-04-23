@@ -37,14 +37,14 @@
                             <b-row class="control-unit-row">
                                 <b-col>
                                     <div>
-                                        <b-button class="control-button control-button-play" variant="primary">
+                                        <b-button v-b-tooltip.hover title="Start Playout Service" class="control-button control-button-play" variant="primary">
                                             <b-icon-play />
                                         </b-button>
                                     </div>
                                 </b-col>
                                 <b-col>
                                     <div>
-                                        <b-button class="control-button control-button-stop" variant="primary">
+                                        <b-button v-b-tooltip.hover title="Stop Playout Service" class="control-button control-button-stop" variant="primary">
                                             <b-icon-stop />
                                         </b-button>
                                     </div>
@@ -52,14 +52,14 @@
                                 <div class="w-100" />
                                 <b-col>
                                     <div>
-                                        <b-button class="control-button control-button-reload" variant="primary">
+                                        <b-button v-b-tooltip.hover title="Reload Playout Service" class="control-button control-button-reload" variant="primary">
                                             <b-icon-arrow-repeat />
                                         </b-button>
                                     </div>
                                 </b-col>
                                 <b-col>
                                     <div>
-                                        <b-button class="control-button control-button-restart" variant="primary">
+                                        <b-button v-b-tooltip.hover title="Restart Playout Service" class="control-button control-button-restart" variant="primary">
                                             <b-icon-arrow-clockwise />
                                         </b-button>
                                     </div>
@@ -199,6 +199,14 @@
                     </div>
                 </pane>
             </splitpanes>
+            <b-button-group class="media-button">
+                <b-button v-b-tooltip.hover title="Reset Playlist" variant="primary" @click="resetPlaylist()">
+                    <b-icon-arrow-counterclockwise />
+                </b-button>
+                <b-button v-b-tooltip.hover title="Save Playlist" variant="primary" @click="savePlaylist()">
+                    <b-icon-download />
+                </b-button>
+            </b-button-group>
         </b-container>
         <b-modal
             id="preview-modal"
@@ -317,6 +325,12 @@ export default {
                 ]
             }
             this.$root.$emit('bv::show::modal', 'preview-modal')
+        },
+        resetPlaylist () {
+            console.log('reset playlist')
+        },
+        savePlaylist () {
+            console.log('save playlist')
         }
     }
 }
@@ -468,7 +482,7 @@ export default {
 }
 
 .list-row {
-    height: calc(100% - 40px - 254px - 46px);
+    height: calc(100% - 40px - 254px - 46px - 70px);
     min-height: 300px;
 }
 
