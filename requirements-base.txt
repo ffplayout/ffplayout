@@ -7,3 +7,4 @@ natsort
 psutil
 pymediainfo
 pyyaml
+pystemd
