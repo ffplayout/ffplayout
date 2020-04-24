@@ -47,7 +47,9 @@ export default {
         { src: '~plugins/video.js', ssr: false },
         { src: '~plugins/scrollbar.js', ssr: false },
         { src: '~plugins/splitpanes.js', ssr: false },
-        { src: '~plugins/loading.js', ssr: false }
+        { src: '~plugins/loading.js', ssr: false },
+        { src: '~/plugins/helpers.js' },
+        { src: '~plugins/draggable.js', ssr: false }
     ],
     /*
      ** Nuxt.js dev-modules
