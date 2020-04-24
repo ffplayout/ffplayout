@@ -6,13 +6,14 @@ from api.models import GuiSettings
 from api.serializers import GuiSettingsSerializer, UserSerializer
 from django.contrib.auth.models import User
 from django_filters import rest_framework as filters
+from pystemd.systemd1 import Unit
 from rest_framework import viewsets
 from rest_framework.parsers import FileUploadParser, JSONParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .utils import (SystemStats, get_media_path, read_json, read_yaml,
-                    write_yaml)
+                    write_json, write_yaml)
 
 
 class CurrentUserView(APIView):
@@ -71,6 +72,32 @@ class Config(APIView):
         return Response({"success": False})
 
 
+class SystemCtl(APIView):
+    """
+    controlling the ffplayout-engine systemd services
+    """
+
+    def post(self, request, *args, **kwargs):
+        if 'data' in request.data and 'run' in request.data['data']:
+            unit = Unit(b'ffplayout-engine.service', _autoload=True)
+            if request.data['data']['run'] == 'start':
+                unit.Unit.Start(b'replace')
+                return Response({"success": True})
+            elif request.data['data']['run'] == 'stop':
+                unit.Unit.Stop(b'replace')
+                return Response({"success": True})
+            elif request.data['data']['run'] == 'reload':
+                unit.Unit.Reload(b'replace')
+                return Response({"success": True})
+            elif request.data['data']['run'] == 'restart':
+                unit.Unit.Restart(b'replace')
+                return Response({"success": True})
+            else:
+                Response({"success": False})
+
+        return Response({"success": False})
+
+
 class Playlist(APIView):
     """
     read and write config from ffplayout engine
@@ -93,7 +120,7 @@ class Playlist(APIView):
 
     def post(self, request, *args, **kwargs):
         if 'data' in request.data:
-            write_yaml(request.data['data'])
+            write_json(request.data['data'])
             return Response({"success": True})
 
         return Response({"success": False})
