@@ -110,28 +110,35 @@
                                         <b-icon-folder-fill class="browser-icons" /> {{ folder }}
                                     </b-link>
                                 </b-list-group-item>
-                                <b-list-group-item
-                                    v-for="file in folderTree.tree[2]"
-                                    :key="file.key"
-                                    class="browser-item"
+                                <draggable
+                                    :list="folderTree.tree[2]"
+                                    :clone="cloneClip"
+                                    :group="{ name: 'playlist', pull: 'clone', put: false }"
+                                    :sort="false"
                                 >
-                                    <b-row>
-                                        <b-col cols="1" class="browser-icons-col">
-                                            <b-icon-film class="browser-icons" />
-                                        </b-col>
-                                        <b-col class="browser-item-text">
-                                            {{ file.file }}
-                                        </b-col>
-                                        <b-col cols="1" class="browser-play-col">
-                                            <b-link @click="showModal(`/${folderTree.tree[0]}/${file.file}`)">
-                                                <b-icon-play-fill />
-                                            </b-link>
-                                        </b-col>
-                                        <b-col cols="1" class="browser-dur-col">
-                                            <span class="duration">{{ file.duration | toMin }}</span>
-                                        </b-col>
-                                    </b-row>
-                                </b-list-group-item>
+                                    <b-list-group-item
+                                        v-for="file in folderTree.tree[2]"
+                                        :key="file.key"
+                                        class="browser-item"
+                                    >
+                                        <b-row>
+                                            <b-col cols="1" class="browser-icons-col">
+                                                <b-icon-film class="browser-icons" />
+                                            </b-col>
+                                            <b-col class="browser-item-text grabbing">
+                                                {{ file.file }}
+                                            </b-col>
+                                            <b-col cols="1" class="browser-play-col">
+                                                <b-link @click="showModal(`/${folderTree.tree[0]}/${file.file}`)">
+                                                    <b-icon-play-fill />
+                                                </b-link>
+                                            </b-col>
+                                            <b-col cols="1" class="browser-dur-col">
+                                                <span class="duration">{{ file.duration | toMin }}</span>
+                                            </b-col>
+                                        </b-row>
+                                    </b-list-group-item>
+                                </draggable>
                             </b-list-group>
                         </perfect-scrollbar>
                     </div>
@@ -144,10 +151,10 @@
                                     <b-col cols="1" class="timecode">
                                         Start
                                     </b-col>
-                                    <b-col cols="6">
+                                    <b-col>
                                         File
                                     </b-col>
-                                    <b-col cols="1" class="text-center">
+                                    <b-col cols="1" class="text-center playlist-input">
                                         Play
                                     </b-col>
                                     <b-col cols="1" class="timecode">
@@ -159,7 +166,10 @@
                                     <b-col cols="1" class="timecode">
                                         Out
                                     </b-col>
-                                    <b-col cols="1" class="text-center">
+                                    <b-col cols="1" class="text-center playlist-input">
+                                        Ad
+                                    </b-col>
+                                    <b-col cols="1" class="text-center playlist-input">
                                         Delete
                                     </b-col>
                                 </b-row>
@@ -167,33 +177,49 @@
                         </b-list-group>
                         <perfect-scrollbar>
                             <b-list-group>
-                                <b-list-group-item v-for="item in playlist" :key="item.key">
-                                    <b-row class="playlist-row" :data-in="item.in" :data-out="item.out">
-                                        <b-col cols="1" class="timecode">
-                                            {{ item.begin | secondsToTime }}
-                                        </b-col>
-                                        <b-col cols="6">
-                                            {{ item.source | filename }}
-                                        </b-col>
-                                        <b-col cols="1" class="text-center">
-                                            <b-link @click="showModal(item.source)">
-                                                <b-icon-play-fill />
-                                            </b-link>
-                                        </b-col>
-                                        <b-col cols="1" text class="timecode">
-                                            {{ item.duration | secondsToTime }}
-                                        </b-col>
-                                        <b-col cols="1" class="timecode">
-                                            {{ item.in | secondsToTime }}
-                                        </b-col>
-                                        <b-col cols="1" class="timecode">
-                                            {{ item.out | secondsToTime }}
-                                        </b-col>
-                                        <b-col cols="1" class="text-center">
-                                            <b-icon-x-circle-fill />
-                                        </b-col>
-                                    </b-row>
-                                </b-list-group-item>
+                                <draggable
+                                    v-model="playlist"
+                                    group="playlist"
+                                    @start="drag=true"
+                                    @end="drag=false"
+                                >
+                                    <b-list-group-item v-for="(item, index) in playlist" :key="item.key" class="playlist-item">
+                                        <b-row class="playlist-row">
+                                            <b-col cols="1" class="timecode">
+                                                {{ item.begin | secondsToTime }}
+                                            </b-col>
+                                            <b-col class="grabbing">
+                                                {{ item.source | filename }}
+                                            </b-col>
+                                            <b-col cols="1" class="text-center playlist-input">
+                                                <b-link @click="showModal(item.source)">
+                                                    <b-icon-play-fill />
+                                                </b-link>
+                                            </b-col>
+                                            <b-col cols="1" text class="timecode">
+                                                {{ item.duration | secondsToTime }}
+                                            </b-col>
+                                            <b-col cols="1" class="timecode">
+                                                <b-form-input :value="item.in | secondsToTime" size="sm" @input="changeTime('in', index, $event)" />
+                                            </b-col>
+                                            <b-col cols="1" class="timecode">
+                                                <b-form-input :value="item.out | secondsToTime" size="sm" @input="changeTime('out', index, $event)" />
+                                            </b-col>
+                                            <b-col cols="1" class="text-center playlist-input">
+                                                <b-form-checkbox
+                                                    v-model="item.category"
+                                                    value="advertisement"
+                                                    :unchecked-value="item.category"
+                                                />
+                                            </b-col>
+                                            <b-col cols="1" class="text-center playlist-input">
+                                                <b-link @click="removeItemFromPlaylist(index)">
+                                                    <b-icon-x-circle-fill />
+                                                </b-link>
+                                            </b-col>
+                                        </b-row>
+                                    </b-list-group-item>
+                                </draggable>
                             </b-list-group>
                         </perfect-scrollbar>
                     </div>
@@ -240,7 +266,15 @@ export default {
             }
         },
         secondsToTime (sec) {
-            return new Date(sec * 1000).toISOString().substr(11, 8)
+            let hours = Math.floor(sec / 3600)
+            sec %= 3600
+            let minutes = Math.floor(sec / 60)
+            let seconds = sec % 60
+
+            minutes = String(minutes).padStart(2, '0')
+            hours = String(hours).padStart(2, '0')
+            seconds = String(parseInt(seconds)).padStart(2, '0')
+            return hours + ':' + minutes + ':' + seconds
         }
     },
 
@@ -259,7 +293,16 @@ export default {
     computed: {
         ...mapState('config', ['configGui', 'configPlayout']),
         ...mapState('media', ['crumbs', 'folderTree']),
-        ...mapState('playlist', ['playlist', 'timeStr', 'timeLeft', 'currentClip', 'progressValue'])
+        ...mapState('playlist', ['timeStr', 'timeLeft', 'currentClip', 'progressValue']),
+        playlist: {
+            get () {
+                return this.$store.state.playlist.playlist
+            },
+            set (list) {
+                this.$store.commit('playlist/UPDATE_PLAYLIST', this.$processPlaylist(
+                    this.configPlayout.playlist.day_start, list))
+            }
+        }
     },
 
     watch: {
@@ -326,11 +369,38 @@ export default {
             }
             this.$root.$emit('bv::show::modal', 'preview-modal')
         },
-        resetPlaylist () {
-            console.log('reset playlist')
+        cloneClip ({ file, duration }) {
+            return {
+                source: `/${this.folderTree.tree[0]}/${file}`,
+                in: 0,
+                out: duration,
+                duration
+            }
+        },
+        changeTime (pos, index, input) {
+            if (input.match(/(?:[01]\d|2[0123]):(?:[012345]\d):(?:[012345]\d)/gm)) {
+                const sec = this.$timeToSeconds(input)
+
+                if (pos === 'in') {
+                    this.playlist[index].in = sec
+                } else if (pos === 'out') {
+                    this.playlist[index].out = sec
+                }
+
+                this.$store.commit('playlist/UPDATE_PLAYLIST', this.$processPlaylist(
+                    this.configPlayout.playlist.day_start, this.playlist))
+            }
+        },
+        removeItemFromPlaylist (index) {
+            this.playlist.splice(index, 1)
+        },
+        async resetPlaylist () {
+            await this.$store.dispatch('playlist/getPlaylist', { dayStart: this.configPlayout.playlist.day_start, date: this.today })
         },
         savePlaylist () {
-            console.log('save playlist')
+            console.log(this.playlist)
+            this.$store.commit('playlist/UPDATE_PLAYLIST', this.$processPlaylist(
+                this.configPlayout.playlist.day_start, this.playlist))
         }
     }
 }
@@ -394,6 +464,8 @@ export default {
 
 .current-clip-text {
     height: 70%;
+    padding-top: 1em;
+    font-weight: bold;
 }
 
 .current-clip-progress {
@@ -536,6 +608,24 @@ export default {
 
 .timecode {
     min-width: 56px;
+    max-width: 90px;
+}
+
+.playlist-input {
+    min-width: 35px;
+    max-width: 60px;
+}
+
+.timecode input {
+    border-color: #515763;
+}
+
+.playlist-item:nth-of-type(even), .playlist-item:nth-of-type(even) div .timecode input {
+    background-color: #3b424a;
+}
+
+.playlist-item:nth-of-type(even):hover {
+    background-color: #1C1E22;
 }
 
 </style>
