@@ -467,8 +467,7 @@ def ffmpeg_libs():
             for cfg in configs:
                 if '--enable-lib' in cfg:
                     libs.append(cfg.replace('--enable-', ''))
-        elif re.match(r'^ (\.\.\.|T\.\.|\.S\.|\.\.C|TSC)', line) and \
-                '=' not in line:
+        elif re.match(r'^(?!.*=) [TSC.]+', line):
             filter_list = line.split()
             if len(filter_list) > 3:
                 filters.append(filter_list[1])
