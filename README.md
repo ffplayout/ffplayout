@@ -13,6 +13,10 @@ This is the dev version v2.0.0 from ffplayout GUI.
 #### Landing Page
 ![landing](/docs/landing-page.png)
 
+#### Control Page
+![landing](/docs/control.png)
+
+
 #### Media Page
 ![landing](/docs/media.png)
 
