@@ -37,6 +37,14 @@ def read_json(date):
             return json.load(playlist)
 
 
+def write_json(data):
+    config = read_yaml()['playlist']['path']
+    y, m, d = data['date'].split('-')
+    output = os.path.join(config, y, m, '{}.json'.format(data['date']))
+    with open(output, "w") as outfile:
+        json.dump(data, outfile, indent=4)
+
+
 def sizeof_fmt(num, suffix='B'):
     for unit in ['', 'Ki', 'Mi', 'Gi', 'Ti', 'Pi', 'Ei', 'Zi']:
         if abs(num) < 1024.0:

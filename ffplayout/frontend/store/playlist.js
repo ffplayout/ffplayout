@@ -26,8 +26,9 @@ const counte = (function main (counter) {
 */
 export const state = () => ({
     playlist: null,
+    playlistChannel: 'Channel 1',
     clockStart: true,
-    progressValue: 30,
+    progressValue: 0,
     currentClip: 'No clips is playing',
     timeStr: '00:00:00',
     timeLeft: '00:00:00'
@@ -36,6 +37,9 @@ export const state = () => ({
 export const mutations = {
     UPDATE_PLAYLIST (state, list) {
         state.playlist = list
+    },
+    UPDATE_PLAYLIST_CHANNEL (state, channel) {
+        state.playlistChannel = channel
     },
     SET_CLOCK_START (state, bol) {
         state.clockStart = bol
@@ -62,12 +66,15 @@ export const actions = {
         const response = await this.$axios.get(`api/playlist/?date=${date}`, { headers: { Authorization: 'Bearer ' + rootState.auth.jwtToken } })
 
         if (response.data && response.data.program) {
+            commit('UPDATE_PLAYLIST_CHANNEL', response.data.channel)
             commit('UPDATE_PLAYLIST', this.$processPlaylist(dayStart, response.data.program))
 
             if (process.browser) {
                 // TODO: find a better way for non-blocking animation
                 // dispatch('animClock')
             }
+        } else {
+            commit('UPDATE_PLAYLIST', [])
         }
     },
 

@@ -99,7 +99,6 @@
                         </div>
 
                         <perfect-scrollbar>
-                            <!-- class="browser-list" -->
                             <b-list-group>
                                 <b-list-group-item
                                     v-for="folder in folderTree.tree[1]"
@@ -397,10 +396,16 @@ export default {
         async resetPlaylist () {
             await this.$store.dispatch('playlist/getPlaylist', { dayStart: this.configPlayout.playlist.day_start, date: this.today })
         },
-        savePlaylist () {
-            console.log(this.playlist)
+        async savePlaylist () {
+            await this.$store.dispatch('auth/inspectToken')
             this.$store.commit('playlist/UPDATE_PLAYLIST', this.$processPlaylist(
                 this.configPlayout.playlist.day_start, this.playlist))
+
+            await this.$axios.post(
+                'api/playlist/',
+                { data: { channel: this.$store.state.playlist.playlistChannel, date: this.today, program: this.playlist } },
+                { headers: { Authorization: 'Bearer ' + this.$store.state.auth.jwtToken } }
+            )
         }
     }
 }
@@ -565,6 +570,10 @@ export default {
 .browser-div {
     width: 100%;
     max-height: 100%;
+}
+
+.browser-div .ps {
+    padding-left: .4em;
 }
 
 .date-div {
