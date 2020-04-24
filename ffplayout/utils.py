@@ -33,7 +33,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import formatdate
 from logging.handlers import TimedRotatingFileHandler
-from subprocess import CalledProcessError, check_output, STDOUT
+from subprocess import STDOUT, CalledProcessError, check_output
 from threading import Thread
 from types import SimpleNamespace
 
