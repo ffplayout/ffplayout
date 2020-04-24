@@ -35,7 +35,7 @@ The routine with `make` build a virtual environment with all dependencies, and i
 
 Just copy the project where you want to have it, run inside `pip3 install -r requirements.txt`. For logging you have to create the folder **ffplayout** under **/var/log/**, or adjust the settings in config. **ffplayout.yml** have to go to **/etc/ffplayout/**, or should stay in same folder.
 
-If you want to use the systemd service, edit the service file in **docs/ffplayout-engine.service**, copy it to **/etc/systemd/system/** and activate it with: `sudo systemctl enable ffplayout`.
+If you want to use the systemd service, edit the service file in **docs/ffplayout-engine.service**, copy it to **/etc/systemd/system/** and activate it with: `sudo systemctl enable ffplayout-engine`.
 
 Using it Without Installation
 -----
