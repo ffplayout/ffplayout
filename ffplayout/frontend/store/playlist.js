@@ -1,9 +1,3 @@
-// convert time (00:00:00) string to seconds
-function timeToSeconds (time) {
-    const t = time.split(':')
-    return parseInt(t[0]) * 3600 + parseInt(t[1]) * 60 + parseInt(t[2])
-}
-
 function secToHMS (sec) {
     let hours = Math.floor(sec / 3600)
     sec %= 3600
@@ -33,7 +27,7 @@ const counte = (function main (counter) {
 export const state = () => ({
     playlist: null,
     clockStart: true,
-    progressValue: 0,
+    progressValue: 30,
     currentClip: 'No clips is playing',
     timeStr: '00:00:00',
     timeLeft: '00:00:00'
@@ -62,19 +56,13 @@ export const mutations = {
 
 export const actions = {
     async getPlaylist ({ commit, dispatch, state, rootState }, { dayStart, date }) {
+        // TODO: remove time
+        commit('SET_TIME', this.$dayjs().format('HH:mm:ss'))
+
         const response = await this.$axios.get(`api/playlist/?date=${date}`, { headers: { Authorization: 'Bearer ' + rootState.auth.jwtToken } })
 
-        const [h, m, s] = dayStart.split(':')
-        let begin = parseFloat(h) * 3600 + parseFloat(m) * 60 + parseFloat(s)
-
         if (response.data && response.data.program) {
-            for (const item of response.data.program) {
-                item.begin = begin
-
-                begin += (item.out - item.in)
-            }
-
-            commit('UPDATE_PLAYLIST', response.data.program)
+            commit('UPDATE_PLAYLIST', this.$processPlaylist(dayStart, response.data.program))
 
             if (process.browser) {
                 // TODO: find a better way for non-blocking animation
@@ -84,7 +72,7 @@ export const actions = {
     },
 
     async animClock ({ commit, dispatch, state, rootState }) {
-        let start = timeToSeconds(rootState.config.configPlayout.playlist.day_start)
+        let start = this.$timeToSeconds(rootState.config.configPlayout.playlist.day_start)
         let time
 
         if (state.clockStart) {
@@ -93,7 +81,7 @@ export const actions = {
             // loop over clips in program list from today
             for (let i = 0; i < state.playlist.length; i++) {
                 const duration = state.playlist[i].out - state.playlist[i].in
-                let playTime = timeToSeconds(this.$dayjs().format('HH:mm:ss')) - start
+                let playTime = this.$timeToSeconds(this.$dayjs().format('HH:mm:ss')) - start
                 let updateSrc = true
 
                 // animate the progress bar
