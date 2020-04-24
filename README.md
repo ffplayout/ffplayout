@@ -5,6 +5,9 @@ This is the dev version v2.0.0 from ffplayout GUI.
 
 **This version is not ready to use!!**
 
+### Info
+- the system needs **systemd** and systemd dev lib needs to be installed (**libsystemd-dev** or **systemd-devel**)
+
 ## concept previews:
 
 #### Login
