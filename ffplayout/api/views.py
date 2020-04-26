@@ -6,14 +6,13 @@ from api.models import GuiSettings
 from api.serializers import GuiSettingsSerializer, UserSerializer
 from django.contrib.auth.models import User
 from django_filters import rest_framework as filters
-from pystemd.systemd1 import Unit
 from rest_framework import viewsets
 from rest_framework.parsers import FileUploadParser, JSONParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .utils import (SystemStats, get_media_path, read_json, read_yaml,
-                    write_json, write_yaml)
+from .utils import (PlayoutService, SystemStats, get_media_path, read_json,
+                    read_yaml, write_json, write_yaml)
 
 
 class CurrentUserView(APIView):
@@ -78,20 +77,27 @@ class SystemCtl(APIView):
     """
 
     def post(self, request, *args, **kwargs):
-        if 'data' in request.data and 'run' in request.data['data']:
-            unit = Unit(b'ffplayout-engine.service', _autoload=True)
-            if request.data['data']['run'] == 'start':
-                unit.Unit.Start(b'replace')
+        if 'run' in request.data:
+            service = PlayoutService()
+
+            if request.data['run'] == 'start':
+                service.start()
                 return Response({"success": True})
-            elif request.data['data']['run'] == 'stop':
-                unit.Unit.Stop(b'replace')
+            elif request.data['run'] == 'stop':
+                service.stop()
                 return Response({"success": True})
-            elif request.data['data']['run'] == 'reload':
-                unit.Unit.Reload(b'replace')
+            elif request.data['run'] == 'reload':
+                service.reload()
                 return Response({"success": True})
-            elif request.data['data']['run'] == 'restart':
-                unit.Unit.Restart(b'replace')
+            elif request.data['run'] == 'restart':
+                service.restart()
                 return Response({"success": True})
+            elif request.data['run'] == 'status':
+                status = service.status()
+                return Response({"data": status})
+            elif request.data['run'] == 'log':
+                log = service.log()
+                return Response({"data": log})
             else:
                 Response({"success": False})
 

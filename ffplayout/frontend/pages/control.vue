@@ -37,14 +37,26 @@
                             <b-row class="control-unit-row">
                                 <b-col>
                                     <div>
-                                        <b-button v-b-tooltip.hover title="Start Playout Service" class="control-button control-button-play" variant="primary">
+                                        <b-button
+                                            v-b-tooltip.hover
+                                            title="Start Playout Service"
+                                            class="control-button control-button-play"
+                                            variant="primary"
+                                            @click="playoutControl('start')"
+                                        >
                                             <b-icon-play />
                                         </b-button>
                                     </div>
                                 </b-col>
                                 <b-col>
                                     <div>
-                                        <b-button v-b-tooltip.hover title="Stop Playout Service" class="control-button control-button-stop" variant="primary">
+                                        <b-button
+                                            v-b-tooltip.hover
+                                            title="Stop Playout Service"
+                                            class="control-button control-button-stop"
+                                            variant="primary"
+                                            @click="playoutControl('stop')"
+                                        >
                                             <b-icon-stop />
                                         </b-button>
                                     </div>
@@ -52,14 +64,26 @@
                                 <div class="w-100" />
                                 <b-col>
                                     <div>
-                                        <b-button v-b-tooltip.hover title="Reload Playout Service" class="control-button control-button-reload" variant="primary">
+                                        <b-button
+                                            v-b-tooltip.hover
+                                            title="Reload Playout Service"
+                                            class="control-button control-button-reload"
+                                            variant="primary"
+                                            @click="playoutControl('reload')"
+                                        >
                                             <b-icon-arrow-repeat />
                                         </b-button>
                                     </div>
                                 </b-col>
                                 <b-col>
                                     <div>
-                                        <b-button v-b-tooltip.hover title="Restart Playout Service" class="control-button control-button-restart" variant="primary">
+                                        <b-button
+                                            v-b-tooltip.hover
+                                            title="Restart Playout Service"
+                                            class="control-button control-button-restart"
+                                            variant="primary"
+                                            @click="playoutControl('restart')"
+                                        >
                                             <b-icon-arrow-clockwise />
                                         </b-button>
                                     </div>
@@ -345,6 +369,13 @@ export default {
             await this.$store.dispatch('auth/inspectToken')
             await this.$store.dispatch('media/getTree', { extensions, path })
             this.isLoading = false
+        },
+        async playoutControl (state) {
+            await this.$axios.post(
+                'api/system/',
+                { run: state },
+                { headers: { Authorization: 'Bearer ' + this.$store.state.auth.jwtToken } }
+            )
         },
         async getPlaylist () {
             await this.$store.dispatch('auth/inspectToken')

@@ -1,6 +1,7 @@
 import json
 import os
 from platform import uname
+from subprocess import check_output
 from time import sleep
 
 import psutil
@@ -51,6 +52,45 @@ def sizeof_fmt(num, suffix='B'):
             return "%3.1f%s%s" % (num, unit, suffix)
         num /= 1024.0
     return "%.1f%s%s" % (num, 'Yi', suffix)
+
+
+class PlayoutService:
+    def __init__(self):
+        self.service = ['ffplayout-engine.service']
+        self.cmd = ['sudo', '/bin/systemctl']
+        self.proc = None
+
+    def run_cmd(self):
+        self.proc = check_output(self.cmd + self.service)
+
+    def start(self):
+        self.cmd.append('start')
+        self.run_cmd()
+
+    def stop(self):
+        self.cmd.append('stop')
+        self.run_cmd()
+
+    def reload(self):
+        self.cmd.append('reload')
+        self.run_cmd()
+
+    def restart(self):
+        self.cmd.append('restart')
+        self.run_cmd()
+
+    def status(self):
+        self.cmd.append('status')
+        self.run_cmd()
+
+        return self.proc
+
+    def log(self):
+        self.cmd = ['sudo', '/bin/systemctl', 'journalctl',
+                    '-n', '1000', '-u'] + self.service
+        self.run_cmd()
+
+        return self.proc
 
 
 class SystemStats:
