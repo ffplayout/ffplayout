@@ -99,7 +99,7 @@ class SystemCtl(APIView):
                 log = service.log()
                 return Response({"data": log})
             else:
-                Response({"success": False})
+                return Response({"success": False})
 
         return Response({"success": False})
 

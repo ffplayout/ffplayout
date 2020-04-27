@@ -1,7 +1,7 @@
 import json
 import os
 from platform import uname
-from subprocess import check_output
+from subprocess import run, PIPE, STDOUT
 from time import sleep
 
 import psutil
@@ -61,7 +61,7 @@ class PlayoutService:
         self.proc = None
 
     def run_cmd(self):
-        self.proc = check_output(self.cmd + self.service)
+        self.proc = run(self.cmd + self.service, stdout=PIPE, stderr=STDOUT, encoding="utf-8").stdout
 
     def start(self):
         self.cmd.append('start')
@@ -80,10 +80,10 @@ class PlayoutService:
         self.run_cmd()
 
     def status(self):
-        self.cmd.append('status')
+        self.cmd.append('is-active')
         self.run_cmd()
 
-        return self.proc
+        return self.proc.replace('\n', '')
 
     def log(self):
         self.cmd = ['sudo', '/bin/systemctl', 'journalctl',
