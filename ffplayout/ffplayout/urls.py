@@ -35,6 +35,7 @@ urlpatterns = [
     path('api/system/', views.SystemCtl.as_view()),
     path('api/playlist/', views.Playlist.as_view()),
     path('api/stats/', views.Statistics.as_view()),
+    path('api/log/', views.LogReader.as_view()),
     path('api/current/user/', views.CurrentUserView.as_view()),
     path('api/media/', views.Media.as_view()),
     re_path(r'^api/media/upload/(?P<filename>[^/]+)$',  views.FileUpload.as_view()),

@@ -12,7 +12,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .utils import (PlayoutService, SystemStats, get_media_path, read_json,
-                    read_yaml, write_json, write_yaml)
+                    read_yaml, write_json, write_yaml, read_log)
 
 
 class CurrentUserView(APIView):
@@ -102,6 +102,22 @@ class SystemCtl(APIView):
                 return Response({"success": False})
 
         return Response({"success": False})
+
+
+class LogReader(APIView):
+    def get(self, request, *args, **kwargs):
+        if 'type' in request.GET.dict():
+            type = request.GET.dict()['type']
+            log = read_log(type)
+
+            if log:
+                return Response({'log': log})
+            else:
+                return Response({
+                    "success": False,
+                    "error": "PLayout log file not found!"})
+        else:
+            return Response({"success": False})
 
 
 class Playlist(APIView):

@@ -46,6 +46,16 @@ def write_json(data):
         json.dump(data, outfile, indent=4)
 
 
+def read_log(type):
+    config = read_yaml()
+    log_path = config['logging']['log_path']
+    log_file = os.path.join(log_path, '{}.log'.format(type))
+
+    if os.path.isfile(log_file):
+        with open(log_file, 'r') as log:
+            return log.read().strip()
+
+
 def sizeof_fmt(num, suffix='B'):
     for unit in ['', 'Ki', 'Mi', 'Gi', 'Ti', 'Pi', 'Ei', 'Zi']:
         if abs(num) < 1024.0:
@@ -61,7 +71,8 @@ class PlayoutService:
         self.proc = None
 
     def run_cmd(self):
-        self.proc = run(self.cmd + self.service, stdout=PIPE, stderr=STDOUT, encoding="utf-8").stdout
+        self.proc = run(self.cmd + self.service, stdout=PIPE, stderr=STDOUT,
+                        encoding="utf-8").stdout
 
     def start(self):
         self.cmd.append('start')
@@ -86,8 +97,8 @@ class PlayoutService:
         return self.proc.replace('\n', '')
 
     def log(self):
-        self.cmd = ['sudo', '/bin/systemctl', 'journalctl',
-                    '-n', '1000', '-u'] + self.service
+        self.cmd = ['sudo', '/bin/journalctl', '-n', '1000', '-u']
+
         self.run_cmd()
 
         return self.proc

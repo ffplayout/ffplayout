@@ -397,7 +397,7 @@ export default {
                 { headers: { Authorization: 'Bearer ' + this.$store.state.auth.jwtToken } }
             )
 
-            await this.getStatus()
+            setTimeout(() => { this.getStatus() }, 1000)
         },
         async getPlaylist () {
             await this.$store.dispatch('auth/inspectToken')
