@@ -107,8 +107,6 @@ export default {
                 { headers: { Authorization: 'Bearer ' + this.$store.state.auth.jwtToken } }
             )
 
-            console.log(response.data.data)
-
             if (response.data.data) {
                 this.currentLog = response.data.data
             }
