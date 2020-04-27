@@ -41,6 +41,7 @@
                                             v-b-tooltip.hover
                                             title="Start Playout Service"
                                             class="control-button control-button-play"
+                                            :class="isPlaying"
                                             variant="primary"
                                             @click="playoutControl('start')"
                                         >
@@ -304,6 +305,7 @@ export default {
     data () {
         return {
             isLoading: false,
+            isPlaying: '',
             today: this.$dayjs().format('YYYY-MM-DD'),
             extensions: '',
             videoOptions: {},
@@ -336,6 +338,8 @@ export default {
 
     async created () {
         await this.getConfig()
+
+        await this.getStatus()
 
         this.extensions = this.configPlayout.storage.extensions.join(' ')
 
@@ -370,12 +374,30 @@ export default {
             await this.$store.dispatch('media/getTree', { extensions, path })
             this.isLoading = false
         },
+        async getStatus () {
+            await this.$store.dispatch('auth/inspectToken')
+
+            const status = await this.$axios.post(
+                'api/system/',
+                { run: 'status' },
+                { headers: { Authorization: 'Bearer ' + this.$store.state.auth.jwtToken } }
+            )
+
+            if (status.data.data && status.data.data === 'active') {
+                this.isPlaying = 'is-playing'
+            } else {
+                this.isPlaying = ''
+            }
+        },
         async playoutControl (state) {
+            await this.$store.dispatch('auth/inspectToken')
             await this.$axios.post(
                 'api/system/',
                 { run: state },
                 { headers: { Authorization: 'Bearer ' + this.$store.state.auth.jwtToken } }
             )
+
+            await this.getStatus()
         },
         async getPlaylist () {
             await this.$store.dispatch('auth/inspectToken')
@@ -542,9 +564,18 @@ export default {
     height: 100%;
 }
 
+.control-button:hover {
+    background-image: linear-gradient(#3b4046, #2c3034 60%, #24272a) !important;
+}
+
 .control-button-play {
     color: #43c32e;
 }
+
+.is-playing {
+    box-shadow: 0 0 15px  #43c32e;
+}
+
 .control-button-stop {
     color: #d01111;
 }
