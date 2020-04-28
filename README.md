@@ -11,17 +11,22 @@ This is the dev version v2.0.0 from ffplayout GUI.
 ![login](/docs/login.png)
 
 #### Landing Page
-![landing](/docs/landing-page.png)
+![landing-page](/docs/landing-page.png)
 
 #### Control Page
-![landing](/docs/control.png)
-
+![control](/docs/control.png)
 
 #### Media Page
-![landing](/docs/media.png)
+![media](/docs/media.png)
 
 #### Media Page / Upload
-![landing](/docs/media-upload.png)
+![media-upload](/docs/media-upload.png)
+
+#### Message Page
+![message](/docs/message.png)
+
+#### Logging Page
+![logging](/docs/logging.png)
 
 #### Configuration Page / GUI
-![landing](/docs/config-gui.png)
+![config-gui](/docs/config-gui.png)
