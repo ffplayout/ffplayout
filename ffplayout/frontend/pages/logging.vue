@@ -129,10 +129,6 @@ export default {
     max-width: 95%;
     padding: 1em;
 }
-.logging {
-    height: 50%;
-    overflow: auto;
-}
 
 .log-content {
     color: #ececec;
