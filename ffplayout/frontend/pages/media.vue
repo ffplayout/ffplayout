@@ -90,10 +90,10 @@
                     </pane>
                 </splitpanes>
                 <b-button-group class="media-button">
-                    <b-button variant="primary" @click="showCreateFolderModal()">
+                    <b-button title="Create Folder" variant="primary" @click="showCreateFolderModal()">
                         <b-icon-folder-plus />
                     </b-button>
-                    <b-button variant="primary" @click="showUploadModal()">
+                    <b-button title="Upload File" variant="primary" @click="showUploadModal()">
                         <b-icon-upload />
                     </b-button>
                 </b-button-group>
@@ -217,6 +217,7 @@ import Menu from '@/components/Menu.vue'
 
 export default {
     name: 'Media',
+    middleware: 'auth',
 
     components: {
         Menu

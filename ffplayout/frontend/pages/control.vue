@@ -38,7 +38,6 @@
                                 <b-col>
                                     <div>
                                         <b-button
-                                            v-b-tooltip.hover
                                             title="Start Playout Service"
                                             class="control-button control-button-play"
                                             :class="isPlaying"
@@ -52,7 +51,6 @@
                                 <b-col>
                                     <div>
                                         <b-button
-                                            v-b-tooltip.hover
                                             title="Stop Playout Service"
                                             class="control-button control-button-stop"
                                             variant="primary"
@@ -66,7 +64,6 @@
                                 <b-col>
                                     <div>
                                         <b-button
-                                            v-b-tooltip.hover
                                             title="Reload Playout Service"
                                             class="control-button control-button-reload"
                                             variant="primary"
@@ -79,7 +76,6 @@
                                 <b-col>
                                     <div>
                                         <b-button
-                                            v-b-tooltip.hover
                                             title="Restart Playout Service"
                                             class="control-button control-button-restart"
                                             variant="primary"
@@ -277,6 +273,7 @@ import Menu from '@/components/Menu.vue'
 
 export default {
     name: 'Control',
+    middleware: 'auth',
 
     components: {
         Menu

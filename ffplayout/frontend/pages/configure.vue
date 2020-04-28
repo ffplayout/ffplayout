@@ -208,32 +208,25 @@
                 </b-tab>
             </b-tabs>
         </b-card>
-        <Login :show="showLogin" />
     </div>
 </template>
 
 <script>
 import Menu from '@/components/Menu.vue'
-import Login from '@/components/Login.vue'
 
 export default {
     name: 'Configure',
+    middleware: 'auth',
 
     components: {
-        Menu,
-        Login
+        Menu
     },
 
     async asyncData ({ app, store }) {
-        await store.dispatch('auth/inspectToken')
-        let login = false
-
         if (store.state.auth.isLogin) {
             await store.dispatch('config/getGuiConfig')
             await store.dispatch('config/getPlayoutConfig')
             await store.dispatch('config/getUserConfig')
-        } else {
-            login = true
         }
 
         return {
@@ -244,7 +237,6 @@ export default {
             oldPass: null,
             newPass: null,
             confirmPass: null,
-            showLogin: login,
             showAlert: false,
             alertVariant: 'success',
             alertMsg: ''

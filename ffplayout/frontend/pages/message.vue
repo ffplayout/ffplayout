@@ -9,17 +9,20 @@
                     </b-col>
                     <b-col cols="2">
                         <b-button-group class="mr-1">
-                            <b-button title="New file" variant="primary" @click="openDialog()">
+                            <b-button title="Save Preset" variant="primary" @click="savePreset()">
+                                <b-icon icon="cloud-upload" />
+                            </b-button>
+                            <b-button title="New Preset" variant="primary" @click="openDialog()">
                                 <b-icon-file-plus />
                             </b-button>
-                            <b-button title="Save file" variant="primary" @click="savePreset()">
-                                <b-icon icon="cloud-upload" />
+                            <b-button title="Delete Preset" variant="primary" @click="deleteDialog()">
+                                <b-icon-file-minus />
                             </b-button>
                         </b-button-group>
                     </b-col>
                 </b-row>
             </div>
-            <b-form @submit.prevent="submit">
+            <b-form @submit.prevent="submitMessage">
                 <b-form-group>
                     <b-form-textarea
                         v-model="form.text"
@@ -200,7 +203,7 @@
             id="create-modal"
             ref="create-modal"
             title="Create Preset"
-            @ok="handleOk"
+            @ok="handleCreate"
         >
             <form ref="form" @submit.stop.prevent="createPreset">
                 <b-form-group label="Name" label-for="name-input" invalid-feedback="Name is required">
@@ -208,40 +211,27 @@
                 </b-form-group>
             </form>
         </b-modal>
-        <Login :show="showLogin" />
+        <b-modal
+            id="delete-modal"
+            ref="delete-modal"
+            title="Delete Preset"
+            @ok="handleDelete"
+        >
+            <strong>Delete: "{{ selected }}"?</strong>
+        </b-modal>
     </div>
 </template>
 
 <script>
 // import { mapState } from 'vuex'
 import Menu from '@/components/Menu.vue'
-import Login from '@/components/Login.vue'
 
 export default {
     name: 'Media',
+    middleware: 'auth',
 
     components: {
-        Menu,
-        Login
-    },
-
-    filters: {
-        aToHex (num) {
-            return '0x' + Math.round(num * 255).toString(16)
-        }
-    },
-
-    async asyncData ({ app, store }) {
-        await store.dispatch('auth/inspectToken')
-        let login = false
-
-        if (!store.state.auth.isLogin) {
-            login = true
-        }
-
-        return {
-            showLogin: login
-        }
+        Menu
     },
 
     data () {
@@ -319,14 +309,14 @@ export default {
         openDialog () {
             this.$bvModal.show('create-modal')
         },
-        handleOk (bvModalEvt) {
+        handleCreate (bvModalEvt) {
             // Prevent modal from closing
             bvModalEvt.preventDefault()
             // Trigger submit handler
             this.createPreset()
         },
         async createPreset () {
-            console.log('ok')
+            await this.$store.dispatch('auth/inspectToken')
             const preset = {
                 name: this.newPresetName,
                 message: this.form.text,
@@ -360,6 +350,7 @@ export default {
             })
         },
         async savePreset () {
+            await this.$store.dispatch('auth/inspectToken')
             if (this.selected) {
                 const preset = {
                     id: this.form.id,
@@ -379,7 +370,7 @@ export default {
                 }
 
                 const response = await this.$axios.put(
-                    `api/messenger/${this.selectedPreset.id}/`,
+                    `api/messenger/${this.form.id}/`,
                     preset,
                     { headers: { Authorization: 'Bearer ' + this.$store.state.auth.jwtToken } }
                 )
@@ -390,6 +381,46 @@ export default {
                     this.failed = true
                 }
             }
+        },
+
+        deleteDialog () {
+            this.$bvModal.show('delete-modal')
+        },
+        handleDelete (evt) {
+            evt.preventDefault()
+            this.deletePreset()
+        },
+        async deletePreset () {
+            await this.$store.dispatch('auth/inspectToken')
+            if (this.selected) {
+                await this.$axios.delete(
+                    `api/messenger/${this.form.id}/`,
+                    { headers: { Authorization: 'Bearer ' + this.$store.state.auth.jwtToken } }
+                )
+            }
+
+            this.$bvModal.hide('delete-modal')
+            this.getPreset('')
+        },
+
+        submitMessage () {
+            function aToHex (num) {
+                return '0x' + Math.round(num * 255).toString(16)
+            }
+
+            const obj = {
+                text: this.form.text,
+                x: this.form.x,
+                y: this.form.y,
+                fontsize: this.form.fontSize,
+                line_spacing: this.form.fontSpacing,
+                fontcolor: this.form.fontColor + '@' + aToHex(this.form.fontAlpha),
+                alpha: this.form.overallAlpha,
+                box: (this.form.showBox) ? 1 : 0,
+                boxcolor: this.form.boxColor + '@' + aToHex(this.form.boxAlpha),
+                boxborderw: this.form.border
+            }
+            console.log(obj)
         }
     }
 }

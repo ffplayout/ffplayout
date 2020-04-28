@@ -29,21 +29,19 @@
                 </b-tab>
             </b-tabs>
         </b-card>
-        <Login :show="showLogin" />
     </div>
 </template>
 
 <script>
 // import { mapState } from 'vuex'
 import Menu from '@/components/Menu.vue'
-import Login from '@/components/Login.vue'
 
 export default {
-    name: 'Media',
+    name: 'Logging',
+    middleware: 'auth',
 
     components: {
-        Menu,
-        Login
+        Menu
     },
 
     filters: {
@@ -58,19 +56,6 @@ export default {
                 .replace(/\[WARNING\]/g, '<span class="log-warning">[WARNING]</span>')
                 .replace(/\[ERROR\]/g, '<span class="log-error">[ERROR]</span>')
                 .replace(/\[DEBUG\]/g, '<span class="log-debug">[DEBUG]</span>')
-        }
-    },
-
-    async asyncData ({ app, store }) {
-        await store.dispatch('auth/inspectToken')
-        let login = false
-
-        if (!store.state.auth.isLogin) {
-            login = true
-        }
-
-        return {
-            showLogin: login
         }
     },
 
