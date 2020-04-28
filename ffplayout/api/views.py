@@ -2,8 +2,9 @@ import os
 import shutil
 from urllib.parse import unquote
 
-from api.models import GuiSettings
-from api.serializers import GuiSettingsSerializer, UserSerializer
+from api.models import GuiSettings, MessengePresets
+from api.serializers import (GuiSettingsSerializer, MessengerSerializer,
+                             UserSerializer)
 from django.contrib.auth.models import User
 from django_filters import rest_framework as filters
 from rest_framework import viewsets
@@ -41,6 +42,20 @@ class GuiSettingsViewSet(viewsets.ModelViewSet):
     """
     queryset = GuiSettings.objects.all()
     serializer_class = GuiSettingsSerializer
+
+
+class MessengerFilter(filters.FilterSet):
+
+    class Meta:
+        model = MessengePresets
+        fields = ['name']
+
+
+class MessengerViewSet(viewsets.ModelViewSet):
+    queryset = MessengePresets.objects.all()
+    serializer_class = MessengerSerializer
+    filter_backends = (filters.DjangoFilterBackend,)
+    filterset_class = MessengerFilter
 
 
 class Config(APIView):

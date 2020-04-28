@@ -2,7 +2,7 @@ from django.contrib.auth.models import User
 
 from rest_framework import serializers
 
-from api.models import GuiSettings
+from api.models import GuiSettings, MessengePresets
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -55,3 +55,9 @@ class GuiSettingsSerializer(serializers.ModelSerializer):
         if request is not None and not request.parser_context.get('kwargs'):
             fields.pop('id', None)
         return fields
+
+
+class MessengerSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MessengePresets
+        fields = '__all__'

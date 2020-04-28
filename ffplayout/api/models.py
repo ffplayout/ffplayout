@@ -41,3 +41,27 @@ class GuiSettings(models.Model):
 
     class Meta:
         verbose_name_plural = "guisettings"
+
+
+class MessengePresets(models.Model):
+    name =  models.CharField(max_length=255, help_text="the preset name")
+
+    message =  models.CharField(
+        max_length=1024, blank=True, null=True, default='')
+
+    x =  models.CharField(
+        max_length=512, blank=True, null=True, default='')
+
+    y =  models.CharField(
+        max_length=512, blank=True, null=True, default='')
+
+    font_size = models.IntegerField(default=24)
+    font_spacing = models.IntegerField(default=4)
+    font_color = models.CharField(max_length=12, default='#ffffff')
+    font_alpha = models.FloatField(default=1.0)
+    show_box = models.BooleanField(default=True)
+    box_color = models.CharField(max_length=12, default='#000000')
+    box_alpha = models.FloatField(default=0.8)
+    border_width = models.IntegerField(default=4)
+    overall_alpha = models.CharField(
+        max_length=255, blank=True, null=True, default='')
