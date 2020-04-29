@@ -15,15 +15,6 @@ function sleep (ms) {
     return new Promise(resolve => setTimeout(resolve, ms))
 }
 
-/*
-const counte = (function main (counter) {
-    console.log(counter)
-
-    if (counter < 20) {
-        setTimeout(main, 1000, counter + 1)
-    }
-})(0)
-*/
 export const state = () => ({
     playlist: null,
     playlistChannel: 'Channel 1',
@@ -60,9 +51,6 @@ export const mutations = {
 
 export const actions = {
     async getPlaylist ({ commit, dispatch, state, rootState }, { dayStart, date }) {
-        // TODO: remove time
-        commit('SET_TIME', this.$dayjs().format('HH:mm:ss'))
-
         const response = await this.$axios.get(`api/playlist/?date=${date}`, { headers: { Authorization: 'Bearer ' + rootState.auth.jwtToken } })
 
         if (response.data && response.data.program) {
@@ -70,7 +58,6 @@ export const actions = {
             commit('UPDATE_PLAYLIST', this.$processPlaylist(dayStart, response.data.program))
 
             if (process.browser) {
-                // TODO: find a better way for non-blocking animation
                 // dispatch('animClock')
             }
         } else {
@@ -103,9 +90,9 @@ export const actions = {
                     time = this.$dayjs().format('HH:mm:ss')
                     commit('SET_PROGRESS_VALUE', pValue)
                     commit('SET_TIME', time)
-                    playTime += 1
+                    playTime += 5
                     commit('SET_TIME_LEFT', secToHMS(duration - playTime))
-                    await sleep(1000)
+                    await sleep(5000)
                 }
 
                 start += duration
