@@ -18,6 +18,7 @@
 - set `ALLOWED_HOSTS` with correct URL
 - set URL in `CORS_ORIGIN_WHITELIST`
 - collect static files: `python manage.py collectstatic`
+- run: `chown www-data. -R /var/www/ffplayout`
 
 ##### System Setup
 - copy **docs/ffplayout-api.service** from root folder to **/etc/systemd/system/**
@@ -44,3 +45,18 @@
 - build app: `npm run build`
 
 Your frontend should be now in **/var/www/ffplayout/ffplayout/frontend/dist** folder, which we are included already in the nginx config. You can serve now the GUI under your domain URL.
+
+### OS Specific
+On debian 10 you need to install:
+
+```
+apt install curl
+```
+
+```
+curl -sL https://deb.nodesource.com/setup_14.x | bash -
+```
+
+```
+apt install sudo net-tools git python3-dev build-essential virtualenv python3-virtualenv nodejs nginx autoconf automake libtool pkg-config texi2html yasm cmake curl mercurial git wget gperf
+```
