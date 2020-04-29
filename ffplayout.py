@@ -66,7 +66,7 @@ def main():
             _text.address
         ))
         overlay = [
-            '-vf', "null,zmq=b='{}',drawtext=text='':fontfile='{}'".format(
+            '-vf', "null,zmq=b=tcp\\\://'{}',drawtext=text='':fontfile='{}'".format(
                 _text.address.replace(':', '\\:'), _text.fontfile)
         ]
 

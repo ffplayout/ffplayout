@@ -81,7 +81,7 @@ text:
         On windows fontfile path need to be like this 'C\:/WINDOWS/fonts/DejaVuSans.ttf'.
         In a standard environment the filter drawtext node is Parsed_drawtext_2.
     add_text: False
-    bind_address: "tcp://127.0.0.1:5555"
+    bind_address: "127.0.0.1:5555"
     fontfile: "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 
 out:
