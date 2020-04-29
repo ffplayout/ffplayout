@@ -5,19 +5,19 @@
                 <b-button to="/" variant="primary">
                     Home
                 </b-button>
-                <b-button to="control" variant="primary">
+                <b-button to="/control" variant="primary">
                     Control
                 </b-button>
-                <b-button to="media" variant="primary">
+                <b-button to="/media" variant="primary">
                     Media
                 </b-button>
-                <b-button to="message" variant="primary">
+                <b-button to="/message" variant="primary">
                     Message
                 </b-button>
-                <b-button to="logging" variant="primary">
+                <b-button to="/logging" variant="primary">
                     Logging
                 </b-button>
-                <b-button to="configure" variant="primary">
+                <b-button to="/configure" variant="primary">
                     Configure
                 </b-button>
                 <b-button to="/" variant="primary" @click="logout()">
