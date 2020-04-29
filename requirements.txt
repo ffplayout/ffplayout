@@ -8,6 +8,9 @@ natsort==7.0.1
 psutil==5.7.0
 PyJWT==1.7.1
 pymediainfo==4.1
+pystemd==0.7.0
 pytz==2019.3
 PyYAML==5.3.1
+pyzmq==19.0.0
 sqlparse==0.3.0
+zmq==0.0.0
