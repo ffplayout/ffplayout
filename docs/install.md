@@ -11,13 +11,13 @@
 - run `source ./venv/bin/activate`
 - install dependencies: `pip install -r requirements-base.txt`
 - cd in `ffplayout`
-- generate secret: `python manage.py shell -c 'from django.core.management import utils; print(utils.get_random_secret_key())'`
+- generate and copy secret: `python manage.py shell -c 'from django.core.management import utils; print(utils.get_random_secret_key())'`
 - open **ffplayout/settings.py**
 - past secret key in variable `SECRET_KEY`
 - change `DEBUG = True` to `DEBUG = False`
 - set `ALLOWED_HOSTS` with correct URL
 - set URL in `CORS_ORIGIN_WHITELIST`
-- collect staticfiles: `python manage.py collectstatic`
+- collect static files: `python manage.py collectstatic`
 
 ##### System Setup
 - copy **docs/ffplayout-api.service** from root folder to **/etc/systemd/system/**
@@ -31,9 +31,9 @@
 - symlink config: `ln -s /etc/nginx/sites-available/ffplayout.conf /etc/nginx/sites-enabled/`
 - restart nginx
 - run `visudo` and add:
-```
-www-data ALL = NOPASSWD: /bin/systemctl start ffplayout-engine.service, /bin/systemctl stop ffplayout-engine.service, /bin/systemctl reload ffplayout-engine.service, /bin/systemctl restart ffplayout-engine.service, /bin/systemctl status ffplayout-engine.service, /bin/systemctl is-active ffplayout-engine.service, /bin/journalctl -n 1000 -u ffplayout-engine.service
-```
+    ```
+    www-data ALL = NOPASSWD: /bin/systemctl start ffplayout-engine.service, /bin/systemctl stop ffplayout-engine.service, /bin/systemctl reload ffplayout-engine.service, /bin/systemctl restart ffplayout-engine.service, /bin/systemctl status ffplayout-engine.service, /bin/systemctl is-active ffplayout-engine.service, /bin/journalctl -n 1000 -u ffplayout-engine.service
+    ```
 
 ### Frontend
 
@@ -43,4 +43,4 @@ www-data ALL = NOPASSWD: /bin/systemctl start ffplayout-engine.service, /bin/sys
 - install dependencies: `npm install`
 - build app: `npm run build`
 
-Your frontend should be now in **/var/www/ffplayout/ffplayout/frontend/dist** folder, which we are included already in the nginx config. You can service now the GUI under your domain URL.
+Your frontend should be now in **/var/www/ffplayout/ffplayout/frontend/dist** folder, which we are included already in the nginx config. You can serve now the GUI under your domain URL.
