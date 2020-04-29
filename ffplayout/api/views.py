@@ -13,7 +13,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .utils import (PlayoutService, SystemStats, get_media_path, read_json,
-                    read_yaml, write_json, write_yaml, read_log)
+                    read_yaml, write_json, write_yaml, read_log, send_message)
 
 
 class CurrentUserView(APIView):
@@ -56,6 +56,16 @@ class MessengerViewSet(viewsets.ModelViewSet):
     serializer_class = MessengerSerializer
     filter_backends = (filters.DjangoFilterBackend,)
     filterset_class = MessengerFilter
+
+
+class MessegeSender(APIView):
+
+    def post(self, request, *args, **kwargs):
+        if 'data' in request.data:
+            response = send_message(request.data['data'])
+            return Response({"success": True, 'status': response})
+
+        return Response({"success": False})
 
 
 class Config(APIView):

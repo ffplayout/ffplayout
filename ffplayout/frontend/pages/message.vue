@@ -189,10 +189,10 @@
                         </b-button>
                     </b-col>
                     <b-col>
-                        <b-alert variant="success" :show="success" dismissible>
+                        <b-alert variant="success" :show="success" dismissible @dismissed="success=false">
                             Sending success...
                         </b-alert>
-                        <b-alert variant="warning" :show="failed" dismissible>
+                        <b-alert variant="warning" :show="failed" dismissible @dismissed="success=failed">
                             Sending failed...
                         </b-alert>
                     </b-col>
@@ -403,7 +403,8 @@ export default {
             this.getPreset('')
         },
 
-        submitMessage () {
+        async submitMessage () {
+            await this.$store.dispatch('auth/inspectToken')
             function aToHex (num) {
                 return '0x' + Math.round(num * 255).toString(16)
             }
@@ -420,7 +421,18 @@ export default {
                 boxcolor: this.form.boxColor + '@' + aToHex(this.form.boxAlpha),
                 boxborderw: this.form.border
             }
-            console.log(obj)
+
+            const response = await this.$axios.post(
+                'api/send/',
+                { data: obj },
+                { headers: { Authorization: 'Bearer ' + this.$store.state.auth.jwtToken } }
+            )
+
+            if (response.data && response.data.status.Success && response.data.status.Success === '0 Success') {
+                this.success = true
+            } else {
+                this.failed = true
+            }
         }
     }
 }

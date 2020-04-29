@@ -6,6 +6,8 @@ from time import sleep
 
 import psutil
 import yaml
+import zmq
+from django.conf import settings
 from pymediainfo import MediaInfo
 
 from api.models import GuiSettings
@@ -54,6 +56,47 @@ def read_log(type):
     if os.path.isfile(log_file):
         with open(log_file, 'r') as log:
             return log.read().strip()
+
+
+def send_message(data):
+    config = read_yaml()
+    address, port = config['text']['bind_address'].split(':')
+
+    context = zmq.Context(1)
+    client = context.socket(zmq.REQ)
+    client.connect('tcp://{}:{}'.format(address, port))
+
+    poll = zmq.Poller()
+    poll.register(client, zmq.POLLIN)
+
+    request = ''
+    reply_msg = ''
+
+    for key, value in data.items():
+        request += "{}='{}':".format(key, value)
+
+    request = "{} reinit {}".format(settings.DRAW_TEXT_NODE, request.rstrip(':'))
+
+    client.send_string(request)
+
+    socks = dict(poll.poll(settings.REQUEST_TIMEOUT))
+
+    if socks.get(client) == zmq.POLLIN:
+        reply = client.recv()
+
+        if reply and reply.decode() == '0 Success':
+            reply_msg = reply.decode()
+        else:
+            reply_msg = reply.decode()
+    else:
+        reply_msg = 'No response from server'
+
+    client.setsockopt(zmq.LINGER, 0)
+    client.close()
+    poll.unregister(client)
+
+    context.term()
+    return {'Success': reply_msg}
 
 
 def sizeof_fmt(num, suffix='B'):

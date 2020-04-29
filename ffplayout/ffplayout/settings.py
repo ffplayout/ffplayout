@@ -148,3 +148,9 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/3.0/howto/static-files/
 
 STATIC_URL = '/static/'
+
+# ffmpeg filter node, needs to be edit only when the filter chain changes
+DRAW_TEXT_NODE = 'Parsed_drawtext_2'
+
+# zmq settings
+REQUEST_TIMEOUT = 1000
