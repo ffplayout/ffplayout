@@ -287,15 +287,7 @@ export default {
             }
         },
         secondsToTime (sec) {
-            let hours = Math.floor(sec / 3600)
-            sec %= 3600
-            let minutes = Math.floor(sec / 60)
-            let seconds = sec % 60
-
-            minutes = String(minutes).padStart(2, '0')
-            hours = String(hours).padStart(2, '0')
-            seconds = String(parseInt(seconds)).padStart(2, '0')
-            return hours + ':' + minutes + ':' + seconds
+            return new Date(sec * 1000).toISOString().substr(11, 8)
         }
     },
 
@@ -442,6 +434,9 @@ export default {
         },
         removeItemFromPlaylist (index) {
             this.playlist.splice(index, 1)
+
+            this.$store.commit('playlist/UPDATE_PLAYLIST', this.$processPlaylist(
+                this.configPlayout.playlist.day_start, this.playlist))
         },
         async resetPlaylist () {
             await this.$store.dispatch('playlist/getPlaylist', { dayStart: this.configPlayout.playlist.day_start, date: this.today })
@@ -451,9 +446,11 @@ export default {
             this.$store.commit('playlist/UPDATE_PLAYLIST', this.$processPlaylist(
                 this.configPlayout.playlist.day_start, this.playlist))
 
+            const saveList = this.playlist.map(({ begin, ...item }) => item)
+
             await this.$axios.post(
                 'api/playlist/',
-                { data: { channel: this.$store.state.playlist.playlistChannel, date: this.today, program: this.playlist } },
+                { data: { channel: this.$store.state.playlist.playlistChannel, date: this.today, program: saveList } },
                 { headers: { Authorization: 'Bearer ' + this.$store.state.auth.jwtToken } }
             )
         }
