@@ -111,6 +111,9 @@ REST_FRAMEWORK = {
         'rest_framework_simplejwt.authentication.JWTAuthentication',
         'rest_framework.authentication.SessionAuthentication',
     ],
+    'DEFAULT_RENDERER_CLASSES': (
+        'rest_framework.renderers.JSONRenderer',
+    ),
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated',
     )
@@ -120,7 +123,8 @@ CORS_ORIGIN_WHITELIST = (
     'http://127.0.0.1:3000',
     'http://127.0.0.1:8000',
     'http://localhost:3000',
-    'http://localhost:8000'
+    'http://localhost:8000',
+    'http://ffplayout.local'
 )
 
 # simple JWT auth settings
@@ -148,6 +152,7 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/3.0/howto/static-files/
 
 STATIC_URL = '/static/'
+STATIC_ROOT = '/var/www/ffplayout/ffplayout/static/'
 
 # ffmpeg filter node, needs to be edit only when the filter chain changes
 DRAW_TEXT_NODE = 'Parsed_drawtext_2'
