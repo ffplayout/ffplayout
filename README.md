@@ -3,30 +3,32 @@ ffplayout-gui
 
 This is the dev version v2.0.0 from ffplayout GUI.
 
+Check [install.md](docs/install.md) for installation
+
 **This version is not ready to use!!**
 
-## concept previews:
+## some impressions belows:
 
 #### Login
-![login](/docs/login.png)
+![login](/assets/login.png)
 
 #### Landing Page
-![landing-page](/docs/landing-page.png)
+![landing-page](/assets/landing-page.png)
 
 #### Control Page
-![control](/docs/control.png)
+![control](/assets/control.png)
 
 #### Media Page
-![media](/docs/media.png)
+![media](/assets/media.png)
 
 #### Media Page / Upload
-![media-upload](/docs/media-upload.png)
+![media-upload](/assets/media-upload.png)
 
 #### Message Page
-![message](/docs/message.png)
+![message](/assets/message.png)
 
 #### Logging Page
-![logging](/docs/logging.png)
+![logging](/assets/logging.png)
 
 #### Configuration Page / GUI
-![config-gui](/docs/config-gui.png)
+![config-gui](/assets/config-gui.png)
