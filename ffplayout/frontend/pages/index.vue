@@ -207,7 +207,6 @@ export default {
         },
         checkLogin () {
             if (this.$store.state.auth.isLogin) {
-                // this.$router.push('/player')
                 this.sysStats()
             }
         },
