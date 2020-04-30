@@ -9,3 +9,12 @@ Vue.filter('toMin', function (sec) {
         return ''
     }
 })
+
+Vue.filter('filename', function (path) {
+    if (path) {
+        const pathArr = path.split('/')
+        return pathArr[pathArr.length - 1]
+    } else {
+        return ''
+    }
+})
