@@ -130,8 +130,8 @@
 
                     <div class="actions">
                         <b-button-group class="actions-grp">
-                            <b-button to="/control" variant="primary">
-                                Control
+                            <b-button to="/player" variant="primary">
+                                Player
                             </b-button>
                             <b-button to="/media" variant="primary">
                                 Media
@@ -212,13 +212,13 @@ export default {
         },
 
         async sysStats () {
-            const response = await this.$axios.get('api/stats/?stats=all', { headers: { Authorization: 'Bearer ' + this.$store.state.auth.jwtToken }, progress: false })
+            const response = await this.$axios.get('api/stats/?stats=all')
             this.stat = response.data
 
             if (process.browser) {
                 this.interval = setInterval(async () => {
                     await this.$store.dispatch('auth/inspectToken')
-                    const response = await this.$axios.get('api/stats/?stats=all', { headers: { Authorization: 'Bearer ' + this.$store.state.auth.jwtToken }, progress: false })
+                    const response = await this.$axios.get('api/stats/?stats=all')
                     this.stat = response.data
                 }, 2000)
             }

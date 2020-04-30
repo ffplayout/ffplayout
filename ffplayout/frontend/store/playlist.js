@@ -50,8 +50,8 @@ export const mutations = {
 }
 
 export const actions = {
-    async getPlaylist ({ commit, dispatch, state, rootState }, { dayStart, date }) {
-        const response = await this.$axios.get(`api/playlist/?date=${date}`, { headers: { Authorization: 'Bearer ' + rootState.auth.jwtToken } })
+    async getPlaylist ({ commit, dispatch, state }, { dayStart, date }) {
+        const response = await this.$axios.get(`api/playlist/?date=${date}`)
 
         if (response.data && response.data.program) {
             commit('UPDATE_PLAYLIST_CHANNEL', response.data.channel)

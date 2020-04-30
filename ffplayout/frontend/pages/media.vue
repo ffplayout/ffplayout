@@ -277,8 +277,7 @@ export default {
 
             await this.$axios.post(
                 'api/media/op/',
-                { folder: this.folderName, path: this.crumbs.map(e => e.text).join('/') },
-                { headers: { Authorization: 'Bearer ' + this.$store.state.auth.jwtToken } }
+                { folder: this.folderName, path: this.crumbs.map(e => e.text).join('/') }
             )
 
             this.$root.$emit('bv::hide::modal', 'folder-modal')
@@ -307,14 +306,13 @@ export default {
 
         async onSubmitUpload (evt) {
             evt.preventDefault()
-            await this.$store.dispatch('auth/inspectToken')
-
             const uploadProgress = fileName => (progressEvent) => {
                 const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total)
                 this.currentProgress = progress
             }
 
             for (const [i, file] of this.inputFiles.entries()) {
+                await this.$store.dispatch('auth/inspectToken')
                 this.uploadTask = file.name
 
                 const config = {
@@ -330,8 +328,7 @@ export default {
                 )
                     .then(
                         this.overallProgress = (i + 1) * 100 / this.inputFiles.length,
-                        this.currentProgress = 0,
-                        await this.$store.dispatch('auth/inspectToken')
+                        this.currentProgress = 0
                     )
                     .catch(err => console.log(err))
             }
@@ -406,10 +403,7 @@ export default {
                 pathName = this.deleteSource
             }
 
-            await this.$axios.delete(
-                `api/media/op/?file=${encodeURIComponent(file)}&path=${encodeURIComponent(pathName)}`,
-                { headers: { Authorization: 'Bearer ' + this.$store.state.auth.jwtToken } }
-            )
+            await this.$axios.delete(`api/media/op/?file=${encodeURIComponent(file)}&path=${encodeURIComponent(pathName)}`)
                 .catch(err => console.log(err))
 
             this.$root.$emit('bv::hide::modal', 'delete-modal')

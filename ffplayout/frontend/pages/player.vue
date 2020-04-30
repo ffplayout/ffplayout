@@ -366,11 +366,7 @@ export default {
         async getStatus () {
             await this.$store.dispatch('auth/inspectToken')
 
-            const status = await this.$axios.post(
-                'api/system/',
-                { run: 'status' },
-                { headers: { Authorization: 'Bearer ' + this.$store.state.auth.jwtToken } }
-            )
+            const status = await this.$axios.post('api/system/', { run: 'status' })
 
             if (status.data.data && status.data.data === 'active') {
                 this.isPlaying = 'is-playing'
@@ -380,11 +376,7 @@ export default {
         },
         async playoutControl (state) {
             await this.$store.dispatch('auth/inspectToken')
-            await this.$axios.post(
-                'api/system/',
-                { run: state },
-                { headers: { Authorization: 'Bearer ' + this.$store.state.auth.jwtToken } }
-            )
+            await this.$axios.post('api/system/', { run: state })
 
             setTimeout(() => { this.getStatus() }, 1000)
         },
@@ -450,8 +442,7 @@ export default {
 
             await this.$axios.post(
                 'api/playlist/',
-                { data: { channel: this.$store.state.playlist.playlistChannel, date: this.today, program: saveList } },
-                { headers: { Authorization: 'Bearer ' + this.$store.state.auth.jwtToken } }
+                { data: { channel: this.$store.state.playlist.playlistChannel, date: this.today, program: saveList } }
             )
         }
     }

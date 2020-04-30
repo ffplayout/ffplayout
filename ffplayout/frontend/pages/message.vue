@@ -281,7 +281,7 @@ export default {
             if (preset) {
                 req = `?name=${preset}`
             }
-            const response = await this.$axios.get(`api/messenger/${req}`, { headers: { Authorization: 'Bearer ' + this.$store.state.auth.jwtToken } })
+            const response = await this.$axios.get(`api/messenger/${req}`)
 
             if (response.data && !preset) {
                 for (const item of response.data) {
@@ -333,11 +333,7 @@ export default {
                 overall_alpha: this.form.overallAlpha
             }
 
-            const response = await this.$axios.post(
-                'api/messenger/',
-                preset,
-                { headers: { Authorization: 'Bearer ' + this.$store.state.auth.jwtToken } }
-            )
+            const response = await this.$axios.post('api/messenger/', preset)
 
             if (response.status === 201) {
                 this.success = true
@@ -369,11 +365,7 @@ export default {
                     overall_alpha: this.form.overallAlpha
                 }
 
-                const response = await this.$axios.put(
-                    `api/messenger/${this.form.id}/`,
-                    preset,
-                    { headers: { Authorization: 'Bearer ' + this.$store.state.auth.jwtToken } }
-                )
+                const response = await this.$axios.put(`api/messenger/${this.form.id}/`, preset)
 
                 if (response.status === 200) {
                     this.success = true
@@ -393,10 +385,7 @@ export default {
         async deletePreset () {
             await this.$store.dispatch('auth/inspectToken')
             if (this.selected) {
-                await this.$axios.delete(
-                    `api/messenger/${this.form.id}/`,
-                    { headers: { Authorization: 'Bearer ' + this.$store.state.auth.jwtToken } }
-                )
+                await this.$axios.delete(`api/messenger/${this.form.id}/`)
             }
 
             this.$bvModal.hide('delete-modal')
@@ -422,11 +411,7 @@ export default {
                 boxborderw: this.form.border
             }
 
-            const response = await this.$axios.post(
-                'api/send/',
-                { data: obj },
-                { headers: { Authorization: 'Bearer ' + this.$store.state.auth.jwtToken } }
-            )
+            const response = await this.$axios.post('api/send/', { data: obj })
 
             if (response.data && response.data.status.Success && response.data.status.Success === '0 Success') {
                 this.success = true
