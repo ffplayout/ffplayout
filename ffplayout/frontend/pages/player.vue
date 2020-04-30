@@ -344,9 +344,14 @@ export default {
 
         await this.getPlaylist()
 
-        this.interval = setInterval(() => {
+        if (this.$ua.browser() === 'Chrome') {
+            this.interval = setInterval(() => {
+                this.$store.dispatch('playlist/animClock', { dayStart: this.configPlayout.playlist.day_start })
+            }, 5000)
+        } else {
             this.$store.dispatch('playlist/animClock', { dayStart: this.configPlayout.playlist.day_start })
-        }, 5000)
+            console.log('No anaimation on:', this.$ua.browser())
+        }
     },
 
     beforeDestroy () {
