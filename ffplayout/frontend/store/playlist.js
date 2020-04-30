@@ -10,15 +10,10 @@ function secToHMS (sec) {
     return hours + ':' + minutes + ':' + seconds
 }
 
-// sleep timer
-function sleep (ms) {
-    return new Promise(resolve => setTimeout(resolve, ms))
-}
-
 export const state = () => ({
     playlist: null,
+    playlistToday: [],
     playlistChannel: 'Channel 1',
-    clockStart: true,
     progressValue: 0,
     currentClip: 'No clips is playing',
     timeStr: '00:00:00',
@@ -29,11 +24,11 @@ export const mutations = {
     UPDATE_PLAYLIST (state, list) {
         state.playlist = list
     },
+    UPDATE_TODAYS_PLAYLIST (state, list) {
+        state.playlistToday = list
+    },
     UPDATE_PLAYLIST_CHANNEL (state, channel) {
         state.playlistChannel = channel
-    },
-    SET_CLOCK_START (state, bol) {
-        state.clockStart = bol
     },
     SET_PROGRESS_VALUE (state, value) {
         state.progressValue = value
@@ -57,50 +52,44 @@ export const actions = {
             commit('UPDATE_PLAYLIST_CHANNEL', response.data.channel)
             commit('UPDATE_PLAYLIST', this.$processPlaylist(dayStart, response.data.program))
 
-            if (process.browser) {
-                // dispatch('animClock')
+            if (date === this.$dayjs().format('YYYY-MM-DD')) {
+                commit('UPDATE_TODAYS_PLAYLIST', JSON.parse(JSON.stringify(response.data.program)))
             }
         } else {
             commit('UPDATE_PLAYLIST', [])
         }
     },
 
-    async animClock ({ commit, dispatch, state, rootState }) {
-        let start = this.$timeToSeconds(rootState.config.configPlayout.playlist.day_start)
+    animClock ({ commit, dispatch, state }, { dayStart }) {
+        let start = this.$timeToSeconds(dayStart)
         let time
 
-        if (state.clockStart) {
-            commit('SET_CLOCK_START', false)
+        // loop over clips in program list from today
+        for (let i = 0; i < state.playlistToday.length; i++) {
+            const duration = state.playlistToday[i].out - state.playlistToday[i].in
+            const playTime = this.$timeToSeconds(this.$dayjs().format('HH:mm:ss')) - start
+            let updateSrc = true
 
-            // loop over clips in program list from today
-            for (let i = 0; i < state.playlist.length; i++) {
-                const duration = state.playlist[i].out - state.playlist[i].in
-                let playTime = this.$timeToSeconds(this.$dayjs().format('HH:mm:ss')) - start
-                let updateSrc = true
-
-                // animate the progress bar
-                while (playTime <= duration) {
-                    if (updateSrc) {
-                        commit('SET_CURRENT_CLIP', state.playlist[i].source)
-                        updateSrc = false
-                    }
-
-                    const pValue = playTime * 100 / duration
-
-                    time = this.$dayjs().format('HH:mm:ss')
-                    commit('SET_PROGRESS_VALUE', pValue)
-                    commit('SET_TIME', time)
-                    playTime += 5
-                    commit('SET_TIME_LEFT', secToHMS(duration - playTime))
-                    await sleep(5000)
+            // animate the progress bar
+            if (playTime <= duration) {
+                if (updateSrc) {
+                    commit('SET_CURRENT_CLIP', state.playlistToday[i].source)
+                    updateSrc = false
                 }
 
-                start += duration
+                const pValue = playTime * 100 / duration
 
-                // reset progress
-                commit('SET_PROGRESS_VALUE', 0)
+                time = this.$dayjs().add(1, 'seconds').format('HH:mm:ss')
+                commit('SET_PROGRESS_VALUE', pValue)
+                commit('SET_TIME', time)
+                commit('SET_TIME_LEFT', secToHMS(duration - playTime))
+                break
             }
+
+            start += duration
+
+            // reset progress
+            commit('SET_PROGRESS_VALUE', 0)
         }
     }
-
 }
