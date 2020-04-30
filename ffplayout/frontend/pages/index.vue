@@ -48,8 +48,6 @@
                                 </div>
                                 <div class="stat-div">
                                     <div class="stat-center">
-                                        <b-progress :value="stat.cpu_usage" max="100" variant="success" height="1rem" />
-                                        <br>
                                         <div style="text-align: left;">
                                             <strong>Usage: </strong>{{ stat.cpu_usage }}%<br>
                                             <strong>Load: </strong> {{ stat.cpu_load[0] }} {{ stat.cpu_load[1] }} {{ stat.cpu_load[2] }}
