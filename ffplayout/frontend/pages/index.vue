@@ -42,7 +42,7 @@
                             </div>
                         </b-col>
                         <b-col cols="4" class="chart-col chart2">
-                            <div v-if="stat.cpu_usage">
+                            <div v-if="stat.cpu_usage || stat.cpu_usage >= 0">
                                 <div>
                                     <strong>CPU</strong>
                                 </div>
