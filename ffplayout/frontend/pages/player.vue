@@ -10,14 +10,14 @@
                 </b-col>
                 <b-col class="control-col">
                     <b-row class="control-col">
-                        <b-col cols="8">
-                            <b-row class="stats-row">
-                                <b-col class="time-col">
+                        <b-col cols="8" class="status-col">
+                            <b-row class="status-row">
+                                <b-col class="time-col clock-col">
                                     <div class="time-str">
                                         {{ timeStr }}
                                     </div>
                                 </b-col>
-                                <b-col class="time-col">
+                                <b-col class="time-col counter-col">
                                     <div class="time-str">
                                         {{ timeLeft }}
                                     </div>
@@ -92,7 +92,7 @@
             </b-row>
             <b-row class="date-row">
                 <b-col>
-                    <b-datepicker v-model="today" size="sm" class="date-div" offset="-35px" />
+                    <b-datepicker v-model="listDate" size="sm" class="date-div" offset="-35px" />
                 </b-col>
             </b-row>
             <splitpanes class="list-row default-theme pane-row">
@@ -280,12 +280,6 @@ export default {
     },
 
     filters: {
-        filename (path) {
-            if (path) {
-                const pathArr = path.split('/')
-                return pathArr[pathArr.length - 1]
-            }
-        },
         secondsToTime (sec) {
             return new Date(sec * 1000).toISOString().substr(11, 8)
         }
@@ -295,7 +289,8 @@ export default {
         return {
             isLoading: false,
             isPlaying: '',
-            today: this.$dayjs().format('YYYY-MM-DD'),
+            listDate: this.$dayjs().format('YYYY-MM-DD'),
+            interval: null,
             extensions: '',
             videoOptions: {},
             previewOptions: {},
@@ -320,14 +315,13 @@ export default {
     },
 
     watch: {
-        today (date) {
+        listDate (date) {
             this.getPlaylist()
         }
     },
 
     async created () {
         await this.getConfig()
-
         await this.getStatus()
 
         this.extensions = this.configPlayout.storage.extensions.join(' ')
@@ -349,6 +343,14 @@ export default {
         }
 
         await this.getPlaylist()
+
+        this.interval = setInterval(() => {
+            this.$store.dispatch('playlist/animClock', { dayStart: this.configPlayout.playlist.day_start })
+        }, 5000)
+    },
+
+    beforeDestroy () {
+        clearInterval(this.interval)
     },
 
     methods: {
@@ -382,7 +384,7 @@ export default {
         },
         async getPlaylist () {
             await this.$store.dispatch('auth/inspectToken')
-            await this.$store.dispatch('playlist/getPlaylist', { dayStart: this.configPlayout.playlist.day_start, date: this.today })
+            await this.$store.dispatch('playlist/getPlaylist', { dayStart: this.configPlayout.playlist.day_start, date: this.listDate })
         },
         showModal (src) {
             this.previewSource = src.split('/').slice(-1)[0]
@@ -431,7 +433,7 @@ export default {
                 this.configPlayout.playlist.day_start, this.playlist))
         },
         async resetPlaylist () {
-            await this.$store.dispatch('playlist/getPlaylist', { dayStart: this.configPlayout.playlist.day_start, date: this.today })
+            await this.$store.dispatch('playlist/getPlaylist', { dayStart: this.configPlayout.playlist.day_start, date: this.listDate })
         },
         async savePlaylist () {
             await this.$store.dispatch('auth/inspectToken')
@@ -442,14 +444,14 @@ export default {
 
             await this.$axios.post(
                 'api/playlist/',
-                { data: { channel: this.$store.state.playlist.playlistChannel, date: this.today, program: saveList } }
+                { data: { channel: this.$store.state.playlist.playlistChannel, date: this.listDate, program: saveList } }
             )
         }
     }
 }
 </script>
 
-<style lang="scss">
+<style lang="scss" scoped>
 .control-container {
     width: auto;
     max-width: 100%;
@@ -471,48 +473,8 @@ export default {
     min-height: 254px;
 }
 
-.stats-row {
-    height: 100%;
-    min-width: 470px;
-}
-
-.time-col {
-    position: relative;
-    background: #32383E;
-    height: calc(50% - 3px);
-    margin: 0 6px 6px 0;
-    text-align: center;
-    border-radius: 0.25rem;
-}
-
-.time-str {
-    position: relative;
-    top: 50%;
-    -webkit-transform: translateY(-50%);
-    -ms-transform: translateY(-50%);
-    transform: translateY(-50%);
-    font-family: 'DigitalNumbers-Regular';
-    font-size: 4.5em;
-    letter-spacing: -.18em;
-    padding-right: 14px;
-}
-
-.current-clip {
-    background: #32383E;
-    height: calc(50% - 3px);
-    margin-right: 6px;
-    padding: 15px;
-    border-radius: 0.25rem;
-}
-
-.current-clip-text {
-    height: 70%;
-    padding-top: 1em;
-    font-weight: bold;
-}
-
-.current-clip-progress {
-    top: 80%;
+.status-col {
+    padding-right: 30px;
 }
 
 .control-unit-col {
@@ -549,6 +511,58 @@ export default {
     height: 100%;
 }
 
+.status-row {
+    height: 100%;
+    min-width: 370px;
+}
+
+.clock-col {
+    margin-right: 3px;
+}
+
+.counter-col {
+    margin-left: 3px;
+}
+
+.time-col {
+    position: relative;
+    background: #32383E;
+    padding: .5em;
+    text-align: center;
+    border-radius: .25rem;
+}
+
+.time-str {
+    position: relative;
+    top: 50%;
+    -webkit-transform: translateY(-50%);
+    -ms-transform: translateY(-50%);
+    transform: translateY(-50%);
+    font-family: 'DigitalNumbers-Regular';
+    font-size: 4.5em;
+    letter-spacing: -.18em;
+    padding-right: 14px;
+}
+
+.current-clip {
+    background: #32383E;
+    height: calc(50% - 3px);
+    padding: 10px;
+    border-radius: 0.25rem;
+}
+
+.current-clip-text {
+    height: 70%;
+    padding-top: .5em;
+    text-align: left;
+    font-weight: bold;
+}
+
+.current-clip-progress {
+    top: 80%;
+    margin-top: .2em;
+}
+
 .control-button:hover {
     background-image: linear-gradient(#3b4046, #2c3034 60%, #24272a) !important;
 }
@@ -576,27 +590,33 @@ export default {
         height: 100%;
         min-height: 294px;
     }
-    .time-col {
-        height: calc(33.3% - 3px);
-        margin: 0 0 6px 0;
+    .status-col {
+        padding-right: 0;
+        height: 100%;
     }
-    .current-clip {
-        height: calc(33.3% - 3px);
-        margin-right: 0;
+    .time-str {
+        font-size: 3.5em;
+    }
+    .time-col {
+        margin-bottom: 6px;
     }
     .control-unit-row {
-        margin-right: -15px;
+        margin-right: -30px;
     }
     .control-unit-col {
         flex: 0 0 66.6666666667%;
         max-width: 66.6666666667%;
-        margin: 9px 0 0 0;
+        margin: 6px 0 0 0;
     }
 }
 
-@media (max-width: 849px) {
-    .stats-row {
-        min-width: 380px;
+@media (max-width: 1225px) {
+    .clock-col {
+        margin-right: 0;
+    }
+
+    .counter-col {
+        margin-left: 0;
     }
 }
 
@@ -614,15 +634,6 @@ export default {
     margin: 0;
 }
 
-.browser-div {
-    width: 100%;
-    max-height: 100%;
-}
-
-.browser-div .ps {
-    padding-left: .4em;
-}
-
 .date-div {
     width: 250px;
     float: right;
@@ -631,35 +642,6 @@ export default {
 .playlist-container {
     width: 100%;
     height: 100%;
-}
-
-.ps__thumb-x {
-    display: none;
-}
-
-.splitpanes__pane {
-    width: 30%;
-}
-
-.splitpanes.default-theme .splitpanes__pane {
-    background-color: $dark;
-    box-shadow: 0 0 10px rgba(0, 0, 0, .2) inset;
-    justify-content: center;
-    align-items: center;
-    display: flex;
-    position: relative;
-}
-
-.default-theme.splitpanes--vertical > .splitpanes__splitter, .default-theme .splitpanes--vertical > .splitpanes__splitter {
-    border-left: 1px solid $dark;
-}
-
-.splitpanes.default-theme .splitpanes__splitter {
-    background-color: $dark;
-}
-
-.splitpanes.default-theme .splitpanes__splitter::after, .splitpanes.default-theme .splitpanes__splitter::before {
-    background-color: rgba(136, 136, 136, 0.38);
 }
 
 .timecode {
