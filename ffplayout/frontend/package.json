@@ -20,6 +20,7 @@
     "jwt-decode": "^2.2.0",
     "nuxt": "^2.12.2",
     "nuxt-dayjs-module": "^1.1.2",
+    "nuxt-user-agent": "^1.2.2",
     "splitpanes": "^2.2.1",
     "video.js": "^7.7.5",
     "vue-loading-overlay": "^3.3.2",
