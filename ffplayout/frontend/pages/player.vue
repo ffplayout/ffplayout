@@ -350,7 +350,6 @@ export default {
             }, 5000)
         } else {
             this.$store.dispatch('playlist/animClock', { dayStart: this.configPlayout.playlist.day_start })
-            console.log('No anaimation in dev mode')
         }
     },
 
