@@ -36,8 +36,7 @@ export default {
      ** Global CSS
      */
     css: [
-        '@/assets/css/bootstrap.min.css',
-        '@/assets/css/globals.css'
+        '@/assets/css/bootstrap.min.css'
     ],
     /*
      ** Plugins to load before mounting the App
@@ -84,6 +83,7 @@ export default {
     styleResources: {
         scss: [
             '@/assets/css/_variables.scss',
+            '@/assets/scss/globals.scss'
         ]
     },
 
