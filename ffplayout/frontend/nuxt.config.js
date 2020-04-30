@@ -69,8 +69,7 @@ export default {
         // Doc: https://github.com/nuxt-community/dotenv-module
         '@nuxtjs/dotenv',
         'cookie-universal-nuxt',
-        'nuxt-dayjs-module',
-        'nuxt-user-agent'
+        'nuxt-dayjs-module'
     ],
 
     /*
