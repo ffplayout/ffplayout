@@ -62,34 +62,23 @@ export const actions = {
 
     animClock ({ commit, dispatch, state }, { dayStart }) {
         let start = this.$timeToSeconds(dayStart)
-        let time
 
         // loop over clips in program list from today
         for (let i = 0; i < state.playlistToday.length; i++) {
             const duration = state.playlistToday[i].out - state.playlistToday[i].in
-            const playTime = this.$timeToSeconds(this.$dayjs().format('HH:mm:ss')) - start
-            let updateSrc = true
+            const time = this.$dayjs().add(1, 'seconds').format('HH:mm:ss')
+            const playTime = this.$timeToSeconds(time) - start
 
-            // animate the progress bar
+            // set current clip and progressbar value
             if (playTime <= duration) {
-                if (updateSrc) {
-                    commit('SET_CURRENT_CLIP', state.playlistToday[i].source)
-                    updateSrc = false
-                }
-
-                const pValue = playTime * 100 / duration
-
-                time = this.$dayjs().add(1, 'seconds').format('HH:mm:ss')
-                commit('SET_PROGRESS_VALUE', pValue)
+                commit('SET_CURRENT_CLIP', state.playlistToday[i].source)
+                commit('SET_PROGRESS_VALUE', playTime * 100 / duration)
                 commit('SET_TIME', time)
                 commit('SET_TIME_LEFT', secToHMS(duration - playTime))
                 break
             }
 
             start += duration
-
-            // reset progress
-            commit('SET_PROGRESS_VALUE', 0)
         }
     }
 }
