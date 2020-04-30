@@ -12,9 +12,8 @@
 - install dependencies: `pip install -r requirements-base.txt`
 - cd in `ffplayout`
 - generate and copy secret: `python manage.py shell -c 'from django.core.management import utils; print(utils.get_random_secret_key())'`
-- open **ffplayout/settings.py**
+- open **ffplayout/settings/production.py**
 - past secret key in variable `SECRET_KEY`
-- change `DEBUG = True` to `DEBUG = False`
 - set `ALLOWED_HOSTS` with correct URL
 - set URL in `CORS_ORIGIN_WHITELIST`
 - collect static files: `python manage.py collectstatic`
