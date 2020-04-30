@@ -99,17 +99,15 @@ Subfolders is read by the script and needs this structur:
 ```YAML
 storage:
     path: "/mediaStorage"
-    filler_path: "/mediaStorage/filler/filler-clips"
     filler_clip: "/mediaStorage/filler/filler.mp4"
     extensions:
-        - "*.mp4"
-        - "*.mkv"
+        - ".mp4"
+        - ".mkv"
     shuffle: True
 ```
-Play ordered or ramdomly files from path, `filler_path` are for the GUI only at the moment.
-`filler_clip` is for fill the end to reach 24 hours, it will loop when is necessary.
-`extensions:` search only files with this extension, add as many as you want.
-Set `shuffle` to **True** to pick files randomly.
+Play ordered or ramdomly files from path, `filler_clip` is for fill the end
+to reach 24 hours, it will loop when is necessary. `extensions:` search only files
+with this extension, add as many as you want. Set `shuffle` to **True** to pick files randomly.
 
 ---
 
@@ -130,20 +128,20 @@ out:
     preview: False
     service_name: "Live Stream"
     service_provider: "example.org"
-    post_ffmpeg_param:
-        c:v: "libx264"
-        crf: "23"
-        x264-params: "keyint=50:min-keyint=25:scenecut=-1"
-        maxrate: "1300k"
-        bufsize: "2600k"
-        preset: "medium"
-        profile:v: "Main"
-        level: "3.1"
-        c:a: "aac"
-        ar: "44100"
-        b:a: "128k"
-        flags: +global_header
-        f: "flv"
+    post_ffmpeg_param: >-
+        -c:v libx264
+        -crf 23
+        -x264-params keyint=50:min-keyint=25:scenecut=-1
+        -maxrate 1300k
+        -bufsize 2600k
+        -preset medium
+        -profile:v Main
+        -level 3.1
+        -c:a aac
+        -ar 44100
+        -b:a 128k
+        -flags +global_header
+        -f flv
     out_addr: "rtmp://localhost/live/stream"
 ```
 
