@@ -235,31 +235,32 @@ class SystemStats:
         }
 
 
-def set_root(path):
-    # prevent access to root file system
-    dir = os.path.dirname(
-        read_yaml()['storage']['path'].replace('\\', '/').rstrip('/'))
-
-    return path.replace(dir, '').strip('/')
-
-
 def get_media_path(extensions, dir=None):
     config = read_yaml()
     extensions = extensions.split(' ')
     playout_extensions = config['storage']['extensions']
     gui_extensions = [x for x in extensions if x not in playout_extensions]
-    media_dir = config['storage']['path'].replace('\\', '/').rstrip('/')
+    media_path = config['storage']['path'].replace('\\', '/').rstrip('/')
+    media_dir = media_path.split('/')[-1]
+    media_root = os.path.dirname(media_path)
     if not dir:
-        if not os.path.isdir(media_dir):
+        if not os.path.isdir(media_path):
             return ''
-        dir = media_dir
+        dir = media_path
     else:
         if '/..' in dir:
+            # remove last folder to navigate in upper directory
             dir = '/'.join(dir.split('/')[:-2])
 
-        dir = os.path.join(os.path.dirname(media_dir),
-                           os.path.abspath('/' + dir).strip('/'))
+        dir = dir.lstrip('/')
+
+        if dir.startswith(media_dir):
+            dir = dir[len(media_dir):]
+
+        dir = os.path.join(media_root, media_dir, os.path.abspath('/' + dir).strip('/'))
+
     for root, dirs, files in os.walk(dir, topdown=True):
+        root = root.rstrip('/')
         media_files = []
 
         for file in files:
@@ -281,23 +282,13 @@ def get_media_path(extensions, dir=None):
 
         dirs = natsorted(dirs)
 
-        if root != media_dir:
+        if root != media_path:
             dirs.insert(0, '..')
 
         if not dirs:
             dirs = ['..']
 
-        return [set_root(root), dirs, natsorted(media_files,
-                                                key=lambda x: x['file'])]
+        if root.startswith(media_root):
+            root = root[len(media_root):]
 
-
-if __name__ == '__main__':
-    result = hasattr(SystemStats(), 'system')
-    print(result)
-    exit()
-    print('CPU: ', SystemStats.cpu())
-    print('RAM: ', SystemStats.ram())
-    print('SWAP: ', SystemStats.swap())
-    print('DISK: ', SystemStats.disk())
-    print('NET: ', SystemStats.net())
-    print('SPEED: ', SystemStats.net_speed())
+        return [root, dirs, natsorted(media_files, key=lambda x: x['file'])]
