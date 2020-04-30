@@ -1,4 +1,4 @@
-from daswort.settings.common import *
+from ffplayout.settings.common import *
 
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = '---a-very-important-secret-key:-generate-it-new---'
