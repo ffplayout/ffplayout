@@ -5,8 +5,8 @@
                 <b-button to="/" variant="primary">
                     Home
                 </b-button>
-                <b-button to="/control" variant="primary">
-                    Control
+                <b-button to="/player" variant="primary">
+                    Player
                 </b-button>
                 <b-button to="/media" variant="primary">
                     Media
