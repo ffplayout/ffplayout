@@ -64,12 +64,11 @@ playlist:
     length: "24:00:00"
 
 storage:
-    helptext: Play ordered or ramdomly files from path. 'filler_path' are for the
-        GUI only at the moment. 'filler_clip' is for fill the end to reach 24 hours,
-        it will loop when is necessary extensions search only files with this extension,
-        can be a list. Set 'shuffle' to 'True' to pick files randomly.
+    helptext: Play ordered or ramdomly files from path. 'filler_clip' is for fill
+        the end to reach 24 hours, it will loop when is necessary extensions search
+        only files with this extension, can be a list. Set 'shuffle' to 'True' to
+        pick files randomly.
     path: "/mediaStorage"
-    filler_path: "/mediaStorage/filler/filler-clips"
     filler_clip: "/mediaStorage/filler/filler.mp4"
     extensions:
         - ".mp4"
