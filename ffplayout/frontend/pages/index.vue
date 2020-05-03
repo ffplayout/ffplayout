@@ -210,13 +210,13 @@ export default {
         },
 
         async sysStats () {
-            const response = await this.$axios.get('api/stats/?stats=all')
+            const response = await this.$axios.get('api/player/stats/?stats=all')
             this.stat = response.data
 
             if (process.browser) {
                 this.interval = setInterval(async () => {
                     await this.$store.dispatch('auth/inspectToken')
-                    const response = await this.$axios.get('api/stats/?stats=all')
+                    const response = await this.$axios.get('api/player/stats/?stats=all')
                     this.stat = response.data
                 }, 2000)
             }

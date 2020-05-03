@@ -6,7 +6,7 @@ export default function ({ $axios, store, redirect }) {
         }
 
         // disable progress on auth and stats
-        if (config.url.includes('stats') || config.url.includes('auth')) {
+        if (config.url.includes('stats') || config.url.includes('auth') || config.url.includes('system')) {
             config.progress = false
         }
     })

@@ -26,8 +26,8 @@ export const mutations = {
 
 export const actions = {
     async getGuiConfig ({ commit, state }) {
-        const options = await this.$axios.options('api/guisettings/')
-        const response = await this.$axios.get('api/guisettings/')
+        const options = await this.$axios.options('api/player/guisettings/')
+        const response = await this.$axios.get('api/player/guisettings/')
 
         if (options.data) {
             const choices = options.data.actions.POST.net_interface.choices.map(function (obj) {
@@ -46,12 +46,12 @@ export const actions = {
     async setGuiConfig ({ commit, state }, obj) {
         const stringObj = JSON.parse(JSON.stringify(obj))
         stringObj.extra_extensions = obj.extra_extensions.join(' ')
-        const update = await this.$axios.put('api/guisettings/1/', stringObj)
+        const update = await this.$axios.put('api/player/guisettings/1/', stringObj)
         return update
     },
 
     async getPlayoutConfig ({ commit, state }) {
-        const response = await this.$axios.get('api/config/?configPlayout')
+        const response = await this.$axios.get('api/player/config/?configPlayout')
 
         if (response.data) {
             commit('UPDATE_PLAYLOUT_CONFIG', response.data)
@@ -59,13 +59,13 @@ export const actions = {
     },
 
     async setPlayoutConfig ({ commit, state }, obj) {
-        const update = await this.$axios.post('api/config/?configPlayout', { data: obj })
+        const update = await this.$axios.post('api/player/config/?configPlayout', { data: obj })
         return update
     },
 
     async getUserConfig ({ commit, state }) {
-        const user = await this.$axios.get('api/current/user/')
-        const response = await this.$axios.get(`api/users/?username=${user.data.username}`)
+        const user = await this.$axios.get('api/player/current/user/')
+        const response = await this.$axios.get(`api/player/users/?username=${user.data.username}`)
 
         if (user.data) {
             commit('SET_CURRENT_USER', user.data.username)
@@ -76,7 +76,7 @@ export const actions = {
     },
 
     async setUserConfig ({ commit, state }, obj) {
-        const update = await this.$axios.put(`api/users/${obj.id}/`, obj)
+        const update = await this.$axios.put(`api/player/users/${obj.id}/`, obj)
         return update
     }
 }

@@ -372,7 +372,7 @@ export default {
         async getStatus () {
             await this.$store.dispatch('auth/inspectToken')
 
-            const status = await this.$axios.post('api/system/', { run: 'status' })
+            const status = await this.$axios.post('api/player/system/', { run: 'status' })
 
             if (status.data.data && status.data.data === 'active') {
                 this.isPlaying = 'is-playing'
@@ -382,7 +382,7 @@ export default {
         },
         async playoutControl (state) {
             await this.$store.dispatch('auth/inspectToken')
-            await this.$axios.post('api/system/', { run: state })
+            await this.$axios.post('api/player/system/', { run: state })
 
             setTimeout(() => { this.getStatus() }, 1000)
         },
@@ -447,7 +447,7 @@ export default {
             const saveList = this.playlist.map(({ begin, ...item }) => item)
 
             await this.$axios.post(
-                'api/playlist/',
+                'api/player/playlist/',
                 { data: { channel: this.$store.state.playlist.playlistChannel, date: this.listDate, program: saveList } }
             )
         }

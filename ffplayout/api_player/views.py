@@ -2,9 +2,9 @@ import os
 import shutil
 from urllib.parse import unquote
 
-from api.models import GuiSettings, MessengePresets
-from api.serializers import (GuiSettingsSerializer, MessengerSerializer,
-                             UserSerializer)
+from api_player.models import GuiSettings, MessengePresets
+from api_player.serializers import (GuiSettingsSerializer, MessengerSerializer,
+                                    UserSerializer)
 from django.contrib.auth.models import User
 from django_filters import rest_framework as filters
 from rest_framework import viewsets
@@ -13,7 +13,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .utils import (PlayoutService, SystemStats, get_media_path, read_json,
-                    read_yaml, write_json, write_yaml, read_log, send_message)
+                    read_log, read_yaml, send_message, write_json, write_yaml)
 
 
 class CurrentUserView(APIView):
@@ -71,7 +71,7 @@ class MessegeSender(APIView):
 class Config(APIView):
     """
     read and write config from ffplayout engine
-    for reading endpoint is: http://127.0.0.1:8000/api/config/?config
+    for reading endpoint is: http://127.0.0.1:8000/api/player/config/?config
     """
     parser_classes = [JSONParser]
 
@@ -148,7 +148,8 @@ class LogReader(APIView):
 class Playlist(APIView):
     """
     read and write config from ffplayout engine
-    for reading endpoint: http://127.0.0.1:8000/api/playlist/?date=2020-04-12
+    for reading endpoint:
+        http://127.0.0.1:8000/api/player/playlist/?date=2020-04-12
     """
 
     def get(self, request, *args, **kwargs):
@@ -176,7 +177,7 @@ class Playlist(APIView):
 class Statistics(APIView):
     """
     get system statistics: cpu, ram, etc.
-    for reading, endpoint is: http://127.0.0.1:8000/api/stats/?stats=all
+    for reading, endpoint is: http://127.0.0.1:8000/api/player/stats/?stats=all
     """
 
     def get(self, request, *args, **kwargs):
@@ -192,7 +193,7 @@ class Statistics(APIView):
 class Media(APIView):
     """
     get folder/files tree, for building a file explorer
-    for reading, endpoint is: http://127.0.0.1:8000/api/media/?path
+    for reading, endpoint is: http://127.0.0.1:8000/api/player/media/?path
     """
 
     def get(self, request, *args, **kwargs):

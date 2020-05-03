@@ -20,7 +20,7 @@ export const actions = {
     async getTree ({ commit, dispatch, state }, { extensions, path }) {
         const crumbs = []
         let root = '/'
-        const response = await this.$axios.get(`api/media/?extensions=${extensions}&path=${path}`)
+        const response = await this.$axios.get(`api/player/media/?extensions=${extensions}&path=${path}`)
 
         if (response.data.tree) {
             const pathArr = response.data.tree[0].split('/')

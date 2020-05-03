@@ -1,6 +1,5 @@
+from api_player.models import GuiSettings
 from django.contrib import admin
-
-from api.models import GuiSettings
 
 
 class GuiSettingsAdmin(admin.ModelAdmin):

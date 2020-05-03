@@ -75,7 +75,7 @@ export default {
     methods: {
         async getLog (type) {
             await this.$store.dispatch('auth/inspectToken')
-            const response = await this.$axios.get(`api/log/?type=${type}`)
+            const response = await this.$axios.get(`api/player/log/?type=${type}`)
 
             if (response.data.log) {
                 this.currentLog = response.data.log
@@ -83,7 +83,7 @@ export default {
         },
         async getSystemLog () {
             await this.$store.dispatch('auth/inspectToken')
-            const response = await this.$axios.post('api/system/', { run: 'log' })
+            const response = await this.$axios.post('api/player/system/', { run: 'log' })
 
             if (response.data.data) {
                 this.currentLog = response.data.data

@@ -1,17 +1,17 @@
 import json
 import os
 from platform import uname
-from subprocess import run, PIPE, STDOUT
+from subprocess import PIPE, STDOUT, run
 from time import sleep
 
 import psutil
+
 import yaml
 import zmq
+from api_player.models import GuiSettings
 from django.conf import settings
-from pymediainfo import MediaInfo
-
-from api.models import GuiSettings
 from natsort import natsorted
+from pymediainfo import MediaInfo
 
 
 def read_yaml():
@@ -244,8 +244,6 @@ def get_media_path(extensions, dir=None):
     media_dir = media_path.split('/')[-1]
     media_root = os.path.dirname(media_path)
     if not dir:
-        if not os.path.isdir(media_path):
-            return ''
         dir = media_path
     else:
         if '/..' in dir:
@@ -257,7 +255,8 @@ def get_media_path(extensions, dir=None):
         if dir.startswith(media_dir):
             dir = dir[len(media_dir):]
 
-        dir = os.path.join(media_root, media_dir, os.path.abspath('/' + dir).strip('/'))
+        dir = os.path.join(
+            media_root, media_dir, os.path.abspath('/' + dir).strip('/'))
 
     for root, dirs, files in os.walk(dir, topdown=True):
         root = root.rstrip('/')

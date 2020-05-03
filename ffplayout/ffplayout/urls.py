@@ -14,34 +14,13 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.contrib import admin
-from django.urls import include, path, re_path
-
-from rest_framework import routers
-from api import views
-
-from rest_framework_simplejwt.views import (
-    TokenObtainPairView,
-    TokenRefreshView,
-)
-
-router = routers.DefaultRouter()
-router.register(r'users', views.UserViewSet)
-router.register(r'guisettings', views.GuiSettingsViewSet, 'guisettings')
-router.register(r'messenger', views.MessengerViewSet, 'messenger')
+from django.urls import include, path
+from rest_framework_simplejwt.views import (TokenObtainPairView,
+                                            TokenRefreshView)
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('api/', include(router.urls)),
-    path('api/config/', views.Config.as_view()),
-    path('api/system/', views.SystemCtl.as_view()),
-    path('api/playlist/', views.Playlist.as_view()),
-    path('api/stats/', views.Statistics.as_view()),
-    path('api/log/', views.LogReader.as_view()),
-    path('api/current/user/', views.CurrentUserView.as_view()),
-    path('api/media/', views.Media.as_view()),
-    path('api/send/', views.MessegeSender.as_view()),
-    re_path(r'^api/media/upload/(?P<filename>[^/]+)$',  views.FileUpload.as_view()),
-    path('api/media/op/', views.FileOperations.as_view()),
+    path('api/', include('api_player.urls', namespace='api_player')),
     path('api-auth/', include(
          'rest_framework.urls', namespace='rest_framework')),
     path('auth/token/', TokenObtainPairView.as_view(),

@@ -36,7 +36,7 @@
                                                 </b-link>
                                             </b-col>
                                             <b-col v-if="folder !== '..'" cols="1" class="folder-delete">
-                                                <b-link @click="showDeleteModal('Folder', `/${folderTree.tree[0]}/${folder}`)">
+                                                <b-link @click="showDeleteModal('Folder', `${folderTree.tree[0]}/${folder}`)">
                                                     <b-icon-x-circle-fill />
                                                 </b-link>
                                             </b-col>
@@ -70,7 +70,7 @@
                                                 {{ file.file }}
                                             </b-col>
                                             <b-col cols="1" class="browser-play-col">
-                                                <b-link @click="showPreviewModal(`/${folderTree.tree[0]}/${file.file}`)">
+                                                <b-link @click="showPreviewModal(`${folderTree.tree[0]}/${file.file}`)">
                                                     <b-icon-play-fill />
                                                 </b-link>
                                             </b-col>
@@ -78,7 +78,7 @@
                                                 <span class="duration">{{ file.duration | toMin }}</span>
                                             </b-col>
                                             <b-col cols="1" class="text-center">
-                                                <b-link @click="showDeleteModal('File', `/${folderTree.tree[0]}/${file.file}`)">
+                                                <b-link @click="showDeleteModal('File', `${folderTree.tree[0]}/${file.file}`)">
                                                     <b-icon-x-circle-fill />
                                                 </b-link>
                                             </b-col>
@@ -276,7 +276,7 @@ export default {
             await this.$store.dispatch('auth/inspectToken')
 
             await this.$axios.post(
-                'api/media/op/',
+                'api/player/media/op/',
                 { folder: this.folderName, path: this.crumbs.map(e => e.text).join('/') }
             )
 
@@ -322,7 +322,7 @@ export default {
                 }
 
                 await this.$axios.put(
-                    `api/media/upload/${encodeURIComponent(file.name)}?path=${encodeURIComponent(this.crumbs.map(e => e.text).join('/'))}`,
+                    `api/player/media/upload/${encodeURIComponent(file.name)}?path=${encodeURIComponent(this.crumbs.map(e => e.text).join('/'))}`,
                     file,
                     config
                 )
@@ -403,7 +403,7 @@ export default {
                 pathName = this.deleteSource
             }
 
-            await this.$axios.delete(`api/media/op/?file=${encodeURIComponent(file)}&path=${encodeURIComponent(pathName)}`)
+            await this.$axios.delete(`api/player/media/op/?file=${encodeURIComponent(file)}&path=${encodeURIComponent(pathName)}`)
                 .catch(err => console.log(err))
 
             this.$root.$emit('bv::hide::modal', 'delete-modal')
