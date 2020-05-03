@@ -149,7 +149,7 @@
                                                 {{ file.file }}
                                             </b-col>
                                             <b-col cols="1" class="browser-play-col">
-                                                <b-link @click="showModal(`/${folderTree.tree[0]}/${file.file}`)">
+                                                <b-link @click="showModal(`${folderTree.tree[0]}/${file.file}`)">
                                                     <b-icon-play-fill />
                                                 </b-link>
                                             </b-col>
