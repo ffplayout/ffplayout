@@ -411,7 +411,7 @@ export default {
                 boxborderw: this.form.border
             }
 
-            const response = await this.$axios.post('api/player/send/', { data: obj })
+            const response = await this.$axios.post('api/player/messenger/send/', { data: obj })
 
             if (response.data && response.data.status.Success && response.data.status.Success === '0 Success') {
                 this.success = true

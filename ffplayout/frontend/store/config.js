@@ -64,8 +64,8 @@ export const actions = {
     },
 
     async getUserConfig ({ commit, state }) {
-        const user = await this.$axios.get('api/player/current/user/')
-        const response = await this.$axios.get(`api/player/users/?username=${user.data.username}`)
+        const user = await this.$axios.get('api/player/user/current/')
+        const response = await this.$axios.get(`api/player/user/users/?username=${user.data.username}`)
 
         if (user.data) {
             commit('SET_CURRENT_USER', user.data.username)
@@ -76,7 +76,7 @@ export const actions = {
     },
 
     async setUserConfig ({ commit, state }, obj) {
-        const update = await this.$axios.put(`api/player/users/${obj.id}/`, obj)
+        const update = await this.$axios.put(`api/player/user/users/${obj.id}/`, obj)
         return update
     }
 }
