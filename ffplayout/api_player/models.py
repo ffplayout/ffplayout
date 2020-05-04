@@ -26,7 +26,7 @@ class GuiSettings(models.Model):
         max_length=255,
         help_text="should be a mount point, for statistics",
         default='/')
-    extra_extensions =  models.CharField(
+    extra_extensions = models.CharField(
         max_length=255,
         help_text="file extensions, that are only visible in GUI",
         blank=True, null=True, default='')
@@ -44,15 +44,15 @@ class GuiSettings(models.Model):
 
 
 class MessengePresets(models.Model):
-    name =  models.CharField(max_length=255, help_text="the preset name")
+    name = models.CharField(max_length=255, help_text="the preset name")
 
-    message =  models.CharField(
+    message = models.CharField(
         max_length=1024, blank=True, null=True, default='')
 
-    x =  models.CharField(
+    x = models.CharField(
         max_length=512, blank=True, null=True, default='')
 
-    y =  models.CharField(
+    y = models.CharField(
         max_length=512, blank=True, null=True, default='')
 
     font_size = models.IntegerField(default=24)
