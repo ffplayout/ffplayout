@@ -1,7 +1,19 @@
 <template>
     <div>
         <Menu />
-        <b-container class="browser">
+        <b-container
+            class="browser-container"
+            @drop.prevent="addFile"
+            @dragover.prevent
+            @dragenter.prevent="dragEnter"
+            @dragleave.prevent="dragLeave"
+        >
+            <div class="drag-file" :class="fileDragClass">
+                <span>
+                    <b-icon-box-arrow-in-down />
+                </span>
+            </div>
+
             <div v-if="folderTree.tree" class="browser">
                 <div class="bread-div">
                     <b-breadcrumb>
@@ -150,7 +162,7 @@
                 <b-form-file
                     v-model="inputFiles"
                     :state="Boolean(inputFiles)"
-                    placeholder="Choose files or drop them here..."
+                    :placeholder="inputPlaceholder"
                     drop-placeholder="Drop files here..."
                     multiple
                     :accept="extensions.replace(/ /g, ', ')"
@@ -226,9 +238,11 @@ export default {
     data () {
         return {
             isLoading: false,
+            fileDragClass: '',
             extensions: '',
             folderName: '',
-            inputFiles: null,
+            inputFiles: [],
+            inputPlaceholder: 'Choose files or drop them here...',
             previewOptions: {},
             previewComp: null,
             previewName: '',
@@ -265,6 +279,37 @@ export default {
             await this.$store.dispatch('auth/inspectToken')
             await this.$store.dispatch('media/getTree', { extensions, path })
             this.isLoading = false
+        },
+
+        dragEnter (evt) {
+            evt.preventDefault()
+            this.fileDragClass = 'drop-file-visible'
+        },
+
+        dragLeave (evt) {
+            evt.preventDefault()
+            this.fileDragClass = ''
+            this.inputPlaceholder = 'Choose files or drop them here...'
+        },
+
+        addFile (evt) {
+            evt.preventDefault()
+            const droppedFiles = evt.dataTransfer.files
+            if (!droppedFiles) {
+                return
+            }
+            ([...droppedFiles]).forEach((f) => {
+                this.inputFiles.push(f)
+            })
+
+            if (this.inputFiles.length === 1) {
+                this.inputPlaceholder = this.inputFiles[0].name
+            } else {
+                this.inputPlaceholder = `${this.inputFiles.length} files selected`
+            }
+
+            this.fileDragClass = ''
+            this.showUploadModal()
         },
 
         showCreateFolderModal () {
@@ -305,6 +350,7 @@ export default {
         },
 
         async onSubmitUpload (evt) {
+            // console.log(evt)
             evt.preventDefault()
             const uploadProgress = fileName => (progressEvent) => {
                 const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total)
@@ -334,16 +380,19 @@ export default {
             }
 
             this.uploadTask = 'Done...'
+            this.inputPlaceholder = 'Choose files or drop them here...'
+            this.inputFiles = []
             this.getPath(this.extensions, this.lastPath)
             this.$root.$emit('bv::hide::modal', 'upload-modal')
         },
 
         onResetUpload (evt) {
             evt.preventDefault()
-            this.inputFiles = null
+            this.inputFiles = []
             this.overallProgress = 0
             this.currentProgress = 0
             this.uploadTask = ''
+            this.inputPlaceholder = 'Choose files or drop them here...'
 
             this.cancelTokenSource.cancel('Upload cancelled')
             this.getPath(this.extensions, this.lastPath)
@@ -420,10 +469,40 @@ export default {
 </script>
 
 <style>
-.browser {
+.browser-container {
+    position: relative;
     width: 100%;
     max-width: 100%;
     height: calc(100% - 40px);
+}
+
+.browser {
+    position: absolute;
+    width: calc(100% - 30px);
+    height: calc(100% - 40px);
+}
+
+.drag-file {
+    position: absolute;
+    display: none;
+    background: rgba(48, 54, 61, 0.75);
+    width: calc(100% - 30px);
+    height: calc(100% - 80px);
+    text-align: center;
+    border: 2px solid #ddd;
+    border-radius: .25em;
+    z-index: 2;
+    margin: auto;
+}
+
+.drop-file-visible {
+    display: table;
+}
+
+.drag-file span {
+    display: table-cell;
+    vertical-align: middle;
+    font-size: 10em;
 }
 
 .bread-div {
