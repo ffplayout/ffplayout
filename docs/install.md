@@ -16,7 +16,10 @@
 - past secret key in variable `SECRET_KEY`
 - set `ALLOWED_HOSTS` with correct URL
 - set URL in `CORS_ORIGIN_WHITELIST`
+- migrate database: `python manage.py makemigrations && python manage.py migrate`
 - collect static files: `python manage.py collectstatic`
+- add super user to db: `python manage.py createsuperuser`
+- populate some data to db: `python manage.py loaddata ../docs/db_data.json`
 - run: `chown www-data. -R /var/www/ffplayout`
 
 ##### System Setup
