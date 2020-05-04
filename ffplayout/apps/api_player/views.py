@@ -2,8 +2,8 @@ import os
 import shutil
 from urllib.parse import unquote
 
-from api_player.models import GuiSettings, MessengePresets
-from api_player.serializers import (GuiSettingsSerializer, MessengerSerializer,
+from apps.api_player.models import GuiSettings, MessengePresets
+from apps.api_player.serializers import (GuiSettingsSerializer, MessengerSerializer,
                                     UserSerializer)
 from django.contrib.auth.models import User
 from django_filters import rest_framework as filters

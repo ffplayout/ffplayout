@@ -8,7 +8,7 @@ import psutil
 
 import yaml
 import zmq
-from api_player.models import GuiSettings
+from apps.api_player.models import GuiSettings
 from django.conf import settings
 from natsort import natsorted
 from pymediainfo import MediaInfo

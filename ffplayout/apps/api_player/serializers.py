@@ -1,4 +1,4 @@
-from api_player.models import GuiSettings, MessengePresets
+from apps.api_player.models import GuiSettings, MessengePresets
 from django.contrib.auth.models import User
 from rest_framework import serializers
 

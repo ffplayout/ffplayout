@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/3.0/ref/settings/
 
 import os
 from datetime import timedelta
+from pydoc import locate
 
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
 BASE_DIR = os.path.dirname(
@@ -28,8 +29,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'django_filters',
     'rest_framework',
-    'corsheaders',
-    'api_player'
+    'corsheaders'
 ]
 
 MIDDLEWARE = [
@@ -67,12 +67,7 @@ WSGI_APPLICATION = 'ffplayout.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/3.0/ref/settings/#databases
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': os.path.join(BASE_DIR, 'db.sqlite3'),
-    }
-}
+DATABASES = {}
 
 
 # Password validation
@@ -113,6 +108,24 @@ USE_L10N = True
 
 USE_TZ = True
 
+
+# dynamic app loader
+APPS_DIR = os.path.join(BASE_DIR, 'apps/')
+
+for dir in os.listdir(APPS_DIR):
+    if os.path.isdir(os.path.join(APPS_DIR, dir)):
+        app_name = 'apps.{}'.format(dir)
+
+        if app_name not in INSTALLED_APPS:
+            # add app to installed apps
+            INSTALLED_APPS += (app_name, )
+
+            if os.path.isfile(os.path.join(APPS_DIR, dir, 'db.py')):
+                db_conn = locate('{}.db.Connector.config'.format(app_name))
+
+                if list(db_conn.keys())[0] not in DATABASES:
+                    # add app db to DATABASES
+                    DATABASES.update(db_conn)
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/3.0/howto/static-files/
