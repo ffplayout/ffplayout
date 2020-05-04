@@ -8,3 +8,6 @@ venv/
 tests/
 ._*
 ._**
+db.sqlite3
+migrations/*
+!__init__.py
