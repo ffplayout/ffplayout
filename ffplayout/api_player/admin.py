@@ -10,6 +10,7 @@ class GuiSettingsAdmin(admin.ModelAdmin):
 
 
 class MessengePresetsAdmin(admin.ModelAdmin):
+    list_display = ('name',)
 
     class Meta:
         model = MessengePresets
