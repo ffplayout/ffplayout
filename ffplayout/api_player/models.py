@@ -65,3 +65,6 @@ class MessengePresets(models.Model):
     border_width = models.IntegerField(default=4)
     overall_alpha = models.CharField(
         max_length=255, blank=True, null=True, default='')
+
+    class Meta:
+        verbose_name_plural = "messengepresets"
