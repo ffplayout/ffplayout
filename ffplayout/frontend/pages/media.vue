@@ -43,12 +43,12 @@
                                                 <b-icon-folder-fill class="browser-icons" />
                                             </b-col>
                                             <b-col class="browser-item-text">
-                                                <b-link @click="getPath(extensions, `${folderTree.tree[0]}/${folder}`)">
+                                                <b-link @click="getPath(extensions, `/${folderTree.tree[0]}/${folder}`)">
                                                     {{ folder }}
                                                 </b-link>
                                             </b-col>
                                             <b-col v-if="folder !== '..'" cols="1" class="folder-delete">
-                                                <b-link @click="showDeleteModal('Folder', `${folderTree.tree[0]}/${folder}`)">
+                                                <b-link @click="showDeleteModal('Folder', `/${folderTree.tree[0]}/${folder}`)">
                                                     <b-icon-x-circle-fill />
                                                 </b-link>
                                             </b-col>
@@ -82,7 +82,7 @@
                                                 {{ file.file }}
                                             </b-col>
                                             <b-col cols="1" class="browser-play-col">
-                                                <b-link @click="showPreviewModal(`${folderTree.tree[0]}/${file.file}`)">
+                                                <b-link @click="showPreviewModal(`/${folderTree.tree[0]}/${file.file}`)">
                                                     <b-icon-play-fill />
                                                 </b-link>
                                             </b-col>
@@ -90,7 +90,7 @@
                                                 <span class="duration">{{ file.duration | toMin }}</span>
                                             </b-col>
                                             <b-col cols="1" class="text-center">
-                                                <b-link @click="showDeleteModal('File', `${folderTree.tree[0]}/${file.file}`)">
+                                                <b-link @click="showDeleteModal('File', `/${folderTree.tree[0]}/${file.file}`)">
                                                     <b-icon-x-circle-fill />
                                                 </b-link>
                                             </b-col>
