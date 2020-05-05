@@ -120,12 +120,13 @@ for dir in os.listdir(APPS_DIR):
             # add app to installed apps
             INSTALLED_APPS += (app_name, )
 
-            if os.path.isfile(os.path.join(APPS_DIR, dir, 'db.py')):
-                db_conn = locate('{}.db.Connector.config'.format(app_name))
+            if os.path.isfile(os.path.join(APPS_DIR, dir, 'settings.py')):
+                db = locate('{}.settings.DATABASES'.format(app_name))
 
-                if list(db_conn.keys())[0] not in DATABASES:
-                    # add app db to DATABASES
-                    DATABASES.update(db_conn)
+                for key in db:
+                    if key not in DATABASES:
+                        # add app db to DATABASES
+                        DATABASES.update({key: db[key]})
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/3.0/howto/static-files/
