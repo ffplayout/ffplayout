@@ -8,6 +8,8 @@ venv/
 tests/
 ._*
 ._**
-db.sqlite3
+*.sqlite3
 **/migrations/*
 !**/migrations/__init__.py
+**/ffplayout/apps/*
+!**/ffplayout/apps/api_player/
