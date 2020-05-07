@@ -56,7 +56,7 @@ apt install -y curl
 ```
 
 ```
-curl -sL https://deb.nodesource.com/setup_14.x | bash -
+curl -sL https://deb.nodesource.com/setup_12.x | bash -
 ```
 
 **For full installation (with ffmpeg/srs):**
