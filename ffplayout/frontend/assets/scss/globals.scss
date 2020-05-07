@@ -1,0 +1,156 @@
+#__nuxt, #__layout, #__layout > div, #__layout > div > div {
+    height: 100%
+}
+
+@font-face{
+    font-family: "DigitalNumbers-Regular";
+    src: url("~@/assets/fonts/DigitalNumbers-Regular.woff2") format("woff2");
+    font-weight: normal;
+    font-style: normal;
+}
+
+.breadcrumb {
+    margin-bottom: .2em;
+}
+
+.browser-item {
+    background: none;
+    padding: .1em;
+    border: none;
+}
+
+.browser-icons {
+    margin-right: .5em;
+}
+
+.breadcrumb {
+    background-color: #32383E;
+    background-image: none;
+}
+
+.duration {
+    float: right;
+    margin-right: 1em;
+}
+
+.form-control, .tags-list ul li div input, .custom-select, .custom-control-label::before {
+    color: #e4e4e4;
+    background-color: #32383E;
+}
+
+.form-control:disabled, .form-control[readonly] {
+    color: #b4b4b4;
+    background-color:#485159;
+}
+
+.custom-select {
+    background: #32383E url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' width='4' height='5' viewBox='0 0 4 5'%3e%3cpath fill='rgb(228, 228, 228)' d='M2 0L0 2h4zm0 5L0 3h4z'/%3e%3c/svg%3e") no-repeat right 1rem center/8px 10px;
+}
+
+.form-control:focus, .form-control.focus, .b-form-tags.focus, .custom-select:focus {
+    color: #f5f5f5;
+    background-color: #424a53;
+}
+
+.custom-file-label {
+    background-color: #424a53;
+    color: #f5f5f5;
+}
+
+.custom-file-label::after {
+    background-color: #32383E;
+    color: #f5f5f5;
+}
+
+.alert {
+    margin-bottom: 0;
+}
+
+.browser-div {
+    width: 100%;
+    max-height: 100%;
+}
+
+.browser-div .ps {
+    padding-left: .4em;
+}
+
+.ps__thumb-x {
+    display: none;
+}
+
+.splitpanes__pane {
+    width: 30%;
+}
+
+.splitpanes.default-theme .splitpanes__pane {
+    background-color: $dark;
+    box-shadow: 0 0 10px rgba(0, 0, 0, .2) inset;
+    justify-content: center;
+    align-items: center;
+    display: flex;
+    position: relative;
+}
+
+.default-theme.splitpanes--vertical > .splitpanes__splitter, .default-theme .splitpanes--vertical > .splitpanes__splitter {
+    border-left: 1px solid $dark;
+}
+
+.splitpanes.default-theme .splitpanes__splitter {
+    background-color: $dark;
+}
+
+.splitpanes.default-theme .splitpanes__splitter::after, .splitpanes.default-theme .splitpanes__splitter::before {
+    background-color: rgba(136, 136, 136, 0.38);
+}
+
+.ps .ps__rail-x:hover, .ps .ps__rail-y:hover, .ps .ps__rail-x:focus, .ps .ps__rail-y:focus, .ps .ps__rail-x.ps--clicking, .ps .ps__rail-y.ps--clicking {
+    background-color: transparent;
+}
+
+.browser-icons-col {
+    max-width: 10px;
+}
+
+.browser-play-col {
+    max-width: 15px;
+    text-align: center;
+    margin: 0;
+    padding: 0;
+}
+
+.browser-dur-col {
+    min-width: 95px;
+    margin: 0;
+    padding: 0 10px 0 0;
+}
+
+.browser-div .ps {
+    height: 100%;
+}
+
+.playlist-container .ps {
+    height: 94.5%;
+}
+
+.browser-list {
+    max-height: 93%;
+    overflow-y: scroll;
+}
+
+.browser-item-text {
+    display: inline-block;
+    max-width: 95%;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.progress-bar {
+    background-color: #ff9c36
+}
+
+.grabbing {
+    cursor: -webkit-grabbing;
+    cursor: grabbing;
+}

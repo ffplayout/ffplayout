@@ -1,0 +1,16 @@
+asgiref==3.2.7
+Django==3.0.5
+django-cors-headers==3.2.1
+django-filter==2.2.0
+djangorestframework==3.11.0
+djangorestframework-simplejwt==4.4.0
+gunicorn==20.0.4
+natsort==7.0.1
+psutil==5.7.0
+PyJWT==1.7.1
+pymediainfo==4.1
+pytz==2020.1
+PyYAML==5.3.1
+pyzmq==19.0.0
+sqlparse==0.3.1
+zmq==0.0.0

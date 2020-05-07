@@ -1,0 +1,11 @@
+Django<=3.1
+django-filter
+django-cors-headers
+djangorestframework
+djangorestframework-simplejwt
+gunicorn
+natsort
+psutil
+pymediainfo
+pyyaml
+zmq

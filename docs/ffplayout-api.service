@@ -1,0 +1,14 @@
+[Unit]
+Description=ffplayout api daemon
+After=network.target
+
+[Service]
+WorkingDirectory=/var/www/ffplayout/ffplayout
+Environment=DJANGO_SETTINGS_MODULE=ffplayout.settings.production
+ExecStart=/var/www/ffplayout/venv/bin/gunicorn --workers 6 --timeout 300 --log-level=info --log-file=- --access-logfile=- --bind unix:/var/www/ffplayout/ffplayout/ffplayout.sock ffplayout.wsgi:application
+KillMode=process
+User=www-data
+Group=www-data
+
+[Install]
+WantedBy=multi-user.target

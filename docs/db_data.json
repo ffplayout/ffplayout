@@ -1,0 +1,83 @@
+[{
+    "model": "api_player.guisettings",
+    "pk": 1,
+    "fields": {
+        "player_url": "http://localhost/live/stream.m3u8",
+        "playout_config": "/etc/ffplayout/ffplayout.yml",
+        "net_interface": "ens3",
+        "media_disk": "/",
+        "extra_extensions": ".jpg .jpeg .png"
+    }
+}, {
+    "model": "api_player.messengepresets",
+    "pk": 1,
+    "fields": {
+        "name": "default",
+        "message": "Wellcome to ffplayout!",
+        "x": "(w-text_w)/2",
+        "y": "(h-text_h)/2",
+        "font_size": 24,
+        "font_spacing": 4,
+        "font_color": "#ffffff",
+        "font_alpha": 1.0,
+        "show_box": true,
+        "box_color": "#000000",
+        "box_alpha": 0.8,
+        "border_width": 4,
+        "overall_alpha": "1"
+    }
+}, {
+    "model": "api_player.messengepresets",
+    "pk": 2,
+    "fields": {
+        "name": "empty-text",
+        "message": null,
+        "x": null,
+        "y": null,
+        "font_size": 24,
+        "font_spacing": 4,
+        "font_color": "#ffffff",
+        "font_alpha": 1.0,
+        "show_box": false,
+        "box_color": "#000000",
+        "box_alpha": 0.8,
+        "border_width": 0,
+        "overall_alpha": "0"
+    }
+}, {
+    "model": "api_player.messengepresets",
+    "pk": 3,
+    "fields": {
+        "name": "bottom-text-fade-in",
+        "message": "The upcoming event will be delayed by a few minutes.",
+        "x": "(w-text_w)/2",
+        "y": "(h-line_h)*0.9",
+        "font_size": 24,
+        "font_spacing": 4,
+        "font_color": "#ffffff",
+        "font_alpha": 1.0,
+        "show_box": true,
+        "box_color": "#000000",
+        "box_alpha": 0.8,
+        "border_width": 4,
+        "overall_alpha": "ifnot(ld(1),st(1,t));if(lt(t,ld(1)+1),0,if(lt(t,ld(1)+2),(t-(ld(1)+1))/1,if(lt(t,ld(1)+8),1,if(lt(t,ld(1)+9),(1-(t-(ld(1)+8)))/1,0))))"
+    }
+}, {
+    "model": "api_player.messengepresets",
+    "pk": 4,
+    "fields": {
+        "name": "scrolling-text",
+        "message": "We have a very important announcement to make.",
+        "x": "ifnot(ld(1),st(1,t));if(lt(t,ld(1)+1),w+4,w-w/12*mod(t-ld(1),12*(w+tw)/w))",
+        "y": "(h-line_h)*0.9",
+        "font_size": 24,
+        "font_spacing": 4,
+        "font_color": "#ffffff",
+        "font_alpha": 1.0,
+        "show_box": true,
+        "box_color": "#000000",
+        "box_alpha": 0.8,
+        "border_width": 4,
+        "overall_alpha": "1"
+    }
+}]
