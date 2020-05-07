@@ -59,6 +59,7 @@ apt install -y curl
 curl -sL https://deb.nodesource.com/setup_14.x | bash -
 ```
 
+**For full installation (with ffmpeg/srs):**
 ```
 apt install -y sudo net-tools git python3-dev build-essential virtualenv python3-virtualenv nodejs nginx autoconf automake libtool pkg-config texi2html yasm cmake curl mercurial git wget gperf
 ```
