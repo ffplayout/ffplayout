@@ -3,7 +3,7 @@ ffplayout-gui
 
 This is the fresh version v2.0.0-beta from ffplayout GUI.
 
-At the moment this version is more for testing. If you want to test it check [install.md](docs/install.md) for installation.
+At the moment this version is more for testing. If you want to give it a try -> check [install.md](docs/install.md) for installation.
 
 A old working version you found in v1.0.0 branch, or under releases.
 
