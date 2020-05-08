@@ -66,7 +66,8 @@ def main():
             _text.address
         ))
         overlay = [
-            '-vf', "null,zmq=b=tcp\\\://'{}',drawtext=text='':fontfile='{}'".format(
+            '-vf',
+            "null,zmq=b=tcp\\\\://'{}',drawtext=text='':fontfile='{}'".format(
                 _text.address.replace(':', '\\:'), _text.fontfile)
         ]
 
@@ -79,8 +80,9 @@ def main():
         else:
             _ff.encoder = Popen([
                 'ffmpeg', '-v', _log.ff_level.lower(), '-hide_banner',
-                '-nostats', '-re', '-thread_queue_size', '256',
-                '-i', 'pipe:0'] + overlay + [
+                '-nostats', '-re', '-fflags', '+igndts',
+                '-thread_queue_size', '256', '-i', 'pipe:0',
+                '-fflags', '+genpts', '-ignore_unknown'] + overlay + [
                     '-metadata', 'service_name=' + _playout.name,
                     '-metadata', 'service_provider=' + _playout.provider,
                     '-metadata', 'year={}'.format(year)
