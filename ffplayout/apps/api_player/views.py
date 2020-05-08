@@ -82,18 +82,16 @@ class Config(APIView):
             if yaml_input:
                 return Response(yaml_input)
             else:
-                return Response({
-                    "success": False,
-                    "error": "ffpayout engine config file not found!"})
+                return Response(status=204)
         else:
-            return Response({"success": False})
+            return Response(status=404)
 
     def post(self, request, *args, **kwargs):
         if 'data' in request.data:
             write_yaml(request.data['data'])
-            return Response({"success": True})
+            return Response(status=200)
 
-        return Response({"success": False})
+        return Response(status=404)
 
 
 class SystemCtl(APIView):
@@ -107,16 +105,16 @@ class SystemCtl(APIView):
 
             if request.data['run'] == 'start':
                 service.start()
-                return Response({"success": True})
+                return Response(status=200)
             elif request.data['run'] == 'stop':
                 service.stop()
-                return Response({"success": True})
+                return Response(status=200)
             elif request.data['run'] == 'reload':
                 service.reload()
-                return Response({"success": True})
+                return Response(status=200)
             elif request.data['run'] == 'restart':
                 service.restart()
-                return Response({"success": True})
+                return Response(status=200)
             elif request.data['run'] == 'status':
                 status = service.status()
                 return Response({"data": status})
@@ -124,9 +122,9 @@ class SystemCtl(APIView):
                 log = service.log()
                 return Response({"data": log})
             else:
-                return Response({"success": False})
+                return Response(status=400)
 
-        return Response({"success": False})
+        return Response(status=404)
 
 
 class LogReader(APIView):
@@ -138,11 +136,9 @@ class LogReader(APIView):
             if log:
                 return Response({'log': log})
             else:
-                return Response({
-                    "success": False,
-                    "error": "PLayout log file not found!"})
+                return Response(status=204)
         else:
-            return Response({"success": False})
+            return Response(status=404)
 
 
 class Playlist(APIView):
@@ -164,14 +160,14 @@ class Playlist(APIView):
                     "success": False,
                     "error": "Playlist from {} not found!".format(date)})
         else:
-            return Response({"success": False})
+            return Response(status=400)
 
     def post(self, request, *args, **kwargs):
         if 'data' in request.data:
             write_json(request.data['data'])
-            return Response({"success": True})
+            return Response(status=200)
 
-        return Response({"success": False})
+        return Response(status=400)
 
 
 class Statistics(APIView):
@@ -187,7 +183,7 @@ class Statistics(APIView):
             return Response(
                 getattr(stats, request.GET.dict()['stats'])())
         else:
-            return Response({"success": False})
+            return Response(status=404)
 
 
 class Media(APIView):
@@ -207,9 +203,9 @@ class Media(APIView):
             elif 'path' in request.GET.dict():
                 return Response({'tree': get_media_path(extensions)})
             else:
-                return Response({"success": False})
+                return Response(status=204)
         else:
-            return Response({"success": False})
+            return Response(status=404)
 
 
 class FileUpload(APIView):
