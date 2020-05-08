@@ -26,7 +26,8 @@ from ffplayout.folder import GetSourceFromFolder, MediaStore, MediaWatcher
 from ffplayout.playlist import GetSourceFromPlaylist
 from ffplayout.utils import (_ff, _log, _playlist, _playout, _pre_comp, _text,
                              ffmpeg_stderr_reader, get_date, messenger,
-                             pre_audio_codec, stdin_args, terminate_processes)
+                             pre_audio_codec, stdin_args, terminate_processes,
+                             validate_ffmpeg_libs)
 
 try:
     if os.name != 'posix':
@@ -65,7 +66,7 @@ def main():
             _text.address
         ))
         overlay = [
-            '-vf', "null,zmq=b='{}',drawtext=text='':fontfile='{}'".format(
+            '-vf', "null,zmq=b=tcp\\\://'{}',drawtext=text='':fontfile='{}'".format(
                 _text.address.replace(':', '\\:'), _text.fontfile)
         ]
 
@@ -149,4 +150,6 @@ def main():
 
 
 if __name__ == '__main__':
+    # check if ffmpeg contains all codecs and filters
+    validate_ffmpeg_libs()
     main()
