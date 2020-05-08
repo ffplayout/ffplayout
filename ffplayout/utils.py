@@ -983,14 +983,7 @@ def timed_source(probe, src, begin, dur, seek, out, first, last):
 
 def pre_audio_codec():
     """
-    when add_loudnorm is False we use a different audio encoder,
-    s302m has higher quality, but is experimental
-    and works not well together with the loudnorm filter
+    use libtwolame if is compiled in ffmpeg, when not use normal mp2
     """
-    if _pre_comp.add_loudnorm:
-        acodec = 'libtwolame' if 'libtwolame' in FF_LIBS['libs'] else 'mp2'
-        audio = ['-c:a', acodec, '-b:a', '384k', '-ar', '48000', '-ac', '2']
-    else:
-        audio = ['-c:a', 's302m', '-strict', '-2', '-ar', '48000', '-ac', '2']
-
-    return audio
+    acodec = 'libtwolame' if 'libtwolame' in FF_LIBS['libs'] else 'mp2'
+    return ['-c:a', acodec, '-b:a', '384k', '-ar', '48000', '-ac', '2']
