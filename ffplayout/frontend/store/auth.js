@@ -39,11 +39,13 @@ export const actions = {
                 commit('UPDATE_IS_LOGIN', true)
                 this.$cookies.set('token', response.data.access, {
                     path: '/',
-                    maxAge: 60 * 60 * 24 * 365
+                    maxAge: 60 * 60 * 24 * 365,
+                    sameSite: 'lax'
                 })
                 this.$cookies.set('refresh', response.data.refresh, {
                     path: '/',
-                    maxAge: 60 * 60 * 24 * 365
+                    maxAge: 60 * 60 * 24 * 365,
+                    sameSite: 'lax'
                 })
             })
             .catch((error) => {
