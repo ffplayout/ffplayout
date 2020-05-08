@@ -15,11 +15,13 @@ from pymediainfo import MediaInfo
 
 
 def read_yaml():
-    config = GuiSettings.objects.filter(id=1).values()[0]
+    setting = GuiSettings.objects.filter(id=1).values()
+    if setting:
+        config = setting[0]
 
-    if config and os.path.isfile(config['playout_config']):
-        with open(config['playout_config'], 'r') as config_file:
-            return yaml.safe_load(config_file)
+        if config and os.path.isfile(config['playout_config']):
+            with open(config['playout_config'], 'r') as config_file:
+                return yaml.safe_load(config_file)
 
 
 def write_yaml(data):
@@ -149,14 +151,16 @@ class PlayoutService:
 
 class SystemStats:
     def __init__(self):
-        self.config = GuiSettings.objects.filter(id=1).values()[0]
+        settings = GuiSettings.objects.filter(id=1).values()
+        self.config = settings[0] if settings else []
 
     def all(self):
-        return {
-            **self.system(),
-            **self.cpu(), **self.ram(), **self.swap(),
-            **self.disk(), **self.net(), **self.net_speed()
-        }
+        if self.config:
+            return {
+                **self.system(),
+                **self.cpu(), **self.ram(), **self.swap(),
+                **self.disk(), **self.net(), **self.net_speed()
+            }
 
     def system(self):
         return {
@@ -189,12 +193,13 @@ class SystemStats:
         }
 
     def disk(self):
-        root = psutil.disk_usage(self.config['media_disk'])
-        return {
-            'disk_total': [root.total, sizeof_fmt(root.total)],
-            'disk_used': [root.used, sizeof_fmt(root.used)],
-            'disk_free': [root.free, sizeof_fmt(root.free)]
-        }
+        if 'media_disk' in self.config and self.config['media_disk']:
+            root = psutil.disk_usage(self.config['media_disk'])
+            return {
+                'disk_total': [root.total, sizeof_fmt(root.total)],
+                'disk_used': [root.used, sizeof_fmt(root.used)],
+                'disk_free': [root.free, sizeof_fmt(root.free)]
+            }
 
     def net(self):
         net = psutil.net_io_counters()
@@ -207,6 +212,10 @@ class SystemStats:
 
     def net_speed(self):
         net = psutil.net_if_stats()
+
+        if not 'net_interface' in self.config or \
+                not self.config['net_interface']:
+            return
 
         if self.config['net_interface'] not in net:
             return {
