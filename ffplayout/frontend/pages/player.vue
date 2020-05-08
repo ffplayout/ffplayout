@@ -347,7 +347,7 @@ export default {
         if (!process.env.DEV) {
             this.interval = setInterval(() => {
                 this.$store.dispatch('playlist/animClock', { dayStart: this.configPlayout.playlist.day_start })
-            }, 5000)
+            }, 1000)
         } else {
             this.$store.dispatch('playlist/animClock', { dayStart: this.configPlayout.playlist.day_start })
         }
