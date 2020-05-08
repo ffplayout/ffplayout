@@ -132,7 +132,7 @@ for dir in os.listdir(APPS_DIR):
 # https://docs.djangoproject.com/en/3.0/howto/static-files/
 
 STATIC_URL = '/static/'
-STATIC_ROOT = '/var/www/ffplayout/ffplayout/static/'
+STATIC_ROOT = os.path.join(BASE_DIR, 'static/')
 
 # ffmpeg filter node, needs to be edit only when the filter chain changes
 DRAW_TEXT_NODE = 'Parsed_drawtext_2'
