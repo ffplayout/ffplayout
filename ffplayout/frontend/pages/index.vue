@@ -211,6 +211,10 @@ export default {
 
         async sysStats () {
             const response = await this.$axios.get('api/player/stats/?stats=all')
+
+            if (!response.data) {
+                this.$router.push('/configure')
+            }
             this.stat = response.data
 
             if (process.browser) {
