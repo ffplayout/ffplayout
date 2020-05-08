@@ -2,6 +2,7 @@
     "model": "api_player.guisettings",
     "pk": 1,
     "fields": {
+        "channel": "Channel 1",
         "player_url": "http://localhost/live/stream.m3u8",
         "playout_config": "/etc/ffplayout/ffplayout.yml",
         "net_interface": "ens3",
