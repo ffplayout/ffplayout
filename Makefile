@@ -33,9 +33,9 @@ install:
 	if [ ! -f "/etc/ffplayout/ffplayout.yml" ]; then \
 		install -m 644 -o $(USER) -g $(USER) ffplayout.yml /etc/ffplayout/; \
 	fi
-	if [ -d "/etc/systemd/system" ] && [ ! -f "/etc/systemd/system/ffplayout.service" ]; then \
-		install -m 644 docs/ffplayout.service /etc/systemd/system/; \
-		sed -i "s/root/$(USER)/g" "/etc/systemd/system/ffplayout.service"; \
+	if [ -d "/etc/systemd/system" ] && [ ! -f "/etc/systemd/system/ffplayout-engine.service" ]; then \
+		install -m 644 docs/ffplayout-engine.service /etc/systemd/system/; \
+		sed -i "s/root/$(USER)/g" "/etc/systemd/system/ffplayout-engine.service"; \
 	fi
 	@echo ""
 	@echo "-------------------------------------------------------------------"
@@ -49,7 +49,7 @@ clean:
 uninstall:
 	rm -rf "/etc/ffplayout"
 	rm -rf "/var/log/ffplayout"
-	rm -rf "/etc/systemd/system/ffplayout.service"
+	rm -rf "/etc/systemd/system/ffplayout-engine.service"
 	if [ ! "$(CURRENT_DIR)" == "/opt/ffplayout-engine" ]; then \
 		rm -rf "/opt/ffplayout-engine"; \
 	fi

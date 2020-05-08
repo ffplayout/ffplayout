@@ -27,17 +27,17 @@ import smtplib
 import socket
 import sys
 import tempfile
-import yaml
 from argparse import ArgumentParser
 from datetime import date, datetime, timedelta
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import formatdate
 from logging.handlers import TimedRotatingFileHandler
-from subprocess import CalledProcessError, check_output
+from subprocess import STDOUT, CalledProcessError, check_output
 from threading import Thread
 from types import SimpleNamespace
 
+import yaml
 
 # ------------------------------------------------------------------------------
 # argument parsing
@@ -140,17 +140,6 @@ def read_config(path):
         return yaml.safe_load(config_file)
 
 
-def dict_to_list(d):
-    li = []
-
-    for key, value in d.items():
-        if value:
-            li += ['-{}'.format(key), str(value)]
-        else:
-            li += ['-{}'.format(key)]
-    return li
-
-
 def load_config():
     """
     this function can reload most settings from configuration file,
@@ -228,8 +217,7 @@ def load_config():
         _playout.preview = cfg['out']['preview']
         _playout.name = cfg['out']['service_name']
         _playout.provider = cfg['out']['service_provider']
-        _playout.post_comp_param = dict_to_list(
-            cfg['out']['post_ffmpeg_param'])
+        _playout.post_comp_param = cfg['out']['post_ffmpeg_param'].split(' ')
         _playout.out_addr = cfg['out']['out_addr']
 
         _init.load = False
@@ -312,8 +300,8 @@ if _log.to_file and _log.path != 'none':
         log_dir = os.path.join(base_dir, 'log')
         os.makedirs(log_dir, exist_ok=True)
         playout_log = os.path.join(log_dir, 'ffplayout.log')
-        decoder_log = os.path.join(log_dir, 'ffdecoder.log')
-        encoder_log = os.path.join(log_dir, 'ffencoder.log')
+        decoder_log = os.path.join(log_dir, 'decoder.log')
+        encoder_log = os.path.join(log_dir, 'encoder.log')
 
     p_format = logging.Formatter('[%(asctime)s] [%(levelname)s]  %(message)s')
     f_format = logging.Formatter('[%(asctime)s]  %(message)s')
@@ -461,11 +449,12 @@ def ffmpeg_libs():
     check which external libs are compiled in ffmpeg,
     for using them later
     """
-    cmd = ['ffmpeg', '-version']
+    cmd = ['ffmpeg', '-filters']
     libs = []
+    filters = []
 
     try:
-        info = check_output(cmd).decode('UTF-8')
+        info = check_output(cmd, stderr=STDOUT).decode('UTF-8')
     except CalledProcessError as err:
         messenger.error('ffmpeg - libs could not be readed!\n'
                         'Processing is not possible. Error:\n{}'.format(err))
@@ -478,12 +467,32 @@ def ffmpeg_libs():
             for cfg in configs:
                 if '--enable-lib' in cfg:
                     libs.append(cfg.replace('--enable-', ''))
-            break
+        elif re.match(r'^(?!.*=) [TSC.]+', line):
+            filter_list = line.split()
+            if len(filter_list) > 3:
+                filters.append(filter_list[1])
 
-    return libs
+    return {'libs': libs, 'filters': filters}
 
 
 FF_LIBS = ffmpeg_libs()
+
+
+def validate_ffmpeg_libs():
+    if 'libx264' not in FF_LIBS['libs']:
+        playout_logger.error('ffmpeg contains no libx264!')
+    if 'libfdk-aac' not in FF_LIBS['libs']:
+        playout_logger.warning(
+            'ffmpeg contains no libfdk-aac! No high quality aac...')
+    if 'libtwolame' not in FF_LIBS['libs']:
+        playout_logger.warning(
+            'ffmpeg contains no libtwolame!'
+            ' Loudness correction use mp2 audio codec...')
+    if 'tpad' not in FF_LIBS['filters']:
+        playout_logger.error('ffmpeg contains no tpad filter!')
+    if 'zmq' not in FF_LIBS['filters']:
+        playout_logger.error(
+            'ffmpeg contains no zmq filter!  Text messages will not work...')
 
 
 # ------------------------------------------------------------------------------
@@ -979,7 +988,7 @@ def pre_audio_codec():
     and works not well together with the loudnorm filter
     """
     if _pre_comp.add_loudnorm:
-        acodec = 'libtwolame' if 'libtwolame' in FF_LIBS else 'mp2'
+        acodec = 'libtwolame' if 'libtwolame' in FF_LIBS['libs'] else 'mp2'
         audio = ['-c:a', acodec, '-b:a', '384k', '-ar', '48000', '-ac', '2']
     else:
         audio = ['-c:a', 's302m', '-strict', '-2', '-ar', '48000', '-ac', '2']
