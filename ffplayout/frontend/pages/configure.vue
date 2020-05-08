@@ -91,7 +91,7 @@
                                     <b-form-input
                                         v-else-if="prop && prop.toString().match(/^-?\d+[.,]\d+$/)"
                                         :id="name"
-                                        v-model="configPlayout[key][name]"
+                                        v-model.number="configPlayout[key][name]"
                                         type="number"
                                         step="0.001"
                                         class="input-field"
@@ -99,7 +99,7 @@
                                     <b-form-input
                                         v-else-if="prop && !isNaN(prop)"
                                         :id="name"
-                                        v-model="configPlayout[key][name]"
+                                        v-model.number="configPlayout[key][name]"
                                         type="number"
                                         step="1"
                                         class="input-field"
