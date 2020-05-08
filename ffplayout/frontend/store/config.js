@@ -1,7 +1,7 @@
 export const state = () => ({
     configGui: null,
     netChoices: [],
-    configPlayout: null,
+    configPlayout: [],
     currentUser: null,
     configUser: null
 })
@@ -37,17 +37,37 @@ export const actions = {
             })
             commit('UPDATE_NET_CHOICES', choices)
         }
-        if (response.data) {
-            response.data[0].extra_extensions = response.data[0].extra_extensions.split(' ')
+        if (response.data && response.data[0]) {
+            if (response.data[0].extra_extensions) {
+                response.data[0].extra_extensions = response.data[0].extra_extensions.split(' ')
+            } else {
+                response.data[0].extra_extensions = []
+            }
             commit('UPDATE_GUI_CONFIG', response.data[0])
+        } else {
+            commit('UPDATE_GUI_CONFIG', {
+                id: 0,
+                channel: '',
+                player_url: '',
+                playout_config: '',
+                net_interface: '',
+                media_disk: '',
+                extra_extensions: []
+            })
         }
     },
 
     async setGuiConfig ({ commit, state }, obj) {
         const stringObj = JSON.parse(JSON.stringify(obj))
         stringObj.extra_extensions = obj.extra_extensions.join(' ')
-        const update = await this.$axios.put('api/player/guisettings/1/', stringObj)
-        return update
+        let response
+
+        if (state.configPlayout.length === 0) {
+            response = await this.$axios.post('api/player/guisettings/', stringObj)
+        } else {
+            response = await this.$axios.put(`api/player/guisettings/${obj.id}/`, stringObj)
+        }
+        return response
     },
 
     async getPlayoutConfig ({ commit, state }) {
