@@ -13,28 +13,29 @@
                                 label-class="font-weight-bold pt-0"
                                 class="config-group"
                             >
-                                <b-form-group
-                                    v-for="(prop, name, idx) in configGui"
-                                    :key="idx"
-                                    label-cols-sm="2"
-                                    :label="name"
-                                    label-align-sm="right"
-                                    :label-for="name"
-                                >
-                                    <b-form-tags
-                                        v-if="name === 'extra_extensions'"
-                                        v-model="configGui[name]"
-                                        :input-id="name"
-                                        separator=" ,;"
-                                        :placeholder="`add ${name}...`"
-                                        class="mb-2 tags-list"
-                                    />
-                                    <b-form-text v-if="name === 'extra_extensions'">
-                                        Visible extensions only for the GUI and not the playout
-                                    </b-form-text>
-                                    <b-form-select v-else-if="name === 'net_interface'" :id="name" v-model="configGui[name]" :options="netChoices" :value="prop" />
-                                    <b-form-input v-else :id="name" v-model="configGui[name]" :value="prop" />
-                                </b-form-group>
+                                <div v-for="(prop, name, idx) in configGui" :key="idx">
+                                    <b-form-group
+                                        v-if="idx >= 1"
+                                        label-cols-sm="2"
+                                        :label="name"
+                                        label-align-sm="right"
+                                        :label-for="name"
+                                    >
+                                        <b-form-tags
+                                            v-if="name === 'extra_extensions'"
+                                            v-model="configGui[name]"
+                                            :input-id="name"
+                                            separator=" ,;"
+                                            :placeholder="`add ${name}...`"
+                                            class="mb-2 tags-list"
+                                        />
+                                        <b-form-text v-if="name === 'extra_extensions'">
+                                            Visible extensions only for the GUI and not the playout
+                                        </b-form-text>
+                                        <b-form-select v-else-if="name === 'net_interface'" :id="name" v-model="configGui[name]" :options="netChoices" :value="prop" />
+                                        <b-form-input v-else :id="name" v-model="configGui[name]" :value="prop" />
+                                    </b-form-group>
+                                </div>
                             </b-form-group>
                             <b-row>
                                 <b-col cols="1" style="min-width: 85px">
