@@ -37,7 +37,7 @@ except ImportError:
     print('colorama import failed, no colored console output on windows...')
 
 _WINDOWS = os.name == 'nt'
-COPY_BUFSIZE = 1024 * 1024 if _WINDOWS else 64 * 1024
+COPY_BUFSIZE = 1024 * 1024 if _WINDOWS else 65424
 
 
 # ------------------------------------------------------------------------------
