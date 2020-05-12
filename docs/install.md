@@ -44,6 +44,13 @@
 
 - go to folder **/var/www/ffplayout/ffplayout/frontend**
 - install dependencies: `npm install`
+- create **.env** file:
+    ```
+    BASE_URL='http://localhost:3000'
+    API_URL='/'
+    ```
+    - in dev mode `API_URL` should be: `http://localhost:8000`
+    - for deactivating progress animation: `DEV=true`
 - build app: `npm run build`
 
 Your frontend should be now in **/var/www/ffplayout/ffplayout/frontend/dist** folder, which we are included already in the nginx config. You can serve now the GUI under your domain URL.
