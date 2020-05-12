@@ -264,3 +264,20 @@ class FileOperations(APIView):
                 Response(status=500)
         else:
             return Response(status=404)
+
+    def patch(self, request, *args, **kwargs):
+        if 'path' in request.data and 'oldname' in request.data \
+                and 'newname' in request.data:
+            root = read_yaml()['storage']['path']
+            old_name = request.data['oldname']
+            new_name = request.data['newname']
+            _path = os.path.join(
+                *(request.data['path'].split(os.path.sep)[2:]))
+            old_file = os.path.join(root, _path, old_name)
+            new_file = os.path.join(root, _path, new_name)
+
+            os.rename(old_file, new_file)
+
+            return Response(status=200)
+        else:
+            return Response(status=204)

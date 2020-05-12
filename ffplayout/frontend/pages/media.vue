@@ -82,15 +82,20 @@
                                                 {{ file.file }}
                                             </b-col>
                                             <b-col cols="1" class="browser-play-col">
-                                                <b-link @click="showPreviewModal(`/${folderTree.tree[0]}/${file.file}`)">
+                                                <b-link title="Preview" @click="showPreviewModal(`/${folderTree.tree[0]}/${file.file}`)">
                                                     <b-icon-play-fill />
                                                 </b-link>
                                             </b-col>
                                             <b-col cols="1" class="browser-dur-col">
                                                 <span class="duration">{{ file.duration | toMin }}</span>
                                             </b-col>
-                                            <b-col cols="1" class="text-center">
-                                                <b-link @click="showDeleteModal('File', `/${folderTree.tree[0]}/${file.file}`)">
+                                            <b-col cols="1" class="small-col">
+                                                <b-link title="Rename File" @click="showRenameModal(`/${folderTree.tree[0]}/`, file.file)">
+                                                    <b-icon-pencil-square />
+                                                </b-link>
+                                            </b-col>
+                                            <b-col cols="1" class="small-col">
+                                                <b-link title="Delete File" @click="showDeleteModal('File', `/${folderTree.tree[0]}/${file.file}`)">
                                                     <b-icon-x-circle-fill />
                                                 </b-link>
                                             </b-col>
@@ -206,6 +211,29 @@
                 </b-row>
             </b-form>
         </b-modal>
+        <b-modal id="rename-modal" title="Rename File" centered hide-footer>
+            <b-form @submit="renameFile">
+                <b-form-group
+                    id="input-group-1"
+                    label-for="input-1"
+                >
+                    <b-form-input
+                        id="input-1"
+                        v-model="renameNewName"
+                        type="text"
+                        placeholder=""
+                    />
+                </b-form-group>
+                <div class="media-button">
+                    <b-button type="submit" variant="primary">
+                        Rename
+                    </b-button>
+                    <b-button variant="primary" @click="cancelRename()">
+                        Cancel
+                    </b-button>
+                </div>
+            </b-form>
+        </b-modal>
         <b-modal id="delete-modal" :title="`Delete ${deleteType}`" centered hide-footer>
             <p>
                 Are you sure that you want to delete:<br>
@@ -247,6 +275,9 @@ export default {
             previewComp: null,
             previewName: '',
             previewSource: '',
+            renamePath: '',
+            renameOldName: '',
+            renameNewName: '',
             deleteType: 'File',
             deleteSource: '',
             isImage: false,
@@ -426,6 +457,37 @@ export default {
             this.$root.$emit('bv::show::modal', 'preview-modal')
         },
 
+        showRenameModal (path, file) {
+            this.renamePath = path
+            this.renameOldName = file
+            this.renameNewName = file
+            this.$root.$emit('bv::show::modal', 'rename-modal')
+        },
+
+        async renameFile (evt) {
+            evt.preventDefault()
+            await this.$store.dispatch('auth/inspectToken')
+
+            await this.$axios.patch(
+                'api/player/media/op/',
+                { path: this.renamePath.replace(/^\/\//g, '/'), oldname: this.renameOldName, newname: this.renameNewName }
+            )
+
+            this.getPath(this.extensions, this.lastPath)
+
+            this.renamePath = ''
+            this.renameOldName = ''
+            this.renameNewName = ''
+            this.$root.$emit('bv::hide::modal', 'rename-modal')
+        },
+
+        cancelRename () {
+            this.renamePath = ''
+            this.renameOldName = ''
+            this.renameNewName = ''
+            this.$root.$emit('bv::hide::modal', 'rename-modal')
+        },
+
         showDeleteModal (type, src) {
             this.deleteSource = src
 
@@ -544,6 +606,10 @@ export default {
 .files-col {
     min-width: 320px;
     height: 100%;
+}
+
+.small-col {
+    max-width: 50px;
 }
 
 .files-list {
