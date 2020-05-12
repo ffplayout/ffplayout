@@ -38,12 +38,14 @@ leave recipient blank, if you don't need this.
 ```YAML
 logging:
     log_to_file: True
+    backup_count: 7
     log_path: "/var/log/ffplayout/"
     log_level: "DEBUG"
     ffmpeg_level: "ERROR"
 ```
 
 Logging to file, if `log_to_file = False` > log to console.
+`backup_count` says how long log files will be saved in days.
 Path to **/var/log/** only if you run this program as *deamon*.
 `log_level` can be: **DEBUG, INFO, WARNING, ERROR**
 `ffmpeg_level` can be: **INFO, WARNING, ERROR**
