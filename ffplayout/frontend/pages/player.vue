@@ -631,11 +631,6 @@ export default {
     }
 }
 
-.date-row {
-    height: 44px;
-    padding-top: 5px;
-}
-
 .list-row {
     height: calc(100% - 40px - 254px - 46px - 70px);
     min-height: 300px;
@@ -643,11 +638,6 @@ export default {
 
 .pane-row {
     margin: 0;
-}
-
-.date-div {
-    width: 250px;
-    float: right;
 }
 
 .playlist-container {

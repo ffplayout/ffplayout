@@ -1,6 +1,11 @@
 <template>
     <div>
         <Menu />
+        <b-row class="date-row">
+            <b-col>
+                <b-datepicker v-model="listDate" size="sm" class="date-div" offset="-35px" />
+            </b-col>
+        </b-row>
         <b-card no-body>
             <b-tabs pills card vertical>
                 <b-tab title="Playout" active @click="getLog('ffplayout')">
@@ -61,11 +66,19 @@ export default {
 
     data () {
         return {
-            currentLog: null
+            logName: 'ffplayout',
+            currentLog: null,
+            listDate: this.$dayjs().format('YYYY-MM-DD')
         }
     },
 
     computed: {
+    },
+
+    watch: {
+        listDate (date) {
+            this.getLog(this.logName)
+        }
     },
 
     async created () {
@@ -75,7 +88,8 @@ export default {
     methods: {
         async getLog (type) {
             await this.$store.dispatch('auth/inspectToken')
-            const response = await this.$axios.get(`api/player/log/?type=${type}`)
+            this.logName = type
+            const response = await this.$axios.get(`api/player/log/?type=${type}&date=${this.listDate}`)
 
             if (response.data.log) {
                 this.currentLog = response.data.log

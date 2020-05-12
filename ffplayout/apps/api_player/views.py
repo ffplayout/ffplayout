@@ -129,9 +129,11 @@ class SystemCtl(APIView):
 
 class LogReader(APIView):
     def get(self, request, *args, **kwargs):
-        if 'type' in request.GET.dict():
+        if 'type' in request.GET.dict() and 'date' in request.GET.dict():
             type = request.GET.dict()['type']
-            log = read_log(type)
+            _date = request.GET.dict()['date']
+
+            log = read_log(type, _date)
 
             if log:
                 return Response({'log': log})
