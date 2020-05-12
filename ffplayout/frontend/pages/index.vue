@@ -8,18 +8,24 @@
                         <h1>ffplayout</h1>
                     </div>
                     <b-form class="login-form" @submit.prevent="login">
-                        <p v-if="formError" class="error">
-                            {{ formError }}
-                        </p>
                         <b-form-group id="input-group-1" label="User:" label-for="input-user">
                             <b-form-input id="input-user" v-model="formUsername" type="text" required placeholder="Username" />
                         </b-form-group>
                         <b-form-group id="input-group-1" label="Password:" label-for="input-pass">
                             <b-form-input id="input-pass" v-model="formPassword" type="password" required placeholder="Password" />
                         </b-form-group>
-                        <b-button type="submit" variant="primary">
-                            Login
-                        </b-button>
+                        <b-row>
+                            <b-col cols="3">
+                                <b-button type="submit" variant="primary">
+                                    Login
+                                </b-button>
+                            </b-col>
+                            <b-col cols="9">
+                                <b-alert variant="danger" :show="showError" dismissible @dismissed="showError=false">
+                                    {{ formError }}
+                                </b-alert>
+                            </b-col>
+                        </b-row>
                     </b-form>
                 </div>
             </b-container>
@@ -160,6 +166,7 @@ export default {
 
     data () {
         return {
+            showError: false,
             formError: null,
             formUsername: '',
             formPassword: '',
@@ -180,13 +187,18 @@ export default {
         },
         async login () {
             try {
-                await this.$store.dispatch('auth/obtainToken', {
+                const status = await this.$store.dispatch('auth/obtainToken', {
                     username: this.formUsername,
                     password: this.formPassword
                 })
                 this.formUsername = ''
                 this.formPassword = ''
                 this.formError = null
+
+                if (status === 401) {
+                    this.formError = 'Wrong user or password!'
+                    this.showError = true
+                }
 
                 this.checkLogin()
             } catch (e) {

@@ -33,6 +33,7 @@ export const actions = {
             username,
             password
         }
+        let code = null
         await this.$axios.post('auth/token/', payload)
             .then((response) => {
                 commit('UPADTE_TOKEN', { token: response.data.access, refresh: response.data.refresh })
@@ -47,10 +48,14 @@ export const actions = {
                     maxAge: 60 * 60 * 24 * 365,
                     sameSite: 'lax'
                 })
+
+                code = response.status
             })
             .catch((error) => {
-                console.log(error)
+                code = error.response.status
             })
+
+        return code
     },
     async refreshToken ({ commit, state }) {
         const payload = {
