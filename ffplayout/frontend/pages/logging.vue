@@ -93,6 +93,8 @@ export default {
 
             if (response.data.log) {
                 this.currentLog = response.data.log
+            } else {
+                this.currentLog = ''
             }
         },
         async getSystemLog () {
@@ -101,6 +103,8 @@ export default {
 
             if (response.data.data) {
                 this.currentLog = response.data.data
+            } else {
+                this.currentLog = ''
             }
         }
     }
