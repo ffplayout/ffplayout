@@ -27,6 +27,9 @@
                                     <div class="current-clip-text">
                                         {{ currentClip | filename }}
                                     </div>
+                                    <div class="current-clip-meta">
+                                        <strong>Duration:</strong> {{ $secToHMS(currentClipDuration) }} | <strong>In:</strong> {{ $secToHMS(currentClipIn) }} | <strong>Out:</strong> {{ $secToHMS(currentClipOut) }}
+                                    </div>
                                     <div class="current-clip-progress">
                                         <b-progress :value="progressValue" variant="warning" />
                                     </div>
@@ -302,7 +305,7 @@ export default {
     computed: {
         ...mapState('config', ['configGui', 'configPlayout']),
         ...mapState('media', ['crumbs', 'folderTree']),
-        ...mapState('playlist', ['timeStr', 'timeLeft', 'currentClip', 'progressValue']),
+        ...mapState('playlist', ['timeStr', 'timeLeft', 'currentClip', 'progressValue', 'currentClipDuration', 'currentClipIn', 'currentClipOut']),
         playlist: {
             get () {
                 return this.$store.state.playlist.playlist
@@ -346,10 +349,10 @@ export default {
 
         if (!process.env.DEV) {
             this.interval = setInterval(() => {
-                this.$store.dispatch('playlist/animClock', { dayStart: this.configPlayout.playlist.day_start })
-            }, 1000)
+                this.$store.dispatch('playlist/animClock')
+            }, 5000)
         } else {
-            this.$store.dispatch('playlist/animClock', { dayStart: this.configPlayout.playlist.day_start })
+            this.$store.dispatch('playlist/animClock')
         }
     },
 
@@ -556,10 +559,14 @@ export default {
 }
 
 .current-clip-text {
-    height: 70%;
+    height: 40%;
     padding-top: .5em;
     text-align: left;
     font-weight: bold;
+}
+
+.current-clip-meta {
+    margin-bottom: .7em;
 }
 
 .current-clip-progress {
