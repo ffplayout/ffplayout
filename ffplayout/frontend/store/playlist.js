@@ -4,6 +4,7 @@ export const state = () => ({
     playlistChannel: 'Channel 1',
     progressValue: 0,
     currentClip: 'No clips is playing',
+    currentClipIndex: null,
     currentClipStart: null,
     currentClipDuration: null,
     currentClipIn: null,
@@ -27,6 +28,9 @@ export const mutations = {
     },
     SET_CURRENT_CLIP (state, clip) {
         state.currentClip = clip
+    },
+    SET_CURRENT_CLIP_INDEX (state, index) {
+        state.currentClipIndex = index
     },
     SET_CURRENT_CLIP_START (state, start) {
         state.currentClipStart = start
@@ -77,6 +81,7 @@ export const actions = {
                 const progValue = playTime * 100 / duration
                 commit('SET_PROGRESS_VALUE', progValue)
                 commit('SET_CURRENT_CLIP', state.playlistToday[i].source)
+                commit('SET_CURRENT_CLIP_INDEX', i)
                 commit('SET_CURRENT_CLIP_START', start)
                 commit('SET_CURRENT_CLIP_DURATION', duration)
                 commit('SET_CURRENT_CLIP_IN', state.playlistToday[i].in)

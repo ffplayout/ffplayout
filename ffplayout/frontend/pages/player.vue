@@ -198,21 +198,31 @@
                                 </b-row>
                             </b-list-group-item>
                         </b-list-group>
-                        <perfect-scrollbar>
+                        <perfect-scrollbar id="scroll-container">
                             <b-list-group>
                                 <draggable
+                                    id="playlist-group"
                                     v-model="playlist"
                                     group="playlist"
                                     @start="drag=true"
                                     @end="drag=false"
                                 >
-                                    <b-list-group-item v-for="(item, index) in playlist" :key="item.key" class="playlist-item">
+                                    <b-list-group-item
+                                        v-for="(item, index) in playlist"
+                                        :id="`clip_${index}`"
+                                        :key="item.key"
+                                        class="playlist-item"
+                                        :class="index === currentClipIndex ? 'active-playlist-clip' : ''"
+                                    >
                                         <b-row class="playlist-row">
                                             <b-col cols="1" class="timecode">
                                                 {{ item.begin | secondsToTime }}
                                             </b-col>
                                             <b-col class="grabbing">
                                                 {{ item.source | filename }}
+                                                <div class="clip-progress">
+                                                    <b-progress v-if="index === currentClipIndex" height="2px" :value="progressValue" />
+                                                </div>
                                             </b-col>
                                             <b-col cols="1" class="text-center playlist-input">
                                                 <b-link @click="showModal(item.source)">
@@ -298,14 +308,15 @@ export default {
             videoOptions: {},
             previewOptions: {},
             previewComp: null,
-            previewSource: ''
+            previewSource: '',
+            autoScroll: true
         }
     },
 
     computed: {
         ...mapState('config', ['configGui', 'configPlayout']),
         ...mapState('media', ['crumbs', 'folderTree']),
-        ...mapState('playlist', ['timeStr', 'timeLeft', 'currentClip', 'progressValue', 'currentClipDuration', 'currentClipIn', 'currentClipOut']),
+        ...mapState('playlist', ['timeStr', 'timeLeft', 'currentClip', 'progressValue', 'currentClipIndex', 'currentClipDuration', 'currentClipIn', 'currentClipOut']),
         playlist: {
             get () {
                 return this.$store.state.playlist.playlist
@@ -346,10 +357,20 @@ export default {
         }
 
         await this.getPlaylist()
+    },
 
+    mounted () {
         if (!process.env.DEV) {
             this.interval = setInterval(() => {
                 this.$store.dispatch('playlist/animClock')
+                const child = document.getElementById(`clip_${this.currentClipIndex}`)
+
+                if (child && this.autoScroll) {
+                    const parent = document.getElementById('scroll-container')
+                    const topPos = child.offsetTop
+                    parent.scrollTop = topPos - 50
+                    this.autoScroll = false
+                }
             }, 5000)
         } else {
             this.$store.dispatch('playlist/animClock')
@@ -665,6 +686,15 @@ export default {
 
 .playlist-item:nth-of-type(even):hover {
     background-color: #1C1E22;
+}
+
+.clip-progress {
+    height: 5px;
+    padding-top: 3px;
+}
+
+.active-playlist-clip {
+    background-color: #49515c !important;
 }
 
 </style>
