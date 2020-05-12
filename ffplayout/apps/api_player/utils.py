@@ -1,6 +1,6 @@
 import json
 import os
-from datetime import date
+from datetime import datetime
 from platform import uname
 from subprocess import PIPE, STDOUT, run
 from time import sleep
@@ -55,7 +55,7 @@ def read_log(type, _date):
     config = read_yaml()
     log_path = config['logging']['log_path']
 
-    if _date == date.today():
+    if _date == datetime.now().strftime('%Y-%m-%d'):
         log_file = os.path.join(log_path, '{}.log'.format(type))
     else:
         log_file = os.path.join(log_path, '{}.log.{}'.format(type, _date))
