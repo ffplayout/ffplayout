@@ -59,8 +59,7 @@ export const actions = {
     },
     async refreshToken ({ commit, state }) {
         const payload = {
-            refresh: state.jwtRefresh,
-            progress: false
+            refresh: state.jwtRefresh
         }
 
         await this.$axios.post('auth/token/refresh/', payload)
@@ -70,9 +69,7 @@ export const actions = {
             })
             .catch((error) => {
                 if (error.response.status === 401) {
-                    this.$cookies.remove('token')
-                    this.$cookies.remove('refresh')
-                    commit('UPADTE_TOKEN', { token: null, refresh: null })
+                    commit('REMOVE_TOKEN')
                     commit('UPDATE_IS_LOGIN', false)
                 }
             })
