@@ -40,7 +40,6 @@ export const actions = {
                 crumbs.push({ text: pathArr[pathArr.length - 1], path: '' })
             }
 
-            // console.log(crumbs)
             commit('UPDATE_CURRENT_PATH', path)
             commit('UPDATE_CRUMBS', crumbs)
             commit('UPDATE_FOLDER_TREE', response.data)
