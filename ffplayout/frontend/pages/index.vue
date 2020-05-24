@@ -201,6 +201,9 @@ export default {
                 }
 
                 this.checkLogin()
+                this.$store.dispatch('config/getGuiConfig')
+                this.$store.dispatch('config/getPlayoutConfig')
+                this.$store.dispatch('config/getUserConfig')
             } catch (e) {
                 this.formError = e.message
             }
