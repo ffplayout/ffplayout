@@ -378,6 +378,7 @@ export default {
             evt.preventDefault()
             const uploadProgress = fileName => (progressEvent) => {
                 const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total)
+                this.$store.dispatch('auth/inspectToken')
                 this.currentProgress = progress
             }
 
@@ -395,10 +396,10 @@ export default {
                     file,
                     config
                 )
-                    .then(
-                        this.overallProgress = (i + 1) * 100 / this.inputFiles.length,
+                    .then((res) => {
+                        this.overallProgress = (i + 1) * 100 / this.inputFiles.length
                         this.currentProgress = 0
-                    )
+                    })
                     .catch(err => console.log(err))
             }
 
