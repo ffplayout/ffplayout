@@ -25,6 +25,14 @@ export const mutations = {
 }
 
 export const actions = {
+    async nuxtClientInit ({ commit, dispatch, rootState }) {
+        if (rootState.auth.isLogin) {
+            await dispatch('getGuiConfig')
+            await dispatch('getPlayoutConfig')
+            await dispatch('getUserConfig')
+        }
+    },
+
     async getGuiConfig ({ commit, state }) {
         const options = await this.$axios.options('api/player/guisettings/')
         const response = await this.$axios.get('api/player/guisettings/')
@@ -67,6 +75,7 @@ export const actions = {
         } else {
             response = await this.$axios.put(`api/player/guisettings/${obj.id}/`, stringObj)
         }
+
         return response
     },
 

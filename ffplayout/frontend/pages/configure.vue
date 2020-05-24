@@ -213,6 +213,7 @@
 </template>
 
 <script>
+import { mapState } from 'vuex'
 import Menu from '@/components/Menu.vue'
 
 export default {
@@ -223,18 +224,8 @@ export default {
         Menu
     },
 
-    async asyncData ({ app, store }) {
-        if (store.state.auth.isLogin) {
-            await store.dispatch('config/getGuiConfig')
-            await store.dispatch('config/getPlayoutConfig')
-            await store.dispatch('config/getUserConfig')
-        }
-
+    data () {
         return {
-            configGui: store.state.config.configGui,
-            netChoices: store.state.config.netChoices,
-            configPlayout: store.state.config.configPlayout,
-            configUser: store.state.config.configUser,
             oldPass: null,
             newPass: null,
             confirmPass: null,
@@ -244,8 +235,31 @@ export default {
         }
     },
 
-    data () {
-        return {
+    computed: {
+        ...mapState('config', ['netChoices']),
+        configGui: {
+            get () {
+                return this.$store.state.config.configGui
+            },
+            set (config) {
+                this.$store.commit('config/UPDATE_GUI_CONFIG', config)
+            }
+        },
+        configPlayout: {
+            get () {
+                return this.$store.state.config.configPlayout
+            },
+            set (config) {
+                this.$store.commit('config/UPDATE_PLAYLOUT_CONFIG', config)
+            }
+        },
+        configUser: {
+            get () {
+                return this.$store.state.config.configUser
+            },
+            set (config) {
+                this.$store.commit('config/UPDATE_USER_CONFIG', config)
+            }
         }
     },
 

@@ -44,6 +44,7 @@ export default {
     plugins: [
         { src: '~/plugins/axios' },
         { src: '~/plugins/filters' },
+        { src: '~/plugins/nuxt-client-init.js', ssr: false },
         { src: '~plugins/video.js', ssr: false },
         { src: '~plugins/scrollbar.js', ssr: false },
         { src: '~plugins/splitpanes.js', ssr: false },
