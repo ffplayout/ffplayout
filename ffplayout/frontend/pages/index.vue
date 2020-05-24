@@ -231,7 +231,6 @@ export default {
 
             if (process.browser) {
                 this.interval = setInterval(async () => {
-                    await this.$store.dispatch('auth/inspectToken')
                     const response = await this.$axios.get('api/player/stats/?stats=all')
                     this.stat = response.data
                 }, 2000)

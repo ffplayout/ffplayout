@@ -62,10 +62,20 @@ export const actions = {
             refresh: state.jwtRefresh,
             progress: false
         }
-        const response = await this.$axios.post('auth/token/refresh/', payload)
 
-        commit('UPADTE_TOKEN', { token: response.data.access })
-        commit('UPDATE_IS_LOGIN', true)
+        await this.$axios.post('auth/token/refresh/', payload)
+            .then((response) => {
+                commit('UPADTE_TOKEN', { token: response.data.access })
+                commit('UPDATE_IS_LOGIN', true)
+            })
+            .catch((error) => {
+                if (error.response.status === 401) {
+                    this.$cookies.remove('token')
+                    this.$cookies.remove('refresh')
+                    commit('UPADTE_TOKEN', { token: null, refresh: null })
+                    commit('UPDATE_IS_LOGIN', false)
+                }
+            })
     },
 
     async inspectToken ({ commit, dispatch, state }) {

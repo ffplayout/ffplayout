@@ -335,7 +335,6 @@ export default {
     },
 
     async created () {
-        await this.getConfig()
         await this.getStatus()
 
         this.extensions = this.configPlayout.storage.extensions.join(' ')
@@ -382,20 +381,12 @@ export default {
     },
 
     methods: {
-        async getConfig () {
-            await this.$store.dispatch('auth/inspectToken')
-            await this.$store.dispatch('config/getGuiConfig')
-            await this.$store.dispatch('config/getPlayoutConfig')
-        },
         async getPath (extensions, path) {
             this.isLoading = true
-            await this.$store.dispatch('auth/inspectToken')
             await this.$store.dispatch('media/getTree', { extensions, path })
             this.isLoading = false
         },
         async getStatus () {
-            await this.$store.dispatch('auth/inspectToken')
-
             const status = await this.$axios.post('api/player/system/', { run: 'status' })
 
             if (status.data.data && status.data.data === 'active') {
@@ -405,13 +396,11 @@ export default {
             }
         },
         async playoutControl (state) {
-            await this.$store.dispatch('auth/inspectToken')
             await this.$axios.post('api/player/system/', { run: state })
 
             setTimeout(() => { this.getStatus() }, 1000)
         },
         async getPlaylist () {
-            await this.$store.dispatch('auth/inspectToken')
             await this.$store.dispatch('playlist/getPlaylist', { dayStart: this.configPlayout.playlist.day_start, date: this.listDate })
         },
         showModal (src) {
@@ -464,7 +453,6 @@ export default {
             await this.$store.dispatch('playlist/getPlaylist', { dayStart: this.configPlayout.playlist.day_start, date: this.listDate })
         },
         async savePlaylist () {
-            await this.$store.dispatch('auth/inspectToken')
             this.$store.commit('playlist/UPDATE_PLAYLIST', this.$processPlaylist(
                 this.configPlayout.playlist.day_start, this.playlist))
 

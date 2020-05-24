@@ -275,7 +275,6 @@ export default {
 
     methods: {
         async getPreset (preset) {
-            await this.$store.dispatch('auth/inspectToken')
             let req = ''
 
             if (preset) {
@@ -316,7 +315,6 @@ export default {
             this.createPreset()
         },
         async createPreset () {
-            await this.$store.dispatch('auth/inspectToken')
             const preset = {
                 name: this.newPresetName,
                 message: this.form.text,
@@ -346,7 +344,6 @@ export default {
             })
         },
         async savePreset () {
-            await this.$store.dispatch('auth/inspectToken')
             if (this.selected) {
                 const preset = {
                     id: this.form.id,
@@ -383,7 +380,6 @@ export default {
             this.deletePreset()
         },
         async deletePreset () {
-            await this.$store.dispatch('auth/inspectToken')
             if (this.selected) {
                 await this.$axios.delete(`api/player/messenger/${this.form.id}/`)
             }
@@ -393,7 +389,6 @@ export default {
         },
 
         async submitMessage () {
-            await this.$store.dispatch('auth/inspectToken')
             function aToHex (num) {
                 return '0x' + Math.round(num * 255).toString(16)
             }

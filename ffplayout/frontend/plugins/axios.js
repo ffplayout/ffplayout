@@ -1,4 +1,6 @@
-export default function ({ $axios, store, redirect }) {
+export default async function ({ $axios, store, redirect }) {
+    await store.dispatch('auth/inspectToken')
+
     $axios.onRequest((config) => {
         const token = store.state.auth.jwtToken
         if (token) {

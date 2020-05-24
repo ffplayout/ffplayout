@@ -294,11 +294,7 @@ export default {
         ...mapState('media', ['crumbs', 'folderTree'])
     },
 
-    async created () {
-        await this.$store.dispatch('auth/inspectToken')
-        await this.$store.dispatch('config/getGuiConfig')
-        await this.$store.dispatch('config/getPlayoutConfig')
-
+    created () {
         this.extensions = [...this.configPlayout.storage.extensions, ...this.configGui.extra_extensions].join(' ')
         this.getPath(this.extensions, '')
     },
@@ -307,7 +303,6 @@ export default {
         async getPath (extensions, path) {
             this.lastPath = path
             this.isLoading = true
-            await this.$store.dispatch('auth/inspectToken')
             await this.$store.dispatch('media/getTree', { extensions, path })
             this.isLoading = false
         },
@@ -349,7 +344,6 @@ export default {
 
         async onSubmitCreateFolder (evt) {
             evt.preventDefault()
-            await this.$store.dispatch('auth/inspectToken')
 
             await this.$axios.post(
                 'api/player/media/op/',
@@ -389,7 +383,6 @@ export default {
             }
 
             for (const [i, file] of this.inputFiles.entries()) {
-                await this.$store.dispatch('auth/inspectToken')
                 this.uploadTask = file.name
 
                 const config = {
@@ -466,7 +459,6 @@ export default {
 
         async renameFile (evt) {
             evt.preventDefault()
-            await this.$store.dispatch('auth/inspectToken')
 
             await this.$axios.patch(
                 'api/player/media/op/',
@@ -502,7 +494,6 @@ export default {
         },
 
         async deleteFileOrFolder () {
-            await this.$store.dispatch('auth/inspectToken')
             let file
             let pathName
 
