@@ -375,7 +375,6 @@ export default {
         },
 
         async onSubmitUpload (evt) {
-            // console.log(evt)
             evt.preventDefault()
             const uploadProgress = fileName => (progressEvent) => {
                 const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total)
