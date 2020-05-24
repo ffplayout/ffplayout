@@ -162,6 +162,7 @@
             centered
             title="File Upload"
             hide-footer
+            no-close-on-backdrop
         >
             <b-form @submit="onSubmitUpload" @reset="onResetUpload">
                 <b-form-file
