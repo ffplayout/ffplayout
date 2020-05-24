@@ -3,8 +3,8 @@ import shutil
 from urllib.parse import unquote
 
 from apps.api_player.models import GuiSettings, MessengePresets
-from apps.api_player.serializers import (GuiSettingsSerializer, MessengerSerializer,
-                                    UserSerializer)
+from apps.api_player.serializers import (GuiSettingsSerializer,
+                                         MessengerSerializer, UserSerializer)
 from django.contrib.auth.models import User
 from django_filters import rest_framework as filters
 from rest_framework import viewsets
@@ -230,9 +230,9 @@ class FileOperations(APIView):
     def delete(self, request, *args, **kwargs):
         if 'file' in request.GET.dict() and 'path' in request.GET.dict():
             root = read_yaml()['storage']['path']
-            _file = request.GET.dict()['file']
-            _path = os.path.join(
-                *(request.GET.dict()['path'].split(os.path.sep)[2:]))
+            _file = unquote(request.GET.dict()['file'])
+            folder = unquote(request.GET.dict()['path']).lstrip('/')
+            _path = os.path.join(*(folder.split(os.path.sep)[1:]))
             fullPath = os.path.join(root, _path)
 
             if not _file or _file == 'null':
@@ -240,12 +240,12 @@ class FileOperations(APIView):
                     shutil.rmtree(fullPath, ignore_errors=True)
                     return Response(status=200)
                 else:
-                    Response(status=404)
+                    return Response(status=404)
             elif os.path.isfile(os.path.join(fullPath, _file)):
                 os.remove(os.path.join(fullPath, _file))
                 return Response(status=200)
             else:
-                Response(status=404)
+                return Response(status=404)
         else:
             return Response(status=404)
 
