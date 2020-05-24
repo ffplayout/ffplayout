@@ -26,6 +26,7 @@ export const mutations = {
 
 export const actions = {
     async nuxtClientInit ({ commit, dispatch, rootState }) {
+        await dispatch('auth/inspectToken', null, { root: true })
         if (rootState.auth.isLogin) {
             await dispatch('getGuiConfig')
             await dispatch('getPlayoutConfig')
