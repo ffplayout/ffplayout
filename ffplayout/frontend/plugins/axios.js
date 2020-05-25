@@ -17,7 +17,7 @@ export default function ({ $axios, store, redirect }) {
         const originalRequest = error.config
 
         // prevent infinite loop
-        if (error.response.status === 401 && originalRequest.url.includes('auth/refresh/refresh')) {
+        if (error.response.status === 401 && originalRequest.url.includes('auth/refresh')) {
             store.commit('auth/REMOVE_TOKEN')
             redirect('/')
             return Promise.reject(error)
