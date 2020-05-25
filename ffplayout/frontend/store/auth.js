@@ -11,19 +11,29 @@ export const state = () => ({
 export const mutations = {
     UPADTE_TOKEN (state, obj) {
         state.jwtToken = obj.token
+        this.$cookies.set('token', obj.token, {
+            path: '/',
+            maxAge: 60 * 60 * 24 * 365,
+            sameSite: 'lax'
+        })
 
         if (obj.refresh) {
             state.jwtRefresh = obj.refresh
+            this.$cookies.set('refresh', obj.refresh, {
+                path: '/',
+                maxAge: 60 * 60 * 24 * 365,
+                sameSite: 'lax'
+            })
         }
+    },
+    UPDATE_IS_LOGIN (state, bool) {
+        state.isLogin = bool
     },
     REMOVE_TOKEN (state) {
         this.$cookies.remove('token')
         this.$cookies.remove('refresh')
         state.jwtToken = null
         state.jwtRefresh = null
-    },
-    UPDATE_IS_LOGIN (state, bool) {
-        state.isLogin = bool
     }
 }
 
@@ -38,17 +48,6 @@ export const actions = {
             .then((response) => {
                 commit('UPADTE_TOKEN', { token: response.data.access, refresh: response.data.refresh })
                 commit('UPDATE_IS_LOGIN', true)
-                this.$cookies.set('token', response.data.access, {
-                    path: '/',
-                    maxAge: 60 * 60 * 24 * 365,
-                    sameSite: 'lax'
-                })
-                this.$cookies.set('refresh', response.data.refresh, {
-                    path: '/',
-                    maxAge: 60 * 60 * 24 * 365,
-                    sameSite: 'lax'
-                })
-
                 code = response.status
             })
             .catch((error) => {
@@ -86,7 +85,8 @@ export const actions = {
             const timestamp = Date.now() / 1000
             const expire_token = decoded_token.exp
             const expire_refresh = decoded_refresh.exp
-            if (expire_token - timestamp > 0) {
+
+            if (expire_token - timestamp > 15) {
                 // DO NOTHING, DO NOT REFRESH
                 commit('UPDATE_IS_LOGIN', true)
             } else if (expire_refresh - timestamp > 0) {
