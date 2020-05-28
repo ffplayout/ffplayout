@@ -1,4 +1,4 @@
-export default function ({ $axios, store, redirect }) {
+export default function ({ $axios, store, redirect, route }) {
     $axios.onRequest((config) => {
         const token = store.state.auth.jwtToken
         if (token) {
@@ -17,13 +17,13 @@ export default function ({ $axios, store, redirect }) {
         const originalRequest = error.config
 
         // prevent infinite loop
-        if (error.response.status === 401 && originalRequest.url.includes('auth/refresh')) {
+        if (error.response.status === 401 && originalRequest.url.includes('auth/refresh') && route.path !== '/') {
             store.commit('auth/REMOVE_TOKEN')
             redirect('/')
             return Promise.reject(error)
         }
 
-        if (error.response.status === 401 && !originalRequest._retry) {
+        if (error.response.status === 401 && !originalRequest._retry && !originalRequest.url.includes('auth/token')) {
             originalRequest._retry = true
             return $axios.post('auth/token/refresh/', {
                 refresh: store.state.auth.jwtRefresh
@@ -42,8 +42,11 @@ export default function ({ $axios, store, redirect }) {
     $axios.onError((error) => {
         const code = parseInt(error.response && error.response.status)
 
-        if (code === 400) {
+        if (code === 401 && route.path !== '/') {
             redirect('/')
+        } else if (code !== 401) {
+            store.commit('UPDATE_SHOW_ERROR_ALERT', true)
+            store.commit('UPDATE_ERROR_AERT_MESSAGE', error)
         }
     })
 }
