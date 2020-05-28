@@ -1,8 +1,36 @@
 <template>
     <div>
         <nuxt />
+        <b-alert
+            :show="showErrorAlert"
+            dismissible
+            variant="danger"
+            class="status-alert"
+            @dismissed="showErrorAlert=!showErrorAlert"
+        >
+            <p>{{ ErrorAlertMessage }}</p>
+        </b-alert>
     </div>
 </template>
+
+<script>
+import { mapState } from 'vuex'
+
+export default {
+    computed: {
+        ...mapState(['ErrorAlertMessage']),
+
+        showErrorAlert: {
+            get () {
+                return this.$store.state.showErrorAlert
+            },
+            set () {
+                this.$store.commit('UPDATE_SHOW_ERROR_ALERT', false)
+            }
+        }
+    }
+}
+</script>
 
 <style>
 html, body {
@@ -23,5 +51,16 @@ html, body {
 
 a {
     color: #c4c4c4;
+}
+
+.status-alert {
+    position: fixed;
+    z-index: 1001;
+    top: 55px;
+    right: 10px;
+    width: 400px;
+    max-width: 500px;
+    height: 100px;
+    max-height: 100px;
 }
 </style>
