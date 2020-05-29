@@ -119,8 +119,8 @@ def overlay_filter(duration, ad, ad_last, ad_next):
 
     if _pre_comp.add_logo and os.path.isfile(_pre_comp.logo) and not ad:
         logo_chain = []
-        opacity = 'format=rgba,colorchannelmixer=aa={}'.format(
-            _pre_comp.opacity)
+        opacity = 'format=rgba,scale={},colorchannelmixer=aa={}'.format(
+            _pre_comp.logo_scale, _pre_comp.logo_opacity)
         loop = 'loop=loop=-1:size=1:start=0'
         logo_chain.append(
             'movie={},{},{}'.format(_pre_comp.logo, loop, opacity))
