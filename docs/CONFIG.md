@@ -58,6 +58,7 @@ pre_compress:
     fps: 25
     add_logo: True
     logo: "docs/logo.png"
+    logo_scale: "100:-1"
     logo_opacity: 0.7
     logo_filter: "overlay=W-w-12:12"
     add_loudnorm: False
@@ -69,6 +70,7 @@ pre_compress:
 ffmpeg pre-compression settings, all clips get prepared in that way,
 so the input for the final compression is unique.
 - `aspect` mus be a float number.
+- with `logo_scale = 100:-1` logo can be scaled
 - with `logo_opacity` logo can make transparent
 - with `logo_filter = overlay=W-w-12:12` you can modify the logo position
 - with use_loudnorm you can activate single pass EBU R128 loudness normalization

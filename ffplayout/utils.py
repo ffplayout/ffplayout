@@ -159,7 +159,7 @@ def load_config():
     else:
         p_start = str_to_sec(cfg['playlist']['day_start'])
 
-    if not p_start:
+    if p_start is None:
         p_start = get_time('full_sec')
 
     if stdin_args.length:
@@ -180,8 +180,9 @@ def load_config():
 
     _pre_comp.add_logo = cfg['pre_compress']['add_logo']
     _pre_comp.logo = cfg['pre_compress']['logo']
-    _pre_comp.opacity = cfg['pre_compress']['logo_opacity']
+    _pre_comp.logo_scale = cfg['pre_compress']['logo_scale']
     _pre_comp.logo_filter = cfg['pre_compress']['logo_filter']
+    _pre_comp.logo_opacity = cfg['pre_compress']['logo_opacity']
     _pre_comp.add_loudnorm = cfg['pre_compress']['add_loudnorm']
     _pre_comp.loud_i = cfg['pre_compress']['loud_I']
     _pre_comp.loud_tp = cfg['pre_compress']['loud_TP']
