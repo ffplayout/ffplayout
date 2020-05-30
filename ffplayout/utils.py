@@ -204,6 +204,7 @@ def load_config():
 
     if _init.load:
         _log.to_file = cfg['logging']['log_to_file']
+        _log.backup_count = cfg['logging']['backup_count']
         _log.path = cfg['logging']['log_path']
         _log.level = cfg['logging']['log_level']
         _log.ff_level = cfg['logging']['ffmpeg_level']
@@ -307,11 +308,11 @@ if _log.to_file and _log.path != 'none':
     p_format = logging.Formatter('[%(asctime)s] [%(levelname)s]  %(message)s')
     f_format = logging.Formatter('[%(asctime)s]  %(message)s')
     p_file_handler = TimedRotatingFileHandler(playout_log, when='midnight',
-                                              backupCount=5)
+                                              backupCount=_log.backup_count)
     d_file_handler = TimedRotatingFileHandler(decoder_log, when='midnight',
-                                              backupCount=5)
+                                              backupCount=_log.backup_count)
     e_file_handler = TimedRotatingFileHandler(encoder_log, when='midnight',
-                                              backupCount=5)
+                                              backupCount=_log.backup_count)
 
     p_file_handler.setFormatter(p_format)
     d_file_handler.setFormatter(f_format)
@@ -990,8 +991,6 @@ def pre_audio_codec():
     """
     if _pre_comp.add_loudnorm:
         acodec = 'libtwolame' if 'libtwolame' in FF_LIBS['libs'] else 'mp2'
-        audio = ['-c:a', acodec, '-b:a', '384k', '-ar', '48000', '-ac', '2']
+        return ['-c:a', acodec, '-b:a', '384k', '-ar', '48000', '-ac', '2']
     else:
-        audio = ['-c:a', 's302m', '-strict', '-2', '-ar', '48000', '-ac', '2']
-
-    return audio
+        return ['-c:a', 's302m', '-strict', '-2', '-ar', '48000', '-ac', '2']

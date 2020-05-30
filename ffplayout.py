@@ -37,7 +37,7 @@ except ImportError:
     print('colorama import failed, no colored console output on windows...')
 
 _WINDOWS = os.name == 'nt'
-COPY_BUFSIZE = 1024 * 1024 if _WINDOWS else 64 * 1024
+COPY_BUFSIZE = 1024 * 1024 if _WINDOWS else 65424
 
 
 # ------------------------------------------------------------------------------
@@ -66,7 +66,8 @@ def main():
             _text.address
         ))
         overlay = [
-            '-vf', "null,zmq=b=tcp\\\://'{}',drawtext=text='':fontfile='{}'".format(
+            '-vf',
+            "null,zmq=b=tcp\\\\://'{}',drawtext=text='':fontfile='{}'".format(
                 _text.address.replace(':', '\\:'), _text.fontfile)
         ]
 
@@ -79,8 +80,8 @@ def main():
         else:
             _ff.encoder = Popen([
                 'ffmpeg', '-v', _log.ff_level.lower(), '-hide_banner',
-                '-nostats', '-re', '-thread_queue_size', '256',
-                '-i', 'pipe:0'] + overlay + [
+                '-nostats', '-re', '-thread_queue_size', '256', '-i', 'pipe:0'
+                ] + overlay + [
                     '-metadata', 'service_name=' + _playout.name,
                     '-metadata', 'service_provider=' + _playout.provider,
                     '-metadata', 'year={}'.format(year)
