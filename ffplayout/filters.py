@@ -19,9 +19,9 @@
 
 import math
 import os
+import re
 
 from .utils import _pre_comp
-
 
 # ------------------------------------------------------------------------------
 # building filters,
@@ -116,14 +116,18 @@ def overlay_filter(duration, ad, ad_last, ad_next):
     when clip before was an ad fade logo in
     """
     logo_filter = '[v]null[logo]'
+    scale_filter = ''
 
     if _pre_comp.add_logo and os.path.isfile(_pre_comp.logo) and not ad:
         logo_chain = []
-        opacity = 'format=rgba,scale={},colorchannelmixer=aa={}'.format(
-            _pre_comp.logo_scale, _pre_comp.logo_opacity)
+        if _pre_comp.logo_scale and \
+                re.match(r'\d+:-?\d+', _pre_comp.logo_scale):
+            scale_filter = 'scale={},'.format(_pre_comp.logo_scale)
+        logo_extras = 'format=rgba,{}colorchannelmixer=aa={}'.format(
+            scale_filter, _pre_comp.logo_opacity)
         loop = 'loop=loop=-1:size=1:start=0'
         logo_chain.append(
-            'movie={},{},{}'.format(_pre_comp.logo, loop, opacity))
+            'movie={},{},{}'.format(_pre_comp.logo, loop, logo_extras))
         if ad_last:
             logo_chain.append('fade=in:st=0:d=1.0:alpha=1')
         if ad_next:
