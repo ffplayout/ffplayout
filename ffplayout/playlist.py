@@ -109,7 +109,8 @@ class GetSourceFromPlaylist:
             # when we have no playlist for the current day,
             # then we generate a black clip
             # and calculate the seek in time, for when the playlist comes back
-            self.eof_handling('Playlist not exist:', False)
+            self.eof_handling(
+                'Playlist not exist:\n{}'.format(self.json_file), False)
 
     def get_clip_in_out(self, node):
         if is_float(node["in"]):
@@ -184,6 +185,8 @@ class GetSourceFromPlaylist:
     def eof_handling(self, message, fill):
         self.seek = 0.0
         self.ad = False
+
+        messenger.error(message)
 
         current_delta, total_delta = get_delta(self.begin)
 
