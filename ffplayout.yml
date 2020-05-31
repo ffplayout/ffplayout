@@ -34,7 +34,9 @@ logging:
 pre_compress:
     helptext: Settings for the pre-compression. All clips get prepared in that way,
         so the input for the final compression is unique. 'aspect' must be a float
-        number. 'logo' is only used if the path exist. With 'logo_opacity' logo can
+        number. 'logo' is only used if the path exist. 'logo_scale' scale the logo to
+        target size, leave it blank when no scaling is needed, format is 'number:number',
+        for example '100:-1' for proportional scaling. With 'logo_opacity' logo can
         become transparent. With 'logo_filter' 'overlay=W-w-12:12' you can modify
         the logo position. With 'use_loudnorm' you can activate single pass EBU R128
         loudness normalization. 'loud_*' can adjust the loudnorm filter. [Output is
@@ -45,7 +47,7 @@ pre_compress:
     fps: 25
     add_logo: True
     logo: "docs/logo.png"
-    logo_scale: "100:-1"
+    logo_scale:
     logo_opacity: 0.7
     logo_filter: "overlay=W-w-12:12"
     add_loudnorm: False
