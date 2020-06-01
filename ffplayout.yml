@@ -81,7 +81,7 @@ storage:
     shuffle: True
 
 text:
-    helptext: Overlay text in combination with messenger 'https://github.com/ffplayout/messenger'.
+    helptext: Overlay text in combination with libzmq for remote text manipulation.
         On windows fontfile path need to be like this 'C\:/WINDOWS/fonts/DejaVuSans.ttf'.
         In a standard environment the filter drawtext node is Parsed_drawtext_2.
     add_text: False
