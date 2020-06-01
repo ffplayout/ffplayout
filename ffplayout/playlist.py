@@ -106,11 +106,7 @@ class GetSourceFromPlaylist:
                 messenger.info('Open: ' + self.json_file)
                 validate_thread(self.clip_nodes)
         else:
-            # when we have no playlist for the current day,
-            # then we generate a black clip
-            # and calculate the seek in time, for when the playlist comes back
-            self.eof_handling(
-                'Playlist not exist:\n{}'.format(self.json_file), False)
+            self.clip_nodes = None
 
     def get_clip_in_out(self, node):
         if is_float(node["in"]):
@@ -182,19 +178,24 @@ class GetSourceFromPlaylist:
             self.last_mod_time = 0.0
             self.last_time = _playlist.start - 1
 
-    def eof_handling(self, message, fill):
+    def eof_handling(self, message, fill, duration=None):
         self.seek = 0.0
         self.ad = False
 
         messenger.error(message)
 
-        current_delta, total_delta = get_delta(self.begin)
+        if duration:
+            self.out = duration
+            self.duration = duration
+            self.first = True
+        else:
+            current_delta, total_delta = get_delta(self.begin)
+            self.out = abs(total_delta)
+            self.duration = abs(total_delta)
+            self.first = False
 
-        self.out = abs(total_delta)
-        self.duration = abs(total_delta) + 1
         self.list_date = get_date(False)
         self.last_mod_time = 0.0
-        self.first = False
         self.last_time = 0.0
 
         if self.duration > 2 and fill:
@@ -222,7 +223,8 @@ class GetSourceFromPlaylist:
             self.get_playlist()
 
             if self.clip_nodes is None:
-                self.eof_handling('Playlist is empty!', True)
+                self.eof_handling(
+                    'No valid playlist:\n{}'.format(self.json_file), True, 300)
                 yield self.src_cmd + self.filtergraph
                 continue
 
