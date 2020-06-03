@@ -21,7 +21,7 @@
     "nuxt": "^2.12.2",
     "nuxt-dayjs-module": "^1.1.2",
     "splitpanes": "^2.2.1",
-    "video.js": "^7.7.6",
+    "video.js": "^7.8.2",
     "vue-loading-overlay": "^3.3.2",
     "vue2-perfect-scrollbar": "^1.5.0",
     "vuedraggable": "^2.23.2"
