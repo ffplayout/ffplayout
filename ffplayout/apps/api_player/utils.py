@@ -1,5 +1,6 @@
 import json
 import os
+import re
 from datetime import datetime
 from platform import uname
 from subprocess import PIPE, STDOUT, run
@@ -82,7 +83,8 @@ def send_message(data):
     for key, value in data.items():
         request += "{}='{}':".format(key, value)
 
-    request = "{} reinit {}".format(settings.DRAW_TEXT_NODE, request.rstrip(':'))
+    request = "{} reinit {}".format(
+        settings.DRAW_TEXT_NODE, request.rstrip(':'))
 
     client.send_string(request)
 
@@ -218,7 +220,7 @@ class SystemStats:
     def net_speed(self):
         net = psutil.net_if_stats()
 
-        if not 'net_interface' in self.config or \
+        if 'net_interface' not in self.config or \
                 not self.config['net_interface']:
             return
 
@@ -249,30 +251,22 @@ class SystemStats:
         }
 
 
-def get_media_path(extensions, dir=None):
+def get_media_path(extensions, _dir=''):
     config = read_yaml()
     extensions = extensions.split(' ')
     playout_extensions = config['storage']['extensions']
     gui_extensions = [x for x in extensions if x not in playout_extensions]
-    media_path = config['storage']['path'].replace('\\', '/').rstrip('/')
-    media_dir = media_path.split('/')[-1]
-    media_root = os.path.dirname(media_path)
-    if not dir:
-        dir = media_path
-    else:
-        if '/..' in dir:
-            # remove last folder to navigate in upper directory
-            dir = '/'.join(dir.split('/')[:-2])
+    media_root_list = config['storage']['path'].strip('/').split('/')
+    media_root_list.pop()
+    media_root = '/' + '/'.join(media_root_list)
 
-        dir = dir.lstrip('/')
+    if _dir:
+        _dir = os.path.abspath(os.path.join(media_root, _dir.strip('/')))
 
-        if dir.startswith(media_dir):
-            dir = dir[len(media_dir):]
+    if not _dir.startswith(config['storage']['path']):
+        _dir = os.path.join(config['storage']['path'], _dir.strip('/'))
 
-        dir = os.path.join(
-            media_root, media_dir, os.path.abspath('/' + dir).strip('/'))
-
-    for root, dirs, files in os.walk(dir, topdown=True):
+    for root, dirs, files in os.walk(_dir, topdown=True):
         root = root.rstrip('/')
         media_files = []
 
@@ -295,13 +289,9 @@ def get_media_path(extensions, dir=None):
 
         dirs = natsorted(dirs)
 
-        if root != media_path:
+        if root.strip('/') != config['storage']['path'].strip('/') or not dirs:
             dirs.insert(0, '..')
 
-        if not dirs:
-            dirs = ['..']
-
-        if root.startswith(media_root):
-            root = root[len(media_root):]
+        root = re.sub(r'^{}'.format(media_root), '', root).strip('/')
 
         return [root, dirs, natsorted(media_files, key=lambda x: x['file'])]
