@@ -223,7 +223,6 @@
 </template>
 
 <script>
-// import { mapState } from 'vuex'
 import Menu from '@/components/Menu.vue'
 
 export default {
@@ -406,7 +405,7 @@ export default {
                 boxborderw: this.form.border
             }
 
-            const response = await this.$axios.post('api/player/messenger/send/', { data: obj })
+            const response = await this.$axios.post('api/player/send/message/', { data: obj })
 
             if (response.data && response.data.status.Success && response.data.status.Success === '0 Success') {
                 this.success = true
@@ -418,7 +417,7 @@ export default {
 }
 </script>
 
-<style>
+<style scoped>
 .messege-container {
     margin-top: 5em;
 }
@@ -426,5 +425,10 @@ export default {
 .preset-div {
     width: 50%;
     margin-bottom: 2em;
+}
+
+.sub-btn {
+    min-width: 90px;
+    max-width: 100px;
 }
 </style>

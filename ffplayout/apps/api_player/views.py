@@ -58,7 +58,10 @@ class MessengerViewSet(viewsets.ModelViewSet):
     filterset_class = MessengerFilter
 
 
-class MessegeSender(APIView):
+class MessageSender(APIView):
+    """
+    send messages with zmq to the playout engine
+    """
 
     def post(self, request, *args, **kwargs):
         if 'data' in request.data:
