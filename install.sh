@@ -148,13 +148,40 @@ fi
 
 echo ""
 echo "-----------------------------------------------------------------------------------------------------"
+echo "install ffplayout engine"
+echo "-----------------------------------------------------------------------------------------------------"
+
+cd /opt
+git clone https://github.com/ffplayout/ffplayout-engine.git
+cd ffplayout-engine
+
+virtualenv -p python3 venv
+source ./venv/bin/activate
+
+pip install -r requirements-base.txt
+
+mkdir /etc/ffplayout
+mkdir /var/log/ffplayout
+
+cp ffplayout.yml /etc/ffplayout/
+chown -R www-data. /etc/ffplayout
+chown www-data. /var/log/ffplayout
+
+cp docs/ffplayout-engine.service /etc/systemd/system/
+sed -i "s/User=root/User=www-data/g" /etc/systemd/system/ffplayout-engine.service
+sed -i "s/Group=root/Group=www-data/g" /etc/systemd/system/ffplayout-engine.service
+
+systemctl enable ffplayout-engine.service
+
+deactivate
+
+echo ""
+echo "-----------------------------------------------------------------------------------------------------"
 echo "install ffplayout gui"
 echo "-----------------------------------------------------------------------------------------------------"
 
 cd /var/www
-
 git clone https://github.com/ffplayout/ffplayout-gui.git ffplayout
-
 cd ffplayout
 
 virtualenv -p python3 venv
@@ -171,6 +198,9 @@ sed -i "s/---a-very-important-secret-key:-generate-it-new---/$secret/g" ffplayou
 python manage.py makemigrations && python manage.py migrate
 python manage.py collectstatic
 python manage.py loaddata ../docs/db_data.json
+python manage.py createsuperuser
+
+deactivate
 
 chown www-data. -R /var/www/ffplayout
 
@@ -200,7 +230,7 @@ echo "--------------------------------------------------------------------------
 echo "installation done..."
 echo "-----------------------------------------------------------------------------------------------------"
 
-echo "please edit ffplayout/settings/production.py"
+echo "please edit /var/www/ffplayout/ffplayout/settings/production.py"
 echo "and set ALLOWED_HOSTS and CORS_ORIGIN_WHITELIST"
 echo ""
 echo "edit /etc/nginx/sites-available/ffplayout.conf"
