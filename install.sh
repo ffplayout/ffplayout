@@ -230,7 +230,7 @@ echo "--------------------------------------------------------------------------
 echo "installation done..."
 echo "-----------------------------------------------------------------------------------------------------"
 
-echo "please edit /var/www/ffplayout/ffplayout/settings/production.py"
+echo "please edit /var/www/ffplayout/ffplayout/ffplayout/settings/production.py"
 echo "and set ALLOWED_HOSTS and CORS_ORIGIN_WHITELIST"
 echo ""
 echo "edit /etc/nginx/sites-available/ffplayout.conf"
