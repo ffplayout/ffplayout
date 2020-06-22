@@ -5,7 +5,8 @@ This is the fresh version v2.0.0-beta from ffplayout GUI.
 
 At the moment this version is more for testing. If you want to give it a try -> check [install.md](docs/install.md) for installation.
 
-A old working version you found in v1.0.0 branch, or under releases.
+Or run `./install.sh` as root. The install script is tested under debian 10 minimal and centos 8 minimal.
+After installations you have to setup ssl for your **https** connections.
 
 **This version is not production ready!!**
 
