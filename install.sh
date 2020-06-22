@@ -5,11 +5,6 @@ if [[ $(whoami) != 'root' ]]; then
     exit 1
 fi
 
-if [ ! "$(grep -Ei 'debian|buntu|mint' /etc/*release)" ]; then
-    echo "This script must run under debian/ubuntu/mint!"
-    exit 1
-fi
-
 echo ""
 echo "-----------------------------------------------------------------------------------------------------"
 echo "compile and install (nonfree) ffmpeg:"
@@ -69,23 +64,55 @@ echo "--------------------------------------------------------------------------
 echo "install main packages"
 echo "-----------------------------------------------------------------------------------------------------"
 
-apt install -y sudo curl wget net-tools git python3-dev build-essential virtualenv python3-virtualenv mediainfo
+if [[ "$(grep -Ei 'debian|buntu|mint' /etc/*release)" ]]; then
+    apt install -y sudo curl wget net-tools git python3-dev build-essential python3-virtualenv mediainfo autoconf automake libtool pkg-config yasm cmake mercurial gperf
+    curl -sL https://deb.nodesource.com/setup_12.x | bash -
 
-curl -sL https://deb.nodesource.com/setup_12.x | bash -
+    apt install -y nodejs
 
-apt install -y nodejs
+    if [[ $installNginx == 'y' ]]; then
+        apt install -y nginx
+    fi
 
-if [[ $installNginx == 'y' ]]; then
-    apt install -y nginx
+    serviceUser="www-data"
+    nginxConfig="/etc/nginx/sites-available/"
+elif [[ "$(grep -Ei 'centos|fedora' /etc/*release)" ]]; then
+    dnf -y install epel-release
+    dnf repolist epel -v
+    dnf -y config-manager --enable PowerTools
+    dnf -y group install "Development Tools"
+    dnf -y --enablerepo=PowerTools install libmediainfo mediainfo
+    dnf -y install libstdc++-static yasm mercurial libtool cmake net-tools git python3 python36-devel wget python3-virtualenv gperf nano
+    dnf -y install policycoreutils-{python3,devel}
+
+    curl -sL https://rpm.nodesource.com/setup_12.x | sudo -E bash -
+
+    dnf -y install nodejs
+
+    if [[ $installNginx == 'y' ]]; then
+        dnf -y install nginx
+        systemctl enable nginx
+        systemctl start nginx
+        firewall-cmd --permanent --add-service=http
+        firewall-cmd --permanent --zone=public --add-service=https
+        firewall-cmd --reload
+        mkdir /var/www
+        chcon -vR system_u:object_r:httpd_sys_content_t:s0 /var/www
+    fi
+
+    alternatives --set python /usr/bin/python3
+
+    serviceUser="nginx"
+    nginxConfig="/etc/nginx/conf.d/"
 fi
+
+
 
 if [[ $compileFFmpeg == 'y' ]]; then
     echo ""
     echo "-----------------------------------------------------------------------------------------------------"
     echo "compile and install ffmpeg"
     echo "-----------------------------------------------------------------------------------------------------"
-    apt install -y autoconf automake libtool pkg-config texi2html yasm cmake mercurial gperf
-
     cd /opt/
 
     git clone https://github.com/jb-alvarado/compile-ffmpeg-osx-linux.git ffmpeg-build
@@ -139,8 +166,8 @@ if [[ $installSRS == 'y' ]]; then
     cd srs/trunk/
 
     ./configure
-    ./make
-    ./make install
+    make
+    make install
 
     mkdir -p "/var/www/srs/live"
     mkdir "/etc/srs"
@@ -207,7 +234,6 @@ RestartSec=3
 
 [Install]
 WantedBy=multi-user.target
-
 EOF
 
     systemctl enable srs.service
@@ -232,12 +258,12 @@ mkdir /etc/ffplayout
 mkdir /var/log/ffplayout
 
 cp ffplayout.yml /etc/ffplayout/
-chown -R www-data. /etc/ffplayout
-chown www-data. /var/log/ffplayout
+chown -R $serviceUser. /etc/ffplayout
+chown $serviceUser. /var/log/ffplayout
 
 cp docs/ffplayout-engine.service /etc/systemd/system/
-sed -i "s/User=root/User=www-data/g" /etc/systemd/system/ffplayout-engine.service
-sed -i "s/Group=root/Group=www-data/g" /etc/systemd/system/ffplayout-engine.service
+sed -i "s/User=root/User=$serviceUser/g" /etc/systemd/system/ffplayout-engine.service
+sed -i "s/Group=root/Group=$serviceUser/g" /etc/systemd/system/ffplayout-engine.service
 
 systemctl enable ffplayout-engine.service
 
@@ -270,17 +296,81 @@ python manage.py createsuperuser
 
 deactivate
 
-chown www-data. -R /var/www/ffplayout
+chown $serviceUser. -R /var/www/ffplayout
 
 cd ..
 
 cp docs/ffplayout-api.service /etc/systemd/system/
+
+sed -i "s/User=root/User=$serviceUser/g" /etc/systemd/system/ffplayout-api.service
+sed -i "s/Group=root/Group=$serviceUser/g" /etc/systemd/system/ffplayout-api.service
+
 systemctl enable ffplayout-api.service && systemctl start ffplayout-api.service
 
-cp  docs/ffplayout.conf /etc/nginx/sites-available/
-ln -s /etc/nginx/sites-available/ffplayout.conf /etc/nginx/sites-enabled/
+if [[ "$(grep -Ei 'debian|buntu|mint' /etc/*release)" ]]; then
+    cp docs/ffplayout.conf "$nginxConfig"
+    ln -s $nginxConfig/ffplayout.conf /etc/nginx/sites-enabled/
+elif [[ "$(grep -Ei 'centos|fedora' /etc/*release)" ]]; then
+    cp docs/ffplayout.conf "$nginxConfig"
 
-echo 'www-data  ALL = NOPASSWD: /bin/systemctl start ffplayout-engine.service, /bin/systemctl stop ffplayout-engine.service, /bin/systemctl reload ffplayout-engine.service, /bin/systemctl restart ffplayout-engine.service, /bin/systemctl status ffplayout-engine.service, /bin/systemctl is-active ffplayout-engine.service, /bin/journalctl -n 1000 -u ffplayout-engine.service' >> /etc/sudoers
+    setsebool httpd_can_network_connect on -P
+    semanage port -a -t http_port_t -p tcp 8001
+
+cat <<EOF > gunicorn.te
+module gunicorn 1.0;
+
+require {
+        type init_t;
+        type httpd_sys_content_t;
+        type etc_t;
+        type sudo_exec_t;
+        class file { create execute execute_no_trans getattr ioctl lock map open read unlink write };
+        class lnk_file { getattr read };
+}
+
+#============= init_t ==============
+
+#!!!! This avc is allowed in the current policy
+allow init_t etc_t:file write;
+
+#!!!! This avc is allowed in the current policy
+#!!!! This av rule may have been overridden by an extended permission av rule
+allow init_t httpd_sys_content_t:file { create execute execute_no_trans getattr ioctl lock map open read unlink write };
+
+#!!!! This avc is allowed in the current policy
+allow init_t httpd_sys_content_t:lnk_file { getattr read };
+
+#!!!! This avc is allowed in the current policy
+allow init_t sudo_exec_t:file { execute execute_no_trans map open read };
+EOF
+
+    checkmodule -M -m -o gunicorn.mod gunicorn.te
+    semodule_package -o gunicorn.pp -m gunicorn.mod
+    semodule -i gunicorn.pp
+
+cat <<EOF > conf.te
+module conf 1.0;
+
+require {
+        type init_t;
+        type httpd_sys_content_t;
+        class file { create lock unlink write };
+}
+
+#============= init_t ==============
+allow init_t httpd_sys_content_t:file unlink;
+
+#!!!! This avc is allowed in the current policy
+allow init_t httpd_sys_content_t:file { create lock write };
+EOF
+
+    checkmodule -M -m -o conf.mod conf.te
+    semodule_package -o conf.pp -m conf.mod
+    semodule -i conf.pp
+fi
+
+
+echo "$serviceUser  ALL = NOPASSWD: /bin/systemctl start ffplayout-engine.service, /bin/systemctl stop ffplayout-engine.service, /bin/systemctl reload ffplayout-engine.service, /bin/systemctl restart ffplayout-engine.service, /bin/systemctl status ffplayout-engine.service, /bin/systemctl is-active ffplayout-engine.service, /bin/journalctl -n 1000 -u ffplayout-engine.service" >> /etc/sudoers
 
 cd /var/www/ffplayout/ffplayout/frontend
 
@@ -301,7 +391,7 @@ echo "--------------------------------------------------------------------------
 echo "please edit /var/www/ffplayout/ffplayout/ffplayout/settings/production.py"
 echo "and set ALLOWED_HOSTS and CORS_ORIGIN_WHITELIST"
 echo ""
-echo "edit /etc/nginx/sites-available/ffplayout.conf"
+echo "edit $nginxConfig/ffplayout.conf"
 echo "set server_name and http_origin"
 echo ""
-echo "add your ssl config!"
+echo "add your ssl config, reboot and login to the webapp"
