@@ -8,8 +8,6 @@ At the moment this version is more for testing. If you want to give it a try -> 
 Or run `./install.sh` as root. The install script is tested under debian 10 minimal and centos 8 minimal.
 After installations you have to setup ssl for your **https** connections.
 
-**This version is not production ready!!**
-
 ## some impressions below:
 
 #### Login
