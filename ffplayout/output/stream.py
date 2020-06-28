@@ -47,7 +47,8 @@ def output():
                 '-metadata', 'service_name=' + _playout.name,
                 '-metadata', 'service_provider=' + _playout.provider,
                 '-metadata', 'year={}'.format(year)
-            ] + _playout.ffmpeg_param, stdin=PIPE, stderr=PIPE)
+            ] + _playout.ffmpeg_param + _playout.stream_output,
+            stdin=PIPE, stderr=PIPE)
 
         enc_err_thread = Thread(target=ffmpeg_stderr_reader,
                                 args=(_ff.encoder.stderr, False))
