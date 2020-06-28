@@ -74,7 +74,7 @@ echo "install main packages"
 echo "-----------------------------------------------------------------------------------------------------"
 
 if [[ "$(grep -Ei 'debian|buntu|mint' /etc/*release)" ]]; then
-    apt install -y sudo curl wget net-tools git python3-dev build-essential python3-virtualenv mediainfo autoconf automake libtool pkg-config yasm cmake mercurial gperf
+    apt install -y sudo curl wget net-tools git python3-dev build-essential virtualenv python3-virtualenv mediainfo autoconf automake libtool pkg-config yasm cmake mercurial gperf
     curl -sL https://deb.nodesource.com/setup_12.x | bash -
 
     apt install -y nodejs
