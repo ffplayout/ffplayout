@@ -406,3 +406,4 @@ echo "--------------------------------------------------------------------------
 
 echo ""
 echo "add your ssl config to $nginxConfig/ffplayout.conf"
+echo ""
