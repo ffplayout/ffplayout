@@ -1,15 +1,16 @@
 ffplayout-gui
 =====
 
-This is the fresh version v2.0.0-beta from ffplayout GUI.
+This web GUI is for managing [ffplayout-engine](https://github.com/ffplayout/ffplayout-engine).
+For a better understanding about the functionality, take a look to the screenshots below.
 
-At the moment this version is more for testing. If you want to give it a try -> check [install.md](docs/install.md) for installation.
+You can install it on a fresh debian/centos minimal like system with running `./install.sh` as root.
 
-Or run `./install.sh` as root. The install script is tested under debian 10 minimal and centos 8 minimal.
+Or read the instruction [install.md](docs/install.md) for manual installation.
+
 After installations you have to setup ssl for your **https** connections.
 
-## some impressions below:
-
+## some impressions:
 #### Login
 ![login](/assets/login.png)
 
