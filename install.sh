@@ -7,6 +7,15 @@ fi
 
 echo ""
 echo "-----------------------------------------------------------------------------------------------------"
+echo "ffplayout gui domain name (like: exmple.org)"
+echo "-----------------------------------------------------------------------------------------------------"
+echo ""
+
+read -p "domain name :$ " domain
+echo $domain
+
+echo ""
+echo "-----------------------------------------------------------------------------------------------------"
 echo "compile and install (nonfree) ffmpeg:"
 echo "-----------------------------------------------------------------------------------------------------"
 echo ""
@@ -75,7 +84,7 @@ if [[ "$(grep -Ei 'debian|buntu|mint' /etc/*release)" ]]; then
     fi
 
     serviceUser="www-data"
-    nginxConfig="/etc/nginx/sites-available/"
+    nginxConfig="/etc/nginx/sites-available"
 elif [[ "$(grep -Ei 'centos|fedora' /etc/*release)" ]]; then
     dnf -y install epel-release
     dnf repolist epel -v
@@ -103,10 +112,8 @@ elif [[ "$(grep -Ei 'centos|fedora' /etc/*release)" ]]; then
     alternatives --set python /usr/bin/python3
 
     serviceUser="nginx"
-    nginxConfig="/etc/nginx/conf.d/"
+    nginxConfig="/etc/nginx/conf.d"
 fi
-
-
 
 if [[ $compileFFmpeg == 'y' ]]; then
     echo ""
@@ -305,13 +312,16 @@ cp docs/ffplayout-api.service /etc/systemd/system/
 sed -i "s/User=root/User=$serviceUser/g" /etc/systemd/system/ffplayout-api.service
 sed -i "s/Group=root/Group=$serviceUser/g" /etc/systemd/system/ffplayout-api.service
 
+sed -i "s/'localhost'/'localhost', \'$domain\'/g" /var/www/ffplayout/ffplayout/ffplayout/settings/production.py
+sed -i "s/ffplayout\\.local/$domain\'\n    \'https\\:\/\/$domain/g" /var/www/ffplayout/ffplayout/ffplayout/settings/production.py
+
 systemctl enable ffplayout-api.service && systemctl start ffplayout-api.service
 
 if [[ "$(grep -Ei 'debian|buntu|mint' /etc/*release)" ]]; then
-    cp docs/ffplayout.conf "$nginxConfig"
+    cp docs/ffplayout.conf "$nginxConfig/"
     ln -s $nginxConfig/ffplayout.conf /etc/nginx/sites-enabled/
 elif [[ "$(grep -Ei 'centos|fedora' /etc/*release)" ]]; then
-    cp docs/ffplayout.conf "$nginxConfig"
+    cp docs/ffplayout.conf "$nginxConfig/"
 
     setsebool httpd_can_network_connect on -P
     semanage port -a -t http_port_t -p tcp 8001
@@ -369,6 +379,10 @@ EOF
     semodule -i conf.pp
 fi
 
+origin=$(echo "$domain" | sed 's/\./\\\\./')
+
+sed -i "s/ffplayout.local/$domain/g" $nginxConfig/ffplayout.conf
+sed -i "s/ffplayout\\\.local/$origin/g" $nginxConfig/ffplayout.conf
 
 echo "$serviceUser  ALL = NOPASSWD: /bin/systemctl start ffplayout-engine.service, /bin/systemctl stop ffplayout-engine.service, /bin/systemctl reload ffplayout-engine.service, /bin/systemctl restart ffplayout-engine.service, /bin/systemctl status ffplayout-engine.service, /bin/systemctl is-active ffplayout-engine.service, /bin/journalctl -n 1000 -u ffplayout-engine.service" >> /etc/sudoers
 
@@ -383,15 +397,12 @@ EOF
 
 npm run build
 
+systemctl restart nginx
+
 echo ""
 echo "-----------------------------------------------------------------------------------------------------"
 echo "installation done..."
 echo "-----------------------------------------------------------------------------------------------------"
 
-echo "please edit /var/www/ffplayout/ffplayout/ffplayout/settings/production.py"
-echo "and set ALLOWED_HOSTS and CORS_ORIGIN_WHITELIST"
 echo ""
-echo "edit $nginxConfig/ffplayout.conf"
-echo "set server_name and http_origin"
-echo ""
-echo "add your ssl config, reboot and login to the webapp"
+echo "add your ssl config to $nginxConfig/ffplayout.conf"
