@@ -222,6 +222,8 @@ def load_config():
         _playout.name = cfg['out']['service_name']
         _playout.provider = cfg['out']['service_provider']
         _playout.ffmpeg_param = cfg['out']['ffmpeg_param'].split(' ')
+        _playout.stream_output = cfg['out']['stream_output'].split(' ')
+        _playout.hls_output = cfg['out']['hls_output'].split(' ')
 
         _init.load = False
 

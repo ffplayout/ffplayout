@@ -40,7 +40,7 @@ def output():
                         '-metadata', 'service_name=' + _playout.name,
                         '-metadata', 'service_provider=' + _playout.provider,
                         '-metadata', 'year={}'.format(year)
-                    ] + _playout.ffmpeg_param
+                    ] + _playout.ffmpeg_param + _playout.hls_output
 
                 _ff.encoder = Popen(cmd, stdin=PIPE, stderr=PIPE)
 

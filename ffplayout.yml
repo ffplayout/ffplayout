@@ -98,6 +98,9 @@ out:
     helptext: The final playout compression. Set the settings to your needs.
         'mode' has the standard options 'desktop', 'hls', 'stream'. Self made outputs
         can be define, by adding script in output folder with an 'output' function inside.
+        'stream_output' is for streaming output, two ffmpeg instances are fired up, for
+        pre- and post-processing. 'hls_output' is for direct output to hls playlist,
+        without pre- and post-processing, mode must be 'hls'.
     mode: 'stream'
     service_name: "Live Stream"
     service_provider: "example.org"
@@ -113,5 +116,14 @@ out:
         -c:a aac
         -ar 44100
         -b:a 128k
+    stream_output: >-
         -flags +global_header
         -f flv "rtmp://localhost/live/stream"
+    hls_output: >-
+        -flags +cgop
+        -f hls
+        -hls_time 6
+        -hls_list_size 600
+        -hls_delete_threshold 30
+        -hls_flags append_list+delete_segments+omit_endlist+program_date_time
+        /var/www/srs/live/stream.m3u8
