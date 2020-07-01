@@ -21,7 +21,7 @@ import math
 import os
 import re
 
-from .utils import _pre, _text
+from .utils import _global, _pre, _text
 
 # ------------------------------------------------------------------------------
 # building filters,
@@ -208,9 +208,23 @@ def extend_video(probe, duration, target_duration):
     return pad_filter
 
 
+def realtime_filter(duration, track=''):
+    speed_filter = ',{}realtime=speed=1'.format(track)
+
+    if _global.time_delta < 0:
+        speed = duration / (duration + _global.time_delta)
+
+        if speed < 1.1:
+            speed_filter = ',{}realtime=speed={}'.format(
+                track, speed
+            )
+
+    return speed_filter
+
 def split_filter(filter_type):
     map_node = []
     filter_prefix = ''
+    _filter = ''
 
     if filter_type == 'a':
         filter_prefix = 'a'
@@ -219,13 +233,13 @@ def split_filter(filter_type):
         for num in range(_pre.output_count):
             map_node.append('[{}out{}]'.format(filter_type, num + 1))
 
-        filter = ',{}split={}{}'.format(filter_prefix, _pre.output_count,
+        _filter = ',{}split={}{}'.format(filter_prefix, _pre.output_count,
                                         ''.join(map_node))
 
     else:
-        filter = '[{}out1]'.format(filter_type)
+        _filter = '[{}out1]'.format(filter_type)
 
-    return filter
+    return _filter
 
 
 def build_filtergraph(duration, seek, out, ad, ad_last, ad_next, probe, msg):
@@ -261,16 +275,19 @@ def build_filtergraph(duration, seek, out, ad, ad_last, ad_next, probe, msg):
         video_filter = 'null[v]'
 
     logo_filter = overlay_filter(out - seek, ad, ad_last, ad_next)
+    v_speed = realtime_filter(out - seek)
     v_split = split_filter('v')
     video_map = ['-map', '[vout1]']
     video_filter = [
-        '-filter_complex', '[0:v]{};{}{}'.format(
-            video_filter, logo_filter, v_split)]
+        '-filter_complex', '[0:v]{};{}{}{}'.format(
+            video_filter, logo_filter, v_speed, v_split)]
 
+    a_speed = realtime_filter(out - seek, 'a')
     a_split = split_filter('a')
     audio_map = ['-map', '[aout1]']
     audio_filter = [
-        '-filter_complex', '{}{}'.format(','.join(audio_chain), a_split)]
+        '-filter_complex', '{}{}{}'.format(','.join(audio_chain),
+                                           a_speed, a_split)]
 
     if probe.video[0]:
         return video_filter + audio_filter + video_map + audio_map

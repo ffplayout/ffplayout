@@ -121,6 +121,7 @@ _playout = SimpleNamespace()
 
 _init = SimpleNamespace(load=True)
 _ff = SimpleNamespace(decoder=None, encoder=None)
+_global = SimpleNamespace(time_delta=0)
 
 
 def str_to_sec(s):
@@ -675,6 +676,11 @@ def check_sync(delta):
     """
     check that we are in tolerance time
     """
+
+    if _playlist.mode and _playlist.start and _playlist.length:
+        # save time delta to global variable for syncing
+        _global.time_delta = delta
+
     if _general.stop and abs(delta) > _general.threshold:
         messenger.error(
             'Sync tolerance value exceeded with {0:.2f} seconds,\n'
