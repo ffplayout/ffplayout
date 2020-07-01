@@ -35,7 +35,7 @@ def output():
                 messenger.info('Play: "{}"'.format(current_file))
                 cmd = [
                     'ffmpeg', '-v', _log.ff_level.lower(), '-hide_banner',
-                    '-nostats', '-re'
+                    '-nostats'
                     ] + src_cmd + [
                         '-metadata', 'service_name=' + _playout.name,
                         '-metadata', 'service_provider=' + _playout.provider,
