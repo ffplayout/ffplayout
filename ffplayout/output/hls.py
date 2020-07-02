@@ -12,7 +12,7 @@ from ffplayout.utils import (_ff, _log, _playlist, _playout,
 
 
 def clean_ts():
-    playlists = re.findall(r'[/\w.]+m3u8', _playout.hls_output)
+    playlists = [p for p in _playout.hls_output if 'm3u8' in p]
 
     for playlist in playlists:
         test_num = 0
