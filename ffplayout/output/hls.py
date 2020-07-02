@@ -1,3 +1,6 @@
+import os
+import re
+from glob import iglob
 from subprocess import PIPE, Popen
 from threading import Thread
 
@@ -6,6 +9,25 @@ from ffplayout.playlist import GetSourceFromPlaylist
 from ffplayout.utils import (_ff, _log, _playlist, _playout,
                              ffmpeg_stderr_reader, get_date, messenger,
                              stdin_args, terminate_processes)
+
+
+def clean_ts():
+    playlists = re.findall(r'[/\w.]+m3u8', _playout.hls_output)
+
+    for playlist in playlists:
+        test_num = 0
+        hls_path = os.path.dirname(playlist)
+        with open(playlist, 'r') as m3u8:
+            for line in m3u8:
+                if '.ts' in line:
+                    test_num = int(re.findall(r'(\d+).ts', line)[0])
+                    break
+
+        for ts_file in iglob(os.path.join(hls_path, '*.ts')):
+            ts_num = int(re.findall(r'(\d+).ts', ts_file)[0])
+
+            if test_num > ts_num:
+                os.remove(ts_file)
 
 
 def output():
@@ -44,11 +66,15 @@ def output():
 
                 _ff.encoder = Popen(cmd, stdin=PIPE, stderr=PIPE)
 
-                enc_thread = Thread(target=ffmpeg_stderr_reader,
-                                    args=(_ff.encoder.stderr, True))
-                enc_thread.daemon = True
-                enc_thread.start()
-                enc_thread.join()
+                stderr_reader_thread = Thread(target=ffmpeg_stderr_reader,
+                                              args=(_ff.encoder.stderr, False))
+                stderr_reader_thread.daemon = True
+                stderr_reader_thread.start()
+                stderr_reader_thread.join()
+
+                ts_cleaning_thread = Thread(target=clean_ts)
+                ts_cleaning_thread.daemon = True
+                ts_cleaning_thread.start()
 
         except BrokenPipeError:
             messenger.error('Broken Pipe!')
