@@ -209,15 +209,16 @@ def extend_video(probe, duration, target_duration):
 
 
 def realtime_filter(duration, track=''):
-    speed_filter = ',{}realtime=speed=1'.format(track)
+    speed_filter = ''
 
-    if _global.time_delta < 0:
-        speed = duration / (duration + _global.time_delta)
+    if _pre.realtime:
+        speed_filter = ',{}realtime=speed=1'.format(track)
 
-        if speed < 1.1:
-            speed_filter = ',{}realtime=speed={}'.format(
-                track, speed
-            )
+        if _global.time_delta < 0:
+            speed = duration / (duration + _global.time_delta)
+
+            if speed < 1.1:
+                speed_filter = ',{}realtime=speed={}'.format(track, speed)
 
     return speed_filter
 
