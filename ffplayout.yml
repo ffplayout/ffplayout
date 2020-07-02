@@ -31,18 +31,19 @@ logging:
     log_level: "DEBUG"
     ffmpeg_level: "ERROR"
 
-pre_process:
-    helptext: Settings for the pre_process. All clips get prepared in that way,
-        so the input for the final compression is unique. 'aspect' must be a float
-        number. 'logo' is only used if the path exist. 'logo_scale' scale the logo to
-        target size, leave it blank when no scaling is needed, format is 'number:number',
-        for example '100:-1' for proportional scaling. With 'logo_opacity' logo can
-        become transparent. With 'logo_filter' 'overlay=W-w-12:12' you can modify
-        the logo position. With 'use_loudnorm' you can activate single pass EBU R128
-        loudness normalization. 'loud_*' can adjust the loudnorm filter. 'output_count'
-        sets the outputs for the filtering, > 1 gives the option to use the same filters
-        for multiple outputs. This outputs can be taken in 'ffmpeg_param', names will be
-        vout2, vout3; aout2, aout3 etc.
+processing:
+    helptext: Default processing, for all clips that they get prepared in that way,
+        so the output is unique. 'aspect' must be a float number. 'logo' is only used
+        if the path exist. 'logo_scale' scale the logo to target size, leave it blank
+        when no scaling is needed, format is 'number:number', for example '100:-1'
+        for proportional scaling. With 'logo_opacity' logo can become transparent.
+        With 'logo_filter' 'overlay=W-w-12:12' you can modify the logo position.
+        With 'use_loudnorm' you can activate single pass EBU R128 loudness normalization.
+        'loud_*' can adjust the loudnorm filter. 'output_count' sets the outputs for
+        the filtering, > 1 gives the option to use the same filters for multiple outputs.
+        This outputs can be taken in 'ffmpeg_param', names will be vout2, vout3;
+        aout2, aout2 etc.'use_realtime' is realtime filter, it works not in all scenarios,
+        but for example is necessary for hls output.
     width: 1024
     height: 576
     aspect: 1.778
@@ -57,9 +58,10 @@ pre_process:
     loud_TP: -1.5
     loud_LRA: 11
     output_count: 1
+    use_realtime: false
 
 playlist:
-    helptext: Set 'playlist_mode' to 'False' if you want to play clips from the [STORAGE]
+    helptext: Set 'playlist_mode' to 'False' if you want to play clips from the 'storage'
         section. Put only the root path here, for example '/playlists' subfolders
         are readed by the script. Subfolders needs this structur '/playlists/2018/01'
         (/playlists/year/month). 'day_start' means at which time the playlist should

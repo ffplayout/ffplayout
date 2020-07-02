@@ -179,16 +179,16 @@ def load_config():
     _mail.recip = cfg['mail']['recipient']
     _mail.level = cfg['mail']['mail_level']
 
-    _pre.add_logo = cfg['pre_process']['add_logo']
-    _pre.logo = cfg['pre_process']['logo']
-    _pre.logo_scale = cfg['pre_process']['logo_scale']
-    _pre.logo_filter = cfg['pre_process']['logo_filter']
-    _pre.logo_opacity = cfg['pre_process']['logo_opacity']
-    _pre.add_loudnorm = cfg['pre_process']['add_loudnorm']
-    _pre.loud_i = cfg['pre_process']['loud_I']
-    _pre.loud_tp = cfg['pre_process']['loud_TP']
-    _pre.loud_lra = cfg['pre_process']['loud_LRA']
-    _pre.output_count = cfg['pre_process']['output_count']
+    _pre.add_logo = cfg['processing']['add_logo']
+    _pre.logo = cfg['processing']['logo']
+    _pre.logo_scale = cfg['processing']['logo_scale']
+    _pre.logo_filter = cfg['processing']['logo_filter']
+    _pre.logo_opacity = cfg['processing']['logo_opacity']
+    _pre.add_loudnorm = cfg['processing']['add_loudnorm']
+    _pre.loud_i = cfg['processing']['loud_I']
+    _pre.loud_tp = cfg['processing']['loud_TP']
+    _pre.loud_lra = cfg['processing']['loud_LRA']
+    _pre.output_count = cfg['processing']['output_count']
 
     _playlist.mode = cfg['playlist']['playlist_mode']
     _playlist.path = cfg['playlist']['path']
@@ -212,12 +212,13 @@ def load_config():
         _log.level = cfg['logging']['log_level']
         _log.ff_level = cfg['logging']['ffmpeg_level']
 
-        _pre.w = cfg['pre_process']['width']
-        _pre.h = cfg['pre_process']['height']
-        _pre.aspect = cfg['pre_process']['aspect']
-        _pre.fps = cfg['pre_process']['fps']
-        _pre.v_bitrate = cfg['pre_process']['width'] * 50
-        _pre.v_bufsize = cfg['pre_process']['width'] * 50 / 2
+        _pre.w = cfg['processing']['width']
+        _pre.h = cfg['processing']['height']
+        _pre.aspect = cfg['processing']['aspect']
+        _pre.fps = cfg['processing']['fps']
+        _pre.v_bitrate = cfg['processing']['width'] * 50
+        _pre.v_bufsize = cfg['processing']['width'] * 50 / 2
+        _pre.realtime = cfg['processing']['use_realtime']
 
         _playout.mode = cfg['out']['mode']
         _playout.name = cfg['out']['service_name']
