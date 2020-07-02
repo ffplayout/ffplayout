@@ -12,6 +12,12 @@ from ffplayout.utils import (_ff, _log, _playlist, _playout,
 
 
 def clean_ts():
+    """
+    this function get all *.m3u8 playlists from config,
+    read lines from them until it founds first *.ts file,
+    then it checks if files on harddrive are older then this first *.ts
+    and if so delete them
+    """
     playlists = [p for p in _playout.hls_output if 'm3u8' in p]
 
     for playlist in playlists:
