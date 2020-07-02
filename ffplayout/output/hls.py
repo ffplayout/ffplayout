@@ -15,6 +15,7 @@ def clean_ts():
     playlists = [p for p in _playout.hls_output if 'm3u8' in p]
 
     for playlist in playlists:
+        messenger.debug('cleanup *.ts files from: "{}"'.format(playlist))
         test_num = 0
         hls_path = os.path.dirname(playlist)
         with open(playlist, 'r') as m3u8:
