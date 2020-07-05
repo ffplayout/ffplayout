@@ -18,7 +18,7 @@
     "bootstrap-vue": "^2.15.0",
     "cookie-universal-nuxt": "^2.1.4",
     "jwt-decode": "^2.2.0",
-    "nuxt": "^2.13.2",
+    "nuxt": "^2.13.3",
     "nuxt-dayjs-module": "^1.1.2",
     "splitpanes": "^2.2.1",
     "video.js": "^7.8.3",
@@ -31,9 +31,9 @@
     "@nuxtjs/eslint-module": "^2.0.0",
     "@nuxtjs/style-resources": "^1.0.0",
     "babel-eslint": "^10.1.0",
-    "eslint": "^7.3.1",
+    "eslint": "^7.4.0",
     "eslint-plugin-nuxt": ">=1.0.0",
     "node-sass": "^4.14.1",
-    "sass-loader": "^8.0.2"
+    "sass-loader": "^9.0.1"
   }
 }
