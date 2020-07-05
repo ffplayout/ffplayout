@@ -261,6 +261,7 @@ class FileOperations(APIView):
             fullPath = os.path.join(root, _path, folder)
 
             try:
+                # TODO: check if folder exists
                 os.mkdir(fullPath)
                 return Response(status=200)
             except OSError:

@@ -7,11 +7,35 @@ fi
 
 echo ""
 echo "-----------------------------------------------------------------------------------------------------"
-echo "ffplayout gui domain name (like: exmple.org)"
+echo "ffplayout gui domain name (like: example.org)"
 echo "-----------------------------------------------------------------------------------------------------"
 echo ""
 
 read -p "domain name :$ " domain
+
+echo ""
+echo "-----------------------------------------------------------------------------------------------------"
+echo "path to media storage, default: /opt/ffplayout/media"
+echo "-----------------------------------------------------------------------------------------------------"
+echo ""
+
+read -p "media path :$ " mediaPath
+
+if [[ -z "$mediaPath" ]]; then
+    mediaPath="/opt/ffplayout/media"
+fi
+
+echo ""
+echo "-----------------------------------------------------------------------------------------------------"
+echo "playlist path, default: /opt/ffplayout/playlists"
+echo "-----------------------------------------------------------------------------------------------------"
+echo ""
+
+read -p "playlist path :$ " playlistPath
+
+if [[ -z "$playlistPath" ]]; then
+    playlistPath="/opt/ffplayout/playlists"
+fi
 
 echo ""
 echo "-----------------------------------------------------------------------------------------------------"
@@ -262,14 +286,21 @@ pip install -r requirements-base.txt
 
 mkdir /etc/ffplayout
 mkdir /var/log/ffplayout
+mkdir -p $mediaPath
+mkdir -p $playlistPath
 
 cp ffplayout.yml /etc/ffplayout/
 chown -R $serviceUser. /etc/ffplayout
 chown $serviceUser. /var/log/ffplayout
+chown $serviceUser. $mediaPath
+chown $serviceUser. $playlistPath
 
 cp docs/ffplayout-engine.service /etc/systemd/system/
 sed -i "s/User=root/User=$serviceUser/g" /etc/systemd/system/ffplayout-engine.service
 sed -i "s/Group=root/Group=$serviceUser/g" /etc/systemd/system/ffplayout-engine.service
+
+sed -i "s|\"\/playlists\"|\"$playlistPath\"|g" /etc/ffplayout/ffplayout.yml
+sed -i "s|\"\/mediaStorage|\"$mediaPath|g" /etc/ffplayout/ffplayout.yml
 
 systemctl enable ffplayout-engine.service
 

@@ -47,7 +47,12 @@ def read_json(date):
 def write_json(data):
     config = read_yaml()['playlist']['path']
     y, m, d = data['date'].split('-')
-    output = os.path.join(config, y, m, '{}.json'.format(data['date']))
+    _path = os.path.join(config, y, m)
+    
+    if not os.path.isdir(_path):
+        os.makedirs(_path, exist_ok=True)
+
+    output = os.path.join(_path, '{}.json'.format(data['date']))
     with open(output, "w") as outfile:
         json.dump(data, outfile, indent=4)
 
@@ -251,45 +256,65 @@ class SystemStats:
         }
 
 
-def get_media_path(extensions, _dir=''):
+def get_video_duration(clip):
+    """
+    return video duration from container
+    """
+    media_info = MediaInfo.parse(clip)
+    duration = 0
+    for track in media_info.tracks:
+        if track.track_type == 'General':
+            try:
+                duration = float(
+                    track.to_data()["duration"]) / 1000
+                break
+            except KeyError:
+                pass
+
+    return duration
+
+
+def get_path(input):
+    """
+    return path and prevent breaking out of media root
+    """
     config = read_yaml()
-    extensions = extensions.split(' ')
-    playout_extensions = config['storage']['extensions']
-    gui_extensions = [x for x in extensions if x not in playout_extensions]
     media_root_list = config['storage']['path'].strip('/').split('/')
     media_root_list.pop()
     media_root = '/' + '/'.join(media_root_list)
 
-    if _dir:
-        _dir = os.path.abspath(os.path.join(media_root, _dir.strip('/')))
+    if input:
+        input = os.path.abspath(os.path.join(media_root, input.strip('/')))
 
-    if not _dir.startswith(config['storage']['path']):
-        _dir = os.path.join(config['storage']['path'], _dir.strip('/'))
+    if not input.startswith(config['storage']['path']):
+        input = os.path.join(config['storage']['path'], input.strip('/'))
 
-    for root, dirs, files in os.walk(_dir, topdown=True):
+    return media_root, input
+
+
+def get_media_path(extensions, _dir=''):
+    config = read_yaml()
+    media_folder = config['storage']['path']
+    extensions = extensions.split(' ')
+    playout_extensions = config['storage']['extensions']
+    gui_extensions = [x for x in extensions if x not in playout_extensions]
+    media_root, search_dir = get_path(_dir)
+
+    for root, dirs, files in os.walk(search_dir, topdown=True):
         root = root.rstrip('/')
         media_files = []
 
         for file in files:
             ext = os.path.splitext(file)[1]
             if ext in playout_extensions:
-                media_info = MediaInfo.parse(os.path.join(root, file))
-                duration = 0
-                for track in media_info.tracks:
-                    if track.track_type == 'General':
-                        try:
-                            duration = float(
-                                track.to_data()["duration"]) / 1000
-                            break
-                        except KeyError:
-                            pass
+                duration = get_video_duration(os.path.join(root, file))
                 media_files.append({'file': file, 'duration': duration})
             elif ext in gui_extensions:
                 media_files.append({'file': file, 'duration': ''})
 
         dirs = natsorted(dirs)
 
-        if root.strip('/') != config['storage']['path'].strip('/') or not dirs:
+        if root.strip('/') != media_folder.strip('/') or not dirs:
             dirs.insert(0, '..')
 
         root = re.sub(r'^{}'.format(media_root), '', root).strip('/')
