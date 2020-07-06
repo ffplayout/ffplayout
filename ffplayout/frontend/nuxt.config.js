@@ -66,11 +66,11 @@ export default {
         // Doc: https://bootstrap-vue.js.org
         'bootstrap-vue/nuxt',
         '@nuxtjs/axios',
+        '@nuxtjs/dayjs',
         '@nuxtjs/style-resources',
         // Doc: https://github.com/nuxt-community/dotenv-module
         '@nuxtjs/dotenv',
-        'cookie-universal-nuxt',
-        'nuxt-dayjs-module'
+        'cookie-universal-nuxt'
     ],
 
     /*
