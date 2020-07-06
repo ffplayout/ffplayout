@@ -93,10 +93,30 @@ done
 
 echo ""
 echo "-----------------------------------------------------------------------------------------------------"
+echo "install ffplayout-engine:"
+echo "-----------------------------------------------------------------------------------------------------"
+echo ""
+while true; do
+    read -p "Do you wish to install ffplayout-engine? (Y/n) :$ " yn
+    case $yn in
+        [Yy]* ) installEngine="y"; break;;
+        [Nn]* ) installEngine="n"; break;;
+        * ) (
+            echo "------------------------------------"
+            echo "Please answer yes or no!"
+            echo ""
+            );;
+    esac
+done
+
+echo ""
+echo "-----------------------------------------------------------------------------------------------------"
 echo "install main packages"
 echo "-----------------------------------------------------------------------------------------------------"
 
 if [[ "$(grep -Ei 'debian|buntu|mint' /etc/*release)" ]]; then
+    apt update
+
     apt install -y sudo curl wget net-tools git python3-dev build-essential virtualenv python3-virtualenv mediainfo autoconf automake libtool pkg-config yasm cmake mercurial gperf
     curl -sL https://deb.nodesource.com/setup_12.x | bash -
 
@@ -270,41 +290,43 @@ EOF
     systemctl start srs.service
 fi
 
-echo ""
-echo "-----------------------------------------------------------------------------------------------------"
-echo "install ffplayout engine"
-echo "-----------------------------------------------------------------------------------------------------"
+if [[ "$installEngine" == "y" ]]; then
+    echo ""
+    echo "-----------------------------------------------------------------------------------------------------"
+    echo "install ffplayout engine"
+    echo "-----------------------------------------------------------------------------------------------------"
 
-cd /opt
-git clone https://github.com/ffplayout/ffplayout-engine.git
-cd ffplayout-engine
+    cd /opt
+    git clone https://github.com/ffplayout/ffplayout-engine.git
+    cd ffplayout-engine
 
-virtualenv -p python3 venv
-source ./venv/bin/activate
+    virtualenv -p python3 venv
+    source ./venv/bin/activate
 
-pip install -r requirements-base.txt
+    pip install -r requirements-base.txt
 
-mkdir /etc/ffplayout
-mkdir /var/log/ffplayout
-mkdir -p $mediaPath
-mkdir -p $playlistPath
+    mkdir /etc/ffplayout
+    mkdir /var/log/ffplayout
+    mkdir -p $mediaPath
+    mkdir -p $playlistPath
 
-cp ffplayout.yml /etc/ffplayout/
-chown -R $serviceUser. /etc/ffplayout
-chown $serviceUser. /var/log/ffplayout
-chown $serviceUser. $mediaPath
-chown $serviceUser. $playlistPath
+    cp ffplayout.yml /etc/ffplayout/
+    chown -R $serviceUser. /etc/ffplayout
+    chown $serviceUser. /var/log/ffplayout
+    chown $serviceUser. $mediaPath
+    chown $serviceUser. $playlistPath
 
-cp docs/ffplayout-engine.service /etc/systemd/system/
-sed -i "s/User=root/User=$serviceUser/g" /etc/systemd/system/ffplayout-engine.service
-sed -i "s/Group=root/Group=$serviceUser/g" /etc/systemd/system/ffplayout-engine.service
+    cp docs/ffplayout-engine.service /etc/systemd/system/
+    sed -i "s/User=root/User=$serviceUser/g" /etc/systemd/system/ffplayout-engine.service
+    sed -i "s/Group=root/Group=$serviceUser/g" /etc/systemd/system/ffplayout-engine.service
 
-sed -i "s|\"\/playlists\"|\"$playlistPath\"|g" /etc/ffplayout/ffplayout.yml
-sed -i "s|\"\/mediaStorage|\"$mediaPath|g" /etc/ffplayout/ffplayout.yml
+    sed -i "s|\"\/playlists\"|\"$playlistPath\"|g" /etc/ffplayout/ffplayout.yml
+    sed -i "s|\"\/mediaStorage|\"$mediaPath|g" /etc/ffplayout/ffplayout.yml
 
-systemctl enable ffplayout-engine.service
+    systemctl enable ffplayout-engine.service
 
-deactivate
+    deactivate
+fi
 
 echo ""
 echo "-----------------------------------------------------------------------------------------------------"
@@ -347,12 +369,16 @@ sed -i "s/ffplayout\\.local/$domain\'\n    \'https\\:\/\/$domain/g" /var/www/ffp
 
 systemctl enable ffplayout-api.service
 
-if [[ "$(grep -Ei 'debian|buntu|mint' /etc/*release)" ]]; then
-    cp docs/ffplayout.conf "$nginxConfig/"
-    ln -s $nginxConfig/ffplayout.conf /etc/nginx/sites-enabled/
-elif [[ "$(grep -Ei 'centos|fedora' /etc/*release)" ]]; then
+if [[ $installNginx == 'y' ]]; then
     cp docs/ffplayout.conf "$nginxConfig/"
 
+    origin=$(echo "$domain" | sed 's/\./\\\\./g')
+
+    sed -i "s/ffplayout.local/$domain/g" $nginxConfig/ffplayout.conf
+    sed -i "s/ffplayout\\\.local/$origin/g" $nginxConfig/ffplayout.conf
+fi
+
+if [[ "$(grep -Ei 'centos|fedora' /etc/*release)" ]]; then
     echo ""
     echo "-----------------------------------------------------------------------------------------------------"
     echo "creating selinux rules"
@@ -442,11 +468,6 @@ EOF
     semodule -i create.pp
 fi
 
-origin=$(echo "$domain" | sed 's/\./\\\\./g')
-
-sed -i "s/ffplayout.local/$domain/g" $nginxConfig/ffplayout.conf
-sed -i "s/ffplayout\\\.local/$origin/g" $nginxConfig/ffplayout.conf
-
 echo "$serviceUser  ALL = NOPASSWD: /bin/systemctl start ffplayout-engine.service, /bin/systemctl stop ffplayout-engine.service, /bin/systemctl reload ffplayout-engine.service, /bin/systemctl restart ffplayout-engine.service, /bin/systemctl status ffplayout-engine.service, /bin/systemctl is-active ffplayout-engine.service, /bin/journalctl -n 1000 -u ffplayout-engine.service" >> /etc/sudoers
 
 cd /var/www/ffplayout/ffplayout/frontend
@@ -460,7 +481,10 @@ EOF
 
 npm run build
 
-systemctl restart nginx
+if [[ $installNginx == 'y' ]]; then
+    systemctl restart nginx
+fi
+
 systemctl start ffplayout-api.service
 
 echo ""
