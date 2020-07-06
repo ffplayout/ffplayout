@@ -292,97 +292,6 @@ EOF
     systemctl start srs.service
 fi
 
-if [[ "$installEngine" == "y" ]]; then
-    echo ""
-    echo "-----------------------------------------------------------------------------------------------------"
-    echo "install ffplayout engine"
-    echo "-----------------------------------------------------------------------------------------------------"
-
-    cd /opt
-    git clone https://github.com/ffplayout/ffplayout-engine.git
-    cd ffplayout-engine
-
-    virtualenv -p python3 venv
-    source ./venv/bin/activate
-
-    pip install -r requirements-base.txt
-
-    mkdir /etc/ffplayout
-    mkdir /var/log/ffplayout
-    mkdir -p $mediaPath
-    mkdir -p $playlistPath
-
-    cp ffplayout.yml /etc/ffplayout/
-    chown -R $serviceUser. /etc/ffplayout
-    chown $serviceUser. /var/log/ffplayout
-    chown $serviceUser. $mediaPath
-    chown $serviceUser. $playlistPath
-
-    cp docs/ffplayout-engine.service /etc/systemd/system/
-    sed -i "s/User=root/User=$serviceUser/g" /etc/systemd/system/ffplayout-engine.service
-    sed -i "s/Group=root/Group=$serviceUser/g" /etc/systemd/system/ffplayout-engine.service
-
-    sed -i "s|\"\/playlists\"|\"$playlistPath\"|g" /etc/ffplayout/ffplayout.yml
-    sed -i "s|\"\/mediaStorage|\"$mediaPath|g" /etc/ffplayout/ffplayout.yml
-
-    systemctl enable ffplayout-engine.service
-
-    deactivate
-fi
-
-echo ""
-echo "-----------------------------------------------------------------------------------------------------"
-echo "install ffplayout gui"
-echo "-----------------------------------------------------------------------------------------------------"
-
-cd /var/www
-git clone https://github.com/ffplayout/ffplayout-gui.git ffplayout
-cd ffplayout
-
-virtualenv -p python3 venv
-source ./venv/bin/activate
-
-pip install -r requirements-base.txt
-
-cd ffplayout
-
-secret=$(python manage.py shell -c 'from django.core.management import utils; print(utils.get_random_secret_key())')
-
-sed -i "s/---a-very-important-secret-key:-generate-it-new---/$secret/g" ffplayout/settings/production.py
-
-python manage.py makemigrations && python manage.py migrate
-python manage.py collectstatic
-python manage.py loaddata ../docs/db_data.json
-python manage.py createsuperuser
-
-deactivate
-
-chown $serviceUser. -R /var/www
-
-cd ..
-
-cp docs/ffplayout-api.service /etc/systemd/system/
-
-sed -i "s/User=root/User=$serviceUser/g" /etc/systemd/system/ffplayout-api.service
-sed -i "s/Group=root/Group=$serviceUser/g" /etc/systemd/system/ffplayout-api.service
-
-sed -i "s/'localhost'/'localhost', \'$domain\'/g" /var/www/ffplayout/ffplayout/ffplayout/settings/production.py
-sed -i "s/ffplayout\\.local/$domain\'\n    \'https\\:\/\/$domain/g" /var/www/ffplayout/ffplayout/ffplayout/settings/production.py
-
-systemctl enable ffplayout-api.service
-
-if [[ $installNginx == 'y' ]]; then
-    cp docs/ffplayout.conf "$nginxConfig/"
-
-    origin=$(echo "$domain" | sed 's/\./\\\\./g')
-
-    sed -i "s/ffplayout.local/$domain/g" $nginxConfig/ffplayout.conf
-    sed -i "s/ffplayout\\\.local/$origin/g" $nginxConfig/ffplayout.conf
-
-    if [[ "$(grep -Ei 'debian|buntu|mint' /etc/*release)" ]]; then
-        ln -s $nginxConfig/ffplayout.conf /etc/nginx/sites-enabled/
-    fi
-fi
 
 if [[ "$(grep -Ei 'centos|fedora' /etc/*release)" ]]; then
     echo ""
@@ -476,22 +385,115 @@ fi
 
 echo "$serviceUser  ALL = NOPASSWD: /bin/systemctl start ffplayout-engine.service, /bin/systemctl stop ffplayout-engine.service, /bin/systemctl reload ffplayout-engine.service, /bin/systemctl restart ffplayout-engine.service, /bin/systemctl status ffplayout-engine.service, /bin/systemctl is-active ffplayout-engine.service, /bin/journalctl -n 1000 -u ffplayout-engine.service" >> /etc/sudoers
 
-cd /var/www/ffplayout/ffplayout/frontend
+if [[ "$installEngine" == "y" ]]; then
+    echo ""
+    echo "-----------------------------------------------------------------------------------------------------"
+    echo "install ffplayout engine"
+    echo "-----------------------------------------------------------------------------------------------------"
 
-sudo -H -u $serviceUser bash -c 'npm install'
+    cd /opt
+    git clone https://github.com/ffplayout/ffplayout-engine.git
+    cd ffplayout-engine
+
+    virtualenv -p python3 venv
+    source ./venv/bin/activate
+
+    pip install -r requirements-base.txt
+
+    mkdir /etc/ffplayout
+    mkdir /var/log/ffplayout
+    mkdir -p $mediaPath
+    mkdir -p $playlistPath
+
+    cp ffplayout.yml /etc/ffplayout/
+    chown -R $serviceUser. /etc/ffplayout
+    chown $serviceUser. /var/log/ffplayout
+    chown $serviceUser. $mediaPath
+    chown $serviceUser. $playlistPath
+
+    cp docs/ffplayout-engine.service /etc/systemd/system/
+    sed -i "s/User=root/User=$serviceUser/g" /etc/systemd/system/ffplayout-engine.service
+    sed -i "s/Group=root/Group=$serviceUser/g" /etc/systemd/system/ffplayout-engine.service
+
+    sed -i "s|\"\/playlists\"|\"$playlistPath\"|g" /etc/ffplayout/ffplayout.yml
+    sed -i "s|\"\/mediaStorage|\"$mediaPath|g" /etc/ffplayout/ffplayout.yml
+
+    systemctl enable ffplayout-engine.service
+
+    deactivate
+fi
+
+if [[ ! -d "/var/www/ffplayout" ]]; then
+    echo ""
+    echo "-----------------------------------------------------------------------------------------------------"
+    echo "install ffplayout gui"
+    echo "-----------------------------------------------------------------------------------------------------"
+
+    cd /var/www
+    git clone https://github.com/ffplayout/ffplayout-gui.git ffplayout
+    cd ffplayout
+
+    virtualenv -p python3 venv
+    source ./venv/bin/activate
+
+    pip install -r requirements-base.txt
+
+    cd ffplayout
+
+    secret=$(python manage.py shell -c 'from django.core.management import utils; print(utils.get_random_secret_key())')
+
+    sed -i "s/---a-very-important-secret-key:-generate-it-new---/$secret/g" ffplayout/settings/production.py
+
+    python manage.py makemigrations && python manage.py migrate
+    python manage.py collectstatic
+    python manage.py loaddata ../docs/db_data.json
+    python manage.py createsuperuser
+
+    deactivate
+
+    chown $serviceUser. -R /var/www
+
+    cd ..
+
+    cp docs/ffplayout-api.service /etc/systemd/system/
+
+    sed -i "s/User=root/User=$serviceUser/g" /etc/systemd/system/ffplayout-api.service
+    sed -i "s/Group=root/Group=$serviceUser/g" /etc/systemd/system/ffplayout-api.service
+
+    sed -i "s/'localhost'/'localhost', \'$domain\'/g" /var/www/ffplayout/ffplayout/ffplayout/settings/production.py
+    sed -i "s/ffplayout\\.local/$domain\'\n    \'https\\:\/\/$domain/g" /var/www/ffplayout/ffplayout/ffplayout/settings/production.py
+
+    systemctl enable ffplayout-api.service
+
+    if [[ $installNginx == 'y' ]]; then
+        cp docs/ffplayout.conf "$nginxConfig/"
+
+        origin=$(echo "$domain" | sed 's/\./\\\\./g')
+
+        sed -i "s/ffplayout.local/$domain/g" $nginxConfig/ffplayout.conf
+        sed -i "s/ffplayout\\\.local/$origin/g" $nginxConfig/ffplayout.conf
+
+        if [[ "$(grep -Ei 'debian|buntu|mint' /etc/*release)" ]]; then
+            ln -s $nginxConfig/ffplayout.conf /etc/nginx/sites-enabled/
+        fi
+    fi
+
+    cd /var/www/ffplayout/ffplayout/frontend
+
+    sudo -H -u $serviceUser bash -c 'npm install'
 
 cat <<EOF > ".env"
-BASE_URL='http://localhost:3000'
+BASE_URL='http://$domain'
 API_URL='/'
 EOF
 
-npm run build
+    npm run build
+    systemctl start ffplayout-api.service
+fi
 
 if [[ $installNginx == 'y' ]]; then
     systemctl restart nginx
 fi
-
-systemctl start ffplayout-api.service
 
 echo ""
 echo "-----------------------------------------------------------------------------------------------------"
