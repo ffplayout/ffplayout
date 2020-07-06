@@ -333,7 +333,7 @@ python manage.py createsuperuser
 
 deactivate
 
-chown $serviceUser. -R /var/www/ffplayout
+chown $serviceUser. -R /var/www
 
 cd ..
 
@@ -418,7 +418,7 @@ echo "$serviceUser  ALL = NOPASSWD: /bin/systemctl start ffplayout-engine.servic
 
 cd /var/www/ffplayout/ffplayout/frontend
 
-npm install
+sudo -H -u $serviceUser bash -c 'npm install'
 
 cat <<EOF > ".env"
 BASE_URL='http://localhost:3000'
