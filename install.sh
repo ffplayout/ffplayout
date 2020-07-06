@@ -345,7 +345,7 @@ sed -i "s/Group=root/Group=$serviceUser/g" /etc/systemd/system/ffplayout-api.ser
 sed -i "s/'localhost'/'localhost', \'$domain\'/g" /var/www/ffplayout/ffplayout/ffplayout/settings/production.py
 sed -i "s/ffplayout\\.local/$domain\'\n    \'https\\:\/\/$domain/g" /var/www/ffplayout/ffplayout/ffplayout/settings/production.py
 
-systemctl enable ffplayout-api.service && systemctl start ffplayout-api.service
+systemctl enable ffplayout-api.service
 
 if [[ "$(grep -Ei 'debian|buntu|mint' /etc/*release)" ]]; then
     cp docs/ffplayout.conf "$nginxConfig/"
@@ -407,6 +407,34 @@ EOF
     checkmodule -M -m -o conf.mod conf.te
     semodule_package -o conf.pp -m conf.mod
     semodule -i conf.pp
+
+cat <<EOF > create.te
+module create 1.0;
+
+require {
+        type init_t;
+        type httpd_sys_content_t;
+        type usr_t;
+        class file { create rename unlink write };
+        class dir { create rmdir };
+}
+
+#============= init_t ==============
+allow init_t httpd_sys_content_t:file rename;
+
+#!!!! This avc is allowed in the current policy
+allow init_t usr_t:dir create;
+allow init_t usr_t:dir rmdir;
+
+#!!!! This avc is allowed in the current policy
+allow init_t usr_t:file create;
+allow init_t usr_t:file { rename unlink write };
+
+EOF
+
+    checkmodule -M -m -o create.mod create.te
+    semodule_package -o create.pp -m create.mod
+    semodule -i create.pp
 fi
 
 origin=$(echo "$domain" | sed 's/\./\\\\./g')
@@ -428,6 +456,7 @@ EOF
 npm run build
 
 systemctl restart nginx
+systemctl start ffplayout-api.service
 
 echo ""
 echo "-----------------------------------------------------------------------------------------------------"
