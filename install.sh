@@ -409,7 +409,7 @@ EOF
     semodule -i conf.pp
 fi
 
-origin=$(echo "$domain" | sed 's/\./\\\\./')
+origin=$(echo "$domain" | sed 's/\./\\\\./g')
 
 sed -i "s/ffplayout.local/$domain/g" $nginxConfig/ffplayout.conf
 sed -i "s/ffplayout\\\.local/$origin/g" $nginxConfig/ffplayout.conf
