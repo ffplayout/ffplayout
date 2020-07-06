@@ -124,6 +124,8 @@ if [[ "$(grep -Ei 'debian|buntu|mint' /etc/*release)" ]]; then
 
     if [[ $installNginx == 'y' ]]; then
         apt install -y nginx
+
+        rm /etc/nginx/sites-enabled/default
     fi
 
     serviceUser="www-data"
@@ -376,6 +378,10 @@ if [[ $installNginx == 'y' ]]; then
 
     sed -i "s/ffplayout.local/$domain/g" $nginxConfig/ffplayout.conf
     sed -i "s/ffplayout\\\.local/$origin/g" $nginxConfig/ffplayout.conf
+
+    if [[ "$(grep -Ei 'debian|buntu|mint' /etc/*release)" ]]; then
+        ln -s $nginxConfig/ffplayout.conf /etc/nginx/sites-enabled/
+    fi
 fi
 
 if [[ "$(grep -Ei 'centos|fedora' /etc/*release)" ]]; then
