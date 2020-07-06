@@ -6,14 +6,14 @@ from platform import uname
 from subprocess import PIPE, STDOUT, run
 from time import sleep
 
-import psutil
+from pymediainfo import MediaInfo
 
+import psutil
 import yaml
 import zmq
 from apps.api_player.models import GuiSettings
 from django.conf import settings
 from natsort import natsorted
-from pymediainfo import MediaInfo
 
 
 def read_yaml():
@@ -48,7 +48,7 @@ def write_json(data):
     config = read_yaml()['playlist']['path']
     y, m, d = data['date'].split('-')
     _path = os.path.join(config, y, m)
-    
+
     if not os.path.isdir(_path):
         os.makedirs(_path, exist_ok=True)
 
@@ -295,7 +295,7 @@ def get_path(input):
 def get_media_path(extensions, _dir=''):
     config = read_yaml()
     media_folder = config['storage']['path']
-    extensions = extensions.split(' ')
+    extensions = extensions.split(',')
     playout_extensions = config['storage']['extensions']
     gui_extensions = [x for x in extensions if x not in playout_extensions]
     media_root, search_dir = get_path(_dir)

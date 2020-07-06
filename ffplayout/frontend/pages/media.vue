@@ -171,7 +171,7 @@
                     :placeholder="inputPlaceholder"
                     drop-placeholder="Drop files here..."
                     multiple
-                    :accept="extensions.replace(/ /g, ', ')"
+                    :accept="extensions.replace(/,/g, ', ')"
                     :file-name-formatter="formatNames"
                 />
                 <b-row>
@@ -296,7 +296,7 @@ export default {
     },
 
     created () {
-        this.extensions = [...this.configPlayout.storage.extensions, ...this.configGui.extra_extensions].join(' ')
+        this.extensions = [...this.configPlayout.storage.extensions, ...this.configGui.extra_extensions].join(',')
         this.getPath(this.extensions, '')
     },
 

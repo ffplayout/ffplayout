@@ -7,7 +7,7 @@
         "playout_config": "/etc/ffplayout/ffplayout.yml",
         "net_interface": "lo",
         "media_disk": "/",
-        "extra_extensions": ".jpg .jpeg .png"
+        "extra_extensions": ".jpg,.jpeg,.png"
     }
 }, {
     "model": "api_player.messengepresets",

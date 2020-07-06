@@ -337,7 +337,7 @@ export default {
     async created () {
         await this.getStatus()
 
-        this.extensions = this.configPlayout.storage.extensions.join(' ')
+        this.extensions = this.configPlayout.storage.extensions.join(',')
 
         await this.getPath(this.extensions, '')
 

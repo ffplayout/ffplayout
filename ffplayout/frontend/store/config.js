@@ -48,7 +48,7 @@ export const actions = {
         }
         if (response.data && response.data[0]) {
             if (response.data[0].extra_extensions) {
-                response.data[0].extra_extensions = response.data[0].extra_extensions.split(' ')
+                response.data[0].extra_extensions = response.data[0].extra_extensions.split(',')
             } else {
                 response.data[0].extra_extensions = []
             }
@@ -68,7 +68,7 @@ export const actions = {
 
     async setGuiConfig ({ commit, state }, obj) {
         const stringObj = JSON.parse(JSON.stringify(obj))
-        stringObj.extra_extensions = obj.extra_extensions.join(' ')
+        stringObj.extra_extensions = obj.extra_extensions.join(',')
         let response
 
         if (state.configPlayout.length === 0) {
