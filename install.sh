@@ -353,6 +353,11 @@ if [[ "$(grep -Ei 'debian|buntu|mint' /etc/*release)" ]]; then
 elif [[ "$(grep -Ei 'centos|fedora' /etc/*release)" ]]; then
     cp docs/ffplayout.conf "$nginxConfig/"
 
+    echo ""
+    echo "-----------------------------------------------------------------------------------------------------"
+    echo "creating selinux rules"
+    echo "-----------------------------------------------------------------------------------------------------"
+
     setsebool httpd_can_network_connect on -P
     semanage port -a -t http_port_t -p tcp 8001
 
