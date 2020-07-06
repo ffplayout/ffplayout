@@ -58,7 +58,8 @@ export const actions = {
     },
     async refreshToken ({ commit, state }) {
         const payload = {
-            refresh: state.jwtRefresh
+            refresh: state.jwtRefresh,
+            progress: false
         }
 
         await this.$axios.post('auth/token/refresh/', payload)
