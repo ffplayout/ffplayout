@@ -142,6 +142,7 @@
                     v-model="folderName"
                     type="text"
                     required
+                    autofocus
                     placeholder="Enter a unique folder name"
                 />
                 <div class="media-button">
