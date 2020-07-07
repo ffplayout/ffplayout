@@ -479,6 +479,7 @@ if [[ ! -d "/var/www/ffplayout" ]]; then
     fi
 
     cd /var/www/ffplayout/ffplayout/frontend
+    ln -s "$mediaPath" /var/www/ffplayout/ffplayout/frontend/static/
 
     sudo -H -u $serviceUser bash -c 'npm install'
 
@@ -487,7 +488,7 @@ BASE_URL='http://$domain'
 API_URL='/'
 EOF
 
-    npm run build
+    sudo -H -u $serviceUser bash -c 'npm run build'
     systemctl start ffplayout-api.service
 fi
 
