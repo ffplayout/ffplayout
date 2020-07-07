@@ -442,7 +442,7 @@ export default {
                     sources: [
                         {
                             type: `video/${ext}`,
-                            src: encodeURIComponent(src)
+                            src: '/' + encodeURIComponent(src.replace(/^\//, ''))
                         }
                     ]
                 }
