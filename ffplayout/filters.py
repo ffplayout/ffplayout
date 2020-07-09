@@ -222,6 +222,7 @@ def realtime_filter(duration, track=''):
 
     return speed_filter
 
+
 def split_filter(filter_type):
     map_node = []
     filter_prefix = ''
@@ -235,7 +236,7 @@ def split_filter(filter_type):
             map_node.append('[{}out{}]'.format(filter_type, num + 1))
 
         _filter = ',{}split={}{}'.format(filter_prefix, _pre.output_count,
-                                        ''.join(map_node))
+                                         ''.join(map_node))
 
     else:
         _filter = '[{}out1]'.format(filter_type)
