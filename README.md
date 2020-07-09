@@ -1,13 +1,14 @@
 **ffplayout-engine**
 ================
+
 [![made-with-python](https://img.shields.io/badge/Made%20with-Python-1f425f.svg)](https://www.python.org/)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
 The purpose with ffplayout is to provide a 24/7 broadcasting solution that plays a *json* playlist for every day, while keeping the current playlist editable.
 
-#### Check [ffplayout-gui](https://github.com/ffplayout/ffplayout-gui): web-based GUI for ffplayout.
+**Check [ffplayout-gui](https://github.com/ffplayout/ffplayout-gui): web-based GUI for ffplayout**
 
-Features
+**Features**
 -----
 
 - have all values in a separate config file
@@ -29,17 +30,22 @@ Features
 - on posix systems ffplayout can reload config with *SIGHUP*
 - logging to files, or colored output to console
 - add filters to input, if is necessary to match output stream:
-    - **yadif** (deinterlacing)
-    - **pad** (letterbox or pillarbox to fit aspect)
-    - **fps** (change fps)
-    - **scale** (fit target resolution)
-    - **aevalsrc** (if video have no audio)
-    - **apad** (add silence if audio duration is to short)
-    - **tpad** (add black frames if video duration is to short)
-
+  - **yadif** (deinterlacing)
+  - **pad** (letterbox or pillarbox to fit aspect)
+  - **fps** (change fps)
+  - **scale** (fit target resolution)
+  - **aevalsrc** (if video have no audio)
+  - **apad** (add silence if audio duration is to short)
+  - **tpad** (add black frames if video duration is to short)
+- different types of [output](https://github.com/ffplayout/ffplayout-engine/wiki/Outputs):
+  - **stream**
+  - **desktop**
+  - **HLS**
+  - **custom**
 
 Requirements
 -----
+
 - python version 3.6+
 - python module **watchdog** (only when `playlist_mode: False`)
 - python module **colorama** if you are on windows
@@ -81,11 +87,14 @@ JSON Playlist Example
 }
 ```
 
-#### Warning:
+**Warning**
+-----
+
 (Endless) streaming over multiple days will only work when config have **day_start** value and the **length** value is **24 hours**. If you need only some hours for every day, use a *cron* job, or something similar.
 
 Remote source from URL
 -----
+
 You can use sources from remote URL in that way:
 
 ```json
@@ -97,17 +106,21 @@ You can use sources from remote URL in that way:
             "source": "https://example.org/big_buck_bunny.webm"
         }
 ```
+
 But be careful with it, better test it multiple times!
 
 More informations in [Wiki](https://github.com/ffplayout/ffplayout-engine/wiki/Remote-URL-Source)
 
 Installation
 -----
+
 Check [INSTALL.md](docs/INSTALL.md)
 
 Start with Arguments
 -----
+
 ffplayout also allows the passing of parameters:
+
 - `-c, --config` use given config file
 - `-d, --desktop` preview on desktop
 - `-f, --folder` use folder for playing
@@ -119,10 +132,11 @@ ffplayout also allows the passing of parameters:
 
 You can run the command like:
 
-```
+```SHELL
 ./ffplayout.py -l none -p ~/playlist.json -d -s now -t none
 ```
 
 Play on Desktop
 -----
-For playing on desktop use `-d` argument or set `preview: True` in config under `out:`.
+
+For playing on desktop use `-d` argument or set `mode: 'desktop'` in config under `out:`.
