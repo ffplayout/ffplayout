@@ -19,15 +19,9 @@
 # ------------------------------------------------------------------------------
 
 import os
-from subprocess import PIPE, Popen
-from threading import Thread
+from pydoc import locate
 
-from ffplayout.folder import GetSourceFromFolder, MediaStore, MediaWatcher
-from ffplayout.playlist import GetSourceFromPlaylist
-from ffplayout.utils import (_ff, _log, _playlist, _playout, _pre_comp, _text,
-                             ffmpeg_stderr_reader, get_date, messenger,
-                             pre_audio_codec, stdin_args, terminate_processes,
-                             validate_ffmpeg_libs)
+from ffplayout.utils import _playout, validate_ffmpeg_libs
 
 try:
     if os.name != 'posix':
@@ -35,9 +29,6 @@ try:
         colorama.init()
 except ImportError:
     print('colorama import failed, no colored console output on windows...')
-
-_WINDOWS = os.name == 'nt'
-COPY_BUFSIZE = 1024 * 1024 if _WINDOWS else 65424
 
 
 # ------------------------------------------------------------------------------
@@ -49,105 +40,15 @@ def main():
     pipe ffmpeg pre-process to final ffmpeg post-process,
     or play with ffplay
     """
-    year = get_date(False).split('-')[0]
-    overlay = []
 
-    ff_pre_settings = [
-        '-pix_fmt', 'yuv420p', '-r', str(_pre_comp.fps),
-        '-c:v', 'mpeg2video', '-intra',
-        '-b:v', '{}k'.format(_pre_comp.v_bitrate),
-        '-minrate', '{}k'.format(_pre_comp.v_bitrate),
-        '-maxrate', '{}k'.format(_pre_comp.v_bitrate),
-        '-bufsize', '{}k'.format(_pre_comp.v_bufsize)
-        ] + pre_audio_codec() + ['-f', 'mpegts', '-']
+    for output in os.listdir('ffplayout/output'):
+        if os.path.isfile(os.path.join('ffplayout/output', output)) \
+                and output != '__init__.py':
+            mode = os.path.splitext(output)[0]
+            if mode == _playout.mode:
+                output = locate('ffplayout.output.{}.output'.format(mode))
 
-    if _text.add_text:
-        messenger.info('Using drawtext node, listening on address: {}'.format(
-            _text.address
-        ))
-        overlay = [
-            '-vf',
-            "null,zmq=b=tcp\\\\://'{}',drawtext=text='':fontfile='{}'".format(
-                _text.address.replace(':', '\\:'), _text.fontfile)
-        ]
-
-    try:
-        if _playout.preview or stdin_args.desktop:
-            # preview playout to player
-            _ff.encoder = Popen([
-                'ffplay', '-hide_banner', '-nostats', '-i', 'pipe:0'
-                ] + overlay, stderr=PIPE, stdin=PIPE, stdout=None)
-        else:
-            _ff.encoder = Popen([
-                'ffmpeg', '-v', _log.ff_level.lower(), '-hide_banner',
-                '-nostats', '-re', '-thread_queue_size', '256', '-i', 'pipe:0'
-                ] + overlay + [
-                    '-metadata', 'service_name=' + _playout.name,
-                    '-metadata', 'service_provider=' + _playout.provider,
-                    '-metadata', 'year={}'.format(year)
-                ] + _playout.post_comp_param + [_playout.out_addr],
-                stdin=PIPE, stderr=PIPE)
-
-        enc_err_thread = Thread(target=ffmpeg_stderr_reader,
-                                args=(_ff.encoder.stderr, False))
-        enc_err_thread.daemon = True
-        enc_err_thread.start()
-
-        if _playlist.mode and not stdin_args.folder:
-            watcher = None
-            get_source = GetSourceFromPlaylist()
-        else:
-            messenger.info('Start folder mode')
-            media = MediaStore()
-            watcher = MediaWatcher(media)
-            get_source = GetSourceFromFolder(media)
-
-        try:
-            for src_cmd in get_source.next():
-                messenger.debug('src_cmd: "{}"'.format(src_cmd))
-                if src_cmd[0] == '-i':
-                    current_file = src_cmd[1]
-                else:
-                    current_file = src_cmd[3]
-
-                messenger.info('Play: "{}"'.format(current_file))
-
-                with Popen([
-                    'ffmpeg', '-v', _log.ff_level.lower(), '-hide_banner',
-                    '-nostats'] + src_cmd + ff_pre_settings,
-                        stdout=PIPE, stderr=PIPE) as _ff.decoder:
-
-                    dec_err_thread = Thread(target=ffmpeg_stderr_reader,
-                                            args=(_ff.decoder.stderr, True))
-                    dec_err_thread.daemon = True
-                    dec_err_thread.start()
-
-                    while True:
-                        buf = _ff.decoder.stdout.read(COPY_BUFSIZE)
-                        if not buf:
-                            break
-                        _ff.encoder.stdin.write(buf)
-
-        except BrokenPipeError:
-            messenger.error('Broken Pipe!')
-            terminate_processes(watcher)
-
-        except SystemExit:
-            messenger.info('Got close command')
-            terminate_processes(watcher)
-
-        except KeyboardInterrupt:
-            messenger.warning('Program terminated')
-            terminate_processes(watcher)
-
-        # close encoder when nothing is to do anymore
-        if _ff.encoder.poll() is None:
-            _ff.encoder.terminate()
-
-    finally:
-        if _ff.encoder.poll() is None:
-            _ff.encoder.terminate()
-        _ff.encoder.wait()
+                output()
 
 
 if __name__ == '__main__':

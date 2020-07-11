@@ -31,16 +31,19 @@ logging:
     log_level: "DEBUG"
     ffmpeg_level: "ERROR"
 
-pre_compress:
-    helptext: Settings for the pre-compression. All clips get prepared in that way,
-        so the input for the final compression is unique. 'aspect' must be a float
-        number. 'logo' is only used if the path exist. 'logo_scale' scale the logo to
-        target size, leave it blank when no scaling is needed, format is 'number:number',
-        for example '100:-1' for proportional scaling. With 'logo_opacity' logo can
-        become transparent. With 'logo_filter' 'overlay=W-w-12:12' you can modify
-        the logo position. With 'use_loudnorm' you can activate single pass EBU R128
-        loudness normalization. 'loud_*' can adjust the loudnorm filter. [Output is
-        always progressive!]
+processing:
+    helptext: Default processing, for all clips that they get prepared in that way,
+        so the output is unique. 'aspect' must be a float number. 'logo' is only used
+        if the path exist. 'logo_scale' scale the logo to target size, leave it blank
+        when no scaling is needed, format is 'number:number', for example '100:-1'
+        for proportional scaling. With 'logo_opacity' logo can become transparent.
+        With 'logo_filter' 'overlay=W-w-12:12' you can modify the logo position.
+        With 'use_loudnorm' you can activate single pass EBU R128 loudness normalization.
+        'loud_*' can adjust the loudnorm filter. 'output_count' sets the outputs for
+        the filtering, > 1 gives the option to use the same filters for multiple outputs.
+        This outputs can be taken in 'ffmpeg_param', names will be vout2, vout3;
+        aout2, aout2 etc.'use_realtime' is realtime filter, it works not in all scenarios,
+        but for example is necessary for hls output.
     width: 1024
     height: 576
     aspect: 1.778
@@ -54,9 +57,11 @@ pre_compress:
     loud_I: -18
     loud_TP: -1.5
     loud_LRA: 11
+    output_count: 1
+    use_realtime: false
 
 playlist:
-    helptext: Set 'playlist_mode' to 'False' if you want to play clips from the [STORAGE]
+    helptext: Set 'playlist_mode' to 'False' if you want to play clips from the 'storage'
         section. Put only the root path here, for example '/playlists' subfolders
         are readed by the script. Subfolders needs this structur '/playlists/2018/01'
         (/playlists/year/month). 'day_start' means at which time the playlist should
@@ -70,9 +75,8 @@ playlist:
 
 storage:
     helptext: Play ordered or ramdomly files from path. 'filler_clip' is for fill
-        the end to reach 24 hours, it will loop when is necessary extensions search
-        only files with this extension, can be a list. Set 'shuffle' to 'True' to
-        pick files randomly.
+        the end to reach 24 hours, it will loop when is necessary. 'extensions' search
+        only files with this extension. Set 'shuffle' to 'True' to pick files randomly.
     path: "/mediaStorage"
     filler_clip: "/mediaStorage/filler/filler.mp4"
     extensions:
@@ -84,18 +88,24 @@ text:
     helptext: Overlay text in combination with libzmq for remote text manipulation.
         On windows fontfile path need to be like this 'C\:/WINDOWS/fonts/DejaVuSans.ttf'.
         In a standard environment the filter drawtext node is Parsed_drawtext_2.
+        'over_pre' if True text will be overlay in pre processing. Continue same text
+        over multiple files is in that mode not possible.
     add_text: False
+    over_pre: False
     bind_address: "127.0.0.1:5555"
     fontfile: "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 
 out:
-    helptext: The final playout post compression. Set the settings to your needs.
-        'preview' works only on a desktop system with ffplay!! Set it to 'True', if
-        you need it.
-    preview: False
+    helptext: The final playout compression. Set the settings to your needs.
+        'mode' has the standard options 'desktop', 'hls', 'stream'. Self made outputs
+        can be define, by adding script in output folder with an 'output' function inside.
+        'stream_output' is for streaming output, two ffmpeg instances are fired up, for
+        pre- and post-processing. 'hls_output' is for direct output to hls playlist,
+        without pre- and post-processing, mode must be 'hls'.
+    mode: 'stream'
     service_name: "Live Stream"
     service_provider: "example.org"
-    post_ffmpeg_param: >-
+    ffmpeg_param: >-
         -c:v libx264
         -crf 23
         -x264-params keyint=50:min-keyint=25:scenecut=-1
@@ -107,6 +117,14 @@ out:
         -c:a aac
         -ar 44100
         -b:a 128k
+    stream_output: >-
         -flags +global_header
-        -f flv
-    out_addr: "rtmp://localhost/live/stream"
+        -f flv "rtmp://localhost/live/stream"
+    hls_output: >-
+        -flags +cgop
+        -f hls
+        -hls_time 6
+        -hls_list_size 600
+        -hls_delete_threshold 30
+        -hls_flags append_list+delete_segments+omit_endlist+program_date_time
+        /var/www/srs/live/stream.m3u8
