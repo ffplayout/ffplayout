@@ -113,7 +113,7 @@ def get_time(time_format):
 _general = SimpleNamespace()
 _mail = SimpleNamespace()
 _log = SimpleNamespace()
-_pre_comp = SimpleNamespace()
+_pre = SimpleNamespace()
 _playlist = SimpleNamespace()
 _storage = SimpleNamespace()
 _text = SimpleNamespace()
@@ -121,6 +121,7 @@ _playout = SimpleNamespace()
 
 _init = SimpleNamespace(load=True)
 _ff = SimpleNamespace(decoder=None, encoder=None)
+_global = SimpleNamespace(time_delta=0)
 
 
 def str_to_sec(s):
@@ -178,15 +179,16 @@ def load_config():
     _mail.recip = cfg['mail']['recipient']
     _mail.level = cfg['mail']['mail_level']
 
-    _pre_comp.add_logo = cfg['pre_compress']['add_logo']
-    _pre_comp.logo = cfg['pre_compress']['logo']
-    _pre_comp.logo_scale = cfg['pre_compress']['logo_scale']
-    _pre_comp.logo_filter = cfg['pre_compress']['logo_filter']
-    _pre_comp.logo_opacity = cfg['pre_compress']['logo_opacity']
-    _pre_comp.add_loudnorm = cfg['pre_compress']['add_loudnorm']
-    _pre_comp.loud_i = cfg['pre_compress']['loud_I']
-    _pre_comp.loud_tp = cfg['pre_compress']['loud_TP']
-    _pre_comp.loud_lra = cfg['pre_compress']['loud_LRA']
+    _pre.add_logo = cfg['processing']['add_logo']
+    _pre.logo = cfg['processing']['logo']
+    _pre.logo_scale = cfg['processing']['logo_scale']
+    _pre.logo_filter = cfg['processing']['logo_filter']
+    _pre.logo_opacity = cfg['processing']['logo_opacity']
+    _pre.add_loudnorm = cfg['processing']['add_loudnorm']
+    _pre.loud_i = cfg['processing']['loud_I']
+    _pre.loud_tp = cfg['processing']['loud_TP']
+    _pre.loud_lra = cfg['processing']['loud_LRA']
+    _pre.output_count = cfg['processing']['output_count']
 
     _playlist.mode = cfg['playlist']['playlist_mode']
     _playlist.path = cfg['playlist']['path']
@@ -199,6 +201,7 @@ def load_config():
     _storage.shuffle = cfg['storage']['shuffle']
 
     _text.add_text = cfg['text']['add_text']
+    _text.over_pre = cfg['text']['over_pre']
     _text.address = cfg['text']['bind_address']
     _text.fontfile = cfg['text']['fontfile']
 
@@ -209,18 +212,20 @@ def load_config():
         _log.level = cfg['logging']['log_level']
         _log.ff_level = cfg['logging']['ffmpeg_level']
 
-        _pre_comp.w = cfg['pre_compress']['width']
-        _pre_comp.h = cfg['pre_compress']['height']
-        _pre_comp.aspect = cfg['pre_compress']['aspect']
-        _pre_comp.fps = cfg['pre_compress']['fps']
-        _pre_comp.v_bitrate = cfg['pre_compress']['width'] * 50
-        _pre_comp.v_bufsize = cfg['pre_compress']['width'] * 50 / 2
+        _pre.w = cfg['processing']['width']
+        _pre.h = cfg['processing']['height']
+        _pre.aspect = cfg['processing']['aspect']
+        _pre.fps = cfg['processing']['fps']
+        _pre.v_bitrate = cfg['processing']['width'] * 50
+        _pre.v_bufsize = cfg['processing']['width'] * 50 / 2
+        _pre.realtime = cfg['processing']['use_realtime']
 
-        _playout.preview = cfg['out']['preview']
+        _playout.mode = cfg['out']['mode']
         _playout.name = cfg['out']['service_name']
         _playout.provider = cfg['out']['service_provider']
-        _playout.post_comp_param = cfg['out']['post_ffmpeg_param'].split(' ')
-        _playout.out_addr = cfg['out']['out_addr']
+        _playout.ffmpeg_param = cfg['out']['ffmpeg_param'].split(' ')
+        _playout.stream_output = cfg['out']['stream_output'].split(' ')
+        _playout.hls_output = cfg['out']['hls_output'].split(' ')
 
         _init.load = False
 
@@ -672,6 +677,11 @@ def check_sync(delta):
     """
     check that we are in tolerance time
     """
+
+    if _playlist.mode and _playlist.start and _playlist.length:
+        # save time delta to global variable for syncing
+        _global.time_delta = delta
+
     if _general.stop and abs(delta) > _general.threshold:
         messenger.error(
             'Sync tolerance value exceeded with {0:.2f} seconds,\n'
@@ -782,7 +792,7 @@ def gen_dummy(duration):
     return [
         '-f', 'lavfi', '-i',
         'color=c={}:s={}x{}:d={}:r={},format=pix_fmts=yuv420p'.format(
-            color, _pre_comp.w, _pre_comp.h, duration, _pre_comp.fps
+            color, _pre.w, _pre.h, duration, _pre.fps
         ),
         '-f', 'lavfi', '-i', 'anoisesrc=d={}:c=pink:r=48000:a=0.05'.format(
             duration)
@@ -989,7 +999,7 @@ def pre_audio_codec():
     s302m has higher quality, but is experimental
     and works not well together with the loudnorm filter
     """
-    if _pre_comp.add_loudnorm:
+    if _pre.add_loudnorm:
         acodec = 'libtwolame' if 'libtwolame' in FF_LIBS['libs'] else 'mp2'
         return ['-c:a', acodec, '-b:a', '384k', '-ar', '48000', '-ac', '2']
     else:
