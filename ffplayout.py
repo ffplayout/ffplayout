@@ -21,7 +21,7 @@
 import os
 from pydoc import locate
 
-from ffplayout.utils import _playout, validate_ffmpeg_libs
+from ffplayout.utils import _playout, validate_ffmpeg_libs, stdin_args
 
 try:
     if os.name != 'posix':
@@ -37,18 +37,22 @@ except ImportError:
 
 def main():
     """
-    pipe ffmpeg pre-process to final ffmpeg post-process,
-    or play with ffplay
+    play out depending on output mode
     """
+    
+    if stdin_args.desktop:
+        output = locate('ffplayout.output.desktop.output')
+        output()
 
-    for output in os.listdir('ffplayout/output'):
-        if os.path.isfile(os.path.join('ffplayout/output', output)) \
-                and output != '__init__.py':
-            mode = os.path.splitext(output)[0]
-            if mode == _playout.mode:
-                output = locate('ffplayout.output.{}.output'.format(mode))
+    else:
+        for output in os.listdir('ffplayout/output'):
+            if os.path.isfile(os.path.join('ffplayout/output', output)) \
+                    and output != '__init__.py':
+                mode = os.path.splitext(output)[0]
 
-                output()
+                if mode == _playout.mode:
+                    output = locate('ffplayout.output.{}.output'.format(mode))
+                    output()
 
 
 if __name__ == '__main__':
