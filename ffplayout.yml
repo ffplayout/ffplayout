@@ -119,7 +119,7 @@ out:
         -b:a 128k
     stream_output: >-
         -flags +global_header
-        -f flv "rtmp://localhost/live/stream"
+        -f flv rtmp://localhost/live/stream
     hls_output: >-
         -flags +cgop
         -f hls
