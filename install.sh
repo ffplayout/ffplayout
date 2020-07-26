@@ -185,7 +185,7 @@ cat <<EOF > "build_config.txt"
 --enable-libmp3lame
 --enable-libopus
 --enable-libsoxr
---enable-libsrt
+#--enable-libsrt
 --enable-libtwolame
 --enable-libvpx
 --enable-libx264
