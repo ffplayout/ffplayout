@@ -169,10 +169,9 @@ class Playlist(APIView):
 
     def post(self, request, *args, **kwargs):
         if 'data' in request.data:
-            _respose = write_json(request.data['data'])
-            return _respose
+            return write_json(request.data['data'])
 
-        return Response({'text': 'Unspecified save error'},
+        return Response({'detail': 'Unspecified save error'},
                         status=status.HTTP_400_BAD_REQUEST)
 
 

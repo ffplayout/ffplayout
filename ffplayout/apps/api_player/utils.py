@@ -58,7 +58,7 @@ def write_json(data):
 
     if os.path.isfile(output) and data == read_json(data['date']):
         return Response({
-            'text': 'Playlist from {} already exists'.format(data['date'])
+            'detail': 'Playlist from {} already exists'.format(data['date'])
             }, status=status.HTTP_204_NO_CONTENT)
 
 
@@ -66,7 +66,7 @@ def write_json(data):
         json.dump(data, outfile, indent=4)
 
     return Response({
-        'text': 'Playlist from {} saved'.format(data['date'])
+        'detail': 'Playlist from {} saved'.format(data['date'])
         }, status=status.HTTP_201_CREATED)
 
 
