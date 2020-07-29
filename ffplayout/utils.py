@@ -216,8 +216,9 @@ def load_config():
         _pre.h = cfg['processing']['height']
         _pre.aspect = cfg['processing']['aspect']
         _pre.fps = cfg['processing']['fps']
-        _pre.v_bitrate = cfg['processing']['width'] * 50
-        _pre.v_bufsize = cfg['processing']['width'] * 50 / 2
+        _pre.v_bitrate = cfg['processing']['width'] * \
+            cfg['processing']['height'] / 10
+        _pre.v_bufsize = _pre.v_bitrate / 2
         _pre.realtime = cfg['processing']['use_realtime']
 
         _playout.mode = cfg['out']['mode']
