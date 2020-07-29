@@ -14,6 +14,8 @@ import zmq
 from apps.api_player.models import GuiSettings
 from django.conf import settings
 from natsort import natsorted
+from rest_framework import status
+from rest_framework.response import Response
 
 
 def read_yaml():
@@ -53,8 +55,19 @@ def write_json(data):
         os.makedirs(_path, exist_ok=True)
 
     output = os.path.join(_path, '{}.json'.format(data['date']))
+
+    if os.path.isfile(output) and data == read_json(data['date']):
+        return Response({
+            'text': 'Playlist from {} already exists'.format(data['date'])
+            }, status.HTTP_204_NO_CONTENT)
+
+
     with open(output, "w") as outfile:
         json.dump(data, outfile, indent=4)
+
+    return Response({
+        'text': 'Playlist from {} saved'.format(data['date'])
+        }, status.HTTP_201_CREATED)
 
 
 def read_log(type, _date):

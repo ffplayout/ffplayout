@@ -7,7 +7,7 @@ from apps.api_player.serializers import (GuiSettingsSerializer,
                                          MessengerSerializer, UserSerializer)
 from django.contrib.auth.models import User
 from django_filters import rest_framework as filters
-from rest_framework import viewsets
+from rest_framework import status, viewsets
 from rest_framework.parsers import FileUploadParser, JSONParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -169,10 +169,11 @@ class Playlist(APIView):
 
     def post(self, request, *args, **kwargs):
         if 'data' in request.data:
-            write_json(request.data['data'])
-            return Response(status=200)
+            _respose = write_json(request.data['data'])
+            return _respose
 
-        return Response(status=400)
+        return Response({'text': 'Unspecified save error'},
+                        status=status.HTTP_400_BAD_REQUEST)
 
 
 class Statistics(APIView):
