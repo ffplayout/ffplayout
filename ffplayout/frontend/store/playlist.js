@@ -1,7 +1,6 @@
 export const state = () => ({
     playlist: null,
     playlistToday: [],
-    playlistChannel: 'Channel 1',
     progressValue: 0,
     currentClip: 'No clips is playing',
     currentClipIndex: null,
@@ -19,9 +18,6 @@ export const mutations = {
     },
     UPDATE_TODAYS_PLAYLIST (state, list) {
         state.playlistToday = list
-    },
-    UPDATE_PLAYLIST_CHANNEL (state, channel) {
-        state.playlistChannel = channel
     },
     SET_PROGRESS_VALUE (state, value) {
         state.progressValue = value
@@ -57,7 +53,6 @@ export const actions = {
         const response = await this.$axios.get(`api/player/playlist/?date=${date}`)
 
         if (response.data && response.data.program) {
-            commit('UPDATE_PLAYLIST_CHANNEL', response.data.channel)
             commit('UPDATE_PLAYLIST', this.$processPlaylist(dayStart, response.data.program))
 
             if (date === this.$dayjs().format('YYYY-MM-DD')) {

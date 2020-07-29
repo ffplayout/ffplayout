@@ -460,7 +460,7 @@ export default {
 
             await this.$axios.post(
                 'api/player/playlist/',
-                { data: { channel: this.$store.state.playlist.playlistChannel, date: this.listDate, program: saveList } }
+                { data: { channel: this.$store.state.config.configGui.channel, date: this.listDate, program: saveList } }
             )
         }
     }
