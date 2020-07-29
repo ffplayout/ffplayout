@@ -506,18 +506,13 @@ export default {
 }
 
 .control-unit-row .col {
-    position: relative;
     height: 50%;
     min-height: 90px;
 }
 
 .control-unit-row .col div {
-    position: relative;
-    top: 50%;
-    -webkit-transform: translateY(-50%);
-    -ms-transform: translateY(-50%);
-    transform: translateY(-50%);
     height: 80%;
+    margin: .7em 0;
 }
 
 .control-button {
