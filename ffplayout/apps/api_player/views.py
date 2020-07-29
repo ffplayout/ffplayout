@@ -171,8 +171,7 @@ class Playlist(APIView):
         if 'data' in request.data:
             return write_json(request.data['data'])
 
-        return Response({'detail': 'Unspecified save error'},
-                        status=status.HTTP_400_BAD_REQUEST)
+        return Response({'detail': 'Unspecified save error'})
 
 
 class Statistics(APIView):
