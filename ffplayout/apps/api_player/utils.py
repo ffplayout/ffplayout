@@ -57,17 +57,14 @@ def write_json(data):
     output = os.path.join(_path, '{}.json'.format(data['date']))
 
     if os.path.isfile(output) and data == read_json(data['date']):
-        return Response({
-            'detail': 'Playlist from {} already exists'.format(data['date'])
-            }, status=status.HTTP_204_NO_CONTENT)
+        return Response(
+            {'detail': 'Playlist from {} already exists'.format(data['date'])})
 
 
     with open(output, "w") as outfile:
         json.dump(data, outfile, indent=4)
 
-    return Response({
-        'detail': 'Playlist from {} saved'.format(data['date'])
-        }, status=status.HTTP_201_CREATED)
+    return Response({'detail': 'Playlist from {} saved'.format(data['date'])})
 
 
 def read_log(type, _date):
