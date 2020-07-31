@@ -33,6 +33,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import formatdate
 from logging.handlers import TimedRotatingFileHandler
+from shutil import which
 from subprocess import STDOUT, CalledProcessError, check_output
 from threading import Thread
 from types import SimpleNamespace
@@ -449,14 +450,27 @@ messenger = Messenger()
 
 
 # ------------------------------------------------------------------------------
-# check ffmpeg libs
+# check binaries and ffmpeg libs
 # ------------------------------------------------------------------------------
+
+def is_in_system(name):
+    """
+    Check whether name is on PATH and marked as executable
+    """
+    
+    if which(name) is None:
+        messenger.error('{} is not found on system'.format(name))
+        exit()
+
 
 def ffmpeg_libs():
     """
     check which external libs are compiled in ffmpeg,
     for using them later
     """
+    is_in_system('ffmpeg')
+    is_in_system('ffprobe')
+
     cmd = ['ffmpeg', '-filters']
     libs = []
     filters = []
