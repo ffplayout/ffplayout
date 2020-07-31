@@ -45,8 +45,11 @@ def main():
         output()
 
     else:
-        for output in os.listdir('ffplayout/output'):
-            if os.path.isfile(os.path.join('ffplayout/output', output)) \
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        output_dir = os.path.join(script_dir, 'ffplayout', 'output')
+
+        for output in os.listdir(output_dir):
+            if os.path.isfile(os.path.join(output_dir, output)) \
                     and output != '__init__.py':
                 mode = os.path.splitext(output)[0]
 
