@@ -199,7 +199,7 @@
                             </b-list-group-item>
                         </b-list-group>
                         <perfect-scrollbar id="scroll-container">
-                            <b-list-group>
+                            <b-list-group class="playlist-list-group">
                                 <draggable
                                     id="playlist-group"
                                     v-model="playlist"
@@ -422,8 +422,15 @@ export default {
             this.$root.$emit('bv::show::modal', 'preview-modal')
         },
         cloneClip ({ file, duration }) {
+            let subPath
+            if (this.folderTree.tree[0].includes('/')) {
+                subPath = this.folderTree.tree[0].replace(/.*\//, '') + '/'
+            } else {
+                subPath = ''
+            }
+
             return {
-                source: `/${this.folderTree.tree[0]}/${file}`,
+                source: `${this.configPlayout.storage.path}/${subPath}${file}`,
                 in: 0,
                 out: duration,
                 duration
@@ -661,6 +668,10 @@ export default {
 
 .timecode input {
     border-color: #515763;
+}
+
+.playlist-list-group, #playlist-group {
+    height: 100%;
 }
 
 .playlist-item:nth-of-type(even), .playlist-item:nth-of-type(even) div .timecode input {
