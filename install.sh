@@ -167,10 +167,13 @@ if [[ $compileFFmpeg == 'y' ]]; then
     echo "-----------------------------------------------------------------------------------------------------"
     cd /opt/
 
-    git clone https://github.com/jb-alvarado/compile-ffmpeg-osx-linux.git ffmpeg-build
+    if [[ ! -d "ffmpeg-build" ]]; then
+        git clone https://github.com/jb-alvarado/compile-ffmpeg-osx-linux.git ffmpeg-build
+    fi
 
     cd ffmpeg-build
 
+    if [[ ! -f "build_config.txt" ]]; then
 cat <<EOF > "build_config.txt"
 #--enable-decklink
 --disable-ffplay
@@ -198,16 +201,16 @@ cat <<EOF > "build_config.txt"
 #--enable-openssl
 #--enable-libsvtav1
 EOF
-    sed -i 's/mediainfo="yes"/mediainfo="no"/g' ./compile-ffmpeg.sh
-    sed -i 's/mp4box="yes"/mp4box="no"/g' ./compile-ffmpeg.sh
+        sed -i 's/mediainfo="yes"/mediainfo="no"/g' ./compile-ffmpeg.sh
+        sed -i 's/mp4box="yes"/mp4box="no"/g' ./compile-ffmpeg.sh
+    fi
 
     ./compile-ffmpeg.sh
 
-    cp local/bin/ffmpeg /usr/local/bin/
-    cp local/bin/ffprobe /usr/local/bin/
+    \cp local/bin/ff* /usr/local/bin/
 fi
 
-if [[ $installSRS == 'y' ]]; then
+if [[ $installSRS == 'y' ]] && [[ ! -d "/usr/local/srs" ]]; then
     echo ""
     echo "-----------------------------------------------------------------------------------------------------"
     echo "compile and install srs"
@@ -383,9 +386,11 @@ EOF
     semodule -i create.pp
 fi
 
-echo "$serviceUser  ALL = NOPASSWD: /bin/systemctl start ffplayout-engine.service, /bin/systemctl stop ffplayout-engine.service, /bin/systemctl reload ffplayout-engine.service, /bin/systemctl restart ffplayout-engine.service, /bin/systemctl status ffplayout-engine.service, /bin/systemctl is-active ffplayout-engine.service, /bin/journalctl -n 1000 -u ffplayout-engine.service" >> /etc/sudoers
+if ! grep -q "ffplayout-engine.service" "/etc/sudoers"; then
+  echo "$serviceUser  ALL = NOPASSWD: /bin/systemctl start ffplayout-engine.service, /bin/systemctl stop ffplayout-engine.service, /bin/systemctl reload ffplayout-engine.service, /bin/systemctl restart ffplayout-engine.service, /bin/systemctl status ffplayout-engine.service, /bin/systemctl is-active ffplayout-engine.service, /bin/journalctl -n 1000 -u ffplayout-engine.service" >> /etc/sudoers
+fi
 
-if [[ "$installEngine" == "y" ]]; then
+if [[ "$installEngine" == "y" ]] && [[ ! -d "/opt/ffplayout-engine" ]]; then
     echo ""
     echo "-----------------------------------------------------------------------------------------------------"
     echo "install ffplayout engine"
