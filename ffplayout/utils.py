@@ -457,7 +457,6 @@ def is_in_system(name):
     """
     Check whether name is on PATH and marked as executable
     """
-    
     if which(name) is None:
         messenger.error('{} is not found on system'.format(name))
         exit()
