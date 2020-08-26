@@ -51,6 +51,7 @@
     ```
     - in dev mode `API_URL` should be: `http://localhost:8000`
     - for deactivating progress animation: `DEV=true`
+- create symlink for the media folder: `ln -s /opt/ffplayout/media /var/www/ffplayout/ffplayout/frontend/static/`
 - build app: `npm run build`
 
 Your frontend should be now in **/var/www/ffplayout/ffplayout/frontend/dist** folder, which we are included already in the nginx config. You can serve now the GUI under your domain URL.
