@@ -335,7 +335,7 @@ export default {
     },
 
     async created () {
-        await this.getStatus()
+        this.getStatus()
 
         this.extensions = this.configPlayout.storage.extensions.join(',')
 
