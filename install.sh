@@ -5,175 +5,225 @@ if [[ $(whoami) != 'root' ]]; then
     exit 1
 fi
 
-echo ""
-echo "-----------------------------------------------------------------------------------------------------"
-echo "ffplayout gui domain name (like: example.org)"
-echo "-----------------------------------------------------------------------------------------------------"
-echo ""
-
-read -p "domain name :$ " domain
-
-echo ""
-echo "-----------------------------------------------------------------------------------------------------"
-echo "path to media storage, default: /opt/ffplayout/media"
-echo "-----------------------------------------------------------------------------------------------------"
-echo ""
-
-read -p "media path :$ " mediaPath
-
-if [[ -z "$mediaPath" ]]; then
-    mediaPath="/opt/ffplayout/media"
-fi
-
-echo ""
-echo "-----------------------------------------------------------------------------------------------------"
-echo "playlist path, default: /opt/ffplayout/playlists"
-echo "-----------------------------------------------------------------------------------------------------"
-echo ""
-
-read -p "playlist path :$ " playlistPath
-
-if [[ -z "$playlistPath" ]]; then
-    playlistPath="/opt/ffplayout/playlists"
-fi
-
-echo ""
-echo "-----------------------------------------------------------------------------------------------------"
-echo "compile and install (nonfree) ffmpeg:"
-echo "-----------------------------------------------------------------------------------------------------"
-echo ""
-while true; do
-    read -p "Do you wish to compile ffmpeg? (Y/n) :$ " yn
-    case $yn in
-        [Yy]* ) compileFFmpeg="y"; break;;
-        [Nn]* ) compileFFmpeg="n"; break;;
-        * ) (
-            echo "------------------------------------"
-            echo "Please answer yes or no!"
-            echo ""
-            );;
-    esac
-done
-
-echo ""
-echo "-----------------------------------------------------------------------------------------------------"
-echo "install and setup nginx:"
-echo "-----------------------------------------------------------------------------------------------------"
-echo ""
-while true; do
-    read -p "Do you wish to install nginx? (Y/n) :$ " yn
-    case $yn in
-        [Yy]* ) installNginx="y"; break;;
-        [Nn]* ) installNginx="n"; break;;
-        * ) (
-            echo "------------------------------------"
-            echo "Please answer yes or no!"
-            echo ""
-            );;
-    esac
-done
-
-echo ""
-echo "-----------------------------------------------------------------------------------------------------"
-echo "install and srs rtmp/hls server:"
-echo "-----------------------------------------------------------------------------------------------------"
-echo ""
-while true; do
-    read -p "Do you wish to install srs? (Y/n) :$ " yn
-    case $yn in
-        [Yy]* ) installSRS="y"; break;;
-        [Nn]* ) installSRS="n"; break;;
-        * ) (
-            echo "------------------------------------"
-            echo "Please answer yes or no!"
-            echo ""
-            );;
-    esac
-done
-
-echo ""
-echo "-----------------------------------------------------------------------------------------------------"
-echo "install ffplayout-engine:"
-echo "-----------------------------------------------------------------------------------------------------"
-echo ""
-while true; do
-    read -p "Do you wish to install ffplayout-engine? (Y/n) :$ " yn
-    case $yn in
-        [Yy]* ) installEngine="y"; break;;
-        [Nn]* ) installEngine="n"; break;;
-        * ) (
-            echo "------------------------------------"
-            echo "Please answer yes or no!"
-            echo ""
-            );;
-    esac
-done
-
-echo ""
-echo "-----------------------------------------------------------------------------------------------------"
-echo "install main packages"
-echo "-----------------------------------------------------------------------------------------------------"
-
-if [[ "$(grep -Ei 'debian|buntu|mint' /etc/*release)" ]]; then
-    apt update
-
-    apt install -y sudo curl wget net-tools git python3-dev build-essential virtualenv python3-virtualenv mediainfo autoconf automake libtool pkg-config yasm cmake mercurial gperf
-    curl -sL https://deb.nodesource.com/setup_12.x | bash -
-
-    apt install -y nodejs
-
-    if [[ $installNginx == 'y' ]]; then
-        apt install -y nginx
-
-        rm /etc/nginx/sites-enabled/default
-    fi
-
-    serviceUser="www-data"
-    nginxConfig="/etc/nginx/sites-available"
-elif [[ "$(grep -Ei 'centos|fedora' /etc/*release)" ]]; then
-    dnf -y install epel-release
-    dnf repolist epel -v
-    dnf -y config-manager --enable PowerTools
-    dnf -y group install "Development Tools"
-    dnf -y --enablerepo=PowerTools install libmediainfo mediainfo
-    dnf -y install libstdc++-static yasm mercurial libtool cmake net-tools git python3 python36-devel wget python3-virtualenv gperf nano
-    dnf -y install policycoreutils-{python3,devel}
-
-    curl -sL https://rpm.nodesource.com/setup_12.x | sudo -E bash -
-
-    dnf -y install nodejs
-
-    if [[ $installNginx == 'y' ]]; then
-        dnf -y install nginx
-        systemctl enable nginx
-        systemctl start nginx
-        firewall-cmd --permanent --add-service=http
-        firewall-cmd --permanent --zone=public --add-service=https
-        firewall-cmd --reload
-        mkdir /var/www
-        chcon -vR system_u:object_r:httpd_sys_content_t:s0 /var/www
-    fi
-
-    alternatives --set python /usr/bin/python3
-
+if [[ "$(grep -Ei 'centos|fedora' /etc/*release)" ]]; then
     serviceUser="nginx"
-    nginxConfig="/etc/nginx/conf.d"
+else
+    serviceUser="www-data"
 fi
 
-if [[ $compileFFmpeg == 'y' ]]; then
-    echo ""
-    echo "-----------------------------------------------------------------------------------------------------"
-    echo "compile and install ffmpeg"
-    echo "-----------------------------------------------------------------------------------------------------"
-    cd /opt/
+# get sure that we have our correct PATH
+export PATH=$PATH:/usr/local/bin
 
-    if [[ ! -d "ffmpeg-build" ]]; then
-        git clone https://github.com/jb-alvarado/compile-ffmpeg-osx-linux.git ffmpeg-build
+runInstall() {
+    if [[ ! -f "/etc/ffplayout/ffplayout.yml" ]]; then
+        echo ""
+        echo "------------------------------------------------------------------------------"
+        echo "path to media storage, default: /opt/ffplayout/media"
+        echo "------------------------------------------------------------------------------"
+        echo ""
+
+        read -p "media path :$ " mediaPath
+
+        if [[ -z "$mediaPath" ]]; then
+            mediaPath="/opt/ffplayout/media"
+        fi
+
+        echo ""
+        echo "------------------------------------------------------------------------------"
+        echo "playlist path, default: /opt/ffplayout/playlists"
+        echo "------------------------------------------------------------------------------"
+        echo ""
+
+        read -p "playlist path :$ " playlistPath
+
+        if [[ -z "$playlistPath" ]]; then
+            playlistPath="/opt/ffplayout/playlists"
+        fi
     fi
 
-    cd ffmpeg-build
+    if [[ "$(which ffmpeg)" == *"/usr/bin/which"* ]]; then
+        echo ""
+        echo "------------------------------------------------------------------------------"
+        echo "compile and install (nonfree) ffmpeg:"
+        echo "------------------------------------------------------------------------------"
+        echo ""
+        while true; do
+            read -p "Do you wish to compile ffmpeg? (Y/n) :$ " yn
+            case $yn in
+                [Yy]* ) compileFFmpeg="y"; break;;
+                [Nn]* ) compileFFmpeg="n"; break;;
+                * ) (
+                    echo "------------------------------------"
+                    echo "Please answer yes or no!"
+                    echo ""
+                    );;
+            esac
+        done
+    fi
 
-    if [[ ! -f "build_config.txt" ]]; then
+    if [[ "$(which nginx)" == *"/usr/bin/which"* ]]; then
+        echo ""
+        echo "------------------------------------------------------------------------------"
+        echo "install and setup nginx:"
+        echo "------------------------------------------------------------------------------"
+        echo ""
+        while true; do
+            read -p "Do you wish to install nginx? (Y/n) :$ " yn
+            case $yn in
+                [Yy]* ) installNginx="y"; break;;
+                [Nn]* ) installNginx="n"; break;;
+                * ) (
+                    echo "------------------------------------"
+                    echo "Please answer yes or no!"
+                    echo ""
+                    );;
+            esac
+        done
+
+        echo ""
+        echo "------------------------------------------------------------------------------"
+        echo "ffplayout gui domain name (like: example.org)"
+        echo "------------------------------------------------------------------------------"
+        echo ""
+
+        read -p "domain name :$ " domain
+    fi
+
+    if [[ ! -d /usr/local/srs ]]; then
+        echo ""
+        echo "------------------------------------------------------------------------------"
+        echo "install and srs rtmp/hls server:"
+        echo "------------------------------------------------------------------------------"
+        echo ""
+        while true; do
+            read -p "Do you wish to install srs? (Y/n) :$ " yn
+            case $yn in
+                [Yy]* ) installSRS="y"; break;;
+                [Nn]* ) installSRS="n"; break;;
+                * ) (
+                    echo "------------------------------------"
+                    echo "Please answer yes or no!"
+                    echo ""
+                    );;
+            esac
+        done
+    fi
+
+    if [[ ! -d "/opt/ffplayout-engine" ]]; then
+        echo ""
+        echo "------------------------------------------------------------------------------"
+        echo "install ffplayout-engine:"
+        echo "------------------------------------------------------------------------------"
+        echo ""
+        while true; do
+            read -p "Do you wish to install ffplayout-engine? (Y/n) :$ " yn
+            case $yn in
+                [Yy]* ) installEngine="y"; break;;
+                [Nn]* ) installEngine="n"; break;;
+                * ) (
+                    echo "------------------------------------"
+                    echo "Please answer yes or no!"
+                    echo ""
+                    );;
+            esac
+        done
+    fi
+
+    echo ""
+    echo "------------------------------------------------------------------------------"
+    echo "install main packages"
+    echo "------------------------------------------------------------------------------"
+
+    if [[ "$(grep -Ei 'debian|buntu|mint' /etc/*release)" ]]; then
+        packages=(sudo curl wget net-tools git python3-dev build-essential virtualenv
+                  python3-virtualenv mediainfo autoconf automake libtool pkg-config
+                  yasm cmake mercurial gperf)
+        installedPackages=$(dpkg --get-selections | awk '{print $1}' | tr '\n' ' ')
+        apt update
+
+        if [[ "$installedPackages" != *"curl"* ]]; then
+            apt install -y curl
+        fi
+
+        if [[ "$installedPackages" != *"nodejs"* ]]; then
+            curl -sL https://deb.nodesource.com/setup_12.x | bash -
+            apt install -y nodejs
+        fi
+
+        for pkg in ${packages[@]}; do
+            if [[ "$installedPackages" != *"$pkg"* ]]; then
+                apt install -y $pkg
+            fi
+        done
+
+        if [[ $installNginx == 'y' ]] && [[ "$installedPackages" != *"nginx"* ]]; then
+            apt install -y nginx
+            rm /etc/nginx/sites-enabled/default
+        fi
+
+        nginxConfig="/etc/nginx/sites-available"
+
+    elif [[ "$(grep -Ei 'centos|fedora' /etc/*release)" ]]; then
+        packages=(libstdc++-static yasm mercurial libtool libmediainfo mediainfo
+                  cmake net-tools git python3 python36-devel wget python3-virtualenv
+                  gperf nano nodejs python3-policycoreutils policycoreutils-devel)
+        installedPackages=$(dnf list --installed | awk '{print $1}' | tr '\n' ' ')
+        activeRepos=$(dnf repolist enabled | awk '{print $1}' | tr '\n' ' ')
+
+        if [[ "$activeRepos" != *"epel"* ]]; then
+            dnf -y install epel-release
+        fi
+
+        if [[ "$activeRepos" != *"PowerTools"* ]]; then
+            dnf -y config-manager --enable PowerTools
+        fi
+
+        if [[ "$activeRepos" != *"nodesource"* ]]; then
+            curl -sL https://rpm.nodesource.com/setup_12.x | sudo -E bash -
+        fi
+
+        for pkg in ${packages[@]}; do
+            if [[ "$installedPackages" != *"$pkg"* ]]; then
+                dnf -y install $pkg
+            fi
+        done
+
+        if [[ ! $(dnf group list  "Development Tools" | grep -i "install") ]]; then
+            dnf -y group install "Development Tools"
+        fi
+
+        if [[ $installNginx == 'y' ]] && [[ "$installedPackages" != *"nginx"* ]]; then
+            dnf -y install nginx
+            systemctl enable nginx
+            systemctl start nginx
+            firewall-cmd --permanent --add-service=http
+            firewall-cmd --permanent --zone=public --add-service=https
+            firewall-cmd --reload
+            mkdir /var/www
+            chcon -vR system_u:object_r:httpd_sys_content_t:s0 /var/www
+        fi
+
+        if [[ $(alternatives --list | grep "no-python") ]]; then
+            alternatives --set python /usr/bin/python3
+        fi
+
+        nginxConfig="/etc/nginx/conf.d"
+    fi
+
+    if [[ $compileFFmpeg == 'y' ]]; then
+        echo ""
+        echo "------------------------------------------------------------------------------"
+        echo "compile and install ffmpeg"
+        echo "------------------------------------------------------------------------------"
+        cd /opt/
+
+        if [[ ! -d "ffmpeg-build" ]]; then
+            git clone https://github.com/jb-alvarado/compile-ffmpeg-osx-linux.git ffmpeg-build
+        fi
+
+        cd ffmpeg-build
+
+        if [[ ! -f "build_config.txt" ]]; then
 cat <<EOF > "build_config.txt"
 #--enable-decklink
 --disable-ffplay
@@ -201,31 +251,31 @@ cat <<EOF > "build_config.txt"
 #--enable-openssl
 #--enable-libsvtav1
 EOF
-        sed -i 's/mediainfo="yes"/mediainfo="no"/g' ./compile-ffmpeg.sh
-        sed -i 's/mp4box="yes"/mp4box="no"/g' ./compile-ffmpeg.sh
+            sed -i 's/mediainfo="yes"/mediainfo="no"/g' ./compile-ffmpeg.sh
+            sed -i 's/mp4box="yes"/mp4box="no"/g' ./compile-ffmpeg.sh
+        fi
+
+        ./compile-ffmpeg.sh
+
+        \cp local/bin/ff* /usr/local/bin/
     fi
 
-    ./compile-ffmpeg.sh
+    if [[ $installSRS == 'y' ]] && [[ ! -d "/usr/local/srs" ]]; then
+        echo ""
+        echo "------------------------------------------------------------------------------"
+        echo "compile and install srs"
+        echo "------------------------------------------------------------------------------"
 
-    \cp local/bin/ff* /usr/local/bin/
-fi
+        cd /opt/
+        git clone https://github.com/ossrs/srs.git
+        cd srs/trunk/
 
-if [[ $installSRS == 'y' ]] && [[ ! -d "/usr/local/srs" ]]; then
-    echo ""
-    echo "-----------------------------------------------------------------------------------------------------"
-    echo "compile and install srs"
-    echo "-----------------------------------------------------------------------------------------------------"
+        ./configure
+        make
+        make install
 
-    cd /opt/
-    git clone https://github.com/ossrs/srs.git
-    cd srs/trunk/
-
-    ./configure
-    make
-    make install
-
-    mkdir -p "/var/www/srs/live"
-    mkdir "/etc/srs"
+        mkdir -p "/var/www/srs/live"
+        mkdir "/etc/srs"
 
 cat <<EOF > "/etc/srs/srs.conf"
 listen              1935;
@@ -291,30 +341,35 @@ RestartSec=3
 WantedBy=multi-user.target
 EOF
 
-    systemctl enable srs.service
-    systemctl start srs.service
-fi
+        systemctl enable srs.service
+        systemctl start srs.service
+    fi
 
+    if [[ "$(grep -Ei 'centos|fedora' /etc/*release)" ]]; then
+        echo ""
+        echo "------------------------------------------------------------------------------"
+        echo "creating selinux rules"
+        echo "------------------------------------------------------------------------------"
 
-if [[ "$(grep -Ei 'centos|fedora' /etc/*release)" ]]; then
-    echo ""
-    echo "-----------------------------------------------------------------------------------------------------"
-    echo "creating selinux rules"
-    echo "-----------------------------------------------------------------------------------------------------"
+        if [[ $(getsebool httpd_can_network_connect | awk '{print $NF}') == "off" ]]; then
+            setsebool httpd_can_network_connect on -P
+        fi
 
-    setsebool httpd_can_network_connect on -P
-    semanage port -a -t http_port_t -p tcp 8001
+        if [[ ! $(semanage port -l | grep http_port_t | grep "8001") ]]; then
+            semanage port -a -t http_port_t -p tcp 8001
+        fi
 
+        if [[ ! $(semodule -l | grep gunicorn) ]]; then
 cat <<EOF > gunicorn.te
 module gunicorn 1.0;
 
 require {
-        type init_t;
-        type httpd_sys_content_t;
-        type etc_t;
-        type sudo_exec_t;
-        class file { create execute execute_no_trans getattr ioctl lock map open read unlink write };
-        class lnk_file { getattr read };
+    type init_t;
+    type httpd_sys_content_t;
+    type etc_t;
+    type sudo_exec_t;
+    class file { create execute execute_no_trans getattr ioctl lock map open read unlink write };
+    class lnk_file { getattr read };
 }
 
 #============= init_t ==============
@@ -333,17 +388,21 @@ allow init_t httpd_sys_content_t:lnk_file { getattr read };
 allow init_t sudo_exec_t:file { execute execute_no_trans map open read };
 EOF
 
-    checkmodule -M -m -o gunicorn.mod gunicorn.te
-    semodule_package -o gunicorn.pp -m gunicorn.mod
-    semodule -i gunicorn.pp
+            checkmodule -M -m -o gunicorn.mod gunicorn.te
+            semodule_package -o gunicorn.pp -m gunicorn.mod
+            semodule -i gunicorn.pp
 
-cat <<EOF > conf.te
-module conf 1.0;
+            rm -f gunicorn.*
+        fi
+
+        if [[ ! $(semodule -l | grep "custom-http") ]]; then
+cat <<EOF > custom-http.te
+module custom-http 1.0;
 
 require {
-        type init_t;
-        type httpd_sys_content_t;
-        class file { create lock unlink write };
+    type init_t;
+    type httpd_sys_content_t;
+    class file { create lock unlink write };
 }
 
 #============= init_t ==============
@@ -353,19 +412,23 @@ allow init_t httpd_sys_content_t:file unlink;
 allow init_t httpd_sys_content_t:file { create lock write };
 EOF
 
-    checkmodule -M -m -o conf.mod conf.te
-    semodule_package -o conf.pp -m conf.mod
-    semodule -i conf.pp
+            checkmodule -M -m -o custom-http.mod custom-http.te
+            semodule_package -o custom-http.pp -m custom-http.mod
+            semodule -i custom-http.pp
 
-cat <<EOF > create.te
-module create 1.0;
+            rm -f custom-http.*
+        fi
+
+        if [[ ! $(semodule -l | grep "custom-fileop") ]]; then
+cat <<EOF > custom-fileop.te
+module custom-fileop 1.0;
 
 require {
-        type init_t;
-        type httpd_sys_content_t;
-        type usr_t;
-        class file { create rename unlink write };
-        class dir { create rmdir };
+    type init_t;
+    type httpd_sys_content_t;
+    type usr_t;
+    class file { create rename unlink write };
+    class dir { create rmdir };
 }
 
 #============= init_t ==============
@@ -381,131 +444,212 @@ allow init_t usr_t:file { rename unlink write };
 
 EOF
 
-    checkmodule -M -m -o create.mod create.te
-    semodule_package -o create.pp -m create.mod
-    semodule -i create.pp
-fi
+            checkmodule -M -m -o custom-fileop.mod custom-fileop.te
+            semodule_package -o custom-fileop.pp -m custom-fileop.mod
+            semodule -i custom-fileop.pp
 
-if ! grep -q "ffplayout-engine.service" "/etc/sudoers"; then
-  echo "$serviceUser  ALL = NOPASSWD: /bin/systemctl start ffplayout-engine.service, /bin/systemctl stop ffplayout-engine.service, /bin/systemctl reload ffplayout-engine.service, /bin/systemctl restart ffplayout-engine.service, /bin/systemctl status ffplayout-engine.service, /bin/systemctl is-active ffplayout-engine.service, /bin/journalctl -n 1000 -u ffplayout-engine.service" >> /etc/sudoers
-fi
-
-if [[ "$installEngine" == "y" ]] && [[ ! -d "/opt/ffplayout-engine" ]]; then
-    echo ""
-    echo "-----------------------------------------------------------------------------------------------------"
-    echo "install ffplayout engine"
-    echo "-----------------------------------------------------------------------------------------------------"
-
-    cd /opt
-    git clone https://github.com/ffplayout/ffplayout-engine.git
-    cd ffplayout-engine
-
-    virtualenv -p python3 venv
-    source ./venv/bin/activate
-
-    pip install -r requirements-base.txt
-
-    mkdir /etc/ffplayout
-    mkdir /var/log/ffplayout
-    mkdir -p $mediaPath
-    mkdir -p $playlistPath
-
-    cp ffplayout.yml /etc/ffplayout/
-    chown -R $serviceUser. /etc/ffplayout
-    chown $serviceUser. /var/log/ffplayout
-    chown $serviceUser. $mediaPath
-    chown $serviceUser. $playlistPath
-
-    cp docs/ffplayout-engine.service /etc/systemd/system/
-    sed -i "s/User=root/User=$serviceUser/g" /etc/systemd/system/ffplayout-engine.service
-    sed -i "s/Group=root/Group=$serviceUser/g" /etc/systemd/system/ffplayout-engine.service
-
-    sed -i "s|\"\/playlists\"|\"$playlistPath\"|g" /etc/ffplayout/ffplayout.yml
-    sed -i "s|\"\/mediaStorage|\"$mediaPath|g" /etc/ffplayout/ffplayout.yml
-
-    systemctl enable ffplayout-engine.service
-
-    deactivate
-fi
-
-if [[ ! -d "/var/www/ffplayout" ]]; then
-    echo ""
-    echo "-----------------------------------------------------------------------------------------------------"
-    echo "install ffplayout gui"
-    echo "-----------------------------------------------------------------------------------------------------"
-
-    cd /var/www
-    git clone https://github.com/ffplayout/ffplayout-gui.git ffplayout
-    cd ffplayout
-
-    virtualenv -p python3 venv
-    source ./venv/bin/activate
-
-    pip install -r requirements-base.txt
-
-    cd ffplayout
-
-    secret=$(python manage.py shell -c 'from django.core.management import utils; print(utils.get_random_secret_key())')
-
-    sed -i "s/---a-very-important-secret-key:-generate-it-new---/$secret/g" ffplayout/settings/production.py
-
-    python manage.py makemigrations && python manage.py migrate
-    python manage.py collectstatic
-    python manage.py loaddata ../docs/db_data.json
-    python manage.py createsuperuser
-
-    deactivate
-
-    chown $serviceUser. -R /var/www
-
-    cd ..
-
-    cp docs/ffplayout-api.service /etc/systemd/system/
-
-    sed -i "s/User=root/User=$serviceUser/g" /etc/systemd/system/ffplayout-api.service
-    sed -i "s/Group=root/Group=$serviceUser/g" /etc/systemd/system/ffplayout-api.service
-
-    sed -i "s/'localhost'/'localhost', \'$domain\'/g" /var/www/ffplayout/ffplayout/ffplayout/settings/production.py
-    sed -i "s/ffplayout\\.local/$domain\'\n    \'https\\:\/\/$domain/g" /var/www/ffplayout/ffplayout/ffplayout/settings/production.py
-
-    systemctl enable ffplayout-api.service
-
-    if [[ $installNginx == 'y' ]]; then
-        cp docs/ffplayout.conf "$nginxConfig/"
-
-        origin=$(echo "$domain" | sed 's/\./\\\\./g')
-
-        sed -i "s/ffplayout.local/$domain/g" $nginxConfig/ffplayout.conf
-        sed -i "s/ffplayout\\\.local/$origin/g" $nginxConfig/ffplayout.conf
-
-        if [[ "$(grep -Ei 'debian|buntu|mint' /etc/*release)" ]]; then
-            ln -s $nginxConfig/ffplayout.conf /etc/nginx/sites-enabled/
+            rm -f custom-fileop.*
         fi
     fi
 
-    cd /var/www/ffplayout/ffplayout/frontend
-    ln -s "$mediaPath" /var/www/ffplayout/ffplayout/frontend/static/
+    if ! grep -q "ffplayout-engine.service" "/etc/sudoers"; then
+      echo "$serviceUser  ALL = NOPASSWD: /bin/systemctl start ffplayout-engine.service, /bin/systemctl stop ffplayout-engine.service, /bin/systemctl reload ffplayout-engine.service, /bin/systemctl restart ffplayout-engine.service, /bin/systemctl status ffplayout-engine.service, /bin/systemctl is-active ffplayout-engine.service, /bin/journalctl -n 1000 -u ffplayout-engine.service" >> /etc/sudoers
+    fi
 
-    sudo -H -u $serviceUser bash -c 'npm install'
+    if [[ "$installEngine" == "y" ]] && [[ ! -d "/opt/ffplayout-engine" ]]; then
+        echo ""
+        echo "------------------------------------------------------------------------------"
+        echo "install ffplayout engine"
+        echo "------------------------------------------------------------------------------"
+
+        cd /opt
+        git clone https://github.com/ffplayout/ffplayout-engine.git
+        cd ffplayout-engine
+
+        virtualenv -p python3 venv
+        source ./venv/bin/activate
+
+        pip install -r requirements-base.txt
+
+        mkdir /etc/ffplayout
+        mkdir /var/log/ffplayout
+        mkdir -p $mediaPath
+        mkdir -p $playlistPath
+
+        cp ffplayout.yml /etc/ffplayout/
+        chown -R $serviceUser. /etc/ffplayout
+        chown $serviceUser. /var/log/ffplayout
+        chown $serviceUser. $mediaPath
+        chown $serviceUser. $playlistPath
+
+        cp docs/ffplayout-engine.service /etc/systemd/system/
+        sed -i "s/User=root/User=$serviceUser/g" /etc/systemd/system/ffplayout-engine.service
+        sed -i "s/Group=root/Group=$serviceUser/g" /etc/systemd/system/ffplayout-engine.service
+
+        sed -i "s|\"\/playlists\"|\"$playlistPath\"|g" /etc/ffplayout/ffplayout.yml
+        sed -i "s|\"\/mediaStorage|\"$mediaPath|g" /etc/ffplayout/ffplayout.yml
+
+        systemctl enable ffplayout-engine.service
+
+        deactivate
+    fi
+
+    if [[ ! -d "/var/www/ffplayout" ]]; then
+        echo ""
+        echo "------------------------------------------------------------------------------"
+        echo "install ffplayout gui"
+        echo "------------------------------------------------------------------------------"
+
+        cd /var/www
+        git clone https://github.com/ffplayout/ffplayout-gui.git ffplayout
+        cd ffplayout
+
+        virtualenv -p python3 venv
+        source ./venv/bin/activate
+
+        pip install -r requirements-base.txt
+
+        cd ffplayout
+
+        secret=$(python manage.py shell -c 'from django.core.management import utils; print(utils.get_random_secret_key())')
+
+        sed -i "s/---a-very-important-secret-key:-generate-it-new---/$secret/g" ffplayout/settings/production.py
+
+        python manage.py makemigrations && python manage.py migrate
+        python manage.py collectstatic
+        python manage.py loaddata ../docs/db_data.json
+        python manage.py createsuperuser
+
+        deactivate
+
+        chown $serviceUser. -R /var/www
+
+        cd ..
+
+        cp docs/ffplayout-api.service /etc/systemd/system/
+
+        sed -i "s/User=root/User=$serviceUser/g" /etc/systemd/system/ffplayout-api.service
+        sed -i "s/Group=root/Group=$serviceUser/g" /etc/systemd/system/ffplayout-api.service
+
+        sed -i "s/'localhost'/'localhost', \'$domain\'/g" /var/www/ffplayout/ffplayout/ffplayout/settings/production.py
+        sed -i "s/ffplayout\\.local/$domain\'\n    \'https\\:\/\/$domain/g" /var/www/ffplayout/ffplayout/ffplayout/settings/production.py
+
+        systemctl enable ffplayout-api.service
+
+        if [[ $installNginx == 'y' ]]; then
+            cp docs/ffplayout.conf "$nginxConfig/"
+
+            origin=$(echo "$domain" | sed 's/\./\\\\./g')
+
+            sed -i "s/ffplayout.local/$domain/g" $nginxConfig/ffplayout.conf
+            sed -i "s/ffplayout\\\.local/$origin/g" $nginxConfig/ffplayout.conf
+
+            if [[ "$(grep -Ei 'debian|buntu|mint' /etc/*release)" ]]; then
+                ln -s $nginxConfig/ffplayout.conf /etc/nginx/sites-enabled/
+            fi
+        fi
+
+        cd /var/www/ffplayout/ffplayout/frontend
+        ln -s "$mediaPath" /var/www/ffplayout/ffplayout/frontend/static/
+
+        sudo -H -u $serviceUser bash -c 'npm install'
 
 cat <<EOF > ".env"
 BASE_URL='http://$domain'
 API_URL='/'
 EOF
 
-    sudo -H -u $serviceUser bash -c 'npm run build'
-    systemctl start ffplayout-api.service
+        sudo -H -u $serviceUser bash -c 'npm run build'
+        systemctl start ffplayout-api.service
+    fi
+
+    if [[ $installNginx == 'y' ]]; then
+        systemctl restart nginx
+    fi
+
+    echo ""
+    echo "------------------------------------------------------------------------------"
+    echo "installation done..."
+    echo "------------------------------------------------------------------------------"
+
+    echo ""
+    echo "add your ssl config to $nginxConfig/ffplayout.conf"
+    echo ""
+}
+
+runUpdate() {
+    if [[ -d "/opt/ffmpeg-build" ]]; then
+        cd "/opt/ffmpeg-build"
+
+        git pull
+
+        ./compile-ffmpeg.sh
+
+        echo ""
+        echo "------------------------------------------------------------------------------"
+        echo "updating ffmpeg-build done..."
+        echo "------------------------------------------------------------------------------"
+    fi
+
+    if [[ -d "/opt/ffplayout-engine" ]]; then
+        cd "/opt/ffplayout-engine"
+        git pull
+
+        source ./venv/bin/activate
+        pip install --upgrade -r requirements-base.txt
+        deactivate
+
+        echo ""
+        echo "------------------------------------------------------------------------------"
+        echo "updating ffplayout-engine done..."
+        echo "------------------------------------------------------------------------------"
+    else
+        echo ""
+        echo "------------------------------------------------------------------------------"
+        echo "WARNING: no ffplayout-engine found..."
+        echo "------------------------------------------------------------------------------"
+    fi
+
+    if [[ -d "/var/www/ffplayout" ]]; then
+        cd "/var/www/ffplayout"
+        git pull
+
+        source ./venv/bin/activate
+        pip install --upgrade -r requirements-base.txt
+        deactivate
+
+        cd "ffplayout/frontend"
+
+        rm -rf node_modules
+        sudo -H -u $serviceUser bash -c 'npm install'
+        sudo -H -u $serviceUser bash -c 'npm run build'
+
+        echo ""
+        echo "------------------------------------------------------------------------------"
+        echo "updating ffplayout-gui done..."
+        echo "------------------------------------------------------------------------------"
+    else
+        echo ""
+        echo "------------------------------------------------------------------------------"
+        echo "WARNING: no ffplayout-gui found..."
+        echo "------------------------------------------------------------------------------"
+    fi
+
+    echo ""
+    echo "------------------------------------------------------------------------------"
+    echo "updating done..."
+    echo "if there is a new ffmpeg version, run:"
+    echo "    systemctl stop ffplayout-engine"
+    echo "    cp /opt/ffmpeg-build/local/bin/ff* /usrlocal/bin"
+    echo "    systemctl start ffplayout-engine"
+    echo ""
+    echo "to apply update restart services:"
+    echo "    systemctl restart ffplayout-engine"
+    echo "    systemctl restart ffplayout-api"
+}
+
+if [[ "$1" == "update" ]]; then
+    runUpdate
+else
+    runInstall
 fi
-
-if [[ $installNginx == 'y' ]]; then
-    systemctl restart nginx
-fi
-
-echo ""
-echo "-----------------------------------------------------------------------------------------------------"
-echo "installation done..."
-echo "-----------------------------------------------------------------------------------------------------"
-
-echo ""
-echo "add your ssl config to $nginxConfig/ffplayout.conf"
-echo ""

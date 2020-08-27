@@ -6,6 +6,8 @@ For a better understanding about the functionality, take a look to the screensho
 
 You can install it on a fresh debian/centos minimal like system with running `./install.sh` as root.
 
+Updating is also possible with: `./install.sh update`
+
 Or read the instruction [install.md](docs/install.md) for manual installation.
 
 After installations you have to setup ssl for your **https** connections.
