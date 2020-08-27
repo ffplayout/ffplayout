@@ -4,7 +4,9 @@ ffplayout-gui
 This web GUI is for managing [ffplayout-engine](https://github.com/ffplayout/ffplayout-engine).
 For a better understanding about the functionality, take a look to the screenshots below.
 
-You can install it on a fresh debian/centos minimal like system with running `./install.sh` as root.
+You can install it on a fresh Debian/CentOS minimal like system with running `./install.sh` as root.
+
+**Recommend system is a current Debian version.**
 
 Updating is also possible with: `./install.sh update`
 

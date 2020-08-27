@@ -366,6 +366,8 @@ module gunicorn 1.0;
 require {
     type init_t;
     type httpd_sys_content_t;
+    type unreserved_port_t;
+	class tcp_socket name_connect;
     type etc_t;
     type sudo_exec_t;
     class file { create execute execute_no_trans getattr ioctl lock map open read unlink write };
@@ -383,6 +385,9 @@ allow init_t httpd_sys_content_t:file { create execute execute_no_trans getattr 
 
 #!!!! This avc is allowed in the current policy
 allow init_t httpd_sys_content_t:lnk_file { getattr read };
+
+#!!!! This avc can be allowed using the boolean 'nis_enabled'
+allow init_t unreserved_port_t:tcp_socket name_connect;
 
 #!!!! This avc is allowed in the current policy
 allow init_t sudo_exec_t:file { execute execute_no_trans map open read };
