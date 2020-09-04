@@ -41,7 +41,7 @@ runInstall() {
         fi
     fi
 
-    if [[ "$(which ffmpeg)" == *"/usr/bin/which"* ]]; then
+    if [[ "$(which ffmpeg 2>&1)" == *"/usr/bin/which"* ]]; then
         echo ""
         echo "------------------------------------------------------------------------------"
         echo "compile and install (nonfree) ffmpeg:"
@@ -61,7 +61,7 @@ runInstall() {
         done
     fi
 
-    if [[ "$(which nginx)" == *"/usr/bin/which"* ]]; then
+    if [[ "$(which nginx 2>&1)" == *"/usr/bin/which"* ]]; then
         echo ""
         echo "------------------------------------------------------------------------------"
         echo "install and setup nginx:"
