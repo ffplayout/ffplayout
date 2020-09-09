@@ -505,10 +505,6 @@ def validate_ffmpeg_libs():
     if 'libfdk-aac' not in FF_LIBS['libs']:
         playout_logger.warning(
             'ffmpeg contains no libfdk-aac! No high quality aac...')
-    if 'libtwolame' not in FF_LIBS['libs']:
-        playout_logger.warning(
-            'ffmpeg contains no libtwolame!'
-            ' Loudness correction use mp2 audio codec...')
     if 'tpad' not in FF_LIBS['filters']:
         playout_logger.error('ffmpeg contains no tpad filter!')
     if 'zmq' not in FF_LIBS['filters']:
@@ -1014,7 +1010,6 @@ def pre_audio_codec():
     and works not well together with the loudnorm filter
     """
     if _pre.add_loudnorm:
-        acodec = 'libtwolame' if 'libtwolame' in FF_LIBS['libs'] else 'mp2'
-        return ['-c:a', acodec, '-b:a', '384k', '-ar', '48000', '-ac', '2']
+        return ['-c:a', 'mp2', '-b:a', '384k', '-ar', '48000', '-ac', '2']
     else:
         return ['-c:a', 's302m', '-strict', '-2', '-ar', '48000', '-ac', '2']
