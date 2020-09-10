@@ -53,10 +53,6 @@ stdin_parser.add_argument(
 )
 
 stdin_parser.add_argument(
-    '-d', '--desktop', help='preview on desktop', action='store_true'
-)
-
-stdin_parser.add_argument(
     '-f', '--folder', help='play folder content'
 )
 
@@ -66,6 +62,10 @@ stdin_parser.add_argument(
 
 stdin_parser.add_argument(
     '-i', '--loop', help='loop playlist infinitely', action='store_true'
+)
+
+stdin_parser.add_argument(
+    '-m', '--mode', help='set output mode: desktop, hls, stream'
 )
 
 stdin_parser.add_argument(
