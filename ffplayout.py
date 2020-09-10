@@ -40,8 +40,8 @@ def main():
     play out depending on output mode
     """
 
-    if stdin_args.desktop:
-        output = locate('ffplayout.output.desktop.output')
+    if stdin_args.mode:
+        output = locate('ffplayout.output.{}.output'.format(stdin_args.mode))
         output()
 
     else:
