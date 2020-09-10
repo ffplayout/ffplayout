@@ -459,7 +459,7 @@ def is_in_system(name):
     """
     if which(name) is None:
         messenger.error('{} is not found on system'.format(name))
-        exit()
+        sys.exit(1)
 
 
 def ffmpeg_libs():
