@@ -2,6 +2,9 @@ ffplayout-gui
 =====
 
 This web GUI is for managing [ffplayout-engine](https://github.com/ffplayout/ffplayout-engine).
+
+The frontend depend on [ffplayout-api](https://github.com/ffplayout/ffplayout-api).
+
 For a better understanding about the functionality, take a look to the screenshots below.
 
 You can install it on a fresh Debian/CentOS minimal like system with running `./install.sh` as root.
@@ -16,25 +19,25 @@ After installations you have to setup ssl for your **https** connections.
 
 ## some impressions:
 #### Login
-![login](/assets/login.png)
+![login](/docs/assets/login.png)
 
 #### Landing Page
-![landing-page](/assets/landing-page.png)
+![landing-page](/docs/assets/landing-page.png)
 
 #### Control Page
-![control](/assets/control.png)
+![control](/docs/assets/control.png)
 
 #### Media Page
-![media](/assets/media.png)
+![media](/docs/assets/media.png)
 
 #### Media Page / Upload
-![media-upload](/assets/media-upload.png)
+![media-upload](/docs/assets/media-upload.png)
 
 #### Message Page
-![message](/assets/message.png)
+![message](/docs/assets/message.png)
 
 #### Logging Page
-![logging](/assets/logging.png)
+![logging](/docs/assets/logging.png)
 
 #### Configuration Page / GUI
-![config-gui](/assets/config-gui.png)
+![config-gui](/docs/assets/config-gui.png)

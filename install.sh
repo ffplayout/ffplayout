@@ -82,11 +82,19 @@ runInstall() {
 
         echo ""
         echo "------------------------------------------------------------------------------"
-        echo "ffplayout gui domain name (like: example.org)"
+        echo "ffplayout api domain name (like: api.example.org)"
         echo "------------------------------------------------------------------------------"
         echo ""
 
-        read -p "domain name :$ " domain
+        read -p "api domain name :$ " domainApi
+
+        echo ""
+        echo "------------------------------------------------------------------------------"
+        echo "ffplayout frontend domain name (like: www.example.org)"
+        echo "------------------------------------------------------------------------------"
+        echo ""
+
+        read -p "frontend domain name :$ " domainFrontend
     fi
 
     if [[ ! -d /usr/local/srs ]]; then
@@ -499,15 +507,15 @@ EOF
         deactivate
     fi
 
-    if [[ ! -d "/var/www/ffplayout" ]]; then
+    if [[ ! -d "/var/www/ffplayout-api" ]]; then
         echo ""
         echo "------------------------------------------------------------------------------"
-        echo "install ffplayout gui"
+        echo "install ffplayout-api"
         echo "------------------------------------------------------------------------------"
 
         cd /var/www
-        git clone https://github.com/ffplayout/ffplayout-gui.git ffplayout
-        cd ffplayout
+        git clone https://github.com/ffplayout/ffplayout-api.git
+        cd ffplayout-api
 
         virtualenv -p python3 venv
         source ./venv/bin/activate
@@ -536,36 +544,60 @@ EOF
         sed -i "s/User=root/User=$serviceUser/g" /etc/systemd/system/ffplayout-api.service
         sed -i "s/Group=root/Group=$serviceUser/g" /etc/systemd/system/ffplayout-api.service
 
-        sed -i "s/'localhost'/'localhost', \'$domain\'/g" /var/www/ffplayout/ffplayout/ffplayout/settings/production.py
-        sed -i "s/ffplayout\\.local/$domain\'\n    \'https\\:\/\/$domain/g" /var/www/ffplayout/ffplayout/ffplayout/settings/production.py
+        sed -i "s/'localhost'/'localhost', \'$domainApi\'/g" /var/www/ffplayout/ffplayout/ffplayout/settings/production.py
+        sed -i "s/ffplayout\\.local/$domainApi\'\n    \'https\\:\/\/$domainApi/g" /var/www/ffplayout/ffplayout/ffplayout/settings/production.py
 
         systemctl enable ffplayout-api.service
 
         if [[ $installNginx == 'y' ]]; then
-            cp docs/ffplayout.conf "$nginxConfig/"
+            cp docs/ffplayout-api.conf "$nginxConfig/"
 
-            origin=$(echo "$domain" | sed 's/\./\\\\./g')
+            origin=$(echo "$domainApi" | sed 's/\./\\\\./g')
 
-            sed -i "s/ffplayout.local/$domain/g" $nginxConfig/ffplayout.conf
-            sed -i "s/ffplayout\\\.local/$origin/g" $nginxConfig/ffplayout.conf
+            sed -i "s/ffplayout-api.local/$domainApi/g" $nginxConfig/ffplayout-api.conf
+            sed -i "s/ffplayout-api\\\.local/$origin/g" $nginxConfig/ffplayout-api.conf
 
             if [[ "$(grep -Ei 'debian|buntu|mint' /etc/*release)" ]]; then
-                ln -s $nginxConfig/ffplayout.conf /etc/nginx/sites-enabled/
+                ln -s $nginxConfig/ffplayout-api.conf /etc/nginx/sites-enabled/
             fi
         fi
 
-        cd /var/www/ffplayout/ffplayout/frontend
-        ln -s "$mediaPath" /var/www/ffplayout/ffplayout/frontend/static/
+        systemctl start ffplayout-api.service
+    fi
+
+    if [[ ! -d "/var/www/ffplayout-frontend" ]]; then
+        echo ""
+        echo "------------------------------------------------------------------------------"
+        echo "install ffplayout-frontend"
+        echo "------------------------------------------------------------------------------"
+
+        cd /var/www
+        git clone https://github.com/ffplayout/ffplayout-frontend.git
+        cd ffplayout-frontend
+
+        ln -s "$mediaPath" /var/www/ffplayout-frontend/static/
 
         sudo -H -u $serviceUser bash -c 'npm install'
 
 cat <<EOF > ".env"
-BASE_URL='http://$domain'
+BASE_URL='http://$domainFrontend'
 API_URL='/'
 EOF
 
         sudo -H -u $serviceUser bash -c 'npm run build'
-        systemctl start ffplayout-api.service
+
+        if [[ $installNginx == 'y' ]]; then
+            cp docs/ffplayout-frontend.conf "$nginxConfig/"
+
+            origin=$(echo "$domainFrontend" | sed 's/\./\\\\./g')
+
+            sed -i "s/ffplayout-frontend.local/$domainFrontend/g" $nginxConfig/ffplayout-frontend.conf
+            sed -i "s/ffplayout-frontend\\\.local/$origin/g" $nginxConfig/ffplayout-frontend.conf
+
+            if [[ "$(grep -Ei 'debian|buntu|mint' /etc/*release)" ]]; then
+                ln -s $nginxConfig/ffplayout-frontend.conf /etc/nginx/sites-enabled/
+            fi
+        fi
     fi
 
     if [[ $installNginx == 'y' ]]; then
@@ -615,15 +647,28 @@ runUpdate() {
         echo "------------------------------------------------------------------------------"
     fi
 
-    if [[ -d "/var/www/ffplayout" ]]; then
-        cd "/var/www/ffplayout"
+    if [[ -d "/var/www/ffplayout-api" ]]; then
+        cd "/var/www/ffplayout-api"
         git pull
 
         source ./venv/bin/activate
         pip install --upgrade -r requirements-base.txt
         deactivate
 
-        cd "ffplayout/frontend"
+        echo ""
+        echo "------------------------------------------------------------------------------"
+        echo "updating ffplayout-api done..."
+        echo "------------------------------------------------------------------------------"
+    else
+        echo ""
+        echo "------------------------------------------------------------------------------"
+        echo "WARNING: no ffplayout-api found..."
+        echo "------------------------------------------------------------------------------"
+    fi
+
+    if [[ -d "/var/www/ffplayout-frontend" ]]; then
+        cd "/var/www/ffplayout-frontend"
+        git pull
 
         rm -rf node_modules
         sudo -H -u $serviceUser bash -c 'npm install'
@@ -631,12 +676,12 @@ runUpdate() {
 
         echo ""
         echo "------------------------------------------------------------------------------"
-        echo "updating ffplayout-gui done..."
+        echo "updating ffplayout-frontend done..."
         echo "------------------------------------------------------------------------------"
     else
         echo ""
         echo "------------------------------------------------------------------------------"
-        echo "WARNING: no ffplayout-gui found..."
+        echo "WARNING: no ffplayout-frontend found..."
         echo "------------------------------------------------------------------------------"
     fi
 
