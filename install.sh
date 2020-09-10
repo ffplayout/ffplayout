@@ -586,6 +586,8 @@ EOF
 
         sudo -H -u $serviceUser bash -c 'npm run build'
 
+        chown $serviceUser. -R /var/www
+
         if [[ $installNginx == 'y' ]]; then
             cp docs/ffplayout-frontend.conf "$nginxConfig/"
 
