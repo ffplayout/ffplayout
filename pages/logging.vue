@@ -26,12 +26,6 @@
                         <pre v-if="currentLog" :inner-html.prop="currentLog | formatStr" class="log-content" />
                     </b-container>
                 </b-tab>
-                <b-tab title="System" @click="getSystemLog()">
-                    <b-container class="log-container">
-                        <!-- eslint-disable-next-line -->
-                        <pre v-if="currentLog" :inner-html.prop="currentLog | formatStr" class="log-content" />
-                    </b-container>
-                </b-tab>
             </b-tabs>
         </b-card>
     </div>
@@ -92,15 +86,6 @@ export default {
 
             if (response.data.log) {
                 this.currentLog = response.data.log
-            } else {
-                this.currentLog = ''
-            }
-        },
-        async getSystemLog () {
-            const response = await this.$axios.post('api/player/system/', { run: 'log' })
-
-            if (response.data.data) {
-                this.currentLog = response.data.data
             } else {
                 this.currentLog = ''
             }
