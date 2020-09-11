@@ -2,7 +2,6 @@ require('dotenv').config()
 
 export default {
     ssr: false,
-    telemetry: false,
     /*
      ** Headers of the page
      */
