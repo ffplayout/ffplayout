@@ -41,7 +41,7 @@ runInstall() {
         fi
     fi
 
-    if [[ "$(which ffmpeg 2>&1)" == *"which"* ]]; then
+    if ! ffmpeg -version &> /dev/null; then
         echo ""
         echo "------------------------------------------------------------------------------"
         echo "compile and install (nonfree) ffmpeg:"
@@ -61,7 +61,7 @@ runInstall() {
         done
     fi
 
-    if [[ "$(which nginx 2>&1)" == *"which"* ]]; then
+    if ! nginx -t &> /dev/null; then
         echo ""
         echo "------------------------------------------------------------------------------"
         echo "install and setup nginx:"
@@ -577,14 +577,14 @@ EOF
 
         ln -s "$mediaPath" /var/www/ffplayout-frontend/static/
 
-        sudo -H -u $serviceUser bash -c 'npm install'
+        npm install
 
 cat <<EOF > ".env"
 BASE_URL='http://$domainFrontend'
 API_URL='/'
 EOF
 
-        sudo -H -u $serviceUser bash -c 'npm run build'
+        npm run build
 
         chown $serviceUser. -R /var/www
 
