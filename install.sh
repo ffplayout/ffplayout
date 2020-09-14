@@ -82,19 +82,11 @@ runInstall() {
 
         echo ""
         echo "------------------------------------------------------------------------------"
-        echo "ffplayout api domain name (like: api.example.org)"
+        echo "ffplayout domain name (like: example.org)"
         echo "------------------------------------------------------------------------------"
         echo ""
 
-        read -p "api domain name :$ " domainApi
-
-        echo ""
-        echo "------------------------------------------------------------------------------"
-        echo "ffplayout frontend domain name (like: www.example.org)"
-        echo "------------------------------------------------------------------------------"
-        echo ""
-
-        read -p "frontend domain name :$ " domainFrontend
+        read -p "domain name :$ " domainFrontend
     fi
 
     if [[ ! -d /usr/local/srs ]]; then
@@ -544,24 +536,10 @@ EOF
         sed -i "s/User=root/User=$serviceUser/g" /etc/systemd/system/ffplayout-api.service
         sed -i "s/Group=root/Group=$serviceUser/g" /etc/systemd/system/ffplayout-api.service
 
-        sed -i "s/'localhost'/'localhost', \'$domainApi\'/g" /var/www/ffplayout/ffplayout/ffplayout/settings/production.py
-        sed -i "s/ffplayout\\.local/$domainApi\'\n    \'https\\:\/\/$domainApi/g" /var/www/ffplayout/ffplayout/ffplayout/settings/production.py
+        sed -i "s/'localhost'/'localhost', \'$domainFrontend\'/g" /var/www/ffplayout-api/ffplayout/ffplayout/settings/production.py
+        sed -i "s/ffplayout\\.local/$domainFrontend\'\n    \'https\\:\/\/$domainFrontend/g" /var/www/ffplayout-api/ffplayout/ffplayout/settings/production.py
 
         systemctl enable ffplayout-api.service
-
-        if [[ $installNginx == 'y' ]]; then
-            cp docs/ffplayout-api.conf "$nginxConfig/"
-
-            origin=$(echo "$domainApi" | sed 's/\./\\\\./g')
-
-            sed -i "s/ffplayout-api.local/$domainApi/g" $nginxConfig/ffplayout-api.conf
-            sed -i "s/ffplayout-api\\\.local/$origin/g" $nginxConfig/ffplayout-api.conf
-
-            if [[ "$(grep -Ei 'debian|buntu|mint' /etc/*release)" ]]; then
-                ln -s $nginxConfig/ffplayout-api.conf /etc/nginx/sites-enabled/
-            fi
-        fi
-
         systemctl start ffplayout-api.service
     fi
 
@@ -589,15 +567,15 @@ EOF
         chown $serviceUser. -R /var/www
 
         if [[ $installNginx == 'y' ]]; then
-            cp docs/ffplayout-frontend.conf "$nginxConfig/"
+            cp docs/ffplayout.conf "$nginxConfig/"
 
             origin=$(echo "$domainFrontend" | sed 's/\./\\\\./g')
 
-            sed -i "s/ffplayout-frontend.local/$domainFrontend/g" $nginxConfig/ffplayout-frontend.conf
-            sed -i "s/ffplayout-frontend\\\.local/$origin/g" $nginxConfig/ffplayout-frontend.conf
+            sed -i "s/ffplayout.local/$domainFrontend/g" $nginxConfig/ffplayout.conf
+            sed -i "s/ffplayout\\\.local/$origin/g" $nginxConfig/ffplayout.conf
 
             if [[ "$(grep -Ei 'debian|buntu|mint' /etc/*release)" ]]; then
-                ln -s $nginxConfig/ffplayout-frontend.conf /etc/nginx/sites-enabled/
+                ln -s $nginxConfig/ffplayout.conf /etc/nginx/sites-enabled/
             fi
         fi
     fi
