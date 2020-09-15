@@ -232,7 +232,7 @@ export default {
             }
             this.stat = response.data
 
-            if (process.browser) {
+            if (process.browser && !this.interval) {
                 this.interval = setInterval(async () => {
                     const response = await this.$axios.get('api/player/stats/?stats=all')
                     this.stat = response.data
