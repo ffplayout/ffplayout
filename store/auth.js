@@ -87,10 +87,11 @@ export const actions = {
             const expire_token = decoded_token.exp
             const expire_refresh = decoded_refresh.exp
 
-            if (expire_token - timestamp > 15) {
+            if (state.jwtToken && expire_token - timestamp > 15) {
                 // DO NOTHING, DO NOT REFRESH
                 commit('UPDATE_IS_LOGIN', true)
-            } else if (expire_refresh - timestamp > 0) {
+            } else if (!state.jwtToken || expire_refresh - timestamp > 0) {
+                commit('UPADTE_TOKEN', { token, refresh })
                 await dispatch('refreshToken')
             } else {
                 // PROMPT USER TO RE-LOGIN, THIS ELSE CLAUSE COVERS THE CONDITION WHERE A TOKEN IS EXPIRED AS WELL
