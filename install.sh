@@ -13,6 +13,7 @@ fi
 
 # get sure that we have our correct PATH
 export PATH=$PATH:/usr/local/bin
+export NUXT_TELEMETRY_DISABLED=1
 
 runInstall() {
     if [[ ! -f "/etc/ffplayout/ffplayout.yml" ]]; then
