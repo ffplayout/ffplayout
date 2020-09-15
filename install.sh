@@ -520,6 +520,7 @@ EOF
         secret=$(python manage.py shell -c 'from django.core.management import utils; print(utils.get_random_secret_key())')
 
         sed -i "s/---a-very-important-secret-key\:-generate-it-new---/$secret/g" ffplayout/settings/production.py
+        sed -i "s/localhost/$domainFrontend/g" ../docs/db_data.json
 
         python manage.py makemigrations && python manage.py migrate
         python manage.py collectstatic
