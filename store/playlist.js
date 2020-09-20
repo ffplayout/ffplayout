@@ -65,7 +65,14 @@ export const actions = {
     },
 
     setCurrentClip ({ commit, dispatch, state, rootState }) {
-        let start = this.$timeToSeconds(rootState.config.configPlayout.playlist.day_start)
+        let start
+        if (rootState.config.configPlayout.playlist.day_start) {
+            start = this.$timeToSeconds(rootState.config.configPlayout.playlist.day_start)
+        } else {
+            commit('SET_CURRENT_CLIP', 'day_start is not set, cannot calculate current clip')
+            return
+        }
+
         for (let i = 0; i < state.playlistToday.length; i++) {
             const duration = state.playlistToday[i].out - state.playlistToday[i].in
 
@@ -95,6 +102,8 @@ export const actions = {
         const playTime = timeSec - state.currentClipStart
         const progValue = playTime * 100 / state.currentClipDuration
 
+        commit('SET_TIME', time)
+
         if (timeSec < state.currentClipStart) {
             return
         }
@@ -102,7 +111,6 @@ export const actions = {
         // animate the progress bar
         if (playTime <= state.currentClipDuration && progValue >= 0) {
             commit('SET_PROGRESS_VALUE', progValue)
-            commit('SET_TIME', time)
             commit('SET_TIME_LEFT', this.$secToHMS(state.currentClipDuration - playTime))
         } else {
             commit('SET_PROGRESS_VALUE', 0)
