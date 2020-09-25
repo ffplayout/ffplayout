@@ -19,7 +19,7 @@
     "bootstrap-vue": "^2.17.3",
     "cookie-universal-nuxt": "^2.1.4",
     "jwt-decode": "^2.2.0",
-    "nuxt": "^2.14.5",
+    "nuxt": "^2.14.6",
     "splitpanes": "^2.2.1",
     "video.js": "^7.8.4",
     "vue-loading-overlay": "^3.4.1",
