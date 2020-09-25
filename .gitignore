@@ -88,3 +88,5 @@ sw.*
 
 # Vim swap files
 *.swp
+
+master.m3u8
