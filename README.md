@@ -6,7 +6,7 @@
 
 The purpose with ffplayout is to provide a 24/7 broadcasting solution that plays a *json* playlist for every day, while keeping the current playlist editable.
 
-**Check [ffplayout-gui](https://github.com/ffplayout/ffplayout-gui): web-based GUI for ffplayout**
+**Check [ffplayout-frontend](https://github.com/ffplayout/ffplayout-frontend): web-based GUI for ffplayout**
 
 **Features**
 -----
