@@ -122,6 +122,7 @@ _playout = SimpleNamespace()
 
 _init = SimpleNamespace(load=True)
 _ff = SimpleNamespace(decoder=None, encoder=None)
+_current = SimpleNamespace(clip=None)
 _global = SimpleNamespace(time_delta=0)
 
 

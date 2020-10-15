@@ -26,12 +26,12 @@ from watchdog.events import PatternMatchingEventHandler
 from watchdog.observers import Observer
 
 from .filters import build_filtergraph
-from .utils import MediaProbe, _storage, messenger, stdin_args
-
+from .utils import MediaProbe, _current, _ff, _storage, messenger, stdin_args
 
 # ------------------------------------------------------------------------------
 # folder watcher
 # ------------------------------------------------------------------------------
+
 
 class MediaStore:
     """
@@ -85,8 +85,14 @@ class MediaWatcher:
     def __init__(self, media):
         self._media = media
 
+        print(_storage.extensions)
+
+        self.extensions = ['*{}'.format(ext) for ext in _storage.extensions]
+
+        print(self.extensions)
+
         self.event_handler = PatternMatchingEventHandler(
-            patterns=_storage.extensions)
+            patterns=self.extensions)
         self.event_handler.on_created = self.on_created
         self.event_handler.on_moved = self.on_moved
         self.event_handler.on_deleted = self.on_deleted
@@ -120,6 +126,9 @@ class MediaWatcher:
 
         messenger.info(
             'Remove file from media list: "{}"'.format(event.src_path))
+
+        if _current.clip == event.src_path:
+            _ff.decoder.terminate()
 
     def stop(self):
         self.observer.stop()
