@@ -84,12 +84,7 @@ class MediaWatcher:
 
     def __init__(self, media):
         self._media = media
-
-        print(_storage.extensions)
-
         self.extensions = ['*{}'.format(ext) for ext in _storage.extensions]
-
-        print(self.extensions)
 
         self.event_handler = PatternMatchingEventHandler(
             patterns=self.extensions)
