@@ -116,6 +116,9 @@ class MediaWatcher:
         messenger.info('Move file from "{}" to "{}"'.format(event.src_path,
                                                             event.dest_path))
 
+        if _current.clip == event.src_path:
+            _ff.decoder.terminate()
+
     def on_deleted(self, event):
         self._media.remove(event.src_path)
 
