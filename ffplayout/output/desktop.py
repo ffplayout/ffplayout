@@ -4,7 +4,7 @@ from threading import Thread
 
 from ffplayout.folder import GetSourceFromFolder, MediaStore, MediaWatcher
 from ffplayout.playlist import GetSourceFromPlaylist
-from ffplayout.utils import (_ff, _log, _playlist, _pre, _text,
+from ffplayout.utils import (_current, _ff, _log, _playlist, _pre, _text,
                              ffmpeg_stderr_reader, messenger, pre_audio_codec,
                              stdin_args, terminate_processes)
 
@@ -64,6 +64,7 @@ def output():
                 else:
                     current_file = src_cmd[3]
 
+                _current.clip = current_file
                 messenger.info('Play: "{}"'.format(current_file))
 
                 with Popen([
