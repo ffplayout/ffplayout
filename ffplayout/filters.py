@@ -30,6 +30,11 @@ from .utils import _global, _pre, _text
 
 
 def text_filter():
+    """
+    Convert a filter.
+
+    Args:
+    """
     filter_chain = []
     font = ''
 
@@ -212,6 +217,13 @@ def extend_video(probe, duration, target_duration):
 
 
 def realtime_filter(duration, track=''):
+    """
+    Filter track filter
+
+    Args:
+        duration: (int): write your description
+        track: (array): write your description
+    """
     speed_filter = ''
 
     if _pre.realtime:
@@ -227,6 +239,12 @@ def realtime_filter(duration, track=''):
 
 
 def split_filter(filter_type):
+    """
+    Split a filter_filter into a string.
+
+    Args:
+        filter_type: (str): write your description
+    """
     map_node = []
     filter_prefix = ''
     _filter = ''

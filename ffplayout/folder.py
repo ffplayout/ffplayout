@@ -40,6 +40,12 @@ class MediaStore:
     """
 
     def __init__(self):
+        """
+        Initialize folder
+
+        Args:
+            self: (todo): write your description
+        """
         self.store = []
 
         if stdin_args.folder:
@@ -50,6 +56,12 @@ class MediaStore:
         self.fill()
 
     def fill(self):
+        """
+        Fill all files in the folder
+
+        Args:
+            self: (todo): write your description
+        """
         for ext in _storage.extensions:
             self.store.extend(
                 glob.glob(os.path.join(self.folder, '**', '*{}'.format(ext)),
@@ -61,18 +73,44 @@ class MediaStore:
             self.sort()
 
     def add(self, file):
+        """
+        Add a new file object.
+
+        Args:
+            self: (todo): write your description
+            file: (str): write your description
+        """
         self.store.append(file)
         self.sort()
 
     def remove(self, file):
+        """
+        Remove file from the store.
+
+        Args:
+            self: (todo): write your description
+            file: (str): write your description
+        """
         self.store.remove(file)
         self.sort()
 
     def sort(self):
+        """
+        Sort the store.
+
+        Args:
+            self: (todo): write your description
+        """
         # sort list for sorted playing
         self.store = sorted(self.store)
 
     def rand(self):
+        """
+        Shuffle the generator.
+
+        Args:
+            self: (todo): write your description
+        """
         # random sort list for playing
         random.shuffle(self.store)
 
@@ -83,6 +121,13 @@ class MediaWatcher:
     """
 
     def __init__(self, media):
+        """
+        Initialize the event handler.
+
+        Args:
+            self: (todo): write your description
+            media: (todo): write your description
+        """
         self._media = media
         self.extensions = ['*{}'.format(ext) for ext in _storage.extensions]
 
@@ -99,6 +144,13 @@ class MediaWatcher:
         self.observer.start()
 
     def on_created(self, event):
+        """
+        Called when a file has been modified.
+
+        Args:
+            self: (todo): write your description
+            event: (todo): write your description
+        """
         # add file to media list only if it is completely copied
         file_size = -1
         while file_size != os.path.getsize(event.src_path):
@@ -110,6 +162,13 @@ class MediaWatcher:
         messenger.info('Add file to media list: "{}"'.format(event.src_path))
 
     def on_moved(self, event):
+        """
+        Terminate the file from the media.
+
+        Args:
+            self: (todo): write your description
+            event: (todo): write your description
+        """
         self._media.remove(event.src_path)
         self._media.add(event.dest_path)
 
@@ -120,6 +179,13 @@ class MediaWatcher:
             _ff.decoder.terminate()
 
     def on_deleted(self, event):
+        """
+        Remove the file was deleted.
+
+        Args:
+            self: (todo): write your description
+            event: (todo): write your description
+        """
         self._media.remove(event.src_path)
 
         messenger.info(
@@ -129,6 +195,12 @@ class MediaWatcher:
             _ff.decoder.terminate()
 
     def stop(self):
+        """
+        Stop the server.
+
+        Args:
+            self: (todo): write your description
+        """
         self.observer.stop()
         self.observer.join()
 
@@ -139,6 +211,13 @@ class GetSourceFromFolder:
     """
 
     def __init__(self, media):
+        """
+        Initialize media.
+
+        Args:
+            self: (todo): write your description
+            media: (todo): write your description
+        """
         self._media = media
 
         self.last_played = []
@@ -146,6 +225,12 @@ class GetSourceFromFolder:
         self.probe = MediaProbe()
 
     def next(self):
+        """
+        Iterate over all the next media.
+
+        Args:
+            self: (todo): write your description
+        """
         while True:
             while self.index < len(self._media.store):
                 self.probe.load(self._media.store[self.index])

@@ -38,6 +38,12 @@ class GetSourceFromPlaylist:
     """
 
     def __init__(self):
+        """
+        Initialize a track
+
+        Args:
+            self: (todo): write your description
+        """
         self.init_time = _playlist.start
         self.last_time = get_time('full_sec')
 
@@ -69,6 +75,12 @@ class GetSourceFromPlaylist:
         self.ad_next = False
 
     def get_playlist(self):
+        """
+        Get playlist :
+
+        Args:
+            self: (todo): write your description
+        """
         if stdin_args.playlist:
             self.json_file = stdin_args.playlist
         else:
@@ -109,6 +121,13 @@ class GetSourceFromPlaylist:
             self.clip_nodes = None
 
     def get_clip_in_out(self, node):
+        """
+        Get the clipboard out of the node.
+
+        Args:
+            self: (todo): write your description
+            node: (todo): write your description
+        """
         if is_float(node["in"]):
             self.seek = node["in"]
         else:
@@ -125,12 +144,26 @@ class GetSourceFromPlaylist:
             self.out = self.duration
 
     def get_input(self):
+        """
+        Get command input.
+
+        Args:
+            self: (todo): write your description
+        """
         self.src_cmd, self.seek, self.out, self.next_playlist = timed_source(
             self.probe, self.src, self.begin, self.duration,
             self.seek, self.out, self.first, self.last
         )
 
     def get_category(self, index, node):
+        """
+        Returns the category of the given node
+
+        Args:
+            self: (todo): write your description
+            index: (int): write your description
+            node: (todo): write your description
+        """
         if 'category' in node:
             if index - 1 >= 0:
                 last_category = self.clip_nodes[
@@ -160,11 +193,23 @@ class GetSourceFromPlaylist:
                 self.ad_next = False
 
     def set_filtergraph(self):
+        """
+        Set filtergraph
+
+        Args:
+            self: (todo): write your description
+        """
         self.filtergraph = build_filtergraph(
             self.duration, self.seek, self.out, self.ad, self.ad_last,
             self.ad_next, self.probe, messenger)
 
     def check_for_next_playlist(self):
+        """
+        Checks if the next play playlist since last.
+
+        Args:
+            self: (todo): write your description
+        """
         if not self.next_playlist:
             # normal behavior, when no new playlist is needed
             self.last_time = self.begin
@@ -179,6 +224,15 @@ class GetSourceFromPlaylist:
             self.last_time = _playlist.start - 1
 
     def eof_handling(self, message, fill, duration=None):
+        """
+        Eof eof eof
+
+        Args:
+            self: (todo): write your description
+            message: (str): write your description
+            fill: (str): write your description
+            duration: (float): write your description
+        """
         self.seek = 0.0
         self.ad = False
 
@@ -209,6 +263,14 @@ class GetSourceFromPlaylist:
         self.last = False
 
     def peperation_task(self, index, node):
+        """
+        : param index : the index of the task.
+
+        Args:
+            self: (todo): write your description
+            index: (int): write your description
+            node: (todo): write your description
+        """
         # call functions in order to prepare source and filter
         self.src = node["source"]
         self.probe.load(self.src)
@@ -219,6 +281,12 @@ class GetSourceFromPlaylist:
         self.check_for_next_playlist()
 
     def next(self):
+        """
+        Retrieves the next task
+
+        Args:
+            self: (todo): write your description
+        """
         while True:
             self.get_playlist()
 

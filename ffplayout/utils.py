@@ -127,6 +127,12 @@ _global = SimpleNamespace(time_delta=0)
 
 
 def str_to_sec(s):
+    """
+    Convert seconds to seconds.
+
+    Args:
+        s: (str): write your description
+    """
     if s in ['now', '', None, 'none']:
         return None
     else:
@@ -139,6 +145,12 @@ def str_to_sec(s):
 
 
 def read_config(path):
+    """
+    Read configuration file.
+
+    Args:
+        path: (str): write your description
+    """
     with open(path, 'r') as config_file:
         return yaml.safe_load(config_file)
 
@@ -267,6 +279,13 @@ class CustomFormatter(logging.Formatter):
     }
 
     def format_message(self, msg):
+        """
+        Format the message ascii.
+
+        Args:
+            self: (todo): write your description
+            msg: (str): write your description
+        """
         if '"' in msg and '[' in msg:
             msg = re.sub('(".*?")', self.cyan + r'\1' + self.reset, msg)
         elif '[decoder]' in msg:
@@ -283,6 +302,13 @@ class CustomFormatter(logging.Formatter):
         return msg
 
     def format(self, record):
+        """
+        Format log record.
+
+        Args:
+            self: (todo): write your description
+            record: (todo): write your description
+        """
         record.msg = self.format_message(record.getMessage())
         log_fmt = self.FORMATS.get(record.levelno)
         formatter = logging.Formatter(log_fmt)
@@ -352,6 +378,12 @@ class Mailer:
     """
 
     def __init__(self):
+        """
+        Initialize the rate.
+
+        Args:
+            self: (todo): write your description
+        """
         self.level = _mail.level
         self.time = None
         self.timestamp = get_time('stamp')
@@ -359,9 +391,22 @@ class Mailer:
         self.temp_msg = os.path.join(tempfile.gettempdir(), 'ffplayout.txt')
 
     def current_time(self):
+        """
+        Current current time.
+
+        Args:
+            self: (todo): write your description
+        """
         self.time = get_time(None)
 
     def send_mail(self, msg):
+        """
+        Send an email.
+
+        Args:
+            self: (todo): write your description
+            msg: (str): write your description
+        """
         if _mail.recip:
             # write message to temp file for rate limit
             with open(self.temp_msg, 'w+') as f:
@@ -396,6 +441,13 @@ class Mailer:
                     server.quit()
 
     def check_if_new(self, msg):
+        """
+        Check if a new message was received.
+
+        Args:
+            self: (todo): write your description
+            msg: (str): write your description
+        """
         # send messege only when is new or the rate_limit is pass
         if os.path.isfile(self.temp_msg):
             mod_time = os.path.getmtime(self.temp_msg)
@@ -410,14 +462,35 @@ class Mailer:
             self.send_mail(msg)
 
     def info(self, msg):
+        """
+        Check info
+
+        Args:
+            self: (todo): write your description
+            msg: (str): write your description
+        """
         if self.level in ['INFO']:
             self.check_if_new(msg)
 
     def warning(self, msg):
+        """
+        Log a warning.
+
+        Args:
+            self: (todo): write your description
+            msg: (str): write your description
+        """
         if self.level in ['INFO', 'WARNING']:
             self.check_if_new(msg)
 
     def error(self, msg):
+        """
+        Check if error message
+
+        Args:
+            self: (todo): write your description
+            msg: (str): write your description
+        """
         if self.level in ['INFO', 'WARNING', 'ERROR']:
             self.check_if_new(msg)
 
@@ -429,20 +502,54 @@ class Messenger:
     """
 
     def __init__(self):
+        """
+        Initialize the mail.
+
+        Args:
+            self: (todo): write your description
+        """
         self._mailer = Mailer()
 
     def debug(self, msg):
+        """
+        Log a debug message
+
+        Args:
+            self: (todo): write your description
+            msg: (str): write your description
+        """
         playout_logger.debug(msg.replace('\n', ' '))
 
     def info(self, msg):
+        """
+        Display info
+
+        Args:
+            self: (todo): write your description
+            msg: (str): write your description
+        """
         playout_logger.info(msg.replace('\n', ' '))
         self._mailer.info(msg)
 
     def warning(self, msg):
+        """
+        Log a warning
+
+        Args:
+            self: (todo): write your description
+            msg: (str): write your description
+        """
         playout_logger.warning(msg.replace('\n', ' '))
         self._mailer.warning(msg)
 
     def error(self, msg):
+        """
+        Logs an error.
+
+        Args:
+            self: (todo): write your description
+            msg: (str): write your description
+        """
         playout_logger.error(msg.replace('\n', ' '))
         self._mailer.error(msg)
 
@@ -501,6 +608,11 @@ FF_LIBS = ffmpeg_libs()
 
 
 def validate_ffmpeg_libs():
+    """
+    Validate libs and libs.
+
+    Args:
+    """
     if 'libx264' not in FF_LIBS['libs']:
         playout_logger.error('ffmpeg contains no libx264!')
     if 'libfdk-aac' not in FF_LIBS['libs']:
@@ -523,6 +635,13 @@ class MediaProbe:
     """
 
     def load(self, file):
+        """
+        Load video data from file.
+
+        Args:
+            self: (todo): write your description
+            file: (str): write your description
+        """
         self.remote_source = ['http', 'https', 'ftp', 'smb', 'sftp']
         self.src = file
         self.format = None
@@ -614,6 +733,13 @@ def terminate_processes(watcher=None):
 
 
 def ffmpeg_stderr_reader(std_errors, decoder):
+    """
+    Stderr output from fastmpeg.
+
+    Args:
+        std_errors: (todo): write your description
+        decoder: (str): write your description
+    """
     if decoder:
         logger = decoder_logger
         prefix = DEC_PREFIX
@@ -722,6 +848,12 @@ def validate_thread(clip_nodes):
     and test if source paths exist
     """
     def check_json(json_nodes):
+        """
+        Check the json_nodes.
+
+        Args:
+            json_nodes: (todo): write your description
+        """
         error = ''
         counter = 0
         probe = MediaProbe()
@@ -784,6 +916,14 @@ def set_length(duration, seek, out):
 
 
 def loop_input(source, src_duration, target_duration):
+    """
+    Loop over the input loop.
+
+    Args:
+        source: (str): write your description
+        src_duration: (todo): write your description
+        target_duration: (todo): write your description
+    """
     # loop filles n times
     loop_count = math.ceil(target_duration / src_duration)
     messenger.info(
