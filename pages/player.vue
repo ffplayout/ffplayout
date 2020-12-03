@@ -281,12 +281,12 @@
 </template>
 
 <script>
+/* eslint-disable vue/custom-event-name-casing */
 import { mapState } from 'vuex'
 import Menu from '@/components/Menu.vue'
 
 export default {
     name: 'Player',
-    middleware: 'auth',
 
     components: {
         Menu
@@ -297,6 +297,8 @@ export default {
             return new Date(sec * 1000).toISOString().substr(11, 8)
         }
     },
+
+    middleware: 'auth',
 
     data () {
         return {

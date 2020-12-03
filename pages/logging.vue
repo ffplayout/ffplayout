@@ -37,7 +37,6 @@ import Menu from '@/components/Menu.vue'
 
 export default {
     name: 'Logging',
-    middleware: 'auth',
 
     components: {
         Menu
@@ -57,6 +56,8 @@ export default {
                 .replace(/\[DEBUG\]/g, '<span class="log-debug">[DEBUG]</span>')
         }
     },
+
+    middleware: 'auth',
 
     data () {
         return {

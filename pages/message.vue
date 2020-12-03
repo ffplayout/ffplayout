@@ -227,11 +227,12 @@ import Menu from '@/components/Menu.vue'
 
 export default {
     name: 'Media',
-    middleware: 'auth',
 
     components: {
         Menu
     },
+
+    middleware: 'auth',
 
     data () {
         return {

@@ -12,28 +12,28 @@
     "lint": "eslint --ext .js,.vue --ignore-path .gitignore ."
   },
   "dependencies": {
-    "@nuxtjs/axios": "^5.12.2",
-    "@nuxtjs/dayjs": "^1.2.0",
+    "@nuxtjs/axios": "^5.12.3",
+    "@nuxtjs/dayjs": "^1.2.1",
     "@nuxtjs/dotenv": "^1.4.1",
-    "bootstrap": "^4.5.2",
-    "bootstrap-vue": "^2.17.3",
+    "bootstrap": "^4.5.3",
+    "bootstrap-vue": "^2.20.1",
     "cookie-universal-nuxt": "^2.1.4",
-    "jwt-decode": "^2.2.0",
-    "nuxt": "^2.14.6",
-    "splitpanes": "^2.2.1",
-    "video.js": "^7.8.4",
-    "vue-loading-overlay": "^3.4.1",
+    "jwt-decode": "^3.1.2",
+    "nuxt": "^2.14.9",
+    "splitpanes": "^2.3.6",
+    "video.js": "^7.10.2",
+    "vue-loading-overlay": "^3.4.2",
     "vue2-perfect-scrollbar": "^1.5.0",
-    "vuedraggable": "^2.24.1"
+    "vuedraggable": "^2.24.3"
   },
   "devDependencies": {
-    "@nuxtjs/eslint-config": "^3.1.0",
-    "@nuxtjs/eslint-module": "^2.0.0",
+    "@nuxtjs/eslint-config": "^5.0.0",
+    "@nuxtjs/eslint-module": "^3.0.1",
     "@nuxtjs/style-resources": "^1.0.0",
     "babel-eslint": "^10.1.0",
-    "eslint": "^7.9.0",
-    "eslint-plugin-nuxt": ">=1.0.0",
-    "node-sass": "^4.14.1",
-    "sass-loader": "^10.0.2"
+    "eslint": "^7.14.0",
+    "eslint-plugin-nuxt": ">=2.0.0",
+    "node-sass": "^5.0.0",
+    "sass-loader": "^10.1.0"
   }
 }

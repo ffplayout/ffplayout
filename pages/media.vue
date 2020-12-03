@@ -254,16 +254,18 @@
 </template>
 
 <script>
+/* eslint-disable vue/custom-event-name-casing */
 import { mapState } from 'vuex'
 import Menu from '@/components/Menu.vue'
 
 export default {
     name: 'Media',
-    middleware: 'auth',
 
     components: {
         Menu
     },
+
+    middleware: 'auth',
 
     data () {
         return {

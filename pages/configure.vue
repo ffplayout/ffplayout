@@ -218,11 +218,12 @@ import Menu from '@/components/Menu.vue'
 
 export default {
     name: 'Configure',
-    middleware: 'auth',
 
     components: {
         Menu
     },
+
+    middleware: 'auth',
 
     data () {
         return {
