@@ -31,11 +31,14 @@ from .utils import _global, _pre, _text
 
 def text_filter():
     filter_chain = []
+    font = ''
 
     if _text.add_text and _text.over_pre:
+        if _text.fontfile and os.path.isfile(_text.fontfile):
+            font = ":fontfile='{}'".format(_text.fontfile)
         filter_chain = [
-            "null,zmq=b=tcp\\\\://'{}',drawtext=text='':fontfile='{}'".format(
-                _text.address.replace(':', '\\:'), _text.fontfile)]
+            "null,zmq=b=tcp\\\\://'{}',drawtext=text=''{}".format(
+                _text.address.replace(':', '\\:'), font)]
 
     return filter_chain
 

@@ -33,6 +33,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import formatdate
 from logging.handlers import TimedRotatingFileHandler
+from shutil import which
 from subprocess import STDOUT, CalledProcessError, check_output
 from threading import Thread
 from types import SimpleNamespace
@@ -52,10 +53,6 @@ stdin_parser.add_argument(
 )
 
 stdin_parser.add_argument(
-    '-d', '--desktop', help='preview on desktop', action='store_true'
-)
-
-stdin_parser.add_argument(
     '-f', '--folder', help='play folder content'
 )
 
@@ -65,6 +62,10 @@ stdin_parser.add_argument(
 
 stdin_parser.add_argument(
     '-i', '--loop', help='loop playlist infinitely', action='store_true'
+)
+
+stdin_parser.add_argument(
+    '-m', '--mode', help='set output mode: desktop, hls, stream'
 )
 
 stdin_parser.add_argument(
@@ -121,6 +122,7 @@ _playout = SimpleNamespace()
 
 _init = SimpleNamespace(load=True)
 _ff = SimpleNamespace(decoder=None, encoder=None)
+_current = SimpleNamespace(clip=None)
 _global = SimpleNamespace(time_delta=0)
 
 
@@ -216,8 +218,9 @@ def load_config():
         _pre.h = cfg['processing']['height']
         _pre.aspect = cfg['processing']['aspect']
         _pre.fps = cfg['processing']['fps']
-        _pre.v_bitrate = cfg['processing']['width'] * 50
-        _pre.v_bufsize = cfg['processing']['width'] * 50 / 2
+        _pre.v_bitrate = cfg['processing']['width'] * \
+            cfg['processing']['height'] / 10
+        _pre.v_bufsize = _pre.v_bitrate / 2
         _pre.realtime = cfg['processing']['use_realtime']
 
         _playout.mode = cfg['out']['mode']
@@ -448,14 +451,26 @@ messenger = Messenger()
 
 
 # ------------------------------------------------------------------------------
-# check ffmpeg libs
+# check binaries and ffmpeg libs
 # ------------------------------------------------------------------------------
+
+def is_in_system(name):
+    """
+    Check whether name is on PATH and marked as executable
+    """
+    if which(name) is None:
+        messenger.error('{} is not found on system'.format(name))
+        sys.exit(1)
+
 
 def ffmpeg_libs():
     """
     check which external libs are compiled in ffmpeg,
     for using them later
     """
+    is_in_system('ffmpeg')
+    is_in_system('ffprobe')
+
     cmd = ['ffmpeg', '-filters']
     libs = []
     filters = []
@@ -491,10 +506,6 @@ def validate_ffmpeg_libs():
     if 'libfdk-aac' not in FF_LIBS['libs']:
         playout_logger.warning(
             'ffmpeg contains no libfdk-aac! No high quality aac...')
-    if 'libtwolame' not in FF_LIBS['libs']:
-        playout_logger.warning(
-            'ffmpeg contains no libtwolame!'
-            ' Loudness correction use mp2 audio codec...')
     if 'tpad' not in FF_LIBS['filters']:
         playout_logger.error('ffmpeg contains no tpad filter!')
     if 'zmq' not in FF_LIBS['filters']:
@@ -1000,7 +1011,6 @@ def pre_audio_codec():
     and works not well together with the loudnorm filter
     """
     if _pre.add_loudnorm:
-        acodec = 'libtwolame' if 'libtwolame' in FF_LIBS['libs'] else 'mp2'
-        return ['-c:a', acodec, '-b:a', '384k', '-ar', '48000', '-ac', '2']
+        return ['-c:a', 'mp2', '-b:a', '384k', '-ar', '48000', '-ac', '2']
     else:
         return ['-c:a', 's302m', '-strict', '-2', '-ar', '48000', '-ac', '2']

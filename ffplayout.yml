@@ -119,12 +119,11 @@ out:
         -b:a 128k
     stream_output: >-
         -flags +global_header
-        -f flv "rtmp://localhost/live/stream"
+        -f flv rtmp://localhost/live/stream
     hls_output: >-
         -flags +cgop
         -f hls
         -hls_time 6
         -hls_list_size 600
-        -hls_delete_threshold 30
         -hls_flags append_list+delete_segments+omit_endlist+program_date_time
-        /var/www/srs/live/stream.m3u8
+        -hls_segment_filename /var/www/srs/live/stream-%09d.ts /var/www/srs/live/stream.m3u8
