@@ -20,6 +20,8 @@
 import math
 import os
 import re
+from glob import glob
+from pydoc import locate
 
 from .utils import _global, _pre, _text
 
@@ -247,6 +249,19 @@ def split_filter(filter_type):
     return _filter
 
 
+def custom_filter(probe, type):
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    filter_dir = os.path.join(script_dir, 'filter')
+    filters = []
+
+    for filter in glob(os.path.join(filter_dir, f'{type}_*')):
+        filter = os.path.splitext(os.path.basename(filter))[0]
+        filter_func = locate(f'ffplayout.filter.{filter}.filter')
+        filters.append(filter_func(probe))
+
+    return filters
+
+
 def build_filtergraph(duration, seek, out, ad, ad_last, ad_next, probe, msg):
     """
     build final filter graph, with video and audio chain
@@ -264,6 +279,7 @@ def build_filtergraph(duration, seek, out, ad, ad_last, ad_next, probe, msg):
         video_chain += fps_filter(probe)
         video_chain += scale_filter(probe)
         video_chain += extend_video(probe, duration, out - seek)
+        video_chain += custom_filter(probe, 'v')
         video_chain += fade_filter(duration, seek, out)
 
         audio_chain += add_audio(probe, out - seek, msg)
@@ -272,9 +288,11 @@ def build_filtergraph(duration, seek, out, ad, ad_last, ad_next, probe, msg):
             audio_chain.append('[0:a]anull')
             audio_chain += add_loudnorm(probe)
             audio_chain += extend_audio(probe, out - seek)
+            audio_chain += custom_filter(probe, 'a')
             audio_chain += fade_filter(duration, seek, out, 'a')
 
     if video_chain:
+        print(video_chain)
         video_filter = '{}[v]'.format(','.join(video_chain))
     else:
         video_filter = 'null[v]'
