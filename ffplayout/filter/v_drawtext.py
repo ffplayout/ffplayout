@@ -5,6 +5,9 @@ from ffplayout.utils import _text
 
 
 def filter(probe):
+    """
+    extract title from file name and overlay it
+    """
     font = ''
     source = os.path.basename(probe.src)
     match = re.match(_text.regex, source)
