@@ -23,7 +23,7 @@ import re
 from glob import glob
 from pydoc import locate
 
-from .utils import _global, _pre, _text
+from ffplayout.utils import _global, _pre, _text
 
 # ------------------------------------------------------------------------------
 # building filters,
@@ -250,13 +250,12 @@ def split_filter(filter_type):
 
 
 def custom_filter(probe, type):
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    filter_dir = os.path.join(script_dir, 'filter')
+    filter_dir = os.path.dirname(os.path.abspath(__file__))
     filters = []
 
     for filter in glob(os.path.join(filter_dir, f'{type}_*')):
         filter = os.path.splitext(os.path.basename(filter))[0]
-        filter_func = locate(f'ffplayout.filter.{filter}.filter')
+        filter_func = locate(f'ffplayout.filters.{filter}.filter')
         filters.append(filter_func(probe))
 
     return filters
