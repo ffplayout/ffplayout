@@ -25,7 +25,7 @@ import time
 from watchdog.events import PatternMatchingEventHandler
 from watchdog.observers import Observer
 
-from .filters import build_filtergraph
+from .filters.default import build_filtergraph
 from .utils import MediaProbe, _current, _ff, _storage, messenger, stdin_args
 
 # ------------------------------------------------------------------------------

@@ -23,11 +23,10 @@ import ssl
 import time
 from urllib import request
 
-from ffplayout.filters import build_filtergraph
-from ffplayout.utils import (MediaProbe, _playlist, gen_filler, get_date,
-                             get_delta, get_time, is_float, messenger,
-                             stdin_args, timed_source, valid_json,
-                             validate_thread)
+from .filters.default import build_filtergraph
+from .utils import (MediaProbe, _playlist, gen_filler, get_date, get_delta,
+                    get_time, is_float, messenger, stdin_args, timed_source,
+                    valid_json, validate_thread)
 
 
 class GetSourceFromPlaylist:
