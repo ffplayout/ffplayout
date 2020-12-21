@@ -256,7 +256,10 @@ def custom_filter(probe, type):
     for filter in glob(os.path.join(filter_dir, f'{type}_*')):
         filter = os.path.splitext(os.path.basename(filter))[0]
         filter_func = locate(f'ffplayout.filters.{filter}.filter')
-        filters.append(filter_func(probe))
+        link = filter_func(probe)
+
+        if link is not None:
+            filters.append(link)
 
     return filters
 
@@ -272,26 +275,30 @@ def build_filtergraph(duration, seek, out, ad, ad_last, ad_next, probe, msg):
         seek = 0
 
     if probe.video[0]:
+        custom_v_filter = custom_filter(probe, 'v')
         video_chain += text_filter()
         video_chain += deinterlace_filter(probe)
         video_chain += pad_filter(probe)
         video_chain += fps_filter(probe)
         video_chain += scale_filter(probe)
         video_chain += extend_video(probe, duration, out - seek)
-        video_chain += custom_filter(probe, 'v')
+        if custom_v_filter:
+            video_chain += custom_v_filter
         video_chain += fade_filter(duration, seek, out)
 
         audio_chain += add_audio(probe, out - seek, msg)
 
         if not audio_chain:
+            custom_a_filter = custom_filter(probe, 'a')
+
             audio_chain.append('[0:a]anull')
             audio_chain += add_loudnorm(probe)
             audio_chain += extend_audio(probe, out - seek)
-            audio_chain += custom_filter(probe, 'a')
+            if custom_a_filter:
+                audio_chain += custom_a_filter
             audio_chain += fade_filter(duration, seek, out, 'a')
 
     if video_chain:
-        print(video_chain)
         video_filter = '{}[v]'.format(','.join(video_chain))
     else:
         video_filter = 'null[v]'
