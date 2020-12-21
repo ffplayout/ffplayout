@@ -89,11 +89,15 @@ text:
         On windows fontfile path need to be like this 'C\:/WINDOWS/fonts/DejaVuSans.ttf'.
         In a standard environment the filter drawtext node is Parsed_drawtext_2.
         'over_pre' if True text will be overlay in pre processing. Continue same text
-        over multiple files is in that mode not possible.
+        over multiple files is in that mode not possible. 'text_from_filename' activate the
+        extraction from text of a filename. With 'style' you can define the drawtext
+        parameters like position, color, etc. Post Text over API will override this.
+        With 'regex' you can format file names, to get a title from it.
     add_text: False
     over_pre: False
     bind_address: "127.0.0.1:5555"
     fontfile: "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+    text_from_filename: False
     style: "x=(w-tw)/2:y=(h-line_h)*0.9:fontsize=24:fontcolor=#ffffff:box=1:boxcolor=#000000:boxborderw=4"
     regex: "^(.*)_"
 
