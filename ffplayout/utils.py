@@ -206,6 +206,7 @@ def load_config():
     _text.over_pre = cfg['text']['over_pre']
     _text.address = cfg['text']['bind_address']
     _text.fontfile = cfg['text']['fontfile']
+    _text.text_from_filename = cfg['text']['text_from_filename']
     _text.style = cfg['text']['style']
     _text.regex = cfg['text']['regex']
 
