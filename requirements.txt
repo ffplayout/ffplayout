@@ -1,4 +1,4 @@
-colorama==0.4.3
-pathtools==0.1.2
+colorama==0.4.4
 PyYAML==5.3.1
-watchdog==0.10.3
+supervisor==4.2.1
+watchdog==1.0.2

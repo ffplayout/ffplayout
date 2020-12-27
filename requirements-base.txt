@@ -1,3 +1,4 @@
-watchdog
 colorama
 pyyaml
+supervisor
+watchdog
