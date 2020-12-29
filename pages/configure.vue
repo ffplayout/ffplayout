@@ -13,7 +13,14 @@
                                 label-class="font-weight-bold pt-0"
                                 class="config-group"
                             >
-                                <div v-for="(prop, name, idx) in configGui" :key="idx">
+                                <div style="width: 100%; height: 43px;">
+                                    <div class="float-right">
+                                        <b-button size="sm" variant="primary" class="m-md-2" @click="addChannel()">
+                                            Add new Channel
+                                        </b-button>
+                                    </div>
+                                </div>
+                                <div v-for="(prop, name, idx) in configGui[configID]" :key="idx">
                                     <b-form-group
                                         v-if="idx >= 1"
                                         label-cols-sm="2"
@@ -23,7 +30,7 @@
                                     >
                                         <b-form-tags
                                             v-if="name === 'extra_extensions'"
-                                            v-model="configGui[name]"
+                                            v-model="configGui[configID][name]"
                                             :input-id="name"
                                             separator=" ,;"
                                             :placeholder="`add ${name}...`"
@@ -32,8 +39,8 @@
                                         <b-form-text v-if="name === 'extra_extensions'">
                                             Visible extensions only for the GUI and not the playout
                                         </b-form-text>
-                                        <b-form-select v-else-if="name === 'net_interface'" :id="name" v-model="configGui[name]" :options="netChoices" :value="prop" />
-                                        <b-form-input v-else :id="name" v-model="configGui[name]" :value="prop" />
+                                        <b-form-select v-else-if="name === 'net_interface'" :id="name" v-model="configGui[configID][name]" :options="netChoices" :value="prop" />
+                                        <b-form-input v-else :id="name" v-model="configGui[configID][name]" :value="prop" />
                                     </b-form-group>
                                 </div>
                             </b-form-group>
@@ -237,7 +244,7 @@ export default {
     },
 
     computed: {
-        ...mapState('config', ['netChoices']),
+        ...mapState('config', ['configID', 'netChoices']),
         configGui: {
             get () {
                 return this.$store.state.config.configGui
@@ -265,12 +272,23 @@ export default {
     },
 
     methods: {
+        addChannel () {
+            const config = JSON.parse(JSON.stringify(this.configGui))
+            const newConf = JSON.parse(JSON.stringify(this.configGui[this.configGui.length - 1]))
+            newConf.id = config.length + 1
+            newConf.channel = `New Channel - ${Math.random().toString(36).substring(7)}`
+
+            config.push(newConf)
+
+            this.$store.commit('config/UPDATE_GUI_CONFIG', config)
+            this.$store.commit('config/UPDATE_CONFIG_ID', this.configGui.length - 1)
+        },
         async onSubmitGui (evt) {
             evt.preventDefault()
             await this.$store.dispatch('auth/inspectToken')
             const update = await this.$store.dispatch('config/setGuiConfig', this.configGui)
 
-            if (update.status === 200) {
+            if (update.status === 200 || update.status === 201) {
                 this.alertVariant = 'success'
                 this.alertMsg = 'Update GUI config success!'
             } else {

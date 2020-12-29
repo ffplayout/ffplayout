@@ -1,4 +1,6 @@
 export const state = () => ({
+    configID: 0,
+    configCount: 0,
     configGui: null,
     netChoices: [],
     configPlayout: [],
@@ -7,6 +9,12 @@ export const state = () => ({
 })
 
 export const mutations = {
+    UPDATE_CONFIG_ID (state, id) {
+        state.configID = id
+    },
+    UPDATE_CONFIG_COUNT (state, count) {
+        state.configCount = count
+    },
     UPDATE_GUI_CONFIG (state, config) {
         state.configGui = config
     },
@@ -46,35 +54,40 @@ export const actions = {
             })
             commit('UPDATE_NET_CHOICES', choices)
         }
+
         if (response.data && response.data[0]) {
-            if (response.data[0].extra_extensions) {
-                response.data[0].extra_extensions = response.data[0].extra_extensions.split(',')
-            } else {
-                response.data[0].extra_extensions = []
+            for (const data of response.data) {
+                if (data.extra_extensions) {
+                    data.extra_extensions = data.extra_extensions.split(',')
+                } else {
+                    data.extra_extensions = []
+                }
             }
-            commit('UPDATE_GUI_CONFIG', response.data[0])
+
+            commit('UPDATE_GUI_CONFIG', response.data)
+            commit('UPDATE_CONFIG_COUNT', response.data.length)
         } else {
-            commit('UPDATE_GUI_CONFIG', {
-                id: 0,
+            commit('UPDATE_GUI_CONFIG', [{
+                id: 1,
                 channel: '',
                 player_url: '',
                 playout_config: '',
                 net_interface: '',
                 media_disk: '',
                 extra_extensions: []
-            })
+            }])
         }
     },
 
     async setGuiConfig ({ commit, state }, obj) {
-        const stringObj = JSON.parse(JSON.stringify(obj))
-        stringObj.extra_extensions = obj.extra_extensions.join(',')
+        const stringObj = JSON.parse(JSON.stringify(obj[state.configID]))
+        stringObj.extra_extensions = stringObj.extra_extensions.join(',')
         let response
 
-        if (state.configPlayout.length === 0) {
+        if (state.configPlayout.length === 0 || state.configCount !== stringObj.length) {
             response = await this.$axios.post('api/player/guisettings/', stringObj)
         } else {
-            response = await this.$axios.put(`api/player/guisettings/${obj.id}/`, stringObj)
+            response = await this.$axios.put(`api/player/guisettings/${obj[state.configID].id}/`, stringObj)
         }
 
         return response

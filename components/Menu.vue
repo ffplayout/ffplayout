@@ -20,6 +20,11 @@
                 <b-nav-item to="/configure" exact-active-class="active-menu-item">
                     Configure
                 </b-nav-item>
+                <b-nav-item-dropdown :text="configGui[configID].channel" right>
+                    <b-dropdown-item v-for="(channel, index) in configGui" :key="channel.key" @click="selectChannel(index)">
+                        {{ channel.channel }}
+                    </b-dropdown-item>
+                </b-nav-item-dropdown>
                 <b-nav-item to="/" @click="logout()">
                     Logout
                 </b-nav-item>
@@ -29,10 +34,13 @@
 </template>
 
 <script>
+import { mapState } from 'vuex'
+
 export default {
     name: 'Menu',
 
     computed: {
+        ...mapState('config', ['configID', 'configGui'])
     },
 
     methods: {
@@ -43,6 +51,10 @@ export default {
             } catch (e) {
                 this.formError = e.message
             }
+        },
+
+        selectChannel (index) {
+            this.$store.commit('config/UPDATE_CONFIG_ID', index)
         }
     }
 }
