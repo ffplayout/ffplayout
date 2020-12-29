@@ -94,6 +94,13 @@
                 </b-col>
             </b-row>
             <b-row class="date-row">
+                <!-- <b-col>
+                    <b-dropdown text="Channel" size="sm" class="m-md-2">
+                        <b-dropdown-item>First Action</b-dropdown-item>
+                        <b-dropdown-item>Second Action</b-dropdown-item>
+                        <b-dropdown-item>Third Action</b-dropdown-item>
+                    </b-dropdown>
+                </b-col>  -->
                 <b-col>
                     <b-datepicker v-model="listDate" size="sm" class="date-div" offset="-35px" />
                 </b-col>
@@ -262,8 +269,11 @@
                 <b-button v-b-tooltip.hover title="Reset Playlist" variant="primary" @click="resetPlaylist()">
                     <b-icon-arrow-counterclockwise />
                 </b-button>
-                <b-button v-b-tooltip.hover title="Save Playlist" variant="primary" @click="savePlaylist()">
+                <b-button v-b-tooltip.hover title="Save Playlist" variant="primary" @click="savePlaylist(listDate)">
                     <b-icon-download />
+                </b-button>
+                <b-button v-b-tooltip.hover title="Copy Playlist" variant="primary" @click="showCopyModal()">
+                    <b-icon-files />
                 </b-button>
             </b-button-group>
         </b-container>
@@ -276,6 +286,16 @@
             hide-footer
         >
             <video-player v-if="previewOptions" reference="previewPlayer" :options="previewOptions" />
+        </b-modal>
+        <b-modal
+            id="copy-modal"
+            ref="copy-modal"
+            centered
+            :title="`Copy Program ${listDate} to:`"
+            content-class="copy-program"
+            @ok="savePlaylist(targetDate)"
+        >
+            <b-calendar v-model="targetDate" locale="en-US" class="centered" />
         </b-modal>
     </div>
 </template>
@@ -305,6 +325,7 @@ export default {
             isLoading: false,
             isPlaying: '',
             listDate: this.$dayjs().format('YYYY-MM-DD'),
+            targetDate: this.$dayjs().format('YYYY-MM-DD'),
             interval: null,
             extensions: '',
             videoOptions: {},
@@ -461,7 +482,7 @@ export default {
         async resetPlaylist () {
             await this.$store.dispatch('playlist/getPlaylist', { dayStart: this.configPlayout.playlist.day_start, date: this.listDate })
         },
-        async savePlaylist () {
+        async savePlaylist (saveDate) {
             this.$store.commit('playlist/UPDATE_PLAYLIST', this.$processPlaylist(
                 this.configPlayout.playlist.day_start, this.playlist))
 
@@ -469,8 +490,11 @@ export default {
 
             await this.$axios.post(
                 'api/player/playlist/',
-                { data: { channel: this.$store.state.config.configGui.channel, date: this.listDate, program: saveList } }
+                { data: { channel: this.$store.state.config.configGui.channel, date: saveDate, program: saveList } }
             )
+        },
+        showCopyModal () {
+            this.$root.$emit('bv::show::modal', 'copy-modal')
         }
     }
 }
@@ -693,4 +717,10 @@ export default {
     background-color: #49515c !important;
 }
 
+</style>
+
+<style>
+.copy-program {
+    width: 302px !important;
+}
 </style>
