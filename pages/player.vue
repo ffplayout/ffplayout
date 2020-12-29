@@ -94,13 +94,6 @@
                 </b-col>
             </b-row>
             <b-row class="date-row">
-                <!-- <b-col>
-                    <b-dropdown text="Channel" size="sm" class="m-md-2">
-                        <b-dropdown-item>First Action</b-dropdown-item>
-                        <b-dropdown-item>Second Action</b-dropdown-item>
-                        <b-dropdown-item>Third Action</b-dropdown-item>
-                    </b-dropdown>
-                </b-col>  -->
                 <b-col>
                     <b-datepicker v-model="listDate" size="sm" class="date-div" offset="-35px" />
                 </b-col>
