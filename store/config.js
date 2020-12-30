@@ -2,6 +2,7 @@ export const state = () => ({
     configID: 0,
     configCount: 0,
     configGui: null,
+    configGuiRaw: null,
     netChoices: [],
     configPlayout: [],
     currentUser: null,
@@ -17,6 +18,9 @@ export const mutations = {
     },
     UPDATE_GUI_CONFIG (state, config) {
         state.configGui = config
+    },
+    UPDATE_GUI_CONFIG_RAW (state, config) {
+        state.configGuiRaw = config
     },
     UPDATE_NET_CHOICES (state, list) {
         state.netChoices = list
@@ -65,6 +69,7 @@ export const actions = {
             }
 
             commit('UPDATE_GUI_CONFIG', response.data)
+            commit('UPDATE_GUI_CONFIG_RAW', JSON.parse(JSON.stringify(response.data)))
             commit('UPDATE_CONFIG_COUNT', response.data.length)
         } else {
             commit('UPDATE_GUI_CONFIG', [{
@@ -80,21 +85,22 @@ export const actions = {
     },
 
     async setGuiConfig ({ commit, state }, obj) {
-        const stringObj = JSON.parse(JSON.stringify(obj[state.configID]))
+        const stringObj = JSON.parse(JSON.stringify(obj))
         stringObj.extra_extensions = stringObj.extra_extensions.join(',')
         let response
 
-        if (state.configPlayout.length === 0 || state.configCount !== stringObj.length) {
-            response = await this.$axios.post('api/player/guisettings/', stringObj)
+        if (state.configGuiRaw.some(e => e.id === stringObj.id)) {
+            response = await this.$axios.put(`api/player/guisettings/${obj.id}/`, stringObj)
         } else {
-            response = await this.$axios.put(`api/player/guisettings/${obj[state.configID].id}/`, stringObj)
+            response = await this.$axios.post('api/player/guisettings/', stringObj)
         }
 
         return response
     },
 
     async getPlayoutConfig ({ commit, state }) {
-        const response = await this.$axios.get('api/player/config/?configPlayout')
+        const path = state.configGui[state.configID].playout_config
+        const response = await this.$axios.get(`api/player/config/?configPlayout&path=${path}`)
 
         if (response.data) {
             commit('UPDATE_PLAYLOUT_CONFIG', response.data)

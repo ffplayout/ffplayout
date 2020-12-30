@@ -45,10 +45,15 @@
                                 </div>
                             </b-form-group>
                             <b-row>
-                                <b-col cols="1" style="min-width: 85px">
-                                    <b-button type="submit" variant="primary">
-                                        Save
-                                    </b-button>
+                                <b-col cols="1" style="min-width:158px">
+                                    <b-button-group>
+                                        <b-button type="submit" variant="primary">
+                                            Save
+                                        </b-button>
+                                        <b-button variant="danger" @click="deleteChannel()">
+                                            Delete
+                                        </b-button>
+                                    </b-button-group>
                                 </b-col>
                                 <b-col>
                                     <b-alert v-model="showAlert" :variant="alertVariant" dismissible>
@@ -275,8 +280,17 @@ export default {
         addChannel () {
             const config = JSON.parse(JSON.stringify(this.configGui))
             const newConf = JSON.parse(JSON.stringify(this.configGui[this.configGui.length - 1]))
+
+            const playoutConfigPath = newConf.playout_config.match(/.*\//)
+            const playoutConfigFile = newConf.playout_config.replace(/(.*\/|\.yml)/g, '').split('-')
+
+            const engineServicePath = newConf.engine_service.match(/.*\//)
+            const engineServiceFile = newConf.engine_service.replace(/(.*\/|\.conf)/g, '').split('-')
+
             newConf.id = config.length + 1
             newConf.channel = `New Channel - ${Math.random().toString(36).substring(7)}`
+            newConf.playout_config = `${playoutConfigPath}${playoutConfigFile[0]}-${String(parseInt(playoutConfigFile[1]) + 1).padStart(3, '0')}.yml`
+            newConf.engine_service = `${engineServicePath}${engineServiceFile[0]}-${String(parseInt(engineServiceFile[1]) + 1).padStart(3, '0')}.conf`
 
             config.push(newConf)
 
@@ -286,7 +300,7 @@ export default {
         async onSubmitGui (evt) {
             evt.preventDefault()
             await this.$store.dispatch('auth/inspectToken')
-            const update = await this.$store.dispatch('config/setGuiConfig', this.configGui)
+            const update = await this.$store.dispatch('config/setGuiConfig', this.configGui[this.configID])
 
             if (update.status === 200 || update.status === 201) {
                 this.alertVariant = 'success'
@@ -294,6 +308,26 @@ export default {
             } else {
                 this.alertVariant = 'danger'
                 this.alertMsg = 'Update GUI config failed!'
+            }
+
+            this.showAlert = true
+        },
+        async deleteChannel () {
+            const config = JSON.parse(JSON.stringify(this.configGui))
+            const id = config[this.configID].id
+            const response = await this.$axios.delete(`api/player/guisettings/${id}/`)
+
+            config.splice(this.configID, 1)
+
+            this.$store.commit('config/UPDATE_GUI_CONFIG', config)
+            this.$store.commit('config/UPDATE_CONFIG_ID', this.configGui.length - 1)
+
+            if (response.status === 204) {
+                this.alertVariant = 'success'
+                this.alertMsg = 'Delete GUI config success!'
+            } else {
+                this.alertVariant = 'danger'
+                this.alertMsg = 'Delete GUI config failed!'
             }
 
             this.showAlert = true
