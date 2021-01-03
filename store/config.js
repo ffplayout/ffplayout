@@ -108,7 +108,8 @@ export const actions = {
     },
 
     async setPlayoutConfig ({ commit, state }, obj) {
-        const update = await this.$axios.post('api/player/config/?configPlayout', { data: obj })
+        const path = state.configGui[state.configID].playout_config
+        const update = await this.$axios.post(`api/player/config/?configPlayout&path=${path}`, { data: obj })
         return update
     },
 
