@@ -288,7 +288,7 @@ export default {
             const engineServiceFile = newConf.engine_service.replace(/(.*\/|\.conf)/g, '').split('-')
 
             newConf.id = config.length + 1
-            newConf.channel = `New Channel - ${Math.random().toString(36).substring(7)}`
+            newConf.channel = `Channel ${Math.random().toString(36).substring(7)}`
             newConf.playout_config = `${playoutConfigPath}${playoutConfigFile[0]}-${String(parseInt(playoutConfigFile[1]) + 1).padStart(3, '0')}.yml`
             newConf.engine_service = `${engineServicePath}${engineServiceFile[0]}-${String(parseInt(engineServiceFile[1]) + 1).padStart(3, '0')}.conf`
 
