@@ -395,7 +395,8 @@ class Mailer:
                     login = None
 
                 if login is not None:
-                    server.sendmail(_mail.s_addr, _mail.recip, text)
+                    server.sendmail(_mail.s_addr,
+                                    re.split(', |; |,|;', _mail.recip), text)
                     server.quit()
 
     def check_if_new(self, msg):
