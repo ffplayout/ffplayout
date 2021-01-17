@@ -40,7 +40,13 @@
                                             Visible extensions only for the GUI and not the playout
                                         </b-form-text>
                                         <b-form-select v-else-if="name === 'net_interface'" :id="name" v-model="configGui[configID][name]" :options="netChoices" :value="prop" />
-                                        <b-form-input v-else :id="name" v-model="configGui[configID][name]" :value="prop" />
+                                        <b-form-input
+                                            v-else
+                                            :id="name"
+                                            v-model="configGui[configID][name]"
+                                            :value="prop"
+                                            :disabled="(name === 'playout_config' || name === 'engine_service') ? true : false"
+                                        />
                                     </b-form-group>
                                 </div>
                             </b-form-group>
