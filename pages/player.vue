@@ -220,9 +220,6 @@
                                             </b-col>
                                             <b-col class="grabbing">
                                                 {{ item.source | filename }}
-                                                <div class="clip-progress">
-                                                    <b-progress v-if="index === currentClipIndex" height="2px" :value="progressValue" />
-                                                </div>
                                             </b-col>
                                             <b-col cols="1" class="text-center playlist-input">
                                                 <b-link @click="showModal(item.source)">
@@ -298,6 +295,21 @@
 import { mapState } from 'vuex'
 import Menu from '@/components/Menu.vue'
 
+function scrollTo (t) {
+    let child
+    if (t.currentClipIndex === null) {
+        child = document.getElementById('clip_0')
+    } else {
+        child = document.getElementById(`clip_${t.currentClipIndex}`)
+    }
+
+    if (child) {
+        const parent = document.getElementById('scroll-container')
+        const topPos = child.offsetTop
+        parent.scrollTop = topPos - 50
+    }
+}
+
 export default {
     name: 'Player',
 
@@ -324,8 +336,7 @@ export default {
             videoOptions: {},
             previewOptions: {},
             previewComp: null,
-            previewSource: '',
-            autoScroll: true
+            previewSource: ''
         }
     },
 
@@ -347,6 +358,7 @@ export default {
     watch: {
         listDate (date) {
             this.getPlaylist()
+            setTimeout(() => { scrollTo(this) }, 5000)
         }
     },
 
@@ -371,25 +383,26 @@ export default {
             ]
         }
 
+        const timeInSec = this.$timeToSeconds(this.$dayjs().format('HH:mm:ss'))
+        const listStartSec = this.$timeToSeconds(this.configPlayout.playlist.day_start)
+
+        if (listStartSec > timeInSec) {
+            this.listDate = this.$dayjs(this.listDate).subtract(1, 'day').format('YYYY-MM-DD')
+        }
+
         await this.getPlaylist()
     },
 
     mounted () {
-        if (!process.env.DEV) {
+        if (process.env.NODE_ENV !== 'production') {
             this.interval = setInterval(() => {
                 this.$store.dispatch('playlist/animClock')
-                const child = document.getElementById(`clip_${this.currentClipIndex}`)
-
-                if (child && this.autoScroll) {
-                    const parent = document.getElementById('scroll-container')
-                    const topPos = child.offsetTop
-                    parent.scrollTop = topPos - 50
-                    this.autoScroll = false
-                }
             }, 5000)
         } else {
             this.$store.dispatch('playlist/animClock')
         }
+
+        setTimeout(() => { scrollTo(this) }, 4000)
     },
 
     beforeDestroy () {
@@ -707,7 +720,7 @@ export default {
 }
 
 .active-playlist-clip {
-    background-color: #49515c !important;
+    background-color: #565e6a !important;
 }
 
 </style>
