@@ -11,19 +11,34 @@
                 <b-tab title="Playout" active @click="getLog('ffplayout')">
                     <b-container class="log-container">
                         <!-- eslint-disable-next-line -->
-                        <perfect-scrollbar :options="scrollOP" class="scroll-container log-content" v-if="currentLog" :inner-html.prop="currentLog | formatStr" />
+                        <perfect-scrollbar
+                            v-if="currentLog"
+                            :options="scrollOP"
+                            class="log-content"
+                            :inner-html.prop="currentLog | formatStr"
+                        />
                     </b-container>
                 </b-tab>
                 <b-tab title="Decoder" @click="getLog('decoder')">
                     <b-container class="log-container">
                         <!-- eslint-disable-next-line -->
-                        <pre v-if="currentLog" :inner-html.prop="currentLog | formatStr" class="log-content" />
+                        <perfect-scrollbar
+                            v-if="currentLog"
+                            :options="scrollOP"
+                            class="log-content"
+                            :inner-html.prop="currentLog | formatStr"
+                        />
                     </b-container>
                 </b-tab>
                 <b-tab title="Encoder" @click="getLog('encoder')">
                     <b-container class="log-container">
                         <!-- eslint-disable-next-line -->
-                        <pre v-if="currentLog" :inner-html.prop="currentLog | formatStr" class="log-content" />
+                        <perfect-scrollbar
+                            v-if="currentLog"
+                            :options="scrollOP"
+                            class="log-content"
+                            :inner-html.prop="currentLog | formatStr"
+                        />
                     </b-container>
                 </b-tab>
             </b-tabs>
@@ -132,16 +147,13 @@ export default {
     overflow: hidden
 }
 
-.scroll-container {
+.log-content {
+    color: #ececec;
     width: 100%;
     height: 100%;
     font-family: monospace;
     font-size: 13px;
     white-space: pre;
-}
-
-.log-content {
-    color: #ececec;
 }
 
 .log-time {
