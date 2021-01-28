@@ -6,11 +6,9 @@ This web GUI is for managing [ffplayout-engine](https://github.com/ffplayout/ffp
 For a better understanding about the functionality, take a look to the screenshots below.
 The Interface is mostly made for 24/7 streaming. Other scenarios like streaming in folder mode or playlists with no starting time will work, but is not shown correctly.
 
-You can install it on a fresh Debian/CentOS minimal like system with running `./install.sh` as root.
+You can install it on a fresh Debian like system with the [standalone installer](https://github.com/ffplayout/ffplayout-installer).
 
 **Recommend system is a current Debian version.**
-
-Updating is also possible with: `./install.sh update`
 
 Or read the instruction [install.md](docs/install.md) for manual installation.
 
