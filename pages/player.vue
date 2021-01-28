@@ -394,7 +394,7 @@ export default {
     },
 
     mounted () {
-        if (process.env.NODE_ENV !== 'production') {
+        if (process.env.NODE_ENV === 'production') {
             this.interval = setInterval(() => {
                 this.$store.dispatch('playlist/animClock')
             }, 5000)
