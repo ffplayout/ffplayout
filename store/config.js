@@ -1,6 +1,8 @@
 export const state = () => ({
     configGui: null,
     netChoices: [],
+    startInSec: null,
+    playlistLength: 86400.0,
     configPlayout: [],
     currentUser: null,
     configUser: null
@@ -12,6 +14,12 @@ export const mutations = {
     },
     UPDATE_NET_CHOICES (state, list) {
         state.netChoices = list
+    },
+    UPDATE_START_TIME (state, sec) {
+        state.startInSec = sec
+    },
+    UPDATE_PLAYLIST_LENGTH (state, sec) {
+        state.playlistLength = sec
     },
     UPDATE_PLAYLOUT_CONFIG (state, config) {
         state.configPlayout = config
@@ -84,6 +92,14 @@ export const actions = {
         const response = await this.$axios.get('api/player/config/?configPlayout')
 
         if (response.data) {
+            if (response.data.playlist.day_start) {
+                commit('UPDATE_START_TIME', this.$timeToSeconds(response.data.playlist.day_start))
+            }
+
+            if (response.data.playlist.length) {
+                commit('UPDATE_PLAYLIST_LENGTH', this.$timeToSeconds(response.data.playlist.length))
+            }
+
             commit('UPDATE_PLAYLOUT_CONFIG', response.data)
         }
     },
