@@ -6,12 +6,12 @@
                 <b-datepicker v-model="listDate" size="sm" class="date-div" offset="-35px" />
             </b-col>
         </b-row>
-        <b-card no-body>
+        <b-card no-body class="card-container">
             <b-tabs pills card vertical>
                 <b-tab title="Playout" active @click="getLog('ffplayout')">
                     <b-container class="log-container">
                         <!-- eslint-disable-next-line -->
-                        <pre v-if="currentLog" :inner-html.prop="currentLog | formatStr" class="log-content" />
+                        <perfect-scrollbar :options="scrollOP" class="scroll-container log-content" v-if="currentLog" :inner-html.prop="currentLog | formatStr" />
                     </b-container>
                 </b-tab>
                 <b-tab title="Decoder" @click="getLog('decoder')">
@@ -63,7 +63,10 @@ export default {
         return {
             logName: 'ffplayout',
             currentLog: null,
-            listDate: this.$dayjs().format('YYYY-MM-DD')
+            listDate: this.$dayjs().format('YYYY-MM-DD'),
+            scrollOP: {
+                wheelSpeed: 5
+            }
         }
     },
 
@@ -96,18 +99,45 @@ export default {
 </script>
 
 <style>
+.ps__thumb-x {
+    display: inherit !important;
+}
+
 .col-auto {
     width: 122px;
+    height: 100%;
+}
+
+.card-container {
+    height: calc(100% - 90px);
+    width: 100%;
+}
+
+.card-container > div, .tab-content > .active {
+    height: 100%;
+    width: 100%;
 }
 
 .tab-content {
-    max-width: calc(100% - 122px);
+    width: calc(100% - 122px);
+    height: 100%;
 }
 
 .log-container {
     background: #1d2024;
-    max-width: 95%;
+    max-width: 100%;
+    width: 100%;
+    height: 100%;
     padding: 1em;
+    overflow: hidden
+}
+
+.scroll-container {
+    width: 100%;
+    height: 100%;
+    font-family: monospace;
+    font-size: 13px;
+    white-space: pre;
 }
 
 .log-content {
