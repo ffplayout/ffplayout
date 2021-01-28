@@ -31,7 +31,7 @@
                 <splitpanes class="browser-row default-theme pane-row">
                     <pane min-size="20" size="24">
                         <div class="browser-div">
-                            <perfect-scrollbar>
+                            <perfect-scrollbar :options="scrollOP">
                                 <b-list-group class="folder-list">
                                     <b-list-group-item
                                         v-for="folder in folderTree.tree[1]"
@@ -67,7 +67,7 @@
                             color="#ff9c36"
                         />
                         <div class="browser-div">
-                            <perfect-scrollbar>
+                            <perfect-scrollbar :options="scrollOP">
                                 <b-list-group class="files-list">
                                     <b-list-group-item
                                         v-for="file in folderTree.tree[2]"
@@ -289,7 +289,10 @@ export default {
             overallProgress: 0,
             currentProgress: 0,
             cancelTokenSource: this.$axios.CancelToken.source(),
-            lastPath: ''
+            lastPath: '',
+            scrollOP: {
+                suppressScrollX: true
+            }
         }
     },
 
