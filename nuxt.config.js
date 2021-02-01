@@ -81,6 +81,16 @@ export default {
         baseURL: process.env.API_URL
     },
 
+    dayjs: {
+        locales: ['en', 'de'],
+        defaultLocale: 'en',
+        defaultTimeZone: 'Europe/Berlin', // TODO: use timezon like this.$dayjs().tz()
+        plugins: [
+            'utc',
+            'timezone'
+        ]
+    },
+
     styleResources: {
         scss: [
             '@/assets/css/_variables.scss',
