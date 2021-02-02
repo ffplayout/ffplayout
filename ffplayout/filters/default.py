@@ -249,14 +249,14 @@ def split_filter(filter_type):
     return _filter
 
 
-def custom_filter(probe, type):
+def custom_filter(probe, type, node):
     filter_dir = os.path.dirname(os.path.abspath(__file__))
     filters = []
 
     for filter in glob(os.path.join(filter_dir, f'{type}_*')):
         filter = os.path.splitext(os.path.basename(filter))[0]
         filter_func = locate(f'ffplayout.filters.{filter}.filter')
-        link = filter_func(probe)
+        link = filter_func(probe, node)
 
         if link is not None:
             filters.append(link)
@@ -264,7 +264,8 @@ def custom_filter(probe, type):
     return filters
 
 
-def build_filtergraph(duration, seek, out, ad, ad_last, ad_next, probe, msg):
+def build_filtergraph(node, duration, seek, out,
+                      ad, ad_last, ad_next, probe, msg):
     """
     build final filter graph, with video and audio chain
     """
@@ -275,7 +276,7 @@ def build_filtergraph(duration, seek, out, ad, ad_last, ad_next, probe, msg):
         seek = 0
 
     if probe.video[0]:
-        custom_v_filter = custom_filter(probe, 'v')
+        custom_v_filter = custom_filter(probe, 'v', node)
         video_chain += text_filter()
         video_chain += deinterlace_filter(probe)
         video_chain += pad_filter(probe)
@@ -289,7 +290,7 @@ def build_filtergraph(duration, seek, out, ad, ad_last, ad_next, probe, msg):
         audio_chain += add_audio(probe, out - seek, msg)
 
         if not audio_chain:
-            custom_a_filter = custom_filter(probe, 'a')
+            custom_a_filter = custom_filter(probe, 'a', node)
 
             audio_chain.append('[0:a]anull')
             audio_chain += add_loudnorm(probe)

@@ -4,7 +4,7 @@ import re
 from ffplayout.utils import _text
 
 
-def filter(probe):
+def filter(probe, node=None):
     """
     extract title from file name and overlay it
     """

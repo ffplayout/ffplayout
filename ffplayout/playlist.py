@@ -58,6 +58,7 @@ class GetSourceFromPlaylist:
         self.last = False
         self.list_date = get_date(True)
 
+        self.node = None
         self.src = None
         self.begin = 0
         self.seek = 0
@@ -160,8 +161,8 @@ class GetSourceFromPlaylist:
 
     def set_filtergraph(self):
         self.filtergraph = build_filtergraph(
-            self.duration, self.seek, self.out, self.ad, self.ad_last,
-            self.ad_next, self.probe, messenger)
+            self.node, self.duration, self.seek, self.out,
+            self.ad, self.ad_last, self.ad_next, self.probe, messenger)
 
     def check_for_next_playlist(self):
         if not self.next_playlist:
@@ -230,14 +231,14 @@ class GetSourceFromPlaylist:
             self.begin = self.init_time
 
             # loop through all clips in playlist and get correct clip in time
-            for index, node in enumerate(self.clip_nodes["program"]):
-                self.get_clip_in_out(node)
+            for index, self.node in enumerate(self.clip_nodes["program"]):
+                self.get_clip_in_out(self.node)
 
                 # first time we end up here
                 if self.first and \
                         self.last_time < self.begin + self.out - self.seek:
 
-                    self.peperation_task(index, node)
+                    self.peperation_task(index, self.node)
                     self.first = False
                     break
                 elif self.last_time < self.begin:
@@ -246,7 +247,7 @@ class GetSourceFromPlaylist:
                     else:
                         self.last = False
 
-                    self.peperation_task(index, node)
+                    self.peperation_task(index, self.node)
                     break
 
                 self.begin += self.out - self.seek
