@@ -191,7 +191,7 @@ class GetSourceFromPlaylist:
 
             if self.clip_nodes is None:
                 self.eof_handling(
-                    'No valid playlist:\n{}'.format(self.json_file), True, 30)
+                    f'No valid playlist:\n{self.json_file}', True, 30)
                 yield self.src_cmd + self.filtergraph
                 continue
 

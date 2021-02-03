@@ -38,7 +38,7 @@ def text_filter():
 
     if _text.add_text and _text.over_pre:
         if _text.fontfile and os.path.isfile(_text.fontfile):
-            font = ":fontfile='{}'".format(_text.fontfile)
+            font = f":fontfile='{_text.fontfile}'"
         filter_chain = [
             "null,zmq=b=tcp\\\\://'{}',drawtext=text=''{}".format(
                 _text.address.replace(':', '\\:'), font)]
@@ -71,12 +71,10 @@ def pad_filter(probe):
                         _pre.aspect, abs_tol=0.03):
         if probe.video[0]['aspect'] < _pre.aspect:
             filter_chain.append(
-                'pad=ih*{}/{}/sar:ih:(ow-iw)/2:(oh-ih)/2'.format(_pre.w,
-                                                                 _pre.h))
+                f'pad=ih*{_pre.w}/{_pre.h}/sar:ih:(ow-iw)/2:(oh-ih)/2')
         elif probe.video[0]['aspect'] > _pre.aspect:
             filter_chain.append(
-                'pad=iw:iw*{}/{}/sar:(ow-iw)/2:(oh-ih)/2'.format(_pre.h,
-                                                                 _pre.w))
+                f'pad=iw:iw*{_pre.h}/{_pre.w}/sar:(ow-iw)/2:(oh-ih)/2')
 
     return filter_chain
 
@@ -88,7 +86,7 @@ def fps_filter(probe):
     filter_chain = []
 
     if probe.video[0]['fps'] != _pre.fps:
-        filter_chain.append('fps={}'.format(_pre.fps))
+        filter_chain.append(f'fps={_pre.fps}')
 
     return filter_chain
 
@@ -102,11 +100,11 @@ def scale_filter(probe):
 
     if int(probe.video[0]['width']) != _pre.w or \
             int(probe.video[0]['height']) != _pre.h:
-        filter_chain.append('scale={}:{}'.format(_pre.w, _pre.h))
+        filter_chain.append(f'scale={_pre.w}:{_pre.h}')
 
     if not math.isclose(probe.video[0]['aspect'],
                         _pre.aspect, abs_tol=0.03):
-        filter_chain.append('setdar=dar={}'.format(_pre.aspect))
+        filter_chain.append(f'setdar=dar={_pre.aspect}')
 
     return filter_chain
 
@@ -118,11 +116,10 @@ def fade_filter(duration, seek, out, track=''):
     filter_chain = []
 
     if seek > 0.0:
-        filter_chain.append('{}fade=in:st=0:d=0.5'.format(track))
+        filter_chain.append(f'{track}fade=in:st=0:d=0.5')
 
     if out != duration:
-        filter_chain.append('{}fade=out:st={}:d=1.0'.format(track,
-                                                            out - seek - 1.0))
+        filter_chain.append(f'{track}fade=out:st={out - seek - 1.0}:d=1.0')
 
     return filter_chain
 
@@ -140,20 +137,18 @@ def overlay_filter(duration, ad, ad_last, ad_next):
         logo_chain = []
         if _pre.logo_scale and \
                 re.match(r'\d+:-?\d+', _pre.logo_scale):
-            scale_filter = 'scale={},'.format(_pre.logo_scale)
-        logo_extras = 'format=rgba,{}colorchannelmixer=aa={}'.format(
-            scale_filter, _pre.logo_opacity)
+            scale_filter = f'scale={_pre.logo_scale},'
+        logo_extras = (f'format=rgba,{scale_filter}'
+                       f'colorchannelmixer=aa={_pre.logo_opacity}')
         loop = 'loop=loop=-1:size=1:start=0'
-        logo_chain.append(
-            'movie={},{},{}'.format(_pre.logo, loop, logo_extras))
+        logo_chain.append(f'movie={_pre.logo},{loop},{logo_extras}')
         if ad_last:
             logo_chain.append('fade=in:st=0:d=1.0:alpha=1')
         if ad_next:
-            logo_chain.append('fade=out:st={}:d=1.0:alpha=1'.format(
-                duration - 1))
+            logo_chain.append(f'fade=out:st={duration - 1}:d=1.0:alpha=1')
 
-        logo_filter = '{}[l];[v][l]{}:shortest=1'.format(
-            ','.join(logo_chain), _pre.logo_filter)
+        logo_filter = (f'{",".join(logo_chain)}[l];[v][l]'
+                       f'{_pre.logo_filter}:shortest=1')
 
     return logo_filter
 
@@ -165,10 +160,9 @@ def add_audio(probe, duration):
     line = []
 
     if not probe.audio:
-        messenger.warning('Clip "{}" has no audio!'.format(probe.src))
-        line = [
-            'aevalsrc=0:channel_layout=2:duration={}:sample_rate={}'.format(
-                duration, 48000)]
+        messenger.warning(f'Clip "{probe.src}" has no audio!')
+        line = [(f'aevalsrc=0:channel_layout=2:duration={duration}:'
+                 f'sample_rate={48000}')]
 
     return line
 
@@ -180,8 +174,8 @@ def add_loudnorm(probe):
     loud_filter = []
 
     if probe.audio and _pre.add_loudnorm:
-        loud_filter = [('loudnorm=I={}:TP={}:LRA={}').format(
-            _pre.loud_i, _pre.loud_tp, _pre.loud_lra)]
+        loud_filter = [
+            f'loudnorm=I={_pre.loud_i}:TP={_pre.loud_tp}:LRA={_pre.loud_lra}']
 
     return loud_filter
 
@@ -194,7 +188,7 @@ def extend_audio(probe, duration):
 
     if probe.audio and 'duration' in probe.audio[0] and \
             duration > float(probe.audio[0]['duration']) + 0.1:
-        pad_filter.append('apad=whole_dur={}'.format(duration))
+        pad_filter.append(f'apad=whole_dur={duration}')
 
     return pad_filter
 
@@ -204,12 +198,11 @@ def extend_video(probe, duration, target_duration):
     check video duration, is it shorter then clip duration - pad it
     """
     pad_filter = []
+    vid_dur = probe.video[0].get('duration')
 
-    if 'duration' in probe.video[0] and \
-        target_duration < duration > float(
-            probe.video[0]['duration']) + 0.1:
-        pad_filter.append('tpad=stop_mode=add:stop_duration={}'.format(
-            duration - float(probe.video[0]['duration'])))
+    if vid_dur and target_duration < duration > float(vid_dur) + 0.1:
+        pad_filter.append(
+            f'tpad=stop_mode=add:stop_duration={duration - float(vid_dur)}')
 
     return pad_filter
 
@@ -218,34 +211,33 @@ def realtime_filter(duration, track=''):
     speed_filter = ''
 
     if _pre.realtime:
-        speed_filter = ',{}realtime=speed=1'.format(track)
+        speed_filter = f',{track}realtime=speed=1'
 
         if _global.time_delta < 0:
             speed = duration / (duration + _global.time_delta)
 
             if speed < 1.1:
-                speed_filter = ',{}realtime=speed={}'.format(track, speed)
+                speed_filter = f',{track}realtime=speed={speed}'
 
     return speed_filter
 
 
 def split_filter(filter_type):
     map_node = []
-    filter_prefix = ''
+    prefix = ''
     _filter = ''
 
     if filter_type == 'a':
-        filter_prefix = 'a'
+        prefix = 'a'
 
     if _pre.output_count > 1:
         for num in range(_pre.output_count):
-            map_node.append('[{}out{}]'.format(filter_type, num + 1))
+            map_node.append(f'[{filter_type}out{num + 1}]')
 
-        _filter = ',{}split={}{}'.format(filter_prefix, _pre.output_count,
-                                         ''.join(map_node))
+        _filter = f',{prefix}split={_pre.output_count}{"".join(map_node)}'
 
     else:
-        _filter = '[{}out1]'.format(filter_type)
+        _filter = f'[{filter_type}out1]'
 
     return _filter
 
@@ -307,7 +299,7 @@ def build_filtergraph(node, node_last, node_next, seek, probe):
             audio_chain += fade_filter(duration, seek, out, 'a')
 
     if video_chain:
-        video_filter = '{}[v]'.format(','.join(video_chain))
+        video_filter = f'{",".join(video_chain)}[v]'
     else:
         video_filter = 'null[v]'
 
@@ -316,15 +308,14 @@ def build_filtergraph(node, node_last, node_next, seek, probe):
     v_split = split_filter('v')
     video_map = ['-map', '[vout1]']
     video_filter = [
-        '-filter_complex', '[0:v]{};{}{}{}'.format(
-            video_filter, logo_filter, v_speed, v_split)]
+        '-filter_complex',
+        f'[0:v]{video_filter};{logo_filter}{v_speed}{v_split}']
 
     a_speed = realtime_filter(out - seek, 'a')
     a_split = split_filter('a')
     audio_map = ['-map', '[aout1]']
     audio_filter = [
-        '-filter_complex', '{}{}{}'.format(','.join(audio_chain),
-                                           a_speed, a_split)]
+        '-filter_complex', f'{",".join(audio_chain)}{a_speed}{a_split}']
 
     if probe.video[0]:
         return video_filter + audio_filter + video_map + audio_map

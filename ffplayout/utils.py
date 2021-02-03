@@ -377,7 +377,7 @@ class Mailer:
             message['To'] = _mail.recip
             message['Subject'] = _mail.subject
             message['Date'] = formatdate(localtime=True)
-            message.attach(MIMEText('{} {}'.format(self.time, msg), 'plain'))
+            message.attach(MIMEText(f'{self.time} {msg}', 'plain'))
             text = message.as_string()
 
             try:
@@ -463,7 +463,7 @@ def is_in_system(name):
     Check whether name is on PATH and marked as executable
     """
     if which(name) is None:
-        messenger.error('{} is not found on system'.format(name))
+        messenger.error(f'{name} is not found on system')
         sys.exit(1)
 
 
@@ -483,7 +483,7 @@ def ffmpeg_libs():
         info = check_output(cmd, stderr=STDOUT).decode('UTF-8')
     except CalledProcessError as err:
         messenger.error('ffmpeg - libs could not be readed!\n'
-                        'Processing is not possible. Error:\n{}'.format(err))
+                        f'Processing is not possible. Error:\n{err}')
         sys.exit(1)
 
     for line in info.split('\n'):
@@ -550,8 +550,7 @@ class MediaProbe:
         try:
             info = json.loads(check_output(cmd).decode('UTF-8'))
         except CalledProcessError as err:
-            messenger.error('MediaProbe error in: "{}"\n {}'.format(self.src,
-                                                                    err))
+            messenger.error(f'MediaProbe error in: "{self.src}"\n{err}')
             self.audio.append(None)
             self.video.append(None)
 
@@ -564,12 +563,12 @@ class MediaProbe:
                 self.audio.append(stream)
 
             if stream['codec_type'] == 'video':
-                if 'display_aspect_ratio' not in stream:
-                    stream['aspect'] = float(
-                        stream['width']) / float(stream['height'])
-                else:
+                if stream.get('display_aspect_ratio'):
                     w, h = stream['display_aspect_ratio'].split(':')
                     stream['aspect'] = float(w) / float(h)
+                else:
+                    stream['aspect'] = float(
+                        stream['width']) / float(stream['height'])
 
                 a, b = stream['r_frame_rate'].split('/')
                 stream['fps'] = float(a) / float(b)
@@ -628,14 +627,11 @@ def ffmpeg_stderr_reader(std_errors, decoder):
     try:
         for line in std_errors:
             if _log.ff_level == 'INFO':
-                logger.info('{}{}'.format(
-                    prefix, line.decode("utf-8").rstrip()))
+                logger.info(f'{prefix}{line.decode("utf-8").rstrip()}')
             elif _log.ff_level == 'WARNING':
-                logger.warning('{}{}'.format(
-                    prefix, line.decode("utf-8").rstrip()))
+                logger.warning(f'{prefix}{line.decode("utf-8").rstrip()}')
             else:
-                logger.error('{}{}'.format(
-                    prefix, line.decode("utf-8").rstrip()))
+                logger.error(f'{prefix}{line.decode("utf-8").rstrip()}')
     except ValueError:
         pass
 
@@ -678,7 +674,7 @@ def is_int(value, default=False):
 
 
 def is_advertisement(node):
-    if 'category' in node and node["category"] == 'advertisement':
+    if node.get('category') == 'advertisement':
         return True
 
 
@@ -690,7 +686,7 @@ def valid_json(file):
         json_object = json.load(file)
         return json_object
     except ValueError:
-        messenger.error("Playlist {} is not JSON conform".format(file))
+        messenger.error(f'Playlist {file} is not JSON conform')
         return None
 
 
@@ -705,8 +701,8 @@ def check_sync(delta):
 
     if _general.stop and abs(delta) > _general.threshold:
         messenger.error(
-            'Sync tolerance value exceeded with {0:.2f} seconds,\n'
-            'program terminated!'.format(delta))
+            f'Sync tolerance value exceeded with {delta:.2f} seconds,\n'
+            'program terminated!')
         terminate_processes()
         sys.exit(1)
 
@@ -718,11 +714,9 @@ def check_length(total_play_time):
     if _playlist.length and total_play_time < _playlist.length - 5 \
             and not stdin_args.loop:
         messenger.error(
-            'Playlist ({}) is not long enough!\n'
-            'Total play time is: {}, target length is: {}'.format(
-                get_date(True),
-                timedelta(seconds=total_play_time),
-                timedelta(seconds=_playlist.length))
+            f'Playlist ({get_date(True)}) is not long enough!\n'
+            f'Total play time is: {timedelta(seconds=total_play_time)}, '
+            f'target length is: {timedelta(seconds=_playlist.length)}'
         )
 
 
@@ -744,26 +738,26 @@ def validate_thread(clip_nodes):
 
             if probe.is_remote:
                 if not probe.video[0]:
-                    missing.append('Stream not exist: "{}"'.format(source))
+                    missing.append(f'Stream not exist: "{source}"')
             elif not os.path.isfile(source):
-                missing.append('File not exist: "{}"'.format(source))
+                missing.append(f'File not exist: "{source}"')
 
             if is_float(node["in"]) and is_float(node["out"]):
                 counter += node["out"] - node["in"]
             else:
-                missing.append('Missing Value in: "{}"'.format(node))
+                missing.append(f'Missing Value in: "{node}"')
 
             if not is_float(node["duration"]):
                 missing.append('No duration Value!')
 
             line = '\n'.join(missing)
             if line:
-                error += line + '\nIn line: {}\n\n'.format(node)
+                error += line + f'\nIn line: {node}\n\n'
 
         if error:
             messenger.error(
                 'Validation error, check JSON playlist, '
-                'values are missing:\n{}'.format(error)
+                f'values are missing:\n{error}'
             )
 
         check_length(counter)
@@ -796,9 +790,8 @@ def set_length(duration, seek, out):
 def loop_input(source, src_duration, target_duration):
     # loop filles n times
     loop_count = math.ceil(target_duration / src_duration)
-    messenger.info(
-        'Loop "{0}" {1} times, total duration: {2:.2f}'.format(
-            source, loop_count, target_duration))
+    messenger.info(f'Loop "{source}" {loop_count} times, '
+                   f'total duration: {target_duration:.2f}')
     return ['-stream_loop', str(loop_count),
             '-i', source, '-t', str(target_duration)]
 
@@ -812,11 +805,9 @@ def gen_dummy(duration):
     # noise = 'noise=alls=50:allf=t+u,hue=s=0'
     return [
         '-f', 'lavfi', '-i',
-        'color=c={}:s={}x{}:d={}:r={},format=pix_fmts=yuv420p'.format(
-            color, _pre.w, _pre.h, duration, _pre.fps
-        ),
-        '-f', 'lavfi', '-i', 'anoisesrc=d={}:c=pink:r=48000:a=0.05'.format(
-            duration)
+        f'color=c={color}:s={_pre.w}x{_pre.h}:d={duration}:r={_pre.fps},'
+        'format=pix_fmts=yuv420p',
+        '-f', 'lavfi', '-i', f'anoisesrc=d={duration}:c=pink:r=48000:a=0.05'
     ]
 
 
@@ -828,12 +819,12 @@ def gen_filler(duration):
     probe.load(_storage.filler)
 
     if probe.format:
-        if 'duration' in probe.format:
+        if probe.format.get('duration'):
             filler_duration = float(probe.format['duration'])
             if filler_duration > duration:
                 # cut filler
                 messenger.info(
-                    'Generate filler with {0:.2f} seconds'.format(duration))
+                    f'Generate filler with {duration:.2f} seconds')
                 return probe, ['-i', _storage.filler] + set_length(
                     filler_duration, 0, duration)
             else:
@@ -860,13 +851,13 @@ def src_or_dummy(probe, src, dur, seek, out):
     if probe.is_remote and probe.video[0]:
         if seek > 0.0:
             messenger.warning(
-                'Seek in live source "{}" not supported!'.format(src))
+                f'Seek in live source "{src}" not supported!')
         return ['-i', src] + set_length(86400.0, seek, out)
     elif src and os.path.isfile(src):
         if out > dur:
             if seek > 0.0:
                 messenger.warning(
-                    'Seek in looped source "{}" not supported!'.format(src))
+                    f'Seek in looped source "{src}" not supported!')
                 return ['-i', src] + set_length(dur, seek, out - seek)
             else:
                 # FIXME: when list starts with looped clip,
@@ -875,7 +866,7 @@ def src_or_dummy(probe, src, dur, seek, out):
         else:
             return seek_in(seek) + ['-i', src] + set_length(dur, seek, out)
     else:
-        messenger.error('Clip/URL not exist:\n{}'.format(src))
+        messenger.error(f'Clip/URL not exist:\n{src}')
         return gen_dummy(out - seek)
 
 
@@ -944,30 +935,27 @@ def handle_list_end(probe, new_length, src, begin, dur, seek, out):
     if new_out > dur:
         new_out = dur
     else:
-        messenger.info(
-            'We are over time, new length is: {0:.2f}'.format(new_length))
+        messenger.info(f'We are over time, new length is: {new_length:.2f}')
 
     missing_secs = abs(new_length - (dur - seek))
 
     if dur > new_length > 1.5 and dur - seek >= new_length:
         src_cmd = src_or_dummy(probe, src, dur, seek, new_out)
     elif dur > new_length > 0.0:
-        messenger.info(
-            'Last clip less then 1.5 second long, skip:\n{}'.format(src))
+        messenger.info(f'Last clip less then 1.5 second long, skip:\n{src}')
         src_cmd = None
 
         if missing_secs > 2:
             new_playlist = False
             messenger.error(
-                'Reach playlist end,\n{0:.2f} seconds needed.'.format(
-                    missing_secs))
+                f'Reach playlist end,\n{missing_secs:.2f} seconds needed.')
     else:
         new_out = out
         new_playlist = False
         src_cmd = src_or_dummy(probe, src, dur, seek, out)
         messenger.error(
-            'Playlist is not long enough:'
-            '\n{0:.2f} seconds needed.'.format(missing_secs))
+            f'Playlist is not long enough:\n{missing_secs:.2f} seconds needed.'
+            )
 
     return src_cmd, seek, new_out, new_playlist
 
@@ -987,14 +975,14 @@ def timed_source(probe, src, begin, dur, seek, out, first, last):
             return src_or_dummy(probe, src, dur, _seek, _out), \
                 _seek, _out, new_list
         else:
-            messenger.warning('Clip less then a second, skip:\n{}'.format(src))
+            messenger.warning(f'Clip less then a second, skip:\n{src}')
             return None, 0, 0, True
 
     else:
         if not stdin_args.loop and _playlist.length:
             check_sync(current_delta)
-            messenger.debug('current_delta: {:f}'.format(current_delta))
-            messenger.debug('total_delta: {:f}'.format(total_delta))
+            messenger.debug(f'current_delta: {current_delta:f}')
+            messenger.debug(f'total_delta: {total_delta:f}')
 
         if (total_delta > out - seek and not last) \
                 or stdin_args.loop or not _playlist.length:
@@ -1002,8 +990,7 @@ def timed_source(probe, src, begin, dur, seek, out, first, last):
             return src_or_dummy(probe, src, dur, seek, out), seek, out, False
 
         elif total_delta <= 0:
-            messenger.info(
-                'Start time is over playtime, skip clip:\n{}'.format(src))
+            messenger.info(f'Start time is over playtime, skip clip:\n{src}')
             return None, 0, 0, True
 
         elif total_delta < out - seek or last:

@@ -52,7 +52,7 @@ class MediaStore:
     def fill(self):
         for ext in _storage.extensions:
             self.store.extend(
-                glob.glob(os.path.join(self.folder, '**', '*{}'.format(ext)),
+                glob.glob(os.path.join(self.folder, '**', f'*{ext}'),
                           recursive=True))
 
         if _storage.shuffle:
@@ -84,7 +84,7 @@ class MediaWatcher:
 
     def __init__(self, media):
         self._media = media
-        self.extensions = ['*{}'.format(ext) for ext in _storage.extensions]
+        self.extensions = [f'*{ext}' for ext in _storage.extensions]
 
         self.event_handler = PatternMatchingEventHandler(
             patterns=self.extensions)
@@ -107,14 +107,14 @@ class MediaWatcher:
 
         self._media.add(event.src_path)
 
-        messenger.info('Add file to media list: "{}"'.format(event.src_path))
+        messenger.info(f'Add file to media list: "{event.src_path}"')
 
     def on_moved(self, event):
         self._media.remove(event.src_path)
         self._media.add(event.dest_path)
 
-        messenger.info('Move file from "{}" to "{}"'.format(event.src_path,
-                                                            event.dest_path))
+        messenger.info(
+            f'Move file from "{event.src_path}" to "{event.dest_path}"')
 
         if _current.clip == event.src_path:
             _ff.decoder.terminate()
@@ -122,8 +122,7 @@ class MediaWatcher:
     def on_deleted(self, event):
         self._media.remove(event.src_path)
 
-        messenger.info(
-            'Remove file from media list: "{}"'.format(event.src_path))
+        messenger.info(f'Remove file from media list: "{event.src_path}"')
 
         if _current.clip == event.src_path:
             _ff.decoder.terminate()
