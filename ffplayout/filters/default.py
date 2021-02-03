@@ -23,7 +23,8 @@ import re
 from glob import glob
 from pydoc import locate
 
-from ffplayout.utils import _global, _pre, _text
+from ffplayout.utils import (_global, _pre, _text, is_advertisement, is_float,
+                             messenger)
 
 # ------------------------------------------------------------------------------
 # building filters,
@@ -157,14 +158,14 @@ def overlay_filter(duration, ad, ad_last, ad_next):
     return logo_filter
 
 
-def add_audio(probe, duration, msg):
+def add_audio(probe, duration):
     """
     when clip has no audio we generate an audio line
     """
     line = []
 
     if not probe.audio:
-        msg.warning('Clip "{}" has no audio!'.format(probe.src))
+        messenger.warning('Clip "{}" has no audio!'.format(probe.src))
         line = [
             'aevalsrc=0:channel_layout=2:duration={}:sample_rate={}'.format(
                 duration, 48000)]
@@ -264,11 +265,17 @@ def custom_filter(probe, type, node):
     return filters
 
 
-def build_filtergraph(node, duration, seek, out,
-                      ad, ad_last, ad_next, probe, msg):
+def build_filtergraph(node, node_last, node_next, seek, probe):
     """
     build final filter graph, with video and audio chain
     """
+
+    duration = is_float(node['duration'], 20)
+    out = is_float(node['out'], duration)
+    ad = is_advertisement(node)
+    ad_last = is_advertisement(node_last)
+    ad_next = is_advertisement(node_next)
+
     video_chain = []
     audio_chain = []
 
@@ -287,7 +294,7 @@ def build_filtergraph(node, duration, seek, out,
             video_chain += custom_v_filter
         video_chain += fade_filter(duration, seek, out)
 
-        audio_chain += add_audio(probe, out - seek, msg)
+        audio_chain += add_audio(probe, out - seek)
 
         if not audio_chain:
             custom_a_filter = custom_filter(probe, 'a', node)
