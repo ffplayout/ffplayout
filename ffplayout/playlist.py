@@ -110,22 +110,6 @@ class GetSourceFromPlaylist:
         else:
             self.clip_nodes = None
 
-    def get_clip_in_out(self, node):
-        if is_float(node['in']):
-            self.seek = node['in']
-        else:
-            self.seek = 0
-
-        if is_float(node['duration']):
-            self.duration = node['duration']
-        else:
-            self.duration = 20
-
-        if is_float(node['out']):
-            self.out = node['out']
-        else:
-            self.out = self.duration
-
     def get_input(self):
         self.src_cmd, self.seek, self.out, self.next_playlist = timed_source(
             self.probe, self.src, self.begin, self.duration,
@@ -215,7 +199,9 @@ class GetSourceFromPlaylist:
 
             # loop through all clips in playlist and get correct clip in time
             for index, self.node in enumerate(self.clip_nodes['program']):
-                self.get_clip_in_out(self.node)
+                self.seek = is_float(self.node['in'], 0)
+                self.duration = is_float(self.node['duration'], 20)
+                self.out = is_float(self.node['out'], self.duration)
 
                 # first time we end up here
                 if self.first and \
