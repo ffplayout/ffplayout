@@ -648,9 +648,12 @@ def get_date(seek_day):
     """
     d = date.today()
     if seek_day and get_time('full_sec') < _playlist.start:
-        yesterday = d - timedelta(1)
-        return yesterday.strftime('%Y-%m-%d')
+        return (d - timedelta(1)).strftime('%Y-%m-%d')
     else:
+        if _playlist.start == 0 and \
+                math.isclose(get_time('full_sec'), 86400.0, abs_tol=4):
+            return (d + timedelta(1)).strftime('%Y-%m-%d')
+
         return d.strftime('%Y-%m-%d')
 
 
