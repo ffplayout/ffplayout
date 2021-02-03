@@ -657,26 +657,29 @@ def get_date(seek_day):
         return d.strftime('%Y-%m-%d')
 
 
-def is_float(value):
+def is_float(value, default=False):
     """
     test if value is float
     """
     try:
-        float(value)
-        return True
+        return float(value)
     except (ValueError, TypeError):
-        return False
+        return default
 
 
-def is_int(value):
+def is_int(value, default=False):
     """
     test if value is int
     """
     try:
-        int(value)
-        return True
+        return int(value)
     except ValueError:
-        return False
+        return default
+
+
+def is_advertisement(node):
+    if 'category' in node and node["category"] == 'advertisement':
+        return True
 
 
 def valid_json(file):
