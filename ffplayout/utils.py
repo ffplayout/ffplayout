@@ -27,6 +27,8 @@ import smtplib
 import socket
 import sys
 import tempfile
+import time
+import urllib
 from argparse import ArgumentParser
 from datetime import date, datetime, timedelta
 from email.mime.multipart import MIMEMultipart
@@ -39,6 +41,7 @@ from subprocess import STDOUT, CalledProcessError, check_output
 from threading import Thread
 from types import SimpleNamespace
 
+import requests
 import yaml
 
 # path to user define configs
@@ -550,6 +553,8 @@ class MediaProbe:
         self.video = []
 
         if self.src and self.src.split('://')[0] in self.remote_source:
+            url = self.src.split('://')
+            self.src = f'{url[0]}://{urllib.parse.quote(url[1])}'
             self.is_remote = True
         else:
             self.is_remote = False
@@ -747,7 +752,7 @@ def validate_thread(clip_nodes):
 
             if probe.is_remote:
                 if not probe.video[0]:
-                    missing.append(f'Stream not exist: "{source}"')
+                    missing.append(f'Remote file not exist: "{source}"')
             elif not os.path.isfile(source):
                 missing.append(f'File not exist: "{source}"')
 
@@ -863,7 +868,7 @@ def src_or_dummy(probe, src, dur, seek, out):
     if probe.is_remote and probe.video[0]:
         if seek > 0.0:
             messenger.warning(
-                f'Seek in live source "{src}" not supported!')
+                f'Seek in remote source "{src}" not supported!')
         return ['-i', src] + set_length(86400.0, seek, out)
     elif src and os.path.isfile(src):
         if out > dur:
@@ -970,6 +975,51 @@ def handle_list_end(probe, new_length, src, begin, dur, seek, out):
             )
 
     return src_cmd, seek, new_out, new_playlist
+
+
+def read_playlist(list_date, modification_time, clip_nodes):
+    """
+    read playlists from remote url or local file
+    and give his nodes and modification time back
+    """
+
+    if stdin_args.playlist:
+        json_file = stdin_args.playlist
+    else:
+        year, month, day = list_date.split('-')
+        json_file = os.path.join(_playlist.path, year, month,
+                                 f'{list_date}.json')
+
+    if '://' in json_file:
+        json_file = json_file.replace('\\', '/')
+
+        try:
+            result = requests.get(json_file, timeout=1, verify=False)
+            b_time = result.headers['last-modified']
+            temp_time = time.strptime(b_time, "%a, %d %b %Y %H:%M:%S %Z")
+            mod_time = time.mktime(temp_time)
+
+            if mod_time > modification_time:
+                if isinstance(result.json(), dict):
+                    clip_nodes = result.json()
+                modification_time = mod_time
+                messenger.info('Open: ' + json_file)
+                validate_thread(clip_nodes)
+        except (requests.exceptions.ConnectionError, socket.timeout):
+            messenger.error(f'No valid playlist from url: {json_file}')
+
+    elif os.path.isfile(json_file):
+        # check last modification from playlist
+        mod_time = os.path.getmtime(json_file)
+        if mod_time > modification_time:
+            with open(json_file, 'r', encoding='utf-8') as f:
+                clip_nodes = valid_json(f)
+
+            modification_time = mod_time
+            messenger.info('Open: ' + json_file)
+            validate_thread(clip_nodes)
+
+    return clip_nodes, modification_time
 
 
 def timed_source(probe, src, begin, dur, seek, out, first, last):

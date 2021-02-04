@@ -17,16 +17,10 @@
 
 # ------------------------------------------------------------------------------
 
-import os
-import socket
-import ssl
-import time
-from urllib import request
-
 from .filters.default import build_filtergraph
 from .utils import (MediaProbe, _playlist, gen_filler, get_date, get_delta,
-                    get_float, get_time, messenger, stdin_args, timed_source,
-                    valid_json, validate_thread)
+                    get_float, get_time, messenger, read_playlist, stdin_args,
+                    timed_source)
 
 
 class GetSourceFromPlaylist:
@@ -37,6 +31,7 @@ class GetSourceFromPlaylist:
     """
 
     def __init__(self):
+        self.list_date = get_date(True)
         self.init_time = _playlist.start
         self.last_time = get_time('full_sec')
 
@@ -49,15 +44,12 @@ class GetSourceFromPlaylist:
             self.last_time += self.total_playtime
 
         self.last_mod_time = 0.0
-        self.json_file = None
         self.clip_nodes = None
         self.src_cmd = None
         self.probe = MediaProbe()
         self.filtergraph = []
         self.first = True
         self.last = False
-        self.list_date = get_date(True)
-
         self.node = None
         self.node_last = None
         self.node_next = None
@@ -66,49 +58,11 @@ class GetSourceFromPlaylist:
         self.seek = 0
         self.out = 20
         self.duration = 20
-        self.ad = False
-        self.ad_last = False
-        self.ad_next = False
 
     def get_playlist(self):
-        if stdin_args.playlist:
-            self.json_file = stdin_args.playlist
-        else:
-            year, month, day = self.list_date.split('-')
-            self.json_file = os.path.join(
-             _playlist.path, year, month, self.list_date + '.json')
-
-        if '://' in self.json_file:
-            self.json_file = self.json_file.replace('\\', '/')
-
-            try:
-                req = request.urlopen(self.json_file,
-                                      timeout=1,
-                                      context=ssl._create_unverified_context())
-                b_time = req.headers['last-modified']
-                temp_time = time.strptime(b_time, "%a, %d %b %Y %H:%M:%S %Z")
-                mod_time = time.mktime(temp_time)
-
-                if mod_time > self.last_mod_time:
-                    self.clip_nodes = valid_json(req)
-                    self.last_mod_time = mod_time
-                    messenger.info('Open: ' + self.json_file)
-                    validate_thread(self.clip_nodes)
-            except (request.URLError, socket.timeout):
-                self.eof_handling('Get playlist from url failed!', False)
-
-        elif os.path.isfile(self.json_file):
-            # check last modification from playlist
-            mod_time = os.path.getmtime(self.json_file)
-            if mod_time > self.last_mod_time:
-                with open(self.json_file, 'r', encoding='utf-8') as f:
-                    self.clip_nodes = valid_json(f)
-
-                self.last_mod_time = mod_time
-                messenger.info('Open: ' + self.json_file)
-                validate_thread(self.clip_nodes)
-        else:
-            self.clip_nodes = None
+        self.clip_nodes, self.last_mod_time = read_playlist(self.list_date,
+                                                            self.last_mod_time,
+                                                            self.clip_nodes)
 
     def get_input(self):
         self.src_cmd, self.seek, self.out, self.next_playlist = timed_source(
@@ -145,11 +99,8 @@ class GetSourceFromPlaylist:
             self.last_mod_time = 0.0
             self.last_time = _playlist.start - 1
 
-    def eof_handling(self, message, fill, duration=None):
+    def eof_handling(self, fill, duration=None):
         self.seek = 0.0
-        self.ad = False
-
-        messenger.error(message)
 
         if duration:
             self.out = duration
@@ -177,8 +128,8 @@ class GetSourceFromPlaylist:
 
     def peperation_task(self, index):
         # call functions in order to prepare source and filter
-        self.src = self.node['source']
-        self.probe.load(self.src)
+        self.probe.load(self.node.get('source'))
+        self.src = self.probe.src
 
         self.get_input()
         self.last_and_next_node(index)
@@ -190,8 +141,9 @@ class GetSourceFromPlaylist:
             self.get_playlist()
 
             if self.clip_nodes is None:
-                self.eof_handling(
-                    f'No valid playlist:\n{self.json_file}', True, 30)
+                self.node = {'in': 0, 'out': 30, 'duration': 30}
+                messenger.error('clip_nodes are empty')
+                self.eof_handling(True, 30)
                 yield self.src_cmd + self.filtergraph
                 continue
 
@@ -231,10 +183,12 @@ class GetSourceFromPlaylist:
                     return None
                 elif self.begin == self.init_time:
                     # no clip was played, generate dummy
-                    self.eof_handling('Playlist is empty!', False)
+                    messenger.error('Playlist is empty!')
+                    self.eof_handling(False)
                 else:
                     # playlist is not long enough, play filler
-                    self.eof_handling('Playlist is not long enough!', True)
+                    messenger.error('Playlist is not long enough!')
+                    self.eof_handling(True)
 
             if self.src_cmd is not None:
                 yield self.src_cmd + self.filtergraph
