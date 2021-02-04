@@ -25,7 +25,7 @@ from urllib import request
 
 from .filters.default import build_filtergraph
 from .utils import (MediaProbe, _playlist, gen_filler, get_date, get_delta,
-                    get_time, is_float, messenger, stdin_args, timed_source,
+                    get_float, get_time, messenger, stdin_args, timed_source,
                     valid_json, validate_thread)
 
 
@@ -58,6 +58,9 @@ class GetSourceFromPlaylist:
         self.last = False
         self.list_date = get_date(True)
 
+        self.node = None
+        self.node_last = None
+        self.node_next = None
         self.src = None
         self.begin = 0
         self.seek = 0
@@ -107,61 +110,26 @@ class GetSourceFromPlaylist:
         else:
             self.clip_nodes = None
 
-    def get_clip_in_out(self, node):
-        if is_float(node["in"]):
-            self.seek = node["in"]
-        else:
-            self.seek = 0
-
-        if is_float(node["duration"]):
-            self.duration = node["duration"]
-        else:
-            self.duration = 20
-
-        if is_float(node["out"]):
-            self.out = node["out"]
-        else:
-            self.out = self.duration
-
     def get_input(self):
         self.src_cmd, self.seek, self.out, self.next_playlist = timed_source(
             self.probe, self.src, self.begin, self.duration,
             self.seek, self.out, self.first, self.last
         )
 
-    def get_category(self, index, node):
-        if 'category' in node:
-            if index - 1 >= 0:
-                last_category = self.clip_nodes[
-                    "program"][index - 1]["category"]
-            else:
-                last_category = 'noad'
+    def last_and_next_node(self, index):
+        if index - 1 >= 0:
+            self.node_last = self.clip_nodes['program'][index - 1]
+        else:
+            self.node_last = None
 
-            if index + 2 <= len(self.clip_nodes["program"]):
-                next_category = self.clip_nodes[
-                    "program"][index + 1]["category"]
-            else:
-                next_category = 'noad'
-
-            if node["category"] == 'advertisement':
-                self.ad = True
-            else:
-                self.ad = False
-
-            if last_category == 'advertisement':
-                self.ad_last = True
-            else:
-                self.ad_last = False
-
-            if next_category == 'advertisement':
-                self.ad_next = True
-            else:
-                self.ad_next = False
+        if index + 2 <= len(self.clip_nodes['program']):
+            self.node_next = self.clip_nodes['program'][index + 1]
+        else:
+            self.node_next = None
 
     def set_filtergraph(self):
         self.filtergraph = build_filtergraph(
-            self.duration, self.seek, self.out, self.ad, self.ad_last,
-            self.ad_next, self.probe, messenger)
+            self.node, self.node_last, self.node_next, self.seek, self.probe)
 
     def check_for_next_playlist(self):
         if not self.next_playlist:
@@ -207,13 +175,13 @@ class GetSourceFromPlaylist:
 
         self.last = False
 
-    def peperation_task(self, index, node):
+    def peperation_task(self, index):
         # call functions in order to prepare source and filter
-        self.src = node["source"]
+        self.src = self.node['source']
         self.probe.load(self.src)
 
         self.get_input()
-        self.get_category(index, node)
+        self.last_and_next_node(index)
         self.set_filtergraph()
         self.check_for_next_playlist()
 
@@ -223,30 +191,32 @@ class GetSourceFromPlaylist:
 
             if self.clip_nodes is None:
                 self.eof_handling(
-                    'No valid playlist:\n{}'.format(self.json_file), True, 30)
+                    f'No valid playlist:\n{self.json_file}', True, 30)
                 yield self.src_cmd + self.filtergraph
                 continue
 
             self.begin = self.init_time
 
             # loop through all clips in playlist and get correct clip in time
-            for index, node in enumerate(self.clip_nodes["program"]):
-                self.get_clip_in_out(node)
+            for index, self.node in enumerate(self.clip_nodes['program']):
+                self.seek = get_float(self.node['in'], 0)
+                self.duration = get_float(self.node['duration'], 20)
+                self.out = get_float(self.node['out'], self.duration)
 
                 # first time we end up here
                 if self.first and \
                         self.last_time < self.begin + self.out - self.seek:
 
-                    self.peperation_task(index, node)
+                    self.peperation_task(index)
                     self.first = False
                     break
                 elif self.last_time < self.begin:
-                    if index + 1 == len(self.clip_nodes["program"]):
+                    if index + 1 == len(self.clip_nodes['program']):
                         self.last = True
                     else:
                         self.last = False
 
-                    self.peperation_task(index, node)
+                    self.peperation_task(index)
                     break
 
                 self.begin += self.out - self.seek
