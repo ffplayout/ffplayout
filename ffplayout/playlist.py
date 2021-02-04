@@ -25,7 +25,7 @@ from urllib import request
 
 from .filters.default import build_filtergraph
 from .utils import (MediaProbe, _playlist, gen_filler, get_date, get_delta,
-                    get_time, is_float, messenger, stdin_args, timed_source,
+                    get_float, get_time, messenger, stdin_args, timed_source,
                     valid_json, validate_thread)
 
 
@@ -199,9 +199,9 @@ class GetSourceFromPlaylist:
 
             # loop through all clips in playlist and get correct clip in time
             for index, self.node in enumerate(self.clip_nodes['program']):
-                self.seek = is_float(self.node['in'], 0)
-                self.duration = is_float(self.node['duration'], 20)
-                self.out = is_float(self.node['out'], self.duration)
+                self.seek = get_float(self.node['in'], 0)
+                self.duration = get_float(self.node['duration'], 20)
+                self.out = get_float(self.node['out'], self.duration)
 
                 # first time we end up here
                 if self.first and \
