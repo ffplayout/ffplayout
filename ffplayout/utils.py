@@ -32,6 +32,7 @@ from datetime import date, datetime, timedelta
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import formatdate
+from glob import glob
 from logging.handlers import TimedRotatingFileHandler
 from shutil import which
 from subprocess import STDOUT, CalledProcessError, check_output
@@ -40,13 +41,15 @@ from types import SimpleNamespace
 
 import yaml
 
+# path to user define configs
+CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                           'config')
+
 # ------------------------------------------------------------------------------
 # argument parsing
 # ------------------------------------------------------------------------------
 
-stdin_parser = ArgumentParser(
-    description='python and ffmpeg based playout',
-    epilog="don't use parameters if you want to use this settings from config")
+stdin_parser = ArgumentParser(description='python and ffmpeg based playout')
 
 stdin_parser.add_argument(
     '-c', '--config', help='file path to ffplayout.conf'
@@ -81,6 +84,19 @@ stdin_parser.add_argument(
     '-t', '--length',
     help='set length in "hh:mm:ss", "none" for no length check'
 )
+
+# read dynamical new arguments
+for arg_file in glob(os.path.join(CONFIG_PATH, 'argparse_*')):
+    with open(arg_file, 'r') as _file:
+        config = yaml.safe_load(_file)
+
+    short = config.pop('short') if config.get('short') else None
+    long = config.pop('long') if config.get('long') else None
+
+    stdin_parser.add_argument(
+        *filter(None, [short, long]),
+        **config
+    )
 
 stdin_args = stdin_parser.parse_args()
 
@@ -270,7 +286,7 @@ class CustomFormatter(logging.Formatter):
     }
 
     def format_message(self, msg):
-        if '"' in msg and '[' in msg:
+        if '"' in msg:
             msg = re.sub('(".*?")', self.cyan + r'\1' + self.reset, msg)
         elif '[decoder]' in msg:
             msg = re.sub(r'(\[decoder\])', self.reset + r'\1', msg)
@@ -653,7 +669,7 @@ def get_date(seek_day):
         return d.strftime('%Y-%m-%d')
 
 
-def is_float(value, default=False):
+def get_float(value, default=False):
     """
     test if value is float
     """
@@ -663,18 +679,8 @@ def is_float(value, default=False):
         return default
 
 
-def is_int(value, default=False):
-    """
-    test if value is int
-    """
-    try:
-        return int(value)
-    except ValueError:
-        return default
-
-
 def is_advertisement(node):
-    if node.get('category') == 'advertisement':
+    if node and node.get('category') == 'advertisement':
         return True
 
 
@@ -735,6 +741,9 @@ def validate_thread(clip_nodes):
             source = node["source"]
             probe.load(source)
             missing = []
+            _in = get_float(node.get('in'), 0)
+            _out = get_float(node.get('out'), 0)
+            duration = get_float(node.get('duration'), 0)
 
             if probe.is_remote:
                 if not probe.video[0]:
@@ -742,13 +751,16 @@ def validate_thread(clip_nodes):
             elif not os.path.isfile(source):
                 missing.append(f'File not exist: "{source}"')
 
-            if is_float(node["in"]) and is_float(node["out"]):
-                counter += node["out"] - node["in"]
-            else:
-                missing.append(f'Missing Value in: "{node}"')
+            if not node.get('in') == 0 and not _in:
+                missing.append(f'No in Value in: "{node}"')
 
-            if not is_float(node["duration"]):
-                missing.append('No duration Value!')
+            if not node.get('out') and not _out:
+                missing.append(f'No out Value in: "{node}"')
+
+            if not node.get('duration') and not duration:
+                missing.append(f'No duration Value in: "{node}"')
+
+            counter += _out - _in
 
             line = '\n'.join(missing)
             if line:
