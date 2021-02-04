@@ -61,7 +61,7 @@ export default {
         formatStr (text) {
             return text
                 .replace(/(".*")/g, '<span class="log-cmd">$1</span>')
-                .replace(/(\/.*)/g, '<span class="log-path">$1</span>')
+                .replace(/(?<!".*)(\/.*)/g, '<span class="log-path">$1</span>')
                 .replace(/(\/[\w\d.\-/]+\n)/g, '<span class="log-path">$1</span>')
                 .replace(/((tcp|https?):\/\/[\w\d.:]+)/g, '<span class="log-url">$1</span>')
                 .replace(/(\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}[0-9,.]+\])/g, '<span class="log-time">$1</span>')
