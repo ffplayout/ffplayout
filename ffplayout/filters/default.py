@@ -262,8 +262,8 @@ def build_filtergraph(node, node_last, node_next, seek, probe):
     build final filter graph, with video and audio chain
     """
 
-    duration = get_float(node['duration'], 20)
-    out = get_float(node['out'], duration)
+    duration = get_float(node.get('duration'), 20)
+    out = get_float(node.get('out'), duration)
     ad = is_advertisement(node)
     ad_last = is_advertisement(node_last)
     ad_next = is_advertisement(node_next)
