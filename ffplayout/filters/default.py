@@ -23,7 +23,7 @@ import re
 from glob import glob
 from pydoc import locate
 
-from ffplayout.utils import (_global, _pre, _text, is_advertisement, is_float,
+from ffplayout.utils import (_global, _pre, _text, get_float, is_advertisement,
                              messenger)
 
 # ------------------------------------------------------------------------------
@@ -262,8 +262,8 @@ def build_filtergraph(node, node_last, node_next, seek, probe):
     build final filter graph, with video and audio chain
     """
 
-    duration = is_float(node['duration'], 20)
-    out = is_float(node['out'], duration)
+    duration = get_float(node['duration'], 20)
+    out = get_float(node['out'], duration)
     ad = is_advertisement(node)
     ad_last = is_advertisement(node_last)
     ad_next = is_advertisement(node_next)
