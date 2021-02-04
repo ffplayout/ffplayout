@@ -37,6 +37,8 @@ The purpose with ffplayout is to provide a 24/7 broadcasting solution that plays
   - **aevalsrc** (if video have no audio)
   - **apad** (add silence if audio duration is to short)
   - **tpad** (add black frames if video duration is to short)
+- add custom [filters](https://github.com/ffplayout/ffplayout-engine/tree/master/ffplayout/filters)
+- add custom [arguments](https://github.com/ffplayout/ffplayout-engine/tree/master/ffplayout/config)
 - different types of [output](https://github.com/ffplayout/ffplayout-engine/wiki/Outputs):
   - **stream**
   - **desktop**
@@ -49,6 +51,7 @@ Requirements
 - python version 3.6+
 - python module **watchdog** (only when `playlist_mode: False`)
 - python module **colorama** if you are on windows
+- python modules **PyYAML**, **requests**, **supervisor**
 - **ffmpeg v4.2+** and **ffprobe** (**ffplay** if you want to play on desktop)
 - if you want to overlay text, ffmpeg needs to have **libzmq**
 - RAM and CPU depends on video resolution, minimum 4 threads and 3GB RAM for 720p are recommend
@@ -122,10 +125,10 @@ Start with Arguments
 ffplayout also allows the passing of parameters:
 
 - `-c, --config` use given config file
-- `-d, --desktop` preview on desktop
 - `-f, --folder` use folder for playing
 - `-l, --log` for user-defined log path, *none* for console output
 - `-i, --loop` loop playlist infinitely
+- `-m, --mode` set output mode: desktop, hls, stream, ...
 - `-p, --playlist` for playlist file
 - `-s, --start` set start time in *hh:mm:ss*, *now* for start with first'
 - `-t, --length` set length in *hh:mm:ss*, *none* for no length check
@@ -133,10 +136,5 @@ ffplayout also allows the passing of parameters:
 You can run the command like:
 
 ```SHELL
-./ffplayout.py -l none -p ~/playlist.json -d -s now -t none
+./ffplayout.py -l none -p ~/playlist.json -d -s now -t none -m desktop
 ```
-
-Play on Desktop
------
-
-For playing on desktop use `-d` argument or set `mode: 'desktop'` in config under `out:`.

@@ -41,7 +41,7 @@ def main():
     """
 
     if stdin_args.mode:
-        output = locate('ffplayout.output.{}.output'.format(stdin_args.mode))
+        output = locate(f'ffplayout.output.{stdin_args.mode}.output')
         output()
 
     else:
@@ -54,7 +54,7 @@ def main():
                 mode = os.path.splitext(output)[0]
 
                 if mode == _playout.mode:
-                    output = locate('ffplayout.output.{}.output'.format(mode))
+                    output = locate(f'ffplayout.output.{mode}.output')
                     output()
 
 

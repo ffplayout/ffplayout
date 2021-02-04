@@ -1,0 +1,3 @@
+short: -v
+long: --volume
+help: set audio volume
