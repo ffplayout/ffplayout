@@ -2,3 +2,4 @@ watchdog
 colorama
 pyyaml
 requests
+supervisor
