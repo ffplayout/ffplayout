@@ -55,7 +55,7 @@
 
 .duration {
     float: right;
-    margin-right: 1em;
+    margin-right: .5em;
 }
 
 .form-control, .tags-list ul li div input, .custom-select, .custom-control-label::before {
@@ -152,7 +152,11 @@
     padding: 0 10px 0 0;
 }
 
-.browser-div .ps {
+.player-browser-scroll {
+    height: calc(100% - 50px);
+}
+
+.browser-div .media-browser-scroll {
     height: 100%;
 }
 

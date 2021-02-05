@@ -77,7 +77,7 @@ export const actions = {
         let begin
         let lastTime = this.$timeToSeconds(this.$dayjs().format('HH:mm:ss'))
 
-        if (rootState.config.startInSec) {
+        if (Number.isFinite(rootState.config.startInSec)) {
             begin = rootState.config.startInSec
         } else {
             commit('SET_CURRENT_CLIP', 'day_start is not set, cannot calculate current clip')
