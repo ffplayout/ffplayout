@@ -118,7 +118,7 @@ def fade_filter(duration, seek, out, track=''):
     if seek > 0.0:
         filter_chain.append(f'{track}fade=in:st=0:d=0.5')
 
-    if out != duration:
+    if out != duration and out > seek - 1.0:
         filter_chain.append(f'{track}fade=out:st={out - seek - 1.0}:d=1.0')
 
     return filter_chain
