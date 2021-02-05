@@ -53,6 +53,7 @@ class GetSourceFromPlaylist:
         self.node = None
         self.node_last = None
         self.node_next = None
+        self.next_playlist = False
         self.src = None
         self.begin = 0
         self.seek = 0
