@@ -90,6 +90,9 @@ JSON Playlist Example
 }
 ```
 
+**If you need a simple playlist generator check:** [playlist-generator](https://github.com/ffplayout/playlist-generator)
+
+
 **Warning**
 -----
 
