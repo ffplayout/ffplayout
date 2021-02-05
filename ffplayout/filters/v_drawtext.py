@@ -17,5 +17,5 @@ def filter(probe, node=None):
         font = f":fontfile='{_text.fontfile}'"
 
     if _text.text_from_filename:
-        escape = title.replace("'", "'\\\\\\''")
+        escape = title.replace("'", "'\\\\\\''").replace("%", "\\\\\\%")
         return f"drawtext=text='{escape}':{_text.style}{font}"
