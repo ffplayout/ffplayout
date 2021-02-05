@@ -122,7 +122,7 @@
                             </b-breadcrumb>
                         </div>
 
-                        <perfect-scrollbar>
+                        <perfect-scrollbar :options="scrollOP" class="player-browser-scroll">
                             <b-list-group>
                                 <b-list-group-item
                                     v-for="folder in folderTree.tree[1]"
@@ -336,7 +336,10 @@ export default {
             videoOptions: {},
             previewOptions: {},
             previewComp: null,
-            previewSource: ''
+            previewSource: '',
+            scrollOP: {
+                suppressScrollX: true
+            }
         }
     },
 

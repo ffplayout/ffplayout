@@ -31,7 +31,7 @@
                 <splitpanes class="browser-row default-theme pane-row">
                     <pane min-size="20" size="24">
                         <div class="browser-div">
-                            <perfect-scrollbar :options="scrollOP">
+                            <perfect-scrollbar :options="scrollOP" class="media-browser-scroll">
                                 <b-list-group class="folder-list">
                                     <b-list-group-item
                                         v-for="folder in folderTree.tree[1]"
@@ -67,7 +67,7 @@
                             color="#ff9c36"
                         />
                         <div class="browser-div">
-                            <perfect-scrollbar :options="scrollOP">
+                            <perfect-scrollbar :options="scrollOP" class="media-browser-scroll">
                                 <b-list-group class="files-list">
                                     <b-list-group-item
                                         v-for="file in folderTree.tree[2]"
