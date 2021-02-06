@@ -84,7 +84,8 @@ class GetSourceFromPlaylist:
 
     def set_filtergraph(self):
         self.filtergraph = build_filtergraph(
-            self.node, self.node_last, self.node_next, self.seek, self.probe)
+            self.node, self.node_last, self.node_next,
+            self.duration, self.seek, self.out, self.probe)
 
     def check_for_next_playlist(self):
         if not self.next_playlist:

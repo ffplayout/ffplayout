@@ -118,7 +118,7 @@ def fade_filter(duration, seek, out, track=''):
     if seek > 0.0:
         filter_chain.append(f'{track}fade=in:st=0:d=0.5')
 
-    if out != duration and out > seek - 1.0:
+    if out != duration:
         filter_chain.append(f'{track}fade=out:st={out - seek - 1.0}:d=1.0')
 
     return filter_chain
@@ -257,13 +257,11 @@ def custom_filter(probe, type, node):
     return filters
 
 
-def build_filtergraph(node, node_last, node_next, seek, probe):
+def build_filtergraph(node, node_last, node_next, duration, seek, out, probe):
     """
     build final filter graph, with video and audio chain
     """
 
-    duration = get_float(node.get('duration'), 20)
-    out = get_float(node.get('out'), duration)
     ad = is_advertisement(node)
     ad_last = is_advertisement(node_last)
     ad_next = is_advertisement(node_next)
