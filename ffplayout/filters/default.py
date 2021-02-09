@@ -23,8 +23,7 @@ import re
 from glob import glob
 from pydoc import locate
 
-from ffplayout.utils import (_global, _pre, _text, get_float, is_advertisement,
-                             messenger)
+from ffplayout.utils import _global, _pre, _text, is_advertisement, messenger
 
 # ------------------------------------------------------------------------------
 # building filters,
