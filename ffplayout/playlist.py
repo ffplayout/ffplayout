@@ -17,10 +17,12 @@
 
 # ------------------------------------------------------------------------------
 
+from datetime import datetime, timedelta
+
 from .filters.default import build_filtergraph
 from .utils import (MediaProbe, _playlist, gen_filler, get_date, get_delta,
-                    get_float, get_time, messenger, read_playlist, stdin_args,
-                    timed_source)
+                    get_float, get_time, messenger, read_playlist,
+                    stdin_args, timed_source)
 
 
 class GetSourceFromPlaylist:
@@ -43,7 +45,7 @@ class GetSourceFromPlaylist:
         if self.last_time < _playlist.start:
             self.last_time += self.total_playtime
 
-        self.last_mod_time = 0.0
+        self.mod_time = 0.0
         self.clip_nodes = None
         self.src_cmd = None
         self.probe = MediaProbe()
@@ -61,9 +63,9 @@ class GetSourceFromPlaylist:
         self.duration = 20
 
     def get_playlist(self):
-        self.clip_nodes, self.last_mod_time = read_playlist(self.list_date,
-                                                            self.last_mod_time,
-                                                            self.clip_nodes)
+        nodes, self.mod_time = read_playlist(self.list_date, self.mod_time)
+
+        self.clip_nodes = nodes if nodes is not None else self.clip_nodes
 
     def get_input(self):
         self.src_cmd, self.seek, self.out, self.next_playlist = timed_source(
@@ -97,8 +99,11 @@ class GetSourceFromPlaylist:
         else:
             # when there is no time left and we are in time,
             # set right values for new playlist
-            self.list_date = get_date(False)
-            self.last_mod_time = 0.0
+            self.list_date = (
+                datetime.strptime(self.list_date, '%Y-%m-%d') + timedelta(1)
+                ).strftime('%Y-%m-%d')
+
+            self.mod_time = 0.0
             self.last_time = _playlist.start - 1
 
     def eof_handling(self, fill, duration=None):
@@ -115,7 +120,7 @@ class GetSourceFromPlaylist:
             self.first = False
 
         self.list_date = get_date(False)
-        self.last_mod_time = 0.0
+        self.mod_time = 0.0
         self.last_time = 0.0
 
         if self.duration > 2 and fill:
