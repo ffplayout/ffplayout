@@ -21,8 +21,8 @@ from datetime import datetime, timedelta
 
 from .filters.default import build_filtergraph
 from .utils import (MediaProbe, _playlist, gen_filler, get_date, get_delta,
-                    get_float, get_time, messenger, read_playlist,
-                    stdin_args, timed_source)
+                    get_float, get_time, messenger, read_playlist, stdin_args,
+                    timed_source)
 
 
 class GetSourceFromPlaylist:
@@ -181,7 +181,6 @@ class GetSourceFromPlaylist:
                 self.begin += self.out - self.seek
             else:
                 if stdin_args.loop:
-                    self.check_for_next_playlist()
                     self.init_time = self.last_time + 1
                     self.src_cmd = None
                 elif not _playlist.length and not stdin_args.loop:
