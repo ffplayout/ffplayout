@@ -10,8 +10,6 @@ import time_machine
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from ffplayout.output import desktop
-
 _tz = ZoneInfo("Europe/Berlin")
 source_time = [2021, 2, 8, 23, 59, 50]
 
@@ -28,4 +26,5 @@ def run_in_time_machine():
 
 
 if __name__ == '__main__':
+    from ffplayout.output import desktop
     run_in_time_machine()
