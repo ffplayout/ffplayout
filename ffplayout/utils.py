@@ -667,10 +667,6 @@ def get_date(seek_day):
     if seek_day and get_time('full_sec') < _playlist.start:
         return (d - timedelta(1)).strftime('%Y-%m-%d')
     else:
-        if _playlist.start == 0 and \
-                4 > 86400.0 - get_time('full_sec') > 0:
-            return (d + timedelta(1)).strftime('%Y-%m-%d')
-
         return d.strftime('%Y-%m-%d')
 
 
@@ -697,7 +693,7 @@ def valid_json(file):
         json_object = json.load(file)
         return json_object
     except ValueError:
-        messenger.error(f'Playlist {file} is not JSON conform')
+        messenger.error(f'Playlist {file.name} is not JSON conform')
         return None
 
 
@@ -893,12 +889,17 @@ def get_delta(begin):
     """
     current_time = get_time('full_sec')
 
-    if _playlist.length:
+    if stdin_args.length:
+        target_playtime = stdin_args.length
+    elif _playlist.length:
         target_playtime = _playlist.length
     else:
         target_playtime = 86400.0
 
-    if _playlist.start >= current_time and not begin == _playlist.start:
+    if begin == _playlist.start == 0:
+        current_time -= target_playtime
+
+    elif _playlist.start >= current_time and not begin == _playlist.start:
         current_time += target_playtime
 
     current_delta = begin - current_time
@@ -977,11 +978,8 @@ def handle_list_end(probe, new_length, src, begin, dur, seek, out):
     return src_cmd, seek, new_out, new_playlist
 
 
-def read_playlist(list_date, modification_time, clip_nodes):
-    """
-    read playlists from remote url or local file
-    and give his nodes and modification time back
-    """
+def read_playlist(list_date, modification_time=0.0):
+    nodes = None
 
     if stdin_args.playlist:
         json_file = stdin_args.playlist
@@ -1001,10 +999,10 @@ def read_playlist(list_date, modification_time, clip_nodes):
 
             if mod_time > modification_time:
                 if isinstance(result.json(), dict):
-                    clip_nodes = result.json()
+                    nodes = result.json()
                 modification_time = mod_time
                 messenger.info('Open: ' + json_file)
-                validate_thread(clip_nodes)
+                validate_thread(nodes)
         except (requests.exceptions.ConnectionError, socket.timeout):
             messenger.error(f'No valid playlist from url: {json_file}')
 
@@ -1013,13 +1011,13 @@ def read_playlist(list_date, modification_time, clip_nodes):
         mod_time = os.path.getmtime(json_file)
         if mod_time > modification_time:
             with open(json_file, 'r', encoding='utf-8') as f:
-                clip_nodes = valid_json(f)
+                nodes = valid_json(f)
 
             modification_time = mod_time
             messenger.info('Open: ' + json_file)
-            validate_thread(clip_nodes)
+            validate_thread(nodes)
 
-    return clip_nodes, modification_time
+    return nodes, modification_time
 
 
 def timed_source(probe, src, begin, dur, seek, out, first, last):
