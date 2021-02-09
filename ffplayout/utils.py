@@ -889,8 +889,8 @@ def get_delta(begin):
     """
     current_time = get_time('full_sec')
 
-    if stdin_args.length:
-        target_playtime = stdin_args.length
+    if stdin_args.length and str_to_sec(stdin_args.length):
+        target_playtime = str_to_sec(stdin_args.length)
     elif _playlist.length:
         target_playtime = _playlist.length
     else:
