@@ -44,6 +44,7 @@ The purpose with ffplayout is to provide a 24/7 broadcasting solution that plays
   - **desktop**
   - **HLS**
   - **custom**
+- Multi Channel
 
 Requirements
 -----
@@ -131,9 +132,9 @@ ffplayout also allows the passing of parameters:
 - `-f, --folder` use folder for playing
 - `-l, --log` for user-defined log path, *none* for console output
 - `-i, --loop` loop playlist infinitely
-- `-m, --mode` set output mode: desktop, hls, stream, ...
+- `-m, --mode` set output mode: **desktop**, **hls**, **stream**, ...
 - `-p, --playlist` for playlist file
-- `-s, --start` set start time in *hh:mm:ss*, *now* for start with first'
+- `-s, --start` set start time in *hh:mm:ss*, *now* for start with first
 - `-t, --length` set length in *hh:mm:ss*, *none* for no length check
 
 You can run the command like:
@@ -141,3 +142,10 @@ You can run the command like:
 ```SHELL
 ./ffplayout.py -l none -p ~/playlist.json -d -s now -t none -m desktop
 ```
+
+Multi Channel
+-----
+
+For streaming multiple channels you need to use python supervisorD. A systemd [service](/docs/ffplayout-engine-multichannel.service) for it you found in docs folder.
+
+To configure every channel create your ffplayout yaml configs under **/etc/ffplayout** with naming them **ffplayout-001.yml**, **ffplayout-002.yml** and so on. Then copy and edit the supervisor config [/supervisor/conf.d/engine-001.conf](/supervisor/conf.d/engine-001.conf) with the same numbering.
