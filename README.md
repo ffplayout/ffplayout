@@ -93,6 +93,7 @@ JSON Playlist Example
 
 **If you need a simple playlist generator check:** [playlist-generator](https://github.com/ffplayout/playlist-generator)
 
+The playlist can be extend, to use custom attributes in your [filters](/ffplayout/filters/).
 
 **Warning**
 -----
