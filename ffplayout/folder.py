@@ -27,7 +27,7 @@ from watchdog.events import PatternMatchingEventHandler
 from watchdog.observers import Observer
 
 from .filters.default import build_filtergraph
-from .utils import MediaProbe, _current, _ff, _storage, messenger, stdin_args
+from .utils import MediaProbe, _ff, _storage, messenger, stdin_args
 
 # ------------------------------------------------------------------------------
 # folder watcher
@@ -87,6 +87,7 @@ class MediaWatcher:
     def __init__(self, media):
         self._media = media
         self.extensions = [f'*{ext}' for ext in _storage.extensions]
+        self.current_clip = None
 
         self.event_handler = PatternMatchingEventHandler(
             patterns=self.extensions)
@@ -118,7 +119,7 @@ class MediaWatcher:
         messenger.info(
             f'Move file from "{event.src_path}" to "{event.dest_path}"')
 
-        if _current.clip == event.src_path:
+        if self.current_clip == event.src_path:
             _ff.decoder.terminate()
 
     def on_deleted(self, event):
@@ -126,7 +127,7 @@ class MediaWatcher:
 
         messenger.info(f'Remove file from media list: "{event.src_path}"')
 
-        if _current.clip == event.src_path:
+        if self.current_clip == event.src_path:
             _ff.decoder.terminate()
 
     def stop(self):
@@ -189,7 +190,8 @@ class GetSourceFromFolder:
                     self.node, self.node_last, self.node_next, duration,
                     0.0, duration, self.probe)
 
-                yield ['-i', self._media.store[self.index]] + filtergraph
+                yield ['-i', self._media.store[self.index]] + filtergraph, \
+                    self.node
                 self.index += 1
                 self.node_last = deepcopy(self.node)
             else:

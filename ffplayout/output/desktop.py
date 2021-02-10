@@ -4,7 +4,7 @@ from threading import Thread
 
 from ffplayout.folder import GetSourceFromFolder, MediaStore, MediaWatcher
 from ffplayout.playlist import GetSourceFromPlaylist
-from ffplayout.utils import (_current, _ff, _log, _playlist, _pre, _text,
+from ffplayout.utils import (_ff, _log, _playlist, _pre, _text,
                              ffmpeg_stderr_reader, messenger, pre_audio_codec,
                              stdin_args, terminate_processes)
 
@@ -60,14 +60,11 @@ def output():
             get_source = GetSourceFromFolder(media)
 
         try:
-            for src_cmd in get_source.next():
-                if src_cmd[0] == '-i':
-                    current_file = src_cmd[1]
-                else:
-                    current_file = src_cmd[3]
+            for src_cmd, node in get_source.next():
+                if watcher is not None:
+                    watcher.current_clip = node.get('source')
 
-                _current.clip = current_file
-                messenger.info(f'Play: {current_file}')
+                messenger.info(f'Play: {node.get("source")}')
 
                 dec_cmd = ['ffmpeg', '-v', _log.ff_level.lower(),
                            '-hide_banner', '-nostats'
