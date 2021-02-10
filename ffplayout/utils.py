@@ -46,7 +46,7 @@ import yaml
 
 # path to user define configs
 CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                           'config')
+                           'conf.d')
 
 # ------------------------------------------------------------------------------
 # argument parsing
