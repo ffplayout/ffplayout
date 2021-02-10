@@ -141,7 +141,6 @@ _playout = SimpleNamespace()
 
 _init = SimpleNamespace(load=True)
 _ff = SimpleNamespace(decoder=None, encoder=None)
-_current = SimpleNamespace(clip=None)
 _global = SimpleNamespace(time_delta=0)
 
 
@@ -297,7 +296,7 @@ class CustomFormatter(logging.Formatter):
             msg = re.sub(r'(\[encoder\])', self.reset + r'\1', msg)
         elif '/' in msg or '\\' in msg:
             msg = re.sub(
-                r'(["\w.:/]+/|["\w.:]+\\.*?)', self.magenta + r'\1', msg)
+                r'("?/[\w.:/]+|["\w.:]+\\.*?)', self.magenta + r'\1', msg)
         elif re.search(r'\d', msg):
             msg = re.sub(
                 '([0-9.:-]+)', self.yellow + r'\1' + self.reset, msg)
@@ -879,7 +878,7 @@ def src_or_dummy(probe, src, dur, seek, out):
         else:
             return seek_in(seek) + ['-i', src] + set_length(dur, seek, out)
     else:
-        messenger.error(f'Clip/URL not exist:\n{src}')
+        messenger.error(f'Clip not exist:\n{src}')
         return gen_dummy(out - seek)
 
 
