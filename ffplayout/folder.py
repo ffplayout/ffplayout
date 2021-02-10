@@ -21,8 +21,8 @@ import glob
 import os
 import random
 import time
-
 from copy import deepcopy
+
 from watchdog.events import PatternMatchingEventHandler
 from watchdog.observers import Observer
 
