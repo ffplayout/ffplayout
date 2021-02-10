@@ -6,7 +6,7 @@ from threading import Thread
 
 from ffplayout.folder import GetSourceFromFolder, MediaStore, MediaWatcher
 from ffplayout.playlist import GetSourceFromPlaylist
-from ffplayout.utils import (_current, _ff, _log, _playlist, _playout,
+from ffplayout.utils import (_ff, _log, _playlist, _playout,
                              ffmpeg_stderr_reader, get_date, messenger,
                              stdin_args, terminate_processes)
 
@@ -21,7 +21,7 @@ def clean_ts():
     playlists = [p for p in _playout.hls_output if 'm3u8' in p]
 
     for playlist in playlists:
-        messenger.debug('cleanup *.ts files from: "{}"'.format(playlist))
+        messenger.debug(f'cleanup *.ts files from: "{playlist}"')
         test_num = 0
         hls_path = os.path.dirname(playlist)
         with open(playlist, 'r') as m3u8:
@@ -54,15 +54,12 @@ def output():
             get_source = GetSourceFromFolder(media)
 
         try:
-            for src_cmd in get_source.next():
-                messenger.debug('src_cmd: "{}"'.format(src_cmd))
-                if src_cmd[0] == '-i':
-                    current_file = src_cmd[1]
-                else:
-                    current_file = src_cmd[3]
+            for src_cmd, node in get_source.next():
+                if watcher is not None:
+                    watcher.current_clip = node.get('source')
 
-                _current.clip = current_file
-                messenger.info('Play: "{}"'.format(current_file))
+                messenger.info(f'Play: {node.get("source")}')
+
                 cmd = [
                     'ffmpeg', '-v', _log.ff_level.lower(), '-hide_banner',
                     '-nostats'
@@ -71,6 +68,8 @@ def output():
                         '-metadata', 'service_provider=' + _playout.provider,
                         '-metadata', 'year={}'.format(year)
                     ] + _playout.ffmpeg_param + _playout.hls_output
+
+                messenger.debug(f'Encoder CMD: "{" ".join(cmd)}"')
 
                 _ff.encoder = Popen(cmd, stdin=PIPE, stderr=PIPE)
 

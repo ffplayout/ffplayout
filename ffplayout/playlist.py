@@ -73,6 +73,9 @@ class GetSourceFromPlaylist:
             self.seek, self.out, self.first, self.last
         )
 
+        self.node['in'] = self.seek
+        self.node['out'] = self.out
+
     def last_and_next_node(self, index):
         if index - 1 >= 0:
             self.node_last = self.clip_nodes['program'][index - 1]
@@ -197,4 +200,4 @@ class GetSourceFromPlaylist:
                     self.eof_handling(True)
 
             if self.src_cmd is not None:
-                yield self.src_cmd + self.filtergraph
+                yield self.src_cmd + self.filtergraph, self.node
