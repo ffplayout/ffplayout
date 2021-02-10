@@ -22,6 +22,7 @@ import os
 import random
 import time
 
+from copy import deepcopy
 from watchdog.events import PatternMatchingEventHandler
 from watchdog.observers import Observer
 
@@ -55,6 +56,7 @@ class MediaStore:
                 glob.glob(os.path.join(self.folder, '**', f'*{ext}'),
                           recursive=True))
 
+    def sort_or_radomize(self):
         if _storage.shuffle:
             self.rand()
         else:
@@ -62,18 +64,18 @@ class MediaStore:
 
     def add(self, file):
         self.store.append(file)
-        self.sort()
+        self.sort_or_radomize()
 
     def remove(self, file):
         self.store.remove(file)
-        self.sort()
+        self.sort_or_radomize()
 
     def sort(self):
         # sort list for sorted playing
         self.store = sorted(self.store)
 
     def rand(self):
-        # random sort list for playing
+        # randomize list for playing
         random.shuffle(self.store)
 
 
@@ -143,19 +145,52 @@ class GetSourceFromFolder:
         self.last_played = []
         self.index = 0
         self.probe = MediaProbe()
+        self.next_probe = MediaProbe()
+        self.node = None
+        self.node_last = None
+        self.node_next = None
 
     def next(self):
         while True:
             while self.index < len(self._media.store):
-                self.probe.load(self._media.store[self.index])
-                filtergraph = build_filtergraph(
-                    float(self.probe.format['duration']), 0.0,
-                    float(self.probe.format['duration']), False, False,
-                    False, self.probe, messenger)
+                if self.node_next:
+                    self.node = deepcopy(self.node_next)
+                    self.probe = deepcopy(self.next_probe)
+                else:
+                    self.probe.load(self._media.store[self.index])
+                    duration = float(self.probe.format['duration'])
+                    self.node = {
+                        'in': 0,
+                        'out': duration,
+                        'duration': duration,
+                        'source': self._media.store[self.index]
+                    }
+                if self.index + 1 < len(self._media.store):
+                    self.next_probe.load(self._media.store[self.index + 1])
+                    next_duration = float(self.next_probe.format['duration'])
+                    self.node_next = {
+                        'in': 0,
+                        'out': next_duration,
+                        'duration': next_duration,
+                        'source': self._media.store[self.index + 1]
+                    }
+                else:
+                    self._media.rand()
+                    self.next_probe.load(self._media.store[0])
+                    next_duration = float(self.next_probe.format['duration'])
+                    self.node_next = {
+                        'in': 0,
+                        'out': next_duration,
+                        'duration': next_duration,
+                        'source': self._media.store[0]
+                    }
 
-                yield [
-                    '-i', self._media.store[self.index]
-                    ] + filtergraph
+                filtergraph = build_filtergraph(
+                    self.node, self.node_last, self.node_next, duration,
+                    0.0, duration, self.probe)
+
+                yield ['-i', self._media.store[self.index]] + filtergraph
                 self.index += 1
+                self.node_last = deepcopy(self.node)
             else:
                 self.index = 0
