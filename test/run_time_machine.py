@@ -10,18 +10,14 @@ import time_machine
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-_tz = ZoneInfo("Europe/Berlin")
-source_time = [2021, 2, 8, 23, 59, 50]
+# set time zone
+_TZ = ZoneInfo("Europe/Berlin")
+# fake date and time
+SOURCE_TIME = [2021, 2, 8, 23, 59, 50]
 
 
-@time_machine.travel(datetime.datetime(*source_time, tzinfo=_tz))
+@time_machine.travel(datetime.datetime(*SOURCE_TIME, tzinfo=_TZ))
 def run_in_time_machine():
-    try:
-        assert datetime.datetime.now() == datetime.datetime(*source_time)
-    except AssertionError:
-        print('Assertion not possible')
-        exit()
-
     desktop.output()
 
 
