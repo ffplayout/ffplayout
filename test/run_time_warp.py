@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-# import datetime
+import datetime
 import os
 import sys
 import time
@@ -14,25 +14,25 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # set time zone
 _TZ = ZoneInfo("Europe/Berlin")
 # fake date and time
-# SOURCE_TIME = [2021, 2, 9, 5, 50, 0]
+SOURCE_TIME = [2021, 2, 12, 5, 0, 0]
+USE_TIME_MACHINE = True
 
 # warp time by factor
 WARP_FACTOR = 1000
 
 
-# @time_machine.travel(datetime.datetime(*SOURCE_TIME, tzinfo=_TZ))
-def playlist_test():
+def warp_time():
     get_source = GetSourceFromPlaylist()
     stamp = time.time()
     duration = 0
-
     with time_machine.travel(stamp, tick=False) as traveller:
         for src_cmd, node in get_source.next():
             duration = node['out'] - node['seek']
             messenger.info(f'Play: "{node["source"]}"')
 
             warp_duration = duration / WARP_FACTOR
-            messenger.debug(f'warp duration: {warp_duration:.3f}')
+            messenger.debug(f'Original duration {duration} '
+                            f'warped to {warp_duration:.3f}')
 
             time.sleep(warp_duration)
             stamp += duration
@@ -40,11 +40,23 @@ def playlist_test():
             traveller.move_to(stamp)
 
 
+@time_machine.travel(datetime.datetime(*SOURCE_TIME, tzinfo=_TZ))
+def run_in_time_machine():
+    warp_time()
+
+
+def run_in_time_warp():
+    warp_time()
+
+
 if __name__ == '__main__':
     from ffplayout.playlist import GetSourceFromPlaylist
     from ffplayout.utils import messenger
 
     try:
-        playlist_test()
+        if USE_TIME_MACHINE:
+            run_in_time_machine()
+        else:
+            warp_time()
     except KeyboardInterrupt:
         print('Interrupted')
