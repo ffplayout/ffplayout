@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+"""
+Test script, for simulating different date and time.
+This is useful for testing the transition from one playlist to another,
+specially when the day_start time is in the night.
+"""
+
 import datetime
 import os
 import sys
