@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+"""
+Test script, for simulating speed up the clock.
+With the WARP_FACTOR you can transform a second to a fraction.
+With this functionality it is possible to run a 24 hours playlist in a minute,
+and debug the playlist reader.
+"""
+
 import datetime
 import os
 import sys
