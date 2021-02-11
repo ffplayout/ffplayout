@@ -114,20 +114,34 @@ class GetSourceFromPlaylist:
 
         if duration:
             self.out = duration
-            self.duration = duration
+            self.duration = duration + 1
             self.first = True
         else:
             current_delta, total_delta = get_delta(self.begin)
             self.out = abs(total_delta)
-            self.duration = abs(total_delta)
+            self.duration = abs(total_delta) + 1
             self.first = False
 
         self.list_date = get_date(False)
         self.mod_time = 0.0
         self.last_time = 0.0
 
-        if self.duration > 2 and fill:
+        if self.out > 2 and fill:
             self.probe, self.src_cmd = gen_filler(self.duration)
+
+            if 'lavfi' in self.src_cmd:
+                src = self.src_cmd[3]
+            else:
+                src = self.src_cmd[1]
+
+            self.node = {
+                'in': 0,
+                'seek': 0,
+                'out': self.out,
+                'duration': self.duration,
+                'source': src
+            }
+
             self.set_filtergraph()
 
         else:
