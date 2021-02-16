@@ -30,6 +30,7 @@ import tempfile
 import time
 import urllib
 from argparse import ArgumentParser
+from copy import deepcopy
 from datetime import date, datetime, timedelta
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -656,15 +657,21 @@ def ffmpeg_stderr_reader(std_errors, decoder):
         pass
 
 
-def get_date(seek_day):
+def get_date(seek_day, shift=0):
     """
     get date for correct playlist,
     when seek_day is set:
     check if playlist date must be from yesterday
     """
     d = date.today()
+    if shift:
+        d + timedelta(seconds=shift + _general.threshold)
+
     if seek_day and get_time('full_sec') < _playlist.start:
         return (d - timedelta(1)).strftime('%Y-%m-%d')
+    elif _playlist.start == 0 and \
+            86400 - (get_time('full_sec') + shift) < 2:
+        return (d + timedelta(1)).strftime('%Y-%m-%d')
     else:
         return d.strftime('%Y-%m-%d')
 
@@ -703,6 +710,7 @@ def check_sync(delta):
 
     if _playlist.mode and _playlist.start and _playlist.length:
         # save time delta to global variable for syncing
+        # this is needed for real time filter
         _global.time_delta = delta
 
     if _general.stop and abs(delta) > _general.threshold:
@@ -738,7 +746,7 @@ def validate_thread(clip_nodes):
 
         # check if all values are valid
         for node in json_nodes["program"]:
-            source = node["source"]
+            source = node.get('source')
             probe.load(source)
             missing = []
             _in = get_float(node.get('in'), 0)
@@ -748,7 +756,7 @@ def validate_thread(clip_nodes):
             if probe.is_remote:
                 if not probe.video[0]:
                     missing.append(f'Remote file not exist: "{source}"')
-            elif not os.path.isfile(source):
+            elif source is None or not os.path.isfile(source):
                 missing.append(f'File not exist: "{source}"')
 
             if not node.get('in') == 0 and not _in:
@@ -823,12 +831,15 @@ def gen_dummy(duration):
     ]
 
 
-def gen_filler(duration):
+def gen_filler(node):
     """
     when playlist is not 24 hours long, we generate a loop from filler clip
     """
     probe = MediaProbe()
     probe.load(_storage.filler)
+    duration = node['out'] - node['seek'] + 1
+
+    node['probe'] = probe
 
     if probe.format:
         if probe.format.get('duration'):
@@ -837,49 +848,73 @@ def gen_filler(duration):
                 # cut filler
                 messenger.info(
                     f'Generate filler with {duration:.2f} seconds')
-                return probe, ['-i', _storage.filler] + set_length(
+                node['source'] = _storage.filler
+                node['src_cmd'] = ['-i', _storage.filler] + set_length(
                     filler_duration, 0, duration)
+                return node
             else:
                 # loop file n times
-                return probe, loop_input(_storage.filler,
-                                         filler_duration, duration)
+                node['src_cmd'] = loop_input(_storage.filler, filler_duration,
+                                             duration)
+                return node
         else:
             messenger.error("Can't get filler length, generate dummy!")
-            return probe, gen_dummy(duration)
+            dummy = gen_dummy(duration)
+            node['source'] = dummy[3]
+            node['src_cmd'] = dummy
+            return node
 
     else:
         # when no filler is set, generate a dummy
         messenger.warning('No filler is set!')
-        return probe, gen_dummy(duration)
+        dummy = gen_dummy(duration)
+        node['source'] = dummy[3]
+        node['src_cmd'] = dummy
+        return node
 
 
-def src_or_dummy(probe, src, dur, seek, out):
+def src_or_dummy(node):
     """
     when source path exist, generate input with seek and out time
     when path not exist, generate dummy clip
     """
 
+    probe = MediaProbe()
+    probe.load(node.get('source'))
+    node['probe'] = probe
+
     # check if input is a remote source
     if probe.is_remote and probe.video[0]:
-        if seek > 0.0:
+        if node['seek'] > 0.0:
             messenger.warning(
-                f'Seek in remote source "{src}" not supported!')
-        return ['-i', src] + set_length(86400.0, seek, out)
-    elif src and os.path.isfile(src):
-        if out > dur:
-            if seek > 0.0:
+                f'Seek in remote source "{node.get("source")}" not supported!')
+        node['src_cmd'] = [
+            '-i', node['source']
+            ] + set_length(86400, node['seek'], node['out'])
+    elif node.get('source') and os.path.isfile(node['source']):
+        if node['out'] > node['duration']:
+            if node['seek'] > 0.0:
                 messenger.warning(
-                    f'Seek in looped source "{src}" not supported!')
-                return ['-i', src] + set_length(dur, seek, out - seek)
+                    f'Seek in looped source "{node["source"]}" not supported!')
+                node['src_cmd'] = [
+                    '-i', node['source']
+                    ] + set_length(node['duration'], node['seek'],
+                                   node['out'] - node['seek'])
             else:
                 # FIXME: when list starts with looped clip,
                 # the logo length will be wrong
-                return loop_input(src, dur, out)
+                node['src_cmd'] = loop_input(node['source'], node['duration'],
+                                             node['out'])
         else:
-            return seek_in(seek) + ['-i', src] + set_length(dur, seek, out)
+            node['src_cmd'] = seek_in(node['seek']) + \
+                ['-i', node['source']] + set_length(node['duration'],
+                                                    node['seek'], node['out'])
     else:
-        messenger.error(f'Clip not exist:\n{src}')
-        return gen_dummy(out - seek)
+        # TODO: cleanup
+        # messenger.error(f'Clip not exist:\n{node["source"]}')
+        node = gen_filler(node)
+
+    return node
 
 
 def get_delta(begin):
@@ -912,130 +947,96 @@ def get_delta(begin):
     return current_delta, total_delta
 
 
-def handle_list_init(current_delta, total_delta, seek, out):
+def handle_list_init(current_delta, total_delta, node):
     """
     # handle init clip, but this clip can be the last one in playlist,
     # this we have to figure out and calculate the right length
     """
-    new_seek = abs(current_delta) + seek
-    new_out = out
+    new_seek = abs(current_delta) + node['seek']
+    new_out = node['out']
 
+    messenger.debug('List init')
+
+    # don't seek when less the a second
     if 1 > new_seek:
         new_seek = 0
 
-    if out - new_seek > total_delta:
+    # when last clip with seek in is longer then total play time, set new out
+    if node['out'] - new_seek > total_delta:
         new_out = total_delta + new_seek
 
+    # when total play time is bigger the new length, return seek and out,
+    # without asking for new playlist
     if total_delta > new_out - new_seek > 1:
-        return new_seek, new_out, False
-
+        return new_seek, new_out
     elif new_out - new_seek > 1:
-        return new_seek, new_out, True
+        return new_seek, new_out
     else:
-        return 0, 0, True
+        return 0, 0
 
 
-def handle_list_end(probe, new_length, src, begin, dur, seek, out):
+def handle_list_end(new_length, node):
     """
     when we come to last clip in playlist,
     or when we reached total playtime,
     we end up here
     """
-    new_out = out
-    new_playlist = True
+    new_out = node['out']
+    messenger.debug('List end')
 
-    if seek > 0:
-        new_out = seek + new_length
+    if node['seek'] > 0:
+        new_out = node['seek'] + new_length
     else:
         new_out = new_length
     # prevent looping
-    if new_out > dur:
-        new_out = dur
+    if new_out > node['duration']:
+        new_out = node['duration']
     else:
         messenger.info(f'We are over time, new length is: {new_length:.2f}')
 
-    missing_secs = abs(new_length - (dur - seek))
+    missing_secs = abs(new_length - (node['duration'] - node['seek']))
 
-    if dur > new_length > 1.5 and dur - seek >= new_length:
-        src_cmd = src_or_dummy(probe, src, dur, seek, new_out)
-    elif dur > new_length > 0.0:
-        messenger.info(f'Last clip less then 1.5 second long, skip:\n{src}')
-        src_cmd = None
+    if node['duration'] > new_length > 1 and \
+            node['duration'] - node['seek'] >= new_length:
+        node['out'] = new_out
+        node = src_or_dummy(node)
+    elif node['duration'] > new_length > 0.0:
+        time.sleep(new_length)
+        messenger.info(
+            f'Last clip less then 1 second long, skip:\n{node["source"]}')
+        node = None
 
         if missing_secs > 2:
-            new_playlist = False
             messenger.error(
                 f'Reach playlist end,\n{missing_secs:.2f} seconds needed.')
     else:
-        new_out = out
-        new_playlist = False
-        src_cmd = src_or_dummy(probe, src, dur, seek, out)
+        new_out = node['out']
+        node = src_or_dummy(node)
         messenger.error(
             f'Playlist is not long enough:\n{missing_secs:.2f} seconds needed.'
             )
 
-    return src_cmd, seek, new_out, new_playlist
+    return node
 
 
-def read_playlist(list_date, modification_time=0.0):
-    nodes = None
-
-    if stdin_args.playlist:
-        json_file = stdin_args.playlist
-    else:
-        year, month, day = list_date.split('-')
-        json_file = os.path.join(_playlist.path, year, month,
-                                 f'{list_date}.json')
-
-    if '://' in json_file:
-        json_file = json_file.replace('\\', '/')
-
-        try:
-            result = requests.get(json_file, timeout=1, verify=False)
-            b_time = result.headers['last-modified']
-            temp_time = time.strptime(b_time, "%a, %d %b %Y %H:%M:%S %Z")
-            mod_time = time.mktime(temp_time)
-
-            if mod_time > modification_time:
-                if isinstance(result.json(), dict):
-                    nodes = result.json()
-                modification_time = mod_time
-                messenger.info('Open: ' + json_file)
-                validate_thread(nodes)
-        except (requests.exceptions.ConnectionError, socket.timeout):
-            messenger.error(f'No valid playlist from url: {json_file}')
-
-    elif os.path.isfile(json_file):
-        # check last modification from playlist
-        mod_time = os.path.getmtime(json_file)
-        if mod_time > modification_time:
-            with open(json_file, 'r', encoding='utf-8') as f:
-                nodes = valid_json(f)
-
-            modification_time = mod_time
-            messenger.info('Open: ' + json_file)
-            validate_thread(nodes)
-
-    return nodes, modification_time
-
-
-def timed_source(probe, src, begin, dur, seek, out, first, last):
+def timed_source(node, first, last):
     """
     prepare input clip
     check begin and length from clip
     return clip only if we are in 24 hours time range
     """
-    current_delta, total_delta = get_delta(begin)
+    current_delta, total_delta = get_delta(node['begin'])
 
     if first:
-        _seek, _out, new_list = handle_list_init(current_delta, total_delta,
-                                                 seek, out)
-        if _out > 1.0:
-            return src_or_dummy(probe, src, dur, _seek, _out), \
-                _seek, _out, new_list
+        node['seek'], node['out'] = handle_list_init(current_delta,
+                                                     total_delta, node)
+
+        if node['out'] > 1.0:
+            return src_or_dummy(node)
         else:
-            messenger.warning(f'Clip less then a second, skip:\n{src}')
-            return None, 0, 0, True
+            messenger.warning(
+                f'Clip less then a second, skip:\n{node["source"]}')
+            return None
 
     else:
         if not stdin_args.loop and _playlist.length:
@@ -1043,21 +1044,73 @@ def timed_source(probe, src, begin, dur, seek, out, first, last):
             messenger.debug(f'current_delta: {current_delta:f}')
             messenger.debug(f'total_delta: {total_delta:f}')
 
-        if (total_delta > out - seek and not last) \
+        if (total_delta > node['out'] - node['seek'] and not last) \
                 or stdin_args.loop or not _playlist.length:
             # when we are in the 24 houre range, get the clip
-            return src_or_dummy(probe, src, dur, seek, out), seek, out, False
+            return src_or_dummy(node)
 
         elif total_delta <= 0:
-            messenger.info(f'Start time is over playtime, skip clip:\n{src}')
-            return None, 0, 0, True
+            messenger.info(
+                f'Start time is over playtime, skip clip:\n{node["source"]}')
+            return None
 
-        elif total_delta < out - seek or last:
-            return handle_list_end(probe, total_delta, src,
-                                   begin, dur, seek, out)
+        elif total_delta < node['out'] - node['seek'] or last:
+            return handle_list_end(total_delta, node)
 
         else:
-            return None, 0, 0, True
+            return None
+
+
+class PlaylistReader:
+    def __init__(self, list_date, last_mod_time):
+        self.list_date = list_date
+        self.last_mod_time = last_mod_time
+        self.nodes = None
+        self.error = False
+
+    def read(self):
+        self.nodes = {'program': []}
+        self.error = False
+
+        if stdin_args.playlist:
+            json_file = stdin_args.playlist
+        else:
+            year, month, day = self.list_date.split('-')
+            json_file = os.path.join(_playlist.path, year, month,
+                                     f'{self.list_date}.json')
+
+        if '://' in json_file:
+            json_file = json_file.replace('\\', '/')
+
+            try:
+                result = requests.get(json_file, timeout=1, verify=False)
+                b_time = result.headers['last-modified']
+                temp_time = time.strptime(b_time, "%a, %d %b %Y %H:%M:%S %Z")
+                mod_time = time.mktime(temp_time)
+
+                if mod_time > self.last_mod_time:
+                    if isinstance(result.json(), dict):
+                        self.nodes = result.json()
+                    self.last_mod_time = mod_time
+                    messenger.info('Open: ' + json_file)
+                    validate_thread(deepcopy(self.nodes))
+            except (requests.exceptions.ConnectionError, socket.timeout):
+                messenger.error(f'No valid playlist from url: {json_file}')
+                self.error = True
+
+        elif os.path.isfile(json_file):
+            # check last modification from playlist
+            mod_time = os.path.getmtime(json_file)
+            if mod_time > self.last_mod_time:
+                with open(json_file, 'r', encoding='utf-8') as f:
+                    self.nodes = valid_json(f)
+
+                self.last_mod_time = mod_time
+                messenger.info('Open: ' + json_file)
+                validate_thread(deepcopy(self.nodes))
+        else:
+            messenger.error(f'Playlist not exists: {json_file}')
+            self.error = True
 
 
 def pre_audio_codec():
