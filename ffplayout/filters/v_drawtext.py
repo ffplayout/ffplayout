@@ -4,12 +4,12 @@ import re
 from ffplayout.utils import _text
 
 
-def filter(probe, node=None):
+def filter(node):
     """
     extract title from file name and overlay it
     """
     font = ''
-    source = os.path.basename(probe.src)
+    source = os.path.basename(node.get('source'))
     match = re.match(_text.regex, source)
     title = match[1] if match else source
 
