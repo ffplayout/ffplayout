@@ -17,12 +17,11 @@
 
 # ------------------------------------------------------------------------------
 
-from datetime import datetime, timedelta
+import math
 
 from .filters.default import build_filtergraph
-from .utils import (MediaProbe, _playlist, gen_filler, get_date, get_delta,
-                    get_float, get_time, messenger, read_playlist, stdin_args,
-                    timed_source)
+from .utils import (PlaylistReader, _general, _playlist, get_date, get_float,
+                    get_time, messenger, stdin_args, timed_source)
 
 
 class GetSourceFromPlaylist:
@@ -33,185 +32,177 @@ class GetSourceFromPlaylist:
     """
 
     def __init__(self):
-        self.list_date = get_date(True)
-        self.init_time = _playlist.start
+        self.list_start = _playlist.start
+        self.first = True
+        self.last = False
+        self.clip_nodes = []
+        self.node_count = 0
+        self.node = None
+        self.prev_node = None
+        self.next_node = None
+        self.playlist = PlaylistReader(get_date(True), 0.0)
+
+    def get_playlist(self):
+        """
+        read playlist from given date and fill clip_nodes
+        when playlist is not available, reset relevant values
+        """
+        self.playlist.read()
+
+        if self.playlist.nodes.get('program'):
+            self.clip_nodes = self.playlist.nodes.get('program')
+            self.node_count = len(self.clip_nodes)
+
+        if self.playlist.error:
+            self.clip_nodes = []
+            self.node_count = 0
+            self.playlist.last_mod_time = 0.0
+
+    def init_time(self):
+        """
+        get current time in second and shift it when is necessary
+        """
         self.last_time = get_time('full_sec')
 
         if _playlist.length:
-            self.total_playtime = _playlist.length
+            total_playtime = _playlist.length
         else:
-            self.total_playtime = 86400.0
+            total_playtime = 86400.0
 
         if self.last_time < _playlist.start:
-            self.last_time += self.total_playtime
-
-        self.mod_time = 0.0
-        self.clip_nodes = None
-        self.src_cmd = None
-        self.probe = MediaProbe()
-        self.filtergraph = []
-        self.first = True
-        self.last = False
-        self.node = None
-        self.node_last = None
-        self.node_next = None
-        self.next_playlist = False
-        self.src = None
-        self.begin = 0
-        self.seek = 0
-        self.out = 20
-        self.duration = 20
-
-    def get_playlist(self):
-        nodes, self.mod_time = read_playlist(self.list_date, self.mod_time)
-
-        self.clip_nodes = nodes if nodes is not None else self.clip_nodes
-
-    def get_input(self):
-        self.src_cmd, self.seek, self.out, self.next_playlist = timed_source(
-            self.probe, self.src, self.begin, self.duration,
-            self.seek, self.out, self.first, self.last
-        )
-
-        self.node['seek'] = self.seek
-        self.node['out'] = self.out
-
-    def last_and_next_node(self, index):
-        if index - 1 >= 0:
-            self.node_last = self.clip_nodes['program'][index - 1]
-        else:
-            self.node_last = None
-
-        if index + 2 <= len(self.clip_nodes['program']):
-            self.node_next = self.clip_nodes['program'][index + 1]
-        else:
-            self.node_next = None
-
-    def set_filtergraph(self):
-        self.filtergraph = build_filtergraph(
-            self.node, self.node_last, self.node_next,
-            self.duration, self.seek, self.out, self.probe)
+            self.last_time += total_playtime
 
     def check_for_next_playlist(self):
-        if not self.next_playlist:
-            # normal behavior, when no new playlist is needed
-            self.last_time = self.begin
-        elif self.next_playlist and _playlist.length != 86400.0:
-            # get sure that no new clip will be loaded
-            self.last_time = 86400.0 * 2
-        else:
-            # when there is no time left and we are in time,
-            # set right values for new playlist
-            self.list_date = (
-                datetime.strptime(self.list_date, '%Y-%m-%d') + timedelta(1)
-                ).strftime('%Y-%m-%d')
+        """
+        check if playlist length is 24 matches current length,
+        to get the date for a new playlist
+        """
+        # when we are in 24 hours range, we can get next playlist
 
-            self.mod_time = 0.0
+        # calculate the length when current clip is done
+        seek = self.node['seek'] if self.first else self.node['in']
+
+        current_length = self.node['begin'] - _playlist.start + (
+            self.node['out'] - seek)
+
+        if _playlist.length and self.node and math.isclose(
+                _playlist.length, current_length, abs_tol=_general.threshold):
+
+            shift = self.node['out'] - seek
+            self.playlist.list_date = get_date(False, shift)
+            self.playlist.last_mod_time = 0.0
             self.last_time = _playlist.start - 1
+            self.clip_nodes = []
 
-    def eof_handling(self, fill, duration=None):
-        self.seek = 0.0
+    def previous_and_next_node(self, index):
+        """
+        set previous and next clip node
+        """
+        self.prev_node = self.clip_nodes[index - 1] if index > 0 else None
 
-        if duration:
-            self.out = duration
-            self.duration = duration + 1
-            self.first = True
+        if index < self.node_count - 1:
+            self.next_node = self.clip_nodes[index + 1]
         else:
-            current_delta, total_delta = get_delta(self.begin)
-            self.out = abs(total_delta)
-            self.duration = abs(total_delta) + 1
-            self.first = False
+            self.next_node = None
 
-        self.list_date = get_date(False)
-        self.mod_time = 0.0
-        self.last_time = 0.0
+    def generate_cmd(self):
+        """
+        extend clip node with ffmpeg source cmd and filters
+        """
+        self.node = timed_source(self.node, self.first, self.last)
+        if self.node:
+            self.node['filter'] = build_filtergraph(self.node, self.prev_node,
+                                                    self.next_node)
 
-        if self.out > 2 and fill:
-            self.probe, self.src_cmd = gen_filler(self.duration)
+    def eof_handling(self, duration, begin):
+        """
+        handle except scheduled playlist end
+        """
+        node_ = {
+            'begin': begin,
+            'in': 0,
+            'seek': 0,
+            'out': duration,
+            'duration': duration + 1,
+            'source': None
+        }
 
-            if 'lavfi' in self.src_cmd:
-                src = self.src_cmd[3]
-            else:
-                src = self.src_cmd[1]
-
-            self.node = {
-                'in': 0,
-                'seek': 0,
-                'out': self.out,
-                'duration': self.duration,
-                'source': src
-            }
-
-            self.set_filtergraph()
-
-        else:
-            self.src_cmd = None
-            self.next_playlist = True
-
-        self.last = False
-
-    def peperation_task(self, index):
-        # call functions in order to prepare source and filter
-        self.probe.load(self.node.get('source'))
-        self.src = self.probe.src
-
-        self.get_input()
-        self.last_and_next_node(index)
-        self.set_filtergraph()
+        self.node = timed_source(node_, self.first, self.last)
         self.check_for_next_playlist()
 
     def next(self):
+        """
+        endless loop for reading playlists
+        and getting the right clip node
+        """
         while True:
             self.get_playlist()
+            begin = _playlist.start
 
-            if self.clip_nodes is None:
-                self.node = {'in': 0, 'out': 30, 'duration': 30}
-                messenger.error('clip_nodes are empty')
-                self.eof_handling(True, 30)
-                yield self.src_cmd + self.filtergraph
-                continue
-
-            self.begin = self.init_time
-
-            # loop through all clips in playlist and get correct clip in time
-            for index, self.node in enumerate(self.clip_nodes['program']):
-                self.seek = get_float(self.node.get('in'), 0)
-                self.duration = get_float(self.node.get('duration'), 20)
-                self.out = get_float(self.node.get('out'), self.duration)
+            for index, self.node in enumerate(self.clip_nodes):
+                self.node['seek'] = get_float(self.node.get('in'), 0)
+                self.node['duration'] = get_float(self.node.get('duration'),
+                                                  30)
+                self.node['out'] = get_float(self.node.get('out'),
+                                             self.node['duration'])
+                self.node['begin'] = begin
+                self.node['number'] = index + 1
 
                 # first time we end up here
-                if self.first and \
-                        self.last_time < self.begin + self.out - self.seek:
+                if self.first:
+                    self.init_time()
 
-                    self.peperation_task(index)
-                    self.first = False
-                    break
-                elif self.last_time < self.begin:
-                    if index + 1 == len(self.clip_nodes['program']):
+                    if self.last_time < \
+                            begin + self.node['out'] - self.node['seek']:
+
+                        self.previous_and_next_node(index)
+                        self.generate_cmd()
+                        self.first = False
+                        self.last_time = begin
+
+                        self.check_for_next_playlist()
+                        break
+                elif self.last_time < begin:
+                    if index == self.node_count - 1:
                         self.last = True
                     else:
                         self.last = False
 
-                    self.peperation_task(index)
+                    self.previous_and_next_node(index)
+                    self.generate_cmd()
+                    self.last_time = begin
+
+                    self.check_for_next_playlist()
                     break
 
-                self.begin += self.out - self.seek
+                begin += self.node['out'] - self.node['seek']
             else:
-                if stdin_args.loop:
-                    self.init_time = self.last_time + 1
-                    self.src_cmd = None
+                if stdin_args.loop and self.node:
+                    # when loop paramter is set and playlist node exists,
+                    # jump to playlist start and play again
+                    self.list_start = self.node['begin'] + (
+                        self.node['out'] - self.node['seek'])
+                    self.node = None
+                    messenger.info('Loop playlist')
+
                 elif not _playlist.length and not stdin_args.loop:
                     # when we reach playlist end, stop script
+                    # TODO: take next playlist, without sync check
                     messenger.info('Playlist reached end!')
                     return None
-                elif self.begin == self.init_time:
-                    # no clip was played, generate dummy
-                    messenger.error('Playlist is empty!')
-                    self.eof_handling(False)
-                else:
-                    # playlist is not long enough, play filler
-                    messenger.error('Playlist is not long enough!')
-                    self.eof_handling(True)
 
-            if self.src_cmd is not None:
-                yield self.src_cmd + self.filtergraph, self.node
+                elif begin == _playlist.start or not self.clip_nodes:
+                    # playlist not exist or is corrupt/empty
+                    messenger.error('Clip nodes are empty!')
+                    self.first = True
+                    self.last = False
+                    self.eof_handling(30, get_time('full_sec'))
+
+                else:
+                    messenger.error('Playlist not long enough!')
+                    self.first = False
+                    self.last = False
+                    self.eof_handling(60, begin)
+
+            if self.node:
+                yield self.node
