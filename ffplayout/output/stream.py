@@ -67,7 +67,7 @@ def output():
             get_source = GetSourceFromFolder(media)
 
         try:
-            for src_cmd, node in get_source.next():
+            for node in get_source.next():
                 if watcher is not None:
                     watcher.current_clip = node.get('source')
 
@@ -75,7 +75,7 @@ def output():
 
                 dec_cmd = ['ffmpeg', '-v', _log.ff_level.lower(),
                            '-hide_banner', '-nostats'
-                           ] + src_cmd + ff_pre_settings
+                           ] + node['src_cmd'] + ff_pre_settings
 
                 messenger.debug(f'Decoder CMD: "{" ".join(dec_cmd)}"')
 

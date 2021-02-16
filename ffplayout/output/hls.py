@@ -54,7 +54,7 @@ def output():
             get_source = GetSourceFromFolder(media)
 
         try:
-            for src_cmd, node in get_source.next():
+            for node in get_source.next():
                 if watcher is not None:
                     watcher.current_clip = node.get('source')
 
@@ -63,7 +63,7 @@ def output():
                 cmd = [
                     'ffmpeg', '-v', _log.ff_level.lower(), '-hide_banner',
                     '-nostats'
-                    ] + src_cmd + [
+                    ] + node['src_cmd'] + [
                         '-metadata', 'service_name=' + _playout.name,
                         '-metadata', 'service_provider=' + _playout.provider,
                         '-metadata', 'year={}'.format(year)
