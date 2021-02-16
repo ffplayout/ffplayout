@@ -241,14 +241,14 @@ def split_filter(filter_type):
     return _filter
 
 
-def custom_filter(probe, type, node):
+def custom_filter(type, node):
     filter_dir = os.path.dirname(os.path.abspath(__file__))
     filters = []
 
     for filter in glob(os.path.join(filter_dir, f'{type}_*')):
         filter = os.path.splitext(os.path.basename(filter))[0]
         filter_func = locate(f'ffplayout.filters.{filter}.filter')
-        link = filter_func(probe, node)
+        link = filter_func(node)
 
         if link is not None:
             filters.append(link)
@@ -256,7 +256,7 @@ def custom_filter(probe, type, node):
     return filters
 
 
-def build_filtergraph(node, node_last, node_next, duration, seek, out, probe):
+def build_filtergraph(node, node_last, node_next):
     """
     build final filter graph, with video and audio chain
     """
@@ -265,14 +265,19 @@ def build_filtergraph(node, node_last, node_next, duration, seek, out, probe):
     ad_last = is_advertisement(node_last)
     ad_next = is_advertisement(node_next)
 
+    duration = node['duration']
+    seek = node['seek']
+    out = node['out']
+    probe = node['probe']
+
     video_chain = []
     audio_chain = []
 
     if out > duration:
         seek = 0
 
-    if probe.video[0]:
-        custom_v_filter = custom_filter(probe, 'v', node)
+    if probe and probe.video[0]:
+        custom_v_filter = custom_filter('v', node)
         video_chain += text_filter()
         video_chain += deinterlace_filter(probe)
         video_chain += pad_filter(probe)
@@ -286,7 +291,7 @@ def build_filtergraph(node, node_last, node_next, duration, seek, out, probe):
         audio_chain += add_audio(probe, out - seek)
 
         if not audio_chain:
-            custom_a_filter = custom_filter(probe, 'a', node)
+            custom_a_filter = custom_filter('a', node)
 
             audio_chain.append('[0:a]anull')
             audio_chain += add_loudnorm(probe)
@@ -314,7 +319,7 @@ def build_filtergraph(node, node_last, node_next, duration, seek, out, probe):
     audio_filter = [
         '-filter_complex', f'{",".join(audio_chain)}{a_speed}{a_split}']
 
-    if probe.video[0]:
+    if probe and probe.video[0]:
         return video_filter + audio_filter + video_map + audio_map
     else:
         return video_filter + video_map + ['-map', '1:a']

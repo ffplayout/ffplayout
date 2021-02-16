@@ -1,7 +1,7 @@
 from ffplayout.utils import get_float, stdin_args
 
 
-def filter(probe, node=None):
+def filter(node):
     """
     set audio volume
     """
