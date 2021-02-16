@@ -186,12 +186,12 @@ class GetSourceFromFolder:
                         'source': self._media.store[0]
                     }
 
-                filtergraph = build_filtergraph(
+                self.node['src_cmd'] = ['-i', self._media.store[self.index]]
+                self.node['filter'] = build_filtergraph(
                     self.node, self.node_last, self.node_next, duration,
                     0.0, duration, self.probe)
 
-                yield ['-i', self._media.store[self.index]] + filtergraph, \
-                    self.node
+                yield self.node
                 self.index += 1
                 self.node_last = deepcopy(self.node)
             else:
