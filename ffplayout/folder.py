@@ -162,34 +162,30 @@ class GetSourceFromFolder:
                     duration = float(self.probe.format['duration'])
                     self.node = {
                         'in': 0,
+                        'seek': 0,
                         'out': duration,
                         'duration': duration,
-                        'source': self._media.store[self.index]
+                        'source': self._media.store[self.index],
+                        'probe': self.probe
                     }
-                if self.index + 1 < len(self._media.store):
+                if self.index < len(self._media.store) - 1:
                     self.next_probe.load(self._media.store[self.index + 1])
                     next_duration = float(self.next_probe.format['duration'])
                     self.node_next = {
                         'in': 0,
+                        'seek': 0,
                         'out': next_duration,
                         'duration': next_duration,
-                        'source': self._media.store[self.index + 1]
+                        'source': self._media.store[self.index + 1],
+                        'probe': self.next_probe
                     }
                 else:
                     self._media.rand()
-                    self.next_probe.load(self._media.store[0])
-                    next_duration = float(self.next_probe.format['duration'])
-                    self.node_next = {
-                        'in': 0,
-                        'out': next_duration,
-                        'duration': next_duration,
-                        'source': self._media.store[0]
-                    }
+                    self.node_next = None
 
                 self.node['src_cmd'] = ['-i', self._media.store[self.index]]
                 self.node['filter'] = build_filtergraph(
-                    self.node, self.node_last, self.node_next, duration,
-                    0.0, duration, self.probe)
+                    self.node, self.node_last, self.node_next)
 
                 yield self.node
                 self.index += 1
