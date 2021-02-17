@@ -63,7 +63,7 @@ def output():
                 cmd = [
                     'ffmpeg', '-v', _log.ff_level.lower(), '-hide_banner',
                     '-nostats'
-                    ] + node['src_cmd'] + [
+                    ] + node['src_cmd'] + node['filter'] + [
                         '-metadata', 'service_name=' + _playout.name,
                         '-metadata', 'service_provider=' + _playout.provider,
                         '-metadata', 'year={}'.format(year)

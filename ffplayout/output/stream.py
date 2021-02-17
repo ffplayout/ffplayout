@@ -73,9 +73,10 @@ def output():
 
                 messenger.info(f'Play: {node.get("source")}')
 
-                dec_cmd = ['ffmpeg', '-v', _log.ff_level.lower(),
-                           '-hide_banner', '-nostats'
-                           ] + node['src_cmd'] + ff_pre_settings
+                dec_cmd = [
+                    'ffmpeg', '-v', _log.ff_level.lower(),
+                    '-hide_banner', '-nostats'
+                    ] + node['src_cmd'] + node['filter'] + ff_pre_settings
 
                 messenger.debug(f'Decoder CMD: "{" ".join(dec_cmd)}"')
 
