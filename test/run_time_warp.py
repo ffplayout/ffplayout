@@ -33,7 +33,7 @@ def warp_time():
     stamp = time.time()
     duration = 0
     with time_machine.travel(stamp, tick=False) as traveller:
-        for src_cmd, node in get_source.next():
+        for node in get_source.next():
             duration = node['out'] - node['seek']
             messenger.info(f'Play: "{node["source"]}"')
 
