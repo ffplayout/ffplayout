@@ -201,7 +201,7 @@ def validate_thread(clip_nodes):
         probe = MediaProbe()
 
         # check if all values are valid
-        for node in json_nodes["program"]:
+        for node in json_nodes['program']:
             source = node.get('source')
             probe.load(source)
             missing = []
@@ -238,9 +238,13 @@ def validate_thread(clip_nodes):
 
         check_length(counter)
 
-    validate = Thread(name='check_json', target=check_json, args=(clip_nodes,))
-    validate.daemon = True
-    validate.start()
+    if clip_nodes.get('program') and len(clip_nodes.get('program')) > 0:
+        validate = Thread(
+            name='check_json', target=check_json, args=(clip_nodes,))
+        validate.daemon = True
+        validate.start()
+    else:
+        messenger.error('Validation error: playlist are empty')
 
 
 class PlaylistReader:
@@ -348,7 +352,8 @@ class GetSourceFromPlaylist:
         check if playlist length is 24 matches current length,
         to get the date for a new playlist
         """
-        # when we are in 24 hours range, we can get next playlist
+        if self.node is None:
+            return
 
         # calculate the length when current clip is done
         seek = self.node['seek'] if self.first else self.node['in']
