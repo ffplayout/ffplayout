@@ -296,7 +296,7 @@ class CustomFormatter(logging.Formatter):
                 r'("?/[\w.:/]+|["\w.:]+\\.*?)', self.magenta + r'\1', msg)
         elif re.search(r'\d', msg):
             msg = re.sub(
-                '([0-9.:-]+)', self.yellow + r'\1' + self.reset, msg)
+                '(-?[0-9.]+)', self.yellow + r'\1' + self.reset, msg)
 
         return msg
 
