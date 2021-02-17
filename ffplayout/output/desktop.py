@@ -64,7 +64,9 @@ def output():
                 if watcher is not None:
                     watcher.current_clip = node.get('source')
 
-                messenger.info(f'Play: {node.get("source")}')
+                messenger.info(
+                    f'Play for {node["out"] - node["seek"]:.2f} '
+                    f'seconds: {node.get("source")}')
 
                 dec_cmd = [
                     'ffmpeg', '-v', _log.ff_level.lower(),
