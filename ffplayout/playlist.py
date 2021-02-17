@@ -385,12 +385,12 @@ class GetSourceFromPlaylist:
             self.node['filter'] = build_filtergraph(self.node, self.prev_node,
                                                     self.next_node)
 
-    def eof_handling(self, duration, begin):
+    def eof_handling(self, duration):
         """
-        handle except scheduled playlist end
+        handle except playlist end
         """
-        node_ = {
-            'begin': begin,
+        self.node = {
+            'begin': get_time('full_sec'),
             'in': 0,
             'seek': 0,
             'out': duration,
@@ -398,7 +398,7 @@ class GetSourceFromPlaylist:
             'source': None
         }
 
-        self.node = timed_source(node_, self.first, self.last)
+        self.generate_cmd()
         self.check_for_next_playlist()
 
     def next(self):
@@ -467,13 +467,13 @@ class GetSourceFromPlaylist:
                     messenger.error('Clip nodes are empty!')
                     self.first = True
                     self.last = False
-                    self.eof_handling(30, get_time('full_sec'))
+                    self.eof_handling(30)
 
                 else:
                     messenger.error('Playlist not long enough!')
                     self.first = False
                     self.last = False
-                    self.eof_handling(60, begin)
+                    self.eof_handling(60)
 
             if self.node:
                 yield self.node
