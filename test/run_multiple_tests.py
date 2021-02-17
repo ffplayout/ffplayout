@@ -53,6 +53,7 @@ def run_time(seconds):
 
 
 def print_separater():
+    print('\n')
     print(79 * '-')
     print(79 * '-')
 
@@ -93,35 +94,35 @@ if __name__ == '__main__':
     from ffplayout.output import desktop
     from ffplayout.utils import (_playlist, terminate_processes)
 
+    print('\ntest playlists, which are empty')
+    _playlist.start = 0
+    run_time(140)
+    run_with_no_elements((2021, 2, 15, 23, 59, 33))
+
+    print_separater()
+
     print('\ntest playlists, which are to short')
     _playlist.start = 0
-    run_time(200)
+    run_time(140)
     run_with_less_elements((2021, 2, 15, 23, 58, 3))
 
     print_separater()
 
     print('\ntest playlists, which are to long')
     _playlist.start = 0
-    run_time(200)
+    run_time(140)
     run_with_more_elements((2021, 2, 15, 23, 59, 33))
-
-    print_separater()
-
-    print('\ntest playlists, which are empty')
-    _playlist.start = 0
-    run_time(200)
-    run_with_no_elements((2021, 2, 15, 23, 59, 33))
 
     print_separater()
 
     print('\ntest transition from playlists, with day_start at: 05:59:25')
     _playlist.start = 21575
-    run_time(200)
+    run_time(140)
     run_at((2021, 2, 17, 5, 58, 3))
 
     print_separater()
 
     print('\ntest transition from playlists, with day_start at: 20:00:00')
     _playlist.start = 72000
-    run_time(200)
+    run_time(140)
     run_at((2021, 2, 17, 19, 58, 23))
