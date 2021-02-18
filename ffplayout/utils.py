@@ -768,7 +768,7 @@ def gen_filler(node):
     """
     probe = MediaProbe()
     probe.load(_storage.filler)
-    duration = node['out'] - node['seek'] + 1
+    duration = node['out'] - node['seek']
 
     node['probe'] = probe
 
