@@ -4,6 +4,7 @@
 """
 Test script, for testing different situations, like:
     - different day_start times
+    - different situ where playlist is empty, not long enough or to long
 """
 
 import json
@@ -46,6 +47,7 @@ def run_time(seconds):
         print(f'run test for {seconds} seconds...')
         sleep(seconds)
         terminate_processes()
+        print('terminated successfully')
 
     terminator = Thread(name='timer', target=timer, args=(seconds,))
     terminator.daemon = True
@@ -92,12 +94,12 @@ def run_with_no_elements(time_tuple):
 
 if __name__ == '__main__':
     from ffplayout.output import desktop
-    from ffplayout.utils import (_playlist, terminate_processes)
+    from ffplayout.utils import _playlist, terminate_processes
 
     print('\ntest playlists, which are empty')
     _playlist.start = 0
     run_time(140)
-    run_with_no_elements((2021, 2, 15, 23, 59, 33))
+    run_with_no_elements((2021, 2, 15, 23, 59, 53))
 
     print_separater()
 
