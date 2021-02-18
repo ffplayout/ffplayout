@@ -46,7 +46,7 @@ def get_delta(begin):
     else:
         target_playtime = 86400.0
 
-    if begin == _playlist.start == 0:
+    if begin == _playlist.start == 0 and 86400.0 - current_time < 4:
         current_time -= target_playtime
 
     elif _playlist.start >= current_time and not begin == _playlist.start:
@@ -335,6 +335,7 @@ class GetSourceFromPlaylist:
             # set self.first to true to seek in clip
             # only in this situation seek in is correct!!
             self.first = True
+            self.last_error = self.playlist.error
 
         if self.playlist.nodes.get('program'):
             self.clip_nodes = self.playlist.nodes.get('program')
@@ -344,8 +345,7 @@ class GetSourceFromPlaylist:
             self.clip_nodes = []
             self.node_count = 0
             self.playlist.last_mod_time = 0.0
-
-        self.last_error = self.playlist.error
+            self.last_error = self.playlist.error
 
     def init_time(self):
         """
@@ -366,24 +366,23 @@ class GetSourceFromPlaylist:
         check if playlist length is 24 matches current length,
         to get the date for a new playlist
         """
-        if self.node is None:
-            # a node is necessary for calculation
-            return
+        # a node is necessary for calculation
+        if self.node is not None:
+            # calculate the length when current clip is done
+            seek = self.node['seek'] if self.first else self.node['in']
 
-        # calculate the length when current clip is done
-        seek = self.node['seek'] if self.first else self.node['in']
+            current_length = self.node['begin'] - _playlist.start + (
+                self.node['out'] - seek)
 
-        current_length = self.node['begin'] - _playlist.start + (
-            self.node['out'] - seek)
-
-        if _playlist.length and math.isclose(
-                _playlist.length, current_length, abs_tol=_general.threshold):
-            shift = self.node['out'] - seek
-            self.prev_date = get_date(False, shift)
-            self.playlist.list_date = self.prev_date
-            self.playlist.last_mod_time = 0.0
-            self.last_time = _playlist.start - 1
-            self.clip_nodes = []
+            if _playlist.length and math.isclose(_playlist.length,
+                                                 current_length,
+                                                 abs_tol=_general.threshold):
+                shift = self.node['out'] - seek
+                self.prev_date = get_date(False, shift)
+                self.playlist.list_date = self.prev_date
+                self.playlist.last_mod_time = 0.0
+                self.last_time = _playlist.start - 1
+                self.clip_nodes = []
 
     def previous_and_next_node(self, index):
         """
@@ -410,8 +409,16 @@ class GetSourceFromPlaylist:
         when playlist not exists, or is not long enough,
         fill the gap
         """
+        current_time = get_time('full_sec') - 86400
+        # balance small difference to start time
+        if _playlist.start is not None and \
+                math.isclose(_playlist.start, current_time, abs_tol=1.5):
+            begin = _playlist.start
+        else:
+            begin = get_time('full_sec')
+
         self.node = {
-            'begin': get_time('full_sec'),
+            'begin': begin,
             'number': 0,
             'in': 0,
             'seek': 0,
