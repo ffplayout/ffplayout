@@ -65,8 +65,8 @@ def get_delta(begin):
 
 def handle_list_init(current_delta, total_delta, node):
     """
-    # handle init clip, but this clip can be the last one in playlist,
-    # this we have to figure out and calculate the right length
+    handle init clip, but this clip can be the last one in playlist,
+    this we have to figure out and calculate the right length
     """
     new_seek = abs(current_delta) + node['seek']
     new_out = node['out']
@@ -100,6 +100,9 @@ def handle_list_end(new_length, node):
     new_out = node['out']
     messenger.debug('List end')
 
+    # make last clip always minimum a second long
+    new_length += 1
+
     if node['seek'] > 0:
         new_out = node['seek'] + new_length
     else:
@@ -108,7 +111,7 @@ def handle_list_end(new_length, node):
     if new_out > node['duration']:
         new_out = node['duration']
     else:
-        messenger.info(f'We are over time, new length is: {new_length:.2f}')
+        messenger.warning(f'We are over time, new length is: {new_length:.2f}')
 
     missing_secs = abs(new_length - (node['duration'] - node['seek']))
 
@@ -117,8 +120,7 @@ def handle_list_end(new_length, node):
         node['out'] = new_out
         node = src_or_dummy(node)
     elif node['duration'] > new_length > 0.0:
-        time.sleep(new_length)
-        messenger.info(
+        messenger.warning(
             f'Last clip less then 1 second long, skip:\n{node["source"]}')
         node = None
 
@@ -307,6 +309,7 @@ class GetSourceFromPlaylist:
     """
 
     def __init__(self):
+        self.prev_date = get_date(True)
         self.list_start = _playlist.start
         self.first = True
         self.last = False
@@ -316,6 +319,7 @@ class GetSourceFromPlaylist:
         self.prev_node = None
         self.next_node = None
         self.playlist = PlaylistReader(get_date(True), 0.0)
+        self.last_error = False
 
     def get_playlist(self):
         """
@@ -323,6 +327,14 @@ class GetSourceFromPlaylist:
         when playlist is not available, reset relevant values
         """
         self.playlist.read()
+
+        if self.last_error and not self.playlist.error and \
+                self.playlist.list_date == self.prev_date:
+            # when last playlist where not exists but now is there and
+            # is still the same playlist date,
+            # set self.first to true to seek in clip
+            # only in this situation seek in is correct!!
+            self.first = True
 
         if self.playlist.nodes.get('program'):
             self.clip_nodes = self.playlist.nodes.get('program')
@@ -332,6 +344,8 @@ class GetSourceFromPlaylist:
             self.clip_nodes = []
             self.node_count = 0
             self.playlist.last_mod_time = 0.0
+
+        self.last_error = self.playlist.error
 
     def init_time(self):
         """
@@ -353,6 +367,7 @@ class GetSourceFromPlaylist:
         to get the date for a new playlist
         """
         if self.node is None:
+            # a node is necessary for calculation
             return
 
         # calculate the length when current clip is done
@@ -361,11 +376,11 @@ class GetSourceFromPlaylist:
         current_length = self.node['begin'] - _playlist.start + (
             self.node['out'] - seek)
 
-        if _playlist.length and self.node and math.isclose(
+        if _playlist.length and math.isclose(
                 _playlist.length, current_length, abs_tol=_general.threshold):
-
             shift = self.node['out'] - seek
-            self.playlist.list_date = get_date(False, shift)
+            self.prev_date = get_date(False, shift)
+            self.playlist.list_date = self.prev_date
             self.playlist.last_mod_time = 0.0
             self.last_time = _playlist.start - 1
             self.clip_nodes = []
@@ -390,12 +405,14 @@ class GetSourceFromPlaylist:
             self.node['filter'] = build_filtergraph(self.node, self.prev_node,
                                                     self.next_node)
 
-    def eof_handling(self, duration):
+    def fill_the_gap(self, duration):
         """
-        handle except playlist end
+        when playlist not exists, or is not long enough,
+        fill the gap
         """
         self.node = {
             'begin': get_time('full_sec'),
+            'number': 0,
             'in': 0,
             'seek': 0,
             'out': duration,
@@ -405,6 +422,28 @@ class GetSourceFromPlaylist:
 
         self.generate_cmd()
         self.check_for_next_playlist()
+
+    def eof_handling(self, begin):
+        """
+        handle except playlist end
+        """
+        if stdin_args.loop and self.node:
+            # when loop paramter is set and playlist node exists,
+            # jump to playlist start and play again
+            self.list_start = self.node['begin'] + (
+                self.node['out'] - self.node['seek'])
+            self.node = None
+            messenger.info('Loop playlist')
+
+        elif begin == _playlist.start or not self.clip_nodes:
+            # playlist not exist or is corrupt/empty
+            messenger.error('Clip nodes are empty!')
+            self.first = False
+            self.fill_the_gap(30)
+
+        else:
+            messenger.error('Playlist not long enough!')
+            self.fill_the_gap(60)
 
     def next(self):
         """
@@ -453,32 +492,13 @@ class GetSourceFromPlaylist:
 
                 begin += self.node['out'] - self.node['seek']
             else:
-                if stdin_args.loop and self.node:
-                    # when loop paramter is set and playlist node exists,
-                    # jump to playlist start and play again
-                    self.list_start = self.node['begin'] + (
-                        self.node['out'] - self.node['seek'])
-                    self.node = None
-                    messenger.info('Loop playlist')
-
-                elif not _playlist.length and not stdin_args.loop:
+                if not _playlist.length and not stdin_args.loop:
                     # when we reach playlist end, stop script
                     # TODO: take next playlist, without sync check
                     messenger.info('Playlist reached end!')
                     return None
-
-                elif begin == _playlist.start or not self.clip_nodes:
-                    # playlist not exist or is corrupt/empty
-                    messenger.error('Clip nodes are empty!')
-                    self.first = True
-                    self.last = False
-                    self.eof_handling(30)
-
                 else:
-                    messenger.error('Playlist not long enough!')
-                    self.first = False
-                    self.last = False
-                    self.eof_handling(60)
+                    self.eof_handling(begin)
 
             if self.node:
                 yield self.node
