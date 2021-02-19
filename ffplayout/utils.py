@@ -635,6 +635,10 @@ def terminate_processes(watcher=None):
 
 
 def ffmpeg_stderr_reader(std_errors, decoder):
+    """
+    read fmpeg stderr decoder and encoder instance
+    and log the output
+    """
     if decoder:
         logger = decoder_logger
         prefix = DEC_PREFIX
