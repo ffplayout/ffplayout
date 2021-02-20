@@ -398,7 +398,8 @@ class GetSourceFromPlaylist:
                 math.isclose(_playlist.start, current_time, abs_tol=1.5):
             begin = _playlist.start
         else:
-            begin = get_time('full_sec')
+            self.init_time()
+            begin = self.last_time
 
         self.node = {
             'begin': begin,
