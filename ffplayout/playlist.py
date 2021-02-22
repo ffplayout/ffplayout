@@ -387,10 +387,10 @@ class GetSourceFromPlaylist:
             self.node['filter'] = build_filtergraph(self.node, self.prev_node,
                                                     self.next_node)
 
-    def fill_the_gap(self, duration):
+    def generate_placeholder(self, duration):
         """
         when playlist not exists, or is not long enough,
-        fill the gap
+        generate a placeholder node
         """
         current_time = get_time('full_sec') - 86400
         # balance small difference to start time
@@ -430,11 +430,11 @@ class GetSourceFromPlaylist:
             # playlist not exist or is corrupt/empty
             messenger.error('Clip nodes are empty!')
             self.first = False
-            self.fill_the_gap(30)
+            self.generate_placeholder(30)
 
         else:
             messenger.error('Playlist not long enough!')
-            self.fill_the_gap(60)
+            self.generate_placeholder(60)
 
     def next(self):
         """
@@ -485,7 +485,6 @@ class GetSourceFromPlaylist:
             else:
                 if not _playlist.length and not stdin_args.loop:
                     # when we reach playlist end, stop script
-                    # TODO: take next playlist, without sync check
                     messenger.info('Playlist reached end!')
                     return None
                 else:
