@@ -38,16 +38,15 @@ def handle_list_init(node):
     handle init clip, but this clip can be the last one in playlist,
     this we have to figure out and calculate the right length
     """
-    delta, total_delta = get_delta(node['begin'])
+    messenger.debug('List init')
 
+    delta, total_delta = get_delta(node['begin'])
     seek = abs(delta) + node['seek'] if abs(delta) + node['seek'] >= 1 else 0
 
     if node['out'] - seek > total_delta:
         out = total_delta + seek
     else:
         out = node['out']
-
-    messenger.debug('List init')
 
     if out - seek > 1:
         node['out'] = out
@@ -66,10 +65,10 @@ def handle_list_end(duration, node):
     or when we reached total playtime,
     we end up here
     """
+    messenger.debug('List end')
+
     duration += 1
     out = node['seek'] + duration if node['seek'] > 0 else duration
-
-    messenger.debug('List end')
 
     # prevent looping
     if out > node['duration']:
@@ -318,17 +317,18 @@ class GetSourceFromPlaylist:
         """
         # a node is necessary for calculation
         if self.node is not None:
-            # calculate the length when current clip is done
-            seek = self.node['seek'] if self.first else self.node['in']
+            seek = self.node['seek'] if self.node['seek'] > 0 else 0
+            delta, total_delta = get_delta(self.node['begin'])
+            delta += seek
+            out = self.node['out']
 
-            current_length = self.node['begin'] - _playlist.start + (
-                self.node['out'] - seek)
+            if self.node['duration'] > self.node['out']:
+                out = self.node['duration']
 
-            if _playlist.length and isclose(_playlist.length, current_length,
-                                            abs_tol=2):
+            next_start = self.node['begin'] - _playlist.start + out + delta + 1
 
-                self.prev_date = get_date(False, self.node['begin'],
-                                          self.node['out'] - seek)
+            if _playlist.length and next_start >= _playlist.length:
+                self.prev_date = get_date(False, next_start)
                 self.playlist.list_date = self.prev_date
                 self.playlist.last_mod_time = 0.0
                 self.last_time = _playlist.start - 1
@@ -424,10 +424,12 @@ class GetSourceFromPlaylist:
                 # first time we end up here
                 if self.first:
                     self.init_time()
+                    out = self.node['out']
 
-                    if self.last_time < \
-                            begin + self.node['out'] - self.node['seek']:
+                    if self.node['duration'] > self.node['out']:
+                        out = self.node['duration']
 
+                    if self.last_time < begin + out - self.node['seek']:
                         self.previous_and_next_node(index)
                         self.node = handle_list_init(self.node)
                         if self.node:
