@@ -15,7 +15,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # set time zone
 _TZ = ZoneInfo("Europe/Berlin")
 # fake date and time
-SOURCE_TIME = [2021, 2, 15, 5, 59, 21]
+SOURCE_TIME = [2021, 2, 27, 23, 55, 0]
 
 
 @time_machine.travel(datetime.datetime(*SOURCE_TIME, tzinfo=_TZ))
@@ -29,7 +29,7 @@ def main():
 
 
 if __name__ == '__main__':
-    from ffplayout.list_reader import GetSourceFromPlaylist
+    from ffplayout.playlist import GetSourceFromPlaylist
     from ffplayout.utils import messenger
     try:
         main()
