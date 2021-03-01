@@ -17,57 +17,29 @@
 
 # ------------------------------------------------------------------------------
 
-import math
 import os
 import socket
 import time
 from copy import deepcopy
 from datetime import timedelta
+from math import isclose
 from threading import Thread
 
 import requests
 
 from .filters.default import build_filtergraph
-from .utils import (MediaProbe, _general, _playlist, check_sync, get_date,
+from .utils import (MediaProbe, _playlist, check_sync, get_date, get_delta,
                     get_float, get_time, messenger, src_or_dummy, stdin_args,
-                    str_to_sec, valid_json)
+                    valid_json)
 
 
-def get_delta(begin):
-    """
-    get difference between current time and begin from clip in playlist
-    """
-    current_time = get_time('full_sec')
-
-    if stdin_args.length and str_to_sec(stdin_args.length):
-        target_playtime = str_to_sec(stdin_args.length)
-    elif _playlist.length:
-        target_playtime = _playlist.length
-    else:
-        target_playtime = 86400.0
-
-    if begin == _playlist.start == 0 and 86400.0 - current_time < 4:
-        current_time -= target_playtime
-
-    elif _playlist.start >= current_time and not begin == _playlist.start:
-        current_time += target_playtime
-
-    current_delta = begin - current_time
-
-    if math.isclose(current_delta, 86400.0, abs_tol=6):
-        current_delta -= 86400.0
-
-    ref_time = target_playtime + _playlist.start
-    total_delta = ref_time - begin + current_delta
-
-    return current_delta, total_delta
-
-
-def handle_list_init(delta, total_delta, node):
+def handle_list_init(node):
     """
     handle init clip, but this clip can be the last one in playlist,
     this we have to figure out and calculate the right length
     """
+    delta, total_delta = get_delta(node['begin'])
+
     seek = abs(delta) + node['seek'] if abs(delta) + node['seek'] >= 1 else 0
 
     if node['out'] - seek > total_delta:
@@ -78,9 +50,14 @@ def handle_list_init(delta, total_delta, node):
     messenger.debug('List init')
 
     if out - seek > 1:
-        return seek, out
+        node['out'] = out
+        node['seek'] = seek
+        return src_or_dummy(node)
     else:
-        return 0, 0
+        messenger.warning(
+            f'Clip less then a second, skip:\n{node["source"]}')
+
+        return None
 
 
 def handle_list_end(duration, node):
@@ -124,7 +101,7 @@ def handle_list_end(duration, node):
     return node
 
 
-def timed_source(node, first, last):
+def timed_source(node, last):
     """
     prepare input clip
     check begin and length from clip
@@ -133,31 +110,21 @@ def timed_source(node, first, last):
     delta, total_delta = get_delta(node['begin'])
     node_ = None
 
-    if first:
-        node['seek'], node['out'] = handle_list_init(delta, total_delta, node)
+    if not stdin_args.loop and _playlist.length:
+        messenger.debug(f'delta: {delta:f}')
+        messenger.debug(f'total_delta: {total_delta:f}')
+        check_sync(delta)
 
-        if node['out'] > 1.0:
-            node_ = src_or_dummy(node)
-        else:
-            messenger.warning(
-                f'Clip less then a second, skip:\n{node["source"]}')
+    if (total_delta > node['out'] - node['seek'] and not last) \
+            or stdin_args.loop or not _playlist.length:
+        # when we are in the 24 houre range, get the clip
+        node_ = src_or_dummy(node)
 
-    else:
-        if not stdin_args.loop and _playlist.length:
-            messenger.debug(f'delta: {delta:f}')
-            messenger.debug(f'total_delta: {total_delta:f}')
-            check_sync(delta)
+    elif total_delta <= 0:
+        messenger.info(f'Begin is over play time, skip:\n{node["source"]}')
 
-        if (total_delta > node['out'] - node['seek'] and not last) \
-                or stdin_args.loop or not _playlist.length:
-            # when we are in the 24 houre range, get the clip
-            node_ = src_or_dummy(node)
-
-        elif total_delta <= 0:
-            messenger.info(f'Begin is over play time, skip:\n{node["source"]}')
-
-        elif total_delta < node['out'] - node['seek'] or last:
-            node_ = handle_list_end(total_delta, node)
+    elif total_delta < node['duration'] - node['seek'] or last:
+        node_ = handle_list_end(total_delta, node)
 
     return node_
 
@@ -346,7 +313,7 @@ class GetSourceFromPlaylist:
 
     def check_for_next_playlist(self):
         """
-        check if playlist length is 24 matches current length,
+        check if playlist length is 24 hours and matches current length,
         to get the date for a new playlist
         """
         # a node is necessary for calculation
@@ -357,11 +324,11 @@ class GetSourceFromPlaylist:
             current_length = self.node['begin'] - _playlist.start + (
                 self.node['out'] - seek)
 
-            if _playlist.length and math.isclose(_playlist.length,
-                                                 current_length,
-                                                 abs_tol=_general.threshold):
-                shift = self.node['out'] - seek
-                self.prev_date = get_date(False, shift)
+            if _playlist.length and isclose(_playlist.length, current_length,
+                                            abs_tol=2):
+
+                self.prev_date = get_date(False, self.node['begin'],
+                                          self.node['out'] - seek)
                 self.playlist.list_date = self.prev_date
                 self.playlist.last_mod_time = 0.0
                 self.last_time = _playlist.start - 1
@@ -382,7 +349,7 @@ class GetSourceFromPlaylist:
         """
         extend clip node with ffmpeg source cmd and filters
         """
-        self.node = timed_source(self.node, self.first, self.last)
+        self.node = timed_source(self.node, self.last)
         if self.node:
             self.node['filter'] = build_filtergraph(self.node, self.prev_node,
                                                     self.next_node)
@@ -394,8 +361,8 @@ class GetSourceFromPlaylist:
         """
         current_time = get_time('full_sec') - 86400
         # balance small difference to start time
-        if _playlist.start is not None and \
-                math.isclose(_playlist.start, current_time, abs_tol=1.5):
+        if _playlist.start is not None and isclose(_playlist.start,
+                                                   current_time, abs_tol=2):
             begin = _playlist.start
         else:
             self.init_time()
@@ -462,7 +429,10 @@ class GetSourceFromPlaylist:
                             begin + self.node['out'] - self.node['seek']:
 
                         self.previous_and_next_node(index)
-                        self.generate_cmd()
+                        self.node = handle_list_init(self.node)
+                        if self.node:
+                            self.node['filter'] = build_filtergraph(
+                                self.node, self.prev_node, self.next_node)
                         self.first = False
                         self.last_time = begin
 
