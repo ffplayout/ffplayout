@@ -688,19 +688,17 @@ def get_delta(begin):
     return current_delta, total_delta
 
 
-def get_date(seek_day, begin=0, duration=0):
+def get_date(seek_day, next_start=0):
     """
     get date for correct playlist,
     when seek_day is set:
     check if playlist date must be from yesterday
     """
     d = date.today()
-    delta, total_delta = get_delta(begin)
-    diff = 86400 - (get_time('full_sec') + duration) - delta
 
-    if seek_day and get_time('full_sec') < _playlist.start:
+    if seek_day and _playlist.start > get_time('full_sec'):
         return (d - timedelta(1)).strftime('%Y-%m-%d')
-    elif _playlist.start == 0 and diff < 2:
+    elif _playlist.start == 0 and next_start >= 86400:
         return (d + timedelta(1)).strftime('%Y-%m-%d')
     else:
         return d.strftime('%Y-%m-%d')
