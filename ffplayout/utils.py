@@ -658,20 +658,49 @@ def ffmpeg_stderr_reader(std_errors, decoder):
         pass
 
 
-def get_date(seek_day, shift=0):
+def get_delta(begin):
+    """
+    get difference between current time and begin from clip in playlist
+    """
+    current_time = get_time('full_sec')
+
+    if stdin_args.length and str_to_sec(stdin_args.length):
+        target_playtime = str_to_sec(stdin_args.length)
+    elif _playlist.length:
+        target_playtime = _playlist.length
+    else:
+        target_playtime = 86400.0
+
+    if begin == _playlist.start == 0 and 86400.0 - current_time < 4:
+        current_time -= target_playtime
+
+    elif _playlist.start >= current_time and not begin == _playlist.start:
+        current_time += target_playtime
+
+    current_delta = begin - current_time
+
+    if math.isclose(current_delta, 86400.0, abs_tol=6):
+        current_delta -= 86400.0
+
+    ref_time = target_playtime + _playlist.start
+    total_delta = ref_time - begin + current_delta
+
+    return current_delta, total_delta
+
+
+def get_date(seek_day, begin=0, duration=0):
     """
     get date for correct playlist,
     when seek_day is set:
     check if playlist date must be from yesterday
     """
     d = date.today()
-    if shift:
-        d + timedelta(seconds=shift + _general.threshold)
+    delta, total_delta = get_delta(begin)
+    diff = 86400 - (get_time('full_sec') + duration) - delta
 
     if seek_day and get_time('full_sec') < _playlist.start:
         return (d - timedelta(1)).strftime('%Y-%m-%d')
-    elif _playlist.start == 0 and \
-            86400 - (get_time('full_sec') + shift) < 2:
+    elif _playlist.start == 0 and diff < 2:
         return (d + timedelta(1)).strftime('%Y-%m-%d')
     else:
         return d.strftime('%Y-%m-%d')
