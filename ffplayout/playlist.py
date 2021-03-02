@@ -67,14 +67,14 @@ def handle_list_end(duration, node):
     """
     messenger.debug('List end')
 
-    duration += 1
     out = node['seek'] + duration if node['seek'] > 0 else duration
 
     # prevent looping
     if out > node['duration']:
         out = node['duration']
     else:
-        messenger.warning(f'We are over time, new duration is: {duration:.2f}')
+        messenger.warning(
+            f'Clip length is not in time, new duration is: {duration:.2f}')
 
     missing_secs = abs(duration - (node['duration'] - node['seek']))
 
