@@ -315,17 +315,19 @@ class GetSourceFromPlaylist:
         check if playlist length is 24 hours and matches current length,
         to get the date for a new playlist
         """
-        # a node is necessary for calculation
         if self.node is not None:
-            seek = self.node['seek'] if self.node['seek'] > 0 else 0
-            delta, total_delta = get_delta(self.node['begin'])
-            delta += seek
             out = self.node['out']
+            delta = 0
 
             if self.node['duration'] > self.node['out']:
                 out = self.node['duration']
 
-            next_start = self.node['begin'] - _playlist.start + out + delta + 1
+            if self.last:
+                seek = self.node['seek'] if self.node['seek'] > 0 else 0
+                delta, total_delta = get_delta(self.node['begin'])
+                delta += seek + 1
+
+            next_start = self.node['begin'] - _playlist.start + out + delta
 
             if _playlist.length and next_start >= _playlist.length:
                 self.prev_date = get_date(False, next_start)
