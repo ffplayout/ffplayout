@@ -28,9 +28,9 @@ from threading import Thread
 import requests
 
 from .filters.default import build_filtergraph
-from .utils import (MediaProbe, _playlist, check_sync, get_date, get_delta,
-                    get_float, get_time, messenger, src_or_dummy, stdin_args,
-                    valid_json)
+from .utils import (MediaProbe, _general, _playlist, check_sync, get_date,
+                    get_delta, get_float, get_time, messenger, src_or_dummy,
+                    stdin_args, valid_json)
 
 
 def handle_list_init(node):
@@ -76,8 +76,6 @@ def handle_list_end(duration, node):
         messenger.warning(
             f'Clip length is not in time, new duration is: {duration:.2f}')
 
-    missing_secs = abs(duration - (node['duration'] - node['seek']))
-
     if node['duration'] > duration > 1 and \
             node['duration'] - node['seek'] >= duration:
         node['out'] = out
@@ -86,16 +84,12 @@ def handle_list_end(duration, node):
         messenger.warning(
             f'Last clip less then 1 second long, skip:\n{node["source"]}')
         node = None
-
-        if missing_secs > 2:
-            messenger.error(
-                f'Reach playlist end,\n{missing_secs:.2f} seconds needed.')
     else:
+        missing_secs = abs(duration - (node['duration'] - node['seek']))
+        messenger.error(
+            f'Playlist is not long enough:\n{missing_secs:.2f} seconds needed')
         out = node['out']
         node = src_or_dummy(node)
-        messenger.error(
-            f'Playlist is not long enough:\n{missing_secs:.2f} seconds needed.'
-            )
 
     return node
 
@@ -310,7 +304,7 @@ class GetSourceFromPlaylist:
         if self.last_time < _playlist.start:
             self.last_time += total_playtime
 
-    def check_for_next_playlist(self):
+    def check_for_next_playlist(self, begin):
         """
         check if playlist length is 24 hours and matches current length,
         to get the date for a new playlist
@@ -324,17 +318,21 @@ class GetSourceFromPlaylist:
 
             if self.last:
                 seek = self.node['seek'] if self.node['seek'] > 0 else 0
-                delta, total_delta = get_delta(self.node['begin'])
+                delta, total_delta = get_delta(begin)
                 delta += seek + 1
 
-            next_start = self.node['begin'] - _playlist.start + out + delta
+            next_start = begin - _playlist.start + out + delta
 
-            if _playlist.length and next_start >= _playlist.length:
-                self.prev_date = get_date(False, next_start)
-                self.playlist.list_date = self.prev_date
-                self.playlist.last_mod_time = 0.0
-                self.last_time = _playlist.start - 1
-                self.clip_nodes = []
+        else:
+            delta, total_delta = get_delta(begin)
+            next_start = begin - _playlist.start + _general.threshold + delta
+
+        if _playlist.length and next_start >= _playlist.length:
+            self.prev_date = get_date(False, next_start)
+            self.playlist.list_date = self.prev_date
+            self.playlist.last_mod_time = 0.0
+            self.last_time = _playlist.start - 1
+            self.clip_nodes = []
 
     def previous_and_next_node(self, index):
         """
@@ -381,7 +379,7 @@ class GetSourceFromPlaylist:
         }
 
         self.generate_cmd()
-        self.check_for_next_playlist()
+        self.check_for_next_playlist(begin)
 
     def eof_handling(self, begin):
         """
@@ -440,7 +438,7 @@ class GetSourceFromPlaylist:
                         self.first = False
                         self.last_time = begin
 
-                        self.check_for_next_playlist()
+                        self.check_for_next_playlist(begin)
                         break
                 elif self.last_time < begin:
                     if index == self.node_count - 1:
@@ -452,7 +450,7 @@ class GetSourceFromPlaylist:
                     self.generate_cmd()
                     self.last_time = begin
 
-                    self.check_for_next_playlist()
+                    self.check_for_next_playlist(begin)
                     break
 
                 begin += self.node['out'] - self.node['seek']
