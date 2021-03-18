@@ -152,7 +152,7 @@
                                                 {{ file.file }}
                                             </b-col>
                                             <b-col cols="1" class="browser-play-col">
-                                                <b-link @click="showModal(`/${folderTree.tree[0]}/${file.file}`)">
+                                                <b-link @click="showPreviewModal(`/${folderTree.tree[0]}/${file.file}`)">
                                                     <b-icon-play-fill />
                                                 </b-link>
                                             </b-col>
@@ -168,7 +168,7 @@
                 </pane>
                 <pane>
                     <div class="playlist-container">
-                        <b-list-group>
+                        <b-list-group class="list-group-header">
                             <b-list-group-item>
                                 <b-row class="playlist-row">
                                     <b-col cols="1" class="timecode">
@@ -222,7 +222,7 @@
                                                 {{ item.source | filename }}
                                             </b-col>
                                             <b-col cols="1" class="text-center playlist-input">
-                                                <b-link @click="showModal(item.source)">
+                                                <b-link @click="showPreviewModal(item.source)">
                                                     <b-icon-play-fill />
                                                 </b-link>
                                             </b-col>
@@ -344,7 +344,7 @@ export default {
     },
 
     computed: {
-        ...mapState('config', ['configGui', 'configPlayout']),
+        ...mapState('config', ['configID', 'configGui', 'configPlayout']),
         ...mapState('media', ['crumbs', 'folderTree']),
         ...mapState('playlist', ['timeStr', 'timeLeft', 'currentClip', 'progressValue', 'currentClipIndex', 'currentClipDuration', 'currentClipIn', 'currentClipOut']),
         playlist: {
@@ -419,23 +419,33 @@ export default {
             this.isLoading = false
         },
         async getStatus () {
-            const status = await this.$axios.post('api/player/system/', { run: 'status' })
+            const engine = this.configGui[this.configID].engine_service.split('/').slice(-1)[0].split('.')[0]
+            const status = await this.$axios.post('api/player/system/', { run: 'status', engine })
 
-            if (status.data.data && status.data.data === 'active') {
+            if (status.data.data && status.data.data === 'RUNNING') {
                 this.isPlaying = 'is-playing'
             } else {
                 this.isPlaying = ''
             }
         },
         async playoutControl (state) {
-            await this.$axios.post('api/player/system/', { run: state })
+            const engine = this.configGui[this.configID].engine_service.split('/').slice(-1)[0].split('.')[0]
+            await this.$axios.post('api/player/system/', { run: state, engine })
 
             setTimeout(() => { this.getStatus() }, 1000)
         },
         async getPlaylist () {
-            await this.$store.dispatch('playlist/getPlaylist', { dayStart: this.configPlayout.playlist.day_start, date: this.listDate })
+            await this.$store.dispatch('playlist/getPlaylist', {
+                dayStart: this.configPlayout.playlist.day_start,
+                date: this.listDate,
+                configPath: this.configGui[this.configID].playout_config
+            })
         },
-        showModal (src) {
+        showPreviewModal (src) {
+            const storagePath = this.configPlayout.storage.path
+            const storagePathArr = storagePath.split('/')
+            const storageRoot = storagePathArr.pop()
+            src = '/' + src.substring(src.indexOf(storageRoot))
             this.previewSource = src.split('/').slice(-1)[0]
             const ext = this.previewSource.split('.').slice(-1)[0]
             this.previewOptions = {
@@ -454,15 +464,13 @@ export default {
             this.$root.$emit('bv::show::modal', 'preview-modal')
         },
         cloneClip ({ file, duration }) {
-            let subPath
-            if (this.folderTree.tree[0].includes('/')) {
-                subPath = this.folderTree.tree[0].replace(/.*\//, '') + '/'
-            } else {
-                subPath = ''
-            }
+            const storagePath = this.configPlayout.storage.path
+            const storagePathArr = storagePath.split('/')
+            const storageRoot = storagePathArr.pop()
+            const sourcePath = `${storagePathArr.join('/')}/${this.folderTree.tree[0].substring(this.folderTree.tree[0].indexOf(storageRoot))}`
 
             return {
-                source: `${this.configPlayout.storage.path}/${subPath}${file}`,
+                source: `${sourcePath}/${file}`,
                 in: 0,
                 out: duration,
                 duration
@@ -499,7 +507,10 @@ export default {
 
             await this.$axios.post(
                 'api/player/playlist/',
-                { data: { channel: this.$store.state.config.configGui.channel, date: saveDate, program: saveList } }
+                {
+                    data: { channel: this.$store.state.config.configGui.channel, date: saveDate, program: saveList },
+                    config_path: this.configGui[this.configID].playout_config
+                }
             )
         },
         showCopyModal () {
@@ -705,8 +716,16 @@ export default {
     border-color: #515763;
 }
 
+.list-group-header {
+    height: 46px;
+}
+
 .playlist-list-group, #playlist-group {
     height: 100%;
+}
+
+#scroll-container {
+    height: calc(100% - 46px);
 }
 
 .playlist-item:nth-of-type(even), .playlist-item:nth-of-type(even) div .timecode input {
