@@ -49,7 +49,7 @@ export const mutations = {
 }
 
 export const actions = {
-    async getPlaylist ({ commit, dispatch, state, rootState }, { dayStart, date }) {
+    async getPlaylist ({ commit, dispatch, state, rootState }, { dayStart, date, configPath }) {
         const timeInSec = this.$timeToSeconds(this.$dayjs().format('HH:mm:ss'))
         let dateToday = this.$dayjs().format('YYYY-MM-DD')
 
@@ -57,7 +57,7 @@ export const actions = {
             dateToday = this.$dayjs(dateToday).subtract(1, 'day').format('YYYY-MM-DD')
         }
 
-        const response = await this.$axios.get(`api/player/playlist/?date=${date}`)
+        const response = await this.$axios.get(`api/player/playlist/?date=${date}&config_path=${configPath}`)
 
         if (response.data && response.data.program) {
             commit('UPDATE_PLAYLIST', this.$processPlaylist(dayStart, response.data.program))

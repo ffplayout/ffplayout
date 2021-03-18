@@ -17,10 +17,12 @@ export const mutations = {
 }
 
 export const actions = {
-    async getTree ({ commit, dispatch, state }, { extensions, path }) {
+    async getTree ({ commit, dispatch, state, rootState }, { extensions, path }) {
         const crumbs = []
         let root = '/'
-        const response = await this.$axios.get(`api/player/media/?extensions=${extensions}&path=${path}`)
+        const configPath = rootState.config.configGui[rootState.config.configID].playout_config
+        const response = await this.$axios.get(
+            `api/player/media/?extensions=${extensions}&config_path=${configPath}&path=${path}`)
 
         if (response.data.tree) {
             const pathArr = response.data.tree[0].split('/')

@@ -297,12 +297,12 @@ export default {
     },
 
     computed: {
-        ...mapState('config', ['configGui', 'configPlayout']),
+        ...mapState('config', ['configID', 'configGui', 'configPlayout']),
         ...mapState('media', ['crumbs', 'folderTree'])
     },
 
     created () {
-        this.extensions = [...this.configPlayout.storage.extensions, ...this.configGui.extra_extensions].join(',')
+        this.extensions = [...this.configPlayout.storage.extensions, ...this.configGui[this.configID].extra_extensions].join(',')
         this.getPath(this.extensions, '')
     },
 
@@ -354,7 +354,11 @@ export default {
 
             await this.$axios.post(
                 'api/player/media/op/',
-                { folder: this.folderName, path: this.crumbs.map(e => e.text).join('/') }
+                {
+                    folder: this.folderName,
+                    path: this.crumbs.map(e => e.text).join('/'),
+                    config_path: this.configGui[this.configID].playout_config
+                }
             )
 
             this.$root.$emit('bv::hide::modal', 'folder-modal')
@@ -389,6 +393,8 @@ export default {
                 this.currentProgress = progress
             }
 
+            const configPath = this.configGui[this.configID].playout_config
+
             for (const [i, file] of this.inputFiles.entries()) {
                 this.uploadTask = file.name
 
@@ -399,7 +405,7 @@ export default {
                 }
 
                 await this.$axios.put(
-                    `api/player/media/upload/${encodeURIComponent(file.name)}?path=${encodeURIComponent(this.crumbs.map(e => e.text).join('/'))}`,
+                    `api/player/media/upload/${encodeURIComponent(file.name)}?path=${encodeURIComponent(this.crumbs.map(e => e.text).join('/'))}&config_path=${configPath}`,
                     file,
                     config
                 )
