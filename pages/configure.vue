@@ -321,12 +321,20 @@ export default {
         async deleteChannel () {
             const config = JSON.parse(JSON.stringify(this.configGui))
             const id = config[this.configID].id
+
+            if (id === 1) {
+                this.alertVariant = 'warning'
+                this.alertMsg = 'First channel can not be deleted!'
+                this.showAlert = true
+                return
+            }
             const response = await this.$axios.delete(`api/player/guisettings/${id}/`)
 
             config.splice(this.configID, 1)
 
             this.$store.commit('config/UPDATE_GUI_CONFIG', config)
             this.$store.commit('config/UPDATE_CONFIG_ID', this.configGui.length - 1)
+            await this.$store.dispatch('config/getPlayoutConfig')
 
             if (response.status === 204) {
                 this.alertVariant = 'success'
