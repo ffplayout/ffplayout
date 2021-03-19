@@ -92,7 +92,7 @@ export const actions = {
         }
     },
 
-    async setGuiConfig ({ commit, state }, obj) {
+    async setGuiConfig ({ commit, state, dispatch }, obj) {
         const stringObj = JSON.parse(JSON.stringify(obj))
         stringObj.extra_extensions = stringObj.extra_extensions.join(',')
         let response
@@ -101,6 +101,22 @@ export const actions = {
             response = await this.$axios.put(`api/player/guisettings/${obj.id}/`, stringObj)
         } else {
             response = await this.$axios.post('api/player/guisettings/', stringObj)
+            const guiConfigs = []
+
+            for (const obj of state.configGui) {
+                if (obj.channel === stringObj.channel) {
+                    response.data.extra_extensions = response.data.extra_extensions.split(',')
+                    guiConfigs.push(response.data)
+                } else {
+                    guiConfigs.push(obj)
+                }
+            }
+
+            commit('UPDATE_GUI_CONFIG', guiConfigs)
+            commit('UPDATE_GUI_CONFIG_RAW', JSON.parse(JSON.stringify(guiConfigs)))
+            commit('UPDATE_CONFIG_COUNT', guiConfigs.length)
+
+            await dispatch('getPlayoutConfig')
         }
 
         return response
