@@ -265,6 +265,9 @@
                 <b-button v-b-tooltip.hover title="Copy Playlist" variant="primary" @click="showCopyModal()">
                     <b-icon-files />
                 </b-button>
+                <b-button v-b-tooltip.hover title="Delete Playlist" variant="primary" @click="showDeleteModal()">
+                    <b-icon-trash />
+                </b-button>
             </b-button-group>
         </b-container>
         <b-modal
@@ -286,6 +289,16 @@
             @ok="savePlaylist(targetDate)"
         >
             <b-calendar v-model="targetDate" locale="en-US" class="centered" />
+        </b-modal>
+        <b-modal
+            id="delete-modal"
+            ref="delete-modal"
+            centered
+            title="Delete Program"
+            content-class="copy-program"
+            @ok="deletePlaylist(listDate)"
+        >
+            Delete program from {{ listDate }}
         </b-modal>
     </div>
 </template>
@@ -513,8 +526,18 @@ export default {
                 }
             )
         },
+        async deletePlaylist (playlistDate) {
+            this.$store.commit('playlist/UPDATE_PLAYLIST', [])
+            const date = playlistDate.split('-')
+            const playlistPath = `${this.configPlayout.playlist.path}/${date[0]}/${date[1]}/${playlistDate}.json`
+
+            await this.$axios.post('api/player/playlist/', { data: { delete: playlistPath } })
+        },
         showCopyModal () {
             this.$root.$emit('bv::show::modal', 'copy-modal')
+        },
+        showDeleteModal () {
+            this.$root.$emit('bv::show::modal', 'delete-modal')
         }
     }
 }
