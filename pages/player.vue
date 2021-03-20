@@ -375,29 +375,18 @@ export default {
         listDate (date) {
             this.getPlaylist()
             setTimeout(() => { scrollTo(this) }, 5000)
+        },
+
+        configID (id) {
+            this.setLivePlayer(id)
         }
     },
 
     async created () {
+        this.setLivePlayer(this.configID)
         this.getStatus()
-
         this.extensions = this.configPlayout.storage.extensions.join(',')
-
         await this.getPath(this.extensions, '')
-
-        this.videoOptions = {
-            liveui: true,
-            controls: true,
-            suppressNotSupportedError: true,
-            autoplay: false,
-            preload: 'auto',
-            sources: [
-                {
-                    type: 'application/x-mpegURL',
-                    src: this.configGui[this.configID].player_url
-                }
-            ]
-        }
 
         const timeInSec = this.$timeToSeconds(this.$dayjs().format('HH:mm:ss'))
         const listStartSec = this.$timeToSeconds(this.configPlayout.playlist.day_start)
@@ -426,6 +415,22 @@ export default {
     },
 
     methods: {
+        setLivePlayer (id) {
+            this.videoOptions = {
+                liveui: true,
+                controls: true,
+                suppressNotSupportedError: true,
+                autoplay: false,
+                preload: 'auto',
+                sources: [
+                    {
+                        type: 'application/x-mpegURL',
+                        src: this.configGui[id].player_url
+                    }
+                ]
+            }
+        },
+
         async getPath (extensions, path) {
             this.isLoading = true
             await this.$store.dispatch('media/getTree', { extensions, path })
