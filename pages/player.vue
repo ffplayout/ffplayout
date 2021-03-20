@@ -346,7 +346,14 @@ export default {
             targetDate: this.$dayjs().format('YYYY-MM-DD'),
             interval: null,
             extensions: '',
-            videoOptions: {},
+            videoOptions: {
+                liveui: true,
+                controls: true,
+                suppressNotSupportedError: true,
+                autoplay: false,
+                preload: 'auto',
+                sources: []
+            },
             previewOptions: {},
             previewComp: null,
             previewSource: '',
@@ -378,12 +385,26 @@ export default {
         },
 
         configID (id) {
-            this.setLivePlayer(id)
+            this.videoOptions.sources = [
+                {
+                    type: 'application/x-mpegURL',
+                    src: this.configGui[id].player_url
+                }
+            ]
+
+            this.getPlaylist()
+            setTimeout(() => { scrollTo(this) }, 3000)
         }
     },
 
     async created () {
-        this.setLivePlayer(this.configID)
+        this.videoOptions.sources = [
+            {
+                type: 'application/x-mpegURL',
+                src: this.configGui[this.configID].player_url
+            }
+        ]
+
         this.getStatus()
         this.extensions = this.configPlayout.storage.extensions.join(',')
         await this.getPath(this.extensions, '')
@@ -415,22 +436,6 @@ export default {
     },
 
     methods: {
-        setLivePlayer (id) {
-            this.videoOptions = {
-                liveui: true,
-                controls: true,
-                suppressNotSupportedError: true,
-                autoplay: false,
-                preload: 'auto',
-                sources: [
-                    {
-                        type: 'application/x-mpegURL',
-                        src: this.configGui[id].player_url
-                    }
-                ]
-            }
-        },
-
         async getPath (extensions, path) {
             this.isLoading = true
             await this.$store.dispatch('media/getTree', { extensions, path })
