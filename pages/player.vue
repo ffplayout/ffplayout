@@ -5,7 +5,7 @@
             <b-row class="control-row">
                 <b-col cols="3" class="player-col">
                     <b-aspect aspect="16:9">
-                        <video-player v-if="videoOptions.sources" reference="videoPlayer" :options="videoOptions" />
+                        <video-player v-if="videoOptions.sources" :key="configID" reference="videoPlayer" :options="videoOptions" />
                     </b-aspect>
                 </b-col>
                 <b-col class="control-col">
