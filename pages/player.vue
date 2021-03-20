@@ -394,7 +394,7 @@ export default {
             sources: [
                 {
                     type: 'application/x-mpegURL',
-                    src: this.configGui.player_url
+                    src: this.configGui[this.configID].player_url
                 }
             ]
         }
