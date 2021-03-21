@@ -86,7 +86,7 @@ export default {
     },
 
     computed: {
-        ...mapState('config', ['configID']),
+        ...mapState('config', ['configID'])
     },
 
     watch: {
