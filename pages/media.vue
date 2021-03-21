@@ -301,6 +301,12 @@ export default {
         ...mapState('media', ['crumbs', 'folderTree'])
     },
 
+    watch: {
+        configID (id) {
+            this.getPath(this.extensions, '')
+        }
+    },
+
     created () {
         this.extensions = [...this.configPlayout.storage.extensions, ...this.configGui[this.configID].extra_extensions].join(',')
         this.getPath(this.extensions, '')
