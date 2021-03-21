@@ -86,10 +86,15 @@ export default {
     },
 
     computed: {
+        ...mapState('config', ['configID']),
     },
 
     watch: {
         listDate (date) {
+            this.getLog(this.logName)
+        },
+
+        configID (id) {
             this.getLog(this.logName)
         }
     },
