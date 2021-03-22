@@ -388,8 +388,7 @@ class GetSourceFromPlaylist:
         if stdin_args.loop and self.node:
             # when loop paramter is set and playlist node exists,
             # jump to playlist start and play again
-            self.list_start = self.node['begin'] + (
-                self.node['out'] - self.node['seek'])
+            self.list_start = get_time('full_sec')
             self.node = None
             messenger.info('Loop playlist')
 
@@ -410,7 +409,7 @@ class GetSourceFromPlaylist:
         """
         while True:
             self.get_playlist()
-            begin = _playlist.start
+            begin = self.list_start
 
             for index, self.node in enumerate(self.clip_nodes):
                 self.node['seek'] = get_float(self.node.get('in'), 0)
