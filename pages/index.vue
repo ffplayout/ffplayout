@@ -201,19 +201,19 @@ export default {
                 }
 
                 this.checkLogin()
-                this.$store.dispatch('config/getGuiConfig')
+                await this.$store.dispatch('config/getGuiConfig')
                 this.$store.dispatch('config/getPlayoutConfig')
                 this.$store.dispatch('config/getUserConfig')
             } catch (e) {
                 this.formError = e.message
             }
         },
-        async logout () {
+        logout () {
             clearInterval(this.interval)
 
             try {
-                await this.$store.commit('auth/REMOVE_TOKEN')
-                await this.$store.commit('auth/UPDATE_IS_LOGIN', false)
+                this.$store.commit('auth/REMOVE_TOKEN')
+                this.$store.commit('auth/UPDATE_IS_LOGIN', false)
             } catch (e) {
                 this.formError = e.message
             }
