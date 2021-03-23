@@ -24,17 +24,22 @@ def clean_ts():
         messenger.debug(f'cleanup *.ts files from: "{playlist}"')
         test_num = 0
         hls_path = os.path.dirname(playlist)
-        with open(playlist, 'r') as m3u8:
-            for line in m3u8:
-                if '.ts' in line:
-                    test_num = int(re.findall(r'(\d+).ts', line)[0])
-                    break
 
-        for ts_file in iglob(os.path.join(hls_path, '*.ts')):
-            ts_num = int(re.findall(r'(\d+).ts', ts_file)[0])
+        if os.path.isfile(playlist):
+            with open(playlist, 'r') as m3u8:
+                for line in m3u8:
+                    if '.ts' in line:
+                        test_num = int(re.findall(r'(\d+).ts', line)[0])
+                        break
 
-            if test_num > ts_num:
-                os.remove(ts_file)
+            for ts_file in iglob(os.path.join(hls_path, '*.ts')):
+                ts_num = int(re.findall(r'(\d+).ts', ts_file)[0])
+
+                if test_num > ts_num:
+                    try:
+                        os.remove(ts_file)
+                    except OSError:
+                        pass
 
 
 def output():
