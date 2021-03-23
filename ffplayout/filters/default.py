@@ -160,7 +160,7 @@ def add_audio(probe, duration):
 
     if not probe.audio:
         messenger.warning(f'Clip "{probe.src}" has no audio!')
-        line = [(f'anullsrc:channel_layout=stereo:duration={duration}:'
+        line = [(f'aevalsrc=0:channel_layout=stereo:duration={duration}:'
                  f'sample_rate={48000}')]
 
     return line
