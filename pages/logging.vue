@@ -90,11 +90,11 @@ export default {
     },
 
     watch: {
-        listDate (date) {
+        listDate () {
             this.getLog(this.logName)
         },
 
-        configID (id) {
+        configID () {
             this.getLog(this.logName)
         }
     },

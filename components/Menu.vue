@@ -46,10 +46,10 @@ export default {
     },
 
     methods: {
-        async logout () {
+        logout () {
             try {
-                await this.$store.commit('auth/REMOVE_TOKEN')
-                await this.$store.commit('auth/UPDATE_IS_LOGIN', false)
+                this.$store.commit('auth/REMOVE_TOKEN')
+                this.$store.commit('auth/UPDATE_IS_LOGIN', false)
             } catch (e) {
                 this.formError = e.message
             }
