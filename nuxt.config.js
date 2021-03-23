@@ -69,7 +69,6 @@ export default {
         '@nuxtjs/axios',
         '@nuxtjs/dayjs',
         '@nuxtjs/style-resources',
-        // Doc: https://github.com/nuxt-community/dotenv-module
         '@nuxtjs/dotenv',
         'cookie-universal-nuxt'
     ],
@@ -85,7 +84,7 @@ export default {
     dayjs: {
         locales: ['en', 'de'],
         defaultLocale: 'en',
-        defaultTimeZone: 'Europe/Berlin', // TODO: use timezon like this.$dayjs().tz()
+        defaultTimeZone: 'Europe/Berlin',
         plugins: [
             'utc',
             'timezone'
