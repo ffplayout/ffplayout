@@ -17,6 +17,7 @@ export default ({ app }, inject) => {
         }
         return list
     })
+
     // convert time (00:00:00) string to seconds
     inject('timeToSeconds', (time) => {
         const t = time.split(':')
