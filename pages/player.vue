@@ -259,11 +259,14 @@
                 <b-button v-b-tooltip.hover title="Reset Playlist" variant="primary" @click="resetPlaylist()">
                     <b-icon-arrow-counterclockwise />
                 </b-button>
-                <b-button v-b-tooltip.hover title="Save Playlist" variant="primary" @click="savePlaylist(listDate)">
-                    <b-icon-download />
-                </b-button>
                 <b-button v-b-tooltip.hover title="Copy Playlist" variant="primary" @click="showCopyModal()">
                     <b-icon-files />
+                </b-button>
+                <b-button v-b-tooltip.hover title="Loop Clips in Playlist" variant="primary" @click="loopClips()">
+                    <b-icon-view-stacked />
+                </b-button>
+                <b-button v-b-tooltip.hover title="Save Playlist" variant="primary" @click="savePlaylist(listDate)">
+                    <b-icon-download />
                 </b-button>
                 <b-button v-b-tooltip.hover title="Delete Playlist" variant="primary" @click="showDeleteModal()">
                     <b-icon-trash />
@@ -442,6 +445,7 @@ export default {
             await this.$store.dispatch('media/getTree', { extensions, path })
             this.isLoading = false
         },
+
         async getStatus () {
             const engine = this.configGui[this.configID].engine_service.split('/').slice(-1)[0].split('.')[0]
             const status = await this.$axios.post('api/player/system/', { run: 'status', engine })
@@ -452,12 +456,14 @@ export default {
                 this.isPlaying = ''
             }
         },
+
         async playoutControl (state) {
             const engine = this.configGui[this.configID].engine_service.split('/').slice(-1)[0].split('.')[0]
             await this.$axios.post('api/player/system/', { run: state, engine })
 
             setTimeout(() => { this.getStatus() }, 1000)
         },
+
         async getPlaylist () {
             await this.$store.dispatch('playlist/getPlaylist', {
                 dayStart: this.configPlayout.playlist.day_start,
@@ -465,6 +471,7 @@ export default {
                 configPath: this.configGui[this.configID].playout_config
             })
         },
+
         showPreviewModal (src) {
             const storagePath = this.configPlayout.storage.path
             const storagePathArr = storagePath.split('/')
@@ -487,6 +494,7 @@ export default {
             }
             this.$root.$emit('bv::show::modal', 'preview-modal')
         },
+
         cloneClip ({ file, duration }) {
             const storagePath = this.configPlayout.storage.path
             const storagePathArr = storagePath.split('/')
@@ -500,6 +508,7 @@ export default {
                 duration
             }
         },
+
         changeTime (pos, index, input) {
             if (input.match(/(?:[01]\d|2[0123]):(?:[012345]\d):(?:[012345]\d)/gm)) {
                 const sec = this.$timeToSeconds(input)
@@ -514,15 +523,41 @@ export default {
                     this.configPlayout.playlist.day_start, this.playlist))
             }
         },
+
         removeItemFromPlaylist (index) {
             this.playlist.splice(index, 1)
 
             this.$store.commit('playlist/UPDATE_PLAYLIST', this.$processPlaylist(
                 this.configPlayout.playlist.day_start, this.playlist))
         },
+
         async resetPlaylist () {
-            await this.$store.dispatch('playlist/getPlaylist', { dayStart: this.configPlayout.playlist.day_start, date: this.listDate })
+            await this.$store.dispatch('playlist/getPlaylist', {
+                dayStart: this.configPlayout.playlist.day_start,
+                date: this.listDate,
+                configPath: this.configGui[this.configID].playout_config
+            })
         },
+
+        loopClips () {
+            const tempList = []
+            let count = 0
+
+            while (count < 86400) {
+                for (const item of this.playlist) {
+                    if (count < 86400) {
+                        tempList.push(this.$_.cloneDeep(item))
+                        count += item.out - item.in
+                    } else {
+                        break
+                    }
+                }
+            }
+
+            this.$store.commit('playlist/UPDATE_PLAYLIST', this.$processPlaylist(
+                this.configPlayout.playlist.day_start, tempList))
+        },
+
         async savePlaylist (saveDate) {
             this.$store.commit('playlist/UPDATE_PLAYLIST', this.$processPlaylist(
                 this.configPlayout.playlist.day_start, this.playlist))
@@ -537,6 +572,7 @@ export default {
                 }
             )
         },
+
         async deletePlaylist (playlistDate) {
             this.$store.commit('playlist/UPDATE_PLAYLIST', [])
             const date = playlistDate.split('-')
@@ -544,9 +580,11 @@ export default {
 
             await this.$axios.post('api/player/playlist/', { data: { delete: playlistPath } })
         },
+
         showCopyModal () {
             this.$root.$emit('bv::show::modal', 'copy-modal')
         },
+
         showDeleteModal () {
             this.$root.$emit('bv::show::modal', 'delete-modal')
         }
@@ -751,7 +789,7 @@ export default {
 }
 
 .list-group-header {
-    height: 46px;
+    height: 47px;
 }
 
 .playlist-list-group, #playlist-group {
@@ -759,7 +797,7 @@ export default {
 }
 
 #scroll-container {
-    height: calc(100% - 46px);
+    height: calc(100% - 47px);
 }
 
 .playlist-item:nth-of-type(even), .playlist-item:nth-of-type(even) div .timecode input {
