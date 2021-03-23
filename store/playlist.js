@@ -51,8 +51,9 @@ export const mutations = {
 }
 
 export const actions = {
-    async getPlaylist ({ commit, dispatch, state, rootState }, { dayStart, date, configPath }) {
+    async getPlaylist ({ commit, dispatch, state, rootState }, { date }) {
         const timeInSec = this.$timeToSeconds(this.$dayjs().tz(rootState.config.timezone).format('HH:mm:ss'))
+        const configPath = rootState.config.configGui[rootState.config.configID].playout_config
         let dateToday = this.$dayjs().tz(this.timezone).format('YYYY-MM-DD')
 
         if (rootState.config.startInSec > timeInSec) {
@@ -60,9 +61,10 @@ export const actions = {
         }
 
         const response = await this.$axios.get(`api/player/playlist/?date=${date}&config_path=${configPath}`)
+        console.log(rootState.config.configPlayout.playlist.day_start)
 
         if (response.data && response.data.program) {
-            commit('UPDATE_PLAYLIST', this.$processPlaylist(dayStart, response.data.program))
+            commit('UPDATE_PLAYLIST', this.$processPlaylist(rootState.config.startInSec, response.data.program))
 
             if (date === dateToday) {
                 commit('UPDATE_TODAYS_PLAYLIST', _.cloneDeep(response.data.program))

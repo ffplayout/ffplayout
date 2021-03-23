@@ -369,20 +369,21 @@ export default {
     computed: {
         ...mapState('config', ['configID', 'configGui', 'configPlayout', 'timezone']),
         ...mapState('media', ['crumbs', 'folderTree']),
-        ...mapState('playlist', ['timeStr', 'timeLeft', 'currentClip', 'progressValue', 'currentClipIndex', 'currentClipDuration', 'currentClipIn', 'currentClipOut']),
+        ...mapState('playlist', [
+            'timeStr', 'timeLeft', 'currentClip', 'progressValue', 'currentClipIndex',
+            'currentClipDuration', 'currentClipIn', 'currentClipOut', 'startInSec']),
         playlist: {
             get () {
                 return this.$store.state.playlist.playlist
             },
             set (list) {
-                this.$store.commit('playlist/UPDATE_PLAYLIST', this.$processPlaylist(
-                    this.configPlayout.playlist.day_start, list))
+                this.$store.commit('playlist/UPDATE_PLAYLIST', this.$processPlaylist(this.startInSec, list))
             }
         }
     },
 
     watch: {
-        listDate (date) {
+        listDate () {
             this.getPlaylist()
             setTimeout(() => { scrollTo(this) }, 5000)
         },
@@ -465,11 +466,7 @@ export default {
         },
 
         async getPlaylist () {
-            await this.$store.dispatch('playlist/getPlaylist', {
-                dayStart: this.configPlayout.playlist.day_start,
-                date: this.listDate,
-                configPath: this.configGui[this.configID].playout_config
-            })
+            await this.$store.dispatch('playlist/getPlaylist', { date: this.listDate })
         },
 
         showPreviewModal (src) {
@@ -519,24 +516,18 @@ export default {
                     this.playlist[index].out = sec
                 }
 
-                this.$store.commit('playlist/UPDATE_PLAYLIST', this.$processPlaylist(
-                    this.configPlayout.playlist.day_start, this.playlist))
+                this.$store.commit('playlist/UPDATE_PLAYLIST', this.$processPlaylist(this.startInSec, this.playlist))
             }
         },
 
         removeItemFromPlaylist (index) {
             this.playlist.splice(index, 1)
 
-            this.$store.commit('playlist/UPDATE_PLAYLIST', this.$processPlaylist(
-                this.configPlayout.playlist.day_start, this.playlist))
+            this.$store.commit('playlist/UPDATE_PLAYLIST', this.$processPlaylist(this.startInSec, this.playlist))
         },
 
         async resetPlaylist () {
-            await this.$store.dispatch('playlist/getPlaylist', {
-                dayStart: this.configPlayout.playlist.day_start,
-                date: this.listDate,
-                configPath: this.configGui[this.configID].playout_config
-            })
+            await this.$store.dispatch('playlist/getPlaylist', { date: this.listDate })
         },
 
         loopClips () {
@@ -554,13 +545,11 @@ export default {
                 }
             }
 
-            this.$store.commit('playlist/UPDATE_PLAYLIST', this.$processPlaylist(
-                this.configPlayout.playlist.day_start, tempList))
+            this.$store.commit('playlist/UPDATE_PLAYLIST', this.$processPlaylist(this.startInSec, tempList))
         },
 
         async savePlaylist (saveDate) {
-            this.$store.commit('playlist/UPDATE_PLAYLIST', this.$processPlaylist(
-                this.configPlayout.playlist.day_start, this.playlist))
+            this.$store.commit('playlist/UPDATE_PLAYLIST', this.$processPlaylist(this.startInSec, this.playlist))
 
             const saveList = this.playlist.map(({ begin, ...item }) => item)
 
