@@ -423,6 +423,7 @@ export default {
         if (process.env.NODE_ENV === 'production') {
             this.interval = setInterval(() => {
                 this.$store.dispatch('playlist/animClock')
+                this.getStatus()
             }, 5000)
         } else {
             this.$store.dispatch('playlist/animClock')
