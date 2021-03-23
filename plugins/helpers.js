@@ -1,10 +1,10 @@
 export default ({ app }, inject) => {
     inject('processPlaylist', (dayStart, list) => {
         if (!dayStart) {
-            dayStart = '00:00:00'
+            dayStart = 0
         }
-        const [h, m, s] = dayStart.split(':')
-        let begin = parseFloat(h) * 3600 + parseFloat(m) * 60 + parseFloat(s)
+
+        let begin = dayStart
 
         for (const item of list) {
             item.begin = begin
