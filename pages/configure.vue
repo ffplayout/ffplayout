@@ -284,8 +284,8 @@ export default {
 
     methods: {
         addChannel () {
-            const config = JSON.parse(JSON.stringify(this.configGui))
-            const newConf = JSON.parse(JSON.stringify(this.configGui[this.configGui.length - 1]))
+            const config = this.$_.cloneDeep(this.configGui)
+            const newConf = this.$_.cloneDeep(this.configGui[this.configGui.length - 1])
 
             const playoutConfigPath = newConf.playout_config.match(/.*\//)
             const playoutConfigFile = newConf.playout_config.replace(/(.*\/|\.yml)/g, '').split('-')
@@ -319,7 +319,7 @@ export default {
             this.showAlert = true
         },
         async deleteChannel () {
-            const config = JSON.parse(JSON.stringify(this.configGui))
+            const config = this.$_.cloneDeep(this.configGui)
             const id = config[this.configID].id
 
             if (id === 1) {
