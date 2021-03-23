@@ -1,3 +1,5 @@
+import _ from 'lodash'
+
 export const state = () => ({
     playlist: null,
     playlistToday: [],
@@ -63,7 +65,7 @@ export const actions = {
             commit('UPDATE_PLAYLIST', this.$processPlaylist(dayStart, response.data.program))
 
             if (date === dateToday) {
-                commit('UPDATE_TODAYS_PLAYLIST', JSON.parse(JSON.stringify(response.data.program)))
+                commit('UPDATE_TODAYS_PLAYLIST', _.cloneDeep(response.data.program))
                 dispatch('setCurrentClip')
             } else {
                 commit('SET_CURRENT_CLIP_INDEX', null)
