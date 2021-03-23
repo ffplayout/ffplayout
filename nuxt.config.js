@@ -51,7 +51,7 @@ export default {
         { src: '~plugins/splitpanes.js', ssr: false },
         { src: '~plugins/loading.js', ssr: false },
         { src: '~plugins/draggable.js', ssr: false },
-        { src: '~plugins/loadash.js', ssr: false }
+        { src: '~plugins/lodash.js', ssr: false }
     ],
     /*
      ** Nuxt.js dev-modules
