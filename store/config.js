@@ -1,3 +1,5 @@
+import _ from 'lodash'
+
 export const state = () => ({
     configID: 0,
     configCount: 0,
@@ -8,7 +10,8 @@ export const state = () => ({
     playlistLength: 86400.0,
     configPlayout: [],
     currentUser: null,
-    configUser: null
+    configUser: null,
+    timezone: 'UTC'
 })
 
 export const mutations = {
@@ -41,6 +44,9 @@ export const mutations = {
     },
     UPDATE_USER_CONFIG (state, config) {
         state.configUser = config
+    },
+    UPDATE_TIMEZONE (state, zone) {
+        state.timezone = zone
     }
 }
 
@@ -48,9 +54,20 @@ export const actions = {
     async nuxtClientInit ({ commit, dispatch, rootState }) {
         await dispatch('auth/inspectToken', null, { root: true })
         if (rootState.auth.isLogin) {
+            await dispatch('getTimezone')
             await dispatch('getGuiConfig')
             await dispatch('getPlayoutConfig')
             await dispatch('getUserConfig')
+        }
+    },
+
+    async getTimezone ({ commit, state }) {
+        const response = await this.$axios.get('api/player/stats/?stats=timezone')
+
+        if (response.data) {
+            commit('UPDATE_TIMEZONE', response.data.timezone)
+        } else {
+            commit('UPDATE_TIMEZONE', this.$dayjs.tz.guess())
         }
     },
 
@@ -77,7 +94,7 @@ export const actions = {
             }
 
             commit('UPDATE_GUI_CONFIG', response.data)
-            commit('UPDATE_GUI_CONFIG_RAW', JSON.parse(JSON.stringify(response.data)))
+            commit('UPDATE_GUI_CONFIG_RAW', _.cloneDeep(response.data))
             commit('UPDATE_CONFIG_COUNT', response.data.length)
         } else {
             commit('UPDATE_GUI_CONFIG', [{
@@ -93,7 +110,7 @@ export const actions = {
     },
 
     async setGuiConfig ({ commit, state, dispatch }, obj) {
-        const stringObj = JSON.parse(JSON.stringify(obj))
+        const stringObj = _.cloneDeep(obj)
         stringObj.extra_extensions = stringObj.extra_extensions.join(',')
         let response
 
@@ -113,7 +130,7 @@ export const actions = {
             }
 
             commit('UPDATE_GUI_CONFIG', guiConfigs)
-            commit('UPDATE_GUI_CONFIG_RAW', JSON.parse(JSON.stringify(guiConfigs)))
+            commit('UPDATE_GUI_CONFIG_RAW', _.cloneDeep(guiConfigs))
             commit('UPDATE_CONFIG_COUNT', guiConfigs.length)
 
             await dispatch('getPlayoutConfig')
