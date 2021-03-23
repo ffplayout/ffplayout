@@ -52,11 +52,11 @@ export const mutations = {
 
 export const actions = {
     async getPlaylist ({ commit, dispatch, state, rootState }, { dayStart, date, configPath }) {
-        const timeInSec = this.$timeToSeconds(this.$dayjs().format('HH:mm:ss'))
-        let dateToday = this.$dayjs().format('YYYY-MM-DD')
+        const timeInSec = this.$timeToSeconds(this.$dayjs().tz(rootState.config.timezone).format('HH:mm:ss'))
+        let dateToday = this.$dayjs().tz(this.timezone).format('YYYY-MM-DD')
 
         if (rootState.config.startInSec > timeInSec) {
-            dateToday = this.$dayjs(dateToday).subtract(1, 'day').format('YYYY-MM-DD')
+            dateToday = this.$dayjs(dateToday).tz(rootState.config.timezone).subtract(1, 'day').format('YYYY-MM-DD')
         }
 
         const response = await this.$axios.get(`api/player/playlist/?date=${date}&config_path=${configPath}`)
@@ -77,7 +77,7 @@ export const actions = {
 
     setCurrentClip ({ commit, dispatch, state, rootState }) {
         let begin
-        let lastTime = this.$timeToSeconds(this.$dayjs().format('HH:mm:ss'))
+        let lastTime = this.$timeToSeconds(this.$dayjs().tz(rootState.config.timezone).format('HH:mm:ss'))
 
         if (Number.isFinite(rootState.config.startInSec)) {
             begin = rootState.config.startInSec
@@ -112,7 +112,7 @@ export const actions = {
     },
 
     animClock ({ commit, dispatch, state, rootState }) {
-        const time = this.$dayjs().format('HH:mm:ss')
+        const time = this.$dayjs().tz(rootState.config.timezone).format('HH:mm:ss')
         let timeSec = this.$timeToSeconds(time)
 
         commit('SET_TIME', time)

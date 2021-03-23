@@ -78,7 +78,7 @@ export default {
         return {
             logName: 'ffplayout',
             currentLog: null,
-            listDate: this.$dayjs().format('YYYY-MM-DD'),
+            listDate: this.$dayjs().tz(this.timezone).format('YYYY-MM-DD'),
             scrollOP: {
                 wheelSpeed: 5
             }
@@ -86,7 +86,7 @@ export default {
     },
 
     computed: {
-        ...mapState('config', ['configID'])
+        ...mapState('config', ['configID', 'timezone'])
     },
 
     watch: {

@@ -345,8 +345,8 @@ export default {
         return {
             isLoading: false,
             isPlaying: '',
-            listDate: this.$dayjs().format('YYYY-MM-DD'),
-            targetDate: this.$dayjs().format('YYYY-MM-DD'),
+            listDate: this.$dayjs().tz(this.timezone).format('YYYY-MM-DD'),
+            targetDate: this.$dayjs().tz(this.timezone).format('YYYY-MM-DD'),
             interval: null,
             extensions: '',
             videoOptions: {
@@ -367,7 +367,7 @@ export default {
     },
 
     computed: {
-        ...mapState('config', ['configID', 'configGui', 'configPlayout']),
+        ...mapState('config', ['configID', 'configGui', 'configPlayout', 'timezone']),
         ...mapState('media', ['crumbs', 'folderTree']),
         ...mapState('playlist', ['timeStr', 'timeLeft', 'currentClip', 'progressValue', 'currentClipIndex', 'currentClipDuration', 'currentClipIn', 'currentClipOut']),
         playlist: {
@@ -412,11 +412,11 @@ export default {
         this.extensions = this.configPlayout.storage.extensions.join(',')
         await this.getPath(this.extensions, '')
 
-        const timeInSec = this.$timeToSeconds(this.$dayjs().format('HH:mm:ss'))
+        const timeInSec = this.$timeToSeconds(this.$dayjs().tz(this.timezone).format('HH:mm:ss'))
         const listStartSec = this.$timeToSeconds(this.configPlayout.playlist.day_start)
 
         if (listStartSec > timeInSec) {
-            this.listDate = this.$dayjs(this.listDate).subtract(1, 'day').format('YYYY-MM-DD')
+            this.listDate = this.$dayjs(this.listDate).tz(this.timezone).subtract(1, 'day').format('YYYY-MM-DD')
         }
 
         await this.getPlaylist()
