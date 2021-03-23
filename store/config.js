@@ -6,9 +6,9 @@ export const state = () => ({
     configGui: null,
     configGuiRaw: null,
     netChoices: [],
-    startInSec: null,
+    startInSec: 0,
     playlistLength: 86400.0,
-    configPlayout: [],
+    configPlayout: {},
     currentUser: null,
     configUser: null,
     timezone: 'UTC'
