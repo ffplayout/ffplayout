@@ -23,7 +23,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # set time zone
 _TZ = ZoneInfo("Europe/Berlin")
 # fake date and time
-SOURCE_TIME = [2021, 2, 14, 5, 58, 5]
+SOURCE_TIME = [2021, 2, 14, 23, 59, 0]
 
 
 @time_machine.travel(datetime.datetime(*SOURCE_TIME, tzinfo=_TZ))
