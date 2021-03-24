@@ -1,10 +1,10 @@
-from ffplayout.utils import get_float, stdin_args
+from ffplayout.utils import STDIN_ARGS, get_float
 
 
-def filter(node):
+def filter_link(node):
     """
     set audio volume
     """
 
-    if stdin_args.volume and get_float(stdin_args.volume, False):
-        return f'volume={stdin_args.volume}'
+    if STDIN_ARGS.volume and get_float(STDIN_ARGS.volume, False):
+        return f'volume={STDIN_ARGS.volume}'
