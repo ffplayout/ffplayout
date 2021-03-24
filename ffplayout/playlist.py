@@ -388,7 +388,7 @@ class GetSourceFromPlaylist:
         if stdin_args.loop and self.node:
             # when loop paramter is set and playlist node exists,
             # jump to playlist start and play again
-            self.list_start = get_time('full_sec')
+            self.list_start = self.last_time + 1
             self.node = None
             messenger.info('Loop playlist')
 
