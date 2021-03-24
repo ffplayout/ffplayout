@@ -61,7 +61,6 @@ export const actions = {
         }
 
         const response = await this.$axios.get(`api/player/playlist/?date=${date}&config_path=${configPath}`)
-        console.log(rootState.config.configPlayout.playlist.day_start)
 
         if (response.data && response.data.program) {
             commit('UPDATE_PLAYLIST', this.$processPlaylist(rootState.config.startInSec, response.data.program))
