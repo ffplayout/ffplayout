@@ -21,7 +21,7 @@
 import os
 from pydoc import locate
 
-from ffplayout.utils import _playout, stdin_args, validate_ffmpeg_libs
+from ffplayout.utils import PLAYOUT, STDIN_ARGS, validate_ffmpeg_libs
 
 try:
     if os.name != 'posix':
@@ -40,8 +40,8 @@ def main():
     play out depending on output mode
     """
 
-    if stdin_args.mode:
-        output = locate(f'ffplayout.output.{stdin_args.mode}.output')
+    if STDIN_ARGS.mode:
+        output = locate(f'ffplayout.output.{STDIN_ARGS.mode}.output')
         output()
 
     else:
@@ -53,7 +53,7 @@ def main():
                     and output != '__init__.py':
                 mode = os.path.splitext(output)[0]
 
-                if mode == _playout.mode:
+                if mode == PLAYOUT.mode:
                     output = locate(f'ffplayout.output.{mode}.output')
                     output()
 

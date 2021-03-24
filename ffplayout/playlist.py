@@ -28,9 +28,9 @@ from threading import Thread
 import requests
 
 from .filters.default import build_filtergraph
-from .utils import (MediaProbe, _general, _playlist, check_sync, get_date,
-                    get_delta, get_float, get_time, messenger, src_or_dummy,
-                    stdin_args, valid_json)
+from .utils import (GENERAL, PLAYLIST, STDIN_ARGS, MediaProbe, check_sync,
+                    get_date, get_delta, get_float, get_time, messenger,
+                    src_or_dummy, valid_json)
 
 
 def handle_list_init(node):
@@ -103,13 +103,13 @@ def timed_source(node, last):
     delta, total_delta = get_delta(node['begin'])
     node_ = None
 
-    if not stdin_args.loop and _playlist.length:
+    if not STDIN_ARGS.loop and PLAYLIST.length:
         messenger.debug(f'delta: {delta:f}')
         messenger.debug(f'total_delta: {total_delta:f}')
         check_sync(delta)
 
     if (total_delta > node['out'] - node['seek'] and not last) \
-            or stdin_args.loop or not _playlist.length:
+            or STDIN_ARGS.loop or not PLAYLIST.length:
         # when we are in the 24 houre range, get the clip
         node_ = src_or_dummy(node)
 
@@ -126,12 +126,12 @@ def check_length(total_play_time, list_date):
     """
     check if playlist is long enough
     """
-    if _playlist.length and total_play_time < _playlist.length - 5 \
-            and not stdin_args.loop:
+    if PLAYLIST.length and total_play_time < PLAYLIST.length - 5 \
+            and not STDIN_ARGS.loop:
         messenger.error(
             f'Playlist from {list_date} is not long enough!\n'
             f'Total play time is: {timedelta(seconds=total_play_time)}, '
-            f'target length is: {timedelta(seconds=_playlist.length)}'
+            f'target length is: {timedelta(seconds=PLAYLIST.length)}'
         )
 
 
@@ -203,11 +203,11 @@ class PlaylistReader:
         self.nodes = {'program': []}
         self.error = False
 
-        if stdin_args.playlist:
-            json_file = stdin_args.playlist
+        if STDIN_ARGS.playlist:
+            json_file = STDIN_ARGS.playlist
         else:
             year, month, day = self.list_date.split('-')
-            json_file = os.path.join(_playlist.path, year, month,
+            json_file = os.path.join(PLAYLIST.path, year, month,
                                      f'{self.list_date}.json')
 
         if '://' in json_file:
@@ -253,7 +253,7 @@ class GetSourceFromPlaylist:
 
     def __init__(self):
         self.prev_date = get_date(True)
-        self.list_start = _playlist.start
+        self.list_start = PLAYLIST.start
         self.first = True
         self.last = False
         self.clip_nodes = []
@@ -296,12 +296,12 @@ class GetSourceFromPlaylist:
         """
         self.last_time = get_time('full_sec')
 
-        if _playlist.length:
-            total_playtime = _playlist.length
+        if PLAYLIST.length:
+            total_playtime = PLAYLIST.length
         else:
             total_playtime = 86400.0
 
-        if self.last_time < _playlist.start:
+        if self.last_time < PLAYLIST.start:
             self.last_time += total_playtime
 
     def check_for_next_playlist(self, begin):
@@ -321,17 +321,17 @@ class GetSourceFromPlaylist:
                 delta, total_delta = get_delta(begin)
                 delta += seek + 1
 
-            next_start = begin - _playlist.start + out + delta
+            next_start = begin - PLAYLIST.start + out + delta
 
         else:
             delta, total_delta = get_delta(begin)
-            next_start = begin - _playlist.start + _general.threshold + delta
+            next_start = begin - PLAYLIST.start + GENERAL.threshold + delta
 
-        if _playlist.length and next_start >= _playlist.length:
+        if PLAYLIST.length and next_start >= PLAYLIST.length:
             self.prev_date = get_date(False, next_start)
             self.playlist.list_date = self.prev_date
             self.playlist.last_mod_time = 0.0
-            self.last_time = _playlist.start - 1
+            self.last_time = PLAYLIST.start - 1
             self.clip_nodes = []
 
     def previous_and_next_node(self, index):
@@ -361,9 +361,9 @@ class GetSourceFromPlaylist:
         """
         current_time = get_time('full_sec') - 86400
         # balance small difference to start time
-        if _playlist.start is not None and isclose(_playlist.start,
-                                                   current_time, abs_tol=2):
-            begin = _playlist.start
+        if PLAYLIST.start is not None and isclose(PLAYLIST.start,
+                                                  current_time, abs_tol=2):
+            begin = PLAYLIST.start
         else:
             self.init_time()
             begin = self.last_time
@@ -385,14 +385,14 @@ class GetSourceFromPlaylist:
         """
         handle except playlist end
         """
-        if stdin_args.loop and self.node:
+        if STDIN_ARGS.loop and self.node:
             # when loop paramter is set and playlist node exists,
             # jump to playlist start and play again
             self.list_start = self.last_time + 1
             self.node = None
             messenger.info('Loop playlist')
 
-        elif begin == _playlist.start or not self.clip_nodes:
+        elif begin == PLAYLIST.start or not self.clip_nodes:
             # playlist not exist or is corrupt/empty
             messenger.error('Clip nodes are empty!')
             self.first = False
@@ -454,7 +454,7 @@ class GetSourceFromPlaylist:
 
                 begin += self.node['out'] - self.node['seek']
             else:
-                if not _playlist.length and not stdin_args.loop:
+                if not PLAYLIST.length and not STDIN_ARGS.loop:
                     # when we reach playlist end, stop script
                     messenger.info('Playlist reached end!')
                     return None

@@ -98,7 +98,7 @@ for arg_file in glob(os.path.join(CONFIG_PATH, 'argparse_*')):
         **config
     )
 
-stdin_args = stdin_parser.parse_args()
+STDIN_ARGS = stdin_parser.parse_args()
 
 
 # ------------------------------------------------------------------------------
@@ -127,18 +127,17 @@ def get_time(time_format):
 # default variables and values
 # ------------------------------------------------------------------------------
 
-_general = SimpleNamespace()
-_mail = SimpleNamespace()
-_log = SimpleNamespace()
-_pre = SimpleNamespace()
-_playlist = SimpleNamespace()
-_storage = SimpleNamespace()
-_text = SimpleNamespace()
-_playout = SimpleNamespace()
+GENERAL = SimpleNamespace(time_delta=0)
+MAIL = SimpleNamespace()
+LOG = SimpleNamespace()
+PRE = SimpleNamespace()
+PLAYLIST = SimpleNamespace()
+STORAGE = SimpleNamespace()
+TEXT = SimpleNamespace()
+PLAYOUT = SimpleNamespace()
 
-_init = SimpleNamespace(load=True)
-_ff = SimpleNamespace(decoder=None, encoder=None)
-_global = SimpleNamespace(time_delta=0)
+INITIAL = SimpleNamespace(load=True)
+FF = SimpleNamespace(decoder=None, encoder=None)
 
 
 def str_to_sec(s):
@@ -165,90 +164,90 @@ def load_config():
     some settings cannot be changed - like resolution, aspect, or output
     """
 
-    if stdin_args.config:
-        cfg = read_config(stdin_args.config)
+    if STDIN_ARGS.config:
+        cfg = read_config(STDIN_ARGS.config)
     elif os.path.isfile('/etc/ffplayout/ffplayout.yml'):
         cfg = read_config('/etc/ffplayout/ffplayout.yml')
     else:
         cfg = read_config('ffplayout.yml')
 
-    if stdin_args.start:
-        p_start = str_to_sec(stdin_args.start)
+    if STDIN_ARGS.start:
+        p_start = str_to_sec(STDIN_ARGS.start)
     else:
         p_start = str_to_sec(cfg['playlist']['day_start'])
 
     if p_start is None:
         p_start = get_time('full_sec')
 
-    if stdin_args.length:
-        p_length = str_to_sec(stdin_args.length)
+    if STDIN_ARGS.length:
+        p_length = str_to_sec(STDIN_ARGS.length)
     else:
         p_length = str_to_sec(cfg['playlist']['length'])
 
-    _general.stop = cfg['general']['stop_on_error']
-    _general.threshold = cfg['general']['stop_threshold']
+    GENERAL.stop = cfg['general']['stop_on_error']
+    GENERAL.threshold = cfg['general']['stop_threshold']
 
-    _mail.subject = cfg['mail']['subject']
-    _mail.server = cfg['mail']['smpt_server']
-    _mail.port = cfg['mail']['smpt_port']
-    _mail.s_addr = cfg['mail']['sender_addr']
-    _mail.s_pass = cfg['mail']['sender_pass']
-    _mail.recip = cfg['mail']['recipient']
-    _mail.level = cfg['mail']['mail_level']
+    MAIL.subject = cfg['mail']['subject']
+    MAIL.server = cfg['mail']['smpt_server']
+    MAIL.port = cfg['mail']['smpt_port']
+    MAIL.s_addr = cfg['mail']['sender_addr']
+    MAIL.s_pass = cfg['mail']['sender_pass']
+    MAIL.recip = cfg['mail']['recipient']
+    MAIL.level = cfg['mail']['mail_level']
 
-    _pre.add_logo = cfg['processing']['add_logo']
-    _pre.logo = cfg['processing']['logo']
-    _pre.logo_scale = cfg['processing']['logo_scale']
-    _pre.logo_filter = cfg['processing']['logo_filter']
-    _pre.logo_opacity = cfg['processing']['logo_opacity']
-    _pre.add_loudnorm = cfg['processing']['add_loudnorm']
-    _pre.loud_i = cfg['processing']['loud_I']
-    _pre.loud_tp = cfg['processing']['loud_TP']
-    _pre.loud_lra = cfg['processing']['loud_LRA']
-    _pre.output_count = cfg['processing']['output_count']
+    PRE.add_logo = cfg['processing']['add_logo']
+    PRE.logo = cfg['processing']['logo']
+    PRE.logo_scale = cfg['processing']['logo_scale']
+    PRE.logo_filter = cfg['processing']['logo_filter']
+    PRE.logo_opacity = cfg['processing']['logo_opacity']
+    PRE.add_loudnorm = cfg['processing']['add_loudnorm']
+    PRE.loud_i = cfg['processing']['loud_I']
+    PRE.loud_tp = cfg['processing']['loud_TP']
+    PRE.loud_lra = cfg['processing']['loud_LRA']
+    PRE.output_count = cfg['processing']['output_count']
 
-    _playlist.mode = cfg['playlist']['playlist_mode']
-    _playlist.path = cfg['playlist']['path']
-    _playlist.start = p_start
-    _playlist.length = p_length
+    PLAYLIST.mode = cfg['playlist']['playlist_mode']
+    PLAYLIST.path = cfg['playlist']['path']
+    PLAYLIST.start = p_start
+    PLAYLIST.length = p_length
 
-    _storage.path = cfg['storage']['path']
-    _storage.filler = cfg['storage']['filler_clip']
-    _storage.extensions = cfg['storage']['extensions']
-    _storage.shuffle = cfg['storage']['shuffle']
+    STORAGE.path = cfg['storage']['path']
+    STORAGE.filler = cfg['storage']['filler_clip']
+    STORAGE.extensions = cfg['storage']['extensions']
+    STORAGE.shuffle = cfg['storage']['shuffle']
 
-    _text.add_text = cfg['text']['add_text']
-    _text.over_pre = cfg['text']['over_pre']
-    _text.address = cfg['text']['bind_address']
-    _text.fontfile = cfg['text']['fontfile']
-    _text.text_from_filename = cfg['text']['text_from_filename']
-    _text.style = cfg['text']['style']
-    _text.regex = cfg['text']['regex']
+    TEXT.add_text = cfg['text']['add_text']
+    TEXT.over_pre = cfg['text']['over_pre']
+    TEXT.address = cfg['text']['bind_address']
+    TEXT.fontfile = cfg['text']['fontfile']
+    TEXT.text_from_filename = cfg['text']['text_from_filename']
+    TEXT.style = cfg['text']['style']
+    TEXT.regex = cfg['text']['regex']
 
-    if _init.load:
-        _log.to_file = cfg['logging']['log_to_file']
-        _log.backup_count = cfg['logging']['backup_count']
-        _log.path = cfg['logging']['log_path']
-        _log.level = cfg['logging']['log_level']
-        _log.ff_level = cfg['logging']['ffmpeg_level']
+    if INITIAL.load:
+        LOG.to_file = cfg['logging']['log_to_file']
+        LOG.backup_count = cfg['logging']['backup_count']
+        LOG.path = cfg['logging']['log_path']
+        LOG.level = cfg['logging']['log_level']
+        LOG.ff_level = cfg['logging']['ffmpeg_level']
 
-        _pre.w = cfg['processing']['width']
-        _pre.h = cfg['processing']['height']
-        _pre.aspect = cfg['processing']['aspect']
-        _pre.fps = cfg['processing']['fps']
-        _pre.v_bitrate = cfg['processing']['width'] * \
+        PRE.w = cfg['processing']['width']
+        PRE.h = cfg['processing']['height']
+        PRE.aspect = cfg['processing']['aspect']
+        PRE.fps = cfg['processing']['fps']
+        PRE.v_bitrate = cfg['processing']['width'] * \
             cfg['processing']['height'] / 10
-        _pre.v_bufsize = _pre.v_bitrate / 2
-        _pre.realtime = cfg['processing']['use_realtime']
+        PRE.v_bufsize = PRE.v_bitrate / 2
+        PRE.realtime = cfg['processing']['use_realtime']
 
-        _playout.mode = cfg['out']['mode']
-        _playout.name = cfg['out']['service_name']
-        _playout.provider = cfg['out']['service_provider']
-        _playout.ffmpeg_param = cfg['out']['ffmpeg_param'].split(' ')
-        _playout.stream_output = cfg['out']['stream_output'].split(' ')
-        _playout.hls_output = cfg['out']['hls_output'].split(' ')
+        PLAYOUT.mode = cfg['out']['mode']
+        PLAYOUT.name = cfg['out']['service_name']
+        PLAYOUT.provider = cfg['out']['service_provider']
+        PLAYOUT.ffmpeg_param = cfg['out']['ffmpeg_param'].split(' ')
+        PLAYOUT.stream_output = cfg['out']['stream_output'].split(' ')
+        PLAYOUT.hls_output = cfg['out']['hls_output'].split(' ')
 
-        _init.load = False
+        INITIAL.load = False
 
 
 load_config()
@@ -309,21 +308,21 @@ class CustomFormatter(logging.Formatter):
 
 
 # If the log file is specified on the command line then override the default
-if stdin_args.log:
-    _log.path = stdin_args.log
+if STDIN_ARGS.log:
+    LOG.path = STDIN_ARGS.log
 
 playout_logger = logging.getLogger('playout')
-playout_logger.setLevel(_log.level)
+playout_logger.setLevel(LOG.level)
 decoder_logger = logging.getLogger('decoder')
-decoder_logger.setLevel(_log.ff_level)
+decoder_logger.setLevel(LOG.ff_level)
 encoder_logger = logging.getLogger('encoder')
-encoder_logger.setLevel(_log.ff_level)
+encoder_logger.setLevel(LOG.ff_level)
 
-if _log.to_file and _log.path != 'none':
-    if _log.path and os.path.isdir(_log.path):
-        playout_log = os.path.join(_log.path, 'ffplayout.log')
-        decoder_log = os.path.join(_log.path, 'decoder.log')
-        encoder_log = os.path.join(_log.path, 'encoder.log')
+if LOG.to_file and LOG.path != 'none':
+    if LOG.path and os.path.isdir(LOG.path):
+        playout_log = os.path.join(LOG.path, 'ffplayout.log')
+        decoder_log = os.path.join(LOG.path, 'decoder.log')
+        encoder_log = os.path.join(LOG.path, 'encoder.log')
     else:
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         log_dir = os.path.join(base_dir, 'log')
@@ -335,11 +334,11 @@ if _log.to_file and _log.path != 'none':
     p_format = logging.Formatter('[%(asctime)s] [%(levelname)s]  %(message)s')
     f_format = logging.Formatter('[%(asctime)s]  %(message)s')
     p_file_handler = TimedRotatingFileHandler(playout_log, when='midnight',
-                                              backupCount=_log.backup_count)
+                                              backupCount=LOG.backup_count)
     d_file_handler = TimedRotatingFileHandler(decoder_log, when='midnight',
-                                              backupCount=_log.backup_count)
+                                              backupCount=LOG.backup_count)
     e_file_handler = TimedRotatingFileHandler(encoder_log, when='midnight',
-                                              backupCount=_log.backup_count)
+                                              backupCount=LOG.backup_count)
 
     p_file_handler.setFormatter(p_format)
     d_file_handler.setFormatter(f_format)
@@ -371,7 +370,7 @@ class Mailer:
     """
 
     def __init__(self):
-        self.level = _mail.level
+        self.level = MAIL.level
         self.time = None
         self.timestamp = get_time('stamp')
         self.rate_limit = 600
@@ -381,7 +380,7 @@ class Mailer:
         self.time = get_time(None)
 
     def send_mail(self, msg):
-        if _mail.recip:
+        if MAIL.recip:
             # write message to temp file for rate limit
             with open(self.temp_msg, 'w+') as f:
                 f.write(msg)
@@ -389,15 +388,15 @@ class Mailer:
             self.current_time()
 
             message = MIMEMultipart()
-            message['From'] = _mail.s_addr
-            message['To'] = _mail.recip
-            message['Subject'] = _mail.subject
+            message['From'] = MAIL.s_addr
+            message['To'] = MAIL.recip
+            message['Subject'] = MAIL.subject
             message['Date'] = formatdate(localtime=True)
             message.attach(MIMEText(f'{self.time} {msg}', 'plain'))
             text = message.as_string()
 
             try:
-                server = smtplib.SMTP(_mail.server, _mail.port)
+                server = smtplib.SMTP(MAIL.server, MAIL.port)
             except socket.error as err:
                 playout_logger.error(err)
                 server = None
@@ -405,14 +404,14 @@ class Mailer:
             if server is not None:
                 server.starttls()
                 try:
-                    login = server.login(_mail.s_addr, _mail.s_pass)
+                    login = server.login(MAIL.s_addr, MAIL.s_pass)
                 except smtplib.SMTPAuthenticationError as serr:
                     playout_logger.error(serr)
                     login = None
 
                 if login is not None:
-                    server.sendmail(_mail.s_addr,
-                                    re.split(', |; |,|;', _mail.recip), text)
+                    server.sendmail(MAIL.s_addr,
+                                    re.split(', |; |,|;', MAIL.recip), text)
                     server.quit()
 
     def check_if_new(self, msg):
@@ -624,11 +623,11 @@ def terminate_processes(watcher=None):
     """
     kill orphaned processes
     """
-    if _ff.decoder and _ff.decoder.poll() is None:
-        _ff.decoder.terminate()
+    if FF.decoder and FF.decoder.poll() is None:
+        FF.decoder.terminate()
 
-    if _ff.encoder and _ff.encoder.poll() is None:
-        _ff.encoder.terminate()
+    if FF.encoder and FF.encoder.poll() is None:
+        FF.encoder.terminate()
 
     if watcher:
         watcher.stop()
@@ -648,9 +647,9 @@ def ffmpeg_stderr_reader(std_errors, decoder):
 
     try:
         for line in std_errors:
-            if _log.ff_level == 'INFO':
+            if LOG.ff_level == 'INFO':
                 logger.info(f'{prefix}{line.decode("utf-8").rstrip()}')
-            elif _log.ff_level == 'WARNING':
+            elif LOG.ff_level == 'WARNING':
                 logger.warning(f'{prefix}{line.decode("utf-8").rstrip()}')
             else:
                 logger.error(f'{prefix}{line.decode("utf-8").rstrip()}')
@@ -664,17 +663,17 @@ def get_delta(begin):
     """
     current_time = get_time('full_sec')
 
-    if stdin_args.length and str_to_sec(stdin_args.length):
-        target_playtime = str_to_sec(stdin_args.length)
-    elif _playlist.length:
-        target_playtime = _playlist.length
+    if STDIN_ARGS.length and str_to_sec(STDIN_ARGS.length):
+        target_playtime = str_to_sec(STDIN_ARGS.length)
+    elif PLAYLIST.length:
+        target_playtime = PLAYLIST.length
     else:
         target_playtime = 86400.0
 
-    if begin == _playlist.start == 0 and 86400.0 - current_time < 4:
+    if begin == PLAYLIST.start == 0 and 86400.0 - current_time < 4:
         current_time -= target_playtime
 
-    elif _playlist.start >= current_time and not begin == _playlist.start:
+    elif PLAYLIST.start >= current_time and not begin == PLAYLIST.start:
         current_time += target_playtime
 
     current_delta = begin - current_time
@@ -682,7 +681,7 @@ def get_delta(begin):
     if math.isclose(current_delta, 86400.0, abs_tol=6):
         current_delta -= 86400.0
 
-    ref_time = target_playtime + _playlist.start
+    ref_time = target_playtime + PLAYLIST.start
     total_delta = ref_time - begin + current_delta
 
     return current_delta, total_delta
@@ -696,9 +695,9 @@ def get_date(seek_day, next_start=0):
     """
     d = date.today()
 
-    if seek_day and _playlist.start > get_time('full_sec'):
+    if seek_day and PLAYLIST.start > get_time('full_sec'):
         return (d - timedelta(1)).strftime('%Y-%m-%d')
-    elif _playlist.start == 0 and next_start >= 86400:
+    elif PLAYLIST.start == 0 and next_start >= 86400:
         return (d + timedelta(1)).strftime('%Y-%m-%d')
     else:
         return d.strftime('%Y-%m-%d')
@@ -736,12 +735,12 @@ def check_sync(delta):
     check that we are in tolerance time
     """
 
-    if _playlist.mode and _playlist.start and _playlist.length:
+    if PLAYLIST.mode and PLAYLIST.start and PLAYLIST.length:
         # save time delta to global variable for syncing
         # this is needed for real time filter
-        _global.time_delta = delta
+        GENERAL.time_delta = delta
 
-    if _general.stop and abs(delta) > _general.threshold:
+    if GENERAL.stop and abs(delta) > GENERAL.threshold:
         messenger.error(
             f'Sync tolerance value exceeded with {delta:.2f} seconds,\n'
             'program terminated!')
@@ -787,7 +786,7 @@ def gen_dummy(duration):
     # noise = 'noise=alls=50:allf=t+u,hue=s=0'
     return [
         '-f', 'lavfi', '-i',
-        f'color=c={color}:s={_pre.w}x{_pre.h}:d={duration}:r={_pre.fps},'
+        f'color=c={color}:s={PRE.w}x{PRE.h}:d={duration}:r={PRE.fps},'
         'format=pix_fmts=yuv420p',
         '-f', 'lavfi', '-i', f'anoisesrc=d={duration}:c=pink:r=48000:a=0.05'
     ]
@@ -798,7 +797,7 @@ def gen_filler(node):
     generate filler clip to fill empty space in playlist
     """
     probe = MediaProbe()
-    probe.load(_storage.filler)
+    probe.load(STORAGE.filler)
     duration = node['out'] - node['seek']
 
     node['probe'] = probe
@@ -810,13 +809,13 @@ def gen_filler(node):
                 # cut filler
                 messenger.info(
                     f'Generate filler with {duration:.2f} seconds')
-                node['source'] = _storage.filler
-                node['src_cmd'] = ['-i', _storage.filler] + set_length(
+                node['source'] = STORAGE.filler
+                node['src_cmd'] = ['-i', STORAGE.filler] + set_length(
                     filler_duration, 0, duration)
                 return node
             else:
                 # loop file n times
-                node['src_cmd'] = loop_input(_storage.filler, filler_duration,
+                node['src_cmd'] = loop_input(STORAGE.filler, filler_duration,
                                              duration)
                 return node
         else:
@@ -883,7 +882,7 @@ def pre_audio_codec():
     s302m has higher quality, but is experimental
     and works not well together with the loudnorm filter
     """
-    if _pre.add_loudnorm:
+    if PRE.add_loudnorm:
         return ['-c:a', 'mp2', '-b:a', '384k', '-ar', '48000', '-ac', '2']
     else:
         return ['-c:a', 's302m', '-strict', '-2', '-ar', '48000', '-ac', '2']
