@@ -714,6 +714,9 @@ def get_float(value, default=False):
 
 
 def is_advertisement(node):
+    """
+    check if clip in node is advertisement
+    """
     if node and node.get('category') == 'advertisement':
         return True
 
@@ -752,24 +755,20 @@ def seek_in(seek):
     """
     seek in clip
     """
-    if seek > 0.0:
-        return ['-ss', str(seek)]
-    else:
-        return []
+    return ['-ss', str(seek)] if seek > 0.0 else []
 
 
 def set_length(duration, seek, out):
     """
     set new clip length
     """
-    if out < duration:
-        return ['-t', str(out - seek)]
-    else:
-        return []
+    return ['-t', str(out - seek)] if out < duration else []
 
 
 def loop_input(source, src_duration, target_duration):
-    # loop filles n times
+    """
+    loop filles n times
+    """
     loop_count = math.ceil(target_duration / src_duration)
     messenger.info(f'Loop "{source}" {loop_count} times, '
                    f'total duration: {target_duration:.2f}')
