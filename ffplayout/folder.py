@@ -27,7 +27,7 @@ from watchdog.events import PatternMatchingEventHandler
 from watchdog.observers import Observer
 
 from .filters.default import build_filtergraph
-from .utils import MediaProbe, _ff, _storage, messenger, stdin_args
+from .utils import FF, STDIN_ARGS, STORAGE, MediaProbe, messenger
 
 # ------------------------------------------------------------------------------
 # folder watcher
@@ -43,21 +43,21 @@ class MediaStore:
     def __init__(self):
         self.store = []
 
-        if stdin_args.folder:
-            self.folder = stdin_args.folder
+        if STDIN_ARGS.folder:
+            self.folder = STDIN_ARGS.folder
         else:
-            self.folder = _storage.path
+            self.folder = STORAGE.path
 
         self.fill()
 
     def fill(self):
-        for ext in _storage.extensions:
+        for ext in STORAGE.extensions:
             self.store.extend(
                 glob.glob(os.path.join(self.folder, '**', f'*{ext}'),
                           recursive=True))
 
     def sort_or_radomize(self):
-        if _storage.shuffle:
+        if STORAGE.shuffle:
             self.rand()
         else:
             self.sort()
@@ -86,7 +86,7 @@ class MediaWatcher:
 
     def __init__(self, media):
         self._media = media
-        self.extensions = [f'*{ext}' for ext in _storage.extensions]
+        self.extensions = [f'*{ext}' for ext in STORAGE.extensions]
         self.current_clip = None
 
         self.event_handler = PatternMatchingEventHandler(
@@ -120,7 +120,7 @@ class MediaWatcher:
             f'Move file from "{event.src_path}" to "{event.dest_path}"')
 
         if self.current_clip == event.src_path:
-            _ff.decoder.terminate()
+            FF.decoder.terminate()
 
     def on_deleted(self, event):
         self._media.remove(event.src_path)
@@ -128,7 +128,7 @@ class MediaWatcher:
         messenger.info(f'Remove file from media list: "{event.src_path}"')
 
         if self.current_clip == event.src_path:
-            _ff.decoder.terminate()
+            FF.decoder.terminate()
 
     def stop(self):
         self.observer.stop()
