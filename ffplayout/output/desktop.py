@@ -21,9 +21,9 @@ from threading import Thread
 
 from ffplayout.folder import GetSourceFromFolder, MediaStore, MediaWatcher
 from ffplayout.playlist import GetSourceFromPlaylist
-from ffplayout.utils import (FF, LOG, PLAYLIST, PRE, STDIN_ARGS, TEXT,
-                             ffmpeg_stderr_reader, messenger, pre_audio_codec,
-                             terminate_processes)
+from ffplayout.utils import (ff_proc, ffmpeg_stderr_reader, log, lower_third,
+                             messenger, playlist, pre, pre_audio_codec,
+                             stdin_args, terminate_processes)
 
 _WINDOWS = os.name == 'nt'
 COPY_BUFSIZE = 1024 * 1024 if _WINDOWS else 65424
@@ -36,21 +36,22 @@ def output():
     overlay = []
 
     ff_pre_settings = [
-        '-pix_fmt', 'yuv420p', '-r', str(PRE.fps),
+        '-pix_fmt', 'yuv420p', '-r', str(pre.fps),
         '-c:v', 'mpeg2video', '-intra',
-        '-b:v', f'{PRE.v_bitrate}k',
-        '-minrate', f'{PRE.v_bitrate}k',
-        '-maxrate', f'{PRE.v_bitrate}k',
-        '-bufsize', f'{PRE.v_bufsize}k'
+        '-b:v', f'{pre.v_bitrate}k',
+        '-minrate', f'{pre.v_bitrate}k',
+        '-maxrate', f'{pre.v_bitrate}k',
+        '-bufsize', f'{pre.v_bufsize}k'
         ] + pre_audio_codec() + ['-f', 'mpegts', '-']
 
-    if TEXT.add_text and not TEXT.over_pre:
+    if lower_third.add_text and not lower_third.over_pre:
         messenger.info(
-            f'Using drawtext node, listening on address: {TEXT.address}')
+            f'Using drawtext node, listening on address: {lower_third.address}'
+            )
         overlay = [
             '-vf',
             "null,zmq=b=tcp\\\\://'{}',drawtext=text='':fontfile='{}'".format(
-                TEXT.address.replace(':', '\\:'), TEXT.fontfile)
+                lower_third.address.replace(':', '\\:'), lower_third.fontfile)
         ]
 
     try:
@@ -60,14 +61,14 @@ def output():
 
         messenger.debug(f'Encoder CMD: "{" ".join(enc_cmd)}"')
 
-        FF.encoder = Popen(enc_cmd, stderr=PIPE, stdin=PIPE, stdout=None)
+        ff_proc.encoder = Popen(enc_cmd, stderr=PIPE, stdin=PIPE, stdout=None)
 
         enc_err_thread = Thread(target=ffmpeg_stderr_reader,
-                                args=(FF.encoder.stderr, False))
+                                args=(ff_proc.encoder.stderr, False))
         enc_err_thread.daemon = True
         enc_err_thread.start()
 
-        if PLAYLIST.mode and not STDIN_ARGS.folder:
+        if playlist.mode and not stdin_args.folder:
             watcher = None
             get_source = GetSourceFromPlaylist()
         else:
@@ -86,23 +87,25 @@ def output():
                     f'seconds: {node.get("source")}')
 
                 dec_cmd = [
-                    'ffmpeg', '-v', LOG.ff_level.lower(),
+                    'ffmpeg', '-v', log.ff_level.lower(),
                     '-hide_banner', '-nostats'
                     ] + node['src_cmd'] + node['filter'] + ff_pre_settings
 
                 messenger.debug(f'Decoder CMD: "{" ".join(dec_cmd)}"')
 
-                with Popen(dec_cmd, stdout=PIPE, stderr=PIPE) as FF.decoder:
+                with Popen(
+                        dec_cmd, stdout=PIPE, stderr=PIPE) as ff_proc.decoder:
                     dec_err_thread = Thread(target=ffmpeg_stderr_reader,
-                                            args=(FF.decoder.stderr, True))
+                                            args=(ff_proc.decoder.stderr,
+                                                  True))
                     dec_err_thread.daemon = True
                     dec_err_thread.start()
 
                     while True:
-                        buf = FF.decoder.stdout.read(COPY_BUFSIZE)
+                        buf = ff_proc.decoder.stdout.read(COPY_BUFSIZE)
                         if not buf:
                             break
-                        FF.encoder.stdin.write(buf)
+                        ff_proc.encoder.stdin.write(buf)
 
         except BrokenPipeError:
             messenger.error('Broken Pipe!')
@@ -117,10 +120,10 @@ def output():
             terminate_processes(watcher)
 
         # close encoder when nothing is to do anymore
-        if FF.encoder.poll() is None:
-            FF.encoder.terminate()
+        if ff_proc.encoder.poll() is None:
+            ff_proc.encoder.terminate()
 
     finally:
-        if FF.encoder.poll() is None:
-            FF.encoder.terminate()
-        FF.encoder.wait()
+        if ff_proc.encoder.poll() is None:
+            ff_proc.encoder.terminate()
+        ff_proc.encoder.wait()

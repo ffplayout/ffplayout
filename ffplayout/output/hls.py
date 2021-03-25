@@ -23,8 +23,8 @@ from threading import Thread
 
 from ffplayout.folder import GetSourceFromFolder, MediaStore, MediaWatcher
 from ffplayout.playlist import GetSourceFromPlaylist
-from ffplayout.utils import (FF, LOG, PLAYLIST, PLAYOUT, STDIN_ARGS,
-                             ffmpeg_stderr_reader, get_date, messenger,
+from ffplayout.utils import (ff_proc, ffmpeg_stderr_reader, get_date, log,
+                             messenger, playlist, playout, stdin_args,
                              terminate_processes)
 
 
@@ -35,15 +35,15 @@ def clean_ts():
     then it checks if files on harddrive are older then this first *.ts
     and if so delete them
     """
-    playlists = [p for p in PLAYOUT.hls_output if 'm3u8' in p]
+    m3u8_files = [p for p in playout.hls_output if 'm3u8' in p]
 
-    for playlist in playlists:
-        messenger.debug(f'cleanup *.ts files from: "{playlist}"')
+    for m3u8_file in m3u8_files:
+        messenger.debug(f'cleanup *.ts files from: "{m3u8_file}"')
         test_num = 0
-        hls_path = os.path.dirname(playlist)
+        hls_path = os.path.dirname(m3u8_file)
 
-        if os.path.isfile(playlist):
-            with open(playlist, 'r') as m3u8:
+        if os.path.isfile(m3u8_file):
+            with open(m3u8_file, 'r') as m3u8:
                 for line in m3u8:
                     if '.ts' in line:
                         test_num = int(re.findall(r'(\d+).ts', line)[0])
@@ -66,7 +66,7 @@ def output():
     year = get_date(False).split('-')[0]
 
     try:
-        if PLAYLIST.mode and not STDIN_ARGS.folder:
+        if playlist.mode and not stdin_args.folder:
             watcher = None
             get_source = GetSourceFromPlaylist()
         else:
@@ -83,20 +83,21 @@ def output():
                 messenger.info(f'Play: {node.get("source")}')
 
                 cmd = [
-                    'ffmpeg', '-v', LOG.ff_level.lower(), '-hide_banner',
+                    'ffmpeg', '-v', log.ff_level.lower(), '-hide_banner',
                     '-nostats'
                     ] + node['src_cmd'] + node['filter'] + [
-                        '-metadata', 'service_name=' + PLAYOUT.name,
-                        '-metadata', 'service_provider=' + PLAYOUT.provider,
+                        '-metadata', 'service_name=' + playout.name,
+                        '-metadata', 'service_provider=' + playout.provider,
                         '-metadata', 'year={}'.format(year)
-                    ] + PLAYOUT.ffmpeg_param + PLAYOUT.hls_output
+                    ] + playout.ffmpeg_param + playout.hls_output
 
                 messenger.debug(f'Encoder CMD: "{" ".join(cmd)}"')
 
-                FF.encoder = Popen(cmd, stdin=PIPE, stderr=PIPE)
+                ff_proc.encoder = Popen(cmd, stdin=PIPE, stderr=PIPE)
 
                 stderr_reader_thread = Thread(target=ffmpeg_stderr_reader,
-                                              args=(FF.encoder.stderr, False))
+                                              args=(ff_proc.encoder.stderr,
+                                                    False))
                 stderr_reader_thread.daemon = True
                 stderr_reader_thread.start()
                 stderr_reader_thread.join()
@@ -118,10 +119,10 @@ def output():
             terminate_processes(watcher)
 
         # close encoder when nothing is to do anymore
-        if FF.encoder.poll() is None:
-            FF.encoder.terminate()
+        if ff_proc.encoder.poll() is None:
+            ff_proc.encoder.terminate()
 
     finally:
-        if FF.encoder.poll() is None:
-            FF.encoder.terminate()
-        FF.encoder.wait()
+        if ff_proc.encoder.poll() is None:
+            ff_proc.encoder.terminate()
+        ff_proc.encoder.wait()
