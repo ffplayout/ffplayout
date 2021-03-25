@@ -23,7 +23,8 @@ import re
 from glob import glob
 from pydoc import locate
 
-from ffplayout.utils import GENERAL, PRE, TEXT, is_advertisement, messenger
+from ffplayout.utils import (is_advertisement, lower_third, messenger, pre,
+                             sync_op)
 
 # ------------------------------------------------------------------------------
 # building filters,
@@ -35,12 +36,12 @@ def text_filter():
     filter_chain = []
     font = ''
 
-    if TEXT.add_text and TEXT.over_pre:
-        if TEXT.fontfile and os.path.isfile(TEXT.fontfile):
-            font = f":fontfile='{TEXT.fontfile}'"
+    if lower_third.add_text and lower_third.over_pre:
+        if lower_third.fontfile and os.path.isfile(lower_third.fontfile):
+            font = f":fontfile='{lower_third.fontfile}'"
         filter_chain = [
             "null,zmq=b=tcp\\\\://'{}',drawtext=text=''{}".format(
-                TEXT.address.replace(':', '\\:'), font)]
+                lower_third.address.replace(':', '\\:'), font)]
 
     return filter_chain
 
@@ -67,13 +68,13 @@ def pad_filter(probe):
     filter_chain = []
 
     if not math.isclose(probe.video[0]['aspect'],
-                        PRE.aspect, abs_tol=0.03):
-        if probe.video[0]['aspect'] < PRE.aspect:
+                        pre.aspect, abs_tol=0.03):
+        if probe.video[0]['aspect'] < pre.aspect:
             filter_chain.append(
-                f'pad=ih*{PRE.w}/{PRE.h}/sar:ih:(ow-iw)/2:(oh-ih)/2')
-        elif probe.video[0]['aspect'] > PRE.aspect:
+                f'pad=ih*{pre.w}/{pre.h}/sar:ih:(ow-iw)/2:(oh-ih)/2')
+        elif probe.video[0]['aspect'] > pre.aspect:
             filter_chain.append(
-                f'pad=iw:iw*{PRE.h}/{PRE.w}/sar:(ow-iw)/2:(oh-ih)/2')
+                f'pad=iw:iw*{pre.h}/{pre.w}/sar:(ow-iw)/2:(oh-ih)/2')
 
     return filter_chain
 
@@ -84,8 +85,8 @@ def fps_filter(probe):
     """
     filter_chain = []
 
-    if probe.video[0]['fps'] != PRE.fps:
-        filter_chain.append(f'fps={PRE.fps}')
+    if probe.video[0]['fps'] != pre.fps:
+        filter_chain.append(f'fps={pre.fps}')
 
     return filter_chain
 
@@ -97,13 +98,13 @@ def scale_filter(probe):
     """
     filter_chain = []
 
-    if int(probe.video[0]['width']) != PRE.w or \
-            int(probe.video[0]['height']) != PRE.h:
-        filter_chain.append(f'scale={PRE.w}:{PRE.h}')
+    if int(probe.video[0]['width']) != pre.w or \
+            int(probe.video[0]['height']) != pre.h:
+        filter_chain.append(f'scale={pre.w}:{pre.h}')
 
     if not math.isclose(probe.video[0]['aspect'],
-                        PRE.aspect, abs_tol=0.03):
-        filter_chain.append(f'setdar=dar={PRE.aspect}')
+                        pre.aspect, abs_tol=0.03):
+        filter_chain.append(f'setdar=dar={pre.aspect}')
 
     return filter_chain
 
@@ -132,22 +133,22 @@ def overlay_filter(duration, ad, ad_last, ad_next):
     logo_filter = '[v]null'
     scale_filter = ''
 
-    if PRE.add_logo and os.path.isfile(PRE.logo) and not ad:
+    if pre.add_logo and os.path.isfile(pre.logo) and not ad:
         logo_chain = []
-        if PRE.logo_scale and \
-                re.match(r'\d+:-?\d+', PRE.logo_scale):
-            scale_filter = f'scale={PRE.logo_scale},'
+        if pre.logo_scale and \
+                re.match(r'\d+:-?\d+', pre.logo_scale):
+            scale_filter = f'scale={pre.logo_scale},'
         logo_extras = (f'format=rgba,{scale_filter}'
-                       f'colorchannelmixer=aa={PRE.logo_opacity}')
+                       f'colorchannelmixer=aa={pre.logo_opacity}')
         loop = 'loop=loop=-1:size=1:start=0'
-        logo_chain.append(f'movie={PRE.logo},{loop},{logo_extras}')
+        logo_chain.append(f'movie={pre.logo},{loop},{logo_extras}')
         if ad_last:
             logo_chain.append('fade=in:st=0:d=1.0:alpha=1')
         if ad_next:
             logo_chain.append(f'fade=out:st={duration - 1}:d=1.0:alpha=1')
 
         logo_filter = (f'{",".join(logo_chain)}[l];[v][l]'
-                       f'{PRE.logo_filter}:shortest=1')
+                       f'{pre.logo_filter}:shortest=1')
 
     return logo_filter
 
@@ -172,9 +173,9 @@ def add_loudnorm(probe):
     """
     loud_filter = []
 
-    if probe.audio and PRE.add_loudnorm:
+    if probe.audio and pre.add_loudnorm:
         loud_filter = [
-            f'loudnorm=I={PRE.loud_i}:TP={PRE.loud_tp}:LRA={PRE.loud_lra}']
+            f'loudnorm=I={pre.loud_i}:TP={pre.loud_tp}:LRA={pre.loud_lra}']
 
     return loud_filter
 
@@ -209,11 +210,11 @@ def extend_video(probe, duration, target_duration):
 def realtime_filter(duration, track=''):
     speed_filter = ''
 
-    if PRE.realtime:
+    if pre.realtime:
         speed_filter = f',{track}realtime=speed=1'
 
-        if GENERAL.time_delta < 0:
-            speed = duration / (duration + GENERAL.time_delta)
+        if sync_op.time_delta < 0:
+            speed = duration / (duration + sync_op.time_delta)
 
             if speed < 1.1:
                 speed_filter = f',{track}realtime=speed={speed}'
@@ -229,11 +230,11 @@ def split_filter(filter_type):
     if filter_type == 'a':
         prefix = 'a'
 
-    if PRE.output_count > 1:
-        for num in range(PRE.output_count):
+    if pre.output_count > 1:
+        for num in range(pre.output_count):
             map_node.append(f'[{filter_type}out{num + 1}]')
 
-        _filter = f',{prefix}split={PRE.output_count}{"".join(map_node)}'
+        _filter = f',{prefix}split={pre.output_count}{"".join(map_node)}'
 
     else:
         _filter = f'[{filter_type}out1]'
@@ -241,11 +242,11 @@ def split_filter(filter_type):
     return _filter
 
 
-def custom_filter(type, node):
+def custom_filter(filter_type, node):
     filter_dir = os.path.dirname(os.path.abspath(__file__))
     filters = []
 
-    for filter_file in glob(os.path.join(filter_dir, f'{type}_*')):
+    for filter_file in glob(os.path.join(filter_dir, f'{filter_type}_*')):
         filter_ = os.path.splitext(os.path.basename(filter_file))[0]
         filter_function = locate(f'ffplayout.filters.{filter_}.filter_link')
         link = filter_function(node)

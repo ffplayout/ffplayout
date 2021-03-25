@@ -98,37 +98,37 @@ def run_with_no_elements(time_tuple):
 
 if __name__ == '__main__':
     from ffplayout.output import desktop
-    from ffplayout.utils import PLAYLIST, terminate_processes
+    from ffplayout.utils import playlist, terminate_processes
 
     print('\ntest playlists, which are empty')
-    PLAYLIST.start = 0
+    playlist.start = 0
     run_time(140)
     run_with_no_elements((2021, 2, 15, 23, 59, 53))
 
     print_separater()
 
     print('\ntest playlists, which are to short')
-    PLAYLIST.start = 0
+    playlist.start = 0
     run_time(140)
     run_with_less_elements((2021, 2, 15, 23, 58, 3))
 
     print_separater()
 
     print('\ntest playlists, which are to long')
-    PLAYLIST.start = 0
+    playlist.start = 0
     run_time(140)
     run_with_more_elements((2021, 2, 15, 23, 59, 33))
 
     print_separater()
 
     print('\ntest transition from playlists, with day_start at: 05:59:25')
-    PLAYLIST.start = 21575
+    playlist.start = 21575
     run_time(140)
     run_at((2021, 2, 17, 5, 58, 3))
 
     print_separater()
 
     print('\ntest transition from playlists, with day_start at: 20:00:00')
-    PLAYLIST.start = 72000
+    playlist.start = 72000
     run_time(140)
     run_at((2021, 2, 17, 19, 58, 23))

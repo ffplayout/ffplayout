@@ -27,7 +27,7 @@ from watchdog.events import PatternMatchingEventHandler
 from watchdog.observers import Observer
 
 from .filters.default import build_filtergraph
-from .utils import FF, STDIN_ARGS, STORAGE, MediaProbe, messenger
+from .utils import MediaProbe, ff_proc, messenger, stdin_args, storage
 
 # ------------------------------------------------------------------------------
 # folder watcher
@@ -43,21 +43,21 @@ class MediaStore:
     def __init__(self):
         self.store = []
 
-        if STDIN_ARGS.folder:
-            self.folder = STDIN_ARGS.folder
+        if stdin_args.folder:
+            self.folder = stdin_args.folder
         else:
-            self.folder = STORAGE.path
+            self.folder = storage.path
 
         self.fill()
 
     def fill(self):
-        for ext in STORAGE.extensions:
+        for ext in storage.extensions:
             self.store.extend(
                 glob.glob(os.path.join(self.folder, '**', f'*{ext}'),
                           recursive=True))
 
     def sort_or_radomize(self):
-        if STORAGE.shuffle:
+        if storage.shuffle:
             self.rand()
         else:
             self.sort()
@@ -86,7 +86,7 @@ class MediaWatcher:
 
     def __init__(self, media):
         self._media = media
-        self.extensions = [f'*{ext}' for ext in STORAGE.extensions]
+        self.extensions = [f'*{ext}' for ext in storage.extensions]
         self.current_clip = None
 
         self.event_handler = PatternMatchingEventHandler(
@@ -120,7 +120,7 @@ class MediaWatcher:
             f'Move file from "{event.src_path}" to "{event.dest_path}"')
 
         if self.current_clip == event.src_path:
-            FF.decoder.terminate()
+            ff_proc.decoder.terminate()
 
     def on_deleted(self, event):
         self._media.remove(event.src_path)
@@ -128,7 +128,7 @@ class MediaWatcher:
         messenger.info(f'Remove file from media list: "{event.src_path}"')
 
         if self.current_clip == event.src_path:
-            FF.decoder.terminate()
+            ff_proc.decoder.terminate()
 
     def stop(self):
         self.observer.stop()
