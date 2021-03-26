@@ -15,6 +15,10 @@
 
 # ------------------------------------------------------------------------------
 
+"""
+This module contains default variables and helper functions
+"""
+
 import json
 import logging
 import math
@@ -285,6 +289,9 @@ class CustomFormatter(logging.Formatter):
     }
 
     def format_message(self, msg):
+        """
+        match strings with regex and add different color tags to it
+        """
         if '"' in msg:
             msg = re.sub('(".*?")', self.cyan + r'\1' + self.reset, msg)
         elif '[decoder]' in msg:
@@ -302,6 +309,9 @@ class CustomFormatter(logging.Formatter):
         return msg
 
     def format(self, record):
+        """
+        override logging format
+        """
         record.msg = self.format_message(record.getMessage())
         log_fmt = self.FORMATS.get(record.levelno)
         formatter = logging.Formatter(log_fmt)
@@ -378,13 +388,19 @@ class Mailer:
         self.temp_msg = os.path.join(tempfile.gettempdir(), 'ffplayout.txt')
 
     def current_time(self):
+        """
+        set sending time
+        """
         self.time = get_time(None)
 
     def send_mail(self, msg):
+        """
+        send emails to specified recipients
+        """
         if mail.recip:
             # write message to temp file for rate limit
-            with open(self.temp_msg, 'w+') as f:
-                f.write(msg)
+            with open(self.temp_msg, 'w+') as msg_file:
+                msg_file.write(msg)
 
             self.current_time()
 
@@ -416,12 +432,14 @@ class Mailer:
                     server.quit()
 
     def check_if_new(self, msg):
-        # send messege only when is new or the rate_limit is pass
+        """
+        send messege only when is new or the rate_limit is pass
+        """
         if os.path.isfile(self.temp_msg):
             mod_time = os.path.getmtime(self.temp_msg)
 
-            with open(self.temp_msg, 'r', encoding='utf-8') as f:
-                last_msg = f.read()
+            with open(self.temp_msg, 'r', encoding='utf-8') as msg_file:
+                last_msg = msg_file.read()
 
                 if msg != last_msg \
                         or get_time('stamp') - mod_time > self.rate_limit:
@@ -430,14 +448,23 @@ class Mailer:
             self.send_mail(msg)
 
     def info(self, msg):
+        """
+        send emails with level INFO, WARNING and ERROR
+        """
         if self.level in ['INFO']:
             self.check_if_new(msg)
 
     def warning(self, msg):
+        """
+        send emails with level WARNING and ERROR
+        """
         if self.level in ['INFO', 'WARNING']:
             self.check_if_new(msg)
 
     def error(self, msg):
+        """
+        send emails with level ERROR
+        """
         if self.level in ['INFO', 'WARNING', 'ERROR']:
             self.check_if_new(msg)
 
@@ -451,18 +478,31 @@ class Messenger:
     def __init__(self):
         self._mailer = Mailer()
 
+    # pylint: disable=no-self-use
     def debug(self, msg):
+        """
+        log debugging messages
+        """
         playout_logger.debug(msg.replace('\n', ' '))
 
     def info(self, msg):
+        """
+        log and mail info messages
+        """
         playout_logger.info(msg.replace('\n', ' '))
         self._mailer.info(msg)
 
     def warning(self, msg):
+        """
+        log and mail warning messages
+        """
         playout_logger.warning(msg.replace('\n', ' '))
         self._mailer.warning(msg)
 
     def error(self, msg):
+        """
+        log and mail error messages
+        """
         playout_logger.error(msg.replace('\n', ' '))
         self._mailer.error(msg)
 
@@ -521,6 +561,9 @@ FF_LIBS = ffmpeg_libs()
 
 
 def validate_ffmpeg_libs():
+    """
+    check if ffmpeg contains some basic libs
+    """
     if 'libx264' not in FF_LIBS['libs']:
         playout_logger.error('ffmpeg contains no libx264!')
     if 'libfdk-aac' not in FF_LIBS['libs']:
@@ -542,8 +585,18 @@ class MediaProbe:
     get infos about media file, similare to mediainfo
     """
 
-    def load(self, file):
+    def __init__(self):
         self.remote_source = ['http', 'https', 'ftp', 'smb', 'sftp']
+        self.src = None
+        self.format = None
+        self.audio = []
+        self.video = []
+        self.is_remote = False
+
+    def load(self, file):
+        """
+        load media file with ffprobe and get infos out of it
+        """
         self.src = file
         self.format = None
         self.audio = []
@@ -582,14 +635,14 @@ class MediaProbe:
 
             if stream['codec_type'] == 'video':
                 if stream.get('display_aspect_ratio'):
-                    w, h = stream['display_aspect_ratio'].split(':')
-                    stream['aspect'] = float(w) / float(h)
+                    width, heigth = stream['display_aspect_ratio'].split(':')
+                    stream['aspect'] = float(width) / float(heigth)
                 else:
                     stream['aspect'] = float(
                         stream['width']) / float(stream['height'])
 
-                a, b = stream['r_frame_rate'].split('/')
-                stream['fps'] = float(a) / float(b)
+                rate, factor = stream['r_frame_rate'].split('/')
+                stream['fps'] = float(rate) / float(factor)
 
                 self.video.append(stream)
 
@@ -602,9 +655,10 @@ def handle_sigterm(sig, frame):
     """
     handler for ctrl+c signal
     """
-    raise(SystemExit)
+    raise SystemExit
 
 
+# pylint: disable=unused-argument
 def handle_sighub(sig, frame):
     """
     handling SIGHUB signal for reload configuration
@@ -694,14 +748,15 @@ def get_date(seek_day, next_start=0):
     when seek_day is set:
     check if playlist date must be from yesterday
     """
-    d = date.today()
+    date_ = date.today()
 
     if seek_day and playlist.start > get_time('full_sec'):
-        return (d - timedelta(1)).strftime('%Y-%m-%d')
-    elif playlist.start == 0 and next_start >= 86400:
-        return (d + timedelta(1)).strftime('%Y-%m-%d')
-    else:
-        return d.strftime('%Y-%m-%d')
+        return (date_ - timedelta(1)).strftime('%Y-%m-%d')
+
+    if playlist.start == 0 and next_start >= 86400:
+        return (date_ + timedelta(1)).strftime('%Y-%m-%d')
+
+    return date_.strftime('%Y-%m-%d')
 
 
 def get_float(value, default=False):
@@ -720,6 +775,8 @@ def is_advertisement(node):
     """
     if node and node.get('category') == 'advertisement':
         return True
+
+    return False
 
 
 def valid_json(file):
@@ -804,34 +861,32 @@ def gen_filler(node):
 
     if probe.format:
         if probe.format.get('duration'):
-            filler_duration = float(probe.format['duration'])
-            if filler_duration > duration:
+            filler_dur = float(probe.format['duration'])
+            if filler_dur > duration:
                 # cut filler
                 messenger.info(
                     f'Generate filler with {duration:.2f} seconds')
                 node['source'] = storage.filler
                 node['src_cmd'] = ['-i', storage.filler] + set_length(
-                    filler_duration, 0, duration)
+                    filler_dur, 0, duration)
                 return node
-            else:
-                # loop file n times
-                node['src_cmd'] = loop_input(storage.filler, filler_duration,
-                                             duration)
-                return node
-        else:
-            messenger.error("Can't get filler length, generate dummy!")
-            dummy = gen_dummy(duration)
-            node['source'] = dummy[3]
-            node['src_cmd'] = dummy
+
+            # loop file n times
+            node['src_cmd'] = loop_input(storage.filler, filler_dur, duration)
             return node
 
-    else:
-        # when no filler is set, generate a dummy
-        messenger.warning('No filler is set!')
+        messenger.error("Can't get filler length, generate dummy!")
         dummy = gen_dummy(duration)
         node['source'] = dummy[3]
         node['src_cmd'] = dummy
         return node
+
+    # when no filler is set, generate a dummy
+    messenger.warning('No filler is set!')
+    dummy = gen_dummy(duration)
+    node['source'] = dummy[3]
+    node['src_cmd'] = dummy
+    return node
 
 
 def src_or_dummy(node):
@@ -862,7 +917,7 @@ def src_or_dummy(node):
                     ] + set_length(node['duration'], node['seek'],
                                    node['out'] - node['seek'])
             else:
-                # FIXME: when list starts with looped clip,
+                # when list starts with looped clip,
                 # the logo length will be wrong
                 node['src_cmd'] = loop_input(node['source'], node['duration'],
                                              node['out'])
@@ -884,5 +939,5 @@ def pre_audio_codec():
     """
     if pre.add_loudnorm:
         return ['-c:a', 'mp2', '-b:a', '384k', '-ar', '48000', '-ac', '2']
-    else:
-        return ['-c:a', 's302m', '-strict', '-2', '-ar', '48000', '-ac', '2']
+
+    return ['-c:a', 's302m', '-strict', '-2', '-ar', '48000', '-ac', '2']

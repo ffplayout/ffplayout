@@ -1,3 +1,7 @@
+"""
+cunstom video filter, which get loaded automatically
+"""
+
 import os
 import re
 
@@ -19,3 +23,5 @@ def filter_link(node):
     if lower_third.text_from_filename:
         escape = title.replace("'", "'\\\\\\''").replace("%", "\\\\\\%")
         return f"drawtext=text='{escape}':{lower_third.style}{font}"
+
+    return None

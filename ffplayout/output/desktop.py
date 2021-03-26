@@ -15,6 +15,10 @@
 
 # ------------------------------------------------------------------------------
 
+"""
+This module plays the compressed output directly on the desktop.
+"""
+
 import os
 from subprocess import PIPE, Popen
 from threading import Thread

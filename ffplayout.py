@@ -17,6 +17,10 @@
 
 # ------------------------------------------------------------------------------
 
+"""
+This module is the starting program for running ffplayout engine.
+"""
+
 import os
 from pydoc import locate
 

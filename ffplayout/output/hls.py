@@ -15,6 +15,10 @@
 
 # ------------------------------------------------------------------------------
 
+"""
+This module write the files compression directly to a hls (m3u8) playlist.
+"""
+
 import os
 import re
 from glob import iglob
