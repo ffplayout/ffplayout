@@ -15,6 +15,10 @@
 
 # ------------------------------------------------------------------------------
 
+"""
+This module streams the files out to a remote target.
+"""
+
 import os
 from subprocess import PIPE, Popen
 from threading import Thread

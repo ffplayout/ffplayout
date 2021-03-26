@@ -15,6 +15,12 @@
 
 # ------------------------------------------------------------------------------
 
+"""
+This module handles playlists, it can be aware of time syncing.
+Empty, missing or any other playlist related failure should be compensate.
+Missing clips will be replaced by a dummy clip.
+"""
+
 import os
 import socket
 import time
@@ -50,11 +56,10 @@ def handle_list_init(node):
         node['out'] = out
         node['seek'] = seek
         return src_or_dummy(node)
-    else:
-        messenger.warning(
-            f'Clip less then a second, skip:\n{node["source"]}')
 
-        return None
+    messenger.warning(f'Clip less then a second, skip:\n{node["source"]}')
+
+    return None
 
 
 def handle_list_end(duration, node):
@@ -191,6 +196,11 @@ def validate_thread(clip_nodes, list_date):
 
 
 class PlaylistReader:
+    """
+    Class which read playlists, it checks if playlist got modified,
+    when yes it reads the file new, when not it used the cached one
+    """
+
     def __init__(self, list_date, last_mod_time):
         self.list_date = list_date
         self.last_mod_time = last_mod_time
@@ -198,13 +208,16 @@ class PlaylistReader:
         self.error = False
 
     def read(self):
+        """
+        read and process playlist
+        """
         self.nodes = {'program': []}
         self.error = False
 
         if stdin_args.playlist:
             json_file = stdin_args.playlist
         else:
-            year, month, day = self.list_date.split('-')
+            year, month, _ = self.list_date.split('-')
             json_file = os.path.join(playlist.path, year, month,
                                      f'{self.list_date}.json')
 
@@ -231,8 +244,8 @@ class PlaylistReader:
             # check last modification time from playlist
             mod_time = os.path.getmtime(json_file)
             if mod_time > self.last_mod_time:
-                with open(json_file, 'r', encoding='utf-8') as f:
-                    self.nodes = valid_json(f)
+                with open(json_file, 'r', encoding='utf-8') as playlist_file:
+                    self.nodes = valid_json(playlist_file)
 
                 self.last_mod_time = mod_time
                 messenger.info('Open: ' + json_file)
@@ -252,6 +265,7 @@ class GetSourceFromPlaylist:
     def __init__(self):
         self.prev_date = get_date(True)
         self.list_start = playlist.start
+        self.last_time = 0
         self.first = True
         self.last = False
         self.clip_nodes = []
@@ -316,13 +330,13 @@ class GetSourceFromPlaylist:
 
             if self.last:
                 seek = self.node['seek'] if self.node['seek'] > 0 else 0
-                delta, total_delta = get_delta(begin)
+                delta, _ = get_delta(begin)
                 delta += seek + 1
 
             next_start = begin - playlist.start + out + delta
 
         else:
-            delta, total_delta = get_delta(begin)
+            delta, _ = get_delta(begin)
             next_start = begin - playlist.start + sync_op.threshold + delta
 
         if playlist.length and next_start >= playlist.length:
@@ -456,8 +470,8 @@ class GetSourceFromPlaylist:
                     # when we reach playlist end, stop script
                     messenger.info('Playlist reached end!')
                     return None
-                else:
-                    self.eof_handling(begin)
+
+                self.eof_handling(begin)
 
             if self.node:
                 yield self.node

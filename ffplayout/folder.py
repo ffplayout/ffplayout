@@ -15,6 +15,10 @@
 
 # ------------------------------------------------------------------------------
 
+"""
+This module handles folder reading. It monitor file adding, deleting or moving
+"""
+
 import glob
 import os
 import random
@@ -49,31 +53,47 @@ class MediaStore:
         self.fill()
 
     def fill(self):
+        """
+        fill media list
+        """
         for ext in storage.extensions:
             self.store.extend(
                 glob.glob(os.path.join(self.folder, '**', f'*{ext}'),
                           recursive=True))
 
     def sort_or_radomize(self):
+        """
+        sort or randomize file list
+        """
         if storage.shuffle:
             self.rand()
         else:
             self.sort()
 
     def add(self, file):
+        """
+        add new file to media list
+        """
         self.store.append(file)
         self.sort_or_radomize()
 
     def remove(self, file):
+        """
+        remove file from media list
+        """
         self.store.remove(file)
         self.sort_or_radomize()
 
     def sort(self):
-        # sort list for sorted playing
+        """
+        sort list for sorted playing
+        """
         self.store = sorted(self.store)
 
     def rand(self):
-        # randomize list for playing
+        """
+        randomize list for playing
+        """
         random.shuffle(self.store)
 
 
@@ -100,7 +120,9 @@ class MediaWatcher:
         self.observer.start()
 
     def on_created(self, event):
-        # add file to media list only if it is completely copied
+        """
+        add file to media list only if it is completely copied
+        """
         file_size = -1
         while file_size != os.path.getsize(event.src_path):
             file_size = os.path.getsize(event.src_path)
@@ -111,6 +133,9 @@ class MediaWatcher:
         messenger.info(f'Add file to media list: "{event.src_path}"')
 
     def on_moved(self, event):
+        """
+        operation when file on storage are moved
+        """
         self._media.remove(event.src_path)
         self._media.add(event.dest_path)
 
@@ -121,6 +146,9 @@ class MediaWatcher:
             ff_proc.decoder.terminate()
 
     def on_deleted(self, event):
+        """
+        operation when file on storage are deleted
+        """
         self._media.remove(event.src_path)
 
         messenger.info(f'Remove file from media list: "{event.src_path}"')
@@ -129,6 +157,9 @@ class MediaWatcher:
             ff_proc.decoder.terminate()
 
     def stop(self):
+        """
+        stop monitoring storage
+        """
         self.observer.stop()
         self.observer.join()
 
@@ -150,6 +181,9 @@ class GetSourceFromFolder:
         self.node_next = None
 
     def next(self):
+        """
+        generator for getting always a new file
+        """
         while True:
             while self.index < len(self._media.store):
                 if self.node_next:
@@ -188,5 +222,5 @@ class GetSourceFromFolder:
                 yield self.node
                 self.index += 1
                 self.node_last = deepcopy(self.node)
-            else:
-                self.index = 0
+
+            self.index = 0

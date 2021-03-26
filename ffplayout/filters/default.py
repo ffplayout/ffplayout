@@ -15,6 +15,11 @@
 
 # ------------------------------------------------------------------------------
 
+"""
+This module prepare all ffmpeg filters.
+This is mainly for unify clips to have a unique output.
+"""
+
 import math
 import os
 import re
@@ -31,6 +36,9 @@ from ffplayout.utils import (is_advertisement, lower_third, messenger, pre,
 
 
 def text_filter():
+    """
+    add drawtext filter for lower thirds messages
+    """
     filter_chain = []
     font = ''
 
@@ -122,21 +130,21 @@ def fade_filter(duration, seek, out, track=''):
     return filter_chain
 
 
-def overlay_filter(duration, ad, ad_last, ad_next):
+def overlay_filter(duration, advertisement, ad_last, ad_next):
     """
     overlay logo: when is an ad don't overlay,
     when ad is comming next fade logo out,
     when clip before was an ad fade logo in
     """
     logo_filter = '[v]null'
-    scale_filter = ''
+    scale = ''
 
-    if pre.add_logo and os.path.isfile(pre.logo) and not ad:
+    if pre.add_logo and os.path.isfile(pre.logo) and not advertisement:
         logo_chain = []
         if pre.logo_scale and \
                 re.match(r'\d+:-?\d+', pre.logo_scale):
-            scale_filter = f'scale={pre.logo_scale},'
-        logo_extras = (f'format=rgba,{scale_filter}'
+            scale = f'scale={pre.logo_scale},'
+        logo_extras = (f'format=rgba,{scale}'
                        f'colorchannelmixer=aa={pre.logo_opacity}')
         loop = 'loop=loop=-1:size=1:start=0'
         logo_chain.append(f'movie={pre.logo},{loop},{logo_extras}')
@@ -182,30 +190,33 @@ def extend_audio(probe, duration):
     """
     check audio duration, is it shorter then clip duration - pad it
     """
-    pad_filter = []
+    pad = []
 
     if probe.audio and 'duration' in probe.audio[0] and \
             duration > float(probe.audio[0]['duration']) + 0.1:
-        pad_filter.append(f'apad=whole_dur={duration}')
+        pad.append(f'apad=whole_dur={duration}')
 
-    return pad_filter
+    return pad
 
 
 def extend_video(probe, duration, target_duration):
     """
     check video duration, is it shorter then clip duration - pad it
     """
-    pad_filter = []
+    pad = []
     vid_dur = probe.video[0].get('duration')
 
     if vid_dur and target_duration < duration > float(vid_dur) + 0.1:
-        pad_filter.append(
+        pad.append(
             f'tpad=stop_mode=add:stop_duration={duration - float(vid_dur)}')
 
-    return pad_filter
+    return pad
 
 
 def realtime_filter(duration, track=''):
+    """
+    this realtime filter is important for HLS output to stay in sync
+    """
     speed_filter = ''
 
     if pre.realtime:
@@ -221,6 +232,10 @@ def realtime_filter(duration, track=''):
 
 
 def split_filter(filter_type):
+    """
+    this filter splits the media input in multiple outputs,
+    to be able to have differnt streaming/HLS outputs
+    """
     map_node = []
     prefix = ''
     _filter = ''
@@ -241,6 +256,9 @@ def split_filter(filter_type):
 
 
 def custom_filter(filter_type, node):
+    """
+    read custom filters from filters folder
+    """
     filter_dir = os.path.dirname(os.path.abspath(__file__))
     filters = []
 
@@ -260,7 +278,7 @@ def build_filtergraph(node, node_last, node_next):
     build final filter graph, with video and audio chain
     """
 
-    ad = is_advertisement(node)
+    advertisement = is_advertisement(node)
     ad_last = is_advertisement(node_last)
     ad_next = is_advertisement(node_next)
 
@@ -277,12 +295,12 @@ def build_filtergraph(node, node_last, node_next):
 
     if probe and probe.video[0]:
         custom_v_filter = custom_filter('v', node)
-        video_chain += text_filter()
-        video_chain += deinterlace_filter(probe)
-        video_chain += pad_filter(probe)
-        video_chain += fps_filter(probe)
-        video_chain += scale_filter(probe)
-        video_chain += extend_video(probe, duration, out - seek)
+        video_chain += text_filter() \
+            + deinterlace_filter(probe) \
+            + pad_filter(probe) \
+            + fps_filter(probe) \
+            + scale_filter(probe) \
+            + extend_video(probe, duration, out - seek)
         if custom_v_filter:
             video_chain += custom_v_filter
         video_chain += fade_filter(duration, seek, out)
@@ -292,9 +310,9 @@ def build_filtergraph(node, node_last, node_next):
         if not audio_chain:
             custom_a_filter = custom_filter('a', node)
 
-            audio_chain.append('[0:a]anull')
-            audio_chain += add_loudnorm(probe)
-            audio_chain += extend_audio(probe, out - seek)
+            audio_chain += ['[0:a]anull'] \
+                + add_loudnorm(probe) \
+                + extend_audio(probe, out - seek)
             if custom_a_filter:
                 audio_chain += custom_a_filter
             audio_chain += fade_filter(duration, seek, out, 'a')
@@ -304,7 +322,7 @@ def build_filtergraph(node, node_last, node_next):
     else:
         video_filter = 'null[v]'
 
-    logo_filter = overlay_filter(out - seek, ad, ad_last, ad_next)
+    logo_filter = overlay_filter(out - seek, advertisement, ad_last, ad_next)
     v_speed = realtime_filter(out - seek)
     v_split = split_filter('v')
     video_map = ['-map', '[vout1]']
@@ -320,5 +338,5 @@ def build_filtergraph(node, node_last, node_next):
 
     if probe and probe.video[0]:
         return video_filter + audio_filter + video_map + audio_map
-    else:
-        return video_filter + video_map + ['-map', '1:a']
+
+    return video_filter + video_map + ['-map', '1:a']
