@@ -135,7 +135,6 @@ storage = SimpleNamespace()
 lower_third = SimpleNamespace()
 playout = SimpleNamespace()
 
-initial = SimpleNamespace(load=True)
 ff_proc = SimpleNamespace(decoder=None, encoder=None)
 
 
@@ -162,6 +161,27 @@ def read_config(path_):
         return yaml.safe_load(config_file)
 
 
+if stdin_args.config:
+    _cfg = read_config(stdin_args.config)
+elif os.path.isfile('/etc/ffplayout/ffplayout.yml'):
+    _cfg = read_config('/etc/ffplayout/ffplayout.yml')
+else:
+    _cfg = read_config('ffplayout.yml')
+
+if stdin_args.start:
+    _p_start = str_to_sec(stdin_args.start)
+else:
+    _p_start = str_to_sec(_cfg['playlist']['day_start'])
+
+if _p_start is None:
+    _p_start = get_time('full_sec')
+
+if stdin_args.length:
+    _p_length = str_to_sec(stdin_args.length)
+else:
+    _p_length = str_to_sec(_cfg['playlist']['length'])
+
+
 def load_config():
     """
     this function can reload most settings from configuration file,
@@ -169,93 +189,69 @@ def load_config():
     some settings cannot be changed - like resolution, aspect, or output
     """
 
-    if stdin_args.config:
-        cfg = read_config(stdin_args.config)
-    elif os.path.isfile('/etc/ffplayout/ffplayout.yml'):
-        cfg = read_config('/etc/ffplayout/ffplayout.yml')
-    else:
-        cfg = read_config('ffplayout.yml')
+    sync_op.stop = _cfg['general']['stop_on_error']
+    sync_op.threshold = _cfg['general']['stop_threshold']
 
-    if stdin_args.start:
-        p_start = str_to_sec(stdin_args.start)
-    else:
-        p_start = str_to_sec(cfg['playlist']['day_start'])
+    mail.subject = _cfg['mail']['subject']
+    mail.server = _cfg['mail']['smpt_server']
+    mail.port = _cfg['mail']['smpt_port']
+    mail.s_addr = _cfg['mail']['sender_addr']
+    mail.s_pass = _cfg['mail']['sender_pass']
+    mail.recip = _cfg['mail']['recipient']
+    mail.level = _cfg['mail']['mail_level']
 
-    if p_start is None:
-        p_start = get_time('full_sec')
+    pre.add_logo = _cfg['processing']['add_logo']
+    pre.logo = _cfg['processing']['logo']
+    pre.logo_scale = _cfg['processing']['logo_scale']
+    pre.logo_filter = _cfg['processing']['logo_filter']
+    pre.logo_opacity = _cfg['processing']['logo_opacity']
+    pre.add_loudnorm = _cfg['processing']['add_loudnorm']
+    pre.loud_i = _cfg['processing']['loud_I']
+    pre.loud_tp = _cfg['processing']['loud_TP']
+    pre.loud_lra = _cfg['processing']['loud_LRA']
+    pre.output_count = _cfg['processing']['output_count']
 
-    if stdin_args.length:
-        p_length = str_to_sec(stdin_args.length)
-    else:
-        p_length = str_to_sec(cfg['playlist']['length'])
+    playlist.mode = _cfg['playlist']['playlist_mode']
+    playlist.path = _cfg['playlist']['path']
+    playlist.start = _p_start
+    playlist.length = _p_length
 
-    sync_op.stop = cfg['general']['stop_on_error']
-    sync_op.threshold = cfg['general']['stop_threshold']
+    storage.path = _cfg['storage']['path']
+    storage.filler = _cfg['storage']['filler_clip']
+    storage.extensions = _cfg['storage']['extensions']
+    storage.shuffle = _cfg['storage']['shuffle']
 
-    mail.subject = cfg['mail']['subject']
-    mail.server = cfg['mail']['smpt_server']
-    mail.port = cfg['mail']['smpt_port']
-    mail.s_addr = cfg['mail']['sender_addr']
-    mail.s_pass = cfg['mail']['sender_pass']
-    mail.recip = cfg['mail']['recipient']
-    mail.level = cfg['mail']['mail_level']
-
-    pre.add_logo = cfg['processing']['add_logo']
-    pre.logo = cfg['processing']['logo']
-    pre.logo_scale = cfg['processing']['logo_scale']
-    pre.logo_filter = cfg['processing']['logo_filter']
-    pre.logo_opacity = cfg['processing']['logo_opacity']
-    pre.add_loudnorm = cfg['processing']['add_loudnorm']
-    pre.loud_i = cfg['processing']['loud_I']
-    pre.loud_tp = cfg['processing']['loud_TP']
-    pre.loud_lra = cfg['processing']['loud_LRA']
-    pre.output_count = cfg['processing']['output_count']
-
-    playlist.mode = cfg['playlist']['playlist_mode']
-    playlist.path = cfg['playlist']['path']
-    playlist.start = p_start
-    playlist.length = p_length
-
-    storage.path = cfg['storage']['path']
-    storage.filler = cfg['storage']['filler_clip']
-    storage.extensions = cfg['storage']['extensions']
-    storage.shuffle = cfg['storage']['shuffle']
-
-    lower_third.add_text = cfg['text']['add_text']
-    lower_third.over_pre = cfg['text']['over_pre']
-    lower_third.address = cfg['text']['bind_address']
-    lower_third.fontfile = cfg['text']['fontfile']
-    lower_third.text_from_filename = cfg['text']['text_from_filename']
-    lower_third.style = cfg['text']['style']
-    lower_third.regex = cfg['text']['regex']
-
-    if initial.load:
-        log.to_file = cfg['logging']['log_to_file']
-        log.backup_count = cfg['logging']['backup_count']
-        log.path = cfg['logging']['log_path']
-        log.level = cfg['logging']['log_level']
-        log.ff_level = cfg['logging']['ffmpeg_level']
-
-        pre.w = cfg['processing']['width']
-        pre.h = cfg['processing']['height']
-        pre.aspect = cfg['processing']['aspect']
-        pre.fps = cfg['processing']['fps']
-        pre.v_bitrate = cfg['processing']['width'] * \
-            cfg['processing']['height'] / 10
-        pre.v_bufsize = pre.v_bitrate / 2
-        pre.realtime = cfg['processing']['use_realtime']
-
-        playout.mode = cfg['out']['mode']
-        playout.name = cfg['out']['service_name']
-        playout.provider = cfg['out']['service_provider']
-        playout.ffmpeg_param = cfg['out']['ffmpeg_param'].split(' ')
-        playout.stream_output = cfg['out']['stream_output'].split(' ')
-        playout.hls_output = cfg['out']['hls_output'].split(' ')
-
-        initial.load = False
+    lower_third.add_text = _cfg['text']['add_text']
+    lower_third.over_pre = _cfg['text']['over_pre']
+    lower_third.address = _cfg['text']['bind_address']
+    lower_third.fontfile = _cfg['text']['fontfile']
+    lower_third.text_from_filename = _cfg['text']['text_from_filename']
+    lower_third.style = _cfg['text']['style']
+    lower_third.regex = _cfg['text']['regex']
 
 
 load_config()
+
+log.to_file = _cfg['logging']['log_to_file']
+log.backup_count = _cfg['logging']['backup_count']
+log.path = _cfg['logging']['log_path']
+log.level = _cfg['logging']['log_level']
+log.ff_level = _cfg['logging']['ffmpeg_level']
+
+pre.w = _cfg['processing']['width']
+pre.h = _cfg['processing']['height']
+pre.aspect = _cfg['processing']['aspect']
+pre.fps = _cfg['processing']['fps']
+pre.v_bitrate = _cfg['processing']['width'] * _cfg['processing']['height'] / 10
+pre.v_bufsize = pre.v_bitrate / 2
+pre.realtime = _cfg['processing']['use_realtime']
+
+playout.mode = _cfg['out']['mode']
+playout.name = _cfg['out']['service_name']
+playout.provider = _cfg['out']['service_provider']
+playout.ffmpeg_param = _cfg['out']['ffmpeg_param'].split(' ')
+playout.stream_output = _cfg['out']['stream_output'].split(' ')
+playout.hls_output = _cfg['out']['hls_output'].split(' ')
 
 
 # ------------------------------------------------------------------------------
