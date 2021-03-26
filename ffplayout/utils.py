@@ -110,15 +110,16 @@ def get_time(time_format):
         - stamp > current date time in seconds
         - else > current time in HH:MM:SS
     """
-    t = datetime.today()
+    date_time = datetime.today()
 
     if time_format == 'full_sec':
-        return t.hour * 3600 + t.minute * 60 + t.second \
-             + t.microsecond / 1000000
-    elif time_format == 'stamp':
+        return date_time.hour * 3600 + date_time.minute * 60 \
+            + date_time.second + date_time.microsecond / 1000000
+
+    if time_format == 'stamp':
         return float(datetime.now().timestamp())
-    else:
-        return t.strftime('%H:%M:%S')
+
+    return date_time.strftime('%H:%M:%S')
 
 
 # ------------------------------------------------------------------------------
@@ -138,20 +139,26 @@ initial = SimpleNamespace(load=True)
 ff_proc = SimpleNamespace(decoder=None, encoder=None)
 
 
-def str_to_sec(s):
-    if s in ['now', '', None, 'none']:
+def str_to_sec(time_str):
+    """
+    convert time is string in seconds as float
+    """
+    if time_str in ['now', '', None, 'none']:
         return None
-    else:
-        s = s.split(':')
-        try:
-            return float(s[0]) * 3600 + float(s[1]) * 60 + float(s[2])
-        except ValueError:
-            print('Wrong time format!')
-            sys.exit(1)
+
+    tms = time_str.split(':')
+    try:
+        return float(tms[0]) * 3600 + float(tms[1]) * 60 + float(tms[2])
+    except ValueError:
+        print('Wrong time format!')
+        sys.exit(1)
 
 
-def read_config(path):
-    with open(path, 'r') as config_file:
+def read_config(path_):
+    """
+    open yaml config
+    """
+    with open(path_, 'r') as config_file:
         return yaml.safe_load(config_file)
 
 
