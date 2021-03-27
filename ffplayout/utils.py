@@ -930,6 +930,7 @@ def src_or_dummy(node):
                 ['-i', node['source']] + set_length(node['duration'],
                                                     node['seek'], node['out'])
     else:
+        messenger.error(f'File not exist: {node.get("source")}')
         node = gen_filler(node)
 
     return node
