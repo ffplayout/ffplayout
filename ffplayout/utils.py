@@ -157,20 +157,70 @@ def str_to_sec(time_str):
         sys.exit(1)
 
 
-def read_config(path_):
+def read_config():
     """
-    open yaml config
+    read yaml config
     """
-    with open(path_, 'r') as config_file:
+
+    if stdin_args.config:
+        cfg_path = stdin_args.config
+    elif os.path.isfile('/etc/ffplayout/ffplayout.yml'):
+        cfg_path = '/etc/ffplayout/ffplayout.yml'
+    else:
+        cfg_path = 'ffplayout.yml'
+
+    with open(cfg_path, 'r') as config_file:
         return yaml.safe_load(config_file)
 
 
-if stdin_args.config:
-    _cfg = read_config(stdin_args.config)
-elif os.path.isfile('/etc/ffplayout/ffplayout.yml'):
-    _cfg = read_config('/etc/ffplayout/ffplayout.yml')
-else:
-    _cfg = read_config('ffplayout.yml')
+def load_config():
+    """
+    this function can reload most settings from configuration file,
+    the change does not take effect immediately, but with the after next file,
+    some settings cannot be changed - like resolution, aspect, or output
+    """
+
+    cfg = read_config()
+
+    sync_op.stop = cfg['general']['stop_on_error']
+    sync_op.threshold = cfg['general']['stop_threshold']
+
+    mail.subject = cfg['mail']['subject']
+    mail.server = cfg['mail']['smpt_server']
+    mail.port = cfg['mail']['smpt_port']
+    mail.s_addr = cfg['mail']['sender_addr']
+    mail.s_pass = cfg['mail']['sender_pass']
+    mail.recip = cfg['mail']['recipient']
+    mail.level = cfg['mail']['mail_level']
+
+    pre.add_logo = cfg['processing']['add_logo']
+    pre.logo = cfg['processing']['logo']
+    pre.logo_scale = cfg['processing']['logo_scale']
+    pre.logo_filter = cfg['processing']['logo_filter']
+    pre.logo_opacity = cfg['processing']['logo_opacity']
+    pre.add_loudnorm = cfg['processing']['add_loudnorm']
+    pre.loud_i = cfg['processing']['loud_I']
+    pre.loud_tp = cfg['processing']['loud_TP']
+    pre.loud_lra = cfg['processing']['loud_LRA']
+    pre.output_count = cfg['processing']['output_count']
+
+    storage.path = cfg['storage']['path']
+    storage.filler = cfg['storage']['filler_clip']
+    storage.extensions = cfg['storage']['extensions']
+    storage.shuffle = cfg['storage']['shuffle']
+
+    lower_third.add_text = cfg['text']['add_text']
+    lower_third.over_pre = cfg['text']['over_pre']
+    lower_third.address = cfg['text']['bind_address']
+    lower_third.fontfile = cfg['text']['fontfile']
+    lower_third.text_from_filename = cfg['text']['text_from_filename']
+    lower_third.style = cfg['text']['style']
+    lower_third.regex = cfg['text']['regex']
+
+    return cfg
+
+
+_cfg = load_config()
 
 if stdin_args.start:
     _p_start = str_to_sec(stdin_args.start)
@@ -185,56 +235,10 @@ if stdin_args.length:
 else:
     _p_length = str_to_sec(_cfg['playlist']['length'])
 
-
-def load_config():
-    """
-    this function can reload most settings from configuration file,
-    the change does not take effect immediately, but with the after next file,
-    some settings cannot be changed - like resolution, aspect, or output
-    """
-
-    sync_op.stop = _cfg['general']['stop_on_error']
-    sync_op.threshold = _cfg['general']['stop_threshold']
-
-    mail.subject = _cfg['mail']['subject']
-    mail.server = _cfg['mail']['smpt_server']
-    mail.port = _cfg['mail']['smpt_port']
-    mail.s_addr = _cfg['mail']['sender_addr']
-    mail.s_pass = _cfg['mail']['sender_pass']
-    mail.recip = _cfg['mail']['recipient']
-    mail.level = _cfg['mail']['mail_level']
-
-    pre.add_logo = _cfg['processing']['add_logo']
-    pre.logo = _cfg['processing']['logo']
-    pre.logo_scale = _cfg['processing']['logo_scale']
-    pre.logo_filter = _cfg['processing']['logo_filter']
-    pre.logo_opacity = _cfg['processing']['logo_opacity']
-    pre.add_loudnorm = _cfg['processing']['add_loudnorm']
-    pre.loud_i = _cfg['processing']['loud_I']
-    pre.loud_tp = _cfg['processing']['loud_TP']
-    pre.loud_lra = _cfg['processing']['loud_LRA']
-    pre.output_count = _cfg['processing']['output_count']
-
-    playlist.mode = _cfg['playlist']['playlist_mode']
-    playlist.path = _cfg['playlist']['path']
-    playlist.start = _p_start
-    playlist.length = _p_length
-
-    storage.path = _cfg['storage']['path']
-    storage.filler = _cfg['storage']['filler_clip']
-    storage.extensions = _cfg['storage']['extensions']
-    storage.shuffle = _cfg['storage']['shuffle']
-
-    lower_third.add_text = _cfg['text']['add_text']
-    lower_third.over_pre = _cfg['text']['over_pre']
-    lower_third.address = _cfg['text']['bind_address']
-    lower_third.fontfile = _cfg['text']['fontfile']
-    lower_third.text_from_filename = _cfg['text']['text_from_filename']
-    lower_third.style = _cfg['text']['style']
-    lower_third.regex = _cfg['text']['regex']
-
-
-load_config()
+playlist.mode = _cfg['playlist']['playlist_mode']
+playlist.path = _cfg['playlist']['path']
+playlist.start = _p_start
+playlist.length = _p_length
 
 log.to_file = _cfg['logging']['log_to_file']
 log.backup_count = _cfg['logging']['backup_count']
