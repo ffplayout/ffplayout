@@ -198,13 +198,14 @@
                                 </b-row>
                             </b-list-group-item>
                         </b-list-group>
-                        <perfect-scrollbar id="scroll-container">
-                            <b-list-group class="playlist-list-group">
+                        <perfect-scrollbar id="scroll-container" :options="scrollOP">
+                            <b-list-group class="playlist-list-group" :style="`height: ${(playlist) ? playlist.length * 52 + 52 : 300}px`">
                                 <draggable
                                     id="playlist-group"
                                     v-model="playlist"
                                     group="playlist"
                                     @start="drag=true"
+                                    @add="scrollEnd"
                                     @end="drag=false"
                                 >
                                     <b-list-group-item
@@ -361,7 +362,8 @@ export default {
             previewComp: null,
             previewSource: '',
             scrollOP: {
-                suppressScrollX: true
+                suppressScrollX: true,
+                minScrollbarLength: 30
             }
         }
     },
@@ -503,6 +505,13 @@ export default {
                 in: 0,
                 out: duration,
                 duration
+            }
+        },
+
+        scrollEnd (event) {
+            if (event.newIndex + 1 === this.playlist.length) {
+                const objDiv = document.getElementById('scroll-container')
+                objDiv.scrollTop = objDiv.scrollHeight
             }
         },
 
@@ -787,6 +796,10 @@ export default {
 
 #scroll-container {
     height: calc(100% - 47px);
+}
+
+.playlist-item {
+    height: 52px;
 }
 
 .playlist-item:nth-of-type(even), .playlist-item:nth-of-type(even) div .timecode input {
