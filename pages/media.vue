@@ -178,21 +178,21 @@
                 <b-row>
                     <b-col cols="10">
                         <b-row class="progress-row">
-                            <b-col cols="1">
-                                Overall:
+                            <b-col cols="1" style="min-width: 125px">
+                                Overall ({{ currentNumber }}/{{ inputFiles.length }}):
                             </b-col>
                             <b-col cols="10">
                                 <b-progress :value="overallProgress" />
                             </b-col>
                             <div class="w-100" />
-                            <b-col cols="1">
+                            <b-col cols="1" style="min-width: 125px">
                                 Current:
                             </b-col>
                             <b-col cols="10">
                                 <b-progress :value="currentProgress" />
                             </b-col>
                             <div class="w-100" />
-                            <b-col cols="1">
+                            <b-col cols="1" style="min-width: 125px">
                                 Uploading:
                             </b-col>
                             <b-col cols="10">
@@ -274,6 +274,7 @@ export default {
             extensions: '',
             folderName: '',
             inputFiles: [],
+            currentNumber: 0,
             inputPlaceholder: 'Choose files or drop them here...',
             previewOptions: {},
             previewComp: null,
@@ -302,12 +303,12 @@ export default {
     },
 
     watch: {
-        configID (id) {
+        configID () {
             this.getPath(this.extensions, '')
         }
     },
 
-    created () {
+    mounted () {
         this.extensions = [...this.configPlayout.storage.extensions, ...this.configGui[this.configID].extra_extensions].join(',')
         this.getPath(this.extensions, '')
     },
@@ -403,6 +404,7 @@ export default {
 
             for (const [i, file] of this.inputFiles.entries()) {
                 this.uploadTask = file.name
+                this.currentNumber = i + 1
 
                 const config = {
                     onUploadProgress: uploadProgress(file.name),
@@ -416,7 +418,7 @@ export default {
                     config
                 )
                     .then((res) => {
-                        this.overallProgress = (i + 1) * 100 / this.inputFiles.length
+                        this.overallProgress = this.currentNumber * 100 / this.inputFiles.length
                         this.currentProgress = 0
                     })
                     .catch(err => console.log(err))
