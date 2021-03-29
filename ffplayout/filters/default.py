@@ -219,7 +219,7 @@ def realtime_filter(duration, track=''):
     """
     speed_filter = ''
 
-    if pre.realtime:
+    if sync_op.realtime:
         speed_filter = f',{track}realtime=speed=1'
 
         if sync_op.time_delta < 0:

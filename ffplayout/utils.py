@@ -130,7 +130,7 @@ def get_time(time_format):
 # default variables and values
 # ------------------------------------------------------------------------------
 
-sync_op = SimpleNamespace(time_delta=0)
+sync_op = SimpleNamespace(time_delta=0, realtime=False)
 mail = SimpleNamespace()
 log = SimpleNamespace()
 pre = SimpleNamespace()
@@ -252,7 +252,6 @@ pre.aspect = _cfg['processing']['aspect']
 pre.fps = _cfg['processing']['fps']
 pre.v_bitrate = _cfg['processing']['width'] * _cfg['processing']['height'] / 10
 pre.v_bufsize = pre.v_bitrate / 2
-pre.realtime = _cfg['processing']['use_realtime']
 
 playout.mode = _cfg['out']['mode']
 playout.name = _cfg['out']['service_name']
