@@ -42,8 +42,7 @@ processing:
         'loud_*' can adjust the loudnorm filter. 'output_count' sets the outputs for
         the filtering, > 1 gives the option to use the same filters for multiple outputs.
         This outputs can be taken in 'ffmpeg_param', names will be vout2, vout3;
-        aout2, aout2 etc.'use_realtime' is realtime filter, it works not in all scenarios,
-        but for example is necessary for hls output.
+        aout2, aout2 etc.
     width: 1024
     height: 576
     aspect: 1.778
@@ -58,7 +57,6 @@ processing:
     loud_TP: -1.5
     loud_LRA: 11
     output_count: 1
-    use_realtime: false
 
 playlist:
     helptext: Set 'playlist_mode' to 'False' if you want to play clips from the 'storage'

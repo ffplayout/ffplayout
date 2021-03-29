@@ -28,7 +28,7 @@ from threading import Thread
 from ffplayout.folder import GetSourceFromFolder, MediaStore, MediaWatcher
 from ffplayout.playlist import GetSourceFromPlaylist
 from ffplayout.utils import (ff_proc, ffmpeg_stderr_reader, get_date, log,
-                             messenger, playlist, playout, stdin_args,
+                             messenger, playlist, playout, stdin_args, sync_op,
                              terminate_processes)
 
 
@@ -68,6 +68,7 @@ def output():
     this output is hls output, no preprocess is needed.
     """
     year = get_date(False).split('-')[0]
+    sync_op.realtime = True
 
     try:
         if playlist.mode and not stdin_args.folder:
