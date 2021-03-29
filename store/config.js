@@ -139,7 +139,7 @@ export const actions = {
         return response
     },
 
-    async getPlayoutConfig ({ commit, state }) {
+    async getPlayoutConfig ({ commit, state, rootState }) {
         const path = state.configGui[state.configID].playout_config
         const response = await this.$axios.get(`api/player/config/?configPlayout&path=${path}`)
 
@@ -153,6 +153,9 @@ export const actions = {
             }
 
             commit('UPDATE_PLAYLOUT_CONFIG', response.data)
+        } else {
+            rootState.showErrorAlert = true
+            rootState.ErrorAlertMessage = 'No playout config found!'
         }
     },
 
