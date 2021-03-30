@@ -369,11 +369,11 @@ export default {
     },
 
     computed: {
-        ...mapState('config', ['configID', 'configGui', 'configPlayout', 'timezone']),
+        ...mapState('config', ['configID', 'configGui', 'configPlayout', 'timezone', 'startInSec']),
         ...mapState('media', ['crumbs', 'folderTree']),
         ...mapState('playlist', [
             'timeStr', 'timeLeft', 'currentClip', 'progressValue', 'currentClipIndex',
-            'currentClipDuration', 'currentClipIn', 'currentClipOut', 'startInSec']),
+            'currentClipDuration', 'currentClipIn', 'currentClipOut']),
         playlist: {
             get () {
                 return this.$store.state.playlist.playlist
