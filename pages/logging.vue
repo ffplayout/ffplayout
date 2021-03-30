@@ -80,7 +80,8 @@ export default {
             currentLog: null,
             listDate: this.$dayjs().tz(this.timezone).format('YYYY-MM-DD'),
             scrollOP: {
-                wheelSpeed: 5
+                wheelSpeed: 5,
+                minScrollbarLength: 30
             }
         }
     },
