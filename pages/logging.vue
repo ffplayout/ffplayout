@@ -107,7 +107,7 @@ export default {
         async getLog (type) {
             this.logName = type
             const response = await this.$axios.get(
-                `api/player/log/?type=${type}&date=${this.listDate}&config_path=${this.$store.state.config.configGui[this.$store.state.config.configID].playout_config}`)
+                `api/player/log/?type=${type}&date=${this.listDate}&channel=${this.$store.state.config.configGui[this.$store.state.config.configID].id}`)
 
             if (response.data.log) {
                 this.currentLog = response.data.log
