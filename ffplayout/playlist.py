@@ -113,7 +113,7 @@ def timed_source(node, last):
 
     if (total_delta > node['out'] - node['seek'] and not last) \
             or stdin_args.loop or not playlist.length:
-        # when we are in the 24 houre range, get the clip
+        # when we are in the 24 hour range, get the clip
         node_ = src_or_dummy(node)
 
     elif total_delta <= 0:
@@ -398,7 +398,7 @@ class GetSourceFromPlaylist:
         handle except playlist end
         """
         if stdin_args.loop and self.node:
-            # when loop paramter is set and playlist node exists,
+            # when loop parameter is set and playlist node exists,
             # jump to playlist start and play again
             self.list_start = self.last_time + 1
             self.node = None

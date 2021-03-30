@@ -112,7 +112,7 @@ def get_time(time_format):
     get different time formats:
         - full_sec > current time in seconds
         - stamp > current date time in seconds
-        - else > current time in HH:MM:SS
+        - or current time in HH:MM:SS
     """
     date_time = datetime.today()
 
@@ -267,7 +267,7 @@ playout.hls_output = _cfg['out']['hls_output'].split(' ')
 
 class CustomFormatter(logging.Formatter):
     """
-    Logging Formatter to add colors and count warning / errors
+    Logging formatter to add colors and count warning / errors
     """
 
     grey = '\x1b[38;1m'
@@ -436,7 +436,7 @@ class Mailer:
 
     def check_if_new(self, msg):
         """
-        send messege only when is new or the rate_limit is pass
+        send message only when is new or the rate_limit is pass
         """
         if os.path.isfile(self.temp_msg):
             mod_time = os.path.getmtime(self.temp_msg)
@@ -580,12 +580,12 @@ def validate_ffmpeg_libs():
 
 
 # ------------------------------------------------------------------------------
-# probe media infos
+# probe media info's
 # ------------------------------------------------------------------------------
 
 class MediaProbe:
     """
-    get infos about media file, similare to mediainfo
+    get info's about media file, similar to mediainfo
     """
 
     def __init__(self):
@@ -598,7 +598,7 @@ class MediaProbe:
 
     def load(self, file):
         """
-        load media file with ffprobe and get infos out of it
+        load media file with ffprobe and get info's out of it
         """
         self.src = file
         self.format = None
@@ -693,7 +693,7 @@ def terminate_processes(watcher=None):
 
 def ffmpeg_stderr_reader(std_errors, decoder):
     """
-    read fmpeg stderr decoder and encoder instance
+    read ffmpeg stderr decoder and encoder instance
     and log the output
     """
     if decoder:
@@ -828,7 +828,7 @@ def set_length(duration, seek, out):
 
 def loop_input(source, src_duration, target_duration):
     """
-    loop filles n times
+    loop files n times
     """
     loop_count = math.ceil(target_duration / src_duration)
     messenger.info(f'Loop "{source}" {loop_count} times, '
@@ -839,7 +839,7 @@ def loop_input(source, src_duration, target_duration):
 
 def gen_dummy(duration):
     """
-    generate a dummy clip, with black color and empty audiotrack
+    generate a dummy clip, with black color and empty audio track
     """
     color = '#121212'
     # IDEA: add noise could be an config option

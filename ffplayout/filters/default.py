@@ -31,7 +31,7 @@ from ffplayout.utils import (is_advertisement, lower_third, messenger, pre,
 
 # ------------------------------------------------------------------------------
 # building filters,
-# when is needed add individuell filters to match output format
+# when is needed add individual filters to match output format
 # ------------------------------------------------------------------------------
 
 
@@ -133,7 +133,7 @@ def fade_filter(duration, seek, out, track=''):
 def overlay_filter(duration, advertisement, ad_last, ad_next):
     """
     overlay logo: when is an ad don't overlay,
-    when ad is comming next fade logo out,
+    when ad is coming next fade logo out,
     when clip before was an ad fade logo in
     """
     logo_filter = '[v]null'
@@ -234,7 +234,7 @@ def realtime_filter(duration, track=''):
 def split_filter(filter_type):
     """
     this filter splits the media input in multiple outputs,
-    to be able to have differnt streaming/HLS outputs
+    to be able to have different streaming/HLS outputs
     """
     map_node = []
     prefix = ''

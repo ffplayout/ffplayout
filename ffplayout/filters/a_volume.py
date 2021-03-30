@@ -1,5 +1,5 @@
 """
-cunstom audio filter, which get loaded automatically
+custom audio filter, which get loaded automatically
 """
 
 from ffplayout.utils import get_float, stdin_args

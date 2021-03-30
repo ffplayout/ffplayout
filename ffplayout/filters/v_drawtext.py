@@ -1,5 +1,5 @@
 """
-cunstom video filter, which get loaded automatically
+custom video filter, which get loaded automatically
 """
 
 import os
