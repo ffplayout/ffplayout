@@ -223,6 +223,7 @@
 </template>
 
 <script>
+import { mapState } from 'vuex'
 import Menu from '@/components/Menu.vue'
 
 export default {
@@ -261,6 +262,7 @@ export default {
     },
 
     computed: {
+        ...mapState('config', ['configID', 'configGui'])
     },
 
     watch: {
@@ -406,7 +408,10 @@ export default {
                 boxborderw: this.form.border
             }
 
-            const response = await this.$axios.post('api/player/send/message/', { data: obj })
+            const response = await this.$axios.post('api/player/send/message/', {
+                data: obj,
+                channel: this.configGui[this.configID].id
+            })
 
             if (response.data && response.data.status.Success && response.data.status.Success === '0 Success') {
                 this.success = true

@@ -398,6 +398,7 @@ export default {
                 }
             ]
 
+            this.getPath(this.extensions, '')
             this.getPlaylist()
             setTimeout(() => { scrollTo(this) }, 3000)
         }
@@ -566,7 +567,7 @@ export default {
                 'api/player/playlist/',
                 {
                     data: { channel: this.$store.state.config.configGui.channel, date: saveDate, program: saveList },
-                    config_path: this.configGui[this.configID].playout_config
+                    channel: this.configGui[this.configID].id
                 }
             )
         },

@@ -20,9 +20,9 @@ export const actions = {
     async getTree ({ commit, dispatch, state, rootState }, { extensions, path }) {
         const crumbs = []
         let root = '/'
-        const configPath = rootState.config.configGui[rootState.config.configID].playout_config
+        const channel = rootState.config.configGui[rootState.config.configID].id
         const response = await this.$axios.get(
-            `api/player/media/?extensions=${extensions}&config_path=${configPath}&path=${path}`)
+            `api/player/media/?extensions=${extensions}&channel=${channel}&path=${path}`)
 
         if (response.data.tree) {
             const pathArr = response.data.tree[0].split('/')

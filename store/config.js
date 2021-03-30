@@ -140,8 +140,8 @@ export const actions = {
     },
 
     async getPlayoutConfig ({ commit, state, rootState }) {
-        const path = state.configGui[state.configID].playout_config
-        const response = await this.$axios.get(`api/player/config/?configPlayout&path=${path}`)
+        const channel = state.configGui[state.configID].id
+        const response = await this.$axios.get(`api/player/config/?configPlayout&channel=${channel}`)
 
         if (response.data) {
             if (response.data.playlist.day_start) {
@@ -160,8 +160,10 @@ export const actions = {
     },
 
     async setPlayoutConfig ({ commit, state }, obj) {
-        const path = state.configGui[state.configID].playout_config
-        const update = await this.$axios.post(`api/player/config/?configPlayout&path=${path}`, { data: obj })
+        const update = await this.$axios.post('api/player/config/?configPlayout', {
+            data: obj,
+            channel: state.configGui[state.configID].id
+        })
         return update
     },
 
