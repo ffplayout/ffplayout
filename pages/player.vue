@@ -454,7 +454,7 @@ export default {
             const engine = this.configGui[this.configID].engine_service.split('/').slice(-1)[0].split('.')[0]
             const status = await this.$axios.post('api/player/system/', { run: 'status', engine })
 
-            if (status.data.data && status.data.data === 'RUNNING') {
+            if (status.data.data && (status.data.data === 'RUNNING' || status.data.data === 'active')) {
                 this.isPlaying = 'is-playing'
             } else {
                 this.isPlaying = ''
