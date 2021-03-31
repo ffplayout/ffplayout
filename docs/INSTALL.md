@@ -5,37 +5,50 @@ Here are a description on how to install *ffplayout engine* on a standard Linux 
 
 Requirements
 -----
+
 - python version 3.6+
 - **ffmpeg v4.2+** and **ffprobe**
-- systemd (if ffplayout should run as a daemon)
 
 Installation
 -----
-- install ffmpeg, ffprobe (and ffplay if you need the preview mode)
-- clone repo: `git clone https://github.com/ffplayout/ffplayout-engine.git`
-- `cd ffplayout-engine`
-- run `make` (virtualenv is required)
-- run `sudo make install USER=www-data`, use any other user which need write access
+
+- install **ffmpeg**, **ffprobe** (and **ffplay** if you need the preview mode)
+- clone repo to **/opt/**: `git clone https://github.com/ffplayout/ffplayout-engine.git`
+- `cd /opt/ffplayout-engine`
+- create virtual environment: `virtualenv -p python3 venv`
+- run `source ./venv/bin/activate`
+- install dependencies: `pip3 install -r requirements.txt`
+- create logging folder: **/var/log/ffplayout**
 - create playlists folder, in that format: **/playlists/year/month**
+- create folder for media storage: **/tv-media**
 - set variables in config file to your needs
-- use `docs/gen_playlist_from_subfolders.sh /path/to/mp4s/` as a starting point for your playlists (path in script needs to change)
-- activate service and start it: `sudo systemctl enable ffplayout-engine && sudo systemctl start ffplayout-engine`
 
-Cleanup
+Single Channel Setup
 -----
-- run `make clean` to remove the virtual environment
 
-Deinstallation
+**systemd** is required
+
+- copy **docs/ffplayout-engine.service** to **/etc/systemd/system/**
+- copy **ffplayout.yml** to **/etc/ffplayout/**
+- change user and group in service file (for example to **www-data**)
+- activate service: `sudo systemctl enable ffplayout-engine`
+- edit **/etc/ffplayout/ffplayout.yml**
+- when playlists are exists, run service:  `sudo systemctl start ffplayout-engine`
+
+Multi Channel Setup
 -----
-- run `sudo make uninstall` it will remove all created folders (also the **ffplayout.yml** configuration file!)
 
-Manual Installation
------
-The routine with `make` build a virtual environment with all dependencies, and install ffplayout to **/opt/ffplayout-engine**. If you do not want to install to this path, or you want to install the dependencies globally, you can do everything by hand.
-
-Just copy the project where you want to have it, run inside `pip3 install -r requirements.txt`. For logging you have to create the folder **ffplayout** under **/var/log/**, or adjust the settings in config. **ffplayout.yml** have to go to **/etc/ffplayout/**, or should stay in same folder.
-
-If you want to use the systemd service, edit the service file in **docs/ffplayout-engine.service**, copy it to **/etc/systemd/system/** and activate it with: `sudo systemctl enable ffplayout-engine`.
+- copy **docs/ffplayout-engine-multichannel.service** to **/etc/systemd/system/**
+- change user and group in service file (for example to **www-data**)
+- copy **ffplayout.yml** to **/etc/ffplayout/ffplayout-001.yml**
+- copy **supervisor** folder to **/etc/ffplayout/**
+- every channel needs its own engine config **ffplayout-002.yml**, **ffplayout-003.yml**, etc.
+- every channel needs also its own service file under **/etc/ffplayout/supervisor/config.d**
+- create for every channel a subfolder for logging: **/var/log/ffplayout/channel-001**,  **/var/log/ffplayout/channel-002**, etc.
+- edit **/etc/ffplayout/ffplayout-00*.yml**
+- when you want to use the web frontend, create only the first channel and the other ones in the frontend
+- activate service: `sudo systemctl enable ffplayout-engine-multichannel`
+- when playlists are exists, run service:  `sudo systemctl start ffplayout-engine-multichannel`
 
 Using it Without Installation
 -----

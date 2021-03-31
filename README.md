@@ -143,10 +143,3 @@ You can run the command like:
 ```SHELL
 ./ffplayout.py -l none -p ~/playlist.json -d -s now -t none -m desktop
 ```
-
-Multi Channel
------
-
-For streaming multiple channels you need to use python supervisorD. A systemd [service](/docs/ffplayout-engine-multichannel.service) for it you found in docs folder.
-
-To configure every channel create your ffplayout yaml configs under **/etc/ffplayout** with naming them **ffplayout-001.yml**, **ffplayout-002.yml** and so on. Then copy and edit the supervisor config [/supervisor/conf.d/engine-001.conf](/supervisor/conf.d/engine-001.conf) with the same numbering.
