@@ -22,7 +22,7 @@
                                 </div>
                                 <div v-for="(prop, name, idx) in configGui[configID]" :key="idx">
                                     <b-form-group
-                                        v-if="idx >= 1"
+                                        v-if="idx >= 1 && name !== 'engine_service'"
                                         label-cols-sm="2"
                                         :label="name"
                                         label-align-sm="right"
@@ -45,7 +45,7 @@
                                             :id="name"
                                             v-model="configGui[configID][name]"
                                             :value="prop"
-                                            :disabled="(name === 'playout_config' || name === 'engine_service') ? true : false"
+                                            :disabled="(name === 'playout_config') ? true : false"
                                         />
                                     </b-form-group>
                                 </div>
