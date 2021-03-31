@@ -35,6 +35,14 @@ export default function ({ $axios, store, redirect, route }) {
                         return $axios(originalRequest)
                     }
                 })
+                .catch((error) => {
+                    if (error.response.status === 401) {
+                        store.commit('auth/REMOVE_TOKEN')
+                        store.commit('auth/UPDATE_IS_LOGIN', false)
+                        redirect('/')
+                        return Promise.reject(error)
+                    }
+                })
         }
         return Promise.reject(error)
     })
