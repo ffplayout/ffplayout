@@ -425,6 +425,7 @@ export default {
             }
 
             this.uploadTask = 'Done...'
+            this.currentNumber = 0
             this.inputPlaceholder = 'Choose files or drop them here...'
             this.inputFiles = []
             this.getPath(this.extensions, this.lastPath)
