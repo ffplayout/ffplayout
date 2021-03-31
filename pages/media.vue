@@ -400,7 +400,7 @@ export default {
                 this.currentProgress = progress
             }
 
-            const configPath = this.configGui[this.configID].playout_config
+            const channel = this.configGui[this.configID].id
 
             for (const [i, file] of this.inputFiles.entries()) {
                 this.uploadTask = file.name
@@ -413,7 +413,7 @@ export default {
                 }
 
                 await this.$axios.put(
-                    `api/player/media/upload/${encodeURIComponent(file.name)}?path=${encodeURIComponent(this.crumbs.map(e => e.text).join('/'))}&config_path=${configPath}`,
+                    `api/player/media/upload/${encodeURIComponent(file.name)}?path=${encodeURIComponent(this.crumbs.map(e => e.text).join('/'))}&channel=${channel}`,
                     file,
                     config
                 )
