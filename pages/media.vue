@@ -483,8 +483,12 @@ export default {
             evt.preventDefault()
 
             await this.$axios.patch(
-                'api/player/media/op/',
-                { path: this.renamePath.replace(/^\/\//g, '/'), oldname: this.renameOldName, newname: this.renameNewName }
+                'api/player/media/op/', {
+                    path: this.renamePath.replace(/^\/\//g, '/'),
+                    oldname: this.renameOldName,
+                    newname: this.renameNewName,
+                    channel: this.configGui[this.configID].id
+                }
             )
 
             this.getPath(this.extensions, this.lastPath)
@@ -527,7 +531,8 @@ export default {
                 pathName = this.deleteSource
             }
 
-            await this.$axios.delete(`api/player/media/op/?file=${encodeURIComponent(file)}&path=${encodeURIComponent(pathName)}`)
+            await this.$axios.delete(
+                `api/player/media/op/?file=${encodeURIComponent(file)}&path=${encodeURIComponent(pathName)}&channel=${this.configGui[this.configID].id}`)
                 .catch(err => console.log(err))
 
             this.$root.$emit('bv::hide::modal', 'delete-modal')
