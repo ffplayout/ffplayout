@@ -234,8 +234,12 @@ export default {
 
             if (process.browser && !this.interval) {
                 this.interval = setInterval(async () => {
-                    const response = await this.$axios.get('api/player/stats/?stats=all')
-                    this.stat = response.data
+                    if (this.$store.state.auth.isLogin && this.$route.path === '/') {
+                        const response = await this.$axios.get('api/player/stats/?stats=all')
+                        this.stat = response.data
+                    } else {
+                        clearInterval(this.interval)
+                    }
                 }, 2000)
             }
         }
