@@ -413,7 +413,7 @@ export default {
                 channel: this.configGui[this.configID].id
             })
 
-            if (response.data && response.data.status.Success && response.data.status.Success === '0 Success') {
+            if (response.data && response.data.status.Success && response.data.status.Success.split(' ')[0] === '0') {
                 this.success = true
             } else {
                 this.failed = true
