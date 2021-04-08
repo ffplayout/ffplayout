@@ -201,9 +201,7 @@ export default {
                 }
 
                 this.checkLogin()
-                await this.$store.dispatch('config/getGuiConfig')
-                this.$store.dispatch('config/getPlayoutConfig')
-                this.$store.dispatch('config/getUserConfig')
+                await this.$store.dispatch('config/nuxtClientInit')
             } catch (e) {
                 this.formError = e.message
             }
