@@ -17,7 +17,7 @@ The purpose with ffplayout is to provide a 24/7 broadcasting solution that plays
 - playing clips from [watched folder](https://github.com/ffplayout/ffplayout-engine/wiki/Watch-Folder)
 - send emails with error message
 - overlay a logo
-- overlay text, controllable through [messenger](https://github.com/ffplayout/messenger) over libzmq
+- overlay text, controllable through [messenger](https://github.com/ffplayout/messenger) or [ffplayout-frontend](https://github.com/ffplayout/ffplayout-frontend) (needs ffmpeg with libzmq)
 - **EBU R128 loudness** normalization (single pass) (experimental)
 - loop clip in playlist which `out` value is higher then its `duration`, see also [Loop Clip](https://github.com/ffplayout/ffplayout-engine/wiki/Loop-Clip)
 - loop playlist infinitely
