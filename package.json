@@ -1,6 +1,6 @@
 {
   "name": "ffplayout",
-  "version": "3.0.0",
+  "version": "3.0.2",
   "description": "web GUI for ffplayout engine",
   "author": "Jonathan Baecker",
   "private": true,

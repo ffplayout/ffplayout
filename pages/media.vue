@@ -364,7 +364,7 @@ export default {
                 {
                     folder: this.folderName,
                     path: this.crumbs.map(e => e.text).join('/'),
-                    config_path: this.configGui[this.configID].playout_config
+                    channel: this.configGui[this.configID].id
                 }
             )
 
