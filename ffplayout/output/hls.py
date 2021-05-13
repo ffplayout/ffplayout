@@ -88,12 +88,12 @@ def output():
                 messenger.info(f'Play: {node.get("source")}')
 
                 cmd = [
-                    'ffmpeg', '-v', log.ff_level.lower(), '-hide_banner',
-                    '-nostats'
+                    'ffmpeg', '-v', f'level+{log.ff_level.lower()}',
+                    '-hide_banner', '-nostats'
                     ] + node['src_cmd'] + node['filter'] + [
-                        '-metadata', 'service_name=' + playout.name,
-                        '-metadata', 'service_provider=' + playout.provider,
-                        '-metadata', 'year={}'.format(year)
+                        '-metadata', f'service_name={playout.name}',
+                        '-metadata', f'service_provider={playout.provider}',
+                        '-metadata', f'year={year}'
                     ] + playout.ffmpeg_param + playout.hls_output
 
                 messenger.debug(f'Encoder CMD: "{" ".join(cmd)}"')

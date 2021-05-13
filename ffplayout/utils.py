@@ -703,15 +703,26 @@ def ffmpeg_stderr_reader(std_errors, decoder):
         logger = encoder_logger
         prefix = ENC_PREFIX
 
+    def form_line(line, level):
+        return f'{prefix}{line.replace(level, "").rstrip()}'
+
+    def write_log(line):
+        if '[info]' in line:
+            logger.info(form_line(line, '[info] '))
+        elif '[warning]' in line:
+            logger.warning(form_line(line, '[warning] '))
+        elif '[error]' in line:
+            logger.error(form_line(line, '[error] '))
+
     try:
         for line in std_errors:
             if log.ff_level == 'INFO':
-                logger.info(f'{prefix}{line.decode("utf-8").rstrip()}')
+                write_log(line.decode())
             elif log.ff_level == 'WARNING':
-                logger.warning(f'{prefix}{line.decode("utf-8").rstrip()}')
+                write_log(line.decode())
             else:
-                logger.error(f'{prefix}{line.decode("utf-8").rstrip()}')
-    except ValueError:
+                write_log(line.decode())
+    except (ValueError, AttributeError):
         pass
 
 

@@ -60,7 +60,8 @@ def output():
 
     try:
         enc_cmd = [
-            'ffplay', '-hide_banner', '-nostats', '-i', 'pipe:0'
+            'ffplay', '-hide_banner', '-nostats',
+            '-v', f'level+{log.ff_level.lower()}', '-i', 'pipe:0'
             ] + overlay
 
         messenger.debug(f'Encoder CMD: "{" ".join(enc_cmd)}"')
@@ -91,7 +92,7 @@ def output():
                     f'seconds: {node.get("source")}')
 
                 dec_cmd = [
-                    'ffmpeg', '-v', log.ff_level.lower(),
+                    'ffmpeg', '-v', f'level+{log.ff_level.lower()}',
                     '-hide_banner', '-nostats'
                     ] + node['src_cmd'] + node['filter'] + ff_pre_settings
 

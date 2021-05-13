@@ -62,11 +62,11 @@ def output():
 
     try:
         enc_cmd = [
-            'ffmpeg', '-v', log.ff_level.lower(), '-hide_banner',
+            'ffmpeg', '-v', f'level+{log.ff_level.lower()}', '-hide_banner',
             '-nostats', '-re', '-thread_queue_size', '160', '-i', 'pipe:0'
             ] + overlay + [
-                '-metadata', 'service_name=' + playout.name,
-                '-metadata', 'service_provider=' + playout.provider,
+                '-metadata', f'service_name={playout.name}',
+                '-metadata', f'service_provider={playout.provider}',
                 '-metadata', f'year={year}'
             ] + playout.ffmpeg_param + playout.stream_output
 
@@ -96,7 +96,7 @@ def output():
                 messenger.info(f'Play: {node.get("source")}')
 
                 dec_cmd = [
-                    'ffmpeg', '-v', log.ff_level.lower(),
+                    'ffmpeg', '-v', f'level+{log.ff_level.lower()}',
                     '-hide_banner', '-nostats'
                     ] + node['src_cmd'] + node['filter'] + ff_pre_settings
 
