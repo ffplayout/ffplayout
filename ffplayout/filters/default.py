@@ -186,15 +186,15 @@ def add_loudnorm(probe):
     return loud_filter
 
 
-def extend_audio(probe, duration):
+def extend_audio(probe, duration, target_duration):
     """
     check audio duration, is it shorter then clip duration - pad it
     """
     pad = []
+    aud_dur = probe.audio[0].get('duration') if probe.audio else None
 
-    if probe.audio and 'duration' in probe.audio[0] and \
-            duration > float(probe.audio[0]['duration']) + 0.1:
-        pad.append(f'apad=whole_dur={duration}')
+    if aud_dur and target_duration <= duration > float(aud_dur) + 0.1:
+        pad.append(f'apad=whole_dur={target_duration}')
 
     return pad
 
@@ -312,7 +312,7 @@ def build_filtergraph(node, node_last, node_next):
 
             audio_chain += ['[0:a]anull'] \
                 + add_loudnorm(probe) \
-                + extend_audio(probe, out - seek)
+                + extend_audio(probe, duration, out - seek)
             if custom_a_filter:
                 audio_chain += custom_a_filter
             audio_chain += fade_filter(duration, seek, out, 'a')
