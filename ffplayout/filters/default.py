@@ -26,8 +26,8 @@ import re
 from glob import glob
 from pydoc import locate
 
-from ffplayout.utils import (is_advertisement, lower_third, messenger, pre,
-                             sync_op)
+from ffplayout.utils import (get_float, is_advertisement, lower_third,
+                             messenger, pre, sync_op)
 
 # ------------------------------------------------------------------------------
 # building filters,
@@ -191,9 +191,10 @@ def extend_audio(probe, duration, target_duration):
     check audio duration, is it shorter then clip duration - pad it
     """
     pad = []
-    aud_dur = probe.audio[0].get('duration') if probe.audio else None
+    aud_dur = get_float(probe.audio[0].get('duration'), None)
+    duration = get_float(probe.format.get('duration'), duration)
 
-    if aud_dur and target_duration <= duration > float(aud_dur) + 0.1:
+    if aud_dur and target_duration <= duration > aud_dur + 0.1:
         pad.append(f'apad=whole_dur={target_duration}')
 
     return pad
