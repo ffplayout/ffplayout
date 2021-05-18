@@ -135,7 +135,7 @@ ffplayout also allows the passing of parameters:
 - `-i, --loop` loop playlist infinitely
 - `-m, --mode` set output mode: **desktop**, **hls**, **stream**, ...
 - `-p, --playlist` for playlist file
-- `-s, --start` set start time in *hh:mm:ss*, *now* for start with first
+- `-s, --start` set start time in *hh:mm:ss*, *now* for start at playlist begin
 - `-t, --length` set length in *hh:mm:ss*, *none* for no length check
 
 You can run the command like:
