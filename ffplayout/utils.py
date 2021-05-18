@@ -685,7 +685,7 @@ def terminate_processes(watcher=None):
         ff_proc.decoder.terminate()
 
     if ff_proc.encoder and ff_proc.encoder.poll() is None:
-        ff_proc.encoder.terminate()
+        ff_proc.encoder.kill()
 
     if watcher:
         watcher.stop()
