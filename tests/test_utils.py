@@ -11,7 +11,7 @@ import time_machine
 from ..ffplayout.utils import (gen_dummy, gen_filler, get_date, get_delta,
                                get_float, is_advertisement, loop_input,
                                playlist, pre, seek_in, set_length,
-                               src_or_dummy, str_to_sec)
+                               src_or_dummy, storage, str_to_sec)
 
 # set time zone
 _TZ = ZoneInfo("Europe/Berlin")
@@ -88,13 +88,16 @@ def test_gen_dummy():
 
 
 def test_gen_filler():
+    storage.filler = ''
+    color_src = 'color=c=#121212:s=1024x576:d=300:r=25,format=pix_fmts=yuv420p'
     source = gen_filler({'source': '/store/file.mp4',
                          'in': 0, 'out': 300, 'duration': 300, 'seek': 0})
     filler = {'duration': 300, 'in': 0, 'out': 300, 'seek': 0,
-              'source': '/tv-media/ADtv/01 - Intro/seperator.clock.5-00.mp4',
+              'source': color_src,
               'src_cmd': [
-                  '-i', '/tv-media/ADtv/01 - Intro/seperator.clock.5-00.mp4',
-                  '-t', '300']}
+                  '-f', 'lavfi', '-i', color_src,
+                  '-f', 'lavfi', '-i', 'anoisesrc=d=300:c=pink:r=48000:a=0.05']
+              }
 
     source.pop('probe')
 
@@ -102,14 +105,16 @@ def test_gen_filler():
 
 
 def test_src_or_dummy():
+    storage.filler = ''
+    color_src = 'color=c=#121212:s=1024x576:d=300:r=25,format=pix_fmts=yuv420p'
     source = src_or_dummy({'source': '/store/file.mp4',
                            'in': 0, 'out': 300, 'duration': 300, 'seek': 0})
 
     dummy = {'duration': 300, 'in': 0, 'out': 300, 'seek': 0,
-             'source': '/tv-media/ADtv/01 - Intro/seperator.clock.5-00.mp4',
+             'source': color_src,
              'src_cmd': [
-                '-i', '/tv-media/ADtv/01 - Intro/seperator.clock.5-00.mp4',
-                '-t', '300']}
+                 '-f', 'lavfi', '-i', color_src,
+                 '-f', 'lavfi', '-i', 'anoisesrc=d=300:c=pink:r=48000:a=0.05']}
 
     source.pop('probe')
 
