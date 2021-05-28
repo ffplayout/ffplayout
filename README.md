@@ -1,4 +1,4 @@
-**ffplayout-engine**
+**ffplayout_engine**
 ================
 
 [![made-with-python](https://img.shields.io/badge/Made%20with-Python-1f425f.svg)](https://www.python.org/)
@@ -14,12 +14,12 @@ The purpose with ffplayout is to provide a 24/7 broadcasting solution that plays
 - have all values in a separate config file
 - dynamic playlist
 - replace missing playlist or clip with a dummy clip
-- playing clips from [watched folder](https://github.com/ffplayout/ffplayout-engine/wiki/Watch-Folder)
+- playing clips from [watched folder](https://github.com/ffplayout/ffplayout_engine/wiki/Watch-Folder)
 - send emails with error message
 - overlay a logo
 - overlay text, controllable through [messenger](https://github.com/ffplayout/messenger) or [ffplayout-frontend](https://github.com/ffplayout/ffplayout-frontend) (needs ffmpeg with libzmq)
 - **EBU R128 loudness** normalization (single pass) (experimental)
-- loop clip in playlist which `out` value is higher then its `duration`, see also [Loop Clip](https://github.com/ffplayout/ffplayout-engine/wiki/Loop-Clip)
+- loop clip in playlist which `out` value is higher then its `duration`, see also [Loop Clip](https://github.com/ffplayout/ffplayout_engine/wiki/Loop-Clip)
 - loop playlist infinitely
 - trim and fade the last clip, to get full 24 hours
 - when playlist is not 24 hours long, loop filler clip until time is full
@@ -37,9 +37,9 @@ The purpose with ffplayout is to provide a 24/7 broadcasting solution that plays
   - **aevalsrc** (if video have no audio)
   - **apad** (add silence if audio duration is to short)
   - **tpad** (add black frames if video duration is to short)
-- add custom [filters](https://github.com/ffplayout/ffplayout-engine/tree/master/ffplayout/filters)
-- add custom [arguments](https://github.com/ffplayout/ffplayout-engine/tree/master/ffplayout/config)
-- different types of [output](https://github.com/ffplayout/ffplayout-engine/wiki/Outputs):
+- add custom [filters](https://github.com/ffplayout/ffplayout_engine/tree/master/ffplayout/filters)
+- add custom [arguments](https://github.com/ffplayout/ffplayout_engine/tree/master/ffplayout/config)
+- different types of [output](https://github.com/ffplayout/ffplayout_engine/wiki/Outputs):
   - **stream**
   - **desktop**
   - **HLS**
@@ -117,7 +117,7 @@ You can use sources from remote URL in that way:
 
 But be careful with it, better test it multiple times!
 
-More informations in [Wiki](https://github.com/ffplayout/ffplayout-engine/wiki/Remote-URL-Source)
+More informations in [Wiki](https://github.com/ffplayout/ffplayout_engine/wiki/Remote-URL-Source)
 
 Installation
 -----
