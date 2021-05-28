@@ -17,11 +17,11 @@ SOURCE_TIME = [2021, 5, 26, 0, 0, 0]
 
 
 @time_machine.travel(datetime.datetime(*SOURCE_TIME, tzinfo=_TZ))
-def test_start_zero():
+def playlist_start_zero():
     playlist.start = 0
-    assert get_date(False, 86401) == '2021-05-27'
+    assert get_date(False, (24*60*60) + 1) == '2021-05-27'
     assert get_date(False, (24*60*60) - 1) == '2021-05-26'
 
 
 if __name__ == '__main__':
-    test_start_zero()
+    playlist_start_zero()
