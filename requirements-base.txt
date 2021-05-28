@@ -1,7 +1,5 @@
 colorama
-pytest
 pyyaml
 requests
 supervisor
-time-machine
 watchdog
