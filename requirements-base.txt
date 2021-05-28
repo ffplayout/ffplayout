@@ -1,4 +1,5 @@
 colorama
+pytest
 pyyaml
 requests
 supervisor
