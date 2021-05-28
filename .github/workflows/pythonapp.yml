@@ -28,4 +28,4 @@ jobs:
       run: |
         sudo apt install ffmpeg
         pip install pytest
-        pytest
+        pytest -vv
