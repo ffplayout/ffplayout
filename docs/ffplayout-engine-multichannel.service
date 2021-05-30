@@ -4,9 +4,9 @@ Documentation=http://supervisord.org
 After=network.target
 
 [Service]
-ExecStart=/opt/ffplayout-engine/venv/bin/supervisord -n -c /etc/ffplayout/supervisor/supervisord.conf
-ExecStop=/opt/ffplayout-engine/venv/bin/supervisorctl $OPTIONS shutdown
-ExecReload=/opt/ffplayout-engine/venv/bin/supervisorctl $OPTIONS reload
+ExecStart=/opt/ffplayout_engine/venv/bin/supervisord -n -c /etc/ffplayout/supervisor/supervisord.conf
+ExecStop=/opt/ffplayout_engine/venv/bin/supervisorctl $OPTIONS shutdown
+ExecReload=/opt/ffplayout_engine/venv/bin/supervisorctl $OPTIONS reload
 KillMode=process
 Restart=on-failure
 RestartSec=5s
