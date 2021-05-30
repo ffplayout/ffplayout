@@ -3,7 +3,7 @@ Description=python and ffmpeg based playout
 After=network.target
 
 [Service]
-ExecStart=/opt/ffplayout-engine/venv/bin/python /opt/ffplayout-engine/ffplayout.py
+ExecStart=/opt/ffplayout_engine/venv/bin/python /opt/ffplayout-engine/ffplayout.py
 ExecReload=/bin/kill -1 $MAINPID
 Restart=always
 RestartSec=1
