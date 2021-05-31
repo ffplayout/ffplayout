@@ -26,8 +26,8 @@ import re
 from glob import glob
 from pydoc import locate
 
-from ffplayout.utils import (get_float, is_advertisement, lower_third,
-                             messenger, pre, sync_op)
+from ..utils import (get_float, is_advertisement, lower_third, messenger, pre,
+                     sync_op)
 
 # ------------------------------------------------------------------------------
 # building filters,
@@ -168,7 +168,7 @@ def add_audio(probe, duration):
     if not probe.audio:
         messenger.warning(f'Clip "{probe.src}" has no audio!')
         line = [(f'aevalsrc=0:channel_layout=stereo:duration={duration}:'
-                 f'sample_rate={48000}')]
+                 f'sample_rate=48000')]
 
     return line
 
@@ -186,30 +186,30 @@ def add_loudnorm(probe):
     return loud_filter
 
 
-def extend_audio(probe, duration, target_duration):
+def extend_audio(probe, out, seek):
     """
     check audio duration, is it shorter then clip duration - pad it
     """
     pad = []
     aud_dur = get_float(probe.audio[0].get('duration'), None)
-    duration = get_float(probe.format.get('duration'), duration)
 
-    if aud_dur and target_duration <= duration > aud_dur + 0.1:
-        pad.append(f'apad=whole_dur={target_duration}')
+    if aud_dur and out - seek > aud_dur - seek + 0.1:
+        pad.append(f'apad=whole_dur={out - seek}')
 
     return pad
 
 
-def extend_video(probe, duration, target_duration):
+def extend_video(probe, out, seek):
     """
     check video duration, is it shorter then clip duration - pad it
     """
     pad = []
     vid_dur = probe.video[0].get('duration')
 
-    if vid_dur and target_duration < duration > float(vid_dur) + 0.1:
+    if vid_dur and out - seek > float(vid_dur) - seek + 0.1:
         pad.append(
-            f'tpad=stop_mode=add:stop_duration={duration - float(vid_dur)}')
+            'tpad=stop_mode=add:'
+            f'stop_duration={(out - seek) - (float(vid_dur) - seek)}')
 
     return pad
 
@@ -238,22 +238,20 @@ def split_filter(filter_type):
     to be able to have different streaming/HLS outputs
     """
     map_node = []
-    prefix = ''
-    _filter = ''
+    filter_ = ''
 
-    if filter_type == 'a':
-        prefix = 'a'
+    prefix = 'a' if filter_type == 'a' else ''
 
     if pre.output_count > 1:
         for num in range(pre.output_count):
             map_node.append(f'[{filter_type}out{num + 1}]')
 
-        _filter = f',{prefix}split={pre.output_count}{"".join(map_node)}'
+        filter_ = f',{prefix}split={pre.output_count}{"".join(map_node)}'
 
     else:
-        _filter = f'[{filter_type}out1]'
+        filter_ = f'[{filter_type}out1]'
 
-    return _filter
+    return filter_
 
 
 def custom_filter(filter_type, node):
@@ -301,7 +299,7 @@ def build_filtergraph(node, node_last, node_next):
             + pad_filter(probe) \
             + fps_filter(probe) \
             + scale_filter(probe) \
-            + extend_video(probe, duration, out - seek)
+            + extend_video(probe, out, seek)
         if custom_v_filter:
             video_chain += custom_v_filter
         video_chain += fade_filter(duration, seek, out)
@@ -313,7 +311,7 @@ def build_filtergraph(node, node_last, node_next):
 
             audio_chain += ['[0:a]anull'] \
                 + add_loudnorm(probe) \
-                + extend_audio(probe, duration, out - seek)
+                + extend_audio(probe, out, seek)
             if custom_a_filter:
                 audio_chain += custom_a_filter
             audio_chain += fade_filter(duration, seek, out, 'a')
