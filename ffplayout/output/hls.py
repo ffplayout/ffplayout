@@ -25,11 +25,11 @@ from glob import iglob
 from subprocess import PIPE, Popen
 from threading import Thread
 
-from ffplayout.folder import GetSourceFromFolder, MediaStore, MediaWatcher
-from ffplayout.playlist import GetSourceFromPlaylist
-from ffplayout.utils import (ff_proc, ffmpeg_stderr_reader, get_date, log,
-                             messenger, playlist, playout, stdin_args, sync_op,
-                             terminate_processes)
+from ..folder import GetSourceFromFolder, MediaStore, MediaWatcher
+from ..playlist import GetSourceFromPlaylist
+from ..utils import (ff_proc, ffmpeg_stderr_reader, get_date, log, messenger,
+                     playlist, playout, stdin_args, sync_op,
+                     terminate_processes)
 
 
 def clean_ts():

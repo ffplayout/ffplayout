@@ -5,7 +5,7 @@ custom video filter, which get loaded automatically
 import os
 import re
 
-from ffplayout.utils import lower_third
+from ..utils import lower_third
 
 
 def filter_link(node):

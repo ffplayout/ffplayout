@@ -2,7 +2,7 @@
 custom audio filter, which get loaded automatically
 """
 
-from ffplayout.utils import get_float, stdin_args
+from ..utils import get_float, stdin_args
 
 
 # pylint: disable=unused-argument

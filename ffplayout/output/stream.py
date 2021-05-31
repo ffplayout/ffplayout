@@ -23,11 +23,11 @@ import os
 from subprocess import PIPE, Popen
 from threading import Thread
 
-from ffplayout.folder import GetSourceFromFolder, MediaStore, MediaWatcher
-from ffplayout.playlist import GetSourceFromPlaylist
-from ffplayout.utils import (ff_proc, ffmpeg_stderr_reader, get_date, log,
-                             lower_third, messenger, playlist, playout, pre,
-                             pre_audio_codec, stdin_args, terminate_processes)
+from ..folder import GetSourceFromFolder, MediaStore, MediaWatcher
+from ..playlist import GetSourceFromPlaylist
+from ..utils import (ff_proc, ffmpeg_stderr_reader, get_date, log, lower_third,
+                     messenger, playlist, playout, pre, pre_audio_codec,
+                     stdin_args, terminate_processes)
 
 _WINDOWS = os.name == 'nt'
 COPY_BUFSIZE = 1024 * 1024 if _WINDOWS else 65424
