@@ -46,6 +46,7 @@ def handle_list_init(node):
 
     delta, total_delta = get_delta(node['begin'])
     seek = abs(delta) + node['seek'] if abs(delta) + node['seek'] >= 1 else 0
+    seek = round(seek, 3)
 
     if node['out'] - seek > total_delta:
         out = total_delta + seek

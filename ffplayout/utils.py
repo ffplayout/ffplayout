@@ -853,6 +853,7 @@ def gen_dummy(duration):
     generate a dummy clip, with black color and empty audio track
     """
     color = '#121212'
+    duration = round(duration, 3)
     # IDEA: add noise could be an config option
     # noise = 'noise=alls=50:allf=t+u,hue=s=0'
     return [
