@@ -2,11 +2,15 @@
 test classes and functions in filters/default.py
 """
 
+import argparse
+import sys
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from ..ffplayout.filters.default import (add_audio, add_loudnorm,
-                                         deinterlace_filter, extend_audio,
-                                         extend_video, fade_filter, fps_filter,
+                                         custom_filter, deinterlace_filter,
+                                         extend_audio, extend_video,
+                                         fade_filter, fps_filter,
                                          overlay_filter, pad_filter,
                                          realtime_filter, scale_filter,
                                          split_filter, text_filter)
@@ -122,3 +126,12 @@ def test_split_filter():
     pre.output_count = 3
     assert split_filter('v') == ',split=3[vout1][vout2][vout3]'
     assert split_filter('a') == ',asplit=3[aout1][aout2][aout3]'
+
+
+# pylint: disable=unused-argument
+@patch('argparse.ArgumentParser.parse_args', return_value=argparse.Namespace(
+    config='', start='', length='', log='', mode='', volume='0.001'))
+def test_custom_filter(*args):
+    sys.path.append('')
+    # lower_third.fontfile = ''
+    assert custom_filter('a', None) == ['volume=0.001']
