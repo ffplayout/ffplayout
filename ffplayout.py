@@ -21,13 +21,14 @@
 This module is the starting program for running ffplayout engine.
 """
 
-import os
-from pydoc import locate
+from importlib import import_module
+from pathlib import Path
+from platform import system
 
 from ffplayout.utils import playout, stdin_args, validate_ffmpeg_libs
 
 try:
-    if os.name != 'posix':
+    if system() == 'Windows':
         import colorama
         colorama.init()
 except ImportError:
@@ -44,20 +45,19 @@ def main():
     """
 
     if stdin_args.mode:
-        output = locate(f'ffplayout.output.{stdin_args.mode}.output')
+        output = import_module(f'ffplayout.output.{stdin_args.mode}').output
         output()
 
     else:
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        output_dir = os.path.join(script_dir, 'ffplayout', 'output')
+        script_dir = Path(__file__).parent.absolute()
+        output_dir = script_dir.joinpath('ffplayout', 'output')
 
-        for output in os.listdir(output_dir):
-            if os.path.isfile(os.path.join(output_dir, output)) \
-                    and output != '__init__.py':
-                mode = os.path.splitext(output)[0]
+        for output in output_dir.glob('*.py'):
+            if output != '__init__.py':
+                mode = Path(output).stem
 
                 if mode == playout.mode:
-                    output = locate(f'ffplayout.output.{mode}.output')
+                    output = import_module(f'ffplayout.output.{mode}').output
                     output()
 
 
