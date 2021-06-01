@@ -1,7 +1,7 @@
 ffplayout-frontend
 =====
 
-This web GUI is for managing [ffplayout-engine](https://github.com/ffplayout/ffplayout-engine) and it depend on [ffplayout-api](https://github.com/ffplayout/ffplayout-api).
+This web GUI is for managing [ffplayout_engine](https://github.com/ffplayout/ffplayout_engine) and it depend on [ffplayout-api](https://github.com/ffplayout/ffplayout-api).
 
 **The Interface is mostly made for 24/7 streaming.** Other scenarios like streaming in folder mode or playlists with no starting time will work, but is not shown correctly.
 
@@ -9,7 +9,7 @@ For a better understanding about the functionality, take a look to the screensho
 
 
 You can install it on a fresh Debian like system with the [standalone installer](https://github.com/ffplayout/ffplayout-installer).
-Or read the instruction [install.md](docs/install.md) for manual installation.
+Or read the instruction [install.md](docs/INSTALL.md) for manual installation.
 
 After installations you have to setup ssl for your **https** connections.
 
