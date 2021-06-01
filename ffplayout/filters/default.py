@@ -21,10 +21,9 @@ This is mainly for unify clips to have a unique output.
 """
 
 import math
-import os
 import re
-from glob import glob
-from pydoc import locate
+from importlib import import_module
+from pathlib import Path
 
 from ..utils import (get_float, is_advertisement, lower_third, messenger, pre,
                      sync_op)
@@ -43,7 +42,7 @@ def text_filter():
     font = ''
 
     if lower_third.add_text and lower_third.over_pre:
-        if lower_third.fontfile and os.path.isfile(lower_third.fontfile):
+        if lower_third.fontfile and Path(lower_third.fontfile).is_file():
             font = f":fontfile='{lower_third.fontfile}'"
         filter_chain = [
             "null,zmq=b=tcp\\\\://'{}',drawtext=text=''{}".format(
@@ -139,7 +138,7 @@ def overlay_filter(duration, advertisement, ad_last, ad_next):
     logo_filter = '[v]null'
     scale = ''
 
-    if pre.add_logo and os.path.isfile(pre.logo) and not advertisement:
+    if pre.add_logo and Path(pre.logo).is_file() and not advertisement:
         logo_chain = []
         if pre.logo_scale and \
                 re.match(r'\d+:-?\d+', pre.logo_scale):
@@ -258,12 +257,13 @@ def custom_filter(filter_type, node):
     """
     read custom filters from filters folder
     """
-    filter_dir = os.path.dirname(os.path.abspath(__file__))
+    filter_dir = Path(__file__).parent.absolute()
     filters = []
 
-    for filter_file in glob(os.path.join(filter_dir, f'{filter_type}_*')):
-        filter_ = os.path.splitext(os.path.basename(filter_file))[0]
-        filter_function = locate(f'ffplayout.filters.{filter_}.filter_link')
+    for filter_file in filter_dir.glob(f'{filter_type}_*'):
+        filter_ = Path(filter_file).stem
+        filter_function = import_module(
+            f'ffplayout.filters.{filter_}').filter_link
         link = filter_function(node)
 
         if link is not None:
