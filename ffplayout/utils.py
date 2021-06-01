@@ -334,9 +334,9 @@ encoder_logger.setLevel(log.ff_level)
 
 if log.to_file and log.path != 'none':
     if log.path.is_dir():
-        playout_log = log.path('ffplayout.log')
-        decoder_log = log.path('decoder.log')
-        encoder_log = log.path('encoder.log')
+        playout_log = log.path.joinpath('ffplayout.log')
+        decoder_log = log.path.joinpath('decoder.log')
+        encoder_log = log.path.joinpath('encoder.log')
     else:
         log_dir = Path(__file__).parent.absolute().joinpath('log')
         log_dir.mkdir(exist_ok=True)
