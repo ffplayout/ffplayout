@@ -143,7 +143,8 @@ disable=print-statement,
         logging-fstring-interpolation,
         too-many-instance-attributes,
         missing-function-docstring,
-        import-error
+        import-error,
+        consider-using-with
 
 # Enable the message, report, category or checker with the given id(s). You can
 # either give multiple identifier separated by comma (,) or put this option
