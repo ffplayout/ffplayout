@@ -19,7 +19,7 @@
 This module plays the compressed output directly on the desktop.
 """
 
-import os
+from platform import system
 from subprocess import PIPE, Popen
 from threading import Thread
 
@@ -29,8 +29,7 @@ from ..utils import (ff_proc, ffmpeg_stderr_reader, log, lower_third,
                      messenger, playlist, pre, pre_audio_codec, stdin_args,
                      terminate_processes)
 
-_WINDOWS = os.name == 'nt'
-COPY_BUFSIZE = 1024 * 1024 if _WINDOWS else 65424
+COPY_BUFSIZE = 1024 * 1024 if system() == 'Windows' else 65424
 
 
 def output():
