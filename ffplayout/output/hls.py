@@ -19,9 +19,8 @@
 This module write the files compression directly to a hls (m3u8) playlist.
 """
 
-import os
 import re
-from glob import iglob
+from pathlib import Path
 from subprocess import PIPE, Popen
 from threading import Thread
 
@@ -44,23 +43,20 @@ def clean_ts():
     for m3u8_file in m3u8_files:
         messenger.debug(f'cleanup *.ts files from: "{m3u8_file}"')
         test_num = 0
-        hls_path = os.path.dirname(m3u8_file)
+        hls_path = Path(m3u8_file).parent
 
-        if os.path.isfile(m3u8_file):
+        if Path(m3u8_file).is_file():
             with open(m3u8_file, 'r') as m3u8:
                 for line in m3u8:
                     if '.ts' in line:
                         test_num = int(re.findall(r'(\d+).ts', line)[0])
                         break
 
-            for ts_file in iglob(os.path.join(hls_path, '*.ts')):
-                ts_num = int(re.findall(r'(\d+).ts', ts_file)[0])
+            for ts_file in hls_path.rglob('*.ts'):
+                ts_num = int(re.findall(r'(\d+).ts', str(ts_file))[0])
 
                 if test_num > ts_num:
-                    try:
-                        os.remove(ts_file)
-                    except OSError:
-                        pass
+                    ts_file.unlink(missing_ok=True)
 
 
 def output():

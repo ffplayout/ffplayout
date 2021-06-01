@@ -19,11 +19,10 @@
 This module handles folder reading. It monitor file adding, deleting or moving
 """
 
-import glob
-import os
 import random
 import time
 from copy import deepcopy
+from pathlib import Path
 
 from watchdog.events import PatternMatchingEventHandler
 from watchdog.observers import Observer
@@ -58,8 +57,7 @@ class MediaStore:
         """
         for ext in storage.extensions:
             self.store.extend(
-                glob.glob(os.path.join(self.folder, '**', f'*{ext}'),
-                          recursive=True))
+                [str(f) for f in Path(self.folder).rglob(f'*{ext}')])
 
     def sort_or_radomize(self):
         """
@@ -124,8 +122,8 @@ class MediaWatcher:
         add file to media list only if it is completely copied
         """
         file_size = -1
-        while file_size != os.path.getsize(event.src_path):
-            file_size = os.path.getsize(event.src_path)
+        while file_size != Path(event.src_path).stat().st_size:
+            file_size = Path(event.src_path).stat().st_size
             time.sleep(1)
 
         self._media.add(event.src_path)

@@ -22,7 +22,6 @@ This module contains default variables and helper functions
 import json
 import logging
 import math
-import os
 import re
 import signal
 import smtplib
@@ -35,8 +34,9 @@ from datetime import date, datetime, timedelta
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import formatdate
-from glob import glob
 from logging.handlers import TimedRotatingFileHandler
+from pathlib import Path
+from platform import system
 from shutil import which
 from subprocess import STDOUT, CalledProcessError, check_output
 from types import SimpleNamespace
@@ -44,8 +44,8 @@ from types import SimpleNamespace
 import yaml
 
 # path to user define configs
-CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                           'conf.d')
+CONFIG_PATH = Path(__file__).parent.absolute().joinpath('conf.d')
+
 
 # ------------------------------------------------------------------------------
 # argument parsing
@@ -88,7 +88,7 @@ stdin_parser.add_argument(
 )
 
 # read dynamical new arguments
-for arg_file in glob(os.path.join(CONFIG_PATH, 'argparse_*')):
+for arg_file in CONFIG_PATH.glob('argparse_*'):
     with open(arg_file, 'r') as _file:
         config = yaml.safe_load(_file)
 
@@ -164,7 +164,7 @@ def read_config():
 
     if stdin_args.config:
         cfg_path = stdin_args.config
-    elif os.path.isfile('/etc/ffplayout/ffplayout.yml'):
+    elif Path('/etc/ffplayout/ffplayout.yml').is_file():
         cfg_path = '/etc/ffplayout/ffplayout.yml'
     else:
         cfg_path = 'ffplayout.yml'
@@ -242,7 +242,7 @@ playlist.length = _p_length
 
 log.to_file = _cfg['logging']['log_to_file']
 log.backup_count = _cfg['logging']['backup_count']
-log.path = _cfg['logging']['log_path']
+log.path = Path(_cfg['logging']['log_path'])
 log.level = _cfg['logging']['log_level']
 log.ff_level = _cfg['logging']['ffmpeg_level']
 
@@ -333,17 +333,16 @@ encoder_logger = logging.getLogger('encoder')
 encoder_logger.setLevel(log.ff_level)
 
 if log.to_file and log.path != 'none':
-    if log.path and os.path.isdir(log.path):
-        playout_log = os.path.join(log.path, 'ffplayout.log')
-        decoder_log = os.path.join(log.path, 'decoder.log')
-        encoder_log = os.path.join(log.path, 'encoder.log')
+    if log.path.is_dir():
+        playout_log = log.path('ffplayout.log')
+        decoder_log = log.path('decoder.log')
+        encoder_log = log.path('encoder.log')
     else:
-        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        log_dir = os.path.join(base_dir, 'log')
-        os.makedirs(log_dir, exist_ok=True)
-        playout_log = os.path.join(log_dir, 'ffplayout.log')
-        decoder_log = os.path.join(log_dir, 'decoder.log')
-        encoder_log = os.path.join(log_dir, 'encoder.log')
+        log_dir = Path(__file__).parent.absolute().joinpath('log')
+        log_dir.mkdir(exist_ok=True)
+        playout_log = log_dir.joinpath('ffplayout.log')
+        decoder_log = log_dir.joinpath('decoder.log')
+        encoder_log = log_dir.joinpath('encoder.log')
 
     p_format = logging.Formatter('[%(asctime)s] [%(levelname)s]  %(message)s')
     f_format = logging.Formatter('[%(asctime)s]  %(message)s')
@@ -388,7 +387,7 @@ class Mailer:
         self.time = None
         self.timestamp = get_time('stamp')
         self.rate_limit = 600
-        self.temp_msg = os.path.join(tempfile.gettempdir(), 'ffplayout.txt')
+        self.temp_msg = Path(tempfile.gettempdir()).joinpath('ffplayout.txt')
 
     def current_time(self):
         """
@@ -438,8 +437,8 @@ class Mailer:
         """
         send message only when is new or the rate_limit is pass
         """
-        if os.path.isfile(self.temp_msg):
-            mod_time = os.path.getmtime(self.temp_msg)
+        if Path(self.temp_msg).is_file():
+            mod_time = Path(self.temp_msg).stat().st_mtime
 
             with open(self.temp_msg, 'r', encoding='utf-8') as msg_file:
                 last_msg = msg_file.read()
@@ -612,7 +611,7 @@ class MediaProbe:
         else:
             self.is_remote = False
 
-            if not self.src or not os.path.isfile(self.src):
+            if not self.src or not Path(self.src).is_file():
                 self.audio.append(None)
                 self.video.append(None)
 
@@ -673,7 +672,7 @@ def handle_sighub(sig, frame):
 
 signal.signal(signal.SIGTERM, handle_sigterm)
 
-if os.name == 'posix':
+if system() == 'Linux':
     signal.signal(signal.SIGHUP, handle_sighub)
 
 
@@ -922,7 +921,7 @@ def src_or_dummy(node):
         node['src_cmd'] = [
             '-i', node['source']
             ] + set_length(86400, node['seek'], node['out'])
-    elif node.get('source') and os.path.isfile(node['source']):
+    elif node.get('source') and Path(node['source']).is_file():
         if node['out'] > node['duration']:
             if node['seek'] > 0.0:
                 messenger.warning(

@@ -21,12 +21,12 @@ Empty, missing or any other playlist related failure should be compensate.
 Missing clips will be replaced by a dummy clip.
 """
 
-import os
 import socket
 import time
 from copy import deepcopy
 from datetime import timedelta
 from math import isclose
+from pathlib import Path
 from threading import Thread
 
 import requests
@@ -161,7 +161,7 @@ def validate_thread(clip_nodes, list_date):
             if probe.is_remote:
                 if not probe.video[0]:
                     missing.append(f'Remote file not exist: "{source}"')
-            elif source is None or not os.path.isfile(source):
+            elif source is None or not Path(source).is_file():
                 missing.append(f'File not exist: "{source}"')
 
             if not type(node.get('in')) in [int, float]:
@@ -219,8 +219,8 @@ class PlaylistReader:
             json_file = stdin_args.playlist
         else:
             year, month, _ = self.list_date.split('-')
-            json_file = os.path.join(playlist.path, year, month,
-                                     f'{self.list_date}.json')
+            json_file = str(Path(playlist.path).joinpath(
+                year, month, f'{self.list_date}.json'))
 
         if '://' in json_file:
             json_file = json_file.replace('\\', '/')
@@ -241,9 +241,9 @@ class PlaylistReader:
                 messenger.error(f'No valid playlist from url: {json_file}')
                 self.error = True
 
-        elif os.path.isfile(json_file):
+        elif Path(json_file).is_file():
             # check last modification time from playlist
-            mod_time = os.path.getmtime(json_file)
+            mod_time = Path(json_file).stat().st_mtime
             if mod_time > self.last_mod_time:
                 with open(json_file, 'r', encoding='utf-8') as playlist_file:
                     self.nodes = valid_json(playlist_file)
