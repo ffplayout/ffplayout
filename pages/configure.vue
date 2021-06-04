@@ -15,7 +15,7 @@
                             >
                                 <div style="width: 100%; height: 43px;">
                                     <div class="float-right">
-                                        <b-button size="sm" variant="primary" class="m-md-2" @click="addChannel()">
+                                        <b-button v-if="multiChannel" size="sm" variant="primary" class="m-md-2" @click="addChannel()">
                                             Add new Channel
                                         </b-button>
                                     </div>
@@ -56,7 +56,7 @@
                                         <b-button type="submit" variant="primary">
                                             Save
                                         </b-button>
-                                        <b-button variant="danger" @click="deleteChannel()">
+                                        <b-button v-if="multiChannel && configGui[configID].id > 1" variant="danger" @click="deleteChannel()">
                                             Delete
                                         </b-button>
                                     </b-button-group>
@@ -255,7 +255,7 @@ export default {
     },
 
     computed: {
-        ...mapState('config', ['configID', 'netChoices']),
+        ...mapState('config', ['configID', 'netChoices', 'multiChannel']),
         configGui: {
             get () {
                 return this.$store.state.config.configGui

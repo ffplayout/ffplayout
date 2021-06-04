@@ -11,7 +11,8 @@ export const state = () => ({
     configPlayout: {},
     currentUser: null,
     configUser: null,
-    timezone: 'UTC'
+    timezone: 'UTC',
+    multiChannel: false
 })
 
 export const mutations = {
@@ -47,6 +48,9 @@ export const mutations = {
     },
     UPDATE_TIMEZONE (state, zone) {
         state.timezone = zone
+    },
+    UPDATE_MULTI_CHANNEL (state, bool) {
+        state.multiChannel = bool
     }
 }
 
@@ -62,10 +66,11 @@ export const actions = {
     },
 
     async getTimezone ({ commit, state }) {
-        const response = await this.$axios.get('api/player/stats/?stats=timezone')
+        const response = await this.$axios.get('api/player/stats/?stats=settings')
 
         if (response.data) {
             commit('UPDATE_TIMEZONE', response.data.timezone)
+            commit('UPDATE_MULTI_CHANNEL', response.data.multi_channel)
         } else {
             commit('UPDATE_TIMEZONE', this.$dayjs.tz.guess())
         }

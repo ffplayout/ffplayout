@@ -20,13 +20,17 @@
                 <b-nav-item to="/configure" exact-active-class="active-menu-item">
                     Configure
                 </b-nav-item>
-                <b-nav-text>&nbsp;&nbsp;</b-nav-text>
-                <b-nav-item-dropdown :text="configGui[configID].channel" right>
+                <b-nav-text v-if="multiChannel">
+                    &nbsp;&nbsp;
+                </b-nav-text>
+                <b-nav-item-dropdown v-if="multiChannel" :text="configGui[configID].channel" right>
                     <b-dropdown-item v-for="(channel, index) in configGui" :key="channel.key" @click="selectChannel(index)">
                         {{ channel.channel }}
                     </b-dropdown-item>
                 </b-nav-item-dropdown>
-                <b-nav-text>&nbsp;&nbsp;</b-nav-text>
+                <b-nav-text v-if="multiChannel">
+                    &nbsp;&nbsp;
+                </b-nav-text>
                 <b-nav-item to="/" @click="logout()">
                     Logout
                 </b-nav-item>
@@ -42,7 +46,7 @@ export default {
     name: 'Menu',
 
     computed: {
-        ...mapState('config', ['configID', 'configGui'])
+        ...mapState('config', ['configID', 'configGui', 'multiChannel'])
     },
 
     methods: {
