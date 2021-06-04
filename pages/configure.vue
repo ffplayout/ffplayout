@@ -290,13 +290,12 @@ export default {
             const playoutConfigPath = newConf.playout_config.match(/.*\//)
             const playoutConfigFile = newConf.playout_config.replace(/(.*\/|\.yml)/g, '').split('-')
 
-            const engineServicePath = newConf.engine_service.match(/.*\//)
-            const engineServiceFile = newConf.engine_service.replace(/(.*\/|\.conf)/g, '').split('-')
+            const engineService = newConf.engine_service.split('-')
 
             newConf.id = config.length + 1
             newConf.channel = `Channel ${Math.random().toString(36).substring(7)}`
             newConf.playout_config = `${playoutConfigPath}${playoutConfigFile[0]}-${String(parseInt(playoutConfigFile[1]) + 1).padStart(3, '0')}.yml`
-            newConf.engine_service = `${engineServicePath}${engineServiceFile[0]}-${String(parseInt(engineServiceFile[1]) + 1).padStart(3, '0')}.conf`
+            newConf.engine_service = `${engineService[0]}-${String(parseInt(engineService[1]) + 1).padStart(3, '0')}`
 
             config.push(newConf)
 
