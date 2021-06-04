@@ -451,8 +451,8 @@ export default {
         },
 
         async getStatus () {
-            const engine = this.configGui[this.configID].engine_service.split('/').slice(-1)[0].split('.')[0]
-            const status = await this.$axios.post('api/player/system/', { run: 'status', engine })
+            const channel = this.configGui[this.configID].id
+            const status = await this.$axios.post('api/player/system/', { run: 'status', channel })
 
             if (status.data.data && (status.data.data === 'RUNNING' || status.data.data === 'active')) {
                 this.isPlaying = 'is-playing'
@@ -462,8 +462,8 @@ export default {
         },
 
         async playoutControl (state) {
-            const engine = this.configGui[this.configID].engine_service.split('/').slice(-1)[0].split('.')[0]
-            await this.$axios.post('api/player/system/', { run: state, engine })
+            const channel = this.configGui[this.configID].id
+            await this.$axios.post('api/player/system/', { run: state, channel })
 
             setTimeout(() => { this.getStatus() }, 1000)
         },
