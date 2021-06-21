@@ -374,10 +374,14 @@ class GetSourceFromPlaylist:
         when playlist not exists, or is not long enough,
         generate a placeholder node
         """
-        current_time = get_time('full_sec') - 86400
+        current_time = get_time('full_sec')
+
+        if playlist.start == 0:
+            current_time -= 86400
+
         # balance small difference to start time
         if playlist.start is not None and isclose(playlist.start,
-                                                  current_time, abs_tol=2):
+                                                  current_time, abs_tol=1.5):
             self.node = None
             self.check_for_next_playlist(playlist.start)
         else:
