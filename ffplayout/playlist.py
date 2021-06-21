@@ -322,6 +322,7 @@ class GetSourceFromPlaylist:
         check if playlist length is 24 hours and matches current length,
         to get the date for a new playlist
         """
+
         if self.node is not None:
             out = self.node['out']
             delta = 0
@@ -335,7 +336,8 @@ class GetSourceFromPlaylist:
                 delta += seek + 1
 
             next_start = begin - playlist.start + out + delta
-
+        elif begin == playlist.start:
+            next_start = playlist.length + 1
         else:
             delta, _ = get_delta(begin)
             next_start = begin - playlist.start + sync_op.threshold + delta
@@ -376,23 +378,24 @@ class GetSourceFromPlaylist:
         # balance small difference to start time
         if playlist.start is not None and isclose(playlist.start,
                                                   current_time, abs_tol=2):
-            begin = playlist.start
+            self.node = None
+            self.check_for_next_playlist(playlist.start)
         else:
             self.init_time()
             begin = self.last_time
 
-        self.node = {
-            'begin': begin,
-            'number': 0,
-            'in': 0,
-            'seek': 0,
-            'out': duration,
-            'duration': duration + 1,
-            'source': None
-        }
+            self.node = {
+                'begin': begin,
+                'number': 0,
+                'in': 0,
+                'seek': 0,
+                'out': duration,
+                'duration': duration + 1,
+                'source': None
+            }
 
-        self.generate_cmd()
-        self.check_for_next_playlist(begin)
+            self.generate_cmd()
+            self.check_for_next_playlist(begin)
 
     def eof_handling(self, begin):
         """
