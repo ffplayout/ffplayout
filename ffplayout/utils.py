@@ -182,8 +182,7 @@ def load_config():
 
     cfg = read_config()
 
-    sync_op.stop = cfg['general']['stop_on_error']
-    sync_op.threshold = cfg['general']['stop_threshold']
+    sync_op.threshold = int(cfg['general']['stop_threshold'])
 
     mail.subject = cfg['mail']['subject']
     mail.server = cfg['mail']['smpt_server']
@@ -814,7 +813,7 @@ def check_sync(delta):
         # this is needed for real time filter
         sync_op.time_delta = delta
 
-    if sync_op.stop and abs(delta) > sync_op.threshold:
+    if abs(delta) > sync_op.threshold > 0:
         messenger.error(
             f'Sync tolerance value exceeded with {delta:.2f} seconds,\n'
             'program terminated!')

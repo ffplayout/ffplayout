@@ -1,11 +1,10 @@
 general:
     helptext: Sometimes it can happen, that a file is corrupt but still playable,
         this can produce an streaming error over all following files. The only way
-        in this case is, to stop ffplayout and start it again here we only say it
-        can stop, the starting process is in your hand. Best way is a systemd serivce
+        in this case is, to stop ffplayout and start it again. Here we only say when
+        it stops, the starting process is in your hand. Best way is a systemd serivce
         on linux. 'stop_threshold' stop ffplayout, if it is async in time above this
         value.
-    stop_on_error: True
     stop_threshold: 11
 
 mail:
