@@ -25,7 +25,6 @@ import socket
 import time
 from copy import deepcopy
 from datetime import timedelta
-from math import isclose
 from pathlib import Path
 from threading import Thread
 
@@ -34,7 +33,7 @@ import requests
 from .filters.default import build_filtergraph
 from .utils import (MediaProbe, check_sync, get_date, get_delta, get_float,
                     get_time, messenger, playlist, src_or_dummy, stdin_args,
-                    sync_op, valid_json)
+                    storage, sync_op, valid_json)
 
 
 def handle_list_init(node):
@@ -336,8 +335,6 @@ class GetSourceFromPlaylist:
                 delta += seek + 1
 
             next_start = begin - playlist.start + out + delta
-        elif begin == playlist.start:
-            next_start = playlist.length + 1
         else:
             delta, _ = get_delta(begin)
             next_start = begin - playlist.start + sync_op.threshold + delta
@@ -374,32 +371,22 @@ class GetSourceFromPlaylist:
         when playlist not exists, or is not long enough,
         generate a placeholder node
         """
-        current_time = get_time('full_sec')
 
-        if playlist.start == 0:
-            current_time -= 86400
+        self.init_time()
+        begin = self.last_time
 
-        # balance small difference to start time
-        if playlist.start is not None and isclose(playlist.start,
-                                                  current_time, abs_tol=1.5):
-            self.node = None
-            self.check_for_next_playlist(playlist.start)
-        else:
-            self.init_time()
-            begin = self.last_time
+        self.node = {
+            'begin': begin,
+            'number': 0,
+            'in': 0,
+            'seek': 0,
+            'out': duration,
+            'duration': duration + 1,
+            'source': storage.filler
+        }
 
-            self.node = {
-                'begin': begin,
-                'number': 0,
-                'in': 0,
-                'seek': 0,
-                'out': duration,
-                'duration': duration + 1,
-                'source': None
-            }
-
-            self.generate_cmd()
-            self.check_for_next_playlist(begin)
+        self.generate_cmd()
+        self.check_for_next_playlist(begin)
 
     def eof_handling(self, begin):
         """
