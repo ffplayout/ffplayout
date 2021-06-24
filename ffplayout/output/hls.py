@@ -121,9 +121,9 @@ def output():
 
         # close encoder when nothing is to do anymore
         if ff_proc.encoder.poll() is None:
-            ff_proc.encoder.terminate()
+            ff_proc.encoder.kill()
 
     finally:
         if ff_proc.encoder.poll() is None:
-            ff_proc.encoder.terminate()
+            ff_proc.encoder.kill()
         ff_proc.encoder.wait()
