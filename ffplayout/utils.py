@@ -201,7 +201,6 @@ def load_config():
     pre.loud_i = cfg['processing']['loud_I']
     pre.loud_tp = cfg['processing']['loud_TP']
     pre.loud_lra = cfg['processing']['loud_LRA']
-    pre.output_count = cfg['processing']['output_count']
 
     storage.path = cfg['storage']['path']
     storage.filler = cfg['storage']['filler_clip']
@@ -251,6 +250,7 @@ pre.aspect = _cfg['processing']['aspect']
 pre.fps = _cfg['processing']['fps']
 pre.v_bitrate = _cfg['processing']['width'] * _cfg['processing']['height'] / 10
 pre.v_bufsize = pre.v_bitrate / 2
+pre.output_count = _cfg['processing']['output_count']
 
 playout.mode = _cfg['out']['mode']
 playout.name = _cfg['out']['service_name']
@@ -662,7 +662,7 @@ def handle_sigterm(sig, frame):
 # pylint: disable=unused-argument
 def handle_sighub(sig, frame):
     """
-    handling SIGHUB signal for reload configuration
+    handling SIGHUP signal for reload configuration
     Linux/macOS only
     """
     messenger.info('Reload config file')
