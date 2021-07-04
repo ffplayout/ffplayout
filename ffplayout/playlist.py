@@ -186,7 +186,8 @@ def validate_thread(clip_nodes, list_date):
 
         check_length(counter, list_date)
 
-    if clip_nodes.get('program') and len(clip_nodes.get('program')) > 0:
+    if clip_nodes and clip_nodes.get('program') and \
+            len(clip_nodes.get('program')) > 0:
         validate = Thread(name='check_json', target=check_json,
                           args=(clip_nodes, list_date))
         validate.daemon = True
@@ -292,7 +293,8 @@ class GetSourceFromPlaylist:
             self.first = True
             self.last_error = self.playlist_reader.error
 
-        if self.playlist_reader.nodes.get('program'):
+        if self.playlist_reader.nodes and \
+                self.playlist_reader.nodes.get('program'):
             self.clip_nodes = self.playlist_reader.nodes.get('program')
             self.node_count = len(self.clip_nodes)
 
