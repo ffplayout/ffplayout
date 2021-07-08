@@ -12,7 +12,6 @@ How to contribute to ffplayout engine
         4. your ffplayout.yml config file
         5. your log files
 - Ask your question in a way, that we don't need to ask for more details and background.
-- Please have in mind that this is no WhatsApp, and don't.
 
 #### Did you found a bug?
 
