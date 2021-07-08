@@ -23,3 +23,4 @@ Please use the **Feature Request** issue template and fill up everything.
 
 #### You want to make a pull request?
 That is wonderful! But please use the same code style. This project tries to be PEP8 conform.
+If you add new functions, create also a [test](https://github.com/ffplayout/ffplayout_engine/tree/master/tests) for it.
