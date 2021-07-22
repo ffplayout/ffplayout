@@ -15,7 +15,7 @@ How to contribute to ffplayout engine
 
 #### Did you found a bug?
 
-Please use the **Bug Report** issue template and fill up everything.
+Try first the main branch, if this bug still exists there use the **Bug Report** issue template and fill up everything.
 
 #### You have a feature request?
 
