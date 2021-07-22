@@ -1,3 +1,6 @@
+<font color='red'>This project will not be maintained from August 15 to October 15, 2021. During this time the code will not be modified and no issues will be answered.</font>
+-----
+
 **ffplayout_engine**
 ================
 
