@@ -33,7 +33,7 @@ import requests
 from .filters.default import build_filtergraph
 from .utils import (MediaProbe, check_sync, get_date, get_delta, get_float,
                     get_time, messenger, playlist, src_or_dummy, stdin_args,
-                    storage, sync_op, valid_json)
+                    sync_op, valid_json)
 
 
 def handle_list_init(node):
@@ -88,9 +88,9 @@ def handle_list_end(duration, node):
             f'Last clip less then 1 second long, skip:\n{node["source"]}')
         node = None
     else:
-        missing_secs = abs(duration - (node['duration'] - node['seek']))
+        _, total_delta = get_delta(node['begin'])
         messenger.error(
-            f'Playlist is not long enough:\n{missing_secs:.2f} seconds needed')
+            f'Playlist is not long enough:\n{total_delta:.2f} seconds needed')
         out = node['out']
         node = src_or_dummy(node)
 
@@ -383,8 +383,7 @@ class GetSourceFromPlaylist:
             'in': 0,
             'seek': 0,
             'out': duration,
-            'duration': duration + 1,
-            'source': storage.filler
+            'duration': duration + 1
         }
 
         self.generate_cmd()

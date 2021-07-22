@@ -874,18 +874,19 @@ def gen_filler(node):
 
     if probe.format:
         if probe.format.get('duration'):
-            filler_dur = float(probe.format['duration'])
-            if filler_dur > duration:
+            node['duration'] = float(probe.format['duration'])
+            node['source'] = storage.filler
+            if node['duration'] > duration:
                 # cut filler
                 messenger.info(
                     f'Generate filler with {duration:.2f} seconds')
-                node['source'] = storage.filler
                 node['src_cmd'] = ['-i', storage.filler] + set_length(
-                    filler_dur, 0, duration)
+                    node['duration'], 0, duration)
                 return node
 
             # loop file n times
-            node['src_cmd'] = loop_input(storage.filler, filler_dur, duration)
+            node['src_cmd'] = loop_input(
+                storage.filler, node['duration'], duration)
             return node
 
         messenger.error("Can't get filler length, generate dummy!")
@@ -939,7 +940,8 @@ def src_or_dummy(node):
                 ['-i', node['source']] + set_length(node['duration'],
                                                     node['seek'], node['out'])
     else:
-        messenger.error(f'File not exist: {node.get("source")}')
+        if 'source' in node:
+            messenger.error(f'File not exist: {node.get("source")}')
         node = gen_filler(node)
 
     return node
