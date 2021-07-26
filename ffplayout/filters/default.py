@@ -138,7 +138,8 @@ def overlay_filter(duration, advertisement, ad_last, ad_next):
     logo_filter = '[v]null'
     scale = ''
 
-    if pre.add_logo and Path(pre.logo).is_file() and not advertisement:
+    if pre.add_logo and pre.logo and Path(pre.logo).is_file() \
+            and not advertisement:
         logo_chain = []
         if pre.logo_scale and \
                 re.match(r'\d+:-?\d+', pre.logo_scale):
