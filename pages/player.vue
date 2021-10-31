@@ -219,7 +219,7 @@
                                             <b-col cols="1" class="timecode">
                                                 {{ item.begin | secondsToTime }}
                                             </b-col>
-                                            <b-col class="grabbing">
+                                            <b-col class="grabbing filename">
                                                 {{ item.source | filename }}
                                             </b-col>
                                             <b-col cols="1" class="text-center playlist-input">
@@ -618,7 +618,7 @@ export default {
 }
 
 .control-unit-col {
-    min-width: 380px;
+    min-width: 250px;
 }
 
 .control-unit-row {
@@ -636,7 +636,7 @@ export default {
 
 .control-unit-row .col div {
     height: 80%;
-    margin: .7em 0;
+    margin: .6em 0;
 }
 
 .control-button {
@@ -725,9 +725,13 @@ export default {
 }
 
 @media (max-width: 1555px) {
+    .control-row {
+        min-height: 200px;
+    }
+
     .control-col {
         height: 100%;
-        min-height: 294px;
+        min-height: inherit;
     }
     .status-col {
         padding-right: 0;
@@ -741,19 +745,39 @@ export default {
     }
     .control-unit-row {
         margin-right: -30px;
+        height: inherit;
     }
+    .control-unit-col {
+        flex: 0 0 28.5%;
+        max-width: 28.5%;
+        margin: 0 10px 0 20px;
+    }
+}
+
+@media (max-width: 1280px) {
+    .control-col {
+        min-height: inherit;
+    }
+    .control-unit-col {
+        flex: 0 0 25%;
+        max-width: 25%;
+        height: 100%;
+        margin: 0 0 0 20px;
+    }
+    .control-unit-row {
+        height: inherit;
+    }
+}
+
+@media (max-width: 1225px) {
     .control-unit-col {
         flex: 0 0 66.6666666667%;
         max-width: 66.6666666667%;
         margin: 6px 0 0 0;
     }
-}
-
-@media (max-width: 1225px) {
     .clock-col {
         margin-right: 0;
     }
-
     .counter-col {
         margin-left: 0;
     }
@@ -818,6 +842,12 @@ export default {
 
 .active-playlist-clip {
     background-color: #565e6a !important;
+}
+
+.filename {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
 }
 
 </style>
