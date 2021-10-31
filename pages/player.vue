@@ -745,7 +745,6 @@ export default {
     }
     .control-unit-row {
         margin-right: -30px;
-        height: inherit;
     }
     .control-unit-col {
         flex: 0 0 28.5%;
@@ -761,11 +760,8 @@ export default {
     .control-unit-col {
         flex: 0 0 25%;
         max-width: 25%;
-        height: 100%;
+        height: auto;
         margin: 0 0 0 20px;
-    }
-    .control-unit-row {
-        height: inherit;
     }
 }
 
