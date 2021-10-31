@@ -53,6 +53,7 @@ export default function ({ $axios, store, redirect, route }) {
         if (code === 401 && route.path !== '/') {
             redirect('/')
         } else if (code !== 401) {
+            store.commit('UPDATE_VARIANT', 'danger')
             store.commit('UPDATE_SHOW_ERROR_ALERT', true)
             store.commit('UPDATE_ERROR_AERT_MESSAGE', error)
         }

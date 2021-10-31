@@ -563,13 +563,21 @@ export default {
 
             const saveList = this.playlist.map(({ begin, ...item }) => item)
 
-            await this.$axios.post(
+            const postSave = await this.$axios.post(
                 'api/player/playlist/',
                 {
                     data: { channel: this.$store.state.config.configGui.channel, date: saveDate, program: saveList },
                     channel: this.configGui[this.configID].id
                 }
             )
+
+            if (postSave.status === 200 || postSave.status === 201) {
+                this.$store.commit('UPDATE_VARIANT', 'success')
+                this.$store.commit('UPDATE_SHOW_ERROR_ALERT', true)
+                this.$store.commit('UPDATE_ERROR_AERT_MESSAGE', 'Playlist saved...')
+
+                setTimeout(() => { this.$store.commit('UPDATE_SHOW_ERROR_ALERT', false) }, 2000)
+            }
         },
 
         async deletePlaylist (playlistDate) {
@@ -577,7 +585,15 @@ export default {
             const date = playlistDate.split('-')
             const playlistPath = `${this.configPlayout.playlist.path}/${date[0]}/${date[1]}/${playlistDate}.json`
 
-            await this.$axios.post('api/player/playlist/', { data: { delete: playlistPath } })
+            const postDelete = await this.$axios.post('api/player/playlist/', { data: { delete: playlistPath } })
+
+            if (postDelete.status === 200 || postDelete.status === 201) {
+                this.$store.commit('UPDATE_VARIANT', 'success')
+                this.$store.commit('UPDATE_SHOW_ERROR_ALERT', true)
+                this.$store.commit('UPDATE_ERROR_AERT_MESSAGE', 'Playlist deleted...')
+
+                setTimeout(() => { this.$store.commit('UPDATE_SHOW_ERROR_ALERT', false) }, 2000)
+            }
         },
 
         showCopyModal () {

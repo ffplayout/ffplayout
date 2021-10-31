@@ -4,7 +4,7 @@
         <b-alert
             :show="showErrorAlert"
             dismissible
-            variant="danger"
+            :variant="variant"
             class="status-alert"
             @dismissed="showErrorAlert=!showErrorAlert"
         >
@@ -18,7 +18,7 @@ import { mapState } from 'vuex'
 
 export default {
     computed: {
-        ...mapState(['ErrorAlertMessage']),
+        ...mapState(['ErrorAlertMessage', 'variant']),
 
         showErrorAlert: {
             get () {
