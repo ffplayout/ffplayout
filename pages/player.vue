@@ -840,7 +840,7 @@ export default {
     background-color: #565e6a !important;
 }
 
-.filename {
+.filename, .browser-item {
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
