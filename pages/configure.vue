@@ -45,7 +45,6 @@
                                             :id="name"
                                             v-model="configGui[configID][name]"
                                             :value="prop"
-                                            :disabled="(name === 'playout_config') ? true : false"
                                         />
                                     </b-form-group>
                                 </div>
