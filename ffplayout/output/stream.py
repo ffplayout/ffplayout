@@ -42,7 +42,7 @@ def output():
 
     ff_pre_settings = [
         '-pix_fmt', 'yuv420p', '-r', str(pre.fps),
-        '-c:v', 'mpeg2video', '-intra',
+        '-c:v', 'mpeg2video', '-g', '1',
         '-b:v', f'{pre.v_bitrate}k',
         '-minrate', f'{pre.v_bitrate}k',
         '-maxrate', f'{pre.v_bitrate}k',
