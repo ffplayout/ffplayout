@@ -49,7 +49,7 @@ The purpose with ffplayout is to provide a 24/7 broadcasting solution that plays
 Requirements
 -----
 
-- python version 3.6+
+- python version 3.7+
 - python module **watchdog** (only when `playlist_mode: False`)
 - python module **colorama** if you are on windows
 - python modules **PyYAML**, **requests**, **supervisor**
