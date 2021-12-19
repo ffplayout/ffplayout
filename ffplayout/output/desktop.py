@@ -27,7 +27,7 @@ from ..folder import GetSourceFromFolder, MediaStore, MediaWatcher
 from ..playlist import GetSourceFromPlaylist
 from ..utils import (ff_proc, ffmpeg_stderr_reader, log, lower_third,
                      messenger, playlist, pre, pre_audio_codec, stdin_args,
-                     terminate_processes)
+                     sync_op, terminate_processes)
 
 COPY_BUFSIZE = 1024 * 1024 if system() == 'Windows' else 65424
 
@@ -111,8 +111,13 @@ def output():
                             break
                         ff_proc.encoder.stdin.write(buf)
 
-        except BrokenPipeError:
-            messenger.error('Broken Pipe!')
+        except BrokenPipeError as err:
+            messenger.debug(79 * '-')
+            messenger.debug(f'error: "{err}"')
+            messenger.debug(f'delta: "{sync_op.time_delta}"')
+            messenger.debug(f'node: "{node}"')
+            messenger.debug(f'dec_cmd: "{dec_cmd}"')
+            messenger.debug(79 * '-')
             terminate_processes(watcher)
 
         except SystemExit:

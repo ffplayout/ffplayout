@@ -118,7 +118,6 @@ def output():
                         ff_proc.encoder.stdin.write(buf)
 
         except BrokenPipeError as err:
-            messenger.error('Broken Pipe!')
             messenger.debug(79 * '-')
             messenger.debug(f'error: "{err}"')
             messenger.debug(f'delta: "{sync_op.time_delta}"')
