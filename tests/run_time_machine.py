@@ -10,20 +10,16 @@ import datetime
 import os
 import sys
 from importlib import import_module
+from zoneinfo import ZoneInfo
 
 import time_machine
-
-try:
-    from zoneinfo import ZoneInfo
-except ImportError:
-    from backports.zoneinfo import ZoneInfo
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # set time zone
 _TZ = ZoneInfo("Europe/Berlin")
 # fake date and time
-SOURCE_TIME = [2021, 6, 24, 23, 57, 30]
+SOURCE_TIME = [2021, 12, 19, 5, 45, 00]
 
 
 @time_machine.travel(datetime.datetime(*SOURCE_TIME, tzinfo=_TZ))
