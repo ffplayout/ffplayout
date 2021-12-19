@@ -27,7 +27,7 @@ from ..folder import GetSourceFromFolder, MediaStore, MediaWatcher
 from ..playlist import GetSourceFromPlaylist
 from ..utils import (ff_proc, ffmpeg_stderr_reader, get_date, log, lower_third,
                      messenger, playlist, playout, pre, pre_audio_codec,
-                     stdin_args, terminate_processes)
+                     stdin_args, sync_op, terminate_processes)
 
 COPY_BUFSIZE = 1024 * 1024 if system() == 'Windows' else 65424
 
@@ -39,6 +39,8 @@ def output():
     """
     year = get_date(False).split('-')[0]
     overlay = []
+    node = None
+    dec_cmd = []
 
     ff_pre_settings = [
         '-pix_fmt', 'yuv420p', '-r', str(pre.fps),
@@ -115,8 +117,14 @@ def output():
                             break
                         ff_proc.encoder.stdin.write(buf)
 
-        except BrokenPipeError:
+        except BrokenPipeError as err:
             messenger.error('Broken Pipe!')
+            messenger.debug(79 * '-')
+            messenger.debug(f'error: "{err}"')
+            messenger.debug(f'delta: "{sync_op.time_delta}"')
+            messenger.debug(f'node: "{node}"')
+            messenger.debug(f'dec_cmd: "{dec_cmd}"')
+            messenger.debug(79 * '-')
             terminate_processes(watcher)
 
         except SystemExit:
