@@ -4,7 +4,7 @@ general:
         in this case is, to stop ffplayout and start it again. Here we only say when
         it stops, the starting process is in your hand. Best way is a systemd serivce
         on linux. 'stop_threshold' stop ffplayout, if it is async in time above this
-        value.
+        value. A number below 3 can cause unexpected errors.
     stop_threshold: 11
 
 mail:

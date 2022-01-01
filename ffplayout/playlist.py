@@ -334,7 +334,7 @@ class GetSourceFromPlaylist:
             if self.last:
                 seek = self.node['seek'] if self.node['seek'] > 0 else 0
                 delta, _ = get_delta(begin)
-                delta += seek + 1
+                delta += seek + sync_op.threshold
 
             next_start = begin - playlist.start + out + delta
         else:
