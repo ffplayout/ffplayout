@@ -13,13 +13,9 @@ from datetime import datetime
 from threading import Thread
 from time import sleep
 from unittest.mock import patch
+from zoneinfo import ZoneInfo
 
 import time_machine
-
-try:
-    from zoneinfo import ZoneInfo
-except ImportError:
-    from backports.zoneinfo import ZoneInfo
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
