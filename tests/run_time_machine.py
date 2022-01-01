@@ -10,6 +10,7 @@ import datetime
 import os
 import sys
 from importlib import import_module
+from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
 import time_machine
@@ -19,9 +20,35 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # set time zone
 _TZ = ZoneInfo("Europe/Berlin")
 # fake date and time
-SOURCE_TIME = [2021, 12, 19, 5, 45, 00]
+SOURCE_TIME = [2022, 1, 1, 5, 57, 40]
+FAKE_DELTA = -2.2
 
 
+def fake_delta(node):
+    """
+    override list init function for fake delta
+    """
+
+    delta, total_delta = get_delta(node['begin'])
+    seek = abs(delta) + node['seek'] if abs(delta) + node['seek'] >= 1 else 0
+    seek = round(seek, 3)
+
+    seek += FAKE_DELTA
+
+    if node['out'] - seek > total_delta:
+        out = total_delta + seek
+    else:
+        out = node['out']
+
+    if out - seek > 1:
+        node['out'] = out
+        node['seek'] = seek
+        return src_or_dummy(node)
+
+    return None
+
+
+@patch('ffplayout.playlist.handle_list_init', fake_delta)
 @time_machine.travel(datetime.datetime(*SOURCE_TIME, tzinfo=_TZ))
 def run_in_time_machine():
     if stdin_args.mode:
@@ -33,5 +60,5 @@ def run_in_time_machine():
 
 if __name__ == '__main__':
     from ffplayout.output import desktop
-    from ffplayout.utils import stdin_args
+    from ffplayout.utils import get_delta, src_or_dummy, stdin_args
     run_in_time_machine()
