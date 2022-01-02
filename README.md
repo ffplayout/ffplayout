@@ -49,7 +49,7 @@ The purpose with ffplayout is to provide a 24/7 broadcasting solution that plays
 Requirements
 -----
 
-- python version 3.7+
+- python version 3.7+, dev version 3.9
 - python module **watchdog** (only when `playlist_mode: False`)
 - python module **colorama** if you are on windows
 - python modules **PyYAML**, **requests**, **supervisor**
@@ -106,7 +106,6 @@ Remote source from URL
 You can use sources from remote URL in that way:
 
 ```json
-...
         {
             "in": 0,
             "out": 149,
