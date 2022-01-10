@@ -157,6 +157,15 @@ def str_to_sec(time_str):
         sys.exit(1)
 
 
+def sec_to_time(seconds):
+    """
+    convert float number to time string in hh:mm:ss
+    """
+    min, sec = divmod(seconds, 60)
+    hours, min = divmod(min, 60)
+    return f'{int(hours):d}:{int(min):02d}:{int(sec):02d}'
+
+
 def read_config():
     """
     read yaml config
@@ -879,7 +888,7 @@ def gen_filler(node):
             if node['duration'] > duration:
                 # cut filler
                 messenger.info(
-                    f'Generate filler with {duration:.2f} seconds')
+                    f'Generate filler')
                 node['src_cmd'] = ['-i', storage.filler] + set_length(
                     node['duration'], 0, duration)
                 return node
