@@ -31,9 +31,9 @@ from threading import Thread
 import requests
 
 from .filters.default import build_filtergraph
-from .utils import (MediaProbe, check_sync, get_date, get_delta, get_float,
-                    get_time, messenger, playlist, src_or_dummy, stdin_args,
-                    sync_op, valid_json)
+from .utils import (MediaProbe, check_sync, gen_filler, get_date, get_delta,
+                    get_float, get_time, messenger, playlist, sec_to_time,
+                    src_or_dummy, stdin_args, storage, sync_op, valid_json)
 
 
 def handle_list_init(node):
@@ -83,7 +83,7 @@ def handle_list_end(duration, node):
             node['duration'] - node['seek'] >= duration:
         node['out'] = out
         node = src_or_dummy(node)
-    elif node['duration'] > duration > 0.0:
+    elif node['duration'] > duration < 1.0:
         messenger.warning(
             f'Last clip less then 1 second long, skip:\n{node["source"]}')
         node = None
@@ -91,7 +91,6 @@ def handle_list_end(duration, node):
         _, total_delta = get_delta(node['begin'])
         messenger.error(
             f'Playlist is not long enough:\n{total_delta:.2f} seconds needed')
-        out = node['out']
         node = src_or_dummy(node)
 
     return node
@@ -133,8 +132,8 @@ def check_length(total_play_time, list_date):
             and not stdin_args.loop:
         messenger.error(
             f'Playlist from {list_date} is not long enough!\n'
-            f'Total play time is: {timedelta(seconds=total_play_time)}, '
-            f'target length is: {timedelta(seconds=playlist.length)}'
+            f'Total play time is: {sec_to_time(total_play_time)}, '
+            f'target length is: {sec_to_time(playlist.length)}'
         )
 
 
@@ -161,7 +160,8 @@ def validate_thread(clip_nodes, list_date):
                 if not probe.video[0]:
                     missing.append(f'Remote file not exist: "{source}"')
             elif source is None or not Path(source).is_file():
-                missing.append(f'File not exist: "{source}"')
+                missing.append(f'File not exist: "{source}", '
+                               f'at "{sec_to_time(counter + playlist.start)}"')
 
             if not type(node.get('in')) in [int, float]:
                 missing.append(f'No in Value in: "{node}"')
@@ -277,6 +277,11 @@ class GetSourceFromPlaylist:
         self.playlist_reader = PlaylistReader(get_date(True), 0.0)
         self.last_error = False
 
+        probe = MediaProbe()
+        probe.load(storage.filler)
+
+        self.filler_duration = get_float(probe.format.get('duration'), 60)
+
     def get_playlist(self):
         """
         read playlist from given date and fill clip_nodes
@@ -368,7 +373,7 @@ class GetSourceFromPlaylist:
             self.node['filter'] = build_filtergraph(self.node, self.prev_node,
                                                     self.next_node)
 
-    def generate_placeholder(self, duration):
+    def generate_placeholder(self):
         """
         when playlist not exists, or is not long enough,
         generate a placeholder node
@@ -382,8 +387,8 @@ class GetSourceFromPlaylist:
             'number': 0,
             'in': 0,
             'seek': 0,
-            'out': duration,
-            'duration': duration + 1
+            'out': self.filler_duration - 0.001,
+            'duration': self.filler_duration
         }
 
         self.generate_cmd()
@@ -404,11 +409,13 @@ class GetSourceFromPlaylist:
             # playlist not exist or is corrupt/empty
             messenger.error('Clip nodes are empty!')
             self.first = False
-            self.generate_placeholder(30)
+            self.generate_placeholder()
 
         else:
             messenger.error('Playlist not long enough!')
-            self.generate_placeholder(60)
+            self.first = False
+            self.last = True
+            self.generate_placeholder()
 
     def next(self):
         """
