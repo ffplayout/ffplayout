@@ -598,7 +598,7 @@ class MediaProbe:
     def __init__(self):
         self.remote_source = ['http', 'https', 'ftp', 'smb', 'sftp']
         self.src = None
-        self.format = None
+        self.format = {}
         self.audio = []
         self.video = []
         self.is_remote = False
@@ -608,7 +608,7 @@ class MediaProbe:
         load media file with ffprobe and get info's out of it
         """
         self.src = file
-        self.format = None
+        self.format = {}
         self.audio = []
         self.video = []
 
@@ -881,31 +881,24 @@ def gen_filler(node):
 
     node['probe'] = probe
 
-    if probe.format:
-        if probe.format.get('duration'):
-            node['duration'] = float(probe.format['duration'])
-            node['source'] = storage.filler
-            if node['duration'] > duration:
-                # cut filler
-                messenger.info(
-                    f'Generate filler')
-                node['src_cmd'] = ['-i', storage.filler] + set_length(
-                    node['duration'], 0, duration)
-                return node
-
-            # loop file n times
-            node['src_cmd'] = loop_input(
-                storage.filler, node['duration'], duration)
+    if probe.format.get('duration'):
+        node['duration'] = float(probe.format['duration'])
+        node['source'] = storage.filler
+        if node['duration'] > duration:
+            # cut filler
+            messenger.info(
+                f'Generate filler')
+            node['src_cmd'] = ['-i', storage.filler] + set_length(
+                node['duration'], 0, duration)
             return node
 
-        messenger.error("Can't get filler length, generate dummy!")
-        dummy = gen_dummy(duration)
-        node['source'] = dummy[3]
-        node['src_cmd'] = dummy
+        # loop file n times
+        node['src_cmd'] = loop_input(storage.filler, node['duration'],
+                                     duration)
         return node
 
     # when no filler is set, generate a dummy
-    messenger.warning('No filler is set!')
+    messenger.warning('No filler clipt is set! Add dummy...')
     dummy = gen_dummy(duration)
     node['source'] = dummy[3]
     node['src_cmd'] = dummy

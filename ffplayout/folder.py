@@ -28,7 +28,8 @@ from watchdog.events import PatternMatchingEventHandler
 from watchdog.observers import Observer
 
 from .filters.default import build_filtergraph
-from .utils import MediaProbe, ff_proc, messenger, stdin_args, storage
+from .utils import (MediaProbe, ff_proc, get_float, messenger, stdin_args,
+                    storage)
 
 # ------------------------------------------------------------------------------
 # folder watcher
@@ -189,7 +190,7 @@ class GetSourceFromFolder:
                     self.probe = deepcopy(self.next_probe)
                 else:
                     self.probe.load(self._media.store[self.index])
-                    duration = float(self.probe.format['duration'])
+                    duration = get_float(self.probe.format.get('duration'), 0)
                     self.node = {
                         'in': 0,
                         'seek': 0,
@@ -200,7 +201,8 @@ class GetSourceFromFolder:
                     }
                 if self.index < len(self._media.store) - 1:
                     self.next_probe.load(self._media.store[self.index + 1])
-                    next_duration = float(self.next_probe.format['duration'])
+                    next_duration = get_float(
+                        self.next_probe.format.get('duration'), 0)
                     self.node_next = {
                         'in': 0,
                         'seek': 0,
