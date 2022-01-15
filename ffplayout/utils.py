@@ -23,6 +23,7 @@ import json
 import logging
 import math
 import re
+import shlex
 import signal
 import smtplib
 import socket
@@ -264,9 +265,9 @@ pre.output_count = _cfg['processing']['output_count']
 playout.mode = _cfg['out']['mode']
 playout.name = _cfg['out']['service_name']
 playout.provider = _cfg['out']['service_provider']
-playout.ffmpeg_param = _cfg['out']['ffmpeg_param'].split(' ')
-playout.stream_output = _cfg['out']['stream_output'].split(' ')
-playout.hls_output = _cfg['out']['hls_output'].split(' ')
+playout.ffmpeg_param = shlex.split(_cfg['out']['ffmpeg_param'])
+playout.stream_output = shlex.split(_cfg['out']['stream_output'])
+playout.hls_output = shlex.split(_cfg['out']['hls_output'])
 
 
 # ------------------------------------------------------------------------------
