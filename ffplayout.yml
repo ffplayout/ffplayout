@@ -2,18 +2,18 @@ general:
     helptext: Sometimes it can happen, that a file is corrupt but still playable,
         this can produce an streaming error over all following files. The only way
         in this case is, to stop ffplayout and start it again. Here we only say when
-        it stops, the starting process is in your hand. Best way is a systemd serivce
+        it stops, the starting process is in your hand. Best way is a systemd service
         on linux. 'stop_threshold' stop ffplayout, if it is async in time above this
         value. A number below 3 can cause unexpected errors.
     stop_threshold: 11
 
 mail:
-    helptext: Send error messages to email address, like missing playlist; unvalid
+    helptext: Send error messages to email address, like missing playlist; invalid
         json format; missing clip path. Leave recipient blank, if you don't need this.
         'mail_level' can be WARNING or ERROR.
     subject: "Playout Error"
-    smpt_server: "mail.example.org"
-    smpt_port: 587
+    smtp_server: "mail.example.org"
+    smtp_port: 587
     sender_addr: "ffplayout@example.org"
     sender_pass: "abc123"
     recipient:
@@ -22,7 +22,7 @@ mail:
 logging:
     helptext: Logging to file, if 'log_to_file' False log to console. 'backup_count'
         says how long log files will be saved in days. Path to /var/log/ only if you
-        run this program as deamon. 'log_level' can be DEBUG, INFO, WARNING,
+        run this program as daemon. 'log_level' can be DEBUG, INFO, WARNING,
         ERROR. 'ffmpeg_level' can be INFO, WARNING, ERROR.
     log_to_file: True
     backup_count: 7
@@ -59,8 +59,8 @@ processing:
 
 playlist:
     helptext: Set 'playlist_mode' to 'False' if you want to play clips from the 'storage'
-        section. Put only the root path here, for example '/playlists' subfolders
-        are readed by the script. Subfolders needs this structur '/playlists/2018/01'
+        section. Put only the root path here, for example '/playlists' subdirectories
+        are read by the script. Subdirectories needs this structure '/playlists/2018/01'
         (/playlists/year/month). 'day_start' means at which time the playlist should
         start, leave day_start blank when playlist should always start at the begin.
         'length' represent the target length from playlist, when is blank real length
@@ -71,7 +71,7 @@ playlist:
     length: "24:00:00"
 
 storage:
-    helptext: Play ordered or ramdomly files from path. 'filler_clip' is for fill
+    helptext: Play ordered or randomly files from path. 'filler_clip' is for fill
         the end to reach 24 hours, it will loop when is necessary. 'extensions' search
         only files with this extension. Set 'shuffle' to 'True' to pick files randomly.
     path: "/mediaStorage"

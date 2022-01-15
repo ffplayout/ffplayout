@@ -195,8 +195,8 @@ def load_config():
     sync_op.threshold = int(cfg['general']['stop_threshold'])
 
     mail.subject = cfg['mail']['subject']
-    mail.server = cfg['mail']['smpt_server']
-    mail.port = cfg['mail']['smpt_port']
+    mail.server = cfg['mail']['smtp_server']
+    mail.port = cfg['mail']['smtp_port']
     mail.s_addr = cfg['mail']['sender_addr']
     mail.s_pass = cfg['mail']['sender_pass']
     mail.recip = cfg['mail']['recipient']
