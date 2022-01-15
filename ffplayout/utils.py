@@ -812,7 +812,7 @@ def valid_json(file):
         return None
 
 
-def check_sync(delta):
+def check_sync(delta, node=None):
     """
     check that we are in tolerance time
     """
@@ -826,6 +826,7 @@ def check_sync(delta):
         messenger.error(
             f'Sync tolerance value exceeded with {delta:.2f} seconds,\n'
             'program terminated!')
+        messenger.debug(f'Terminate on node: {node}')
         terminate_processes()
         sys.exit(1)
 

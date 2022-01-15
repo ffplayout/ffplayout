@@ -31,7 +31,7 @@ from threading import Thread
 import requests
 
 from .filters.default import build_filtergraph
-from .utils import (MediaProbe, check_sync, gen_filler, get_date, get_delta,
+from .utils import (MediaProbe, check_sync, get_date, get_delta,
                     get_float, get_time, messenger, playlist, sec_to_time,
                     src_or_dummy, stdin_args, storage, sync_op, valid_json)
 
@@ -108,7 +108,7 @@ def timed_source(node, last):
     if not stdin_args.loop and playlist.length:
         messenger.debug(f'delta: {delta:f}')
         messenger.debug(f'total_delta: {total_delta:f}')
-        check_sync(delta)
+        check_sync(delta, node)
 
     if (total_delta > node['out'] - node['seek'] and not last) \
             or stdin_args.loop or not playlist.length:
