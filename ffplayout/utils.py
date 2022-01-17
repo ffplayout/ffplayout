@@ -931,6 +931,9 @@ def src_or_dummy(node):
     elif node.get('source') and Path(node['source']).is_file():
         if probe.format.get('duration') and not math.isclose(
                 probe.format['duration'], node['duration'], abs_tol=3):
+            messenger.debug(
+                f"fix duration for: \"{node['source']}\" "
+                f"at \"{sec_to_time(node['begin'])}\"")
             node['duration'] = probe.format['duration']
 
         if node['out'] > node['duration']:
