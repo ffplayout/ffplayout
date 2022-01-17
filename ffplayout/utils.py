@@ -167,6 +167,16 @@ def sec_to_time(seconds):
     return f'{int(hours):d}:{int(min):02d}:{int(sec):02d}'
 
 
+def get_float(value, default=False):
+    """
+    test if value is float
+    """
+    try:
+        return float(value)
+    except (ValueError, TypeError):
+        return default
+
+
 def read_config():
     """
     read yaml config
@@ -640,7 +650,7 @@ class MediaProbe:
 
         self.format = info['format']
 
-        if self.format.get('duration') > 0.1:
+        if get_float(self.format.get('duration'), 0) > 0.1:
             self.format['duration'] = float(self.format['duration'])
 
         for stream in info['streams']:
@@ -782,16 +792,6 @@ def get_date(seek_day, next_start=0):
         return (date_ + timedelta(1)).strftime('%Y-%m-%d')
 
     return date_.strftime('%Y-%m-%d')
-
-
-def get_float(value, default=False):
-    """
-    test if value is float
-    """
-    try:
-        return float(value)
-    except (ValueError, TypeError):
-        return default
 
 
 def is_advertisement(node):
