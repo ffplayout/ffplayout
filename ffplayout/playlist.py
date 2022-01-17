@@ -24,7 +24,6 @@ Missing clips will be replaced by a dummy clip.
 import socket
 import time
 from copy import deepcopy
-from datetime import timedelta
 from pathlib import Path
 from threading import Thread
 
@@ -34,6 +33,65 @@ from .filters.default import build_filtergraph
 from .utils import (MediaProbe, check_sync, get_date, get_delta,
                     get_float, get_time, messenger, playlist, sec_to_time,
                     src_or_dummy, stdin_args, storage, sync_op, valid_json)
+
+
+def validate_thread(clip_nodes, list_date):
+    """
+    validate json values in new thread
+    and test if source paths exist
+    """
+    def check_json(clip_nodes, list_date):
+        error = ''
+        counter = 0
+        probe = MediaProbe()
+
+        # check if all values are valid
+        for node in clip_nodes['program']:
+            source = node.get('source')
+            probe.load(source)
+            missing = []
+            _in = get_float(node.get('in'), 0)
+            _out = get_float(node.get('out'), 0)
+            duration = get_float(node.get('duration'), 0)
+
+            if probe.is_remote:
+                if not probe.video[0]:
+                    missing.append(f'Remote file not exist: "{source}"')
+            elif source is None or not Path(source).is_file():
+                missing.append(f'File not exist: "{source}", '
+                               f'at "{sec_to_time(counter + playlist.start)}"')
+
+            if not type(node.get('in')) in [int, float]:
+                missing.append(f'No in Value in: "{node}"')
+
+            if _out == 0:
+                missing.append(f'No out Value in: "{node}"')
+
+            if duration == 0:
+                missing.append(f'No duration Value in: "{node}"')
+
+            counter += _out - _in
+
+            line = '\n'.join(missing)
+            if line:
+                error += line + f'\nIn line: {node}\n\n'
+
+        if error:
+            messenger.error(
+                'Validation error, check JSON playlist, '
+                f'values are missing:\n{error}'
+            )
+
+        check_length(counter, list_date)
+
+    if clip_nodes and clip_nodes.get('program') and \
+            len(clip_nodes.get('program')) > 0:
+        validate = Thread(name='check_json', target=check_json,
+                          args=(clip_nodes, list_date))
+        validate.daemon = True
+        validate.start()
+    else:
+        messenger.error('Validation error: playlist are empty')
 
 
 def handle_list_init(node):
@@ -135,65 +193,6 @@ def check_length(total_play_time, list_date):
             f'Total play time is: {sec_to_time(total_play_time)}, '
             f'target length is: {sec_to_time(playlist.length)}'
         )
-
-
-def validate_thread(clip_nodes, list_date):
-    """
-    validate json values in new thread
-    and test if source paths exist
-    """
-    def check_json(clip_nodes, list_date):
-        error = ''
-        counter = 0
-        probe = MediaProbe()
-
-        # check if all values are valid
-        for node in clip_nodes['program']:
-            source = node.get('source')
-            probe.load(source)
-            missing = []
-            _in = get_float(node.get('in'), 0)
-            _out = get_float(node.get('out'), 0)
-            duration = get_float(node.get('duration'), 0)
-
-            if probe.is_remote:
-                if not probe.video[0]:
-                    missing.append(f'Remote file not exist: "{source}"')
-            elif source is None or not Path(source).is_file():
-                missing.append(f'File not exist: "{source}", '
-                               f'at "{sec_to_time(counter + playlist.start)}"')
-
-            if not type(node.get('in')) in [int, float]:
-                missing.append(f'No in Value in: "{node}"')
-
-            if _out == 0:
-                missing.append(f'No out Value in: "{node}"')
-
-            if duration == 0:
-                missing.append(f'No duration Value in: "{node}"')
-
-            counter += _out - _in
-
-            line = '\n'.join(missing)
-            if line:
-                error += line + f'\nIn line: {node}\n\n'
-
-        if error:
-            messenger.error(
-                'Validation error, check JSON playlist, '
-                f'values are missing:\n{error}'
-            )
-
-        check_length(counter, list_date)
-
-    if clip_nodes and clip_nodes.get('program') and \
-            len(clip_nodes.get('program')) > 0:
-        validate = Thread(name='check_json', target=check_json,
-                          args=(clip_nodes, list_date))
-        validate.daemon = True
-        validate.start()
-    else:
-        messenger.error('Validation error: playlist are empty')
 
 
 class PlaylistReader:
