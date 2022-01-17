@@ -640,14 +640,17 @@ class MediaProbe:
 
         self.format = info['format']
 
+        if self.format.get('duration') > 0.1:
+            self.format['duration'] = float(self.format['duration'])
+
         for stream in info['streams']:
             if stream['codec_type'] == 'audio':
                 self.audio.append(stream)
 
             if stream['codec_type'] == 'video':
                 if stream.get('display_aspect_ratio'):
-                    width, heigth = stream['display_aspect_ratio'].split(':')
-                    stream['aspect'] = float(width) / float(heigth)
+                    width, height = stream['display_aspect_ratio'].split(':')
+                    stream['aspect'] = float(width) / float(height)
                 else:
                     stream['aspect'] = float(
                         stream['width']) / float(stream['height'])
@@ -755,7 +758,7 @@ def get_delta(begin):
 
     current_delta = begin - current_time
 
-    if math.isclose(current_delta, 86400.0, abs_tol=6):
+    if math.isclose(current_delta, 86400.0, abs_tol=sync_op.threshold):
         current_delta -= 86400.0
 
     ref_time = target_playtime + playlist.start
@@ -884,7 +887,7 @@ def gen_filler(node):
     node['probe'] = probe
 
     if probe.format.get('duration'):
-        node['duration'] = float(probe.format['duration'])
+        node['duration'] = probe.format['duration']
         node['source'] = storage.filler
         if node['duration'] > duration:
             # cut filler
@@ -926,6 +929,10 @@ def src_or_dummy(node):
             '-i', node['source']
             ] + set_length(86400, node['seek'], node['out'])
     elif node.get('source') and Path(node['source']).is_file():
+        if probe.format.get('duration') and not math.isclose(
+                probe.format['duration'], node['duration'], abs_tol=3):
+            node['duration'] = probe.format['duration']
+
         if node['out'] > node['duration']:
             if node['seek'] > 0.0:
                 messenger.warning(
