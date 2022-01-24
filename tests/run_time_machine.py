@@ -20,7 +20,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # set time zone
 _TZ = ZoneInfo("Europe/Berlin")
 # fake date and time
-SOURCE_TIME = [2022, 1, 5, 5, 57, 10]
+SOURCE_TIME = [2022, 1, 24, 12, 12, 0]
 FAKE_DELTA = -2.2
 
 

@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 # This file is part of ffplayout.
 #
 # ffplayout is free software: you can redistribute it and/or modify
@@ -14,29 +16,68 @@
 # along with ffplayout. If not, see <http://www.gnu.org/licenses/>.
 
 # ------------------------------------------------------------------------------
-
-"""
-This module plays the compressed output directly on the desktop.
-"""
-
 from platform import system
+from queue import Queue
 from subprocess import PIPE, Popen
 from threading import Thread
+from time import sleep
 
 from ..folder import GetSourceFromFolder, MediaStore, MediaWatcher
 from ..playlist import GetSourceFromPlaylist
-from ..utils import (ff_proc, ffmpeg_stderr_reader, log, lower_third,
-                     messenger, playlist, pre, pre_audio_codec, stdin_args,
-                     sync_op, terminate_processes)
+from ..utils import (ff_proc, ffmpeg_stderr_reader, get_date, get_time, ingest,
+                     log, lower_third, messenger, playlist, playout, pre,
+                     pre_audio_codec, stdin_args, sync_op, terminate_processes)
 
 COPY_BUFSIZE = 1024 * 1024 if system() == 'Windows' else 65424
 
 
+def rtmp_server(que, pre_settings):
+    server_cmd = [
+    'ffmpeg', '-hide_banner', '-nostats', '-v', 'level+error',
+    '-f', 'live_flv', '-listen', '1',
+    '-i', f'rtmp://{ingest.address}:{ingest.port}/live/stream'] + pre_settings
+
+    messenger.warning('Ingest stream is experimental, use it at your own risk!')
+    messenger.info(f'Start listening on "{ingest.address}:{ingest.port}"')
+
+    while True:
+        with Popen(server_cmd, stderr=PIPE, stdout=PIPE) as ff_proc.live:
+            err_thread = Thread(name='stderr_server',
+                                target=ffmpeg_stderr_reader,
+                                args=(ff_proc.live.stderr, '[Server]'))
+            err_thread.daemon = True
+            err_thread.start()
+
+            while True:
+                buffer = ff_proc.live.stdout.read(COPY_BUFSIZE)
+                if not buffer:
+                    break
+
+                que.put(buffer)
+
+        sleep(.33)
+
+
+def check_time(node, get_source):
+    current_time = get_time('full_sec')
+    clip_length = node['out'] - node['seek']
+    clip_end = current_time + clip_length
+
+    if playlist.mode and not stdin_args.folder and clip_end > current_time:
+        get_source.first = True
+
+
 def output():
     """
-    this output is for playing on desktop with ffplay
+    this output is for streaming to a target address,
+    like rtmp, rtp, svt, etc.
     """
+    year = get_date(False).split('-')[0]
     overlay = []
+    node = None
+    dec_cmd = []
+    live_on = False
+    streaming_queue = Queue(maxsize=0)
 
     ff_pre_settings = [
         '-pix_fmt', 'yuv420p', '-r', str(pre.fps),
@@ -57,17 +98,27 @@ def output():
                 lower_third.address.replace(':', '\\:'), lower_third.fontfile)
         ]
 
+    rtmp_server_thread = Thread(name='ffmpeg_server',target=rtmp_server,
+                                args=(streaming_queue, ff_pre_settings))
+    rtmp_server_thread.daemon = True
+    rtmp_server_thread.start()
+
     try:
         enc_cmd = [
-            'ffplay', '-hide_banner', '-nostats',
-            '-v', f'level+{log.ff_level.lower()}', '-i', 'pipe:0'
-            ] + overlay
+            'ffmpeg', '-v', f'level+{log.ff_level.lower()}', '-hide_banner',
+            '-nostats', '-re', '-thread_queue_size', '160', '-i', 'pipe:0'
+            ] + overlay + [
+                '-metadata', f'service_name={playout.name}',
+                '-metadata', f'service_provider={playout.provider}',
+                '-metadata', f'year={year}'
+            ] + playout.ffmpeg_param + playout.stream_output
 
         messenger.debug(f'Encoder CMD: "{" ".join(enc_cmd)}"')
 
-        ff_proc.encoder = Popen(enc_cmd, stderr=PIPE, stdin=PIPE, stdout=None)
+        ff_proc.encoder = Popen(enc_cmd, stdin=PIPE, stderr=PIPE)
 
-        enc_err_thread = Thread(target=ffmpeg_stderr_reader,
+        enc_err_thread = Thread(name='stderr_encoder',
+                                target=ffmpeg_stderr_reader,
                                 args=(ff_proc.encoder.stderr, '[Encoder]'))
         enc_err_thread.daemon = True
         enc_err_thread.start()
@@ -86,9 +137,7 @@ def output():
                 if watcher is not None:
                     watcher.current_clip = node.get('source')
 
-                messenger.info(
-                    f'Play for {node["out"] - node["seek"]:.2f} '
-                    f'seconds: {node.get("source")}')
+                messenger.info(f'Play: {node.get("source")}')
 
                 dec_cmd = [
                     'ffmpeg', '-v', f'level+{log.ff_level.lower()}',
@@ -99,17 +148,28 @@ def output():
 
                 with Popen(
                         dec_cmd, stdout=PIPE, stderr=PIPE) as ff_proc.decoder:
-                    dec_err_thread = Thread(target=ffmpeg_stderr_reader,
+                    dec_err_thread = Thread(name='stderr_decoder',
+                                            target=ffmpeg_stderr_reader,
                                             args=(ff_proc.decoder.stderr,
                                                   '[Decoder]'))
                     dec_err_thread.daemon = True
                     dec_err_thread.start()
 
                     while True:
-                        buf = ff_proc.decoder.stdout.read(COPY_BUFSIZE)
-                        if not buf:
+                        buf_dec = ff_proc.decoder.stdout.read(COPY_BUFSIZE)
+                        if not streaming_queue.empty():
+                            buf_live = streaming_queue.get()
+                            ff_proc.encoder.stdin.write(buf_live)
+                            live_on = True
+
+                            del buf_dec
+                        elif buf_dec:
+                            ff_proc.encoder.stdin.write(buf_dec)
+                        else:
+                            if live_on:
+                                check_time(node, get_source)
+                                live_on = False
                             break
-                        ff_proc.encoder.stdin.write(buf)
 
         except BrokenPipeError as err:
             messenger.error('Broken Pipe!')
@@ -125,15 +185,27 @@ def output():
             messenger.info('Got close command')
             terminate_processes(watcher)
 
+            if ff_proc.live and ff_proc.live.poll() is None:
+                ff_proc.live.terminate()
+
         except KeyboardInterrupt:
             messenger.warning('Program terminated')
             terminate_processes(watcher)
 
+            if ff_proc.live and ff_proc.live.poll() is None:
+                ff_proc.live.terminate()
+
         # close encoder when nothing is to do anymore
         if ff_proc.encoder.poll() is None:
-            ff_proc.encoder.terminate()
+            ff_proc.encoder.kill()
+
+            if ff_proc.live and ff_proc.live.poll() is None:
+                ff_proc.live.kill()
 
     finally:
         if ff_proc.encoder.poll() is None:
-            ff_proc.encoder.terminate()
+            ff_proc.encoder.kill()
         ff_proc.encoder.wait()
+
+        if ff_proc.live and ff_proc.live.poll() is None:
+                ff_proc.live.kill()
