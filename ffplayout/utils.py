@@ -135,7 +135,6 @@ sync_op = SimpleNamespace(time_delta=0, realtime=False)
 mail = SimpleNamespace()
 log = SimpleNamespace()
 pre = SimpleNamespace()
-ingest = SimpleNamespace()
 playlist = SimpleNamespace()
 storage = SimpleNamespace()
 lower_third = SimpleNamespace()
@@ -273,9 +272,6 @@ pre.v_bitrate = _cfg['processing']['width'] * _cfg['processing']['height'] / 10
 pre.v_bufsize = pre.v_bitrate / 2
 pre.output_count = _cfg['processing']['output_count']
 
-ingest.address = _cfg['ingest']['address']
-ingest.port = _cfg['ingest']['port']
-
 playout.mode = _cfg['out']['mode']
 playout.name = _cfg['out']['service_name']
 playout.provider = _cfg['out']['service_provider']
@@ -348,27 +344,52 @@ class CustomFormatter(logging.Formatter):
 if stdin_args.log:
     log.path = stdin_args.log
 
-logger = logging.getLogger('playout')
-logger.setLevel(log.level)
+playout_logger = logging.getLogger('playout')
+playout_logger.setLevel(log.level)
+decoder_logger = logging.getLogger('decoder')
+decoder_logger.setLevel(log.ff_level)
+encoder_logger = logging.getLogger('encoder')
+encoder_logger.setLevel(log.ff_level)
 
 if log.to_file and log.path != 'none':
     if log.path.is_dir():
         playout_log = log.path.joinpath('ffplayout.log')
+        decoder_log = log.path.joinpath('decoder.log')
+        encoder_log = log.path.joinpath('encoder.log')
     else:
         log_dir = Path(__file__).parent.absolute().joinpath('log')
         log_dir.mkdir(exist_ok=True)
         playout_log = log_dir.joinpath('ffplayout.log')
+        decoder_log = log_dir.joinpath('decoder.log')
+        encoder_log = log_dir.joinpath('encoder.log')
 
     p_format = logging.Formatter('[%(asctime)s] [%(levelname)s]  %(message)s')
-    handler = TimedRotatingFileHandler(playout_log, when='midnight',
-                                       backupCount=log.backup_count)
+    f_format = logging.Formatter('[%(asctime)s]  %(message)s')
+    p_file_handler = TimedRotatingFileHandler(playout_log, when='midnight',
+                                              backupCount=log.backup_count)
+    d_file_handler = TimedRotatingFileHandler(decoder_log, when='midnight',
+                                              backupCount=log.backup_count)
+    e_file_handler = TimedRotatingFileHandler(encoder_log, when='midnight',
+                                              backupCount=log.backup_count)
 
-    handler.setFormatter(p_format)
-    logger.addHandler(handler)
+    p_file_handler.setFormatter(p_format)
+    d_file_handler.setFormatter(f_format)
+    e_file_handler.setFormatter(f_format)
+    playout_logger.addHandler(p_file_handler)
+    decoder_logger.addHandler(d_file_handler)
+    encoder_logger.addHandler(e_file_handler)
+
+    DEC_PREFIX = ''
+    ENC_PREFIX = ''
 else:
     console_handler = logging.StreamHandler()
     console_handler.setFormatter(CustomFormatter())
-    logger.addHandler(console_handler)
+    playout_logger.addHandler(console_handler)
+    decoder_logger.addHandler(console_handler)
+    encoder_logger.addHandler(console_handler)
+
+    DEC_PREFIX = '[decoder] '
+    ENC_PREFIX = '[encoder] '
 
 
 # ------------------------------------------------------------------------------
@@ -415,7 +436,7 @@ class Mailer:
             try:
                 server = smtplib.SMTP(mail.server, mail.port)
             except socket.error as err:
-                logger.error(err)
+                playout_logger.error(err)
                 server = None
 
             if server is not None:
@@ -423,7 +444,7 @@ class Mailer:
                 try:
                     login = server.login(mail.s_addr, mail.s_pass)
                 except smtplib.SMTPAuthenticationError as serr:
-                    logger.error(serr)
+                    playout_logger.error(serr)
                     login = None
 
                 if login is not None:
@@ -483,27 +504,27 @@ class Messenger:
         """
         log debugging messages
         """
-        logger.debug(msg.replace('\n', ' '))
+        playout_logger.debug(msg.replace('\n', ' '))
 
     def info(self, msg):
         """
         log and mail info messages
         """
-        logger.info(msg.replace('\n', ' '))
+        playout_logger.info(msg.replace('\n', ' '))
         self._mailer.info(msg)
 
     def warning(self, msg):
         """
         log and mail warning messages
         """
-        logger.warning(msg.replace('\n', ' '))
+        playout_logger.warning(msg.replace('\n', ' '))
         self._mailer.warning(msg)
 
     def error(self, msg):
         """
         log and mail error messages
         """
-        logger.error(msg.replace('\n', ' '))
+        playout_logger.error(msg.replace('\n', ' '))
         self._mailer.error(msg)
 
 
@@ -565,14 +586,14 @@ def validate_ffmpeg_libs():
     check if ffmpeg contains some basic libs
     """
     if 'libx264' not in FF_LIBS['libs']:
-        logger.error('ffmpeg contains no libx264!')
+        playout_logger.error('ffmpeg contains no libx264!')
     if 'libfdk-aac' not in FF_LIBS['libs']:
-        logger.warning(
+        playout_logger.warning(
             'ffmpeg contains no libfdk-aac! No high quality aac...')
     if 'tpad' not in FF_LIBS['filters']:
-        logger.error('ffmpeg contains no tpad filter!')
+        playout_logger.error('ffmpeg contains no tpad filter!')
     if 'zmq' not in FF_LIBS['filters']:
-        logger.error(
+        playout_logger.error(
             'ffmpeg contains no zmq filter!  Text messages will not work...')
 
 
@@ -691,13 +712,20 @@ def terminate_processes(watcher=None):
         watcher.stop()
 
 
-def ffmpeg_stderr_reader(std_errors, prefix):
+def ffmpeg_stderr_reader(std_errors, decoder):
     """
     read ffmpeg stderr decoder and encoder instance
     and log the output
     """
+    if decoder:
+        logger = decoder_logger
+        prefix = DEC_PREFIX
+    else:
+        logger = encoder_logger
+        prefix = ENC_PREFIX
+
     def form_line(line, level):
-        return f'{prefix} {line.replace(level, "").rstrip()}'
+        return f'{prefix}{line.replace(level, "").rstrip()}'
 
     def write_log(line):
         if '[info]' in line:

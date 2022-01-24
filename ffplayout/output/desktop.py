@@ -68,7 +68,7 @@ def output():
         ff_proc.encoder = Popen(enc_cmd, stderr=PIPE, stdin=PIPE, stdout=None)
 
         enc_err_thread = Thread(target=ffmpeg_stderr_reader,
-                                args=(ff_proc.encoder.stderr, '[Encoder]'))
+                                args=(ff_proc.encoder.stderr, False))
         enc_err_thread.daemon = True
         enc_err_thread.start()
 
@@ -101,7 +101,7 @@ def output():
                         dec_cmd, stdout=PIPE, stderr=PIPE) as ff_proc.decoder:
                     dec_err_thread = Thread(target=ffmpeg_stderr_reader,
                                             args=(ff_proc.decoder.stderr,
-                                                  '[Decoder]'))
+                                                  True))
                     dec_err_thread.daemon = True
                     dec_err_thread.start()
 

@@ -57,13 +57,6 @@ processing:
     loud_LRA: 11
     output_count: 1
 
-ingest:
-    helptext: Works only in combination with output -> mode = live_switch! Run a rtmp server
-        for a ingest stream. This stream will override the normal streaming until is done.
-        There is no authentication, this is up to you. The recommend way is to set address to localhost, stream to a local server with authentication and from there stream to this app.
-    address: localhost
-    port: 1936
-
 playlist:
     helptext: Set 'playlist_mode' to 'False' if you want to play clips from the 'storage'
         section. Put only the root path here, for example '/playlists' subdirectories
@@ -107,10 +100,10 @@ text:
 
 out:
     helptext: The final playout compression. Set the settings to your needs.
-        'mode' has the standard options 'desktop', 'hls', 'live_switch', 'stream'. Self made
-        outputs can be define, by adding script in output folder with an 'output' function
-        inside. 'stream_output' is for streaming output, two ffmpeg instances are fired up,
-        for pre- and post-processing. 'hls_output' is for direct output to hls playlist,
+        'mode' has the standard options 'desktop', 'hls', 'stream'. Self made outputs
+        can be define, by adding script in output folder with an 'output' function inside.
+        'stream_output' is for streaming output, two ffmpeg instances are fired up, for
+        pre- and post-processing. 'hls_output' is for direct output to hls playlist,
         without pre- and post-processing, mode must be 'hls'.
     mode: 'stream'
     service_name: "Live Stream"

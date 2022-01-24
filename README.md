@@ -44,8 +44,7 @@ The purpose with ffplayout is to provide a 24/7 broadcasting solution that plays
   - **desktop**
   - **HLS**
   - **custom**
-- Multi channel
-- Live rtmp ingest (experimental)
+- Multi Channel
 
 Requirements
 -----
