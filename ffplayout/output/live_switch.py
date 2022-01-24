@@ -22,6 +22,7 @@ from subprocess import PIPE, Popen
 from threading import Thread
 from time import sleep
 
+from ..filters.default import overlay_filter
 from ..folder import GetSourceFromFolder, MediaStore, MediaWatcher
 from ..playlist import GetSourceFromPlaylist
 from ..utils import (ff_proc, ffmpeg_stderr_reader, get_date, get_time, ingest,
@@ -32,13 +33,20 @@ COPY_BUFSIZE = 1024 * 1024 if system() == 'Windows' else 65424
 
 
 def rtmp_server(que, pre_settings):
-    server_cmd = [
-    'ffmpeg', '-hide_banner', '-nostats', '-v', 'level+error',
-    '-f', 'live_flv', '-listen', '1',
-    '-i', f'rtmp://{ingest.address}:{ingest.port}/live/stream'] + pre_settings
+    filter_ = (f'[0:v]fps={str(pre.fps)},scale={pre.w}:{pre.h},'
+               + f'setdar=dar={pre.aspect}[v];')
+    filter_ += overlay_filter(0, False, False, False)
 
-    messenger.warning('Ingest stream is experimental, use it at your own risk!')
-    messenger.info(f'Start listening on "{ingest.address}:{ingest.port}"')
+    server_cmd = [
+        'ffmpeg', '-hide_banner', '-nostats', '-v', 'level+error'
+    ] + ingest.stream_input + [
+        '-filter_complex', f'{filter_}[vout1]',
+        '-map', '[vout1]', '-map', '0:a'
+    ] + pre_settings
+
+    messenger.warning(
+        'Ingest stream is experimental, use it at your own risk!')
+    messenger.debug(f'Server CMD: "{" ".join(server_cmd)}"')
 
     while True:
         with Popen(server_cmd, stderr=PIPE, stdout=PIPE) as ff_proc.live:

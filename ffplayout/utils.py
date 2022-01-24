@@ -273,8 +273,7 @@ pre.v_bitrate = _cfg['processing']['width'] * _cfg['processing']['height'] / 10
 pre.v_bufsize = pre.v_bitrate / 2
 pre.output_count = _cfg['processing']['output_count']
 
-ingest.address = _cfg['ingest']['address']
-ingest.port = _cfg['ingest']['port']
+ingest.stream_input = shlex.split(_cfg['ingest']['stream_input'])
 
 playout.mode = _cfg['out']['mode']
 playout.name = _cfg['out']['service_name']
