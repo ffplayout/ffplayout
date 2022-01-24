@@ -98,7 +98,7 @@ def output():
 
                 stderr_reader_thread = Thread(target=ffmpeg_stderr_reader,
                                               args=(ff_proc.encoder.stderr,
-                                                    False))
+                                                    '[Encoder]'))
                 stderr_reader_thread.daemon = True
                 stderr_reader_thread.start()
                 stderr_reader_thread.join()
