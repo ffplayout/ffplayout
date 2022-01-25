@@ -6,43 +6,15 @@
                 <b-datepicker v-model="listDate" size="sm" class="date-div" offset="-35px" />
             </b-col>
         </b-row>
-        <b-card no-body class="card-container">
-            <b-tabs pills card vertical>
-                <b-tab title="Playout" active @click="getLog('ffplayout')">
-                    <b-container class="log-container">
-                        <!-- eslint-disable-next-line -->
-                        <perfect-scrollbar
-                            v-if="currentLog"
-                            :options="scrollOP"
-                            class="log-content"
-                            :inner-html.prop="currentLog | formatStr"
-                        />
-                    </b-container>
-                </b-tab>
-                <b-tab title="Decoder" @click="getLog('decoder')">
-                    <b-container class="log-container">
-                        <!-- eslint-disable-next-line -->
-                        <perfect-scrollbar
-                            v-if="currentLog"
-                            :options="scrollOP"
-                            class="log-content"
-                            :inner-html.prop="currentLog | formatStr"
-                        />
-                    </b-container>
-                </b-tab>
-                <b-tab title="Encoder" @click="getLog('encoder')">
-                    <b-container class="log-container">
-                        <!-- eslint-disable-next-line -->
-                        <perfect-scrollbar
-                            v-if="currentLog"
-                            :options="scrollOP"
-                            class="log-content"
-                            :inner-html.prop="currentLog | formatStr"
-                        />
-                    </b-container>
-                </b-tab>
-            </b-tabs>
-        </b-card>
+        <b-container class="log-container">
+            <!-- eslint-disable-next-line -->
+            <perfect-scrollbar
+                v-if="currentLog"
+                :options="scrollOP"
+                class="log-content"
+                :inner-html.prop="currentLog | formatStr"
+            />
+        </b-container>
     </div>
 </template>
 
@@ -69,6 +41,9 @@ export default {
                 .replace(/\[WARNING\]/g, '<span class="log-warning">[WARNING]</span>')
                 .replace(/\[ERROR\]/g, '<span class="log-error">[ERROR]</span>')
                 .replace(/\[DEBUG\]/g, '<span class="log-debug">[DEBUG]</span>')
+                .replace(/\[Decoder\]/g, '<span class="log-decoder">[Decoder]</span>')
+                .replace(/\[Encoder\]/g, '<span class="log-encoder">[Encoder]</span>')
+                .replace(/\[Server\]/g, '<span class="log-server">[Server]</span>')
         }
     },
 
@@ -76,7 +51,6 @@ export default {
 
     data () {
         return {
-            logName: 'ffplayout',
             currentLog: null,
             listDate: this.$dayjs().tz(this.timezone).format('YYYY-MM-DD'),
             scrollOP: {
@@ -92,23 +66,22 @@ export default {
 
     watch: {
         listDate () {
-            this.getLog(this.logName)
+            this.getLog()
         },
 
         configID () {
-            this.getLog(this.logName)
+            this.getLog()
         }
     },
 
     async created () {
-        await this.getLog('ffplayout')
+        await this.getLog()
     },
 
     methods: {
-        async getLog (type) {
-            this.logName = type
+        async getLog () {
             const response = await this.$axios.get(
-                `api/player/log/?type=${type}&date=${this.listDate}&channel=${this.$store.state.config.configGui[this.$store.state.config.configID].id}`)
+                `api/player/log/?date=${this.listDate}&channel=${this.$store.state.config.configGui[this.$store.state.config.configID].id}`)
 
             if (response.data.log) {
                 this.currentLog = response.data.log
@@ -125,31 +98,11 @@ export default {
     display: inherit !important;
 }
 
-.col-auto {
-    width: 122px;
-    height: 100%;
-}
-
-.card-container {
-    height: calc(100% - 90px);
-    width: 100%;
-}
-
-.card-container > div, .tab-content > .active {
-    height: 100%;
-    width: 100%;
-}
-
-.tab-content {
-    width: calc(100% - 122px);
-    height: 100%;
-}
-
 .log-container {
     background: #1d2024;
-    max-width: 100%;
-    width: 100%;
-    height: 100%;
+    max-width: 99%;
+    width: 99%;
+    height: calc(100% - 90px);
     padding: 1em;
     overflow: hidden
 }
@@ -181,6 +134,18 @@ export default {
 
 .log-debug {
     color: #23e493;
+}
+
+.log-decoder {
+    color: #56efff;
+}
+
+.log-encoder {
+    color: #45ccee;
+}
+
+.log-server {
+    color: #23cbdd;
 }
 
 .log-path {
