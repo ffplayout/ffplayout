@@ -37,21 +37,23 @@ The purpose with ffplayout is to provide a 24/7 broadcasting solution that plays
   - **aevalsrc** (if video have no audio)
   - **apad** (add silence if audio duration is to short)
   - **tpad** (add black frames if video duration is to short)
+- Live ingest (experimental)
 - add custom [filters](https://github.com/ffplayout/ffplayout_engine/tree/master/ffplayout/filters)
-- add custom [arguments](https://github.com/ffplayout/ffplayout_engine/tree/master/ffplayout/config)
-- different types of [output](https://github.com/ffplayout/ffplayout_engine/wiki/Outputs):
+- add custom [arguments](https://github.com/ffplayout/ffplayout_engine/tree/master/ffplayout/conf.d)
+- different [play modes](https://github.com/ffplayout/ffplayout_engine/tree/master/ffplayout/play_mode):
+- different types of [output](https://github.com/ffplayout/ffplayout_engine/tree/master/ffplayout/output):
   - **stream**
   - **desktop**
-  - **HLS**
+  - **live_switch**
+  - **hls**
   - **custom**
 - Multi channel
-- Live ingest (experimental)
 
 Requirements
 -----
 
 - python version 3.7+, dev version 3.9
-- python module **watchdog** (only when `playlist_mode: False`)
+- python module **watchdog** (only for folder mode)
 - python module **colorama** if you are on windows
 - python modules **PyYAML**, **requests**, **supervisor**
 - **ffmpeg v4.2+** and **ffprobe** (**ffplay** if you want to play on desktop)
@@ -133,13 +135,14 @@ ffplayout also allows the passing of parameters:
 - `-f, --folder` use folder for playing
 - `-l, --log` for user-defined log path, *none* for console output
 - `-i, --loop` loop playlist infinitely
-- `-m, --mode` set output mode: **desktop**, **hls**, **stream**, ...
+- `-o, --output` set output mode: **desktop**, **hls**, **stream**, ...
 - `-p, --playlist` for playlist file
 - `-s, --start` set start time in *hh:mm:ss*, *now* for start at playlist begin
 - `-t, --length` set length in *hh:mm:ss*, *none* for no length check
+- `-pm, --play_mode` playing mode: folder, playlist, custom...
 
 You can run the command like:
 
 ```SHELL
-./ffplayout.py -l none -p ~/playlist.json -d -s now -t none -m desktop
+./ffplayout.py -l none -p ~/playlist.json -d -s now -t none -o desktop
 ```
