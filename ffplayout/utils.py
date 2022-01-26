@@ -71,7 +71,7 @@ stdin_parser.add_argument(
 )
 
 stdin_parser.add_argument(
-    '-m', '--mode', help='set output mode: desktop, hls, stream'
+    '-o', '--output', help='set output mode: desktop, hls, stream'
 )
 
 stdin_parser.add_argument(
@@ -86,6 +86,10 @@ stdin_parser.add_argument(
 stdin_parser.add_argument(
     '-t', '--length',
     help='set length in "hh:mm:ss", "none" for no length check'
+)
+
+stdin_parser.add_argument(
+    '-pm', '--play_mode', help='playing mode: folder, playlist, custom...'
 )
 
 # read dynamical new arguments
@@ -136,6 +140,7 @@ mail = SimpleNamespace()
 log = SimpleNamespace()
 pre = SimpleNamespace()
 ingest = SimpleNamespace()
+play = SimpleNamespace()
 playlist = SimpleNamespace()
 storage = SimpleNamespace()
 lower_third = SimpleNamespace()
@@ -254,7 +259,11 @@ if stdin_args.length:
 else:
     _p_length = str_to_sec(_cfg['playlist']['length'])
 
-playlist.mode = _cfg['playlist']['playlist_mode']
+if stdin_args.play_mode:
+    play.mode = stdin_args.play_mode
+else:
+    play.mode = _cfg['play']['mode']
+
 playlist.path = _cfg['playlist']['path']
 playlist.start = _p_start
 playlist.length = _p_length
@@ -275,12 +284,15 @@ pre.output_count = _cfg['processing']['output_count']
 
 ingest.stream_input = shlex.split(_cfg['ingest']['stream_input'])
 
-playout.mode = _cfg['out']['mode']
+if stdin_args.output:
+    playout.mode = stdin_args.output
+else:
+    playout.mode = _cfg['out']['mode']
+
 playout.name = _cfg['out']['service_name']
 playout.provider = _cfg['out']['service_provider']
 playout.ffmpeg_param = shlex.split(_cfg['out']['ffmpeg_param'])
 playout.stream_output = shlex.split(_cfg['out']['stream_output'])
-playout.hls_output = shlex.split(_cfg['out']['hls_output'])
 
 
 # ------------------------------------------------------------------------------
@@ -676,7 +688,7 @@ if system() == 'Linux':
     signal.signal(signal.SIGHUP, handle_sighub)
 
 
-def terminate_processes(watcher=None):
+def terminate_processes(custom_process=None):
     """
     kill orphaned processes
     """
@@ -686,8 +698,8 @@ def terminate_processes(watcher=None):
     if ff_proc.encoder and ff_proc.encoder.poll() is None:
         ff_proc.encoder.kill()
 
-    if watcher:
-        watcher.stop()
+    if custom_process:
+        custom_process()
 
 
 def ffmpeg_stderr_reader(std_errors, prefix):
@@ -792,7 +804,7 @@ def check_sync(delta, node=None):
     check that we are in tolerance time
     """
 
-    if playlist.mode and playlist.start and playlist.length:
+    if play.mode == 'playlist' and playlist.start and playlist.length:
         # save time delta to global variable for syncing
         # this is needed for real time filter
         sync_op.time_delta = delta
