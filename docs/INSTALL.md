@@ -33,7 +33,7 @@ Single Channel Setup
 - change user and group in service file (for example to **www-data**)
 - activate service: `sudo systemctl enable ffplayout_engine`
 - edit **/etc/ffplayout/ffplayout.yml**
-- when playlists are exists, run service:  `sudo systemctl start ffplayout_engine`
+- when playlists are exists, run service: `sudo systemctl start ffplayout_engine`
 
 Multi Channel Setup
 -----
@@ -48,7 +48,7 @@ Multi Channel Setup
 - edit **/etc/ffplayout/ffplayout-00*.yml**
 - when you want to use the web frontend, create only the first channel and the other ones in the frontend
 - activate service: `sudo systemctl enable ffplayout_engine-multichannel`
-- when playlists are exists, run service:  `sudo systemctl start ffplayout_engine-multichannel`
+- when playlists are exists, run service: `sudo systemctl start ffplayout_engine-multichannel`
 
 Using it Without Installation
 -----
