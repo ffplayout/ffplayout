@@ -27,8 +27,8 @@ from pathlib import Path
 from watchdog.events import PatternMatchingEventHandler
 from watchdog.observers import Observer
 
-from .filters.default import build_filtergraph
-from .utils import (MediaProbe, ff_proc, get_float, messenger, stdin_args,
+from ..filters.default import build_filtergraph
+from ..utils import (MediaProbe, ff_proc, get_float, messenger, stdin_args,
                     storage)
 
 # ------------------------------------------------------------------------------
@@ -163,13 +163,14 @@ class MediaWatcher:
         self.observer.join()
 
 
-class GetSourceFromFolder:
+class GetSourceIter:
     """
     give next clip, depending on shuffle mode
     """
 
-    def __init__(self, media):
-        self._media = media
+    def __init__(self):
+        self.media = MediaStore()
+        self.watcher = MediaWatcher(self.media)
 
         self.last_played = []
         self.index = 0
@@ -179,28 +180,31 @@ class GetSourceFromFolder:
         self.node_last = None
         self.node_next = None
 
+    def stop(self):
+        self.watcher.stop()
+
     def next(self):
         """
         generator for getting always a new file
         """
         while True:
-            while self.index < len(self._media.store):
+            while self.index < len(self.media.store):
                 if self.node_next:
                     self.node = deepcopy(self.node_next)
                     self.probe = deepcopy(self.next_probe)
                 else:
-                    self.probe.load(self._media.store[self.index])
+                    self.probe.load(self.media.store[self.index])
                     duration = get_float(self.probe.format.get('duration'), 0)
                     self.node = {
                         'in': 0,
                         'seek': 0,
                         'out': duration,
                         'duration': duration,
-                        'source': self._media.store[self.index],
+                        'source': self.media.store[self.index],
                         'probe': self.probe
                     }
-                if self.index < len(self._media.store) - 1:
-                    self.next_probe.load(self._media.store[self.index + 1])
+                if self.index < len(self.media.store) - 1:
+                    self.next_probe.load(self.media.store[self.index + 1])
                     next_duration = get_float(
                         self.next_probe.format.get('duration'), 0)
                     self.node_next = {
@@ -208,17 +212,18 @@ class GetSourceFromFolder:
                         'seek': 0,
                         'out': next_duration,
                         'duration': next_duration,
-                        'source': self._media.store[self.index + 1],
+                        'source': self.media.store[self.index + 1],
                         'probe': self.next_probe
                     }
                 else:
-                    self._media.rand()
+                    self.media.rand()
                     self.node_next = None
 
-                self.node['src_cmd'] = ['-i', self._media.store[self.index]]
+                self.node['src_cmd'] = ['-i', self.media.store[self.index]]
                 self.node['filter'] = build_filtergraph(
                     self.node, self.node_last, self.node_next)
 
+                self.watcher.current_clip = self.node.get('source')
                 yield self.node
                 self.index += 1
                 self.node_last = deepcopy(self.node)

@@ -19,15 +19,14 @@
 This module streams the files out to a remote target.
 """
 
+from importlib import import_module
 from platform import system
 from subprocess import PIPE, Popen
 from threading import Thread
 
-from ..folder import GetSourceFromFolder, MediaStore, MediaWatcher
-from ..playlist import GetSourceFromPlaylist
 from ..utils import (ff_proc, ffmpeg_stderr_reader, get_date, log, lower_third,
-                     messenger, playlist, playout, pre, pre_audio_codec,
-                     stdin_args, sync_op, terminate_processes)
+                     messenger, play, playout, pre, pre_audio_codec, sync_op,
+                     terminate_processes)
 
 COPY_BUFSIZE = 1024 * 1024 if system() == 'Windows' else 65424
 
@@ -80,20 +79,11 @@ def output():
         enc_err_thread.daemon = True
         enc_err_thread.start()
 
-        if playlist.mode and not stdin_args.folder:
-            watcher = None
-            get_source = GetSourceFromPlaylist()
-        else:
-            messenger.info('Start folder mode')
-            media = MediaStore()
-            watcher = MediaWatcher(media)
-            get_source = GetSourceFromFolder(media)
+        Iter = import_module(f'ffplayout.player.{play.mode}').GetSourceIter
+        get_source = Iter()
 
         try:
             for node in get_source.next():
-                if watcher is not None:
-                    watcher.current_clip = node.get('source')
-
                 messenger.info(f'Play: {node.get("source")}')
 
                 dec_cmd = [
@@ -125,15 +115,15 @@ def output():
             messenger.debug(f'node: "{node}"')
             messenger.debug(f'dec_cmd: "{dec_cmd}"')
             messenger.debug(79 * '-')
-            terminate_processes(watcher)
+            terminate_processes(getattr(get_source, 'stop', None))
 
         except SystemExit:
             messenger.info('Got close command')
-            terminate_processes(watcher)
+            terminate_processes(getattr(get_source, 'stop', None))
 
         except KeyboardInterrupt:
             messenger.warning('Program terminated')
-            terminate_processes(watcher)
+            terminate_processes(getattr(get_source, 'stop', None))
 
         # close encoder when nothing is to do anymore
         if ff_proc.encoder.poll() is None:

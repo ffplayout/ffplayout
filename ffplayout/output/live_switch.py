@@ -15,7 +15,9 @@
 # You should have received a copy of the GNU General Public License
 # along with ffplayout. If not, see <http://www.gnu.org/licenses/>.
 
-# ------------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+
+from importlib import import_module
 from platform import system
 from queue import Queue
 from subprocess import PIPE, Popen
@@ -23,11 +25,9 @@ from threading import Thread
 from time import sleep
 
 from ..filters.default import overlay_filter
-from ..folder import GetSourceFromFolder, MediaStore, MediaWatcher
-from ..playlist import GetSourceFromPlaylist
 from ..utils import (ff_proc, ffmpeg_stderr_reader, get_date, get_time, ingest,
-                     log, lower_third, messenger, playlist, playout, pre,
-                     pre_audio_codec, stdin_args, sync_op, terminate_processes)
+                     log, lower_third, messenger, play, playout, pre,
+                     pre_audio_codec, sync_op, terminate_processes)
 
 COPY_BUFSIZE = 1024 * 1024 if system() == 'Windows' else 65424
 
@@ -71,7 +71,7 @@ def check_time(node, get_source):
     clip_length = node['out'] - node['seek']
     clip_end = current_time + clip_length
 
-    if playlist.mode and not stdin_args.folder and clip_end > current_time:
+    if play.mode == 'playlist' and clip_end > current_time:
         get_source.first = True
 
 
@@ -131,20 +131,11 @@ def output():
         enc_err_thread.daemon = True
         enc_err_thread.start()
 
-        if playlist.mode and not stdin_args.folder:
-            watcher = None
-            get_source = GetSourceFromPlaylist()
-        else:
-            messenger.info('Start folder mode')
-            media = MediaStore()
-            watcher = MediaWatcher(media)
-            get_source = GetSourceFromFolder(media)
+        Iter = import_module(f'ffplayout.player.{play.mode}').GetSourceIter
+        get_source = Iter()
 
         try:
             for node in get_source.next():
-                if watcher is not None:
-                    watcher.current_clip = node.get('source')
-
                 messenger.info(f'Play: {node.get("source")}')
 
                 dec_cmd = [
@@ -187,18 +178,18 @@ def output():
             messenger.debug(f'node: "{node}"')
             messenger.debug(f'dec_cmd: "{dec_cmd}"')
             messenger.debug(79 * '-')
-            terminate_processes(watcher)
+            terminate_processes(getattr(get_source, 'stop', None))
 
         except SystemExit:
             messenger.info('Got close command')
-            terminate_processes(watcher)
+            terminate_processes(getattr(get_source, 'stop', None))
 
             if ff_proc.live and ff_proc.live.poll() is None:
                 ff_proc.live.terminate()
 
         except KeyboardInterrupt:
             messenger.warning('Program terminated')
-            terminate_processes(watcher)
+            terminate_processes(getattr(get_source, 'stop', None))
 
             if ff_proc.live and ff_proc.live.poll() is None:
                 ff_proc.live.terminate()

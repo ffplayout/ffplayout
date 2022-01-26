@@ -29,8 +29,8 @@ from threading import Thread
 
 import requests
 
-from .filters.default import build_filtergraph
-from .utils import (MediaProbe, check_sync, get_date, get_delta,
+from ..filters.default import build_filtergraph
+from ..utils import (MediaProbe, check_sync, get_date, get_delta,
                     get_float, get_time, messenger, playlist, sec_to_time,
                     src_or_dummy, stdin_args, storage, sync_op, valid_json)
 
@@ -255,7 +255,7 @@ class PlaylistReader:
             self.error = True
 
 
-class GetSourceFromPlaylist:
+class GetSourceIter:
     """
     read values from json playlist,
     get current clip in time,

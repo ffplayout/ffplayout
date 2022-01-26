@@ -16,19 +16,30 @@
 # ------------------------------------------------------------------------------
 
 """
-This module write the files compression directly to a hls (m3u8) playlist.
+This module write the files compression directly to a hls (m3u8) playlist,
+without pre- and post-processing.
+
+Example config:
+
+out:
+    stream_output: >-
+        -flags +cgop
+        -f hls
+        -hls_time 6
+        -hls_list_size 600
+        -hls_flags append_list+delete_segments+omit_endlist+program_date_time
+        -hls_segment_filename /var/www/srs/live/stream-%09d.ts /var/www/srs/live/stream.m3u8
+
 """
 
 import re
+from importlib import import_module
 from pathlib import Path
 from subprocess import PIPE, Popen
 from threading import Thread
 
-from ..folder import GetSourceFromFolder, MediaStore, MediaWatcher
-from ..playlist import GetSourceFromPlaylist
 from ..utils import (ff_proc, ffmpeg_stderr_reader, get_date, log, messenger,
-                     playlist, playout, stdin_args, sync_op,
-                     terminate_processes)
+                     play, playout, sync_op, terminate_processes)
 
 
 def clean_ts():
@@ -38,7 +49,7 @@ def clean_ts():
     then it checks if files on hard drive are older then this first *.ts
     and if so delete them
     """
-    m3u8_files = [p for p in playout.hls_output if 'm3u8' in p]
+    m3u8_files = [p for p in playout.stream_output if 'm3u8' in p]
 
     for m3u8_file in m3u8_files:
         messenger.debug(f'cleanup *.ts files from: "{m3u8_file}"')
@@ -67,20 +78,11 @@ def output():
     sync_op.realtime = True
 
     try:
-        if playlist.mode and not stdin_args.folder:
-            watcher = None
-            get_source = GetSourceFromPlaylist()
-        else:
-            messenger.info('Start folder mode')
-            media = MediaStore()
-            watcher = MediaWatcher(media)
-            get_source = GetSourceFromFolder(media)
+        Iter = import_module(f'ffplayout.player.{play.mode}').GetSourceIter
+        get_source = Iter()
 
         try:
             for node in get_source.next():
-                if watcher is not None:
-                    watcher.current_clip = node.get('source')
-
                 messenger.info(f'Play: {node.get("source")}')
 
                 cmd = [
@@ -90,7 +92,7 @@ def output():
                         '-metadata', f'service_name={playout.name}',
                         '-metadata', f'service_provider={playout.provider}',
                         '-metadata', f'year={year}'
-                    ] + playout.ffmpeg_param + playout.hls_output
+                    ] + playout.ffmpeg_param + playout.stream_output
 
                 messenger.debug(f'Encoder CMD: "{" ".join(cmd)}"')
 
@@ -109,15 +111,15 @@ def output():
 
         except BrokenPipeError:
             messenger.error('Broken Pipe!')
-            terminate_processes(watcher)
+            terminate_processes(getattr(get_source, 'stop', None))
 
         except SystemExit:
             messenger.info('Got close command')
-            terminate_processes(watcher)
+            terminate_processes(getattr(get_source, 'stop', None))
 
         except KeyboardInterrupt:
             messenger.warning('Program terminated')
-            terminate_processes(watcher)
+            terminate_processes(getattr(get_source, 'stop', None))
 
         # close encoder when nothing is to do anymore
         if ff_proc.encoder.poll() is None:
