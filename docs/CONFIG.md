@@ -1,18 +1,17 @@
-The configuration file **ffplayout.yml** have this sections:
+The configuration file **ffplayout.yml** has this sections:
 
 ---
 
 ```YAML
 general:
-    stop_on_error: True
     stop_threshold: 11
 ```
-sometimes it can happen, that a file is corrupt but still playable,
-this can produce an streaming error over all following files.
-The only way in this case is, to stop ffplayout and start it again
-here we only say it can stop, the starting process is in your hand
-best way is a **systemd serivce** on linux.
-`stop_threshold:` stop ffplayout, if it is async in time above this value.
+Sometimes it can happen, that a file is corrupt but still playable,
+this can produce an streaming error over all following files. The only way
+in this case is, to stop ffplayout and start it again. Here we only say when
+it stops, the starting process is in your hand. Best way is a **systemd service**
+on linux. `stop_threshold` stop ffplayout, if it is async in time above this
+value. A number below 3 can cause unexpected errors.
 
 ---
 
@@ -28,8 +27,9 @@ mail:
 ```
 Send error messages to email address, like:
 - missing playlist
-- unvalid json format
+- invalid json format
 - missing clip path
+
 leave recipient blank, if you don't need this.
 `mail_level` can be: **WARNING, ERROR**
 
@@ -76,8 +76,8 @@ so the input for the final compression is unique.
 - with `logo_scale = 100:-1` logo can be scaled
 - with `logo_opacity` logo can make transparent
 - with `logo_filter = overlay=W-w-12:12` you can modify the logo position
-- with use_loudnorm you can activate single pass EBU R128 loudness normalization
-- loud_* can adjust the loudnorm filter
+- with `use_loudnorm` you can activate single pass EBU R128 loudness normalization
+- `loud_*` can adjust the loudnorm filter
 - `output_count` sets the outputs for the filtering, > 1 gives the option to use the same filters for multiple outputs. This outputs can be taken in 'ffmpeg_param', names will be vout2, vout3;
 aout2, aout2 etc.
 
@@ -86,15 +86,35 @@ aout2, aout2 etc.
 ---
 
 ```YAML
+ingest:
+    stream_input: >-
+        -f live_flv
+        -listen 1
+        -i rtmp://localhost:1936/live/stream
+```
+**ingest** works only in combination with output -> mode = **live_switch**!
+It run a server for a ingest stream. This stream will override the normal streaming
+until is done.
+There is no authentication, this is up to you. The recommend way is to set address to localhost, stream to a local server with authentication and from there stream to this app.
+
+---
+
+```YAML
+play:
+    mode: playlist
+```
+Set playing mode, like **playlist**; **folder**, or your own custom one.
+
+---
+
+```YAML
 playlist:
-    playlist_mode: True
     path: "/playlists"
     day_start: "5:59:25"
     length: "24:00:00"
 ```
-Playlist settings -
-set `playlist_mode` to **False** if you want to play clips from the `storage:` section
-put only the root path here, for example: **"/playlists"**.
+
+Put only the root path here, for example: **"/playlists"**.
 Subfolders is read by the script and needs this structur:
 - **"/playlists/2018/01"** (/playlists/year/month)
 
@@ -158,7 +178,16 @@ out:
     stream_output: >-
         -flags +global_header
         -f flv rtmp://localhost/live/stream
-    hls_output: >-
+```
+
+The final ffmpeg post compression, Set the settings to your needs!
+`mode` has the standard options **desktop**, **hls**, **live_switch**, **stream**. Self made outputs
+can be define, by adding script in output folder with an **output()** function inside.
+
+For output mode hls, `stream_output` can look like:
+
+```YAML
+    stream_output: >-
         -flags +cgop
         -f hls
         -hls_time 6
@@ -166,7 +195,3 @@ out:
         -hls_flags append_list+delete_segments+omit_endlist+program_date_time
         -hls_segment_filename /var/www/srs/live/stream-%09d.ts /var/www/srs/live/stream.m3u8
 ```
-
-The final ffmpeg post compression, Set the settings to your needs!
-`mode` has the standard options **desktop**, **hls**, **stream**. Self made outputs
-can be define, by adding script in output folder with an 'output' function inside.
