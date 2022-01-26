@@ -48,11 +48,11 @@ def fake_delta(node):
     return None
 
 
-@patch('ffplayout.playlist.handle_list_init', fake_delta)
+@patch('ffplayout.player.playlist.handle_list_init', fake_delta)
 @time_machine.travel(datetime.datetime(*SOURCE_TIME, tzinfo=_TZ))
 def run_in_time_machine():
-    if stdin_args.mode:
-        output = import_module(f'ffplayout.output.{stdin_args.mode}').output
+    if stdin_args.output:
+        output = import_module(f'ffplayout.output.{stdin_args.output}').output
         output()
     else:
         desktop.output()

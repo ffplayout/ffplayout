@@ -28,7 +28,7 @@ WARP_FACTOR = 1000
 
 
 def warp_time():
-    get_source = GetSourceFromPlaylist()
+    get_source = GetSourceIter()
     stamp = time.time()
     duration = 0
     with time_machine.travel(stamp, tick=False) as traveller:
@@ -56,7 +56,7 @@ def run_in_time_warp():
 
 
 if __name__ == '__main__':
-    from ffplayout.playlist import GetSourceFromPlaylist
+    from ffplayout.player.playlist import GetSourceIter
     from ffplayout.utils import messenger
 
     try:

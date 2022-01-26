@@ -7,8 +7,8 @@ from zoneinfo import ZoneInfo
 
 import time_machine
 
-from ..ffplayout.playlist import (handle_list_end, handle_list_init,
-                                  timed_source)
+from ..ffplayout.player.playlist import (handle_list_end, handle_list_init,
+                                            timed_source)
 from ..ffplayout.utils import playlist, storage
 
 # set time zone

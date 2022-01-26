@@ -19,7 +19,7 @@ SOURCE_TIME = [2021, 2, 27, 23, 55, 0]
 
 @time_machine.travel(datetime.datetime(*SOURCE_TIME, tzinfo=_TZ))
 def main():
-    get_source = GetSourceFromPlaylist()
+    get_source = GetSourceIter()
 
     for node in get_source.next():
         messenger.info(f'Play: {node["source"]}')
@@ -28,7 +28,7 @@ def main():
 
 
 if __name__ == '__main__':
-    from ffplayout.playlist import GetSourceFromPlaylist
+    from ffplayout.player.playlist import GetSourceIter
     from ffplayout.utils import messenger
     try:
         main()
