@@ -58,7 +58,7 @@ processing:
     output_count: 1
 
 ingest:
-    helptext: Works only in combination with output -> mode = live_switch! Run a rtmp server
+    helptext: Works only in combination with output -> mode = live_switch! Run a server
         for a ingest stream. This stream will override the normal streaming until is done.
         There is no authentication, this is up to you. The recommend way is to set address to localhost, stream to a local server with authentication and from there stream to this app.
     stream_input: >-
@@ -66,15 +66,17 @@ ingest:
         -listen 1
         -i rtmp://localhost:1936/live/stream
 
+play:
+    helptext: Set playing mode, like playlist; folder, or you own custom one.
+    mode: playlist
+
 playlist:
-    helptext: Set 'playlist_mode' to 'False' if you want to play clips from the 'storage'
-        section. Put only the root path here, for example '/playlists' subdirectories
+    helptext: Put only the root path here, for example '/playlists' subdirectories
         are read by the script. Subdirectories needs this structure '/playlists/2018/01'
         (/playlists/year/month). 'day_start' means at which time the playlist should
         start, leave day_start blank when playlist should always start at the begin.
         'length' represent the target length from playlist, when is blank real length
         will not consider.
-    playlist_mode: True
     path: "/playlists"
     day_start: "5:59:25"
     length: "24:00:00"
@@ -111,9 +113,7 @@ out:
     helptext: The final playout compression. Set the settings to your needs.
         'mode' has the standard options 'desktop', 'hls', 'live_switch', 'stream'. Self made
         outputs can be define, by adding script in output folder with an 'output' function
-        inside. 'stream_output' is for streaming output, two ffmpeg instances are fired up,
-        for pre- and post-processing. 'hls_output' is for direct output to hls playlist,
-        without pre- and post-processing, mode must be 'hls'.
+        inside. 'stream_output' represent the file encoding output.
     mode: 'stream'
     service_name: "Live Stream"
     service_provider: "example.org"
@@ -132,10 +132,3 @@ out:
     stream_output: >-
         -flags +global_header
         -f flv rtmp://localhost/live/stream
-    hls_output: >-
-        -flags +cgop
-        -f hls
-        -hls_time 6
-        -hls_list_size 600
-        -hls_flags append_list+delete_segments+omit_endlist+program_date_time
-        -hls_segment_filename /var/www/srs/live/stream-%09d.ts /var/www/srs/live/stream.m3u8
