@@ -44,21 +44,16 @@ def main():
     play out depending on output mode
     """
 
-    if stdin_args.mode:
-        output = import_module(f'ffplayout.output.{stdin_args.mode}').output
-        output()
+    script_dir = Path(__file__).parent.absolute()
+    output_dir = script_dir.joinpath('ffplayout', 'output')
 
-    else:
-        script_dir = Path(__file__).parent.absolute()
-        output_dir = script_dir.joinpath('ffplayout', 'output')
+    for output in output_dir.glob('*.py'):
+        if output != '__init__.py':
+            mode = Path(output).stem
 
-        for output in output_dir.glob('*.py'):
-            if output != '__init__.py':
-                mode = Path(output).stem
-
-                if mode == playout.mode:
-                    output = import_module(f'ffplayout.output.{mode}').output
-                    output()
+            if mode == playout.mode:
+                output = import_module(f'ffplayout.output.{mode}').output
+                output()
 
 
 if __name__ == '__main__':
