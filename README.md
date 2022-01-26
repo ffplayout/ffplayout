@@ -40,7 +40,7 @@ The purpose with ffplayout is to provide a 24/7 broadcasting solution that plays
 - Live ingest (experimental)
 - add custom [filters](https://github.com/ffplayout/ffplayout_engine/tree/master/ffplayout/filters)
 - add custom [arguments](https://github.com/ffplayout/ffplayout_engine/tree/master/ffplayout/conf.d)
-- different [play modes](https://github.com/ffplayout/ffplayout_engine/tree/master/ffplayout/play_mode):
+- different [play modes](https://github.com/ffplayout/ffplayout_engine/tree/master/ffplayout/player):
 - different types of [output](https://github.com/ffplayout/ffplayout_engine/tree/master/ffplayout/output):
   - **stream**
   - **desktop**
