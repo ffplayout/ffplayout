@@ -38,8 +38,8 @@ from pathlib import Path
 from subprocess import PIPE, Popen
 from threading import Thread
 
-from ..utils import (ff_proc, ffmpeg_stderr_reader, get_date, log, messenger,
-                     play, playout, sync_op, terminate_processes)
+from ..utils import (ff_proc, ffmpeg_stderr_reader, log, messenger, play,
+                     playout, sync_op, terminate_processes)
 
 
 def clean_ts():
@@ -74,7 +74,6 @@ def output():
     """
     this output is hls output, no pre-process is needed.
     """
-    year = get_date(False).split('-')[0]
     sync_op.realtime = True
 
     try:
@@ -88,11 +87,7 @@ def output():
                 cmd = [
                     'ffmpeg', '-v', f'level+{log.ff_level.lower()}',
                     '-hide_banner', '-nostats'
-                    ] + node['src_cmd'] + node['filter'] + [
-                        '-metadata', f'service_name={playout.name}',
-                        '-metadata', f'service_provider={playout.provider}',
-                        '-metadata', f'year={year}'
-                    ] + playout.ffmpeg_param + playout.stream_output
+                    ] + node['src_cmd'] + node['filter'] + playout.stream_param
 
                 messenger.debug(f'Encoder CMD: "{" ".join(cmd)}"')
 

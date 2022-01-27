@@ -24,7 +24,7 @@ from platform import system
 from subprocess import PIPE, Popen
 from threading import Thread
 
-from ..utils import (ff_proc, ffmpeg_stderr_reader, get_date, log, lower_third,
+from ..utils import (ff_proc, ffmpeg_stderr_reader, log, lower_third,
                      messenger, play, playout, pre, pre_audio_codec, sync_op,
                      terminate_processes)
 
@@ -36,10 +36,16 @@ def output():
     this output is for streaming to a target address,
     like rtmp, rtp, svt, etc.
     """
-    year = get_date(False).split('-')[0]
-    overlay = []
+    filtering = []
     node = None
     dec_cmd = []
+    split_filter = ''
+    preview = []
+
+    if playout.preview:
+        split_filter = ',split=2[v_out1][v_out2]'
+        preview = ['-map', '[v_out1]', '-map', '0:a'
+            ] + playout.preview_param + ['-map', '[v_out2]', '-map', '0:a']
 
     ff_pre_settings = [
         '-pix_fmt', 'yuv420p', '-r', str(pre.fps),
@@ -54,21 +60,20 @@ def output():
         messenger.info(
             f'Using drawtext node, listening on address: {lower_third.address}'
             )
-        overlay = [
-            '-vf',
-            "null,zmq=b=tcp\\\\://'{}',drawtext=text='':fontfile='{}'".format(
-                lower_third.address.replace(':', '\\:'), lower_third.fontfile)
+        filtering = [
+            '-filter_complex',
+            f"[0:v]null,zmq=b=tcp\\\\://'{lower_third.address}',"
+            + f"drawtext=text='':fontfile='{lower_third.fontfile}'"
+            + split_filter
         ]
+    elif playout.preview:
+        filtering = ['-filter_complex', '[0:v]split=2[v_out1][v_out2]']
 
     try:
         enc_cmd = [
             'ffmpeg', '-v', f'level+{log.ff_level.lower()}', '-hide_banner',
             '-nostats', '-re', '-thread_queue_size', '160', '-i', 'pipe:0'
-            ] + overlay + [
-                '-metadata', f'service_name={playout.name}',
-                '-metadata', f'service_provider={playout.provider}',
-                '-metadata', f'year={year}'
-            ] + playout.ffmpeg_param + playout.stream_output
+            ] + filtering + preview + playout.stream_param
 
         messenger.debug(f'Encoder CMD: "{" ".join(enc_cmd)}"')
 

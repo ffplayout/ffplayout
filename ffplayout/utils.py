@@ -235,7 +235,7 @@ def load_config():
 
     lower_third.add_text = cfg['text']['add_text']
     lower_third.over_pre = cfg['text']['over_pre']
-    lower_third.address = cfg['text']['bind_address']
+    lower_third.address = cfg['text']['bind_address'].replace(':', '\\:')
     lower_third.fontfile = cfg['text']['fontfile']
     lower_third.text_from_filename = cfg['text']['text_from_filename']
     lower_third.style = cfg['text']['style']
@@ -289,10 +289,9 @@ if stdin_args.output:
 else:
     playout.mode = _cfg['out']['mode']
 
-playout.name = _cfg['out']['service_name']
-playout.provider = _cfg['out']['service_provider']
-playout.ffmpeg_param = shlex.split(_cfg['out']['ffmpeg_param'])
-playout.stream_output = shlex.split(_cfg['out']['stream_output'])
+playout.preview = _cfg['out']['preview']
+playout.preview_param = shlex.split(_cfg['out']['preview_param'])
+playout.stream_param = shlex.split(_cfg['out']['stream_param'])
 
 
 # ------------------------------------------------------------------------------

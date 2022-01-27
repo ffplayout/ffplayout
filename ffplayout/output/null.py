@@ -51,7 +51,7 @@ def output():
         enc_cmd = [
             'ffmpeg', '-v', f'level+{log.ff_level.lower()}', '-hide_banner',
             '-nostats', '-re', '-thread_queue_size', '160', '-i', 'pipe:0'
-            ] + playout.ffmpeg_param + ['-f', 'null', '-']
+            ] + playout.stream_param[:-3] + ['-f', 'null', '-']
 
         messenger.debug(f'Encoder CMD: "{" ".join(enc_cmd)}"')
 

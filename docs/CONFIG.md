@@ -78,7 +78,7 @@ so the input for the final compression is unique.
 - with `logo_filter = overlay=W-w-12:12` you can modify the logo position
 - with `use_loudnorm` you can activate single pass EBU R128 loudness normalization
 - `loud_*` can adjust the loudnorm filter
-- `output_count` sets the outputs for the filtering, > 1 gives the option to use the same filters for multiple outputs. This outputs can be taken in 'ffmpeg_param', names will be vout2, vout3;
+- `output_count` sets the outputs for the filtering, > 1 gives the option to use the same filters for multiple outputs. This outputs can be taken in 'stream_param', names will be vout2, vout3;
 aout2, aout2 etc.
 
 **INFO:** output is progressive!
@@ -161,9 +161,23 @@ With `regex` you can format file names, to get a title from it.
 ```YAML
 out:
     mode: 'stream'
-    service_name: "Live Stream"
-    service_provider: "example.org"
-    ffmpeg_param: >-
+    preview: False
+    preview_param: >-
+        -s 512+288
+        -c:v libx264
+        -crf 24
+        -x264-params keyint=50:min-keyint=25:scenecut=-1
+        -maxrate 800k
+        -bufsize 1600k
+        -preset ultrafast
+        -profile:v Main
+        -level 3.1
+        -c:a aac
+        -ar 44100
+        -b:a 128k
+        -flags +global_header
+        -f flv rtmp://preview.local/live/stream
+    stream_param: >-
         -c:v libx264
         -crf 23
         -x264-params keyint=50:min-keyint=25:scenecut=-1
@@ -175,7 +189,6 @@ out:
         -c:a aac
         -ar 44100
         -b:a 128k
-    stream_output: >-
         -flags +global_header
         -f flv rtmp://localhost/live/stream
 ```
@@ -183,11 +196,12 @@ out:
 The final ffmpeg post compression, Set the settings to your needs!
 `mode` has the standard options **desktop**, **hls**, **live_switch**, **stream**. Self made outputs
 can be define, by adding script in output folder with an **output()** function inside.
+'preview' works only in streaming output and creates a separate preview stream.
 
-For output mode hls, `stream_output` can look like:
+For output mode hls, output can look like:
 
 ```YAML
-    stream_output: >-
+        [...]
         -flags +cgop
         -f hls
         -hls_time 6
