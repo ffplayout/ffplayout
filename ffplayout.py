@@ -25,7 +25,7 @@ from importlib import import_module
 from pathlib import Path
 from platform import system
 
-from ffplayout.utils import playout, messenger, validate_ffmpeg_libs
+from ffplayout.utils import messenger, playout, validate_ffmpeg_libs
 
 try:
     if system() == 'Windows':
