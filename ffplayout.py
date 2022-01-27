@@ -25,7 +25,7 @@ from importlib import import_module
 from pathlib import Path
 from platform import system
 
-from ffplayout.utils import playout, stdin_args, validate_ffmpeg_libs
+from ffplayout.utils import playout, messenger, validate_ffmpeg_libs
 
 try:
     if system() == 'Windows':
@@ -54,6 +54,8 @@ def main():
             if mode == playout.mode:
                 output = import_module(f'ffplayout.output.{mode}').output
                 output()
+    else:
+        messenger.error('Output mode not exist!')
 
 
 if __name__ == '__main__':
