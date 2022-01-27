@@ -83,15 +83,9 @@ def output():
     filtering = []
     node = None
     dec_cmd = []
-    split_filter = ''
     preview = []
     live_on = False
     streaming_queue = Queue(maxsize=0)
-
-    if playout.preview:
-        split_filter = ',split=2[v_out1][v_out2]'
-        preview = ['-map', '[v_out1]', '-map', '0:a'
-            ] + playout.preview_param + ['-map', '[v_out2]', '-map', '0:a']
 
     ff_pre_settings = [
         '-pix_fmt', 'yuv420p', '-r', str(pre.fps),
@@ -110,10 +104,15 @@ def output():
             '-filter_complex',
             f"[0:v]null,zmq=b=tcp\\\\://'{lower_third.address}',"
             + f"drawtext=text='':fontfile='{lower_third.fontfile}'"
-            + split_filter
         ]
+
+        if playout.preview:
+            filtering[-1] = ',split=2[v_out1][v_out2]'
+            filtering += ['-map', '[v_out2]', '-map', '0:a']
+            preview = playout.preview_param
+
     elif playout.preview:
-        filtering = ['-filter_complex', '[0:v]split=2[v_out1][v_out2]']
+        preview = playout.preview_param
 
     rtmp_server_thread = Thread(name='ffmpeg_server',target=rtmp_server,
                                 args=(streaming_queue, ff_pre_settings))
