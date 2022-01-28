@@ -582,7 +582,8 @@ def validate_ffmpeg_libs():
     if 'tpad' not in FF_LIBS['filters']:
         logger.error('ffmpeg contains no tpad filter!')
     if 'zmq' not in FF_LIBS['filters']:
-        logger.error(
+        lower_third.add_text = False
+        logger.warning(
             'ffmpeg contains no zmq filter!  Text messages will not work...')
 
 
