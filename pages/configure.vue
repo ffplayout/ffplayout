@@ -137,6 +137,13 @@
                                         type="password"
                                         :value="prop"
                                     />
+                                    <b-form-textarea
+                                        v-else-if="name === 'preview_param' || name === 'stream_param'"
+                                        :id="name"
+                                        v-model="configPlayout[key][name]"
+                                        rows="2"
+                                        :value="prop"
+                                    />
                                     <b-form-input v-else :id="name" v-model="configPlayout[key][name]" :value="prop" />
                                 </b-form-group>
                             </b-form-group>
