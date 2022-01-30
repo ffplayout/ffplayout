@@ -15,7 +15,7 @@
     "@nuxtjs/axios": "^5.13.6",
     "@nuxtjs/dayjs": "^1.4.1",
     "@nuxtjs/dotenv": "^1.4.1",
-    "bootstrap": "^4.6.0",
+    "bootstrap": "^4.6.1",
     "bootstrap-vue": "^2.21.2",
     "cookie-universal-nuxt": "^2.1.5",
     "jwt-decode": "^3.1.2",
@@ -28,13 +28,14 @@
     "vuedraggable": "^2.24.3"
   },
   "devDependencies": {
+    "@babel/eslint-parser": "^7.16.5",
+    "@babel/preset-react": "^7.16.7",
     "@nuxtjs/eslint-config": "^5.0.0",
     "@nuxtjs/eslint-module": "^3.0.2",
     "@nuxtjs/style-resources": "^1.2.1",
-    "babel-eslint": "^10.1.0",
-    "eslint": "^7.29.0",
+    "eslint": "^7.32.0",
     "eslint-plugin-nuxt": ">=2.0.0",
-    "node-sass": "^5.0.0",
-    "sass-loader": "^10.1.1"
+    "sass": "^1.49.0",
+    "sass-loader": "^10.2.1"
   }
 }

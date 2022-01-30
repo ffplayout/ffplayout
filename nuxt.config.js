@@ -111,6 +111,14 @@ export default {
          ** You can extend webpack config here
          */
         extend(config, ctx) {},
-        babel: { compact: true }
+        babel: { compact: true },
+        loaders: {
+            sass: {
+              implementation: require('sass'),
+            },
+            scss: {
+              implementation: require('sass'),
+            }
+        }
     }
 }
