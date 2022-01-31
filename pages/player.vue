@@ -5,7 +5,13 @@
             <b-row class="control-row">
                 <b-col cols="3" class="player-col">
                     <b-aspect aspect="16:9">
-                        <video-player v-if="videoOptions.sources" :key="configID" reference="videoPlayer" :options="videoOptions" />
+                        <video
+                            v-if="configGui[configID].player_url.split('.').pop() === 'flv'"
+                            id="httpStream"
+                            ref="httpStream"
+                            controls
+                        />
+                        <video-player v-else-if="videoOptions.sources" :key="configID" reference="videoPlayer" :options="videoOptions" />
                     </b-aspect>
                 </b-col>
                 <b-col class="control-col">
@@ -308,6 +314,7 @@
 </template>
 
 <script>
+import mpegts from 'mpegts.js'
 /* eslint-disable vue/custom-event-name-casing */
 import { mapState } from 'vuex'
 import Menu from '@/components/Menu.vue'
@@ -357,6 +364,17 @@ export default {
                 autoplay: false,
                 preload: 'auto',
                 sources: []
+            },
+            httpFlvSource: {
+                type: 'flv',
+                isLive: true,
+                url: ''
+            },
+            mpegtsOptions: {
+                enableWorker: true,
+                lazyLoadMaxDuration: 3 * 60,
+                seekType: 'range',
+                liveBufferLatencyChasing: true
             },
             previewOptions: {},
             previewComp: null,
@@ -434,6 +452,27 @@ export default {
             }, 5000)
         } else {
             this.$store.dispatch('playlist/animClock')
+        }
+
+        const streamExtension = this.configGui[this.configID].player_url.split('.').pop()
+        let player
+
+        if (streamExtension === 'flv') {
+            this.httpFlvSource.url = this.configGui[this.configID].player_url
+            const element = this.$refs.httpStream
+
+            if (typeof player !== 'undefined') {
+                if (player != null) {
+                    player.unload()
+                    player.detachMediaElement()
+                    player.destroy()
+                    player = null
+                }
+            }
+
+            player = mpegts.createPlayer(this.httpFlvSource, this.mpegtsOptions)
+            player.attachMediaElement(element)
+            player.load()
         }
 
         setTimeout(() => { scrollTo(this) }, 4000)

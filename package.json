@@ -20,6 +20,7 @@
     "cookie-universal-nuxt": "^2.1.5",
     "jwt-decode": "^3.1.2",
     "lodash": "^4.17.21",
+    "mpegts.js": "^1.6.10",
     "nuxt": "^2.15.8",
     "splitpanes": "^2.3.8",
     "video.js": "^7.17.0",
