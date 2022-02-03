@@ -107,9 +107,9 @@ def output():
         ]
 
         if playout.preview:
-            filtering[-1] = ',split=2[v_out1][v_out2]'
-            filtering += ['-map', '[v_out2]', '-map', '0:a']
-            preview = playout.preview_param
+            filtering[-1] += ',split=2[v_out1][v_out2]'
+            preview = ['-map', '[v_out1]', '-map', '0:a'
+                ] + playout.preview_param + ['-map', '[v_out2]', '-map', '0:a']
 
     elif playout.preview:
         preview = playout.preview_param
