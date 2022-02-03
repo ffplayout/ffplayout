@@ -46,15 +46,18 @@ def main():
 
     script_dir = Path(__file__).parent.absolute()
     output_dir = script_dir.joinpath('ffplayout', 'output')
+    mode_exists = False
 
     for output in output_dir.glob('*.py'):
         if output != '__init__.py':
             mode = Path(output).stem
 
             if mode == playout.mode:
+                mode_exists = True
                 output = import_module(f'ffplayout.output.{mode}').output
                 output()
-    else:
+
+    if not mode_exists:
         messenger.error('Output mode not exist!')
 
 
