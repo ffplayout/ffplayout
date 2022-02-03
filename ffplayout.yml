@@ -124,6 +124,7 @@ out:
         -maxrate 800k
         -bufsize 1600k
         -preset ultrafast
+        -tune zerolatency
         -profile:v Main
         -level 3.1
         -c:a aac
@@ -137,7 +138,8 @@ out:
         -x264-params keyint=50:min-keyint=25:scenecut=-1
         -maxrate 1300k
         -bufsize 2600k
-        -preset medium
+        -preset faster
+        -tune zerolatency
         -profile:v Main
         -level 3.1
         -c:a aac
