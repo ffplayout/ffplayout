@@ -246,27 +246,33 @@ def load_config():
 
 _cfg = load_config()
 
-if stdin_args.start:
-    _p_start = str_to_sec(stdin_args.start)
-else:
-    _p_start = str_to_sec(_cfg['playlist']['day_start'])
-
-if _p_start is None:
-    _p_start = get_time('full_sec')
-
-if stdin_args.length:
-    _p_length = str_to_sec(stdin_args.length)
-else:
-    _p_length = str_to_sec(_cfg['playlist']['length'])
-
 if stdin_args.play_mode:
     play.mode = stdin_args.play_mode
 else:
     play.mode = _cfg['play']['mode']
 
-playlist.path = _cfg['playlist']['path']
-playlist.start = _p_start
-playlist.length = _p_length
+if stdin_args.playlist:
+    playlist.path = stdin_args.playlist
+else:
+    playlist.path = _cfg['playlist']['path']
+
+if stdin_args.start is not None:
+    playlist.start = str_to_sec(stdin_args.start)
+else:
+    playlist.start = str_to_sec(_cfg['playlist']['day_start'])
+
+if playlist.start is None:
+    playlist.start = get_time('full_sec')
+
+if stdin_args.length:
+    playlist.length  = str_to_sec(stdin_args.length)
+else:
+    playlist.length  = str_to_sec(_cfg['playlist']['length'])
+
+if stdin_args.loop:
+    playlist.loop = stdin_args.loop
+else:
+    playlist.loop = _cfg['playlist']['loop']
 
 log.to_file = _cfg['logging']['log_to_file']
 log.backup_count = _cfg['logging']['backup_count']
@@ -365,7 +371,7 @@ if log.to_file and log.path != 'none':
     if log.path.is_dir():
         playout_log = log.path.joinpath('ffplayout.log')
     else:
-        log_dir = Path(__file__).parent.absolute().joinpath('log')
+        log_dir = Path(__file__).parent.parent.absolute().joinpath('log')
         log_dir.mkdir(exist_ok=True)
         playout_log = log_dir.joinpath('ffplayout.log')
 

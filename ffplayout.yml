@@ -71,15 +71,18 @@ play:
     mode: playlist
 
 playlist:
-    helptext: Put only the root path here, for example '/playlists' subdirectories
-        are read by the script. Subdirectories needs this structure '/playlists/2018/01'
-        (/playlists/year/month). 'day_start' means at which time the playlist should
-        start, leave day_start blank when playlist should always start at the begin.
-        'length' represent the target length from playlist, when is blank real length
-        will not consider.
+    helptext: >
+        'path' can be a path to a single file, or a directory. For directory put
+        only the root folder, for example '/playlists', subdirectories are read by the
+        script. Subdirectories needs this structure '/playlists/2018/01'. 'day_start'
+        means at which time the playlist should start, leave day_start blank when playlist
+        should always start at the begin. 'length' represent the target length from
+        playlist, when is blank real length will not consider. 'loop true' works with
+        single playlist file and loops it infinitely.
     path: "/playlists"
     day_start: "5:59:25"
     length: "24:00:00"
+    loop: False
 
 storage:
     helptext: Play ordered or randomly files from path. 'filler_clip' is for fill

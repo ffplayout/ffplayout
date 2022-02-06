@@ -30,9 +30,9 @@ from threading import Thread
 import requests
 
 from ..filters.default import build_filtergraph
-from ..utils import (MediaProbe, check_sync, get_date, get_delta,
-                    get_float, get_time, messenger, playlist, sec_to_time,
-                    src_or_dummy, stdin_args, storage, sync_op, valid_json)
+from ..utils import (MediaProbe, check_sync, get_date, get_delta, get_float,
+                     get_time, messenger, playlist, sec_to_time, src_or_dummy,
+                     storage, sync_op, valid_json)
 
 
 def validate_thread(clip_nodes, list_date):
@@ -163,13 +163,13 @@ def timed_source(node, last):
     delta, total_delta = get_delta(node['begin'])
     node_ = None
 
-    if not stdin_args.loop and playlist.length:
+    if not playlist.loop and playlist.length:
         messenger.debug(f'delta: {delta:f}')
         messenger.debug(f'total_delta: {total_delta:f}')
         check_sync(delta, node)
 
     if (total_delta > node['out'] - node['seek'] and not last) \
-            or stdin_args.loop or not playlist.length:
+            or playlist.loop or not playlist.length:
         # when we are in the 24 hour range, get the clip
         node_ = src_or_dummy(node)
 
@@ -187,7 +187,7 @@ def check_length(total_play_time, list_date):
     check if playlist is long enough
     """
     if playlist.length and total_play_time < playlist.length - 5 \
-            and not stdin_args.loop:
+            and not playlist.loop:
         messenger.error(
             f'Playlist from {list_date} is not long enough!\n'
             f'Total play time is: {sec_to_time(total_play_time)}, '
@@ -214,15 +214,8 @@ class PlaylistReader:
         self.nodes = {'program': []}
         self.error = False
 
-        if stdin_args.playlist:
-            json_file = stdin_args.playlist
-        else:
-            year, month, _ = self.list_date.split('-')
-            json_file = str(Path(playlist.path).joinpath(
-                year, month, f'{self.list_date}.json'))
-
-        if '://' in json_file:
-            json_file = json_file.replace('\\', '/')
+        if '://' in playlist.path:
+            json_file = playlist.path.replace('\\', '/')
 
             try:
                 result = requests.get(json_file, timeout=1, verify=False)
@@ -240,18 +233,27 @@ class PlaylistReader:
                 messenger.error(f'No valid playlist from url: {json_file}')
                 self.error = True
 
-        elif Path(json_file).is_file():
+            return
+
+        json_file = Path(playlist.path)
+
+        if json_file.is_dir():
+            year, month, _ = self.list_date.split('-')
+            json_file = json_file.joinpath(
+                year, month, f'{self.list_date}.json')
+
+        if json_file.is_file():
             # check last modification time from playlist
-            mod_time = Path(json_file).stat().st_mtime
+            mod_time = json_file.stat().st_mtime
             if mod_time > self.last_mod_time:
                 with open(json_file, 'r', encoding='utf-8') as playlist_file:
                     self.nodes = valid_json(playlist_file)
 
                 self.last_mod_time = mod_time
-                messenger.info('Open: ' + json_file)
+                messenger.info(f'Open: {str(json_file)}')
                 validate_thread(deepcopy(self.nodes), self.list_date)
         else:
-            messenger.error(f'Playlist not exists: {json_file}')
+            messenger.error(f'Playlist not exists: {str(json_file)}')
             self.error = True
 
 
@@ -397,7 +399,7 @@ class GetSourceIter:
         """
         handle except playlist end
         """
-        if stdin_args.loop and self.node:
+        if playlist.loop and self.node:
             # when loop parameter is set and playlist node exists,
             # jump to playlist start and play again
             self.list_start = self.last_time + 1
@@ -468,7 +470,7 @@ class GetSourceIter:
 
                 begin += self.node['out'] - self.node['seek']
             else:
-                if not playlist.length and not stdin_args.loop:
+                if not playlist.length and not playlist.loop:
                     # when we reach playlist end, stop script
                     messenger.info('Playlist reached end!')
                     return None
