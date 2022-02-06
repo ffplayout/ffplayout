@@ -53,7 +53,7 @@ def output():
         overlay = [
             '-vf',
             "null,zmq=b=tcp\\\\://'{}',drawtext=text='':fontfile='{}'".format(
-                lower_third.address.replace(':', '\\:'), lower_third.fontfile)
+                lower_third.address, lower_third.fontfile)
         ]
 
     try:

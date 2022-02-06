@@ -46,7 +46,7 @@ def text_filter():
             font = f":fontfile='{lower_third.fontfile}'"
         filter_chain = [
             "null,zmq=b=tcp\\\\://'{}',drawtext=text=''{}".format(
-                lower_third.address.replace(':', '\\:'), font)]
+                lower_third.address, font)]
 
     return filter_chain
 
