@@ -163,13 +163,13 @@ def timed_source(node, last):
     delta, total_delta = get_delta(node['begin'])
     node_ = None
 
-    if not playlist.loop and playlist.length:
+    if playlist.start and playlist.length:
         messenger.debug(f'delta: {delta:f}')
         messenger.debug(f'total_delta: {total_delta:f}')
         check_sync(delta, node)
 
     if (total_delta > node['out'] - node['seek'] and not last) \
-            or playlist.loop or not playlist.length:
+            or not playlist.length:
         # when we are in the 24 hour range, get the clip
         node_ = src_or_dummy(node)
 
@@ -302,6 +302,10 @@ class GetSourceIter:
         if self.playlist_reader.nodes and \
                 self.playlist_reader.nodes.get('program'):
             self.clip_nodes = self.playlist_reader.nodes.get('program')
+
+            if playlist.loop and playlist.length:
+                self.loop_nodes()
+
             self.node_count = len(self.clip_nodes)
 
         if self.playlist_reader.error:
@@ -309,6 +313,18 @@ class GetSourceIter:
             self.node_count = 0
             self.playlist_reader.last_mod_time = 0.0
             self.last_error = self.playlist_reader.error
+
+    def loop_nodes(self):
+        total_duration = 0
+        nodes_ = deepcopy(self.clip_nodes)
+
+        while total_duration < playlist.length:
+            for node in nodes_:
+                total_duration += node['out'] - node['in']
+                self.clip_nodes.append(node)
+
+                if total_duration >= playlist.length:
+                    break
 
     def init_time(self):
         """
@@ -402,7 +418,7 @@ class GetSourceIter:
         if playlist.loop and self.node:
             # when loop parameter is set and playlist node exists,
             # jump to playlist start and play again
-            self.list_start = self.last_time + 1
+            self.list_start = get_time('full_sec')
             self.node = None
             messenger.info('Loop playlist')
 
