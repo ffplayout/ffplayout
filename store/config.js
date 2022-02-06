@@ -37,7 +37,7 @@ export const mutations = {
     UPDATE_PLAYLIST_LENGTH (state, sec) {
         state.playlistLength = sec
     },
-    UPDATE_PLAYLOUT_CONFIG (state, config) {
+    UPDATE_PLAYOUT_CONFIG (state, config) {
         state.configPlayout = config
     },
     SET_CURRENT_USER (state, user) {
@@ -157,7 +157,7 @@ export const actions = {
                 commit('UPDATE_PLAYLIST_LENGTH', this.$timeToSeconds(response.data.playlist.length))
             }
 
-            commit('UPDATE_PLAYLOUT_CONFIG', response.data)
+            commit('UPDATE_PLAYOUT_CONFIG', response.data)
         } else {
             rootState.showErrorAlert = true
             rootState.ErrorAlertMessage = 'No playout config found!'

@@ -275,7 +275,7 @@ export default {
                 return this.$store.state.config.configPlayout
             },
             set (config) {
-                this.$store.commit('config/UPDATE_PLAYLOUT_CONFIG', config)
+                this.$store.commit('config/UPDATE_PLAYOUT_CONFIG', config)
             }
         },
         configUser: {
