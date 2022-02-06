@@ -24,7 +24,7 @@ def test_text_filter():
     lower_third.fontfile = ''
 
     assert text_filter() == [
-        "null,zmq=b=tcp\\\\://'127.0.0.1\\:5555',drawtext=text=''"]
+        "null,zmq=b=tcp\\\\://'127.0.0.1:5555',drawtext=text=''"]
 
 
 def test_deinterlace_filter():
@@ -130,7 +130,8 @@ def test_split_filter():
 
 # pylint: disable=unused-argument
 @patch('argparse.ArgumentParser.parse_args', return_value=argparse.Namespace(
-    config='', start='', length='', log='', output='', play_mode='', volume='0.001'))
+    config='', start='', length='', log='', output='', play_mode='',
+    playlist='', loop='', volume='0.001'))
 def test_custom_filter(*args):
     sys.path.append('')
     # lower_third.fontfile = ''
