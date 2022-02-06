@@ -9,6 +9,7 @@
                             v-if="configGui[configID].player_url.split('.').pop() === 'flv'"
                             id="httpStream"
                             ref="httpStream"
+                            width="100%"
                             controls
                         />
                         <video-player v-else-if="videoOptions.sources" :key="configID" reference="videoPlayer" :options="videoOptions" />
@@ -101,7 +102,13 @@
             </b-row>
             <b-row class="date-row">
                 <b-col>
-                    <b-datepicker v-model="listDate" size="sm" class="date-div" offset="-35px" />
+                    <b-datepicker
+                        v-if="configPlayout.playlist.path.split('.').pop() !== 'json'"
+                        v-model="listDate"
+                        size="sm"
+                        class="date-div"
+                        offset="-35px"
+                    />
                 </b-col>
             </b-row>
             <splitpanes class="list-row default-theme pane-row">
@@ -177,7 +184,7 @@
                         <b-list-group class="list-group-header">
                             <b-list-group-item>
                                 <b-row class="playlist-row">
-                                    <b-col cols="1" class="timecode">
+                                    <b-col v-if="configPlayout.playlist.day_start" cols="1" class="timecode">
                                         Start
                                     </b-col>
                                     <b-col>
@@ -222,7 +229,7 @@
                                         :class="index === currentClipIndex ? 'active-playlist-clip' : ''"
                                     >
                                         <b-row class="playlist-row">
-                                            <b-col cols="1" class="timecode">
+                                            <b-col v-if="configPlayout.playlist.day_start" cols="1" class="timecode">
                                                 {{ item.begin | secondsToTime }}
                                             </b-col>
                                             <b-col class="grabbing filename">
@@ -269,7 +276,7 @@
                 <b-button v-b-tooltip.hover title="Copy Playlist" variant="primary" @click="showCopyModal()">
                     <b-icon-files />
                 </b-button>
-                <b-button v-b-tooltip.hover title="Loop Clips in Playlist" variant="primary" @click="loopClips()">
+                <b-button v-if="!configPlayout.playlist.loop" v-b-tooltip.hover title="Loop Clips in Playlist" variant="primary" @click="loopClips()">
                     <b-icon-view-stacked />
                 </b-button>
                 <b-button v-b-tooltip.hover title="Save Playlist" variant="primary" @click="savePlaylist(listDate)">
