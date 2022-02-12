@@ -1,0 +1,20 @@
+general:
+    helptext: Sometimes it can happen, that a file is corrupt but still playable,
+        this can produce an streaming error over all following files. The only way
+        in this case is, to stop ffplayout and start it again. Here we only say when
+        it stops, the starting process is in your hand. Best way is a systemd service
+        on linux. 'stop_threshold' stop ffplayout, if it is async in time above this
+        value. A number below 3 can cause unexpected errors.
+    stop_threshold: 11
+
+mail:
+    helptext: Send error messages to email address, like missing playlist; invalid
+        json format; missing clip path. Leave recipient blank, if you don't need this.
+        'mail_level' can be WARNING or ERROR.
+    subject: Playout Error
+    smtp_server: mail.example.org
+    smtp_port: 587
+    sender_addr: ffplayout@example.org
+    sender_pass: abc123
+    recipient: null
+    mail_level: ERROR
