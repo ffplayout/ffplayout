@@ -241,9 +241,6 @@ def load_config():
     lower_third.style = cfg['text']['style']
     lower_third.regex = cfg['text']['regex']
 
-    ingest.enable = cfg['ingest']['enable']
-    ingest.stream_input = shlex.split(cfg['ingest']['stream_input'])
-
     return cfg
 
 
@@ -295,6 +292,9 @@ def pre_audio_codec():
 
     return ['-c:a', 's302m', '-strict', '-2', '-ar', '48000', '-ac', '2']
 
+
+ingest.enable = _cfg['ingest']['enable']
+ingest.stream_input = shlex.split(_cfg['ingest']['stream_input'])
 
 pre.w = _cfg['processing']['width']
 pre.h = _cfg['processing']['height']
