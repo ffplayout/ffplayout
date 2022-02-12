@@ -20,15 +20,13 @@ This module plays the compressed output directly on the desktop.
 """
 
 from importlib import import_module
-from platform import system
 from subprocess import PIPE, Popen
 from threading import Thread
 
-from ..utils import (ff_proc, ffmpeg_stderr_reader, log, lower_third,
-                     messenger, play, pre, pre_audio_codec, sync_op,
+from ..ingest_server import ingest_stream
+from ..utils import (check_node_time, ff_proc, ffmpeg_stderr_reader, ingest,
+                     log, lower_third, messenger, play, pre, sync_op,
                      terminate_processes)
-
-COPY_BUFSIZE = 1024 * 1024 if system() == 'Windows' else 65424
 
 
 def output():
@@ -36,15 +34,11 @@ def output():
     this output is for playing on desktop with ffplay
     """
     overlay = []
+    live_on = False
+    stream_queue = None
 
-    ff_pre_settings = [
-        '-pix_fmt', 'yuv420p', '-r', str(pre.fps),
-        '-c:v', 'mpeg2video', '-g', '1',
-        '-b:v', f'{pre.v_bitrate}k',
-        '-minrate', f'{pre.v_bitrate}k',
-        '-maxrate', f'{pre.v_bitrate}k',
-        '-bufsize', f'{pre.v_bufsize}k'
-        ] + pre_audio_codec() + ['-f', 'mpegts', '-']
+    if ingest.enable:
+        stream_queue = ingest_stream()
 
     if lower_third.add_text and not lower_third.over_pre:
         messenger.info(
@@ -83,7 +77,7 @@ def output():
                 dec_cmd = [
                     'ffmpeg', '-v', f'level+{log.ff_level.lower()}',
                     '-hide_banner', '-nostats'
-                    ] + node['src_cmd'] + node['filter'] + ff_pre_settings
+                    ] + node['src_cmd'] + node['filter'] + pre.settings
 
                 messenger.debug(f'Decoder CMD: "{" ".join(dec_cmd)}"')
 
@@ -96,10 +90,20 @@ def output():
                     dec_err_thread.start()
 
                     while True:
-                        buf = ff_proc.decoder.stdout.read(COPY_BUFSIZE)
-                        if not buf:
+                        buf_dec = ff_proc.decoder.stdout.read(pre.buffer_size)
+                        if stream_queue and not stream_queue.empty():
+                            buf_live = stream_queue.get()
+                            ff_proc.encoder.stdin.write(buf_live)
+                            live_on = True
+
+                            del buf_dec
+                        elif buf_dec:
+                            ff_proc.encoder.stdin.write(buf_dec)
+                        else:
+                            if live_on:
+                                check_node_time(node, get_source)
+                                live_on = False
                             break
-                        ff_proc.encoder.stdin.write(buf)
 
         except BrokenPipeError as err:
             messenger.error('Broken Pipe!')

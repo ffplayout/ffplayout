@@ -58,9 +58,10 @@ processing:
     output_count: 1
 
 ingest:
-    helptext: Works only in combination with output -> mode = live_switch! Run a server
+    helptext: Works not with direct hls output, it always needs full processing! Run a server
         for a ingest stream. This stream will override the normal streaming until is done.
         There is no authentication, this is up to you. The recommend way is to set address to localhost, stream to a local server with authentication and from there stream to this app.
+    enable: false
     stream_input: >-
         -f live_flv
         -listen 1

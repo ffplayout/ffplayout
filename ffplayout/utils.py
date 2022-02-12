@@ -241,6 +241,9 @@ def load_config():
     lower_third.style = cfg['text']['style']
     lower_third.regex = cfg['text']['regex']
 
+    ingest.enable = cfg['ingest']['enable']
+    ingest.stream_input = shlex.split(cfg['ingest']['stream_input'])
+
     return cfg
 
 
@@ -280,6 +283,19 @@ log.path = Path(_cfg['logging']['log_path'])
 log.level = _cfg['logging']['log_level']
 log.ff_level = _cfg['logging']['ffmpeg_level']
 
+
+def pre_audio_codec():
+    """
+    when add_loudnorm is False we use a different audio encoder,
+    s302m has higher quality, but is experimental
+    and works not well together with the loudnorm filter
+    """
+    if pre.add_loudnorm:
+        return ['-c:a', 'mp2', '-b:a', '384k', '-ar', '48000', '-ac', '2']
+
+    return ['-c:a', 's302m', '-strict', '-2', '-ar', '48000', '-ac', '2']
+
+
 pre.w = _cfg['processing']['width']
 pre.h = _cfg['processing']['height']
 pre.aspect = _cfg['processing']['aspect']
@@ -287,8 +303,16 @@ pre.fps = _cfg['processing']['fps']
 pre.v_bitrate = _cfg['processing']['width'] * _cfg['processing']['height'] / 10
 pre.v_bufsize = pre.v_bitrate / 2
 pre.output_count = _cfg['processing']['output_count']
+pre.buffer_size = 1024 * 1024 if system() == 'Windows' else 65424
 
-ingest.stream_input = shlex.split(_cfg['ingest']['stream_input'])
+pre.settings = [
+    '-pix_fmt', 'yuv420p', '-r', str(pre.fps),
+    '-c:v', 'mpeg2video', '-g', '1',
+    '-b:v', f'{pre.v_bitrate}k',
+    '-minrate', f'{pre.v_bitrate}k',
+    '-maxrate', f'{pre.v_bitrate}k',
+    '-bufsize', f'{pre.v_bufsize}k'
+    ] + pre_audio_codec() + ['-f', 'mpegts', '-']
 
 if stdin_args.output:
     playout.mode = stdin_args.output
@@ -824,6 +848,15 @@ def check_sync(delta, node=None):
         sys.exit(1)
 
 
+def check_node_time(node, get_source):
+    current_time = get_time('full_sec')
+    clip_length = node['out'] - node['seek']
+    clip_end = current_time + clip_length
+
+    if play.mode == 'playlist' and clip_end > current_time:
+        get_source.first = True
+
+
 def seek_in(seek):
     """
     seek in clip
@@ -949,14 +982,3 @@ def src_or_dummy(node):
 
     return node
 
-
-def pre_audio_codec():
-    """
-    when add_loudnorm is False we use a different audio encoder,
-    s302m has higher quality, but is experimental
-    and works not well together with the loudnorm filter
-    """
-    if pre.add_loudnorm:
-        return ['-c:a', 'mp2', '-b:a', '384k', '-ar', '48000', '-ac', '2']
-
-    return ['-c:a', 's302m', '-strict', '-2', '-ar', '48000', '-ac', '2']

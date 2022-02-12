@@ -20,14 +20,12 @@ This module streams to -f null, so it is only for debugging.
 """
 
 from importlib import import_module
-from platform import system
 from subprocess import PIPE, Popen
 from threading import Thread
 
-from ..utils import (ff_proc, ffmpeg_stderr_reader, log, messenger, play,
-                     playout, pre, pre_audio_codec, terminate_processes)
-
-COPY_BUFSIZE = 1024 * 1024 if system() == 'Windows' else 65424
+from ..ingest_server import ingest_stream
+from ..utils import (check_node_time, ff_proc, ffmpeg_stderr_reader, ingest,
+                     log, messenger, play, playout, pre, terminate_processes)
 
 
 def output():
@@ -35,17 +33,13 @@ def output():
     this output is for streaming to a target address,
     like rtmp, rtp, svt, etc.
     """
+    live_on = False
+    stream_queue = None
+
+    if ingest.enable:
+        stream_queue = ingest_stream()
 
     messenger.info(f'Stream to null output, only usefull for debugging...')
-
-    ff_pre_settings = [
-        '-pix_fmt', 'yuv420p', '-r', str(pre.fps),
-        '-c:v', 'mpeg2video', '-g', '1',
-        '-b:v', f'{pre.v_bitrate}k',
-        '-minrate', f'{pre.v_bitrate}k',
-        '-maxrate', f'{pre.v_bitrate}k',
-        '-bufsize', f'{pre.v_bufsize}k'
-        ] + pre_audio_codec() + ['-f', 'mpegts', '-']
 
     try:
         enc_cmd = [
@@ -74,7 +68,7 @@ def output():
                 dec_cmd = [
                     'ffmpeg', '-v', f'level+{log.ff_level.lower()}',
                     '-hide_banner', '-nostats'
-                    ] + node['src_cmd'] + node['filter'] + ff_pre_settings
+                    ] + node['src_cmd'] + node['filter'] + pre.settings
 
                 messenger.debug(f'Decoder CMD: "{" ".join(dec_cmd)}"')
 
@@ -87,10 +81,20 @@ def output():
                     dec_err_thread.start()
 
                     while True:
-                        buf = ff_proc.decoder.stdout.read(COPY_BUFSIZE)
-                        if not buf:
+                        buf_dec = ff_proc.decoder.stdout.read(pre.buffer_size)
+                        if stream_queue and not stream_queue.empty():
+                            buf_live = stream_queue.get()
+                            ff_proc.encoder.stdin.write(buf_live)
+                            live_on = True
+
+                            del buf_dec
+                        elif buf_dec:
+                            ff_proc.encoder.stdin.write(buf_dec)
+                        else:
+                            if live_on:
+                                check_node_time(node, get_source)
+                                live_on = False
                             break
-                        ff_proc.encoder.stdin.write(buf)
 
         except BrokenPipeError:
             messenger.error('Broken Pipe!')
