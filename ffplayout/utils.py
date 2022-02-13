@@ -293,7 +293,7 @@ ingest.stream_input = shlex.split(_cfg['ingest']['stream_input'])
 if stdin_args.play_mode:
     pre.mode = stdin_args.play_mode
 else:
-    pre.mode = _cfg['play']['mode']
+    pre.mode = _cfg['processing']['mode']
 
 pre.w = _cfg['processing']['width']
 pre.h = _cfg['processing']['height']
