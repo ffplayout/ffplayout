@@ -38,8 +38,8 @@ from pathlib import Path
 from subprocess import PIPE, Popen
 from threading import Thread
 
-from ..utils import (ff_proc, ffmpeg_stderr_reader, log, messenger, play,
-                     playout, sync_op, terminate_processes)
+from ..utils import (ff_proc, ffmpeg_stderr_reader, log, messenger, playout,
+                     pre, sync_op, terminate_processes)
 
 
 def clean_ts():
@@ -77,7 +77,7 @@ def output():
     sync_op.realtime = True
 
     try:
-        Iter = import_module(f'ffplayout.player.{play.mode}').GetSourceIter
+        Iter = import_module(f'ffplayout.player.{pre.mode}').GetSourceIter
         get_source = Iter()
 
         try:

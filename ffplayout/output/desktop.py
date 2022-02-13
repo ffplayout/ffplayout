@@ -25,7 +25,7 @@ from threading import Thread
 
 from ..ingest_server import ingest_stream
 from ..utils import (check_node_time, ff_proc, ffmpeg_stderr_reader, ingest,
-                     log, lower_third, messenger, play, pre, sync_op,
+                     log, lower_third, messenger, pre, sync_op,
                      terminate_processes)
 
 
@@ -65,7 +65,7 @@ def output():
         enc_err_thread.daemon = True
         enc_err_thread.start()
 
-        Iter = import_module(f'ffplayout.player.{play.mode}').GetSourceIter
+        Iter = import_module(f'ffplayout.player.{pre.mode}').GetSourceIter
         get_source = Iter()
 
         try:

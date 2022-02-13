@@ -31,7 +31,8 @@ logging:
     ffmpeg_level: "ERROR"
 
 processing:
-    helptext: Default processing, for all clips that they get prepared in that way,
+    helptext: Set playing mode, like playlist; folder, or you own custom one.
+        Default processing, for all clips that they get prepared in that way,
         so the output is unique. 'aspect' must be a float number. 'logo' is only used
         if the path exist. 'logo_scale' scale the logo to target size, leave it blank
         when no scaling is needed, format is 'number:number', for example '100:-1'
@@ -42,6 +43,7 @@ processing:
         the filtering, > 1 gives the option to use the same filters for multiple outputs.
         This outputs can be taken in 'stream_param', names will be vout2, vout3;
         aout2, aout2 etc.
+    mode: playlist
     width: 1024
     height: 576
     aspect: 1.778
@@ -66,10 +68,6 @@ ingest:
         -f live_flv
         -listen 1
         -i rtmp://localhost:1936/live/stream
-
-play:
-    helptext: Set playing mode, like playlist; folder, or you own custom one.
-    mode: playlist
 
 playlist:
     helptext: >

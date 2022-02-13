@@ -140,7 +140,6 @@ mail = SimpleNamespace()
 log = SimpleNamespace()
 pre = SimpleNamespace()
 ingest = SimpleNamespace()
-play = SimpleNamespace()
 playlist = SimpleNamespace()
 storage = SimpleNamespace()
 lower_third = SimpleNamespace()
@@ -246,11 +245,6 @@ def load_config():
 
 _cfg = load_config()
 
-if stdin_args.play_mode:
-    play.mode = stdin_args.play_mode
-else:
-    play.mode = _cfg['play']['mode']
-
 if stdin_args.playlist:
     playlist.path = stdin_args.playlist
 else:
@@ -295,6 +289,11 @@ def pre_audio_codec():
 
 ingest.enable = _cfg['ingest']['enable']
 ingest.stream_input = shlex.split(_cfg['ingest']['stream_input'])
+
+if stdin_args.play_mode:
+    pre.mode = stdin_args.play_mode
+else:
+    pre.mode = _cfg['play']['mode']
 
 pre.w = _cfg['processing']['width']
 pre.h = _cfg['processing']['height']
@@ -834,7 +833,7 @@ def check_sync(delta, node=None):
     check that we are in tolerance time
     """
 
-    if play.mode == 'playlist' and playlist.start and playlist.length:
+    if pre.mode == 'playlist' and playlist.start and playlist.length:
         # save time delta to global variable for syncing
         # this is needed for real time filter
         sync_op.time_delta = delta
@@ -853,7 +852,7 @@ def check_node_time(node, get_source):
     clip_length = node['out'] - node['seek']
     clip_end = current_time + clip_length
 
-    if play.mode == 'playlist' and clip_end > current_time:
+    if pre.mode == 'playlist' and clip_end > current_time:
         get_source.first = True
 
 
