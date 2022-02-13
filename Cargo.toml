@@ -8,6 +8,9 @@ edition = "2021"
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 serde_yaml = "0.8"
+regex = "1"
+chrono = "0.4"
+clap = { version = "3.0.14", features = ["derive"] }
 
 [[bin]]
 name = "ffplayout"
