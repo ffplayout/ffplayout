@@ -1,15 +1,19 @@
 mod arg_parse;
-mod config_reader;
+mod config;
 mod utils;
+mod folder;
 
 fn main() {
-    //println!("{:#?}", utils::Mail());
-    let config = config_reader::read_yaml();
+    let config = config::get_config();
+    // println!("{:#?}", config);
+
+    folder::walk(&config.storage.path, config.storage.shuffle, &config.storage.extensions);
+
     let args = arg_parse::get_args();
-    println!("{:#?}", config);
+
     println!("{:#?}", args);
     println!("{:#?}", args.config.is_some());
-    println!("{:#?}", args.config.unwrap());
+    // println!("{:#?}", args.config.unwrap());
     //println!("{:?}", config.general.stop_threshold);
 
     println!("{:#?}", utils::get_sec());

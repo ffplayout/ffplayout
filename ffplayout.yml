@@ -58,6 +58,7 @@ processing:
     loud_tp: -1.5
     loud_lra: 11
     output_count: 1
+    volume: 1
 
 ingest:
     helptext: Works not with direct hls output, it always needs full processing! Run a server
@@ -73,12 +74,12 @@ playlist:
         script. Subdirectories needs this structure '/playlists/2018/01'. 'day_start'
         means at which time the playlist should start, leave day_start blank when playlist
         should always start at the begin. 'length' represent the target length from
-        playlist, when is blank real length will not consider. 'loop true' works with
+        playlist, when is blank real length will not consider. 'infinit true' works with
         single playlist file and loops it infinitely.
     path: "/playlists"
     day_start: "5:59:25"
     length: "24:00:00"
-    loop: false
+    infinit: false
 
 storage:
     helptext: Play ordered or randomly files from path. 'filler_clip' is for fill
@@ -87,8 +88,8 @@ storage:
     path: "/mediaStorage"
     filler_clip: "/mediaStorage/filler/filler.mp4"
     extensions:
-        - ".mp4"
-        - ".mkv"
+        - "mp4"
+        - "mkv"
     shuffle: true
 
 text:
