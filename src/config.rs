@@ -1,7 +1,10 @@
 use serde::{Deserialize, Serialize};
 use serde_yaml::{self};
+use std::fs::File;
 use std::path::Path;
 // use regex::Regex;
+
+use crate::arg_parse;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
@@ -58,6 +61,7 @@ pub struct Processing {
     pub loud_tp: f32,
     pub loud_lra: f32,
     pub output_count: u32,
+    pub volume: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -71,7 +75,7 @@ pub struct Playlist {
     pub path: String,
     pub day_start: String,
     pub length: String,
-    pub r#loop: bool,
+    pub infinit: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -100,15 +104,51 @@ pub struct Out {
     pub stream_param: Vec<String>,
 }
 
-pub fn read_yaml() -> Config {
+pub fn get_config() -> Config {
+    let args = arg_parse::get_args();
     let mut config_path: String = "ffplayout.yml".to_string();
 
-    if Path::new("/etc/ffplayout/ffplayout.yml").exists() {
+    if args.config.is_some() {
+        config_path = args.config.unwrap();
+    } else if Path::new("/etc/ffplayout/ffplayout.yml").exists() {
         config_path = "/etc/ffplayout/ffplayout.yml".to_string();
     }
 
-    let f = std::fs::File::open(config_path).expect("Could not open file.");
-    let config: Config = serde_yaml::from_reader(f).expect("Could not read config file.");
+    let f = File::open(config_path).expect("Could not open config file.");
+    let mut config: Config = serde_yaml::from_reader(f)
+        .expect("Could not read config file.");
+
+    if args.playlist.is_some() {
+        config.playlist.path = args.playlist.unwrap();
+    }
+
+    if args.play_mode.is_some() {
+        config.processing.mode = args.play_mode.unwrap();
+    }
+
+    if args.folder.is_some() {
+        config.storage.path = args.folder.unwrap();
+    }
+
+    if args.start.is_some() {
+        config.playlist.day_start = args.start.unwrap();
+    }
+
+    if args.length.is_some() {
+        config.playlist.length = args.length.unwrap();
+    }
+
+    if args.infinit {
+        config.playlist.infinit = args.infinit;
+    }
+
+    if args.output.is_some() {
+        config.out.mode = args.output.unwrap();
+    }
+
+    if args.volume.is_some() {
+        config.processing.volume = args.volume.unwrap();
+    }
 
     config
 }
