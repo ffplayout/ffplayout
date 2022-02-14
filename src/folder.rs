@@ -49,6 +49,10 @@ impl Source {
         let mut rng = thread_rng();
         self.files.shuffle(&mut rng);
     }
+
+    fn sort(&mut self) {
+        self.files.sort();
+    }
 }
 
 fn file_extension(filename: &Path) -> Option<&str> {
@@ -95,6 +99,8 @@ pub fn walk(path: &String, shuffle: bool, extensions: &Vec<String>) {
         if shuffle {
             println!("Shuffle files in folder");
             source.shuffle();
+        } else {
+            source.sort();
         }
 
         while index < source.files.len() {
