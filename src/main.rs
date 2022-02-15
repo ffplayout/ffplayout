@@ -1,21 +1,24 @@
 mod arg_parse;
 mod config;
 mod utils;
-mod folder;
+// mod folder;
+mod json;
 
 fn main() {
     let config = config::get_config();
     // println!("{:#?}", config);
 
-    folder::walk(&config.storage.path, config.storage.shuffle, &config.storage.extensions);
+    // folder::walk(&config.storage.path, config.storage.shuffle, &config.storage.extensions);
 
-    let args = arg_parse::get_args();
+    json::read(&config);
 
-    println!("{:#?}", args);
-    println!("{:#?}", args.config.is_some());
-    // println!("{:#?}", args.config.unwrap());
-    //println!("{:?}", config.general.stop_threshold);
+    // let args = arg_parse::get_args();
 
-    println!("{:#?}", utils::get_sec());
-    println!("{:#?}", utils::get_timestamp());
+    // println!("{:#?}", args);
+    // println!("{:#?}", args.config.is_some());
+    // // println!("{:#?}", args.config.unwrap());
+    // //println!("{:?}", config.general.stop_threshold);
+
+    // println!("{:#?}", utils::get_sec());
+    // println!("{:#?}", utils::get_timestamp());
 }

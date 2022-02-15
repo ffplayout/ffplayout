@@ -5,7 +5,7 @@ use rand::thread_rng;
 use std::ffi::OsStr;
 use std::path::Path;
 use std::process;
-use std::sync::mpsc::{channel, Receiver};
+use std::sync::mpsc::{channel, Receiver, TryRecvError};
 use std::time::Duration;
 use std::{thread, time};
 use walkdir::WalkDir;
@@ -21,9 +21,9 @@ impl Source {
 
         for entry in WalkDir::new(path).into_iter().filter_map(|e| e.ok()) {
             if entry.path().is_file() {
-                let ext = file_extension(entry.path()).unwrap().to_lowercase();
+                let ext = file_extension(entry.path());
 
-                if extensions.contains(&ext) {
+                if ext.is_some() && extensions.contains(&ext.unwrap().to_lowercase()) {
                     file_list.push(entry.path().display().to_string());
                 }
             }
@@ -78,14 +78,18 @@ fn watch_folder(source: &mut Source, receiver: &Receiver<notify::DebouncedEvent>
                 );
             }
             _ => (),
+        }
+        Err(err) => {
+            if err == TryRecvError::Disconnected {
+                println!("Folder watch error: {:?}", err)
+            }
         },
-        Err(_) => (),
     }
 }
 
 pub fn walk(path: &String, shuffle: bool, extensions: &Vec<String>) {
     if !Path::new(path).exists() {
-        println!("Folder path not exists: '{}'", path);
+        println!("Folder path not exists: '{path}'");
         process::exit(0x0100);
     }
     let mut source = Source::new(path, extensions);
@@ -97,7 +101,7 @@ pub fn walk(path: &String, shuffle: bool, extensions: &Vec<String>) {
 
     loop {
         if shuffle {
-            println!("Shuffle files in folder");
+            println!("Shuffle files in folder: '{path}'");
             source.shuffle();
         } else {
             source.sort();
@@ -105,7 +109,7 @@ pub fn walk(path: &String, shuffle: bool, extensions: &Vec<String>) {
 
         while index < source.files.len() {
             watch_folder(&mut source, &receiver);
-            println!("Play file {}: {:?}", index, source.files[index]);
+            println!("Play file {index}: {:?}", source.files[index]);
             index += 1;
 
             thread::sleep(time::Duration::from_secs(1));

@@ -95,12 +95,24 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "clap",
+ "ffprobe",
  "notify",
  "rand",
  "regex",
  "serde",
+ "serde_json",
  "serde_yaml",
  "walkdir",
+]
+
+[[package]]
+name = "ffprobe"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f439d57070a29c93e5bdf9f98b973360aa96b1b8c203793de54482f168fc216a"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -220,6 +232,12 @@ checksum = "b2b3ea6ff95e175473f8ffe6a7eb7c00d054240321b84c57051175fe3c1e075e"
 dependencies = [
  "libc",
 ]
+
+[[package]]
+name = "itoa"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1aab8fc367588b89dcee83ab0fd66b72b50b72fa1904d7095045ace2b0c81c35"
 
 [[package]]
 name = "kernel32-sys"
@@ -507,6 +525,17 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "serde_json"
+version = "1.0.79"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8e8d9fa5c3b304765ce1fd9c4c8a3de2c8db365a5b91be52f186efc675681d95"
+dependencies = [
+ "itoa",
+ "ryu",
+ "serde",
 ]
 
 [[package]]

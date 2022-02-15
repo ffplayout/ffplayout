@@ -8,14 +8,16 @@ edition = "2021"
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 serde_yaml = "0.8"
+serde_json = "1.0"
 regex = "1"
 chrono = "0.4"
 clap = { version = "3.0.14", features = ["derive"] }
 notify = "4.0.0"
 walkdir = "2"
 rand = "0.8.5"
-# tokio = { version = "1.16.1", features = ["full"] }
+ffprobe = "0.3"
 
+# tokio = { version = "1.16.1", features = ["full"] }
 [[bin]]
 name = "ffplayout"
 path = "src/main.rs"
