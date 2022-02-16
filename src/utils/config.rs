@@ -1,10 +1,9 @@
 use serde::{Deserialize, Serialize};
 use serde_yaml::{self};
-use std::fs::File;
-use std::path::Path;
+use std::{fs::File, path::Path, process};
 // use regex::Regex;
 
-use crate::arg_parse;
+use crate::utils::get_args;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
@@ -62,6 +61,7 @@ pub struct Processing {
     pub loud_lra: f32,
     pub output_count: u32,
     pub volume: String,
+    pub settings: Option<Vec<String>>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -105,18 +105,61 @@ pub struct Out {
 }
 
 pub fn get_config() -> Config {
-    let args = arg_parse::get_args();
+    let args = get_args();
     let mut config_path: String = "ffplayout.yml".to_string();
 
     if args.config.is_some() {
         config_path = args.config.unwrap();
-    } else if Path::new("/etc/ffplayout/ffplayout.yml").exists() {
+    } else if Path::new("/etc/ffplayout/ffplayout.yml").is_file() {
         config_path = "/etc/ffplayout/ffplayout.yml".to_string();
     }
 
+    if !Path::new(&config_path).is_file() {
+        println!(
+            "{} '{config_path}'\n{}",
+            "ffplayout config doesn't exists:",
+            "Put 'ffplayout.yml' in '/etc/playout/' or beside the executable!"
+        );
+        process::exit(0x0100);
+    }
+
     let f = File::open(config_path).expect("Could not open config file.");
-    let mut config: Config = serde_yaml::from_reader(f)
-        .expect("Could not read config file.");
+    let mut config: Config = serde_yaml::from_reader(f).expect("Could not read config file.");
+
+    let fps = config.processing.fps.to_string();
+    let bitrate = config.processing.width * config.processing.height / 10;
+
+    let settings: Vec<String> = vec![
+        "-pix_fmt",
+        "yuv420p",
+        "-r",
+        &fps,
+        "-c:v",
+        "mpeg2video",
+        "-g",
+        "1",
+        "-b:v",
+        format!("{}k", bitrate).as_str(),
+        "-minrate",
+        format!("{}k", bitrate).as_str(),
+        "-maxrate",
+        format!("{}k", bitrate).as_str(),
+        "-bufsize",
+        format!("{}k", bitrate / 2).as_str(),
+        "-c:a",
+        "s302m",
+        "-strict",
+        "-2",
+        "-ar",
+        "48000",
+        "-ac",
+        "2",
+        "-f",
+        "mpegts",
+        "-",
+    ].iter().map(|&s|s.into()).collect();
+
+    config.processing.settings = Some(settings);
 
     if args.playlist.is_some() {
         config.playlist.path = args.playlist.unwrap();

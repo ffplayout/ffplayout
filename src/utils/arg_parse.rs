@@ -17,19 +17,24 @@ pub struct Args {
     #[clap(short, long, help = "path from playlist")]
     pub playlist: Option<String>,
 
-    #[clap(short, long,
-        help = "start time in 'hh:mm:ss', 'now' for start with first")]
+    #[clap(
+        short,
+        long,
+        help = "start time in 'hh:mm:ss', 'now' for start with first"
+    )]
     pub start: Option<String>,
 
-    #[clap(short = 't',
-    long, help = "set length in 'hh:mm:ss', 'none' for no length check")]
+    #[clap(
+        short = 't',
+        long,
+        help = "set length in 'hh:mm:ss', 'none' for no length check"
+    )]
     pub length: Option<String>,
 
     #[clap(short, long, help = "loop playlist infinitely")]
     pub infinit: bool,
 
-    #[clap(short, long,
-        help = "set output mode: desktop, hls, stream")]
+    #[clap(short, long, help = "set output mode: desktop, hls, stream")]
     pub output: Option<String>,
 
     #[clap(short, long, help = "set audio volume")]

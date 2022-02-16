@@ -1,13 +1,14 @@
 use notify::DebouncedEvent::{Create, Remove, Rename};
 use notify::{watcher, RecursiveMode, Watcher};
-use rand::seq::SliceRandom;
-use rand::thread_rng;
-use std::ffi::OsStr;
-use std::path::Path;
-use std::process;
-use std::sync::mpsc::{channel, Receiver, TryRecvError};
-use std::time::Duration;
-use std::{thread, time};
+use rand::(seq::SliceRandom, thread_rng);
+use std::{
+    ffi::OsStr,
+    path::Path,
+    process,
+    sync::mpsc::{channel, Receiver, TryRecvError},
+    thread, time,
+    time::Duration,
+};
 use walkdir::WalkDir;
 
 #[derive(Clone)]
@@ -78,12 +79,12 @@ fn watch_folder(source: &mut Source, receiver: &Receiver<notify::DebouncedEvent>
                 );
             }
             _ => (),
-        }
+        },
         Err(err) => {
             if err == TryRecvError::Disconnected {
                 println!("Folder watch error: {:?}", err)
             }
-        },
+        }
     }
 }
 

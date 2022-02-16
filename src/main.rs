@@ -1,16 +1,16 @@
-mod arg_parse;
-mod config;
+mod output;
 mod utils;
-// mod folder;
-mod json;
+
+use crate::output::desktop;
+use crate::utils::get_config;
 
 fn main() {
-    let config = config::get_config();
+    let config = get_config();
     // println!("{:#?}", config);
 
     // folder::walk(&config.storage.path, config.storage.shuffle, &config.storage.extensions);
 
-    json::read(&config);
+    // read_json(&config);
 
     // let args = arg_parse::get_args();
 
@@ -21,4 +21,6 @@ fn main() {
 
     // println!("{:#?}", utils::get_sec());
     // println!("{:#?}", utils::get_timestamp());
+
+    desktop::play(config.processing.settings).expect("Play on desktop failed!");
 }

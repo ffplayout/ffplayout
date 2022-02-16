@@ -2,12 +2,17 @@ use chrono::prelude::*;
 use chrono::Duration;
 use std::fs::metadata;
 
-pub fn get_sec() -> f64 {
-    let local: DateTime<Local> = Local::now();
+mod arg_parse;
+mod config;
+// mod folder;
+mod json_reader;
+mod playlist;
 
-    (local.hour() * 3600 + local.minute() * 60 + local.second()
-    ) as f64 + (local.nanosecond() as f64 / 1000000000.0)
-}
+pub use arg_parse::get_args;
+pub use config::{Config, get_config};
+// pub use folder::walk;
+pub use json_reader::read_json;
+pub use playlist::program;
 
 // pub fn get_timestamp() -> i64 {
 //     let local: DateTime<Local> = Local::now();
@@ -15,15 +20,22 @@ pub fn get_sec() -> f64 {
 //     local.timestamp_millis() as i64
 // }
 
+pub fn get_sec() -> f64 {
+    let local: DateTime<Local> = Local::now();
+
+    (local.hour() * 3600 + local.minute() * 60 + local.second()) as f64
+        + (local.nanosecond() as f64 / 1000000000.0)
+}
+
 pub fn get_date(seek: bool, start: f64, next: f64) -> String {
     let local: DateTime<Local> = Local::now();
 
     if seek && start > get_sec() {
-        return (local - Duration::days(1)).format("%Y-%m-%d").to_string()
+        return (local - Duration::days(1)).format("%Y-%m-%d").to_string();
     }
 
     if start == 0.0 && next >= 86400.0 {
-        return (local + Duration::days(1)).format("%Y-%m-%d").to_string()
+        return (local + Duration::days(1)).format("%Y-%m-%d").to_string();
     }
 
     local.format("%Y-%m-%d").to_string()
@@ -34,7 +46,7 @@ pub fn modified_time(path: String) -> Option<DateTime<Local>> {
 
     if let Ok(time) = metadata.modified() {
         let date_time: DateTime<Local> = time.into();
-        return Some(date_time)
+        return Some(date_time);
     }
 
     None
