@@ -11,10 +11,11 @@ pub struct CurrentProgram {
 impl CurrentProgram {
     fn new() -> Self {
         let config = get_config();
-        let program: Vec<Program> = read_json(&config).program;
+        let json = read_json(&config, true);
+        let program: Vec<Program> = json.program;
         Self {
             nodes: program,
-            idx: 0,
+            idx: json.start_index.unwrap(),
         }
     }
 }
@@ -31,7 +32,7 @@ impl Iterator for CurrentProgram {
         } else {
             // play first item from next playlist
             let config = get_config();
-            let program: Vec<Program> = read_json(&config).program;
+            let program: Vec<Program> = read_json(&config, false).program;
             self.nodes = program;
             self.idx = 1;
 
