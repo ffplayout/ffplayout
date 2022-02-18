@@ -116,7 +116,7 @@ pub fn get_config() -> Config {
 
     if !Path::new(&config_path).is_file() {
         println!(
-            "{} '{config_path}'\n{}",
+            "{} '{config_path}'\n{}\nYou found it in 'assets' folders...",
             "ffplayout config doesn't exists:",
             "Put 'ffplayout.yml' in '/etc/playout/' or beside the executable!"
         );
@@ -129,7 +129,7 @@ pub fn get_config() -> Config {
     let fps = config.processing.fps.to_string();
     let bitrate = config.processing.width * config.processing.height / 10;
 
-    let settings: Vec<String> = vec![
+    let settings = vec![
         "-pix_fmt",
         "yuv420p",
         "-r",
