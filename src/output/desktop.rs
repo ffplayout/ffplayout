@@ -4,10 +4,11 @@ use std::{
     process::{Command, Stdio},
 };
 
-use crate::utils::program;
+use crate::utils::{program, sec_to_time};
 
-pub fn play(_settings: Option<Vec<String>>) -> io::Result<()> {
+pub fn play(settings: Option<Vec<String>>) -> io::Result<()> {
     let get_source = program();
+    let dec_settings = settings.unwrap();
 
     let mut enc_proc = Command::new("ffplay")
         .args([
@@ -28,44 +29,22 @@ pub fn play(_settings: Option<Vec<String>>) -> io::Result<()> {
 
     if let Some(mut enc_input) = enc_proc.stdin.take() {
          for node in get_source {
-            println!("Play: {}", node.source);
+            println!("Play: {:#?}", node);
+            println!("Node begin: {:?}", sec_to_time(node.begin.unwrap()));
+            let cmd = node.cmd.unwrap();
+
+            let mut dec_cmd = vec![
+                "-v",
+                "level+error",
+                "-hide_banner",
+                "-nostats"
+            ];
+
+            dec_cmd.append(&mut cmd.iter().map(String::as_str).collect());
+            dec_cmd.append(&mut dec_settings.iter().map(String::as_str).collect());
 
             let mut dec_proc = Command::new("ffmpeg")
-                .args([
-                    "-v",
-                    "level+error",
-                    "-hide_banner",
-                    "-nostats",
-                    "-i",
-                    &node.source,
-                    "-pix_fmt",
-                    "yuv420p",
-                    "-r",
-                    "25",
-                    "-c:v",
-                    "mpeg2video",
-                    "-g",
-                    "1",
-                    "-b:v",
-                    "50000k",
-                    "-minrate",
-                    "50000k",
-                    "-maxrate",
-                    "50000k",
-                    "-bufsize",
-                    "25000k",
-                    "-c:a",
-                    "s302m",
-                    "-strict",
-                    "-2",
-                    "-ar",
-                    "48000",
-                    "-ac",
-                    "2",
-                    "-f",
-                    "mpegts",
-                    "-",
-                ])
+                .args(dec_cmd)
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
                 .spawn()
