@@ -1,3 +1,4 @@
+mod filter;
 mod output;
 mod utils;
 
@@ -22,5 +23,5 @@ fn main() {
     // println!("{:#?}", utils::get_sec());
     // println!("{:#?}", utils::get_timestamp());
 
-    desktop::play(config.processing.settings).expect("Play on desktop failed!");
+    desktop::play(config).expect("Play on desktop failed!");
 }
