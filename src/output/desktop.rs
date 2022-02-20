@@ -4,11 +4,11 @@ use std::{
     process::{Command, Stdio},
 };
 
-use crate::utils::{program, sec_to_time};
+use crate::utils::{program, sec_to_time, Config};
 
-pub fn play(settings: Option<Vec<String>>) -> io::Result<()> {
-    let get_source = program();
-    let dec_settings = settings.unwrap();
+pub fn play(config: Config) -> io::Result<()> {
+    let get_source = program(config.clone());
+    let dec_settings = config.processing.settings.unwrap();
 
     let mut enc_proc = Command::new("ffplay")
         .args([
@@ -29,9 +29,10 @@ pub fn play(settings: Option<Vec<String>>) -> io::Result<()> {
 
     if let Some(mut enc_input) = enc_proc.stdin.take() {
          for node in get_source {
-            println!("Play: {:#?}", node);
+            // println!("Play: {:#?}", node);
             println!("Node begin: {:?}", sec_to_time(node.begin.unwrap()));
             let cmd = node.cmd.unwrap();
+            let filter = node.filter.unwrap();
 
             let mut dec_cmd = vec![
                 "-v",
@@ -41,6 +42,7 @@ pub fn play(settings: Option<Vec<String>>) -> io::Result<()> {
             ];
 
             dec_cmd.append(&mut cmd.iter().map(String::as_str).collect());
+            dec_cmd.append(&mut filter.iter().map(String::as_str).collect());
             dec_cmd.append(&mut dec_settings.iter().map(String::as_str).collect());
 
             let mut dec_proc = Command::new("ffmpeg")

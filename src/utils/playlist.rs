@@ -1,10 +1,12 @@
 use crate::utils::{
-    get_config,
     json_reader::{read_json, Program},
-    modified_time, MediaProbe,
+    modified_time, Config, MediaProbe,
 };
 
+use crate::filter::filter_chains;
+
 pub struct CurrentProgram {
+    config: Config,
     json_mod: String,
     json_path: String,
     nodes: Vec<Program>,
@@ -12,11 +14,11 @@ pub struct CurrentProgram {
 }
 
 impl CurrentProgram {
-    fn new() -> Self {
-        let config = get_config();
+    fn new(config: Config) -> Self {
         let json = read_json(&config, true);
 
         Self {
+            config: config,
             json_mod: json.modified.unwrap(),
             json_path: json.current_file.unwrap(),
             nodes: json.program.into(),
@@ -25,12 +27,11 @@ impl CurrentProgram {
     }
 
     fn check_update(&mut self) {
-        let config = get_config();
         let mod_time = modified_time(self.json_path.clone());
 
         if !mod_time.unwrap().to_string().eq(&self.json_mod) {
             // when playlist has changed, reload it
-            let json = read_json(&config, true);
+            let json = read_json(&self.config, true);
 
             self.json_mod = json.modified.unwrap();
             self.nodes = json.program.into();
@@ -39,6 +40,10 @@ impl CurrentProgram {
 
     fn append_probe(&mut self, node: &mut Program) {
         node.probe = Some(MediaProbe::new(node.source.clone()))
+    }
+
+    fn add_filter(&mut self, node: &mut Program, last: bool, next: bool) {
+        node.filter = Some(filter_chains(node, &self.config, last, next));
     }
 }
 
@@ -49,14 +54,32 @@ impl Iterator for CurrentProgram {
         if self.idx < self.nodes.len() {
             self.check_update();
             let mut current = self.nodes[self.idx].clone();
+            let mut last = false;
+            let mut next = false;
+
+            if self.idx > 0 && self.nodes[self.idx - 1].category == "advertisement" {
+                last = true
+            }
+
             self.idx += 1;
 
+            if self.idx <= self.nodes.len() - 1 && self.nodes[self.idx].category == "advertisement" {
+                next = true
+            }
+
             self.append_probe(&mut current);
+            self.add_filter(&mut current, last, next);
 
             Some(current)
         } else {
-            let config = get_config();
-            let json = read_json(&config, false);
+            let mut last = false;
+            let mut next = false;
+
+            if self.nodes[self.idx - 1].category == "advertisement" {
+                last = true
+            }
+
+            let json = read_json(&self.config, false);
             self.json_mod = json.modified.unwrap();
             self.json_path = json.current_file.unwrap();
             self.nodes = json.program.into();
@@ -64,13 +87,18 @@ impl Iterator for CurrentProgram {
 
             let mut current = self.nodes[0].clone();
 
+            if self.nodes[self.idx].category == "advertisement" {
+                next = true
+            }
+
             self.append_probe(&mut current);
+            self.add_filter(&mut current, last, next);
 
             Some(current)
         }
     }
 }
 
-pub fn program() -> CurrentProgram {
-    CurrentProgram::new()
+pub fn program(config: Config) -> CurrentProgram {
+    CurrentProgram::new(config)
 }
