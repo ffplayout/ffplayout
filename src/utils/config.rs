@@ -5,7 +5,7 @@ use std::{fs::File, path::Path, process};
 
 use crate::utils::get_args;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Config {
     pub general: General,
     pub mail: Mail,
@@ -18,12 +18,12 @@ pub struct Config {
     pub out: Out,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct General {
     pub stop_threshold: u32,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Mail {
     pub subject: String,
     pub smtp_server: String,
@@ -34,7 +34,7 @@ pub struct Mail {
     pub mail_level: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Logging {
     pub log_to_file: bool,
     pub backup_count: u32,
@@ -43,13 +43,13 @@ pub struct Logging {
     pub ffmpeg_level: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Processing {
     pub mode: String,
-    pub width: u32,
-    pub height: u32,
-    pub aspect: f32,
-    pub fps: u32,
+    pub width: i64,
+    pub height: i64,
+    pub aspect: f64,
+    pub fps: f64,
     pub add_logo: bool,
     pub logo: String,
     pub logo_scale: String,
@@ -64,13 +64,13 @@ pub struct Processing {
     pub settings: Option<Vec<String>>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Ingest {
     pub enable: bool,
     pub stream_input: Vec<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Playlist {
     pub path: String,
     pub day_start: String,
@@ -78,7 +78,7 @@ pub struct Playlist {
     pub infinit: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Storage {
     pub path: String,
     pub filler_clip: String,
@@ -86,7 +86,7 @@ pub struct Storage {
     pub shuffle: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Text {
     pub add_text: bool,
     pub over_pre: bool,
@@ -96,7 +96,7 @@ pub struct Text {
     pub regex: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Out {
     pub mode: String,
     pub preview: bool,
