@@ -15,14 +15,14 @@ mod playlist;
 pub use arg_parse::get_args;
 pub use config::{get_config, Config};
 // pub use folder::walk;
-pub use json_reader::read_json;
+pub use json_reader::{read_json, Program};
 pub use playlist::program;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MediaProbe {
-    format: Option<Format>,
-    audio_streams: Option<Vec<Stream>>,
-    video_streams: Option<Vec<Stream>>,
+   pub format: Option<Format>,
+   pub audio_streams: Option<Vec<Stream>>,
+   pub video_streams: Option<Vec<Stream>>,
 }
 
 impl MediaProbe {
@@ -117,4 +117,12 @@ pub fn sec_to_time(sec: f64) -> String {
     let date_time = DateTime::<Utc>::from(d);
 
     date_time.format("%H:%M:%S").to_string()
+}
+
+pub fn is_close(a: f64, b: f64, to: f64) -> bool {
+    if (a - b).abs() > to {
+        return true
+    }
+
+    false
 }
