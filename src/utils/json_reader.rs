@@ -26,6 +26,8 @@ pub struct Program {
     pub cmd: Option<Vec<String>>,
     pub filter: Option<Vec<String>>,
     pub probe: Option<MediaProbe>,
+    pub last_ad: Option<bool>,
+    pub next_ad: Option<bool>,
 }
 
 pub fn read_json(config: &Config, seek: bool) -> Playlist {
