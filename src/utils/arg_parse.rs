@@ -38,7 +38,7 @@ pub struct Args {
     pub output: Option<String>,
 
     #[clap(short, long, help = "set audio volume")]
-    pub volume: Option<String>,
+    pub volume: Option<f64>,
 }
 
 pub fn get_args() -> Args {

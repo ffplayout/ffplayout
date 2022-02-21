@@ -60,7 +60,7 @@ pub struct Processing {
     pub loud_tp: f32,
     pub loud_lra: f32,
     pub output_count: u32,
-    pub volume: String,
+    pub volume: f64,
     pub settings: Option<Vec<String>>,
 }
 
@@ -91,6 +91,7 @@ pub struct Text {
     pub add_text: bool,
     pub over_pre: bool,
     pub bind_address: String,
+    pub fontfile: String,
     pub text_from_filename: bool,
     pub style: String,
     pub regex: String,
