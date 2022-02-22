@@ -20,7 +20,7 @@ pub struct Config {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct General {
-    pub stop_threshold: u32,
+    pub stop_threshold: f64,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
