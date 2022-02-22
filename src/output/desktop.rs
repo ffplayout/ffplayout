@@ -47,7 +47,7 @@ pub fn play(config: Config) -> io::Result<()> {
     if let Some(mut enc_input) = enc_proc.stdin.take() {
         for node in get_source {
             println!("Node begin: {:?}", sec_to_time(node.begin.unwrap()));
-            //println!("Play: {:#?}", node.filter);
+            println!("Play: {:#?}", node.source);
 
             let cmd = node.cmd.unwrap();
             let filter = node.filter.unwrap();
@@ -61,7 +61,7 @@ pub fn play(config: Config) -> io::Result<()> {
             }
 
             dec_cmd.append(&mut dec_settings.iter().map(String::as_str).collect());
-            println!("Play: {:?}", dec_cmd);
+            println!("Decoder CMD: '{:?}'", dec_cmd);
 
             let mut dec_proc = Command::new("ffmpeg")
                 .args(dec_cmd)
