@@ -2,9 +2,7 @@ use chrono::prelude::*;
 use chrono::Duration;
 use ffprobe::{ffprobe, Format, Stream};
 use serde::{Deserialize, Serialize};
-use std::fs::metadata;
-use std::time::{UNIX_EPOCH};
-use std::time;
+use std::{fs::metadata, process, time, time::UNIX_EPOCH};
 
 mod arg_parse;
 mod config;
@@ -20,9 +18,9 @@ pub use playlist::program;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MediaProbe {
-   pub format: Option<Format>,
-   pub audio_streams: Option<Vec<Stream>>,
-   pub video_streams: Option<Vec<Stream>>,
+    pub format: Option<Format>,
+    pub audio_streams: Option<Vec<Stream>>,
+    pub video_streams: Option<Vec<Stream>>,
 }
 
 impl MediaProbe {
@@ -52,8 +50,16 @@ impl MediaProbe {
 
                 MediaProbe {
                     format: Some(obj.format),
-                    audio_streams: if a_stream.len() > 0 {Some(a_stream)} else {None},
-                    video_streams: if v_stream.len() > 0 {Some(v_stream)} else {None},
+                    audio_streams: if a_stream.len() > 0 {
+                        Some(a_stream)
+                    } else {
+                        None
+                    },
+                    video_streams: if v_stream.len() > 0 {
+                        Some(v_stream)
+                    } else {
+                        None
+                    },
                 }
             }
             Err(err) => {
@@ -111,6 +117,19 @@ pub fn modified_time(path: String) -> Option<DateTime<Local>> {
     None
 }
 
+pub fn time_to_sec(time_str: &String) -> f64 {
+    if ["now", "", "none"].contains(&time_str.as_str()) || !time_str.contains(":") {
+        return 0.0
+    }
+
+    let t: Vec<&str> = time_str.split(':').collect();
+    let h: f64 = t[0].parse().unwrap();
+    let m: f64 = t[1].parse().unwrap();
+    let s: f64 = t[2].parse().unwrap();
+
+    h * 3600.0 + m * 60.0 + s
+}
+
 pub fn sec_to_time(sec: f64) -> String {
     let d = UNIX_EPOCH + time::Duration::from_secs(sec as u64);
     // Create DateTime from SystemTime
@@ -120,9 +139,64 @@ pub fn sec_to_time(sec: f64) -> String {
 }
 
 pub fn is_close(a: f64, b: f64, to: f64) -> bool {
-    if (a - b).abs() > to {
-        return true
+    if (a - b).abs() < to {
+        return true;
     }
 
     false
+}
+
+pub fn get_delta(begin: &f64, config: &Config) -> f64 {
+    let mut current_time = get_sec();
+    let start = time_to_sec(&config.playlist.day_start);
+    let length = time_to_sec(&config.playlist.length);
+    let mut target_length = 86400.0;
+
+    if length > 0.0 && length != target_length {
+        target_length = length
+    }
+
+    if begin == &start && start == 0.0 && 86400.0 - current_time < 4.0 {
+        current_time -= target_length
+    } else if start >= current_time && begin != &start {
+        current_time += target_length
+    }
+
+    let mut current_delta = begin - current_time;
+
+    if is_close(current_delta, 86400.0, config.general.stop_threshold) {
+        current_delta -= 86400.0
+    }
+
+    current_delta
+}
+
+pub fn check_sync(delta: f64, config: &Config) {
+    if delta.abs() > config.general.stop_threshold && config.general.stop_threshold > 0.0 {
+        println!("Start time out of sync for '{}' seconds", delta);
+        process::exit(0x0100);
+    }
+}
+
+pub fn gen_dummy(duration: f64, config: &Config) -> (String, Vec<String>) {
+    let color = "#121212";
+    let source = format!(
+        "color=c={color}:s={}x{}:d={duration}",
+        config.processing.width, config.processing.height
+    );
+    let cmd: Vec<String> = vec![
+        "-f".to_string(),
+        "lavfi".to_string(),
+        "-i".to_string(),
+        format!(
+            "{source}:r={},format=pix_fmts=yuv420p",
+            config.processing.fps
+        ),
+        "-f".to_string(),
+        "lavfi".to_string(),
+        "-i".to_string(),
+        format!("anoisesrc=d={duration}:c=pink:r=48000:a=0.05"),
+    ];
+
+    (source, cmd)
 }

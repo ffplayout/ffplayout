@@ -1,4 +1,7 @@
+use std::path::Path;
+
 use crate::utils::{
+    check_sync, gen_dummy, get_delta,
     json_reader::{read_json, Program},
     modified_time, Config, MediaProbe,
 };
@@ -10,6 +13,7 @@ pub struct CurrentProgram {
     json_mod: String,
     json_path: String,
     nodes: Vec<Program>,
+    init: bool,
     idx: usize,
 }
 
@@ -22,6 +26,7 @@ impl CurrentProgram {
             json_mod: json.modified.unwrap(),
             json_path: json.current_file.unwrap(),
             nodes: json.program.into(),
+            init: true,
             idx: json.start_index.unwrap(),
         }
     }
@@ -31,7 +36,7 @@ impl CurrentProgram {
 
         if !mod_time.unwrap().to_string().eq(&self.json_mod) {
             // when playlist has changed, reload it
-            let json = read_json(&self.config, true);
+            let json = read_json(&self.config, false);
 
             self.json_mod = json.modified.unwrap();
             self.nodes = json.program.into();
@@ -61,15 +66,34 @@ impl Iterator for CurrentProgram {
                 last = true
             }
 
+            println!("Last: {}", self.nodes[self.idx - 1].source);
+            println!("Next: {}", self.nodes[self.idx + 1].source);
+
             self.idx += 1;
 
-            if self.idx <= self.nodes.len() - 1 && self.nodes[self.idx].category == "advertisement" {
+            if self.idx <= self.nodes.len() - 1 && self.nodes[self.idx].category == "advertisement"
+            {
                 next = true
             }
 
-            self.append_probe(&mut current);
-            self.add_filter(&mut current, last, next);
+            if !self.init {
+                let delta = get_delta(&current.begin.unwrap(), &self.config);
+                println!("Delta: {delta}");
+                check_sync(delta, &self.config);
+            }
 
+            if Path::new(&current.source).is_file() {
+                self.append_probe(&mut current);
+                self.add_filter(&mut current, last, next);
+            } else {
+                println!("File not found: {}", current.source);
+                let dummy = gen_dummy(current.out - current.seek, &self.config);
+                current.source = dummy.0;
+                current.cmd = Some(dummy.1);
+                current.filter = Some(vec![]);
+            }
+
+            self.init = false;
             Some(current)
         } else {
             let mut last = false;
@@ -91,8 +115,22 @@ impl Iterator for CurrentProgram {
                 next = true
             }
 
-            self.append_probe(&mut current);
-            self.add_filter(&mut current, last, next);
+            if !self.init {
+                let delta = get_delta(&current.begin.unwrap(), &self.config);
+                println!("Delta: {delta}");
+                check_sync(delta, &self.config);
+            }
+
+            if Path::new(&current.source).is_file() {
+                self.append_probe(&mut current);
+                self.add_filter(&mut current, last, next);
+            } else {
+                println!("File not found: {}", current.source);
+                let dummy = gen_dummy(current.out - current.seek, &self.config);
+                current.source = dummy.0;
+                current.cmd = Some(dummy.1);
+                current.filter = Some(vec![]);
+            }
 
             Some(current)
         }
