@@ -65,7 +65,7 @@ fn deinterlace(field_order: Option<String>, chain: &mut Filters) {
 }
 
 fn pad(aspect: f64, chain: &mut Filters, config: &Config) {
-    if is_close(aspect, config.processing.aspect, 0.03) {
+    if !is_close(aspect, config.processing.aspect, 0.03) {
         if aspect < config.processing.aspect {
             chain.add_filter(
                 format!(
@@ -109,7 +109,7 @@ fn scale(width: i64, height: i64, aspect: f64, chain: &mut Filters, config: &Con
         )
     }
 
-    if is_close(aspect, config.processing.aspect, 0.03) {
+    if !is_close(aspect, config.processing.aspect, 0.03) {
         chain.add_filter(
             format!("setdar=dar={}", config.processing.aspect).into(),
             "video".into(),
@@ -220,35 +220,37 @@ pub fn filter_chains(node: &mut Program, config: &Config, last: bool, next: bool
     match probe {
         Some(p) => {
             // let a_stream = &p.audio_streams.unwrap()[0];
-            let v_stream = &p.video_streams.unwrap()[0];
-            let aspect_string = v_stream.display_aspect_ratio.clone().unwrap();
-            let aspect_vec: Vec<&str> = aspect_string.split(':').collect();
-            let w: f64 = aspect_vec[0].parse().unwrap();
-            let h: f64 = aspect_vec[1].parse().unwrap();
-            let source_aspect: f64 = w as f64 / h as f64;
-            let frame_rate_vec: Vec<&str> = v_stream.r_frame_rate.split('/').collect();
-            let rate: f64 = frame_rate_vec[0].parse().unwrap();
-            let factor: f64 = frame_rate_vec[1].parse().unwrap();
-            let frames_per_second: f64 = rate / factor;
+            if p.video_streams.is_some() {
+                let v_stream = &p.video_streams.unwrap()[0];
+                let aspect_string = v_stream.display_aspect_ratio.clone().unwrap();
+                let aspect_vec: Vec<&str> = aspect_string.split(':').collect();
+                let w: f64 = aspect_vec[0].parse().unwrap();
+                let h: f64 = aspect_vec[1].parse().unwrap();
+                let source_aspect: f64 = w as f64 / h as f64;
+                let frame_rate_vec: Vec<&str> = v_stream.r_frame_rate.split('/').collect();
+                let rate: f64 = frame_rate_vec[0].parse().unwrap();
+                let factor: f64 = frame_rate_vec[1].parse().unwrap();
+                let frames_per_second: f64 = rate / factor;
 
-            deinterlace(v_stream.field_order.clone(), &mut filters);
-            pad(source_aspect, &mut filters, &config);
-            fps(frames_per_second, &mut filters, &config);
-            scale(
-                v_stream.width.unwrap(),
-                v_stream.height.unwrap(),
-                source_aspect,
-                &mut filters,
-                &config,
-            );
-            extend_video(node, &mut filters);
-            fade(node, &mut filters, "video".into());
-            overlay(node, &mut filters, &config, last, next);
+                deinterlace(v_stream.field_order.clone(), &mut filters);
+                pad(source_aspect, &mut filters, &config);
+                fps(frames_per_second, &mut filters, &config);
+                scale(
+                    v_stream.width.unwrap(),
+                    v_stream.height.unwrap(),
+                    source_aspect,
+                    &mut filters,
+                    &config,
+                );
+                extend_video(node, &mut filters);
+                fade(node, &mut filters, "video".into());
+                overlay(node, &mut filters, &config, last, next);
 
-            add_audio(node, &mut filters);
-            extend_audio(node, &mut filters);
-            fade(node, &mut filters, "audio".into());
-            audio_volume(&mut filters, &config);
+                add_audio(node, &mut filters);
+                extend_audio(node, &mut filters);
+                fade(node, &mut filters, "audio".into());
+                audio_volume(&mut filters, &config);
+            }
         }
         None => {
             println!("Clip has no media probe object. No filter applied!")
@@ -259,23 +261,23 @@ pub fn filter_chains(node: &mut Program, config: &Config, last: bool, next: bool
     let mut filter_str: String = "".to_string();
     let mut filter_map: Vec<String> = vec![];
 
-    if filters.audio_chain.is_some() {
-        filter_str.push_str(filters.audio_chain.unwrap().as_str());
-        filter_str.push_str(filters.audio_map.clone().unwrap().as_str());
-        filter_map.append(&mut vec!["-map".to_string(), filters.audio_map.unwrap()]);
-    } else {
-        filter_map.append(&mut vec!["-map".to_string(), "0:a".to_string()]);
-    }
-
     if filters.video_chain.is_some() {
-        if filter_str.len() > 10 {
-            filter_str.push_str(";")
-        }
         filter_str.push_str(filters.video_chain.unwrap().as_str());
         filter_str.push_str(filters.video_map.clone().unwrap().as_str());
         filter_map.append(&mut vec!["-map".to_string(), filters.video_map.unwrap()]);
     } else {
         filter_map.append(&mut vec!["-map".to_string(), "0:v".to_string()]);
+    }
+
+    if filters.audio_chain.is_some() {
+        if filter_str.len() > 10 {
+            filter_str.push_str(";")
+        }
+        filter_str.push_str(filters.audio_chain.unwrap().as_str());
+        filter_str.push_str(filters.audio_map.clone().unwrap().as_str());
+        filter_map.append(&mut vec!["-map".to_string(), filters.audio_map.unwrap()]);
+    } else {
+        filter_map.append(&mut vec!["-map".to_string(), "0:a".to_string()]);
     }
 
     if filter_str.len() > 10 {
