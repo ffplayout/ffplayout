@@ -3,10 +3,10 @@ extern crate simplelog;
 
 use simplelog::*;
 
-use std::fs::File;
+use file_rotate::{FileRotate, ContentLimit, suffix::AppendCount, compression::Compression};
 
 fn main() {
-    TermLogger::init(LevelFilter::Debug, Config::default(), TerminalMode::Mixed, ColorChoice::Auto).unwrap();
+    //TermLogger::init(LevelFilter::Debug, Config::default(), TerminalMode::Mixed, ColorChoice::Auto).unwrap();
     //SimpleLogger::init(LevelFilter::Debug, Config::default()).unwrap();
     // CombinedLogger::init(
     //     vec![
@@ -15,7 +15,18 @@ fn main() {
     //     ]
     // ).unwrap();
 
-    error!("Bright red error");
-    info!("This only appears in <red>the log file</>");
-    debug!("This level is <b>currently</b> not enabled for any logger");
+    let log = || {
+        FileRotate::new(
+            "logs/ffplayout.log",
+            AppendCount::new(7),
+            ContentLimit::Lines(1000),
+            Compression::None,
+        )
+    };
+
+    WriteLogger::init(LevelFilter::Debug, Config::default(), log()).unwrap();
+
+    for idx in 1..1500 {
+        info!("{idx}");
+    }
 }
