@@ -85,7 +85,7 @@ def output():
                 messenger.info(f'Play: {node.get("source")}')
 
                 cmd = [
-                    'ffmpeg', '-v', f'level+{log.ff_level.lower()}',
+                    'ffmpeg', '-v', f'level+{log.ff_level}',
                     '-hide_banner', '-nostats'
                     ] + node['src_cmd'] + node['filter'] + playout.stream_param
 

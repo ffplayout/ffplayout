@@ -64,7 +64,7 @@ def output():
 
     try:
         enc_cmd = [
-            'ffmpeg', '-v', f'level+{log.ff_level.lower()}', '-hide_banner',
+            'ffmpeg', '-v', f'level+{log.ff_level}', '-hide_banner',
             '-nostats', '-re', '-thread_queue_size', '160', '-i', 'pipe:0'
             ] + filtering + preview + playout.stream_param
 
@@ -85,7 +85,7 @@ def output():
                 messenger.info(f'Play: {node.get("source")}')
 
                 dec_cmd = [
-                    'ffmpeg', '-v', f'level+{log.ff_level.lower()}',
+                    'ffmpeg', '-v', f'level+{log.ff_level}',
                     '-hide_banner', '-nostats'
                     ] + node['src_cmd'] + node['filter'] + pre.settings
 

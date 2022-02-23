@@ -43,7 +43,7 @@ def output():
 
     try:
         enc_cmd = [
-            'ffmpeg', '-v', f'level+{log.ff_level.lower()}', '-hide_banner',
+            'ffmpeg', '-v', f'level+{log.ff_level}', '-hide_banner',
             '-nostats', '-re', '-thread_queue_size', '160', '-i', 'pipe:0'
             ] + playout.stream_param[:-3] + ['-f', 'null', '-']
 
@@ -66,7 +66,7 @@ def output():
                     f'seconds: {node.get("source")}')
 
                 dec_cmd = [
-                    'ffmpeg', '-v', f'level+{log.ff_level.lower()}',
+                    'ffmpeg', '-v', f'level+{log.ff_level}',
                     '-hide_banner', '-nostats'
                     ] + node['src_cmd'] + node['filter'] + pre.settings
 

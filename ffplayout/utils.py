@@ -223,9 +223,9 @@ def load_config():
     pre.logo_filter = cfg['processing']['logo_filter']
     pre.logo_opacity = cfg['processing']['logo_opacity']
     pre.add_loudnorm = cfg['processing']['add_loudnorm']
-    pre.loud_i = cfg['processing']['loud_I']
-    pre.loud_tp = cfg['processing']['loud_TP']
-    pre.loud_lra = cfg['processing']['loud_LRA']
+    pre.loud_i = cfg['processing']['loud_i']
+    pre.loud_tp = cfg['processing']['loud_tp']
+    pre.loud_lra = cfg['processing']['loud_lra']
 
     storage.path = cfg['storage']['path']
     storage.filler = cfg['storage']['filler_clip']
@@ -266,7 +266,7 @@ else:
 if stdin_args.loop:
     playlist.loop = stdin_args.loop
 else:
-    playlist.loop = _cfg['playlist']['loop']
+    playlist.loop = _cfg['playlist']['infinit']
 
 log.to_file = _cfg['logging']['log_to_file']
 log.backup_count = _cfg['logging']['backup_count']
@@ -288,7 +288,7 @@ def pre_audio_codec():
 
 
 ingest.enable = _cfg['ingest']['enable']
-ingest.stream_input = shlex.split(_cfg['ingest']['stream_input'])
+ingest.stream_input = _cfg['ingest']['stream_input']
 
 if stdin_args.play_mode:
     pre.mode = stdin_args.play_mode
@@ -319,8 +319,8 @@ else:
     playout.mode = _cfg['out']['mode']
 
 playout.preview = _cfg['out']['preview']
-playout.preview_param = shlex.split(_cfg['out']['preview_param'])
-playout.stream_param = shlex.split(_cfg['out']['stream_param'])
+playout.preview_param = _cfg['out']['preview_param']
+playout.stream_param = _cfg['out']['stream_param']
 
 
 # ------------------------------------------------------------------------------
@@ -749,9 +749,9 @@ def ffmpeg_stderr_reader(std_errors, prefix):
 
     try:
         for line in std_errors:
-            if log.ff_level == 'INFO':
+            if log.ff_level == 'info':
                 write_log(line.decode())
-            elif log.ff_level == 'WARNING':
+            elif log.ff_level == 'warning':
                 write_log(line.decode())
             else:
                 write_log(line.decode())
