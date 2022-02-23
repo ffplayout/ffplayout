@@ -3,10 +3,16 @@ mod output;
 mod utils;
 
 use crate::output::desktop;
-use crate::utils::get_config;
+use crate::utils::{get_config, Messenger};
 
 fn main() {
     let config = get_config();
+    let msg = Messenger::new(&config);
+
+    msg.debug("this is a debug");
+    msg.info("this is a info");
+    msg.warning("this is a warning");
+    msg.error("this is a error");
     // println!("{:#?}", config);
 
     // folder::walk(&config.storage.path, config.storage.shuffle, &config.storage.extensions);

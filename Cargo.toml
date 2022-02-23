@@ -16,6 +16,8 @@ notify = "4.0.0"
 walkdir = "2"
 rand = "0.8.5"
 ffprobe = "0.3"
+log = "0.4.14"
+simplelog = { version = "^0.11.2", features = ["paris"] }
 
 # tokio = { version = "1.16.1", features = ["full"] }
 [[bin]]

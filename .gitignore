@@ -8,3 +8,4 @@
 # exclude binarys in examples folder
 /examples/*
 !/examples/*.rs
+*.log
