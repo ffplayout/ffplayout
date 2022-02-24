@@ -8,6 +8,9 @@ pub struct Args {
     #[clap(short, long, help = "file path to ffplayout.conf")]
     pub config: Option<String>,
 
+    #[clap(short, long, help = "file path for logging")]
+    pub log: Option<String>,
+
     #[clap(long, help = "playing mode: folder, playlist, custom...")]
     pub play_mode: Option<String>,
 

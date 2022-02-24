@@ -15,7 +15,7 @@ pub use config::{get_config, Config};
 // pub use folder::walk;
 pub use json_reader::{read_json, Program};
 pub use messenger::Messenger;
-pub use playlist::program;
+pub use playlist::CurrentProgram;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MediaProbe {
@@ -120,7 +120,7 @@ pub fn modified_time(path: String) -> Option<DateTime<Local>> {
 
 pub fn time_to_sec(time_str: &String) -> f64 {
     if ["now", "", "none"].contains(&time_str.as_str()) || !time_str.contains(":") {
-        return 0.0
+        return get_sec()
     }
 
     let t: Vec<&str> = time_str.split(':').collect();

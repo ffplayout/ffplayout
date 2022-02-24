@@ -20,15 +20,17 @@ mail:
     mail_level: "ERROR"
 
 logging:
-    helptext: Logging to file, if 'log_to_file' False log to console. 'backup_count'
-        says how long log files will be saved in days. Path to /var/log/ only if you
-        run this program as daemon. 'log_level' can be DEBUG, INFO, WARNING,
-        ERROR. 'ffmpeg_level' can be INFO, WARNING, ERROR.
-    log_to_file: true
+    helptext: Logging to file, if 'log_to_file' false log to console. 'backup_count'
+        says how long log files will be saved in days. 'local_time' to false will set
+        log timestamps to UTC. Path to /var/log/ only if you run this program as daemon.
+        'log_level' can be DEBUG, INFO, WARNING, ERROR. 'ffmpeg_level' can be info,
+        warning, error.
+    log_to_file: false
     backup_count: 7
+    local_time: true
     log_path: "/var/log/ffplayout/"
     log_level: "DEBUG"
-    ffmpeg_level: "ERROR"
+    ffmpeg_level: "error"
 
 processing:
     helptext: Set playing mode, like playlist; folder, or you own custom one.

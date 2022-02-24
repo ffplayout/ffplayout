@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::{fs::File, path::Path};
 
-use crate::utils::{get_date, get_sec, modified_time, time_to_sec, Config, MediaProbe};
+use crate::utils::{get_date, get_sec, modified_time, time_to_sec, Config, MediaProbe, Messenger};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Playlist {
@@ -29,7 +29,7 @@ pub struct Program {
     pub next_ad: Option<bool>,
 }
 
-pub fn read_json(config: &Config, seek: bool) -> Playlist {
+pub fn read_json(msg: &Messenger, config: &Config, seek: bool) -> Playlist {
     let mut playlist_path = Path::new(&config.playlist.path).to_owned();
     let start = &config.playlist.day_start;
     let length = &config.playlist.length;
@@ -53,7 +53,7 @@ pub fn read_json(config: &Config, seek: bool) -> Playlist {
         length_sec = time_to_sec(length);
     }
 
-    println!("Read Playlist: {}", &current_file);
+    msg.info(format!("Read Playlist: <b><magenta>{}</></b>", &current_file));
 
     let modify = modified_time(current_file.clone());
     let f = File::open(&current_file).expect("Could not open json playlist file.");
@@ -111,8 +111,6 @@ pub fn read_json(config: &Config, seek: bool) -> Playlist {
 
         item.cmd = Some(source_cmd);
     }
-
-    // println!("{:#?}", playlist);
 
     playlist
 }

@@ -3,7 +3,7 @@ use serde_yaml::{self};
 use std::{fs::File, path::Path, process};
 // use regex::Regex;
 
-use crate::utils::get_args;
+use crate::utils::{get_args, Messenger};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Config {
@@ -38,6 +38,7 @@ pub struct Mail {
 pub struct Logging {
     pub log_to_file: bool,
     pub backup_count: u32,
+    pub local_time: bool,
     pub log_path: String,
     pub log_level: String,
     pub ffmpeg_level: String,
@@ -115,18 +116,18 @@ pub fn get_config() -> Config {
         config_path = "/etc/ffplayout/ffplayout.yml".to_string();
     }
 
-    if !Path::new(&config_path).is_file() {
-        println!(
-            "{} '{config_path}'\n{}\nYou found it in 'assets' folders...",
-            "ffplayout config doesn't exists:",
-            "Put 'ffplayout.yml' in '/etc/playout/' or beside the executable!"
-        );
-        process::exit(0x0100);
-    }
+    let f = match File::open(&config_path) {
+        Ok(file) => file,
+        Err(err) => {
+            println!(
+                "'{config_path}' doesn't exists!\n{}\n\nSystem error: {err}",
+                "Put 'ffplayout.yml' in '/etc/playout/' or beside the executable!"
+            );
+            process::exit(0x0100);
+        }
+    };
 
-    let f = File::open(config_path).expect("Could not open config file.");
     let mut config: Config = serde_yaml::from_reader(f).expect("Could not read config file.");
-
     let fps = config.processing.fps.to_string();
     let bitrate = config.processing.width * config.processing.height / 10;
 
@@ -158,9 +159,16 @@ pub fn get_config() -> Config {
         "-f",
         "mpegts",
         "-",
-    ].iter().map(|&s|s.into()).collect();
+    ]
+    .iter()
+    .map(|&s| s.into())
+    .collect();
 
     config.processing.settings = Some(settings);
+
+    if args.log.is_some() {
+        config.logging.log_path = args.log.unwrap();
+    }
 
     if args.playlist.is_some() {
         config.playlist.path = args.playlist.unwrap();
@@ -194,5 +202,5 @@ pub fn get_config() -> Config {
         config.processing.volume = args.volume.unwrap();
     }
 
-    config
+    return config;
 }
