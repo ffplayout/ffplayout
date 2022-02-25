@@ -7,14 +7,14 @@ use std::{fs::metadata, process, time, time::UNIX_EPOCH};
 mod arg_parse;
 mod config;
 mod json_reader;
-mod messenger;
+mod logging;
 mod playlist;
 
 pub use arg_parse::get_args;
 pub use config::{get_config, Config};
 // pub use folder::walk;
 pub use json_reader::{read_json, Program};
-pub use messenger::Messenger;
+pub use logging::init_logging;
 pub use playlist::CurrentProgram;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

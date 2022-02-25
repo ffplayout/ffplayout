@@ -1,19 +1,23 @@
+extern crate log;
+extern crate simplelog;
+
 mod filter;
 mod output;
 mod utils;
 
+use simplelog::*;
+
 use crate::output::desktop;
-use crate::utils::{get_config, Messenger};
+use crate::utils::{get_config, init_logging};
 
 fn main() {
     let config = get_config();
-    let msg = Messenger::new(&config);
+    let logging = init_logging(&config);
 
-    // msg.debug("this is a debug");
-    // msg.info("this is a info");
-    // msg.warning("this is a warning");
-    // msg.error("this is a error");
-    // println!("{:#?}", config);
+    CombinedLogger::init(logging).unwrap();
+
+    warn!("this is a warning");
+    error!("this is a error");
 
     // folder::walk(&config.storage.path, config.storage.shuffle, &config.storage.extensions);
 
@@ -29,5 +33,5 @@ fn main() {
     // println!("{:#?}", utils::get_sec());
     // println!("{:#?}", utils::get_timestamp());
 
-    desktop::play(msg, config);
+    desktop::play(config);
 }

@@ -5,10 +5,12 @@ use std::{
     time::Duration,
 };
 
-use crate::utils::{sec_to_time, Config, CurrentProgram, Messenger};
+use simplelog::*;
 
-pub fn play(msg: Messenger, config: Config) {
-    let get_source = CurrentProgram::new(&msg, config.clone());
+use crate::utils::{sec_to_time, Config, CurrentProgram};
+
+pub fn play(config: Config) {
+    let get_source = CurrentProgram::new(config.clone());
     let dec_settings = config.processing.settings.unwrap();
     let ff_log_format = format!("level+{}", config.logging.ffmpeg_level);
     let mut enc_cmd = vec![
@@ -35,7 +37,7 @@ pub fn play(msg: Messenger, config: Config) {
 
     enc_cmd.append(&mut enc_filter.iter().map(String::as_str).collect());
 
-    msg.debug(format!("Encoder CMD: <bright-blue>{:?}</>", enc_cmd));
+    debug!("Encoder CMD: <bright-blue>{:?}</>", enc_cmd);
 
     let mut enc_proc = match Command::new("ffplay")
         .args(enc_cmd)
@@ -44,7 +46,7 @@ pub fn play(msg: Messenger, config: Config) {
         .spawn()
     {
         Err(e) => {
-            msg.error(format!("couldn't spawn encoder process: {}", e));
+            error!("couldn't spawn encoder process: {}", e);
             panic!("couldn't spawn encoder process: {}", e)
         }
         Ok(proc) => proc,
@@ -52,11 +54,11 @@ pub fn play(msg: Messenger, config: Config) {
 
     for node in get_source {
         // println!("Node begin: {:?}", sec_to_time(node.begin.unwrap()));
-        msg.info(format!(
+       info!(
             "Play for <yellow>{}</>: <b><magenta>{}</></b>",
             sec_to_time(node.out - node.seek),
             node.source
-        ));
+        );
 
         let cmd = node.cmd.unwrap();
         let filter = node.filter.unwrap();
@@ -70,7 +72,7 @@ pub fn play(msg: Messenger, config: Config) {
         }
 
         dec_cmd.append(&mut dec_settings.iter().map(String::as_str).collect());
-        msg.debug(format!("Decoder CMD: <bright-blue>{:?}</>", dec_cmd));
+        debug!("Decoder CMD: <bright-blue>{:?}</>", dec_cmd);
 
         let mut dec_proc = match Command::new("ffmpeg")
             .args(dec_cmd)
@@ -79,7 +81,7 @@ pub fn play(msg: Messenger, config: Config) {
             .spawn()
         {
             Err(e) => {
-                msg.error(format!("couldn't spawn decoder process: {}", e));
+                error!("couldn't spawn decoder process: {}", e);
                 panic!("couldn't spawn decoder process: {}", e)
             }
             Ok(proc) => proc,
@@ -111,7 +113,7 @@ pub fn play(msg: Messenger, config: Config) {
     sleep(Duration::from_secs(1));
 
     match enc_proc.kill() {
-        Ok(_) => msg.info("Playout done...".into()),
+        Ok(_) => info!("Playout done..."),
         Err(e) => panic!("Enc error: {:?}", e),
     }
 }

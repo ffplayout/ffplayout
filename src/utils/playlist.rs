@@ -1,15 +1,16 @@
 use std::path::Path;
 
+use simplelog::*;
+
 use crate::utils::{
     check_sync, gen_dummy, get_delta,
     json_reader::{read_json, Program},
-    modified_time, Config, MediaProbe, Messenger,
+    modified_time, Config, MediaProbe,
 };
 
 use crate::filter::filter_chains;
 
 pub struct CurrentProgram {
-    msg: Messenger,
     config: Config,
     json_mod: String,
     json_path: String,
@@ -19,11 +20,10 @@ pub struct CurrentProgram {
 }
 
 impl CurrentProgram {
-    pub fn new(msg: &Messenger, config: Config) -> Self {
-        let json = read_json(&msg, &config, true);
+    pub fn new(config: Config) -> Self {
+        let json = read_json(&config, true);
 
         Self {
-            msg: msg.clone(),
             config: config,
             json_mod: json.modified.unwrap(),
             json_path: json.current_file.unwrap(),
@@ -38,7 +38,7 @@ impl CurrentProgram {
 
         if !mod_time.unwrap().to_string().eq(&self.json_mod) {
             // when playlist has changed, reload it
-            let json = read_json(&self.msg, &self.config, false);
+            let json = read_json(&self.config, false);
 
             self.json_mod = json.modified.unwrap();
             self.nodes = json.program.into();
@@ -68,8 +68,8 @@ impl Iterator for CurrentProgram {
                 last = true
             }
 
-            self.msg.debug(format!("Last: <b><magenta>{}</></b>", self.nodes[self.idx - 1].source));
-            self.msg.debug(format!("Next: <b><magenta>{}</></b>", self.nodes[self.idx + 1].source));
+            debug!("Last: <b><magenta>{}</></b>", self.nodes[self.idx - 1].source);
+            debug!("Next: <b><magenta>{}</></b>", self.nodes[self.idx + 1].source);
 
             self.idx += 1;
 
@@ -80,7 +80,7 @@ impl Iterator for CurrentProgram {
 
             if !self.init {
                 let delta = get_delta(&current.begin.unwrap(), &self.config);
-                self.msg.debug(format!("Delta: <yellow>{delta}</>"));
+                debug!("Delta: <yellow>{delta}</>");
                 check_sync(delta, &self.config);
             }
 
@@ -88,7 +88,7 @@ impl Iterator for CurrentProgram {
                 self.append_probe(&mut current);
                 self.add_filter(&mut current, last, next);
             } else {
-                self.msg.error(format!("File not found: {}", current.source));
+                error!("File not found: {}", current.source);
                 let dummy = gen_dummy(current.out - current.seek, &self.config);
                 current.source = dummy.0;
                 current.cmd = Some(dummy.1);
@@ -105,7 +105,7 @@ impl Iterator for CurrentProgram {
                 last = true
             }
 
-            let json = read_json(&self.msg, &self.config, false);
+            let json = read_json(&self.config, false);
             self.json_mod = json.modified.unwrap();
             self.json_path = json.current_file.unwrap();
             self.nodes = json.program.into();
@@ -119,7 +119,7 @@ impl Iterator for CurrentProgram {
 
             if !self.init {
                 let delta = get_delta(&current.begin.unwrap(), &self.config);
-                self.msg.debug(format!("Delta: {delta}"));
+                debug!("Delta: {delta}");
                 check_sync(delta, &self.config);
             }
 
@@ -127,7 +127,7 @@ impl Iterator for CurrentProgram {
                 self.append_probe(&mut current);
                 self.add_filter(&mut current, last, next);
             } else {
-                self.msg.error(format!("File not found: {}", current.source));
+                error!("File not found: {}", current.source);
                 let dummy = gen_dummy(current.out - current.seek, &self.config);
                 current.source = dummy.0;
                 current.cmd = Some(dummy.1);
