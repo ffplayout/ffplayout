@@ -131,13 +131,13 @@ pub fn time_to_sec(time_str: &String) -> f64 {
     h * 3600.0 + m * 60.0 + s
 }
 
-pub fn sec_to_time(sec: f64) -> String {
-    let d = UNIX_EPOCH + time::Duration::from_secs(sec as u64);
-    // Create DateTime from SystemTime
-    let date_time = DateTime::<Utc>::from(d);
+// pub fn sec_to_time(sec: f64) -> String {
+//     let d = UNIX_EPOCH + time::Duration::from_secs(sec as u64);
+//     // Create DateTime from SystemTime
+//     let date_time = DateTime::<Utc>::from(d);
 
-    date_time.format("%H:%M:%S").to_string()
-}
+//     date_time.format("%H:%M:%S").to_string()
+// }
 
 pub fn is_close(a: f64, b: f64, to: f64) -> bool {
     if (a - b).abs() < to {
