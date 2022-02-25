@@ -10,11 +10,8 @@ use crate::utils::Config;
 
 #[derive(Debug, Clone)]
 pub struct Messenger {
-    message: String,
-    log_to_file: bool,
-    backup_count: u32,
     level: String,
-    ffmpeg_level: String,
+    // ffmpeg_level: String,
 }
 
 impl Messenger {
@@ -48,7 +45,7 @@ impl Messenger {
             let log = || {
                 FileRotate::new(
                     log_path,
-                    AppendCount::new(7),
+                    AppendCount::new(conf.backup_count),
                     ContentLimit::Lines(1000),
                     Compression::None,
                 )
@@ -75,11 +72,8 @@ impl Messenger {
         }
 
         Messenger {
-            message: "".to_string(),
-            log_to_file: conf.log_to_file,
-            backup_count: conf.backup_count,
             level: conf.log_level,
-            ffmpeg_level: conf.ffmpeg_level,
+            // ffmpeg_level: conf.ffmpeg_level,
         }
     }
 
