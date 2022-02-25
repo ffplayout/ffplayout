@@ -1,12 +1,13 @@
-// use std::io::prelude::*;
 use std::{
-    io,
+    io::{prelude::*, Read},
     process::{Command, Stdio},
+    thread::sleep,
+    time::Duration,
 };
 
-use crate::utils::{sec_to_time, Config, CurrentProgram, Messenger};
+use crate::utils::{Config, CurrentProgram, Messenger};
 
-pub fn play(msg: Messenger, config: Config) -> io::Result<()> {
+pub fn play(msg: Messenger, config: Config) {
     let get_source = CurrentProgram::new(&msg, config.clone());
     let dec_settings = config.processing.settings.unwrap();
     let ff_log_format = format!("level+{}", config.logging.ffmpeg_level);
@@ -20,6 +21,7 @@ pub fn play(msg: Messenger, config: Config) -> io::Result<()> {
     ];
 
     let mut enc_filter: Vec<String> = vec![];
+    let mut buffer: [u8; 65424] = [0; 65424];
 
     if config.text.add_text && !config.text.over_pre {
         let text_filter: String = format!(
@@ -35,69 +37,84 @@ pub fn play(msg: Messenger, config: Config) -> io::Result<()> {
 
     msg.debug(format!("Encoder CMD: <bright-blue>{:?}</>", enc_cmd));
 
-    let mut enc_proc = Command::new("ffplay")
+    let mut enc_proc = match Command::new("ffplay")
         .args(enc_cmd)
         .stdin(Stdio::piped())
-        // .stderr(Stdio::piped())
+        .stderr(Stdio::piped())
         .spawn()
-        .unwrap();
+    {
+        Err(e) => {
+            msg.error(format!("couldn't spawn encoder process: {}", e));
+            panic!("couldn't spawn encoder process: {}", e)
+        },
+        Ok(proc) => proc,
+    };
 
-    // let mut stdin = enc_proc.stdin.unwrap();
-    // let mut buffer = vec![0; 65376];
+    for node in get_source {
+        // println!("Node begin: {:?}", sec_to_time(node.begin.unwrap()));
+        msg.info(format!("Play: <b><magenta>{}</></b>", node.source));
 
-    if let Some(mut enc_input) = enc_proc.stdin.take() {
-        for node in get_source {
-            // println!("Node begin: {:?}", sec_to_time(node.begin.unwrap()));
-            msg.info(format!("Play: <b><magenta>{}</></b>", node.source));
+        let cmd = node.cmd.unwrap();
+        let filter = node.filter.unwrap();
 
-            let cmd = node.cmd.unwrap();
-            let filter = node.filter.unwrap();
+        let mut dec_cmd = vec![
+            "-v",
+            ff_log_format.as_str(),
+            "-hide_banner",
+            "-nostats",
+        ];
 
-            let mut dec_cmd = vec![
-                "-v",
-                ff_log_format.as_str(),
-                "-hide_banner",
-                "-nostats",
-            ];
+        dec_cmd.append(&mut cmd.iter().map(String::as_str).collect());
 
-            dec_cmd.append(&mut cmd.iter().map(String::as_str).collect());
+        if filter.len() > 1 {
+            dec_cmd.append(&mut filter.iter().map(String::as_str).collect());
+        }
 
-            if filter.len() > 1 {
-                dec_cmd.append(&mut filter.iter().map(String::as_str).collect());
-            }
+        dec_cmd.append(&mut dec_settings.iter().map(String::as_str).collect());
+        msg.debug(format!("Decoder CMD: <bright-blue>{:?}</>", dec_cmd));
 
-            dec_cmd.append(&mut dec_settings.iter().map(String::as_str).collect());
-            msg.debug(format!("Decoder CMD: <bright-blue>{:?}</>", dec_cmd));
+        let mut dec_proc = match Command::new("ffmpeg")
+            .args(dec_cmd)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+        {
+            Err(e) => {
+                msg.error(format!("couldn't spawn decoder process: {}", e));
+                panic!("couldn't spawn decoder process: {}", e)
+            },
+            Ok(proc) => proc,
+        };
 
-            let mut dec_proc = Command::new("ffmpeg")
-                .args(dec_cmd)
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
-                .spawn()
-                .unwrap();
+        let mut enc_writer = enc_proc.stdin.as_ref().unwrap();
+        let dec_reader = dec_proc.stdout.as_mut().unwrap();
 
-            if let Some(mut dec_output) = dec_proc.stdout.take() {
-                io::copy(&mut dec_output, &mut enc_input).expect("Write to streaming pipe failed!");
+        loop {
+            let dec_bytes_len = match dec_reader.read(&mut buffer[..]) {
+                Ok(length) => length,
+                Err(e) => panic!("Reading error from decoder: {:?}", e)
+            };
 
-                dec_proc.wait()?;
-                let dec_output = dec_proc.wait_with_output()?;
+            match enc_writer.write(&buffer[..dec_bytes_len]) {
+                Ok(_) => (),
+                Err(e) => panic!("Err: {:?}", e),
+            };
 
-                if dec_output.stderr.len() > 0 {
-                    msg.error(format!(
-                        "[Encoder] <red>{:?}</red>",
-                        String::from_utf8(dec_output.stderr).unwrap()
-                    ));
-                }
+            if dec_bytes_len == 0 {
+                break;
             }
         }
 
-        enc_proc.wait()?;
-        let enc_output = enc_proc.wait_with_output()?;
-        msg.debug(format!(
-            "[Encoder] {}",
-            String::from_utf8(enc_output.stderr).unwrap()
-        ));
+        match dec_proc.wait() {
+            Ok(_) => msg.debug("decoding done...".into()),
+            Err(e) => panic!("Enc error: {:?}", e),
+        }
     }
 
-    Ok(())
+    sleep(Duration::from_secs(1));
+
+    match enc_proc.kill() {
+        Ok(_) => println!("Playout done..."),
+        Err(e) => panic!("Enc error: {:?}", e),
+    }
 }

@@ -29,5 +29,5 @@ fn main() {
     // println!("{:#?}", utils::get_sec());
     // println!("{:#?}", utils::get_timestamp());
 
-    desktop::play(msg, config).expect("Play on desktop failed!");
+    desktop::play(msg, config);
 }
