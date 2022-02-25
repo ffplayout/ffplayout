@@ -80,7 +80,7 @@ impl Iterator for CurrentProgram {
 
             if !self.init {
                 let delta = get_delta(&current.begin.unwrap(), &self.config);
-                self.msg.debug(format!("Delta: {delta}"));
+                self.msg.debug(format!("Delta: <yellow>{delta}</>"));
                 check_sync(delta, &self.config);
             }
 

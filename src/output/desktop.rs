@@ -5,7 +5,7 @@ use std::{
     time::Duration,
 };
 
-use crate::utils::{Config, CurrentProgram, Messenger};
+use crate::utils::{sec_to_time, Config, CurrentProgram, Messenger};
 
 pub fn play(msg: Messenger, config: Config) {
     let get_source = CurrentProgram::new(&msg, config.clone());
@@ -46,23 +46,22 @@ pub fn play(msg: Messenger, config: Config) {
         Err(e) => {
             msg.error(format!("couldn't spawn encoder process: {}", e));
             panic!("couldn't spawn encoder process: {}", e)
-        },
+        }
         Ok(proc) => proc,
     };
 
     for node in get_source {
         // println!("Node begin: {:?}", sec_to_time(node.begin.unwrap()));
-        msg.info(format!("Play: <b><magenta>{}</></b>", node.source));
+        msg.info(format!(
+            "Play for <yellow>{}</>: <b><magenta>{}</></b>",
+            sec_to_time(node.out - node.seek),
+            node.source
+        ));
 
         let cmd = node.cmd.unwrap();
         let filter = node.filter.unwrap();
 
-        let mut dec_cmd = vec![
-            "-v",
-            ff_log_format.as_str(),
-            "-hide_banner",
-            "-nostats",
-        ];
+        let mut dec_cmd = vec!["-v", ff_log_format.as_str(), "-hide_banner", "-nostats"];
 
         dec_cmd.append(&mut cmd.iter().map(String::as_str).collect());
 
@@ -82,7 +81,7 @@ pub fn play(msg: Messenger, config: Config) {
             Err(e) => {
                 msg.error(format!("couldn't spawn decoder process: {}", e));
                 panic!("couldn't spawn decoder process: {}", e)
-            },
+            }
             Ok(proc) => proc,
         };
 
@@ -92,29 +91,27 @@ pub fn play(msg: Messenger, config: Config) {
         loop {
             let dec_bytes_len = match dec_reader.read(&mut buffer[..]) {
                 Ok(length) => length,
-                Err(e) => panic!("Reading error from decoder: {:?}", e)
+                Err(e) => panic!("Reading error from decoder: {:?}", e),
             };
 
-            match enc_writer.write(&buffer[..dec_bytes_len]) {
-                Ok(_) => (),
-                Err(e) => panic!("Err: {:?}", e),
+            if let Err(e) = enc_writer.write(&buffer[..dec_bytes_len]) {
+                panic!("Err: {:?}", e)
             };
 
             if dec_bytes_len == 0 {
                 break;
-            }
+            };
         }
 
-        match dec_proc.wait() {
-            Ok(_) => msg.debug("decoding done...".into()),
-            Err(e) => panic!("Enc error: {:?}", e),
-        }
+        if let Err(e) = dec_proc.wait() {
+            panic!("Enc error: {:?}", e)
+        };
     }
 
     sleep(Duration::from_secs(1));
 
     match enc_proc.kill() {
-        Ok(_) => println!("Playout done..."),
+        Ok(_) => msg.info("Playout done...".into()),
         Err(e) => panic!("Enc error: {:?}", e),
     }
 }
