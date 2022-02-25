@@ -3,7 +3,7 @@ use serde_yaml::{self};
 use std::{fs::File, path::Path, process};
 // use regex::Regex;
 
-use crate::utils::{get_args, Messenger};
+use crate::utils::{get_args};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Config {
@@ -37,7 +37,7 @@ pub struct Mail {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Logging {
     pub log_to_file: bool,
-    pub backup_count: u32,
+    pub backup_count: usize,
     pub local_time: bool,
     pub log_path: String,
     pub log_level: String,
