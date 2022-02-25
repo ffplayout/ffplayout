@@ -68,8 +68,8 @@ impl Iterator for CurrentProgram {
                 last = true
             }
 
-            self.msg.debug(format!("Last: {}", self.nodes[self.idx - 1].source));
-            self.msg.debug(format!("Next: {}", self.nodes[self.idx + 1].source));
+            self.msg.debug(format!("Last: <b><magenta>{}</></b>", self.nodes[self.idx - 1].source));
+            self.msg.debug(format!("Next: <b><magenta>{}</></b>", self.nodes[self.idx + 1].source));
 
             self.idx += 1;
 
