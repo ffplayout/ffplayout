@@ -12,3 +12,5 @@
 # exlcude logging
 *.log
 /logs/
+
+.vscode/
