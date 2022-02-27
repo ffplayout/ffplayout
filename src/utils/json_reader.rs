@@ -3,7 +3,7 @@ use std::{fs::File, path::Path};
 
 use simplelog::*;
 
-use crate::utils::{get_date, get_sec, modified_time, time_to_sec, Config, MediaProbe};
+use crate::utils::{get_date, get_sec, modified_time, time_to_sec, Config, Media};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Playlist {
@@ -11,24 +11,7 @@ pub struct Playlist {
     pub current_file: Option<String>,
     pub start_index: Option<usize>,
     pub modified: Option<String>,
-    pub program: Vec<Program>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Program {
-    pub begin: Option<f64>,
-    pub index: Option<usize>,
-    #[serde(rename = "in")]
-    pub seek: f64,
-    pub out: f64,
-    pub duration: f64,
-    pub category: String,
-    pub source: String,
-    pub cmd: Option<Vec<String>>,
-    pub filter: Option<Vec<String>>,
-    pub probe: Option<MediaProbe>,
-    pub last_ad: Option<bool>,
-    pub next_ad: Option<bool>,
+    pub program: Vec<Media>,
 }
 
 pub fn read_json(config: &Config, seek: bool) -> Playlist {

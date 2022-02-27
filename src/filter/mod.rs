@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-use crate::utils::{is_close, Config, Program};
+use crate::utils::{is_close, Config, Media};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct Filters {
@@ -117,7 +117,7 @@ fn scale(width: i64, height: i64, aspect: f64, chain: &mut Filters, config: &Con
     }
 }
 
-fn fade(node: &mut Program, chain: &mut Filters, codec_type: String) {
+fn fade(node: &mut Media, chain: &mut Filters, codec_type: String) {
     let mut t = "".to_string();
 
     if codec_type == "audio".to_string() {
@@ -136,7 +136,7 @@ fn fade(node: &mut Program, chain: &mut Filters, codec_type: String) {
     }
 }
 
-fn overlay(node: &mut Program, chain: &mut Filters, config: &Config, last_ad: bool, next_ad: bool) {
+fn overlay(node: &mut Media, chain: &mut Filters, config: &Config, last_ad: bool, next_ad: bool) {
     if config.processing.add_logo
         && Path::new(&config.processing.logo).is_file()
         && node.category != "advertisement".to_string()
@@ -165,7 +165,7 @@ fn overlay(node: &mut Program, chain: &mut Filters, config: &Config, last_ad: bo
     }
 }
 
-fn extend_video(node: &mut Program, chain: &mut Filters) {
+fn extend_video(node: &mut Media, chain: &mut Filters) {
     let video_streams = node.probe.clone().unwrap().video_streams.unwrap();
     if video_streams.len() > 0 {
         let video_duration = &video_streams[0].duration;
@@ -180,7 +180,7 @@ fn extend_video(node: &mut Program, chain: &mut Filters) {
     }
 }
 
-fn add_audio(node: &mut Program, chain: &mut Filters) {
+fn add_audio(node: &mut Media, chain: &mut Filters) {
     let audio_streams = node.probe.clone().unwrap().audio_streams.unwrap();
     if audio_streams.len() == 0 {
         println!("Clip: '{}' has no audio!", node.source);
@@ -192,7 +192,7 @@ fn add_audio(node: &mut Program, chain: &mut Filters) {
     }
 }
 
-fn extend_audio(node: &mut Program, chain: &mut Filters) {
+fn extend_audio(node: &mut Media, chain: &mut Filters) {
     let audio_streams = node.probe.clone().unwrap().audio_streams.unwrap();
     if audio_streams.len() > 0 {
         let audio_duration = &audio_streams[0].duration;
@@ -213,7 +213,7 @@ fn audio_volume(chain: &mut Filters, config: &Config) {
     }
 }
 
-pub fn filter_chains(node: &mut Program, config: &Config, last: bool, next: bool) -> Vec<String> {
+pub fn filter_chains(node: &mut Media, config: &Config, last: bool, next: bool) -> Vec<String> {
     let mut filters = Filters::new();
     let probe = node.probe.clone();
 

@@ -3,18 +3,15 @@ use std::path::Path;
 use simplelog::*;
 
 use crate::utils::{
-    check_sync, gen_dummy, get_delta,
-    json_reader::{read_json, Program},
-    modified_time, Config, MediaProbe,
+    check_sync, gen_dummy, get_delta, json_reader::read_json, modified_time, Config, Media,
 };
 
-use crate::filter::filter_chains;
-
+#[derive(Debug)]
 pub struct CurrentProgram {
     config: Config,
     json_mod: String,
     json_path: String,
-    nodes: Vec<Program>,
+    nodes: Vec<Media>,
     init: bool,
     idx: usize,
 }
@@ -44,18 +41,10 @@ impl CurrentProgram {
             self.nodes = json.program.into();
         }
     }
-
-    fn append_probe(&mut self, node: &mut Program) {
-        node.probe = Some(MediaProbe::new(node.source.clone()))
-    }
-
-    fn add_filter(&mut self, node: &mut Program, last: bool, next: bool) {
-        node.filter = Some(filter_chains(node, &self.config, last, next));
-    }
 }
 
 impl Iterator for CurrentProgram {
-    type Item = Program;
+    type Item = Media;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.idx < self.nodes.len() {
@@ -68,8 +57,14 @@ impl Iterator for CurrentProgram {
                 last = true
             }
 
-            debug!("Last: <b><magenta>{}</></b>", self.nodes[self.idx - 1].source);
-            debug!("Next: <b><magenta>{}</></b>", self.nodes[self.idx + 1].source);
+            debug!(
+                "Last: <b><magenta>{}</></b>",
+                self.nodes[self.idx - 1].source
+            );
+            debug!(
+                "Next: <b><magenta>{}</></b>",
+                self.nodes[self.idx + 1].source
+            );
 
             self.idx += 1;
 
@@ -85,8 +80,8 @@ impl Iterator for CurrentProgram {
             }
 
             if Path::new(&current.source).is_file() {
-                self.append_probe(&mut current);
-                self.add_filter(&mut current, last, next);
+                current.add_probe();
+                current.add_filter(&self.config, last, next);
             } else {
                 error!("File not found: {}", current.source);
                 let dummy = gen_dummy(current.out - current.seek, &self.config);
@@ -124,8 +119,8 @@ impl Iterator for CurrentProgram {
             }
 
             if Path::new(&current.source).is_file() {
-                self.append_probe(&mut current);
-                self.add_filter(&mut current, last, next);
+                current.add_probe();
+                current.add_filter(&self.config, last, next);
             } else {
                 error!("File not found: {}", current.source);
                 let dummy = gen_dummy(current.out - current.seek, &self.config);

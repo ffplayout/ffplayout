@@ -6,16 +6,71 @@ use std::{fs::metadata, process, time, time::UNIX_EPOCH};
 
 mod arg_parse;
 mod config;
+mod folder;
 mod json_reader;
 mod logging;
 mod playlist;
 
 pub use arg_parse::get_args;
 pub use config::{get_config, Config};
-// pub use folder::walk;
-pub use json_reader::{read_json, Program};
+pub use folder::{watch_folder, Source};
+pub use json_reader::read_json;
 pub use logging::init_logging;
 pub use playlist::CurrentProgram;
+
+use crate::filter::filter_chains;
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Media {
+    pub begin: Option<f64>,
+    pub index: Option<usize>,
+    #[serde(rename = "in")]
+    pub seek: f64,
+    pub out: f64,
+    pub duration: f64,
+    pub category: String,
+    pub source: String,
+    pub cmd: Option<Vec<String>>,
+    pub filter: Option<Vec<String>>,
+    pub probe: Option<MediaProbe>,
+    pub last_ad: Option<bool>,
+    pub next_ad: Option<bool>,
+}
+
+impl Media {
+    fn new(index: usize, src: String) -> Self {
+        let probe = MediaProbe::new(src.clone());
+
+        let duration: f64 = match &probe.clone().format.unwrap().duration {
+            Some(dur) => dur.parse().unwrap(),
+            None => 0.0
+        };
+
+        Self {
+            begin: None,
+            index: Some(index),
+            seek: 0.0,
+            out: duration,
+            duration: duration,
+            category: "".to_string(),
+            source: src.clone(),
+            cmd: Some(vec!["-i".to_string(), src]),
+            filter: Some(vec![]),
+            probe: Some(probe),
+            last_ad: Some(false),
+            next_ad: Some(false),
+        }
+    }
+
+    fn add_probe(&mut self) {
+        self.probe = Some(MediaProbe::new(self.source.clone()))
+    }
+
+    fn add_filter(&mut self, config: &Config, last: bool, next: bool) {
+        let mut node = self.clone();
+        self.filter = Some(filter_chains(&mut node, &config, last, next));
+    }
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MediaProbe {
@@ -120,7 +175,7 @@ pub fn modified_time(path: String) -> Option<DateTime<Local>> {
 
 pub fn time_to_sec(time_str: &String) -> f64 {
     if ["now", "", "none"].contains(&time_str.as_str()) || !time_str.contains(":") {
-        return get_sec()
+        return get_sec();
     }
 
     let t: Vec<&str> = time_str.split(':').collect();

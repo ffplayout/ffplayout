@@ -11,16 +11,16 @@ clap = { version = "3.0.14", features = ["derive"] }
 ffprobe = "0.3"
 file-rotate = "0.6.0"
 log = "0.4.14"
-notify = "4.0.0"
+notify = { version = "5.0.0-pre.13", features = ["serde"] }
 rand = "0.8.5"
 regex = "1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_yaml = "0.8"
 simplelog = { version = "^0.11.2", features = ["paris"] }
+tokio = { version = "1.16.1", features = ["full"] }
 walkdir = "2"
 
-# tokio = { version = "1.16.1", features = ["full"] }
 [[bin]]
 name = "ffplayout"
 path = "src/main.rs"
