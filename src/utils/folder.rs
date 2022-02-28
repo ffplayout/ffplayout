@@ -1,25 +1,25 @@
 use notify::DebouncedEvent::{Create, Remove, Rename};
-use notify::{watcher, RecursiveMode, Watcher};
 use rand::{seq::SliceRandom, thread_rng};
+use simplelog::*;
 use std::{
     ffi::OsStr,
     path::Path,
-    sync::{mpsc::channel, Arc},
+    sync::{
+        mpsc::Receiver,
+        {Arc, Mutex},
+    },
+    thread::sleep,
     time::Duration,
 };
 
-use tokio::sync::Mutex;
-
 use walkdir::WalkDir;
-
-use simplelog::*;
 
 use crate::utils::{Config, Media};
 
 #[derive(Debug, Clone)]
 pub struct Source {
     config: Config,
-    nodes: Vec<String>,
+    pub nodes: Arc<Mutex<Vec<String>>>,
     index: usize,
 }
 
@@ -56,31 +56,18 @@ impl Source {
 
         Self {
             config: config,
-            nodes: file_list,
+            nodes: Arc::new(Mutex::new(file_list)),
             index: 0,
         }
     }
 
-    fn push(&mut self, file: String) {
-        self.nodes.push(file)
-    }
-
-    fn rm(&mut self, file: String) {
-        self.nodes.retain(|x| x != &file);
-    }
-
-    fn mv(&mut self, old_file: String, new_file: String) {
-        let i = self.nodes.iter().position(|x| *x == old_file).unwrap();
-        self.nodes[i] = new_file;
-    }
-
     fn shuffle(&mut self) {
         let mut rng = thread_rng();
-        self.nodes.shuffle(&mut rng);
+        self.nodes.lock().unwrap().shuffle(&mut rng);
     }
 
     fn sort(&mut self) {
-        self.nodes.sort();
+        self.nodes.lock().unwrap().sort();
     }
 }
 
@@ -88,8 +75,8 @@ impl Iterator for Source {
     type Item = Media;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.index < self.nodes.len() {
-            let current_file = self.nodes[self.index].clone();
+        if self.index < self.nodes.lock().unwrap().len() {
+            let current_file = self.nodes.lock().unwrap()[self.index].clone();
             let mut media = Media::new(self.index, current_file);
             media.add_probe();
             media.add_filter(&self.config, false, false);
@@ -104,7 +91,7 @@ impl Iterator for Source {
                 self.sort();
             }
 
-            let current_file = self.nodes[0].clone();
+            let current_file = self.nodes.lock().unwrap()[0].clone();
             let mut media = Media::new(self.index, current_file);
             media.add_probe();
             media.add_filter(&self.config, false, false);
@@ -119,39 +106,46 @@ fn file_extension(filename: &Path) -> Option<&str> {
     filename.extension().and_then(OsStr::to_str)
 }
 
-pub async fn watch_folder(path: &String, source: &mut Arc<Mutex<Source>>) {
-    // let mut source = Source::new();
-    let (sender, receiver) = channel();
-
-    let mut watcher = watcher(sender, Duration::from_secs(2)).unwrap();
-    watcher.watch(path, RecursiveMode::Recursive).unwrap();
-
-    println!("watch path: '{}'", path);
-
+pub async fn watch_folder(
+    receiver: Receiver<notify::DebouncedEvent>,
+    stop: Arc<Mutex<bool>>,
+    sources: Arc<Mutex<Vec<String>>>,
+) {
     loop {
+        if *stop.lock().unwrap() {
+            break;
+        }
+
         match receiver.recv() {
             Ok(event) => match event {
                 Create(new_path) => {
+                    sources.lock().unwrap().push(new_path.display().to_string());
                     println!("Create new file: {:?}", new_path);
-                    let mut lock = source.lock().await;
-                    lock.push(new_path.display().to_string());
                 }
                 Remove(old_path) => {
+                    sources
+                        .lock()
+                        .unwrap()
+                        .retain(|x| x != &old_path.display().to_string());
                     println!("Remove file: {:?}", old_path);
-                    let mut lock = source.lock().await;
-                    lock.rm(old_path.display().to_string());
                 }
                 Rename(old_path, new_path) => {
+                    let i = sources
+                        .lock()
+                        .unwrap()
+                        .iter()
+                        .position(|x| *x == old_path.display().to_string())
+                        .unwrap();
+                    sources.lock().unwrap()[i] = new_path.display().to_string();
                     println!("Rename file: {:?} to {:?}", old_path, new_path);
-                    let mut lock = source.lock().await;
-                    lock.mv(
-                        old_path.display().to_string(),
-                        new_path.display().to_string(),
-                    );
                 }
                 _ => (),
             },
-            Err(e) => println!("watch error: {:?}", e),
+            Err(e) => {
+                println!("{:?}", e);
+            }
         }
+
+        sleep(Duration::from_secs(2));
     }
 }

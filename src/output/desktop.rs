@@ -1,14 +1,17 @@
+use notify::{watcher, RecursiveMode, Watcher};
 use std::{
     io::{prelude::*, Read},
     path::Path,
     process,
     process::{Command, Stdio},
-    sync::Arc,
+    sync::{
+        mpsc::channel,
+        {Arc, Mutex},
+    },
     thread::sleep,
     time::Duration,
 };
 
-use tokio::sync::Mutex;
 use tokio::runtime::Builder;
 
 use simplelog::*;
@@ -16,6 +19,9 @@ use simplelog::*;
 use crate::utils::{sec_to_time, watch_folder, Config, CurrentProgram, Media, Source};
 
 pub fn play(config: Config) {
+    let stop = Arc::new(Mutex::new(false));
+    let dec_pid: Arc<Mutex<u32>> = Arc::new(Mutex::new(0));
+
     let get_source = match config.processing.mode.clone().as_str() {
         "folder" => {
             let path = config.storage.path.clone();
@@ -31,9 +37,18 @@ pub fn play(config: Config) {
                 .unwrap();
 
             let folder_source = Source::new(config.clone());
-            let mut folder_sync = Arc::new(Mutex::new(folder_source.clone()));
+            let (sender, receiver) = channel();
 
-            runtime.spawn(watch_folder(&path, &mut folder_sync));
+            let mut watcher = watcher(sender, Duration::from_secs(2)).unwrap();
+            watcher
+                .watch(path.clone(), RecursiveMode::Recursive)
+                .unwrap();
+
+            runtime.spawn(watch_folder(
+                receiver,
+                Arc::clone(&stop),
+                Arc::clone(&folder_source.nodes),
+            ));
 
             Box::new(folder_source) as Box<dyn Iterator<Item = Media>>
         }
@@ -122,8 +137,12 @@ pub fn play(config: Config) {
             Ok(proc) => proc,
         };
 
+        *dec_pid.lock().unwrap() = dec_proc.id();
+
         let mut enc_writer = enc_proc.stdin.as_ref().unwrap();
         let dec_reader = dec_proc.stdout.as_mut().unwrap();
+
+        debug!("Decoder PID: <yellow>{}</>", dec_pid.lock().unwrap());
 
         loop {
             let dec_bytes_len = match dec_reader.read(&mut buffer[..]) {
@@ -144,6 +163,8 @@ pub fn play(config: Config) {
             panic!("Enc error: {:?}", e)
         };
     }
+
+    *stop.lock().unwrap() = true;
 
     sleep(Duration::from_secs(1));
 
