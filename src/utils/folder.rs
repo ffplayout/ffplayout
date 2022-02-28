@@ -88,6 +88,7 @@ impl Iterator for Source {
                 info!("Shuffle files");
                 self.shuffle();
             } else {
+                info!("Sort files");
                 self.sort();
             }
 
@@ -111,6 +112,8 @@ pub async fn watch_folder(
     stop: Arc<Mutex<bool>>,
     sources: Arc<Mutex<Vec<String>>>,
 ) {
+
+    debug!("Monitor folder...");
     loop {
         if *stop.lock().unwrap() {
             break;
@@ -120,14 +123,14 @@ pub async fn watch_folder(
             Ok(event) => match event {
                 Create(new_path) => {
                     sources.lock().unwrap().push(new_path.display().to_string());
-                    println!("Create new file: {:?}", new_path);
+                    info!("Create new file: {:?}", new_path);
                 }
                 Remove(old_path) => {
                     sources
                         .lock()
                         .unwrap()
                         .retain(|x| x != &old_path.display().to_string());
-                    println!("Remove file: {:?}", old_path);
+                        info!("Remove file: {:?}", old_path);
                 }
                 Rename(old_path, new_path) => {
                     let i = sources
@@ -137,12 +140,12 @@ pub async fn watch_folder(
                         .position(|x| *x == old_path.display().to_string())
                         .unwrap();
                     sources.lock().unwrap()[i] = new_path.display().to_string();
-                    println!("Rename file: {:?} to {:?}", old_path, new_path);
+                    info!("Rename file: {:?} to {:?}", old_path, new_path);
                 }
                 _ => (),
             },
             Err(e) => {
-                println!("{:?}", e);
+                error!("Monitor error: {:?}", e);
             }
         }
 
