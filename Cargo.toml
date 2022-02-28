@@ -11,7 +11,8 @@ clap = { version = "3.0.14", features = ["derive"] }
 ffprobe = "0.3"
 file-rotate = "0.6.0"
 log = "0.4.14"
-notify = { version = "5.0.0-pre.13", features = ["serde"] }
+#notify = { version = "5.0.0-pre.13", features = ["serde"] }
+notify = "4.0.17"
 rand = "0.8.5"
 regex = "1"
 serde = { version = "1.0", features = ["derive"] }
