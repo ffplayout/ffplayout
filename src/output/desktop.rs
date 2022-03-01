@@ -6,7 +6,7 @@ use std::{
     process::{Command, Stdio},
     sync::{
         mpsc::channel,
-        {Arc, Mutex},
+        Arc, Mutex,
     },
     thread::sleep,
     time::Duration,
@@ -19,8 +19,12 @@ use simplelog::*;
 use crate::utils::{sec_to_time, watch_folder, Config, CurrentProgram, Media, Source};
 
 pub fn play(config: Config) {
-    let stop = Arc::new(Mutex::new(false));
     let dec_pid: Arc<Mutex<u32>> = Arc::new(Mutex::new(0));
+    let runtime = Builder::new_multi_thread()
+        .worker_threads(1)
+        .enable_all()
+        .build()
+        .unwrap();
 
     let get_source = match config.processing.mode.clone().as_str() {
         "folder" => {
@@ -30,29 +34,27 @@ pub fn play(config: Config) {
                 process::exit(0x0100);
             }
 
-            let runtime = Builder::new_multi_thread()
-                .worker_threads(1)
-                .enable_all()
-                .build()
-                .unwrap();
+            info!("Playout in folder mode.");
 
             let folder_source = Source::new(config.clone());
             let (sender, receiver) = channel();
-
             let mut watcher = watcher(sender, Duration::from_secs(2)).unwrap();
+
             watcher
                 .watch(path.clone(), RecursiveMode::Recursive)
                 .unwrap();
 
+            debug!("Monitor folder: <b><magenta>{}</></b>", path);
+
             runtime.spawn(watch_folder(
                 receiver,
-                Arc::clone(&stop),
                 Arc::clone(&folder_source.nodes),
             ));
 
             Box::new(folder_source) as Box<dyn Iterator<Item = Media>>
         }
         "playlist" => {
+            info!("Playout in playlist mode.");
             Box::new(CurrentProgram::new(config.clone())) as Box<dyn Iterator<Item = Media>>
         }
         _ => {
@@ -92,7 +94,7 @@ pub fn play(config: Config) {
     let mut enc_proc = match Command::new("ffplay")
         .args(enc_cmd)
         .stdin(Stdio::piped())
-        .stderr(Stdio::piped())
+        // .stderr(Stdio::piped())
         .spawn()
     {
         Err(e) => {
@@ -104,13 +106,17 @@ pub fn play(config: Config) {
 
     for node in get_source {
         // println!("Node begin: {:?}", sec_to_time(node.begin.unwrap()));
+        let cmd = match node.cmd {
+            Some(cmd) => cmd,
+            None => break
+        };
+
         info!(
             "Play for <yellow>{}</>: <b><magenta>{}</></b>",
             sec_to_time(node.out - node.seek),
             node.source
         );
 
-        let cmd = node.cmd.unwrap();
         let filter = node.filter.unwrap();
 
         let mut dec_cmd = vec!["-v", ff_log_format.as_str(), "-hide_banner", "-nostats"];
@@ -127,7 +133,7 @@ pub fn play(config: Config) {
         let mut dec_proc = match Command::new("ffmpeg")
             .args(dec_cmd)
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
+            // .stderr(Stdio::piped())
             .spawn()
         {
             Err(e) => {
@@ -160,16 +166,14 @@ pub fn play(config: Config) {
         }
 
         if let Err(e) = dec_proc.wait() {
-            panic!("Enc error: {:?}", e)
+            panic!("Decoder error: {:?}", e)
         };
     }
-
-    *stop.lock().unwrap() = true;
 
     sleep(Duration::from_secs(1));
 
     match enc_proc.kill() {
         Ok(_) => info!("Playout done..."),
-        Err(e) => panic!("Enc error: {:?}", e),
+        Err(e) => panic!("Encoder error: {:?}", e),
     }
 }
