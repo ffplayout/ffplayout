@@ -136,7 +136,7 @@ fn fade(node: &mut Media, chain: &mut Filters, codec_type: String) {
     }
 }
 
-fn overlay(node: &mut Media, chain: &mut Filters, config: &Config, last_ad: bool, next_ad: bool) {
+fn overlay(node: &mut Media, chain: &mut Filters, config: &Config) {
     if config.processing.add_logo
         && Path::new(&config.processing.logo).is_file()
         && node.category != "advertisement".to_string()
@@ -148,11 +148,11 @@ fn overlay(node: &mut Media, chain: &mut Filters, config: &Config, last_ad: bool
         let logo_loop = "loop=loop=-1:size=1:start=0";
         let mut logo_chain = format!("null[v];movie={},{logo_loop},{opacity}", config.processing.logo);
 
-        if last_ad {
+        if node.last_ad.unwrap() {
             logo_chain.push_str(",fade=in:st=0:d=1.0:alpha=1")
         }
 
-        if next_ad {
+        if node.next_ad.unwrap() {
             logo_chain.push_str(
                 format!(",fade=out:st={}:d=1.0:alpha=1", node.out - node.seek - 1.0).as_str(),
             )
@@ -213,7 +213,7 @@ fn audio_volume(chain: &mut Filters, config: &Config) {
     }
 }
 
-pub fn filter_chains(node: &mut Media, config: &Config, last: bool, next: bool) -> Vec<String> {
+pub fn filter_chains(node: &mut Media, config: &Config) -> Vec<String> {
     let mut filters = Filters::new();
     let probe = node.probe.clone();
 
@@ -244,7 +244,7 @@ pub fn filter_chains(node: &mut Media, config: &Config, last: bool, next: bool) 
                 );
                 extend_video(node, &mut filters);
                 fade(node, &mut filters, "video".into());
-                overlay(node, &mut filters, &config, last, next);
+                overlay(node, &mut filters, &config);
 
                 add_audio(node, &mut filters);
                 extend_audio(node, &mut filters);
