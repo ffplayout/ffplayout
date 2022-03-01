@@ -8,8 +8,6 @@ use std::{
         mpsc::Receiver,
         {Arc, Mutex},
     },
-    thread::sleep,
-    time::Duration,
 };
 
 use walkdir::WalkDir;
@@ -79,7 +77,7 @@ impl Iterator for Source {
             let current_file = self.nodes.lock().unwrap()[self.index].clone();
             let mut media = Media::new(self.index, current_file);
             media.add_probe();
-            media.add_filter(&self.config, false, false);
+            media.add_filter(&self.config);
             self.index += 1;
 
             Some(media)
@@ -95,7 +93,7 @@ impl Iterator for Source {
             let current_file = self.nodes.lock().unwrap()[0].clone();
             let mut media = Media::new(self.index, current_file);
             media.add_probe();
-            media.add_filter(&self.config, false, false);
+            media.add_filter(&self.config);
             self.index = 1;
 
             Some(media)
@@ -107,48 +105,31 @@ fn file_extension(filename: &Path) -> Option<&str> {
     filename.extension().and_then(OsStr::to_str)
 }
 
-pub async fn watch_folder(
-    receiver: Receiver<notify::DebouncedEvent>,
-    stop: Arc<Mutex<bool>>,
-    sources: Arc<Mutex<Vec<String>>>,
-) {
-
-    debug!("Monitor folder...");
-    loop {
-        if *stop.lock().unwrap() {
-            break;
-        }
-
-        match receiver.recv() {
-            Ok(event) => match event {
-                Create(new_path) => {
-                    sources.lock().unwrap().push(new_path.display().to_string());
-                    info!("Create new file: {:?}", new_path);
-                }
-                Remove(old_path) => {
-                    sources
-                        .lock()
-                        .unwrap()
-                        .retain(|x| x != &old_path.display().to_string());
-                        info!("Remove file: {:?}", old_path);
-                }
-                Rename(old_path, new_path) => {
-                    let i = sources
-                        .lock()
-                        .unwrap()
-                        .iter()
-                        .position(|x| *x == old_path.display().to_string())
-                        .unwrap();
-                    sources.lock().unwrap()[i] = new_path.display().to_string();
-                    info!("Rename file: {:?} to {:?}", old_path, new_path);
-                }
-                _ => (),
-            },
-            Err(e) => {
-                error!("Monitor error: {:?}", e);
+pub async fn watch_folder(receiver: Receiver<notify::DebouncedEvent>, sources: Arc<Mutex<Vec<String>>>) {
+    while let Ok(res) = receiver.recv() {
+        match res {
+            Create(new_path) => {
+                sources.lock().unwrap().push(new_path.display().to_string());
+                info!("Create new file: {:?}", new_path);
             }
+            Remove(old_path) => {
+                sources
+                    .lock()
+                    .unwrap()
+                    .retain(|x| x != &old_path.display().to_string());
+                info!("Remove file: {:?}", old_path);
+            }
+            Rename(old_path, new_path) => {
+                let i = sources
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .position(|x| *x == old_path.display().to_string())
+                    .unwrap();
+                sources.lock().unwrap()[i] = new_path.display().to_string();
+                info!("Rename file: {:?} to {:?}", old_path, new_path);
+            }
+            _ => (),
         }
-
-        sleep(Duration::from_secs(2));
     }
 }
