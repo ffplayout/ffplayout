@@ -23,7 +23,7 @@ pub fn read_json(config: &Config, seek: bool) -> Playlist {
     let mut seek_first = seek;
 
     if playlist_path.is_dir() {
-        let date = get_date(true, start_sec, 0.0);
+        let date = get_date(seek, start_sec, 0.0);
         let d: Vec<&str> = date.split('-').collect();
         playlist_path = playlist_path
             .join(d[0])
@@ -57,10 +57,24 @@ pub fn read_json(config: &Config, seek: bool) -> Playlist {
         time_sec += length_sec
     }
 
+    let cloned_program = playlist.program.clone();
+
     for (i, item) in playlist.program.iter_mut().enumerate() {
         item.begin = Some(start_sec);
         item.index = Some(i);
+        item.last_ad = Some(false);
+        item.next_ad = Some(false);
         let mut source_cmd: Vec<String> = vec![];
+
+        if i > 0 && cloned_program[i - 1].category == "advertisement".to_string() {
+            item.last_ad = Some(true);
+        }
+
+        if i + 1 < cloned_program.len() {
+            if cloned_program[i + 1].category == "advertisement".to_string() {
+                item.next_ad = Some(true);
+            }
+        }
 
         if seek_first {
             let tmp_length = item.out - item.seek;
