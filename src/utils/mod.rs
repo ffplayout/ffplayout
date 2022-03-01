@@ -2,7 +2,9 @@ use chrono::prelude::*;
 use chrono::Duration;
 use ffprobe::{ffprobe, Format, Stream};
 use serde::{Deserialize, Serialize};
-use std::{fs::metadata, process, time, time::UNIX_EPOCH};
+use std::{fs::metadata, time, time::UNIX_EPOCH};
+
+use simplelog::*;
 
 mod arg_parse;
 mod config;
@@ -43,7 +45,7 @@ impl Media {
 
         let duration: f64 = match &probe.clone().format.unwrap().duration {
             Some(dur) => dur.parse().unwrap(),
-            None => 0.0
+            None => 0.0,
         };
 
         Self {
@@ -66,9 +68,9 @@ impl Media {
         self.probe = Some(MediaProbe::new(self.source.clone()))
     }
 
-    fn add_filter(&mut self, config: &Config, last: bool, next: bool) {
+    fn add_filter(&mut self, config: &Config) {
         let mut node = self.clone();
-        self.filter = Some(filter_chains(&mut node, &config, last, next));
+        self.filter = Some(filter_chains(&mut node, &config));
     }
 }
 
@@ -148,14 +150,14 @@ pub fn get_sec() -> f64 {
         + (local.nanosecond() as f64 / 1000000000.0)
 }
 
-pub fn get_date(seek: bool, start: f64, next: f64) -> String {
+pub fn get_date(seek: bool, start: f64, next_start: f64) -> String {
     let local: DateTime<Local> = Local::now();
 
     if seek && start > get_sec() {
         return (local - Duration::days(1)).format("%Y-%m-%d").to_string();
     }
 
-    if start == 0.0 && next >= 86400.0 {
+    if start == 0.0 && next_start >= 86400.0 {
         return (local + Duration::days(1)).format("%Y-%m-%d").to_string();
     }
 
@@ -202,7 +204,7 @@ pub fn is_close(a: f64, b: f64, to: f64) -> bool {
     false
 }
 
-pub fn get_delta(begin: &f64, config: &Config) -> f64 {
+pub fn get_delta(begin: &f64, config: &Config) -> (f64, f64) {
     let mut current_time = get_sec();
     let start = time_to_sec(&config.playlist.day_start);
     let length = time_to_sec(&config.playlist.length);
@@ -224,14 +226,19 @@ pub fn get_delta(begin: &f64, config: &Config) -> f64 {
         current_delta -= 86400.0
     }
 
-    current_delta
+    let ref_time = target_length + start;
+    let total_delta = ref_time - begin + current_delta;
+
+    (current_delta, total_delta)
 }
 
-pub fn check_sync(delta: f64, config: &Config) {
+pub fn check_sync(delta: f64, config: &Config) -> bool {
     if delta.abs() > config.general.stop_threshold && config.general.stop_threshold > 0.0 {
-        println!("Start time out of sync for '{}' seconds", delta);
-        process::exit(0x0100);
+        error!("Start time out of sync for <yellow>{}</> seconds", delta);
+        return false
     }
+
+    true
 }
 
 pub fn gen_dummy(duration: f64, config: &Config) -> (String, Vec<String>) {
