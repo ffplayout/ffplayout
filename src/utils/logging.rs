@@ -32,10 +32,10 @@ impl Log for LogMailer {
         if self.enabled(record.metadata()) {
             match record.level() {
                 Level::Error => {
-                    println!("Send Error Mail: {:?}\n{:?}", record, self.config)
+                    // println!("Send Error Mail: {:?}\n{:?}", record, self.config)
                 }
                 Level::Warn => {
-                    println!("Send Warn Mail: {:?}", record.args())
+                    // println!("Send Warn Mail: {:?}", record.args())
                 }
                 _ => (),
             }
