@@ -17,7 +17,6 @@ use tokio::runtime::Builder;
 
 #[derive(Debug, Clone)]
 pub struct Source {
-    stop: Arc<Mutex<bool>>,
     nodes: Arc<Mutex<Vec<String>>>,
     index: usize,
 }
@@ -44,7 +43,6 @@ impl Source {
         }
 
         Self {
-            stop: Arc::new(Mutex::new(false)),
             nodes: Arc::new(Mutex::new(file_list)),
             index: 0,
         }
@@ -70,48 +68,32 @@ impl Iterator for Source {
     }
 }
 
-async fn watch(
-    receiver: Receiver<notify::DebouncedEvent>,
-    stop: Arc<Mutex<bool>>,
-    sources: Arc<Mutex<Vec<String>>>,
-) {
-    loop {
-        if *stop.lock().unwrap() {
-            println!("in stop: {}", stop.lock().unwrap());
-            break;
-        }
-
-        match receiver.recv() {
-            Ok(event) => match event {
-                Create(new_path) => {
-                    sources.lock().unwrap().push(new_path.display().to_string());
-                    println!("Create new file: {:?}", new_path);
-                }
-                Remove(old_path) => {
-                    sources
-                        .lock()
-                        .unwrap()
-                        .retain(|x| x != &old_path.display().to_string());
-                    println!("Remove file: {:?}", old_path);
-                }
-                Rename(old_path, new_path) => {
-                    let i = sources
-                        .lock()
-                        .unwrap()
-                        .iter()
-                        .position(|x| *x == old_path.display().to_string())
-                        .unwrap();
-                    sources.lock().unwrap()[i] = new_path.display().to_string();
-                    println!("Rename file: {:?} to {:?}", old_path, new_path);
-                }
-                _ => (),
-            },
-            Err(e) => {
-                println!("{:?}", e);
+async fn watch(receiver: Receiver<notify::DebouncedEvent>, sources: Arc<Mutex<Vec<String>>>) {
+    while let Ok(res) = receiver.recv() {
+        match res {
+            Create(new_path) => {
+                sources.lock().unwrap().push(new_path.display().to_string());
+                println!("Create new file: {:?}", new_path);
             }
+            Remove(old_path) => {
+                sources
+                    .lock()
+                    .unwrap()
+                    .retain(|x| x != &old_path.display().to_string());
+                println!("Remove file: {:?}", old_path);
+            }
+            Rename(old_path, new_path) => {
+                let i = sources
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .position(|x| *x == old_path.display().to_string())
+                    .unwrap();
+                sources.lock().unwrap()[i] = new_path.display().to_string();
+                println!("Rename file: {:?} to {:?}", old_path, new_path);
+            }
+            _ => (),
         }
-
-        sleep(Duration::from_secs(1));
     }
 }
 
@@ -120,9 +102,8 @@ fn file_extension(filename: &Path) -> Option<&str> {
 }
 
 fn main() {
-    let path = "/home/jonathan/Videos/tv-media/ADtv/01 - Intro".to_string();
+    let path = "/home/jb/Videos/tv-media/ADtv/01 - Intro".to_string();
     let sources = Source::new(path.clone());
-    let stop = Arc::clone(&sources.stop);
 
     let (sender, receiver) = channel();
     let runtime = Builder::new_multi_thread()
@@ -133,19 +114,19 @@ fn main() {
         .expect("Creating Tokio runtime");
 
     let mut watcher = watcher(sender, Duration::from_secs(2)).unwrap();
+
     watcher
         .watch(path.clone(), RecursiveMode::Recursive)
         .unwrap();
 
     runtime.spawn(watch(
         receiver,
-        Arc::clone(&stop),
         Arc::clone(&sources.nodes),
     ));
 
     let mut count = 0;
 
-    {for node in sources {
+    for node in sources {
         println!("task: {:?}", node);
         sleep(Duration::from_secs(1));
 
@@ -154,15 +135,7 @@ fn main() {
         if count == 5 {
             break;
         }
-    }}
-
-    *stop.lock().unwrap() = true;
-    watcher.unwatch(path).unwrap();
+    }
 
     println!("after loop");
-    // watch.stop();
-
-    // watch.run = false;
-
-    //runtime.block_on(watch.stop());
 }
