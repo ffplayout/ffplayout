@@ -111,6 +111,10 @@ pub fn play(config: Config) {
             None => break
         };
 
+        if !node.process.unwrap() {
+            continue
+        }
+
         info!(
             "Play for <yellow>{}</>: <b><magenta>{}</></b>",
             sec_to_time(node.out - node.seek),
@@ -168,6 +172,8 @@ pub fn play(config: Config) {
         if let Err(e) = dec_proc.wait() {
             panic!("Decoder error: {:?}", e)
         };
+
+        sleep(Duration::from_secs(1));
     }
 
     sleep(Duration::from_secs(1));

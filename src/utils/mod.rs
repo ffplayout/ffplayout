@@ -2,7 +2,7 @@ use chrono::prelude::*;
 use chrono::Duration;
 use ffprobe::{ffprobe, Format, Stream};
 use serde::{Deserialize, Serialize};
-use std::{fs::metadata, time, time::UNIX_EPOCH};
+use std::{fs::metadata, path::Path, time, time::UNIX_EPOCH};
 
 use simplelog::*;
 
@@ -37,16 +37,22 @@ pub struct Media {
     pub probe: Option<MediaProbe>,
     pub last_ad: Option<bool>,
     pub next_ad: Option<bool>,
+    pub process: Option<bool>,
 }
 
 impl Media {
     fn new(index: usize, src: String) -> Self {
-        let probe = MediaProbe::new(src.clone());
+        let mut duration: f64 = 0.0;
+        let mut probe = None;
 
-        let duration: f64 = match &probe.clone().format.unwrap().duration {
-            Some(dur) => dur.parse().unwrap(),
-            None => 0.0,
-        };
+        if Path::new("src").is_file() {
+            probe = Some(MediaProbe::new(src.clone()));
+
+            duration = match probe.clone().unwrap().format.unwrap().duration {
+                Some(dur) => dur.parse().unwrap(),
+                None => 0.0,
+            };
+        }
 
         Self {
             begin: None,
@@ -58,9 +64,10 @@ impl Media {
             source: src.clone(),
             cmd: Some(vec!["-i".to_string(), src]),
             filter: Some(vec![]),
-            probe: Some(probe),
+            probe: probe,
             last_ad: Some(false),
             next_ad: Some(false),
+            process: Some(true),
         }
     }
 
@@ -70,7 +77,7 @@ impl Media {
 
     fn add_filter(&mut self, config: &Config) {
         let mut node = self.clone();
-        self.filter = Some(filter_chains(&mut node, &config));
+        self.filter = Some(filter_chains(&mut node, &config))
     }
 }
 
@@ -235,7 +242,7 @@ pub fn get_delta(begin: &f64, config: &Config) -> (f64, f64) {
 pub fn check_sync(delta: f64, config: &Config) -> bool {
     if delta.abs() > config.general.stop_threshold && config.general.stop_threshold > 0.0 {
         error!("Start time out of sync for <yellow>{}</> seconds", delta);
-        return false
+        return false;
     }
 
     true

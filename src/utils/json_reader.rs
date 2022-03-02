@@ -57,24 +57,13 @@ pub fn read_json(config: &Config, seek: bool) -> Playlist {
         time_sec += length_sec
     }
 
-    let cloned_program = playlist.program.clone();
-
     for (i, item) in playlist.program.iter_mut().enumerate() {
         item.begin = Some(start_sec);
         item.index = Some(i);
         item.last_ad = Some(false);
         item.next_ad = Some(false);
+        item.process = Some(true);
         let mut source_cmd: Vec<String> = vec![];
-
-        if i > 0 && cloned_program[i - 1].category == "advertisement".to_string() {
-            item.last_ad = Some(true);
-        }
-
-        if i + 1 < cloned_program.len() {
-            if cloned_program[i + 1].category == "advertisement".to_string() {
-                item.next_ad = Some(true);
-            }
-        }
 
         if seek_first {
             let tmp_length = item.out - item.seek;
