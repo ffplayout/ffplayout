@@ -7,8 +7,6 @@ use crate::utils::{
     Config, Media,
 };
 
-use crate::filter::{overlay, Filters};
-
 #[derive(Debug)]
 pub struct CurrentProgram {
     config: Config,
@@ -82,7 +80,10 @@ impl CurrentProgram {
                 return Some(false);
             }
         } else {
-            if i > 0 && i - 1 < self.nodes.len() && self.nodes[i - 1].category == "advertisement".to_string() {
+            if i > 0
+                && i < self.nodes.len()
+                && self.nodes[i - 1].category == "advertisement".to_string()
+            {
                 return Some(true);
             } else {
                 return Some(false);
@@ -114,7 +115,6 @@ impl Iterator for CurrentProgram {
                 };
 
                 let (delta, _) = get_delta(&self.current_node.begin.unwrap(), &self.config);
-                debug!("Delta: <yellow>{delta}</>");
                 let sync = check_sync(delta, &self.config);
 
                 if !sync {
@@ -133,11 +133,9 @@ impl Iterator for CurrentProgram {
             Some(self.current_node.clone())
         } else {
             let (_, time_diff) = get_delta(&get_sec(), &self.config);
-            let pl_time_diff = self.check_for_next_playlist(true);
-            let pl_delta = time_to_sec(&self.config.playlist.length) - pl_time_diff.abs();
             let mut last_ad = self.is_ad(self.idx, false);
 
-            if time_diff.abs() > pl_delta && time_diff.abs() > self.config.general.stop_threshold {
+            if time_diff.abs() > self.config.general.stop_threshold {
                 self.current_node = Media::new(self.idx + 1, "".to_string());
                 self.current_node.begin = Some(get_sec());
                 let mut duration = time_diff.abs();
@@ -150,9 +148,9 @@ impl Iterator for CurrentProgram {
                 self.current_node = gen_source(self.current_node.clone(), &self.config);
                 self.nodes.push(self.current_node.clone());
 
-                last_ad = self.is_ad(self.idx + 1, false);
+                last_ad = self.is_ad(self.idx, false);
                 self.current_node.last_ad = last_ad;
-
+                self.current_node.add_filter(&self.config);
 
                 return Some(self.current_node.clone());
             }
@@ -178,7 +176,6 @@ impl Iterator for CurrentProgram {
                 };
 
                 let (delta, _) = get_delta(&self.current_node.begin.unwrap(), &self.config);
-                debug!("Delta: <yellow>{delta}</>");
                 let sync = check_sync(delta, &self.config);
 
                 if !sync {
@@ -240,24 +237,7 @@ fn gen_source(mut node: Media, config: &Config) -> Media {
         let (source, cmd) = gen_dummy(node.out - node.seek, &config);
         node.source = source;
         node.cmd = Some(cmd);
-        let mut filters = Filters::new();
-        let mut chain: Vec<String> = vec![];
-        overlay(&mut node, &mut filters, &config);
-
-        if filters.video_chain.is_some() {
-            let mut filter_str: String = "".to_string();
-            filter_str.push_str(filters.video_chain.unwrap().as_str());
-            filter_str.push_str(filters.video_map.clone().unwrap().as_str());
-
-            chain.push("-filter_complex".to_string());
-            chain.push(filter_str);
-            chain.push("-map".to_string());
-            chain.push(filters.video_map.unwrap());
-            chain.push("-map".to_string());
-            chain.push("1:a".to_string());
-        }
-
-        node.filter = Some(chain);
+        node.add_filter(&config);
     }
 
     node
