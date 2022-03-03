@@ -3,7 +3,7 @@ use serde_yaml::{self};
 use std::{fs::File, path::Path, process};
 // use regex::Regex;
 
-use crate::utils::{get_args};
+use crate::utils::{get_args, time_to_sec};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Config {
@@ -75,6 +75,7 @@ pub struct Ingest {
 pub struct Playlist {
     pub path: String,
     pub day_start: String,
+    pub start_sec: Option<f64>,
     pub length: String,
     pub infinit: bool,
 }
@@ -130,6 +131,7 @@ pub fn get_config() -> Config {
     let mut config: Config = serde_yaml::from_reader(f).expect("Could not read config file.");
     let fps = config.processing.fps.to_string();
     let bitrate = config.processing.width * config.processing.height / 10;
+    config.playlist.start_sec = Some(time_to_sec(&config.playlist.day_start));
 
     let settings = vec![
         "-pix_fmt",
@@ -183,11 +185,12 @@ pub fn get_config() -> Config {
     }
 
     if args.start.is_some() {
-        config.playlist.day_start = args.start.unwrap();
+        config.playlist.day_start = args.start.clone().unwrap();
+        config.playlist.start_sec = Some(time_to_sec(&args.start.unwrap()));
     }
 
     if args.length.is_some() {
-        config.playlist.length = args.length.unwrap();
+        config.playlist.length = args.length.clone().unwrap();
     }
 
     if args.infinit {

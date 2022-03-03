@@ -270,3 +270,27 @@ pub fn gen_dummy(duration: f64, config: &Config) -> (String, Vec<String>) {
 
     (source, cmd)
 }
+
+pub fn seek_and_length(src: String, seek: f64, out: f64, duration: f64) -> Vec<String> {
+    let mut source_cmd: Vec<String> = vec![];
+
+    if seek > 0.0 {
+        source_cmd.append(&mut vec![
+            "-ss".to_string(),
+            format!("{}", seek).to_string(),
+            "-i".to_string(),
+            src.clone(),
+        ])
+    } else {
+        source_cmd.append(&mut vec!["-i".to_string(), src.clone()])
+    }
+
+    if duration > out {
+        source_cmd.append(&mut vec![
+            "-t".to_string(),
+            format!("{}", out - seek).to_string(),
+        ]);
+    }
+
+    source_cmd
+}

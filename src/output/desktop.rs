@@ -173,6 +173,7 @@ pub fn play(config: Config) {
             panic!("Decoder error: {:?}", e)
         };
 
+        // this is only for testing...
         sleep(Duration::from_secs(1));
     }
 

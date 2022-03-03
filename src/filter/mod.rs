@@ -34,7 +34,7 @@ impl Filters {
                     if filter.contains("aevalsrc") || filter.contains("anoisesrc") {
                         self.audio_chain = Some(filter);
                     } else {
-                        self.audio_chain = Some(format!("[0:a]{filter}"));
+                        self.audio_chain = Some(format!("[{}]{filter}", self.audio_map.clone().unwrap()));
                     }
                     self.audio_map = Some("[aout1]".to_string());
                 }
@@ -248,10 +248,16 @@ fn fps_calc(r_frame_rate: String) -> f64 {
 pub fn filter_chains(node: &mut Media, config: &Config) -> Vec<String> {
     let mut filters = Filters::new();
     let mut audio_map = "1:a".to_string();
+    filters.audio_map = Some(audio_map);
 
     if node.probe.is_some() {
-        audio_map = "0:a".to_string();
         let probe = node.probe.clone();
+
+        if node.probe.as_ref().unwrap().audio_streams.is_some() {
+            audio_map = "0:a".to_string();
+            filters.audio_map = Some(audio_map);
+        }
+
         let v_stream = &probe.unwrap().video_streams.unwrap()[0];
         let aspect = aspect_calc(v_stream.display_aspect_ratio.clone().unwrap());
         let frame_per_sec = fps_calc(v_stream.r_frame_rate.clone());
@@ -291,7 +297,7 @@ pub fn filter_chains(node: &mut Media, config: &Config) -> Vec<String> {
         filter_str.push_str(filters.audio_map.clone().unwrap().as_str());
         filter_map.append(&mut vec!["-map".to_string(), filters.audio_map.unwrap()]);
     } else {
-        filter_map.append(&mut vec!["-map".to_string(), audio_map]);
+        filter_map.append(&mut vec!["-map".to_string(), filters.audio_map.unwrap()]);
     }
 
     if filter_str.len() > 10 {

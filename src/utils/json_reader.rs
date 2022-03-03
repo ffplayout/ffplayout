@@ -3,27 +3,25 @@ use std::{fs::File, path::Path};
 
 use simplelog::*;
 
-use crate::utils::{get_date, get_sec, modified_time, time_to_sec, Config, Media};
+use crate::utils::{get_date, modified_time, seek_and_length, time_to_sec, Config, Media};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Playlist {
     pub date: String,
+    pub start_sec: Option<f64>,
     pub current_file: Option<String>,
     pub start_index: Option<usize>,
     pub modified: Option<String>,
     pub program: Vec<Media>,
 }
 
-pub fn read_json(config: &Config, seek: bool) -> Playlist {
+pub fn read_json(config: &Config, seek: bool, next_start: f64) -> Playlist {
     let mut playlist_path = Path::new(&config.playlist.path).to_owned();
     let start = &config.playlist.day_start;
-    let length = &config.playlist.length;
     let mut start_sec = time_to_sec(start);
-    let mut length_sec: f64 = 86400.0;
-    let mut seek_first = seek;
 
     if playlist_path.is_dir() {
-        let date = get_date(seek, start_sec, 0.0);
+        let date = get_date(seek, start_sec, next_start);
         let d: Vec<&str> = date.split('-').collect();
         playlist_path = playlist_path
             .join(d[0])
@@ -34,10 +32,6 @@ pub fn read_json(config: &Config, seek: bool) -> Playlist {
 
     let current_file: String = playlist_path.as_path().display().to_string();
 
-    if length.contains(":") {
-        length_sec = time_to_sec(length);
-    }
-
     info!("Read Playlist: <b><magenta>{}</></b>", &current_file);
 
     let modify = modified_time(current_file.clone());
@@ -46,15 +40,10 @@ pub fn read_json(config: &Config, seek: bool) -> Playlist {
         serde_json::from_reader(f).expect("Could not read json playlist file.");
 
     playlist.current_file = Some(current_file);
+    playlist.start_sec = Some(start_sec.clone());
 
     if modify.is_some() {
         playlist.modified = Some(modify.unwrap().to_string());
-    }
-
-    let mut time_sec = get_sec();
-
-    if seek_first && time_sec < start_sec {
-        time_sec += length_sec
     }
 
     for (i, item) in playlist.program.iter_mut().enumerate() {
@@ -63,41 +52,15 @@ pub fn read_json(config: &Config, seek: bool) -> Playlist {
         item.last_ad = Some(false);
         item.next_ad = Some(false);
         item.process = Some(true);
-        let mut source_cmd: Vec<String> = vec![];
+        item.cmd = Some(seek_and_length(
+            item.source.clone(),
+            item.seek,
+            item.out,
+            item.duration,
+        ));
+        item.filter = Some(vec![]);
 
-        if seek_first {
-            let tmp_length = item.out - item.seek;
-
-            if start_sec + item.out - item.seek > time_sec {
-                seek_first = false;
-                playlist.start_index = Some(i);
-
-                item.seek = time_sec - start_sec;
-            }
-            start_sec += tmp_length;
-        } else {
-            start_sec += item.out - item.seek;
-        }
-
-        if item.seek > 0.0 {
-            source_cmd.append(&mut vec![
-                "-ss".to_string(),
-                format!("{}", item.seek).to_string(),
-                "-i".to_string(),
-                item.source.clone(),
-            ])
-        } else {
-            source_cmd.append(&mut vec!["-i".to_string(), item.source.clone()])
-        }
-
-        if item.duration > item.out {
-            source_cmd.append(&mut vec![
-                "-t".to_string(),
-                format!("{}", item.out - item.seek).to_string(),
-            ]);
-        }
-
-        item.cmd = Some(source_cmd);
+        start_sec += item.out - item.seek;
     }
 
     playlist
