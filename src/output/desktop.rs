@@ -105,7 +105,6 @@ pub fn play(config: Config) {
     };
 
     for node in get_source {
-        // println!("Node begin: {:?}", sec_to_time(node.begin.unwrap()));
         let cmd = match node.cmd {
             Some(cmd) => cmd,
             None => break

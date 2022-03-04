@@ -16,7 +16,7 @@ mod playlist;
 pub use arg_parse::get_args;
 pub use config::{get_config, Config};
 pub use folder::{watch_folder, Source};
-pub use json_reader::read_json;
+pub use json_reader::{read_json, DUMMY_LEN};
 pub use logging::init_logging;
 pub use playlist::CurrentProgram;
 
@@ -213,14 +213,14 @@ pub fn is_close(a: f64, b: f64, to: f64) -> bool {
 
 pub fn get_delta(begin: &f64, config: &Config) -> (f64, f64) {
     let mut current_time = get_sec();
-    let start = time_to_sec(&config.playlist.day_start);
+    let mut tmp_time = current_time.clone();
+    let start = config.playlist.start_sec.unwrap();
     let length = time_to_sec(&config.playlist.length);
     let mut target_length = 86400.0;
 
     if length > 0.0 && length != target_length {
         target_length = length
     }
-
     if begin == &start && start == 0.0 && 86400.0 - current_time < 4.0 {
         current_time -= target_length
     } else if start >= current_time && begin != &start {
@@ -233,8 +233,12 @@ pub fn get_delta(begin: &f64, config: &Config) -> (f64, f64) {
         current_delta -= 86400.0
     }
 
+    if tmp_time <= start + current_delta.abs() {
+        tmp_time += target_length
+    }
+
     let ref_time = target_length + start;
-    let total_delta = ref_time - begin + current_delta;
+    let total_delta = ref_time - tmp_time;
 
     (current_delta, total_delta)
 }
@@ -265,7 +269,7 @@ pub fn gen_dummy(duration: f64, config: &Config) -> (String, Vec<String>) {
         "-f".to_string(),
         "lavfi".to_string(),
         "-i".to_string(),
-        format!("anoisesrc=d={duration}:c=pink:r=48000:a=0.05"),
+        format!("anoisesrc=d={duration}:c=pink:r=48000:a=0.3"),
     ];
 
     (source, cmd)
