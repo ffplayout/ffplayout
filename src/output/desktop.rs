@@ -4,10 +4,7 @@ use std::{
     path::Path,
     process,
     process::{Command, Stdio},
-    sync::{
-        mpsc::channel,
-        Arc, Mutex,
-    },
+    sync::{mpsc::channel, Arc, Mutex},
     thread::sleep,
     time::Duration,
 };
@@ -46,10 +43,7 @@ pub fn play(config: Config) {
 
             debug!("Monitor folder: <b><magenta>{}</></b>", path);
 
-            runtime.spawn(watch_folder(
-                receiver,
-                Arc::clone(&folder_source.nodes),
-            ));
+            runtime.spawn(watch_folder(receiver, Arc::clone(&folder_source.nodes)));
 
             Box::new(folder_source) as Box<dyn Iterator<Item = Media>>
         }
@@ -107,11 +101,11 @@ pub fn play(config: Config) {
     for node in get_source {
         let cmd = match node.cmd {
             Some(cmd) => cmd,
-            None => break
+            None => break,
         };
 
         if !node.process.unwrap() {
-            continue
+            continue;
         }
 
         info!(

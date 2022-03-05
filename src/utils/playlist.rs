@@ -11,7 +11,7 @@ use crate::utils::{
 pub struct CurrentProgram {
     config: Config,
     start_sec: f64,
-    json_mod: String,
+    json_mod: Option<String>,
     json_path: Option<String>,
     nodes: Vec<Media>,
     current_node: Media,
@@ -26,8 +26,8 @@ impl CurrentProgram {
         Self {
             config,
             start_sec: json.start_sec.unwrap(),
-            json_mod: json.modified.unwrap(),
-            json_path: Some(json.current_file.unwrap()),
+            json_mod: json.modified,
+            json_path: json.current_file,
             nodes: json.program,
             current_node: Media::new(0, "".to_string()),
             init: true,
@@ -41,12 +41,16 @@ impl CurrentProgram {
                 if Path::new(&path).is_file() {
                     let mod_time = modified_time(path);
 
-                    if !mod_time.unwrap().to_string().eq(&self.json_mod) {
+                    if !mod_time
+                        .unwrap()
+                        .to_string()
+                        .eq(&self.json_mod.clone().unwrap())
+                    {
                         // when playlist has changed, reload it
                         let json = read_json(&self.config, false, 0.0);
 
-                        self.json_mod = json.modified.unwrap();
-                        self.nodes = json.program.into();
+                        self.json_mod = json.modified;
+                        self.nodes = json.program;
                     }
                 } else {
                     error!("Playlist <b><magenta>{}</></b> not exists!", path);
@@ -61,7 +65,6 @@ impl CurrentProgram {
                     self.init = true;
                     self.index = 0;
                 }
-
             }
 
             _ => (),
@@ -94,8 +97,8 @@ impl CurrentProgram {
             if next_start >= playlist_length {
                 let json = read_json(&self.config, false, next_start);
 
-                self.json_mod = json.modified.unwrap();
-                self.nodes = json.program.into();
+                self.json_mod = json.modified;
+                self.nodes = json.program;
                 self.index = 0;
             }
         }
@@ -161,7 +164,7 @@ impl CurrentProgram {
                     item.duration,
                 ));
                 self.current_node = handle_list_init(item.clone(), &self.config);
-                break
+                break;
             }
             start_sec += item.out - item.seek;
         }
@@ -183,8 +186,8 @@ impl Iterator for CurrentProgram {
                 let json = read_json(&self.config, false, get_sec() + DUMMY_LEN);
 
                 if json.current_file.is_some() {
-                    self.json_mod = json.modified.unwrap();
-                    self.json_path = Some(json.current_file.unwrap());
+                    self.json_mod = json.modified;
+                    self.json_path = json.current_file;
                     self.nodes = json.program;
                     self.get_init_clip();
                 } else {
@@ -252,8 +255,8 @@ impl Iterator for CurrentProgram {
                 self.json_path = None;
                 self.nodes = json.program;
             } else {
-                self.json_mod = json.modified.unwrap();
-                self.json_path = Some(json.current_file.unwrap());
+                self.json_mod = json.modified;
+                self.json_path = json.current_file;
                 self.nodes = json.program;
             }
 

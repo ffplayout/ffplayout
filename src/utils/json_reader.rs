@@ -3,7 +3,7 @@ use std::{fs::File, path::Path};
 
 use simplelog::*;
 
-use crate::utils::{get_date, get_sec, modified_time, seek_and_length, time_to_sec, Config, Media};
+use crate::utils::{get_date, modified_time, seek_and_length, time_to_sec, Config, Media};
 
 pub const DUMMY_LEN: f64 = 20.0;
 
@@ -51,7 +51,8 @@ pub fn read_json(config: &Config, seek: bool, next_start: f64) -> Playlist {
 
     if !playlist_path.is_file() {
         error!("Playlist <b><magenta>{}</></b> not exists!", current_file);
-        return Playlist::new(date, get_sec());
+        // let dummy_playlist = Playlist::new(date, get_sec());
+        return Playlist::new(date, start_sec);
     }
 
     info!("Read Playlist: <b><magenta>{}</></b>", &current_file);
