@@ -11,7 +11,7 @@ pub struct Args {
     #[clap(short, long, help = "file path for logging")]
     pub log: Option<String>,
 
-    #[clap(long, help = "playing mode: folder, playlist, custom...")]
+    #[clap(short = 'm', long, help = "playing mode: folder, playlist")]
     pub play_mode: Option<String>,
 
     #[clap(short, long, help = "play folder content")]
