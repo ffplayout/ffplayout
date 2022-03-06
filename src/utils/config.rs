@@ -77,6 +77,7 @@ pub struct Playlist {
     pub day_start: String,
     pub start_sec: Option<f64>,
     pub length: String,
+    pub length_sec: Option<f64>,
     pub infinit: bool,
 }
 
@@ -132,6 +133,12 @@ pub fn get_config() -> Config {
     let fps = config.processing.fps.to_string();
     let bitrate = config.processing.width * config.processing.height / 10;
     config.playlist.start_sec = Some(time_to_sec(&config.playlist.day_start));
+
+    if config.playlist.length.contains(":") {
+        config.playlist.length_sec = Some(time_to_sec(&config.playlist.length));
+    } else {
+        config.playlist.length_sec = Some(86400.0);
+    }
 
     let settings = vec![
         "-pix_fmt",
@@ -191,6 +198,12 @@ pub fn get_config() -> Config {
 
     if args.length.is_some() {
         config.playlist.length = args.length.clone().unwrap();
+
+        if config.playlist.length.contains(":") {
+            config.playlist.length_sec = Some(time_to_sec(&config.playlist.length));
+        } else {
+            config.playlist.length_sec = Some(86400.0);
+        }
     }
 
     if args.infinit {

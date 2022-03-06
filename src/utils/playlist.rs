@@ -4,7 +4,7 @@ use simplelog::*;
 
 use crate::utils::{
     check_sync, gen_dummy, get_delta, get_sec, json_reader::read_json, modified_time,
-    seek_and_length, time_to_sec, Config, Media, DUMMY_LEN,
+    seek_and_length, Config, Media, DUMMY_LEN,
 };
 
 #[derive(Debug)]
@@ -92,15 +92,12 @@ impl CurrentProgram {
 
         let next_start = self.current_node.begin.unwrap() - start_sec + out + delta;
 
-        if self.config.playlist.length.contains(":") {
-            let playlist_length = time_to_sec(&self.config.playlist.length);
-            if next_start >= playlist_length {
-                let json = read_json(&self.config, false, next_start);
+        if next_start >= self.config.playlist.length_sec.unwrap() {
+            let json = read_json(&self.config, false, next_start);
 
-                self.json_mod = json.modified;
-                self.nodes = json.program;
-                self.index = 0;
-            }
+            self.json_mod = json.modified;
+            self.nodes = json.program;
+            self.index = 0;
         }
 
         // println!("{}", next_start);
@@ -139,15 +136,9 @@ impl CurrentProgram {
 
     fn get_init_clip(&mut self) {
         let mut time_sec = get_sec();
-        let length = self.config.playlist.length.clone();
-        let mut length_sec: f64 = 86400.0;
-
-        if length.contains(":") {
-            length_sec = time_to_sec(&length);
-        }
 
         if time_sec < self.start_sec {
-            time_sec += length_sec
+            time_sec += self.config.playlist.length_sec.unwrap()
         }
 
         let mut start_sec = self.start_sec.clone();
@@ -157,12 +148,7 @@ impl CurrentProgram {
                 self.init = false;
                 self.index = i + 1;
                 item.seek = time_sec - start_sec;
-                item.cmd = Some(seek_and_length(
-                    item.source.clone(),
-                    item.seek,
-                    item.out,
-                    item.duration,
-                ));
+
                 self.current_node = handle_list_init(item.clone(), &self.config);
                 break;
             }
@@ -205,7 +191,10 @@ impl Iterator for CurrentProgram {
 
             return Some(self.current_node.clone());
         }
-        if self.index < self.nodes.len() {
+        if self.index < self.nodes.len()
+            && self.current_node.begin.unwrap() + self.current_node.out - self.current_node.seek
+                <= self.config.playlist.length_sec.unwrap() + self.config.playlist.start_sec.unwrap()
+        {
             self.check_update();
 
             self.get_current_node(self.index);
@@ -335,7 +324,14 @@ fn handle_list_init(mut node: Media, config: &Config) -> Media {
     }
 
     node.out = out;
-    let new_node = gen_source(node, &config);
+
+    let mut new_node = gen_source(node, &config);
+    new_node.cmd = Some(seek_and_length(
+        new_node.source.clone(),
+        new_node.seek,
+        new_node.out,
+        new_node.duration,
+    ));
 
     new_node
 }
