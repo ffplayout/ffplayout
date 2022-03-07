@@ -104,6 +104,9 @@ pub fn play(config: Config) {
             None => break,
         };
 
+        // this is only for testing...
+        sleep(Duration::from_secs(1));
+
         if !node.process.unwrap() {
             continue;
         }
@@ -165,9 +168,6 @@ pub fn play(config: Config) {
         if let Err(e) = dec_proc.wait() {
             panic!("Decoder error: {:?}", e)
         };
-
-        // this is only for testing...
-        sleep(Duration::from_secs(1));
     }
 
     sleep(Duration::from_secs(1));

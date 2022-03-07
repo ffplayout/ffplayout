@@ -233,7 +233,7 @@ pub fn get_delta(begin: &f64, config: &Config) -> (f64, f64) {
         current_delta -= 86400.0
     }
 
-    if tmp_time <= start + current_delta.abs() {
+    if tmp_time <= start {
         tmp_time += target_length
     }
 

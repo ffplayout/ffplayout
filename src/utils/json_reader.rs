@@ -3,7 +3,7 @@ use std::{fs::File, path::Path};
 
 use simplelog::*;
 
-use crate::utils::{get_date, modified_time, seek_and_length, time_to_sec, Config, Media};
+use crate::utils::{get_date, modified_time, time_to_sec, Config, Media};
 
 pub const DUMMY_LEN: f64 = 20.0;
 
@@ -75,12 +75,6 @@ pub fn read_json(config: &Config, seek: bool, next_start: f64) -> Playlist {
         item.last_ad = Some(false);
         item.next_ad = Some(false);
         item.process = Some(true);
-        item.cmd = Some(seek_and_length(
-            item.source.clone(),
-            item.seek,
-            item.out,
-            item.duration,
-        ));
         item.filter = Some(vec![]);
 
         start_sec += item.out - item.seek;
