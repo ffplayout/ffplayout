@@ -71,32 +71,27 @@ impl CurrentProgram {
         }
     }
 
-    fn check_for_next_playlist(&mut self, last: bool) {
+    fn check_for_next_playlist(&mut self) {
         // let current_time = get_sec();
         let mut out = self.current_node.out.clone();
-        let start_sec = &self.config.playlist.start_sec.unwrap();
-        let mut delta = 0.0;
+        let seek = self.current_node.seek.clone();
+        let start_sec = self.config.playlist.start_sec.unwrap();
+        let (mut delta, _) = get_delta(&self.current_node.begin.unwrap().clone(), &self.config);
         let mut is_over_time = false;
 
         if self.current_node.duration > self.current_node.out {
             out = self.current_node.duration.clone()
         }
 
-        if last {
-            let seek = if self.current_node.seek > 0.0 {
-                self.current_node.seek
-            } else {
-                0.0
-            };
-            (delta, _) = get_delta(&self.current_node.begin.unwrap().clone(), &self.config);
-            delta += seek + self.config.general.stop_threshold;
+        if self.index == self.nodes.len() - 1 {
+            delta += self.config.general.stop_threshold;
 
-            if &get_sec() >= start_sec {
+            if get_sec() >= start_sec {
                 is_over_time = true;
             }
         }
 
-        let next_start = self.current_node.begin.unwrap() - start_sec + out + delta;
+        let next_start = self.current_node.begin.unwrap() - start_sec + out - seek + delta;
 
         if next_start >= self.config.playlist.length_sec.unwrap() || is_over_time {
             let json = read_json(&self.config, false, next_start);
@@ -164,7 +159,7 @@ impl Iterator for CurrentProgram {
 
             if self.init {
                 self.current_node = self.nodes[self.nodes.len() - 1].clone();
-                self.check_for_next_playlist(false);
+                self.check_for_next_playlist();
 
                 let new_node = self.nodes[self.nodes.len() - 1].clone();
                 let new_length = new_node.begin.unwrap() + new_node.duration;
@@ -182,7 +177,7 @@ impl Iterator for CurrentProgram {
                     }
 
                     if self.config.playlist.start_sec.unwrap() > current_time {
-                        current_time += self.config.playlist.length_sec.unwrap();
+                        current_time += self.config.playlist.length_sec.unwrap() + 1.0;
                     }
                     let mut media = Media::new(0, "".to_string());
                     media.begin = Some(current_time);
@@ -202,7 +197,7 @@ impl Iterator for CurrentProgram {
         }
         if self.index < self.nodes.len() {
             self.check_update();
-            self.check_for_next_playlist(false);
+            self.check_for_next_playlist();
             let mut is_last = false;
 
             if self.index == self.nodes.len() - 1 {
@@ -226,7 +221,7 @@ impl Iterator for CurrentProgram {
             Some(self.current_node.clone())
         } else {
             let last_playlist = self.json_path.clone();
-            self.check_for_next_playlist(true);
+            self.check_for_next_playlist();
             let (_, total_delta) = get_delta(&self.config.playlist.start_sec.unwrap(), &self.config);
             let mut last_ad = self.is_ad(self.index, false);
 
