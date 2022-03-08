@@ -72,9 +72,11 @@ impl CurrentProgram {
     }
 
     fn check_for_next_playlist(&mut self, last: bool) {
+        // let current_time = get_sec();
         let mut out = self.current_node.out.clone();
         let start_sec = &self.config.playlist.start_sec.unwrap();
         let mut delta = 0.0;
+        let mut is_over_time = false;
 
         if self.current_node.duration > self.current_node.out {
             out = self.current_node.duration.clone()
@@ -88,14 +90,18 @@ impl CurrentProgram {
             };
             (delta, _) = get_delta(&self.current_node.begin.unwrap().clone(), &self.config);
             delta += seek + self.config.general.stop_threshold;
+
+            if &get_sec() >= start_sec {
+                is_over_time = true;
+            }
         }
 
         let next_start = self.current_node.begin.unwrap() - start_sec + out + delta;
 
-        if next_start >= self.config.playlist.length_sec.unwrap() {
-            println!("----read");
+        if next_start >= self.config.playlist.length_sec.unwrap() || is_over_time {
             let json = read_json(&self.config, false, next_start);
 
+            self.json_path = json.current_file;
             self.json_mod = json.modified;
             self.nodes = json.program;
             self.index = 0;
@@ -141,25 +147,6 @@ impl CurrentProgram {
                 break;
             }
             start_sec += item.out - item.seek;
-        }
-    }
-
-    fn get_new_playlist(&mut self) {
-        // Here we should end up, when we need a new playlist
-        let (delta, _) = get_delta(&self.config.playlist.start_sec.unwrap(), &self.config);
-        let next_begin =
-                self.current_node.begin.unwrap() + self.current_node.out - self.current_node.seek + delta;
-
-        let json = read_json(&self.config, false, next_begin);
-
-        if json.current_file.is_none() {
-            self.init = true;
-            self.json_path = None;
-            self.nodes = json.program;
-        } else {
-            self.json_mod = json.modified;
-            self.json_path = json.current_file;
-            self.nodes = json.program;
         }
     }
 }
@@ -223,16 +210,19 @@ impl Iterator for CurrentProgram {
 
             Some(self.current_node.clone())
         } else {
-            debug!("Playlist reached end");
+            let last_playlist = self.json_path.clone();
+            self.check_for_next_playlist(true);
             let (delta, time_diff) = get_delta(&self.config.playlist.start_sec.unwrap(), &self.config);
             let mut last_ad = self.is_ad(self.index, false);
 
-            println!("delta: {:?} | time_diff: {:?}", delta, time_diff);
+            println!("delta: {}, total delta: {}", delta, time_diff);
 
-            if time_diff.abs() > self.config.general.stop_threshold {
+            if last_playlist == self.json_path && time_diff.abs() > self.config.general.stop_threshold {
+                println!("Test if we have to fill");
                 // Test if playlist is to early finish,
                 // and if we have to fill it with a placeholder.
-                self.current_node = Media::new(self.index + 1, "".to_string());
+                self.index += 1;
+                self.current_node = Media::new(self.index, "".to_string());
                 self.current_node.begin = Some(get_sec());
                 let mut duration = time_diff.abs();
 
@@ -250,8 +240,6 @@ impl Iterator for CurrentProgram {
 
                 return Some(self.current_node.clone());
             }
-
-            self.get_new_playlist();
 
             self.current_node = gen_source(self.nodes[0].clone(), &self.config);
             self.current_node.last_ad = last_ad;
@@ -292,7 +280,6 @@ fn timed_source(node: Media, config: &Config, last: bool) -> Media {
     } else if total_delta <= 0.0 {
         info!("Begin is over play time, skip: {}", node.source);
     } else if total_delta < node.duration - node.seek || last {
-        println!("handle list end");
         new_node = handle_list_end(node, total_delta);
     }
 
@@ -310,7 +297,6 @@ fn gen_source(mut node: Media, config: &Config) -> Media {
         ));
         node.add_filter(&config);
     } else {
-        println!("{:?}", node);
         if node.source.chars().count() == 0 {
             warn!(
                 "Generate filler with <yellow>{:.2}</> seconds length!",
@@ -372,7 +358,7 @@ fn handle_list_end(mut node: Media, total_delta: f64) -> Media {
     {
         node.out = out;
     } else if node.duration > total_delta && total_delta < 1.0 {
-        warn!("Last clip less then 1 second long, skip: {}", node.source);
+        warn!("Last clip less then 1 second long, skip: <b><magenta>{}</></b>", node.source);
         node.out = out;
         node.cmd = Some(seek_and_length(
             node.source.clone(),
@@ -381,7 +367,7 @@ fn handle_list_end(mut node: Media, total_delta: f64) -> Media {
             node.duration,
         ));
 
-        // node.process = Some(false);
+        node.process = Some(false);
 
         return node;
     } else {

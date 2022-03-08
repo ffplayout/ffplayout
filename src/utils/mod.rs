@@ -213,10 +213,10 @@ pub fn is_close(a: f64, b: f64, to: f64) -> bool {
 
 pub fn get_delta(begin: &f64, config: &Config) -> (f64, f64) {
     let mut current_time = get_sec();
-    let mut tmp_time = current_time.clone();
     let start = config.playlist.start_sec.unwrap();
     let length = time_to_sec(&config.playlist.length);
     let mut target_length = 86400.0;
+    let total_delta;
 
     if length > 0.0 && length != target_length {
         target_length = length
@@ -233,12 +233,11 @@ pub fn get_delta(begin: &f64, config: &Config) -> (f64, f64) {
         current_delta -= 86400.0
     }
 
-    if tmp_time <= start {
-        tmp_time += target_length
+    if current_time < start {
+        total_delta = start - current_time;
+    } else {
+        total_delta = target_length + start - current_time;
     }
-
-    let ref_time = target_length + start;
-    let total_delta = ref_time - tmp_time;
 
     (current_delta, total_delta)
 }
