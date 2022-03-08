@@ -288,7 +288,7 @@ def pre_audio_codec():
 
 
 ingest.enable = _cfg['ingest']['enable']
-ingest.stream_input = _cfg['ingest']['stream_input']
+ingest.stream_input = [str(e) for e in _cfg['ingest']['stream_input']]
 
 if stdin_args.play_mode:
     pre.mode = stdin_args.play_mode
@@ -319,8 +319,8 @@ else:
     playout.mode = _cfg['out']['mode']
 
 playout.preview = _cfg['out']['preview']
-playout.preview_param = _cfg['out']['preview_param']
-playout.stream_param = _cfg['out']['stream_param']
+playout.preview_param = [str(e) for e in _cfg['out']['preview_param']]
+playout.stream_param = [str(e) for e in _cfg['out']['stream_param']]
 
 
 # ------------------------------------------------------------------------------
