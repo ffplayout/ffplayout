@@ -163,20 +163,35 @@ impl Iterator for CurrentProgram {
             }
 
             if self.init {
-                let json = read_json(&self.config, false, get_sec() + DUMMY_LEN);
+                self.current_node = self.nodes[self.nodes.len() - 1].clone();
+                self.check_for_next_playlist(false);
 
-                if json.current_file.is_some() {
-                    self.json_mod = json.modified;
-                    self.json_path = json.current_file;
-                    self.nodes = json.program;
+                let new_node = self.nodes[self.nodes.len() - 1].clone();
+                let new_length = new_node.begin.unwrap() + new_node.duration;
+
+                if new_length >= self.config.playlist.length_sec.unwrap() + self.config.playlist.start_sec.unwrap() {
                     self.get_init_clip();
                 } else {
+                    let mut current_time = get_sec();
+                    let (_, total_delta) = get_delta(&current_time, &self.config);
+                    let mut duration = DUMMY_LEN;
+
+                    if DUMMY_LEN > total_delta {
+                        duration = total_delta;
+                        self.init = false;
+                    }
+
+                    if self.config.playlist.start_sec.unwrap() > current_time {
+                        current_time += self.config.playlist.length_sec.unwrap();
+                    }
                     let mut media = Media::new(0, "".to_string());
-                    media.begin = Some(get_sec());
-                    media.duration = DUMMY_LEN;
-                    media.out = DUMMY_LEN;
+                    media.begin = Some(current_time);
+                    media.duration = duration;
+                    media.out = duration;
 
                     self.current_node = gen_source(media, &self.config);
+                    self.nodes.push(self.current_node.clone());
+                    self.index = self.nodes.len();
                 }
             }
 
@@ -212,19 +227,17 @@ impl Iterator for CurrentProgram {
         } else {
             let last_playlist = self.json_path.clone();
             self.check_for_next_playlist(true);
-            let (delta, time_diff) = get_delta(&self.config.playlist.start_sec.unwrap(), &self.config);
+            let (_, total_delta) = get_delta(&self.config.playlist.start_sec.unwrap(), &self.config);
             let mut last_ad = self.is_ad(self.index, false);
 
-            println!("delta: {}, total delta: {}", delta, time_diff);
-
-            if last_playlist == self.json_path && time_diff.abs() > self.config.general.stop_threshold {
+            if last_playlist == self.json_path && total_delta.abs() > self.config.general.stop_threshold {
                 println!("Test if we have to fill");
                 // Test if playlist is to early finish,
                 // and if we have to fill it with a placeholder.
                 self.index += 1;
                 self.current_node = Media::new(self.index, "".to_string());
                 self.current_node.begin = Some(get_sec());
-                let mut duration = time_diff.abs();
+                let mut duration = total_delta.abs();
 
                 if duration > DUMMY_LEN {
                     duration = DUMMY_LEN;
