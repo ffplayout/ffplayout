@@ -111,7 +111,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "ffplayout-engine-rs"
+name = "ffplayout-rs"
 version = "0.1.0"
 dependencies = [
  "chrono",
