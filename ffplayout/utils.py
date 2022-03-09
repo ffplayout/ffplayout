@@ -23,7 +23,6 @@ import json
 import logging
 import math
 import re
-import shlex
 import signal
 import smtplib
 import socket
