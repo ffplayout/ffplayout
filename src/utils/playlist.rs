@@ -3,7 +3,7 @@ use std::path::Path;
 use simplelog::*;
 
 use crate::utils::{
-    check_sync, gen_dummy, get_delta, get_sec, json_reader::read_json, modified_time,
+    check_sync, gen_dummy, get_delta, get_sec, is_close, json_reader::read_json, modified_time,
     seek_and_length, Config, Media, DUMMY_LEN,
 };
 
@@ -36,70 +36,68 @@ impl CurrentProgram {
     }
 
     fn check_update(&mut self) {
-        match self.json_path.clone() {
-            Some(path) => {
-                if Path::new(&path).is_file() {
-                    let mod_time = modified_time(path);
-
-                    if !mod_time
-                        .unwrap()
-                        .to_string()
-                        .eq(&self.json_mod.clone().unwrap())
-                    {
-                        // when playlist has changed, reload it
-                        let json = read_json(&self.config, false, 0.0);
-
-                        self.json_mod = json.modified;
-                        self.nodes = json.program;
-                    }
-                } else {
-                    error!("Playlist <b><magenta>{}</></b> not exists!", path);
-                    let mut media = Media::new(0, "".to_string());
-                    media.begin = Some(get_sec());
-                    media.duration = DUMMY_LEN;
-                    media.out = DUMMY_LEN;
-
-                    self.json_path = None;
-                    self.nodes = vec![media.clone()];
-                    self.current_node = media;
-                    self.init = true;
-                    self.index = 0;
-                }
-            }
-
-            _ => (),
-        }
-    }
-
-    fn check_for_next_playlist(&mut self) {
-        // let current_time = get_sec();
-        let mut out = self.current_node.out.clone();
-        let seek = self.current_node.seek.clone();
-        let start_sec = self.config.playlist.start_sec.unwrap();
-        let (mut delta, _) = get_delta(&self.current_node.begin.unwrap().clone(), &self.config);
-        let mut is_over_time = false;
-
-        if self.current_node.duration > self.current_node.out {
-            out = self.current_node.duration.clone()
-        }
-
-        if self.index == self.nodes.len() - 1 {
-            delta += self.config.general.stop_threshold;
-
-            if get_sec() >= start_sec {
-                is_over_time = true;
-            }
-        }
-
-        let next_start = self.current_node.begin.unwrap() - start_sec + out - seek + delta;
-
-        if next_start >= self.config.playlist.length_sec.unwrap() || is_over_time {
-            let json = read_json(&self.config, false, next_start);
+        if self.json_path.is_none() {
+            let json = read_json(&self.config, false, 0.0);
 
             self.json_path = json.current_file;
             self.json_mod = json.modified;
             self.nodes = json.program;
+        } else if Path::new(&self.json_path.clone().unwrap()).is_file() {
+            let mod_time = modified_time(&self.json_path.clone().unwrap());
+
+            if !mod_time
+                .unwrap()
+                .to_string()
+                .eq(&self.json_mod.clone().unwrap())
+            {
+                // when playlist has changed, reload it
+                let json = read_json(&self.config, false, 0.0);
+
+                self.json_mod = json.modified;
+                self.nodes = json.program;
+            }
+        } else {
+            error!("Playlist <b><magenta>{}</></b> not exists!", self.json_path.clone().unwrap());
+            let mut media = Media::new(0, "".to_string());
+            media.begin = Some(get_sec());
+            media.duration = DUMMY_LEN;
+            media.out = DUMMY_LEN;
+
+            self.json_path = None;
+            self.nodes = vec![media.clone()];
+            self.current_node = media;
+            self.init = true;
             self.index = 0;
+        }
+    }
+
+    fn check_for_next_playlist(&mut self) {
+        let current_time = get_sec();
+        let start_sec = self.config.playlist.start_sec.unwrap();
+        let target_length = self.config.playlist.length_sec.unwrap();
+        let (delta, total_delta) = get_delta(&current_time, &self.config);
+        let mut duration = self.current_node.out.clone();
+
+        if self.current_node.duration > self.current_node.out {
+            duration = self.current_node.duration.clone()
+        }
+
+        let next_start = self.current_node.begin.unwrap() - start_sec + duration + delta;
+
+        if next_start >= target_length
+            || is_close(total_delta, 0.0, 2.0)
+            || is_close(total_delta, target_length, 2.0)
+        {
+            let json = read_json(&self.config, false, next_start);
+
+            self.json_path = json.current_file.clone();
+            self.json_mod = json.modified;
+            self.nodes = json.program;
+            self.index = 0;
+
+            if json.current_file.is_none() {
+                self.init = true;
+            }
         }
     }
 
@@ -152,19 +150,26 @@ impl Iterator for CurrentProgram {
     fn next(&mut self) -> Option<Self::Item> {
         if self.init {
             debug!("Playlist init");
+            self.check_update();
 
             if self.json_path.is_some() {
                 self.get_init_clip();
             }
 
             if self.init {
+                // on init load playlist, could be not long enough,
+                // so we check if we can take the next playlist already,
+                // or we fill the gap with a dummy.
                 self.current_node = self.nodes[self.nodes.len() - 1].clone();
                 self.check_for_next_playlist();
 
                 let new_node = self.nodes[self.nodes.len() - 1].clone();
                 let new_length = new_node.begin.unwrap() + new_node.duration;
 
-                if new_length >= self.config.playlist.length_sec.unwrap() + self.config.playlist.start_sec.unwrap() {
+                if new_length
+                    >= self.config.playlist.length_sec.unwrap()
+                        + self.config.playlist.start_sec.unwrap()
+                {
                     self.get_init_clip();
                 } else {
                     let mut current_time = get_sec();
@@ -209,23 +214,17 @@ impl Iterator for CurrentProgram {
             self.current_node.next_ad = self.is_ad(self.index, true);
             self.index += 1;
 
-            // if self.current_node.process.unwrap() {
-            //     self.index += 1;
-            // } else {
-            //     self.index = 0;
-            //     println!("go to next");
-            //     self.current_node.begin = self.config.playlist.start_sec;
-            //     // self.get_new_playlist();
-            // }
-
             Some(self.current_node.clone())
         } else {
             let last_playlist = self.json_path.clone();
             self.check_for_next_playlist();
-            let (_, total_delta) = get_delta(&self.config.playlist.start_sec.unwrap(), &self.config);
+            let (_, total_delta) =
+                get_delta(&self.config.playlist.start_sec.unwrap(), &self.config);
             let mut last_ad = self.is_ad(self.index, false);
 
-            if last_playlist == self.json_path && total_delta.abs() > self.config.general.stop_threshold {
+            if last_playlist == self.json_path
+                && total_delta.abs() > self.config.general.stop_threshold
+            {
                 println!("Test if we have to fill");
                 // Test if playlist is to early finish,
                 // and if we have to fill it with a placeholder.
@@ -366,7 +365,10 @@ fn handle_list_end(mut node: Media, total_delta: f64) -> Media {
     {
         node.out = out;
     } else if node.duration > total_delta && total_delta < 1.0 {
-        warn!("Last clip less then 1 second long, skip: <b><magenta>{}</></b>", node.source);
+        warn!(
+            "Last clip less then 1 second long, skip: <b><magenta>{}</></b>",
+            node.source
+        );
         node.out = out;
         node.cmd = Some(seek_and_length(
             node.source.clone(),

@@ -171,7 +171,7 @@ pub fn get_date(seek: bool, start: f64, next_start: f64) -> String {
     local.format("%Y-%m-%d").to_string()
 }
 
-pub fn modified_time(path: String) -> Option<DateTime<Local>> {
+pub fn modified_time(path: &String) -> Option<DateTime<Local>> {
     let metadata = metadata(path).unwrap();
 
     if let Ok(time) = metadata.modified() {

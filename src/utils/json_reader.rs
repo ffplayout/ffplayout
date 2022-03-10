@@ -26,7 +26,7 @@ impl Playlist {
             date,
             start_sec: Some(start),
             current_file: None,
-            modified: None,
+            modified: Some("".to_string()),
             program: vec![media],
         }
     }
@@ -51,7 +51,7 @@ pub fn read_json(config: &Config, seek: bool, next_start: f64) -> Playlist {
 
     if !playlist_path.is_file() {
         error!("Playlist <b><magenta>{}</></b> not exists!", current_file);
-        // let dummy_playlist = Playlist::new(date, get_sec());
+
         return Playlist::new(date, start_sec);
     }
 
@@ -63,7 +63,7 @@ pub fn read_json(config: &Config, seek: bool, next_start: f64) -> Playlist {
 
     playlist.current_file = Some(current_file.clone());
     playlist.start_sec = Some(start_sec.clone());
-    let modify = modified_time(current_file);
+    let modify = modified_time(&current_file);
 
     if modify.is_some() {
         playlist.modified = Some(modify.unwrap().to_string());
