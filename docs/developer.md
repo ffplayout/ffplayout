@@ -4,12 +4,11 @@ For cross compiling on fedora linux, you need to install some extra packages:
 
 - mingw compiler:
 ```
-dnf install mingw{32,64}-filesystem mingw{32,64}-binutils mingw{32,64}-gcc{,-c++} mingw{32,64}-crt mingw{32,64}-headers mingw{32,64}-pkg-config mingw32-nsis mingw{32,64}-hamlib mingw{32,64}-libpng mingw{32,64}-libusbx mingw{32,64}-portaudio mingw{32,64}-fltk mingw{32,64}-libgnurx mingw{32,64}-gettext mingw{32,64}-winpthreads-static intltool
+dnf install mingw64-filesystem mingw64-binutils mingw64-gcc{,-c++} mingw64-crt mingw64-headers mingw64-pkg-config mingw64-hamlib mingw64-libpng mingw64-libusbx mingw64-portaudio mingw64-fltk mingw64-libgnurx mingw64-gettext mingw64-winpthreads-static intltool
 ```
 
 - rust tools:
 ```
-rustup toolchain install stable-x86_64-pc-windows-gnu
 rustup target add x86_64-pc-windows-gnu
 ```
 
