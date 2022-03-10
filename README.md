@@ -144,5 +144,5 @@ ffplayout also allows the passing of parameters:
 You can run the command like:
 
 ```SHELL
-./ffplayout.py -l none -p ~/playlist.json -d -s now -t none -o desktop
+./ffplayout.py -l none -p ~/playlist.json -s now -t none -o desktop
 ```
