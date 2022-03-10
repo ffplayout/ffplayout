@@ -15,6 +15,7 @@ pub fn output(config: Config, log_format: String) -> process::Child {
         "-nostats",
         "-v",
         log_format.as_str(),
+        "-re",
         "-i",
         "pipe:0",
     ];
@@ -30,10 +31,11 @@ pub fn output(config: Config, log_format: String) -> process::Child {
     }
 
     enc_cmd.append(&mut enc_filter.iter().map(String::as_str).collect());
+    enc_cmd.append(&mut config.out.stream_param.iter().map(String::as_str).collect());
 
     debug!("Encoder CMD: <bright-blue>{:?}</>", enc_cmd);
 
-    let enc_proc = match Command::new("ffplay")
+    let enc_proc = match Command::new("ffmpeg")
         .args(enc_cmd)
         .stdin(Stdio::piped())
         // .stderr(Stdio::piped())

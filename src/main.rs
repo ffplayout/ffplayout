@@ -7,7 +7,7 @@ mod utils;
 
 use simplelog::*;
 
-use crate::output::desktop;
+use crate::output::play;
 use crate::utils::{get_config, init_logging};
 
 fn main() {
@@ -16,8 +16,5 @@ fn main() {
 
     CombinedLogger::init(logging).unwrap();
 
-    // warn!("this is a warning");
-    // error!("this is a error");
-
-    desktop::play(config);
+    play(config);
 }
