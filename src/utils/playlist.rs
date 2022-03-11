@@ -35,9 +35,9 @@ impl CurrentProgram {
         }
     }
 
-    fn check_update(&mut self) {
+    fn check_update(&mut self, seek: bool) {
         if self.json_path.is_none() {
-            let json = read_json(&self.config, false, 0.0);
+            let json = read_json(&self.config, seek, 0.0);
 
             self.json_path = json.current_file;
             self.json_mod = json.modified;
@@ -153,7 +153,7 @@ impl Iterator for CurrentProgram {
     fn next(&mut self) -> Option<Self::Item> {
         if self.init {
             debug!("Playlist init");
-            self.check_update();
+            self.check_update(true);
 
             if self.json_path.is_some() {
                 self.get_init_clip();
@@ -204,7 +204,7 @@ impl Iterator for CurrentProgram {
             return Some(self.current_node.clone());
         }
         if self.index < self.nodes.len() {
-            self.check_update();
+            self.check_update(false);
             self.check_for_next_playlist();
             let mut is_last = false;
 
