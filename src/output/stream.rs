@@ -38,7 +38,7 @@ pub fn output(config: Config, log_format: String) -> process::Child {
     let enc_proc = match Command::new("ffmpeg")
         .args(enc_cmd)
         .stdin(Stdio::piped())
-        // .stderr(Stdio::piped())
+        .stderr(Stdio::piped())
         .spawn()
     {
         Err(e) => {

@@ -16,12 +16,20 @@ use simplelog::*;
 mod desktop;
 mod stream;
 
-use crate::utils::{sec_to_time, watch_folder, Config, CurrentProgram, Media, Source};
+use crate::utils::{
+    sec_to_time, stderr_reader, watch_folder, Config, CurrentProgram, Media, Source,
+};
 
 pub fn play(config: Config) {
     let dec_pid: Arc<Mutex<u32>> = Arc::new(Mutex::new(0));
+    let mut thread_count = 2;
+
+    if config.processing.mode.as_str() == "folder" {
+        thread_count += 1;
+    }
+
     let runtime = Builder::new_multi_thread()
-        .worker_threads(1)
+        .worker_threads(thread_count)
         .enable_all()
         .build()
         .unwrap();
@@ -67,8 +75,13 @@ pub fn play(config: Config) {
     let mut enc_proc = match config.out.mode.as_str() {
         "desktop" => desktop::output(config_clone, ff_log_format.clone()),
         "stream" => stream::output(config_clone, ff_log_format.clone()),
-        _ => panic!("Output mode doesn't exists!")
+        _ => panic!("Output mode doesn't exists!"),
     };
+
+    runtime.spawn(stderr_reader(
+        enc_proc.stderr.take().unwrap(),
+        "Decoder".to_string(),
+    ));
 
     let mut buffer: [u8; 65424] = [0; 65424];
 
@@ -104,7 +117,7 @@ pub fn play(config: Config) {
         let mut dec_proc = match Command::new("ffmpeg")
             .args(dec_cmd)
             .stdout(Stdio::piped())
-            // .stderr(Stdio::piped())
+            .stderr(Stdio::piped())
             .spawn()
         {
             Err(e) => {
@@ -120,6 +133,11 @@ pub fn play(config: Config) {
         let dec_reader = dec_proc.stdout.as_mut().unwrap();
 
         // debug!("Decoder PID: <yellow>{}</>", dec_pid.lock().unwrap());
+
+        runtime.spawn(stderr_reader(
+            dec_proc.stderr.take().unwrap(),
+            "Encoder".to_string(),
+        ));
 
         loop {
             let dec_bytes_len = match dec_reader.read(&mut buffer[..]) {
@@ -142,6 +160,8 @@ pub fn play(config: Config) {
     }
 
     sleep(Duration::from_secs(1));
+
+    println!("!!!!!!!!!!!!!!end");
 
     match enc_proc.kill() {
         Ok(_) => info!("Playout done..."),

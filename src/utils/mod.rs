@@ -2,7 +2,14 @@ use chrono::prelude::*;
 use chrono::Duration;
 use ffprobe::{ffprobe, Format, Stream};
 use serde::{Deserialize, Serialize};
-use std::{fs::metadata, path::Path, time, time::UNIX_EPOCH};
+use std::{
+    fs::metadata,
+    io::{BufRead, BufReader, Error},
+    path::Path,
+    process::ChildStderr,
+    time,
+    time::UNIX_EPOCH,
+};
 
 use simplelog::*;
 
@@ -296,4 +303,32 @@ pub fn seek_and_length(src: String, seek: f64, out: f64, duration: f64) -> Vec<S
     }
 
     source_cmd
+}
+
+pub async fn stderr_reader(
+    std_errors: ChildStderr,
+    suffix: String,
+) -> Result<(), Error> {
+    // read ffmpeg stderr decoder and encoder instance
+    // and log the output
+
+    fn format_line(line: String, level: String) -> String {
+        line.replace(&format!("[{}] ", level), "")
+    }
+
+    let buffer = BufReader::new(std_errors);
+
+    for line in buffer.lines() {
+        let line = line?;
+
+        if line.contains("[info]") {
+            info!("<bright black>[{suffix}]</> {}", format_line(line, "info".to_string()))
+        } else if line.contains("[warning]") {
+            warn!("<bright black>[{suffix}]</> {}", format_line(line, "warning".to_string()))
+        } else {
+            error!("<bright black>[{suffix}]</> {}", format_line(line, "error".to_string()))
+        }
+    }
+
+    Ok(())
 }
