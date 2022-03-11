@@ -57,7 +57,10 @@ impl CurrentProgram {
                 self.nodes = json.program;
             }
         } else {
-            error!("Playlist <b><magenta>{}</></b> not exists!", self.json_path.clone().unwrap());
+            error!(
+                "Playlist <b><magenta>{}</></b> not exists!",
+                self.json_path.clone().unwrap()
+            );
             let mut media = Media::new(0, "".to_string());
             media.begin = Some(get_sec());
             media.duration = DUMMY_LEN;
@@ -225,7 +228,6 @@ impl Iterator for CurrentProgram {
             if last_playlist == self.json_path
                 && total_delta.abs() > self.config.general.stop_threshold
             {
-                println!("Test if we have to fill");
                 // Test if playlist is to early finish,
                 // and if we have to fill it with a placeholder.
                 self.index += 1;
@@ -280,7 +282,10 @@ fn timed_source(node: Media, config: &Config, last: bool) -> Media {
         }
     }
 
-    if (total_delta > node.out - node.seek && !last) || !config.playlist.length.contains(":") {
+    if (total_delta > node.out - node.seek && !last)
+        || node.index.unwrap() < 2
+        || !config.playlist.length.contains(":")
+    {
         // when we are in the 24 hour range, get the clip
         new_node = gen_source(node, &config);
         new_node.process = Some(true);
