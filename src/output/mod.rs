@@ -161,8 +161,6 @@ pub fn play(config: Config) {
 
     sleep(Duration::from_secs(1));
 
-    println!("!!!!!!!!!!!!!!end");
-
     match enc_proc.kill() {
         Ok(_) => info!("Playout done..."),
         Err(e) => panic!("Encoder error: {:?}", e),

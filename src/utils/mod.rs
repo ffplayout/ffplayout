@@ -115,7 +115,7 @@ impl MediaProbe {
                         }
 
                         _ => {
-                            println!("No codec type found for stream: {:?}", &stream)
+                            error!("No codec type found for stream: {:?}", &stream)
                         }
                     }
                 }
@@ -135,7 +135,7 @@ impl MediaProbe {
                 }
             }
             Err(err) => {
-                println!(
+                error!(
                     "Can't read source '{}' with ffprobe, source is probably damaged! Error is: {:?}",
                     input,
                     err

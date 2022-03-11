@@ -1,5 +1,7 @@
 use std::path::Path;
 
+use simplelog::*;
+
 use crate::utils::{is_close, Config, Media};
 
 #[derive(Debug, Clone)]
@@ -34,7 +36,8 @@ impl Filters {
                     if filter.contains("aevalsrc") || filter.contains("anoisesrc") {
                         self.audio_chain = Some(filter);
                     } else {
-                        self.audio_chain = Some(format!("[{}]{filter}", self.audio_map.clone().unwrap()));
+                        self.audio_chain =
+                            Some(format!("[{}]{filter}", self.audio_map.clone().unwrap()));
                     }
                     self.audio_map = Some("[aout1]".to_string());
                 }
@@ -64,7 +67,7 @@ fn deinterlace(field_order: Option<String>, chain: &mut Filters) {
 }
 
 fn pad(aspect: f64, chain: &mut Filters, config: &Config) {
-     if !is_close(aspect, config.processing.aspect, 0.03) {
+    if !is_close(aspect, config.processing.aspect, 0.03) {
         if aspect < config.processing.aspect {
             chain.add_filter(
                 format!(
@@ -191,7 +194,7 @@ fn extend_video(node: &mut Media, chain: &mut Filters) {
 fn add_audio(node: &mut Media, chain: &mut Filters) {
     let audio_streams = node.probe.clone().unwrap().audio_streams.unwrap();
     if audio_streams.len() == 0 {
-        println!("Clip: '{}' has no audio!", node.source);
+        warn!("Clip: '{}' has no audio!", node.source);
         let audio = format!(
             "aevalsrc=0:channel_layout=stereo:duration={}:sample_rate=48000",
             node.out - node.seek
@@ -265,7 +268,13 @@ pub fn filter_chains(node: &mut Media, config: &Config) -> Vec<String> {
         deinterlace(v_stream.field_order.clone(), &mut filters);
         pad(aspect, &mut filters, &config);
         fps(frame_per_sec, &mut filters, &config);
-        scale(v_stream.width.unwrap(), v_stream.height.unwrap(), aspect, &mut filters, &config);
+        scale(
+            v_stream.width.unwrap(),
+            v_stream.height.unwrap(),
+            aspect,
+            &mut filters,
+            &config,
+        );
         extend_video(node, &mut filters);
         add_audio(node, &mut filters);
         extend_audio(node, &mut filters);
