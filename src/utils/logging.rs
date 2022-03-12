@@ -1,24 +1,33 @@
 extern crate log;
 extern crate simplelog;
 
+use regex::Regex;
 use std::path::Path;
 
 use file_rotate::{compression::Compression, suffix::AppendCount, ContentLimit, FileRotate};
 use log::{Level, LevelFilter, Log, Metadata, Record};
 use simplelog::*;
 
+use lettre::{transport::smtp::authentication::Credentials, Message, SmtpTransport, Transport};
+
 use crate::utils;
 
 pub struct LogMailer {
     level: LevelFilter,
     config: Config,
+    playout_config: utils::Config,
 }
 
 impl LogMailer {
-    pub fn new(log_level: LevelFilter, config: Config) -> Box<LogMailer> {
+    pub fn new(
+        log_level: LevelFilter,
+        config: Config,
+        playout_config: &utils::Config,
+    ) -> Box<LogMailer> {
         Box::new(LogMailer {
             level: log_level,
             config,
+            playout_config: playout_config.clone(),
         })
     }
 }
@@ -31,12 +40,8 @@ impl Log for LogMailer {
     fn log(&self, record: &Record<'_>) {
         if self.enabled(record.metadata()) {
             match record.level() {
-                Level::Error => {
-                    // println!("Send Error Mail: {:?}\n{:?}", record, self.config)
-                }
-                Level::Warn => {
-                    // println!("Send Warn Mail: {:?}", record.args())
-                }
+                Level::Error => send_mail(record.args().to_string(), &self.playout_config),
+                Level::Warn => send_mail(record.args().to_string(), &self.playout_config),
                 _ => (),
             }
         }
@@ -56,6 +61,45 @@ impl SharedLogger for LogMailer {
 
     fn as_log(self: Box<Self>) -> Box<dyn Log> {
         Box::new(*self)
+    }
+}
+
+fn clean_string(text: String) -> String {
+    let regex: Regex = Regex::new(
+            r"\x1b\[[0-9;]*[mGKF]"
+            ).unwrap();
+
+    regex.replace_all(text.as_str(), "").to_string()
+}
+
+fn send_mail(msg: String, config: &utils::Config) {
+    let email = Message::builder()
+        .from(config.mail.sender_addr.parse().unwrap())
+        .to(config.mail.recipient.parse().unwrap())
+        .subject(config.mail.subject.clone())
+        .body(clean_string(msg.clone()))
+        .unwrap();
+
+    let credentials = Credentials::new(
+        config.mail.sender_addr.clone(),
+        config.mail.sender_pass.clone(),
+    );
+
+    let mut transporter = SmtpTransport::relay(config.mail.smtp_server.clone().as_str());
+
+    if config.mail.starttls {
+        transporter = SmtpTransport::starttls_relay(config.mail.smtp_server.clone().as_str())
+    }
+
+    let mailer = transporter
+        .unwrap()
+        .credentials(credentials)
+        .build();
+
+    // Send the email
+    match mailer.send(&email) {
+        Ok(_) => (),
+        Err(e) => info!("Could not send email: {:?}", e),
     }
 }
 
@@ -117,12 +161,18 @@ pub fn init_logging(config: &utils::Config) -> Vec<Box<dyn SharedLogger>> {
     }
 
     if config.mail.recipient.len() > 3 {
+        let mut filter = LevelFilter::Error;
+
         let mail_config = log_config
             .clone()
             .set_time_format_str("[%Y-%m-%d %H:%M:%S%.3f]")
             .build();
 
-        app_logger.push(LogMailer::new(LevelFilter::Warn, mail_config));
+        if config.mail.mail_level.to_lowercase() == "warning".to_string() {
+            filter = LevelFilter::Warn
+        }
+
+        app_logger.push(LogMailer::new(filter, mail_config, config));
     }
 
     app_logger

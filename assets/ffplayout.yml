@@ -13,7 +13,7 @@ mail:
         'mail_level' can be WARNING or ERROR.
     subject: "Playout Error"
     smtp_server: "mail.example.org"
-    smtp_port: 587
+    starttls: true
     sender_addr: "ffplayout@example.org"
     sender_pass: "abc123"
     recipient:

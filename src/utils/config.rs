@@ -27,7 +27,7 @@ pub struct General {
 pub struct Mail {
     pub subject: String,
     pub smtp_server: String,
-    pub smtp_port: u32,
+    pub starttls: bool,
     pub sender_addr: String,
     pub sender_pass: String,
     pub recipient: String,
