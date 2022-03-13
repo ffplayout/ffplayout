@@ -2,7 +2,7 @@ use std::path::Path;
 
 use simplelog::*;
 
-use crate::utils::{is_close, Config, Media};
+use crate::utils::{is_close, GlobalConfig, Media};
 
 #[derive(Debug, Clone)]
 struct Filters {
@@ -66,7 +66,7 @@ fn deinterlace(field_order: Option<String>, chain: &mut Filters) {
     }
 }
 
-fn pad(aspect: f64, chain: &mut Filters, config: &Config) {
+fn pad(aspect: f64, chain: &mut Filters, config: &GlobalConfig) {
     if !is_close(aspect, config.processing.aspect, 0.03) {
         if aspect < config.processing.aspect {
             chain.add_filter(
@@ -90,7 +90,7 @@ fn pad(aspect: f64, chain: &mut Filters, config: &Config) {
     }
 }
 
-fn fps(fps: f64, chain: &mut Filters, config: &Config) {
+fn fps(fps: f64, chain: &mut Filters, config: &GlobalConfig) {
     if fps != config.processing.fps {
         chain.add_filter(
             format!("fps={}", config.processing.fps).into(),
@@ -99,7 +99,7 @@ fn fps(fps: f64, chain: &mut Filters, config: &Config) {
     }
 }
 
-fn scale(width: i64, height: i64, aspect: f64, chain: &mut Filters, config: &Config) {
+fn scale(width: i64, height: i64, aspect: f64, chain: &mut Filters, config: &GlobalConfig) {
     if width != config.processing.width || height != config.processing.height {
         chain.add_filter(
             format!(
@@ -138,7 +138,7 @@ fn fade(node: &mut Media, chain: &mut Filters, codec_type: String) {
     }
 }
 
-fn overlay(node: &mut Media, chain: &mut Filters, config: &Config) {
+fn overlay(node: &mut Media, chain: &mut Filters, config: &GlobalConfig) {
     if config.processing.add_logo
         && Path::new(&config.processing.logo).is_file()
         && node.category != "advertisement".to_string()
@@ -221,7 +221,7 @@ fn extend_audio(node: &mut Media, chain: &mut Filters) {
     }
 }
 
-fn audio_volume(chain: &mut Filters, config: &Config) {
+fn audio_volume(chain: &mut Filters, config: &GlobalConfig) {
     if config.processing.volume != 1.0 {
         chain.add_filter(
             format!("volume={}", config.processing.volume),
@@ -248,7 +248,9 @@ fn fps_calc(r_frame_rate: String) -> f64 {
     fps
 }
 
-pub fn filter_chains(node: &mut Media, config: &Config) -> Vec<String> {
+pub fn filter_chains(node: &mut Media) -> Vec<String> {
+    let config = GlobalConfig::global();
+
     let mut filters = Filters::new();
     let mut audio_map = "1:a".to_string();
     filters.audio_map = Some(audio_map);

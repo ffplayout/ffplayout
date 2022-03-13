@@ -4,12 +4,12 @@ use simplelog::*;
 
 use crate::utils::{
     check_sync, gen_dummy, get_delta, get_sec, is_close, json_reader::read_json, modified_time,
-    seek_and_length, Config, Media, DUMMY_LEN,
+    seek_and_length, GlobalConfig, Media, DUMMY_LEN,
 };
 
 #[derive(Debug)]
 pub struct CurrentProgram {
-    config: Config,
+    config: GlobalConfig,
     start_sec: f64,
     json_mod: Option<String>,
     json_path: Option<String>,
@@ -20,11 +20,12 @@ pub struct CurrentProgram {
 }
 
 impl CurrentProgram {
-    pub fn new(config: Config) -> Self {
-        let json = read_json(&config, true, 0.0);
+    pub fn new() -> Self {
+        let config = GlobalConfig::global();
+        let json = read_json(true, 0.0);
 
         Self {
-            config,
+            config: config.clone(),
             start_sec: json.start_sec.unwrap(),
             json_mod: json.modified,
             json_path: json.current_file,
@@ -37,7 +38,7 @@ impl CurrentProgram {
 
     fn check_update(&mut self, seek: bool) {
         if self.json_path.is_none() {
-            let json = read_json(&self.config, seek, 0.0);
+            let json = read_json(seek, 0.0);
 
             self.json_path = json.current_file;
             self.json_mod = json.modified;
@@ -51,7 +52,7 @@ impl CurrentProgram {
                 .eq(&self.json_mod.clone().unwrap())
             {
                 // when playlist has changed, reload it
-                let json = read_json(&self.config, false, 0.0);
+                let json = read_json(false, 0.0);
 
                 self.json_mod = json.modified;
                 self.nodes = json.program;
@@ -78,7 +79,7 @@ impl CurrentProgram {
         let current_time = get_sec();
         let start_sec = self.config.playlist.start_sec.unwrap();
         let target_length = self.config.playlist.length_sec.unwrap();
-        let (delta, total_delta) = get_delta(&current_time, &self.config);
+        let (delta, total_delta) = get_delta(&current_time);
         let mut duration = self.current_node.out.clone();
 
         if self.current_node.duration > self.current_node.out {
@@ -91,7 +92,7 @@ impl CurrentProgram {
             || is_close(total_delta, 0.0, 2.0)
             || is_close(total_delta, target_length, 2.0)
         {
-            let json = read_json(&self.config, false, next_start);
+            let json = read_json(false, next_start);
 
             self.json_path = json.current_file.clone();
             self.json_mod = json.modified;
@@ -139,7 +140,7 @@ impl CurrentProgram {
                 self.index = i + 1;
                 item.seek = time_sec - start_sec;
 
-                self.current_node = handle_list_init(item.clone(), &self.config);
+                self.current_node = handle_list_init(item.clone());
                 break;
             }
             start_sec += item.out - item.seek;
@@ -176,7 +177,7 @@ impl Iterator for CurrentProgram {
                     self.get_init_clip();
                 } else {
                     let mut current_time = get_sec();
-                    let (_, total_delta) = get_delta(&current_time, &self.config);
+                    let (_, total_delta) = get_delta(&current_time);
                     let mut duration = DUMMY_LEN;
 
                     if DUMMY_LEN > total_delta {
@@ -192,7 +193,7 @@ impl Iterator for CurrentProgram {
                     media.duration = duration;
                     media.out = duration;
 
-                    self.current_node = gen_source(media, &self.config);
+                    self.current_node = gen_source(media);
                     self.nodes.push(self.current_node.clone());
                     self.index = self.nodes.len();
                 }
@@ -222,7 +223,7 @@ impl Iterator for CurrentProgram {
             let last_playlist = self.json_path.clone();
             self.check_for_next_playlist();
             let (_, total_delta) =
-                get_delta(&self.config.playlist.start_sec.unwrap(), &self.config);
+                get_delta(&self.config.playlist.start_sec.unwrap());
             let mut last_ad = self.is_ad(self.index, false);
 
             if last_playlist == self.json_path
@@ -240,17 +241,17 @@ impl Iterator for CurrentProgram {
                 }
                 self.current_node.duration = duration;
                 self.current_node.out = duration;
-                self.current_node = gen_source(self.current_node.clone(), &self.config);
+                self.current_node = gen_source(self.current_node.clone());
                 self.nodes.push(self.current_node.clone());
 
                 last_ad = self.is_ad(self.index, false);
                 self.current_node.last_ad = last_ad;
-                self.current_node.add_filter(&self.config);
+                self.current_node.add_filter();
 
                 return Some(self.current_node.clone());
             }
 
-            self.current_node = gen_source(self.nodes[0].clone(), &self.config);
+            self.current_node = gen_source(self.nodes[0].clone());
             self.current_node.last_ad = last_ad;
             self.current_node.next_ad = self.is_ad(0, true);
 
@@ -261,19 +262,19 @@ impl Iterator for CurrentProgram {
     }
 }
 
-fn timed_source(node: Media, config: &Config, last: bool) -> Media {
+fn timed_source(node: Media, config: &GlobalConfig, last: bool) -> Media {
     // prepare input clip
     // check begin and length from clip
     // return clip only if we are in 24 hours time range
 
-    let (delta, total_delta) = get_delta(&node.begin.unwrap(), &config);
+    let (delta, total_delta) = get_delta(&node.begin.unwrap());
     let mut new_node = node.clone();
     new_node.process = Some(false);
 
     if config.playlist.length.contains(":") {
         debug!("Delta: <yellow>{delta}</>");
         debug!("Total delta: <yellow>{total_delta}</>");
-        let sync = check_sync(delta, &config);
+        let sync = check_sync(delta);
 
         if !sync {
             new_node.cmd = None;
@@ -287,7 +288,7 @@ fn timed_source(node: Media, config: &Config, last: bool) -> Media {
         || !config.playlist.length.contains(":")
     {
         // when we are in the 24 hour range, get the clip
-        new_node = gen_source(node, &config);
+        new_node = gen_source(node);
         new_node.process = Some(true);
     } else if total_delta <= 0.0 {
         info!("Begin is over play time, skip: {}", node.source);
@@ -298,7 +299,7 @@ fn timed_source(node: Media, config: &Config, last: bool) -> Media {
     new_node
 }
 
-fn gen_source(mut node: Media, config: &Config) -> Media {
+fn gen_source(mut node: Media) -> Media {
     if Path::new(&node.source).is_file() {
         node.add_probe();
         node.cmd = Some(seek_and_length(
@@ -307,7 +308,7 @@ fn gen_source(mut node: Media, config: &Config) -> Media {
             node.out,
             node.duration,
         ));
-        node.add_filter(&config);
+        node.add_filter();
     } else {
         if node.source.chars().count() == 0 {
             warn!(
@@ -317,20 +318,20 @@ fn gen_source(mut node: Media, config: &Config) -> Media {
         } else {
             error!("File not found: {}", node.source);
         }
-        let (source, cmd) = gen_dummy(node.out - node.seek, &config);
+        let (source, cmd) = gen_dummy(node.out - node.seek);
         node.source = source;
         node.cmd = Some(cmd);
-        node.add_filter(&config);
+        node.add_filter();
     }
 
     node
 }
 
-fn handle_list_init(mut node: Media, config: &Config) -> Media {
+fn handle_list_init(mut node: Media) -> Media {
     // handle init clip, but this clip can be the last one in playlist,
     // this we have to figure out and calculate the right length
 
-    let (_, total_delta) = get_delta(&node.begin.unwrap(), config);
+    let (_, total_delta) = get_delta(&node.begin.unwrap());
     let mut out = node.out;
 
     if node.out - node.seek > total_delta {
@@ -339,7 +340,7 @@ fn handle_list_init(mut node: Media, config: &Config) -> Media {
 
     node.out = out;
 
-    let new_node = gen_source(node, &config);
+    let new_node = gen_source(node);
     new_node
 }
 

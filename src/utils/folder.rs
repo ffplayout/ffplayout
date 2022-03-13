@@ -12,17 +12,18 @@ use std::{
 
 use walkdir::WalkDir;
 
-use crate::utils::{Config, Media};
+use crate::utils::{GlobalConfig, Media};
 
 #[derive(Debug, Clone)]
 pub struct Source {
-    config: Config,
+    config: GlobalConfig,
     pub nodes: Arc<Mutex<Vec<String>>>,
     index: usize,
 }
 
 impl Source {
-    pub fn new(config: Config) -> Self {
+    pub fn new() -> Self {
+        let config = GlobalConfig::global();
         let mut file_list = vec![];
 
         for entry in WalkDir::new(config.storage.path.clone())
@@ -53,7 +54,7 @@ impl Source {
         }
 
         Self {
-            config: config,
+            config: config.clone(),
             nodes: Arc::new(Mutex::new(file_list)),
             index: 0,
         }
@@ -77,7 +78,7 @@ impl Iterator for Source {
             let current_file = self.nodes.lock().unwrap()[self.index].clone();
             let mut media = Media::new(self.index, current_file);
             media.add_probe();
-            media.add_filter(&self.config);
+            media.add_filter();
             self.index += 1;
 
             Some(media)
@@ -93,7 +94,7 @@ impl Iterator for Source {
             let current_file = self.nodes.lock().unwrap()[0].clone();
             let mut media = Media::new(self.index, current_file);
             media.add_probe();
-            media.add_filter(&self.config);
+            media.add_filter();
             self.index = 1;
 
             Some(media)

@@ -21,7 +21,7 @@ mod logging;
 mod playlist;
 
 pub use arg_parse::get_args;
-pub use config::{get_config, Config};
+pub use config::{init_config, GlobalConfig};
 pub use folder::{watch_folder, Source};
 pub use json_reader::{read_json, DUMMY_LEN};
 pub use logging::init_logging;
@@ -82,9 +82,9 @@ impl Media {
         self.probe = Some(MediaProbe::new(self.source.clone()))
     }
 
-    fn add_filter(&mut self, config: &Config) {
+    fn add_filter(&mut self) {
         let mut node = self.clone();
-        self.filter = Some(filter_chains(&mut node, &config))
+        self.filter = Some(filter_chains(&mut node))
     }
 }
 
@@ -218,7 +218,8 @@ pub fn is_close(a: f64, b: f64, to: f64) -> bool {
     false
 }
 
-pub fn get_delta(begin: &f64, config: &Config) -> (f64, f64) {
+pub fn get_delta(begin: &f64) -> (f64, f64) {
+    let config = GlobalConfig::global();
     let mut current_time = get_sec();
     let start = config.playlist.start_sec.unwrap();
     let length = time_to_sec(&config.playlist.length);
@@ -249,7 +250,9 @@ pub fn get_delta(begin: &f64, config: &Config) -> (f64, f64) {
     (current_delta, total_delta)
 }
 
-pub fn check_sync(delta: f64, config: &Config) -> bool {
+pub fn check_sync(delta: f64) -> bool {
+    let config = GlobalConfig::global();
+
     if delta.abs() > config.general.stop_threshold && config.general.stop_threshold > 0.0 {
         error!("Start time out of sync for <yellow>{}</> seconds", delta);
         return false;
@@ -258,7 +261,8 @@ pub fn check_sync(delta: f64, config: &Config) -> bool {
     true
 }
 
-pub fn gen_dummy(duration: f64, config: &Config) -> (String, Vec<String>) {
+pub fn gen_dummy(duration: f64) -> (String, Vec<String>) {
+    let config = GlobalConfig::global();
     let color = "#121212";
     let source = format!(
         "color=c={color}:s={}x{}:d={duration}",

@@ -17,10 +17,12 @@ mod desktop;
 mod stream;
 
 use crate::utils::{
-    sec_to_time, stderr_reader, watch_folder, Config, CurrentProgram, Media, Source,
+    sec_to_time, stderr_reader, watch_folder, GlobalConfig, CurrentProgram, Media, Source,
 };
 
-pub fn play(config: Config) {
+pub fn play() {
+    let config = GlobalConfig::global();
+
     let dec_pid: Arc<Mutex<u32>> = Arc::new(Mutex::new(0));
     let mut thread_count = 2;
 
@@ -34,7 +36,7 @@ pub fn play(config: Config) {
         .build()
         .unwrap();
 
-    let get_source = match config.processing.mode.clone().as_str() {
+    let get_source = match config.processing.clone().mode.as_str() {
         "folder" => {
             let path = config.storage.path.clone();
             if !Path::new(&path).exists() {
@@ -44,7 +46,7 @@ pub fn play(config: Config) {
 
             info!("Playout in folder mode.");
 
-            let folder_source = Source::new(config.clone());
+            let folder_source = Source::new();
             let (sender, receiver) = channel();
             let mut watcher = watcher(sender, Duration::from_secs(2)).unwrap();
 
@@ -60,7 +62,7 @@ pub fn play(config: Config) {
         }
         "playlist" => {
             info!("Playout in playlist mode.");
-            Box::new(CurrentProgram::new(config.clone())) as Box<dyn Iterator<Item = Media>>
+            Box::new(CurrentProgram::new()) as Box<dyn Iterator<Item = Media>>
         }
         _ => {
             error!("Process Mode not exists!");
@@ -68,13 +70,12 @@ pub fn play(config: Config) {
         }
     };
 
-    let config_clone = config.clone();
-    let dec_settings = config.processing.settings.unwrap();
+    let dec_settings = config.processing.clone().settings.unwrap();
     let ff_log_format = format!("level+{}", config.logging.ffmpeg_level);
 
     let mut enc_proc = match config.out.mode.as_str() {
-        "desktop" => desktop::output(config_clone, ff_log_format.clone()),
-        "stream" => stream::output(config_clone, ff_log_format.clone()),
+        "desktop" => desktop::output(ff_log_format.clone()),
+        "stream" => stream::output(ff_log_format.clone()),
         _ => panic!("Output mode doesn't exists!"),
     };
 

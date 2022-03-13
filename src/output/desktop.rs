@@ -5,9 +5,11 @@ use std::{
 
 use simplelog::*;
 
-use crate::utils::Config;
+use crate::utils::GlobalConfig;
 
-pub fn output(config: Config, log_format: String) -> process::Child {
+pub fn output(log_format: String) -> process::Child {
+    let config = GlobalConfig::global();
+
     let mut enc_filter: Vec<String> = vec![];
 
     let mut enc_cmd = vec![

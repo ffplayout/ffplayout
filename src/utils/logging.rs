@@ -10,24 +10,21 @@ use simplelog::*;
 
 use lettre::{transport::smtp::authentication::Credentials, Message, SmtpTransport, Transport};
 
-use crate::utils;
+use crate::utils::GlobalConfig;
 
 pub struct LogMailer {
     level: LevelFilter,
     config: Config,
-    playout_config: utils::Config,
 }
 
 impl LogMailer {
     pub fn new(
         log_level: LevelFilter,
         config: Config,
-        playout_config: &utils::Config,
     ) -> Box<LogMailer> {
         Box::new(LogMailer {
             level: log_level,
             config,
-            playout_config: playout_config.clone(),
         })
     }
 }
@@ -40,8 +37,8 @@ impl Log for LogMailer {
     fn log(&self, record: &Record<'_>) {
         if self.enabled(record.metadata()) {
             match record.level() {
-                Level::Error => send_mail(record.args().to_string(), &self.playout_config),
-                Level::Warn => send_mail(record.args().to_string(), &self.playout_config),
+                Level::Error => send_mail(record.args().to_string()),
+                Level::Warn => send_mail(record.args().to_string()),
                 _ => (),
             }
         }
@@ -72,7 +69,9 @@ fn clean_string(text: String) -> String {
     regex.replace_all(text.as_str(), "").to_string()
 }
 
-fn send_mail(msg: String, config: &utils::Config) {
+fn send_mail(msg: String) {
+    let config = GlobalConfig::global();
+
     let email = Message::builder()
         .from(config.mail.sender_addr.parse().unwrap())
         .to(config.mail.recipient.parse().unwrap())
@@ -103,7 +102,8 @@ fn send_mail(msg: String, config: &utils::Config) {
     }
 }
 
-pub fn init_logging(config: &utils::Config) -> Vec<Box<dyn SharedLogger>> {
+pub fn init_logging() -> Vec<Box<dyn SharedLogger>> {
+    let config = GlobalConfig::global();
     let app_config = config.logging.clone();
     let mut app_logger: Vec<Box<dyn SharedLogger>> = vec![];
 
@@ -172,7 +172,7 @@ pub fn init_logging(config: &utils::Config) -> Vec<Box<dyn SharedLogger>> {
             filter = LevelFilter::Warn
         }
 
-        app_logger.push(LogMailer::new(filter, mail_config, config));
+        app_logger.push(LogMailer::new(filter, mail_config));
     }
 
     app_logger

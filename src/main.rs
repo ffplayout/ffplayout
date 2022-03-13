@@ -8,13 +8,12 @@ mod utils;
 use simplelog::*;
 
 use crate::output::play;
-use crate::utils::{get_config, init_logging};
+use crate::utils::{init_config, init_logging};
 
 fn main() {
-    let config = get_config();
-    let logging = init_logging(&config);
-
+    init_config();
+    let logging = init_logging();
     CombinedLogger::init(logging).unwrap();
 
-    play(config);
+    play();
 }

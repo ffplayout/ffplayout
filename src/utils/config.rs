@@ -1,12 +1,12 @@
+use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
 use serde_yaml::{self};
 use std::{fs::File, path::Path, process};
-// use regex::Regex;
 
 use crate::utils::{get_args, time_to_sec};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Config {
+pub struct GlobalConfig {
     pub general: General,
     pub mail: Mail,
     pub logging: Logging,
@@ -108,115 +108,128 @@ pub struct Out {
     pub stream_param: Vec<String>,
 }
 
-pub fn get_config() -> Config {
-    let args = get_args();
-    let mut config_path: String = "ffplayout.yml".to_string();
+static INSTANCE: OnceCell<GlobalConfig> = OnceCell::new();
 
-    if args.config.is_some() {
-        config_path = args.config.unwrap();
-    } else if Path::new("/etc/ffplayout/ffplayout.yml").is_file() {
-        config_path = "/etc/ffplayout/ffplayout.yml".to_string();
-    }
+impl GlobalConfig {
+    fn new() -> Self {
+        let args = get_args();
+        let mut config_path: String = "ffplayout.yml".to_string();
 
-    let f = match File::open(&config_path) {
-        Ok(file) => file,
-        Err(err) => {
-            println!(
-                "'{config_path}' doesn't exists!\n{}\n\nSystem error: {err}",
-                "Put 'ffplayout.yml' in '/etc/playout/' or beside the executable!"
-            );
-            process::exit(0x0100);
+        if args.config.is_some() {
+            config_path = args.config.unwrap();
+        } else if Path::new("/etc/ffplayout/ffplayout.yml").is_file() {
+            config_path = "/etc/ffplayout/ffplayout.yml".to_string();
         }
-    };
 
-    let mut config: Config = serde_yaml::from_reader(f).expect("Could not read config file.");
-    let fps = config.processing.fps.to_string();
-    let bitrate = config.processing.width * config.processing.height / 10;
-    config.playlist.start_sec = Some(time_to_sec(&config.playlist.day_start));
+        let f = match File::open(&config_path) {
+            Ok(file) => file,
+            Err(err) => {
+                println!(
+                    "'{config_path}' doesn't exists!\n{}\n\nSystem error: {err}",
+                    "Put 'ffplayout.yml' in '/etc/playout/' or beside the executable!"
+                );
+                process::exit(0x0100);
+            }
+        };
 
-    if config.playlist.length.contains(":") {
-        config.playlist.length_sec = Some(time_to_sec(&config.playlist.length));
-    } else {
-        config.playlist.length_sec = Some(86400.0);
-    }
-
-    let settings = vec![
-        "-pix_fmt",
-        "yuv420p",
-        "-r",
-        &fps,
-        "-c:v",
-        "mpeg2video",
-        "-g",
-        "1",
-        "-b:v",
-        format!("{}k", bitrate).as_str(),
-        "-minrate",
-        format!("{}k", bitrate).as_str(),
-        "-maxrate",
-        format!("{}k", bitrate).as_str(),
-        "-bufsize",
-        format!("{}k", bitrate / 2).as_str(),
-        "-c:a",
-        "s302m",
-        "-strict",
-        "-2",
-        "-ar",
-        "48000",
-        "-ac",
-        "2",
-        "-f",
-        "mpegts",
-        "-",
-    ]
-    .iter()
-    .map(|&s| s.into())
-    .collect();
-
-    config.processing.settings = Some(settings);
-
-    if args.log.is_some() {
-        config.logging.log_path = args.log.unwrap();
-    }
-
-    if args.playlist.is_some() {
-        config.playlist.path = args.playlist.unwrap();
-    }
-
-    if args.play_mode.is_some() {
-        config.processing.mode = args.play_mode.unwrap();
-    }
-
-    if args.folder.is_some() {
-        config.storage.path = args.folder.unwrap();
-    }
-
-    if args.start.is_some() {
-        config.playlist.day_start = args.start.clone().unwrap();
-        config.playlist.start_sec = Some(time_to_sec(&args.start.unwrap()));
-    }
-
-    if args.length.is_some() {
-        config.playlist.length = args.length.clone().unwrap();
+        let mut config: GlobalConfig = serde_yaml::from_reader(f).expect("Could not read config file.");
+        let fps = config.processing.fps.to_string();
+        let bitrate = config.processing.width * config.processing.height / 10;
+        config.playlist.start_sec = Some(time_to_sec(&config.playlist.day_start));
 
         if config.playlist.length.contains(":") {
             config.playlist.length_sec = Some(time_to_sec(&config.playlist.length));
         } else {
             config.playlist.length_sec = Some(86400.0);
         }
+
+        let settings = vec![
+            "-pix_fmt",
+            "yuv420p",
+            "-r",
+            &fps,
+            "-c:v",
+            "mpeg2video",
+            "-g",
+            "1",
+            "-b:v",
+            format!("{}k", bitrate).as_str(),
+            "-minrate",
+            format!("{}k", bitrate).as_str(),
+            "-maxrate",
+            format!("{}k", bitrate).as_str(),
+            "-bufsize",
+            format!("{}k", bitrate / 2).as_str(),
+            "-c:a",
+            "s302m",
+            "-strict",
+            "-2",
+            "-ar",
+            "48000",
+            "-ac",
+            "2",
+            "-f",
+            "mpegts",
+            "-",
+        ]
+        .iter()
+        .map(|&s| s.into())
+        .collect();
+
+        config.processing.settings = Some(settings);
+
+        if args.log.is_some() {
+            config.logging.log_path = args.log.unwrap();
+        }
+
+        if args.playlist.is_some() {
+            config.playlist.path = args.playlist.unwrap();
+        }
+
+        if args.play_mode.is_some() {
+            config.processing.mode = args.play_mode.unwrap();
+        }
+
+        if args.folder.is_some() {
+            config.storage.path = args.folder.unwrap();
+        }
+
+        if args.start.is_some() {
+            config.playlist.day_start = args.start.clone().unwrap();
+            config.playlist.start_sec = Some(time_to_sec(&args.start.unwrap()));
+        }
+
+        if args.length.is_some() {
+            config.playlist.length = args.length.clone().unwrap();
+
+            if config.playlist.length.contains(":") {
+                config.playlist.length_sec = Some(time_to_sec(&config.playlist.length));
+            } else {
+                config.playlist.length_sec = Some(86400.0);
+            }
+        }
+
+        if args.infinit {
+            config.playlist.infinit = args.infinit;
+        }
+
+        if args.output.is_some() {
+            config.out.mode = args.output.unwrap();
+        }
+
+        if args.volume.is_some() {
+            config.processing.volume = args.volume.unwrap();
+        }
+
+        config
     }
 
-    if args.infinit {
-        config.playlist.infinit = args.infinit;
+    pub fn global() -> &'static GlobalConfig {
+        INSTANCE.get().expect("Config is not initialized")
     }
+}
 
-    if args.output.is_some() {
-        config.out.mode = args.output.unwrap();
-    }
-
-    if args.volume.is_some() {
-        config.processing.volume = args.volume.unwrap();
-    }
-
-    return config;
+pub fn init_config() {
+    let config = GlobalConfig::new();
+    INSTANCE.set(config).unwrap();
 }

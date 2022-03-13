@@ -3,7 +3,7 @@ use std::{fs::File, path::Path};
 
 use simplelog::*;
 
-use crate::utils::{get_date, modified_time, time_to_sec, Config, Media};
+use crate::utils::{get_date, modified_time, time_to_sec, GlobalConfig, Media};
 
 pub const DUMMY_LEN: f64 = 20.0;
 
@@ -32,7 +32,9 @@ impl Playlist {
     }
 }
 
-pub fn read_json(config: &Config, seek: bool, next_start: f64) -> Playlist {
+pub fn read_json(seek: bool, next_start: f64) -> Playlist {
+    let config = GlobalConfig::global();
+
     let mut playlist_path = Path::new(&config.playlist.path).to_owned();
     let start = &config.playlist.day_start;
     let mut start_sec = time_to_sec(start);
