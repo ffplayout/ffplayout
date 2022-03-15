@@ -9,15 +9,14 @@ use std::{
     time::Duration,
 };
 
-use tokio::runtime::Builder;
-
 use simplelog::*;
+use tokio::runtime::Builder;
 
 mod desktop;
 mod stream;
 
 use crate::utils::{
-    sec_to_time, stderr_reader, watch_folder, GlobalConfig, CurrentProgram, Media, Source,
+    sec_to_time, stderr_reader, watch_folder, CurrentProgram, GlobalConfig, Media, Source,
 };
 
 pub fn play() {
