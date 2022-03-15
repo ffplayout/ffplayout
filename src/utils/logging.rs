@@ -5,26 +5,25 @@ use regex::Regex;
 use std::path::Path;
 
 use file_rotate::{compression::Compression, suffix::AppendCount, ContentLimit, FileRotate};
+use lettre::{transport::smtp::authentication::Credentials, Message, SmtpTransport, Transport};
 use log::{Level, LevelFilter, Log, Metadata, Record};
 use simplelog::*;
-
-use lettre::{transport::smtp::authentication::Credentials, Message, SmtpTransport, Transport};
+use tokio::runtime::Runtime;
 
 use crate::utils::GlobalConfig;
 
 pub struct LogMailer {
     level: LevelFilter,
     config: Config,
+    runtime: Runtime,
 }
 
 impl LogMailer {
-    pub fn new(
-        log_level: LevelFilter,
-        config: Config,
-    ) -> Box<LogMailer> {
+    pub fn new(log_level: LevelFilter, config: Config, runtime: Runtime) -> Box<LogMailer> {
         Box::new(LogMailer {
             level: log_level,
             config,
+            runtime,
         })
     }
 }
@@ -37,8 +36,12 @@ impl Log for LogMailer {
     fn log(&self, record: &Record<'_>) {
         if self.enabled(record.metadata()) {
             match record.level() {
-                Level::Error => send_mail(record.args().to_string()),
-                Level::Warn => send_mail(record.args().to_string()),
+                Level::Error => {
+                    self.runtime.spawn(send_mail(record.args().to_string()));
+                },
+                Level::Warn => {
+                    self.runtime.spawn(send_mail(record.args().to_string()));
+                },
                 _ => (),
             }
         }
@@ -62,14 +65,12 @@ impl SharedLogger for LogMailer {
 }
 
 fn clean_string(text: String) -> String {
-    let regex: Regex = Regex::new(
-            r"\x1b\[[0-9;]*[mGKF]"
-            ).unwrap();
+    let regex: Regex = Regex::new(r"\x1b\[[0-9;]*[mGKF]").unwrap();
 
     regex.replace_all(text.as_str(), "").to_string()
 }
 
-fn send_mail(msg: String) {
+async fn send_mail(msg: String) {
     let config = GlobalConfig::global();
 
     let email = Message::builder()
@@ -90,10 +91,7 @@ fn send_mail(msg: String) {
         transporter = SmtpTransport::starttls_relay(config.mail.smtp_server.clone().as_str())
     }
 
-    let mailer = transporter
-        .unwrap()
-        .credentials(credentials)
-        .build();
+    let mailer = transporter.unwrap().credentials(credentials).build();
 
     // Send the email
     match mailer.send(&email) {
@@ -162,6 +160,7 @@ pub fn init_logging() -> Vec<Box<dyn SharedLogger>> {
 
     if config.mail.recipient.len() > 3 {
         let mut filter = LevelFilter::Error;
+        let runtime = Runtime::new().unwrap();
 
         let mail_config = log_config
             .clone()
@@ -172,7 +171,7 @@ pub fn init_logging() -> Vec<Box<dyn SharedLogger>> {
             filter = LevelFilter::Warn
         }
 
-        app_logger.push(LogMailer::new(filter, mail_config));
+        app_logger.push(LogMailer::new(filter, mail_config, runtime));
     }
 
     app_logger
