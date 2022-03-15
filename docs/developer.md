@@ -15,3 +15,16 @@ rustup target add x86_64-pc-windows-gnu
 [Cross](https://github.com/cross-rs/cross#dependencies) could be an option to.
 
 To build, run: `cargo build --release --target=x86_64-pc-windows-gnu`
+
+### Static Linking
+
+Running `cargo build` ends up in a binary which depend on **libc.so**. But you can compile also the binary totally static:
+
+- install musl compiler:
+    - `dnf install musl-gcc`
+- add target:
+    - `rustup target add x86_64-unknown-linux-musl`
+
+Compile with: `cargo build --release --target=x86_64-unknown-linux-musl`.
+
+This release should run on any Linux distro.
