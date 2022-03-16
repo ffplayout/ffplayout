@@ -80,7 +80,7 @@ pub fn play() {
 
     runtime.spawn(stderr_reader(
         enc_proc.stderr.take().unwrap(),
-        "Decoder".to_string(),
+        "Encoder".to_string(),
     ));
 
     let mut buffer: [u8; 65424] = [0; 65424];
@@ -136,7 +136,7 @@ pub fn play() {
 
         runtime.spawn(stderr_reader(
             dec_proc.stderr.take().unwrap(),
-            "Encoder".to_string(),
+            "Decoder".to_string(),
         ));
 
         loop {
