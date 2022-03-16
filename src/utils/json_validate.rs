@@ -4,8 +4,7 @@ use simplelog::*;
 
 use crate::utils::{sec_to_time, GlobalConfig, MediaProbe, Playlist};
 
-pub async fn validate_playlist(playlist: Playlist, config: GlobalConfig) -> Result<(), String> {
-    let _count = 0;
+pub async fn validate_playlist(playlist: Playlist, config: GlobalConfig) {
     let date = playlist.date;
     let length = config.playlist.length_sec.unwrap();
     let mut start_sec = 0.0;
@@ -25,7 +24,7 @@ pub async fn validate_playlist(playlist: Playlist, config: GlobalConfig) -> Resu
             }
         } else {
             error!(
-                "File on time <yellow>{}</> not exists: <b><magenta>{}</></b>",
+                "File on position <yellow>{}</> not exists: <b><magenta>{}</></b>",
                 sec_to_time(start_sec),
                 item.source
             );
@@ -40,6 +39,4 @@ pub async fn validate_playlist(playlist: Playlist, config: GlobalConfig) -> Resu
             sec_to_time(length - start_sec),
         );
     }
-
-    Ok(())
 }
