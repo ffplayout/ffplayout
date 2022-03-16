@@ -5,7 +5,8 @@ use std::{
 
 use simplelog::*;
 
-use crate::utils::GlobalConfig;
+use crate::utils::{GlobalConfig, Media};
+use crate::filter::v_drawtext;
 
 pub fn output(log_format: String) -> process::Child {
     let config = GlobalConfig::global();
@@ -22,13 +23,14 @@ pub fn output(log_format: String) -> process::Child {
     ];
 
     if config.text.add_text && !config.text.over_pre {
-        let text_filter: String = format!(
-            "null,zmq=b=tcp\\\\://'{}',drawtext=text='':fontfile='{}'",
-            config.text.bind_address.replace(":", "\\:"),
-            config.text.fontfile
+        info!(
+            "Using drawtext filter, listening on address: <yellow>{}</>",
+            config.text.bind_address
         );
 
-        enc_filter = vec!["-vf".to_string(), text_filter];
+        let mut filter: String = "null,".to_string();
+        filter.push_str(v_drawtext::filter_node(&mut Media::new(0, "".to_string())).as_str());
+        enc_filter = vec!["-vf".to_string(), filter];
     }
 
     enc_cmd.append(&mut enc_filter.iter().map(String::as_str).collect());

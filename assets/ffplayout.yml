@@ -33,18 +33,15 @@ logging:
     ffmpeg_level: "error"
 
 processing:
-    helptext: Set playing mode, like playlist; folder, or you own custom one.
-        Default processing, for all clips that they get prepared in that way,
-        so the output is unique. 'aspect' must be a float number. 'logo' is only used
-        if the path exist. 'logo_scale' scale the logo to target size, leave it blank
-        when no scaling is needed, format is 'number:number', for example '100:-1'
-        for proportional scaling. With 'logo_opacity' logo can become transparent.
-        With 'logo_filter' 'overlay=W-w-12:12' you can modify the logo position.
-        With 'use_loudnorm' you can activate single pass EBU R128 loudness normalization.
-        'loud_*' can adjust the loudnorm filter. 'output_count' sets the outputs for
-        the filtering, > 1 gives the option to use the same filters for multiple outputs.
-        This outputs can be taken in 'stream_param', names will be vout2, vout3;
-        aout2, aout2 etc.
+    helptext: Default processing, for all clips that they get prepared in that way,
+        so the output is unique. Set playing mode, like playlist, or folder.
+        'aspect' must be a float number. 'logo' is only used if the path exist.
+        'logo_scale' scale the logo to target size, leave it blank when no scaling
+        is needed, format is 'number:number', for example '100:-1' for proportional
+        scaling. With 'logo_opacity' logo can become transparent. With 'logo_filter'
+        'overlay=W-w-12:12' you can modify the logo position. With 'use_loudnorm'
+        you can activate single pass EBU R128 loudness normalization.
+        'loud_*' can adjust the loudnorm filter.
     mode: playlist
     width: 1024
     height: 576
@@ -59,7 +56,6 @@ processing:
     loud_i: -18
     loud_tp: -1.5
     loud_lra: 11
-    output_count: 1
     volume: 1
 
 ingest:
@@ -109,7 +105,7 @@ text:
     fontfile: "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
     text_from_filename: false
     style: "x=(w-tw)/2:y=(h-line_h)*0.9:fontsize=24:fontcolor=#ffffff:box=1:boxcolor=#000000:boxborderw=4"
-    regex: "^(.*)_"
+    regex: ^.+[/\\](.*)(.mp4|.mkv)$
 
 out:
     helptext: The final playout compression. Set the settings to your needs.

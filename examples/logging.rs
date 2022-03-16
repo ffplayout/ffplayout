@@ -1,11 +1,11 @@
 extern crate log;
 extern crate simplelog;
 
+use std::{thread::sleep, time::Duration};
+
 use simplelog::*;
 
 use file_rotate::{compression::Compression, suffix::AppendCount, ContentLimit, FileRotate};
-
-// use crate::{Config, SharedLogger};
 use log::{Level, LevelFilter, Log, Metadata, Record};
 
 pub struct LogMailer {
@@ -31,12 +31,15 @@ impl Log for LogMailer {
         if self.enabled(record.metadata()) {
             match record.level() {
                 Level::Error => {
-                    println!("Send Error Mail: {:?}\n{:?}", record, self.config)
-                },
+                    println!("Send Error Mail: {:?}", record.args())
+                }
                 Level::Warn => {
                     println!("Send Warn Mail: {:?}", record.args())
                 }
-                _ => ()
+                Level::Info => {
+                    println!("Send Info Mail: {:?}", record.args())
+                }
+                _ => (),
             }
         }
     }
@@ -102,7 +105,7 @@ fn main() {
             ColorChoice::Auto,
         ),
         WriteLogger::new(LevelFilter::Debug, file_config, log()),
-        LogMailer::new(LevelFilter::Warn, mail_config),
+        LogMailer::new(LevelFilter::Info, mail_config),
     ])
     .unwrap();
 
@@ -113,5 +116,6 @@ fn main() {
 
     for idx in 1..10 {
         info!("{idx}");
+        sleep(Duration::from_secs(2));
     }
 }

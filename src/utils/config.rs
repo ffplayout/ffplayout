@@ -1,7 +1,12 @@
 use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
 use serde_yaml::{self};
-use std::{fs::File, path::Path, process};
+use std::{
+    env,
+    fs::File,
+    path::{Path, PathBuf},
+    process,
+};
 
 use crate::utils::{get_args, time_to_sec};
 
@@ -60,7 +65,6 @@ pub struct Processing {
     pub loud_i: f32,
     pub loud_tp: f32,
     pub loud_lra: f32,
-    pub output_count: u32,
     pub volume: f64,
     pub settings: Option<Vec<String>>,
 }
@@ -113,26 +117,30 @@ static INSTANCE: OnceCell<GlobalConfig> = OnceCell::new();
 impl GlobalConfig {
     fn new() -> Self {
         let args = get_args();
-        let mut config_path: String = "ffplayout.yml".to_string();
+        let mut config_path = match env::current_exe() {
+            Ok(path) => path.parent().unwrap().join("ffplayout.yml"),
+            Err(_) => PathBuf::from("./ffplayout.yml"),
+        };
 
         if args.config.is_some() {
-            config_path = args.config.unwrap();
+            config_path = PathBuf::from(args.config.unwrap());
         } else if Path::new("/etc/ffplayout/ffplayout.yml").is_file() {
-            config_path = "/etc/ffplayout/ffplayout.yml".to_string();
+            config_path = PathBuf::from("/etc/ffplayout/ffplayout.yml");
         }
 
         let f = match File::open(&config_path) {
             Ok(file) => file,
             Err(err) => {
                 println!(
-                    "'{config_path}' doesn't exists!\n{}\n\nSystem error: {err}",
-                    "Put 'ffplayout.yml' in '/etc/playout/' or beside the executable!"
+                    "'{:?}' doesn't exists!\n{}\n\nSystem error: {err}",
+                    config_path, "Put 'ffplayout.yml' in '/etc/playout/' or beside the executable!"
                 );
                 process::exit(0x0100);
             }
         };
 
-        let mut config: GlobalConfig = serde_yaml::from_reader(f).expect("Could not read config file.");
+        let mut config: GlobalConfig =
+            serde_yaml::from_reader(f).expect("Could not read config file.");
         let fps = config.processing.fps.to_string();
         let bitrate = config.processing.width * config.processing.height / 10;
         config.playlist.start_sec = Some(time_to_sec(&config.playlist.day_start));
@@ -143,7 +151,7 @@ impl GlobalConfig {
             config.playlist.length_sec = Some(86400.0);
         }
 
-        let settings = vec![
+        let mut settings: Vec<String> = vec![
             "-pix_fmt",
             "yuv420p",
             "-r",
@@ -160,21 +168,18 @@ impl GlobalConfig {
             format!("{}k", bitrate).as_str(),
             "-bufsize",
             format!("{}k", bitrate / 2).as_str(),
-            "-c:a",
-            "s302m",
-            "-strict",
-            "-2",
-            "-ar",
-            "48000",
-            "-ac",
-            "2",
-            "-f",
-            "mpegts",
-            "-",
         ]
         .iter()
         .map(|&s| s.into())
         .collect();
+
+        settings.append(&mut pre_audio_codec(config.processing.add_loudnorm));
+        settings.append(
+            &mut vec!["-ar", "48000", "-ac", "2", "-f", "mpegts", "-"]
+                .iter()
+                .map(|&s| s.into())
+                .collect(),
+        );
 
         config.processing.settings = Some(settings);
 
@@ -227,6 +232,20 @@ impl GlobalConfig {
     pub fn global() -> &'static GlobalConfig {
         INSTANCE.get().expect("Config is not initialized")
     }
+}
+
+fn pre_audio_codec(add_loudnorm: bool) -> Vec<String> {
+    // when add_loudnorm is False we use a different audio encoder,
+    // s302m has higher quality, but is experimental
+    // and works not well together with the loudnorm filter
+
+    let mut codec = vec!["-c:a", "s302m", "-strict", "-2"];
+
+    if add_loudnorm {
+        codec = vec!["-c:a", "mp2", "-b:a", "384k"];
+    }
+
+    codec.iter().map(|&s| s.into()).collect()
 }
 
 pub fn init_config() {

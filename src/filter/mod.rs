@@ -1,7 +1,8 @@
 use std::path::Path;
 
-use regex::Regex;
 use simplelog::*;
+
+pub mod v_drawtext;
 
 use crate::utils::{is_close, GlobalConfig, Media};
 
@@ -196,28 +197,22 @@ fn add_text(node: &mut Media, chain: &mut Filters, config: &GlobalConfig) {
     // add drawtext filter for lower thirds messages
 
     if config.text.add_text && config.text.over_pre {
-        let mut font: String = "".to_string();
-        let filter: String;
+        let filter = v_drawtext::filter_node(node);
 
-        if Path::new(&config.text.fontfile).is_file() {
-            font = format!(":fontfile='{}'", config.text.fontfile)
+        chain.add_filter(filter, "video".into());
+
+        match &chain.video_chain {
+            Some(filters) => {
+                for (i, f) in filters.split(",").enumerate() {
+                    if f.contains("drawtext") && !config.text.text_from_filename {
+                        debug!("drawtext node is on index: <yellow>{i}</>");
+                        break;
+                    }
+                }
+            }
+
+            None => (),
         }
-
-        if config.text.text_from_filename {
-            let source = node.source.clone();
-            let regex: Regex = Regex::new(config.text.regex.as_str()).unwrap();
-            let text: String = regex.captures(source.as_str()).unwrap()[0].to_string();
-
-            let escape = text.replace("'", "'\\\\\\''").replace("%", "\\\\\\%");
-            filter = format!("drawtext=text='{escape}':{}{font}", config.text.style)
-        } else {
-            filter = format!(
-                "null,zmq=b=tcp\\\\://'{}',drawtext=text=''{}",
-                config.text.bind_address, font
-            )
-        }
-
-        chain.add_filter(filter, "video".into())
     }
 }
 
@@ -248,6 +243,21 @@ fn extend_audio(node: &mut Media, chain: &mut Filters) {
                 )
             }
         }
+    }
+}
+
+fn add_loudnorm(node: &mut Media, chain: &mut Filters, config: &GlobalConfig) {
+    // add single pass loudnorm filter to audio line
+
+    let audio_streams = node.probe.clone().unwrap().audio_streams.unwrap();
+
+    if audio_streams.len() != 0 && config.processing.add_loudnorm {
+        let loud_filter = format!(
+            "loudnorm=I={}:TP={}:LRA={}",
+            config.processing.loud_i, config.processing.loud_tp, config.processing.loud_lra
+        );
+
+        chain.add_filter(loud_filter, "audio".into());
     }
 }
 
@@ -311,6 +321,7 @@ pub fn filter_chains(node: &mut Media) -> Vec<String> {
         add_text(node, &mut filters, &config);
         add_audio(node, &mut filters);
         extend_audio(node, &mut filters);
+        add_loudnorm(node, &mut filters, &config);
     }
 
     fade(node, &mut filters, "video".into());

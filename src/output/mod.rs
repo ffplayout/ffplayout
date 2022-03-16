@@ -60,7 +60,7 @@ pub fn play() {
             Box::new(folder_source) as Box<dyn Iterator<Item = Media>>
         }
         "playlist" => {
-            info!("Playout in playlist mode.");
+            info!("Playout in playlist mode");
             Box::new(CurrentProgram::new()) as Box<dyn Iterator<Item = Media>>
         }
         _ => {

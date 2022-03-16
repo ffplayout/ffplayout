@@ -48,11 +48,11 @@ pub struct Media {
 }
 
 impl Media {
-    fn new(index: usize, src: String) -> Self {
+    pub fn new(index: usize, src: String) -> Self {
         let mut duration: f64 = 0.0;
         let mut probe = None;
 
-        if Path::new("src").is_file() {
+        if Path::new(&src).is_file() {
             probe = Some(MediaProbe::new(src.clone()));
 
             duration = match probe.clone().unwrap().format.unwrap().duration {
