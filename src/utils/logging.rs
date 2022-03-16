@@ -8,22 +8,22 @@ use file_rotate::{compression::Compression, suffix::AppendCount, ContentLimit, F
 use lettre::{transport::smtp::authentication::Credentials, Message, SmtpTransport, Transport};
 use log::{Level, LevelFilter, Log, Metadata, Record};
 use simplelog::*;
-use tokio::runtime::Runtime;
+use tokio::runtime::Handle;
 
 use crate::utils::GlobalConfig;
 
 pub struct LogMailer {
     level: LevelFilter,
     config: Config,
-    runtime: Runtime,
+    handle: Handle,
 }
 
 impl LogMailer {
-    pub fn new(log_level: LevelFilter, config: Config, runtime: Runtime) -> Box<LogMailer> {
+    pub fn new(log_level: LevelFilter, config: Config, handle: Handle) -> Box<LogMailer> {
         Box::new(LogMailer {
             level: log_level,
             config,
-            runtime,
+            handle,
         })
     }
 }
@@ -37,10 +37,10 @@ impl Log for LogMailer {
         if self.enabled(record.metadata()) {
             match record.level() {
                 Level::Error => {
-                    self.runtime.spawn(send_mail(record.args().to_string()));
+                    self.handle.spawn(send_mail(record.args().to_string()));
                 },
                 Level::Warn => {
-                    self.runtime.spawn(send_mail(record.args().to_string()));
+                    self.handle.spawn(send_mail(record.args().to_string()));
                 },
                 _ => (),
             }
@@ -100,7 +100,7 @@ async fn send_mail(msg: String) {
     }
 }
 
-pub fn init_logging() -> Vec<Box<dyn SharedLogger>> {
+pub fn init_logging(rt_handle: Handle) -> Vec<Box<dyn SharedLogger>> {
     let config = GlobalConfig::global();
     let app_config = config.logging.clone();
     let mut app_logger: Vec<Box<dyn SharedLogger>> = vec![];
@@ -160,7 +160,6 @@ pub fn init_logging() -> Vec<Box<dyn SharedLogger>> {
 
     if config.mail.recipient.len() > 3 {
         let mut filter = LevelFilter::Error;
-        let runtime = Runtime::new().unwrap();
 
         let mail_config = log_config
             .clone()
@@ -171,7 +170,7 @@ pub fn init_logging() -> Vec<Box<dyn SharedLogger>> {
             filter = LevelFilter::Warn
         }
 
-        app_logger.push(LogMailer::new(filter, mail_config, runtime));
+        app_logger.push(LogMailer::new(filter, mail_config, rt_handle));
     }
 
     app_logger

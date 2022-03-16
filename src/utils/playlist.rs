@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use simplelog::*;
+use tokio::runtime::Handle;
 
 use crate::utils::{
     check_sync, gen_dummy, get_delta, get_sec, is_close, json_reader::read_json, modified_time,
@@ -17,12 +18,13 @@ pub struct CurrentProgram {
     current_node: Media,
     init: bool,
     index: usize,
+    rt_handle: Handle,
 }
 
 impl CurrentProgram {
-    pub fn new() -> Self {
+    pub fn new(rt_handle: Handle) -> Self {
         let config = GlobalConfig::global();
-        let json = read_json(true, 0.0);
+        let json = read_json(rt_handle.clone(), true, 0.0);
 
         Self {
             config: config.clone(),
@@ -33,12 +35,13 @@ impl CurrentProgram {
             current_node: Media::new(0, "".to_string()),
             init: true,
             index: 0,
+            rt_handle,
         }
     }
 
     fn check_update(&mut self, seek: bool) {
         if self.json_path.is_none() {
-            let json = read_json(seek, 0.0);
+            let json = read_json(self.rt_handle.clone(), seek, 0.0);
 
             self.json_path = json.current_file;
             self.json_mod = json.modified;
@@ -52,7 +55,7 @@ impl CurrentProgram {
                 .eq(&self.json_mod.clone().unwrap())
             {
                 // when playlist has changed, reload it
-                let json = read_json(false, 0.0);
+                let json = read_json(self.rt_handle.clone(), false, 0.0);
 
                 self.json_mod = json.modified;
                 self.nodes = json.program;
@@ -92,7 +95,7 @@ impl CurrentProgram {
             || is_close(total_delta, 0.0, 2.0)
             || is_close(total_delta, target_length, 2.0)
         {
-            let json = read_json(false, next_start);
+            let json = read_json(self.rt_handle.clone(), false, next_start);
 
             self.json_path = json.current_file.clone();
             self.json_mod = json.modified;

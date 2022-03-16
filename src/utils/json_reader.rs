@@ -2,12 +2,13 @@ use serde::{Deserialize, Serialize};
 use std::{fs::File, path::Path};
 
 use simplelog::*;
+use tokio::runtime::Handle;
 
-use crate::utils::{get_date, modified_time, time_to_sec, GlobalConfig, Media};
+use crate::utils::{get_date, modified_time, validate_playlist, GlobalConfig, Media};
 
 pub const DUMMY_LEN: f64 = 20.0;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Playlist {
     pub date: String,
     pub start_sec: Option<f64>,
@@ -32,12 +33,11 @@ impl Playlist {
     }
 }
 
-pub fn read_json(seek: bool, next_start: f64) -> Playlist {
+pub fn read_json(rt_handle: Handle, seek: bool, next_start: f64) -> Playlist {
     let config = GlobalConfig::global();
 
     let mut playlist_path = Path::new(&config.playlist.path).to_owned();
-    let start = &config.playlist.day_start;
-    let mut start_sec = time_to_sec(start);
+    let mut start_sec = config.playlist.start_sec.unwrap();
     let date = get_date(seek, start_sec, next_start);
 
     if playlist_path.is_dir() {
@@ -81,6 +81,8 @@ pub fn read_json(seek: bool, next_start: f64) -> Playlist {
 
         start_sec += item.out - item.seek;
     }
+
+    rt_handle.spawn(validate_playlist(playlist.clone(), config.clone()));
 
     playlist
 }

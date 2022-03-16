@@ -17,13 +17,15 @@ mod arg_parse;
 mod config;
 mod folder;
 mod json_reader;
+mod json_validate;
 mod logging;
 mod playlist;
 
 pub use arg_parse::get_args;
 pub use config::{init_config, GlobalConfig};
 pub use folder::{watch_folder, Source};
-pub use json_reader::{read_json, DUMMY_LEN};
+pub use json_reader::{read_json, DUMMY_LEN, Playlist};
+pub use json_validate::validate_playlist;
 pub use logging::init_logging;
 pub use playlist::CurrentProgram;
 

@@ -10,7 +10,7 @@ use std::{
 };
 
 use simplelog::*;
-use tokio::runtime::Builder;
+use tokio::runtime::Handle;
 
 mod desktop;
 mod stream;
@@ -19,21 +19,10 @@ use crate::utils::{
     sec_to_time, stderr_reader, watch_folder, CurrentProgram, GlobalConfig, Media, Source,
 };
 
-pub fn play() {
+pub fn play(rt_handle: &Handle) {
     let config = GlobalConfig::global();
 
     let dec_pid: Arc<Mutex<u32>> = Arc::new(Mutex::new(0));
-    let mut thread_count = 2;
-
-    if config.processing.mode.as_str() == "folder" {
-        thread_count += 1;
-    }
-
-    let runtime = Builder::new_multi_thread()
-        .worker_threads(thread_count)
-        .enable_all()
-        .build()
-        .unwrap();
 
     let get_source = match config.processing.clone().mode.as_str() {
         "folder" => {
@@ -55,13 +44,13 @@ pub fn play() {
 
             debug!("Monitor folder: <b><magenta>{}</></b>", path);
 
-            runtime.spawn(watch_folder(receiver, Arc::clone(&folder_source.nodes)));
+            rt_handle.spawn(watch_folder(receiver, Arc::clone(&folder_source.nodes)));
 
             Box::new(folder_source) as Box<dyn Iterator<Item = Media>>
         }
         "playlist" => {
             info!("Playout in playlist mode");
-            Box::new(CurrentProgram::new()) as Box<dyn Iterator<Item = Media>>
+            Box::new(CurrentProgram::new(rt_handle.clone())) as Box<dyn Iterator<Item = Media>>
         }
         _ => {
             error!("Process Mode not exists!");
@@ -70,7 +59,7 @@ pub fn play() {
     };
 
     let dec_settings = config.processing.clone().settings.unwrap();
-    let ff_log_format = format!("level+{}", config.logging.ffmpeg_level);
+    let ff_log_format = format!("level+{}", config.logging.ffmpeg_level.to_lowercase());
 
     let mut enc_proc = match config.out.mode.as_str() {
         "desktop" => desktop::output(ff_log_format.clone()),
@@ -78,7 +67,7 @@ pub fn play() {
         _ => panic!("Output mode doesn't exists!"),
     };
 
-    runtime.spawn(stderr_reader(
+    rt_handle.spawn(stderr_reader(
         enc_proc.stderr.take().unwrap(),
         "Encoder".to_string(),
     ));
@@ -134,7 +123,7 @@ pub fn play() {
 
         // debug!("Decoder PID: <yellow>{}</>", dec_pid.lock().unwrap());
 
-        runtime.spawn(stderr_reader(
+        rt_handle.spawn(stderr_reader(
             dec_proc.stderr.take().unwrap(),
             "Decoder".to_string(),
         ));
