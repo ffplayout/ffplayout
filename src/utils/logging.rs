@@ -103,13 +103,19 @@ async fn send_mail(msg: String) {
 pub fn init_logging(rt_handle: Handle) -> Vec<Box<dyn SharedLogger>> {
     let config = GlobalConfig::global();
     let app_config = config.logging.clone();
+    let mut time_level = LevelFilter::Off;
     let mut app_logger: Vec<Box<dyn SharedLogger>> = vec![];
+
+    if app_config.timestamp {
+        time_level = LevelFilter::Error;
+    }
 
     let log_config = simplelog::ConfigBuilder::new()
         .set_thread_level(LevelFilter::Off)
         .set_target_level(LevelFilter::Off)
         .set_level_padding(LevelPadding::Left)
         .set_time_to_local(app_config.local_time)
+        .set_time_level(time_level)
         .clone();
 
     if app_config.log_to_file {

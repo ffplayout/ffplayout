@@ -44,6 +44,7 @@ pub struct Logging {
     pub log_to_file: bool,
     pub backup_count: usize,
     pub local_time: bool,
+    pub timestamp: bool,
     pub log_path: String,
     pub log_level: String,
     pub ffmpeg_level: String,
