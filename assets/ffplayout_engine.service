@@ -1,0 +1,14 @@
+[Unit]
+Description=python and ffmpeg based playout
+After=network.target
+
+[Service]
+ExecStart= /usr/local/bin/ffplayout
+ExecReload=/bin/kill -1 $MAINPID
+Restart=always
+RestartSec=1
+User=www-data
+Group=www-data
+
+[Install]
+WantedBy=multi-user.target
