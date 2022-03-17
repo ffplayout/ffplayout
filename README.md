@@ -4,6 +4,12 @@
 [![made-with-python](https://img.shields.io/badge/Made%20with-Python-1f425f.svg)](https://www.python.org/)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
+## Attention: Version 4.0 will be the last release
+
+**In favor of [ffplayout-rs](https://github.com/ffplayout/ffplayout-rs), this Project will not be developed much further. There will be bug fixes for a while, and then the project will be archived.**
+
+-----
+
 The purpose with ffplayout is to provide a 24/7 broadcasting solution that plays a *json* playlist for every day, while keeping the current playlist editable.
 
 **Check [ffplayout-frontend](https://github.com/ffplayout/ffplayout-frontend): web-based GUI for ffplayout**
