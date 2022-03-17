@@ -11,9 +11,6 @@ Next generation 24/7 playout, based on [Rust](https://www.rust-lang.org/).
 
 If you search right now a working solution, try [ffplayout_engine](https://github.com/ffplayout/ffplayout_engine).
 
-
-
-
 The main purpose of ffplayout is to provide a 24/7 broadcasting solution that plays a *json* playlist for every day, while keeping the current playlist editable.
 
 **Check [ffplayout-frontend](https://github.com/ffplayout/ffplayout-frontend): web-based GUI for ffplayout**
