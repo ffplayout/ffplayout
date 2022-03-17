@@ -16,7 +16,8 @@ mod desktop;
 mod stream;
 
 use crate::utils::{
-    sec_to_time, stderr_reader, watch_folder, CurrentProgram, GlobalConfig, Media, Source,
+    ingest_server, sec_to_time, stderr_reader, watch_folder, CurrentProgram, GlobalConfig, Media,
+    Source,
 };
 
 pub fn play(rt_handle: &Handle) {
@@ -73,6 +74,8 @@ pub fn play(rt_handle: &Handle) {
     ));
 
     let mut buffer: [u8; 65424] = [0; 65424];
+
+    ingest_server(ff_log_format.clone());
 
     for node in get_source {
         let cmd = match node.cmd {
