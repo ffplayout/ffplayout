@@ -17,7 +17,6 @@ fn main() {
     let runtime = Runtime::new().unwrap();
     let rt_handle = runtime.handle();
 
-
     let logging = init_logging(rt_handle.clone());
     CombinedLogger::init(logging).unwrap();
 
