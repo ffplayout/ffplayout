@@ -7,29 +7,25 @@ use std::{
     io::{BufRead, BufReader, Error},
     path::Path,
     process::ChildStderr,
+    sync::{Arc, Mutex},
     time,
     time::UNIX_EPOCH,
 };
 
+use process_control::Terminator;
 use simplelog::*;
 
 mod arg_parse;
 mod config;
-mod folder;
-mod ingest;
-mod json_reader;
+pub mod json_reader;
 mod json_validate;
 mod logging;
-mod playlist;
 
 pub use arg_parse::get_args;
 pub use config::{init_config, GlobalConfig};
-pub use ingest::ingest_server;
-pub use folder::{watch_folder, Source};
-pub use json_reader::{read_json, DUMMY_LEN, Playlist};
+pub use json_reader::{read_json, Playlist, DUMMY_LEN};
 pub use json_validate::validate_playlist;
 pub use logging::init_logging;
-pub use playlist::CurrentProgram;
 
 use crate::filter::filter_chains;
 
@@ -82,11 +78,11 @@ impl Media {
         }
     }
 
-    fn add_probe(&mut self) {
+    pub fn add_probe(&mut self) {
         self.probe = Some(MediaProbe::new(self.source.clone()))
     }
 
-    fn add_filter(&mut self) {
+    pub fn add_filter(&mut self) {
         let mut node = self.clone();
         self.filter = Some(filter_chains(&mut node))
     }
@@ -258,7 +254,7 @@ pub fn check_sync(delta: f64) -> bool {
     let config = GlobalConfig::global();
 
     if delta.abs() > config.general.stop_threshold && config.general.stop_threshold > 0.0 {
-        error!("Start time out of sync for <yellow>{}</> seconds", delta);
+        error!("Clip begin out of sync for <yellow>{}</> seconds", delta);
         return false;
     }
 
@@ -316,6 +312,8 @@ pub fn seek_and_length(src: String, seek: f64, out: f64, duration: f64) -> Vec<S
 pub async fn stderr_reader(
     std_errors: ChildStderr,
     suffix: String,
+    server_term: Arc<Mutex<Option<Terminator>>>,
+    is_terminated: Arc<Mutex<bool>>,
 ) -> Result<(), Error> {
     // read ffmpeg stderr decoder and encoder instance
     // and log the output
@@ -330,11 +328,34 @@ pub async fn stderr_reader(
         let line = line?;
 
         if line.contains("[info]") {
-            info!("<bright black>[{suffix}]</> {}", format_line(line, "info".to_string()))
+            info!(
+                "<bright black>[{suffix}]</> {}",
+                format_line(line, "info".to_string())
+            )
         } else if line.contains("[warning]") {
-            warn!("<bright black>[{suffix}]</> {}", format_line(line, "warning".to_string()))
+            warn!(
+                "<bright black>[{suffix}]</> {}",
+                format_line(line, "warning".to_string())
+            )
         } else {
-            error!("<bright black>[{suffix}]</> {}", format_line(line, "error".to_string()))
+            if suffix != "server" && !line.contains("Input/output error") {
+                error!(
+                    "<bright black>[{suffix}]</> {}",
+                    format_line(line.clone(), "error".to_string())
+                );
+            }
+
+            if line.contains("Error closing file pipe:: Broken pipe") {
+                *is_terminated.lock().unwrap() = true;
+
+                if let Some(server) = &*server_term.lock().unwrap() {
+                    unsafe {
+                        if let Ok(_) = server.terminate() {
+                            info!("Terminate ingest server");
+                        }
+                    }
+                };
+            }
         }
     }
 

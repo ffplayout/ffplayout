@@ -2,6 +2,7 @@ extern crate log;
 extern crate simplelog;
 
 mod filter;
+mod input;
 mod output;
 mod utils;
 

@@ -1,4 +1,7 @@
-use std::path::Path;
+use std::{
+    path::Path,
+    sync::{Arc, Mutex},
+};
 
 use simplelog::*;
 use tokio::runtime::Handle;
@@ -16,7 +19,7 @@ pub struct CurrentProgram {
     json_path: Option<String>,
     nodes: Vec<Media>,
     current_node: Media,
-    init: bool,
+    pub init: Arc<Mutex<bool>>,
     index: usize,
     rt_handle: Handle,
 }
@@ -33,7 +36,7 @@ impl CurrentProgram {
             json_path: json.current_file,
             nodes: json.program,
             current_node: Media::new(0, "".to_string()),
-            init: true,
+            init: Arc::new(Mutex::new(true)),
             index: 0,
             rt_handle,
         }
@@ -73,7 +76,7 @@ impl CurrentProgram {
             self.json_path = None;
             self.nodes = vec![media.clone()];
             self.current_node = media;
-            self.init = true;
+            *self.init.lock().unwrap() = true;
             self.index = 0;
         }
     }
@@ -103,7 +106,7 @@ impl CurrentProgram {
             self.index = 0;
 
             if json.current_file.is_none() {
-                self.init = true;
+                *self.init.lock().unwrap() = true;
             }
         }
     }
@@ -139,7 +142,7 @@ impl CurrentProgram {
 
         for (i, item) in self.nodes.iter_mut().enumerate() {
             if start_sec + item.out - item.seek > time_sec {
-                self.init = false;
+                *self.init.lock().unwrap() = false;
                 self.index = i + 1;
                 item.seek = time_sec - start_sec;
 
@@ -155,7 +158,7 @@ impl Iterator for CurrentProgram {
     type Item = Media;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.init {
+        if *self.init.lock().unwrap() {
             debug!("Playlist init");
             self.check_update(true);
 
@@ -163,7 +166,7 @@ impl Iterator for CurrentProgram {
                 self.get_init_clip();
             }
 
-            if self.init {
+            if *self.init.lock().unwrap() {
                 // on init load playlist, could be not long enough,
                 // so we check if we can take the next playlist already,
                 // or we fill the gap with a dummy.
@@ -185,7 +188,7 @@ impl Iterator for CurrentProgram {
 
                     if DUMMY_LEN > total_delta {
                         duration = total_delta;
-                        self.init = false;
+                        *self.init.lock().unwrap() = false;
                     }
 
                     if self.config.playlist.start_sec.unwrap() > current_time {
@@ -225,8 +228,7 @@ impl Iterator for CurrentProgram {
         } else {
             let last_playlist = self.json_path.clone();
             self.check_for_next_playlist();
-            let (_, total_delta) =
-                get_delta(&self.config.playlist.start_sec.unwrap());
+            let (_, total_delta) = get_delta(&self.config.playlist.start_sec.unwrap());
             let mut last_ad = self.is_ad(self.index, false);
 
             if last_playlist == self.json_path
