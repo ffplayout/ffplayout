@@ -90,15 +90,16 @@ pub async fn ingest_server(
         rt_handle.spawn(stderr_reader(
             server_proc.stderr.take().unwrap(),
             "Server".to_string(),
-            proc_terminator.clone(),
-            is_terminated.clone(),
         ));
 
         let ingest_reader = server_proc.stdout.as_mut().unwrap();
 
         loop {
             if let Err(e) = ingest_reader.read_exact(&mut buffer[..]) {
-                debug!("Ingest server read {:?}", e);
+                if !e.to_string().contains("failed to fill whole buffer") {
+                    debug!("Ingest server read {:?}", e);
+                }
+
                 break;
             };
 

@@ -62,7 +62,7 @@ pub fn play(rt_handle: &Handle) {
         }
         "playlist" => {
             info!("Playout in playlist mode");
-            let program = CurrentProgram::new(rt_handle.clone());
+            let program = CurrentProgram::new(rt_handle.clone(), is_terminated.clone());
             init_playlist = Some(program.init.clone());
             Box::new(program) as Box<dyn Iterator<Item = Media>>
         }
@@ -87,8 +87,6 @@ pub fn play(rt_handle: &Handle) {
     rt_handle.spawn(stderr_reader(
         enc_proc.stderr.take().unwrap(),
         "Encoder".to_string(),
-        server_term.clone(),
-        is_terminated.clone(),
     ));
 
     let (ingest_sender, ingest_receiver): (Sender<[u8; 65424]>, Receiver<([u8; 65424])>) = channel();
@@ -103,7 +101,7 @@ pub fn play(rt_handle: &Handle) {
         ));
     }
 
-    for node in get_source {
+    'source_iter: for node in get_source {
         let cmd = match node.cmd {
             Some(cmd) => cmd,
             None => break,
@@ -156,8 +154,6 @@ pub fn play(rt_handle: &Handle) {
         rt_handle.spawn(stderr_reader(
             dec_proc.stderr.take().unwrap(),
             "Decoder".to_string(),
-            server_term.clone(),
-            is_terminated.clone(),
         ));
 
         let mut kill_dec = true;
@@ -170,7 +166,9 @@ pub fn play(rt_handle: &Handle) {
 
             if let Ok(receive) = ingest_receiver.try_recv() {
                 if let Err(e) = enc_writer.write_all(&receive) {
-                    panic!("Ingest receiver error: {:?}", e)
+                    error!("Ingest receiver error: {:?}", e);
+
+                    break 'source_iter
                 };
 
                 live_on = true;
@@ -192,7 +190,9 @@ pub fn play(rt_handle: &Handle) {
                 }
             } else if dec_bytes_len > 0 {
                 if let Err(e) = enc_writer.write(&buffer[..dec_bytes_len]) {
-                    panic!("Encoder write error: {:?}", e)
+                    error!("Encoder write error: {:?}", e);
+
+                    break 'source_iter
                 };
             } else {
                 if live_on {

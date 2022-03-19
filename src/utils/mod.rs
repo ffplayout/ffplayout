@@ -7,12 +7,10 @@ use std::{
     io::{BufRead, BufReader, Error},
     path::Path,
     process::ChildStderr,
-    sync::{Arc, Mutex},
     time,
     time::UNIX_EPOCH,
 };
 
-use process_control::Terminator;
 use simplelog::*;
 
 mod arg_parse;
@@ -311,9 +309,7 @@ pub fn seek_and_length(src: String, seek: f64, out: f64, duration: f64) -> Vec<S
 
 pub async fn stderr_reader(
     std_errors: ChildStderr,
-    suffix: String,
-    server_term: Arc<Mutex<Option<Terminator>>>,
-    is_terminated: Arc<Mutex<bool>>,
+    suffix: String
 ) -> Result<(), Error> {
     // read ffmpeg stderr decoder and encoder instance
     // and log the output
@@ -343,18 +339,6 @@ pub async fn stderr_reader(
                     "<bright black>[{suffix}]</> {}",
                     format_line(line.clone(), "error".to_string())
                 );
-            }
-
-            if line.contains("Error closing file pipe:: Broken pipe") {
-                *is_terminated.lock().unwrap() = true;
-
-                if let Some(server) = &*server_term.lock().unwrap() {
-                    unsafe {
-                        if let Ok(_) = server.terminate() {
-                            info!("Terminate ingest server");
-                        }
-                    }
-                };
             }
         }
     }

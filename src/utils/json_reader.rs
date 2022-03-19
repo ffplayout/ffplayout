@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::{fs::File, path::Path};
+use std::{fs::File, path::Path, sync::{Arc, Mutex}};
 
 use simplelog::*;
 use tokio::runtime::Handle;
@@ -33,7 +33,7 @@ impl Playlist {
     }
 }
 
-pub fn read_json(rt_handle: Handle, seek: bool, next_start: f64) -> Playlist {
+pub fn read_json(rt_handle: Handle, is_terminated: Arc<Mutex<bool>>, seek: bool, next_start: f64) -> Playlist {
     let config = GlobalConfig::global();
 
     let mut playlist_path = Path::new(&config.playlist.path).to_owned();
@@ -82,7 +82,7 @@ pub fn read_json(rt_handle: Handle, seek: bool, next_start: f64) -> Playlist {
         start_sec += item.out - item.seek;
     }
 
-    rt_handle.spawn(validate_playlist(playlist.clone(), config.clone()));
+    rt_handle.spawn(validate_playlist(playlist.clone(), is_terminated, config.clone()));
 
     playlist
 }

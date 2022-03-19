@@ -22,12 +22,13 @@ pub struct CurrentProgram {
     pub init: Arc<Mutex<bool>>,
     index: usize,
     rt_handle: Handle,
+    is_terminated: Arc<Mutex<bool>>,
 }
 
 impl CurrentProgram {
-    pub fn new(rt_handle: Handle) -> Self {
+    pub fn new(rt_handle: Handle, is_terminated: Arc<Mutex<bool>>) -> Self {
         let config = GlobalConfig::global();
-        let json = read_json(rt_handle.clone(), true, 0.0);
+        let json = read_json(rt_handle.clone(), is_terminated.clone(), true, 0.0);
 
         Self {
             config: config.clone(),
@@ -39,12 +40,13 @@ impl CurrentProgram {
             init: Arc::new(Mutex::new(true)),
             index: 0,
             rt_handle,
+            is_terminated,
         }
     }
 
     fn check_update(&mut self, seek: bool) {
         if self.json_path.is_none() {
-            let json = read_json(self.rt_handle.clone(), seek, 0.0);
+            let json = read_json(self.rt_handle.clone(), self.is_terminated.clone(), seek, 0.0);
 
             self.json_path = json.current_file;
             self.json_mod = json.modified;
@@ -58,7 +60,7 @@ impl CurrentProgram {
                 .eq(&self.json_mod.clone().unwrap())
             {
                 // when playlist has changed, reload it
-                let json = read_json(self.rt_handle.clone(), false, 0.0);
+                let json = read_json(self.rt_handle.clone(), self.is_terminated.clone(), false, 0.0);
 
                 self.json_mod = json.modified;
                 self.nodes = json.program;
@@ -98,7 +100,12 @@ impl CurrentProgram {
             || is_close(total_delta, 0.0, 2.0)
             || is_close(total_delta, target_length, 2.0)
         {
-            let json = read_json(self.rt_handle.clone(), false, next_start);
+            let json = read_json(
+                self.rt_handle.clone(),
+                self.is_terminated.clone(),
+                false,
+                next_start,
+            );
 
             self.json_path = json.current_file.clone();
             self.json_mod = json.modified;
