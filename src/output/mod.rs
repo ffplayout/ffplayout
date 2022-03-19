@@ -89,7 +89,8 @@ pub fn play(rt_handle: &Handle) {
         "Encoder".to_string(),
     ));
 
-    let (ingest_sender, ingest_receiver): (Sender<[u8; 65424]>, Receiver<([u8; 65424])>) = channel();
+    let (ingest_sender, ingest_receiver): (Sender<[u8; 32256]>, Receiver<([u8; 32256])>) =
+        channel();
 
     if config.ingest.enable {
         rt_handle.spawn(ingest_server(
@@ -168,7 +169,7 @@ pub fn play(rt_handle: &Handle) {
                 if let Err(e) = enc_writer.write_all(&receive) {
                     error!("Ingest receiver error: {:?}", e);
 
-                    break 'source_iter
+                    break 'source_iter;
                 };
 
                 live_on = true;
@@ -177,7 +178,7 @@ pub fn play(rt_handle: &Handle) {
                     if let Some(dec) = &*decoder_term.lock().unwrap() {
                         unsafe {
                             if let Ok(_) = dec.terminate() {
-                                info!("Switch from decoder to live ingest");
+                                info!("Switch from {} to live ingest", config.processing.mode);
                             }
                         }
                     };
@@ -192,11 +193,11 @@ pub fn play(rt_handle: &Handle) {
                 if let Err(e) = enc_writer.write(&buffer[..dec_bytes_len]) {
                     error!("Encoder write error: {:?}", e);
 
-                    break 'source_iter
+                    break 'source_iter;
                 };
             } else {
                 if live_on {
-                    info!("Switch from live ingest to decoder");
+                    info!("Switch from live ingest to {}", config.processing.mode);
 
                     live_on = false;
                 }

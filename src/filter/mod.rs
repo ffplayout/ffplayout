@@ -251,7 +251,7 @@ fn add_loudnorm(node: &mut Media, chain: &mut Filters, config: &GlobalConfig) {
 
     let audio_streams = node.probe.clone().unwrap().audio_streams.unwrap();
 
-    if audio_streams.len() != 0 && config.processing.add_loudnorm {
+    if audio_streams.len() > 0 && config.processing.add_loudnorm {
         let loud_filter = format!(
             "loudnorm=I={}:TP={}:LRA={}",
             config.processing.loud_i, config.processing.loud_tp, config.processing.loud_lra

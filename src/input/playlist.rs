@@ -8,7 +8,7 @@ use tokio::runtime::Handle;
 
 use crate::utils::{
     check_sync, gen_dummy, get_delta, get_sec, is_close, json_reader::read_json, modified_time,
-    seek_and_length, GlobalConfig, Media, DUMMY_LEN,
+    sec_to_time, seek_and_length, GlobalConfig, Media, DUMMY_LEN,
 };
 
 #[derive(Debug)]
@@ -46,7 +46,12 @@ impl CurrentProgram {
 
     fn check_update(&mut self, seek: bool) {
         if self.json_path.is_none() {
-            let json = read_json(self.rt_handle.clone(), self.is_terminated.clone(), seek, 0.0);
+            let json = read_json(
+                self.rt_handle.clone(),
+                self.is_terminated.clone(),
+                seek,
+                0.0,
+            );
 
             self.json_path = json.current_file;
             self.json_mod = json.modified;
@@ -60,7 +65,12 @@ impl CurrentProgram {
                 .eq(&self.json_mod.clone().unwrap())
             {
                 // when playlist has changed, reload it
-                let json = read_json(self.rt_handle.clone(), self.is_terminated.clone(), false, 0.0);
+                let json = read_json(
+                    self.rt_handle.clone(),
+                    self.is_terminated.clone(),
+                    false,
+                    0.0,
+                );
 
                 self.json_mod = json.modified;
                 self.nodes = json.program;
@@ -145,18 +155,20 @@ impl CurrentProgram {
             time_sec += self.config.playlist.length_sec.unwrap()
         }
 
-        let mut start_sec = self.start_sec.clone();
-
         for (i, item) in self.nodes.iter_mut().enumerate() {
-            if start_sec + item.out - item.seek > time_sec {
+            if item.begin.unwrap() + item.out - item.seek > time_sec {
                 *self.init.lock().unwrap() = false;
                 self.index = i + 1;
-                item.seek = time_sec - start_sec;
+                item.seek = time_sec - item.begin.unwrap();
+
+                println!("time_sec: {}", sec_to_time(time_sec));
+                println!("item.begin: {}", sec_to_time(item.begin.unwrap()));
+                println!("item.seek: {}", item.seek);
+                println!("item.out: {}", item.out);
 
                 self.current_node = handle_list_init(item.clone());
                 break;
             }
-            start_sec += item.out - item.seek;
         }
     }
 }

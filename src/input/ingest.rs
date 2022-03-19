@@ -33,13 +33,13 @@ fn overlay(config: &GlobalConfig) -> String {
 
 pub async fn ingest_server(
     log_format: String,
-    ingest_sender: Sender<[u8; 65424]>,
+    ingest_sender: Sender<[u8; 32256]>,
     rt_handle: Handle,
     proc_terminator: Arc<Mutex<Option<Terminator>>>,
     is_terminated: Arc<Mutex<bool>>,
 ) -> Result<(), Error> {
     let config = GlobalConfig::global();
-    let mut buffer: [u8; 65424] = [0; 65424];
+    let mut buffer: [u8; 32256] = [0; 32256];
     let mut filter = format!(
         "[0:v]fps={},scale={}:{},setdar=dar={}",
         config.processing.fps,
