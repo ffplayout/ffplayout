@@ -8,7 +8,7 @@ use tokio::runtime::Handle;
 
 use crate::utils::{
     check_sync, gen_dummy, get_delta, get_sec, is_close, json_reader::read_json, modified_time,
-    sec_to_time, seek_and_length, GlobalConfig, Media, DUMMY_LEN,
+    seek_and_length, GlobalConfig, Media, DUMMY_LEN,
 };
 
 #[derive(Debug)]
@@ -160,11 +160,6 @@ impl CurrentProgram {
                 *self.init.lock().unwrap() = false;
                 self.index = i + 1;
                 item.seek = time_sec - item.begin.unwrap();
-
-                println!("time_sec: {}", sec_to_time(time_sec));
-                println!("item.begin: {}", sec_to_time(item.begin.unwrap()));
-                println!("item.seek: {}", item.seek);
-                println!("item.out: {}", item.out);
 
                 self.current_node = handle_list_init(item.clone());
                 break;

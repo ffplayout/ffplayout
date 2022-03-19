@@ -28,7 +28,6 @@ pub fn play(rt_handle: &Handle) {
     let ff_log_format = format!("level+{}", config.logging.ffmpeg_level.to_lowercase());
 
     let decoder_term: Arc<Mutex<Option<Terminator>>> = Arc::new(Mutex::new(None));
-    let encoder_term: Arc<Mutex<Option<Terminator>>> = Arc::new(Mutex::new(None));
     let server_term: Arc<Mutex<Option<Terminator>>> = Arc::new(Mutex::new(None));
     let is_terminated: Arc<Mutex<bool>> = Arc::new(Mutex::new(false));
     let mut init_playlist: Option<Arc<Mutex<bool>>> = None;
@@ -78,18 +77,12 @@ pub fn play(rt_handle: &Handle) {
         _ => panic!("Output mode doesn't exists!"),
     };
 
-    let enc_terminator = match enc_proc.terminator() {
-        Ok(proc) => Some(proc),
-        Err(_) => None,
-    };
-    *encoder_term.lock().unwrap() = enc_terminator;
-
     rt_handle.spawn(stderr_reader(
         enc_proc.stderr.take().unwrap(),
         "Encoder".to_string(),
     ));
 
-    let (ingest_sender, ingest_receiver): (Sender<[u8; 32256]>, Receiver<([u8; 32256])>) =
+    let (ingest_sender, ingest_receiver): (Sender<[u8; 65424]>, Receiver<([u8; 65424])>) =
         channel();
 
     if config.ingest.enable {
@@ -160,11 +153,6 @@ pub fn play(rt_handle: &Handle) {
         let mut kill_dec = true;
 
         loop {
-            let dec_bytes_len = match dec_reader.read(&mut buffer[..]) {
-                Ok(length) => length,
-                Err(e) => panic!("Reading error from decoder: {:?}", e),
-            };
-
             if let Ok(receive) = ingest_receiver.try_recv() {
                 if let Err(e) = enc_writer.write_all(&receive) {
                     error!("Ingest receiver error: {:?}", e);
@@ -189,20 +177,31 @@ pub fn play(rt_handle: &Handle) {
                         *init.lock().unwrap() = true;
                     }
                 }
-            } else if dec_bytes_len > 0 {
-                if let Err(e) = enc_writer.write(&buffer[..dec_bytes_len]) {
-                    error!("Encoder write error: {:?}", e);
-
-                    break 'source_iter;
-                };
             } else {
-                if live_on {
-                    info!("Switch from live ingest to {}", config.processing.mode);
+                let dec_bytes_len = match dec_reader.read(&mut buffer[..]) {
+                    Ok(length) => length,
+                    Err(e) => {
+                        error!("Reading error from decoder: {:?}", e);
 
-                    live_on = false;
+                        break 'source_iter;
+                    },
+                };
+
+                if dec_bytes_len > 0 {
+                    if let Err(e) = enc_writer.write(&buffer[..dec_bytes_len]) {
+                        error!("Encoder write error: {:?}", e);
+
+                        break 'source_iter;
+                    };
+                } else {
+                    if live_on {
+                        info!("Switch from live ingest to {}", config.processing.mode);
+
+                        live_on = false;
+                    }
+
+                    break;
                 }
-
-                break;
             }
         }
 
@@ -213,31 +212,30 @@ pub fn play(rt_handle: &Handle) {
 
     *is_terminated.lock().unwrap() = true;
 
-    sleep(Duration::from_secs(1));
+    if let Some(server) = &*server_term.lock().unwrap() {
+        unsafe {
+            if let Ok(_) = server.terminate() {
+                info!("Terminate ingest server done");
+            }
+        }
+    };
 
     if let Some(dec) = &*decoder_term.lock().unwrap() {
         unsafe {
             if let Ok(_) = dec.terminate() {
-                debug!("Terminate decoder done");
+                info!("Terminate decoder done");
             }
         }
     };
 
-    if let Some(enc) = &*encoder_term.lock().unwrap() {
-        unsafe {
-            if let Ok(_) = enc.terminate() {
-                debug!("Terminate encoder done");
-            }
-        }
-    };
+    sleep(Duration::from_secs(1));
 
-    if let Some(server) = &*server_term.lock().unwrap() {
-        unsafe {
-            if let Ok(_) = server.terminate() {
-                debug!("Terminate server done");
-            }
-        }
-    };
+    match enc_proc.kill() {
+        Ok(_) => info!("Playout done..."),
+        Err(e) => panic!("Encoder error: {:?}", e),
+    }
 
-    info!("Playout done...");
+    if let Err(e) = enc_proc.wait() {
+        error!("Encoder: {e}")
+    };
 }

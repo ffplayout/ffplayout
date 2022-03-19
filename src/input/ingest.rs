@@ -31,15 +31,34 @@ fn overlay(config: &GlobalConfig) -> String {
     logo_chain
 }
 
+fn audio_filter(config: &GlobalConfig) -> String {
+    let mut audio_chain = ";[0:a]anull".to_string();
+
+    if config.processing.add_loudnorm {
+        audio_chain.push_str(format!(
+            ",loudnorm=I={}:TP={}:LRA={}",
+            config.processing.loud_i, config.processing.loud_tp, config.processing.loud_lra
+        ).as_str());
+    }
+
+    if config.processing.volume != 1.0 {
+        audio_chain.push_str(format!(",volume={}", config.processing.volume).as_str());
+    }
+
+    audio_chain.push_str("[aout1]");
+
+    audio_chain
+}
+
 pub async fn ingest_server(
     log_format: String,
-    ingest_sender: Sender<[u8; 32256]>,
+    ingest_sender: Sender<[u8; 65424]>,
     rt_handle: Handle,
     proc_terminator: Arc<Mutex<Option<Terminator>>>,
     is_terminated: Arc<Mutex<bool>>,
 ) -> Result<(), Error> {
     let config = GlobalConfig::global();
-    let mut buffer: [u8; 32256] = [0; 32256];
+    let mut buffer: [u8; 65424] = [0; 65424];
     let mut filter = format!(
         "[0:v]fps={},scale={}:{},setdar=dar={}",
         config.processing.fps,
@@ -50,7 +69,8 @@ pub async fn ingest_server(
 
     filter.push_str(&overlay(&config));
     filter.push_str("[vout1]");
-    let mut filter_list = vec!["-filter_complex", &filter, "-map", "[vout1]", "-map", "0:a"];
+    filter.push_str(audio_filter(&config).as_str());
+    let mut filter_list = vec!["-filter_complex", &filter, "-map", "[vout1]", "-map", "[aout1]"];
 
     let mut server_cmd = vec!["-hide_banner", "-nostats", "-v", log_format.as_str()];
     let stream_input = config.ingest.stream_input.clone();
@@ -69,7 +89,7 @@ pub async fn ingest_server(
 
     loop {
         if *is_terminated.lock().unwrap() {
-            break
+            break;
         }
         let mut server_proc = match Command::new("ffmpeg")
             .args(server_cmd.clone())
