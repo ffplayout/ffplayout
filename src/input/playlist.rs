@@ -159,9 +159,13 @@ impl CurrentProgram {
             if item.begin.unwrap() + item.out - item.seek > time_sec {
                 *self.init.lock().unwrap() = false;
                 self.index = i + 1;
-                item.seek = time_sec - item.begin.unwrap();
 
-                self.current_node = handle_list_init(item.clone());
+                // de-instance node to preserve original values in list
+                let mut node_clone = item.clone();
+                node_clone.seek = time_sec - node_clone.begin.unwrap();
+
+                self.current_node = handle_list_init(node_clone);
+
                 break;
             }
         }
