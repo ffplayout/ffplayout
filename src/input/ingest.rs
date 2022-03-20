@@ -35,10 +35,13 @@ fn audio_filter(config: &GlobalConfig) -> String {
     let mut audio_chain = ";[0:a]anull".to_string();
 
     if config.processing.add_loudnorm {
-        audio_chain.push_str(format!(
-            ",loudnorm=I={}:TP={}:LRA={}",
-            config.processing.loud_i, config.processing.loud_tp, config.processing.loud_lra
-        ).as_str());
+        audio_chain.push_str(
+            format!(
+                ",loudnorm=I={}:TP={}:LRA={}",
+                config.processing.loud_i, config.processing.loud_tp, config.processing.loud_lra
+            )
+            .as_str(),
+        );
     }
 
     if config.processing.volume != 1.0 {
@@ -52,13 +55,14 @@ fn audio_filter(config: &GlobalConfig) -> String {
 
 pub async fn ingest_server(
     log_format: String,
-    ingest_sender: Sender<[u8; 65424]>,
+    ingest_sender: Sender<(usize, [u8; 32256])>,
     rt_handle: Handle,
     proc_terminator: Arc<Mutex<Option<Terminator>>>,
     is_terminated: Arc<Mutex<bool>>,
+    server_is_running: Arc<Mutex<bool>>,
 ) -> Result<(), Error> {
     let config = GlobalConfig::global();
-    let mut buffer: [u8; 65424] = [0; 65424];
+    let mut buffer: [u8; 32256] = [0; 32256];
     let mut filter = format!(
         "[0:v]fps={},scale={}:{},setdar=dar={}",
         config.processing.fps,
@@ -70,7 +74,14 @@ pub async fn ingest_server(
     filter.push_str(&overlay(&config));
     filter.push_str("[vout1]");
     filter.push_str(audio_filter(&config).as_str());
-    let mut filter_list = vec!["-filter_complex", &filter, "-map", "[vout1]", "-map", "[aout1]"];
+    let mut filter_list = vec![
+        "-filter_complex",
+        &filter,
+        "-map",
+        "[vout1]",
+        "-map",
+        "[aout1]",
+    ];
 
     let mut server_cmd = vec!["-hide_banner", "-nostats", "-v", log_format.as_str()];
     let stream_input = config.ingest.stream_input.clone();
@@ -79,6 +90,8 @@ pub async fn ingest_server(
     server_cmd.append(&mut stream_input.iter().map(String::as_str).collect());
     server_cmd.append(&mut filter_list);
     server_cmd.append(&mut stream_settings.iter().map(String::as_str).collect());
+
+    let mut is_running;
 
     info!(
         "Start ingest server, listening on: <b><magenta>{}</></b>",
@@ -113,30 +126,45 @@ pub async fn ingest_server(
         ));
 
         let ingest_reader = server_proc.stdout.as_mut().unwrap();
+        is_running = false;
 
         loop {
-            if let Err(e) = ingest_reader.read_exact(&mut buffer[..]) {
-                if !e.to_string().contains("failed to fill whole buffer") {
+            let bytes_len = match ingest_reader.read(&mut buffer[..]) {
+                Ok(length) => length,
+                Err(e) => {
                     debug!("Ingest server read {:?}", e);
-                }
 
-                break;
+                    break;
+                }
             };
 
-            if let Err(e) = ingest_sender.send(buffer) {
-                error!("Ingest server write error: {:?}", e);
+            if !is_running {
+                *server_is_running.lock().unwrap() = true;
+                is_running = true;
+            }
 
-                *is_terminated.lock().unwrap() = true;
-                server_proc.kill().expect("Ingest server could not killed");
+            if bytes_len > 0 {
+                if let Err(e) = ingest_sender.send((bytes_len, buffer)) {
+                    error!("Ingest server write error: {:?}", e);
 
+                    *is_terminated.lock().unwrap() = true;
+                    break;
+                }
+            } else {
                 break;
             }
         }
 
+        *server_is_running.lock().unwrap() = false;
+
         sleep(Duration::from_secs(1));
 
+        if let Err(e) = server_proc.kill() {
+            error!("Ingest server {:?}", e)
+        };
+
         if let Err(e) = server_proc.wait() {
-            panic!("Ingest server {:?}", e)
+            error!("Ingest server {:?}", e)
         };
     }
 

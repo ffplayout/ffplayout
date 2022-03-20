@@ -1,6 +1,6 @@
 use notify::{watcher, RecursiveMode, Watcher};
 use std::{
-    io::{prelude::*, Read},
+    io::{prelude::*, BufReader, Read},
     path::Path,
     process,
     process::{Command, Stdio},
@@ -12,7 +12,7 @@ use std::{
     time::Duration,
 };
 
-use process_control::{ChildExt, Terminator};
+use process_control::Terminator;
 use simplelog::*;
 use tokio::runtime::Handle;
 
@@ -27,9 +27,9 @@ pub fn play(rt_handle: &Handle) {
     let dec_settings = config.processing.clone().settings.unwrap();
     let ff_log_format = format!("level+{}", config.logging.ffmpeg_level.to_lowercase());
 
-    let decoder_term: Arc<Mutex<Option<Terminator>>> = Arc::new(Mutex::new(None));
     let server_term: Arc<Mutex<Option<Terminator>>> = Arc::new(Mutex::new(None));
     let is_terminated: Arc<Mutex<bool>> = Arc::new(Mutex::new(false));
+    let server_is_running: Arc<Mutex<bool>> = Arc::new(Mutex::new(false));
     let mut init_playlist: Option<Arc<Mutex<bool>>> = None;
     let mut live_on = false;
 
@@ -82,8 +82,10 @@ pub fn play(rt_handle: &Handle) {
         "Encoder".to_string(),
     ));
 
-    let (ingest_sender, ingest_receiver): (Sender<[u8; 65424]>, Receiver<([u8; 65424])>) =
-        channel();
+    let (ingest_sender, ingest_receiver): (
+        Sender<(usize, [u8; 32256])>,
+        Receiver<(usize, [u8; 32256])>,
+    ) = channel();
 
     if config.ingest.enable {
         rt_handle.spawn(ingest_server(
@@ -92,6 +94,7 @@ pub fn play(rt_handle: &Handle) {
             rt_handle.clone(),
             server_term.clone(),
             is_terminated.clone(),
+            server_is_running.clone(),
         ));
     }
 
@@ -136,14 +139,8 @@ pub fn play(rt_handle: &Handle) {
             Ok(proc) => proc,
         };
 
-        let dec_terminator = match dec_proc.terminator() {
-            Ok(proc) => Some(proc),
-            Err(_) => None,
-        };
-        *decoder_term.lock().unwrap() = dec_terminator;
-
         let mut enc_writer = enc_proc.stdin.as_ref().unwrap();
-        let dec_reader = dec_proc.stdout.as_mut().unwrap();
+        let mut dec_reader = BufReader::new(dec_proc.stdout.take().unwrap());
 
         rt_handle.spawn(stderr_reader(
             dec_proc.stderr.take().unwrap(),
@@ -153,22 +150,24 @@ pub fn play(rt_handle: &Handle) {
         let mut kill_dec = true;
 
         loop {
-            if let Ok(receive) = ingest_receiver.try_recv() {
-                if let Err(e) = enc_writer.write_all(&receive) {
-                    error!("Ingest receiver error: {:?}", e);
+            if *server_is_running.lock().unwrap() {
+                if let Ok(receive) = ingest_receiver.try_recv() {
+                    if let Err(e) = enc_writer.write(&receive.1[..receive.0]) {
+                        error!("Ingest receiver error: {:?}", e);
 
-                    break 'source_iter;
-                };
+                        break 'source_iter;
+                    };
+                }
 
                 live_on = true;
 
                 if kill_dec {
-                    if let Some(dec) = &*decoder_term.lock().unwrap() {
-                        unsafe {
-                            if let Ok(_) = dec.terminate() {
-                                info!("Switch from {} to live ingest", config.processing.mode);
-                            }
-                        }
+                    if let Err(e) = dec_proc.kill() {
+                        panic!("Decoder error: {:?}", e)
+                    };
+
+                    if let Err(e) = dec_proc.wait() {
+                        panic!("Decoder error: {:?}", e)
                     };
 
                     kill_dec = false;
@@ -184,7 +183,7 @@ pub fn play(rt_handle: &Handle) {
                         error!("Reading error from decoder: {:?}", e);
 
                         break 'source_iter;
-                    },
+                    }
                 };
 
                 if dec_bytes_len > 0 {
@@ -199,6 +198,8 @@ pub fn play(rt_handle: &Handle) {
 
                         live_on = false;
                     }
+
+                    enc_writer.flush().unwrap();
 
                     break;
                 }
@@ -216,14 +217,6 @@ pub fn play(rt_handle: &Handle) {
         unsafe {
             if let Ok(_) = server.terminate() {
                 info!("Terminate ingest server done");
-            }
-        }
-    };
-
-    if let Some(dec) = &*decoder_term.lock().unwrap() {
-        unsafe {
-            if let Ok(_) = dec.terminate() {
-                info!("Terminate decoder done");
             }
         }
     };
