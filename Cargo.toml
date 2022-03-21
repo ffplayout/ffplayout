@@ -19,7 +19,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_yaml = "0.8"
 simplelog = { version = "^0.11.2", features = ["paris"] }
-tokio = { version = "1.16.1", features = ["full"] }
+tokio = { version = "1.16.1", features = ["rt-multi-thread"] }
 walkdir = "2"
 
 [target.x86_64-unknown-linux-musl.dependencies]
