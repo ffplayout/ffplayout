@@ -295,8 +295,8 @@ fn timed_source(node: Media, config: &GlobalConfig, last: bool) -> Media {
     new_node.process = Some(false);
 
     if config.playlist.length.contains(":") {
-        debug!("Delta: <yellow>{delta}</>");
-        debug!("Total delta: <yellow>{total_delta}</>");
+        debug!("Delta: <yellow>{delta:.3}</>");
+        debug!("Total delta: <yellow>{total_delta:.3}</>");
         let sync = check_sync(delta);
 
         if !sync {
