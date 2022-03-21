@@ -201,11 +201,11 @@ pub fn time_to_sec(time_str: &String) -> f64 {
 }
 
 pub fn sec_to_time(sec: f64) -> String {
-    let d = UNIX_EPOCH + time::Duration::from_secs(sec as u64);
+    let d = UNIX_EPOCH + time::Duration::from_millis((sec * 1000.0) as u64);
     // Create DateTime from SystemTime
     let date_time = DateTime::<Utc>::from(d);
 
-    date_time.format("%H:%M:%S").to_string()
+    date_time.format("%H:%M:%S%.3f").to_string()
 }
 
 pub fn is_close(a: f64, b: f64, to: f64) -> bool {
@@ -307,10 +307,7 @@ pub fn seek_and_length(src: String, seek: f64, out: f64, duration: f64) -> Vec<S
     source_cmd
 }
 
-pub async fn stderr_reader(
-    std_errors: ChildStderr,
-    suffix: String
-) -> Result<(), Error> {
+pub async fn stderr_reader(std_errors: ChildStderr, suffix: String) -> Result<(), Error> {
     // read ffmpeg stderr decoder and encoder instance
     // and log the output
 
@@ -334,7 +331,10 @@ pub async fn stderr_reader(
                 format_line(line, "warning".to_string())
             )
         } else {
-            if suffix != "server" && !line.contains("Input/output error") {
+            if suffix != "server"
+                && !line.contains("Input/output error")
+                && !line.contains("Broken pipe")
+            {
                 error!(
                     "<bright black>[{suffix}]</> {}",
                     format_line(line.clone(), "error".to_string())
