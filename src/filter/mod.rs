@@ -201,17 +201,13 @@ fn add_text(node: &mut Media, chain: &mut Filters, config: &GlobalConfig) {
 
         chain.add_filter(filter, "video".into());
 
-        match &chain.video_chain {
-            Some(filters) => {
-                for (i, f) in filters.split(",").enumerate() {
-                    if f.contains("drawtext") && !config.text.text_from_filename {
-                        debug!("drawtext node is on index: <yellow>{i}</>");
-                        break;
-                    }
+        if let Some(filters) = &chain.video_chain {
+            for (i, f) in filters.split(",").enumerate() {
+                if f.contains("drawtext") && !config.text.text_from_filename {
+                    debug!("drawtext node is on index: <yellow>{i}</>");
+                    break;
                 }
             }
-
-            None => (),
         }
     }
 }
@@ -249,9 +245,10 @@ fn extend_audio(node: &mut Media, chain: &mut Filters) {
 fn add_loudnorm(node: &mut Media, chain: &mut Filters, config: &GlobalConfig) {
     // add single pass loudnorm filter to audio line
 
-    let audio_streams = node.probe.clone().unwrap().audio_streams.unwrap();
-
-    if audio_streams.len() != 0 && config.processing.add_loudnorm {
+    if node.probe.is_some()
+        && node.probe.clone().unwrap().audio_streams.unwrap().len() > 0
+        && config.processing.add_loudnorm
+    {
         let loud_filter = format!(
             "loudnorm=I={}:TP={}:LRA={}",
             config.processing.loud_i, config.processing.loud_tp, config.processing.loud_lra
@@ -318,15 +315,16 @@ pub fn filter_chains(node: &mut Media) -> Vec<String> {
             &config,
         );
         extend_video(node, &mut filters);
-        add_text(node, &mut filters, &config);
+
         add_audio(node, &mut filters);
         extend_audio(node, &mut filters);
-        add_loudnorm(node, &mut filters, &config);
     }
 
+    add_text(node, &mut filters, &config);
     fade(node, &mut filters, "video".into());
     overlay(node, &mut filters, &config);
 
+    add_loudnorm(node, &mut filters, &config);
     fade(node, &mut filters, "audio".into());
     audio_volume(&mut filters, &config);
 

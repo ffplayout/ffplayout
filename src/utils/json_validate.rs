@@ -1,10 +1,10 @@
-use std::path::Path;
+use std::{path::Path, sync::{Arc, Mutex},};
 
 use simplelog::*;
 
 use crate::utils::{sec_to_time, GlobalConfig, MediaProbe, Playlist};
 
-pub async fn validate_playlist(playlist: Playlist, config: GlobalConfig) {
+pub async fn validate_playlist(playlist: Playlist, is_terminated: Arc<Mutex<bool>>, config: GlobalConfig) {
     let date = playlist.date;
     let length = config.playlist.length_sec.unwrap();
     let mut start_sec = 0.0;
@@ -12,6 +12,10 @@ pub async fn validate_playlist(playlist: Playlist, config: GlobalConfig) {
     debug!("validate playlist from: <yellow>{date}</>");
 
     for item in playlist.program.iter() {
+        if *is_terminated.lock().unwrap() {
+            break
+        }
+
         if Path::new(&item.source).is_file() {
             let probe = MediaProbe::new(item.source.clone());
 
@@ -33,7 +37,7 @@ pub async fn validate_playlist(playlist: Playlist, config: GlobalConfig) {
         start_sec += item.out - item.seek;
     }
 
-    if length > start_sec {
+    if length > start_sec + 1.0 && !*is_terminated.lock().unwrap() {
         error!(
             "Playlist from <yellow>{date}</> not long enough, <yellow>{}</> needed!",
             sec_to_time(length - start_sec),

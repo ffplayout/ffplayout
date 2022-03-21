@@ -15,19 +15,15 @@ use simplelog::*;
 
 mod arg_parse;
 mod config;
-mod folder;
-mod json_reader;
+pub mod json_reader;
 mod json_validate;
 mod logging;
-mod playlist;
 
 pub use arg_parse::get_args;
 pub use config::{init_config, GlobalConfig};
-pub use folder::{watch_folder, Source};
-pub use json_reader::{read_json, DUMMY_LEN, Playlist};
+pub use json_reader::{read_json, Playlist, DUMMY_LEN};
 pub use json_validate::validate_playlist;
 pub use logging::init_logging;
-pub use playlist::CurrentProgram;
 
 use crate::filter::filter_chains;
 
@@ -80,11 +76,11 @@ impl Media {
         }
     }
 
-    fn add_probe(&mut self) {
+    pub fn add_probe(&mut self) {
         self.probe = Some(MediaProbe::new(self.source.clone()))
     }
 
-    fn add_filter(&mut self) {
+    pub fn add_filter(&mut self) {
         let mut node = self.clone();
         self.filter = Some(filter_chains(&mut node))
     }
@@ -205,11 +201,11 @@ pub fn time_to_sec(time_str: &String) -> f64 {
 }
 
 pub fn sec_to_time(sec: f64) -> String {
-    let d = UNIX_EPOCH + time::Duration::from_secs(sec as u64);
+    let d = UNIX_EPOCH + time::Duration::from_millis((sec * 1000.0) as u64);
     // Create DateTime from SystemTime
     let date_time = DateTime::<Utc>::from(d);
 
-    date_time.format("%H:%M:%S").to_string()
+    date_time.format("%H:%M:%S%.3f").to_string()
 }
 
 pub fn is_close(a: f64, b: f64, to: f64) -> bool {
@@ -256,7 +252,7 @@ pub fn check_sync(delta: f64) -> bool {
     let config = GlobalConfig::global();
 
     if delta.abs() > config.general.stop_threshold && config.general.stop_threshold > 0.0 {
-        error!("Start time out of sync for <yellow>{}</> seconds", delta);
+        error!("Clip begin out of sync for <yellow>{}</> seconds", delta);
         return false;
     }
 
@@ -311,10 +307,7 @@ pub fn seek_and_length(src: String, seek: f64, out: f64, duration: f64) -> Vec<S
     source_cmd
 }
 
-pub async fn stderr_reader(
-    std_errors: ChildStderr,
-    suffix: String,
-) -> Result<(), Error> {
+pub async fn stderr_reader(std_errors: ChildStderr, suffix: String) -> Result<(), Error> {
     // read ffmpeg stderr decoder and encoder instance
     // and log the output
 
@@ -328,11 +321,25 @@ pub async fn stderr_reader(
         let line = line?;
 
         if line.contains("[info]") {
-            info!("<bright black>[{suffix}]</> {}", format_line(line, "info".to_string()))
+            info!(
+                "<bright black>[{suffix}]</> {}",
+                format_line(line, "info".to_string())
+            )
         } else if line.contains("[warning]") {
-            warn!("<bright black>[{suffix}]</> {}", format_line(line, "warning".to_string()))
+            warn!(
+                "<bright black>[{suffix}]</> {}",
+                format_line(line, "warning".to_string())
+            )
         } else {
-            error!("<bright black>[{suffix}]</> {}", format_line(line, "error".to_string()))
+            if suffix != "server"
+                && !line.contains("Input/output error")
+                && !line.contains("Broken pipe")
+            {
+                error!(
+                    "<bright black>[{suffix}]</> {}",
+                    format_line(line.clone(), "error".to_string())
+                );
+            }
         }
     }
 

@@ -1,4 +1,7 @@
-use std::path::Path;
+use std::{
+    path::Path,
+    sync::{Arc, Mutex},
+};
 
 use simplelog::*;
 use tokio::runtime::Handle;
@@ -16,15 +19,16 @@ pub struct CurrentProgram {
     json_path: Option<String>,
     nodes: Vec<Media>,
     current_node: Media,
-    init: bool,
+    pub init: Arc<Mutex<bool>>,
     index: usize,
     rt_handle: Handle,
+    is_terminated: Arc<Mutex<bool>>,
 }
 
 impl CurrentProgram {
-    pub fn new(rt_handle: Handle) -> Self {
+    pub fn new(rt_handle: Handle, is_terminated: Arc<Mutex<bool>>) -> Self {
         let config = GlobalConfig::global();
-        let json = read_json(rt_handle.clone(), true, 0.0);
+        let json = read_json(rt_handle.clone(), is_terminated.clone(), true, 0.0);
 
         Self {
             config: config.clone(),
@@ -33,15 +37,21 @@ impl CurrentProgram {
             json_path: json.current_file,
             nodes: json.program,
             current_node: Media::new(0, "".to_string()),
-            init: true,
+            init: Arc::new(Mutex::new(true)),
             index: 0,
             rt_handle,
+            is_terminated,
         }
     }
 
     fn check_update(&mut self, seek: bool) {
         if self.json_path.is_none() {
-            let json = read_json(self.rt_handle.clone(), seek, 0.0);
+            let json = read_json(
+                self.rt_handle.clone(),
+                self.is_terminated.clone(),
+                seek,
+                0.0,
+            );
 
             self.json_path = json.current_file;
             self.json_mod = json.modified;
@@ -55,7 +65,12 @@ impl CurrentProgram {
                 .eq(&self.json_mod.clone().unwrap())
             {
                 // when playlist has changed, reload it
-                let json = read_json(self.rt_handle.clone(), false, 0.0);
+                let json = read_json(
+                    self.rt_handle.clone(),
+                    self.is_terminated.clone(),
+                    false,
+                    0.0,
+                );
 
                 self.json_mod = json.modified;
                 self.nodes = json.program;
@@ -73,7 +88,7 @@ impl CurrentProgram {
             self.json_path = None;
             self.nodes = vec![media.clone()];
             self.current_node = media;
-            self.init = true;
+            *self.init.lock().unwrap() = true;
             self.index = 0;
         }
     }
@@ -95,7 +110,12 @@ impl CurrentProgram {
             || is_close(total_delta, 0.0, 2.0)
             || is_close(total_delta, target_length, 2.0)
         {
-            let json = read_json(self.rt_handle.clone(), false, next_start);
+            let json = read_json(
+                self.rt_handle.clone(),
+                self.is_terminated.clone(),
+                false,
+                next_start,
+            );
 
             self.json_path = json.current_file.clone();
             self.json_mod = json.modified;
@@ -103,7 +123,7 @@ impl CurrentProgram {
             self.index = 0;
 
             if json.current_file.is_none() {
-                self.init = true;
+                *self.init.lock().unwrap() = true;
             }
         }
     }
@@ -135,18 +155,19 @@ impl CurrentProgram {
             time_sec += self.config.playlist.length_sec.unwrap()
         }
 
-        let mut start_sec = self.start_sec.clone();
-
         for (i, item) in self.nodes.iter_mut().enumerate() {
-            if start_sec + item.out - item.seek > time_sec {
-                self.init = false;
+            if item.begin.unwrap() + item.out - item.seek > time_sec {
+                *self.init.lock().unwrap() = false;
                 self.index = i + 1;
-                item.seek = time_sec - start_sec;
 
-                self.current_node = handle_list_init(item.clone());
+                // de-instance node to preserve original values in list
+                let mut node_clone = item.clone();
+                node_clone.seek = time_sec - node_clone.begin.unwrap();
+
+                self.current_node = handle_list_init(node_clone);
+
                 break;
             }
-            start_sec += item.out - item.seek;
         }
     }
 }
@@ -155,7 +176,7 @@ impl Iterator for CurrentProgram {
     type Item = Media;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.init {
+        if *self.init.lock().unwrap() {
             debug!("Playlist init");
             self.check_update(true);
 
@@ -163,7 +184,7 @@ impl Iterator for CurrentProgram {
                 self.get_init_clip();
             }
 
-            if self.init {
+            if *self.init.lock().unwrap() {
                 // on init load playlist, could be not long enough,
                 // so we check if we can take the next playlist already,
                 // or we fill the gap with a dummy.
@@ -185,7 +206,7 @@ impl Iterator for CurrentProgram {
 
                     if DUMMY_LEN > total_delta {
                         duration = total_delta;
-                        self.init = false;
+                        *self.init.lock().unwrap() = false;
                     }
 
                     if self.config.playlist.start_sec.unwrap() > current_time {
@@ -225,8 +246,7 @@ impl Iterator for CurrentProgram {
         } else {
             let last_playlist = self.json_path.clone();
             self.check_for_next_playlist();
-            let (_, total_delta) =
-                get_delta(&self.config.playlist.start_sec.unwrap());
+            let (_, total_delta) = get_delta(&self.config.playlist.start_sec.unwrap());
             let mut last_ad = self.is_ad(self.index, false);
 
             if last_playlist == self.json_path
