@@ -37,7 +37,7 @@ pub async fn validate_playlist(playlist: Playlist, is_terminated: Arc<Mutex<bool
         start_sec += item.out - item.seek;
     }
 
-    if length > start_sec && !*is_terminated.lock().unwrap() {
+    if length > start_sec + 1.0 && !*is_terminated.lock().unwrap() {
         error!(
             "Playlist from <yellow>{date}</> not long enough, <yellow>{}</> needed!",
             sec_to_time(length - start_sec),
