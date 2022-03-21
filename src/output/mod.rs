@@ -5,7 +5,7 @@ use std::{
     process,
     process::{Command, Stdio},
     sync::{
-        mpsc::{channel, Receiver, Sender},
+        mpsc::{channel, sync_channel, Receiver, SyncSender},
         Arc, Mutex,
     },
     thread::sleep,
@@ -33,7 +33,7 @@ pub fn play(rt_handle: &Handle) {
     let mut init_playlist: Option<Arc<Mutex<bool>>> = None;
     let mut live_on = false;
 
-    let mut buffer: [u8; 65424] = [0; 65424];
+    let mut buffer: [u8; 65088] = [0; 65088];
 
     let get_source = match config.processing.clone().mode.as_str() {
         "folder" => {
@@ -83,9 +83,9 @@ pub fn play(rt_handle: &Handle) {
     ));
 
     let (ingest_sender, ingest_receiver): (
-        Sender<(usize, [u8; 32256])>,
-        Receiver<(usize, [u8; 32256])>,
-    ) = channel();
+        SyncSender<(usize, [u8; 65088])>,
+        Receiver<(usize, [u8; 65088])>,
+    ) = sync_channel(4);
 
     if config.ingest.enable {
         rt_handle.spawn(ingest_server(
@@ -162,12 +162,14 @@ pub fn play(rt_handle: &Handle) {
                 live_on = true;
 
                 if kill_dec {
+                    info!("Switch from {} to live ingest", config.processing.mode);
+
                     if let Err(e) = dec_proc.kill() {
-                        panic!("Decoder error: {:?}", e)
+                        error!("Decoder error: {e}")
                     };
 
                     if let Err(e) = dec_proc.wait() {
-                        panic!("Decoder error: {:?}", e)
+                        error!("Decoder error: {e}")
                     };
 
                     kill_dec = false;

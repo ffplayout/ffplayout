@@ -1,8 +1,8 @@
 use std::{
-    io::{Error, Read},
+    io::{BufReader, Error, Read},
     path::Path,
     process::{Command, Stdio},
-    sync::{mpsc::Sender, Arc, Mutex},
+    sync::{mpsc::SyncSender, Arc, Mutex},
     thread::sleep,
     time::Duration,
 };
@@ -55,14 +55,14 @@ fn audio_filter(config: &GlobalConfig) -> String {
 
 pub async fn ingest_server(
     log_format: String,
-    ingest_sender: Sender<(usize, [u8; 32256])>,
+    ingest_sender: SyncSender<(usize, [u8; 65088])>,
     rt_handle: Handle,
     proc_terminator: Arc<Mutex<Option<Terminator>>>,
     is_terminated: Arc<Mutex<bool>>,
     server_is_running: Arc<Mutex<bool>>,
 ) -> Result<(), Error> {
     let config = GlobalConfig::global();
-    let mut buffer: [u8; 32256] = [0; 32256];
+    let mut buffer: [u8; 65088] = [0; 65088];
     let mut filter = format!(
         "[0:v]fps={},scale={}:{},setdar=dar={}",
         config.processing.fps,
@@ -125,7 +125,7 @@ pub async fn ingest_server(
             "Server".to_string(),
         ));
 
-        let ingest_reader = server_proc.stdout.as_mut().unwrap();
+        let mut ingest_reader = BufReader::new(server_proc.stdout.take().unwrap());
         is_running = false;
 
         loop {
