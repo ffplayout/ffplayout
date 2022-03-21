@@ -87,7 +87,7 @@ def output():
                 cmd = [
                     'ffmpeg', '-v', f'level+{log.ff_level}',
                     '-hide_banner', '-nostats'
-                    ] + node['src_cmd'] + node['filter'] + playout.stream_param
+                    ] + node['src_cmd'] + node['filter'] + playout.output_param
 
                 messenger.debug(f'Encoder CMD: "{" ".join(cmd)}"')
 

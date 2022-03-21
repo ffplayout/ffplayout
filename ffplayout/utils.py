@@ -23,6 +23,7 @@ import json
 import logging
 import math
 import re
+import shlex
 import signal
 import smtplib
 import socket
@@ -258,9 +259,9 @@ if playlist.start is None:
     playlist.start = get_time('full_sec')
 
 if stdin_args.length:
-    playlist.length  = str_to_sec(stdin_args.length)
+    playlist.length = str_to_sec(stdin_args.length)
 else:
-    playlist.length  = str_to_sec(_cfg['playlist']['length'])
+    playlist.length = str_to_sec(_cfg['playlist']['length'])
 
 if stdin_args.loop:
     playlist.loop = stdin_args.loop
@@ -287,7 +288,7 @@ def pre_audio_codec():
 
 
 ingest.enable = _cfg['ingest']['enable']
-ingest.stream_input = [str(e) for e in _cfg['ingest']['stream_input']]
+ingest.input_param = shlex.split(_cfg['ingest']['input_param'])
 
 if stdin_args.play_mode:
     pre.mode = stdin_args.play_mode
@@ -310,7 +311,7 @@ pre.settings = [
     '-minrate', f'{pre.v_bitrate}k',
     '-maxrate', f'{pre.v_bitrate}k',
     '-bufsize', f'{pre.v_bufsize}k'
-    ] + pre_audio_codec() + ['-f', 'mpegts', '-']
+] + pre_audio_codec() + ['-f', 'mpegts', '-']
 
 if stdin_args.output:
     playout.mode = stdin_args.output
@@ -318,8 +319,8 @@ else:
     playout.mode = _cfg['out']['mode']
 
 playout.preview = _cfg['out']['preview']
-playout.preview_param = [str(e) for e in _cfg['out']['preview_param']]
-playout.stream_param = [str(e) for e in _cfg['out']['stream_param']]
+playout.preview_param =shlex.split(_cfg['out']['preview_param'])
+playout.output_param = shlex.split(_cfg['out']['output_param'])
 
 
 # ------------------------------------------------------------------------------
@@ -947,7 +948,7 @@ def src_or_dummy(node):
                 f'Seek in remote source "{node.get("source")}" not supported!')
         node['src_cmd'] = [
             '-i', node['source']
-            ] + set_length(86400, node['seek'], node['out'])
+        ] + set_length(86400, node['seek'], node['out'])
     elif node.get('source') and Path(node['source']).is_file():
         if probe.format.get('duration') and not math.isclose(
                 probe.format['duration'], node['duration'], abs_tol=3):
@@ -962,8 +963,8 @@ def src_or_dummy(node):
                     f'Seek in looped source "{node["source"]}" not supported!')
                 node['src_cmd'] = [
                     '-i', node['source']
-                    ] + set_length(node['duration'], node['seek'],
-                                   node['out'] - node['seek'])
+                ] + set_length(node['duration'], node['seek'],
+                               node['out'] - node['seek'])
             else:
                 # when list starts with looped clip,
                 # the logo length will be wrong
@@ -979,4 +980,3 @@ def src_or_dummy(node):
         node = gen_filler(node)
 
     return node
-

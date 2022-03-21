@@ -36,7 +36,7 @@ def listener(que):
 
     server_cmd = [
         'ffmpeg', '-hide_banner', '-nostats', '-v', 'level+error'
-    ] + ingest.stream_input + [
+    ] + ingest.input_param + [
         '-filter_complex', f'{filter_}[vout1]',
         '-map', '[vout1]', '-map', '0:a'
     ] + pre.settings
