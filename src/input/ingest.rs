@@ -84,7 +84,7 @@ pub async fn ingest_server(
     ];
 
     let mut server_cmd = vec!["-hide_banner", "-nostats", "-v", log_format.as_str()];
-    let stream_input = config.ingest.stream_input.clone();
+    let stream_input = config.ingest.input_cmd.clone().unwrap();
     let stream_settings = config.processing.settings.clone().unwrap();
 
     server_cmd.append(&mut stream_input.iter().map(String::as_str).collect());

@@ -65,7 +65,7 @@ ingest:
         There is no authentication, this is up to you. The recommend way is to set address to
         localhost, stream to a local server with authentication and from there stream to this app.
     enable: false
-    stream_input: [-f, live_flv, -listen, 1, -i, rtmp://localhost:1936/live/stream]
+    input_param: -f live_flv -listen 1 -i rtmp://localhost:1936/live/stream
 
 playlist:
     helptext: >
@@ -116,34 +116,34 @@ out:
         inside. 'preview' works only in streaming output and creates a separate preview stream.
     mode: 'stream'
     preview: false
-    preview_param:
-        [-s, 512x288,
-        -c:v, libx264,
-        -crf, 24,
-        -x264-params, keyint=50:min-keyint=25:scenecut=-1,
-        -maxrate, 800k,
-        -bufsize, 1600k,
-        -preset, ultrafast,
-        -tune, zerolatency,
-        -profile:v, Main,
-        -level, 3.1,
-        -c:a, aac,
-        -ar, 44100,
-        -b:a, 128k,
-        -flags, +global_header,
-        -f, flv, rtmp://preview.local/live/stream]
-    stream_param:
-        [-c:v, libx264,
-        -crf, 23,
-        -x264-params, keyint=50:min-keyint=25:scenecut=-1,
-        -maxrate, 1300k,
-        -bufsize, 2600k,
-        -preset, faster,
-        -tune, zerolatency,
-        -profile:v, Main,
-        -level, 3.1,
-        -c:a, aac,
-        -ar, 44100,
-        -b:a, 128k,
-        -flags, +global_header,
-        -f, flv, rtmp://localhost/live/stream]
+    preview_param: >-
+        -s 512x288
+        -c:v libx264
+        -crf 24
+        -x264-params keyint=50:min-keyint=25:scenecut=-1
+        -maxrate 800k
+        -bufsize 1600k
+        -preset ultrafast
+        -tune zerolatency
+        -profile:v Main
+        -level 3.1
+        -c:a aac
+        -ar 44100
+        -b:a 128k
+        -flags +global_header
+        -f flv rtmp://preview.local/live/stream
+    output_param: >-
+        -c:v libx264
+        -crf 23
+        -x264-params keyint=50:min-keyint=25:scenecut=-1
+        -maxrate 1300k
+        -bufsize 2600k
+        -preset faster
+        -tune zerolatency
+        -profile:v Main
+        -level 3.1
+        -c:a aac
+        -ar 44100
+        -b:a 128k
+        -flags +global_header
+        -f flv rtmp://localhost/live/stream
