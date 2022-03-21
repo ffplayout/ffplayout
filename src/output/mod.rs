@@ -85,7 +85,7 @@ pub fn play(rt_handle: &Handle) {
     let (ingest_sender, ingest_receiver): (
         SyncSender<(usize, [u8; 65088])>,
         Receiver<(usize, [u8; 65088])>,
-    ) = sync_channel(4);
+    ) = sync_channel(1);
 
     if config.ingest.enable {
         rt_handle.spawn(ingest_server(
