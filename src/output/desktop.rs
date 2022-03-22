@@ -5,8 +5,8 @@ use std::{
 
 use simplelog::*;
 
-use crate::utils::{GlobalConfig, Media};
 use crate::filter::v_drawtext;
+use crate::utils::{GlobalConfig, Media};
 
 pub fn output(log_format: String) -> process::Child {
     let config = GlobalConfig::global();
@@ -35,7 +35,7 @@ pub fn output(log_format: String) -> process::Child {
 
     enc_cmd.append(&mut enc_filter.iter().map(String::as_str).collect());
 
-    debug!("Encoder CMD: <bright-blue>{:?}</>", enc_cmd);
+    debug!("Encoder CMD: <bright-blue>\"ffplay {}\"</>", enc_cmd.join(" "));
 
     let enc_proc = match Command::new("ffplay")
         .args(enc_cmd)

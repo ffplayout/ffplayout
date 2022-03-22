@@ -8,6 +8,8 @@ use std::{
     process,
 };
 
+use shlex::split;
+
 use crate::utils::{get_args, time_to_sec};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -73,7 +75,8 @@ pub struct Processing {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Ingest {
     pub enable: bool,
-    pub stream_input: Vec<String>,
+    input_param: String,
+    pub input_cmd: Option<Vec<String>>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -109,8 +112,10 @@ pub struct Text {
 pub struct Out {
     pub mode: String,
     pub preview: bool,
-    pub preview_param: Vec<String>,
-    pub stream_param: Vec<String>,
+    preview_param: String,
+    pub preview_cmd: Option<Vec<String>>,
+    output_param: String,
+    pub output_cmd: Option<Vec<String>>,
 }
 
 static INSTANCE: OnceCell<GlobalConfig> = OnceCell::new();
@@ -183,6 +188,10 @@ impl GlobalConfig {
         );
 
         config.processing.settings = Some(settings);
+
+        config.ingest.input_cmd = split(config.ingest.input_param.as_str());
+        config.out.preview_cmd = split(config.out.preview_param.as_str());
+        config.out.output_cmd = split(config.out.output_param.as_str());
 
         if args.log.is_some() {
             config.logging.log_path = args.log.unwrap();
