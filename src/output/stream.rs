@@ -51,7 +51,7 @@ pub fn output(log_format: String) -> process::Child {
     enc_cmd.append(&mut preview);
     enc_cmd.append(&mut output_cmd.iter().map(String::as_str).collect());
 
-    debug!("Encoder CMD: <bright-blue>{:?}</>", enc_cmd);
+    debug!("Encoder CMD: <bright-blue>\"ffmpeg {}\"</>", enc_cmd.join(" "));
 
     let enc_proc = match Command::new("ffmpeg")
         .args(enc_cmd)

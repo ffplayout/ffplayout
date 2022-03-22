@@ -98,7 +98,7 @@ pub async fn ingest_server(
         stream_input.last().unwrap()
     );
 
-    debug!("Server CMD: <bright-blue>{:?}</>", server_cmd);
+    debug!("Server CMD: <bright-blue>\"ffmpeg {}\"</>", server_cmd.join(" "));
 
     loop {
         if *is_terminated.lock().unwrap() {
