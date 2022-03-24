@@ -189,6 +189,7 @@ pub fn play(rt_handle: &Handle) {
                         error!("Encoder error: {e}")
                     }
 
+                    kill_dec = true;
                     live_on = false;
                 }
 

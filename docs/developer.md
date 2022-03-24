@@ -28,3 +28,29 @@ Running `cargo build` ends up in a binary which depend on **libc.so**. But you c
 Compile with: `cargo build --release --target=x86_64-unknown-linux-musl`.
 
 This release should run on any Linux distro.
+
+### Compile from Linux for macOS
+
+Add toolchain:
+
+```Bash
+# for arm64
+rustup target add aarch64-apple-darwin
+
+# for x86_64
+rustup target add x86_64-apple-darwin
+```
+
+Follow this guide: [rust-cross-compile-linux-to-macos](https://wapl.es/rust/2019/02/17/rust-cross-compile-linux-to-macos.html)
+
+Or setup [osxcross](https://github.com/tpoechtrager/osxcross) correctly.
+
+Add **osxcross/target/bin** to your **PATH** and run cargo with:
+
+```Bash
+# for arm64
+CC="aarch64-apple-darwin20.4-clang -arch arm64e" cargo build --release --target=aarch64-apple-darwin
+
+# for x86_64
+CC="o64-clang" cargo build --release --target=x86_64-apple-darwin
+```

@@ -3,8 +3,6 @@
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
-Next generation 24/7 playout, based on [Rust](https://www.rust-lang.org/).
-
 The main purpose of ffplayout is to provide a 24/7 broadcasting solution that plays a *json* playlist for every day, while keeping the current playlist editable.
 
 **Check [ffplayout-frontend](https://github.com/ffplayout/ffplayout-frontend): web-based GUI for ffplayout**
@@ -19,7 +17,7 @@ The main purpose of ffplayout is to provide a 24/7 broadcasting solution that pl
 - send emails with error message
 - overlay a logo
 - overlay text, controllable through [messenger](https://github.com/ffplayout/messenger) or [ffplayout-frontend](https://github.com/ffplayout/ffplayout-frontend) (needs ffmpeg with libzmq)
-- **EBU R128 loudness** normalization (single pass) (experimental)
+- EBU R128 loudness normalization (single pass)
 - loop playlist infinitely
 - trim and fade the last clip, to get full 24 hours
 - when playlist is not 24 hours long, loop filler clip until time is full
@@ -36,7 +34,7 @@ The main purpose of ffplayout is to provide a 24/7 broadcasting solution that pl
   - **aevalsrc** (if video have no audio)
   - **apad** (add silence if audio duration is to short)
   - **tpad** (add black frames if video duration is to short)
-output):
+- output:
   - **stream**
   - **desktop**
 
@@ -130,6 +128,6 @@ ffplayout also allows the passing of parameters:
 
 You can run the command like:
 
-```SHELL
+```Bash
 ./ffplayout.py -l none -p ~/playlist.json -o desktop
 ```
