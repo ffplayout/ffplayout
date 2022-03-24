@@ -22,6 +22,7 @@ shlex = "1.1"
 simplelog = { version = "^0.11.2", features = ["paris"] }
 tokio = { version = "1.16.1", features = ["rt-multi-thread"] }
 walkdir = "2"
+which = "4.2.5"
 
 [target.x86_64-unknown-linux-musl.dependencies]
 openssl = { version = "0.10", features = ["vendored"] }

@@ -6,12 +6,15 @@ use std::{
     fs::metadata,
     io::{BufRead, BufReader, Error},
     path::Path,
-    process::ChildStderr,
+    process::exit,
+    process::{ChildStderr, Command, Stdio},
     time,
     time::UNIX_EPOCH,
 };
 
+use regex::Regex;
 use simplelog::*;
+use which::which;
 
 mod arg_parse;
 mod config;
@@ -344,4 +347,91 @@ pub async fn stderr_reader(std_errors: ChildStderr, suffix: String) -> Result<()
     }
 
     Ok(())
+}
+
+fn is_in_system(name: &str) {
+    // Check whether name is on PATH and marked as executable
+
+    if which(name).is_err() {
+        error!("{} not found on system!", name);
+        exit(0x0100);
+    }
+}
+
+fn ffmpeg_libs_and_filter() -> (Vec<String>, Vec<String>) {
+    let mut libs: Vec<String> = vec![];
+    let mut filters: Vec<String> = vec![];
+    let re: Regex = Regex::new(r"^( ?) [TSC.]+").unwrap();
+
+    let mut ff_proc = match Command::new("ffmpeg")
+        .arg("-filters")
+        .stderr(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+    {
+        Err(e) => {
+            error!("couldn't spawn ffmpeg process: {}", e);
+            exit(0x0100);
+        }
+        Ok(proc) => proc,
+    };
+
+    let err_buffer = BufReader::new(ff_proc.stderr.take().unwrap());
+    let out_buffer = BufReader::new(ff_proc.stdout.take().unwrap());
+
+    for line in err_buffer.lines() {
+        if let Ok(line) = line {
+            if line.contains("configuration:") {
+                let configs = line.split_whitespace();
+
+                for config in configs {
+                    if config.contains("--enable-lib") {
+                        libs.push(config.replace("--enable-", ""));
+                    }
+                }
+            }
+        }
+    }
+
+    for line in out_buffer.lines() {
+        if let Ok(line) = line {
+            if let Some(_) = re.captures(line.as_str()) {
+                let filter_line = line.split_whitespace();
+
+                filters.push(filter_line.collect::<Vec<&str>>()[1].to_string());
+            }
+        }
+    }
+
+    (libs, filters)
+}
+pub fn validate_ffmpeg() {
+    let config = GlobalConfig::global();
+
+    is_in_system("ffmpeg");
+    is_in_system("ffprobe");
+
+    if config.out.mode == "desktop" {
+        is_in_system("ffplay");
+    }
+
+    let (libs, filters) = ffmpeg_libs_and_filter();
+
+    if !libs.contains(&"libx264".to_string()) {
+        error!("ffmpeg contains no libx264!");
+        exit(0x0100);
+    }
+
+    if !libs.contains(&"libfdk-aac".to_string()) {
+        warn!("ffmpeg contains no libfdk-aac! Can't use high quality aac encoder...");
+    }
+
+    if !filters.contains(&"tpad".to_string()) {
+        error!("ffmpeg contains no tpad filter!");
+        exit(0x0100);
+    }
+
+    if !filters.contains(&"zmq".to_string()) {
+        warn!("ffmpeg contains no zmq filter! Text messages will not work...");
+    }
 }
