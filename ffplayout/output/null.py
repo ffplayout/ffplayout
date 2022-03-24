@@ -24,7 +24,7 @@ from subprocess import PIPE, Popen
 from threading import Thread
 
 from ..ingest_server import ingest_stream
-from ..utils import (check_node_time, ff_proc, ffmpeg_stderr_reader, ingest,
+from ..utils import (ff_proc, ffmpeg_stderr_reader, ingest,
                      log, messenger, playout, pre, terminate_processes)
 
 
@@ -45,7 +45,7 @@ def output():
         enc_cmd = [
             'ffmpeg', '-v', f'level+{log.ff_level}', '-hide_banner',
             '-nostats', '-re', '-thread_queue_size', '160', '-i', 'pipe:0'
-            ] + playout.output_param[:-3] + ['-f', 'null', '-']
+        ] + playout.output_param[:-3] + ['-f', 'null', '-']
 
         messenger.debug(f'Encoder CMD: "{" ".join(enc_cmd)}"')
 
@@ -68,9 +68,11 @@ def output():
                 dec_cmd = [
                     'ffmpeg', '-v', f'level+{log.ff_level}',
                     '-hide_banner', '-nostats'
-                    ] + node['src_cmd'] + node['filter'] + pre.settings
+                ] + node['src_cmd'] + node['filter'] + pre.settings
 
                 messenger.debug(f'Decoder CMD: "{" ".join(dec_cmd)}"')
+
+                kill_dec = True
 
                 with Popen(
                         dec_cmd, stdout=PIPE, stderr=PIPE) as ff_proc.decoder:
@@ -81,20 +83,34 @@ def output():
                     dec_err_thread.start()
 
                     while True:
-                        buf_dec = ff_proc.decoder.stdout.read(pre.buffer_size)
                         if stream_queue and not stream_queue.empty():
+                            if kill_dec:
+                                kill_dec = False
+                                live_on = True
+                                get_source.first = True
+
+                                messenger.info(
+                                    "Switch from offline source to live ingest")
+
+                                if ff_proc.decoder.poll() is None:
+                                    ff_proc.decoder.kill()
+                                    ff_proc.decoder.wait()
+
                             buf_live = stream_queue.get()
                             ff_proc.encoder.stdin.write(buf_live)
-                            live_on = True
-
-                            del buf_dec
-                        elif buf_dec:
-                            ff_proc.encoder.stdin.write(buf_dec)
                         else:
                             if live_on:
-                                check_node_time(node, get_source)
+                                messenger.info(
+                                    "Switch from live ingest to offline source")
+                                kill_dec = True
                                 live_on = False
-                            break
+
+                            buf_dec = ff_proc.decoder.stdout.read(
+                                pre.buffer_size)
+                            if buf_dec:
+                                ff_proc.encoder.stdin.write(buf_dec)
+                            else:
+                                break
 
         except BrokenPipeError:
             messenger.error('Broken Pipe!')

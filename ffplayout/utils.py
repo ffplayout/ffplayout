@@ -145,7 +145,7 @@ storage = SimpleNamespace()
 lower_third = SimpleNamespace()
 playout = SimpleNamespace()
 
-ff_proc = SimpleNamespace(decoder=None, encoder=None)
+ff_proc = SimpleNamespace(decoder=None, encoder=None, server=None)
 
 
 def str_to_sec(time_str):
@@ -727,6 +727,9 @@ def terminate_processes(custom_process=None):
     if ff_proc.encoder and ff_proc.encoder.poll() is None:
         ff_proc.encoder.kill()
 
+    if ff_proc.server and ff_proc.server.poll() is None:
+        ff_proc.server.kill()
+
     if custom_process:
         custom_process()
 
@@ -845,15 +848,6 @@ def check_sync(delta, node=None):
         messenger.debug(f'Terminate on node: {node}')
         terminate_processes()
         sys.exit(1)
-
-
-def check_node_time(node, get_source):
-    current_time = get_time('full_sec')
-    clip_length = node['out'] - node['seek']
-    clip_end = current_time + clip_length
-
-    if pre.mode == 'playlist' and clip_end > current_time:
-        get_source.first = True
 
 
 def seek_in(seek):

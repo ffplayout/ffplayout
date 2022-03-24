@@ -46,15 +46,15 @@ def listener(que):
     messenger.debug(f'Server CMD: "{" ".join(server_cmd)}"')
 
     while True:
-        with Popen(server_cmd, stderr=PIPE, stdout=PIPE) as ff_proc.live:
+        with Popen(server_cmd, stderr=PIPE, stdout=PIPE) as ff_proc.server:
             err_thread = Thread(name='stderr_server',
                                 target=ffmpeg_stderr_reader,
-                                args=(ff_proc.live.stderr, '[Server]'))
+                                args=(ff_proc.server.stderr, '[Server]'))
             err_thread.daemon = True
             err_thread.start()
 
             while True:
-                buffer = ff_proc.live.stdout.read(pre.buffer_size)
+                buffer = ff_proc.server.stdout.read(pre.buffer_size)
                 if not buffer:
                     break
 

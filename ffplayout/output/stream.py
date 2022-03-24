@@ -24,8 +24,8 @@ from subprocess import PIPE, Popen
 from threading import Thread
 
 from ..ingest_server import ingest_stream
-from ..utils import (check_node_time, ff_proc, ffmpeg_stderr_reader, ingest,
-                     log, lower_third, messenger, playout, pre, sync_op,
+from ..utils import (ff_proc, ffmpeg_stderr_reader, ingest,
+                     log, lower_third, messenger, playout, pre,
                      terminate_processes)
 
 
@@ -47,7 +47,7 @@ def output():
     if lower_third.add_text and not lower_third.over_pre:
         messenger.info(
             f'Using drawtext node, listening on address: {lower_third.address}'
-            )
+        )
         filtering = [
             '-filter_complex',
             f"[0:v]null,zmq=b=tcp\\\\://'{lower_third.address}',"
@@ -57,7 +57,7 @@ def output():
         if playout.preview:
             filtering[-1] += ',split=2[v_out1][v_out2]'
             preview = ['-map', '[v_out1]', '-map', '0:a'
-                ] + playout.preview_param + ['-map', '[v_out2]', '-map', '0:a']
+                       ] + playout.preview_param + ['-map', '[v_out2]', '-map', '0:a']
 
     elif playout.preview:
         preview = playout.preview_param
@@ -66,7 +66,7 @@ def output():
         enc_cmd = [
             'ffmpeg', '-v', f'level+{log.ff_level}', '-hide_banner',
             '-nostats', '-re', '-thread_queue_size', '160', '-i', 'pipe:0'
-            ] + filtering + preview + playout.output_param
+        ] + filtering + preview + playout.output_param
 
         messenger.debug(f'Encoder CMD: "{" ".join(enc_cmd)}"')
 
@@ -87,9 +87,11 @@ def output():
                 dec_cmd = [
                     'ffmpeg', '-v', f'level+{log.ff_level}',
                     '-hide_banner', '-nostats'
-                    ] + node['src_cmd'] + node['filter'] + pre.settings
+                ] + node['src_cmd'] + node['filter'] + pre.settings
 
                 messenger.debug(f'Decoder CMD: "{" ".join(dec_cmd)}"')
+
+                kill_dec = True
 
                 with Popen(
                         dec_cmd, stdout=PIPE, stderr=PIPE) as ff_proc.decoder:
@@ -100,29 +102,37 @@ def output():
                     dec_err_thread.start()
 
                     while True:
-                        buf_dec = ff_proc.decoder.stdout.read(pre.buffer_size)
                         if stream_queue and not stream_queue.empty():
+                            if kill_dec:
+                                kill_dec = False
+                                live_on = True
+                                get_source.first = True
+
+                                messenger.info(
+                                    "Switch from offline source to live ingest")
+
+                                if ff_proc.decoder.poll() is None:
+                                    ff_proc.decoder.kill()
+                                    ff_proc.decoder.wait()
+
                             buf_live = stream_queue.get()
                             ff_proc.encoder.stdin.write(buf_live)
-                            live_on = True
-
-                            del buf_dec
-                        elif buf_dec:
-                            ff_proc.encoder.stdin.write(buf_dec)
                         else:
                             if live_on:
-                                check_node_time(node, get_source)
+                                messenger.info(
+                                    "Switch from live ingest to offline source")
+                                kill_dec = True
                                 live_on = False
-                            break
 
-        except BrokenPipeError as err:
+                            buf_dec = ff_proc.decoder.stdout.read(
+                                pre.buffer_size)
+                            if buf_dec:
+                                ff_proc.encoder.stdin.write(buf_dec)
+                            else:
+                                break
+
+        except BrokenPipeError:
             messenger.error('Broken Pipe!')
-            messenger.debug(79 * '-')
-            messenger.debug(f'error: "{err}"')
-            messenger.debug(f'delta: "{sync_op.time_delta}"')
-            messenger.debug(f'node: "{node}"')
-            messenger.debug(f'dec_cmd: "{dec_cmd}"')
-            messenger.debug(79 * '-')
             terminate_processes(getattr(get_source, 'stop', None))
 
         except SystemExit:
