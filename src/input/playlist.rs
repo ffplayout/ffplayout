@@ -228,9 +228,8 @@ impl Iterator for CurrentProgram {
 
             return Some(self.current_node.clone());
         }
+
         if self.index < self.nodes.len() {
-            self.check_update(false);
-            self.check_for_next_playlist();
             let mut is_last = false;
 
             if self.index == self.nodes.len() - 1 {
@@ -242,6 +241,10 @@ impl Iterator for CurrentProgram {
             self.current_node.next_ad = self.is_ad(self.index, true);
             self.index += 1;
 
+            // update playlist should happen after current clip,
+            // to prevent unknown behaviors.
+            self.check_update(false);
+            self.check_for_next_playlist();
             Some(self.current_node.clone())
         } else {
             let last_playlist = self.json_path.clone();
