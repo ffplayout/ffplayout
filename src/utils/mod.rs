@@ -14,7 +14,6 @@ use std::{
 
 use regex::Regex;
 use simplelog::*;
-use which::which;
 
 mod arg_parse;
 mod config;
@@ -350,9 +349,15 @@ pub async fn stderr_reader(std_errors: ChildStderr, suffix: String) -> Result<()
 }
 
 fn is_in_system(name: &str) {
-    // Check whether name is on PATH and marked as executable
-
-    if which(name).is_err() {
+    if let Ok(mut proc) = Command::new(name)
+        .stderr(Stdio::null())
+        .stdout(Stdio::null())
+        .spawn()
+    {
+        if let Err(e) = proc.wait() {
+            error!("{:?}", e)
+        };
+    } else {
         error!("{} not found on system!", name);
         exit(0x0100);
     }
@@ -402,6 +407,10 @@ fn ffmpeg_libs_and_filter() -> (Vec<String>, Vec<String>) {
             }
         }
     }
+
+    if let Err(e) = ff_proc.wait() {
+        error!("{:?}", e)
+    };
 
     (libs, filters)
 }
