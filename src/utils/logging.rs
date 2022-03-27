@@ -2,7 +2,10 @@ extern crate log;
 extern crate simplelog;
 
 use regex::Regex;
-use std::path::Path;
+use std::{
+    path::Path,
+    sync::{Arc, Mutex},
+};
 
 use file_rotate::{compression::Compression, suffix::AppendCount, ContentLimit, FileRotate};
 use lettre::{transport::smtp::authentication::Credentials, Message, SmtpTransport, Transport};
@@ -10,68 +13,52 @@ use log::{Level, LevelFilter, Log, Metadata, Record};
 use simplelog::*;
 use tokio::runtime::Handle;
 
-use crate::utils::GlobalConfig;
+use crate::utils::{get_timestamp, GlobalConfig};
 
-pub struct LogMailer {
-    level: LevelFilter,
-    config: Config,
-    handle: Handle,
+pub struct Timer {
+    init: Arc<Mutex<bool>>,
+    timestamp: Arc<Mutex<i64>>,
+    limit: i64,
+    messages: Arc<Mutex<Vec<String>>>,
+    rt_handle: Handle,
 }
 
-impl LogMailer {
-    pub fn new(log_level: LevelFilter, config: Config, handle: Handle) -> Box<LogMailer> {
-        Box::new(LogMailer {
-            level: log_level,
-            config,
-            handle,
-        })
-    }
-}
-
-impl Log for LogMailer {
-    fn enabled(&self, metadata: &Metadata<'_>) -> bool {
-        metadata.level() <= self.level
-    }
-
-    fn log(&self, record: &Record<'_>) {
-        if self.enabled(record.metadata()) {
-            match record.level() {
-                Level::Error => {
-                    self.handle.spawn(send_mail(record.args().to_string()));
-                },
-                Level::Warn => {
-                    self.handle.spawn(send_mail(record.args().to_string()));
-                },
-                _ => (),
-            }
+impl Timer {
+    fn new(rt_handle: Handle) -> Self {
+        Self {
+            init: Arc::new(Mutex::new(true)),
+            timestamp: Arc::new(Mutex::new(get_timestamp())),
+            limit: 30 * 1000,
+            messages: Arc::new(Mutex::new(vec![])),
+            rt_handle,
         }
     }
 
-    fn flush(&self) {}
-}
-
-impl SharedLogger for LogMailer {
-    fn level(&self) -> LevelFilter {
-        self.level
+    fn reset(&self) {
+        self.messages.lock().unwrap().clear();
+        *self.timestamp.lock().unwrap() = get_timestamp();
     }
 
-    fn config(&self) -> Option<&Config> {
-        Some(&self.config)
-    }
+    fn queue(&self, msg: String) {
+        let now = get_timestamp();
+        self.messages.lock().unwrap().push(msg);
 
-    fn as_log(self: Box<Self>) -> Box<dyn Log> {
-        Box::new(*self)
+        if *self.init.lock().unwrap() {
+            self.reset();
+            *self.init.lock().unwrap() = false;
+        }
+
+        if now >= *self.timestamp.lock().unwrap() + self.limit {
+            self.rt_handle.spawn(send_mail(self.messages.lock().unwrap().clone()));
+
+            self.reset();
+        }
     }
 }
 
-fn clean_string(text: String) -> String {
-    let regex: Regex = Regex::new(r"\x1b\[[0-9;]*[mGKF]").unwrap();
-
-    regex.replace_all(text.as_str(), "").to_string()
-}
-
-async fn send_mail(msg: String) {
+async fn send_mail(messages: Vec<String>) {
     let config = GlobalConfig::global();
+    let msg = messages.join("\n");
 
     let email = Message::builder()
         .from(config.mail.sender_addr.parse().unwrap())
@@ -98,6 +85,64 @@ async fn send_mail(msg: String) {
         Ok(_) => (),
         Err(e) => info!("Could not send email: {:?}", e),
     }
+}
+
+pub struct LogMailer {
+    level: LevelFilter,
+    config: Config,
+    timer: Timer,
+}
+
+impl LogMailer {
+    pub fn new(log_level: LevelFilter, config: Config, timer: Timer) -> Box<LogMailer> {
+        Box::new(LogMailer {
+            level: log_level,
+            config,
+            timer,
+        })
+    }
+}
+
+impl Log for LogMailer {
+    fn enabled(&self, metadata: &Metadata<'_>) -> bool {
+        metadata.level() <= self.level
+    }
+
+    fn log(&self, record: &Record<'_>) {
+        if self.enabled(record.metadata()) {
+            match record.level() {
+                Level::Error => {
+                    self.timer.queue(record.args().to_string());
+                }
+                Level::Warn => {
+                    self.timer.queue(record.args().to_string());
+                }
+                _ => (),
+            }
+        }
+    }
+
+    fn flush(&self) {}
+}
+
+impl SharedLogger for LogMailer {
+    fn level(&self) -> LevelFilter {
+        self.level
+    }
+
+    fn config(&self) -> Option<&Config> {
+        Some(&self.config)
+    }
+
+    fn as_log(self: Box<Self>) -> Box<dyn Log> {
+        Box::new(*self)
+    }
+}
+
+fn clean_string(text: String) -> String {
+    let regex: Regex = Regex::new(r"\x1b\[[0-9;]*[mGKF]").unwrap();
+
+    regex.replace_all(text.as_str(), "").to_string()
 }
 
 pub fn init_logging(rt_handle: Handle) -> Vec<Box<dyn SharedLogger>> {
@@ -166,6 +211,7 @@ pub fn init_logging(rt_handle: Handle) -> Vec<Box<dyn SharedLogger>> {
 
     if config.mail.recipient.len() > 3 {
         let mut filter = LevelFilter::Error;
+        let timer = Timer::new(rt_handle);
 
         let mail_config = log_config
             .clone()
@@ -176,7 +222,7 @@ pub fn init_logging(rt_handle: Handle) -> Vec<Box<dyn SharedLogger>> {
             filter = LevelFilter::Warn
         }
 
-        app_logger.push(LogMailer::new(filter, mail_config, rt_handle));
+        app_logger.push(LogMailer::new(filter, mail_config, timer));
     }
 
     app_logger
