@@ -138,8 +138,8 @@ impl GlobalConfig {
             Ok(file) => file,
             Err(err) => {
                 println!(
-                    "'{:?}' doesn't exists!\n{}\n\nSystem error: {err}",
-                    config_path, "Put 'ffplayout.yml' in '/etc/playout/' or beside the executable!"
+                    "{:?} doesn't exists!\n{}\n\nSystem error: {err}",
+                    config_path, "Put \"ffplayout.yml\" in \"/etc/playout/\" or beside the executable!"
                 );
                 process::exit(0x0100);
             }

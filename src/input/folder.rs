@@ -106,7 +106,10 @@ fn file_extension(filename: &Path) -> Option<&str> {
     filename.extension().and_then(OsStr::to_str)
 }
 
-pub async fn watch_folder(receiver: Receiver<notify::DebouncedEvent>, sources: Arc<Mutex<Vec<String>>>) {
+pub async fn watch_folder(
+    receiver: Receiver<notify::DebouncedEvent>,
+    sources: Arc<Mutex<Vec<String>>>,
+) {
     while let Ok(res) = receiver.recv() {
         match res {
             Create(new_path) => {

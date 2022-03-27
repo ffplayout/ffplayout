@@ -10,7 +10,7 @@ use simplelog::*;
 use tokio::runtime::Runtime;
 
 use crate::output::play;
-use crate::utils::{init_config, init_logging};
+use crate::utils::{init_config, init_logging, validate_ffmpeg};
 
 fn main() {
     init_config();
@@ -20,6 +20,8 @@ fn main() {
 
     let logging = init_logging(rt_handle.clone());
     CombinedLogger::init(logging).unwrap();
+
+    validate_ffmpeg();
 
     play(rt_handle);
 }

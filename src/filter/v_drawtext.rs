@@ -1,6 +1,4 @@
-use std::{
-    path::Path
-};
+use std::path::Path;
 
 use regex::Regex;
 
@@ -25,7 +23,10 @@ pub fn filter_node(node: &mut Media) -> String {
                 None => source,
             };
 
-            let escape = text.replace("'", "'\\\\\\''").replace("%", "\\\\\\%");
+            let escape = text
+                .replace("'", "'\\\\\\''")
+                .replace("%", "\\\\\\%")
+                .replace(":", "\\:");
             filter = format!("drawtext=text='{escape}':{}{font}", config.text.style)
         } else {
             filter = format!(

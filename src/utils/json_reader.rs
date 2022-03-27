@@ -33,7 +33,7 @@ impl Playlist {
     }
 }
 
-pub fn read_json(rt_handle: Handle, is_terminated: Arc<Mutex<bool>>, seek: bool, next_start: f64) -> Playlist {
+pub fn read_json(path: Option<String>, rt_handle: Handle, is_terminated: Arc<Mutex<bool>>, seek: bool, next_start: f64) -> Playlist {
     let config = GlobalConfig::global();
 
     let mut playlist_path = Path::new(&config.playlist.path).to_owned();
@@ -49,7 +49,11 @@ pub fn read_json(rt_handle: Handle, is_terminated: Arc<Mutex<bool>>, seek: bool,
             .with_extension("json");
     }
 
-    let current_file: String = playlist_path.as_path().display().to_string();
+    let mut current_file: String = playlist_path.as_path().display().to_string();
+
+    if let Some(p) = path {
+        current_file = p
+    }
 
     if !playlist_path.is_file() {
         error!("Playlist <b><magenta>{}</></b> not exists!", current_file);

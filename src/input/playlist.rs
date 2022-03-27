@@ -28,7 +28,7 @@ pub struct CurrentProgram {
 impl CurrentProgram {
     pub fn new(rt_handle: Handle, is_terminated: Arc<Mutex<bool>>) -> Self {
         let config = GlobalConfig::global();
-        let json = read_json(rt_handle.clone(), is_terminated.clone(), true, 0.0);
+        let json = read_json(None, rt_handle.clone(), is_terminated.clone(), true, 0.0);
 
         Self {
             config: config.clone(),
@@ -47,6 +47,7 @@ impl CurrentProgram {
     fn check_update(&mut self, seek: bool) {
         if self.json_path.is_none() {
             let json = read_json(
+                None,
                 self.rt_handle.clone(),
                 self.is_terminated.clone(),
                 seek,
@@ -66,6 +67,7 @@ impl CurrentProgram {
             {
                 // when playlist has changed, reload it
                 let json = read_json(
+                    self.json_path.clone(),
                     self.rt_handle.clone(),
                     self.is_terminated.clone(),
                     false,
@@ -111,6 +113,7 @@ impl CurrentProgram {
             || is_close(total_delta, target_length, 2.0)
         {
             let json = read_json(
+                None,
                 self.rt_handle.clone(),
                 self.is_terminated.clone(),
                 false,
@@ -228,9 +231,8 @@ impl Iterator for CurrentProgram {
 
             return Some(self.current_node.clone());
         }
+
         if self.index < self.nodes.len() {
-            self.check_update(false);
-            self.check_for_next_playlist();
             let mut is_last = false;
 
             if self.index == self.nodes.len() - 1 {
@@ -242,6 +244,10 @@ impl Iterator for CurrentProgram {
             self.current_node.next_ad = self.is_ad(self.index, true);
             self.index += 1;
 
+            // update playlist should happen after current clip,
+            // to prevent unknown behaviors.
+            self.check_update(false);
+            self.check_for_next_playlist();
             Some(self.current_node.clone())
         } else {
             let last_playlist = self.json_path.clone();
@@ -423,5 +429,6 @@ fn handle_list_end(mut node: Media, total_delta: f64) -> Media {
         node.out,
         node.duration,
     ));
+
     node
 }
