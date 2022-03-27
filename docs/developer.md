@@ -41,6 +41,18 @@ rustup target add aarch64-apple-darwin
 rustup target add x86_64-apple-darwin
 ```
 
+Add linker and ar settings to `~/.cargo/config`:
+
+```Bash
+[target.x86_64-apple-darwin]
+linker = "x86_64-apple-darwin20.4-clang"
+ar = "x86_64-apple-darwin20.4-ar"
+
+[target.aarch64-apple-darwin]
+linker = "aarch64-apple-darwin20.4-clang"
+ar = "aarch64-apple-darwin20.4-ar"
+```
+
 Follow this guide: [rust-cross-compile-linux-to-macos](https://wapl.es/rust/2019/02/17/rust-cross-compile-linux-to-macos.html)
 
 Or setup [osxcross](https://github.com/tpoechtrager/osxcross) correctly.
