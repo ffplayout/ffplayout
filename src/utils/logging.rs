@@ -2,7 +2,12 @@ extern crate log;
 extern crate simplelog;
 
 use regex::Regex;
-use std::path::Path;
+use std::{
+    path::Path,
+    sync::{Arc, Mutex},
+    thread::sleep,
+    time::Duration,
+};
 
 use file_rotate::{compression::Compression, suffix::AppendCount, ContentLimit, FileRotate};
 use lettre::{transport::smtp::authentication::Credentials, Message, SmtpTransport, Transport};
@@ -12,65 +17,7 @@ use tokio::runtime::Handle;
 
 use crate::utils::GlobalConfig;
 
-pub struct LogMailer {
-    level: LevelFilter,
-    config: Config,
-    handle: Handle,
-}
-
-impl LogMailer {
-    pub fn new(log_level: LevelFilter, config: Config, handle: Handle) -> Box<LogMailer> {
-        Box::new(LogMailer {
-            level: log_level,
-            config,
-            handle,
-        })
-    }
-}
-
-impl Log for LogMailer {
-    fn enabled(&self, metadata: &Metadata<'_>) -> bool {
-        metadata.level() <= self.level
-    }
-
-    fn log(&self, record: &Record<'_>) {
-        if self.enabled(record.metadata()) {
-            match record.level() {
-                Level::Error => {
-                    self.handle.spawn(send_mail(record.args().to_string()));
-                },
-                Level::Warn => {
-                    self.handle.spawn(send_mail(record.args().to_string()));
-                },
-                _ => (),
-            }
-        }
-    }
-
-    fn flush(&self) {}
-}
-
-impl SharedLogger for LogMailer {
-    fn level(&self) -> LevelFilter {
-        self.level
-    }
-
-    fn config(&self) -> Option<&Config> {
-        Some(&self.config)
-    }
-
-    fn as_log(self: Box<Self>) -> Box<dyn Log> {
-        Box::new(*self)
-    }
-}
-
-fn clean_string(text: String) -> String {
-    let regex: Regex = Regex::new(r"\x1b\[[0-9;]*[mGKF]").unwrap();
-
-    regex.replace_all(text.as_str(), "").to_string()
-}
-
-async fn send_mail(msg: String) {
+fn send_mail(msg: String) {
     let config = GlobalConfig::global();
 
     let email = Message::builder()
@@ -100,7 +47,93 @@ async fn send_mail(msg: String) {
     }
 }
 
-pub fn init_logging(rt_handle: Handle) -> Vec<Box<dyn SharedLogger>> {
+async fn mail_queue(messages: Arc<Mutex<Vec<String>>>, is_terminated: Arc<Mutex<bool>>) {
+    let mut count = 0;
+
+    loop {
+        if *is_terminated.lock().unwrap() || count == 60 {
+            // check every 30 seconds for messages and send them
+            if messages.lock().unwrap().len() > 0 {
+                let msg = messages.lock().unwrap().join("\n");
+                send_mail(msg);
+
+                messages.lock().unwrap().clear();
+            }
+
+            count = 0;
+        }
+
+        if *is_terminated.lock().unwrap() {
+            break;
+        }
+
+        sleep(Duration::from_millis(500));
+        count += 1;
+    }
+}
+
+pub struct LogMailer {
+    level: LevelFilter,
+    config: Config,
+    messages: Arc<Mutex<Vec<String>>>,
+}
+
+impl LogMailer {
+    pub fn new(log_level: LevelFilter, config: Config, messages: Arc<Mutex<Vec<String>>>) -> Box<LogMailer> {
+        Box::new(LogMailer {
+            level: log_level,
+            config,
+            messages,
+        })
+    }
+}
+
+impl Log for LogMailer {
+    fn enabled(&self, metadata: &Metadata<'_>) -> bool {
+        metadata.level() <= self.level
+    }
+
+    fn log(&self, record: &Record<'_>) {
+        if self.enabled(record.metadata()) {
+            match record.level() {
+                Level::Error => {
+                    self.messages.lock().unwrap().push(record.args().to_string());
+                }
+                Level::Warn => {
+                    self.messages.lock().unwrap().push(record.args().to_string());
+                }
+                _ => (),
+            }
+        }
+    }
+
+    fn flush(&self) {}
+}
+
+impl SharedLogger for LogMailer {
+    fn level(&self) -> LevelFilter {
+        self.level
+    }
+
+    fn config(&self) -> Option<&Config> {
+        Some(&self.config)
+    }
+
+    fn as_log(self: Box<Self>) -> Box<dyn Log> {
+        Box::new(*self)
+    }
+}
+
+fn clean_string(text: String) -> String {
+    let regex: Regex = Regex::new(r"\x1b\[[0-9;]*[mGKF]").unwrap();
+
+    regex.replace_all(text.as_str(), "").to_string()
+}
+
+pub fn init_logging(
+    rt_handle: Handle,
+    is_terminated: Arc<Mutex<bool>>,
+) -> Vec<Box<dyn SharedLogger>> {
     let config = GlobalConfig::global();
     let app_config = config.logging.clone();
     let mut time_level = LevelFilter::Off;
@@ -166,6 +199,12 @@ pub fn init_logging(rt_handle: Handle) -> Vec<Box<dyn SharedLogger>> {
 
     if config.mail.recipient.len() > 3 {
         let mut filter = LevelFilter::Error;
+        let messages: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+
+        rt_handle.spawn(mail_queue(
+            messages.clone(),
+            is_terminated.clone(),
+        ));
 
         let mail_config = log_config
             .clone()
@@ -176,7 +215,7 @@ pub fn init_logging(rt_handle: Handle) -> Vec<Box<dyn SharedLogger>> {
             filter = LevelFilter::Warn
         }
 
-        app_logger.push(LogMailer::new(filter, mail_config, rt_handle));
+        app_logger.push(LogMailer::new(filter, mail_config, messages));
     }
 
     app_logger

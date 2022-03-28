@@ -77,13 +77,12 @@ impl Drop for ProcessCleanup {
     }
 }
 
-pub fn play(rt_handle: &Handle) {
+pub fn play(rt_handle: &Handle, is_terminated: Arc<Mutex<bool>>) {
     let config = GlobalConfig::global();
     let dec_settings = config.processing.clone().settings.unwrap();
     let ff_log_format = format!("level+{}", config.logging.ffmpeg_level.to_lowercase());
 
     let server_term: Arc<Mutex<Option<Terminator>>> = Arc::new(Mutex::new(None));
-    let is_terminated: Arc<Mutex<bool>> = Arc::new(Mutex::new(false));
     let server_is_running: Arc<Mutex<bool>> = Arc::new(Mutex::new(false));
     let mut init_playlist: Option<Arc<Mutex<bool>>> = None;
     let mut live_on = false;
