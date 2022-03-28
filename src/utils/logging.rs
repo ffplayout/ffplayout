@@ -5,6 +5,8 @@ use regex::Regex;
 use std::{
     path::Path,
     sync::{Arc, Mutex},
+    thread::sleep,
+    time::Duration,
 };
 
 use file_rotate::{compression::Compression, suffix::AppendCount, ContentLimit, FileRotate};
@@ -13,52 +15,10 @@ use log::{Level, LevelFilter, Log, Metadata, Record};
 use simplelog::*;
 use tokio::runtime::Handle;
 
-use crate::utils::{get_timestamp, GlobalConfig};
+use crate::utils::GlobalConfig;
 
-pub struct Timer {
-    init: Arc<Mutex<bool>>,
-    timestamp: Arc<Mutex<i64>>,
-    limit: i64,
-    messages: Arc<Mutex<Vec<String>>>,
-    rt_handle: Handle,
-}
-
-impl Timer {
-    fn new(rt_handle: Handle) -> Self {
-        Self {
-            init: Arc::new(Mutex::new(true)),
-            timestamp: Arc::new(Mutex::new(get_timestamp())),
-            limit: 30 * 1000,
-            messages: Arc::new(Mutex::new(vec![])),
-            rt_handle,
-        }
-    }
-
-    fn reset(&self) {
-        self.messages.lock().unwrap().clear();
-        *self.timestamp.lock().unwrap() = get_timestamp();
-    }
-
-    fn queue(&self, msg: String) {
-        let now = get_timestamp();
-        self.messages.lock().unwrap().push(msg);
-
-        if *self.init.lock().unwrap() {
-            self.reset();
-            *self.init.lock().unwrap() = false;
-        }
-
-        if now >= *self.timestamp.lock().unwrap() + self.limit {
-            self.rt_handle.spawn(send_mail(self.messages.lock().unwrap().clone()));
-
-            self.reset();
-        }
-    }
-}
-
-async fn send_mail(messages: Vec<String>) {
+fn send_mail(msg: String) {
     let config = GlobalConfig::global();
-    let msg = messages.join("\n");
 
     let email = Message::builder()
         .from(config.mail.sender_addr.parse().unwrap())
@@ -87,18 +47,43 @@ async fn send_mail(messages: Vec<String>) {
     }
 }
 
+async fn mail_queue(messages: Arc<Mutex<Vec<String>>>, is_terminated: Arc<Mutex<bool>>) {
+    let mut count = 0;
+
+    loop {
+        if *is_terminated.lock().unwrap() || count == 60 {
+            // check every 30 seconds for messages and send them
+            if messages.lock().unwrap().len() > 0 {
+                let msg = messages.lock().unwrap().join("\n");
+                send_mail(msg);
+
+                messages.lock().unwrap().clear();
+            }
+
+            count = 0;
+        }
+
+        if *is_terminated.lock().unwrap() {
+            break;
+        }
+
+        sleep(Duration::from_millis(500));
+        count += 1;
+    }
+}
+
 pub struct LogMailer {
     level: LevelFilter,
     config: Config,
-    timer: Timer,
+    messages: Arc<Mutex<Vec<String>>>,
 }
 
 impl LogMailer {
-    pub fn new(log_level: LevelFilter, config: Config, timer: Timer) -> Box<LogMailer> {
+    pub fn new(log_level: LevelFilter, config: Config, messages: Arc<Mutex<Vec<String>>>) -> Box<LogMailer> {
         Box::new(LogMailer {
             level: log_level,
             config,
-            timer,
+            messages,
         })
     }
 }
@@ -112,10 +97,10 @@ impl Log for LogMailer {
         if self.enabled(record.metadata()) {
             match record.level() {
                 Level::Error => {
-                    self.timer.queue(record.args().to_string());
+                    self.messages.lock().unwrap().push(record.args().to_string());
                 }
                 Level::Warn => {
-                    self.timer.queue(record.args().to_string());
+                    self.messages.lock().unwrap().push(record.args().to_string());
                 }
                 _ => (),
             }
@@ -145,7 +130,10 @@ fn clean_string(text: String) -> String {
     regex.replace_all(text.as_str(), "").to_string()
 }
 
-pub fn init_logging(rt_handle: Handle) -> Vec<Box<dyn SharedLogger>> {
+pub fn init_logging(
+    rt_handle: Handle,
+    is_terminated: Arc<Mutex<bool>>,
+) -> Vec<Box<dyn SharedLogger>> {
     let config = GlobalConfig::global();
     let app_config = config.logging.clone();
     let mut time_level = LevelFilter::Off;
@@ -211,7 +199,12 @@ pub fn init_logging(rt_handle: Handle) -> Vec<Box<dyn SharedLogger>> {
 
     if config.mail.recipient.len() > 3 {
         let mut filter = LevelFilter::Error;
-        let timer = Timer::new(rt_handle);
+        let messages: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+
+        rt_handle.spawn(mail_queue(
+            messages.clone(),
+            is_terminated.clone(),
+        ));
 
         let mail_config = log_config
             .clone()
@@ -222,7 +215,7 @@ pub fn init_logging(rt_handle: Handle) -> Vec<Box<dyn SharedLogger>> {
             filter = LevelFilter::Warn
         }
 
-        app_logger.push(LogMailer::new(filter, mail_config, timer));
+        app_logger.push(LogMailer::new(filter, mail_config, messages));
     }
 
     app_logger

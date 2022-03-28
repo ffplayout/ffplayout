@@ -7,8 +7,8 @@ use simplelog::*;
 use tokio::runtime::Handle;
 
 use crate::utils::{
-    check_sync, gen_dummy, get_delta, get_sec, is_close, json_reader::read_json, modified_time,
-    seek_and_length, GlobalConfig, Media, DUMMY_LEN,
+    check_sync, gen_dummy, get_date, get_delta, get_sec, is_close, json_reader::read_json,
+    modified_time, seek_and_length, GlobalConfig, Media, DUMMY_LEN,
 };
 
 #[derive(Debug)]
@@ -17,6 +17,7 @@ pub struct CurrentProgram {
     start_sec: f64,
     json_mod: Option<String>,
     json_path: Option<String>,
+    json_date: String,
     nodes: Vec<Media>,
     current_node: Media,
     pub init: Arc<Mutex<bool>>,
@@ -35,6 +36,7 @@ impl CurrentProgram {
             start_sec: json.start_sec.unwrap(),
             json_mod: json.modified,
             json_path: json.current_file,
+            json_date: json.date,
             nodes: json.program,
             current_node: Media::new(0, "".to_string()),
             init: Arc::new(Mutex::new(true)),
@@ -66,6 +68,11 @@ impl CurrentProgram {
                 .eq(&self.json_mod.clone().unwrap())
             {
                 // when playlist has changed, reload it
+                info!(
+                    "Reload playlist <b><magenta>{}</></b>",
+                    self.json_path.clone().unwrap()
+                );
+
                 let json = read_json(
                     self.json_path.clone(),
                     self.rt_handle.clone(),
@@ -107,10 +114,12 @@ impl CurrentProgram {
         }
 
         let next_start = self.current_node.begin.unwrap() - start_sec + duration + delta;
+        let date = get_date(false, start_sec, next_start);
 
-        if next_start >= target_length
+        if (next_start >= target_length
             || is_close(total_delta, 0.0, 2.0)
-            || is_close(total_delta, target_length, 2.0)
+            || is_close(total_delta, target_length, 2.0))
+            && date != self.json_date
         {
             let json = read_json(
                 None,
@@ -122,6 +131,7 @@ impl CurrentProgram {
 
             self.json_path = json.current_file.clone();
             self.json_mod = json.modified;
+            self.json_date = json.date;
             self.nodes = json.program;
             self.index = 0;
 
@@ -250,6 +260,7 @@ impl Iterator for CurrentProgram {
             self.check_for_next_playlist();
             Some(self.current_node.clone())
         } else {
+            println!("last: {:?}", self.json_path);
             let last_playlist = self.json_path.clone();
             self.check_for_next_playlist();
             let (_, total_delta) = get_delta(&self.config.playlist.start_sec.unwrap());

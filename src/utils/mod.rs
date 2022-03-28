@@ -151,11 +151,11 @@ impl MediaProbe {
     }
 }
 
-pub fn get_timestamp() -> i64 {
-    let local: DateTime<Local> = Local::now();
+// pub fn get_timestamp() -> i64 {
+//     let local: DateTime<Local> = Local::now();
 
-    local.timestamp_millis() as i64
-}
+//     local.timestamp_millis() as i64
+// }
 
 pub fn get_sec() -> f64 {
     let local: DateTime<Local> = Local::now();
