@@ -260,7 +260,6 @@ impl Iterator for CurrentProgram {
             self.check_for_next_playlist();
             Some(self.current_node.clone())
         } else {
-            println!("last: {:?}", self.json_path);
             let last_playlist = self.json_path.clone();
             self.check_for_next_playlist();
             let (_, total_delta) = get_delta(&self.config.playlist.start_sec.unwrap());
