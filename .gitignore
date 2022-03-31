@@ -13,4 +13,7 @@
 *.log
 /logs/
 
+*.zip
+*tar.gz
+
 .vscode/

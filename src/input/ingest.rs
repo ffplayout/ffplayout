@@ -32,7 +32,7 @@ fn overlay(config: &GlobalConfig) -> String {
 }
 
 fn audio_filter(config: &GlobalConfig) -> String {
-    let mut audio_chain = ";[0:a]anull".to_string();
+    let mut audio_chain = ";[0:a]afade=in:st=0:d=0.5".to_string();
 
     if config.processing.add_loudnorm {
         audio_chain.push_str(
@@ -64,7 +64,7 @@ pub async fn ingest_server(
     let config = GlobalConfig::global();
     let mut buffer: [u8; 65088] = [0; 65088];
     let mut filter = format!(
-        "[0:v]fps={},scale={}:{},setdar=dar={}",
+        "[0:v]fps={},scale={}:{},setdar=dar={},fade=in:st=0:d=0.5",
         config.processing.fps,
         config.processing.width,
         config.processing.height,
