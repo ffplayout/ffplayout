@@ -7,7 +7,7 @@ use simplelog::*;
 use tokio::runtime::Handle;
 
 use crate::utils::{
-    check_sync, gen_dummy, get_date, get_delta, get_sec, is_close, json_reader::read_json,
+    check_sync, gen_dummy, get_delta, get_sec, is_close, json_reader::read_json,
     modified_time, seek_and_length, GlobalConfig, Media, DUMMY_LEN,
 };
 
@@ -114,12 +114,10 @@ impl CurrentProgram {
         }
 
         let next_start = self.current_node.begin.unwrap() - start_sec + duration + delta;
-        let date = get_date(false, start_sec, next_start);
 
-        if (next_start >= target_length
+        if next_start >= target_length
             || is_close(total_delta, 0.0, 2.0)
-            || is_close(total_delta, target_length, 2.0))
-            && date != self.json_date
+            || is_close(total_delta, target_length, 2.0)
         {
             let json = read_json(
                 None,
@@ -243,6 +241,7 @@ impl Iterator for CurrentProgram {
         }
 
         if self.index < self.nodes.len() {
+            self.check_for_next_playlist();
             let mut is_last = false;
 
             if self.index == self.nodes.len() - 1 {
@@ -257,7 +256,6 @@ impl Iterator for CurrentProgram {
             // update playlist should happen after current clip,
             // to prevent unknown behaviors.
             self.check_update(false);
-            self.check_for_next_playlist();
             Some(self.current_node.clone())
         } else {
             let last_playlist = self.json_path.clone();
