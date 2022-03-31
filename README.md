@@ -40,6 +40,7 @@ The main purpose of ffplayout is to provide a 24/7 broadcasting solution that pl
 - output:
   - **stream**
   - **desktop**
+  - **HLS**
 
 Requirements
 -----
@@ -104,6 +105,26 @@ You can use sources from remote URL in that way:
 But be careful with it, better test it multiple times!
 
 More informations in [Wiki](https://github.com/ffplayout/ffplayout_engine/wiki/Remote-URL-Source)
+
+HLS output
+-----
+
+For outputting to HLS, output parameters should look like:
+
+```yaml
+out:
+    ...
+
+    output_param: >-
+        ...
+
+        -flags +cgop
+        -f hls
+        -hls_time 6
+        -hls_list_size 600
+        -hls_flags append_list+delete_segments+omit_endlist+program_date_time
+        -hls_segment_filename /var/www/html/live/stream-%09d.ts /var/www/html/live/stream.m3u8
+```
 
 Installation
 -----
