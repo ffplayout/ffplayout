@@ -4,7 +4,7 @@ use simplelog::*;
 
 pub mod v_drawtext;
 
-use crate::utils::{is_close, GlobalConfig, Media};
+use crate::utils::{get_delta, is_close, GlobalConfig, Media};
 
 #[derive(Debug, Clone)]
 struct Filters {
@@ -285,6 +285,37 @@ fn fps_calc(r_frame_rate: String) -> f64 {
     fps
 }
 
+fn realtime_filter(
+    node: &mut Media,
+    chain: &mut Filters,
+    config: &GlobalConfig,
+    codec_type: String,
+) {
+    //this realtime filter is important for HLS output to stay in sync
+
+    let mut t = "".to_string();
+
+    if codec_type == "audio".to_string() {
+        t = "a".to_string()
+    }
+
+    if config.out.mode.to_lowercase() == "hls".to_string() {
+        let mut speed_filter = format!("{t}realtime=speed=1");
+        let (delta, _) = get_delta(&node.begin.unwrap());
+        let duration = node.out - node.seek;
+
+        if delta < 0.0 {
+            let speed = duration / (duration + delta);
+
+            if speed > 0.0 && speed < 1.1 && delta < config.general.stop_threshold {
+                speed_filter = format!("{t}realtime=speed={speed}");
+            }
+        }
+
+        chain.add_filter(speed_filter, codec_type);
+    }
+}
+
 pub fn filter_chains(node: &mut Media) -> Vec<String> {
     let config = GlobalConfig::global();
 
@@ -323,10 +354,12 @@ pub fn filter_chains(node: &mut Media) -> Vec<String> {
     add_text(node, &mut filters, &config);
     fade(node, &mut filters, "video".into());
     overlay(node, &mut filters, &config);
+    realtime_filter(node, &mut filters,  &config, "video".into());
 
     add_loudnorm(node, &mut filters, &config);
     fade(node, &mut filters, "audio".into());
     audio_volume(&mut filters, &config);
+    realtime_filter(node, &mut filters,  &config, "audio".into());
 
     let mut filter_cmd = vec![];
     let mut filter_str: String = "".to_string();

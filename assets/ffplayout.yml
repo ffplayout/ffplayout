@@ -111,7 +111,7 @@ text:
 
 out:
     helptext: The final playout compression. Set the settings to your needs.
-        'mode' has the standard options 'desktop', 'hls', 'live_switch', 'stream'. Self made
+        'mode' has the standard options 'desktop', 'hls', 'stream'. Self made
         outputs can be define, by adding script in output folder with an 'output' function
         inside. 'preview' works only in streaming output and creates a separate preview stream.
     mode: 'stream'
