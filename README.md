@@ -6,7 +6,7 @@
 
 ## Attention: Version 4.0 will be the last release in Python
 
-After that the code base will be changed to Rust and a new version shema will be used.
+After that the code base will be changed to Rust.
 
 -----
 
