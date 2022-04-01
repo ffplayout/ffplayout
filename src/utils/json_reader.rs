@@ -10,7 +10,7 @@ use tokio::runtime::Handle;
 
 use crate::utils::{get_date, modified_time, validate_playlist, GlobalConfig, Media};
 
-pub const DUMMY_LEN: f64 = 20.0;
+pub const DUMMY_LEN: f64 = 60.0;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Playlist {
