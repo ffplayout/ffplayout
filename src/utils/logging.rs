@@ -10,7 +10,10 @@ use std::{
 };
 
 use file_rotate::{compression::Compression, suffix::AppendCount, ContentLimit, FileRotate};
-use lettre::{transport::smtp::authentication::Credentials, Message, SmtpTransport, Transport};
+use lettre::{
+    message::header, transport::smtp::authentication::Credentials, Message, SmtpTransport,
+    Transport,
+};
 use log::{Level, LevelFilter, Log, Metadata, Record};
 use simplelog::*;
 use tokio::runtime::Handle;
@@ -24,6 +27,7 @@ fn send_mail(msg: String) {
         .from(config.mail.sender_addr.parse().unwrap())
         .to(config.mail.recipient.parse().unwrap())
         .subject(config.mail.subject.clone())
+        .header(header::ContentType::TEXT_PLAIN)
         .body(clean_string(msg.clone()))
         .unwrap();
 
@@ -79,7 +83,11 @@ pub struct LogMailer {
 }
 
 impl LogMailer {
-    pub fn new(log_level: LevelFilter, config: Config, messages: Arc<Mutex<Vec<String>>>) -> Box<LogMailer> {
+    pub fn new(
+        log_level: LevelFilter,
+        config: Config,
+        messages: Arc<Mutex<Vec<String>>>,
+    ) -> Box<LogMailer> {
         Box::new(LogMailer {
             level: log_level,
             config,
@@ -97,10 +105,16 @@ impl Log for LogMailer {
         if self.enabled(record.metadata()) {
             match record.level() {
                 Level::Error => {
-                    self.messages.lock().unwrap().push(record.args().to_string());
+                    self.messages
+                        .lock()
+                        .unwrap()
+                        .push(record.args().to_string());
                 }
                 Level::Warn => {
-                    self.messages.lock().unwrap().push(record.args().to_string());
+                    self.messages
+                        .lock()
+                        .unwrap()
+                        .push(record.args().to_string());
                 }
                 _ => (),
             }
@@ -201,10 +215,7 @@ pub fn init_logging(
         let mut filter = LevelFilter::Error;
         let messages: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
 
-        rt_handle.spawn(mail_queue(
-            messages.clone(),
-            is_terminated.clone(),
-        ));
+        rt_handle.spawn(mail_queue(messages.clone(), is_terminated.clone()));
 
         let mail_config = log_config
             .clone()
