@@ -79,9 +79,9 @@ dependencies = [
 
 [[package]]
 name = "clap"
-version = "3.1.7"
+version = "3.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c67e7973e74896f4bba06ca2dcfd28d54f9cb8c035e940a32b88ed48f5f5ecf2"
+checksum = "71c47df61d9e16dc010b55dba1952a57d8c215dbb533fd13cdd13369aac73b1c"
 dependencies = [
  "atty",
  "bitflags",
@@ -133,6 +133,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "email-encoding"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6690291166824e467790ac08ba42f241791567e8337bbf00c5a6e87889629f98"
+dependencies = [
+ "base64",
+]
+
+[[package]]
 name = "fastrand"
 version = "1.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -143,7 +152,7 @@ dependencies = [
 
 [[package]]
 name = "ffplayout-rs"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "chrono",
  "clap",
@@ -431,11 +440,12 @@ checksum = "830d08ce1d1d941e6b30645f1a0eb5643013d835ce3779a5fc208261dbe10f55"
 
 [[package]]
 name = "lettre"
-version = "0.10.0-rc.4"
+version = "0.10.0-rc.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "71d8da8f34d086b081c9cc3b57d3bb3b51d16fc06b5c848a188e2f14d58ac2a5"
+checksum = "5144148f337be14dabfc0f0d85b691a68ac6c77ef22a5c47c5504b70a7c9fcf3"
 dependencies = [
  "base64",
+ "email-encoding",
  "fastrand",
  "futures-util",
  "hostname",
@@ -961,9 +971,9 @@ dependencies = [
 
 [[package]]
 name = "slab"
-version = "0.4.5"
+version = "0.4.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9def91fd1e018fe007022791f865d0ccc9b3a0d5001e01aabb8b40e46000afb5"
+checksum = "eb703cfe953bccee95685111adeedb76fabe4e97549a58d16f03ea7b9367bb32"
 
 [[package]]
 name = "strsim"
