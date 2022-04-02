@@ -83,6 +83,9 @@ impl CurrentProgram {
 
                 self.json_mod = json.modified;
                 self.nodes = json.program;
+
+                self.get_current_clip();
+                self.index += 1;
             }
         } else {
             error!(
@@ -159,26 +162,41 @@ impl CurrentProgram {
         }
     }
 
-    fn get_init_clip(&mut self) {
+    fn get_current_time(&mut self) -> f64 {
         let mut time_sec = get_sec();
 
         if time_sec < self.start_sec {
             time_sec += self.config.playlist.length_sec.unwrap()
         }
 
+        time_sec
+    }
+
+    fn get_current_clip(&mut self) {
+        let time_sec = self.get_current_time();
+
         for (i, item) in self.nodes.iter_mut().enumerate() {
             if item.begin.unwrap() + item.out - item.seek > time_sec {
                 *self.init.lock().unwrap() = false;
-                self.index = i + 1;
-
-                // de-instance node to preserve original values in list
-                let mut node_clone = item.clone();
-                node_clone.seek = time_sec - node_clone.begin.unwrap();
-
-                self.current_node = handle_list_init(node_clone);
+                self.index = i;
 
                 break;
             }
+        }
+    }
+
+    fn init_clip(&mut self) {
+        self.get_current_clip();
+
+        if !*self.init.lock().unwrap() {
+            let time_sec = self.get_current_time();
+
+            // de-instance node to preserve original values in list
+            let mut node_clone = self.nodes[self.index].clone();
+            self.index += 1;
+
+            node_clone.seek = time_sec - node_clone.begin.unwrap();
+            self.current_node = handle_list_init(node_clone);
         }
     }
 }
@@ -192,7 +210,7 @@ impl Iterator for CurrentProgram {
             self.check_update(true);
 
             if self.json_path.is_some() {
-                self.get_init_clip();
+                self.init_clip();
             }
 
             if *self.init.lock().unwrap() {
@@ -209,7 +227,7 @@ impl Iterator for CurrentProgram {
                     >= self.config.playlist.length_sec.unwrap()
                         + self.config.playlist.start_sec.unwrap()
                 {
-                    self.get_init_clip();
+                    self.init_clip();
                 } else {
                     let mut current_time = get_sec();
                     let (_, total_delta) = get_delta(&current_time);
