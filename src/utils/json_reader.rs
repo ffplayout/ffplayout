@@ -62,6 +62,7 @@ pub fn read_json(
     let mut current_file: String = playlist_path.as_path().display().to_string();
 
     if let Some(p) = path {
+        playlist_path = Path::new(&p).to_owned();
         current_file = p
     }
 
@@ -73,7 +74,11 @@ pub fn read_json(
 
     info!("Read Playlist: <b><magenta>{}</></b>", &current_file);
 
-    let f = File::open(&current_file).expect("Could not open json playlist file.");
+    let f = File::options()
+        .read(true)
+        .write(false)
+        .open(&current_file)
+        .expect("Could not open json playlist file.");
     let mut playlist: Playlist =
         serde_json::from_reader(f).expect("Could not read json playlist file.");
 
