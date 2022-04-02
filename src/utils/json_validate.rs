@@ -7,10 +7,9 @@ use crate::utils::{sec_to_time, GlobalConfig, MediaProbe, Playlist};
 pub async fn validate_playlist(playlist: Playlist, is_terminated: Arc<Mutex<bool>>, config: GlobalConfig) {
     let date = playlist.date;
     let mut length = config.playlist.length_sec.unwrap();
-    let start_sec = config.playlist.start_sec.unwrap();
-    let mut begin = start_sec.clone();
+    let mut begin = config.playlist.start_sec.unwrap();
 
-    length += start_sec;
+    length += begin;
 
     debug!("validate playlist from: <yellow>{date}</>");
 
@@ -43,7 +42,7 @@ pub async fn validate_playlist(playlist: Playlist, is_terminated: Arc<Mutex<bool
     if length > begin + 1.0 {
         error!(
             "Playlist from <yellow>{date}</> not long enough, <yellow>{}</> needed!",
-            sec_to_time(length - start_sec),
+            sec_to_time(length - begin),
         );
     }
 }
