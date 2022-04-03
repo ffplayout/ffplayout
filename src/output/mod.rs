@@ -172,6 +172,7 @@ pub fn player(rt_handle: &Handle, is_terminated: Arc<Mutex<bool>>) {
         ProcessCleanup::new(server_term.clone(), is_terminated.clone(), enc_proc);
 
     'source_iter: for node in get_source {
+        println!("{:?}", &node.clone());
         let cmd = match node.cmd {
             Some(cmd) => cmd,
             None => break,

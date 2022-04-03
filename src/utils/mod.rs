@@ -42,8 +42,8 @@ pub struct Media {
     pub cmd: Option<Vec<String>>,
     pub filter: Option<Vec<String>>,
     pub probe: Option<MediaProbe>,
-    pub last_ad: Option<bool>,
-    pub next_ad: Option<bool>,
+    pub last: Option<Box<Media>>,
+    pub next: Option<Box<Media>>,
     pub process: Option<bool>,
 }
 
@@ -72,8 +72,8 @@ impl Media {
             cmd: Some(vec!["-i".to_string(), src]),
             filter: Some(vec![]),
             probe: probe,
-            last_ad: Some(false),
-            next_ad: Some(false),
+            last: None,
+            next: None,
             process: Some(true),
         }
     }
