@@ -7,8 +7,8 @@ use simplelog::*;
 use tokio::runtime::Handle;
 
 use crate::utils::{
-    check_sync, gen_dummy, get_delta, get_sec, is_close, json_reader::read_json,
-    modified_time, seek_and_length, GlobalConfig, Media, DUMMY_LEN,
+    check_sync, gen_dummy, get_delta, get_sec, is_close, json_reader::read_json, modified_time,
+    seek_and_length, GlobalConfig, Media, DUMMY_LEN,
 };
 
 #[derive(Debug)]
@@ -142,23 +142,13 @@ impl CurrentProgram {
         }
     }
 
-    fn is_ad(&mut self, i: usize, next: bool) -> Option<bool> {
-        if next {
-            if i + 1 < self.nodes.len() && self.nodes[i + 1].category == "advertisement".to_string()
-            {
-                return Some(true);
-            } else {
-                return Some(false);
-            }
-        } else {
-            if i > 0
-                && i < self.nodes.len()
-                && self.nodes[i - 1].category == "advertisement".to_string()
-            {
-                return Some(true);
-            } else {
-                return Some(false);
-            }
+    fn last_next_node(&mut self) {
+        if self.index + 1 < self.nodes.len() {
+            self.current_node.next = Some(Box::new(self.nodes[self.index + 1].clone()));
+        }
+
+        if self.index > 0 && self.index < self.nodes.len() {
+            self.current_node.last = Some(Box::new(self.nodes[self.index - 1].clone()));
         }
     }
 
@@ -252,8 +242,7 @@ impl Iterator for CurrentProgram {
                 }
             }
 
-            self.current_node.last_ad = self.is_ad(self.index, false);
-            self.current_node.next_ad = self.is_ad(self.index, true);
+            self.last_next_node();
 
             return Some(self.current_node.clone());
         }
@@ -267,8 +256,7 @@ impl Iterator for CurrentProgram {
             }
 
             self.current_node = timed_source(self.nodes[self.index].clone(), &self.config, is_last);
-            self.current_node.last_ad = self.is_ad(self.index, false);
-            self.current_node.next_ad = self.is_ad(self.index, true);
+            self.last_next_node();
             self.index += 1;
 
             // update playlist should happen after current clip,
@@ -277,9 +265,9 @@ impl Iterator for CurrentProgram {
             Some(self.current_node.clone())
         } else {
             let last_playlist = self.json_path.clone();
+            let last = self.current_node.clone();
             self.check_for_next_playlist();
             let (_, total_delta) = get_delta(&self.config.playlist.start_sec.unwrap());
-            let mut last_ad = self.is_ad(self.index, false);
 
             if last_playlist == self.json_path
                 && total_delta.abs() > self.config.general.stop_threshold
@@ -299,16 +287,16 @@ impl Iterator for CurrentProgram {
                 self.current_node = gen_source(self.current_node.clone());
                 self.nodes.push(self.current_node.clone());
 
-                last_ad = self.is_ad(self.index, false);
-                self.current_node.last_ad = last_ad;
+                self.current_node.last = Some(Box::new(last));
                 self.current_node.add_filter();
 
                 return Some(self.current_node.clone());
             }
 
-            self.current_node = gen_source(self.nodes[0].clone());
-            self.current_node.last_ad = last_ad;
-            self.current_node.next_ad = self.is_ad(0, true);
+            self.index = 0;
+            self.current_node = gen_source(self.nodes[self.index].clone());
+            self.last_next_node();
+            self.current_node.last = Some(Box::new(last));
 
             self.index = 1;
 

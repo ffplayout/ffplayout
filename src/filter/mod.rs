@@ -155,14 +155,18 @@ fn overlay(node: &mut Media, chain: &mut Filters, config: &GlobalConfig) {
             config.processing.logo
         );
 
-        if node.last_ad.unwrap() {
-            logo_chain.push_str(",fade=in:st=0:d=1.0:alpha=1")
+        if let Some(last) = &node.last {
+            if last.category == "advertisement" {
+                logo_chain.push_str(",fade=in:st=0:d=1.0:alpha=1")
+            }
         }
 
-        if node.next_ad.unwrap() {
-            logo_chain.push_str(
-                format!(",fade=out:st={}:d=1.0:alpha=1", node.out - node.seek - 1.0).as_str(),
-            )
+        if let Some(next) = &node.next {
+            if next.category == "advertisement" {
+                logo_chain.push_str(
+                    format!(",fade=out:st={}:d=1.0:alpha=1", node.out - node.seek - 1.0).as_str(),
+                )
+            }
         }
 
         logo_chain
