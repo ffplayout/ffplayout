@@ -308,7 +308,7 @@ pub fn seek_and_length(src: String, seek: f64, out: f64, duration: f64) -> Vec<S
 }
 
 pub async fn stderr_reader(std_errors: ChildStderr, suffix: String) -> Result<(), Error> {
-    // read ffmpeg stderr decoder and encoder instance
+    // read ffmpeg stderr decoder, encoder and server instance
     // and log the output
 
     fn format_line(line: String, level: String) -> String {
