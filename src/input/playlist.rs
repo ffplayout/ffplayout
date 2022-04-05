@@ -142,13 +142,18 @@ impl CurrentProgram {
         }
     }
 
-    fn last_next_node(&mut self) {
-        if self.index + 1 < self.nodes.len() {
-            self.current_node.next = Some(Box::new(self.nodes[self.index + 1].clone()));
+    fn last_next_ad(&mut self) {
+        if self.index + 1 < self.nodes.len()
+            && self.nodes[self.index + 1].category == "advertisement".to_string()
+        {
+            self.current_node.next_ad = Some(true);
         }
 
-        if self.index > 0 && self.index < self.nodes.len() {
-            self.current_node.last = Some(Box::new(self.nodes[self.index - 1].clone()));
+        if self.index > 0
+            && self.index < self.nodes.len()
+            && self.nodes[self.index - 1].category == "advertisement".to_string()
+        {
+            self.current_node.last_ad = Some(true);
         }
     }
 
@@ -242,7 +247,7 @@ impl Iterator for CurrentProgram {
                 }
             }
 
-            self.last_next_node();
+            self.last_next_ad();
 
             return Some(self.current_node.clone());
         }
@@ -256,7 +261,7 @@ impl Iterator for CurrentProgram {
             }
 
             self.current_node = timed_source(self.nodes[self.index].clone(), &self.config, is_last);
-            self.last_next_node();
+            self.last_next_ad();
             self.index += 1;
 
             // update playlist should happen after current clip,
@@ -265,7 +270,7 @@ impl Iterator for CurrentProgram {
             Some(self.current_node.clone())
         } else {
             let last_playlist = self.json_path.clone();
-            let last = self.current_node.clone();
+            let last_ad = self.current_node.last_ad.clone();
             self.check_for_next_playlist();
             let (_, total_delta) = get_delta(&self.config.playlist.start_sec.unwrap());
 
@@ -274,7 +279,6 @@ impl Iterator for CurrentProgram {
             {
                 // Test if playlist is to early finish,
                 // and if we have to fill it with a placeholder.
-                self.index += 1;
                 self.current_node = Media::new(self.index, "".to_string());
                 self.current_node.begin = Some(get_sec());
                 let mut duration = total_delta.abs();
@@ -286,17 +290,20 @@ impl Iterator for CurrentProgram {
                 self.current_node.out = duration;
                 self.current_node = gen_source(self.current_node.clone());
                 self.nodes.push(self.current_node.clone());
+                self.last_next_ad();
 
-                self.current_node.last = Some(Box::new(last));
+                self.current_node.last_ad = last_ad;
                 self.current_node.add_filter();
+
+                self.index += 1;
 
                 return Some(self.current_node.clone());
             }
 
             self.index = 0;
             self.current_node = gen_source(self.nodes[self.index].clone());
-            self.last_next_node();
-            self.current_node.last = Some(Box::new(last));
+            self.last_next_ad();
+            self.current_node.last_ad = last_ad;
 
             self.index = 1;
 

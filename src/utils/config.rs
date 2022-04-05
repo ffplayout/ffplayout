@@ -15,6 +15,7 @@ use crate::utils::{get_args, time_to_sec};
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct GlobalConfig {
     pub general: General,
+    pub rpc_server: RpcServer,
     pub mail: Mail,
     pub logging: Logging,
     pub processing: Processing,
@@ -31,6 +32,13 @@ pub struct General {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct RpcServer {
+    pub enable: bool,
+    pub address: String,
+    pub authorization: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Mail {
     pub subject: String,
     pub smtp_server: String,
@@ -39,6 +47,7 @@ pub struct Mail {
     pub sender_pass: String,
     pub recipient: String,
     pub mail_level: String,
+    pub interval: i32,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

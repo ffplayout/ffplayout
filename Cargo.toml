@@ -1,6 +1,6 @@
 [package]
 name = "ffplayout-rs"
-version = "0.8.1"
+version = "0.9.0"
 edition = "2021"
 
 [dependencies]
@@ -8,6 +8,7 @@ chrono = "0.4"
 clap = { version = "3.1", features = ["derive"] }
 ffprobe = "0.3"
 file-rotate = "0.6"
+jsonrpc-http-server = "18.0"
 lettre = "0.10.0-rc.5"
 log = "0.4"
 notify = "4.0"

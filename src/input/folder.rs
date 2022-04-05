@@ -70,18 +70,6 @@ impl Source {
     fn sort(&mut self) {
         self.nodes.lock().unwrap().sort();
     }
-
-    fn last_next_node(&mut self) {
-        if self.index + 1 < self.nodes.lock().unwrap().len() {
-            let next_node = self.nodes.lock().unwrap()[self.index + 1].clone();
-            self.current_node.next = Some(Box::new(Media::new(self.index + 1, next_node)));
-        }
-
-        if self.index > 0 && self.index < self.nodes.lock().unwrap().len() {
-            let last_node = self.nodes.lock().unwrap()[self.index - 1].clone();
-            self.current_node.last = Some(Box::new(Media::new(self.index - 1, last_node)));
-        }
-    }
 }
 
 impl Iterator for Source {
@@ -93,14 +81,11 @@ impl Iterator for Source {
             self.current_node = Media::new(self.index, current_file);
             self.current_node.add_probe();
             self.current_node.add_filter();
-            self.last_next_node();
 
             self.index += 1;
 
             Some(self.current_node.clone())
         } else {
-            let last = self.current_node.clone();
-
             if self.config.storage.shuffle {
                 info!("Shuffle files");
                 self.shuffle();
@@ -113,8 +98,6 @@ impl Iterator for Source {
             self.current_node = Media::new(self.index, current_file);
             self.current_node.add_probe();
             self.current_node.add_filter();
-            self.last_next_node();
-            self.current_node.last = Some(Box::new(last));
 
             self.index = 1;
 

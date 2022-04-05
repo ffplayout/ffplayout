@@ -8,10 +8,13 @@ use std::{
     path::Path,
     process::exit,
     process::{ChildStderr, Command, Stdio},
+    sync::{Arc, Mutex, RwLock},
     time,
     time::UNIX_EPOCH,
 };
 
+use jsonrpc_http_server::CloseHandle;
+use process_control::Terminator;
 use regex::Regex;
 use simplelog::*;
 
@@ -20,14 +23,87 @@ mod config;
 pub mod json_reader;
 mod json_validate;
 mod logging;
+mod rpc_server;
 
 pub use arg_parse::get_args;
 pub use config::{init_config, GlobalConfig};
 pub use json_reader::{read_json, Playlist, DUMMY_LEN};
 pub use json_validate::validate_playlist;
 pub use logging::init_logging;
+pub use rpc_server::run_rpc;
 
 use crate::filter::filter_chains;
+
+#[derive(Clone)]
+pub struct ProcessControl {
+    pub decoder_term: Arc<Mutex<Option<Terminator>>>,
+    pub encoder_term: Arc<Mutex<Option<Terminator>>>,
+    pub server_term: Arc<Mutex<Option<Terminator>>>,
+    pub server_is_running: Arc<Mutex<bool>>,
+    pub rpc_handle: Arc<Mutex<Option<CloseHandle>>>,
+    pub is_terminated: Arc<Mutex<bool>>,
+    pub is_alive: Arc<RwLock<bool>>,
+    pub current_media: Arc<Mutex<Option<Media>>>,
+}
+
+impl ProcessControl {
+    pub fn new() -> Self {
+        Self {
+            decoder_term: Arc::new(Mutex::new(None)),
+            encoder_term: Arc::new(Mutex::new(None)),
+            server_term: Arc::new(Mutex::new(None)),
+            server_is_running: Arc::new(Mutex::new(false)),
+            rpc_handle: Arc::new(Mutex::new(None)),
+            is_terminated: Arc::new(Mutex::new(false)),
+            is_alive: Arc::new(RwLock::new(true)),
+            current_media: Arc::new(Mutex::new(None)),
+        }
+    }
+}
+
+impl ProcessControl {
+    pub fn kill_all(&mut self) {
+        *self.is_terminated.lock().unwrap() = true;
+
+        if *self.is_alive.read().unwrap() {
+            *self.is_alive.write().unwrap() = false;
+
+            if let Some(rpc) = &*self.rpc_handle.lock().unwrap() {
+                rpc.clone().close()
+            };
+
+            if let Some(server) = &*self.server_term.lock().unwrap() {
+                unsafe {
+                    if let Err(e)= server.terminate() {
+                        error!("Ingest server: {:?}", e);
+                    }
+                }
+            };
+
+            if let Some(decoder) = &*self.decoder_term.lock().unwrap() {
+                unsafe {
+                    if let Err(e) = decoder.terminate() {
+                        error!("Decoder: {:?}", e);
+                    }
+                }
+            };
+
+            if let Some(encoder) = &*self.encoder_term.lock().unwrap() {
+                unsafe {
+                    if let Err(e) = encoder.terminate() {
+                        error!("Encoder: {:?}", e);
+                    }
+                }
+            };
+        }
+    }
+}
+
+impl Drop for ProcessControl {
+    fn drop(&mut self) {
+        self.kill_all()
+    }
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Media {
@@ -42,8 +118,8 @@ pub struct Media {
     pub cmd: Option<Vec<String>>,
     pub filter: Option<Vec<String>>,
     pub probe: Option<MediaProbe>,
-    pub last: Option<Box<Media>>,
-    pub next: Option<Box<Media>>,
+    pub last_ad: Option<bool>,
+    pub next_ad: Option<bool>,
     pub process: Option<bool>,
 }
 
@@ -72,8 +148,8 @@ impl Media {
             cmd: Some(vec!["-i".to_string(), src]),
             filter: Some(vec![]),
             probe: probe,
-            last: None,
-            next: None,
+            last_ad: Some(false),
+            next_ad: Some(false),
             process: Some(true),
         }
     }
