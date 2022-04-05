@@ -18,6 +18,7 @@ use crate::utils::{GlobalConfig, Media};
 pub struct Source {
     config: GlobalConfig,
     pub nodes: Arc<Mutex<Vec<String>>>,
+    current_node: Media,
     index: usize,
 }
 
@@ -56,6 +57,7 @@ impl Source {
         Self {
             config: config.clone(),
             nodes: Arc::new(Mutex::new(file_list)),
+            current_node: Media::new(0, "".to_string()),
             index: 0,
         }
     }
@@ -68,6 +70,18 @@ impl Source {
     fn sort(&mut self) {
         self.nodes.lock().unwrap().sort();
     }
+
+    fn last_next_node(&mut self) {
+        if self.index + 1 < self.nodes.lock().unwrap().len() {
+            let next_node = self.nodes.lock().unwrap()[self.index + 1].clone();
+            self.current_node.next = Some(Box::new(Media::new(self.index + 1, next_node)));
+        }
+
+        if self.index > 0 && self.index < self.nodes.lock().unwrap().len() {
+            let last_node = self.nodes.lock().unwrap()[self.index - 1].clone();
+            self.current_node.last = Some(Box::new(Media::new(self.index - 1, last_node)));
+        }
+    }
 }
 
 impl Iterator for Source {
@@ -76,13 +90,17 @@ impl Iterator for Source {
     fn next(&mut self) -> Option<Self::Item> {
         if self.index < self.nodes.lock().unwrap().len() {
             let current_file = self.nodes.lock().unwrap()[self.index].clone();
-            let mut media = Media::new(self.index, current_file);
-            media.add_probe();
-            media.add_filter();
+            self.current_node = Media::new(self.index, current_file);
+            self.current_node.add_probe();
+            self.current_node.add_filter();
+            self.last_next_node();
+
             self.index += 1;
 
-            Some(media)
+            Some(self.current_node.clone())
         } else {
+            let last = self.current_node.clone();
+
             if self.config.storage.shuffle {
                 info!("Shuffle files");
                 self.shuffle();
@@ -92,12 +110,15 @@ impl Iterator for Source {
             }
 
             let current_file = self.nodes.lock().unwrap()[0].clone();
-            let mut media = Media::new(self.index, current_file);
-            media.add_probe();
-            media.add_filter();
+            self.current_node = Media::new(self.index, current_file);
+            self.current_node.add_probe();
+            self.current_node.add_filter();
+            self.last_next_node();
+            self.current_node.last = Some(Box::new(last));
+
             self.index = 1;
 
-            Some(media)
+            Some(self.current_node.clone())
         }
     }
 }
