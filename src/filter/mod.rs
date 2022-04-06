@@ -290,6 +290,7 @@ fn realtime_filter(
     chain: &mut Filters,
     config: &GlobalConfig,
     codec_type: String,
+    json_date: &String
 ) {
     //this realtime filter is important for HLS output to stay in sync
 
@@ -301,7 +302,7 @@ fn realtime_filter(
 
     if config.out.mode.to_lowercase() == "hls".to_string() {
         let mut speed_filter = format!("{t}realtime=speed=1");
-        let (delta, _) = get_delta(&node.begin.unwrap());
+        let (delta, _) = get_delta(&node.begin.unwrap(), &json_date, true);
         let duration = node.out - node.seek;
 
         if delta < 0.0 {
@@ -316,7 +317,7 @@ fn realtime_filter(
     }
 }
 
-pub fn filter_chains(node: &mut Media) -> Vec<String> {
+pub fn filter_chains(node: &mut Media, json_date: &String) -> Vec<String> {
     let config = GlobalConfig::global();
 
     let mut filters = Filters::new();
@@ -354,12 +355,12 @@ pub fn filter_chains(node: &mut Media) -> Vec<String> {
     add_text(node, &mut filters, &config);
     fade(node, &mut filters, "video".into());
     overlay(node, &mut filters, &config);
-    realtime_filter(node, &mut filters,  &config, "video".into());
+    realtime_filter(node, &mut filters,  &config, "video".into(), &json_date);
 
     add_loudnorm(node, &mut filters, &config);
     fade(node, &mut filters, "audio".into());
     audio_volume(&mut filters, &config);
-    realtime_filter(node, &mut filters,  &config, "audio".into());
+    realtime_filter(node, &mut filters,  &config, "audio".into(), &json_date);
 
     let mut filter_cmd = vec![];
     let mut filter_str: String = "".to_string();

@@ -6,7 +6,9 @@ use jsonrpc_http_server::{
 };
 use simplelog::*;
 
-use crate::utils::{get_sec, sec_to_time, GlobalConfig, Media, PlayerControl, ProcessControl};
+use crate::utils::{
+    get_delta, get_sec, sec_to_time, GlobalConfig, Media, PlayerControl, PlayoutStatus, ProcessControl,
+};
 
 fn get_media_map(media: Media) -> Value {
     json!({
@@ -55,12 +57,17 @@ pub async fn run_rpc(play_control: PlayerControl, proc_control: ProcessControl) 
                             if let Ok(_) = decoder.terminate() {
                                 info!("Move to next clip");
                                 let index = *play.index.lock().unwrap();
+                                let status = PlayoutStatus::global();
 
                                 if index < play.current_list.lock().unwrap().len() {
                                     let mut data_map = Map::new();
                                     let mut media =
-                                    play.current_list.lock().unwrap()[index].clone();
+                                        play.current_list.lock().unwrap()[index].clone();
                                     media.add_probe();
+
+                                    let (delta, _) = get_delta(&media.begin.unwrap_or(0.0), &status.date, false);
+                                    status.clone().write(status.date.clone(), delta);
+
                                     data_map.insert(
                                         "operation".to_string(),
                                         json!("Move to next clip"),

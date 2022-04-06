@@ -104,7 +104,7 @@ impl Iterator for Source {
             let i = *self.index.lock().unwrap();
             self.current_node = self.nodes.lock().unwrap()[i].clone();
             self.current_node.add_probe();
-            self.current_node.add_filter();
+            self.current_node.add_filter(&"".to_string());
             self.current_node.begin = Some(get_sec());
 
             *self.index.lock().unwrap() += 1;
@@ -121,7 +121,7 @@ impl Iterator for Source {
 
             self.current_node = self.nodes.lock().unwrap()[0].clone();
             self.current_node.add_probe();
-            self.current_node.add_filter();
+            self.current_node.add_filter(&"".to_string());
             self.current_node.begin = Some(get_sec());
 
             *self.index.lock().unwrap() = 1;

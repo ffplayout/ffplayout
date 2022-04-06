@@ -23,9 +23,15 @@ use simplelog::*;
 use tokio::runtime::Handle;
 
 use crate::output::source_generator;
-use crate::utils::{sec_to_time, stderr_reader, GlobalConfig, PlayerControl, ProcessControl};
+use crate::utils::{
+    sec_to_time, stderr_reader, GlobalConfig, PlayerControl, ProcessControl,
+};
 
-pub fn write_hls(rt_handle: &Handle, play_control: PlayerControl, proc_control: ProcessControl) {
+pub fn write_hls(
+    rt_handle: &Handle,
+    play_control: PlayerControl,
+    proc_control: ProcessControl,
+) {
     let config = GlobalConfig::global();
     let dec_settings = config.out.clone().output_cmd.unwrap();
     let ff_log_format = format!("level+{}", config.logging.ffmpeg_level.to_lowercase());
@@ -33,9 +39,9 @@ pub fn write_hls(rt_handle: &Handle, play_control: PlayerControl, proc_control: 
     let (get_source, _) = source_generator(
         rt_handle,
         config.clone(),
-        proc_control.is_terminated.clone(),
         play_control.current_list.clone(),
         play_control.index.clone(),
+        proc_control.is_terminated.clone(),
     );
 
     for node in get_source {

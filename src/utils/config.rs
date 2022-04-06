@@ -127,8 +127,6 @@ pub struct Out {
     pub output_cmd: Option<Vec<String>>,
 }
 
-static INSTANCE: OnceCell<GlobalConfig> = OnceCell::new();
-
 impl GlobalConfig {
     fn new() -> Self {
         let args = get_args();
@@ -252,6 +250,8 @@ impl GlobalConfig {
         INSTANCE.get().expect("Config is not initialized")
     }
 }
+
+static INSTANCE: OnceCell<GlobalConfig> = OnceCell::new();
 
 fn pre_audio_codec(add_loudnorm: bool) -> Vec<String> {
     // when add_loudnorm is False we use a different audio encoder,

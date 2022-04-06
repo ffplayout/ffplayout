@@ -11,7 +11,7 @@ mod utils;
 
 use crate::output::{player, write_hls};
 use crate::utils::{
-    init_config, init_logging, run_rpc, validate_ffmpeg, GlobalConfig, PlayerControl,
+    init_config, init_logging, init_status, run_rpc, validate_ffmpeg, GlobalConfig, PlayerControl,
     PlayoutStatus, ProcessControl,
 };
 
@@ -19,8 +19,8 @@ fn main() {
     init_config();
     let config = GlobalConfig::global();
     let play_control = PlayerControl::new();
+    let _ = PlayoutStatus::new();
     let proc_control = ProcessControl::new();
-    let _playout_stat = PlayoutStatus::new();
 
     let runtime = Builder::new_multi_thread().enable_all().build().unwrap();
     let rt_handle = runtime.handle();
@@ -28,6 +28,7 @@ fn main() {
     let logging = init_logging(rt_handle.clone(), proc_control.is_terminated.clone());
     CombinedLogger::init(logging).unwrap();
 
+    init_status();
     validate_ffmpeg();
 
     if config.rpc_server.enable {

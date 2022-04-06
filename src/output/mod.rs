@@ -30,9 +30,9 @@ use crate::utils::{
 pub fn source_generator(
     rt_handle: &Handle,
     config: GlobalConfig,
-    is_terminated: Arc<Mutex<bool>>,
     current_list: Arc<Mutex<Vec<Media>>>,
     index: Arc<Mutex<usize>>,
+    is_terminated: Arc<Mutex<bool>>,
 ) -> (Box<dyn Iterator<Item = Media>>, Arc<Mutex<bool>>) {
     let mut init_playlist: Arc<Mutex<bool>> = Arc::new(Mutex::new(false));
 
@@ -81,7 +81,11 @@ pub fn source_generator(
     (get_source, init_playlist)
 }
 
-pub fn player(rt_handle: &Handle, play_control: PlayerControl, proc_control: ProcessControl) {
+pub fn player(
+    rt_handle: &Handle,
+    play_control: PlayerControl,
+    proc_control: ProcessControl,
+) {
     let config = GlobalConfig::global();
     let dec_settings = config.processing.clone().settings.unwrap();
     let ff_log_format = format!("level+{}", config.logging.ffmpeg_level.to_lowercase());
@@ -93,9 +97,9 @@ pub fn player(rt_handle: &Handle, play_control: PlayerControl, proc_control: Pro
     let (get_source, init_playlist) = source_generator(
         rt_handle,
         config.clone(),
-        proc_control.is_terminated.clone(),
         play_control.current_list.clone(),
         play_control.index.clone(),
+        proc_control.is_terminated.clone(),
     );
 
     let mut enc_proc = match config.out.mode.as_str() {

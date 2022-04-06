@@ -25,6 +25,7 @@ mail:
     sender_pass: "abc123"
     recipient:
     mail_level: "ERROR"
+    interval: 30
 
 logging:
     help_text: Logging to file, if 'log_to_file' false log to console. 'backup_count'

@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     env::temp_dir,
     fs,
-    fs::metadata,
+    fs::{metadata, File},
     io::{BufRead, BufReader, Error},
     path::Path,
     process::exit,
@@ -14,6 +14,7 @@ use std::{
     time,
     time::UNIX_EPOCH,
 };
+use once_cell::sync::OnceCell;
 
 use jsonrpc_http_server::CloseHandle;
 use process_control::Terminator;
@@ -105,7 +106,7 @@ impl Drop for ProcessControl {
     }
 }
 
-#[derive(Serialize, Clone)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct PlayoutStatus {
     pub time_shift: f64,
     pub date: String,
@@ -113,23 +114,51 @@ pub struct PlayoutStatus {
 
 impl PlayoutStatus {
     pub fn new() -> Self {
-        let stat_file = temp_dir().join("ffplayout.json");
+        let stat_file = temp_dir().join("ffplayout_status.json");
 
-        if !stat_file.exists() {
-            let data = Self {
-                time_shift: 0.0,
-                date: "".to_string(),
-            };
-
-            let json: String = serde_json::to_string(&data).expect("Serde read data failed");
-            fs::write(stat_file, &json).expect("Unable to write file");
-        }
-
-        Self {
+        let mut data: PlayoutStatus = Self {
             time_shift: 0.0,
             date: "".to_string(),
+        };
+
+        if !stat_file.exists() {
+
+        } else {
+            let file = File::options()
+            .read(true)
+            .write(false)
+            .open(&stat_file.display().to_string())
+            .expect("Could not open status file");
+
+            data = serde_json::from_reader(file).expect("Could not read status file.");
         }
+
+        data
     }
+
+    pub fn write(mut self, date: String, time_shift: f64) {
+        let stat_file = temp_dir().join("ffplayout_status.json");
+
+        self.date = date.clone();
+        self.time_shift = time_shift.clone();
+
+        if let Ok (json) = serde_json::to_string(&self) {
+            if let Err(e) = fs::write(stat_file, &json) {
+                error!("Unable to write status file: {e}")
+            };
+        };
+    }
+
+    pub fn global() -> &'static PlayoutStatus {
+        STATUS_CELL.get().expect("Config is not initialized")
+    }
+}
+
+static STATUS_CELL: OnceCell<PlayoutStatus> = OnceCell::new();
+
+pub fn init_status() {
+    let status = PlayoutStatus::new();
+    STATUS_CELL.set(status).unwrap();
 }
 
 #[derive(Clone)]
@@ -213,9 +242,9 @@ impl Media {
         }
     }
 
-    pub fn add_filter(&mut self) {
+    pub fn add_filter(&mut self, json_date: &String) {
         let mut node = self.clone();
-        self.filter = Some(filter_chains(&mut node))
+        self.filter = Some(filter_chains(&mut node, &json_date))
     }
 }
 
@@ -349,13 +378,15 @@ pub fn is_close(a: f64, b: f64, to: f64) -> bool {
     false
 }
 
-pub fn get_delta(begin: &f64) -> (f64, f64) {
+pub fn get_delta(begin: &f64, json_date: &String, shift: bool) -> (f64, f64) {
     let config = GlobalConfig::global();
+    let status = PlayoutStatus::global();
+
     let mut current_time = get_sec();
     let start = config.playlist.start_sec.unwrap();
     let length = time_to_sec(&config.playlist.length);
     let mut target_length = 86400.0;
-    let total_delta;
+    let mut total_delta;
 
     if length > 0.0 && length != target_length {
         target_length = length
@@ -376,6 +407,11 @@ pub fn get_delta(begin: &f64) -> (f64, f64) {
         total_delta = start - current_time;
     } else {
         total_delta = target_length + start - current_time;
+    }
+
+    if shift && json_date == &status.date && status.time_shift != 0.0 {
+        current_delta -= status.time_shift;
+        total_delta -= status.time_shift;
     }
 
     (current_delta, total_delta)
