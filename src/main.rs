@@ -10,12 +10,17 @@ mod output;
 mod utils;
 
 use crate::output::{player, write_hls};
-use crate::utils::{init_config, init_logging, validate_ffmpeg, run_rpc, GlobalConfig, ProcessControl};
+use crate::utils::{
+    init_config, init_logging, run_rpc, validate_ffmpeg, GlobalConfig, PlayerControl,
+    PlayoutStatus, ProcessControl,
+};
 
 fn main() {
     init_config();
     let config = GlobalConfig::global();
+    let play_control = PlayerControl::new();
     let proc_control = ProcessControl::new();
+    let _playout_stat = PlayoutStatus::new();
 
     let runtime = Builder::new_multi_thread().enable_all().build().unwrap();
     let rt_handle = runtime.handle();
@@ -26,13 +31,13 @@ fn main() {
     validate_ffmpeg();
 
     if config.rpc_server.enable {
-        rt_handle.spawn(run_rpc(proc_control.clone()));
+        rt_handle.spawn(run_rpc(play_control.clone(), proc_control.clone()));
     }
 
     if config.out.mode.to_lowercase() == "hls".to_string() {
-        write_hls(rt_handle, proc_control);
+        write_hls(rt_handle, play_control, proc_control);
     } else {
-        player(rt_handle, proc_control);
+        player(rt_handle, play_control, proc_control);
     }
 
     info!("Playout done...");

@@ -18,18 +18,25 @@ pub struct CurrentProgram {
     json_mod: Option<String>,
     json_path: Option<String>,
     json_date: String,
-    nodes: Vec<Media>,
+    pub nodes: Arc<Mutex<Vec<Media>>>,
     current_node: Media,
     pub init: Arc<Mutex<bool>>,
-    index: usize,
+    index: Arc<Mutex<usize>>,
     rt_handle: Handle,
     is_terminated: Arc<Mutex<bool>>,
 }
 
 impl CurrentProgram {
-    pub fn new(rt_handle: Handle, is_terminated: Arc<Mutex<bool>>) -> Self {
+    pub fn new(
+        rt_handle: Handle,
+        is_terminated: Arc<Mutex<bool>>,
+        current_list: Arc<Mutex<Vec<Media>>>,
+        global_index: Arc<Mutex<usize>>,
+    ) -> Self {
         let config = GlobalConfig::global();
         let json = read_json(None, rt_handle.clone(), is_terminated.clone(), true, 0.0);
+
+        *current_list.lock().unwrap() = json.program;
 
         Self {
             config: config.clone(),
@@ -37,10 +44,10 @@ impl CurrentProgram {
             json_mod: json.modified,
             json_path: json.current_file,
             json_date: json.date,
-            nodes: json.program,
+            nodes: current_list,
             current_node: Media::new(0, "".to_string(), false),
             init: Arc::new(Mutex::new(true)),
-            index: 0,
+            index: global_index,
             rt_handle,
             is_terminated,
         }
@@ -58,7 +65,7 @@ impl CurrentProgram {
 
             self.json_path = json.current_file;
             self.json_mod = json.modified;
-            self.nodes = json.program;
+            *self.nodes.lock().unwrap() = json.program;
         } else if Path::new(&self.json_path.clone().unwrap()).is_file() {
             let mod_time = modified_time(&self.json_path.clone().unwrap());
 
@@ -82,10 +89,10 @@ impl CurrentProgram {
                 );
 
                 self.json_mod = json.modified;
-                self.nodes = json.program;
+                *self.nodes.lock().unwrap() = json.program;
 
                 self.get_current_clip();
-                self.index += 1;
+                *self.index.lock().unwrap() += 1;
             }
         } else {
             error!(
@@ -98,10 +105,10 @@ impl CurrentProgram {
             media.out = DUMMY_LEN;
 
             self.json_path = None;
-            self.nodes = vec![media.clone()];
+            *self.nodes.lock().unwrap() = vec![media.clone()];
             self.current_node = media;
             *self.init.lock().unwrap() = true;
-            self.index = 0;
+            *self.index.lock().unwrap() = 0;
         }
     }
 
@@ -133,8 +140,8 @@ impl CurrentProgram {
             self.json_path = json.current_file.clone();
             self.json_mod = json.modified;
             self.json_date = json.date;
-            self.nodes = json.program;
-            self.index = 0;
+            *self.nodes.lock().unwrap() = json.program;
+            *self.index.lock().unwrap() = 0;
 
             if json.current_file.is_none() {
                 *self.init.lock().unwrap() = true;
@@ -143,15 +150,18 @@ impl CurrentProgram {
     }
 
     fn last_next_ad(&mut self) {
-        if self.index + 1 < self.nodes.len()
-            && self.nodes[self.index + 1].category == "advertisement".to_string()
+        let index = *self.index.lock().unwrap();
+        let current_list = self.nodes.lock().unwrap();
+
+        if index + 1 < current_list.len()
+            && current_list[index + 1].category == "advertisement".to_string()
         {
             self.current_node.next_ad = Some(true);
         }
 
-        if self.index > 0
-            && self.index < self.nodes.len()
-            && self.nodes[self.index - 1].category == "advertisement".to_string()
+        if index > 0
+            && index < current_list.len()
+            && current_list[index - 1].category == "advertisement".to_string()
         {
             self.current_node.last_ad = Some(true);
         }
@@ -170,10 +180,10 @@ impl CurrentProgram {
     fn get_current_clip(&mut self) {
         let time_sec = self.get_current_time();
 
-        for (i, item) in self.nodes.iter_mut().enumerate() {
+        for (i, item) in self.nodes.lock().unwrap().iter_mut().enumerate() {
             if item.begin.unwrap() + item.out - item.seek > time_sec {
                 *self.init.lock().unwrap() = false;
-                self.index = i;
+                *self.index.lock().unwrap() = i;
 
                 break;
             }
@@ -185,10 +195,11 @@ impl CurrentProgram {
 
         if !*self.init.lock().unwrap() {
             let time_sec = self.get_current_time();
+            let index = *self.index.lock().unwrap();
 
             // de-instance node to preserve original values in list
-            let mut node_clone = self.nodes[self.index].clone();
-            self.index += 1;
+            let mut node_clone = self.nodes.lock().unwrap()[index].clone();
+            *self.index.lock().unwrap() += 1;
 
             node_clone.seek = time_sec - node_clone.begin.unwrap();
             self.current_node = handle_list_init(node_clone);
@@ -212,10 +223,11 @@ impl Iterator for CurrentProgram {
                 // on init load playlist, could be not long enough,
                 // so we check if we can take the next playlist already,
                 // or we fill the gap with a dummy.
-                self.current_node = self.nodes[self.nodes.len() - 1].clone();
+                let list_length = self.nodes.lock().unwrap().len();
+                self.current_node = self.nodes.lock().unwrap()[list_length - 1].clone();
                 self.check_for_next_playlist();
 
-                let new_node = self.nodes[self.nodes.len() - 1].clone();
+                let new_node =  self.nodes.lock().unwrap()[list_length - 1].clone();
                 let new_length = new_node.begin.unwrap() + new_node.duration;
 
                 if new_length
@@ -242,8 +254,8 @@ impl Iterator for CurrentProgram {
                     media.out = duration;
 
                     self.current_node = gen_source(media);
-                    self.nodes.push(self.current_node.clone());
-                    self.index = self.nodes.len();
+                    self.nodes.lock().unwrap().push(self.current_node.clone());
+                    *self.index.lock().unwrap() = self.nodes.lock().unwrap().len();
                 }
             }
 
@@ -252,17 +264,18 @@ impl Iterator for CurrentProgram {
             return Some(self.current_node.clone());
         }
 
-        if self.index < self.nodes.len() {
+        if *self.index.lock().unwrap() < self.nodes.lock().unwrap().len() {
             self.check_for_next_playlist();
             let mut is_last = false;
+            let index = *self.index.lock().unwrap();
 
-            if self.index == self.nodes.len() - 1 {
+            if index == self.nodes.lock().unwrap().len() - 1 {
                 is_last = true
             }
 
-            self.current_node = timed_source(self.nodes[self.index].clone(), &self.config, is_last);
+            self.current_node = timed_source(self.nodes.lock().unwrap()[index].clone(), &self.config, is_last);
             self.last_next_ad();
-            self.index += 1;
+            *self.index.lock().unwrap() += 1;
 
             // update playlist should happen after current clip,
             // to prevent unknown behaviors.
@@ -279,7 +292,8 @@ impl Iterator for CurrentProgram {
             {
                 // Test if playlist is to early finish,
                 // and if we have to fill it with a placeholder.
-                self.current_node = Media::new(self.index, "".to_string(), false);
+                let index = *self.index.lock().unwrap();
+                self.current_node = Media::new(index, "".to_string(), false);
                 self.current_node.begin = Some(get_sec());
                 let mut duration = total_delta.abs();
 
@@ -289,23 +303,23 @@ impl Iterator for CurrentProgram {
                 self.current_node.duration = duration;
                 self.current_node.out = duration;
                 self.current_node = gen_source(self.current_node.clone());
-                self.nodes.push(self.current_node.clone());
+                self.nodes.lock().unwrap().push(self.current_node.clone());
                 self.last_next_ad();
 
                 self.current_node.last_ad = last_ad;
                 self.current_node.add_filter();
 
-                self.index += 1;
+                *self.index.lock().unwrap() += 1;
 
                 return Some(self.current_node.clone());
             }
 
-            self.index = 0;
-            self.current_node = gen_source(self.nodes[self.index].clone());
+            *self.index.lock().unwrap() = 0;
+            self.current_node = gen_source(self.nodes.lock().unwrap()[0].clone());
             self.last_next_ad();
             self.current_node.last_ad = last_ad;
 
-            self.index = 1;
+            *self.index.lock().unwrap() = 1;
 
             Some(self.current_node.clone())
         }

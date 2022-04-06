@@ -23,7 +23,9 @@ mod stream;
 pub use hls::write_hls;
 
 use crate::input::{file_worker, ingest_server, CurrentProgram, Source};
-use crate::utils::{sec_to_time, stderr_reader, GlobalConfig, Media, ProcessControl};
+use crate::utils::{
+    sec_to_time, stderr_reader, GlobalConfig, Media, PlayerControl, ProcessControl,
+};
 
 pub fn source_generator(
     rt_handle: &Handle,
@@ -31,10 +33,7 @@ pub fn source_generator(
     is_terminated: Arc<Mutex<bool>>,
     current_list: Arc<Mutex<Vec<Media>>>,
     index: Arc<Mutex<usize>>,
-) -> (
-    Box<dyn Iterator<Item = Media>>,
-    Arc<Mutex<bool>>,
-) {
+) -> (Box<dyn Iterator<Item = Media>>, Arc<Mutex<bool>>) {
     let mut init_playlist: Arc<Mutex<bool>> = Arc::new(Mutex::new(false));
 
     let get_source = match config.processing.clone().mode.as_str() {
@@ -63,7 +62,12 @@ pub fn source_generator(
         }
         "playlist" => {
             info!("Playout in playlist mode");
-            let program = CurrentProgram::new(rt_handle.clone(), is_terminated.clone());
+            let program = CurrentProgram::new(
+                rt_handle.clone(),
+                is_terminated.clone(),
+                current_list,
+                index,
+            );
             init_playlist = program.init.clone();
 
             Box::new(program) as Box<dyn Iterator<Item = Media>>
@@ -77,7 +81,7 @@ pub fn source_generator(
     (get_source, init_playlist)
 }
 
-pub fn player(rt_handle: &Handle, proc_control: ProcessControl) {
+pub fn player(rt_handle: &Handle, play_control: PlayerControl, proc_control: ProcessControl) {
     let config = GlobalConfig::global();
     let dec_settings = config.processing.clone().settings.unwrap();
     let ff_log_format = format!("level+{}", config.logging.ffmpeg_level.to_lowercase());
@@ -90,8 +94,8 @@ pub fn player(rt_handle: &Handle, proc_control: ProcessControl) {
         rt_handle,
         config.clone(),
         proc_control.is_terminated.clone(),
-        proc_control.current_list.clone(),
-        proc_control.index.clone(),
+        play_control.current_list.clone(),
+        play_control.index.clone(),
     );
 
     let mut enc_proc = match config.out.mode.as_str() {
@@ -122,7 +126,7 @@ pub fn player(rt_handle: &Handle, proc_control: ProcessControl) {
     }
 
     'source_iter: for node in get_source {
-        *proc_control.current_media.lock().unwrap() = Some(node.clone());
+        *play_control.current_media.lock().unwrap() = Some(node.clone());
 
         let cmd = match node.cmd {
             Some(cmd) => cmd,
@@ -245,6 +249,10 @@ pub fn player(rt_handle: &Handle, proc_control: ProcessControl) {
     }
 
     sleep(Duration::from_secs(1));
+
+    if let Err(e) = enc_proc.kill() {
+        panic!("Encoder error: {:?}", e)
+    };
 
     if let Err(e) = enc_proc.wait() {
         panic!("Encoder error: {:?}", e)

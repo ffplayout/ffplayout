@@ -3,6 +3,8 @@ use chrono::Duration;
 use ffprobe::{ffprobe, Format, Stream};
 use serde::{Deserialize, Serialize};
 use std::{
+    env::temp_dir,
+    fs,
     fs::metadata,
     io::{BufRead, BufReader, Error},
     path::Path,
@@ -43,9 +45,6 @@ pub struct ProcessControl {
     pub rpc_handle: Arc<Mutex<Option<CloseHandle>>>,
     pub is_terminated: Arc<Mutex<bool>>,
     pub is_alive: Arc<RwLock<bool>>,
-    pub current_media: Arc<Mutex<Option<Media>>>,
-    pub current_list: Arc<Mutex<Vec<Media>>>,
-    pub index: Arc<Mutex<usize>>,
 }
 
 impl ProcessControl {
@@ -58,9 +57,6 @@ impl ProcessControl {
             rpc_handle: Arc::new(Mutex::new(None)),
             is_terminated: Arc::new(Mutex::new(false)),
             is_alive: Arc::new(RwLock::new(true)),
-            current_media: Arc::new(Mutex::new(None)),
-            current_list: Arc::new(Mutex::new(vec!(Media::new(0, "".to_string(), false)))),
-            index: Arc::new(Mutex::new(0)),
         }
     }
 }
@@ -78,7 +74,7 @@ impl ProcessControl {
 
             if let Some(server) = &*self.server_term.lock().unwrap() {
                 unsafe {
-                    if let Err(e)= server.terminate() {
+                    if let Err(e) = server.terminate() {
                         error!("Ingest server: {:?}", e);
                     }
                 }
@@ -106,6 +102,50 @@ impl ProcessControl {
 impl Drop for ProcessControl {
     fn drop(&mut self) {
         self.kill_all()
+    }
+}
+
+#[derive(Serialize, Clone)]
+pub struct PlayoutStatus {
+    pub time_shift: f64,
+    pub date: String,
+}
+
+impl PlayoutStatus {
+    pub fn new() -> Self {
+        let stat_file = temp_dir().join("ffplayout.json");
+
+        if !stat_file.exists() {
+            let data = Self {
+                time_shift: 0.0,
+                date: "".to_string(),
+            };
+
+            let json: String = serde_json::to_string(&data).expect("Serde read data failed");
+            fs::write(stat_file, &json).expect("Unable to write file");
+        }
+
+        Self {
+            time_shift: 0.0,
+            date: "".to_string(),
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct PlayerControl {
+    pub current_media: Arc<Mutex<Option<Media>>>,
+    pub current_list: Arc<Mutex<Vec<Media>>>,
+    pub index: Arc<Mutex<usize>>,
+}
+
+impl PlayerControl {
+    pub fn new() -> Self {
+        Self {
+            current_media: Arc::new(Mutex::new(None)),
+            current_list: Arc::new(Mutex::new(vec![Media::new(0, "".to_string(), false)])),
+            index: Arc::new(Mutex::new(0)),
+        }
     }
 }
 

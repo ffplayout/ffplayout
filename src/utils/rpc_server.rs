@@ -1,4 +1,4 @@
-use serde_json::{Map, json};
+use serde_json::{json, Map};
 
 use jsonrpc_http_server::jsonrpc_core::{IoHandler, Params, Value};
 use jsonrpc_http_server::{
@@ -6,7 +6,7 @@ use jsonrpc_http_server::{
 };
 use simplelog::*;
 
-use crate::utils::{get_sec, sec_to_time, GlobalConfig, Media, ProcessControl};
+use crate::utils::{get_sec, sec_to_time, GlobalConfig, Media, PlayerControl, ProcessControl};
 
 fn get_media_map(media: Media) -> Value {
     json!({
@@ -40,9 +40,10 @@ fn get_data_map(config: &GlobalConfig, media: Media) -> Map<String, Value> {
     data_map
 }
 
-pub async fn run_rpc(proc_control: ProcessControl) {
+pub async fn run_rpc(play_control: PlayerControl, proc_control: ProcessControl) {
     let config = GlobalConfig::global();
     let mut io = IoHandler::default();
+    let play = play_control.clone();
     let proc = proc_control.clone();
 
     io.add_sync_method("player", move |params: Params| {
@@ -53,30 +54,36 @@ pub async fn run_rpc(proc_control: ProcessControl) {
                         unsafe {
                             if let Ok(_) = decoder.terminate() {
                                 info!("Move to next clip");
+                                let index = *play.index.lock().unwrap();
 
-                                if let Some(media) = proc.current_media.lock().unwrap().clone() {
+                                if index < play.current_list.lock().unwrap().len() {
                                     let mut data_map = Map::new();
-                                    data_map.insert("operation".to_string(), json!("Move to next clip"));
+                                    let mut media =
+                                    play.current_list.lock().unwrap()[index].clone();
+                                    media.add_probe();
+                                    data_map.insert(
+                                        "operation".to_string(),
+                                        json!("Move to next clip"),
+                                    );
                                     data_map.insert("media".to_string(), get_media_map(media));
 
                                     return Ok(Value::Object(data_map));
-                                };
-
-                                return Ok(Value::String(format!("Move failed")));
+                                }
                             }
                         }
                     }
+                    return Ok(Value::String(format!("Move failed")));
                 }
 
                 if map.contains_key("control") && map["control"] == "back".to_string() {
                     if let Some(decoder) = &*proc.decoder_term.lock().unwrap() {
-                        let index = *proc.index.lock().unwrap();
+                        let index = *play.index.lock().unwrap();
 
-                        if index > 1 && proc.current_list.lock().unwrap().len() > 1 {
+                        if index > 1 && play.current_list.lock().unwrap().len() > 1 {
                             info!("Move to last clip");
                             let mut data_map = Map::new();
-                            let mut media = proc.current_list.lock().unwrap()[index - 2].clone();
-                            *proc.index.lock().unwrap() = index - 2;
+                            let mut media = play.current_list.lock().unwrap()[index - 2].clone();
+                            *play.index.lock().unwrap() = index - 2;
                             media.add_probe();
                             data_map.insert("operation".to_string(), json!("Move to last clip"));
                             data_map.insert("media".to_string(), get_media_map(media));
@@ -87,13 +94,12 @@ pub async fn run_rpc(proc_control: ProcessControl) {
                                 }
                             }
                         }
-
-                        return Ok(Value::String(format!("Move failed")));
                     }
+                    return Ok(Value::String(format!("Move failed")));
                 }
 
                 if map.contains_key("media") && map["media"] == "current".to_string() {
-                    if let Some(media) = proc.current_media.lock().unwrap().clone() {
+                    if let Some(media) = play.current_media.lock().unwrap().clone() {
                         let data_map = get_data_map(config, media);
 
                         return Ok(Value::Object(data_map));
