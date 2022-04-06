@@ -1,16 +1,3 @@
-use std::{
-    process::{Command, Stdio},
-    sync::{
-        Arc, Mutex,
-    },
-};
-
-use simplelog::*;
-use tokio::runtime::Handle;
-
-use crate::output::source_generator;
-use crate::utils::{sec_to_time, stderr_reader, GlobalConfig};
-
 /*
 This module write the files compression directly to a hls (m3u8) playlist,
 without pre- and post-processing.
@@ -30,7 +17,15 @@ out:
 
 */
 
-pub fn write_hls(rt_handle: &Handle, is_terminated: Arc<Mutex<bool>>) {
+use std::process::{Command, Stdio};
+
+use simplelog::*;
+use tokio::runtime::Handle;
+
+use crate::output::source_generator;
+use crate::utils::{sec_to_time, stderr_reader, GlobalConfig, ProcessControl};
+
+pub fn write_hls(rt_handle: &Handle, proc_control: ProcessControl) {
     let config = GlobalConfig::global();
     let dec_settings = config.out.clone().output_cmd.unwrap();
     let ff_log_format = format!("level+{}", config.logging.ffmpeg_level.to_lowercase());
@@ -38,10 +33,15 @@ pub fn write_hls(rt_handle: &Handle, is_terminated: Arc<Mutex<bool>>) {
     let (get_source, _) = source_generator(
         rt_handle,
         config.clone(),
-        is_terminated.clone(),
+        proc_control.is_terminated.clone(),
+        proc_control.current_list.clone(),
+        proc_control.index.clone(),
     );
 
     for node in get_source {
+        *proc_control.current_media.lock().unwrap() = Some(node.clone());
+        *proc_control.index.lock().unwrap() = node.index.clone().unwrap();
+
         let cmd = match node.cmd {
             Some(cmd) => cmd,
             None => break,

@@ -44,6 +44,8 @@ pub struct ProcessControl {
     pub is_terminated: Arc<Mutex<bool>>,
     pub is_alive: Arc<RwLock<bool>>,
     pub current_media: Arc<Mutex<Option<Media>>>,
+    pub current_list: Arc<Mutex<Vec<Media>>>,
+    pub index: Arc<Mutex<usize>>,
 }
 
 impl ProcessControl {
@@ -57,6 +59,8 @@ impl ProcessControl {
             is_terminated: Arc::new(Mutex::new(false)),
             is_alive: Arc::new(RwLock::new(true)),
             current_media: Arc::new(Mutex::new(None)),
+            current_list: Arc::new(Mutex::new(vec!(Media::new(0, "".to_string(), false)))),
+            index: Arc::new(Mutex::new(0)),
         }
     }
 }
@@ -124,11 +128,11 @@ pub struct Media {
 }
 
 impl Media {
-    pub fn new(index: usize, src: String) -> Self {
+    pub fn new(index: usize, src: String, do_probe: bool) -> Self {
         let mut duration: f64 = 0.0;
         let mut probe = None;
 
-        if Path::new(&src).is_file() {
+        if do_probe && Path::new(&src).is_file() {
             probe = Some(MediaProbe::new(src.clone()));
 
             duration = match probe.clone().unwrap().format.unwrap().duration {
@@ -155,7 +159,18 @@ impl Media {
     }
 
     pub fn add_probe(&mut self) {
-        self.probe = Some(MediaProbe::new(self.source.clone()))
+        let probe = MediaProbe::new(self.source.clone());
+        self.probe = Some(probe.clone());
+
+        if self.duration == 0.0 {
+            let duration = match probe.format.unwrap().duration {
+                Some(dur) => dur.parse().unwrap(),
+                None => 0.0,
+            };
+
+            self.out = duration;
+            self.duration = duration;
+        }
     }
 
     pub fn add_filter(&mut self) {

@@ -38,7 +38,7 @@ impl CurrentProgram {
             json_path: json.current_file,
             json_date: json.date,
             nodes: json.program,
-            current_node: Media::new(0, "".to_string()),
+            current_node: Media::new(0, "".to_string(), false),
             init: Arc::new(Mutex::new(true)),
             index: 0,
             rt_handle,
@@ -92,7 +92,7 @@ impl CurrentProgram {
                 "Playlist <b><magenta>{}</></b> not exists!",
                 self.json_path.clone().unwrap()
             );
-            let mut media = Media::new(0, "".to_string());
+            let mut media = Media::new(0, "".to_string(), false);
             media.begin = Some(get_sec());
             media.duration = DUMMY_LEN;
             media.out = DUMMY_LEN;
@@ -236,7 +236,7 @@ impl Iterator for CurrentProgram {
                     if self.config.playlist.start_sec.unwrap() > current_time {
                         current_time += self.config.playlist.length_sec.unwrap() + 1.0;
                     }
-                    let mut media = Media::new(0, "".to_string());
+                    let mut media = Media::new(0, "".to_string(), false);
                     media.begin = Some(current_time);
                     media.duration = duration;
                     media.out = duration;
@@ -279,7 +279,7 @@ impl Iterator for CurrentProgram {
             {
                 // Test if playlist is to early finish,
                 // and if we have to fill it with a placeholder.
-                self.current_node = Media::new(self.index, "".to_string());
+                self.current_node = Media::new(self.index, "".to_string(), false);
                 self.current_node.begin = Some(get_sec());
                 let mut duration = total_delta.abs();
 

@@ -32,7 +32,7 @@ pub fn output(log_format: String) -> process::Child {
         );
 
         let mut filter: String = "[0:v]null,".to_string();
-        filter.push_str(v_drawtext::filter_node(&mut Media::new(0, "".to_string())).as_str());
+        filter.push_str(v_drawtext::filter_node(&mut Media::new(0, "".to_string(), false)).as_str());
 
         if config.out.preview {
             filter.push_str(",split=2[v_out1][v_out2]");

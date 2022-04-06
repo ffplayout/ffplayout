@@ -30,7 +30,7 @@ fn main() {
     }
 
     if config.out.mode.to_lowercase() == "hls".to_string() {
-        write_hls(rt_handle, proc_control.is_terminated.clone());
+        write_hls(rt_handle, proc_control);
     } else {
         player(rt_handle, proc_control);
     }

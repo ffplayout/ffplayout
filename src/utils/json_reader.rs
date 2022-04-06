@@ -23,7 +23,7 @@ pub struct Playlist {
 
 impl Playlist {
     fn new(date: String, start: f64) -> Self {
-        let mut media = Media::new(0, "".to_string());
+        let mut media = Media::new(0, "".to_string(), false);
         media.begin = Some(start);
         media.duration = DUMMY_LEN;
         media.out = DUMMY_LEN;

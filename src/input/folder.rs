@@ -12,20 +12,21 @@ use std::{
 
 use walkdir::WalkDir;
 
-use crate::utils::{GlobalConfig, Media};
+use crate::utils::{get_sec, GlobalConfig, Media};
 
 #[derive(Debug, Clone)]
 pub struct Source {
     config: GlobalConfig,
-    pub nodes: Arc<Mutex<Vec<String>>>,
+    pub nodes: Arc<Mutex<Vec<Media>>>,
     current_node: Media,
-    index: usize,
+    index: Arc<Mutex<usize>>,
 }
 
 impl Source {
-    pub fn new() -> Self {
+    pub fn new(current_list: Arc<Mutex<Vec<Media>>>, global_index: Arc<Mutex<usize>>) -> Self {
         let config = GlobalConfig::global();
-        let mut file_list = vec![];
+        let mut media_list = vec![];
+        let mut index: usize = 0;
 
         for entry in WalkDir::new(config.storage.path.clone())
             .into_iter()
@@ -41,7 +42,8 @@ impl Source {
                         .clone()
                         .contains(&ext.unwrap().to_lowercase())
                 {
-                    file_list.push(entry.path().display().to_string());
+                    let media = Media::new(0, entry.path().display().to_string(), false);
+                    media_list.push(media);
                 }
             }
         }
@@ -49,26 +51,48 @@ impl Source {
         if config.storage.shuffle {
             info!("Shuffle files");
             let mut rng = thread_rng();
-            file_list.shuffle(&mut rng);
+            media_list.shuffle(&mut rng);
         } else {
-            file_list.sort();
+            media_list.sort_by(|d1, d2| d1.source.cmp(&d2.source));
         }
+
+        for item in media_list.iter_mut() {
+            item.index = Some(index);
+
+            index += 1;
+        }
+
+        *current_list.lock().unwrap() = media_list;
 
         Self {
             config: config.clone(),
-            nodes: Arc::new(Mutex::new(file_list)),
-            current_node: Media::new(0, "".to_string()),
-            index: 0,
+            nodes: current_list,
+            current_node: Media::new(0, "".to_string(), false),
+            index: global_index,
         }
     }
 
     fn shuffle(&mut self) {
         let mut rng = thread_rng();
         self.nodes.lock().unwrap().shuffle(&mut rng);
+        let mut index: usize = 0;
+
+        for item in self.nodes.lock().unwrap().iter_mut() {
+            item.index = Some(index);
+
+            index += 1;
+        }
     }
 
     fn sort(&mut self) {
-        self.nodes.lock().unwrap().sort();
+        self.nodes.lock().unwrap().sort_by(|d1, d2| d1.source.cmp(&d2.source));
+        let mut index: usize = 0;
+
+        for item in self.nodes.lock().unwrap().iter_mut() {
+            item.index = Some(index);
+
+            index += 1;
+        }
     }
 }
 
@@ -76,13 +100,14 @@ impl Iterator for Source {
     type Item = Media;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.index < self.nodes.lock().unwrap().len() {
-            let current_file = self.nodes.lock().unwrap()[self.index].clone();
-            self.current_node = Media::new(self.index, current_file);
+        if *self.index.lock().unwrap() < self.nodes.lock().unwrap().len() {
+            let i = *self.index.lock().unwrap();
+            self.current_node = self.nodes.lock().unwrap()[i].clone();
             self.current_node.add_probe();
             self.current_node.add_filter();
+            self.current_node.begin = Some(get_sec());
 
-            self.index += 1;
+            *self.index.lock().unwrap() += 1;
 
             Some(self.current_node.clone())
         } else {
@@ -94,12 +119,12 @@ impl Iterator for Source {
                 self.sort();
             }
 
-            let current_file = self.nodes.lock().unwrap()[0].clone();
-            self.current_node = Media::new(self.index, current_file);
+            self.current_node = self.nodes.lock().unwrap()[0].clone();
             self.current_node.add_probe();
             self.current_node.add_filter();
+            self.current_node.begin = Some(get_sec());
 
-            self.index = 1;
+            *self.index.lock().unwrap() = 1;
 
             Some(self.current_node.clone())
         }
@@ -110,31 +135,37 @@ fn file_extension(filename: &Path) -> Option<&str> {
     filename.extension().and_then(OsStr::to_str)
 }
 
-pub async fn watch_folder(
+pub async fn file_worker(
     receiver: Receiver<notify::DebouncedEvent>,
-    sources: Arc<Mutex<Vec<String>>>,
+    sources: Arc<Mutex<Vec<Media>>>,
 ) {
     while let Ok(res) = receiver.recv() {
         match res {
             Create(new_path) => {
-                sources.lock().unwrap().push(new_path.display().to_string());
+                let index = sources.lock().unwrap().len();
+                let media = Media::new(index, new_path.display().to_string(), false);
+
+                sources.lock().unwrap().push(media);
                 info!("Create new file: {:?}", new_path);
             }
             Remove(old_path) => {
                 sources
                     .lock()
                     .unwrap()
-                    .retain(|x| x != &old_path.display().to_string());
+                    .retain(|x| x.source != old_path.display().to_string());
                 info!("Remove file: {:?}", old_path);
             }
             Rename(old_path, new_path) => {
-                let i = sources
+                let index = sources
                     .lock()
                     .unwrap()
                     .iter()
-                    .position(|x| *x == old_path.display().to_string())
+                    .position(|x| *x.source == old_path.display().to_string())
                     .unwrap();
-                sources.lock().unwrap()[i] = new_path.display().to_string();
+
+                let media = Media::new(index, new_path.display().to_string(), false);
+                sources.lock().unwrap()[index] = media;
+
                 info!("Rename file: {:?} to {:?}", old_path, new_path);
             }
             _ => (),
