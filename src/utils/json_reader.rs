@@ -93,6 +93,8 @@ pub fn read_json(
     for (i, item) in playlist.program.iter_mut().enumerate() {
         item.begin = Some(start_sec);
         item.index = Some(i);
+        item.last_ad = Some(false);
+        item.next_ad = Some(false);
         item.process = Some(true);
         item.filter = Some(vec![]);
 
