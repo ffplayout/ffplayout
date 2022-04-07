@@ -41,6 +41,7 @@ The main purpose of ffplayout is to provide a 24/7 broadcasting solution that pl
   - **stream**
   - **desktop**
   - **HLS**
+- JSON RPC server, for getting infos about current playing and controlling.
 
 Requirements
 -----
@@ -125,6 +126,53 @@ out:
         -hls_flags append_list+delete_segments+omit_endlist+program_date_time
         -hls_segment_filename /var/www/html/live/stream-%09d.ts /var/www/html/live/stream.m3u8
 ```
+
+JSON RPC
+-----
+
+The ffplayout engine can run a JSON RPC server. A request show look like:
+
+```Bash
+curl -X POST -H "Content-Type: application/json" -H "Authorization: ---auth-key---" \
+    -d '{"jsonrpc": "2.0", "method": "player", "params":{"control":"next"}, "id":1 }' \
+    127.0.0.1:7070
+```
+
+At the moment this comments are possible:
+
+```Bash
+'{"jsonrpc": "2.0", "method": "player", "params":{"media":"current"}, "id":1 }'  # get infos about current clip
+'{"jsonrpc": "2.0", "method": "player", "params":{"control":"next"}, "id":1 }'   # jump to next clip
+'{"jsonrpc": "2.0", "method": "player", "params":{"control":"back"}, "id":1 }'   # jump to last clip
+'{"jsonrpc": "2.0", "method": "player", "params":{"control":"reset"}, "id":1 }'  # reset playlist to old state
+
+```
+
+Output from `{"media":"current"}` show:
+
+```JSON
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "current_media": {
+      "category": "",
+      "duration": 154.2,
+      "out": 154.2,
+      "seek": 0.0,
+      "source": "/opt/tv-media/clip.mp4"
+    },
+    "index": 39,
+    "play_mode": "playlist",
+    "played_sec": 67.80771999300123,
+    "remaining_sec": 86.39228000699876,
+    "start_sec": 24713.631999999998,
+    "start_time": "06:51:53.631"
+  },
+  "id": 1
+}
+
+```
+
 
 Installation
 -----
