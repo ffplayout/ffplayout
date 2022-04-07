@@ -1,6 +1,7 @@
 extern crate log;
 extern crate simplelog;
 
+use chrono::prelude::*;
 use regex::Regex;
 use std::{
     path::Path,
@@ -51,11 +52,15 @@ fn send_mail(msg: String) {
     }
 }
 
-async fn mail_queue(messages: Arc<Mutex<Vec<String>>>, is_terminated: Arc<Mutex<bool>>) {
-    let mut count = 0;
+async fn mail_queue(
+    messages: Arc<Mutex<Vec<String>>>,
+    is_terminated: Arc<Mutex<bool>>,
+    interval: i32,
+) {
+    let mut count: i32 = 0;
 
     loop {
-        if *is_terminated.lock().unwrap() || count == 60 {
+        if *is_terminated.lock().unwrap() || count == interval {
             // check every 30 seconds for messages and send them
             if messages.lock().unwrap().len() > 0 {
                 let msg = messages.lock().unwrap().join("\n");
@@ -71,14 +76,14 @@ async fn mail_queue(messages: Arc<Mutex<Vec<String>>>, is_terminated: Arc<Mutex<
             break;
         }
 
-        sleep(Duration::from_millis(500));
+        sleep(Duration::from_secs(1));
         count += 1;
     }
 }
 
 pub struct LogMailer {
     level: LevelFilter,
-    config: Config,
+    pub config: Config,
     messages: Arc<Mutex<Vec<String>>>,
 }
 
@@ -103,21 +108,13 @@ impl Log for LogMailer {
 
     fn log(&self, record: &Record<'_>) {
         if self.enabled(record.metadata()) {
-            match record.level() {
-                Level::Error => {
-                    self.messages
-                        .lock()
-                        .unwrap()
-                        .push(record.args().to_string());
-                }
-                Level::Warn => {
-                    self.messages
-                        .lock()
-                        .unwrap()
-                        .push(record.args().to_string());
-                }
-                _ => (),
-            }
+            let local: DateTime<Local> = Local::now();
+            let time_stamp: String = local.format("[%Y-%m-%d %H:%M:%S%.3f]").to_string();
+            let level = record.level().to_string().to_uppercase();
+            let rec = record.args().to_string();
+            let full_line: String = format!("{time_stamp} [{level: >5}] {rec}");
+
+            self.messages.lock().unwrap().push(full_line);
         }
     }
 
@@ -212,19 +209,24 @@ pub fn init_logging(
     }
 
     if config.mail.recipient.len() > 3 {
-        let mut filter = LevelFilter::Error;
         let messages: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+        let interval = config.mail.interval.clone();
 
-        rt_handle.spawn(mail_queue(messages.clone(), is_terminated.clone()));
+        rt_handle.spawn(mail_queue(
+            messages.clone(),
+            is_terminated.clone(),
+            interval,
+        ));
 
         let mail_config = log_config
             .clone()
-            .set_time_format_str("[%Y-%m-%d %H:%M:%S%.3f]")
             .build();
 
-        if config.mail.mail_level.to_lowercase() == "warning".to_string() {
-            filter = LevelFilter::Warn
-        }
+        let filter = match config.mail.mail_level.to_lowercase().as_str() {
+            "info" => LevelFilter::Info,
+            "warning" => LevelFilter::Warn,
+            _ => LevelFilter::Error,
+        };
 
         app_logger.push(LogMailer::new(filter, mail_config, messages));
     }

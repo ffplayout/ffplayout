@@ -1,35 +1,83 @@
+use std::{
+    path::PathBuf,
+    {fs, fs::File},
+};
+
 extern crate log;
 extern crate simplelog;
 
-use std::sync::{Arc, Mutex};
+use serde::{Deserialize, Serialize};
+use serde_json::json;
+use simplelog::*;
+use tokio::runtime::Builder;
 
 mod filter;
 mod input;
 mod output;
 mod utils;
 
-use simplelog::*;
-use tokio::runtime::Builder;
-
 use crate::output::{player, write_hls};
-use crate::utils::{init_config, init_logging, validate_ffmpeg, GlobalConfig};
+use crate::utils::{
+    init_config, init_logging, run_rpc, validate_ffmpeg, GlobalConfig, PlayerControl,
+    PlayoutStatus, ProcessControl,
+};
+
+#[derive(Serialize, Deserialize)]
+struct StatusData {
+    time_shift: f64,
+    date: String,
+}
 
 fn main() {
     init_config();
     let config = GlobalConfig::global();
+    let play_control = PlayerControl::new();
+    let playout_stat = PlayoutStatus::new();
+    let proc_control = ProcessControl::new();
+
+    if !PathBuf::from(config.general.stat_file.clone()).exists() {
+        let data = json!({
+            "time_shift": 0.0,
+            "date": String::new(),
+        });
+
+        let json: String = serde_json::to_string(&data).expect("Serialize status data failed");
+        fs::write(config.general.stat_file.clone(), &json).expect("Unable to write file");
+    } else {
+        let stat_file = File::options()
+            .read(true)
+            .write(false)
+            .open(&config.general.stat_file)
+            .expect("Could not open status file");
+
+        let data: StatusData =
+            serde_json::from_reader(stat_file).expect("Could not read status file.");
+
+        *playout_stat.time_shift.lock().unwrap() = data.time_shift;
+        *playout_stat.date.lock().unwrap() = data.date;
+    }
 
     let runtime = Builder::new_multi_thread().enable_all().build().unwrap();
     let rt_handle = runtime.handle();
-    let is_terminated: Arc<Mutex<bool>> = Arc::new(Mutex::new(false));
 
-    let logging = init_logging(rt_handle.clone(), is_terminated.clone());
+    let logging = init_logging(rt_handle.clone(), proc_control.is_terminated.clone());
     CombinedLogger::init(logging).unwrap();
 
     validate_ffmpeg();
 
-    if config.out.mode.to_lowercase() == "hls".to_string() {
-        write_hls(rt_handle, is_terminated);
-    } else {
-        player(rt_handle, is_terminated);
+    if config.rpc_server.enable {
+        rt_handle.spawn(run_rpc(
+            play_control.clone(),
+            playout_stat.clone(),
+            proc_control.clone(),
+        ));
     }
+
+    if config.out.mode.to_lowercase() == "hls".to_string() {
+        write_hls(rt_handle, play_control, playout_stat, proc_control);
+    } else {
+        player(rt_handle, play_control, playout_stat, proc_control);
+    }
+
+    info!("Playout done...");
 }

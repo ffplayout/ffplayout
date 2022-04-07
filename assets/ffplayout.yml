@@ -1,5 +1,5 @@
 general:
-    helptext: Sometimes it can happen, that a file is corrupt but still playable,
+    help_text: Sometimes it can happen, that a file is corrupt but still playable,
         this can produce an streaming error over all following files. The only way
         in this case is, to stop ffplayout and start it again. Here we only say when
         it stops, the starting process is in your hand. Best way is a systemd service
@@ -7,10 +7,17 @@ general:
         value. A number below 3 can cause unexpected errors.
     stop_threshold: 11
 
+rpc_server:
+    help_text: Run a JSON RPC server, for getting infos about current playing, and
+        control for some functions.
+    enable: true
+    address: 127.0.0.1:7070
+    authorization: av2Kx8g67lF9qj5wEH3ym1bI4cCs
+
 mail:
-    helptext: Send error messages to email address, like missing playlist; invalid
+    help_text: Send error messages to email address, like missing playlist; invalid
         json format; missing clip path. Leave recipient blank, if you don't need this.
-        'mail_level' can be WARNING or ERROR.
+        'mail_level' can be INFO, WARNING or ERROR. 'interval' means seconds until a new mail will be sended.
     subject: "Playout Error"
     smtp_server: "mail.example.org"
     starttls: true
@@ -18,9 +25,10 @@ mail:
     sender_pass: "abc123"
     recipient:
     mail_level: "ERROR"
+    interval: 30
 
 logging:
-    helptext: Logging to file, if 'log_to_file' false log to console. 'backup_count'
+    help_text: Logging to file, if 'log_to_file' false log to console. 'backup_count'
         says how long log files will be saved in days. 'local_time' to false will set
         log timestamps to UTC. Path to /var/log/ only if you run this program as daemon.
         'log_level' can be DEBUG, INFO, WARNING, ERROR. 'ffmpeg_level' can be info,
@@ -34,7 +42,7 @@ logging:
     ffmpeg_level: "error"
 
 processing:
-    helptext: Default processing, for all clips that they get prepared in that way,
+    help_text: Default processing, for all clips that they get prepared in that way,
         so the output is unique. Set playing mode, like playlist, or folder.
         'aspect' must be a float number. 'logo' is only used if the path exist.
         'logo_scale' scale the logo to target size, leave it blank when no scaling
@@ -60,7 +68,7 @@ processing:
     volume: 1
 
 ingest:
-    helptext: Works not with direct hls output, it always needs full processing! Run a server
+    help_text: Works not with direct hls output, it always needs full processing! Run a server
         for a ingest stream. This stream will override the normal streaming until is done.
         There is no authentication, this is up to you. The recommend way is to set address to
         localhost, stream to a local server with authentication and from there stream to this app.
@@ -68,7 +76,7 @@ ingest:
     input_param: -f live_flv -listen 1 -i rtmp://localhost:1936/live/stream
 
 playlist:
-    helptext: >
+    help_text: >
         'path' can be a path to a single file, or a directory. For directory put
         only the root folder, for example '/playlists', subdirectories are read by the
         script. Subdirectories needs this structure '/playlists/2018/01'. 'day_start'
@@ -82,7 +90,7 @@ playlist:
     infinit: false
 
 storage:
-    helptext: Play ordered or randomly files from path. 'filler_clip' is for fill
+    help_text: Play ordered or randomly files from path. 'filler_clip' is for fill
         the end to reach 24 hours, it will loop when is necessary. 'extensions' search
         only files with this extension. Set 'shuffle' to 'True' to pick files randomly.
     path: "/mediaStorage"
@@ -93,7 +101,7 @@ storage:
     shuffle: true
 
 text:
-    helptext: Overlay text in combination with libzmq for remote text manipulation.
+    help_text: Overlay text in combination with libzmq for remote text manipulation.
         On windows fontfile path need to be like this 'C\:/WINDOWS/fonts/DejaVuSans.ttf'.
         In a standard environment the filter drawtext node is Parsed_drawtext_2.
         'over_pre' if True text will be overlay in pre processing. Continue same text
@@ -110,7 +118,7 @@ text:
     regex: ^.+[/\\](.*)(.mp4|.mkv)$
 
 out:
-    helptext: The final playout compression. Set the settings to your needs.
+    help_text: The final playout compression. Set the settings to your needs.
         'mode' has the standard options 'desktop', 'hls', 'stream'. Self made
         outputs can be define, by adding script in output folder with an 'output' function
         inside. 'preview' works only in streaming output and creates a separate preview stream.

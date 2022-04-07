@@ -1,33 +1,145 @@
 use chrono::prelude::*;
 use chrono::Duration;
 use ffprobe::{ffprobe, Format, Stream};
-use serde::{Deserialize, Serialize};
 use std::{
+    fs,
     fs::metadata,
     io::{BufRead, BufReader, Error},
     path::Path,
     process::exit,
     process::{ChildStderr, Command, Stdio},
+    sync::{Arc, Mutex, RwLock},
     time,
     time::UNIX_EPOCH,
 };
 
+use jsonrpc_http_server::CloseHandle;
+use process_control::Terminator;
 use regex::Regex;
 use simplelog::*;
+use serde::{Deserialize, Serialize};
+use serde_json::json;
 
 mod arg_parse;
 mod config;
 pub mod json_reader;
 mod json_validate;
 mod logging;
+mod rpc_server;
 
 pub use arg_parse::get_args;
 pub use config::{init_config, GlobalConfig};
 pub use json_reader::{read_json, Playlist, DUMMY_LEN};
 pub use json_validate::validate_playlist;
 pub use logging::init_logging;
+pub use rpc_server::run_rpc;
 
 use crate::filter::filter_chains;
+
+#[derive(Clone)]
+pub struct ProcessControl {
+    pub decoder_term: Arc<Mutex<Option<Terminator>>>,
+    pub encoder_term: Arc<Mutex<Option<Terminator>>>,
+    pub server_term: Arc<Mutex<Option<Terminator>>>,
+    pub server_is_running: Arc<Mutex<bool>>,
+    pub rpc_handle: Arc<Mutex<Option<CloseHandle>>>,
+    pub is_terminated: Arc<Mutex<bool>>,
+    pub is_alive: Arc<RwLock<bool>>,
+}
+
+impl ProcessControl {
+    pub fn new() -> Self {
+        Self {
+            decoder_term: Arc::new(Mutex::new(None)),
+            encoder_term: Arc::new(Mutex::new(None)),
+            server_term: Arc::new(Mutex::new(None)),
+            server_is_running: Arc::new(Mutex::new(false)),
+            rpc_handle: Arc::new(Mutex::new(None)),
+            is_terminated: Arc::new(Mutex::new(false)),
+            is_alive: Arc::new(RwLock::new(true)),
+        }
+    }
+}
+
+impl ProcessControl {
+    pub fn kill_all(&mut self) {
+        *self.is_terminated.lock().unwrap() = true;
+
+        if *self.is_alive.read().unwrap() {
+            *self.is_alive.write().unwrap() = false;
+
+            if let Some(rpc) = &*self.rpc_handle.lock().unwrap() {
+                rpc.clone().close()
+            };
+
+            if let Some(server) = &*self.server_term.lock().unwrap() {
+                unsafe {
+                    if let Err(e) = server.terminate() {
+                        error!("Ingest server: {:?}", e);
+                    }
+                }
+            };
+
+            if let Some(decoder) = &*self.decoder_term.lock().unwrap() {
+                unsafe {
+                    if let Err(e) = decoder.terminate() {
+                        error!("Decoder: {:?}", e);
+                    }
+                }
+            };
+
+            if let Some(encoder) = &*self.encoder_term.lock().unwrap() {
+                unsafe {
+                    if let Err(e) = encoder.terminate() {
+                        error!("Encoder: {:?}", e);
+                    }
+                }
+            };
+        }
+    }
+}
+
+impl Drop for ProcessControl {
+    fn drop(&mut self) {
+        self.kill_all()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct PlayoutStatus {
+    pub time_shift: Arc<Mutex<f64>>,
+    pub date: Arc<Mutex<String>>,
+    pub current_date: Arc<Mutex<String>>,
+    pub list_init: Arc<Mutex<bool>>,
+}
+
+impl PlayoutStatus {
+    pub fn new() -> Self {
+        Self {
+            time_shift: Arc::new(Mutex::new(0.0)),
+            date: Arc::new(Mutex::new(String::new())),
+            current_date: Arc::new(Mutex::new(String::new())),
+            list_init: Arc::new(Mutex::new(true)),
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct PlayerControl {
+    pub current_media: Arc<Mutex<Option<Media>>>,
+    pub current_list: Arc<Mutex<Vec<Media>>>,
+    pub index: Arc<Mutex<usize>>,
+}
+
+impl PlayerControl {
+    pub fn new() -> Self {
+        Self {
+            current_media: Arc::new(Mutex::new(None)),
+            current_list: Arc::new(Mutex::new(vec![Media::new(0, String::new(), false)])),
+            index: Arc::new(Mutex::new(0)),
+        }
+    }
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Media {
@@ -48,11 +160,11 @@ pub struct Media {
 }
 
 impl Media {
-    pub fn new(index: usize, src: String) -> Self {
+    pub fn new(index: usize, src: String, do_probe: bool) -> Self {
         let mut duration: f64 = 0.0;
         let mut probe = None;
 
-        if Path::new(&src).is_file() {
+        if do_probe && Path::new(&src).is_file() {
             probe = Some(MediaProbe::new(src.clone()));
 
             duration = match probe.clone().unwrap().format.unwrap().duration {
@@ -67,7 +179,7 @@ impl Media {
             seek: 0.0,
             out: duration,
             duration: duration,
-            category: "".to_string(),
+            category: String::new(),
             source: src.clone(),
             cmd: Some(vec!["-i".to_string(), src]),
             filter: Some(vec![]),
@@ -79,7 +191,18 @@ impl Media {
     }
 
     pub fn add_probe(&mut self) {
-        self.probe = Some(MediaProbe::new(self.source.clone()))
+        let probe = MediaProbe::new(self.source.clone());
+        self.probe = Some(probe.clone());
+
+        if self.duration == 0.0 {
+            let duration = match probe.format.unwrap().duration {
+                Some(dur) => dur.parse().unwrap(),
+                None => 0.0,
+            };
+
+            self.out = duration;
+            self.duration = duration;
+        }
     }
 
     pub fn add_filter(&mut self) {
@@ -149,6 +272,21 @@ impl MediaProbe {
             }
         }
     }
+}
+
+pub fn write_status(date: String, shift: f64) {
+    let config = GlobalConfig::global();
+    let stat_file = config.general.stat_file.clone();
+
+    let data = json!({
+        "time_shift": shift,
+        "date": date,
+    });
+
+    let status_data: String = serde_json::to_string(&data)
+        .expect("Serialize status data failed");
+    fs::write(stat_file, &status_data)
+        .expect("Unable to write file");
 }
 
 // pub fn get_timestamp() -> i64 {
@@ -308,7 +446,7 @@ pub fn seek_and_length(src: String, seek: f64, out: f64, duration: f64) -> Vec<S
 }
 
 pub async fn stderr_reader(std_errors: ChildStderr, suffix: String) -> Result<(), Error> {
-    // read ffmpeg stderr decoder and encoder instance
+    // read ffmpeg stderr decoder, encoder and server instance
     // and log the output
 
     fn format_line(line: String, level: String) -> String {

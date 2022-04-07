@@ -29,7 +29,7 @@ pub fn output(log_format: String) -> process::Child {
         );
 
         let mut filter: String = "null,".to_string();
-        filter.push_str(v_drawtext::filter_node(&mut Media::new(0, "".to_string())).as_str());
+        filter.push_str(v_drawtext::filter_node(&mut Media::new(0, String::new(), false)).as_str());
         enc_filter = vec!["-vf".to_string(), filter];
     }
 

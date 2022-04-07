@@ -3,7 +3,7 @@ use std::{
     io::{prelude::*, BufReader, BufWriter, Read},
     path::Path,
     process,
-    process::{Child, Command, Stdio},
+    process::{Command, Stdio},
     sync::{
         mpsc::{channel, sync_channel, Receiver, SyncSender},
         Arc, Mutex,
@@ -12,7 +12,7 @@ use std::{
     time::Duration,
 };
 
-use process_control::Terminator;
+use process_control::ChildExt;
 use simplelog::*;
 use tokio::runtime::Handle;
 
@@ -22,71 +22,19 @@ mod stream;
 
 pub use hls::write_hls;
 
-use crate::input::{ingest_server, watch_folder, CurrentProgram, Source};
-use crate::utils::{sec_to_time, stderr_reader, GlobalConfig, Media};
-
-#[derive(Debug)]
-struct ProcessCleanup {
-    server_term: Arc<Mutex<Option<Terminator>>>,
-    is_terminated: Arc<Mutex<bool>>,
-    enc_proc: Child,
-    is_alive: bool,
-}
-
-impl ProcessCleanup {
-    fn new(
-        server_term: Arc<Mutex<Option<Terminator>>>,
-        is_terminated: Arc<Mutex<bool>>,
-        enc_proc: Child,
-    ) -> Self {
-        Self {
-            server_term,
-            is_terminated,
-            enc_proc,
-            is_alive: true,
-        }
-    }
-}
-
-impl ProcessCleanup {
-    fn kill(&mut self) {
-        *self.is_terminated.lock().unwrap() = true;
-
-        if self.is_alive {
-            if let Some(server) = &*self.server_term.lock().unwrap() {
-                unsafe {
-                    if let Ok(_) = server.terminate() {
-                        info!("Terminate ingest server done");
-                    }
-                }
-            };
-
-            self.is_alive = false;
-        }
-
-        if let Ok(_) = self.enc_proc.kill() {
-            info!("Playout done...")
-        }
-
-        if let Err(e) = self.enc_proc.wait() {
-            error!("Encoder: {e}")
-        };
-    }
-}
-
-impl Drop for ProcessCleanup {
-    fn drop(&mut self) {
-        self.kill()
-    }
-}
+use crate::input::{file_worker, ingest_server, CurrentProgram, Source};
+use crate::utils::{
+    sec_to_time, stderr_reader, GlobalConfig, Media, PlayerControl, PlayoutStatus, ProcessControl,
+};
 
 pub fn source_generator(
     rt_handle: &Handle,
     config: GlobalConfig,
+    current_list: Arc<Mutex<Vec<Media>>>,
+    index: Arc<Mutex<usize>>,
+    playout_stat: PlayoutStatus,
     is_terminated: Arc<Mutex<bool>>,
-) -> (Box<dyn Iterator<Item = Media>>, Arc<Mutex<bool>>) {
-    let mut init_playlist: Arc<Mutex<bool>> = Arc::new(Mutex::new(false));
-
+) -> Box<dyn Iterator<Item = Media>> {
     let get_source = match config.processing.clone().mode.as_str() {
         "folder" => {
             let path = config.storage.path.clone();
@@ -97,24 +45,29 @@ pub fn source_generator(
 
             info!("Playout in folder mode.");
 
-            let folder_source = Source::new();
-            let (sender, receiver) = channel();
-            let mut watcher = watcher(sender, Duration::from_secs(2)).unwrap();
+            let folder_source = Source::new(current_list, index);
 
-            watcher
+            let (sender, receiver) = channel();
+            let mut watchman = watcher(sender, Duration::from_secs(2)).unwrap();
+            watchman
                 .watch(path.clone(), RecursiveMode::Recursive)
                 .unwrap();
 
             debug!("Monitor folder: <b><magenta>{}</></b>", path);
 
-            rt_handle.spawn(watch_folder(receiver, Arc::clone(&folder_source.nodes)));
+            rt_handle.spawn(file_worker(receiver, folder_source.nodes.clone()));
 
             Box::new(folder_source) as Box<dyn Iterator<Item = Media>>
         }
         "playlist" => {
             info!("Playout in playlist mode");
-            let program = CurrentProgram::new(rt_handle.clone(), is_terminated.clone());
-            init_playlist = program.init.clone();
+            let program = CurrentProgram::new(
+                rt_handle.clone(),
+                playout_stat,
+                is_terminated.clone(),
+                current_list,
+                index,
+            );
 
             Box::new(program) as Box<dyn Iterator<Item = Media>>
         }
@@ -124,20 +77,30 @@ pub fn source_generator(
         }
     };
 
-    (get_source, init_playlist)
+    get_source
 }
 
-pub fn player(rt_handle: &Handle, is_terminated: Arc<Mutex<bool>>) {
+pub fn player(
+    rt_handle: &Handle,
+    play_control: PlayerControl,
+    playout_stat: PlayoutStatus,
+    proc_control: ProcessControl,
+) {
     let config = GlobalConfig::global();
     let dec_settings = config.processing.clone().settings.unwrap();
     let ff_log_format = format!("level+{}", config.logging.ffmpeg_level.to_lowercase());
-    let server_term: Arc<Mutex<Option<Terminator>>> = Arc::new(Mutex::new(None));
-    let server_is_running: Arc<Mutex<bool>> = Arc::new(Mutex::new(false));
     let mut buffer: [u8; 65088] = [0; 65088];
     let mut live_on = false;
+    let playlist_init = playout_stat.list_init.clone();
 
-    let (get_source, init_playlist) =
-        source_generator(rt_handle, config.clone(), is_terminated.clone());
+    let get_source = source_generator(
+        rt_handle,
+        config.clone(),
+        play_control.current_list.clone(),
+        play_control.index.clone(),
+        playout_stat,
+        proc_control.is_terminated.clone(),
+    );
 
     let mut enc_proc = match config.out.mode.as_str() {
         "desktop" => desktop::output(ff_log_format.clone()),
@@ -162,16 +125,13 @@ pub fn player(rt_handle: &Handle, is_terminated: Arc<Mutex<bool>>) {
             ff_log_format.clone(),
             ingest_sender,
             rt_handle.clone(),
-            server_term.clone(),
-            is_terminated.clone(),
-            server_is_running.clone(),
+            proc_control.clone(),
         ));
     }
 
-    let mut proc_cleanup =
-        ProcessCleanup::new(server_term.clone(), is_terminated.clone(), enc_proc);
-
     'source_iter: for node in get_source {
+        *play_control.current_media.lock().unwrap() = Some(node.clone());
+
         let cmd = match node.cmd {
             Some(cmd) => cmd,
             None => break,
@@ -222,8 +182,12 @@ pub fn player(rt_handle: &Handle, is_terminated: Arc<Mutex<bool>>) {
             "Decoder".to_string(),
         ));
 
+        if let Ok(dec_terminator) = dec_proc.terminator() {
+            *proc_control.decoder_term.lock().unwrap() = Some(dec_terminator);
+        };
+
         loop {
-            if *server_is_running.lock().unwrap() {
+            if *proc_control.server_is_running.lock().unwrap() {
                 if !live_on {
                     info!("Switch from {} to live ingest", config.processing.mode);
 
@@ -241,7 +205,7 @@ pub fn player(rt_handle: &Handle, is_terminated: Arc<Mutex<bool>>) {
 
                     live_on = true;
 
-                    *init_playlist.lock().unwrap() = true;
+                    *playlist_init.lock().unwrap() = true;
                 }
 
                 if let Ok(receive) = ingest_receiver.try_recv() {
@@ -290,5 +254,11 @@ pub fn player(rt_handle: &Handle, is_terminated: Arc<Mutex<bool>>) {
 
     sleep(Duration::from_secs(1));
 
-    proc_cleanup.kill();
+    if let Err(e) = enc_proc.kill() {
+        panic!("Encoder error: {:?}", e)
+    };
+
+    if let Err(e) = enc_proc.wait() {
+        panic!("Encoder error: {:?}", e)
+    };
 }

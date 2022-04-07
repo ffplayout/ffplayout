@@ -122,7 +122,7 @@ fn scale(width: i64, height: i64, aspect: f64, chain: &mut Filters, config: &Glo
 }
 
 fn fade(node: &mut Media, chain: &mut Filters, codec_type: String) {
-    let mut t = "".to_string();
+    let mut t = String::new();
 
     if codec_type == "audio".to_string() {
         t = "a".to_string()
@@ -291,9 +291,9 @@ fn realtime_filter(
     config: &GlobalConfig,
     codec_type: String,
 ) {
-    //this realtime filter is important for HLS output to stay in sync
+    // this realtime filter is important for HLS output to stay in sync
 
-    let mut t = "".to_string();
+    let mut t = String::new();
 
     if codec_type == "audio".to_string() {
         t = "a".to_string()
@@ -354,15 +354,15 @@ pub fn filter_chains(node: &mut Media) -> Vec<String> {
     add_text(node, &mut filters, &config);
     fade(node, &mut filters, "video".into());
     overlay(node, &mut filters, &config);
-    realtime_filter(node, &mut filters,  &config, "video".into());
+    realtime_filter(node, &mut filters, &config, "video".into());
 
     add_loudnorm(node, &mut filters, &config);
     fade(node, &mut filters, "audio".into());
     audio_volume(&mut filters, &config);
-    realtime_filter(node, &mut filters,  &config, "audio".into());
+    realtime_filter(node, &mut filters, &config, "audio".into());
 
     let mut filter_cmd = vec![];
-    let mut filter_str: String = "".to_string();
+    let mut filter_str: String = String::new();
     let mut filter_map: Vec<String> = vec![];
 
     if filters.video_chain.is_some() {

@@ -15,6 +15,7 @@ use crate::utils::{get_args, time_to_sec};
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct GlobalConfig {
     pub general: General,
+    pub rpc_server: RpcServer,
     pub mail: Mail,
     pub logging: Logging,
     pub processing: Processing,
@@ -28,6 +29,16 @@ pub struct GlobalConfig {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct General {
     pub stop_threshold: f64,
+
+    #[serde(skip_serializing, skip_deserializing)]
+    pub stat_file: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct RpcServer {
+    pub enable: bool,
+    pub address: String,
+    pub authorization: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -39,6 +50,7 @@ pub struct Mail {
     pub sender_pass: String,
     pub recipient: String,
     pub mail_level: String,
+    pub interval: i32,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -118,8 +130,6 @@ pub struct Out {
     pub output_cmd: Option<Vec<String>>,
 }
 
-static INSTANCE: OnceCell<GlobalConfig> = OnceCell::new();
-
 impl GlobalConfig {
     fn new() -> Self {
         let args = get_args();
@@ -139,7 +149,8 @@ impl GlobalConfig {
             Err(err) => {
                 println!(
                     "{:?} doesn't exists!\n{}\n\nSystem error: {err}",
-                    config_path, "Put \"ffplayout.yml\" in \"/etc/playout/\" or beside the executable!"
+                    config_path,
+                    "Put \"ffplayout.yml\" in \"/etc/playout/\" or beside the executable!"
                 );
                 process::exit(0x0100);
             }
@@ -147,6 +158,10 @@ impl GlobalConfig {
 
         let mut config: GlobalConfig =
             serde_yaml::from_reader(f).expect("Could not read config file.");
+        config.general.stat_file = env::temp_dir()
+            .join("ffplayout_status.json")
+            .display()
+            .to_string();
         let fps = config.processing.fps.to_string();
         let bitrate = config.processing.width * config.processing.height / 10;
         config.playlist.start_sec = Some(time_to_sec(&config.playlist.day_start));
@@ -243,6 +258,8 @@ impl GlobalConfig {
         INSTANCE.get().expect("Config is not initialized")
     }
 }
+
+static INSTANCE: OnceCell<GlobalConfig> = OnceCell::new();
 
 fn pre_audio_codec(add_loudnorm: bool) -> Vec<String> {
     // when add_loudnorm is False we use a different audio encoder,
