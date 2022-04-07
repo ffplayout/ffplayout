@@ -4,7 +4,7 @@ use simplelog::*;
 
 pub mod v_drawtext;
 
-use crate::utils::{get_delta, is_close, GlobalConfig, Media, PlayoutStatus};
+use crate::utils::{get_delta, is_close, GlobalConfig, Media};
 
 #[derive(Debug, Clone)]
 struct Filters {
@@ -122,7 +122,7 @@ fn scale(width: i64, height: i64, aspect: f64, chain: &mut Filters, config: &Glo
 }
 
 fn fade(node: &mut Media, chain: &mut Filters, codec_type: String) {
-    let mut t = "".to_string();
+    let mut t = String::new();
 
     if codec_type == "audio".to_string() {
         t = "a".to_string()
@@ -290,11 +290,10 @@ fn realtime_filter(
     chain: &mut Filters,
     config: &GlobalConfig,
     codec_type: String,
-    playout_stat: &PlayoutStatus,
 ) {
     // this realtime filter is important for HLS output to stay in sync
 
-    let mut t = "".to_string();
+    let mut t = String::new();
 
     if codec_type == "audio".to_string() {
         t = "a".to_string()
@@ -302,7 +301,7 @@ fn realtime_filter(
 
     if config.out.mode.to_lowercase() == "hls".to_string() {
         let mut speed_filter = format!("{t}realtime=speed=1");
-        let (delta, _) = get_delta(&node.begin.unwrap(), &playout_stat, true);
+        let (delta, _) = get_delta(&node.begin.unwrap());
         let duration = node.out - node.seek;
 
         if delta < 0.0 {
@@ -317,7 +316,7 @@ fn realtime_filter(
     }
 }
 
-pub fn filter_chains(node: &mut Media, playout_stat: &PlayoutStatus) -> Vec<String> {
+pub fn filter_chains(node: &mut Media) -> Vec<String> {
     let config = GlobalConfig::global();
 
     let mut filters = Filters::new();
@@ -355,15 +354,15 @@ pub fn filter_chains(node: &mut Media, playout_stat: &PlayoutStatus) -> Vec<Stri
     add_text(node, &mut filters, &config);
     fade(node, &mut filters, "video".into());
     overlay(node, &mut filters, &config);
-    realtime_filter(node, &mut filters, &config, "video".into(), &playout_stat);
+    realtime_filter(node, &mut filters, &config, "video".into());
 
     add_loudnorm(node, &mut filters, &config);
     fade(node, &mut filters, "audio".into());
     audio_volume(&mut filters, &config);
-    realtime_filter(node, &mut filters, &config, "audio".into(), &playout_stat);
+    realtime_filter(node, &mut filters, &config, "audio".into());
 
     let mut filter_cmd = vec![];
-    let mut filter_str: String = "".to_string();
+    let mut filter_str: String = String::new();
     let mut filter_map: Vec<String> = vec![];
 
     if filters.video_chain.is_some() {

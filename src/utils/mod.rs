@@ -1,8 +1,8 @@
 use chrono::prelude::*;
 use chrono::Duration;
 use ffprobe::{ffprobe, Format, Stream};
-use serde::{Deserialize, Serialize};
 use std::{
+    fs,
     fs::metadata,
     io::{BufRead, BufReader, Error},
     path::Path,
@@ -17,6 +17,8 @@ use jsonrpc_http_server::CloseHandle;
 use process_control::Terminator;
 use regex::Regex;
 use simplelog::*;
+use serde::{Deserialize, Serialize};
+use serde_json::json;
 
 mod arg_parse;
 mod config;
@@ -108,6 +110,7 @@ pub struct PlayoutStatus {
     pub time_shift: Arc<Mutex<f64>>,
     pub date: Arc<Mutex<String>>,
     pub current_date: Arc<Mutex<String>>,
+    pub list_init: Arc<Mutex<bool>>,
 }
 
 impl PlayoutStatus {
@@ -116,6 +119,7 @@ impl PlayoutStatus {
             time_shift: Arc::new(Mutex::new(0.0)),
             date: Arc::new(Mutex::new(String::new())),
             current_date: Arc::new(Mutex::new(String::new())),
+            list_init: Arc::new(Mutex::new(true)),
         }
     }
 }
@@ -131,7 +135,7 @@ impl PlayerControl {
     pub fn new() -> Self {
         Self {
             current_media: Arc::new(Mutex::new(None)),
-            current_list: Arc::new(Mutex::new(vec![Media::new(0, "".to_string(), false)])),
+            current_list: Arc::new(Mutex::new(vec![Media::new(0, String::new(), false)])),
             index: Arc::new(Mutex::new(0)),
         }
     }
@@ -175,7 +179,7 @@ impl Media {
             seek: 0.0,
             out: duration,
             duration: duration,
-            category: "".to_string(),
+            category: String::new(),
             source: src.clone(),
             cmd: Some(vec!["-i".to_string(), src]),
             filter: Some(vec![]),
@@ -201,9 +205,9 @@ impl Media {
         }
     }
 
-    pub fn add_filter(&mut self, playout_stat: &PlayoutStatus) {
+    pub fn add_filter(&mut self) {
         let mut node = self.clone();
-        self.filter = Some(filter_chains(&mut node, &playout_stat))
+        self.filter = Some(filter_chains(&mut node))
     }
 }
 
@@ -268,6 +272,21 @@ impl MediaProbe {
             }
         }
     }
+}
+
+pub fn write_status(date: String, shift: f64) {
+    let config = GlobalConfig::global();
+    let stat_file = config.general.stat_file.clone();
+
+    let data = json!({
+        "time_shift": shift,
+        "date": date,
+    });
+
+    let status_data: String = serde_json::to_string(&data)
+        .expect("Serialize status data failed");
+    fs::write(stat_file, &status_data)
+        .expect("Unable to write file");
 }
 
 // pub fn get_timestamp() -> i64 {
@@ -337,13 +356,13 @@ pub fn is_close(a: f64, b: f64, to: f64) -> bool {
     false
 }
 
-pub fn get_delta(begin: &f64, playout_stat: &PlayoutStatus, shift: bool) -> (f64, f64) {
+pub fn get_delta(begin: &f64) -> (f64, f64) {
     let config = GlobalConfig::global();
     let mut current_time = get_sec();
     let start = config.playlist.start_sec.unwrap();
     let length = time_to_sec(&config.playlist.length);
     let mut target_length = 86400.0;
-    let mut total_delta;
+    let total_delta;
 
     if length > 0.0 && length != target_length {
         target_length = length
@@ -364,17 +383,6 @@ pub fn get_delta(begin: &f64, playout_stat: &PlayoutStatus, shift: bool) -> (f64
         total_delta = start - current_time;
     } else {
         total_delta = target_length + start - current_time;
-    }
-
-    println!("current_delta: {current_delta}");
-    println!("shift: {}", *playout_stat.time_shift.lock().unwrap());
-
-    if shift
-        && *playout_stat.current_date.lock().unwrap() == *playout_stat.date.lock().unwrap()
-        && *playout_stat.time_shift.lock().unwrap() != 0.0
-    {
-        current_delta -= *playout_stat.time_shift.lock().unwrap();
-        total_delta -= *playout_stat.time_shift.lock().unwrap();
     }
 
     (current_delta, total_delta)

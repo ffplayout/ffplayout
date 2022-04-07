@@ -37,7 +37,7 @@ pub fn write_hls(
     let dec_settings = config.out.clone().output_cmd.unwrap();
     let ff_log_format = format!("level+{}", config.logging.ffmpeg_level.to_lowercase());
 
-    let (get_source, _) = source_generator(
+    let get_source = source_generator(
         rt_handle,
         config.clone(),
         play_control.current_list.clone(),

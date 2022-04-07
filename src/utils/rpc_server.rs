@@ -1,15 +1,16 @@
-use std::fs;
-use serde_json::{json, Map};
+use std::sync::{Arc, Mutex};
 
 use jsonrpc_http_server::jsonrpc_core::{IoHandler, Params, Value};
 use jsonrpc_http_server::{
     hyper, AccessControlAllowOrigin, DomainsValidation, Response, RestApi, ServerBuilder,
 };
+use process_control::Terminator;
+use serde_json::{json, Map};
 use simplelog::*;
 
 use crate::utils::{
-    get_delta, get_sec, sec_to_time, GlobalConfig, Media, PlayerControl, PlayoutStatus,
-    ProcessControl,
+    get_delta, get_sec, sec_to_time, write_status, GlobalConfig, Media, PlayerControl,
+    PlayoutStatus, ProcessControl,
 };
 
 fn get_media_map(media: Media) -> Value {
@@ -44,6 +45,19 @@ fn get_data_map(config: &GlobalConfig, media: Media) -> Map<String, Value> {
     data_map
 }
 
+fn kill_decoder(terminator: Arc<Mutex<Option<Terminator>>>) -> Result<(), String> {
+    match &*terminator.lock().unwrap() {
+        Some(decoder) => unsafe {
+            if let Err(e) = decoder.terminate() {
+                return Err(format!("Terminate decoder: {e}"));
+            }
+        },
+        None => return Err("No decoder terminator found".to_string()),
+    }
+
+    Ok(())
+}
+
 pub async fn run_rpc(
     play_control: PlayerControl,
     playout_stat: PlayoutStatus,
@@ -52,56 +66,36 @@ pub async fn run_rpc(
     let config = GlobalConfig::global();
     let mut io = IoHandler::default();
     let play = play_control.clone();
-    let stat = playout_stat.clone();
     let proc = proc_control.clone();
 
     io.add_sync_method("player", move |params: Params| {
-        let stat_file = config.general.stat_file.clone();
-
         match params {
             Params::Map(map) => {
                 if map.contains_key("control") && map["control"] == "next".to_string() {
-                    if let Some(decoder) = &*proc.decoder_term.lock().unwrap() {
-                        unsafe {
-                            if let Ok(_) = decoder.terminate() {
-                                info!("Move to next clip");
-                                let index = *play.index.lock().unwrap();
+                    if let Ok(_) = kill_decoder(proc.decoder_term.clone()) {
+                        info!("Move to next clip");
+                        let index = *play.index.lock().unwrap();
 
-                                if index < play.current_list.lock().unwrap().len() {
-                                    let mut data_map = Map::new();
-                                    let mut media =
-                                        play.current_list.lock().unwrap()[index].clone();
-                                    media.add_probe();
+                        if index < play.current_list.lock().unwrap().len() {
+                            let mut data_map = Map::new();
+                            let mut media = play.current_list.lock().unwrap()[index].clone();
+                            media.add_probe();
 
-                                    let (delta, _) =
-                                        get_delta(&media.begin.unwrap_or(0.0), &stat, false);
+                            let (delta, _) = get_delta(&media.begin.unwrap_or(0.0));
+                            *playout_stat.time_shift.lock().unwrap() = delta;
+                            write_status(playout_stat.current_date.lock().unwrap().clone(), delta);
 
-                                    let data = json!({
-                                        "time_shift": delta,
-                                        "date": *stat.current_date.lock().unwrap(),
-                                    });
+                            data_map.insert("operation".to_string(), json!("Move to next clip"));
+                            data_map.insert("media".to_string(), get_media_map(media));
 
-                                    let status_data: String = serde_json::to_string(&data)
-                                        .expect("Serialize status data failed");
-                                    fs::write(stat_file, &status_data)
-                                        .expect("Unable to write file");
-
-                                    data_map.insert(
-                                        "operation".to_string(),
-                                        json!("Move to next clip"),
-                                    );
-                                    data_map.insert("media".to_string(), get_media_map(media));
-
-                                    return Ok(Value::Object(data_map));
-                                }
-                            }
+                            return Ok(Value::Object(data_map));
                         }
                     }
-                    return Ok(Value::String(format!("Move failed")));
+                    return Ok(Value::String("Move failed".to_string()));
                 }
 
                 if map.contains_key("control") && map["control"] == "back".to_string() {
-                    if let Some(decoder) = &*proc.decoder_term.lock().unwrap() {
+                    if let Ok(_) = kill_decoder(proc.decoder_term.clone()) {
                         let index = *play.index.lock().unwrap();
 
                         if index > 1 && play.current_list.lock().unwrap().len() > 1 {
@@ -110,17 +104,32 @@ pub async fn run_rpc(
                             let mut media = play.current_list.lock().unwrap()[index - 2].clone();
                             *play.index.lock().unwrap() = index - 2;
                             media.add_probe();
+
+                            let (delta, _) = get_delta(&media.begin.unwrap_or(0.0));
+                            *playout_stat.time_shift.lock().unwrap() = delta;
+                            write_status(playout_stat.current_date.lock().unwrap().clone(), delta);
+
                             data_map.insert("operation".to_string(), json!("Move to last clip"));
                             data_map.insert("media".to_string(), get_media_map(media));
 
-                            unsafe {
-                                if let Ok(_) = decoder.terminate() {
-                                    return Ok(Value::Object(data_map));
-                                }
-                            }
+                            return Ok(Value::Object(data_map));
                         }
                     }
-                    return Ok(Value::String(format!("Move failed")));
+                    return Ok(Value::String("Move failed".to_string()));
+                }
+
+                if map.contains_key("control") && map["control"] == "reset".to_string() {
+                    *playout_stat.date.lock().unwrap() = String::new();
+                    *playout_stat.time_shift.lock().unwrap() = 0.0;
+                    *playout_stat.list_init.lock().unwrap() = true;
+
+                    write_status(String::new().clone(), 0.0);
+
+                    if let Err(e) = kill_decoder(proc.decoder_term.clone()) {
+                        error!("{e}");
+                    }
+
+                    return Ok(Value::String("Reset playout to original state".to_string()));
                 }
 
                 if map.contains_key("media") && map["media"] == "current".to_string() {

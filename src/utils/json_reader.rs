@@ -23,7 +23,7 @@ pub struct Playlist {
 
 impl Playlist {
     fn new(date: String, start: f64) -> Self {
-        let mut media = Media::new(0, "".to_string(), false);
+        let mut media = Media::new(0, String::new(), false);
         media.begin = Some(start);
         media.duration = DUMMY_LEN;
         media.out = DUMMY_LEN;
@@ -31,7 +31,7 @@ impl Playlist {
             date,
             start_sec: Some(start),
             current_file: None,
-            modified: Some("".to_string()),
+            modified: Some(String::new()),
             program: vec![media],
         }
     }

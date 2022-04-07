@@ -38,7 +38,7 @@ fn main() {
     if !PathBuf::from(config.general.stat_file.clone()).exists() {
         let data = json!({
             "time_shift": 0.0,
-            "date": "".to_string(),
+            "date": String::new(),
         });
 
         let json: String = serde_json::to_string(&data).expect("Serialize status data failed");

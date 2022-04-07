@@ -34,9 +34,7 @@ pub fn source_generator(
     index: Arc<Mutex<usize>>,
     playout_stat: PlayoutStatus,
     is_terminated: Arc<Mutex<bool>>,
-) -> (Box<dyn Iterator<Item = Media>>, Arc<Mutex<bool>>) {
-    let mut init_playlist: Arc<Mutex<bool>> = Arc::new(Mutex::new(false));
-
+) -> Box<dyn Iterator<Item = Media>> {
     let get_source = match config.processing.clone().mode.as_str() {
         "folder" => {
             let path = config.storage.path.clone();
@@ -47,7 +45,7 @@ pub fn source_generator(
 
             info!("Playout in folder mode.");
 
-            let folder_source = Source::new(current_list, index, playout_stat);
+            let folder_source = Source::new(current_list, index);
 
             let (sender, receiver) = channel();
             let mut watchman = watcher(sender, Duration::from_secs(2)).unwrap();
@@ -70,7 +68,6 @@ pub fn source_generator(
                 current_list,
                 index,
             );
-            init_playlist = program.init.clone();
 
             Box::new(program) as Box<dyn Iterator<Item = Media>>
         }
@@ -80,7 +77,7 @@ pub fn source_generator(
         }
     };
 
-    (get_source, init_playlist)
+    get_source
 }
 
 pub fn player(
@@ -96,8 +93,9 @@ pub fn player(
     let server_is_running: Arc<Mutex<bool>> = Arc::new(Mutex::new(false));
     let mut buffer: [u8; 65088] = [0; 65088];
     let mut live_on = false;
+    let playlist_init = playout_stat.list_init.clone();
 
-    let (get_source, init_playlist) = source_generator(
+    let get_source = source_generator(
         rt_handle,
         config.clone(),
         play_control.current_list.clone(),
@@ -209,7 +207,7 @@ pub fn player(
 
                     live_on = true;
 
-                    *init_playlist.lock().unwrap() = true;
+                    *playlist_init.lock().unwrap() = true;
                 }
 
                 if let Ok(receive) = ingest_receiver.try_recv() {

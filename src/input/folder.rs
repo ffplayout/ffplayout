@@ -12,7 +12,7 @@ use std::{
 
 use walkdir::WalkDir;
 
-use crate::utils::{get_sec, GlobalConfig, Media, PlayoutStatus};
+use crate::utils::{get_sec, GlobalConfig, Media};
 
 #[derive(Debug, Clone)]
 pub struct Source {
@@ -20,14 +20,12 @@ pub struct Source {
     pub nodes: Arc<Mutex<Vec<Media>>>,
     current_node: Media,
     index: Arc<Mutex<usize>>,
-    playout_stat: PlayoutStatus,
 }
 
 impl Source {
     pub fn new(
         current_list: Arc<Mutex<Vec<Media>>>,
         global_index: Arc<Mutex<usize>>,
-        playout_stat: PlayoutStatus,
     ) -> Self {
         let config = GlobalConfig::global();
         let mut media_list = vec![];
@@ -72,9 +70,8 @@ impl Source {
         Self {
             config: config.clone(),
             nodes: current_list,
-            current_node: Media::new(0, "".to_string(), false),
+            current_node: Media::new(0, String::new(), false),
             index: global_index,
-            playout_stat,
         }
     }
 
@@ -113,7 +110,7 @@ impl Iterator for Source {
             let i = *self.index.lock().unwrap();
             self.current_node = self.nodes.lock().unwrap()[i].clone();
             self.current_node.add_probe();
-            self.current_node.add_filter(&self.playout_stat);
+            self.current_node.add_filter();
             self.current_node.begin = Some(get_sec());
 
             *self.index.lock().unwrap() += 1;
@@ -130,7 +127,7 @@ impl Iterator for Source {
 
             self.current_node = self.nodes.lock().unwrap()[0].clone();
             self.current_node.add_probe();
-            self.current_node.add_filter(&self.playout_stat);
+            self.current_node.add_filter();
             self.current_node.begin = Some(get_sec());
 
             *self.index.lock().unwrap() = 1;
