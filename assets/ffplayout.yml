@@ -18,13 +18,13 @@ mail:
     help_text: Send error messages to email address, like missing playlist; invalid
         json format; missing clip path. Leave recipient blank, if you don't need this.
         'mail_level' can be INFO, WARNING or ERROR. 'interval' means seconds until a new mail will be sended.
-    subject: "Playout Error"
-    smtp_server: "mail.example.org"
+    subject: Playout Error
+    smtp_server: mail.example.org
     starttls: true
-    sender_addr: "ffplayout@example.org"
+    sender_addr: ffplayout@example.org
     sender_pass: "abc123"
     recipient:
-    mail_level: "ERROR"
+    mail_level: ERROR
     interval: 30
 
 logging:
@@ -37,9 +37,9 @@ logging:
     backup_count: 7
     local_time: true
     timestamp: true
-    log_path: "/var/log/ffplayout/"
-    log_level: "DEBUG"
-    ffmpeg_level: "error"
+    log_path: /var/log/ffplayout/
+    log_level: DEBUG
+    ffmpeg_level: error
 
 processing:
     help_text: Default processing, for all clips that they get prepared in that way,
@@ -57,10 +57,10 @@ processing:
     aspect: 1.778
     fps: 25
     add_logo: true
-    logo: "docs/logo.png"
+    logo: docs/logo.png
     logo_scale:
     logo_opacity: 0.7
-    logo_filter: "overlay=W-w-12:12"
+    logo_filter: overlay=W-w-12:12
     add_loudnorm: false
     loud_i: -18
     loud_tp: -1.5
@@ -84,7 +84,7 @@ playlist:
         should always start at the begin. 'length' represent the target length from
         playlist, when is blank real length will not consider. 'infinit true' works with
         single playlist file and loops it infinitely.
-    path: "/playlists"
+    path: /playlists
     day_start: "5:59:25"
     length: "24:00:00"
     infinit: false
