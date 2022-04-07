@@ -89,8 +89,6 @@ pub fn player(
     let config = GlobalConfig::global();
     let dec_settings = config.processing.clone().settings.unwrap();
     let ff_log_format = format!("level+{}", config.logging.ffmpeg_level.to_lowercase());
-
-    let server_is_running: Arc<Mutex<bool>> = Arc::new(Mutex::new(false));
     let mut buffer: [u8; 65088] = [0; 65088];
     let mut live_on = false;
     let playlist_init = playout_stat.list_init.clone();
@@ -189,7 +187,7 @@ pub fn player(
         };
 
         loop {
-            if *server_is_running.lock().unwrap() {
+            if *proc_control.server_is_running.lock().unwrap() {
                 if !live_on {
                     info!("Switch from {} to live ingest", config.processing.mode);
 
