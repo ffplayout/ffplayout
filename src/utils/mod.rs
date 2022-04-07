@@ -3,9 +3,7 @@ use chrono::Duration;
 use ffprobe::{ffprobe, Format, Stream};
 use serde::{Deserialize, Serialize};
 use std::{
-    env::temp_dir,
-    fs,
-    fs::{metadata, File},
+    fs::metadata,
     io::{BufRead, BufReader, Error},
     path::Path,
     process::exit,
@@ -14,7 +12,6 @@ use std::{
     time,
     time::UNIX_EPOCH,
 };
-use once_cell::sync::OnceCell;
 
 use jsonrpc_http_server::CloseHandle;
 use process_control::Terminator;
@@ -106,59 +103,21 @@ impl Drop for ProcessControl {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug)]
 pub struct PlayoutStatus {
-    pub time_shift: f64,
-    pub date: String,
+    pub time_shift: Arc<Mutex<f64>>,
+    pub date: Arc<Mutex<String>>,
+    pub current_date: Arc<Mutex<String>>,
 }
 
 impl PlayoutStatus {
     pub fn new() -> Self {
-        let stat_file = temp_dir().join("ffplayout_status.json");
-
-        let mut data: PlayoutStatus = Self {
-            time_shift: 0.0,
-            date: "".to_string(),
-        };
-
-        if !stat_file.exists() {
-
-        } else {
-            let file = File::options()
-            .read(true)
-            .write(false)
-            .open(&stat_file.display().to_string())
-            .expect("Could not open status file");
-
-            data = serde_json::from_reader(file).expect("Could not read status file.");
+        Self {
+            time_shift: Arc::new(Mutex::new(0.0)),
+            date: Arc::new(Mutex::new(String::new())),
+            current_date: Arc::new(Mutex::new(String::new())),
         }
-
-        data
     }
-
-    pub fn write(mut self, date: String, time_shift: f64) {
-        let stat_file = temp_dir().join("ffplayout_status.json");
-
-        self.date = date.clone();
-        self.time_shift = time_shift.clone();
-
-        if let Ok (json) = serde_json::to_string(&self) {
-            if let Err(e) = fs::write(stat_file, &json) {
-                error!("Unable to write status file: {e}")
-            };
-        };
-    }
-
-    pub fn global() -> &'static PlayoutStatus {
-        STATUS_CELL.get().expect("Config is not initialized")
-    }
-}
-
-static STATUS_CELL: OnceCell<PlayoutStatus> = OnceCell::new();
-
-pub fn init_status() {
-    let status = PlayoutStatus::new();
-    STATUS_CELL.set(status).unwrap();
 }
 
 #[derive(Clone)]
@@ -242,9 +201,9 @@ impl Media {
         }
     }
 
-    pub fn add_filter(&mut self, json_date: &String) {
+    pub fn add_filter(&mut self, playout_stat: &PlayoutStatus) {
         let mut node = self.clone();
-        self.filter = Some(filter_chains(&mut node, &json_date))
+        self.filter = Some(filter_chains(&mut node, &playout_stat))
     }
 }
 
@@ -378,10 +337,8 @@ pub fn is_close(a: f64, b: f64, to: f64) -> bool {
     false
 }
 
-pub fn get_delta(begin: &f64, json_date: &String, shift: bool) -> (f64, f64) {
+pub fn get_delta(begin: &f64, playout_stat: &PlayoutStatus, shift: bool) -> (f64, f64) {
     let config = GlobalConfig::global();
-    let status = PlayoutStatus::global();
-
     let mut current_time = get_sec();
     let start = config.playlist.start_sec.unwrap();
     let length = time_to_sec(&config.playlist.length);
@@ -409,9 +366,15 @@ pub fn get_delta(begin: &f64, json_date: &String, shift: bool) -> (f64, f64) {
         total_delta = target_length + start - current_time;
     }
 
-    if shift && json_date == &status.date && status.time_shift != 0.0 {
-        current_delta -= status.time_shift;
-        total_delta -= status.time_shift;
+    println!("current_delta: {current_delta}");
+    println!("shift: {}", *playout_stat.time_shift.lock().unwrap());
+
+    if shift
+        && *playout_stat.current_date.lock().unwrap() == *playout_stat.date.lock().unwrap()
+        && *playout_stat.time_shift.lock().unwrap() != 0.0
+    {
+        current_delta -= *playout_stat.time_shift.lock().unwrap();
+        total_delta -= *playout_stat.time_shift.lock().unwrap();
     }
 
     (current_delta, total_delta)

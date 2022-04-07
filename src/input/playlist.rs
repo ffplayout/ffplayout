@@ -1,8 +1,10 @@
 use std::{
+    fs,
     path::Path,
     sync::{Arc, Mutex},
 };
 
+use serde_json::json;
 use simplelog::*;
 use tokio::runtime::Handle;
 
@@ -24,23 +26,31 @@ pub struct CurrentProgram {
     index: Arc<Mutex<usize>>,
     rt_handle: Handle,
     is_terminated: Arc<Mutex<bool>>,
+    playout_stat: PlayoutStatus,
 }
 
 impl CurrentProgram {
     pub fn new(
         rt_handle: Handle,
+        playout_stat: PlayoutStatus,
         is_terminated: Arc<Mutex<bool>>,
         current_list: Arc<Mutex<Vec<Media>>>,
         global_index: Arc<Mutex<usize>>,
     ) -> Self {
         let config = GlobalConfig::global();
-        let status = PlayoutStatus::global();
         let json = read_json(None, rt_handle.clone(), is_terminated.clone(), true, 0.0);
 
         *current_list.lock().unwrap() = json.program;
+        *playout_stat.current_date.lock().unwrap() = json.date.clone();
 
-        if status.date != json.date {
-            status.clone().write(json.date.clone(), 0.0)
+        if *playout_stat.date.lock().unwrap() != json.date {
+            let data = json!({
+                "time_shift": 0.0,
+                "date": json.date,
+            });
+
+            let json: String = serde_json::to_string(&data).expect("Serialize status data failed");
+            fs::write(config.general.stat_file.clone(), &json).expect("Unable to write file");
         }
 
         Self {
@@ -55,6 +65,7 @@ impl CurrentProgram {
             index: global_index,
             rt_handle,
             is_terminated,
+            playout_stat,
         }
     }
 
@@ -121,7 +132,7 @@ impl CurrentProgram {
         let current_time = get_sec();
         let start_sec = self.config.playlist.start_sec.unwrap();
         let target_length = self.config.playlist.length_sec.unwrap();
-        let (delta, total_delta) = get_delta(&current_time, &self.json_date, true);
+        let (delta, total_delta) = get_delta(&current_time, &self.playout_stat, true);
         let mut duration = self.current_node.out.clone();
 
         if self.current_node.duration > self.current_node.out {
@@ -142,8 +153,14 @@ impl CurrentProgram {
                 next_start,
             );
 
-            let status = PlayoutStatus::global();
-            status.clone().write(json.date.clone(), 0.0);
+            let data = json!({
+                "time_shift": 0.0,
+                "date": json.date,
+            });
+
+            *self.playout_stat.current_date.lock().unwrap() = json.date.clone();
+            let status_data: String = serde_json::to_string(&data).expect("Serialize status data failed");
+            fs::write(self.config.general.stat_file.clone(), &status_data).expect("Unable to write file");
 
             self.json_path = json.current_file.clone();
             self.json_mod = json.modified;
@@ -210,7 +227,7 @@ impl CurrentProgram {
             *self.index.lock().unwrap() += 1;
 
             node_clone.seek = time_sec - node_clone.begin.unwrap();
-            self.current_node = handle_list_init(node_clone, &self.json_date);
+            self.current_node = handle_list_init(node_clone, &self.playout_stat);
         }
     }
 }
@@ -245,7 +262,7 @@ impl Iterator for CurrentProgram {
                     self.init_clip();
                 } else {
                     let mut current_time = get_sec();
-                    let (_, total_delta) = get_delta(&current_time, &self.json_date, true);
+                    let (_, total_delta) = get_delta(&current_time, &self.playout_stat, true);
                     let mut duration = DUMMY_LEN;
 
                     if DUMMY_LEN > total_delta {
@@ -261,7 +278,7 @@ impl Iterator for CurrentProgram {
                     media.duration = duration;
                     media.out = duration;
 
-                    self.current_node = gen_source(media, &self.json_date);
+                    self.current_node = gen_source(media, &self.playout_stat);
                     self.nodes.lock().unwrap().push(self.current_node.clone());
                     *self.index.lock().unwrap() = self.nodes.lock().unwrap().len();
                 }
@@ -285,7 +302,7 @@ impl Iterator for CurrentProgram {
                 self.nodes.lock().unwrap()[index].clone(),
                 &self.config,
                 is_last,
-                &self.json_date,
+                &self.playout_stat,
             );
             self.last_next_ad();
             *self.index.lock().unwrap() += 1;
@@ -300,7 +317,7 @@ impl Iterator for CurrentProgram {
             self.check_for_next_playlist();
             let (_, total_delta) = get_delta(
                 &self.config.playlist.start_sec.unwrap(),
-                &self.json_date,
+                &self.playout_stat,
                 true,
             );
 
@@ -319,12 +336,12 @@ impl Iterator for CurrentProgram {
                 }
                 self.current_node.duration = duration;
                 self.current_node.out = duration;
-                self.current_node = gen_source(self.current_node.clone(), &self.json_date);
+                self.current_node = gen_source(self.current_node.clone(), &self.playout_stat);
                 self.nodes.lock().unwrap().push(self.current_node.clone());
                 self.last_next_ad();
 
                 self.current_node.last_ad = last_ad;
-                self.current_node.add_filter(&self.json_date);
+                self.current_node.add_filter(&self.playout_stat);
 
                 *self.index.lock().unwrap() += 1;
 
@@ -332,7 +349,8 @@ impl Iterator for CurrentProgram {
             }
 
             *self.index.lock().unwrap() = 0;
-            self.current_node = gen_source(self.nodes.lock().unwrap()[0].clone(), &self.json_date);
+            self.current_node =
+                gen_source(self.nodes.lock().unwrap()[0].clone(), &self.playout_stat);
             self.last_next_ad();
             self.current_node.last_ad = last_ad;
 
@@ -343,12 +361,17 @@ impl Iterator for CurrentProgram {
     }
 }
 
-fn timed_source(node: Media, config: &GlobalConfig, last: bool, json_date: &String) -> Media {
+fn timed_source(
+    node: Media,
+    config: &GlobalConfig,
+    last: bool,
+    playout_stat: &PlayoutStatus,
+) -> Media {
     // prepare input clip
     // check begin and length from clip
     // return clip only if we are in 24 hours time range
 
-    let (delta, total_delta) = get_delta(&node.begin.unwrap(), &json_date, true);
+    let (delta, total_delta) = get_delta(&node.begin.unwrap(), &playout_stat, true);
     let mut new_node = node.clone();
     new_node.process = Some(false);
 
@@ -369,7 +392,7 @@ fn timed_source(node: Media, config: &GlobalConfig, last: bool, json_date: &Stri
         || !config.playlist.length.contains(":")
     {
         // when we are in the 24 hour range, get the clip
-        new_node = gen_source(node, &json_date);
+        new_node = gen_source(node, &playout_stat);
         new_node.process = Some(true);
     } else if total_delta <= 0.0 {
         info!("Begin is over play time, skip: {}", node.source);
@@ -380,7 +403,7 @@ fn timed_source(node: Media, config: &GlobalConfig, last: bool, json_date: &Stri
     new_node
 }
 
-fn gen_source(mut node: Media, json_date: &String) -> Media {
+fn gen_source(mut node: Media, playout_stat: &PlayoutStatus) -> Media {
     if Path::new(&node.source).is_file() {
         node.add_probe();
         node.cmd = Some(seek_and_length(
@@ -389,7 +412,7 @@ fn gen_source(mut node: Media, json_date: &String) -> Media {
             node.out,
             node.duration,
         ));
-        node.add_filter(&json_date);
+        node.add_filter(&playout_stat);
     } else {
         if node.source.chars().count() == 0 {
             warn!(
@@ -402,17 +425,17 @@ fn gen_source(mut node: Media, json_date: &String) -> Media {
         let (source, cmd) = gen_dummy(node.out - node.seek);
         node.source = source;
         node.cmd = Some(cmd);
-        node.add_filter(&json_date);
+        node.add_filter(&playout_stat);
     }
 
     node
 }
 
-fn handle_list_init(mut node: Media, json_date: &String) -> Media {
+fn handle_list_init(mut node: Media, playout_stat: &PlayoutStatus) -> Media {
     // handle init clip, but this clip can be the last one in playlist,
     // this we have to figure out and calculate the right length
 
-    let (_, total_delta) = get_delta(&node.begin.unwrap(), &json_date, true);
+    let (_, total_delta) = get_delta(&node.begin.unwrap(), &playout_stat, true);
     let mut out = node.out;
 
     if node.out - node.seek > total_delta {
@@ -421,7 +444,7 @@ fn handle_list_init(mut node: Media, json_date: &String) -> Media {
 
     node.out = out;
 
-    let new_node = gen_source(node, &json_date);
+    let new_node = gen_source(node, &playout_stat);
     new_node
 }
 

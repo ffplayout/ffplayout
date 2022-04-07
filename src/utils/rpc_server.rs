@@ -1,3 +1,4 @@
+use std::fs;
 use serde_json::{json, Map};
 
 use jsonrpc_http_server::jsonrpc_core::{IoHandler, Params, Value};
@@ -7,7 +8,8 @@ use jsonrpc_http_server::{
 use simplelog::*;
 
 use crate::utils::{
-    get_delta, get_sec, sec_to_time, GlobalConfig, Media, PlayerControl, PlayoutStatus, ProcessControl,
+    get_delta, get_sec, sec_to_time, GlobalConfig, Media, PlayerControl, PlayoutStatus,
+    ProcessControl,
 };
 
 fn get_media_map(media: Media) -> Value {
@@ -42,13 +44,20 @@ fn get_data_map(config: &GlobalConfig, media: Media) -> Map<String, Value> {
     data_map
 }
 
-pub async fn run_rpc(play_control: PlayerControl, proc_control: ProcessControl) {
+pub async fn run_rpc(
+    play_control: PlayerControl,
+    playout_stat: PlayoutStatus,
+    proc_control: ProcessControl,
+) {
     let config = GlobalConfig::global();
     let mut io = IoHandler::default();
     let play = play_control.clone();
+    let stat = playout_stat.clone();
     let proc = proc_control.clone();
 
     io.add_sync_method("player", move |params: Params| {
+        let stat_file = config.general.stat_file.clone();
+
         match params {
             Params::Map(map) => {
                 if map.contains_key("control") && map["control"] == "next".to_string() {
@@ -57,7 +66,6 @@ pub async fn run_rpc(play_control: PlayerControl, proc_control: ProcessControl) 
                             if let Ok(_) = decoder.terminate() {
                                 info!("Move to next clip");
                                 let index = *play.index.lock().unwrap();
-                                let status = PlayoutStatus::global();
 
                                 if index < play.current_list.lock().unwrap().len() {
                                     let mut data_map = Map::new();
@@ -65,8 +73,18 @@ pub async fn run_rpc(play_control: PlayerControl, proc_control: ProcessControl) 
                                         play.current_list.lock().unwrap()[index].clone();
                                     media.add_probe();
 
-                                    let (delta, _) = get_delta(&media.begin.unwrap_or(0.0), &status.date, false);
-                                    status.clone().write(status.date.clone(), delta);
+                                    let (delta, _) =
+                                        get_delta(&media.begin.unwrap_or(0.0), &stat, false);
+
+                                    let data = json!({
+                                        "time_shift": delta,
+                                        "date": *stat.current_date.lock().unwrap(),
+                                    });
+
+                                    let status_data: String = serde_json::to_string(&data)
+                                        .expect("Serialize status data failed");
+                                    fs::write(stat_file, &status_data)
+                                        .expect("Unable to write file");
 
                                     data_map.insert(
                                         "operation".to_string(),

@@ -24,7 +24,7 @@ pub use hls::write_hls;
 
 use crate::input::{file_worker, ingest_server, CurrentProgram, Source};
 use crate::utils::{
-    sec_to_time, stderr_reader, GlobalConfig, Media, PlayerControl, ProcessControl,
+    sec_to_time, stderr_reader, GlobalConfig, Media, PlayerControl, PlayoutStatus, ProcessControl,
 };
 
 pub fn source_generator(
@@ -32,6 +32,7 @@ pub fn source_generator(
     config: GlobalConfig,
     current_list: Arc<Mutex<Vec<Media>>>,
     index: Arc<Mutex<usize>>,
+    playout_stat: PlayoutStatus,
     is_terminated: Arc<Mutex<bool>>,
 ) -> (Box<dyn Iterator<Item = Media>>, Arc<Mutex<bool>>) {
     let mut init_playlist: Arc<Mutex<bool>> = Arc::new(Mutex::new(false));
@@ -46,7 +47,7 @@ pub fn source_generator(
 
             info!("Playout in folder mode.");
 
-            let folder_source = Source::new(current_list, index);
+            let folder_source = Source::new(current_list, index, playout_stat);
 
             let (sender, receiver) = channel();
             let mut watchman = watcher(sender, Duration::from_secs(2)).unwrap();
@@ -64,6 +65,7 @@ pub fn source_generator(
             info!("Playout in playlist mode");
             let program = CurrentProgram::new(
                 rt_handle.clone(),
+                playout_stat,
                 is_terminated.clone(),
                 current_list,
                 index,
@@ -84,6 +86,7 @@ pub fn source_generator(
 pub fn player(
     rt_handle: &Handle,
     play_control: PlayerControl,
+    playout_stat: PlayoutStatus,
     proc_control: ProcessControl,
 ) {
     let config = GlobalConfig::global();
@@ -99,6 +102,7 @@ pub fn player(
         config.clone(),
         play_control.current_list.clone(),
         play_control.index.clone(),
+        playout_stat,
         proc_control.is_terminated.clone(),
     );
 

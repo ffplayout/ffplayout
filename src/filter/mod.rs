@@ -4,7 +4,7 @@ use simplelog::*;
 
 pub mod v_drawtext;
 
-use crate::utils::{get_delta, is_close, GlobalConfig, Media};
+use crate::utils::{get_delta, is_close, GlobalConfig, Media, PlayoutStatus};
 
 #[derive(Debug, Clone)]
 struct Filters {
@@ -290,9 +290,9 @@ fn realtime_filter(
     chain: &mut Filters,
     config: &GlobalConfig,
     codec_type: String,
-    json_date: &String
+    playout_stat: &PlayoutStatus,
 ) {
-    //this realtime filter is important for HLS output to stay in sync
+    // this realtime filter is important for HLS output to stay in sync
 
     let mut t = "".to_string();
 
@@ -302,7 +302,7 @@ fn realtime_filter(
 
     if config.out.mode.to_lowercase() == "hls".to_string() {
         let mut speed_filter = format!("{t}realtime=speed=1");
-        let (delta, _) = get_delta(&node.begin.unwrap(), &json_date, true);
+        let (delta, _) = get_delta(&node.begin.unwrap(), &playout_stat, true);
         let duration = node.out - node.seek;
 
         if delta < 0.0 {
@@ -317,7 +317,7 @@ fn realtime_filter(
     }
 }
 
-pub fn filter_chains(node: &mut Media, json_date: &String) -> Vec<String> {
+pub fn filter_chains(node: &mut Media, playout_stat: &PlayoutStatus) -> Vec<String> {
     let config = GlobalConfig::global();
 
     let mut filters = Filters::new();
@@ -355,12 +355,12 @@ pub fn filter_chains(node: &mut Media, json_date: &String) -> Vec<String> {
     add_text(node, &mut filters, &config);
     fade(node, &mut filters, "video".into());
     overlay(node, &mut filters, &config);
-    realtime_filter(node, &mut filters,  &config, "video".into(), &json_date);
+    realtime_filter(node, &mut filters, &config, "video".into(), &playout_stat);
 
     add_loudnorm(node, &mut filters, &config);
     fade(node, &mut filters, "audio".into());
     audio_volume(&mut filters, &config);
-    realtime_filter(node, &mut filters,  &config, "audio".into(), &json_date);
+    realtime_filter(node, &mut filters, &config, "audio".into(), &playout_stat);
 
     let mut filter_cmd = vec![];
     let mut filter_str: String = "".to_string();

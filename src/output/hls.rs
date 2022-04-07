@@ -24,12 +24,13 @@ use tokio::runtime::Handle;
 
 use crate::output::source_generator;
 use crate::utils::{
-    sec_to_time, stderr_reader, GlobalConfig, PlayerControl, ProcessControl,
+    sec_to_time, stderr_reader, GlobalConfig, PlayerControl, PlayoutStatus, ProcessControl,
 };
 
 pub fn write_hls(
     rt_handle: &Handle,
     play_control: PlayerControl,
+    playout_stat: PlayoutStatus,
     proc_control: ProcessControl,
 ) {
     let config = GlobalConfig::global();
@@ -41,6 +42,7 @@ pub fn write_hls(
         config.clone(),
         play_control.current_list.clone(),
         play_control.index.clone(),
+        playout_stat,
         proc_control.is_terminated.clone(),
     );
 
