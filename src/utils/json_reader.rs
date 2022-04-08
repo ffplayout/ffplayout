@@ -67,12 +67,12 @@ pub fn read_json(
     }
 
     if !playlist_path.is_file() {
-        error!("Playlist <b><magenta>{}</></b> not exists!", current_file);
+        error!("Playlist <b><magenta>{current_file}</></b> not exists!");
 
         return Playlist::new(date, start_sec);
     }
 
-    info!("Read Playlist: <b><magenta>{}</></b>", &current_file);
+    info!("Read Playlist: <b><magenta>{current_file}</></b>");
 
     let f = File::options()
         .read(true)

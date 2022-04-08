@@ -103,8 +103,8 @@ pub fn player(
     );
 
     let mut enc_proc = match config.out.mode.as_str() {
-        "desktop" => desktop::output(ff_log_format.clone()),
-        "stream" => stream::output(ff_log_format.clone()),
+        "desktop" => desktop::output(&ff_log_format),
+        "stream" => stream::output(&ff_log_format),
         _ => panic!("Output mode doesn't exists!"),
     };
 
@@ -112,7 +112,7 @@ pub fn player(
 
     rt_handle.spawn(stderr_reader(
         enc_proc.stderr.take().unwrap(),
-        "Encoder".to_string(),
+        "Encoder",
     ));
 
     let (ingest_sender, ingest_receiver): (
@@ -179,7 +179,7 @@ pub fn player(
 
         rt_handle.spawn(stderr_reader(
             dec_proc.stderr.take().unwrap(),
-            "Decoder".to_string(),
+            "Decoder",
         ));
 
         if let Ok(dec_terminator) = dec_proc.terminator() {
@@ -229,7 +229,7 @@ pub fn player(
                 let dec_bytes_len = match dec_reader.read(&mut buffer[..]) {
                     Ok(length) => length,
                     Err(e) => {
-                        error!("Reading error from decoder: {:?}", e);
+                        error!("Reading error from decoder: {e:?}");
 
                         break 'source_iter;
                     }
@@ -237,7 +237,7 @@ pub fn player(
 
                 if dec_bytes_len > 0 {
                     if let Err(e) = enc_writer.write(&buffer[..dec_bytes_len]) {
-                        error!("Encoder write error: {:?}", e);
+                        error!("Encoder write error: {e:?}");
 
                         break 'source_iter;
                     };
@@ -248,17 +248,17 @@ pub fn player(
         }
 
         if let Err(e) = dec_proc.wait() {
-            panic!("Decoder error: {:?}", e)
+            panic!("Decoder error: {e:?}")
         };
     }
 
     sleep(Duration::from_secs(1));
 
     if let Err(e) = enc_proc.kill() {
-        panic!("Encoder error: {:?}", e)
+        panic!("Encoder error: {e:?}")
     };
 
     if let Err(e) = enc_proc.wait() {
-        panic!("Encoder error: {:?}", e)
+        panic!("Encoder error: {e:?}")
     };
 }

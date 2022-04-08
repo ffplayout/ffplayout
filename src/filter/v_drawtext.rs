@@ -30,9 +30,8 @@ pub fn filter_node(node: &mut Media) -> String {
             filter = format!("drawtext=text='{escape}':{}{font}", config.text.style)
         } else {
             filter = format!(
-                "zmq=b=tcp\\\\://'{}',drawtext=text=''{}",
-                config.text.bind_address.replace(":", "\\:"),
-                font
+                "zmq=b=tcp\\\\://'{}',drawtext=text=''{font}",
+                config.text.bind_address.replace(":", "\\:")
             )
         }
     }

@@ -8,7 +8,7 @@ use simplelog::*;
 use crate::filter::v_drawtext;
 use crate::utils::{GlobalConfig, Media};
 
-pub fn output(log_format: String) -> process::Child {
+pub fn output(log_format: &str) -> process::Child {
     let config = GlobalConfig::global();
     let mut enc_filter: Vec<String> = vec![];
     let mut preview: Vec<&str> = vec![];
@@ -19,7 +19,7 @@ pub fn output(log_format: String) -> process::Child {
         "-hide_banner",
         "-nostats",
         "-v",
-        log_format.as_str(),
+        log_format,
         "-re",
         "-i",
         "pipe:0",
@@ -60,8 +60,8 @@ pub fn output(log_format: String) -> process::Child {
         .spawn()
     {
         Err(e) => {
-            error!("couldn't spawn encoder process: {}", e);
-            panic!("couldn't spawn encoder process: {}", e)
+            error!("couldn't spawn encoder process: {e}");
+            panic!("couldn't spawn encoder process: {e}")
         }
         Ok(proc) => proc,
     };

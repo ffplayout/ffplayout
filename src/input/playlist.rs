@@ -2,8 +2,6 @@ use std::{
     fs,
     path::Path,
     sync::{Arc, Mutex},
-    thread::sleep,
-    time::Duration,
 };
 
 use serde_json::json;
@@ -180,15 +178,13 @@ impl CurrentProgram {
         let index = *self.index.lock().unwrap();
         let current_list = self.nodes.lock().unwrap();
 
-        if index + 1 < current_list.len()
-            && current_list[index + 1].category == "advertisement".to_string()
-        {
+        if index + 1 < current_list.len() && &current_list[index + 1].category == "advertisement" {
             self.current_node.next_ad = Some(true);
         }
 
         if index > 0
             && index < current_list.len()
-            && current_list[index - 1].category == "advertisement".to_string()
+            && &current_list[index - 1].category == "advertisement"
         {
             self.current_node.last_ad = Some(true);
         }
@@ -207,7 +203,8 @@ impl CurrentProgram {
     fn get_current_clip(&mut self) {
         let mut time_sec = self.get_current_time();
 
-        if *self.playout_stat.current_date.lock().unwrap() == *self.playout_stat.date.lock().unwrap()
+        if *self.playout_stat.current_date.lock().unwrap()
+            == *self.playout_stat.date.lock().unwrap()
             && *self.playout_stat.time_shift.lock().unwrap() != 0.0
         {
             let shift = *self.playout_stat.time_shift.lock().unwrap();
@@ -355,8 +352,7 @@ impl Iterator for CurrentProgram {
             }
 
             *self.index.lock().unwrap() = 0;
-            self.current_node =
-                gen_source(self.nodes.lock().unwrap()[0].clone());
+            self.current_node = gen_source(self.nodes.lock().unwrap()[0].clone());
             self.last_next_ad();
             self.current_node.last_ad = last_ad;
 
@@ -383,11 +379,12 @@ fn timed_source(
     new_node.process = Some(false);
 
     if config.playlist.length.contains(":") {
+        let time_shift = playout_stat.time_shift.lock().unwrap();
+
         if *playout_stat.current_date.lock().unwrap() == *playout_stat.date.lock().unwrap()
-            && *playout_stat.time_shift.lock().unwrap() != 0.0
+            && *time_shift != 0.0
         {
-            sleep(Duration::from_millis(300));
-            shifted_delta = delta - *playout_stat.time_shift.lock().unwrap();
+            shifted_delta = delta - *time_shift;
 
             debug!("Delta: <yellow>{shifted_delta:.3}</>, shifted: <yellow>{delta:.3}</>");
         } else {
@@ -483,10 +480,7 @@ fn handle_list_end(mut node: Media, total_delta: f64) -> Media {
     if out > node.duration {
         out = node.duration
     } else {
-        warn!(
-            "Clip length is not in time, new duration is: <yellow>{:.2}</>",
-            total_delta
-        )
+        warn!("Clip length is not in time, new duration is: <yellow>{total_delta:.2}</>")
     }
 
     if node.duration > total_delta && total_delta > 1.0 && node.duration - node.seek >= total_delta
@@ -509,10 +503,7 @@ fn handle_list_end(mut node: Media, total_delta: f64) -> Media {
 
         return node;
     } else {
-        error!(
-            "Playlist is not long enough: <yellow>{:.2}</> seconds needed",
-            total_delta
-        );
+        error!("Playlist is not long enough: <yellow>{total_delta:.2}</> seconds needed");
     }
 
     node.process = Some(true);

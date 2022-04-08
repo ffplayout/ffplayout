@@ -29,7 +29,7 @@ fn send_mail(msg: String) {
         .to(config.mail.recipient.parse().unwrap())
         .subject(config.mail.subject.clone())
         .header(header::ContentType::TEXT_PLAIN)
-        .body(clean_string(msg.clone()))
+        .body(clean_string(&msg))
         .unwrap();
 
     let credentials = Credentials::new(
@@ -109,7 +109,7 @@ impl Log for LogMailer {
     fn log(&self, record: &Record<'_>) {
         if self.enabled(record.metadata()) {
             let local: DateTime<Local> = Local::now();
-            let time_stamp: String = local.format("[%Y-%m-%d %H:%M:%S%.3f]").to_string();
+            let time_stamp = local.format("[%Y-%m-%d %H:%M:%S%.3f]");
             let level = record.level().to_string().to_uppercase();
             let rec = record.args().to_string();
             let full_line: String = format!("{time_stamp} [{level: >5}] {rec}");
@@ -135,10 +135,10 @@ impl SharedLogger for LogMailer {
     }
 }
 
-fn clean_string(text: String) -> String {
+fn clean_string(text: &str) -> String {
     let regex: Regex = Regex::new(r"\x1b\[[0-9;]*[mGKF]").unwrap();
 
-    regex.replace_all(text.as_str(), "").to_string()
+    regex.replace_all(text, "").to_string()
 }
 
 pub fn init_logging(

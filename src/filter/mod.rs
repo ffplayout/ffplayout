@@ -24,19 +24,19 @@ impl Filters {
         }
     }
 
-    fn add_filter(&mut self, filter: String, codec_type: String) {
-        match codec_type.as_str() {
+    fn add_filter(&mut self, filter: &str, codec_type: &str) {
+        match codec_type {
             "audio" => match &self.audio_chain {
                 Some(ac) => {
                     if filter.starts_with(";") || filter.starts_with("[") {
-                        self.audio_chain = Some(format!("{}{}", ac, filter))
+                        self.audio_chain = Some(format!("{ac}{filter}"))
                     } else {
-                        self.audio_chain = Some(format!("{},{}", ac, filter))
+                        self.audio_chain = Some(format!("{ac},{filter}"))
                     }
                 }
                 None => {
                     if filter.contains("aevalsrc") || filter.contains("anoisesrc") {
-                        self.audio_chain = Some(filter);
+                        self.audio_chain = Some(filter.to_string());
                     } else {
                         self.audio_chain =
                             Some(format!("[{}]{filter}", self.audio_map.clone().unwrap()));
@@ -47,9 +47,9 @@ impl Filters {
             "video" => match &self.video_chain {
                 Some(vc) => {
                     if filter.starts_with(";") || filter.starts_with("[") {
-                        self.video_chain = Some(format!("{}{}", vc, filter))
+                        self.video_chain = Some(format!("{vc}{filter}"))
                     } else {
-                        self.video_chain = Some(format!("{},{}", vc, filter))
+                        self.video_chain = Some(format!("{vc},{filter}"))
                     }
                 }
                 None => {
@@ -63,8 +63,10 @@ impl Filters {
 }
 
 fn deinterlace(field_order: Option<String>, chain: &mut Filters) {
-    if field_order.is_some() && field_order.unwrap() != "progressive".to_string() {
-        chain.add_filter("yadif=0:-1:0".into(), "video".into())
+    if let Some(order) = field_order {
+        if &order != "progressive" {
+            chain.add_filter("yadif=0:-1:0", "video")
+        }
     }
 }
 
@@ -72,21 +74,19 @@ fn pad(aspect: f64, chain: &mut Filters, config: &GlobalConfig) {
     if !is_close(aspect, config.processing.aspect, 0.03) {
         if aspect < config.processing.aspect {
             chain.add_filter(
-                format!(
+                &format!(
                     "pad=ih*{}/{}/sar:ih:(ow-iw)/2:(oh-ih)/2",
                     config.processing.width, config.processing.height
-                )
-                .into(),
-                "video".into(),
+                ),
+                "video",
             )
         } else if aspect > config.processing.aspect {
             chain.add_filter(
-                format!(
+                &format!(
                     "pad=iw:iw*{}/{}/sar:(ow-iw)/2:(oh-ih)/2",
                     config.processing.width, config.processing.height
-                )
-                .into(),
-                "video".into(),
+                ),
+                "video",
             )
         }
     }
@@ -95,8 +95,8 @@ fn pad(aspect: f64, chain: &mut Filters, config: &GlobalConfig) {
 fn fps(fps: f64, chain: &mut Filters, config: &GlobalConfig) {
     if fps != config.processing.fps {
         chain.add_filter(
-            format!("fps={}", config.processing.fps).into(),
-            "video".into(),
+            &format!("fps={}", config.processing.fps),
+            "video",
         )
     }
 }
@@ -104,37 +104,36 @@ fn fps(fps: f64, chain: &mut Filters, config: &GlobalConfig) {
 fn scale(width: i64, height: i64, aspect: f64, chain: &mut Filters, config: &GlobalConfig) {
     if width != config.processing.width || height != config.processing.height {
         chain.add_filter(
-            format!(
+            &format!(
                 "scale={}:{}",
                 config.processing.width, config.processing.height
-            )
-            .into(),
-            "video".into(),
+            ),
+            "video",
         )
     }
 
     if !is_close(aspect, config.processing.aspect, 0.03) {
         chain.add_filter(
-            format!("setdar=dar={}", config.processing.aspect).into(),
-            "video".into(),
+            &format!("setdar=dar={}", config.processing.aspect),
+            "video"
         )
     }
 }
 
-fn fade(node: &mut Media, chain: &mut Filters, codec_type: String) {
-    let mut t = String::new();
+fn fade(node: &mut Media, chain: &mut Filters, codec_type: &str) {
+    let mut t = "";
 
-    if codec_type == "audio".to_string() {
-        t = "a".to_string()
+    if codec_type == "audio" {
+        t = "a"
     }
 
     if node.seek > 0.0 {
-        chain.add_filter(format!("{t}fade=in:st=0:d=0.5"), codec_type.clone())
+        chain.add_filter(&format!("{t}fade=in:st=0:d=0.5"), codec_type)
     }
 
     if node.out != node.duration && node.out - node.seek - 1.0 > 0.0 {
         chain.add_filter(
-            format!("{t}fade=out:st={}:d=1.0", (node.out - node.seek - 1.0)).into(),
+            &format!("{t}fade=out:st={}:d=1.0", (node.out - node.seek - 1.0)),
             codec_type,
         )
     }
@@ -168,7 +167,7 @@ fn overlay(node: &mut Media, chain: &mut Filters, config: &GlobalConfig) {
         logo_chain
             .push_str(format!("[l];[v][l]{}:shortest=1", config.processing.logo_filter).as_str());
 
-        chain.add_filter(logo_chain, "video".into());
+        chain.add_filter(&logo_chain, "video");
     }
 }
 
@@ -182,11 +181,11 @@ fn extend_video(node: &mut Media, chain: &mut Filters) {
 
             if node.out - node.seek > duration_float - node.seek + 0.1 {
                 chain.add_filter(
-                    format!(
+                    &format!(
                         "tpad=stop_mode=add:stop_duration={}",
                         (node.out - node.seek) - (duration_float - node.seek)
                     ),
-                    "video".into(),
+                    "video",
                 )
             }
         }
@@ -199,7 +198,7 @@ fn add_text(node: &mut Media, chain: &mut Filters, config: &GlobalConfig) {
     if config.text.add_text && config.text.over_pre {
         let filter = v_drawtext::filter_node(node);
 
-        chain.add_filter(filter, "video".into());
+        chain.add_filter(&filter, "video");
 
         if let Some(filters) = &chain.video_chain {
             for (i, f) in filters.split(",").enumerate() {
@@ -220,7 +219,7 @@ fn add_audio(node: &mut Media, chain: &mut Filters) {
             "aevalsrc=0:channel_layout=stereo:duration={}:sample_rate=48000",
             node.out - node.seek
         );
-        chain.add_filter(audio, "audio".into());
+        chain.add_filter(&audio, "audio");
     }
 }
 
@@ -234,8 +233,8 @@ fn extend_audio(node: &mut Media, chain: &mut Filters) {
 
             if node.out - node.seek > duration_float - node.seek + 0.1 {
                 chain.add_filter(
-                    format!("apad=whole_dur={}", node.out - node.seek),
-                    "audio".into(),
+                    &format!("apad=whole_dur={}", node.out - node.seek),
+                    "audio",
                 )
             }
         }
@@ -254,15 +253,15 @@ fn add_loudnorm(node: &mut Media, chain: &mut Filters, config: &GlobalConfig) {
             config.processing.loud_i, config.processing.loud_tp, config.processing.loud_lra
         );
 
-        chain.add_filter(loud_filter, "audio".into());
+        chain.add_filter(&loud_filter, "audio");
     }
 }
 
 fn audio_volume(chain: &mut Filters, config: &GlobalConfig) {
     if config.processing.volume != 1.0 {
         chain.add_filter(
-            format!("volume={}", config.processing.volume),
-            "audio".into(),
+            &format!("volume={}", config.processing.volume),
+            "audio",
         )
     }
 }
@@ -289,17 +288,17 @@ fn realtime_filter(
     node: &mut Media,
     chain: &mut Filters,
     config: &GlobalConfig,
-    codec_type: String,
+    codec_type: &str,
 ) {
     // this realtime filter is important for HLS output to stay in sync
 
-    let mut t = String::new();
+    let mut t = "";
 
-    if codec_type == "audio".to_string() {
-        t = "a".to_string()
+    if codec_type == "audio" {
+        t = "a"
     }
 
-    if config.out.mode.to_lowercase() == "hls".to_string() {
+    if &config.out.mode.to_lowercase() == "hls" {
         let mut speed_filter = format!("{t}realtime=speed=1");
         let (delta, _) = get_delta(&node.begin.unwrap());
         let duration = node.out - node.seek;
@@ -312,7 +311,7 @@ fn realtime_filter(
             }
         }
 
-        chain.add_filter(speed_filter, codec_type);
+        chain.add_filter(&speed_filter, codec_type);
     }
 }
 

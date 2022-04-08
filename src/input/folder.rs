@@ -152,14 +152,14 @@ pub async fn file_worker(
                 let media = Media::new(index, new_path.display().to_string(), false);
 
                 sources.lock().unwrap().push(media);
-                info!("Create new file: {:?}", new_path);
+                info!("Create new file: {new_path:?}");
             }
             Remove(old_path) => {
                 sources
                     .lock()
                     .unwrap()
                     .retain(|x| x.source != old_path.display().to_string());
-                info!("Remove file: {:?}", old_path);
+                info!("Remove file: {old_path:?}");
             }
             Rename(old_path, new_path) => {
                 let index = sources
@@ -172,7 +172,7 @@ pub async fn file_worker(
                 let media = Media::new(index, new_path.display().to_string(), false);
                 sources.lock().unwrap()[index] = media;
 
-                info!("Rename file: {:?} to {:?}", old_path, new_path);
+                info!("Rename file: {old_path:?} to {new_path:?}");
             }
             _ => (),
         }

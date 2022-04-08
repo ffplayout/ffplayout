@@ -47,6 +47,10 @@ Requirements
 -----
 
 - RAM and CPU depends on video resolution, minimum 4 threads and 3GB RAM for 720p are recommend
+- **ffmpeg** v4.2+ and **ffprobe** (**ffplay** if you want to play on desktop)
+- if you want to overlay text, ffmpeg needs to have **libzmq**
+
+-----
 
 JSON Playlist Example
 -----
@@ -107,6 +111,8 @@ But be careful with it, better test it multiple times!
 
 More informations in [Wiki](https://github.com/ffplayout/ffplayout_engine/wiki/Remote-URL-Source)
 
+-----
+
 HLS output
 -----
 
@@ -127,6 +133,8 @@ out:
         -hls_segment_filename /var/www/html/live/stream-%09d.ts /var/www/html/live/stream.m3u8
 ```
 
+-----
+
 JSON RPC
 -----
 
@@ -142,9 +150,11 @@ At the moment this comments are possible:
 
 ```Bash
 '{"jsonrpc": "2.0", "method": "player", "params":{"media":"current"}, "id":1 }'  # get infos about current clip
-'{"jsonrpc": "2.0", "method": "player", "params":{"control":"next"}, "id":1 }'   # jump to next clip
-'{"jsonrpc": "2.0", "method": "player", "params":{"control":"back"}, "id":1 }'   # jump to last clip
-'{"jsonrpc": "2.0", "method": "player", "params":{"control":"reset"}, "id":1 }'  # reset playlist to old state
+'{"jsonrpc": "2.0", "method": "player", "params":{"media":"next"}, "id":2 }'  # get infos about next clip
+'{"jsonrpc": "2.0", "method": "player", "params":{"media":"last"}, "id":3 }'  # get infos about last clip
+'{"jsonrpc": "2.0", "method": "player", "params":{"control":"next"}, "id":4 }'   # jump to next clip
+'{"jsonrpc": "2.0", "method": "player", "params":{"control":"back"}, "id":5 }'   # jump to last clip
+'{"jsonrpc": "2.0", "method": "player", "params":{"control":"reset"}, "id":6 }'  # reset playlist to old state
 
 ```
 
@@ -170,9 +180,10 @@ Output from `{"media":"current"}` show:
   },
   "id": 1
 }
-
 ```
+When you are in playlist mode and jumping forward or backwards in time, the time shift will be saved so the playlist is still in sync. But have in mind, that then maybe your playlist gets to short. When you are not resetting the state, it will reset on the next day automatically.
 
+-----
 
 Installation
 -----

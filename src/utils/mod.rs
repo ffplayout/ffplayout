@@ -16,23 +16,21 @@ use std::{
 use jsonrpc_http_server::CloseHandle;
 use process_control::Terminator;
 use regex::Regex;
-use simplelog::*;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use simplelog::*;
 
 mod arg_parse;
 mod config;
 pub mod json_reader;
 mod json_validate;
 mod logging;
-mod rpc_server;
 
 pub use arg_parse::get_args;
 pub use config::{init_config, GlobalConfig};
 pub use json_reader::{read_json, Playlist, DUMMY_LEN};
 pub use json_validate::validate_playlist;
 pub use logging::init_logging;
-pub use rpc_server::run_rpc;
 
 use crate::filter::filter_chains;
 
@@ -75,7 +73,7 @@ impl ProcessControl {
             if let Some(server) = &*self.server_term.lock().unwrap() {
                 unsafe {
                     if let Err(e) = server.terminate() {
-                        error!("Ingest server: {:?}", e);
+                        error!("Ingest server: {e:?}");
                     }
                 }
             };
@@ -83,7 +81,7 @@ impl ProcessControl {
             if let Some(decoder) = &*self.decoder_term.lock().unwrap() {
                 unsafe {
                     if let Err(e) = decoder.terminate() {
-                        error!("Decoder: {:?}", e);
+                        error!("Decoder: {e:?}");
                     }
                 }
             };
@@ -91,7 +89,7 @@ impl ProcessControl {
             if let Some(encoder) = &*self.encoder_term.lock().unwrap() {
                 unsafe {
                     if let Err(e) = encoder.terminate() {
-                        error!("Encoder: {:?}", e);
+                        error!("Encoder: {e:?}");
                     }
                 }
             };
@@ -238,7 +236,7 @@ impl MediaProbe {
                         }
 
                         _ => {
-                            error!("No codec type found for stream: {:?}", &stream)
+                            error!("No codec type found for stream: {stream:?}")
                         }
                     }
                 }
@@ -257,11 +255,9 @@ impl MediaProbe {
                     },
                 }
             }
-            Err(err) => {
+            Err(e) => {
                 error!(
-                    "Can't read source '{}' with ffprobe, source is probably damaged! Error is: {:?}",
-                    input,
-                    err
+                    "Can't read source '{input}' with ffprobe, source is probably damaged! Error is: {e:?}"
                 );
 
                 MediaProbe {
@@ -274,7 +270,7 @@ impl MediaProbe {
     }
 }
 
-pub fn write_status(date: String, shift: f64) {
+pub fn write_status(date: &str, shift: f64) {
     let config = GlobalConfig::global();
     let stat_file = config.general.stat_file.clone();
 
@@ -283,10 +279,10 @@ pub fn write_status(date: String, shift: f64) {
         "date": date,
     });
 
-    let status_data: String = serde_json::to_string(&data)
-        .expect("Serialize status data failed");
-    fs::write(stat_file, &status_data)
-        .expect("Unable to write file");
+    let status_data: String = serde_json::to_string(&data).expect("Serialize status data failed");
+    if let Err(e) = fs::write(stat_file, &status_data) {
+        error!("Unable to write file: {e:?}")
+    };
 }
 
 // pub fn get_timestamp() -> i64 {
@@ -316,7 +312,7 @@ pub fn get_date(seek: bool, start: f64, next_start: f64) -> String {
     local.format("%Y-%m-%d").to_string()
 }
 
-pub fn modified_time(path: &String) -> Option<DateTime<Local>> {
+pub fn modified_time(path: &str) -> Option<DateTime<Local>> {
     let metadata = metadata(path).unwrap();
 
     if let Ok(time) = metadata.modified() {
@@ -327,8 +323,8 @@ pub fn modified_time(path: &String) -> Option<DateTime<Local>> {
     None
 }
 
-pub fn time_to_sec(time_str: &String) -> f64 {
-    if ["now", "", "none"].contains(&time_str.as_str()) || !time_str.contains(":") {
+pub fn time_to_sec(time_str: &str) -> f64 {
+    if ["now", "", "none"].contains(&time_str) || !time_str.contains(":") {
         return get_sec();
     }
 
@@ -427,10 +423,7 @@ pub fn seek_and_length(src: String, seek: f64, out: f64, duration: f64) -> Vec<S
     let mut source_cmd: Vec<String> = vec![];
 
     if seek > 0.0 {
-        source_cmd.append(&mut vec![
-            "-ss".to_string(),
-            format!("{}", seek).to_string(),
-        ])
+        source_cmd.append(&mut vec!["-ss".to_string(), format!("{seek}")])
     }
 
     source_cmd.append(&mut vec!["-i".to_string(), src]);
@@ -445,12 +438,12 @@ pub fn seek_and_length(src: String, seek: f64, out: f64, duration: f64) -> Vec<S
     source_cmd
 }
 
-pub async fn stderr_reader(std_errors: ChildStderr, suffix: String) -> Result<(), Error> {
+pub async fn stderr_reader(std_errors: ChildStderr, suffix: &str) -> Result<(), Error> {
     // read ffmpeg stderr decoder, encoder and server instance
     // and log the output
 
-    fn format_line(line: String, level: String) -> String {
-        line.replace(&format!("[{}] ", level), "")
+    fn format_line(line: String, level: &str) -> String {
+        line.replace(&format!("[{level: >5}] "), "")
     }
 
     let buffer = BufReader::new(std_errors);
@@ -459,14 +452,11 @@ pub async fn stderr_reader(std_errors: ChildStderr, suffix: String) -> Result<()
         let line = line?;
 
         if line.contains("[info]") {
-            info!(
-                "<bright black>[{suffix}]</> {}",
-                format_line(line, "info".to_string())
-            )
+            info!("<bright black>[{suffix}]</> {}", format_line(line, "info"))
         } else if line.contains("[warning]") {
             warn!(
                 "<bright black>[{suffix}]</> {}",
-                format_line(line, "warning".to_string())
+                format_line(line, "warning")
             )
         } else {
             if suffix != "server"
@@ -475,7 +465,7 @@ pub async fn stderr_reader(std_errors: ChildStderr, suffix: String) -> Result<()
             {
                 error!(
                     "<bright black>[{suffix}]</> {}",
-                    format_line(line.clone(), "error".to_string())
+                    format_line(line.clone(), "error")
                 );
             }
         }
@@ -491,10 +481,10 @@ fn is_in_system(name: &str) {
         .spawn()
     {
         if let Err(e) = proc.wait() {
-            error!("{:?}", e)
+            error!("{e:?}")
         };
     } else {
-        error!("{} not found on system!", name);
+        error!("{name} not found on system!");
         exit(0x0100);
     }
 }

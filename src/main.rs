@@ -14,13 +14,15 @@ use tokio::runtime::Builder;
 mod filter;
 mod input;
 mod output;
+mod rpc;
 mod utils;
 
 use crate::output::{player, write_hls};
 use crate::utils::{
-    init_config, init_logging, run_rpc, validate_ffmpeg, GlobalConfig, PlayerControl,
-    PlayoutStatus, ProcessControl,
+    init_config, init_logging, validate_ffmpeg, GlobalConfig, PlayerControl, PlayoutStatus,
+    ProcessControl,
 };
+use rpc::json_rpc_server;
 
 #[derive(Serialize, Deserialize)]
 struct StatusData {
@@ -66,14 +68,14 @@ fn main() {
     validate_ffmpeg();
 
     if config.rpc_server.enable {
-        rt_handle.spawn(run_rpc(
+        rt_handle.spawn(json_rpc_server(
             play_control.clone(),
             playout_stat.clone(),
             proc_control.clone(),
         ));
     }
 
-    if config.out.mode.to_lowercase() == "hls".to_string() {
+    if &config.out.mode.to_lowercase() == "hls" {
         write_hls(rt_handle, play_control, playout_stat, proc_control);
     } else {
         player(rt_handle, play_control, playout_stat, proc_control);
