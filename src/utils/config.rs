@@ -148,8 +148,7 @@ impl GlobalConfig {
             Ok(file) => file,
             Err(err) => {
                 println!(
-                    "{:?} doesn't exists!\n{}\n\nSystem error: {err}",
-                    config_path,
+                    "{config_path:?} doesn't exists!\n{}\n\nSystem error: {err}",
                     "Put \"ffplayout.yml\" in \"/etc/playout/\" or beside the executable!"
                 );
                 process::exit(0x0100);
@@ -182,11 +181,11 @@ impl GlobalConfig {
             "-g",
             "1",
             "-b:v",
-            format!("{}k", bitrate).as_str(),
+            format!("{bitrate}k").as_str(),
             "-minrate",
-            format!("{}k", bitrate).as_str(),
+            format!("{bitrate}k").as_str(),
             "-maxrate",
-            format!("{}k", bitrate).as_str(),
+            format!("{bitrate}k").as_str(),
             "-bufsize",
             format!("{}k", bitrate / 2).as_str(),
         ]

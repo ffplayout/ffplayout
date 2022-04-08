@@ -85,15 +85,15 @@ pub fn write_hls(
             .spawn()
         {
             Err(e) => {
-                error!("couldn't spawn decoder process: {}", e);
-                panic!("couldn't spawn decoder process: {}", e)
+                error!("couldn't spawn decoder process: {e}");
+                panic!("couldn't spawn decoder process: {e}")
             }
             Ok(proc) => proc,
         };
 
         rt_handle.spawn(stderr_reader(
             dec_proc.stderr.take().unwrap(),
-            "Writer".to_string(),
+            "Writer",
         ));
 
         if let Err(e) = dec_proc.wait() {

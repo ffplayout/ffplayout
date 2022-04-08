@@ -109,8 +109,8 @@ pub async fn ingest_server(
             .spawn()
         {
             Err(e) => {
-                error!("couldn't spawn ingest server: {}", e);
-                panic!("couldn't spawn ingest server: {}", e)
+                error!("couldn't spawn ingest server: {e}");
+                panic!("couldn't spawn ingest server: {e}")
             }
             Ok(proc) => proc,
         };
@@ -120,7 +120,7 @@ pub async fn ingest_server(
 
         rt_handle.spawn(stderr_reader(
             server_proc.stderr.take().unwrap(),
-            "Server".to_string(),
+            "Server",
         ));
 
         let mut ingest_reader = BufReader::new(server_proc.stdout.take().unwrap());
@@ -130,7 +130,7 @@ pub async fn ingest_server(
             let bytes_len = match ingest_reader.read(&mut buffer[..]) {
                 Ok(length) => length,
                 Err(e) => {
-                    debug!("Ingest server read {:?}", e);
+                    debug!("Ingest server read {e:?}");
 
                     break;
                 }
@@ -143,7 +143,7 @@ pub async fn ingest_server(
 
             if bytes_len > 0 {
                 if let Err(e) = ingest_sender.send((bytes_len, buffer)) {
-                    error!("Ingest server write error: {:?}", e);
+                    error!("Ingest server write error: {e:?}");
 
                     *proc_control.is_terminated.lock().unwrap() = true;
                     break;
@@ -158,11 +158,11 @@ pub async fn ingest_server(
         sleep(Duration::from_secs(1));
 
         if let Err(e) = server_proc.kill() {
-            error!("Ingest server {:?}", e)
+            error!("Ingest server {e:?}")
         };
 
         if let Err(e) = server_proc.wait() {
-            error!("Ingest server {:?}", e)
+            error!("Ingest server {e:?}")
         };
     }
 
