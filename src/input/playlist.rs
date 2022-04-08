@@ -157,6 +157,7 @@ impl CurrentProgram {
             });
 
             *self.playout_stat.current_date.lock().unwrap() = json.date.clone();
+            *self.playout_stat.time_shift.lock().unwrap() = 0.0;
             let status_data: String =
                 serde_json::to_string(&data).expect("Serialize status data failed");
             fs::write(self.config.general.stat_file.clone(), &status_data)

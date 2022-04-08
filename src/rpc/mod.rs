@@ -75,11 +75,12 @@ pub async fn json_rpc_server(
             let mut date = playout_stat.date.lock().unwrap();
 
             if map.contains_key("control") && &map["control"] == "next" {
-                if let Ok(_) = kill_decoder(proc.decoder_term.clone()) {
-                    info!("Move to next clip");
-                    let index = *play.index.lock().unwrap();
+                let index = *play.index.lock().unwrap();
 
-                    if index < play.current_list.lock().unwrap().len() {
+                if index < play.current_list.lock().unwrap().len() {
+                    if let Ok(_) = kill_decoder(proc.decoder_term.clone()) {
+                        info!("Move to next clip");
+
                         let mut data_map = Map::new();
                         let mut media = play.current_list.lock().unwrap()[index].clone();
                         media.add_probe();
@@ -95,15 +96,18 @@ pub async fn json_rpc_server(
 
                         return Ok(Value::Object(data_map));
                     }
+
+                    return Ok(Value::String("Move failed".to_string()));
                 }
-                return Ok(Value::String("Move failed".to_string()));
+
+                return Ok(Value::String("Last clip can not be skipped".to_string()));
             }
 
             if map.contains_key("control") && &map["control"] == "back" {
-                if let Ok(_) = kill_decoder(proc.decoder_term.clone()) {
-                    let index = *play.index.lock().unwrap();
+                let index = *play.index.lock().unwrap();
 
-                    if index > 1 && play.current_list.lock().unwrap().len() > 1 {
+                if index > 1 && play.current_list.lock().unwrap().len() > 1 {
+                    if let Ok(_) = kill_decoder(proc.decoder_term.clone()) {
                         info!("Move to last clip");
                         let mut data_map = Map::new();
                         let mut media = play.current_list.lock().unwrap()[index - 2].clone();
@@ -121,8 +125,11 @@ pub async fn json_rpc_server(
 
                         return Ok(Value::Object(data_map));
                     }
+
+                    return Ok(Value::String("Move failed".to_string()));
                 }
-                return Ok(Value::String("Move failed".to_string()));
+
+                return Ok(Value::String("Clip index out of range".to_string()));
             }
 
             if map.contains_key("control") && &map["control"] == "reset" {
