@@ -142,7 +142,7 @@ fn fade(node: &mut Media, chain: &mut Filters, codec_type: &str) {
 fn overlay(node: &mut Media, chain: &mut Filters, config: &GlobalConfig) {
     if config.processing.add_logo
         && Path::new(&config.processing.logo).is_file()
-        && node.category != "advertisement".to_string()
+        && &node.category.clone().unwrap_or(String::new()) != "advertisement"
     {
         let opacity = format!(
             "format=rgba,colorchannelmixer=aa={}",
