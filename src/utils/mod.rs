@@ -8,13 +8,10 @@ use std::{
     path::Path,
     process::exit,
     process::{ChildStderr, Command, Stdio},
-    sync::{Arc, Mutex, RwLock},
     time,
     time::UNIX_EPOCH,
 };
 
-use jsonrpc_http_server::CloseHandle;
-use process_control::Terminator;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -22,122 +19,19 @@ use simplelog::*;
 
 mod arg_parse;
 mod config;
+pub mod controller;
 pub mod json_reader;
 mod json_validate;
 mod logging;
 
 pub use arg_parse::get_args;
 pub use config::{init_config, GlobalConfig};
+pub use controller::{PlayerControl, PlayoutStatus, ProcessControl, ProcessUnit::*};
 pub use json_reader::{read_json, Playlist, DUMMY_LEN};
 pub use json_validate::validate_playlist;
 pub use logging::init_logging;
 
 use crate::filter::filter_chains;
-
-#[derive(Clone)]
-pub struct ProcessControl {
-    pub decoder_term: Arc<Mutex<Option<Terminator>>>,
-    pub encoder_term: Arc<Mutex<Option<Terminator>>>,
-    pub server_term: Arc<Mutex<Option<Terminator>>>,
-    pub server_is_running: Arc<Mutex<bool>>,
-    pub rpc_handle: Arc<Mutex<Option<CloseHandle>>>,
-    pub is_terminated: Arc<Mutex<bool>>,
-    pub is_alive: Arc<RwLock<bool>>,
-}
-
-impl ProcessControl {
-    pub fn new() -> Self {
-        Self {
-            decoder_term: Arc::new(Mutex::new(None)),
-            encoder_term: Arc::new(Mutex::new(None)),
-            server_term: Arc::new(Mutex::new(None)),
-            server_is_running: Arc::new(Mutex::new(false)),
-            rpc_handle: Arc::new(Mutex::new(None)),
-            is_terminated: Arc::new(Mutex::new(false)),
-            is_alive: Arc::new(RwLock::new(true)),
-        }
-    }
-}
-
-impl ProcessControl {
-    pub fn kill_all(&mut self) {
-        *self.is_terminated.lock().unwrap() = true;
-
-        if *self.is_alive.read().unwrap() {
-            *self.is_alive.write().unwrap() = false;
-
-            if let Some(rpc) = &*self.rpc_handle.lock().unwrap() {
-                rpc.clone().close()
-            };
-
-            if let Some(server) = &*self.server_term.lock().unwrap() {
-                unsafe {
-                    if let Err(e) = server.terminate() {
-                        error!("Ingest server: {e:?}");
-                    }
-                }
-            };
-
-            if let Some(decoder) = &*self.decoder_term.lock().unwrap() {
-                unsafe {
-                    if let Err(e) = decoder.terminate() {
-                        error!("Decoder: {e:?}");
-                    }
-                }
-            };
-
-            if let Some(encoder) = &*self.encoder_term.lock().unwrap() {
-                unsafe {
-                    if let Err(e) = encoder.terminate() {
-                        error!("Encoder: {e:?}");
-                    }
-                }
-            };
-        }
-    }
-}
-
-impl Drop for ProcessControl {
-    fn drop(&mut self) {
-        self.kill_all()
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct PlayoutStatus {
-    pub time_shift: Arc<Mutex<f64>>,
-    pub date: Arc<Mutex<String>>,
-    pub current_date: Arc<Mutex<String>>,
-    pub list_init: Arc<Mutex<bool>>,
-}
-
-impl PlayoutStatus {
-    pub fn new() -> Self {
-        Self {
-            time_shift: Arc::new(Mutex::new(0.0)),
-            date: Arc::new(Mutex::new(String::new())),
-            current_date: Arc::new(Mutex::new(String::new())),
-            list_init: Arc::new(Mutex::new(true)),
-        }
-    }
-}
-
-#[derive(Clone)]
-pub struct PlayerControl {
-    pub current_media: Arc<Mutex<Option<Media>>>,
-    pub current_list: Arc<Mutex<Vec<Media>>>,
-    pub index: Arc<Mutex<usize>>,
-}
-
-impl PlayerControl {
-    pub fn new() -> Self {
-        Self {
-            current_media: Arc::new(Mutex::new(None)),
-            current_list: Arc::new(Mutex::new(vec![Media::new(0, String::new(), false)])),
-            index: Arc::new(Mutex::new(0)),
-        }
-    }
-}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Media {

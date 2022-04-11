@@ -6,7 +6,6 @@ use std::{
     time::Duration,
 };
 
-use process_control::ChildExt;
 use simplelog::*;
 use tokio::runtime::Handle;
 
@@ -18,14 +17,15 @@ pub use hls::write_hls;
 
 use crate::input::{ingest_server, source_generator};
 use crate::utils::{
-    sec_to_time, stderr_reader, GlobalConfig, PlayerControl, PlayoutStatus, ProcessControl,
+    sec_to_time, stderr_reader, Decoder, Encoder, GlobalConfig, PlayerControl, PlayoutStatus,
+    ProcessControl,
 };
 
 pub fn player(
     rt_handle: &Handle,
     play_control: PlayerControl,
     playout_stat: PlayoutStatus,
-    proc_control: ProcessControl,
+    mut proc_control: ProcessControl,
 ) {
     let config = GlobalConfig::global();
     let dec_settings = config.processing.clone().settings.unwrap();
@@ -50,8 +50,8 @@ pub fn player(
     };
 
     let mut enc_writer = BufWriter::new(enc_proc.stdin.take().unwrap());
-
     rt_handle.spawn(stderr_reader(enc_proc.stderr.take().unwrap(), "Encoder"));
+    *proc_control.decoder_term.lock().unwrap() = Some(enc_proc);
 
     let (ingest_sender, ingest_receiver): (
         SyncSender<(usize, [u8; 65088])>,
@@ -114,12 +114,8 @@ pub fn player(
         };
 
         let mut dec_reader = BufReader::new(dec_proc.stdout.take().unwrap());
-
         rt_handle.spawn(stderr_reader(dec_proc.stderr.take().unwrap(), "Decoder"));
-
-        if let Ok(dec_terminator) = dec_proc.terminator() {
-            *proc_control.decoder_term.lock().unwrap() = Some(dec_terminator);
-        };
+        *proc_control.decoder_term.lock().unwrap() = Some(dec_proc);
 
         loop {
             if *proc_control.server_is_running.lock().unwrap() {
@@ -130,13 +126,9 @@ pub fn player(
                         error!("Encoder error: {e}")
                     }
 
-                    if let Err(e) = dec_proc.kill() {
-                        error!("Decoder error: {e}")
-                    };
-
-                    if let Err(e) = dec_proc.wait() {
-                        error!("Decoder error: {e}")
-                    };
+                    if let Err(e) = proc_control.kill(Decoder) {
+                        error!("{e}")
+                    }
 
                     live_on = true;
 
@@ -182,18 +174,14 @@ pub fn player(
             }
         }
 
-        if let Err(e) = dec_proc.wait() {
-            panic!("Decoder error: {e:?}")
-        };
+        if let Err(e) = proc_control.wait(Decoder) {
+            error!("{e}")
+        }
     }
 
     sleep(Duration::from_secs(1));
 
-    if let Err(e) = enc_proc.kill() {
-        panic!("Encoder error: {e:?}")
-    };
-
-    if let Err(e) = enc_proc.wait() {
-        panic!("Encoder error: {e:?}")
-    };
+    if let Err(e) = proc_control.kill(Encoder) {
+        error!("{e}")
+    }
 }
