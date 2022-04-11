@@ -17,12 +17,14 @@ out:
 
 */
 
-use std::process::{Command, Stdio};
+use std::{
+    process::{Command, Stdio},
+};
 
 use simplelog::*;
 use tokio::runtime::Handle;
 
-use crate::output::source_generator;
+use crate::input::source_generator;
 use crate::utils::{
     sec_to_time, stderr_reader, GlobalConfig, PlayerControl, PlayoutStatus, ProcessControl,
 };
