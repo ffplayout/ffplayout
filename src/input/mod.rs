@@ -26,14 +26,10 @@ pub fn source_generator(
 ) -> Box<dyn Iterator<Item = Media>> {
     let get_source = match config.processing.clone().mode.as_str() {
         "folder" => {
-            let path = config.storage.path.clone();
-
-            info!("Playout in folder mode.");
+            info!("Playout in folder mode");
+            debug!("Monitor folder: <b><magenta>{}</></b>", &config.storage.path);
 
             let folder_source = Source::new(current_list, index);
-
-            debug!("Monitor folder: <b><magenta>{}</></b>", path);
-
             rt_handle.spawn(watchman(folder_source.nodes.clone(), is_terminated.clone()));
 
             Box::new(folder_source) as Box<dyn Iterator<Item = Media>>
