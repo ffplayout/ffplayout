@@ -57,7 +57,7 @@ processing:
     aspect: 1.778
     fps: 25
     add_logo: true
-    logo: docs/logo.png
+    logo: /usr/share/ffplayout/logo.png
     logo_scale:
     logo_opacity: 0.7
     logo_filter: overlay=W-w-12:12
