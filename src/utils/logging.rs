@@ -208,7 +208,7 @@ pub fn init_logging(
         ));
     }
 
-    if config.mail.recipient.len() > 3 {
+    if config.mail.recipient.contains("@") && config.mail.recipient.contains(".") {
         let messages: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
         let interval = config.mail.interval.clone();
 
