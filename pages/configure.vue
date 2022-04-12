@@ -85,12 +85,12 @@
                                     v-for="(prop, name, idx) in item"
                                     :key="idx"
                                     label-cols-sm="2"
-                                    :label="(typeof prop === 'boolean' || name === 'helptext') ? '' : name"
+                                    :label="(typeof prop === 'boolean' || name === 'helptext' || name === 'help_text') ? '' : name"
                                     label-align-sm="right"
                                     :label-for="name"
                                 >
                                     <b-form-textarea
-                                        v-if="name === 'helptext'"
+                                        v-if="name === 'helptext' || name === 'help_text'"
                                         id="textarea-plaintext"
                                         plaintext
                                         :value="prop"
@@ -138,10 +138,10 @@
                                         :value="prop"
                                     />
                                     <b-form-textarea
-                                        v-else-if="name === 'preview_param' || name === 'stream_param'"
+                                        v-else-if="name === 'preview_param' || name === 'output_param'"
                                         :id="name"
                                         v-model="configPlayout[key][name]"
-                                        rows="2"
+                                        rows="4"
                                         :value="prop"
                                     />
                                     <b-form-input v-else :id="name" v-model="configPlayout[key][name]" :value="prop" />
