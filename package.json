@@ -23,7 +23,7 @@
     "mpegts.js": "^1.6.10",
     "nuxt": "^2.15.8",
     "splitpanes": "^2.3.8",
-    "video.js": "^7.17.0",
+    "video.js": "^7.18.1",
     "vue-loading-overlay": "^3.4.2",
     "vue2-perfect-scrollbar": "^1.5.5",
     "vuedraggable": "^2.24.3"
@@ -32,11 +32,11 @@
     "@babel/eslint-parser": "^7.17.0",
     "@babel/preset-react": "^7.16.7",
     "@nuxtjs/eslint-config": "^5.0.0",
-    "@nuxtjs/eslint-module": "^3.0.2",
+    "@nuxtjs/eslint-module": "^3.1.0",
     "@nuxtjs/style-resources": "^1.2.1",
     "eslint": "^7.32.0",
     "eslint-plugin-nuxt": ">=2.0.0",
-    "sass": "^1.49.7",
+    "sass": "^1.50.0",
     "sass-loader": "^10.2.1"
   }
 }
