@@ -2,16 +2,15 @@ use std::{
     io::{BufReader, Error, Read},
     path::Path,
     process::{Command, Stdio},
-    sync::{mpsc::SyncSender},
+    sync::mpsc::SyncSender,
     thread::sleep,
     time::Duration,
 };
 
-use process_control::ChildExt;
 use simplelog::*;
 use tokio::runtime::Handle;
 
-use crate::utils::{stderr_reader, GlobalConfig, ProcessControl};
+use crate::utils::{stderr_reader, GlobalConfig, Ingest, ProcessControl};
 
 fn overlay(config: &GlobalConfig) -> String {
     let mut logo_chain = String::new();
@@ -57,7 +56,7 @@ pub async fn ingest_server(
     log_format: String,
     ingest_sender: SyncSender<(usize, [u8; 65088])>,
     rt_handle: Handle,
-    proc_control: ProcessControl,
+    mut proc_control: ProcessControl,
 ) -> Result<(), Error> {
     let config = GlobalConfig::global();
     let mut buffer: [u8; 65088] = [0; 65088];
@@ -96,7 +95,10 @@ pub async fn ingest_server(
         stream_input.last().unwrap()
     );
 
-    debug!("Server CMD: <bright-blue>\"ffmpeg {}\"</>", server_cmd.join(" "));
+    debug!(
+        "Server CMD: <bright-blue>\"ffmpeg {}\"</>",
+        server_cmd.join(" ")
+    );
 
     loop {
         if *proc_control.is_terminated.lock().unwrap() {
@@ -115,15 +117,11 @@ pub async fn ingest_server(
             Ok(proc) => proc,
         };
 
-        let serv_terminator = server_proc.terminator()?;
-        *proc_control.server_term.lock().unwrap() = Some(serv_terminator);
-
-        rt_handle.spawn(stderr_reader(
-            server_proc.stderr.take().unwrap(),
-            "Server",
-        ));
+        rt_handle.spawn(stderr_reader(server_proc.stderr.take().unwrap(), "Server"));
 
         let mut ingest_reader = BufReader::new(server_proc.stdout.take().unwrap());
+        *proc_control.server_term.lock().unwrap() = Some(server_proc);
+
         is_running = false;
 
         loop {
@@ -131,7 +129,6 @@ pub async fn ingest_server(
                 Ok(length) => length,
                 Err(e) => {
                     debug!("Ingest server read {e:?}");
-
                     break;
                 }
             };
@@ -153,17 +150,15 @@ pub async fn ingest_server(
             }
         }
 
+        drop(ingest_reader);
+
         *proc_control.server_is_running.lock().unwrap() = false;
 
         sleep(Duration::from_secs(1));
 
-        if let Err(e) = server_proc.kill() {
-            error!("Ingest server {e:?}")
-        };
-
-        if let Err(e) = server_proc.wait() {
-            error!("Ingest server {e:?}")
-        };
+        if let Err(e) = proc_control.wait(Ingest) {
+            error!("{e}")
+        }
     }
 
     Ok(())

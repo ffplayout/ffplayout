@@ -2,7 +2,7 @@ use clap::Parser;
 
 #[derive(Parser, Debug)]
 #[clap(version,
-    about = "ffplayout, the rust playout solution",
+    about = "ffplayout, Rust based 24/7 playout solution",
     long_about = None)]
 pub struct Args {
     #[clap(short, long, help = "file path to ffplayout.conf")]

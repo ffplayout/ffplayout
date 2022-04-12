@@ -1,13 +1,19 @@
-use notify::DebouncedEvent::{Create, Remove, Rename};
+use notify::{
+    DebouncedEvent::{Create, Remove, Rename},
+    {watcher, RecursiveMode, Watcher},
+};
+
 use rand::{seq::SliceRandom, thread_rng};
 use simplelog::*;
 use std::{
     ffi::OsStr,
     path::Path,
     sync::{
-        mpsc::Receiver,
+        mpsc::channel,
         {Arc, Mutex},
     },
+    thread::sleep,
+    time::Duration,
 };
 
 use walkdir::WalkDir;
@@ -23,10 +29,7 @@ pub struct Source {
 }
 
 impl Source {
-    pub fn new(
-        current_list: Arc<Mutex<Vec<Media>>>,
-        global_index: Arc<Mutex<usize>>,
-    ) -> Self {
+    pub fn new(current_list: Arc<Mutex<Vec<Media>>>, global_index: Arc<Mutex<usize>>) -> Self {
         let config = GlobalConfig::global();
         let mut media_list = vec![];
         let mut index: usize = 0;
@@ -141,40 +144,61 @@ fn file_extension(filename: &Path) -> Option<&str> {
     filename.extension().and_then(OsStr::to_str)
 }
 
-pub async fn file_worker(
-    receiver: Receiver<notify::DebouncedEvent>,
+pub async fn watchman(
     sources: Arc<Mutex<Vec<Media>>>,
+    is_terminated: Arc<Mutex<bool>>,
 ) {
-    while let Ok(res) = receiver.recv() {
-        match res {
-            Create(new_path) => {
-                let index = sources.lock().unwrap().len();
-                let media = Media::new(index, new_path.display().to_string(), false);
+    let config = GlobalConfig::global();
+    let (tx, rx) = channel();
 
-                sources.lock().unwrap().push(media);
-                info!("Create new file: {new_path:?}");
-            }
-            Remove(old_path) => {
-                sources
-                    .lock()
-                    .unwrap()
-                    .retain(|x| x.source != old_path.display().to_string());
-                info!("Remove file: {old_path:?}");
-            }
-            Rename(old_path, new_path) => {
-                let index = sources
-                    .lock()
-                    .unwrap()
-                    .iter()
-                    .position(|x| *x.source == old_path.display().to_string())
-                    .unwrap();
+    let path = config.storage.path.clone();
 
-                let media = Media::new(index, new_path.display().to_string(), false);
-                sources.lock().unwrap()[index] = media;
+    if !Path::new(&path).exists() {
+        error!("Folder path not exists: '{path}'");
+        panic!("Folder path not exists: '{path}'");
+    }
 
-                info!("Rename file: {old_path:?} to {new_path:?}");
-            }
-            _ => (),
+    let mut watcher = watcher(tx, Duration::from_secs(2)).unwrap();
+    watcher.watch(path, RecursiveMode::Recursive).unwrap();
+
+    loop {
+        if *is_terminated.lock().unwrap() {
+            break
         }
+
+        if let Ok(res) = rx.try_recv() {
+            match res {
+                Create(new_path) => {
+                    let index = sources.lock().unwrap().len();
+                    let media = Media::new(index, new_path.display().to_string(), false);
+
+                    sources.lock().unwrap().push(media);
+                    info!("Create new file: <b><magenta>{new_path:?}</></b>");
+                }
+                Remove(old_path) => {
+                    sources
+                        .lock()
+                        .unwrap()
+                        .retain(|x| x.source != old_path.display().to_string());
+                    info!("Remove file: <b><magenta>{old_path:?}</></b>");
+                }
+                Rename(old_path, new_path) => {
+                    let index = sources
+                        .lock()
+                        .unwrap()
+                        .iter()
+                        .position(|x| *x.source == old_path.display().to_string())
+                        .unwrap();
+
+                    let media = Media::new(index, new_path.display().to_string(), false);
+                    sources.lock().unwrap()[index] = media;
+
+                    info!("Rename file: <b><magenta>{old_path:?}</></b> to <b><magenta>{new_path:?}</></b>");
+                }
+                _ => (),
+            }
+        }
+
+        sleep(Duration::from_secs(4));
     }
 }

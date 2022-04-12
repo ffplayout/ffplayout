@@ -36,7 +36,7 @@ logging:
     log_to_file: false
     backup_count: 7
     local_time: true
-    timestamp: true
+    timestamp: false
     log_path: /var/log/ffplayout/
     log_level: DEBUG
     ffmpeg_level: error

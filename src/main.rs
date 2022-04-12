@@ -1,10 +1,10 @@
+extern crate log;
+extern crate simplelog;
+
 use std::{
     path::PathBuf,
     {fs, fs::File},
 };
-
-extern crate log;
-extern crate simplelog;
 
 use serde::{Deserialize, Serialize};
 use serde_json::json;

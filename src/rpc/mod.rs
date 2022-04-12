@@ -1,10 +1,7 @@
-use std::sync::{Arc, Mutex};
-
 use jsonrpc_http_server::jsonrpc_core::{IoHandler, Params, Value};
 use jsonrpc_http_server::{
     hyper, AccessControlAllowOrigin, DomainsValidation, Response, RestApi, ServerBuilder,
 };
-use process_control::Terminator;
 use serde_json::{json, Map};
 use simplelog::*;
 
@@ -45,19 +42,6 @@ fn get_data_map(config: &GlobalConfig, media: Media) -> Map<String, Value> {
     data_map
 }
 
-fn kill_decoder(terminator: Arc<Mutex<Option<Terminator>>>) -> Result<(), String> {
-    match &*terminator.lock().unwrap() {
-        Some(decoder) => unsafe {
-            if let Err(e) = decoder.terminate() {
-                return Err(format!("Terminate decoder: {e}"));
-            }
-        },
-        None => return Err("No decoder terminator found".to_string()),
-    }
-
-    Ok(())
-}
-
 pub async fn json_rpc_server(
     play_control: PlayerControl,
     playout_stat: PlayoutStatus,
@@ -78,7 +62,15 @@ pub async fn json_rpc_server(
                 let index = *play.index.lock().unwrap();
 
                 if index < play.current_list.lock().unwrap().len() {
-                    if let Ok(_) = kill_decoder(proc.decoder_term.clone()) {
+                    if let Some(proc) = proc.decoder_term.lock().unwrap().as_mut() {
+                        if let Err(e) = proc.kill() {
+                            error!("Decoder {e:?}")
+                        };
+
+                        if let Err(e) = proc.wait() {
+                            error!("Decoder {e:?}")
+                        };
+
                         info!("Move to next clip");
 
                         let mut data_map = Map::new();
@@ -107,7 +99,15 @@ pub async fn json_rpc_server(
                 let index = *play.index.lock().unwrap();
 
                 if index > 1 && play.current_list.lock().unwrap().len() > 1 {
-                    if let Ok(_) = kill_decoder(proc.decoder_term.clone()) {
+                    if let Some(proc) = proc.decoder_term.lock().unwrap().as_mut() {
+                        if let Err(e) = proc.kill() {
+                            error!("Decoder {e:?}")
+                        };
+
+                        if let Err(e) = proc.wait() {
+                            error!("Decoder {e:?}")
+                        };
+
                         info!("Move to last clip");
                         let mut data_map = Map::new();
                         let mut media = play.current_list.lock().unwrap()[index - 2].clone();
@@ -133,7 +133,15 @@ pub async fn json_rpc_server(
             }
 
             if map.contains_key("control") && &map["control"] == "reset" {
-                if let Ok(_) = kill_decoder(proc.decoder_term.clone()) {
+                if let Some(proc) = proc.decoder_term.lock().unwrap().as_mut() {
+                    if let Err(e) = proc.kill() {
+                        error!("Decoder {e:?}")
+                    };
+
+                    if let Err(e) = proc.wait() {
+                        error!("Decoder {e:?}")
+                    };
+
                     info!("Reset playout to original state");
                     let mut data_map = Map::new();
                     *time_shift = 0.0;

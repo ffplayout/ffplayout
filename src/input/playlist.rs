@@ -179,13 +179,15 @@ impl CurrentProgram {
         let index = *self.index.lock().unwrap();
         let current_list = self.nodes.lock().unwrap();
 
-        if index + 1 < current_list.len() && &current_list[index + 1].category == "advertisement" {
+        if index + 1 < current_list.len()
+            && &current_list[index + 1].category.clone().unwrap_or(String::new()) == "advertisement"
+        {
             self.current_node.next_ad = Some(true);
         }
 
         if index > 0
             && index < current_list.len()
-            && &current_list[index - 1].category == "advertisement"
+            && &current_list[index - 1].category.clone().unwrap_or(String::new()) == "advertisement"
         {
             self.current_node.last_ad = Some(true);
         }
