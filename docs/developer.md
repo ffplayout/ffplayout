@@ -66,3 +66,19 @@ CC="aarch64-apple-darwin20.4-clang -arch arm64e" cargo build --release --target=
 # for x86_64
 CC="o64-clang" cargo build --release --target=x86_64-apple-darwin
 ```
+
+### Create debian DEB and RHEL RPM packages
+
+install:
+- `cargo install cargo-deb`
+- `cargo install cargo-generate-rpm`
+
+And run with:
+
+```Bash
+# for debian based systems:
+cargo deb --target=x86_64-unknown-linux-musl
+
+# for rhel based systems:
+cargo generate-rpm --target=x86_64-unknown-linux-musl
+```
