@@ -121,10 +121,16 @@ impl Iterator for Source {
             Some(self.current_node.clone())
         } else {
             if self.config.storage.shuffle {
-                info!("Shuffle files");
+                if self.config.general.generate.is_none() {
+                    info!("Shuffle files");
+                }
+
                 self.shuffle();
             } else {
-                info!("Sort files");
+                if self.config.general.generate.is_none() {
+                    info!("Sort files");
+                }
+
                 self.sort();
             }
 

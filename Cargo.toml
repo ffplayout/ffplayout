@@ -44,7 +44,7 @@ lto = true
 name = "ffplayout-engine"
 priority = "optional"
 section = "net"
-license-file = ["LICENSE", "3"]
+license-file = ["LICENSE", "0"]
 depends = ""
 suggests = "ffmpeg"
 maintainer-scripts = "package/debian/"
@@ -54,9 +54,8 @@ assets = [
     ["assets/ffplayout.yml", "/etc/ffplayout/ffplayout.yml", "644"],
     ["assets/logo.png", "/usr/share/ffplayout/logo.png", "644"],
     ["README.md", "/usr/share/doc/ffplayout-engine/README", "644"],
-    ["package/common/ffplayout-engine.service.preset", "/lib/systemd/system-preset/50-ffplayout-engine.preset", "644"],
 ]
-systemd-units = { unit-name = "ffplayout-engine", unit-scripts = "package/common", enable = false }
+systemd-units = { unit-name = "ffplayout-engine", unit-scripts = "assets", enable = false }
 
 # REHL RPM PACKAGE
 [package.metadata.generate-rpm]
@@ -65,7 +64,7 @@ license = "GPL-3.0"
 assets = [
     { source = "target/x86_64-unknown-linux-musl/release/ffplayout", dest = "/usr/bin/ffplayout", mode = "755" },
     { source = "assets/ffplayout.yml", dest = "/etc/ffplayout/ffplayout.yml", mode = "644" },
-    { source = "package/common/ffplayout-engine.service", dest = "/lib/systemd/system/ffplayout-engine.service", mode = "644" },
+    { source = "assets/ffplayout-engine.service", dest = "/lib/systemd/system/ffplayout-engine.service", mode = "644" },
     { source = "README.md", dest = "/usr/share/doc/ffplayout-engine/README", mode = "644", doc = true },
     { source = "LICENSE", dest = "/usr/share/doc/ffplayout-engine/LICENSE", mode = "644" },
     { source = "assets/logo.png", dest = "/usr/share/ffplayout/logo.png", mode = "644" },

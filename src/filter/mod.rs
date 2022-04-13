@@ -174,10 +174,8 @@ fn overlay(node: &mut Media, chain: &mut Filters, config: &GlobalConfig) {
 fn extend_video(node: &mut Media, chain: &mut Filters) {
     let video_streams = node.probe.clone().unwrap().video_streams.unwrap();
     if video_streams.len() > 0 {
-        let video_duration = &video_streams[0].duration;
-
-        if video_duration.is_some() {
-            let duration_float = video_duration.clone().unwrap().parse::<f64>().unwrap();
+        if let Some(duration) = &video_streams[0].duration {
+            let duration_float = duration.clone().parse::<f64>().unwrap();
 
             if node.out - node.seek > duration_float - node.seek + 0.1 {
                 chain.add_filter(
@@ -226,10 +224,8 @@ fn add_audio(node: &mut Media, chain: &mut Filters) {
 fn extend_audio(node: &mut Media, chain: &mut Filters) {
     let audio_streams = node.probe.clone().unwrap().audio_streams.unwrap();
     if audio_streams.len() > 0 {
-        let audio_duration = &audio_streams[0].duration;
-
-        if audio_duration.is_some() {
-            let duration_float = audio_duration.clone().unwrap().parse::<f64>().unwrap();
+        if let Some(duration) = &audio_streams[0].duration {
+            let duration_float = duration.clone().parse::<f64>().unwrap();
 
             if node.out - node.seek > duration_float - node.seek + 0.1 {
                 chain.add_filter(
@@ -322,15 +318,13 @@ pub fn filter_chains(node: &mut Media) -> Vec<String> {
     let mut audio_map = "1:a".to_string();
     filters.audio_map = Some(audio_map);
 
-    if node.probe.is_some() {
-        let probe = node.probe.clone();
-
-        if node.probe.as_ref().unwrap().audio_streams.is_some() {
+    if let Some(probe) = node.probe.clone() {
+        if probe.audio_streams.is_some() {
             audio_map = "0:a".to_string();
             filters.audio_map = Some(audio_map);
         }
 
-        let v_stream = &probe.unwrap().video_streams.unwrap()[0];
+        let v_stream = &probe.video_streams.unwrap()[0];
         let aspect = aspect_calc(v_stream.display_aspect_ratio.clone().unwrap());
         let frame_per_sec = fps_calc(v_stream.r_frame_rate.clone());
 
@@ -364,19 +358,19 @@ pub fn filter_chains(node: &mut Media) -> Vec<String> {
     let mut filter_str: String = String::new();
     let mut filter_map: Vec<String> = vec![];
 
-    if filters.video_chain.is_some() {
-        filter_str.push_str(filters.video_chain.unwrap().as_str());
+    if let Some(v_filters) = filters.video_chain {
+        filter_str.push_str(v_filters.as_str());
         filter_str.push_str(filters.video_map.clone().unwrap().as_str());
         filter_map.append(&mut vec!["-map".to_string(), filters.video_map.unwrap()]);
     } else {
         filter_map.append(&mut vec!["-map".to_string(), "0:v".to_string()]);
     }
 
-    if filters.audio_chain.is_some() {
+    if let Some(a_filters) = filters.audio_chain {
         if filter_str.len() > 10 {
             filter_str.push_str(";")
         }
-        filter_str.push_str(filters.audio_chain.unwrap().as_str());
+        filter_str.push_str(a_filters.as_str());
         filter_str.push_str(filters.audio_map.clone().unwrap().as_str());
         filter_map.append(&mut vec!["-map".to_string(), filters.audio_map.unwrap()]);
     } else {

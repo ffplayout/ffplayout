@@ -15,9 +15,16 @@ pub const DUMMY_LEN: f64 = 60.0;
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Playlist {
     pub date: String,
+
+    #[serde(skip_serializing, skip_deserializing)]
     pub start_sec: Option<f64>,
+
+    #[serde(skip_serializing, skip_deserializing)]
     pub current_file: Option<String>,
+
+    #[serde(skip_serializing, skip_deserializing)]
     pub modified: Option<String>,
+
     pub program: Vec<Media>,
 }
 
@@ -86,8 +93,8 @@ pub fn read_json(
     playlist.start_sec = Some(start_sec.clone());
     let modify = modified_time(&current_file);
 
-    if modify.is_some() {
-        playlist.modified = Some(modify.unwrap().to_string());
+    if let Some(modi) = modify {
+        playlist.modified = Some(modi.to_string());
     }
 
     for (i, item) in playlist.program.iter_mut().enumerate() {
