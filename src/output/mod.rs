@@ -53,10 +53,12 @@ pub fn player(
     rt_handle.spawn(stderr_reader(enc_proc.stderr.take().unwrap(), "Encoder"));
     *proc_control.decoder_term.lock().unwrap() = Some(enc_proc);
 
+    // too small value for sync_channel size increases CPU load,
+    // large values leave packets in queue which creates artifacts
     let (ingest_sender, ingest_receiver): (
         SyncSender<(usize, [u8; 65088])>,
         Receiver<(usize, [u8; 65088])>,
-    ) = sync_channel(8);
+    ) = sync_channel(16);
 
     if config.ingest.enable {
         rt_handle.spawn(ingest_server(
