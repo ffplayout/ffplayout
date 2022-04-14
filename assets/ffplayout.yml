@@ -10,7 +10,7 @@ general:
 rpc_server:
     help_text: Run a JSON RPC server, for getting infos about current playing, and
         control for some functions.
-    enable: true
+    enable: false
     address: 127.0.0.1:7070
     authorization: av2Kx8g67lF9qj5wEH3ym1bI4cCs
 
