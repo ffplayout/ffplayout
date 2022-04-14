@@ -1,13 +1,7 @@
-use notify::{
-    DebouncedEvent::{Create, Remove, Rename},
-    {watcher, RecursiveMode, Watcher},
-};
-
-use rand::{seq::SliceRandom, thread_rng};
-use simplelog::*;
 use std::{
     ffi::OsStr,
     path::Path,
+    process::exit,
     sync::{
         mpsc::channel,
         {Arc, Mutex},
@@ -16,6 +10,12 @@ use std::{
     time::Duration,
 };
 
+use notify::{
+    DebouncedEvent::{Create, Remove, Rename},
+    {watcher, RecursiveMode, Watcher},
+};
+use rand::{seq::SliceRandom, thread_rng};
+use simplelog::*;
 use walkdir::WalkDir;
 
 use crate::utils::{get_sec, GlobalConfig, Media};
@@ -33,6 +33,14 @@ impl Source {
         let config = GlobalConfig::global();
         let mut media_list = vec![];
         let mut index: usize = 0;
+
+        if !Path::new(&config.storage.path).is_dir() {
+            error!(
+                "Path not exists: <b><magenta>{}</></b>",
+                config.storage.path
+            );
+            exit(1);
+        }
 
         for entry in WalkDir::new(config.storage.path.clone())
             .into_iter()
@@ -150,10 +158,7 @@ fn file_extension(filename: &Path) -> Option<&str> {
     filename.extension().and_then(OsStr::to_str)
 }
 
-pub async fn watchman(
-    sources: Arc<Mutex<Vec<Media>>>,
-    is_terminated: Arc<Mutex<bool>>,
-) {
+pub async fn watchman(sources: Arc<Mutex<Vec<Media>>>, is_terminated: Arc<Mutex<bool>>) {
     let config = GlobalConfig::global();
     let (tx, rx) = channel();
 
@@ -169,7 +174,7 @@ pub async fn watchman(
 
     loop {
         if *is_terminated.lock().unwrap() {
-            break
+            break;
         }
 
         if let Ok(res) = rx.try_recv() {
