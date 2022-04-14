@@ -21,7 +21,7 @@ Steps to reproduce the behavior:
 A clear and concise description of what you expected to happen.
 
 **Desktop/Server/Software (please complete the following information):**
- - OS: [e.g. debian 10]
+ - OS: [e.g. debian 11]
 - python version
 - ffmpeg version
 - are you using the current master of ffplayout?
