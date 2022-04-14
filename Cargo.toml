@@ -1,5 +1,5 @@
 [package]
-name = "ffplayout-rs"
+name = "ffplayout-engine"
 description = "24/7 playout based on rust and ffmpeg"
 license = "GPL-3.0"
 authors = ["Jonathan Baecker jonbae77@gmail.com"]
