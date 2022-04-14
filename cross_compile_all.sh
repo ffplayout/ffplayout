@@ -46,6 +46,7 @@ echo ""
 cargo deb --target=x86_64-unknown-linux-musl
 mv ./target/x86_64-unknown-linux-musl/debian/ffplayout-engine_${version}_amd64.deb .
 
+echo ""
 echo "Create rhel package"
 echo ""
 
