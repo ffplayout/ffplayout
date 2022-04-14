@@ -29,6 +29,7 @@ pub struct GlobalConfig {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct General {
     pub stop_threshold: f64,
+    pub generate: Option<Vec<String>>,
 
     #[serde(skip_serializing, skip_deserializing)]
     pub stat_file: String,
@@ -138,8 +139,8 @@ impl GlobalConfig {
             Err(_) => PathBuf::from("./ffplayout.yml"),
         };
 
-        if args.config.is_some() {
-            config_path = PathBuf::from(args.config.unwrap());
+        if let Some(cfg) = args.config {
+            config_path = PathBuf::from(cfg);
         } else if Path::new("/etc/ffplayout/ffplayout.yml").is_file() {
             config_path = PathBuf::from("/etc/ffplayout/ffplayout.yml");
         }
@@ -157,6 +158,7 @@ impl GlobalConfig {
 
         let mut config: GlobalConfig =
             serde_yaml::from_reader(f).expect("Could not read config file.");
+        config.general.generate = None;
         config.general.stat_file = env::temp_dir()
             .join("ffplayout_status.json")
             .display()
@@ -207,32 +209,36 @@ impl GlobalConfig {
         config.out.preview_cmd = split(config.out.preview_param.as_str());
         config.out.output_cmd = split(config.out.output_param.as_str());
 
-        if args.log.is_some() {
-            config.logging.log_path = args.log.unwrap();
+        if let Some(gen) = args.generate {
+            config.general.generate = Some(gen);
         }
 
-        if args.playlist.is_some() {
-            config.playlist.path = args.playlist.unwrap();
+        if let Some(log_path) = args.log {
+            config.logging.log_path = log_path;
         }
 
-        if args.play_mode.is_some() {
-            config.processing.mode = args.play_mode.unwrap();
+        if let Some(playlist) = args.playlist {
+            config.playlist.path = playlist;
         }
 
-        if args.folder.is_some() {
-            config.storage.path = args.folder.unwrap();
+        if let Some(mode) = args.play_mode {
+            config.processing.mode = mode;
         }
 
-        if args.start.is_some() {
-            config.playlist.day_start = args.start.clone().unwrap();
-            config.playlist.start_sec = Some(time_to_sec(&args.start.unwrap()));
+        if let Some(folder) = args.folder {
+            config.storage.path = folder;
         }
 
-        if args.length.is_some() {
-            config.playlist.length = args.length.clone().unwrap();
+        if let Some(start) = args.start {
+            config.playlist.day_start = start.clone();
+            config.playlist.start_sec = Some(time_to_sec(&start));
+        }
 
-            if config.playlist.length.contains(":") {
-                config.playlist.length_sec = Some(time_to_sec(&config.playlist.length));
+        if let Some(length) = args.length {
+            config.playlist.length = length.clone();
+
+            if length.contains(":") {
+                config.playlist.length_sec = Some(time_to_sec(&length));
             } else {
                 config.playlist.length_sec = Some(86400.0);
             }
@@ -242,12 +248,12 @@ impl GlobalConfig {
             config.playlist.infinit = args.infinit;
         }
 
-        if args.output.is_some() {
-            config.out.mode = args.output.unwrap();
+        if let Some(output) = args.output {
+            config.out.mode = output;
         }
 
-        if args.volume.is_some() {
-            config.processing.volume = args.volume.unwrap();
+        if let Some(volume) = args.volume {
+            config.processing.volume = volume;
         }
 
         config

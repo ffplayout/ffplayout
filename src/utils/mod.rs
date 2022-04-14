@@ -20,14 +20,16 @@ use simplelog::*;
 mod arg_parse;
 mod config;
 pub mod controller;
-pub mod json_reader;
+mod generator;
+pub mod json_serializer;
 mod json_validate;
 mod logging;
 
 pub use arg_parse::get_args;
 pub use config::{init_config, GlobalConfig};
 pub use controller::{PlayerControl, PlayoutStatus, ProcessControl, ProcessUnit::*};
-pub use json_reader::{read_json, Playlist, DUMMY_LEN};
+pub use generator::generate_playlist;
+pub use json_serializer::{read_json, Playlist, DUMMY_LEN};
 pub use json_validate::validate_playlist;
 pub use logging::init_logging;
 
@@ -35,19 +37,36 @@ use crate::filter::filter_chains;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Media {
+    #[serde(skip_serializing, skip_deserializing)]
     pub begin: Option<f64>,
+
+    #[serde(skip_serializing, skip_deserializing)]
     pub index: Option<usize>,
     #[serde(rename = "in")]
     pub seek: f64,
     pub out: f64,
     pub duration: f64,
+
+    #[serde(skip_serializing)]
     pub category: Option<String>,
     pub source: String,
+
+    #[serde(skip_serializing, skip_deserializing)]
     pub cmd: Option<Vec<String>>,
+
+    #[serde(skip_serializing, skip_deserializing)]
     pub filter: Option<Vec<String>>,
+
+    #[serde(skip_serializing, skip_deserializing)]
     pub probe: Option<MediaProbe>,
+
+    #[serde(skip_serializing, skip_deserializing)]
     pub last_ad: Option<bool>,
+
+    #[serde(skip_serializing, skip_deserializing)]
     pub next_ad: Option<bool>,
+
+    #[serde(skip_serializing, skip_deserializing)]
     pub process: Option<bool>,
 }
 
@@ -83,17 +102,19 @@ impl Media {
     }
 
     pub fn add_probe(&mut self) {
-        let probe = MediaProbe::new(self.source.clone());
-        self.probe = Some(probe.clone());
+        if self.probe.is_none() {
+            let probe = MediaProbe::new(self.source.clone());
+            self.probe = Some(probe.clone());
 
-        if self.duration == 0.0 {
-            let duration = match probe.format.unwrap().duration {
-                Some(dur) => dur.parse().unwrap(),
-                None => 0.0,
-            };
+            if self.duration == 0.0 {
+                let duration = match probe.format.unwrap().duration {
+                    Some(dur) => dur.parse().unwrap(),
+                    None => 0.0,
+                };
 
-            self.out = duration;
-            self.duration = duration;
+                self.out = duration;
+                self.duration = duration;
+            }
         }
     }
 

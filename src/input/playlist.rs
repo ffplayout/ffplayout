@@ -9,7 +9,7 @@ use simplelog::*;
 use tokio::runtime::Handle;
 
 use crate::utils::{
-    check_sync, gen_dummy, get_delta, get_sec, is_close, json_reader::read_json, modified_time,
+    check_sync, gen_dummy, get_delta, get_sec, is_close, json_serializer::read_json, modified_time,
     seek_and_length, GlobalConfig, Media, PlayoutStatus, DUMMY_LEN,
 };
 

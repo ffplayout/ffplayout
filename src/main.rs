@@ -3,6 +3,7 @@ extern crate simplelog;
 
 use std::{
     path::PathBuf,
+    process::exit,
     {fs, fs::File},
 };
 
@@ -19,8 +20,8 @@ mod utils;
 
 use crate::output::{player, write_hls};
 use crate::utils::{
-    init_config, init_logging, validate_ffmpeg, GlobalConfig, PlayerControl, PlayoutStatus,
-    ProcessControl,
+    generate_playlist, init_config, init_logging, validate_ffmpeg, GlobalConfig, PlayerControl,
+    PlayoutStatus, ProcessControl,
 };
 use rpc::json_rpc_server;
 
@@ -66,6 +67,12 @@ fn main() {
     CombinedLogger::init(logging).unwrap();
 
     validate_ffmpeg();
+
+    if let Some(range) = config.general.generate.clone() {
+        generate_playlist(range);
+
+        exit(0);
+    }
 
     if config.rpc_server.enable {
         rt_handle.spawn(json_rpc_server(
