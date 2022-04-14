@@ -6,7 +6,7 @@ Here are a description on how to install *ffplayout engine* on a standard Linux 
 Requirements
 -----
 
-- python version 3.6+
+- python version 3.7+
 - **ffmpeg v4.2+** and **ffprobe**
 
 Installation

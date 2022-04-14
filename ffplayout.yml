@@ -62,7 +62,8 @@ processing:
 ingest:
     helptext: Works not with direct hls output, it always needs full processing! Run a server
         for a ingest stream. This stream will override the normal streaming until is done.
-        There is no authentication, this is up to you. The recommend way is to set address to localhost, stream to a local server with authentication and from there stream to this app.
+        There is no authentication, this is up to you. The recommend way is to set address
+        to localhost, stream to a local server with authentication and from there stream to this app.
     enable: false
     input_param: -f live_flv -listen 1 -i rtmp://localhost:1936/live/stream
 
@@ -110,7 +111,7 @@ text:
 
 out:
     helptext: The final playout compression. Set the settings to your needs.
-        'mode' has the standard options 'desktop', 'hls', 'live_switch', 'stream'. Self made
+        'mode' has the standard options 'desktop', 'hls', 'stream'. Self made
         outputs can be define, by adding script in output folder with an 'output' function
         inside. 'preview' works only in streaming output and creates a separate preview stream.
     mode: 'stream'
