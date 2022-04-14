@@ -68,9 +68,8 @@ fn main() {
 
     validate_ffmpeg();
 
-    if config.general.generate.is_some() {
-        // generate playlist from given dates
-        generate_playlist();
+    if let Some(range) = config.general.generate.clone() {
+        generate_playlist(range);
 
         exit(0);
     }

@@ -47,7 +47,7 @@ pub struct Media {
     pub out: f64,
     pub duration: f64,
 
-    #[serde(skip_deserializing)]
+    #[serde(skip_serializing)]
     pub category: Option<String>,
     pub source: String,
 
@@ -102,17 +102,19 @@ impl Media {
     }
 
     pub fn add_probe(&mut self) {
-        let probe = MediaProbe::new(self.source.clone());
-        self.probe = Some(probe.clone());
+        if self.probe.is_none() {
+            let probe = MediaProbe::new(self.source.clone());
+            self.probe = Some(probe.clone());
 
-        if self.duration == 0.0 {
-            let duration = match probe.format.unwrap().duration {
-                Some(dur) => dur.parse().unwrap(),
-                None => 0.0,
-            };
+            if self.duration == 0.0 {
+                let duration = match probe.format.unwrap().duration {
+                    Some(dur) => dur.parse().unwrap(),
+                    None => 0.0,
+                };
 
-            self.out = duration;
-            self.duration = duration;
+                self.out = duration;
+                self.duration = duration;
+            }
         }
     }
 

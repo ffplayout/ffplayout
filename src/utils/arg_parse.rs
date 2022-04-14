@@ -2,7 +2,7 @@ use clap::Parser;
 
 #[derive(Parser, Debug)]
 #[clap(version,
-    about = "ffplayout, Rust based 24/7 playout solution",
+    about = "ffplayout, Rust based 24/7 playout solution.\n\nRun without any command to use config file only, or with commands to override parameters.",
     long_about = None)]
 pub struct Args {
     #[clap(short, long, help = "File path to ffplayout.conf")]
@@ -14,7 +14,8 @@ pub struct Args {
     #[clap(
         short,
         long,
-        help = "Generate playlist for given date. Date needs format: YYYY-MM-DD. Date-range is possible to, like: 2022-01-01 - 2022-01-10.",
+        help = "Generate playlist for date. Date-range is possible, like: 2022-01-01 - 2022-01-10.",
+        name = "YYYY-MM-DD",
         multiple_values=true
     )]
     pub generate: Option<Vec<String>>,
