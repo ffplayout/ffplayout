@@ -5,7 +5,7 @@ use clap::Parser;
     about = "ffplayout, Rust based 24/7 playout solution.\n\nRun without any command to use config file only, or with commands to override parameters.",
     long_about = None)]
 pub struct Args {
-    #[clap(short, long, help = "File path to ffplayout.conf")]
+    #[clap(short, long, help = "File path to ffplayout.yml")]
     pub config: Option<String>,
 
     #[clap(short, long, help = "File path for logging")]
