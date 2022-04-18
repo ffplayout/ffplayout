@@ -53,8 +53,7 @@ pub fn player(
     rt_handle.spawn(stderr_reader(enc_proc.stderr.take().unwrap(), "Encoder"));
     *proc_control.decoder_term.lock().unwrap() = Some(enc_proc);
 
-    // too small value for channel size increases CPU load,
-    let (ingest_sender, ingest_receiver) = bounded(56);
+    let (ingest_sender, ingest_receiver) = bounded(96);
 
     if config.ingest.enable {
         rt_handle.spawn(ingest_server(
@@ -132,9 +131,9 @@ pub fn player(
                     *playlist_init.lock().unwrap() = true;
                 }
 
-                if let Ok(receive) = ingest_receiver.try_recv() {
-                    if let Err(e) = enc_writer.write(&receive.1[..receive.0]) {
-                        error!("Ingest receiver error: {:?}", e);
+                for rx in ingest_receiver.try_iter() {
+                    if let Err(e) = enc_writer.write(&rx.1[..rx.0]) {
+                        error!("Encoder write error: {:?}", e);
 
                         break 'source_iter;
                     };
@@ -145,16 +144,6 @@ pub fn player(
 
                     if let Err(e) = enc_writer.flush() {
                         error!("Encoder error: {e}")
-                    }
-
-                    let rest_from_receiver: Vec<_> = ingest_receiver.try_iter().collect();
-
-                    for rest in rest_from_receiver {
-                        if let Err(e) = enc_writer.write(&rest.1[..rest.0]) {
-                            error!("Encoder write error: {:?}", e);
-
-                            break 'source_iter;
-                        };
                     }
 
                     live_on = false;
