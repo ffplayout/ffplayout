@@ -129,7 +129,6 @@ pub fn player(
                     }
 
                     live_on = true;
-
                     *playlist_init.lock().unwrap() = true;
                 }
 
@@ -148,8 +147,15 @@ pub fn player(
                         error!("Encoder error: {e}")
                     }
 
-                    let trashcan: Vec<_> = ingest_receiver.try_iter().collect();
-                    drop(trashcan);
+                    let rest_from_receiver: Vec<_> = ingest_receiver.try_iter().collect();
+
+                    for rest in rest_from_receiver {
+                        if let Err(e) = enc_writer.write(&rest.1[..rest.0]) {
+                            error!("Encoder write error: {:?}", e);
+
+                            break 'source_iter;
+                        };
+                    }
 
                     live_on = false;
                 }
