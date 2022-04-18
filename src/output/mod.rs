@@ -1,11 +1,11 @@
 use std::{
     io::{prelude::*, BufReader, BufWriter, Read},
     process::{Command, Stdio},
-    sync::mpsc::{sync_channel, Receiver, SyncSender},
     thread::sleep,
     time::Duration,
 };
 
+use crossbeam_channel::bounded;
 use simplelog::*;
 use tokio::runtime::Handle;
 
@@ -30,7 +30,7 @@ pub fn player(
     let config = GlobalConfig::global();
     let dec_settings = config.processing.clone().settings.unwrap();
     let ff_log_format = format!("level+{}", config.logging.ffmpeg_level.to_lowercase());
-    let mut buffer: [u8; 65088] = [0; 65088];
+    let mut buffer = [0; 65088];
     let mut live_on = false;
     let playlist_init = playout_stat.list_init.clone();
 
@@ -53,17 +53,13 @@ pub fn player(
     rt_handle.spawn(stderr_reader(enc_proc.stderr.take().unwrap(), "Encoder"));
     *proc_control.decoder_term.lock().unwrap() = Some(enc_proc);
 
-    // too small value for sync_channel size increases CPU load,
-    // large values leave packets in queue which creates artifacts
-    let (ingest_sender, ingest_receiver): (
-        SyncSender<(usize, [u8; 65088])>,
-        Receiver<(usize, [u8; 65088])>,
-    ) = sync_channel(16);
+    // too small value for channel size increases CPU load,
+    let (ingest_sender, ingest_receiver) = bounded(56);
 
     if config.ingest.enable {
         rt_handle.spawn(ingest_server(
             ff_log_format.clone(),
-            ingest_sender,
+            ingest_sender.clone(),
             rt_handle.clone(),
             proc_control.clone(),
         ));
@@ -151,6 +147,9 @@ pub fn player(
                     if let Err(e) = enc_writer.flush() {
                         error!("Encoder error: {e}")
                     }
+
+                    let trashcan: Vec<_> = ingest_receiver.try_iter().collect();
+                    drop(trashcan);
 
                     live_on = false;
                 }
