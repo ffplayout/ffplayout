@@ -22,7 +22,7 @@ A clear and concise description of what you expected to happen.
 
 **Desktop/Server/Software (please complete the following information):**
  - OS: [e.g. debian 11]
-- python version
+- ffplayout version
 - ffmpeg version
 - are you using the current master of ffplayout?
 
@@ -31,4 +31,4 @@ A clear and concise description of what you expected to happen.
 - config fie
 
 **Logging:**
-- content of: ffplayout.log, decoding.log and encoding.log
+- content of: ffplayout.log
