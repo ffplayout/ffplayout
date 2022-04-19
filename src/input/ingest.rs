@@ -2,11 +2,11 @@ use std::{
     io::{BufReader, Error, Read},
     path::Path,
     process::{Command, Stdio},
-    sync::mpsc::SyncSender,
     thread::sleep,
     time::Duration,
 };
 
+use crossbeam_channel::Sender;
 use simplelog::*;
 use tokio::runtime::Handle;
 
@@ -54,7 +54,7 @@ fn audio_filter(config: &GlobalConfig) -> String {
 
 pub async fn ingest_server(
     log_format: String,
-    ingest_sender: SyncSender<(usize, [u8; 65088])>,
+    ingest_sender: Sender<(usize, [u8; 65088])>,
     rt_handle: Handle,
     mut proc_control: ProcessControl,
 ) -> Result<(), Error> {

@@ -4,12 +4,13 @@ description = "24/7 playout based on rust and ffmpeg"
 license = "GPL-3.0"
 authors = ["Jonathan Baecker jonbae77@gmail.com"]
 readme = "README.md"
-version = "0.9.3"
+version = "0.9.4"
 edition = "2021"
 
 [dependencies]
 chrono = "0.4"
 clap = { version = "3.1", features = ["derive"] }
+crossbeam-channel = "0.5"
 ffprobe = "0.3"
 file-rotate = "0.6"
 jsonrpc-http-server = "18.0"

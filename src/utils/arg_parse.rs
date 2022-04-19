@@ -2,10 +2,11 @@ use clap::Parser;
 
 #[derive(Parser, Debug)]
 #[clap(version,
-    about = "ffplayout, Rust based 24/7 playout solution.\n\nRun without any command to use config file only, or with commands to override parameters.",
+    about = "ffplayout, Rust based 24/7 playout solution.",
+    override_usage = "Run without any command to use config file only, or with commands to override parameters:\n\n    ffplayout [OPTIONS]",
     long_about = None)]
 pub struct Args {
-    #[clap(short, long, help = "File path to ffplayout.conf")]
+    #[clap(short, long, help = "File path to ffplayout.yml")]
     pub config: Option<String>,
 
     #[clap(short, long, help = "File path for logging")]
