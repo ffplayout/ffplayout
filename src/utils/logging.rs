@@ -1,13 +1,9 @@
 extern crate log;
 extern crate simplelog;
 
-use chrono::prelude::*;
-use regex::Regex;
 use std::{
     path::Path,
     sync::{Arc, Mutex},
-    thread::sleep,
-    time::Duration,
 };
 
 use file_rotate::{compression::Compression, suffix::AppendCount, ContentLimit, FileRotate};
@@ -15,9 +11,15 @@ use lettre::{
     message::header, transport::smtp::authentication::Credentials, Message, SmtpTransport,
     Transport,
 };
+
+use chrono::prelude::*;
 use log::{Level, LevelFilter, Log, Metadata, Record};
+use regex::Regex;
 use simplelog::*;
-use tokio::runtime::Handle;
+use tokio::{
+    runtime::Handle,
+    time::{sleep, Duration},
+};
 
 use crate::utils::GlobalConfig;
 
@@ -52,32 +54,18 @@ fn send_mail(msg: String) {
     }
 }
 
-async fn mail_queue(
-    messages: Arc<Mutex<Vec<String>>>,
-    is_terminated: Arc<Mutex<bool>>,
-    interval: i32,
-) {
-    let mut count: i32 = 0;
+async fn mail_queue(messages: Arc<Mutex<Vec<String>>>, interval: u64) {
+    // check every give seconds for messages and send them
 
     loop {
-        if *is_terminated.lock().unwrap() || count == interval {
-            // check every 30 seconds for messages and send them
-            if messages.lock().unwrap().len() > 0 {
-                let msg = messages.lock().unwrap().join("\n");
-                send_mail(msg);
+        if messages.lock().unwrap().len() > 0 {
+            let msg = messages.lock().unwrap().join("\n");
+            send_mail(msg);
 
-                messages.lock().unwrap().clear();
-            }
-
-            count = 0;
+            messages.lock().unwrap().clear();
         }
 
-        if *is_terminated.lock().unwrap() {
-            break;
-        }
-
-        sleep(Duration::from_secs(1));
-        count += 1;
+        sleep(Duration::from_secs(interval)).await;
     }
 }
 
@@ -141,10 +129,7 @@ fn clean_string(text: &str) -> String {
     regex.replace_all(text, "").to_string()
 }
 
-pub fn init_logging(
-    rt_handle: Handle,
-    is_terminated: Arc<Mutex<bool>>,
-) -> Vec<Box<dyn SharedLogger>> {
+pub fn init_logging(rt_handle: Handle) -> Vec<Box<dyn SharedLogger>> {
     let config = GlobalConfig::global();
     let app_config = config.logging.clone();
     let mut time_level = LevelFilter::Off;
@@ -212,15 +197,9 @@ pub fn init_logging(
         let messages: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
         let interval = config.mail.interval.clone();
 
-        rt_handle.spawn(mail_queue(
-            messages.clone(),
-            is_terminated.clone(),
-            interval,
-        ));
+        rt_handle.spawn(mail_queue(messages.clone(), interval));
 
-        let mail_config = log_config
-            .clone()
-            .build();
+        let mail_config = log_config.clone().build();
 
         let filter = match config.mail.mail_level.to_lowercase().as_str() {
             "info" => LevelFilter::Info,

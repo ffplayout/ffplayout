@@ -51,7 +51,7 @@ pub struct Mail {
     pub sender_pass: String,
     pub recipient: String,
     pub mail_level: String,
-    pub interval: i32,
+    pub interval: u64,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

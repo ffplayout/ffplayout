@@ -6,8 +6,6 @@ use std::{
         mpsc::channel,
         {Arc, Mutex},
     },
-    thread::sleep,
-    time::Duration,
 };
 
 use notify::{
@@ -16,6 +14,7 @@ use notify::{
 };
 use rand::{seq::SliceRandom, thread_rng};
 use simplelog::*;
+use tokio::time::{sleep, Duration};
 use walkdir::WalkDir;
 
 use crate::utils::{get_sec, GlobalConfig, Media};
@@ -158,7 +157,7 @@ fn file_extension(filename: &Path) -> Option<&str> {
     filename.extension().and_then(OsStr::to_str)
 }
 
-pub async fn watchman(sources: Arc<Mutex<Vec<Media>>>, is_terminated: Arc<Mutex<bool>>) {
+pub async fn watchman(sources: Arc<Mutex<Vec<Media>>>) {
     let config = GlobalConfig::global();
     let (tx, rx) = channel();
 
@@ -169,14 +168,10 @@ pub async fn watchman(sources: Arc<Mutex<Vec<Media>>>, is_terminated: Arc<Mutex<
         panic!("Folder path not exists: '{path}'");
     }
 
-    let mut watcher = watcher(tx, Duration::from_secs(2)).unwrap();
+    let mut watcher = watcher(tx, Duration::from_secs(1)).unwrap();
     watcher.watch(path, RecursiveMode::Recursive).unwrap();
 
     loop {
-        if *is_terminated.lock().unwrap() {
-            break;
-        }
-
         if let Ok(res) = rx.try_recv() {
             match res {
                 Create(new_path) => {
@@ -210,6 +205,6 @@ pub async fn watchman(sources: Arc<Mutex<Vec<Media>>>, is_terminated: Arc<Mutex<
             }
         }
 
-        sleep(Duration::from_secs(4));
+        sleep(Duration::from_secs(5)).await;
     }
 }

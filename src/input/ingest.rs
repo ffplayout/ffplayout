@@ -2,8 +2,6 @@ use std::{
     io::{BufReader, Error, Read},
     path::Path,
     process::{Command, Stdio},
-    thread::sleep,
-    time::Duration,
 };
 
 use crossbeam_channel::Sender;
@@ -100,10 +98,7 @@ pub async fn ingest_server(
         server_cmd.join(" ")
     );
 
-    loop {
-        if *proc_control.is_terminated.lock().unwrap() {
-            break;
-        }
+    'ingest_iter: loop {
         let mut server_proc = match Command::new("ffmpeg")
             .args(server_cmd.clone())
             .stdout(Stdio::piped())
@@ -143,7 +138,7 @@ pub async fn ingest_server(
                     error!("Ingest server write error: {e:?}");
 
                     *proc_control.is_terminated.lock().unwrap() = true;
-                    break;
+                    break 'ingest_iter;
                 }
             } else {
                 break;
@@ -151,10 +146,7 @@ pub async fn ingest_server(
         }
 
         drop(ingest_reader);
-
         *proc_control.server_is_running.lock().unwrap() = false;
-
-        sleep(Duration::from_secs(1));
 
         if let Err(e) = proc_control.wait(Ingest) {
             error!("{e}")

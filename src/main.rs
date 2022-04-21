@@ -63,7 +63,7 @@ fn main() {
     let runtime = Builder::new_multi_thread().enable_all().build().unwrap();
     let rt_handle = runtime.handle();
 
-    let logging = init_logging(rt_handle.clone(), proc_control.is_terminated.clone());
+    let logging = init_logging(rt_handle.clone());
     CombinedLogger::init(logging).unwrap();
 
     validate_ffmpeg();

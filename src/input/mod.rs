@@ -30,7 +30,7 @@ pub fn source_generator(
             debug!("Monitor folder: <b><magenta>{}</></b>", &config.storage.path);
 
             let folder_source = Source::new(current_list, index);
-            rt_handle.spawn(watchman(folder_source.nodes.clone(), is_terminated.clone()));
+            rt_handle.spawn(watchman(folder_source.nodes.clone()));
 
             Box::new(folder_source) as Box<dyn Iterator<Item = Media>>
         }
