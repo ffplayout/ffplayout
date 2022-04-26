@@ -4,7 +4,7 @@ use simplelog::*;
 
 use crate::utils::{sec_to_time, GlobalConfig, MediaProbe, Playlist};
 
-pub async fn validate_playlist(playlist: Playlist, is_terminated: Arc<Mutex<bool>>, config: GlobalConfig) {
+pub fn validate_playlist(playlist: Playlist, is_terminated: Arc<Mutex<bool>>, config: GlobalConfig) {
     let date = playlist.date;
     let mut length = config.playlist.length_sec.unwrap();
     let mut begin = config.playlist.start_sec.unwrap();

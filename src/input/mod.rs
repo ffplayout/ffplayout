@@ -1,10 +1,10 @@
 use std::{
     process,
     sync::{Arc, Mutex},
+    thread,
 };
 
 use simplelog::*;
-use tokio::runtime::Handle;
 
 use crate::utils::{GlobalConfig, Media, PlayoutStatus};
 
@@ -17,7 +17,6 @@ pub use ingest::ingest_server;
 pub use playlist::CurrentProgram;
 
 pub fn source_generator(
-    rt_handle: &Handle,
     config: GlobalConfig,
     current_list: Arc<Mutex<Vec<Media>>>,
     index: Arc<Mutex<usize>>,
@@ -30,14 +29,14 @@ pub fn source_generator(
             debug!("Monitor folder: <b><magenta>{}</></b>", &config.storage.path);
 
             let folder_source = Source::new(current_list, index);
-            rt_handle.spawn(watchman(folder_source.nodes.clone()));
+            let node_clone = folder_source.nodes.clone();
+            thread::spawn(move || watchman(node_clone));
 
             Box::new(folder_source) as Box<dyn Iterator<Item = Media>>
         }
         "playlist" => {
             info!("Playout in playlist mode");
             let program = CurrentProgram::new(
-                rt_handle.clone(),
                 playout_stat,
                 is_terminated.clone(),
                 current_list,

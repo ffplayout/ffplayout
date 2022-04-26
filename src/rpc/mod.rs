@@ -42,7 +42,7 @@ fn get_data_map(config: &GlobalConfig, media: Media) -> Map<String, Value> {
     data_map
 }
 
-pub async fn json_rpc_server(
+pub fn json_rpc_server(
     play_control: PlayerControl,
     playout_stat: PlayoutStatus,
     proc_control: ProcessControl,

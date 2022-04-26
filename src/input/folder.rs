@@ -6,6 +6,8 @@ use std::{
         mpsc::channel,
         {Arc, Mutex},
     },
+    thread::sleep,
+    time::Duration,
 };
 
 use notify::{
@@ -14,7 +16,6 @@ use notify::{
 };
 use rand::{seq::SliceRandom, thread_rng};
 use simplelog::*;
-use tokio::time::{sleep, Duration};
 use walkdir::WalkDir;
 
 use crate::utils::{get_sec, GlobalConfig, Media};
@@ -157,7 +158,7 @@ fn file_extension(filename: &Path) -> Option<&str> {
     filename.extension().and_then(OsStr::to_str)
 }
 
-pub async fn watchman(sources: Arc<Mutex<Vec<Media>>>) {
+pub fn watchman(sources: Arc<Mutex<Vec<Media>>>) {
     let config = GlobalConfig::global();
     let (tx, rx) = channel();
 
@@ -205,6 +206,6 @@ pub async fn watchman(sources: Arc<Mutex<Vec<Media>>>) {
             }
         }
 
-        sleep(Duration::from_secs(5)).await;
+        sleep(Duration::from_secs(5));
     }
 }

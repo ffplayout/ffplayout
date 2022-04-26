@@ -4,6 +4,8 @@ extern crate simplelog;
 use std::{
     path::Path,
     sync::{Arc, Mutex},
+    thread::{self, sleep},
+    time::Duration,
 };
 
 use file_rotate::{compression::Compression, suffix::AppendCount, ContentLimit, FileRotate};
@@ -16,10 +18,6 @@ use chrono::prelude::*;
 use log::{Level, LevelFilter, Log, Metadata, Record};
 use regex::Regex;
 use simplelog::*;
-use tokio::{
-    runtime::Handle,
-    time::{sleep, Duration},
-};
 
 use crate::utils::GlobalConfig;
 
@@ -54,7 +52,7 @@ fn send_mail(msg: String) {
     }
 }
 
-async fn mail_queue(messages: Arc<Mutex<Vec<String>>>, interval: u64) {
+fn mail_queue(messages: Arc<Mutex<Vec<String>>>, interval: u64) {
     // check every give seconds for messages and send them
 
     loop {
@@ -65,7 +63,7 @@ async fn mail_queue(messages: Arc<Mutex<Vec<String>>>, interval: u64) {
             messages.lock().unwrap().clear();
         }
 
-        sleep(Duration::from_secs(interval)).await;
+        sleep(Duration::from_secs(interval));
     }
 }
 
@@ -129,7 +127,7 @@ fn clean_string(text: &str) -> String {
     regex.replace_all(text, "").to_string()
 }
 
-pub fn init_logging(rt_handle: Handle) -> Vec<Box<dyn SharedLogger>> {
+pub fn init_logging() -> Vec<Box<dyn SharedLogger>> {
     let config = GlobalConfig::global();
     let app_config = config.logging.clone();
     let mut time_level = LevelFilter::Off;
@@ -195,9 +193,10 @@ pub fn init_logging(rt_handle: Handle) -> Vec<Box<dyn SharedLogger>> {
 
     if config.mail.recipient.contains("@") && config.mail.recipient.contains(".") {
         let messages: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+        let messages_clone = messages.clone();
         let interval = config.mail.interval.clone();
 
-        rt_handle.spawn(mail_queue(messages.clone(), interval));
+        thread::spawn(move || mail_queue(messages_clone, interval));
 
         let mail_config = log_config.clone().build();
 

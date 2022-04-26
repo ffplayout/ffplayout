@@ -18,11 +18,12 @@ out:
 */
 
 use std::{
+    io::BufReader,
     process::{Command, Stdio},
+    thread,
 };
 
 use simplelog::*;
-use tokio::runtime::Handle;
 
 use crate::input::source_generator;
 use crate::utils::{
@@ -30,7 +31,6 @@ use crate::utils::{
 };
 
 pub fn write_hls(
-    rt_handle: &Handle,
     play_control: PlayerControl,
     playout_stat: PlayoutStatus,
     proc_control: ProcessControl,
@@ -40,7 +40,6 @@ pub fn write_hls(
     let ff_log_format = format!("level+{}", config.logging.ffmpeg_level.to_lowercase());
 
     let get_source = source_generator(
-        rt_handle,
         config.clone(),
         play_control.current_list.clone(),
         play_control.index.clone(),
@@ -93,13 +92,15 @@ pub fn write_hls(
             Ok(proc) => proc,
         };
 
-        rt_handle.spawn(stderr_reader(
-            dec_proc.stderr.take().unwrap(),
-            "Writer",
-        ));
+        let dec_err = BufReader::new(dec_proc.stderr.take().unwrap());
+        let error_decoder_thread = thread::spawn(move || stderr_reader(dec_err, "Writer"));
 
         if let Err(e) = dec_proc.wait() {
             error!("Writer: {e}")
+        };
+
+        if let Err(e) = error_decoder_thread.join() {
+            error!("{e:?}");
         };
     }
 }

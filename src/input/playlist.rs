@@ -6,7 +6,6 @@ use std::{
 
 use serde_json::json;
 use simplelog::*;
-use tokio::runtime::Handle;
 
 use crate::utils::{
     check_sync, gen_dummy, get_delta, get_sec, is_close, json_serializer::read_json, modified_time,
@@ -23,21 +22,19 @@ pub struct CurrentProgram {
     pub nodes: Arc<Mutex<Vec<Media>>>,
     current_node: Media,
     index: Arc<Mutex<usize>>,
-    rt_handle: Handle,
     is_terminated: Arc<Mutex<bool>>,
     playout_stat: PlayoutStatus,
 }
 
 impl CurrentProgram {
     pub fn new(
-        rt_handle: Handle,
         playout_stat: PlayoutStatus,
         is_terminated: Arc<Mutex<bool>>,
         current_list: Arc<Mutex<Vec<Media>>>,
         global_index: Arc<Mutex<usize>>,
     ) -> Self {
         let config = GlobalConfig::global();
-        let json = read_json(None, rt_handle.clone(), is_terminated.clone(), true, 0.0);
+        let json = read_json(None, is_terminated.clone(), true, 0.0);
 
         *current_list.lock().unwrap() = json.program;
         *playout_stat.current_date.lock().unwrap() = json.date.clone();
@@ -61,7 +58,6 @@ impl CurrentProgram {
             nodes: current_list,
             current_node: Media::new(0, String::new(), false),
             index: global_index,
-            rt_handle,
             is_terminated,
             playout_stat,
         }
@@ -71,7 +67,6 @@ impl CurrentProgram {
         if self.json_path.is_none() {
             let json = read_json(
                 None,
-                self.rt_handle.clone(),
                 self.is_terminated.clone(),
                 seek,
                 0.0,
@@ -96,7 +91,6 @@ impl CurrentProgram {
 
                 let json = read_json(
                     self.json_path.clone(),
-                    self.rt_handle.clone(),
                     self.is_terminated.clone(),
                     false,
                     0.0,
@@ -145,7 +139,6 @@ impl CurrentProgram {
         {
             let json = read_json(
                 None,
-                self.rt_handle.clone(),
                 self.is_terminated.clone(),
                 false,
                 next_start,
@@ -438,7 +431,7 @@ fn gen_source(mut node: Media) -> Media {
                 node.out - node.seek
             );
         } else {
-            error!("File not found: {}", node.source);
+            error!("File not found: <b><magenta>{}</></b>", node.source);
         }
         let (source, cmd) = gen_dummy(node.out - node.seek);
         node.source = source;

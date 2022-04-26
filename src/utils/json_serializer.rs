@@ -3,10 +3,10 @@ use std::{
     fs::File,
     path::Path,
     sync::{Arc, Mutex},
+    thread,
 };
 
 use simplelog::*;
-use tokio::runtime::Handle;
 
 use crate::utils::{get_date, modified_time, validate_playlist, GlobalConfig, Media};
 
@@ -46,7 +46,6 @@ impl Playlist {
 
 pub fn read_json(
     path: Option<String>,
-    rt_handle: Handle,
     is_terminated: Arc<Mutex<bool>>,
     seek: bool,
     next_start: f64,
@@ -108,8 +107,10 @@ pub fn read_json(
         start_sec += item.out - item.seek;
     }
 
-    rt_handle.spawn(validate_playlist(
-        playlist.clone(),
+    let list_clone = playlist.clone();
+
+    thread::spawn(move || validate_playlist(
+        list_clone,
         is_terminated,
         config.clone(),
     ));
