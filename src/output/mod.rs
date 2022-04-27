@@ -53,12 +53,15 @@ pub fn player(
 
     *proc_control.decoder_term.lock().unwrap() = Some(enc_proc);
 
-    let (ingest_sender, ingest_receiver) = bounded(96);
+
 
     let ff_log_format_c = ff_log_format.clone();
     let proc_control_c = proc_control.clone();
+    let mut ingest_receiver = None;
 
     if config.ingest.enable {
+        let (ingest_sender, rx) = bounded(96);
+        ingest_receiver = Some(rx);
         thread::spawn(move || ingest_server(ff_log_format_c, ingest_sender, proc_control_c));
     }
 
@@ -131,7 +134,7 @@ pub fn player(
                     playlist_init.store(true, Ordering::SeqCst);
                 }
 
-                for rx in ingest_receiver.try_iter() {
+                for rx in ingest_receiver.as_ref().unwrap().try_iter() {
                     if let Err(e) = enc_writer.write(&rx.1[..rx.0]) {
                         error!("Encoder write error: {:?}", e);
 
