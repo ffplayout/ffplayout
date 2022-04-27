@@ -125,7 +125,7 @@ impl Iterator for Source {
             self.current_node.add_filter();
             self.current_node.begin = Some(get_sec());
 
-            self.index.store(i + 1, Ordering::SeqCst);
+            self.index.fetch_add(1, Ordering::SeqCst);
 
             Some(self.current_node.clone())
         } else {

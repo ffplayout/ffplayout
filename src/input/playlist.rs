@@ -95,8 +95,7 @@ impl CurrentProgram {
                 *self.nodes.lock().unwrap() = json.program;
 
                 self.get_current_clip();
-                let idx = self.index.load(Ordering::SeqCst);
-                self.index.store(idx + 1, Ordering::SeqCst);
+                self.index.fetch_add(1, Ordering::SeqCst);
             }
         } else {
             error!(
@@ -222,12 +221,10 @@ impl CurrentProgram {
 
         if !self.playout_stat.list_init.load(Ordering::SeqCst) {
             let time_sec = self.get_current_time();
-            let index = self.index.load(Ordering::SeqCst);
+            let index = self.index.fetch_add(1, Ordering::SeqCst);
 
             // de-instance node to preserve original values in list
             let mut node_clone = self.nodes.lock().unwrap()[index].clone();
-            let idx = self.index.load(Ordering::SeqCst);
-            self.index.store(idx + 1, Ordering::SeqCst);
 
             node_clone.seek = time_sec - node_clone.begin.unwrap();
             self.current_node = handle_list_init(node_clone);
@@ -276,6 +273,7 @@ impl Iterator for CurrentProgram {
                     if self.config.playlist.start_sec.unwrap() > current_time {
                         current_time += self.config.playlist.length_sec.unwrap() + 1.0;
                     }
+
                     let mut media = Media::new(0, String::new(), false);
                     media.begin = Some(current_time);
                     media.duration = duration;
@@ -308,7 +306,7 @@ impl Iterator for CurrentProgram {
                 &self.playout_stat,
             );
             self.last_next_ad();
-            self.index.store(index + 1, Ordering::SeqCst);
+            self.index.fetch_add(1, Ordering::SeqCst);
 
             // update playlist should happen after current clip,
             // to prevent unknown behaviors.
@@ -342,7 +340,7 @@ impl Iterator for CurrentProgram {
                 self.current_node.last_ad = last_ad;
                 self.current_node.add_filter();
 
-                self.index.store(index + 1, Ordering::SeqCst);
+                self.index.fetch_add(1, Ordering::SeqCst);
 
                 return Some(self.current_node.clone());
             }
