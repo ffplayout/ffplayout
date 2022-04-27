@@ -1,13 +1,13 @@
 use std::{
     io::{prelude::*, BufReader, BufWriter, Read},
     process::{Command, Stdio},
-    thread::sleep,
+    sync::atomic::Ordering,
+    thread::{self, sleep},
     time::Duration,
 };
 
 use crossbeam_channel::bounded;
 use simplelog::*;
-use tokio::runtime::Handle;
 
 mod desktop;
 mod hls;
@@ -22,7 +22,6 @@ use crate::utils::{
 };
 
 pub fn player(
-    rt_handle: &Handle,
     play_control: PlayerControl,
     playout_stat: PlayoutStatus,
     mut proc_control: ProcessControl,
@@ -35,7 +34,6 @@ pub fn player(
     let playlist_init = playout_stat.list_init.clone();
 
     let get_source = source_generator(
-        rt_handle,
         config.clone(),
         play_control.current_list.clone(),
         play_control.index.clone(),
@@ -50,18 +48,18 @@ pub fn player(
     };
 
     let mut enc_writer = BufWriter::new(enc_proc.stdin.take().unwrap());
-    rt_handle.spawn(stderr_reader(enc_proc.stderr.take().unwrap(), "Encoder"));
+    let enc_err = BufReader::new(enc_proc.stderr.take().unwrap());
+    let error_encoder_thread = thread::spawn(move || stderr_reader(enc_err, "Encoder"));
+
     *proc_control.decoder_term.lock().unwrap() = Some(enc_proc);
 
     let (ingest_sender, ingest_receiver) = bounded(96);
 
+    let ff_log_format_c = ff_log_format.clone();
+    let proc_control_c = proc_control.clone();
+
     if config.ingest.enable {
-        rt_handle.spawn(ingest_server(
-            ff_log_format.clone(),
-            ingest_sender.clone(),
-            rt_handle.clone(),
-            proc_control.clone(),
-        ));
+        thread::spawn(move || ingest_server(ff_log_format_c, ingest_sender, proc_control_c));
     }
 
     'source_iter: for node in get_source {
@@ -111,11 +109,13 @@ pub fn player(
         };
 
         let mut dec_reader = BufReader::new(dec_proc.stdout.take().unwrap());
-        rt_handle.spawn(stderr_reader(dec_proc.stderr.take().unwrap(), "Decoder"));
+        let dec_err = BufReader::new(dec_proc.stderr.take().unwrap());
+        let error_decoder_thread = thread::spawn(move || stderr_reader(dec_err, "Encoder"));
+
         *proc_control.decoder_term.lock().unwrap() = Some(dec_proc);
 
         loop {
-            if *proc_control.server_is_running.lock().unwrap() {
+            if proc_control.server_is_running.load(Ordering::SeqCst) {
                 if !live_on {
                     info!("Switch from {} to live ingest", config.processing.mode);
 
@@ -128,7 +128,7 @@ pub fn player(
                     }
 
                     live_on = true;
-                    *playlist_init.lock().unwrap() = true;
+                    playlist_init.store(true, Ordering::SeqCst);
                 }
 
                 for rx in ingest_receiver.try_iter() {
@@ -173,6 +173,10 @@ pub fn player(
         if let Err(e) = proc_control.wait(Decoder) {
             error!("{e}")
         }
+
+        if let Err(e) = error_decoder_thread.join() {
+            error!("{e:?}");
+        };
     }
 
     sleep(Duration::from_secs(1));
@@ -180,4 +184,8 @@ pub fn player(
     if let Err(e) = proc_control.kill(Encoder) {
         error!("{e}")
     }
+
+    if let Err(e) = error_encoder_thread.join() {
+        error!("{e:?}");
+    };
 }

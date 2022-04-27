@@ -3,6 +3,7 @@ use std::{
     path::Path,
     process::exit,
     sync::{
+        atomic::{AtomicUsize, Ordering},
         mpsc::channel,
         {Arc, Mutex},
     },
@@ -25,11 +26,11 @@ pub struct Source {
     config: GlobalConfig,
     pub nodes: Arc<Mutex<Vec<Media>>>,
     current_node: Media,
-    index: Arc<Mutex<usize>>,
+    index: Arc<AtomicUsize>,
 }
 
 impl Source {
-    pub fn new(current_list: Arc<Mutex<Vec<Media>>>, global_index: Arc<Mutex<usize>>) -> Self {
+    pub fn new(current_list: Arc<Mutex<Vec<Media>>>, global_index: Arc<AtomicUsize>) -> Self {
         let config = GlobalConfig::global();
         let mut media_list = vec![];
         let mut index: usize = 0;
@@ -117,14 +118,14 @@ impl Iterator for Source {
     type Item = Media;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if *self.index.lock().unwrap() < self.nodes.lock().unwrap().len() {
-            let i = *self.index.lock().unwrap();
+        if self.index.load(Ordering::SeqCst) < self.nodes.lock().unwrap().len() {
+            let i = self.index.load(Ordering::SeqCst);
             self.current_node = self.nodes.lock().unwrap()[i].clone();
             self.current_node.add_probe();
             self.current_node.add_filter();
             self.current_node.begin = Some(get_sec());
 
-            *self.index.lock().unwrap() += 1;
+            self.index.fetch_add(1, Ordering::SeqCst);
 
             Some(self.current_node.clone())
         } else {
@@ -147,7 +148,7 @@ impl Iterator for Source {
             self.current_node.add_filter();
             self.current_node.begin = Some(get_sec());
 
-            *self.index.lock().unwrap() = 1;
+            self.index.store(1, Ordering::SeqCst);
 
             Some(self.current_node.clone())
         }
@@ -158,7 +159,7 @@ fn file_extension(filename: &Path) -> Option<&str> {
     filename.extension().and_then(OsStr::to_str)
 }
 
-pub async fn watchman(sources: Arc<Mutex<Vec<Media>>>, is_terminated: Arc<Mutex<bool>>) {
+pub fn watchman(sources: Arc<Mutex<Vec<Media>>>) {
     let config = GlobalConfig::global();
     let (tx, rx) = channel();
 
@@ -169,14 +170,10 @@ pub async fn watchman(sources: Arc<Mutex<Vec<Media>>>, is_terminated: Arc<Mutex<
         panic!("Folder path not exists: '{path}'");
     }
 
-    let mut watcher = watcher(tx, Duration::from_secs(2)).unwrap();
+    let mut watcher = watcher(tx, Duration::from_secs(1)).unwrap();
     watcher.watch(path, RecursiveMode::Recursive).unwrap();
 
     loop {
-        if *is_terminated.lock().unwrap() {
-            break;
-        }
-
         if let Ok(res) = rx.try_recv() {
             match res {
                 Create(new_path) => {
@@ -210,6 +207,6 @@ pub async fn watchman(sources: Arc<Mutex<Vec<Media>>>, is_terminated: Arc<Mutex<
             }
         }
 
-        sleep(Duration::from_secs(4));
+        sleep(Duration::from_secs(5));
     }
 }

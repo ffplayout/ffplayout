@@ -2,13 +2,12 @@ use std::{
     io::{BufReader, Error, Read},
     path::Path,
     process::{Command, Stdio},
-    thread::sleep,
-    time::Duration,
+    sync::atomic::Ordering,
+    thread,
 };
 
 use crossbeam_channel::Sender;
 use simplelog::*;
-use tokio::runtime::Handle;
 
 use crate::utils::{stderr_reader, GlobalConfig, Ingest, ProcessControl};
 
@@ -52,10 +51,9 @@ fn audio_filter(config: &GlobalConfig) -> String {
     audio_chain
 }
 
-pub async fn ingest_server(
+pub fn ingest_server(
     log_format: String,
     ingest_sender: Sender<(usize, [u8; 65088])>,
-    rt_handle: Handle,
     mut proc_control: ProcessControl,
 ) -> Result<(), Error> {
     let config = GlobalConfig::global();
@@ -100,10 +98,7 @@ pub async fn ingest_server(
         server_cmd.join(" ")
     );
 
-    loop {
-        if *proc_control.is_terminated.lock().unwrap() {
-            break;
-        }
+    'ingest_iter: loop {
         let mut server_proc = match Command::new("ffmpeg")
             .args(server_cmd.clone())
             .stdout(Stdio::piped())
@@ -116,10 +111,10 @@ pub async fn ingest_server(
             }
             Ok(proc) => proc,
         };
-
-        rt_handle.spawn(stderr_reader(server_proc.stderr.take().unwrap(), "Server"));
-
         let mut ingest_reader = BufReader::new(server_proc.stdout.take().unwrap());
+        let server_err = BufReader::new(server_proc.stderr.take().unwrap());
+        let error_reader_thread = thread::spawn(move || stderr_reader(server_err, "Server"));
+
         *proc_control.server_term.lock().unwrap() = Some(server_proc);
 
         is_running = false;
@@ -134,7 +129,7 @@ pub async fn ingest_server(
             };
 
             if !is_running {
-                *proc_control.server_is_running.lock().unwrap() = true;
+                proc_control.server_is_running.store(true, Ordering::SeqCst);
                 is_running = true;
             }
 
@@ -142,8 +137,8 @@ pub async fn ingest_server(
                 if let Err(e) = ingest_sender.send((bytes_len, buffer)) {
                     error!("Ingest server write error: {e:?}");
 
-                    *proc_control.is_terminated.lock().unwrap() = true;
-                    break;
+                    proc_control.is_terminated.store(true, Ordering::SeqCst);
+                    break 'ingest_iter;
                 }
             } else {
                 break;
@@ -151,13 +146,18 @@ pub async fn ingest_server(
         }
 
         drop(ingest_reader);
-
-        *proc_control.server_is_running.lock().unwrap() = false;
-
-        sleep(Duration::from_secs(1));
+        proc_control.server_is_running.store(false, Ordering::SeqCst);
 
         if let Err(e) = proc_control.wait(Ingest) {
             error!("{e}")
+        }
+
+        if let Err(e) = error_reader_thread.join() {
+            error!("{e:?}");
+        };
+
+        if proc_control.is_terminated.load(Ordering::SeqCst) {
+            break;
         }
     }
 

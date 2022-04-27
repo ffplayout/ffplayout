@@ -1,6 +1,9 @@
-use jsonrpc_http_server::jsonrpc_core::{IoHandler, Params, Value};
+use std::sync::atomic::Ordering;
+
 use jsonrpc_http_server::{
-    hyper, AccessControlAllowOrigin, DomainsValidation, Response, RestApi, ServerBuilder,
+    hyper,
+    jsonrpc_core::{IoHandler, Params, Value},
+    AccessControlAllowOrigin, DomainsValidation, Response, RestApi, ServerBuilder,
 };
 use serde_json::{json, Map};
 use simplelog::*;
@@ -42,7 +45,7 @@ fn get_data_map(config: &GlobalConfig, media: Media) -> Map<String, Value> {
     data_map
 }
 
-pub async fn json_rpc_server(
+pub fn json_rpc_server(
     play_control: PlayerControl,
     playout_stat: PlayoutStatus,
     proc_control: ProcessControl,
@@ -59,7 +62,7 @@ pub async fn json_rpc_server(
             let mut date = playout_stat.date.lock().unwrap();
 
             if map.contains_key("control") && &map["control"] == "next" {
-                let index = *play.index.lock().unwrap();
+                let index = play.index.load(Ordering::SeqCst);
 
                 if index < play.current_list.lock().unwrap().len() {
                     if let Some(proc) = proc.decoder_term.lock().unwrap().as_mut() {
@@ -96,7 +99,7 @@ pub async fn json_rpc_server(
             }
 
             if map.contains_key("control") && &map["control"] == "back" {
-                let index = *play.index.lock().unwrap();
+                let index = play.index.load(Ordering::SeqCst);
 
                 if index > 1 && play.current_list.lock().unwrap().len() > 1 {
                     if let Some(proc) = proc.decoder_term.lock().unwrap().as_mut() {
@@ -111,7 +114,7 @@ pub async fn json_rpc_server(
                         info!("Move to last clip");
                         let mut data_map = Map::new();
                         let mut media = play.current_list.lock().unwrap()[index - 2].clone();
-                        *play.index.lock().unwrap() = index - 2;
+                        play.index.fetch_sub(2, Ordering::SeqCst);
                         media.add_probe();
 
                         let (delta, _) = get_delta(&media.begin.unwrap_or(0.0));
@@ -146,7 +149,7 @@ pub async fn json_rpc_server(
                     let mut data_map = Map::new();
                     *time_shift = 0.0;
                     *date = current_date.clone();
-                    *playout_stat.list_init.lock().unwrap() = true;
+                    playout_stat.list_init.store(true, Ordering::SeqCst);
 
                     write_status(&current_date, 0.0);
 
@@ -167,7 +170,7 @@ pub async fn json_rpc_server(
             }
 
             if map.contains_key("media") && &map["media"] == "next" {
-                let index = *play.index.lock().unwrap();
+                let index = play.index.load(Ordering::SeqCst);
 
                 if index < play.current_list.lock().unwrap().len() {
                     let media = play.current_list.lock().unwrap()[index].clone();
@@ -181,7 +184,7 @@ pub async fn json_rpc_server(
             }
 
             if map.contains_key("media") && &map["media"] == "last" {
-                let index = *play.index.lock().unwrap();
+                let index = play.index.load(Ordering::SeqCst);
 
                 if index > 1 && index - 2 < play.current_list.lock().unwrap().len() {
                     let media = play.current_list.lock().unwrap()[index - 2].clone();

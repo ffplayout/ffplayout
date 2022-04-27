@@ -1,6 +1,3 @@
-use once_cell::sync::OnceCell;
-use serde::{Deserialize, Serialize};
-use serde_yaml::{self};
 use std::{
     env,
     fs::File,
@@ -8,6 +5,9 @@ use std::{
     process,
 };
 
+use once_cell::sync::OnceCell;
+use serde::{Deserialize, Serialize};
+use serde_yaml::{self};
 use shlex::split;
 
 use crate::utils::{get_args, time_to_sec};
@@ -51,7 +51,7 @@ pub struct Mail {
     pub sender_pass: String,
     pub recipient: String,
     pub mail_level: String,
-    pub interval: i32,
+    pub interval: u64,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

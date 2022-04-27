@@ -2,15 +2,16 @@ extern crate log;
 extern crate simplelog;
 
 use std::{
+    {fs, fs::File},
     path::PathBuf,
     process::exit,
-    {fs, fs::File},
+    thread,
+
 };
 
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use simplelog::*;
-use tokio::runtime::Builder;
 
 mod filter;
 mod input;
@@ -60,10 +61,7 @@ fn main() {
         *playout_stat.date.lock().unwrap() = data.date;
     }
 
-    let runtime = Builder::new_multi_thread().enable_all().build().unwrap();
-    let rt_handle = runtime.handle();
-
-    let logging = init_logging(rt_handle.clone(), proc_control.is_terminated.clone());
+    let logging = init_logging();
     CombinedLogger::init(logging).unwrap();
 
     validate_ffmpeg();
@@ -74,18 +72,22 @@ fn main() {
         exit(0);
     }
 
+    let play_ctl = play_control.clone();
+    let play_stat = playout_stat.clone();
+    let proc_ctl = proc_control.clone();
+
     if config.rpc_server.enable {
-        rt_handle.spawn(json_rpc_server(
-            play_control.clone(),
-            playout_stat.clone(),
-            proc_control.clone(),
+        thread::spawn( move || json_rpc_server(
+            play_ctl,
+            play_stat,
+            proc_ctl,
         ));
     }
 
     if &config.out.mode.to_lowercase() == "hls" {
-        write_hls(rt_handle, play_control, playout_stat, proc_control);
+        write_hls(play_control, playout_stat, proc_control);
     } else {
-        player(rt_handle, play_control, playout_stat, proc_control);
+        player(play_control, playout_stat, proc_control);
     }
 
     info!("Playout done...");

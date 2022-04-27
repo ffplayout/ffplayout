@@ -1,8 +1,10 @@
 use std::{
     fmt,
     process::Child,
-    sync::{Arc, Mutex, RwLock},
-
+    sync::{
+        atomic::{AtomicBool, AtomicUsize, Ordering},
+        Arc, Mutex,
+    },
 };
 
 use jsonrpc_http_server::CloseHandle;
@@ -33,10 +35,10 @@ pub struct ProcessControl {
     pub decoder_term: Arc<Mutex<Option<Child>>>,
     pub encoder_term: Arc<Mutex<Option<Child>>>,
     pub server_term: Arc<Mutex<Option<Child>>>,
-    pub server_is_running: Arc<Mutex<bool>>,
+    pub server_is_running: Arc<AtomicBool>,
     pub rpc_handle: Arc<Mutex<Option<CloseHandle>>>,
-    pub is_terminated: Arc<Mutex<bool>>,
-    pub is_alive: Arc<RwLock<bool>>,
+    pub is_terminated: Arc<AtomicBool>,
+    pub is_alive: Arc<AtomicBool>,
 }
 
 impl ProcessControl {
@@ -45,10 +47,10 @@ impl ProcessControl {
             decoder_term: Arc::new(Mutex::new(None)),
             encoder_term: Arc::new(Mutex::new(None)),
             server_term: Arc::new(Mutex::new(None)),
-            server_is_running: Arc::new(Mutex::new(false)),
+            server_is_running: Arc::new(AtomicBool::new(false)),
             rpc_handle: Arc::new(Mutex::new(None)),
-            is_terminated: Arc::new(Mutex::new(false)),
-            is_alive: Arc::new(RwLock::new(true)),
+            is_terminated: Arc::new(AtomicBool::new(false)),
+            is_alive: Arc::new(AtomicBool::new(true)),
         }
     }
 }
@@ -115,20 +117,16 @@ impl ProcessControl {
     }
 
     pub fn kill_all(&mut self) {
-        *self.is_terminated.lock().unwrap() = true;
+        self.is_terminated.store(true, Ordering::SeqCst);
 
-        if *self.is_alive.read().unwrap() {
-            *self.is_alive.write().unwrap() = false;
+        if self.is_alive.load(Ordering::SeqCst) {
+            self.is_alive.store(false, Ordering::SeqCst);
 
             if let Some(rpc) = &*self.rpc_handle.lock().unwrap() {
                 rpc.clone().close()
             };
 
-            for unit in [
-                Decoder,
-                Encoder,
-                Ingest,
-            ] {
+            for unit in [Decoder, Encoder, Ingest] {
                 if let Err(e) = self.kill(unit) {
                     error!("{e}")
                 }
@@ -147,7 +145,7 @@ impl Drop for ProcessControl {
 pub struct PlayerControl {
     pub current_media: Arc<Mutex<Option<Media>>>,
     pub current_list: Arc<Mutex<Vec<Media>>>,
-    pub index: Arc<Mutex<usize>>,
+    pub index: Arc<AtomicUsize>,
 }
 
 impl PlayerControl {
@@ -155,7 +153,7 @@ impl PlayerControl {
         Self {
             current_media: Arc::new(Mutex::new(None)),
             current_list: Arc::new(Mutex::new(vec![Media::new(0, String::new(), false)])),
-            index: Arc::new(Mutex::new(0)),
+            index: Arc::new(AtomicUsize::new(0)),
         }
     }
 }
@@ -165,7 +163,7 @@ pub struct PlayoutStatus {
     pub time_shift: Arc<Mutex<f64>>,
     pub date: Arc<Mutex<String>>,
     pub current_date: Arc<Mutex<String>>,
-    pub list_init: Arc<Mutex<bool>>,
+    pub list_init: Arc<AtomicBool>,
 }
 
 impl PlayoutStatus {
@@ -174,8 +172,7 @@ impl PlayoutStatus {
             time_shift: Arc::new(Mutex::new(0.0)),
             date: Arc::new(Mutex::new(String::new())),
             current_date: Arc::new(Mutex::new(String::new())),
-            list_init: Arc::new(Mutex::new(true)),
+            list_init: Arc::new(AtomicBool::new(true)),
         }
     }
 }
-
