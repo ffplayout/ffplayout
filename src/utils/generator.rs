@@ -2,7 +2,7 @@ use std::{
     fs::{create_dir_all, write},
     path::Path,
     process::exit,
-    sync::{Arc, Mutex},
+    sync::{atomic::AtomicUsize, Arc, Mutex},
 };
 
 use chrono::{Duration, NaiveDate};
@@ -50,7 +50,7 @@ pub fn generate_playlist(mut date_range: Vec<String>) {
     let config = GlobalConfig::global();
     let total_length = config.playlist.length_sec.unwrap().clone();
     let current_list = Arc::new(Mutex::new(vec![Media::new(0, "".to_string(), false)]));
-    let index = Arc::new(Mutex::new(0));
+    let index = Arc::new(AtomicUsize::new(0));
     let playlist_root = Path::new(&config.playlist.path);
 
     if !playlist_root.is_dir() {

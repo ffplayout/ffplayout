@@ -1,7 +1,7 @@
 use std::{
     fs,
     path::Path,
-    sync::{Arc, Mutex},
+    sync::{atomic::{AtomicBool, AtomicUsize, Ordering}, Arc, Mutex},
 };
 
 use serde_json::json;
@@ -21,17 +21,17 @@ pub struct CurrentProgram {
     json_date: String,
     pub nodes: Arc<Mutex<Vec<Media>>>,
     current_node: Media,
-    index: Arc<Mutex<usize>>,
-    is_terminated: Arc<Mutex<bool>>,
+    index: Arc<AtomicUsize>,
+    is_terminated: Arc<AtomicBool>,
     playout_stat: PlayoutStatus,
 }
 
 impl CurrentProgram {
     pub fn new(
         playout_stat: PlayoutStatus,
-        is_terminated: Arc<Mutex<bool>>,
+        is_terminated: Arc<AtomicBool>,
         current_list: Arc<Mutex<Vec<Media>>>,
-        global_index: Arc<Mutex<usize>>,
+        global_index: Arc<AtomicUsize>,
     ) -> Self {
         let config = GlobalConfig::global();
         let json = read_json(None, is_terminated.clone(), true, 0.0);
@@ -65,12 +65,7 @@ impl CurrentProgram {
 
     fn check_update(&mut self, seek: bool) {
         if self.json_path.is_none() {
-            let json = read_json(
-                None,
-                self.is_terminated.clone(),
-                seek,
-                0.0,
-            );
+            let json = read_json(None, self.is_terminated.clone(), seek, 0.0);
 
             self.json_path = json.current_file;
             self.json_mod = json.modified;
@@ -100,7 +95,8 @@ impl CurrentProgram {
                 *self.nodes.lock().unwrap() = json.program;
 
                 self.get_current_clip();
-                *self.index.lock().unwrap() += 1;
+                let idx = self.index.load(Ordering::SeqCst);
+                self.index.store(idx + 1, Ordering::SeqCst);
             }
         } else {
             error!(
@@ -115,8 +111,8 @@ impl CurrentProgram {
             self.json_path = None;
             *self.nodes.lock().unwrap() = vec![media.clone()];
             self.current_node = media;
-            *self.playout_stat.list_init.lock().unwrap() = true;
-            *self.index.lock().unwrap() = 0;
+            self.playout_stat.list_init.store(true, Ordering::SeqCst);
+            self.index.store(0, Ordering::SeqCst);
         }
     }
 
@@ -137,12 +133,7 @@ impl CurrentProgram {
             || is_close(total_delta, 0.0, 2.0)
             || is_close(total_delta, target_length, 2.0)
         {
-            let json = read_json(
-                None,
-                self.is_terminated.clone(),
-                false,
-                next_start,
-            );
+            let json = read_json(None, self.is_terminated.clone(), false, next_start);
 
             let data = json!({
                 "time_shift": 0.0,
@@ -160,27 +151,35 @@ impl CurrentProgram {
             self.json_mod = json.modified;
             self.json_date = json.date;
             *self.nodes.lock().unwrap() = json.program;
-            *self.index.lock().unwrap() = 0;
+            self.index.store(0, Ordering::SeqCst);
 
             if json.current_file.is_none() {
-                *self.playout_stat.list_init.lock().unwrap() = true;
+                self.playout_stat.list_init.store(true, Ordering::SeqCst);
             }
         }
     }
 
     fn last_next_ad(&mut self) {
-        let index = *self.index.lock().unwrap();
+        let index = self.index.load(Ordering::SeqCst);
         let current_list = self.nodes.lock().unwrap();
 
         if index + 1 < current_list.len()
-            && &current_list[index + 1].category.clone().unwrap_or(String::new()) == "advertisement"
+            && &current_list[index + 1]
+                .category
+                .clone()
+                .unwrap_or(String::new())
+                == "advertisement"
         {
             self.current_node.next_ad = Some(true);
         }
 
         if index > 0
             && index < current_list.len()
-            && &current_list[index - 1].category.clone().unwrap_or(String::new()) == "advertisement"
+            && &current_list[index - 1]
+                .category
+                .clone()
+                .unwrap_or(String::new())
+                == "advertisement"
         {
             self.current_node.last_ad = Some(true);
         }
@@ -210,8 +209,8 @@ impl CurrentProgram {
 
         for (i, item) in self.nodes.lock().unwrap().iter_mut().enumerate() {
             if item.begin.unwrap() + item.out - item.seek > time_sec {
-                *self.playout_stat.list_init.lock().unwrap() = false;
-                *self.index.lock().unwrap() = i;
+                self.playout_stat.list_init.store(false, Ordering::SeqCst);
+                self.index.store(i, Ordering::SeqCst);
 
                 break;
             }
@@ -221,13 +220,14 @@ impl CurrentProgram {
     fn init_clip(&mut self) {
         self.get_current_clip();
 
-        if !*self.playout_stat.list_init.lock().unwrap() {
+        if !self.playout_stat.list_init.load(Ordering::SeqCst) {
             let time_sec = self.get_current_time();
-            let index = *self.index.lock().unwrap();
+            let index = self.index.load(Ordering::SeqCst);
 
             // de-instance node to preserve original values in list
             let mut node_clone = self.nodes.lock().unwrap()[index].clone();
-            *self.index.lock().unwrap() += 1;
+            let idx = self.index.load(Ordering::SeqCst);
+            self.index.store(idx + 1, Ordering::SeqCst);
 
             node_clone.seek = time_sec - node_clone.begin.unwrap();
             self.current_node = handle_list_init(node_clone);
@@ -239,7 +239,7 @@ impl Iterator for CurrentProgram {
     type Item = Media;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if *self.playout_stat.list_init.lock().unwrap() {
+        if self.playout_stat.list_init.load(Ordering::SeqCst) {
             debug!("Playlist init");
             self.check_update(true);
 
@@ -247,7 +247,7 @@ impl Iterator for CurrentProgram {
                 self.init_clip();
             }
 
-            if *self.playout_stat.list_init.lock().unwrap() {
+            if self.playout_stat.list_init.load(Ordering::SeqCst) {
                 // on init load playlist, could be not long enough,
                 // so we check if we can take the next playlist already,
                 // or we fill the gap with a dummy.
@@ -270,7 +270,7 @@ impl Iterator for CurrentProgram {
 
                     if DUMMY_LEN > total_delta {
                         duration = total_delta;
-                        *self.playout_stat.list_init.lock().unwrap() = false;
+                        self.playout_stat.list_init.store(false, Ordering::SeqCst);
                     }
 
                     if self.config.playlist.start_sec.unwrap() > current_time {
@@ -283,7 +283,7 @@ impl Iterator for CurrentProgram {
 
                     self.current_node = gen_source(media);
                     self.nodes.lock().unwrap().push(self.current_node.clone());
-                    *self.index.lock().unwrap() = self.nodes.lock().unwrap().len();
+                    self.index.store(self.nodes.lock().unwrap().len(), Ordering::SeqCst);
                 }
             }
 
@@ -292,10 +292,10 @@ impl Iterator for CurrentProgram {
             return Some(self.current_node.clone());
         }
 
-        if *self.index.lock().unwrap() < self.nodes.lock().unwrap().len() {
+        if self.index.load(Ordering::SeqCst) < self.nodes.lock().unwrap().len() {
             self.check_for_next_playlist();
             let mut is_last = false;
-            let index = *self.index.lock().unwrap();
+            let index = self.index.load(Ordering::SeqCst);
 
             if index == self.nodes.lock().unwrap().len() - 1 {
                 is_last = true
@@ -308,7 +308,7 @@ impl Iterator for CurrentProgram {
                 &self.playout_stat,
             );
             self.last_next_ad();
-            *self.index.lock().unwrap() += 1;
+            self.index.store(index + 1, Ordering::SeqCst);
 
             // update playlist should happen after current clip,
             // to prevent unknown behaviors.
@@ -325,7 +325,7 @@ impl Iterator for CurrentProgram {
             {
                 // Test if playlist is to early finish,
                 // and if we have to fill it with a placeholder.
-                let index = *self.index.lock().unwrap();
+                let index = self.index.load(Ordering::SeqCst);
                 self.current_node = Media::new(index, String::new(), false);
                 self.current_node.begin = Some(get_sec());
                 let mut duration = total_delta.abs();
@@ -342,17 +342,17 @@ impl Iterator for CurrentProgram {
                 self.current_node.last_ad = last_ad;
                 self.current_node.add_filter();
 
-                *self.index.lock().unwrap() += 1;
+                self.index.store(index + 1, Ordering::SeqCst);
 
                 return Some(self.current_node.clone());
             }
 
-            *self.index.lock().unwrap() = 0;
+            self.index.store(0, Ordering::SeqCst);
             self.current_node = gen_source(self.nodes.lock().unwrap()[0].clone());
             self.last_next_ad();
             self.current_node.last_ad = last_ad;
 
-            *self.index.lock().unwrap() = 1;
+            self.index.store(1, Ordering::SeqCst);
 
             Some(self.current_node.clone())
         }

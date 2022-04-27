@@ -1,7 +1,4 @@
-use std::{
-    process,
-    process::{Command, Stdio},
-};
+use std::process::{self, Command, Stdio};
 
 use simplelog::*;
 
@@ -13,14 +10,7 @@ pub fn output(log_format: &str) -> process::Child {
 
     let mut enc_filter: Vec<String> = vec![];
 
-    let mut enc_cmd = vec![
-        "-hide_banner",
-        "-nostats",
-        "-v",
-        log_format,
-        "-i",
-        "pipe:0",
-    ];
+    let mut enc_cmd = vec!["-hide_banner", "-nostats", "-v", log_format, "-i", "pipe:0"];
 
     if config.text.add_text && !config.text.over_pre {
         info!(
@@ -35,7 +25,10 @@ pub fn output(log_format: &str) -> process::Child {
 
     enc_cmd.append(&mut enc_filter.iter().map(String::as_str).collect());
 
-    debug!("Encoder CMD: <bright-blue>\"ffplay {}\"</>", enc_cmd.join(" "));
+    debug!(
+        "Encoder CMD: <bright-blue>\"ffplay {}\"</>",
+        enc_cmd.join(" ")
+    );
 
     let enc_proc = match Command::new("ffplay")
         .args(enc_cmd)

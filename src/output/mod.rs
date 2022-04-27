@@ -1,6 +1,7 @@
 use std::{
     io::{prelude::*, BufReader, BufWriter, Read},
     process::{Command, Stdio},
+    sync::atomic::Ordering,
     thread::{self, sleep},
     time::Duration,
 };
@@ -58,11 +59,7 @@ pub fn player(
     let proc_control_c = proc_control.clone();
 
     if config.ingest.enable {
-        thread::spawn(move || ingest_server(
-            ff_log_format_c,
-            ingest_sender,
-            proc_control_c,
-        ));
+        thread::spawn(move || ingest_server(ff_log_format_c, ingest_sender, proc_control_c));
     }
 
     'source_iter: for node in get_source {
@@ -118,7 +115,7 @@ pub fn player(
         *proc_control.decoder_term.lock().unwrap() = Some(dec_proc);
 
         loop {
-            if *proc_control.server_is_running.lock().unwrap() {
+            if proc_control.server_is_running.load(Ordering::SeqCst) {
                 if !live_on {
                     info!("Switch from {} to live ingest", config.processing.mode);
 
@@ -131,7 +128,7 @@ pub fn player(
                     }
 
                     live_on = true;
-                    *playlist_init.lock().unwrap() = true;
+                    playlist_init.store(true, Ordering::SeqCst);
                 }
 
                 for rx in ingest_receiver.try_iter() {

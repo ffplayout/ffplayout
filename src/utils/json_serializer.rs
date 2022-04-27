@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     fs::File,
     path::Path,
-    sync::{Arc, Mutex},
+    sync::{atomic::AtomicBool, Arc},
     thread,
 };
 
@@ -46,7 +46,7 @@ impl Playlist {
 
 pub fn read_json(
     path: Option<String>,
-    is_terminated: Arc<Mutex<bool>>,
+    is_terminated: Arc<AtomicBool>,
     seek: bool,
     next_start: f64,
 ) -> Playlist {
@@ -109,11 +109,7 @@ pub fn read_json(
 
     let list_clone = playlist.clone();
 
-    thread::spawn(move || validate_playlist(
-        list_clone,
-        is_terminated,
-        config.clone(),
-    ));
+    thread::spawn(move || validate_playlist(list_clone, is_terminated, config.clone()));
 
     playlist
 }

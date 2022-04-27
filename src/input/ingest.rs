@@ -2,6 +2,7 @@ use std::{
     io::{BufReader, Error, Read},
     path::Path,
     process::{Command, Stdio},
+    sync::atomic::Ordering,
     thread,
 };
 
@@ -128,7 +129,7 @@ pub fn ingest_server(
             };
 
             if !is_running {
-                *proc_control.server_is_running.lock().unwrap() = true;
+                proc_control.server_is_running.store(true, Ordering::SeqCst);
                 is_running = true;
             }
 
@@ -136,7 +137,7 @@ pub fn ingest_server(
                 if let Err(e) = ingest_sender.send((bytes_len, buffer)) {
                     error!("Ingest server write error: {e:?}");
 
-                    *proc_control.is_terminated.lock().unwrap() = true;
+                    proc_control.is_terminated.store(true, Ordering::SeqCst);
                     break 'ingest_iter;
                 }
             } else {
@@ -145,7 +146,7 @@ pub fn ingest_server(
         }
 
         drop(ingest_reader);
-        *proc_control.server_is_running.lock().unwrap() = false;
+        proc_control.server_is_running.store(false, Ordering::SeqCst);
 
         if let Err(e) = proc_control.wait(Ingest) {
             error!("{e}")
@@ -155,7 +156,7 @@ pub fn ingest_server(
             error!("{e:?}");
         };
 
-        if *proc_control.is_terminated.lock().unwrap() {
+        if proc_control.is_terminated.load(Ordering::SeqCst) {
             break;
         }
     }
