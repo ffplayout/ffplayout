@@ -32,7 +32,7 @@ struct StatusData {
 }
 
 /// Here we create a status file in temp folder.
-/// We need ths for reading/saving program status.
+/// We need this for reading/saving program status.
 /// For example when we skip a playing file,
 /// we save the time difference, so we stay in sync.
 ///
