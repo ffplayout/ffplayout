@@ -5,6 +5,9 @@ use simplelog::*;
 use crate::filter::v_drawtext;
 use crate::utils::{GlobalConfig, Media};
 
+/// Desktop Output
+///
+/// Instead of streaming, we run a ffplay instance and play on desktop.
 pub fn output(log_format: &str) -> process::Child {
     let config = GlobalConfig::global();
 

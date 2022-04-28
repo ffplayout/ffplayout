@@ -17,7 +17,7 @@ use std::{
 use chrono::{Duration, NaiveDate};
 use simplelog::*;
 
-use crate::input::Source;
+use crate::input::FolderSource;
 use crate::utils::{json_serializer::Playlist, GlobalConfig, Media};
 
 
@@ -78,7 +78,7 @@ pub fn generate_playlist(mut date_range: Vec<String>) {
         date_range = get_date_range(&date_range)
     }
 
-    let media_list = Source::new(current_list, index);
+    let media_list = FolderSource::new(current_list, index);
     let list_length = media_list.nodes.lock().unwrap().len();
 
     for date in date_range {

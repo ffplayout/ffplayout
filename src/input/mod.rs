@@ -12,10 +12,11 @@ pub mod folder;
 pub mod ingest;
 pub mod playlist;
 
-pub use folder::{watchman, Source};
+pub use folder::{watchman, FolderSource};
 pub use ingest::ingest_server;
 pub use playlist::CurrentProgram;
 
+/// Create a source iterator from playlist, or from folder.
 pub fn source_generator(
     config: GlobalConfig,
     current_list: Arc<Mutex<Vec<Media>>>,
@@ -28,8 +29,10 @@ pub fn source_generator(
             info!("Playout in folder mode");
             debug!("Monitor folder: <b><magenta>{}</></b>", &config.storage.path);
 
-            let folder_source = Source::new(current_list, index);
+            let folder_source = FolderSource::new(current_list, index);
             let node_clone = folder_source.nodes.clone();
+
+            // Spawn a thread to monitor folder for file changes.
             thread::spawn(move || watchman(node_clone));
 
             Box::new(folder_source) as Box<dyn Iterator<Item = Media>>
@@ -47,7 +50,7 @@ pub fn source_generator(
         }
         _ => {
             error!("Process Mode not exists!");
-            process::exit(0x0100);
+            process::exit(1);
         }
     };
 

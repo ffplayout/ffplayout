@@ -21,6 +21,15 @@ use crate::utils::{
     ProcessControl,
 };
 
+/// Player
+///
+/// Here we create the input file loop, from playlist, or folder source.
+/// Then we read the stdout from the reader ffmpeg instance
+/// and write it to the stdin from the streamer ffmpeg instance.
+/// If it is configured we also fire up a ffmpeg ingest server instance,
+/// for getting live feeds.
+/// When a live ingest arrive, it stops the current playing and switch to the live source.
+/// When ingest stops, it switch back to playlist/folder mode.
 pub fn player(
     play_control: PlayerControl,
     playout_stat: PlayoutStatus,
@@ -33,6 +42,7 @@ pub fn player(
     let mut live_on = false;
     let playlist_init = playout_stat.list_init.clone();
 
+    // get source iterator
     let get_source = source_generator(
         config.clone(),
         play_control.current_list.clone(),
@@ -41,6 +51,7 @@ pub fn player(
         proc_control.is_terminated.clone(),
     );
 
+    // get ffmpeg output instance
     let mut enc_proc = match config.out.mode.as_str() {
         "desktop" => desktop::output(&ff_log_format),
         "stream" => stream::output(&ff_log_format),
@@ -49,16 +60,17 @@ pub fn player(
 
     let mut enc_writer = BufWriter::new(enc_proc.stdin.take().unwrap());
     let enc_err = BufReader::new(enc_proc.stderr.take().unwrap());
+
+    // spawn a thread to log ffmpeg output error messages
     let error_encoder_thread = thread::spawn(move || stderr_reader(enc_err, "Encoder"));
 
     *proc_control.decoder_term.lock().unwrap() = Some(enc_proc);
-
-
 
     let ff_log_format_c = ff_log_format.clone();
     let proc_control_c = proc_control.clone();
     let mut ingest_receiver = None;
 
+    // spawn a thread for ffmpeg ingest server and create a channel for package sending
     if config.ingest.enable {
         let (ingest_sender, rx) = bounded(96);
         ingest_receiver = Some(rx);
@@ -98,6 +110,7 @@ pub fn player(
             dec_cmd.join(" ")
         );
 
+        // create ffmpeg decoder instance, for reading the input files
         let mut dec_proc = match Command::new("ffmpeg")
             .args(dec_cmd)
             .stdout(Stdio::piped())
@@ -118,6 +131,7 @@ pub fn player(
         *proc_control.decoder_term.lock().unwrap() = Some(dec_proc);
 
         loop {
+            // when server is running, read from channel
             if proc_control.server_is_running.load(Ordering::SeqCst) {
                 if !live_on {
                     info!("Switch from {} to live ingest", config.processing.mode);
@@ -141,6 +155,7 @@ pub fn player(
                         break 'source_iter;
                     };
                 }
+            // read from decoder instance
             } else {
                 if live_on {
                     info!("Switch from live ingest to {}", config.processing.mode);

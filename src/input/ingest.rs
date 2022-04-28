@@ -11,6 +11,9 @@ use simplelog::*;
 
 use crate::utils::{stderr_reader, GlobalConfig, Ingest, ProcessControl};
 
+/// Overlay Filter
+///
+/// When a logo is set, we create here the filter for the server.
 fn overlay(config: &GlobalConfig) -> String {
     let mut logo_chain = String::new();
 
@@ -29,6 +32,9 @@ fn overlay(config: &GlobalConfig) -> String {
     logo_chain
 }
 
+/// Audio Filter
+///
+/// If needed we add audio filters to the server instance.
 fn audio_filter(config: &GlobalConfig) -> String {
     let mut audio_chain = ";[0:a]afade=in:st=0:d=0.5".to_string();
 
@@ -51,6 +57,9 @@ fn audio_filter(config: &GlobalConfig) -> String {
     audio_chain
 }
 
+/// ffmpeg Ingest Server
+///
+/// Start ffmpeg in listen mode, and wait for input.
 pub fn ingest_server(
     log_format: String,
     ingest_sender: Sender<(usize, [u8; 65088])>,
@@ -116,7 +125,6 @@ pub fn ingest_server(
         let error_reader_thread = thread::spawn(move || stderr_reader(server_err, "Server"));
 
         *proc_control.server_term.lock().unwrap() = Some(server_proc);
-
         is_running = false;
 
         loop {

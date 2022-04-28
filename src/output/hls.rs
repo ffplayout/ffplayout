@@ -30,6 +30,9 @@ use crate::utils::{
     sec_to_time, stderr_reader, GlobalConfig, PlayerControl, PlayoutStatus, ProcessControl,
 };
 
+/// HLS Writer
+///
+/// Write with single ffmpeg instance directly to a HLS playlist.
 pub fn write_hls(
     play_control: PlayerControl,
     playout_stat: PlayoutStatus,

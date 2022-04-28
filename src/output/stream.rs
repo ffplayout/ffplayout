@@ -8,6 +8,9 @@ use simplelog::*;
 use crate::filter::v_drawtext;
 use crate::utils::{GlobalConfig, Media};
 
+/// Streaming Output
+///
+/// Prepare the ffmpeg command for streaming output
 pub fn output(log_format: &str) -> process::Child {
     let config = GlobalConfig::global();
     let mut enc_filter: Vec<String> = vec![];

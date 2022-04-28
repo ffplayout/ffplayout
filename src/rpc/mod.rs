@@ -13,6 +13,7 @@ use crate::utils::{
     PlayoutStatus, ProcessControl,
 };
 
+/// map media struct to json object
 fn get_media_map(media: Media) -> Value {
     json!({
         "seek": media.seek,
@@ -23,6 +24,7 @@ fn get_media_map(media: Media) -> Value {
     })
 }
 
+/// prepare json object for response
 fn get_data_map(config: &GlobalConfig, media: Media) -> Map<String, Value> {
     let mut data_map = Map::new();
     let begin = media.begin.unwrap_or(0.0);
@@ -45,6 +47,14 @@ fn get_data_map(config: &GlobalConfig, media: Media) -> Map<String, Value> {
     data_map
 }
 
+/// JSON RPC Server
+///
+/// A simple rpc server for getting status information and controlling player:
+///
+/// - current clip information
+/// - jump to next clip
+/// - get last clip
+/// - reset player state to original clip
 pub fn json_rpc_server(
     play_control: PlayerControl,
     playout_stat: PlayoutStatus,
@@ -61,6 +71,7 @@ pub fn json_rpc_server(
             let current_date = playout_stat.current_date.lock().unwrap().clone();
             let mut date = playout_stat.date.lock().unwrap();
 
+            // get next clip
             if map.contains_key("control") && &map["control"] == "next" {
                 let index = play.index.load(Ordering::SeqCst);
 
@@ -98,6 +109,7 @@ pub fn json_rpc_server(
                 return Ok(Value::String("Last clip can not be skipped".to_string()));
             }
 
+            // get last clip
             if map.contains_key("control") && &map["control"] == "back" {
                 let index = play.index.load(Ordering::SeqCst);
 
@@ -135,6 +147,7 @@ pub fn json_rpc_server(
                 return Ok(Value::String("Clip index out of range".to_string()));
             }
 
+            // reset player state
             if map.contains_key("control") && &map["control"] == "reset" {
                 if let Some(proc) = proc.decoder_term.lock().unwrap().as_mut() {
                     if let Err(e) = proc.kill() {
@@ -161,6 +174,7 @@ pub fn json_rpc_server(
                 return Ok(Value::String("Reset playout state failed".to_string()));
             }
 
+            // get infos about current clip
             if map.contains_key("media") && &map["media"] == "current" {
                 if let Some(media) = play.current_media.lock().unwrap().clone() {
                     let data_map = get_data_map(config, media);
@@ -169,6 +183,7 @@ pub fn json_rpc_server(
                 };
             }
 
+            // get infos about next clip
             if map.contains_key("media") && &map["media"] == "next" {
                 let index = play.index.load(Ordering::SeqCst);
 
@@ -183,6 +198,7 @@ pub fn json_rpc_server(
                 return Ok(Value::String("There is no next clip".to_string()));
             }
 
+            // get infos about last clip
             if map.contains_key("media") && &map["media"] == "last" {
                 let index = play.index.load(Ordering::SeqCst);
 
@@ -201,10 +217,12 @@ pub fn json_rpc_server(
         Ok(Value::String("No, or wrong parameters set!".to_string()))
     });
 
+    // build rpc server
     let server = ServerBuilder::new(io)
         .cors(DomainsValidation::AllowOnly(vec![
             AccessControlAllowOrigin::Null,
         ]))
+        // add middleware, for authentication
         .request_middleware(|request: hyper::Request<hyper::Body>| {
             if request.headers().contains_key("authorization")
                 && request.headers()["authorization"] == config.rpc_server.authorization
