@@ -12,6 +12,7 @@ use crate::utils::{get_date, modified_time, validate_playlist, GlobalConfig, Med
 
 pub const DUMMY_LEN: f64 = 60.0;
 
+/// This is our main playlist object, it holds all necessary information for the current day.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Playlist {
     pub date: String,
@@ -44,6 +45,8 @@ impl Playlist {
     }
 }
 
+/// Read json playlist file, fills Playlist struct and set some extra values,
+/// which we need to process.
 pub fn read_json(
     path: Option<String>,
     is_terminated: Arc<AtomicBool>,
@@ -96,6 +99,7 @@ pub fn read_json(
         playlist.modified = Some(modi.to_string());
     }
 
+    // Add extra values to every media clip
     for (i, item) in playlist.program.iter_mut().enumerate() {
         item.begin = Some(start_sec);
         item.index = Some(i);

@@ -12,6 +12,9 @@ use shlex::split;
 
 use crate::utils::{get_args, time_to_sec};
 
+/// Global Config
+///
+/// This we init ones, when ffplayout is starting and use them globally in the hole program.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct GlobalConfig {
     pub general: General,
@@ -132,6 +135,7 @@ pub struct Out {
 }
 
 impl GlobalConfig {
+    /// Read config from YAML file, and set some extra config values.
     fn new() -> Self {
         let args = get_args();
         let mut config_path = match env::current_exe() {
@@ -173,6 +177,7 @@ impl GlobalConfig {
             config.playlist.length_sec = Some(86400.0);
         }
 
+        // We set the decoder settings here, so we only define them ones.
         let mut settings: Vec<String> = vec![
             "-pix_fmt",
             "yuv420p",
@@ -208,6 +213,8 @@ impl GlobalConfig {
         config.ingest.input_cmd = split(config.ingest.input_param.as_str());
         config.out.preview_cmd = split(config.out.preview_param.as_str());
         config.out.output_cmd = split(config.out.output_param.as_str());
+
+        // Read command line arguments, and override the config with them.
 
         if let Some(gen) = args.generate {
             config.general.generate = Some(gen);

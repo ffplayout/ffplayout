@@ -12,6 +12,7 @@ use simplelog::*;
 
 use crate::utils::Media;
 
+/// Defined process units.
 pub enum ProcessUnit {
     Decoder,
     Encoder,
@@ -30,6 +31,10 @@ impl fmt::Display for ProcessUnit {
 
 use ProcessUnit::*;
 
+/// Process Controller
+///
+/// We save here some global states, about what is running and which processes are alive.
+/// This we need for process termination, skipping clip decoder etc.
 #[derive(Clone)]
 pub struct ProcessControl {
     pub decoder_term: Arc<Mutex<Option<Child>>>,
@@ -88,6 +93,8 @@ impl ProcessControl {
         Ok(())
     }
 
+    /// Wait for process to proper close.
+    /// This prevents orphaned/zombi processes in system
     pub fn wait(&mut self, proc: ProcessUnit) -> Result<(), String> {
         match proc {
             Decoder => {
@@ -116,6 +123,7 @@ impl ProcessControl {
         Ok(())
     }
 
+    /// No matter what is running, terminate them all.
     pub fn kill_all(&mut self) {
         self.is_terminated.store(true, Ordering::SeqCst);
 
@@ -141,6 +149,7 @@ impl Drop for ProcessControl {
     }
 }
 
+/// Global player control, to get infos about current clip etc.
 #[derive(Clone)]
 pub struct PlayerControl {
     pub current_media: Arc<Mutex<Option<Media>>>,
@@ -158,6 +167,7 @@ impl PlayerControl {
     }
 }
 
+/// Global playout control, for move forward/backward clip, or resetting playlist/state.
 #[derive(Clone, Debug)]
 pub struct PlayoutStatus {
     pub time_shift: Arc<Mutex<f64>>,

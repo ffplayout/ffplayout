@@ -1,3 +1,12 @@
+/// Simple Playlist Generator
+///
+/// You can call ffplayout[.exe] -g YYYY-mm-dd - YYYY-mm-dd to generate JSON playlists.
+///
+/// The generator takes the files from storage, which are set in config.
+/// It also respect the shuffle/sort mode.
+///
+/// Beside that it is really very basic, without any logic.
+
 use std::{
     fs::{create_dir_all, write},
     path::Path,
@@ -11,6 +20,8 @@ use simplelog::*;
 use crate::input::Source;
 use crate::utils::{json_serializer::Playlist, GlobalConfig, Media};
 
+
+/// Generate a vector with dates, from given range.
 fn get_date_range(date_range: &Vec<String>) -> Vec<String> {
     let mut range = vec![];
     let start;
@@ -46,6 +57,7 @@ fn get_date_range(date_range: &Vec<String>) -> Vec<String> {
     range
 }
 
+/// Generate playlists
 pub fn generate_playlist(mut date_range: Vec<String>) {
     let config = GlobalConfig::global();
     let total_length = config.playlist.length_sec.unwrap().clone();

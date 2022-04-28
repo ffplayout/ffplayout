@@ -54,6 +54,7 @@ pub struct Args {
     pub volume: Option<f64>,
 }
 
+/// Get arguments from command line, and return them.
 pub fn get_args() -> Args {
     let args = Args::parse();
 
