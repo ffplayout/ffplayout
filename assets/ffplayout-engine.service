@@ -1,6 +1,6 @@
 [Unit]
 Description=Rust based 24/7 playout solution
-After=network.target
+After=network.target remote-fs.target
 
 [Service]
 ExecStart= /usr/bin/ffplayout
