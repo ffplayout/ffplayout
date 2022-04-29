@@ -62,7 +62,6 @@ pub fn json_rpc_server(
 ) {
     let config = GlobalConfig::global();
     let mut io = IoHandler::default();
-    let play = play_control.clone();
     let proc = proc_control.clone();
 
     io.add_sync_method("player", move |params: Params| {
@@ -73,9 +72,9 @@ pub fn json_rpc_server(
 
             // get next clip
             if map.contains_key("control") && &map["control"] == "next" {
-                let index = play.index.load(Ordering::SeqCst);
+                let index = play_control.index.load(Ordering::SeqCst);
 
-                if index < play.current_list.lock().unwrap().len() {
+                if index < play_control.current_list.lock().unwrap().len() {
                     if let Some(proc) = proc.decoder_term.lock().unwrap().as_mut() {
                         if let Err(e) = proc.kill() {
                             error!("Decoder {e:?}")
@@ -88,7 +87,7 @@ pub fn json_rpc_server(
                         info!("Move to next clip");
 
                         let mut data_map = Map::new();
-                        let mut media = play.current_list.lock().unwrap()[index].clone();
+                        let mut media = play_control.current_list.lock().unwrap()[index].clone();
                         media.add_probe();
 
                         let (delta, _) = get_delta(&media.begin.unwrap_or(0.0));
@@ -111,9 +110,9 @@ pub fn json_rpc_server(
 
             // get last clip
             if map.contains_key("control") && &map["control"] == "back" {
-                let index = play.index.load(Ordering::SeqCst);
+                let index = play_control.index.load(Ordering::SeqCst);
 
-                if index > 1 && play.current_list.lock().unwrap().len() > 1 {
+                if index > 1 && play_control.current_list.lock().unwrap().len() > 1 {
                     if let Some(proc) = proc.decoder_term.lock().unwrap().as_mut() {
                         if let Err(e) = proc.kill() {
                             error!("Decoder {e:?}")
@@ -125,8 +124,8 @@ pub fn json_rpc_server(
 
                         info!("Move to last clip");
                         let mut data_map = Map::new();
-                        let mut media = play.current_list.lock().unwrap()[index - 2].clone();
-                        play.index.fetch_sub(2, Ordering::SeqCst);
+                        let mut media = play_control.current_list.lock().unwrap()[index - 2].clone();
+                        play_control.index.fetch_sub(2, Ordering::SeqCst);
                         media.add_probe();
 
                         let (delta, _) = get_delta(&media.begin.unwrap_or(0.0));
@@ -176,7 +175,7 @@ pub fn json_rpc_server(
 
             // get infos about current clip
             if map.contains_key("media") && &map["media"] == "current" {
-                if let Some(media) = play.current_media.lock().unwrap().clone() {
+                if let Some(media) = play_control.current_media.lock().unwrap().clone() {
                     let data_map = get_data_map(config, media);
 
                     return Ok(Value::Object(data_map));
@@ -185,10 +184,10 @@ pub fn json_rpc_server(
 
             // get infos about next clip
             if map.contains_key("media") && &map["media"] == "next" {
-                let index = play.index.load(Ordering::SeqCst);
+                let index = play_control.index.load(Ordering::SeqCst);
 
-                if index < play.current_list.lock().unwrap().len() {
-                    let media = play.current_list.lock().unwrap()[index].clone();
+                if index < play_control.current_list.lock().unwrap().len() {
+                    let media = play_control.current_list.lock().unwrap()[index].clone();
 
                     let data_map = get_data_map(config, media);
 
@@ -200,10 +199,10 @@ pub fn json_rpc_server(
 
             // get infos about last clip
             if map.contains_key("media") && &map["media"] == "last" {
-                let index = play.index.load(Ordering::SeqCst);
+                let index = play_control.index.load(Ordering::SeqCst);
 
-                if index > 1 && index - 2 < play.current_list.lock().unwrap().len() {
-                    let media = play.current_list.lock().unwrap()[index - 2].clone();
+                if index > 1 && index - 2 < play_control.current_list.lock().unwrap().len() {
+                    let media = play_control.current_list.lock().unwrap()[index - 2].clone();
 
                     let data_map = get_data_map(config, media);
 
@@ -241,7 +240,7 @@ pub fn json_rpc_server(
         .start_http(&config.rpc_server.address.parse().unwrap())
         .expect("Unable to start RPC server");
 
-    *proc_control.rpc_handle.lock().unwrap() = Some(server.close_handle().clone());
+    *proc_control.rpc_handle.lock().unwrap() = Some(server.close_handle());
 
     server.wait();
 }

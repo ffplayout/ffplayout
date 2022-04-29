@@ -152,7 +152,7 @@ pub fn init_logging() -> Vec<Box<dyn SharedLogger>> {
         time_level = LevelFilter::Error;
     }
 
-    let log_config = simplelog::ConfigBuilder::new()
+    let mut log_config = simplelog::ConfigBuilder::new()
         .set_thread_level(LevelFilter::Off)
         .set_target_level(LevelFilter::Off)
         .set_level_padding(LevelPadding::Left)
@@ -210,14 +210,14 @@ pub fn init_logging() -> Vec<Box<dyn SharedLogger>> {
     }
 
     // set mail logger only the recipient is set in config
-    if config.mail.recipient.contains("@") && config.mail.recipient.contains(".") {
+    if config.mail.recipient.contains('@') && config.mail.recipient.contains('.') {
         let messages: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
         let messages_clone = messages.clone();
-        let interval = config.mail.interval.clone();
+        let interval = config.mail.interval;
 
         thread::spawn(move || mail_queue(messages_clone, interval));
 
-        let mail_config = log_config.clone().build();
+        let mail_config = log_config.build();
 
         let filter = match config.mail.mail_level.to_lowercase().as_str() {
             "info" => LevelFilter::Info,

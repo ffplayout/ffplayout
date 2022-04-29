@@ -75,9 +75,9 @@ pub fn ingest_server(
         config.processing.aspect
     );
 
-    filter.push_str(&overlay(&config));
+    filter.push_str(&overlay(config));
     filter.push_str("[vout1]");
-    filter.push_str(audio_filter(&config).as_str());
+    filter.push_str(audio_filter(config).as_str());
     let mut filter_list = vec![
         "-filter_complex",
         &filter,

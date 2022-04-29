@@ -24,7 +24,7 @@ pub fn source_generator(
     playout_stat: PlayoutStatus,
     is_terminated: Arc<AtomicBool>,
 ) -> Box<dyn Iterator<Item = Media>> {
-    let get_source = match config.processing.clone().mode.as_str() {
+    let get_source = match config.processing.mode.as_str() {
         "folder" => {
             info!("Playout in folder mode");
             debug!("Monitor folder: <b><magenta>{}</></b>", &config.storage.path);
@@ -41,7 +41,7 @@ pub fn source_generator(
             info!("Playout in playlist mode");
             let program = CurrentProgram::new(
                 playout_stat,
-                is_terminated.clone(),
+                is_terminated,
                 current_list,
                 index,
             );

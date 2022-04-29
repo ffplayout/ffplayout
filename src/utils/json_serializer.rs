@@ -92,7 +92,7 @@ pub fn read_json(
         serde_json::from_reader(f).expect("Could not read json playlist file.");
 
     playlist.current_file = Some(current_file.clone());
-    playlist.start_sec = Some(start_sec.clone());
+    playlist.start_sec = Some(start_sec);
     let modify = modified_time(&current_file);
 
     if let Some(modi) = modify {

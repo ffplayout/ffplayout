@@ -153,8 +153,7 @@ impl GlobalConfig {
             Ok(file) => file,
             Err(err) => {
                 println!(
-                    "{config_path:?} doesn't exists!\n{}\n\nSystem error: {err}",
-                    "Put \"ffplayout.yml\" in \"/etc/playout/\" or beside the executable!"
+                    "{config_path:?} doesn't exists!\nPut \"ffplayout.yml\" in \"/etc/playout/\" or beside the executable!\n\nSystem error: {err}"
                 );
                 process::exit(0x0100);
             }
@@ -171,7 +170,7 @@ impl GlobalConfig {
         let bitrate = config.processing.width * config.processing.height / 10;
         config.playlist.start_sec = Some(time_to_sec(&config.playlist.day_start));
 
-        if config.playlist.length.contains(":") {
+        if config.playlist.length.contains(':') {
             config.playlist.length_sec = Some(time_to_sec(&config.playlist.length));
         } else {
             config.playlist.length_sec = Some(86400.0);
@@ -244,7 +243,7 @@ impl GlobalConfig {
         if let Some(length) = args.length {
             config.playlist.length = length.clone();
 
-            if length.contains(":") {
+            if length.contains(':') {
                 config.playlist.length_sec = Some(time_to_sec(&length));
             } else {
                 config.playlist.length_sec = Some(86400.0);

@@ -90,12 +90,12 @@ impl Media {
             index: Some(index),
             seek: 0.0,
             out: duration,
-            duration: duration,
+            duration,
             category: None,
             source: src.clone(),
             cmd: Some(vec!["-i".to_string(), src]),
             filter: Some(vec![]),
-            probe: probe,
+            probe,
             last_ad: Some(false),
             next_ad: Some(false),
             process: Some(true),
@@ -124,7 +124,6 @@ impl Media {
         self.filter = Some(filter_chains(&mut node))
     }
 }
-
 
 /// We use the ffprobe crate, but we map the metadata to our needs.
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -161,12 +160,12 @@ impl MediaProbe {
 
                 MediaProbe {
                     format: Some(obj.format),
-                    audio_streams: if a_stream.len() > 0 {
+                    audio_streams: if !a_stream.is_empty() {
                         Some(a_stream)
                     } else {
                         None
                     },
-                    video_streams: if v_stream.len() > 0 {
+                    video_streams: if !v_stream.is_empty() {
                         Some(v_stream)
                     } else {
                         None
@@ -252,7 +251,7 @@ pub fn modified_time(path: &str) -> Option<DateTime<Local>> {
 
 /// Convert a formatted time string to seconds.
 pub fn time_to_sec(time_str: &str) -> f64 {
-    if ["now", "", "none"].contains(&time_str) || !time_str.contains(":") {
+    if ["now", "", "none"].contains(&time_str) || !time_str.contains(':') {
         return get_sec();
     }
 
@@ -293,7 +292,6 @@ pub fn get_delta(begin: &f64) -> (f64, f64) {
     let start = config.playlist.start_sec.unwrap();
     let length = time_to_sec(&config.playlist.length);
     let mut target_length = 86400.0;
-    let total_delta;
 
     if length > 0.0 && length != target_length {
         target_length = length
@@ -310,11 +308,11 @@ pub fn get_delta(begin: &f64) -> (f64, f64) {
         current_delta -= 86400.0
     }
 
-    if current_time < start {
-        total_delta = start - current_time;
+    let total_delta = if current_time < start {
+        start - current_time
     } else {
-        total_delta = target_length + start - current_time;
-    }
+        target_length + start - current_time
+    };
 
     (current_delta, total_delta)
 }
@@ -369,7 +367,7 @@ pub fn seek_and_length(src: String, seek: f64, out: f64, duration: f64) -> Vec<S
     if duration > out {
         source_cmd.append(&mut vec![
             "-t".to_string(),
-            format!("{}", out - seek).to_string(),
+            format!("{}", out - seek),
         ]);
     }
 
@@ -393,16 +391,14 @@ pub fn stderr_reader(buffer: BufReader<ChildStderr>, suffix: &str) -> Result<(),
                 "<bright black>[{suffix}]</> {}",
                 format_line(line, "warning")
             )
-        } else {
-            if suffix != "server"
-                && !line.contains("Input/output error")
-                && !line.contains("Broken pipe")
-            {
-                error!(
-                    "<bright black>[{suffix}]</> {}",
-                    format_line(line.clone(), "error")
-                );
-            }
+        } else if suffix != "server"
+            && !line.contains("Input/output error")
+            && !line.contains("Broken pipe")
+        {
+            error!(
+                "<bright black>[{suffix}]</> {}",
+                format_line(line.clone(), "error")
+            );
         }
     }
 
@@ -450,15 +446,13 @@ fn ffmpeg_libs_and_filter() -> (Vec<String>, Vec<String>) {
 
     // stderr shows only the ffmpeg configuration
     // get codec library's
-    for line in err_buffer.lines() {
-        if let Ok(line) = line {
-            if line.contains("configuration:") {
-                let configs = line.split_whitespace();
+    for line in err_buffer.lines().flatten() {
+        if line.contains("configuration:") {
+            let configs = line.split_whitespace();
 
-                for config in configs {
-                    if config.contains("--enable-lib") {
-                        libs.push(config.replace("--enable-", ""));
-                    }
+            for config in configs {
+                if config.contains("--enable-lib") {
+                    libs.push(config.replace("--enable-", ""));
                 }
             }
         }
@@ -466,13 +460,11 @@ fn ffmpeg_libs_and_filter() -> (Vec<String>, Vec<String>) {
 
     // stdout shows filter help text
     // get filters
-    for line in out_buffer.lines() {
-        if let Ok(line) = line {
-            if let Some(_) = re.captures(line.as_str()) {
-                let filter_line = line.split_whitespace();
+    for line in out_buffer.lines().flatten() {
+        if re.captures(line.as_str()).is_some() {
+            let filter_line = line.split_whitespace();
 
-                filters.push(filter_line.collect::<Vec<&str>>()[1].to_string());
-            }
+            filters.push(filter_line.collect::<Vec<&str>>()[1].to_string());
         }
     }
 

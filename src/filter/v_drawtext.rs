@@ -24,14 +24,14 @@ pub fn filter_node(node: &mut Media) -> String {
             };
 
             let escape = text
-                .replace("'", "'\\\\\\''")
-                .replace("%", "\\\\\\%")
-                .replace(":", "\\:");
+                .replace('\'', "'\\\\\\''")
+                .replace('%', "\\\\\\%")
+                .replace(':', "\\:");
             filter = format!("drawtext=text='{escape}':{}{font}", config.text.style)
         } else {
             filter = format!(
                 "zmq=b=tcp\\\\://'{}',drawtext=text=''{font}",
-                config.text.bind_address.replace(":", "\\:")
+                config.text.bind_address.replace(':', "\\:")
             )
         }
     }

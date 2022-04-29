@@ -128,10 +128,10 @@ impl CurrentProgram {
         let start_sec = self.config.playlist.start_sec.unwrap();
         let target_length = self.config.playlist.length_sec.unwrap();
         let (delta, total_delta) = get_delta(&current_time);
-        let mut duration = self.current_node.out.clone();
+        let mut duration = self.current_node.out;
 
         if self.current_node.duration > self.current_node.out {
-            duration = self.current_node.duration.clone()
+            duration = self.current_node.duration
         }
 
         let next_start = self.current_node.begin.unwrap() - start_sec + duration + delta;
@@ -172,22 +172,14 @@ impl CurrentProgram {
         let current_list = self.nodes.lock().unwrap();
 
         if index + 1 < current_list.len()
-            && &current_list[index + 1]
-                .category
-                .clone()
-                .unwrap_or(String::new())
-                == "advertisement"
+            && &current_list[index + 1].category.clone().unwrap_or_default() == "advertisement"
         {
             self.current_node.next_ad = Some(true);
         }
 
         if index > 0
             && index < current_list.len()
-            && &current_list[index - 1]
-                .category
-                .clone()
-                .unwrap_or(String::new())
-                == "advertisement"
+            && &current_list[index - 1].category.clone().unwrap_or_default() == "advertisement"
         {
             self.current_node.last_ad = Some(true);
         }
@@ -295,7 +287,8 @@ impl Iterator for CurrentProgram {
 
                     self.current_node = gen_source(media);
                     self.nodes.lock().unwrap().push(self.current_node.clone());
-                    self.index.store(self.nodes.lock().unwrap().len(), Ordering::SeqCst);
+                    self.index
+                        .store(self.nodes.lock().unwrap().len(), Ordering::SeqCst);
                 }
             }
 
@@ -328,7 +321,7 @@ impl Iterator for CurrentProgram {
             Some(self.current_node.clone())
         } else {
             let last_playlist = self.json_path.clone();
-            let last_ad = self.current_node.last_ad.clone();
+            let last_ad = self.current_node.last_ad;
             self.check_for_next_playlist();
             let (_, total_delta) = get_delta(&self.config.playlist.start_sec.unwrap());
 
@@ -386,7 +379,7 @@ fn timed_source(
     let mut new_node = node.clone();
     new_node.process = Some(false);
 
-    if config.playlist.length.contains(":") {
+    if config.playlist.length.contains(':') {
         let time_shift = playout_stat.time_shift.lock().unwrap();
 
         if *playout_stat.current_date.lock().unwrap() == *playout_stat.date.lock().unwrap()
@@ -412,7 +405,7 @@ fn timed_source(
 
     if (total_delta > node.out - node.seek && !last)
         || node.index.unwrap() < 2
-        || !config.playlist.length.contains(":")
+        || !config.playlist.length.contains(':')
     {
         // when we are in the 24 hour range, get the clip
         new_node = gen_source(node);
@@ -466,9 +459,7 @@ fn handle_list_init(mut node: Media) -> Media {
     }
 
     node.out = out;
-
-    let new_node = gen_source(node);
-    new_node
+    gen_source(node)
 }
 
 /// when we come to last clip in playlist,

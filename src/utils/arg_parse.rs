@@ -56,7 +56,5 @@ pub struct Args {
 
 /// Get arguments from command line, and return them.
 pub fn get_args() -> Args {
-    let args = Args::parse();
-
-    args
+    Args::parse()
 }
