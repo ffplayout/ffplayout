@@ -8,7 +8,11 @@ use std::{
     time::Duration,
 };
 
-use file_rotate::{compression::Compression, suffix::AppendCount, ContentLimit, FileRotate};
+use file_rotate::{
+    compression::Compression,
+    suffix::{AppendTimestamp, FileLimit},
+    ContentLimit, FileRotate,
+};
 use lettre::{
     message::header, transport::smtp::authentication::Credentials, Message, SmtpTransport,
     Transport,
@@ -177,8 +181,11 @@ pub fn init_logging() -> Vec<Box<dyn SharedLogger>> {
         let log = || {
             FileRotate::new(
                 log_path,
-                AppendCount::new(app_config.backup_count),
-                ContentLimit::Lines(1000),
+                AppendTimestamp::with_format(
+                    "%Y-%m-%d",
+                    FileLimit::MaxFiles(app_config.backup_count),
+                ),
+                ContentLimit::Date,
                 Compression::None,
             )
         };
