@@ -6,7 +6,6 @@
 /// It also respect the shuffle/sort mode.
 ///
 /// Beside that it is really very basic, without any logic.
-
 use std::{
     fs::{create_dir_all, write},
     path::Path,
@@ -19,7 +18,6 @@ use simplelog::*;
 
 use crate::input::FolderSource;
 use crate::utils::{json_serializer::Playlist, GlobalConfig, Media};
-
 
 /// Generate a vector with dates, from given range.
 fn get_date_range(date_range: &[String]) -> Vec<String> {

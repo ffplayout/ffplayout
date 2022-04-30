@@ -154,7 +154,9 @@ pub fn ingest_server(
         }
 
         drop(ingest_reader);
-        proc_control.server_is_running.store(false, Ordering::SeqCst);
+        proc_control
+            .server_is_running
+            .store(false, Ordering::SeqCst);
 
         if let Err(e) = proc_control.wait(Ingest) {
             error!("{e}")

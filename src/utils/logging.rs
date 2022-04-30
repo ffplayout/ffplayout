@@ -10,8 +10,8 @@ use std::{
 
 use file_rotate::{
     compression::Compression,
-    suffix::{AppendTimestamp, FileLimit},
-    ContentLimit, FileRotate,
+    suffix::{AppendTimestamp, DateFrom, FileLimit},
+    ContentLimit, FileRotate, TimeFrequency,
 };
 use lettre::{
     message::header, transport::smtp::authentication::Credentials, Message, SmtpTransport,
@@ -184,8 +184,9 @@ pub fn init_logging() -> Vec<Box<dyn SharedLogger>> {
                 AppendTimestamp::with_format(
                     "%Y-%m-%d",
                     FileLimit::MaxFiles(app_config.backup_count),
+                    DateFrom::DateYesterday,
                 ),
-                ContentLimit::Date,
+                ContentLimit::Time(TimeFrequency::Daily),
                 Compression::None,
             )
         };

@@ -124,7 +124,8 @@ pub fn json_rpc_server(
 
                         info!("Move to last clip");
                         let mut data_map = Map::new();
-                        let mut media = play_control.current_list.lock().unwrap()[index - 2].clone();
+                        let mut media =
+                            play_control.current_list.lock().unwrap()[index - 2].clone();
                         play_control.index.fetch_sub(2, Ordering::SeqCst);
                         media.add_probe();
 

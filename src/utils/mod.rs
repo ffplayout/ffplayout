@@ -365,10 +365,7 @@ pub fn seek_and_length(src: String, seek: f64, out: f64, duration: f64) -> Vec<S
     source_cmd.append(&mut vec!["-i".to_string(), src]);
 
     if duration > out {
-        source_cmd.append(&mut vec![
-            "-t".to_string(),
-            format!("{}", out - seek),
-        ]);
+        source_cmd.append(&mut vec!["-t".to_string(), format!("{}", out - seek)]);
     }
 
     source_cmd

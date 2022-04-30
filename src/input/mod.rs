@@ -1,6 +1,9 @@
 use std::{
     process,
-    sync::{Arc, Mutex, atomic::{AtomicBool, AtomicUsize}},
+    sync::{
+        atomic::{AtomicBool, AtomicUsize},
+        Arc, Mutex,
+    },
     thread,
 };
 
@@ -27,7 +30,10 @@ pub fn source_generator(
     let get_source = match config.processing.mode.as_str() {
         "folder" => {
             info!("Playout in folder mode");
-            debug!("Monitor folder: <b><magenta>{}</></b>", &config.storage.path);
+            debug!(
+                "Monitor folder: <b><magenta>{}</></b>",
+                &config.storage.path
+            );
 
             let folder_source = FolderSource::new(current_list, index);
             let node_clone = folder_source.nodes.clone();
@@ -39,12 +45,7 @@ pub fn source_generator(
         }
         "playlist" => {
             info!("Playout in playlist mode");
-            let program = CurrentProgram::new(
-                playout_stat,
-                is_terminated,
-                current_list,
-                index,
-            );
+            let program = CurrentProgram::new(playout_stat, is_terminated, current_list, index);
 
             Box::new(program) as Box<dyn Iterator<Item = Media>>
         }

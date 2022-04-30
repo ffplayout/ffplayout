@@ -1,9 +1,14 @@
-use std::{path::Path, sync::{atomic::{AtomicBool, Ordering}, Arc}};
+use std::{
+    path::Path,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+};
 
 use simplelog::*;
 
 use crate::utils::{sec_to_time, GlobalConfig, MediaProbe, Playlist};
-
 
 /// Validate a given playlist, to check if:
 ///
@@ -23,7 +28,7 @@ pub fn validate_playlist(playlist: Playlist, is_terminated: Arc<AtomicBool>, con
 
     for item in playlist.program.iter() {
         if is_terminated.load(Ordering::SeqCst) {
-            return
+            return;
         }
 
         if Path::new(&item.source).is_file() {

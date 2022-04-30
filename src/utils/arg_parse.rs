@@ -17,7 +17,7 @@ pub struct Args {
         long,
         help = "Generate playlist for date. Date-range is possible, like: 2022-01-01 - 2022-01-10.",
         name = "YYYY-MM-DD",
-        multiple_values=true
+        multiple_values = true
     )]
     pub generate: Option<Vec<String>>,
 

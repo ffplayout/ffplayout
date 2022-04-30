@@ -94,10 +94,7 @@ fn pad(aspect: f64, chain: &mut Filters, config: &GlobalConfig) {
 
 fn fps(fps: f64, chain: &mut Filters, config: &GlobalConfig) {
     if fps != config.processing.fps {
-        chain.add_filter(
-            &format!("fps={}", config.processing.fps),
-            "video",
-        )
+        chain.add_filter(&format!("fps={}", config.processing.fps), "video")
     }
 }
 
@@ -113,10 +110,7 @@ fn scale(width: i64, height: i64, aspect: f64, chain: &mut Filters, config: &Glo
     }
 
     if !is_close(aspect, config.processing.aspect, 0.03) {
-        chain.add_filter(
-            &format!("setdar=dar={}", config.processing.aspect),
-            "video"
-        )
+        chain.add_filter(&format!("setdar=dar={}", config.processing.aspect), "video")
     }
 }
 
@@ -228,10 +222,7 @@ fn extend_audio(node: &mut Media, chain: &mut Filters) {
             let duration_float = duration.clone().parse::<f64>().unwrap();
 
             if node.out - node.seek > duration_float - node.seek + 0.1 {
-                chain.add_filter(
-                    &format!("apad=whole_dur={}", node.out - node.seek),
-                    "audio",
-                )
+                chain.add_filter(&format!("apad=whole_dur={}", node.out - node.seek), "audio")
             }
         }
     }
@@ -241,7 +232,13 @@ fn add_loudnorm(node: &mut Media, chain: &mut Filters, config: &GlobalConfig) {
     // add single pass loudnorm filter to audio line
 
     if node.probe.is_some()
-        && !node.probe.clone().unwrap().audio_streams.unwrap().is_empty()
+        && !node
+            .probe
+            .clone()
+            .unwrap()
+            .audio_streams
+            .unwrap()
+            .is_empty()
         && config.processing.add_loudnorm
     {
         let loud_filter = format!(
@@ -255,10 +252,7 @@ fn add_loudnorm(node: &mut Media, chain: &mut Filters, config: &GlobalConfig) {
 
 fn audio_volume(chain: &mut Filters, config: &GlobalConfig) {
     if config.processing.volume != 1.0 {
-        chain.add_filter(
-            &format!("volume={}", config.processing.volume),
-            "audio",
-        )
+        chain.add_filter(&format!("volume={}", config.processing.volume), "audio")
     }
 }
 
@@ -280,12 +274,7 @@ fn fps_calc(r_frame_rate: String) -> f64 {
     fps
 }
 
-fn realtime_filter(
-    node: &mut Media,
-    chain: &mut Filters,
-    config: &GlobalConfig,
-    codec_type: &str,
-) {
+fn realtime_filter(node: &mut Media, chain: &mut Filters, config: &GlobalConfig, codec_type: &str) {
     // this realtime filter is important for HLS output to stay in sync
 
     let mut t = "";
