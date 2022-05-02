@@ -81,6 +81,7 @@ pub struct Processing {
     pub logo_opacity: f32,
     pub logo_filter: String,
     pub add_loudnorm: bool,
+    pub loudnorm_ingest: bool,
     pub loud_i: f32,
     pub loud_tp: f32,
     pub loud_lra: f32,

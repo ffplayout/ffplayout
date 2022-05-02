@@ -2,7 +2,10 @@ use std::path::Path;
 
 use simplelog::*;
 
+pub mod a_loudnorm;
+pub mod ingest_filter;
 pub mod v_drawtext;
+pub mod v_overlay;
 
 use crate::utils::{get_delta, is_close, GlobalConfig, Media};
 
@@ -62,9 +65,9 @@ impl Filters {
     }
 }
 
-fn deinterlace(field_order: Option<String>, chain: &mut Filters) {
+fn deinterlace(field_order: &Option<String>, chain: &mut Filters) {
     if let Some(order) = field_order {
-        if &order != "progressive" {
+        if order != "progressive" {
             chain.add_filter("yadif=0:-1:0", "video")
         }
     }
@@ -138,15 +141,7 @@ fn overlay(node: &mut Media, chain: &mut Filters, config: &GlobalConfig) {
         && Path::new(&config.processing.logo).is_file()
         && &node.category.clone().unwrap_or_default() != "advertisement"
     {
-        let opacity = format!(
-            "format=rgba,colorchannelmixer=aa={}",
-            config.processing.logo_opacity
-        );
-        let logo_loop = "loop=loop=-1:size=1:start=0";
-        let mut logo_chain = format!(
-            "null[v];movie={},{logo_loop},{opacity}",
-            config.processing.logo
-        );
+        let mut logo_chain = v_overlay::filter_node(config, false);
 
         if node.last_ad.unwrap() {
             logo_chain.push_str(",fade=in:st=0:d=1.0:alpha=1")
@@ -228,9 +223,8 @@ fn extend_audio(node: &mut Media, chain: &mut Filters) {
     }
 }
 
+/// Add single pass loudnorm filter to audio line.
 fn add_loudnorm(node: &mut Media, chain: &mut Filters, config: &GlobalConfig) {
-    // add single pass loudnorm filter to audio line
-
     if node.probe.is_some()
         && !node
             .probe
@@ -241,11 +235,7 @@ fn add_loudnorm(node: &mut Media, chain: &mut Filters, config: &GlobalConfig) {
             .is_empty()
         && config.processing.add_loudnorm
     {
-        let loud_filter = format!(
-            "loudnorm=I={}:TP={}:LRA={}",
-            config.processing.loud_i, config.processing.loud_tp, config.processing.loud_lra
-        );
-
+        let loud_filter = a_loudnorm::filter_node(config);
         chain.add_filter(&loud_filter, "audio");
     }
 }
@@ -256,16 +246,20 @@ fn audio_volume(chain: &mut Filters, config: &GlobalConfig) {
     }
 }
 
-fn aspect_calc(aspect_string: String) -> f64 {
-    let aspect_vec: Vec<&str> = aspect_string.split(':').collect();
-    let w: f64 = aspect_vec[0].parse().unwrap();
-    let h: f64 = aspect_vec[1].parse().unwrap();
-    let source_aspect: f64 = w as f64 / h as f64;
+fn aspect_calc(aspect_string: &Option<String>, config: &GlobalConfig) -> f64 {
+    let mut source_aspect = config.processing.aspect;
+
+    if let Some(aspect) = aspect_string {
+        let aspect_vec: Vec<&str> = aspect.split(':').collect();
+        let w: f64 = aspect_vec[0].parse().unwrap();
+        let h: f64 = aspect_vec[1].parse().unwrap();
+        source_aspect = w as f64 / h as f64;
+    }
 
     source_aspect
 }
 
-fn fps_calc(r_frame_rate: String) -> f64 {
+fn fps_calc(r_frame_rate: &str) -> f64 {
     let frame_rate_vec: Vec<&str> = r_frame_rate.split('/').collect();
     let rate: f64 = frame_rate_vec[0].parse().unwrap();
     let factor: f64 = frame_rate_vec[1].parse().unwrap();
@@ -314,10 +308,10 @@ pub fn filter_chains(node: &mut Media) -> Vec<String> {
         }
 
         let v_stream = &probe.video_streams.unwrap()[0];
-        let aspect = aspect_calc(v_stream.display_aspect_ratio.clone().unwrap());
-        let frame_per_sec = fps_calc(v_stream.r_frame_rate.clone());
+        let aspect = aspect_calc(&v_stream.display_aspect_ratio, config);
+        let frame_per_sec = fps_calc(&v_stream.r_frame_rate);
 
-        deinterlace(v_stream.field_order.clone(), &mut filters);
+        deinterlace(&v_stream.field_order, &mut filters);
         pad(aspect, &mut filters, config);
         fps(frame_per_sec, &mut filters, config);
         scale(
