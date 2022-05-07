@@ -1,25 +1,22 @@
-name: Rust
-
-on:
-  push:
-    branches: [ master ]
-  pull_request:
-    branches: [ master ]
-
-env:
-  CARGO_TERM_COLOR: always
-
+name: rust
+on: [push, pull_request]
 jobs:
   build:
-
-    runs-on: ubuntu-latest
-
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macOS-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
-    - uses: actions/checkout@v3
-    - name: Build and test
-    - run: rustup component add rustfmt
-    - run: rustup component add clippy
-    - run: cargo build --all-features
-    - run: cargo test --all-features
-    - run: cargo fmt --all -- --check
-    - run: cargo clippy --all-features --all-targets -- --deny warnings
+      - uses: actions/checkout@v2
+      - run: rustup update stable
+      - name: Cache cargo build
+        uses: actions/cache@v1
+        with:
+          path: target
+          key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
+      - run: rustup component add rustfmt
+      - run: rustup component add clippy
+      - run: cargo build --all-features
+      - run: cargo test --all-features
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --all-features --all-targets -- --deny warnings
