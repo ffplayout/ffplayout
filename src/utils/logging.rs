@@ -8,6 +8,7 @@ use std::{
     time::Duration,
 };
 
+use chrono::prelude::*;
 use file_rotate::{
     compression::Compression,
     suffix::{AppendTimestamp, DateFrom, FileLimit},
@@ -17,8 +18,6 @@ use lettre::{
     message::header, transport::smtp::authentication::Credentials, Message, SmtpTransport,
     Transport,
 };
-
-use chrono::prelude::*;
 use log::{Level, LevelFilter, Log, Metadata, Record};
 use regex::Regex;
 use simplelog::*;
@@ -152,18 +151,26 @@ pub fn init_logging() -> Vec<Box<dyn SharedLogger>> {
         time_level = LevelFilter::Error;
     }
 
-    let mut log_config = simplelog::ConfigBuilder::new()
+    let mut log_config = ConfigBuilder::new()
         .set_thread_level(LevelFilter::Off)
         .set_target_level(LevelFilter::Off)
         .set_level_padding(LevelPadding::Left)
-        .set_time_to_local(app_config.local_time)
         .set_time_level(time_level)
         .clone();
+
+    if app_config.local_time {
+        log_config = match log_config.set_time_offset_to_local() {
+            Ok(local) => local.clone(),
+            Err(_) => log_config,
+        };
+    };
 
     if app_config.log_to_file {
         let file_config = log_config
             .clone()
-            .set_time_format("[%Y-%m-%d %H:%M:%S%.3f]".into())
+            .set_time_format_custom(format_description!(
+                "[[year]-[month]-[day] [hour]:[minute]:[second].[subsecond]]"
+            ))
             .build();
         let mut log_path = "logs/ffplayout.log".to_string();
 
@@ -199,7 +206,9 @@ pub fn init_logging() -> Vec<Box<dyn SharedLogger>> {
             .set_level_color(Level::Info, Some(Color::Ansi256(10)))
             .set_level_color(Level::Warn, Some(Color::Ansi256(208)))
             .set_level_color(Level::Error, Some(Color::Ansi256(9)))
-            .set_time_format_str("\x1b[30;1m[%Y-%m-%d %H:%M:%S%.3f]\x1b[0m")
+            .set_time_format_custom(format_description!(
+                "\x1b[[30;1m[[[year]-[month]-[day] [hour]:[minute]:[second].[subsecond digits:4]]\x1b[[0m"
+            ))
             .build();
 
         app_logger.push(TermLogger::new(

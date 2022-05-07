@@ -32,7 +32,13 @@ pub fn filter_cmd() -> Vec<String> {
         config.processing.aspect
     );
 
-    filter.push_str(&v_overlay::filter_node(config, true));
+    let overlay = v_overlay::filter_node(config, true);
+
+    if !overlay.is_empty() {
+        filter.push(',');
+    }
+
+    filter.push_str(&overlay);
     filter.push_str("[vout1]");
     filter.push_str(audio_filter(config).as_str());
 

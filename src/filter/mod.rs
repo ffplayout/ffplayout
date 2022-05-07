@@ -179,9 +179,8 @@ fn extend_video(node: &mut Media, chain: &mut Filters) {
     }
 }
 
+/// add drawtext filter for lower thirds messages
 fn add_text(node: &mut Media, chain: &mut Filters, config: &GlobalConfig) {
-    // add drawtext filter for lower thirds messages
-
     if config.text.add_text && config.text.over_pre {
         let filter = v_drawtext::filter_node(node);
 
@@ -268,9 +267,8 @@ fn fps_calc(r_frame_rate: &str) -> f64 {
     fps
 }
 
+/// This realtime filter is important for HLS output to stay in sync.
 fn realtime_filter(node: &mut Media, chain: &mut Filters, config: &GlobalConfig, codec_type: &str) {
-    // this realtime filter is important for HLS output to stay in sync
-
     let mut t = "";
 
     if codec_type == "audio" {

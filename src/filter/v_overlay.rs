@@ -14,7 +14,10 @@ pub fn filter_node(config: &GlobalConfig, add_tail: bool) -> String {
             config.processing.logo_opacity
         );
         let logo_loop = "loop=loop=-1:size=1:start=0";
-        logo_chain = format!("[v];movie={},{logo_loop},{opacity}", config.processing.logo);
+        logo_chain = format!(
+            "null[v];movie={},{logo_loop},{opacity}",
+            config.processing.logo
+        );
 
         if add_tail {
             logo_chain.push_str(

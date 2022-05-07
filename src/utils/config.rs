@@ -273,11 +273,10 @@ impl GlobalConfig {
 
 static INSTANCE: OnceCell<GlobalConfig> = OnceCell::new();
 
+/// When add_loudnorm is False we use a different audio encoder,
+/// s302m has higher quality, but is experimental
+/// and works not well together with the loudnorm filter.
 fn pre_audio_codec(add_loudnorm: bool) -> Vec<String> {
-    // when add_loudnorm is False we use a different audio encoder,
-    // s302m has higher quality, but is experimental
-    // and works not well together with the loudnorm filter
-
     let mut codec = vec!["-c:a", "s302m", "-strict", "-2"];
 
     if add_loudnorm {
