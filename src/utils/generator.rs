@@ -1,3 +1,11 @@
+/// Simple Playlist Generator
+///
+/// You can call ffplayout[.exe] -g YYYY-mm-dd - YYYY-mm-dd to generate JSON playlists.
+///
+/// The generator takes the files from storage, which are set in config.
+/// It also respect the shuffle/sort mode.
+///
+/// Beside that it is really very basic, without any logic.
 use std::{
     fs::{create_dir_all, write},
     path::Path,
@@ -8,33 +16,28 @@ use std::{
 use chrono::{Duration, NaiveDate};
 use simplelog::*;
 
-use crate::input::Source;
+use crate::input::FolderSource;
 use crate::utils::{json_serializer::Playlist, GlobalConfig, Media};
 
-fn get_date_range(date_range: &Vec<String>) -> Vec<String> {
+/// Generate a vector with dates, from given range.
+fn get_date_range(date_range: &[String]) -> Vec<String> {
     let mut range = vec![];
-    let start;
-    let end;
 
-    match NaiveDate::parse_from_str(&date_range[0], "%Y-%m-%d") {
-        Ok(s) => {
-            start = s;
-        }
+    let start = match NaiveDate::parse_from_str(&date_range[0], "%Y-%m-%d") {
+        Ok(s) => s,
         Err(_) => {
             error!("date format error in: <yellow>{:?}</>", date_range[0]);
             exit(1);
         }
-    }
+    };
 
-    match NaiveDate::parse_from_str(&date_range[2], "%Y-%m-%d") {
-        Ok(e) => {
-            end = e;
-        }
+    let end = match NaiveDate::parse_from_str(&date_range[2], "%Y-%m-%d") {
+        Ok(e) => e,
         Err(_) => {
             error!("date format error in: <yellow>{:?}</>", date_range[2]);
             exit(1);
         }
-    }
+    };
 
     let duration = end.signed_duration_since(start);
     let days = duration.num_days() + 1;
@@ -46,9 +49,10 @@ fn get_date_range(date_range: &Vec<String>) -> Vec<String> {
     range
 }
 
+/// Generate playlists
 pub fn generate_playlist(mut date_range: Vec<String>) {
     let config = GlobalConfig::global();
-    let total_length = config.playlist.length_sec.unwrap().clone();
+    let total_length = config.playlist.length_sec.unwrap();
     let current_list = Arc::new(Mutex::new(vec![Media::new(0, "".to_string(), false)]));
     let index = Arc::new(AtomicUsize::new(0));
     let playlist_root = Path::new(&config.playlist.path);
@@ -66,7 +70,7 @@ pub fn generate_playlist(mut date_range: Vec<String>) {
         date_range = get_date_range(&date_range)
     }
 
-    let media_list = Source::new(current_list, index);
+    let media_list = FolderSource::new(current_list, index);
     let list_length = media_list.nodes.lock().unwrap().len();
 
     for date in date_range {
@@ -96,7 +100,7 @@ pub fn generate_playlist(mut date_range: Vec<String>) {
         );
 
         let mut filler = Media::new(0, config.storage.filler_clip.clone(), true);
-        let filler_length = filler.duration.clone();
+        let filler_length = filler.duration;
         let mut length = 0.0;
         let mut round = 0;
 
@@ -109,7 +113,7 @@ pub fn generate_playlist(mut date_range: Vec<String>) {
         };
 
         for item in media_list.clone() {
-            let duration = item.duration.clone();
+            let duration = item.duration;
 
             if total_length > length + duration {
                 playlist.program.push(item);

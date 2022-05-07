@@ -35,6 +35,7 @@ pub use logging::init_logging;
 
 use crate::filter::filter_chains;
 
+/// Video clip struct to hold some important states and comments for current media.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Media {
     #[serde(skip_serializing, skip_deserializing)]
@@ -89,12 +90,12 @@ impl Media {
             index: Some(index),
             seek: 0.0,
             out: duration,
-            duration: duration,
+            duration,
             category: None,
             source: src.clone(),
             cmd: Some(vec!["-i".to_string(), src]),
             filter: Some(vec![]),
-            probe: probe,
+            probe,
             last_ad: Some(false),
             next_ad: Some(false),
             process: Some(true),
@@ -124,6 +125,7 @@ impl Media {
     }
 }
 
+/// We use the ffprobe crate, but we map the metadata to our needs.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MediaProbe {
     pub format: Option<Format>,
@@ -158,12 +160,12 @@ impl MediaProbe {
 
                 MediaProbe {
                     format: Some(obj.format),
-                    audio_streams: if a_stream.len() > 0 {
+                    audio_streams: if !a_stream.is_empty() {
                         Some(a_stream)
                     } else {
                         None
                     },
-                    video_streams: if v_stream.len() > 0 {
+                    video_streams: if !v_stream.is_empty() {
                         Some(v_stream)
                     } else {
                         None
@@ -185,6 +187,9 @@ impl MediaProbe {
     }
 }
 
+/// Write current status to status file in temp folder.
+///
+/// The status file is init in main function and mostly modified in RPC server.
 pub fn write_status(date: &str, shift: f64) {
     let config = GlobalConfig::global();
     let stat_file = config.general.stat_file.clone();
@@ -206,6 +211,7 @@ pub fn write_status(date: &str, shift: f64) {
 //     local.timestamp_millis() as i64
 // }
 
+/// Get current time in seconds.
 pub fn get_sec() -> f64 {
     let local: DateTime<Local> = Local::now();
 
@@ -213,6 +219,10 @@ pub fn get_sec() -> f64 {
         + (local.nanosecond() as f64 / 1000000000.0)
 }
 
+/// Get current date for playlist, but check time with conditions:
+///
+/// - When time is before playlist start, get date from yesterday.
+/// - When given next_start is over target length (normally a full day), get date from tomorrow.
 pub fn get_date(seek: bool, start: f64, next_start: f64) -> String {
     let local: DateTime<Local> = Local::now();
 
@@ -227,6 +237,7 @@ pub fn get_date(seek: bool, start: f64, next_start: f64) -> String {
     local.format("%Y-%m-%d").to_string()
 }
 
+/// Get file modification time.
 pub fn modified_time(path: &str) -> Option<DateTime<Local>> {
     let metadata = metadata(path).unwrap();
 
@@ -238,8 +249,9 @@ pub fn modified_time(path: &str) -> Option<DateTime<Local>> {
     None
 }
 
+/// Convert a formatted time string to seconds.
 pub fn time_to_sec(time_str: &str) -> f64 {
-    if ["now", "", "none"].contains(&time_str) || !time_str.contains(":") {
+    if ["now", "", "none"].contains(&time_str) || !time_str.contains(':') {
         return get_sec();
     }
 
@@ -251,6 +263,7 @@ pub fn time_to_sec(time_str: &str) -> f64 {
     h * 3600.0 + m * 60.0 + s
 }
 
+/// Convert floating number (seconds) to a formatted time string.
 pub fn sec_to_time(sec: f64) -> String {
     let d = UNIX_EPOCH + time::Duration::from_millis((sec * 1000.0) as u64);
     // Create DateTime from SystemTime
@@ -259,6 +272,8 @@ pub fn sec_to_time(sec: f64) -> String {
     date_time.format("%H:%M:%S%.3f").to_string()
 }
 
+/// Test if given numbers are close to each other,
+/// with a third number for setting the maximum range.
 pub fn is_close(a: f64, b: f64, to: f64) -> bool {
     if (a - b).abs() < to {
         return true;
@@ -267,13 +282,16 @@ pub fn is_close(a: f64, b: f64, to: f64) -> bool {
     false
 }
 
+/// Get delta between clip start and current time. This value we need to check,
+/// if we still in sync.
+///
+/// We also get here the global delta between clip start and time when a new playlist should start.
 pub fn get_delta(begin: &f64) -> (f64, f64) {
     let config = GlobalConfig::global();
     let mut current_time = get_sec();
     let start = config.playlist.start_sec.unwrap();
     let length = time_to_sec(&config.playlist.length);
     let mut target_length = 86400.0;
-    let total_delta;
 
     if length > 0.0 && length != target_length {
         target_length = length
@@ -290,15 +308,16 @@ pub fn get_delta(begin: &f64) -> (f64, f64) {
         current_delta -= 86400.0
     }
 
-    if current_time < start {
-        total_delta = start - current_time;
+    let total_delta = if current_time < start {
+        start - current_time
     } else {
-        total_delta = target_length + start - current_time;
-    }
+        target_length + start - current_time
+    };
 
     (current_delta, total_delta)
 }
 
+/// Check if clip in playlist is in sync with global time.
 pub fn check_sync(delta: f64) -> bool {
     let config = GlobalConfig::global();
 
@@ -310,6 +329,7 @@ pub fn check_sync(delta: f64) -> bool {
     true
 }
 
+/// Create a dummy clip as a placeholder for missing video files.
 pub fn gen_dummy(duration: f64) -> (String, Vec<String>) {
     let config = GlobalConfig::global();
     let color = "#121212";
@@ -334,6 +354,7 @@ pub fn gen_dummy(duration: f64) -> (String, Vec<String>) {
     (source, cmd)
 }
 
+/// Set clip seek in and length value.
 pub fn seek_and_length(src: String, seek: f64, out: f64, duration: f64) -> Vec<String> {
     let mut source_cmd: Vec<String> = vec![];
 
@@ -344,24 +365,18 @@ pub fn seek_and_length(src: String, seek: f64, out: f64, duration: f64) -> Vec<S
     source_cmd.append(&mut vec!["-i".to_string(), src]);
 
     if duration > out {
-        source_cmd.append(&mut vec![
-            "-t".to_string(),
-            format!("{}", out - seek).to_string(),
-        ]);
+        source_cmd.append(&mut vec!["-t".to_string(), format!("{}", out - seek)]);
     }
 
     source_cmd
 }
 
+/// Read ffmpeg stderr decoder, encoder and server instance
+/// and log the output.
 pub fn stderr_reader(buffer: BufReader<ChildStderr>, suffix: &str) -> Result<(), Error> {
-    // read ffmpeg stderr decoder, encoder and server instance
-    // and log the output
-
     fn format_line(line: String, level: &str) -> String {
         line.replace(&format!("[{level: >5}] "), "")
     }
-
-    // let buffer = BufReader::new(std_errors);
 
     for line in buffer.lines() {
         let line = line?;
@@ -373,22 +388,21 @@ pub fn stderr_reader(buffer: BufReader<ChildStderr>, suffix: &str) -> Result<(),
                 "<bright black>[{suffix}]</> {}",
                 format_line(line, "warning")
             )
-        } else {
-            if suffix != "server"
-                && !line.contains("Input/output error")
-                && !line.contains("Broken pipe")
-            {
-                error!(
-                    "<bright black>[{suffix}]</> {}",
-                    format_line(line.clone(), "error")
-                );
-            }
+        } else if suffix != "server"
+            && !line.contains("Input/output error")
+            && !line.contains("Broken pipe")
+        {
+            error!(
+                "<bright black>[{suffix}]</> {}",
+                format_line(line.clone(), "error")
+            );
         }
     }
 
     Ok(())
 }
 
+/// Run program to test if it is in system.
 fn is_in_system(name: &str) {
     if let Ok(mut proc) = Command::new(name)
         .stderr(Stdio::null())
@@ -407,6 +421,8 @@ fn is_in_system(name: &str) {
 fn ffmpeg_libs_and_filter() -> (Vec<String>, Vec<String>) {
     let mut libs: Vec<String> = vec![];
     let mut filters: Vec<String> = vec![];
+
+    // filter lines which contains filter
     let re: Regex = Regex::new(r"^( ?) [TSC.]+").unwrap();
 
     let mut ff_proc = match Command::new("ffmpeg")
@@ -425,27 +441,27 @@ fn ffmpeg_libs_and_filter() -> (Vec<String>, Vec<String>) {
     let err_buffer = BufReader::new(ff_proc.stderr.take().unwrap());
     let out_buffer = BufReader::new(ff_proc.stdout.take().unwrap());
 
-    for line in err_buffer.lines() {
-        if let Ok(line) = line {
-            if line.contains("configuration:") {
-                let configs = line.split_whitespace();
+    // stderr shows only the ffmpeg configuration
+    // get codec library's
+    for line in err_buffer.lines().flatten() {
+        if line.contains("configuration:") {
+            let configs = line.split_whitespace();
 
-                for config in configs {
-                    if config.contains("--enable-lib") {
-                        libs.push(config.replace("--enable-", ""));
-                    }
+            for config in configs {
+                if config.contains("--enable-lib") {
+                    libs.push(config.replace("--enable-", ""));
                 }
             }
         }
     }
 
-    for line in out_buffer.lines() {
-        if let Ok(line) = line {
-            if let Some(_) = re.captures(line.as_str()) {
-                let filter_line = line.split_whitespace();
+    // stdout shows filter help text
+    // get filters
+    for line in out_buffer.lines().flatten() {
+        if re.captures(line.as_str()).is_some() {
+            let filter_line = line.split_whitespace();
 
-                filters.push(filter_line.collect::<Vec<&str>>()[1].to_string());
-            }
+            filters.push(filter_line.collect::<Vec<&str>>()[1].to_string());
         }
     }
 
@@ -455,6 +471,10 @@ fn ffmpeg_libs_and_filter() -> (Vec<String>, Vec<String>) {
 
     (libs, filters)
 }
+
+/// Validate ffmpeg/ffprobe/ffplay.
+///
+/// Check if they are in system and has all filters and codecs we need.
 pub fn validate_ffmpeg() {
     let config = GlobalConfig::global();
 

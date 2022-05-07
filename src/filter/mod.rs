@@ -2,7 +2,10 @@ use std::path::Path;
 
 use simplelog::*;
 
+pub mod a_loudnorm;
+pub mod ingest_filter;
 pub mod v_drawtext;
+pub mod v_overlay;
 
 use crate::utils::{get_delta, is_close, GlobalConfig, Media};
 
@@ -28,7 +31,7 @@ impl Filters {
         match codec_type {
             "audio" => match &self.audio_chain {
                 Some(ac) => {
-                    if filter.starts_with(";") || filter.starts_with("[") {
+                    if filter.starts_with(';') || filter.starts_with('[') {
                         self.audio_chain = Some(format!("{ac}{filter}"))
                     } else {
                         self.audio_chain = Some(format!("{ac},{filter}"))
@@ -46,7 +49,7 @@ impl Filters {
             },
             "video" => match &self.video_chain {
                 Some(vc) => {
-                    if filter.starts_with(";") || filter.starts_with("[") {
+                    if filter.starts_with(';') || filter.starts_with('[') {
                         self.video_chain = Some(format!("{vc}{filter}"))
                     } else {
                         self.video_chain = Some(format!("{vc},{filter}"))
@@ -62,9 +65,9 @@ impl Filters {
     }
 }
 
-fn deinterlace(field_order: Option<String>, chain: &mut Filters) {
+fn deinterlace(field_order: &Option<String>, chain: &mut Filters) {
     if let Some(order) = field_order {
-        if &order != "progressive" {
+        if order != "progressive" {
             chain.add_filter("yadif=0:-1:0", "video")
         }
     }
@@ -94,10 +97,7 @@ fn pad(aspect: f64, chain: &mut Filters, config: &GlobalConfig) {
 
 fn fps(fps: f64, chain: &mut Filters, config: &GlobalConfig) {
     if fps != config.processing.fps {
-        chain.add_filter(
-            &format!("fps={}", config.processing.fps),
-            "video",
-        )
+        chain.add_filter(&format!("fps={}", config.processing.fps), "video")
     }
 }
 
@@ -113,10 +113,7 @@ fn scale(width: i64, height: i64, aspect: f64, chain: &mut Filters, config: &Glo
     }
 
     if !is_close(aspect, config.processing.aspect, 0.03) {
-        chain.add_filter(
-            &format!("setdar=dar={}", config.processing.aspect),
-            "video"
-        )
+        chain.add_filter(&format!("setdar=dar={}", config.processing.aspect), "video")
     }
 }
 
@@ -142,17 +139,9 @@ fn fade(node: &mut Media, chain: &mut Filters, codec_type: &str) {
 fn overlay(node: &mut Media, chain: &mut Filters, config: &GlobalConfig) {
     if config.processing.add_logo
         && Path::new(&config.processing.logo).is_file()
-        && &node.category.clone().unwrap_or(String::new()) != "advertisement"
+        && &node.category.clone().unwrap_or_default() != "advertisement"
     {
-        let opacity = format!(
-            "format=rgba,colorchannelmixer=aa={}",
-            config.processing.logo_opacity
-        );
-        let logo_loop = "loop=loop=-1:size=1:start=0";
-        let mut logo_chain = format!(
-            "null[v];movie={},{logo_loop},{opacity}",
-            config.processing.logo
-        );
+        let mut logo_chain = v_overlay::filter_node(config, false);
 
         if node.last_ad.unwrap() {
             logo_chain.push_str(",fade=in:st=0:d=1.0:alpha=1")
@@ -173,7 +162,7 @@ fn overlay(node: &mut Media, chain: &mut Filters, config: &GlobalConfig) {
 
 fn extend_video(node: &mut Media, chain: &mut Filters) {
     let video_streams = node.probe.clone().unwrap().video_streams.unwrap();
-    if video_streams.len() > 0 {
+    if !video_streams.is_empty() {
         if let Some(duration) = &video_streams[0].duration {
             let duration_float = duration.clone().parse::<f64>().unwrap();
 
@@ -190,16 +179,15 @@ fn extend_video(node: &mut Media, chain: &mut Filters) {
     }
 }
 
+/// add drawtext filter for lower thirds messages
 fn add_text(node: &mut Media, chain: &mut Filters, config: &GlobalConfig) {
-    // add drawtext filter for lower thirds messages
-
     if config.text.add_text && config.text.over_pre {
         let filter = v_drawtext::filter_node(node);
 
         chain.add_filter(&filter, "video");
 
         if let Some(filters) = &chain.video_chain {
-            for (i, f) in filters.split(",").enumerate() {
+            for (i, f) in filters.split(',').enumerate() {
                 if f.contains("drawtext") && !config.text.text_from_filename {
                     debug!("drawtext node is on index: <yellow>{i}</>");
                     break;
@@ -211,7 +199,7 @@ fn add_text(node: &mut Media, chain: &mut Filters, config: &GlobalConfig) {
 
 fn add_audio(node: &mut Media, chain: &mut Filters) {
     let audio_streams = node.probe.clone().unwrap().audio_streams.unwrap();
-    if audio_streams.len() == 0 {
+    if audio_streams.is_empty() {
         warn!("Clip: '{}' has no audio!", node.source);
         let audio = format!(
             "aevalsrc=0:channel_layout=stereo:duration={}:sample_rate=48000",
@@ -223,55 +211,54 @@ fn add_audio(node: &mut Media, chain: &mut Filters) {
 
 fn extend_audio(node: &mut Media, chain: &mut Filters) {
     let audio_streams = node.probe.clone().unwrap().audio_streams.unwrap();
-    if audio_streams.len() > 0 {
+    if !audio_streams.is_empty() {
         if let Some(duration) = &audio_streams[0].duration {
             let duration_float = duration.clone().parse::<f64>().unwrap();
 
             if node.out - node.seek > duration_float - node.seek + 0.1 {
-                chain.add_filter(
-                    &format!("apad=whole_dur={}", node.out - node.seek),
-                    "audio",
-                )
+                chain.add_filter(&format!("apad=whole_dur={}", node.out - node.seek), "audio")
             }
         }
     }
 }
 
+/// Add single pass loudnorm filter to audio line.
 fn add_loudnorm(node: &mut Media, chain: &mut Filters, config: &GlobalConfig) {
-    // add single pass loudnorm filter to audio line
-
     if node.probe.is_some()
-        && node.probe.clone().unwrap().audio_streams.unwrap().len() > 0
+        && !node
+            .probe
+            .clone()
+            .unwrap()
+            .audio_streams
+            .unwrap()
+            .is_empty()
         && config.processing.add_loudnorm
     {
-        let loud_filter = format!(
-            "loudnorm=I={}:TP={}:LRA={}",
-            config.processing.loud_i, config.processing.loud_tp, config.processing.loud_lra
-        );
-
+        let loud_filter = a_loudnorm::filter_node(config);
         chain.add_filter(&loud_filter, "audio");
     }
 }
 
 fn audio_volume(chain: &mut Filters, config: &GlobalConfig) {
     if config.processing.volume != 1.0 {
-        chain.add_filter(
-            &format!("volume={}", config.processing.volume),
-            "audio",
-        )
+        chain.add_filter(&format!("volume={}", config.processing.volume), "audio")
     }
 }
 
-fn aspect_calc(aspect_string: String) -> f64 {
-    let aspect_vec: Vec<&str> = aspect_string.split(':').collect();
-    let w: f64 = aspect_vec[0].parse().unwrap();
-    let h: f64 = aspect_vec[1].parse().unwrap();
-    let source_aspect: f64 = w as f64 / h as f64;
+fn aspect_calc(aspect_string: &Option<String>, config: &GlobalConfig) -> f64 {
+    let mut source_aspect = config.processing.aspect;
+
+    if let Some(aspect) = aspect_string {
+        let aspect_vec: Vec<&str> = aspect.split(':').collect();
+        let w: f64 = aspect_vec[0].parse().unwrap();
+        let h: f64 = aspect_vec[1].parse().unwrap();
+        source_aspect = w as f64 / h as f64;
+    }
 
     source_aspect
 }
 
-fn fps_calc(r_frame_rate: String) -> f64 {
+fn fps_calc(r_frame_rate: &str) -> f64 {
     let frame_rate_vec: Vec<&str> = r_frame_rate.split('/').collect();
     let rate: f64 = frame_rate_vec[0].parse().unwrap();
     let factor: f64 = frame_rate_vec[1].parse().unwrap();
@@ -280,14 +267,8 @@ fn fps_calc(r_frame_rate: String) -> f64 {
     fps
 }
 
-fn realtime_filter(
-    node: &mut Media,
-    chain: &mut Filters,
-    config: &GlobalConfig,
-    codec_type: &str,
-) {
-    // this realtime filter is important for HLS output to stay in sync
-
+/// This realtime filter is important for HLS output to stay in sync.
+fn realtime_filter(node: &mut Media, chain: &mut Filters, config: &GlobalConfig, codec_type: &str) {
     let mut t = "";
 
     if codec_type == "audio" {
@@ -325,18 +306,18 @@ pub fn filter_chains(node: &mut Media) -> Vec<String> {
         }
 
         let v_stream = &probe.video_streams.unwrap()[0];
-        let aspect = aspect_calc(v_stream.display_aspect_ratio.clone().unwrap());
-        let frame_per_sec = fps_calc(v_stream.r_frame_rate.clone());
+        let aspect = aspect_calc(&v_stream.display_aspect_ratio, config);
+        let frame_per_sec = fps_calc(&v_stream.r_frame_rate);
 
-        deinterlace(v_stream.field_order.clone(), &mut filters);
-        pad(aspect, &mut filters, &config);
-        fps(frame_per_sec, &mut filters, &config);
+        deinterlace(&v_stream.field_order, &mut filters);
+        pad(aspect, &mut filters, config);
+        fps(frame_per_sec, &mut filters, config);
         scale(
             v_stream.width.unwrap(),
             v_stream.height.unwrap(),
             aspect,
             &mut filters,
-            &config,
+            config,
         );
         extend_video(node, &mut filters);
 
@@ -344,15 +325,15 @@ pub fn filter_chains(node: &mut Media) -> Vec<String> {
         extend_audio(node, &mut filters);
     }
 
-    add_text(node, &mut filters, &config);
-    fade(node, &mut filters, "video".into());
-    overlay(node, &mut filters, &config);
-    realtime_filter(node, &mut filters, &config, "video".into());
+    add_text(node, &mut filters, config);
+    fade(node, &mut filters, "video");
+    overlay(node, &mut filters, config);
+    realtime_filter(node, &mut filters, config, "video");
 
-    add_loudnorm(node, &mut filters, &config);
-    fade(node, &mut filters, "audio".into());
-    audio_volume(&mut filters, &config);
-    realtime_filter(node, &mut filters, &config, "audio".into());
+    add_loudnorm(node, &mut filters, config);
+    fade(node, &mut filters, "audio");
+    audio_volume(&mut filters, config);
+    realtime_filter(node, &mut filters, config, "audio");
 
     let mut filter_cmd = vec![];
     let mut filter_str: String = String::new();
@@ -368,7 +349,7 @@ pub fn filter_chains(node: &mut Media) -> Vec<String> {
 
     if let Some(a_filters) = filters.audio_chain {
         if filter_str.len() > 10 {
-            filter_str.push_str(";")
+            filter_str.push(';')
         }
         filter_str.push_str(a_filters.as_str());
         filter_str.push_str(filters.audio_map.clone().unwrap().as_str());

@@ -1,7 +1,10 @@
 use std::{
     fs,
     path::Path,
-    sync::{atomic::{AtomicBool, AtomicUsize, Ordering}, Arc, Mutex},
+    sync::{
+        atomic::{AtomicBool, AtomicUsize, Ordering},
+        Arc, Mutex,
+    },
 };
 
 use serde_json::json;
@@ -12,6 +15,9 @@ use crate::utils::{
     seek_and_length, GlobalConfig, Media, PlayoutStatus, DUMMY_LEN,
 };
 
+/// Struct for current playlist.
+///
+/// Here we prepare the init clip and build a iterator where we pull our clips.
 #[derive(Debug)]
 pub struct CurrentProgram {
     config: GlobalConfig,
@@ -63,6 +69,7 @@ impl CurrentProgram {
         }
     }
 
+    // Check if playlist file got updated, and when yes we reload it and setup everything in place.
     fn check_update(&mut self, seek: bool) {
         if self.json_path.is_none() {
             let json = read_json(None, self.is_terminated.clone(), seek, 0.0);
@@ -115,15 +122,16 @@ impl CurrentProgram {
         }
     }
 
+    // Check if day is past and it is time for a new playlist.
     fn check_for_next_playlist(&mut self) {
         let current_time = get_sec();
         let start_sec = self.config.playlist.start_sec.unwrap();
         let target_length = self.config.playlist.length_sec.unwrap();
         let (delta, total_delta) = get_delta(&current_time);
-        let mut duration = self.current_node.out.clone();
+        let mut duration = self.current_node.out;
 
         if self.current_node.duration > self.current_node.out {
-            duration = self.current_node.duration.clone()
+            duration = self.current_node.duration
         }
 
         let next_start = self.current_node.begin.unwrap() - start_sec + duration + delta;
@@ -158,32 +166,27 @@ impl CurrentProgram {
         }
     }
 
+    // Check if last and/or next clip is a advertisement.
     fn last_next_ad(&mut self) {
         let index = self.index.load(Ordering::SeqCst);
         let current_list = self.nodes.lock().unwrap();
 
         if index + 1 < current_list.len()
-            && &current_list[index + 1]
-                .category
-                .clone()
-                .unwrap_or(String::new())
-                == "advertisement"
+            && &current_list[index + 1].category.clone().unwrap_or_default() == "advertisement"
         {
             self.current_node.next_ad = Some(true);
         }
 
         if index > 0
             && index < current_list.len()
-            && &current_list[index - 1]
-                .category
-                .clone()
-                .unwrap_or(String::new())
-                == "advertisement"
+            && &current_list[index - 1].category.clone().unwrap_or_default() == "advertisement"
         {
             self.current_node.last_ad = Some(true);
         }
     }
 
+    // Get current time and when we are before start time,
+    // we add full seconds of a day to it.
     fn get_current_time(&mut self) -> f64 {
         let mut time_sec = get_sec();
 
@@ -194,6 +197,7 @@ impl CurrentProgram {
         time_sec
     }
 
+    // On init or reload we need to seek for the current clip.
     fn get_current_clip(&mut self) {
         let mut time_sec = self.get_current_time();
 
@@ -216,6 +220,7 @@ impl CurrentProgram {
         }
     }
 
+    // Prepare init clip.
     fn init_clip(&mut self) {
         self.get_current_clip();
 
@@ -232,6 +237,7 @@ impl CurrentProgram {
     }
 }
 
+/// Build the playlist iterator
 impl Iterator for CurrentProgram {
     type Item = Media;
 
@@ -245,7 +251,7 @@ impl Iterator for CurrentProgram {
             }
 
             if self.playout_stat.list_init.load(Ordering::SeqCst) {
-                // on init load playlist, could be not long enough,
+                // On init load, playlist could be not long enough,
                 // so we check if we can take the next playlist already,
                 // or we fill the gap with a dummy.
                 let list_length = self.nodes.lock().unwrap().len();
@@ -281,7 +287,8 @@ impl Iterator for CurrentProgram {
 
                     self.current_node = gen_source(media);
                     self.nodes.lock().unwrap().push(self.current_node.clone());
-                    self.index.store(self.nodes.lock().unwrap().len(), Ordering::SeqCst);
+                    self.index
+                        .store(self.nodes.lock().unwrap().len(), Ordering::SeqCst);
                 }
             }
 
@@ -314,7 +321,7 @@ impl Iterator for CurrentProgram {
             Some(self.current_node.clone())
         } else {
             let last_playlist = self.json_path.clone();
-            let last_ad = self.current_node.last_ad.clone();
+            let last_ad = self.current_node.last_ad;
             self.check_for_next_playlist();
             let (_, total_delta) = get_delta(&self.config.playlist.start_sec.unwrap());
 
@@ -357,22 +364,22 @@ impl Iterator for CurrentProgram {
     }
 }
 
+/// Prepare input clip:
+///
+/// - check begin and length from clip
+/// - return clip only if we are in 24 hours time range
 fn timed_source(
     node: Media,
     config: &GlobalConfig,
     last: bool,
     playout_stat: &PlayoutStatus,
 ) -> Media {
-    // prepare input clip
-    // check begin and length from clip
-    // return clip only if we are in 24 hours time range
-
     let (delta, total_delta) = get_delta(&node.begin.unwrap());
     let mut shifted_delta = delta;
     let mut new_node = node.clone();
     new_node.process = Some(false);
 
-    if config.playlist.length.contains(":") {
+    if config.playlist.length.contains(':') {
         let time_shift = playout_stat.time_shift.lock().unwrap();
 
         if *playout_stat.current_date.lock().unwrap() == *playout_stat.date.lock().unwrap()
@@ -398,7 +405,7 @@ fn timed_source(
 
     if (total_delta > node.out - node.seek && !last)
         || node.index.unwrap() < 2
-        || !config.playlist.length.contains(":")
+        || !config.playlist.length.contains(':')
     {
         // when we are in the 24 hour range, get the clip
         new_node = gen_source(node);
@@ -412,6 +419,7 @@ fn timed_source(
     new_node
 }
 
+/// Generate the source CMD, or when clip not exist, get a dummy.
 fn gen_source(mut node: Media) -> Media {
     if Path::new(&node.source).is_file() {
         node.add_probe();
@@ -440,10 +448,9 @@ fn gen_source(mut node: Media) -> Media {
     node
 }
 
+/// Handle init clip, but this clip can be the last one in playlist,
+/// this we have to figure out and calculate the right length.
 fn handle_list_init(mut node: Media) -> Media {
-    // handle init clip, but this clip can be the last one in playlist,
-    // this we have to figure out and calculate the right length
-
     let (_, total_delta) = get_delta(&node.begin.unwrap());
     let mut out = node.out;
 
@@ -452,16 +459,13 @@ fn handle_list_init(mut node: Media) -> Media {
     }
 
     node.out = out;
-
-    let new_node = gen_source(node);
-    new_node
+    gen_source(node)
 }
 
+/// when we come to last clip in playlist,
+/// or when we reached total playtime,
+/// we end up here
 fn handle_list_end(mut node: Media, total_delta: f64) -> Media {
-    // when we come to last clip in playlist,
-    // or when we reached total playtime,
-    // we end up here
-
     debug!("Playlist end");
 
     let mut out = if node.seek > 0.0 {

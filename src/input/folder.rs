@@ -21,15 +21,18 @@ use walkdir::WalkDir;
 
 use crate::utils::{get_sec, GlobalConfig, Media};
 
+/// Folder Sources
+///
+/// Like playlist source, we create here a folder list for iterate over it.
 #[derive(Debug, Clone)]
-pub struct Source {
+pub struct FolderSource {
     config: GlobalConfig,
     pub nodes: Arc<Mutex<Vec<Media>>>,
     current_node: Media,
     index: Arc<AtomicUsize>,
 }
 
-impl Source {
+impl FolderSource {
     pub fn new(current_list: Arc<Mutex<Vec<Media>>>, global_index: Arc<AtomicUsize>) -> Self {
         let config = GlobalConfig::global();
         let mut media_list = vec![];
@@ -90,12 +93,9 @@ impl Source {
     fn shuffle(&mut self) {
         let mut rng = thread_rng();
         self.nodes.lock().unwrap().shuffle(&mut rng);
-        let mut index: usize = 0;
 
-        for item in self.nodes.lock().unwrap().iter_mut() {
+        for (index, item) in self.nodes.lock().unwrap().iter_mut().enumerate() {
             item.index = Some(index);
-
-            index += 1;
         }
     }
 
@@ -104,17 +104,15 @@ impl Source {
             .lock()
             .unwrap()
             .sort_by(|d1, d2| d1.source.cmp(&d2.source));
-        let mut index: usize = 0;
 
-        for item in self.nodes.lock().unwrap().iter_mut() {
+        for (index, item) in self.nodes.lock().unwrap().iter_mut().enumerate() {
             item.index = Some(index);
-
-            index += 1;
         }
     }
 }
 
-impl Iterator for Source {
+/// Create iterator for folder source
+impl Iterator for FolderSource {
     type Item = Media;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -159,6 +157,9 @@ fn file_extension(filename: &Path) -> Option<&str> {
     filename.extension().and_then(OsStr::to_str)
 }
 
+/// Create a watcher, which monitor file changes.
+/// When a change is register, update the current file list.
+/// This makes it possible, to play infinitely and and always new files to it.
 pub fn watchman(sources: Arc<Mutex<Vec<Media>>>) {
     let config = GlobalConfig::global();
     let (tx, rx) = channel();

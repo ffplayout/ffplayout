@@ -1,9 +1,22 @@
-use std::{path::Path, sync::{atomic::{AtomicBool, Ordering}, Arc}};
+use std::{
+    path::Path,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+};
 
 use simplelog::*;
 
 use crate::utils::{sec_to_time, GlobalConfig, MediaProbe, Playlist};
 
+/// Validate a given playlist, to check if:
+///
+/// - the source files are existing
+/// - file can be read by ffprobe and metadata exists
+/// - total playtime fits target length from config
+///
+/// This function we run in a thread, to don't block the main function.
 pub fn validate_playlist(playlist: Playlist, is_terminated: Arc<AtomicBool>, config: GlobalConfig) {
     let date = playlist.date;
     let mut length = config.playlist.length_sec.unwrap();
@@ -15,7 +28,7 @@ pub fn validate_playlist(playlist: Playlist, is_terminated: Arc<AtomicBool>, con
 
     for item in playlist.program.iter() {
         if is_terminated.load(Ordering::SeqCst) {
-            return
+            return;
         }
 
         if Path::new(&item.source).is_file() {

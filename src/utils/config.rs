@@ -12,6 +12,9 @@ use shlex::split;
 
 use crate::utils::{get_args, time_to_sec};
 
+/// Global Config
+///
+/// This we init ones, when ffplayout is starting and use them globally in the hole program.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct GlobalConfig {
     pub general: General,
@@ -78,6 +81,7 @@ pub struct Processing {
     pub logo_opacity: f32,
     pub logo_filter: String,
     pub add_loudnorm: bool,
+    pub loudnorm_ingest: bool,
     pub loud_i: f32,
     pub loud_tp: f32,
     pub loud_lra: f32,
@@ -132,6 +136,7 @@ pub struct Out {
 }
 
 impl GlobalConfig {
+    /// Read config from YAML file, and set some extra config values.
     fn new() -> Self {
         let args = get_args();
         let mut config_path = match env::current_exe() {
@@ -149,8 +154,7 @@ impl GlobalConfig {
             Ok(file) => file,
             Err(err) => {
                 println!(
-                    "{config_path:?} doesn't exists!\n{}\n\nSystem error: {err}",
-                    "Put \"ffplayout.yml\" in \"/etc/playout/\" or beside the executable!"
+                    "{config_path:?} doesn't exists!\nPut \"ffplayout.yml\" in \"/etc/playout/\" or beside the executable!\n\nSystem error: {err}"
                 );
                 process::exit(0x0100);
             }
@@ -167,12 +171,13 @@ impl GlobalConfig {
         let bitrate = config.processing.width * config.processing.height / 10;
         config.playlist.start_sec = Some(time_to_sec(&config.playlist.day_start));
 
-        if config.playlist.length.contains(":") {
+        if config.playlist.length.contains(':') {
             config.playlist.length_sec = Some(time_to_sec(&config.playlist.length));
         } else {
             config.playlist.length_sec = Some(86400.0);
         }
 
+        // We set the decoder settings here, so we only define them ones.
         let mut settings: Vec<String> = vec![
             "-pix_fmt",
             "yuv420p",
@@ -209,6 +214,8 @@ impl GlobalConfig {
         config.out.preview_cmd = split(config.out.preview_param.as_str());
         config.out.output_cmd = split(config.out.output_param.as_str());
 
+        // Read command line arguments, and override the config with them.
+
         if let Some(gen) = args.generate {
             config.general.generate = Some(gen);
         }
@@ -237,7 +244,7 @@ impl GlobalConfig {
         if let Some(length) = args.length {
             config.playlist.length = length.clone();
 
-            if length.contains(":") {
+            if length.contains(':') {
                 config.playlist.length_sec = Some(time_to_sec(&length));
             } else {
                 config.playlist.length_sec = Some(86400.0);
@@ -266,11 +273,10 @@ impl GlobalConfig {
 
 static INSTANCE: OnceCell<GlobalConfig> = OnceCell::new();
 
+/// When add_loudnorm is False we use a different audio encoder,
+/// s302m has higher quality, but is experimental
+/// and works not well together with the loudnorm filter.
 fn pre_audio_codec(add_loudnorm: bool) -> Vec<String> {
-    // when add_loudnorm is False we use a different audio encoder,
-    // s302m has higher quality, but is experimental
-    // and works not well together with the loudnorm filter
-
     let mut codec = vec!["-c:a", "s302m", "-strict", "-2"];
 
     if add_loudnorm {

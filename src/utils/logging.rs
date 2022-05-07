@@ -8,19 +8,23 @@ use std::{
     time::Duration,
 };
 
-use file_rotate::{compression::Compression, suffix::AppendCount, ContentLimit, FileRotate};
+use chrono::prelude::*;
+use file_rotate::{
+    compression::Compression,
+    suffix::{AppendTimestamp, DateFrom, FileLimit},
+    ContentLimit, FileRotate, TimeFrequency,
+};
 use lettre::{
     message::header, transport::smtp::authentication::Credentials, Message, SmtpTransport,
     Transport,
 };
-
-use chrono::prelude::*;
 use log::{Level, LevelFilter, Log, Metadata, Record};
 use regex::Regex;
 use simplelog::*;
 
 use crate::utils::GlobalConfig;
 
+/// send log messages to mail recipient
 fn send_mail(msg: String) {
     let config = GlobalConfig::global();
 
@@ -52,9 +56,10 @@ fn send_mail(msg: String) {
     }
 }
 
+/// Basic Mail Queue
+///
+/// Check every give seconds for messages and send them.
 fn mail_queue(messages: Arc<Mutex<Vec<String>>>, interval: u64) {
-    // check every give seconds for messages and send them
-
     loop {
         if messages.lock().unwrap().len() > 0 {
             let msg = messages.lock().unwrap().join("\n");
@@ -67,6 +72,7 @@ fn mail_queue(messages: Arc<Mutex<Vec<String>>>, interval: u64) {
     }
 }
 
+/// Self made Mail Log struct, to extend simplelog.
 pub struct LogMailer {
     level: LevelFilter,
     pub config: Config,
@@ -121,12 +127,20 @@ impl SharedLogger for LogMailer {
     }
 }
 
+/// Workaround to remove color information from log
+///
+/// ToDo: maybe in next version from simplelog this is not necessary anymore.
 fn clean_string(text: &str) -> String {
     let regex: Regex = Regex::new(r"\x1b\[[0-9;]*[mGKF]").unwrap();
 
     regex.replace_all(text, "").to_string()
 }
 
+/// Initialize our logging, to have:
+///
+/// - console logger
+/// - file logger
+/// - mail logger
 pub fn init_logging() -> Vec<Box<dyn SharedLogger>> {
     let config = GlobalConfig::global();
     let app_config = config.logging.clone();
@@ -137,18 +151,26 @@ pub fn init_logging() -> Vec<Box<dyn SharedLogger>> {
         time_level = LevelFilter::Error;
     }
 
-    let log_config = simplelog::ConfigBuilder::new()
+    let mut log_config = ConfigBuilder::new()
         .set_thread_level(LevelFilter::Off)
         .set_target_level(LevelFilter::Off)
         .set_level_padding(LevelPadding::Left)
-        .set_time_to_local(app_config.local_time)
         .set_time_level(time_level)
         .clone();
+
+    if app_config.local_time {
+        log_config = match log_config.set_time_offset_to_local() {
+            Ok(local) => local.clone(),
+            Err(_) => log_config,
+        };
+    };
 
     if app_config.log_to_file {
         let file_config = log_config
             .clone()
-            .set_time_format("[%Y-%m-%d %H:%M:%S%.3f]".into())
+            .set_time_format_custom(format_description!(
+                "[[year]-[month]-[day] [hour]:[minute]:[second].[subsecond]]"
+            ))
             .build();
         let mut log_path = "logs/ffplayout.log".to_string();
 
@@ -166,8 +188,12 @@ pub fn init_logging() -> Vec<Box<dyn SharedLogger>> {
         let log = || {
             FileRotate::new(
                 log_path,
-                AppendCount::new(app_config.backup_count),
-                ContentLimit::Lines(1000),
+                AppendTimestamp::with_format(
+                    "%Y-%m-%d",
+                    FileLimit::MaxFiles(app_config.backup_count),
+                    DateFrom::DateYesterday,
+                ),
+                ContentLimit::Time(TimeFrequency::Daily),
                 Compression::None,
             )
         };
@@ -180,7 +206,9 @@ pub fn init_logging() -> Vec<Box<dyn SharedLogger>> {
             .set_level_color(Level::Info, Some(Color::Ansi256(10)))
             .set_level_color(Level::Warn, Some(Color::Ansi256(208)))
             .set_level_color(Level::Error, Some(Color::Ansi256(9)))
-            .set_time_format_str("\x1b[30;1m[%Y-%m-%d %H:%M:%S%.3f]\x1b[0m")
+            .set_time_format_custom(format_description!(
+                "\x1b[[30;1m[[[year]-[month]-[day] [hour]:[minute]:[second].[subsecond digits:4]]\x1b[[0m"
+            ))
             .build();
 
         app_logger.push(TermLogger::new(
@@ -191,14 +219,15 @@ pub fn init_logging() -> Vec<Box<dyn SharedLogger>> {
         ));
     }
 
-    if config.mail.recipient.contains("@") && config.mail.recipient.contains(".") {
+    // set mail logger only the recipient is set in config
+    if config.mail.recipient.contains('@') && config.mail.recipient.contains('.') {
         let messages: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
         let messages_clone = messages.clone();
-        let interval = config.mail.interval.clone();
+        let interval = config.mail.interval;
 
         thread::spawn(move || mail_queue(messages_clone, interval));
 
-        let mail_config = log_config.clone().build();
+        let mail_config = log_config.build();
 
         let filter = match config.mail.mail_level.to_lowercase().as_str() {
             "info" => LevelFilter::Info,

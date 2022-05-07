@@ -8,6 +8,9 @@ use simplelog::*;
 use crate::filter::v_drawtext;
 use crate::utils::{GlobalConfig, Media};
 
+/// Streaming Output
+///
+/// Prepare the ffmpeg command for streaming output
 pub fn output(log_format: &str) -> process::Child {
     let config = GlobalConfig::global();
     let mut enc_filter: Vec<String> = vec![];
@@ -51,7 +54,10 @@ pub fn output(log_format: &str) -> process::Child {
     enc_cmd.append(&mut preview);
     enc_cmd.append(&mut output_cmd.iter().map(String::as_str).collect());
 
-    debug!("Encoder CMD: <bright-blue>\"ffmpeg {}\"</>", enc_cmd.join(" "));
+    debug!(
+        "Encoder CMD: <bright-blue>\"ffmpeg {}\"</>",
+        enc_cmd.join(" ")
+    );
 
     let enc_proc = match Command::new("ffmpeg")
         .args(enc_cmd)

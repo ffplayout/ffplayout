@@ -62,6 +62,7 @@ processing:
     logo_opacity: 0.7
     logo_filter: overlay=W-w-12:12
     add_loudnorm: false
+    loudnorm_ingest: false
     loud_i: -18
     loud_tp: -1.5
     loud_lra: 11
