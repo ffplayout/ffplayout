@@ -12,7 +12,7 @@ chrono = "0.4"
 clap = { version = "3.1", features = ["derive"] }
 crossbeam-channel = "0.5"
 ffprobe = "0.3"
-file-rotate = { git = "https://github.com/jb-alvarado/file-rotate.git" }
+file-rotate = { git = "https://github.com/BourgondAries/file-rotate.git" }
 jsonrpc-http-server = "18.0"
 lettre = "0.10.0-rc.6"
 log = "0.4"
@@ -51,7 +51,11 @@ suggests = "ffmpeg"
 copyright = "Copyright (c) 2022, Jonathan Baecker. All rights reserved."
 conf-files = ["/etc/ffplayout/ffplayout.yml"]
 assets = [
-    ["target/x86_64-unknown-linux-musl/release/ffplayout", "/usr/bin/ffplayout", "755"],
+    [
+        "target/x86_64-unknown-linux-musl/release/ffplayout",
+        "/usr/bin/ffplayout",
+        "755"
+    ],
     ["assets/ffplayout.yml", "/etc/ffplayout/ffplayout.yml", "644"],
     ["assets/logo.png", "/usr/share/ffplayout/logo.png", "644"],
     ["README.md", "/usr/share/doc/ffplayout-engine/README", "644"],
