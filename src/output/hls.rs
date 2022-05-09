@@ -57,7 +57,7 @@ fn ingest_to_hls_server(
     let mut is_running;
 
     if let Some(url) = stream_input.iter().find(|s| s.contains("://")) {
-        info!("Start ingest server, listening on: <b><magenta>{url}</></b>",);
+        info!("Start ingest server, listening on: <b><magenta>{url}</></b>");
     };
 
     debug!(
