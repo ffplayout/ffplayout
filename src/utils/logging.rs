@@ -131,7 +131,7 @@ impl SharedLogger for LogMailer {
 ///
 /// ToDo: maybe in next version from simplelog this is not necessary anymore.
 fn clean_string(text: &str) -> String {
-    let regex: Regex = Regex::new(r"\x1b\[[0-9;]*[mGKF]").unwrap();
+    let regex = Regex::new(r"\x1b\[[0-9;]*[mGKF]").unwrap();
 
     regex.replace_all(text, "").to_string()
 }
@@ -169,7 +169,7 @@ pub fn init_logging() -> Vec<Box<dyn SharedLogger>> {
         let file_config = log_config
             .clone()
             .set_time_format_custom(format_description!(
-                "[[year]-[month]-[day] [hour]:[minute]:[second].[subsecond]]"
+                "[[year]-[month]-[day] [hour]:[minute]:[second].[subsecond digits:5]]"
             ))
             .build();
         let mut log_path = "logs/ffplayout.log".to_string();
@@ -207,7 +207,7 @@ pub fn init_logging() -> Vec<Box<dyn SharedLogger>> {
             .set_level_color(Level::Warn, Some(Color::Ansi256(208)))
             .set_level_color(Level::Error, Some(Color::Ansi256(9)))
             .set_time_format_custom(format_description!(
-                "\x1b[[30;1m[[[year]-[month]-[day] [hour]:[minute]:[second].[subsecond digits:4]]\x1b[[0m"
+                "\x1b[[30;1m[[[year]-[month]-[day] [hour]:[minute]:[second].[subsecond digits:5]]\x1b[[0m"
             ))
             .build();
 

@@ -20,6 +20,7 @@ use crate::utils::{
     sec_to_time, stderr_reader, Decoder, Encoder, GlobalConfig, PlayerControl, PlayoutStatus,
     ProcessControl,
 };
+use crate::vec_strings;
 
 /// Player
 ///
@@ -36,7 +37,6 @@ pub fn player(
     mut proc_control: ProcessControl,
 ) {
     let config = GlobalConfig::global();
-    let dec_settings = config.processing.clone().settings.unwrap();
     let ff_log_format = format!("level+{}", config.logging.ffmpeg_level.to_lowercase());
     let mut buffer = [0; 65088];
     let mut live_on = false;
@@ -80,7 +80,7 @@ pub fn player(
     'source_iter: for node in get_source {
         *play_control.current_media.lock().unwrap() = Some(node.clone());
 
-        let cmd = match node.cmd {
+        let mut cmd = match node.cmd {
             Some(cmd) => cmd,
             None => break,
         };
@@ -95,15 +95,15 @@ pub fn player(
             node.source
         );
 
-        let filter = node.filter.unwrap();
-        let mut dec_cmd = vec!["-hide_banner", "-nostats", "-v", ff_log_format.as_str()];
-        dec_cmd.append(&mut cmd.iter().map(String::as_str).collect());
+        let mut filter = node.filter.unwrap();
+        let mut dec_cmd = vec_strings!["-hide_banner", "-nostats", "-v", &ff_log_format];
+        dec_cmd.append(&mut cmd);
 
         if filter.len() > 1 {
-            dec_cmd.append(&mut filter.iter().map(String::as_str).collect());
+            dec_cmd.append(&mut filter);
         }
 
-        dec_cmd.append(&mut dec_settings.iter().map(String::as_str).collect());
+        dec_cmd.append(&mut config.processing.clone().settings.unwrap());
 
         debug!(
             "Decoder CMD: <bright-blue>\"ffmpeg {}\"</>",

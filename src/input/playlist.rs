@@ -243,7 +243,6 @@ impl Iterator for CurrentProgram {
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.playout_stat.list_init.load(Ordering::SeqCst) {
-            debug!("Playlist init");
             self.check_update(true);
 
             if self.json_path.is_some() {
@@ -451,6 +450,7 @@ fn gen_source(mut node: Media) -> Media {
 /// Handle init clip, but this clip can be the last one in playlist,
 /// this we have to figure out and calculate the right length.
 fn handle_list_init(mut node: Media) -> Media {
+    debug!("Playlist init");
     let (_, total_delta) = get_delta(&node.begin.unwrap());
     let mut out = node.out;
 

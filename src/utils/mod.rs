@@ -35,6 +35,13 @@ pub use logging::init_logging;
 
 use crate::filter::filter_chains;
 
+#[macro_export]
+macro_rules! vec_strings {
+    ($($str:expr),*) => ({
+        vec![$(String::from($str),)*] as Vec<String>
+    });
+}
+
 /// Video clip struct to hold some important states and comments for current media.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Media {
