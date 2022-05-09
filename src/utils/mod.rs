@@ -35,13 +35,6 @@ pub use logging::init_logging;
 
 use crate::filter::filter_chains;
 
-#[macro_export]
-macro_rules! vec_strings {
-    ($($str:expr),*) => ({
-        vec![$(String::from($str),)*] as Vec<String>
-    });
-}
-
 /// Video clip struct to hold some important states and comments for current media.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Media {
@@ -213,14 +206,14 @@ pub fn write_status(date: &str, shift: f64) {
 }
 
 // pub fn get_timestamp() -> i64 {
-//     let local: DateTime<Local> = Local::now();
+//     let local: DateTime<Local> = time_now();
 
 //     local.timestamp_millis() as i64
 // }
 
 /// Get current time in seconds.
 pub fn get_sec() -> f64 {
-    let local: DateTime<Local> = Local::now();
+    let local: DateTime<Local> = time_now();
 
     (local.hour() * 3600 + local.minute() * 60 + local.second()) as f64
         + (local.nanosecond() as f64 / 1000000000.0)
@@ -231,7 +224,7 @@ pub fn get_sec() -> f64 {
 /// - When time is before playlist start, get date from yesterday.
 /// - When given next_start is over target length (normally a full day), get date from tomorrow.
 pub fn get_date(seek: bool, start: f64, next_start: f64) -> String {
-    let local: DateTime<Local> = Local::now();
+    let local: DateTime<Local> = time_now();
 
     if seek && start > get_sec() {
         return (local - Duration::days(1)).format("%Y-%m-%d").to_string();
@@ -512,3 +505,34 @@ pub fn validate_ffmpeg() {
         warn!("ffmpeg contains no zmq filter! Text messages will not work...");
     }
 }
+
+/// Get system time, in non test case.
+#[cfg(not(test))]
+pub fn time_now() -> DateTime<Local> {
+    Local::now()
+}
+
+/// Get mocked system time, in test case.
+#[cfg(test)]
+pub mod mock_time {
+    use super::*;
+    use std::cell::RefCell;
+
+    thread_local! {
+        static DATE_TIME_DIFF: RefCell<Option<Duration>> = RefCell::new(None);
+    }
+
+    pub fn time_now() -> DateTime<Local> {
+        DATE_TIME_DIFF.with(|cell| match cell.borrow().as_ref().cloned() {
+            Some(diff) => Local::now() - diff,
+            None => Local::now(),
+        })
+    }
+
+    pub fn set_mock_time(time: DateTime<Local>) {
+        DATE_TIME_DIFF.with(|cell| *cell.borrow_mut() = Some(Local::now() - time));
+    }
+}
+
+#[cfg(test)]
+pub use mock_time::time_now;

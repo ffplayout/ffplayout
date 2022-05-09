@@ -14,8 +14,10 @@ use simplelog::*;
 
 mod filter;
 mod input;
+mod macros;
 mod output;
 mod rpc;
+mod tests;
 mod utils;
 
 use crate::output::{player, write_hls};
