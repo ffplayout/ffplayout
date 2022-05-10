@@ -134,7 +134,7 @@ impl ProcessControl {
                 rpc.clone().close()
             };
 
-            for unit in [Decoder, Encoder, Ingest] {
+            for unit in [Encoder, Decoder, Ingest] {
                 if let Err(e) = self.kill(unit) {
                     error!("{e}")
                 }
