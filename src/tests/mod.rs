@@ -1,43 +1,78 @@
-#[cfg(test)]
-use chrono::prelude::*;
+use std::{
+    process,
+    thread::{self, sleep},
+    time::Duration,
+};
 
+mod utils;
+
+#[cfg(test)]
+use crate::output::player;
 #[cfg(test)]
 use crate::utils::*;
-
 #[cfg(test)]
-fn get_fake_date_time(date_time: &str) -> DateTime<Local> {
-    let date_obj = NaiveDateTime::parse_from_str(date_time, "%Y-%m-%dT%H:%M:%S");
+use simplelog::*;
 
-    Local.from_local_datetime(&date_obj.unwrap()).unwrap()
+fn timed_kill(sec: u64, mut proc_ctl: ProcessControl) {
+    sleep(Duration::from_secs(sec));
+
+    proc_ctl.kill_all();
+
+    process::exit(0);
 }
 
 #[test]
-fn mock_date_time() {
-    let fake_time = get_fake_date_time("2022-05-20T06:00:00");
-    mock_time::set_mock_time(fake_time);
+#[ignore]
+fn playlist_change_at_midnight() {
+    let config = TestConfig {
+        mode: "playlist".into(),
+        start: "00:00:00".into(),
+        length: "24:00:00".into(),
+        log_to_file: false,
+        mail_recipient: "".into(),
+    };
 
-    assert_eq!(
-        fake_time.format("%Y-%m-%dT%H:%M:%S.2f").to_string(),
-        time_now().format("%Y-%m-%dT%H:%M:%S.2f").to_string()
-    );
+    init_config(Some(config));
+
+    let play_control = PlayerControl::new();
+    let playout_stat = PlayoutStatus::new();
+    let proc_control = ProcessControl::new();
+    let proc_ctl = proc_control.clone();
+
+    let logging = init_logging();
+    CombinedLogger::init(logging).unwrap();
+
+    mock_time::set_mock_time("2022-05-09T23:59:45");
+
+    thread::spawn(move || timed_kill(30, proc_ctl));
+
+    player(play_control, playout_stat, proc_control);
 }
 
 #[test]
-fn get_date_yesterday() {
-    let fake_time = get_fake_date_time("2022-05-20T05:59:24");
-    mock_time::set_mock_time(fake_time);
+#[ignore]
+fn playlist_change_at_six() {
+    let config = TestConfig {
+        mode: "playlist".into(),
+        start: "06:00:00".into(),
+        length: "24:00:00".into(),
+        log_to_file: false,
+        mail_recipient: "".into(),
+    };
 
-    let date = get_date(true, 21600.0, 86400.0);
+    init_config(Some(config));
 
-    assert_eq!("2022-05-19".to_string(), date);
-}
+    let play_control = PlayerControl::new();
+    let playout_stat = PlayoutStatus::new();
+    let proc_control = ProcessControl::new();
+    let proc_ctl = proc_control.clone();
 
-#[test]
-fn get_date_tomorrow() {
-    let fake_time = get_fake_date_time("2022-05-20T23:59:30");
-    mock_time::set_mock_time(fake_time);
+    let logging = init_logging();
+    CombinedLogger::init(logging).unwrap();
 
-    let date = get_date(false, 0.0, 86400.01);
+    mock_time::set_mock_time("2022-05-09T05:59:45");
 
-    assert_eq!("2022-05-21".to_string(), date);
+    thread::spawn(move || timed_kill(30, proc_ctl));
+
+    player(play_control, playout_stat, proc_control);
 }

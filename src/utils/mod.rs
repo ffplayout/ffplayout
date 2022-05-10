@@ -506,6 +506,15 @@ pub fn validate_ffmpeg() {
     }
 }
 
+/// In test cases we override some configuration values to fit the needs.
+pub struct TestConfig {
+    pub mode: String,
+    pub start: String,
+    pub length: String,
+    pub log_to_file: bool,
+    pub mail_recipient: String,
+}
+
 /// Get system time, in non test case.
 #[cfg(not(test))]
 pub fn time_now() -> DateTime<Local> {
@@ -529,7 +538,10 @@ pub mod mock_time {
         })
     }
 
-    pub fn set_mock_time(time: DateTime<Local>) {
+    pub fn set_mock_time(date_time: &str) {
+        let date_obj = NaiveDateTime::parse_from_str(date_time, "%Y-%m-%dT%H:%M:%S");
+        let time = Local.from_local_datetime(&date_obj.unwrap()).unwrap();
+
         DATE_TIME_DIFF.with(|cell| *cell.borrow_mut() = Some(Local::now() - time));
     }
 }

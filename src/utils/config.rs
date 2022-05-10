@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use serde_yaml::{self};
 use shlex::split;
 
-use crate::utils::{get_args, time_to_sec};
+use crate::utils::{get_args, time_to_sec, TestConfig};
 use crate::vec_strings;
 
 /// Global Config
@@ -288,7 +288,24 @@ fn pre_audio_codec(add_loudnorm: bool) -> Vec<String> {
     codec
 }
 
-pub fn init_config() {
+#[cfg(not(test))]
+pub fn init_config(_: Option<TestConfig>) {
     let config = GlobalConfig::new();
+    INSTANCE.set(config).unwrap();
+}
+
+#[cfg(test)]
+pub fn init_config(test_config: Option<TestConfig>) {
+    let mut config = GlobalConfig::new();
+    config.out.mode = "desktop".into();
+    if let Some(cfg) = test_config {
+        config.logging.log_to_file = cfg.log_to_file;
+        config.mail.recipient = cfg.mail_recipient;
+        config.playlist.day_start = cfg.start.clone();
+        config.playlist.start_sec = Some(time_to_sec(&cfg.start));
+        config.playlist.length = cfg.length.clone();
+        config.playlist.length_sec = Some(time_to_sec(&cfg.length));
+    };
+
     INSTANCE.set(config).unwrap();
 }

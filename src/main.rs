@@ -17,6 +17,7 @@ mod input;
 mod macros;
 mod output;
 mod rpc;
+#[cfg(test)]
 mod tests;
 mod utils;
 
@@ -65,7 +66,7 @@ fn status_file(stat_file: &str, playout_stat: &PlayoutStatus) {
 
 fn main() {
     // Init the config, set process controller, create logging.
-    init_config();
+    init_config(None);
     let config = GlobalConfig::global();
     let play_control = PlayerControl::new();
     let playout_stat = PlayoutStatus::new();
