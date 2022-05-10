@@ -64,7 +64,7 @@ pub fn player(
     // spawn a thread to log ffmpeg output error messages
     let error_encoder_thread = thread::spawn(move || stderr_reader(enc_err, "Encoder"));
 
-    *proc_control.decoder_term.lock().unwrap() = Some(enc_proc);
+    *proc_control.encoder_term.lock().unwrap() = Some(enc_proc);
 
     let ff_log_format_c = ff_log_format.clone();
     let proc_control_c = proc_control.clone();
