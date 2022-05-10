@@ -223,6 +223,9 @@ impl GlobalConfig {
         }
 
         if let Some(log_path) = args.log {
+            if Path::new(&log_path).is_dir() {
+                config.logging.log_to_file = true;
+            }
             config.logging.log_path = log_path;
         }
 
@@ -269,7 +272,7 @@ impl GlobalConfig {
     }
 
     pub fn global() -> &'static GlobalConfig {
-        INSTANCE.get().expect("Config is not initialized")
+        INSTANCE.get_or_init(GlobalConfig::new)
     }
 }
 
