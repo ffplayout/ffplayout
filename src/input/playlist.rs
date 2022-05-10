@@ -134,7 +134,11 @@ impl CurrentProgram {
             duration = self.current_node.duration
         }
 
-        let next_start = self.current_node.begin.unwrap() - start_sec + duration + delta;
+        let mut next_start = self.current_node.begin.unwrap() - start_sec + duration + delta;
+
+        if self.index.load(Ordering::SeqCst) == self.nodes.lock().unwrap().len() - 1 {
+            next_start += self.config.general.stop_threshold;
+        }
 
         if next_start >= target_length
             || is_close(total_delta, 0.0, 2.0)
