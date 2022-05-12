@@ -134,7 +134,7 @@ impl ProcessControl {
                 rpc.clone().close()
             };
 
-            for unit in [Encoder, Decoder, Ingest] {
+            for unit in [Decoder, Encoder, Ingest] {
                 if let Err(e) = self.kill(unit) {
                     if !e.contains("exited process") {
                         error!("{e}")
