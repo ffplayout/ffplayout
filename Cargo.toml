@@ -12,7 +12,7 @@ chrono = "0.4"
 clap = { version = "3.1", features = ["derive"] }
 crossbeam-channel = "0.5"
 ffprobe = "0.3"
-file-rotate = { git = "https://github.com/BourgondAries/file-rotate.git" }
+file-rotate = { git = "https://github.com/jb-alvarado/file-rotate.git" }
 jsonrpc-http-server = "18.0"
 lettre = "0.10.0-rc.6"
 log = "0.4"

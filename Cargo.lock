@@ -233,7 +233,7 @@ dependencies = [
 [[package]]
 name = "file-rotate"
 version = "0.6.0"
-source = "git+https://github.com/BourgondAries/file-rotate.git#cf713f750b67b376952cd4d856ead0c1252ab243"
+source = "git+https://github.com/jb-alvarado/file-rotate.git#ee1dc1cea05885b8cb472191b50a044869da7e04"
 dependencies = [
  "chrono",
  "flate2",
