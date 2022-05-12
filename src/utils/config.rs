@@ -5,12 +5,11 @@ use std::{
     process,
 };
 
-use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
-use serde_yaml::{self};
 use shlex::split;
 
 use crate::utils::{get_args, time_to_sec};
+use crate::vec_strings;
 
 /// Global Config
 ///
@@ -137,7 +136,7 @@ pub struct Out {
 
 impl GlobalConfig {
     /// Read config from YAML file, and set some extra config values.
-    fn new() -> Self {
+    pub fn new() -> Self {
         let args = get_args();
         let mut config_path = match env::current_exe() {
             Ok(path) => path.parent().unwrap().join("ffplayout.yml"),
@@ -167,8 +166,15 @@ impl GlobalConfig {
             .join("ffplayout_status.json")
             .display()
             .to_string();
-        let fps = config.processing.fps.to_string();
-        let bitrate = config.processing.width * config.processing.height / 10;
+        let bitrate = format!(
+            "{}k",
+            config.processing.width * config.processing.height / 10
+        );
+        let buf_size = format!(
+            "{}k",
+            (config.processing.width * config.processing.height / 10) / 2
+        );
+
         config.playlist.start_sec = Some(time_to_sec(&config.playlist.day_start));
 
         if config.playlist.length.contains(':') {
@@ -178,35 +184,29 @@ impl GlobalConfig {
         }
 
         // We set the decoder settings here, so we only define them ones.
-        let mut settings: Vec<String> = vec![
+        let mut settings = vec_strings![
             "-pix_fmt",
             "yuv420p",
             "-r",
-            &fps,
+            &config.processing.fps.to_string(),
             "-c:v",
             "mpeg2video",
             "-g",
             "1",
             "-b:v",
-            format!("{bitrate}k").as_str(),
+            &bitrate,
             "-minrate",
-            format!("{bitrate}k").as_str(),
+            &bitrate,
             "-maxrate",
-            format!("{bitrate}k").as_str(),
+            &bitrate,
             "-bufsize",
-            format!("{}k", bitrate / 2).as_str(),
-        ]
-        .iter()
-        .map(|&s| s.into())
-        .collect();
+            &buf_size
+        ];
 
         settings.append(&mut pre_audio_codec(config.processing.add_loudnorm));
-        settings.append(
-            &mut vec!["-ar", "48000", "-ac", "2", "-f", "mpegts", "-"]
-                .iter()
-                .map(|&s| s.into())
-                .collect(),
-        );
+        settings.append(&mut vec_strings![
+            "-ar", "48000", "-ac", "2", "-f", "mpegts", "-"
+        ]);
 
         config.processing.settings = Some(settings);
 
@@ -221,6 +221,9 @@ impl GlobalConfig {
         }
 
         if let Some(log_path) = args.log {
+            if Path::new(&log_path).is_dir() {
+                config.logging.log_to_file = true;
+            }
             config.logging.log_path = log_path;
         }
 
@@ -265,28 +268,17 @@ impl GlobalConfig {
 
         config
     }
-
-    pub fn global() -> &'static GlobalConfig {
-        INSTANCE.get().expect("Config is not initialized")
-    }
 }
-
-static INSTANCE: OnceCell<GlobalConfig> = OnceCell::new();
 
 /// When add_loudnorm is False we use a different audio encoder,
 /// s302m has higher quality, but is experimental
 /// and works not well together with the loudnorm filter.
 fn pre_audio_codec(add_loudnorm: bool) -> Vec<String> {
-    let mut codec = vec!["-c:a", "s302m", "-strict", "-2"];
+    let mut codec = vec_strings!["-c:a", "s302m", "-strict", "-2"];
 
     if add_loudnorm {
-        codec = vec!["-c:a", "mp2", "-b:a", "384k"];
+        codec = vec_strings!["-c:a", "mp2", "-b:a", "384k"];
     }
 
-    codec.iter().map(|&s| s.into()).collect()
-}
-
-pub fn init_config() {
-    let config = GlobalConfig::new();
-    INSTANCE.set(config).unwrap();
+    codec
 }

@@ -33,8 +33,11 @@ pub struct FolderSource {
 }
 
 impl FolderSource {
-    pub fn new(current_list: Arc<Mutex<Vec<Media>>>, global_index: Arc<AtomicUsize>) -> Self {
-        let config = GlobalConfig::global();
+    pub fn new(
+        config: &GlobalConfig,
+        current_list: Arc<Mutex<Vec<Media>>>,
+        global_index: Arc<AtomicUsize>,
+    ) -> Self {
         let mut media_list = vec![];
         let mut index: usize = 0;
 
@@ -120,7 +123,7 @@ impl Iterator for FolderSource {
             let i = self.index.load(Ordering::SeqCst);
             self.current_node = self.nodes.lock().unwrap()[i].clone();
             self.current_node.add_probe();
-            self.current_node.add_filter();
+            self.current_node.add_filter(&self.config);
             self.current_node.begin = Some(get_sec());
 
             self.index.fetch_add(1, Ordering::SeqCst);
@@ -143,7 +146,7 @@ impl Iterator for FolderSource {
 
             self.current_node = self.nodes.lock().unwrap()[0].clone();
             self.current_node.add_probe();
-            self.current_node.add_filter();
+            self.current_node.add_filter(&self.config);
             self.current_node.begin = Some(get_sec());
 
             self.index.store(1, Ordering::SeqCst);
@@ -160,11 +163,10 @@ fn file_extension(filename: &Path) -> Option<&str> {
 /// Create a watcher, which monitor file changes.
 /// When a change is register, update the current file list.
 /// This makes it possible, to play infinitely and and always new files to it.
-pub fn watchman(sources: Arc<Mutex<Vec<Media>>>) {
-    let config = GlobalConfig::global();
+pub fn watchman(config: GlobalConfig, sources: Arc<Mutex<Vec<Media>>>) {
     let (tx, rx) = channel();
 
-    let path = config.storage.path.clone();
+    let path = config.storage.path;
 
     if !Path::new(&path).exists() {
         error!("Folder path not exists: '{path}'");

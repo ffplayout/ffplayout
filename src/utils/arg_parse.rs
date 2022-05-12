@@ -55,6 +55,12 @@ pub struct Args {
 }
 
 /// Get arguments from command line, and return them.
+#[cfg(not(test))]
 pub fn get_args() -> Args {
     Args::parse()
+}
+
+#[cfg(test)]
+pub fn get_args() -> Args {
+    Args::parse_from(["-o desktop"].iter())
 }

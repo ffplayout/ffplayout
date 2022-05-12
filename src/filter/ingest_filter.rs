@@ -21,9 +21,7 @@ fn audio_filter(config: &GlobalConfig) -> String {
 }
 
 /// Create filter nodes for ingest live stream.
-pub fn filter_cmd() -> Vec<String> {
-    let config = GlobalConfig::global();
-
+pub fn filter_cmd(config: &GlobalConfig) -> Vec<String> {
     let mut filter = format!(
         "[0:v]fps={},scale={}:{},setdar=dar={},fade=in:st=0:d=0.5",
         config.processing.fps,

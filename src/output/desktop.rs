@@ -4,16 +4,15 @@ use simplelog::*;
 
 use crate::filter::v_drawtext;
 use crate::utils::{GlobalConfig, Media};
+use crate::vec_strings;
 
 /// Desktop Output
 ///
 /// Instead of streaming, we run a ffplay instance and play on desktop.
-pub fn output(log_format: &str) -> process::Child {
-    let config = GlobalConfig::global();
-
+pub fn output(config: &GlobalConfig, log_format: &str) -> process::Child {
     let mut enc_filter: Vec<String> = vec![];
 
-    let mut enc_cmd = vec!["-hide_banner", "-nostats", "-v", log_format, "-i", "pipe:0"];
+    let mut enc_cmd = vec_strings!["-hide_banner", "-nostats", "-v", log_format, "-i", "pipe:0"];
 
     if config.text.add_text && !config.text.over_pre {
         info!(
@@ -22,11 +21,13 @@ pub fn output(log_format: &str) -> process::Child {
         );
 
         let mut filter: String = "null,".to_string();
-        filter.push_str(v_drawtext::filter_node(&mut Media::new(0, String::new(), false)).as_str());
+        filter.push_str(
+            v_drawtext::filter_node(config, &mut Media::new(0, String::new(), false)).as_str(),
+        );
         enc_filter = vec!["-vf".to_string(), filter];
     }
 
-    enc_cmd.append(&mut enc_filter.iter().map(String::as_str).collect());
+    enc_cmd.append(&mut enc_filter);
 
     debug!(
         "Encoder CMD: <bright-blue>\"ffplay {}\"</>",

@@ -35,17 +35,19 @@ pub fn source_generator(
                 &config.storage.path
             );
 
-            let folder_source = FolderSource::new(current_list, index);
+            let config_clone = config.clone();
+            let folder_source = FolderSource::new(&config, current_list, index);
             let node_clone = folder_source.nodes.clone();
 
             // Spawn a thread to monitor folder for file changes.
-            thread::spawn(move || watchman(node_clone));
+            thread::spawn(move || watchman(config_clone, node_clone));
 
             Box::new(folder_source) as Box<dyn Iterator<Item = Media>>
         }
         "playlist" => {
             info!("Playout in playlist mode");
-            let program = CurrentProgram::new(playout_stat, is_terminated, current_list, index);
+            let program =
+                CurrentProgram::new(&config, playout_stat, is_terminated, current_list, index);
 
             Box::new(program) as Box<dyn Iterator<Item = Media>>
         }

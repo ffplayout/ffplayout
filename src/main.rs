@@ -14,14 +14,17 @@ use simplelog::*;
 
 mod filter;
 mod input;
+mod macros;
 mod output;
 mod rpc;
+#[cfg(test)]
+mod tests;
 mod utils;
 
 use crate::output::{player, write_hls};
 use crate::utils::{
-    generate_playlist, init_config, init_logging, validate_ffmpeg, GlobalConfig, PlayerControl,
-    PlayoutStatus, ProcessControl,
+    generate_playlist, init_logging, validate_ffmpeg, GlobalConfig, PlayerControl, PlayoutStatus,
+    ProcessControl,
 };
 use rpc::json_rpc_server;
 
@@ -62,22 +65,21 @@ fn status_file(stat_file: &str, playout_stat: &PlayoutStatus) {
 }
 
 fn main() {
-    // Init the config, set process controller, create logging.
-    init_config();
-    let config = GlobalConfig::global();
+    let config = GlobalConfig::new();
+    let config_clone = config.clone();
     let play_control = PlayerControl::new();
     let playout_stat = PlayoutStatus::new();
     let proc_control = ProcessControl::new();
 
-    let logging = init_logging();
+    let logging = init_logging(&config);
     CombinedLogger::init(logging).unwrap();
 
-    validate_ffmpeg();
+    validate_ffmpeg(&config);
     status_file(&config.general.stat_file, &playout_stat);
 
     if let Some(range) = config.general.generate.clone() {
         // run a simple playlist generator and save them to disk
-        generate_playlist(range);
+        generate_playlist(&config, range);
 
         exit(0);
     }
@@ -88,15 +90,15 @@ fn main() {
 
     if config.rpc_server.enable {
         // If RPC server is enable we also fire up a JSON RPC server.
-        thread::spawn(move || json_rpc_server(play_ctl, play_stat, proc_ctl));
+        thread::spawn(move || json_rpc_server(config_clone, play_ctl, play_stat, proc_ctl));
     }
 
     if &config.out.mode.to_lowercase() == "hls" {
         // write files/playlist to HLS m3u8 playlist
-        write_hls(play_control, playout_stat, proc_control);
+        write_hls(&config, play_control, playout_stat, proc_control);
     } else {
         // play on desktop or stream to a remote target
-        player(play_control, playout_stat, proc_control);
+        player(&config, play_control, playout_stat, proc_control);
     }
 
     info!("Playout done...");

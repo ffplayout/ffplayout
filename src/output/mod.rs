@@ -20,6 +20,7 @@ use crate::utils::{
     sec_to_time, stderr_reader, Decoder, Encoder, GlobalConfig, PlayerControl, PlayoutStatus,
     ProcessControl,
 };
+use crate::vec_strings;
 
 /// Player
 ///
@@ -31,12 +32,12 @@ use crate::utils::{
 /// When a live ingest arrive, it stops the current playing and switch to the live source.
 /// When ingest stops, it switch back to playlist/folder mode.
 pub fn player(
+    config: &GlobalConfig,
     play_control: PlayerControl,
     playout_stat: PlayoutStatus,
     mut proc_control: ProcessControl,
 ) {
-    let config = GlobalConfig::global();
-    let dec_settings = config.processing.clone().settings.unwrap();
+    let config_clone = config.clone();
     let ff_log_format = format!("level+{}", config.logging.ffmpeg_level.to_lowercase());
     let mut buffer = [0; 65088];
     let mut live_on = false;
@@ -53,8 +54,8 @@ pub fn player(
 
     // get ffmpeg output instance
     let mut enc_proc = match config.out.mode.as_str() {
-        "desktop" => desktop::output(&ff_log_format),
-        "stream" => stream::output(&ff_log_format),
+        "desktop" => desktop::output(config, &ff_log_format),
+        "stream" => stream::output(config, &ff_log_format),
         _ => panic!("Output mode doesn't exists!"),
     };
 
@@ -64,7 +65,7 @@ pub fn player(
     // spawn a thread to log ffmpeg output error messages
     let error_encoder_thread = thread::spawn(move || stderr_reader(enc_err, "Encoder"));
 
-    *proc_control.decoder_term.lock().unwrap() = Some(enc_proc);
+    *proc_control.encoder_term.lock().unwrap() = Some(enc_proc);
 
     let ff_log_format_c = ff_log_format.clone();
     let proc_control_c = proc_control.clone();
@@ -74,13 +75,15 @@ pub fn player(
     if config.ingest.enable {
         let (ingest_sender, rx) = bounded(96);
         ingest_receiver = Some(rx);
-        thread::spawn(move || ingest_server(ff_log_format_c, ingest_sender, proc_control_c));
+        thread::spawn(move || {
+            ingest_server(config_clone, ff_log_format_c, ingest_sender, proc_control_c)
+        });
     }
 
     'source_iter: for node in get_source {
         *play_control.current_media.lock().unwrap() = Some(node.clone());
 
-        let cmd = match node.cmd {
+        let mut cmd = match node.cmd {
             Some(cmd) => cmd,
             None => break,
         };
@@ -95,15 +98,15 @@ pub fn player(
             node.source
         );
 
-        let filter = node.filter.unwrap();
-        let mut dec_cmd = vec!["-hide_banner", "-nostats", "-v", ff_log_format.as_str()];
-        dec_cmd.append(&mut cmd.iter().map(String::as_str).collect());
+        let mut filter = node.filter.unwrap();
+        let mut dec_cmd = vec_strings!["-hide_banner", "-nostats", "-v", &ff_log_format];
+        dec_cmd.append(&mut cmd);
 
         if filter.len() > 1 {
-            dec_cmd.append(&mut filter.iter().map(String::as_str).collect());
+            dec_cmd.append(&mut filter);
         }
 
-        dec_cmd.append(&mut dec_settings.iter().map(String::as_str).collect());
+        dec_cmd.append(&mut config.processing.clone().settings.unwrap());
 
         debug!(
             "Decoder CMD: <bright-blue>\"ffmpeg {}\"</>",

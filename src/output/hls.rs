@@ -33,6 +33,7 @@ use crate::utils::{
     sec_to_time, stderr_reader, Decoder, GlobalConfig, Ingest, PlayerControl, PlayoutStatus,
     ProcessControl,
 };
+use crate::vec_strings;
 
 fn format_line(line: String, level: &str) -> String {
     line.replace(&format!("[{level: >5}] "), "")
@@ -40,27 +41,24 @@ fn format_line(line: String, level: &str) -> String {
 
 /// Ingest Server for HLS
 fn ingest_to_hls_server(
+    config: GlobalConfig,
     playout_stat: PlayoutStatus,
     mut proc_control: ProcessControl,
 ) -> Result<(), Error> {
-    let config = GlobalConfig::global();
-    let dec_settings = config.out.clone().output_cmd.unwrap();
     let playlist_init = playout_stat.list_init;
-    let filter_list = filter_cmd();
 
-    let mut server_cmd = vec!["-hide_banner", "-nostats", "-v", "level+info"];
+    let mut server_cmd = vec_strings!["-hide_banner", "-nostats", "-v", "level+info"];
     let stream_input = config.ingest.input_cmd.clone().unwrap();
 
-    server_cmd.append(&mut stream_input.iter().map(String::as_str).collect());
-    server_cmd.append(&mut filter_list.iter().map(String::as_str).collect());
-    server_cmd.append(&mut dec_settings.iter().map(String::as_str).collect());
+    server_cmd.append(&mut stream_input.clone());
+    server_cmd.append(&mut filter_cmd(&config));
+    server_cmd.append(&mut config.out.clone().output_cmd.unwrap());
 
     let mut is_running;
 
-    info!(
-        "Start ingest server, listening on: <b><magenta>{}</></b>",
-        stream_input.last().unwrap()
-    );
+    if let Some(url) = stream_input.iter().find(|s| s.contains("://")) {
+        info!("Start ingest server, listening on: <b><magenta>{url}</></b>");
+    };
 
     debug!(
         "Server CMD: <bright-blue>\"ffmpeg {}\"</>",
@@ -132,12 +130,12 @@ fn ingest_to_hls_server(
 ///
 /// Write with single ffmpeg instance directly to a HLS playlist.
 pub fn write_hls(
+    config: &GlobalConfig,
     play_control: PlayerControl,
     playout_stat: PlayoutStatus,
     mut proc_control: ProcessControl,
 ) {
-    let config = GlobalConfig::global();
-    let dec_settings = config.out.clone().output_cmd.unwrap();
+    let config_clone = config.clone();
     let ff_log_format = format!("level+{}", config.logging.ffmpeg_level.to_lowercase());
     let play_stat = playout_stat.clone();
     let proc_control_c = proc_control.clone();
@@ -152,13 +150,13 @@ pub fn write_hls(
 
     // spawn a thread for ffmpeg ingest server and create a channel for package sending
     if config.ingest.enable {
-        thread::spawn(move || ingest_to_hls_server(play_stat, proc_control_c));
+        thread::spawn(move || ingest_to_hls_server(config_clone, play_stat, proc_control_c));
     }
 
     for node in get_source {
         *play_control.current_media.lock().unwrap() = Some(node.clone());
 
-        let cmd = match node.cmd {
+        let mut cmd = match node.cmd {
             Some(cmd) => cmd,
             None => break,
         };
@@ -173,15 +171,15 @@ pub fn write_hls(
             node.source
         );
 
-        let filter = node.filter.unwrap();
-        let mut dec_cmd = vec!["-hide_banner", "-nostats", "-v", ff_log_format.as_str()];
-        dec_cmd.append(&mut cmd.iter().map(String::as_str).collect());
+        let mut filter = node.filter.unwrap();
+        let mut dec_cmd = vec_strings!["-hide_banner", "-nostats", "-v", &ff_log_format];
+        dec_cmd.append(&mut cmd);
 
         if filter.len() > 1 {
-            dec_cmd.append(&mut filter.iter().map(String::as_str).collect());
+            dec_cmd.append(&mut filter);
         }
 
-        dec_cmd.append(&mut dec_settings.iter().map(String::as_str).collect());
+        dec_cmd.append(&mut config.out.clone().output_cmd.unwrap());
 
         debug!(
             "HLS writer CMD: <bright-blue>\"ffmpeg {}\"</>",

@@ -56,11 +56,13 @@ fn get_data_map(config: &GlobalConfig, media: Media) -> Map<String, Value> {
 /// - get last clip
 /// - reset player state to original clip
 pub fn json_rpc_server(
+    config: GlobalConfig,
     play_control: PlayerControl,
     playout_stat: PlayoutStatus,
     proc_control: ProcessControl,
 ) {
-    let config = GlobalConfig::global();
+    let addr = config.rpc_server.address.clone();
+    let auth = config.rpc_server.authorization.clone();
     let mut io = IoHandler::default();
     let proc = proc_control.clone();
 
@@ -90,10 +92,10 @@ pub fn json_rpc_server(
                         let mut media = play_control.current_list.lock().unwrap()[index].clone();
                         media.add_probe();
 
-                        let (delta, _) = get_delta(&media.begin.unwrap_or(0.0));
+                        let (delta, _) = get_delta(&config, &media.begin.unwrap_or(0.0));
                         *time_shift = delta;
                         *date = current_date.clone();
-                        write_status(&current_date, delta);
+                        write_status(&config, &current_date, delta);
 
                         data_map.insert("operation".to_string(), json!("move_to_next"));
                         data_map.insert("shifted_seconds".to_string(), json!(delta));
@@ -129,10 +131,10 @@ pub fn json_rpc_server(
                         play_control.index.fetch_sub(2, Ordering::SeqCst);
                         media.add_probe();
 
-                        let (delta, _) = get_delta(&media.begin.unwrap_or(0.0));
+                        let (delta, _) = get_delta(&config, &media.begin.unwrap_or(0.0));
                         *time_shift = delta;
                         *date = current_date.clone();
-                        write_status(&current_date, delta);
+                        write_status(&config, &current_date, delta);
 
                         data_map.insert("operation".to_string(), json!("move_to_last"));
                         data_map.insert("shifted_seconds".to_string(), json!(delta));
@@ -164,7 +166,7 @@ pub fn json_rpc_server(
                     *date = current_date.clone();
                     playout_stat.list_init.store(true, Ordering::SeqCst);
 
-                    write_status(&current_date, 0.0);
+                    write_status(&config, &current_date, 0.0);
 
                     data_map.insert("operation".to_string(), json!("reset_playout_state"));
 
@@ -177,7 +179,7 @@ pub fn json_rpc_server(
             // get infos about current clip
             if map.contains_key("media") && &map["media"] == "current" {
                 if let Some(media) = play_control.current_media.lock().unwrap().clone() {
-                    let data_map = get_data_map(config, media);
+                    let data_map = get_data_map(&config, media);
 
                     return Ok(Value::Object(data_map));
                 };
@@ -190,7 +192,7 @@ pub fn json_rpc_server(
                 if index < play_control.current_list.lock().unwrap().len() {
                     let media = play_control.current_list.lock().unwrap()[index].clone();
 
-                    let data_map = get_data_map(config, media);
+                    let data_map = get_data_map(&config, media);
 
                     return Ok(Value::Object(data_map));
                 }
@@ -205,7 +207,7 @@ pub fn json_rpc_server(
                 if index > 1 && index - 2 < play_control.current_list.lock().unwrap().len() {
                     let media = play_control.current_list.lock().unwrap()[index - 2].clone();
 
-                    let data_map = get_data_map(config, media);
+                    let data_map = get_data_map(&config, media);
 
                     return Ok(Value::Object(data_map));
                 }
@@ -223,9 +225,9 @@ pub fn json_rpc_server(
             AccessControlAllowOrigin::Null,
         ]))
         // add middleware, for authentication
-        .request_middleware(|request: hyper::Request<hyper::Body>| {
+        .request_middleware(move |request: hyper::Request<hyper::Body>| {
             if request.headers().contains_key("authorization")
-                && request.headers()["authorization"] == config.rpc_server.authorization
+                && request.headers()["authorization"] == auth
             {
                 if request.uri() == "/status" {
                     println!("{:?}", request.headers().contains_key("authorization"));
@@ -238,7 +240,7 @@ pub fn json_rpc_server(
             }
         })
         .rest_api(RestApi::Secure)
-        .start_http(&config.rpc_server.address.parse().unwrap())
+        .start_http(&addr.parse().unwrap())
         .expect("Unable to start RPC server");
 
     *proc_control.rpc_handle.lock().unwrap() = Some(server.close_handle());

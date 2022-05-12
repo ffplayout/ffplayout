@@ -4,8 +4,7 @@ use regex::Regex;
 
 use crate::utils::{GlobalConfig, Media};
 
-pub fn filter_node(node: &mut Media) -> String {
-    let config = GlobalConfig::global();
+pub fn filter_node(config: &GlobalConfig, node: &mut Media) -> String {
     let mut filter = String::new();
     let mut font = String::new();
 
