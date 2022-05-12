@@ -169,7 +169,7 @@ pub fn init_logging() -> Vec<Box<dyn SharedLogger>> {
         let file_config = log_config
             .clone()
             .set_time_format_custom(format_description!(
-                "[[year]-[month]-[day] [hour]:[minute]:[second].[subsecond digits:5]]"
+                "[[[year]-[month]-[day] [hour]:[minute]:[second].[subsecond digits:5]]"
             ))
             .build();
         let mut log_path = "logs/ffplayout.log".to_string();
@@ -185,20 +185,18 @@ pub fn init_logging() -> Vec<Box<dyn SharedLogger>> {
             println!("Logging path not exists!")
         }
 
-        let log = || {
-            FileRotate::new(
-                log_path,
-                AppendTimestamp::with_format(
-                    "%Y-%m-%d",
-                    FileLimit::MaxFiles(app_config.backup_count),
-                    DateFrom::DateYesterday,
-                ),
-                ContentLimit::Time(TimeFrequency::Daily),
-                Compression::None,
-            )
-        };
+        let log_file = FileRotate::new(
+            &log_path,
+            AppendTimestamp::with_format(
+                "%Y-%m-%d",
+                FileLimit::MaxFiles(app_config.backup_count),
+                DateFrom::DateYesterday,
+            ),
+            ContentLimit::Time(TimeFrequency::Daily),
+            Compression::None,
+        );
 
-        app_logger.push(WriteLogger::new(LevelFilter::Debug, file_config, log()));
+        app_logger.push(WriteLogger::new(LevelFilter::Debug, file_config, log_file));
     } else {
         let term_config = log_config
             .clone()
