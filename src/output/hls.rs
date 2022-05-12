@@ -41,17 +41,17 @@ fn format_line(line: String, level: &str) -> String {
 
 /// Ingest Server for HLS
 fn ingest_to_hls_server(
+    config: GlobalConfig,
     playout_stat: PlayoutStatus,
     mut proc_control: ProcessControl,
 ) -> Result<(), Error> {
-    let config = GlobalConfig::global();
     let playlist_init = playout_stat.list_init;
 
     let mut server_cmd = vec_strings!["-hide_banner", "-nostats", "-v", "level+info"];
     let stream_input = config.ingest.input_cmd.clone().unwrap();
 
     server_cmd.append(&mut stream_input.clone());
-    server_cmd.append(&mut filter_cmd());
+    server_cmd.append(&mut filter_cmd(&config));
     server_cmd.append(&mut config.out.clone().output_cmd.unwrap());
 
     let mut is_running;
@@ -130,11 +130,12 @@ fn ingest_to_hls_server(
 ///
 /// Write with single ffmpeg instance directly to a HLS playlist.
 pub fn write_hls(
+    config: &GlobalConfig,
     play_control: PlayerControl,
     playout_stat: PlayoutStatus,
     mut proc_control: ProcessControl,
 ) {
-    let config = GlobalConfig::global();
+    let config_clone = config.clone();
     let ff_log_format = format!("level+{}", config.logging.ffmpeg_level.to_lowercase());
     let play_stat = playout_stat.clone();
     let proc_control_c = proc_control.clone();
@@ -149,7 +150,7 @@ pub fn write_hls(
 
     // spawn a thread for ffmpeg ingest server and create a channel for package sending
     if config.ingest.enable {
-        thread::spawn(move || ingest_to_hls_server(play_stat, proc_control_c));
+        thread::spawn(move || ingest_to_hls_server(config_clone, play_stat, proc_control_c));
     }
 
     for node in get_source {

@@ -5,12 +5,10 @@ use std::{
     process,
 };
 
-use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
-use serde_yaml::{self};
 use shlex::split;
 
-use crate::utils::{get_args, time_to_sec, TestConfig};
+use crate::utils::{get_args, time_to_sec};
 use crate::vec_strings;
 
 /// Global Config
@@ -138,7 +136,7 @@ pub struct Out {
 
 impl GlobalConfig {
     /// Read config from YAML file, and set some extra config values.
-    fn new() -> Self {
+    pub fn new() -> Self {
         let args = get_args();
         let mut config_path = match env::current_exe() {
             Ok(path) => path.parent().unwrap().join("ffplayout.yml"),
@@ -270,13 +268,7 @@ impl GlobalConfig {
 
         config
     }
-
-    pub fn global() -> &'static GlobalConfig {
-        INSTANCE.get_or_init(GlobalConfig::new)
-    }
 }
-
-static INSTANCE: OnceCell<GlobalConfig> = OnceCell::new();
 
 /// When add_loudnorm is False we use a different audio encoder,
 /// s302m has higher quality, but is experimental
@@ -289,26 +281,4 @@ fn pre_audio_codec(add_loudnorm: bool) -> Vec<String> {
     }
 
     codec
-}
-
-#[cfg(not(test))]
-pub fn init_config(_: Option<TestConfig>) {
-    let config = GlobalConfig::new();
-    INSTANCE.set(config).unwrap();
-}
-
-#[cfg(test)]
-pub fn init_config(test_config: Option<TestConfig>) {
-    let mut config = GlobalConfig::new();
-    config.out.mode = "desktop".into();
-    if let Some(cfg) = test_config {
-        config.logging.log_to_file = cfg.log_to_file;
-        config.mail.recipient = cfg.mail_recipient;
-        config.playlist.day_start = cfg.start.clone();
-        config.playlist.start_sec = Some(time_to_sec(&cfg.start));
-        config.playlist.length = cfg.length.clone();
-        config.playlist.length_sec = Some(time_to_sec(&cfg.length));
-    };
-
-    INSTANCE.set(config).unwrap();
 }

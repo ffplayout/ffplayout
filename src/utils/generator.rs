@@ -50,8 +50,7 @@ fn get_date_range(date_range: &[String]) -> Vec<String> {
 }
 
 /// Generate playlists
-pub fn generate_playlist(mut date_range: Vec<String>) {
-    let config = GlobalConfig::global();
+pub fn generate_playlist(config: &GlobalConfig, mut date_range: Vec<String>) {
     let total_length = config.playlist.length_sec.unwrap();
     let current_list = Arc::new(Mutex::new(vec![Media::new(0, "".to_string(), false)]));
     let index = Arc::new(AtomicUsize::new(0));
@@ -70,7 +69,7 @@ pub fn generate_playlist(mut date_range: Vec<String>) {
         date_range = get_date_range(&date_range)
     }
 
-    let media_list = FolderSource::new(current_list, index);
+    let media_list = FolderSource::new(config, current_list, index);
     let list_length = media_list.nodes.lock().unwrap().len();
 
     for date in date_range {

@@ -12,8 +12,7 @@ use crate::vec_strings;
 /// Streaming Output
 ///
 /// Prepare the ffmpeg command for streaming output
-pub fn output(log_format: &str) -> process::Child {
-    let config = GlobalConfig::global();
+pub fn output(config: &GlobalConfig, log_format: &str) -> process::Child {
     let mut enc_filter: Vec<String> = vec![];
     let mut preview: Vec<String> = vec_strings![];
     let mut preview_cmd = config.out.preview_cmd.as_ref().unwrap().clone();
@@ -36,7 +35,9 @@ pub fn output(log_format: &str) -> process::Child {
         );
 
         let mut filter = "[0:v]null,".to_string();
-        filter.push_str(v_drawtext::filter_node(&mut Media::new(0, String::new(), false)).as_str());
+        filter.push_str(
+            v_drawtext::filter_node(config, &mut Media::new(0, String::new(), false)).as_str(),
+        );
 
         if config.out.preview {
             filter.push_str(",split=2[v_out1][v_out2]");

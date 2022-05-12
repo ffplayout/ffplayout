@@ -48,13 +48,13 @@ impl Playlist {
 /// Read json playlist file, fills Playlist struct and set some extra values,
 /// which we need to process.
 pub fn read_json(
+    config: &GlobalConfig,
     path: Option<String>,
     is_terminated: Arc<AtomicBool>,
     seek: bool,
     next_start: f64,
 ) -> Playlist {
-    let config = GlobalConfig::global();
-
+    let config_clone = config.clone();
     let mut playlist_path = Path::new(&config.playlist.path).to_owned();
     let mut start_sec = config.playlist.start_sec.unwrap();
     let date = get_date(seek, start_sec, next_start);
@@ -113,7 +113,7 @@ pub fn read_json(
 
     let list_clone = playlist.clone();
 
-    thread::spawn(move || validate_playlist(list_clone, is_terminated, config.clone()));
+    thread::spawn(move || validate_playlist(list_clone, is_terminated, config_clone));
 
     playlist
 }

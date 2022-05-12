@@ -25,26 +25,21 @@ use simplelog::*;
 use crate::utils::GlobalConfig;
 
 /// send log messages to mail recipient
-fn send_mail(msg: String) {
-    let config = GlobalConfig::global();
-
+fn send_mail(cfg: &GlobalConfig, msg: String) {
     let email = Message::builder()
-        .from(config.mail.sender_addr.parse().unwrap())
-        .to(config.mail.recipient.parse().unwrap())
-        .subject(config.mail.subject.clone())
+        .from(cfg.mail.sender_addr.parse().unwrap())
+        .to(cfg.mail.recipient.parse().unwrap())
+        .subject(cfg.mail.subject.clone())
         .header(header::ContentType::TEXT_PLAIN)
         .body(clean_string(&msg))
         .unwrap();
 
-    let credentials = Credentials::new(
-        config.mail.sender_addr.clone(),
-        config.mail.sender_pass.clone(),
-    );
+    let credentials = Credentials::new(cfg.mail.sender_addr.clone(), cfg.mail.sender_pass.clone());
 
-    let mut transporter = SmtpTransport::relay(config.mail.smtp_server.clone().as_str());
+    let mut transporter = SmtpTransport::relay(cfg.mail.smtp_server.clone().as_str());
 
-    if config.mail.starttls {
-        transporter = SmtpTransport::starttls_relay(config.mail.smtp_server.clone().as_str())
+    if cfg.mail.starttls {
+        transporter = SmtpTransport::starttls_relay(cfg.mail.smtp_server.clone().as_str())
     }
 
     let mailer = transporter.unwrap().credentials(credentials).build();
@@ -59,11 +54,11 @@ fn send_mail(msg: String) {
 /// Basic Mail Queue
 ///
 /// Check every give seconds for messages and send them.
-fn mail_queue(messages: Arc<Mutex<Vec<String>>>, interval: u64) {
+fn mail_queue(cfg: GlobalConfig, messages: Arc<Mutex<Vec<String>>>, interval: u64) {
     loop {
         if messages.lock().unwrap().len() > 0 {
             let msg = messages.lock().unwrap().join("\n");
-            send_mail(msg);
+            send_mail(&cfg, msg);
 
             messages.lock().unwrap().clear();
         }
@@ -141,8 +136,8 @@ fn clean_string(text: &str) -> String {
 /// - console logger
 /// - file logger
 /// - mail logger
-pub fn init_logging() -> Vec<Box<dyn SharedLogger>> {
-    let config = GlobalConfig::global();
+pub fn init_logging(config: &GlobalConfig) -> Vec<Box<dyn SharedLogger>> {
+    let config_clone = config.clone();
     let app_config = config.logging.clone();
     let mut time_level = LevelFilter::Off;
     let mut app_logger: Vec<Box<dyn SharedLogger>> = vec![];
@@ -169,7 +164,7 @@ pub fn init_logging() -> Vec<Box<dyn SharedLogger>> {
         let file_config = log_config
             .clone()
             .set_time_format_custom(format_description!(
-                "[[year]-[month]-[day] [hour]:[minute]:[second].[subsecond digits:5]]"
+                "[[[year]-[month]-[day] [hour]:[minute]:[second].[subsecond digits:5]]"
             ))
             .build();
         let mut log_path = "logs/ffplayout.log".to_string();
@@ -185,20 +180,18 @@ pub fn init_logging() -> Vec<Box<dyn SharedLogger>> {
             println!("Logging path not exists!")
         }
 
-        let log = || {
-            FileRotate::new(
-                log_path,
-                AppendTimestamp::with_format(
-                    "%Y-%m-%d",
-                    FileLimit::MaxFiles(app_config.backup_count),
-                    DateFrom::DateYesterday,
-                ),
-                ContentLimit::Time(TimeFrequency::Daily),
-                Compression::None,
-            )
-        };
+        let log_file = FileRotate::new(
+            log_path,
+            AppendTimestamp::with_format(
+                "%Y-%m-%d",
+                FileLimit::MaxFiles(app_config.backup_count),
+                DateFrom::DateYesterday,
+            ),
+            ContentLimit::Time(TimeFrequency::Daily),
+            Compression::None,
+        );
 
-        app_logger.push(WriteLogger::new(LevelFilter::Debug, file_config, log()));
+        app_logger.push(WriteLogger::new(LevelFilter::Debug, file_config, log_file));
     } else {
         let term_config = log_config
             .clone()
@@ -225,7 +218,7 @@ pub fn init_logging() -> Vec<Box<dyn SharedLogger>> {
         let messages_clone = messages.clone();
         let interval = config.mail.interval;
 
-        thread::spawn(move || mail_queue(messages_clone, interval));
+        thread::spawn(move || mail_queue(config_clone, messages_clone, interval));
 
         let mail_config = log_config.build();
 

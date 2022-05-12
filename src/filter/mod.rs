@@ -182,7 +182,7 @@ fn extend_video(node: &mut Media, chain: &mut Filters) {
 /// add drawtext filter for lower thirds messages
 fn add_text(node: &mut Media, chain: &mut Filters, config: &GlobalConfig) {
     if config.text.add_text && config.text.over_pre {
-        let filter = v_drawtext::filter_node(node);
+        let filter = v_drawtext::filter_node(config, node);
 
         chain.add_filter(&filter, "video");
 
@@ -277,7 +277,7 @@ fn realtime_filter(node: &mut Media, chain: &mut Filters, config: &GlobalConfig,
 
     if &config.out.mode.to_lowercase() == "hls" {
         let mut speed_filter = format!("{t}realtime=speed=1");
-        let (delta, _) = get_delta(&node.begin.unwrap());
+        let (delta, _) = get_delta(config, &node.begin.unwrap());
         let duration = node.out - node.seek;
 
         if delta < 0.0 {
@@ -292,9 +292,7 @@ fn realtime_filter(node: &mut Media, chain: &mut Filters, config: &GlobalConfig,
     }
 }
 
-pub fn filter_chains(node: &mut Media) -> Vec<String> {
-    let config = GlobalConfig::global();
-
+pub fn filter_chains(config: &GlobalConfig, node: &mut Media) -> Vec<String> {
     let mut filters = Filters::new();
     let mut audio_map = "1:a".to_string();
     filters.audio_map = Some(audio_map);

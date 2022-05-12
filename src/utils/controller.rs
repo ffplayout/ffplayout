@@ -136,7 +136,9 @@ impl ProcessControl {
 
             for unit in [Encoder, Decoder, Ingest] {
                 if let Err(e) = self.kill(unit) {
-                    error!("{e}")
+                    if !e.contains("exited process") {
+                        error!("{e}")
+                    }
                 }
             }
         }

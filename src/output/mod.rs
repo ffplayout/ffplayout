@@ -32,11 +32,12 @@ use crate::vec_strings;
 /// When a live ingest arrive, it stops the current playing and switch to the live source.
 /// When ingest stops, it switch back to playlist/folder mode.
 pub fn player(
+    config: &GlobalConfig,
     play_control: PlayerControl,
     playout_stat: PlayoutStatus,
     mut proc_control: ProcessControl,
 ) {
-    let config = GlobalConfig::global();
+    let config_clone = config.clone();
     let ff_log_format = format!("level+{}", config.logging.ffmpeg_level.to_lowercase());
     let mut buffer = [0; 65088];
     let mut live_on = false;
@@ -53,8 +54,8 @@ pub fn player(
 
     // get ffmpeg output instance
     let mut enc_proc = match config.out.mode.as_str() {
-        "desktop" => desktop::output(&ff_log_format),
-        "stream" => stream::output(&ff_log_format),
+        "desktop" => desktop::output(config, &ff_log_format),
+        "stream" => stream::output(config, &ff_log_format),
         _ => panic!("Output mode doesn't exists!"),
     };
 
@@ -74,7 +75,9 @@ pub fn player(
     if config.ingest.enable {
         let (ingest_sender, rx) = bounded(96);
         ingest_receiver = Some(rx);
-        thread::spawn(move || ingest_server(ff_log_format_c, ingest_sender, proc_control_c));
+        thread::spawn(move || {
+            ingest_server(config_clone, ff_log_format_c, ingest_sender, proc_control_c)
+        });
     }
 
     'source_iter: for node in get_source {

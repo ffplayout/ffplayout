@@ -16,18 +16,18 @@ use crate::vec_strings;
 ///
 /// Start ffmpeg in listen mode, and wait for input.
 pub fn ingest_server(
+    config: GlobalConfig,
     log_format: String,
     ingest_sender: Sender<(usize, [u8; 65088])>,
     mut proc_control: ProcessControl,
 ) -> Result<(), Error> {
-    let config = GlobalConfig::global();
     let mut buffer: [u8; 65088] = [0; 65088];
     let mut server_cmd = vec_strings!["-hide_banner", "-nostats", "-v", log_format];
     let stream_input = config.ingest.input_cmd.clone().unwrap();
 
     server_cmd.append(&mut stream_input.clone());
-    server_cmd.append(&mut filter_cmd());
-    server_cmd.append(&mut config.processing.settings.clone().unwrap());
+    server_cmd.append(&mut filter_cmd(&config));
+    server_cmd.append(&mut config.processing.settings.unwrap());
 
     let mut is_running;
 

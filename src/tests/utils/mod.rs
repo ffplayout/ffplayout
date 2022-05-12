@@ -38,17 +38,15 @@ fn get_date_tomorrow() {
 
 #[test]
 fn test_delta() {
-    let config = TestConfig {
-        mode: "playlist".into(),
-        start: "00:00:00".into(),
-        length: "24:00:00".into(),
-        log_to_file: false,
-        mail_recipient: "".into(),
-    };
+    let mut config = GlobalConfig::new();
+    config.mail.recipient = "".into();
+    config.processing.mode = "playlist".into();
+    config.playlist.day_start = "00:00:00".into();
+    config.playlist.length = "24:00:00".into();
+    config.logging.log_to_file = false;
 
-    init_config(Some(config));
     mock_time::set_mock_time("2022-05-09T23:59:59");
-    let (delta, _) = get_delta(&86401.0);
+    let (delta, _) = get_delta(&config, &86401.0);
 
     assert!(delta < 2.0);
 }
