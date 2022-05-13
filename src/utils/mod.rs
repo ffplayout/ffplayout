@@ -1,17 +1,13 @@
-use chrono::prelude::*;
-use chrono::Duration;
-use ffprobe::{ffprobe, Format, Stream};
 use std::{
-    fs,
-    fs::metadata,
+    fs::{self, metadata},
     io::{BufRead, BufReader, Error},
     path::Path,
-    process::exit,
-    process::{ChildStderr, Command, Stdio},
-    time,
-    time::UNIX_EPOCH,
+    process::{exit, ChildStderr, Command, Stdio},
+    time::{self, UNIX_EPOCH},
 };
 
+use chrono::{prelude::*, Duration};
+use ffprobe::{ffprobe, Format, Stream};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
