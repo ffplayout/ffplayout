@@ -35,6 +35,7 @@ The main purpose of ffplayout is to provide a 24/7 broadcasting solution that pl
   - **aevalsrc** (if video have no audio)
   - **apad** (add silence if audio duration is to short)
   - **tpad** (add black frames if video duration is to short)
+- [separate preview stream](/docs/preview_stream.md)
 - [output](/docs/output.md):
   - **stream**
   - **desktop**
