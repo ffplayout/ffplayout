@@ -12,9 +12,10 @@ jobs:
       - run: rustup update stable
       - name: Cache cargo build
         uses: actions/cache@v1
-#        with:
-#          path: target
+        with:
+          path: target
 #          key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
+          key: ubuntu-latest-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
       - run: rustup component add rustfmt
       - run: rustup component add clippy
       - run: cargo build --all-features
