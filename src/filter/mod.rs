@@ -13,8 +13,8 @@ use crate::utils::{get_delta, is_close, GlobalConfig, Media};
 struct Filters {
     audio_chain: Option<String>,
     video_chain: Option<String>,
-    audio_map: Option<String>,
-    video_map: Option<String>,
+    audio_map: String,
+    video_map: String,
 }
 
 impl Filters {
@@ -22,8 +22,8 @@ impl Filters {
         Filters {
             audio_chain: None,
             video_chain: None,
-            audio_map: Some("0:a".to_string()),
-            video_map: Some("0:v".to_string()),
+            audio_map: "1:a".to_string(),
+            video_map: "0:v".to_string(),
         }
     }
 
@@ -41,10 +41,9 @@ impl Filters {
                     if filter.contains("aevalsrc") || filter.contains("anoisesrc") {
                         self.audio_chain = Some(filter.to_string());
                     } else {
-                        self.audio_chain =
-                            Some(format!("[{}]{filter}", self.audio_map.clone().unwrap()));
+                        self.audio_chain = Some(format!("[{}]{filter}", self.audio_map.clone()));
                     }
-                    self.audio_map = Some("[aout1]".to_string());
+                    self.audio_map = "[aout1]".to_string();
                 }
             },
             "video" => match &self.video_chain {
@@ -57,7 +56,7 @@ impl Filters {
                 }
                 None => {
                     self.video_chain = Some(format!("[0:v]{filter}"));
-                    self.video_map = Some("[vout1]".to_string());
+                    self.video_map = "[vout1]".to_string();
                 }
             },
             _ => (),
@@ -101,18 +100,30 @@ fn fps(fps: f64, chain: &mut Filters, config: &GlobalConfig) {
     }
 }
 
-fn scale(width: i64, height: i64, aspect: f64, chain: &mut Filters, config: &GlobalConfig) {
-    if width != config.processing.width || height != config.processing.height {
+fn scale(v_stream: &ffprobe::Stream, aspect: f64, chain: &mut Filters, config: &GlobalConfig) {
+    // width: i64, height: i64
+    if let (Some(w), Some(h)) = (v_stream.width, v_stream.height) {
+        if w != config.processing.width || h != config.processing.height {
+            chain.add_filter(
+                &format!(
+                    "scale={}:{}",
+                    config.processing.width, config.processing.height
+                ),
+                "video",
+            )
+        }
+
+        if !is_close(aspect, config.processing.aspect, 0.03) {
+            chain.add_filter(&format!("setdar=dar={}", config.processing.aspect), "video")
+        }
+    } else {
         chain.add_filter(
             &format!(
                 "scale={}:{}",
                 config.processing.width, config.processing.height
             ),
             "video",
-        )
-    }
-
-    if !is_close(aspect, config.processing.aspect, 0.03) {
+        );
         chain.add_filter(&format!("setdar=dar={}", config.processing.aspect), "video")
     }
 }
@@ -161,20 +172,22 @@ fn overlay(node: &mut Media, chain: &mut Filters, config: &GlobalConfig) {
 }
 
 fn extend_video(node: &mut Media, chain: &mut Filters) {
-    let video_streams = node.probe.clone().unwrap().video_streams.unwrap();
-    if !video_streams.is_empty() {
-        if let Some(duration) = &video_streams[0].duration {
-            let duration_float = duration.clone().parse::<f64>().unwrap();
+    if let Some(duration) = node
+        .probe
+        .as_ref()
+        .and_then(|p| p.video_streams.as_ref())
+        .and_then(|v| v[0].duration.as_ref())
+    {
+        let duration_float = duration.clone().parse::<f64>().unwrap();
 
-            if node.out - node.seek > duration_float - node.seek + 0.1 {
-                chain.add_filter(
-                    &format!(
-                        "tpad=stop_mode=add:stop_duration={}",
-                        (node.out - node.seek) - (duration_float - node.seek)
-                    ),
-                    "video",
-                )
-            }
+        if node.out - node.seek > duration_float - node.seek + 0.1 {
+            chain.add_filter(
+                &format!(
+                    "tpad=stop_mode=add:stop_duration={}",
+                    (node.out - node.seek) - (duration_float - node.seek)
+                ),
+                "video",
+            )
         }
     }
 }
@@ -198,8 +211,13 @@ fn add_text(node: &mut Media, chain: &mut Filters, config: &GlobalConfig) {
 }
 
 fn add_audio(node: &mut Media, chain: &mut Filters) {
-    let audio_streams = node.probe.clone().unwrap().audio_streams.unwrap();
-    if audio_streams.is_empty() {
+    if node
+        .probe
+        .as_ref()
+        .and_then(|p| p.audio_streams.as_ref())
+        .unwrap_or(&vec![])
+        .is_empty()
+    {
         warn!("Clip: '{}' has no audio!", node.source);
         let audio = format!(
             "aevalsrc=0:channel_layout=stereo:duration={}:sample_rate=48000",
@@ -210,29 +228,29 @@ fn add_audio(node: &mut Media, chain: &mut Filters) {
 }
 
 fn extend_audio(node: &mut Media, chain: &mut Filters) {
-    let audio_streams = node.probe.clone().unwrap().audio_streams.unwrap();
-    if !audio_streams.is_empty() {
-        if let Some(duration) = &audio_streams[0].duration {
-            let duration_float = duration.clone().parse::<f64>().unwrap();
+    if let Some(duration) = node
+        .probe
+        .as_ref()
+        .and_then(|p| p.audio_streams.as_ref())
+        .and_then(|a| a[0].duration.as_ref())
+    {
+        let duration_float = duration.clone().parse::<f64>().unwrap();
 
-            if node.out - node.seek > duration_float - node.seek + 0.1 {
-                chain.add_filter(&format!("apad=whole_dur={}", node.out - node.seek), "audio")
-            }
+        if node.out - node.seek > duration_float - node.seek + 0.1 {
+            chain.add_filter(&format!("apad=whole_dur={}", node.out - node.seek), "audio")
         }
     }
 }
 
 /// Add single pass loudnorm filter to audio line.
 fn add_loudnorm(node: &mut Media, chain: &mut Filters, config: &GlobalConfig) {
-    if node.probe.is_some()
+    if config.processing.add_loudnorm
         && !node
             .probe
-            .clone()
-            .unwrap()
-            .audio_streams
-            .unwrap()
+            .as_ref()
+            .and_then(|p| p.audio_streams.as_ref())
+            .unwrap_or(&vec![])
             .is_empty()
-        && config.processing.add_loudnorm
     {
         let loud_filter = a_loudnorm::filter_node(config);
         chain.add_filter(&loud_filter, "audio");
@@ -259,7 +277,7 @@ fn aspect_calc(aspect_string: &Option<String>, config: &GlobalConfig) -> f64 {
 }
 
 fn fps_calc(r_frame_rate: &str) -> f64 {
-    let frame_rate_vec: Vec<&str> = r_frame_rate.split('/').collect();
+    let frame_rate_vec = r_frame_rate.split('/').collect::<Vec<&str>>();
     let rate: f64 = frame_rate_vec[0].parse().unwrap();
     let factor: f64 = frame_rate_vec[1].parse().unwrap();
     let fps: f64 = rate / factor;
@@ -294,29 +312,24 @@ fn realtime_filter(node: &mut Media, chain: &mut Filters, config: &GlobalConfig,
 
 pub fn filter_chains(config: &GlobalConfig, node: &mut Media) -> Vec<String> {
     let mut filters = Filters::new();
-    let mut audio_map = "1:a".to_string();
-    filters.audio_map = Some(audio_map);
 
-    if let Some(probe) = node.probe.clone() {
+    if let Some(probe) = node.probe.as_ref() {
         if probe.audio_streams.is_some() {
-            audio_map = "0:a".to_string();
-            filters.audio_map = Some(audio_map);
+            filters.audio_map = "0:a".to_string();
         }
 
-        let v_stream = &probe.video_streams.unwrap()[0];
-        let aspect = aspect_calc(&v_stream.display_aspect_ratio, config);
-        let frame_per_sec = fps_calc(&v_stream.r_frame_rate);
+        if let Some(v_streams) = &probe.video_streams.as_ref() {
+            let v_stream = &v_streams[0];
 
-        deinterlace(&v_stream.field_order, &mut filters);
-        pad(aspect, &mut filters, config);
-        fps(frame_per_sec, &mut filters, config);
-        scale(
-            v_stream.width.unwrap(),
-            v_stream.height.unwrap(),
-            aspect,
-            &mut filters,
-            config,
-        );
+            let aspect = aspect_calc(&v_stream.display_aspect_ratio, config);
+            let frame_per_sec = fps_calc(&v_stream.r_frame_rate);
+
+            deinterlace(&v_stream.field_order, &mut filters);
+            pad(aspect, &mut filters, config);
+            fps(frame_per_sec, &mut filters, config);
+            scale(v_stream, aspect, &mut filters, config);
+        }
+
         extend_video(node, &mut filters);
 
         add_audio(node, &mut filters);
@@ -339,8 +352,8 @@ pub fn filter_chains(config: &GlobalConfig, node: &mut Media) -> Vec<String> {
 
     if let Some(v_filters) = filters.video_chain {
         filter_str.push_str(v_filters.as_str());
-        filter_str.push_str(filters.video_map.clone().unwrap().as_str());
-        filter_map.append(&mut vec!["-map".to_string(), filters.video_map.unwrap()]);
+        filter_str.push_str(filters.video_map.clone().as_str());
+        filter_map.append(&mut vec!["-map".to_string(), filters.video_map]);
     } else {
         filter_map.append(&mut vec!["-map".to_string(), "0:v".to_string()]);
     }
@@ -350,10 +363,10 @@ pub fn filter_chains(config: &GlobalConfig, node: &mut Media) -> Vec<String> {
             filter_str.push(';')
         }
         filter_str.push_str(a_filters.as_str());
-        filter_str.push_str(filters.audio_map.clone().unwrap().as_str());
-        filter_map.append(&mut vec!["-map".to_string(), filters.audio_map.unwrap()]);
+        filter_str.push_str(filters.audio_map.clone().as_str());
+        filter_map.append(&mut vec!["-map".to_string(), filters.audio_map]);
     } else {
-        filter_map.append(&mut vec!["-map".to_string(), filters.audio_map.unwrap()]);
+        filter_map.append(&mut vec!["-map".to_string(), filters.audio_map]);
     }
 
     if filter_str.len() > 10 {

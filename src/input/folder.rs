@@ -51,17 +51,15 @@ impl FolderSource {
 
         for entry in WalkDir::new(config.storage.path.clone())
             .into_iter()
-            .filter_map(|e| e.ok())
+            .flat_map(|e| e.ok())
+            .filter(|f| f.path().is_file())
         {
-            if entry.path().is_file() {
-                let ext = file_extension(entry.path());
-
-                if ext.is_some()
-                    && config
-                        .storage
-                        .extensions
-                        .clone()
-                        .contains(&ext.unwrap().to_lowercase())
+            if let Some(ext) = file_extension(entry.path()) {
+                if config
+                    .storage
+                    .extensions
+                    .clone()
+                    .contains(&ext.to_lowercase())
                 {
                     let media = Media::new(0, entry.path().display().to_string(), false);
                     media_list.push(media);

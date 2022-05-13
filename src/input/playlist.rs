@@ -80,30 +80,28 @@ impl CurrentProgram {
         } else if Path::new(&self.json_path.clone().unwrap()).is_file() {
             let mod_time = modified_time(&self.json_path.clone().unwrap());
 
-            if !mod_time
-                .unwrap()
-                .to_string()
-                .eq(&self.json_mod.clone().unwrap())
-            {
-                // when playlist has changed, reload it
-                info!(
-                    "Reload playlist <b><magenta>{}</></b>",
-                    self.json_path.clone().unwrap()
-                );
+            if let Some(m) = mod_time {
+                if !m.to_string().eq(&self.json_mod.clone().unwrap()) {
+                    // when playlist has changed, reload it
+                    info!(
+                        "Reload playlist <b><magenta>{}</></b>",
+                        self.json_path.clone().unwrap()
+                    );
 
-                let json = read_json(
-                    &self.config,
-                    self.json_path.clone(),
-                    self.is_terminated.clone(),
-                    false,
-                    0.0,
-                );
+                    let json = read_json(
+                        &self.config,
+                        self.json_path.clone(),
+                        self.is_terminated.clone(),
+                        false,
+                        0.0,
+                    );
 
-                self.json_mod = json.modified;
-                *self.nodes.lock().unwrap() = json.program;
+                    self.json_mod = json.modified;
+                    *self.nodes.lock().unwrap() = json.program;
 
-                self.get_current_clip();
-                self.index.fetch_add(1, Ordering::SeqCst);
+                    self.get_current_clip();
+                    self.index.fetch_add(1, Ordering::SeqCst);
+                }
             }
         } else {
             error!(

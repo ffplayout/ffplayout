@@ -26,28 +26,30 @@ use crate::utils::GlobalConfig;
 
 /// send log messages to mail recipient
 fn send_mail(cfg: &GlobalConfig, msg: String) {
-    let email = Message::builder()
+    if let Ok(email) = Message::builder()
         .from(cfg.mail.sender_addr.parse().unwrap())
         .to(cfg.mail.recipient.parse().unwrap())
         .subject(cfg.mail.subject.clone())
         .header(header::ContentType::TEXT_PLAIN)
         .body(clean_string(&msg))
-        .unwrap();
+    {
+        let credentials =
+            Credentials::new(cfg.mail.sender_addr.clone(), cfg.mail.sender_pass.clone());
 
-    let credentials = Credentials::new(cfg.mail.sender_addr.clone(), cfg.mail.sender_pass.clone());
+        let mut transporter = SmtpTransport::relay(cfg.mail.smtp_server.clone().as_str());
 
-    let mut transporter = SmtpTransport::relay(cfg.mail.smtp_server.clone().as_str());
+        if cfg.mail.starttls {
+            transporter = SmtpTransport::starttls_relay(cfg.mail.smtp_server.clone().as_str())
+        }
 
-    if cfg.mail.starttls {
-        transporter = SmtpTransport::starttls_relay(cfg.mail.smtp_server.clone().as_str())
-    }
+        let mailer = transporter.unwrap().credentials(credentials).build();
 
-    let mailer = transporter.unwrap().credentials(credentials).build();
-
-    // Send the email
-    match mailer.send(&email) {
-        Ok(_) => (),
-        Err(e) => info!("Could not send email: {:?}", e),
+        // Send the email
+        if let Err(e) = mailer.send(&email) {
+            error!("Could not send email: {:?}", e)
+        }
+    } else {
+        error!("Mail Message failed!")
     }
 }
 

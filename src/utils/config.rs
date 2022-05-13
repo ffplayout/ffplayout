@@ -240,6 +240,7 @@ impl GlobalConfig {
 
         if let Some(folder) = args.folder {
             config.storage.path = folder;
+            config.processing.mode = "folder".into();
         }
 
         if let Some(start) = args.start {

@@ -230,7 +230,6 @@ pub fn json_rpc_server(
                 && request.headers()["authorization"] == auth
             {
                 if request.uri() == "/status" {
-                    println!("{:?}", request.headers().contains_key("authorization"));
                     Response::ok("Server running OK.").into()
                 } else {
                     request.into()
