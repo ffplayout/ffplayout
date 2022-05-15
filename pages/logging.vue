@@ -32,7 +32,7 @@ export default {
     filters: {
         formatStr (text) {
             return text
-                /* eslint-disable  no-control-regex */
+                /* eslint-disable no-control-regex */
                 .replace(/\x1B\[33m(.*?)\x1B\[0m/g, '<span class="log-number">$1</span>')
                 .replace(/\[1m\x1B\[35m(.*?)\[0m\x1B\[22m/g, '<span class="log-addr">$1</span>')
                 .replace(/\[94m(.*?)\[0m/g, '<span class="log-cmd">$1</span>')
