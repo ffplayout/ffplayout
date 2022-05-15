@@ -511,7 +511,7 @@ fn handle_list_end(mut node: Media, total_delta: f64) -> Media {
 
         return node;
     } else {
-        error!("Playlist is not long enough: <yellow>{total_delta:.2}</> seconds needed");
+        warn!("Playlist is not long enough: <yellow>{total_delta:.2}</> seconds needed");
     }
 
     node.process = Some(true);
