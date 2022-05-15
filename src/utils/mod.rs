@@ -313,7 +313,7 @@ pub fn get_delta(config: &GlobalConfig, begin: &f64) -> (f64, f64) {
 /// Check if clip in playlist is in sync with global time.
 pub fn check_sync(config: &GlobalConfig, delta: f64) -> bool {
     if delta.abs() > config.general.stop_threshold && config.general.stop_threshold > 0.0 {
-        error!("Clip begin out of sync for <yellow>{}</> seconds", delta);
+        error!("Clip begin out of sync for <yellow>{delta:.3}</> seconds. Stop playout!");
         return false;
     }
 

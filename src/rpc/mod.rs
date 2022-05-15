@@ -219,6 +219,8 @@ pub fn json_rpc_server(
         Ok(Value::String("No, or wrong parameters set!".to_string()))
     });
 
+    info!("Run JSON RPC server, listening on: <b><magenta>http://{addr}</></b>");
+
     // build rpc server
     let server = ServerBuilder::new(io)
         .cors(DomainsValidation::AllowOnly(vec![
