@@ -32,13 +32,13 @@ export default {
     filters: {
         formatStr (text) {
             return text
-                .replace(/(".*")/g, '<span class="log-cmd">$1</span>')
-                .replace(/(?<!".*)(\/.*)/g, '<span class="log-path">$1</span>')
-                .replace(/(\/[\w\d.\-/]+\n)/g, '<span class="log-path">$1</span>')
-                .replace(/((tcp|https?):\/\/[\w\d.:]+)/g, '<span class="log-url">$1</span>')
-                .replace(/(\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}[0-9,.]+\])/g, '<span class="log-time">$1</span>')
-                .replace(/\[INFO\]/g, '<span class="log-info">[INFO]</span>')
-                .replace(/\[WARNING\]/g, '<span class="log-warning">[WARNING]</span>')
+                /* eslint-disable  no-control-regex */
+                .replace(/\x1B\[33m(.*?)\x1B\[0m/g, '<span class="log-number">$1</span>')
+                .replace(/\[1m\x1B\[35m(.*?)\[0m\x1B\[22m/g, '<span class="log-addr">$1</span>')
+                .replace(/\[94m(.*?)\[0m/g, '<span class="log-cmd">$1</span>')
+                .replace(/(\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}.\d{5}\])/g, '<span class="log-time">$1</span>')
+                .replace(/\[ INFO\]/g, '<span class="log-info">[ INFO]</span>')
+                .replace(/\[ WARN\]/g, '<span class="log-warning">[ WARN]</span>')
                 .replace(/\[ERROR\]/g, '<span class="log-error">[ERROR]</span>')
                 .replace(/\[DEBUG\]/g, '<span class="log-debug">[DEBUG]</span>')
                 .replace(/\[Decoder\]/g, '<span class="log-decoder">[Decoder]</span>')
@@ -107,6 +107,23 @@ export default {
     overflow: hidden
 }
 
+.log-time {
+    color: #666864;
+}
+
+.log-number {
+    color: #e2c317;
+}
+
+.log-addr {
+    color: #ad7fa8;
+    font-weight: 500;
+}
+
+.log-cmd {
+    color: #6c95c2;
+}
+
 .log-content {
     color: #ececec;
     width: 100%;
@@ -116,24 +133,20 @@ export default {
     white-space: pre;
 }
 
-.log-time {
-    color: #a7a7a7;
-}
-
 .log-info {
-    color: #51d1de;
+    color: #8ae234;
 }
 
 .log-warning {
-    color: #e4a428;
+    color: #ff8700;
 }
 
 .log-error {
-    color: #e42e28;
+    color: #d32828;
 }
 
 .log-debug {
-    color: #23e493;
+    color: #6e99c7;
 }
 
 .log-decoder {
@@ -148,15 +161,4 @@ export default {
     color: #23cbdd;
 }
 
-.log-path {
-    color: #e366cf;
-}
-
-.log-url {
-    color: #e3d666;
-}
-
-.log-cmd {
-    color: #f1aa77;
-}
 </style>
