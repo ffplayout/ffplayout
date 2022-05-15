@@ -4,15 +4,15 @@ description = "24/7 playout based on rust and ffmpeg"
 license = "GPL-3.0"
 authors = ["Jonathan Baecker jonbae77@gmail.com"]
 readme = "README.md"
-version = "0.9.5"
+version = "0.9.6"
 edition = "2021"
 
 [dependencies]
-chrono = "0.4"
+chrono = { git = "https://github.com/sbrocket/chrono", branch = "parse-error-kind-public" }
 clap = { version = "3.1", features = ["derive"] }
 crossbeam-channel = "0.5"
 ffprobe = "0.3"
-file-rotate = { git = "https://github.com/jb-alvarado/file-rotate.git" }
+file-rotate = { git = "https://github.com/Ploppz/file-rotate.git", branch = "timestamp-parse-fix" }
 jsonrpc-http-server = "18.0"
 lettre = "0.10.0-rc.6"
 log = "0.4"
