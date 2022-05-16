@@ -25,7 +25,7 @@ use simplelog::*;
 use crate::utils::GlobalConfig;
 
 /// send log messages to mail recipient
-fn send_mail(cfg: &GlobalConfig, msg: String) {
+pub fn send_mail(cfg: &GlobalConfig, msg: String) {
     if let Ok(email) = Message::builder()
         .from(cfg.mail.sender_addr.parse().unwrap())
         .to(cfg.mail.recipient.parse().unwrap())
@@ -138,7 +138,10 @@ fn clean_string(text: &str) -> String {
 /// - console logger
 /// - file logger
 /// - mail logger
-pub fn init_logging(config: &GlobalConfig) -> Vec<Box<dyn SharedLogger>> {
+pub fn init_logging(
+    config: &GlobalConfig,
+    messages: Arc<Mutex<Vec<String>>>,
+) -> Vec<Box<dyn SharedLogger>> {
     let config_clone = config.clone();
     let app_config = config.logging.clone();
     let mut time_level = LevelFilter::Off;
@@ -216,7 +219,6 @@ pub fn init_logging(config: &GlobalConfig) -> Vec<Box<dyn SharedLogger>> {
 
     // set mail logger only the recipient is set in config
     if config.mail.recipient.contains('@') && config.mail.recipient.contains('.') {
-        let messages: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
         let messages_clone = messages.clone();
         let interval = config.mail.interval;
 

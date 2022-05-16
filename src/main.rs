@@ -5,6 +5,7 @@ use std::{
     fs::{self, File},
     path::PathBuf,
     process::exit,
+    sync::{Arc, Mutex},
     thread,
 };
 
@@ -23,8 +24,8 @@ mod utils;
 
 use crate::output::{player, write_hls};
 use crate::utils::{
-    generate_playlist, init_logging, validate_ffmpeg, GlobalConfig, PlayerControl, PlayoutStatus,
-    ProcessControl,
+    generate_playlist, init_logging, send_mail, validate_ffmpeg, GlobalConfig, PlayerControl,
+    PlayoutStatus, ProcessControl,
 };
 use rpc::json_rpc_server;
 
@@ -70,8 +71,9 @@ fn main() {
     let play_control = PlayerControl::new();
     let playout_stat = PlayoutStatus::new();
     let proc_control = ProcessControl::new();
+    let messages = Arc::new(Mutex::new(Vec::new()));
 
-    let logging = init_logging(&config);
+    let logging = init_logging(&config, messages.clone());
     CombinedLogger::init(logging).unwrap();
 
     validate_ffmpeg(&config);
@@ -99,6 +101,10 @@ fn main() {
     } else {
         // play on desktop or stream to a remote target
         player(&config, play_control, playout_stat, proc_control);
+    }
+
+    if messages.lock().unwrap().len() > 0 {
+        send_mail(&config, messages.lock().unwrap().join("\n"));
     }
 
     info!("Playout done...");

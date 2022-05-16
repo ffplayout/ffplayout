@@ -1,4 +1,5 @@
 use std::{
+    sync::{Arc, Mutex},
     thread::{self, sleep},
     time::Duration,
 };
@@ -27,13 +28,14 @@ fn playlist_change_at_midnight() {
     config.playlist.day_start = "00:00:00".into();
     config.playlist.length = "24:00:00".into();
     config.logging.log_to_file = false;
+    let messages = Arc::new(Mutex::new(Vec::new()));
 
     let play_control = PlayerControl::new();
     let playout_stat = PlayoutStatus::new();
     let proc_control = ProcessControl::new();
     let proc_ctl = proc_control.clone();
 
-    let logging = init_logging(&config);
+    let logging = init_logging(&config, messages);
     CombinedLogger::init(logging).unwrap();
 
     mock_time::set_mock_time("2022-05-09T23:59:45");
@@ -52,13 +54,14 @@ fn playlist_change_at_six() {
     config.playlist.day_start = "06:00:00".into();
     config.playlist.length = "24:00:00".into();
     config.logging.log_to_file = false;
+    let messages = Arc::new(Mutex::new(Vec::new()));
 
     let play_control = PlayerControl::new();
     let playout_stat = PlayoutStatus::new();
     let proc_control = ProcessControl::new();
     let proc_ctl = proc_control.clone();
 
-    let logging = init_logging(&config);
+    let logging = init_logging(&config, messages);
     CombinedLogger::init(logging).unwrap();
 
     mock_time::set_mock_time("2022-05-09T05:59:45");

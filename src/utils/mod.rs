@@ -27,7 +27,7 @@ pub use controller::{PlayerControl, PlayoutStatus, ProcessControl, ProcessUnit::
 pub use generator::generate_playlist;
 pub use json_serializer::{read_json, Playlist, DUMMY_LEN};
 pub use json_validate::validate_playlist;
-pub use logging::init_logging;
+pub use logging::{init_logging, send_mail};
 
 use crate::filter::filter_chains;
 
