@@ -103,8 +103,10 @@ fn main() {
         player(&config, play_control, playout_stat, proc_control);
     }
 
-    if messages.lock().unwrap().len() > 0 {
-        send_mail(&config, messages.lock().unwrap().join("\n"));
+    let msg = messages.lock().unwrap();
+
+    if msg.len() > 0 {
+        send_mail(&config, msg.join("\n"));
     }
 
     info!("Playout done...");

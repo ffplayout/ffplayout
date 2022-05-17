@@ -93,20 +93,21 @@ impl FolderSource {
 
     fn shuffle(&mut self) {
         let mut rng = thread_rng();
-        self.nodes.lock().unwrap().shuffle(&mut rng);
+        let mut nodes = self.nodes.lock().unwrap();
 
-        for (index, item) in self.nodes.lock().unwrap().iter_mut().enumerate() {
+        nodes.shuffle(&mut rng);
+
+        for (index, item) in nodes.iter_mut().enumerate() {
             item.index = Some(index);
         }
     }
 
     fn sort(&mut self) {
-        self.nodes
-            .lock()
-            .unwrap()
-            .sort_by(|d1, d2| d1.source.cmp(&d2.source));
+        let mut nodes = self.nodes.lock().unwrap();
 
-        for (index, item) in self.nodes.lock().unwrap().iter_mut().enumerate() {
+        nodes.sort_by(|d1, d2| d1.source.cmp(&d2.source));
+
+        for (index, item) in nodes.iter_mut().enumerate() {
             item.index = Some(index);
         }
     }
