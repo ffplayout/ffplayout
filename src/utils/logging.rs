@@ -103,11 +103,12 @@ impl Log for LogMailer {
             let time_stamp = local.format("[%Y-%m-%d %H:%M:%S%.3f]");
             let level = record.level().to_string().to_uppercase();
             let rec = record.args().to_string();
+            let mut last_msg = self.last_message.lock().unwrap();
 
             // put message only to mail queue when it differs from last message
             // this we do to prevent spamming the mail box
-            if *self.last_message.lock().unwrap() != rec {
-                *self.last_message.lock().unwrap() = rec.clone();
+            if *last_msg != rec {
+                *last_msg = rec.clone();
                 let full_line: String = format!("{time_stamp} [{level: >5}] {rec}");
 
                 self.messages.lock().unwrap().push(full_line);
