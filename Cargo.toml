@@ -6,13 +6,17 @@ authors = ["Jonathan Baecker jonbae77@gmail.com"]
 readme = "README.md"
 version = "0.9.6"
 edition = "2021"
+default-run = "ffplayout"
 
 [dependencies]
+anyhow = "1.0"
 chrono = { git = "https://github.com/sbrocket/chrono", branch = "parse-error-kind-public" }
 clap = { version = "3.1", features = ["derive"] }
 crossbeam-channel = "0.5"
 ffprobe = "0.3"
 file-rotate = { git = "https://github.com/Ploppz/file-rotate.git", branch = "timestamp-parse-fix" }
+horust = "0.1"
+itertools = "0.10"
 jsonrpc-http-server = "18.0"
 lettre = "0.10.0-rc.6"
 log = "0.4"
@@ -33,6 +37,10 @@ openssl = { version = "0.10", features = ["vendored"] }
 [[bin]]
 name = "ffplayout"
 path = "src/main.rs"
+
+[[bin]]
+name = "ffpc"
+path = "src/bin/ffpc.rs"
 
 [profile.release]
 opt-level = 3

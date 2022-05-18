@@ -1,0 +1,17 @@
+command = "/usr/bin/ffplayout -o stream"
+start-delay = "0s"
+user = "${USER}"
+
+[restart]
+strategy = "always"
+backoff = "1s"
+attempts = 5
+
+[termination]
+signal = "TERM"
+wait = "0s"
+
+[environment]
+keep-env = true
+re-export = ["PATH"]
+additional = { FONTCONFIG_PATH = "/etc/fonts" }

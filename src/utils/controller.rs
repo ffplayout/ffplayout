@@ -60,6 +60,12 @@ impl ProcessControl {
     }
 }
 
+impl Default for ProcessControl {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ProcessControl {
     pub fn kill(&mut self, proc: ProcessUnit) -> Result<(), String> {
         match proc {
@@ -169,6 +175,12 @@ impl PlayerControl {
     }
 }
 
+impl Default for PlayerControl {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Global playout control, for move forward/backward clip, or resetting playlist/state.
 #[derive(Clone, Debug)]
 pub struct PlayoutStatus {
@@ -186,5 +198,11 @@ impl PlayoutStatus {
             current_date: Arc::new(Mutex::new(String::new())),
             list_init: Arc::new(AtomicBool::new(true)),
         }
+    }
+}
+
+impl Default for PlayoutStatus {
+    fn default() -> Self {
+        Self::new()
     }
 }
