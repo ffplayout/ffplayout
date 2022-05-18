@@ -1,9 +1,9 @@
 command = "/usr/bin/ffplayout -o stream"
-start-delay = "0s"
+start-delay = "1s"
 user = "${USER}"
 
 [restart]
-strategy = "always"
+strategy = "on-failure"
 backoff = "1s"
 attempts = 5
 

@@ -1,0 +1,14 @@
+[Unit]
+Description=ffplayout process control
+After=network.target remote-fs.target
+
+[Service]
+ExecStart= /usr/bin/ffpc
+ExecReload=/bin/kill -1 $MAINPID
+Restart=always
+RestartSec=1
+User=www-data
+Group=www-data
+
+[Install]
+WantedBy=multi-user.target
