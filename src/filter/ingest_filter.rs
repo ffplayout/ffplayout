@@ -8,6 +8,7 @@ fn audio_filter(config: &GlobalConfig) -> String {
     let mut audio_chain = ";[0:a]afade=in:st=0:d=0.5".to_string();
 
     if config.processing.loudnorm_ingest {
+        audio_chain.push(',');
         audio_chain.push_str(&a_loudnorm::filter_node(config));
     }
 

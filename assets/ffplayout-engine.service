@@ -1,5 +1,5 @@
 [Unit]
-Description=Rust based 24/7 playout solution
+Description=Rust and ffmpeg based playout solution
 After=network.target remote-fs.target
 
 [Service]

@@ -3,7 +3,7 @@ extern crate simplelog;
 
 use std::{
     path::Path,
-    sync::{Arc, Mutex},
+    sync::{atomic::Ordering, Arc, Mutex},
     thread::{self, sleep},
     time::Duration,
 };
@@ -22,40 +22,47 @@ use log::{Level, LevelFilter, Log, Metadata, Record};
 use regex::Regex;
 use simplelog::*;
 
-use crate::utils::GlobalConfig;
+use crate::utils::{GlobalConfig, ProcessControl};
 
 /// send log messages to mail recipient
-fn send_mail(cfg: &GlobalConfig, msg: String) {
-    let email = Message::builder()
+pub fn send_mail(cfg: &GlobalConfig, msg: String) {
+    if let Ok(email) = Message::builder()
         .from(cfg.mail.sender_addr.parse().unwrap())
         .to(cfg.mail.recipient.parse().unwrap())
         .subject(cfg.mail.subject.clone())
         .header(header::ContentType::TEXT_PLAIN)
         .body(clean_string(&msg))
-        .unwrap();
+    {
+        let credentials =
+            Credentials::new(cfg.mail.sender_addr.clone(), cfg.mail.sender_pass.clone());
 
-    let credentials = Credentials::new(cfg.mail.sender_addr.clone(), cfg.mail.sender_pass.clone());
+        let mut transporter = SmtpTransport::relay(cfg.mail.smtp_server.clone().as_str());
 
-    let mut transporter = SmtpTransport::relay(cfg.mail.smtp_server.clone().as_str());
+        if cfg.mail.starttls {
+            transporter = SmtpTransport::starttls_relay(cfg.mail.smtp_server.clone().as_str())
+        }
 
-    if cfg.mail.starttls {
-        transporter = SmtpTransport::starttls_relay(cfg.mail.smtp_server.clone().as_str())
-    }
+        let mailer = transporter.unwrap().credentials(credentials).build();
 
-    let mailer = transporter.unwrap().credentials(credentials).build();
-
-    // Send the email
-    match mailer.send(&email) {
-        Ok(_) => (),
-        Err(e) => info!("Could not send email: {:?}", e),
+        // Send the email
+        if let Err(e) = mailer.send(&email) {
+            error!("Could not send email: {:?}", e)
+        }
+    } else {
+        error!("Mail Message failed!")
     }
 }
 
 /// Basic Mail Queue
 ///
 /// Check every give seconds for messages and send them.
-fn mail_queue(cfg: GlobalConfig, messages: Arc<Mutex<Vec<String>>>, interval: u64) {
-    loop {
+fn mail_queue(
+    cfg: GlobalConfig,
+    proc_ctl: ProcessControl,
+    messages: Arc<Mutex<Vec<String>>>,
+    interval: u64,
+) {
+    while !proc_ctl.is_terminated.load(Ordering::SeqCst) {
         if messages.lock().unwrap().len() > 0 {
             let msg = messages.lock().unwrap().join("\n");
             send_mail(&cfg, msg);
@@ -72,6 +79,7 @@ pub struct LogMailer {
     level: LevelFilter,
     pub config: Config,
     messages: Arc<Mutex<Vec<String>>>,
+    last_message: Arc<Mutex<String>>,
 }
 
 impl LogMailer {
@@ -84,6 +92,7 @@ impl LogMailer {
             level: log_level,
             config,
             messages,
+            last_message: Arc::new(Mutex::new(String::new())),
         })
     }
 }
@@ -99,9 +108,16 @@ impl Log for LogMailer {
             let time_stamp = local.format("[%Y-%m-%d %H:%M:%S%.3f]");
             let level = record.level().to_string().to_uppercase();
             let rec = record.args().to_string();
-            let full_line: String = format!("{time_stamp} [{level: >5}] {rec}");
+            let mut last_msg = self.last_message.lock().unwrap();
 
-            self.messages.lock().unwrap().push(full_line);
+            // put message only to mail queue when it differs from last message
+            // this we do to prevent spamming the mail box
+            if *last_msg != rec {
+                *last_msg = rec.clone();
+                let full_line: String = format!("{time_stamp} [{level: >5}] {rec}");
+
+                self.messages.lock().unwrap().push(full_line);
+            }
         }
     }
 
@@ -136,7 +152,11 @@ fn clean_string(text: &str) -> String {
 /// - console logger
 /// - file logger
 /// - mail logger
-pub fn init_logging(config: &GlobalConfig) -> Vec<Box<dyn SharedLogger>> {
+pub fn init_logging(
+    config: &GlobalConfig,
+    proc_ctl: ProcessControl,
+    messages: Arc<Mutex<Vec<String>>>,
+) -> Vec<Box<dyn SharedLogger>> {
     let config_clone = config.clone();
     let app_config = config.logging.clone();
     let mut time_level = LevelFilter::Off;
@@ -214,11 +234,10 @@ pub fn init_logging(config: &GlobalConfig) -> Vec<Box<dyn SharedLogger>> {
 
     // set mail logger only the recipient is set in config
     if config.mail.recipient.contains('@') && config.mail.recipient.contains('.') {
-        let messages: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
         let messages_clone = messages.clone();
         let interval = config.mail.interval;
 
-        thread::spawn(move || mail_queue(config_clone, messages_clone, interval));
+        thread::spawn(move || mail_queue(config_clone, proc_ctl, messages_clone, interval));
 
         let mail_config = log_config.build();
 

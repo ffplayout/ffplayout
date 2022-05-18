@@ -80,30 +80,28 @@ impl CurrentProgram {
         } else if Path::new(&self.json_path.clone().unwrap()).is_file() {
             let mod_time = modified_time(&self.json_path.clone().unwrap());
 
-            if !mod_time
-                .unwrap()
-                .to_string()
-                .eq(&self.json_mod.clone().unwrap())
-            {
-                // when playlist has changed, reload it
-                info!(
-                    "Reload playlist <b><magenta>{}</></b>",
-                    self.json_path.clone().unwrap()
-                );
+            if let Some(m) = mod_time {
+                if !m.to_string().eq(&self.json_mod.clone().unwrap()) {
+                    // when playlist has changed, reload it
+                    info!(
+                        "Reload playlist <b><magenta>{}</></b>",
+                        self.json_path.clone().unwrap()
+                    );
 
-                let json = read_json(
-                    &self.config,
-                    self.json_path.clone(),
-                    self.is_terminated.clone(),
-                    false,
-                    0.0,
-                );
+                    let json = read_json(
+                        &self.config,
+                        self.json_path.clone(),
+                        self.is_terminated.clone(),
+                        false,
+                        0.0,
+                    );
 
-                self.json_mod = json.modified;
-                *self.nodes.lock().unwrap() = json.program;
+                    self.json_mod = json.modified;
+                    *self.nodes.lock().unwrap() = json.program;
 
-                self.get_current_clip();
-                self.index.fetch_add(1, Ordering::SeqCst);
+                    self.get_current_clip();
+                    self.index.fetch_add(1, Ordering::SeqCst);
+                }
             }
         } else {
             error!(
@@ -211,14 +209,14 @@ impl CurrentProgram {
     // On init or reload we need to seek for the current clip.
     fn get_current_clip(&mut self) {
         let mut time_sec = self.get_current_time();
+        let shift = self.playout_stat.time_shift.lock().unwrap();
 
         if *self.playout_stat.current_date.lock().unwrap()
             == *self.playout_stat.date.lock().unwrap()
-            && *self.playout_stat.time_shift.lock().unwrap() != 0.0
+            && *shift != 0.0
         {
-            let shift = *self.playout_stat.time_shift.lock().unwrap();
-            info!("Shift playlist start for <yellow>{shift}</> seconds");
-            time_sec += shift;
+            info!("Shift playlist start for <yellow>{}</> seconds", *shift);
+            time_sec += *shift;
         }
 
         for (i, item) in self.nodes.lock().unwrap().iter_mut().enumerate() {
@@ -513,7 +511,7 @@ fn handle_list_end(mut node: Media, total_delta: f64) -> Media {
 
         return node;
     } else {
-        error!("Playlist is not long enough: <yellow>{total_delta:.2}</> seconds needed");
+        warn!("Playlist is not long enough: <yellow>{total_delta:.2}</> seconds needed");
     }
 
     node.process = Some(true);

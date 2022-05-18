@@ -1,17 +1,13 @@
-use chrono::prelude::*;
-use chrono::Duration;
-use ffprobe::{ffprobe, Format, Stream};
 use std::{
-    fs,
-    fs::metadata,
+    fs::{self, metadata},
     io::{BufRead, BufReader, Error},
     path::Path,
-    process::exit,
-    process::{ChildStderr, Command, Stdio},
-    time,
-    time::UNIX_EPOCH,
+    process::{exit, ChildStderr, Command, Stdio},
+    time::{self, UNIX_EPOCH},
 };
 
+use chrono::{prelude::*, Duration};
+use ffprobe::{ffprobe, Format, Stream};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -31,7 +27,7 @@ pub use controller::{PlayerControl, PlayoutStatus, ProcessControl, ProcessUnit::
 pub use generator::generate_playlist;
 pub use json_serializer::{read_json, Playlist, DUMMY_LEN};
 pub use json_validate::validate_playlist;
-pub use logging::init_logging;
+pub use logging::{init_logging, send_mail};
 
 use crate::filter::filter_chains;
 
@@ -73,16 +69,19 @@ pub struct Media {
 
 impl Media {
     pub fn new(index: usize, src: String, do_probe: bool) -> Self {
-        let mut duration: f64 = 0.0;
+        let mut duration = 0.0;
         let mut probe = None;
 
         if do_probe && Path::new(&src).is_file() {
             probe = Some(MediaProbe::new(src.clone()));
 
-            duration = match probe.clone().unwrap().format.unwrap().duration {
-                Some(dur) => dur.parse().unwrap(),
-                None => 0.0,
-            };
+            if let Some(dur) = probe
+                .as_ref()
+                .and_then(|p| p.format.as_ref())
+                .and_then(|f| f.duration.as_ref())
+            {
+                duration = dur.parse().unwrap()
+            }
         }
 
         Self {
@@ -107,14 +106,17 @@ impl Media {
             let probe = MediaProbe::new(self.source.clone());
             self.probe = Some(probe.clone());
 
-            if self.duration == 0.0 {
-                let duration = match probe.format.unwrap().duration {
-                    Some(dur) => dur.parse().unwrap(),
-                    None => 0.0,
-                };
+            if let Some(dur) = probe
+                .format
+                .and_then(|f| f.duration)
+                .map(|d| d.parse().unwrap())
+                .filter(|d| !is_close(*d, self.duration, 0.5))
+            {
+                self.duration = dur;
 
-                self.out = duration;
-                self.duration = duration;
+                if self.out == 0.0 {
+                    self.out = dur;
+                }
             }
         }
     }
@@ -136,25 +138,22 @@ pub struct MediaProbe {
 impl MediaProbe {
     fn new(input: String) -> Self {
         let probe = ffprobe(&input);
-        let mut a_stream: Vec<Stream> = vec![];
-        let mut v_stream: Vec<Stream> = vec![];
+        let mut a_stream = vec![];
+        let mut v_stream = vec![];
 
         match probe {
             Ok(obj) => {
                 for stream in obj.streams {
                     let cp_stream = stream.clone();
-                    match cp_stream.codec_type {
-                        Some(codec_type) => {
-                            if codec_type == "audio" {
-                                a_stream.push(stream)
-                            } else if codec_type == "video" {
-                                v_stream.push(stream)
-                            }
-                        }
 
-                        _ => {
-                            error!("No codec type found for stream: {stream:?}")
+                    if let Some(c_type) = cp_stream.codec_type {
+                        match c_type.as_str() {
+                            "audio" => a_stream.push(stream),
+                            "video" => v_stream.push(stream),
+                            _ => {}
                         }
+                    } else {
+                        error!("No codec type found for stream: {stream:?}")
                     }
                 }
 
@@ -191,15 +190,13 @@ impl MediaProbe {
 ///
 /// The status file is init in main function and mostly modified in RPC server.
 pub fn write_status(config: &GlobalConfig, date: &str, shift: f64) {
-    let stat_file = config.general.stat_file.clone();
-
     let data = json!({
         "time_shift": shift,
         "date": date,
     });
 
     let status_data: String = serde_json::to_string(&data).expect("Serialize status data failed");
-    if let Err(e) = fs::write(stat_file, &status_data) {
+    if let Err(e) = fs::write(&config.general.stat_file, &status_data) {
         error!("Unable to write file: {e:?}")
     };
 }
@@ -238,9 +235,7 @@ pub fn get_date(seek: bool, start: f64, next_start: f64) -> String {
 
 /// Get file modification time.
 pub fn modified_time(path: &str) -> Option<DateTime<Local>> {
-    let metadata = metadata(path).unwrap();
-
-    if let Ok(time) = metadata.modified() {
+    if let Ok(time) = metadata(path).and_then(|metadata| metadata.modified()) {
         let date_time: DateTime<Local> = time.into();
         return Some(date_time);
     }
@@ -318,7 +313,7 @@ pub fn get_delta(config: &GlobalConfig, begin: &f64) -> (f64, f64) {
 /// Check if clip in playlist is in sync with global time.
 pub fn check_sync(config: &GlobalConfig, delta: f64) -> bool {
     if delta.abs() > config.general.stop_threshold && config.general.stop_threshold > 0.0 {
-        error!("Clip begin out of sync for <yellow>{}</> seconds", delta);
+        error!("Clip begin out of sync for <yellow>{delta:.3}</> seconds. Stop playout!");
         return false;
     }
 
@@ -523,10 +518,11 @@ pub mod mock_time {
     }
 
     pub fn set_mock_time(date_time: &str) {
-        let date_obj = NaiveDateTime::parse_from_str(date_time, "%Y-%m-%dT%H:%M:%S");
-        let time = Local.from_local_datetime(&date_obj.unwrap()).unwrap();
+        if let Ok(d) = NaiveDateTime::parse_from_str(date_time, "%Y-%m-%dT%H:%M:%S") {
+            let time = Local.from_local_datetime(&d).unwrap();
 
-        DATE_TIME_DIFF.with(|cell| *cell.borrow_mut() = Some(Local::now() - time));
+            DATE_TIME_DIFF.with(|cell| *cell.borrow_mut() = Some(Local::now() - time));
+        }
     }
 }
 

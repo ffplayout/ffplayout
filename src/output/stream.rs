@@ -1,7 +1,4 @@
-use std::{
-    process,
-    process::{Command, Stdio},
-};
+use std::process::{self, Command, Stdio};
 
 use simplelog::*;
 

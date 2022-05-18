@@ -17,8 +17,7 @@ pub use hls::write_hls;
 
 use crate::input::{ingest_server, source_generator};
 use crate::utils::{
-    sec_to_time, stderr_reader, Decoder, Encoder, GlobalConfig, PlayerControl, PlayoutStatus,
-    ProcessControl,
+    sec_to_time, stderr_reader, Decoder, GlobalConfig, PlayerControl, PlayoutStatus, ProcessControl,
 };
 use crate::vec_strings;
 
@@ -202,9 +201,7 @@ pub fn player(
 
     sleep(Duration::from_secs(1));
 
-    if let Err(e) = proc_control.kill(Encoder) {
-        error!("{e}")
-    }
+    proc_control.kill_all();
 
     if let Err(e) = error_encoder_thread.join() {
         error!("{e:?}");

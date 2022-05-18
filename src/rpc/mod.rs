@@ -71,12 +71,13 @@ pub fn json_rpc_server(
             let mut time_shift = playout_stat.time_shift.lock().unwrap();
             let current_date = playout_stat.current_date.lock().unwrap().clone();
             let mut date = playout_stat.date.lock().unwrap();
+            let current_list = play_control.current_list.lock().unwrap();
 
             // get next clip
             if map.contains_key("control") && &map["control"] == "next" {
                 let index = play_control.index.load(Ordering::SeqCst);
 
-                if index < play_control.current_list.lock().unwrap().len() {
+                if index < current_list.len() {
                     if let Some(proc) = proc.decoder_term.lock().unwrap().as_mut() {
                         if let Err(e) = proc.kill() {
                             error!("Decoder {e:?}")
@@ -89,7 +90,7 @@ pub fn json_rpc_server(
                         info!("Move to next clip");
 
                         let mut data_map = Map::new();
-                        let mut media = play_control.current_list.lock().unwrap()[index].clone();
+                        let mut media = current_list[index].clone();
                         media.add_probe();
 
                         let (delta, _) = get_delta(&config, &media.begin.unwrap_or(0.0));
@@ -114,7 +115,7 @@ pub fn json_rpc_server(
             if map.contains_key("control") && &map["control"] == "back" {
                 let index = play_control.index.load(Ordering::SeqCst);
 
-                if index > 1 && play_control.current_list.lock().unwrap().len() > 1 {
+                if index > 1 && current_list.len() > 1 {
                     if let Some(proc) = proc.decoder_term.lock().unwrap().as_mut() {
                         if let Err(e) = proc.kill() {
                             error!("Decoder {e:?}")
@@ -126,8 +127,7 @@ pub fn json_rpc_server(
 
                         info!("Move to last clip");
                         let mut data_map = Map::new();
-                        let mut media =
-                            play_control.current_list.lock().unwrap()[index - 2].clone();
+                        let mut media = current_list[index - 2].clone();
                         play_control.index.fetch_sub(2, Ordering::SeqCst);
                         media.add_probe();
 
@@ -189,8 +189,8 @@ pub fn json_rpc_server(
             if map.contains_key("media") && &map["media"] == "next" {
                 let index = play_control.index.load(Ordering::SeqCst);
 
-                if index < play_control.current_list.lock().unwrap().len() {
-                    let media = play_control.current_list.lock().unwrap()[index].clone();
+                if index < current_list.len() {
+                    let media = current_list[index].clone();
 
                     let data_map = get_data_map(&config, media);
 
@@ -204,8 +204,8 @@ pub fn json_rpc_server(
             if map.contains_key("media") && &map["media"] == "last" {
                 let index = play_control.index.load(Ordering::SeqCst);
 
-                if index > 1 && index - 2 < play_control.current_list.lock().unwrap().len() {
-                    let media = play_control.current_list.lock().unwrap()[index - 2].clone();
+                if index > 1 && index - 2 < current_list.len() {
+                    let media = current_list[index - 2].clone();
 
                     let data_map = get_data_map(&config, media);
 
@@ -219,6 +219,8 @@ pub fn json_rpc_server(
         Ok(Value::String("No, or wrong parameters set!".to_string()))
     });
 
+    info!("Run JSON RPC server, listening on: <b><magenta>http://{addr}</></b>");
+
     // build rpc server
     let server = ServerBuilder::new(io)
         .cors(DomainsValidation::AllowOnly(vec![
@@ -230,7 +232,6 @@ pub fn json_rpc_server(
                 && request.headers()["authorization"] == auth
             {
                 if request.uri() == "/status" {
-                    println!("{:?}", request.headers().contains_key("authorization"));
                     Response::ok("Server running OK.").into()
                 } else {
                     request.into()

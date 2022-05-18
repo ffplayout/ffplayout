@@ -138,22 +138,25 @@ impl GlobalConfig {
     /// Read config from YAML file, and set some extra config values.
     pub fn new() -> Self {
         let args = get_args();
-        let mut config_path = match env::current_exe() {
-            Ok(path) => path.parent().unwrap().join("ffplayout.yml"),
-            Err(_) => PathBuf::from("./ffplayout.yml"),
-        };
+        let mut config_path = PathBuf::from("/etc/ffplayout/ffplayout.yml");
 
         if let Some(cfg) = args.config {
             config_path = PathBuf::from(cfg);
-        } else if Path::new("/etc/ffplayout/ffplayout.yml").is_file() {
-            config_path = PathBuf::from("/etc/ffplayout/ffplayout.yml");
+        }
+
+        if !config_path.is_file() {
+            if Path::new("./assets/ffplayout.yml").is_file() {
+                config_path = PathBuf::from("./assets/ffplayout.yml")
+            } else if let Some(p) = env::current_exe().ok().as_ref().and_then(|op| op.parent()) {
+                config_path = p.join("ffplayout.yml")
+            };
         }
 
         let f = match File::open(&config_path) {
             Ok(file) => file,
-            Err(err) => {
+            Err(_) => {
                 println!(
-                    "{config_path:?} doesn't exists!\nPut \"ffplayout.yml\" in \"/etc/playout/\" or beside the executable!\n\nSystem error: {err}"
+                    "{config_path:?} doesn't exists!\nPut \"ffplayout.yml\" in \"/etc/playout/\" or beside the executable!"
                 );
                 process::exit(0x0100);
             }
@@ -237,6 +240,7 @@ impl GlobalConfig {
 
         if let Some(folder) = args.folder {
             config.storage.path = folder;
+            config.processing.mode = "folder".into();
         }
 
         if let Some(start) = args.start {
