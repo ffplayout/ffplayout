@@ -71,9 +71,10 @@ fn main() {
     let play_control = PlayerControl::new();
     let playout_stat = PlayoutStatus::new();
     let proc_control = ProcessControl::new();
+    let proc_ctl = proc_control.clone();
     let messages = Arc::new(Mutex::new(Vec::new()));
 
-    let logging = init_logging(&config, messages.clone());
+    let logging = init_logging(&config, proc_ctl, messages.clone());
     CombinedLogger::init(logging).unwrap();
 
     validate_ffmpeg(&config);

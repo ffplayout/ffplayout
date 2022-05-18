@@ -3,7 +3,7 @@ use std::{
     path::Path,
     process::exit,
     sync::{
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
         mpsc::channel,
         {Arc, Mutex},
     },
@@ -162,7 +162,11 @@ fn file_extension(filename: &Path) -> Option<&str> {
 /// Create a watcher, which monitor file changes.
 /// When a change is register, update the current file list.
 /// This makes it possible, to play infinitely and and always new files to it.
-pub fn watchman(config: GlobalConfig, sources: Arc<Mutex<Vec<Media>>>) {
+pub fn watchman(
+    config: GlobalConfig,
+    is_terminated: Arc<AtomicBool>,
+    sources: Arc<Mutex<Vec<Media>>>,
+) {
     let (tx, rx) = channel();
 
     let path = config.storage.path;
@@ -175,7 +179,7 @@ pub fn watchman(config: GlobalConfig, sources: Arc<Mutex<Vec<Media>>>) {
     let mut watcher = watcher(tx, Duration::from_secs(1)).unwrap();
     watcher.watch(path, RecursiveMode::Recursive).unwrap();
 
-    loop {
+    while !is_terminated.load(Ordering::SeqCst) {
         if let Ok(res) = rx.try_recv() {
             match res {
                 Create(new_path) => {

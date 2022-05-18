@@ -40,7 +40,7 @@ pub fn source_generator(
             let node_clone = folder_source.nodes.clone();
 
             // Spawn a thread to monitor folder for file changes.
-            thread::spawn(move || watchman(config_clone, node_clone));
+            thread::spawn(move || watchman(config_clone, is_terminated.clone(), node_clone));
 
             Box::new(folder_source) as Box<dyn Iterator<Item = Media>>
         }

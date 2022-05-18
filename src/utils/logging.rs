@@ -3,7 +3,7 @@ extern crate simplelog;
 
 use std::{
     path::Path,
-    sync::{Arc, Mutex},
+    sync::{atomic::Ordering, Arc, Mutex},
     thread::{self, sleep},
     time::Duration,
 };
@@ -22,7 +22,7 @@ use log::{Level, LevelFilter, Log, Metadata, Record};
 use regex::Regex;
 use simplelog::*;
 
-use crate::utils::GlobalConfig;
+use crate::utils::{GlobalConfig, ProcessControl};
 
 /// send log messages to mail recipient
 pub fn send_mail(cfg: &GlobalConfig, msg: String) {
@@ -56,8 +56,13 @@ pub fn send_mail(cfg: &GlobalConfig, msg: String) {
 /// Basic Mail Queue
 ///
 /// Check every give seconds for messages and send them.
-fn mail_queue(cfg: GlobalConfig, messages: Arc<Mutex<Vec<String>>>, interval: u64) {
-    loop {
+fn mail_queue(
+    cfg: GlobalConfig,
+    proc_ctl: ProcessControl,
+    messages: Arc<Mutex<Vec<String>>>,
+    interval: u64,
+) {
+    while !proc_ctl.is_terminated.load(Ordering::SeqCst) {
         if messages.lock().unwrap().len() > 0 {
             let msg = messages.lock().unwrap().join("\n");
             send_mail(&cfg, msg);
@@ -149,6 +154,7 @@ fn clean_string(text: &str) -> String {
 /// - mail logger
 pub fn init_logging(
     config: &GlobalConfig,
+    proc_ctl: ProcessControl,
     messages: Arc<Mutex<Vec<String>>>,
 ) -> Vec<Box<dyn SharedLogger>> {
     let config_clone = config.clone();
@@ -231,7 +237,7 @@ pub fn init_logging(
         let messages_clone = messages.clone();
         let interval = config.mail.interval;
 
-        thread::spawn(move || mail_queue(config_clone, messages_clone, interval));
+        thread::spawn(move || mail_queue(config_clone, proc_ctl, messages_clone, interval));
 
         let mail_config = log_config.build();
 

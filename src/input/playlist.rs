@@ -209,14 +209,14 @@ impl CurrentProgram {
     // On init or reload we need to seek for the current clip.
     fn get_current_clip(&mut self) {
         let mut time_sec = self.get_current_time();
+        let shift = self.playout_stat.time_shift.lock().unwrap();
 
         if *self.playout_stat.current_date.lock().unwrap()
             == *self.playout_stat.date.lock().unwrap()
-            && *self.playout_stat.time_shift.lock().unwrap() != 0.0
+            && *shift != 0.0
         {
-            let shift = *self.playout_stat.time_shift.lock().unwrap();
-            info!("Shift playlist start for <yellow>{shift}</> seconds");
-            time_sec += shift;
+            info!("Shift playlist start for <yellow>{}</> seconds", *shift);
+            time_sec += *shift;
         }
 
         for (i, item) in self.nodes.lock().unwrap().iter_mut().enumerate() {
