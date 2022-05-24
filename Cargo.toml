@@ -35,10 +35,6 @@ openssl = { version = "0.10", features = ["vendored"] }
 name = "ffplayout"
 path = "src/main.rs"
 
-[[bin]]
-name = "ffpc"
-path = "src/bin/ffpc.rs"
-
 [profile.release]
 opt-level = 3
 strip = true

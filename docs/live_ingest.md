@@ -10,7 +10,7 @@ It works in a way, that it crate a ffmpeg instance in _listen_ (_server_) mode. 
 
 Have in mind, that the ingest mode **can't** pull from a server, it only can act as its own server and listen for income.
 
-When it notice a incoming stream, it will stop the playlist playing and continue the live source. The output will not interrupt, so you have a continuously output stream.
+When it notice a incoming stream, it will stop the current playing and continue the live source. The output will not interrupt, so you have a continuously output stream.
 
 In rare cases it can happen, that for a short moment after switching the image freezes, but then it will continue. Also a short frame flickering can happen.
 
