@@ -2,11 +2,11 @@ name: rust
 on: [push, pull_request]
 jobs:
   build:
-#    strategy:
-#      matrix:
-#        os: [ubuntu-latest, macOS-latest, windows-latest]
-#    runs-on: ${{ matrix.os }}
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macOS-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+#    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
       - run: rustup update stable
@@ -14,8 +14,8 @@ jobs:
         uses: actions/cache@v1
         with:
           path: target
-#          key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
-          key: ubuntu-latest-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
+#          key: ubuntu-latest-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
       - run: rustup component add rustfmt
       - run: rustup component add clippy
       - run: cargo build --all-features
