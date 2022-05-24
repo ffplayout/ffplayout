@@ -1,6 +1,3 @@
-extern crate log;
-extern crate simplelog;
-
 use std::{
     fs::{self, File},
     path::PathBuf,
@@ -13,21 +10,14 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use simplelog::*;
 
-mod filter;
-mod input;
-mod macros;
-mod output;
-mod rpc;
-#[cfg(test)]
-mod tests;
-mod utils;
-
-use crate::output::{player, write_hls};
-use crate::utils::{
-    generate_playlist, init_logging, send_mail, validate_ffmpeg, GlobalConfig, PlayerControl,
-    PlayoutStatus, ProcessControl,
+use ffplayout_engine::{
+    output::{player, write_hls},
+    rpc::json_rpc_server,
+    utils::{
+        generate_playlist, init_logging, send_mail, validate_ffmpeg, GlobalConfig, PlayerControl,
+        PlayoutStatus, ProcessControl,
+    },
 };
-use rpc::json_rpc_server;
 
 #[derive(Serialize, Deserialize)]
 struct StatusData {

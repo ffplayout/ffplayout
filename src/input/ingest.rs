@@ -40,7 +40,7 @@ pub fn ingest_server(
         server_cmd.join(" ")
     );
 
-    'ingest_iter: loop {
+    while !proc_control.is_terminated.load(Ordering::SeqCst) {
         let mut server_proc = match Command::new("ffmpeg")
             .args(server_cmd.clone())
             .stdout(Stdio::piped())
@@ -79,7 +79,7 @@ pub fn ingest_server(
                     error!("Ingest server write error: {e:?}");
 
                     proc_control.is_terminated.store(true, Ordering::SeqCst);
-                    break 'ingest_iter;
+                    break;
                 }
             } else {
                 break;
@@ -98,10 +98,6 @@ pub fn ingest_server(
         if let Err(e) = error_reader_thread.join() {
             error!("{e:?}");
         };
-
-        if proc_control.is_terminated.load(Ordering::SeqCst) {
-            break;
-        }
     }
 
     Ok(())
