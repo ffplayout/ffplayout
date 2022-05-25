@@ -28,10 +28,10 @@ use std::{
 use simplelog::*;
 
 use crate::filter::ingest_filter::filter_cmd;
-use crate::input::source_generator;
+use crate::input::{ingest::log_line, source_generator};
 use crate::utils::{
-    format_log_line, sec_to_time, stderr_reader, Decoder, GlobalConfig, Ingest, PlayerControl,
-    PlayoutStatus, ProcessControl,
+    sec_to_time, stderr_reader, Decoder, GlobalConfig, Ingest, PlayerControl, PlayoutStatus,
+    ProcessControl,
 };
 use crate::vec_strings;
 
@@ -42,6 +42,7 @@ fn ingest_to_hls_server(
     mut proc_control: ProcessControl,
 ) -> Result<(), Error> {
     let playlist_init = playout_stat.list_init;
+    let level = config.logging.ffmpeg_level.clone();
 
     let mut server_cmd = vec_strings!["-hide_banner", "-nostats", "-v", "level+info"];
     let stream_input = config.ingest.input_cmd.clone().unwrap();
@@ -70,7 +71,7 @@ fn ingest_to_hls_server(
         {
             Err(e) => {
                 error!("couldn't spawn ingest server: {e}");
-                panic!("couldn't spawn ingest server: {e}")
+                panic!("couldn't spawn ingest server: {e}");
             }
             Ok(proc) => proc,
         };
@@ -81,6 +82,12 @@ fn ingest_to_hls_server(
 
         for line in server_err.lines() {
             let line = line?;
+
+            if line.contains("rtmp") && line.contains("Unexpected stream") {
+                if let Err(e) = proc_ctl.kill(Ingest) {
+                    error!("{e}");
+                };
+            }
 
             if !is_running {
                 proc_control.server_is_running.store(true, Ordering::SeqCst);
@@ -94,21 +101,7 @@ fn ingest_to_hls_server(
                 }
             }
 
-            if line.contains("[error]")
-                && !line.contains("Input/output error")
-                && !line.contains("Broken pipe")
-            {
-                error!(
-                    "<bright black>[server]</> {}",
-                    format_log_line(line.clone(), "error")
-                );
-            }
-
-            if line.contains("rtmp") && line.contains("Unexpected stream") {
-                if let Err(e) = proc_ctl.kill(Ingest) {
-                    error!("{e}");
-                };
-            }
+            log_line(line, &level);
         }
 
         info!("Switch from live ingest to {}", config.processing.mode);

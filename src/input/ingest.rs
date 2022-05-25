@@ -12,6 +12,30 @@ use crate::filter::ingest_filter::filter_cmd;
 use crate::utils::{format_log_line, GlobalConfig, Ingest, ProcessControl};
 use crate::vec_strings;
 
+pub fn log_line(line: String, level: &str) {
+    if line.contains("[info]") && level.to_lowercase() == "info" {
+        info!(
+            "<bright black>[Server]</> {}",
+            format_log_line(line, "info")
+        )
+    } else if line.contains("[warning]")
+        && (level.to_lowercase() == "warning" || level.to_lowercase() == "info")
+    {
+        warn!(
+            "<bright black>[Server]</> {}",
+            format_log_line(line, "warning")
+        )
+    } else if line.contains("[error]")
+        && !line.contains("Input/output error")
+        && !line.contains("Broken pipe")
+    {
+        error!(
+            "<bright black>[Server]</> {}",
+            format_log_line(line, "error")
+        );
+    }
+}
+
 fn server_monitor(
     level: &str,
     buffer: BufReader<ChildStderr>,
@@ -20,33 +44,18 @@ fn server_monitor(
     for line in buffer.lines() {
         let line = line?;
 
-        if line.contains("[info]") && level.to_lowercase() == "info" {
-            info!(
-                "<bright black>[Server]</> {}",
-                format_log_line(line.clone(), "info")
-            )
-        } else if line.contains("[warning]")
-            && (level.to_lowercase() == "warning" || level.to_lowercase() == "info")
-        {
+        if line.contains("rtmp") && line.contains("Unexpected stream") {
+            if let Err(e) = proc_ctl.kill(Ingest) {
+                error!("{e}");
+            };
+
             warn!(
-                "<bright black>[Server]</> {}",
-                format_log_line(line.clone(), "warning")
-            )
-        } else if line.contains("[error]")
-            && !line.contains("Input/output error")
-            && !line.contains("Broken pipe")
-        {
-            error!(
                 "<bright black>[Server]</> {}",
                 format_log_line(line.clone(), "error")
             );
         }
 
-        if line.contains("rtmp") && line.contains("Unexpected stream") {
-            if let Err(e) = proc_ctl.kill(Ingest) {
-                error!("{e}");
-            };
-        }
+        log_line(line, level);
     }
 
     Ok(())
