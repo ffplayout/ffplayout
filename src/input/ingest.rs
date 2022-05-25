@@ -1,6 +1,6 @@
 use std::{
-    io::{BufReader, Error, Read},
-    process::{Command, Stdio},
+    io::{BufRead, BufReader, Error, Read},
+    process::{ChildStderr, Command, Stdio},
     sync::atomic::Ordering,
     thread,
 };
@@ -9,20 +9,59 @@ use crossbeam_channel::Sender;
 use simplelog::*;
 
 use crate::filter::ingest_filter::filter_cmd;
-use crate::utils::{stderr_reader, GlobalConfig, Ingest, ProcessControl};
+use crate::utils::{format_log_line, GlobalConfig, Ingest, ProcessControl};
 use crate::vec_strings;
+
+fn server_monitor(
+    level: &str,
+    buffer: BufReader<ChildStderr>,
+    mut proc_ctl: ProcessControl,
+) -> Result<(), Error> {
+    for line in buffer.lines() {
+        let line = line?;
+
+        if line.contains("[info]") && level.to_lowercase() == "info" {
+            info!(
+                "<bright black>[Server]</> {}",
+                format_log_line(line.clone(), "info")
+            )
+        } else if line.contains("[warning]")
+            && (level.to_lowercase() == "warning" || level.to_lowercase() == "info")
+        {
+            warn!(
+                "<bright black>[Server]</> {}",
+                format_log_line(line.clone(), "warning")
+            )
+        } else if line.contains("[error]")
+            && !line.contains("Input/output error")
+            && !line.contains("Broken pipe")
+        {
+            error!(
+                "<bright black>[Server]</> {}",
+                format_log_line(line.clone(), "error")
+            );
+        }
+
+        if line.contains("rtmp") && line.contains("Unexpected stream") {
+            if let Err(e) = proc_ctl.kill(Ingest) {
+                error!("{e}");
+            };
+        }
+    }
+
+    Ok(())
+}
 
 /// ffmpeg Ingest Server
 ///
 /// Start ffmpeg in listen mode, and wait for input.
 pub fn ingest_server(
     config: GlobalConfig,
-    log_format: String,
     ingest_sender: Sender<(usize, [u8; 65088])>,
     mut proc_control: ProcessControl,
 ) -> Result<(), Error> {
     let mut buffer: [u8; 65088] = [0; 65088];
-    let mut server_cmd = vec_strings!["-hide_banner", "-nostats", "-v", log_format];
+    let mut server_cmd = vec_strings!["-hide_banner", "-nostats", "-v", "level+info"];
     let stream_input = config.ingest.input_cmd.clone().unwrap();
 
     server_cmd.append(&mut stream_input.clone());
@@ -41,6 +80,8 @@ pub fn ingest_server(
     );
 
     while !proc_control.is_terminated.load(Ordering::SeqCst) {
+        let proc_ctl = proc_control.clone();
+        let level = config.logging.ffmpeg_level.clone();
         let mut server_proc = match Command::new("ffmpeg")
             .args(server_cmd.clone())
             .stdout(Stdio::piped())
@@ -55,7 +96,8 @@ pub fn ingest_server(
         };
         let mut ingest_reader = BufReader::new(server_proc.stdout.take().unwrap());
         let server_err = BufReader::new(server_proc.stderr.take().unwrap());
-        let error_reader_thread = thread::spawn(move || stderr_reader(server_err, "Server"));
+        let error_reader_thread =
+            thread::spawn(move || server_monitor(&level, server_err, proc_ctl));
 
         *proc_control.server_term.lock().unwrap() = Some(server_proc);
         is_running = false;

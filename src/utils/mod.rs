@@ -361,31 +361,26 @@ pub fn seek_and_length(src: String, seek: f64, out: f64, duration: f64) -> Vec<S
     source_cmd
 }
 
-/// Read ffmpeg stderr decoder, encoder and server instance
+pub fn format_log_line(line: String, level: &str) -> String {
+    line.replace(&format!("[{level: >5}] "), "")
+}
+
+/// Read ffmpeg stderr decoder and encoder instance
 /// and log the output.
 pub fn stderr_reader(buffer: BufReader<ChildStderr>, suffix: &str) -> Result<(), Error> {
-    fn format_line(line: String, level: &str) -> String {
-        line.replace(&format!("[{level: >5}] "), "")
-    }
-
     for line in buffer.lines() {
         let line = line?;
 
         if line.contains("[info]") {
-            info!("<bright black>[{suffix}]</> {}", format_line(line, "info"))
+            info!(
+                "<bright black>[{suffix}]</> {}",
+                format_log_line(line, "info")
+            )
         } else if line.contains("[warning]") {
             warn!(
                 "<bright black>[{suffix}]</> {}",
-                format_line(line, "warning")
+                format_log_line(line, "warning")
             )
-        } else if suffix != "server"
-            && !line.contains("Input/output error")
-            && !line.contains("Broken pipe")
-        {
-            error!(
-                "<bright black>[{suffix}]</> {}",
-                format_line(line.clone(), "error")
-            );
         }
     }
 

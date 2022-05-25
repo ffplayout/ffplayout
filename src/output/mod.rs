@@ -66,7 +66,6 @@ pub fn player(
 
     *proc_control.encoder_term.lock().unwrap() = Some(enc_proc);
 
-    let ff_log_format_c = ff_log_format.clone();
     let proc_control_c = proc_control.clone();
     let mut ingest_receiver = None;
 
@@ -74,9 +73,7 @@ pub fn player(
     if config.ingest.enable {
         let (ingest_sender, rx) = bounded(96);
         ingest_receiver = Some(rx);
-        thread::spawn(move || {
-            ingest_server(config_clone, ff_log_format_c, ingest_sender, proc_control_c)
-        });
+        thread::spawn(move || ingest_server(config_clone, ingest_sender, proc_control_c));
     }
 
     'source_iter: for node in get_source {

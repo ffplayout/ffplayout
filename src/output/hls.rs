@@ -30,14 +30,10 @@ use simplelog::*;
 use crate::filter::ingest_filter::filter_cmd;
 use crate::input::source_generator;
 use crate::utils::{
-    sec_to_time, stderr_reader, Decoder, GlobalConfig, Ingest, PlayerControl, PlayoutStatus,
-    ProcessControl,
+    format_log_line, sec_to_time, stderr_reader, Decoder, GlobalConfig, Ingest, PlayerControl,
+    PlayoutStatus, ProcessControl,
 };
 use crate::vec_strings;
-
-fn format_line(line: String, level: &str) -> String {
-    line.replace(&format!("[{level: >5}] "), "")
-}
 
 /// Ingest Server for HLS
 fn ingest_to_hls_server(
@@ -66,6 +62,7 @@ fn ingest_to_hls_server(
     );
 
     loop {
+        let mut proc_ctl = proc_control.clone();
         let mut server_proc = match Command::new("ffmpeg")
             .args(server_cmd.clone())
             .stderr(Stdio::piped())
@@ -103,8 +100,14 @@ fn ingest_to_hls_server(
             {
                 error!(
                     "<bright black>[server]</> {}",
-                    format_line(line.clone(), "error")
+                    format_log_line(line.clone(), "error")
                 );
+            }
+
+            if line.contains("rtmp") && line.contains("Unexpected stream") {
+                if let Err(e) = proc_ctl.kill(Ingest) {
+                    error!("{e}");
+                };
             }
         }
 
