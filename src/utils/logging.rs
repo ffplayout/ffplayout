@@ -26,30 +26,41 @@ use crate::utils::{GlobalConfig, ProcessControl};
 
 /// send log messages to mail recipient
 pub fn send_mail(cfg: &GlobalConfig, msg: String) {
-    if let Ok(email) = Message::builder()
+    let recip = cfg
+        .mail
+        .recipient
+        .split_terminator([',', ';', ' '])
+        .filter(|s| s.contains('@'))
+        .map(|s| s.trim())
+        .collect::<Vec<&str>>();
+
+    let mut message = Message::builder()
         .from(cfg.mail.sender_addr.parse().unwrap())
-        .to(cfg.mail.recipient.parse().unwrap())
-        .subject(cfg.mail.subject.clone())
-        .header(header::ContentType::TEXT_PLAIN)
-        .body(clean_string(&msg))
-    {
+        .subject(&cfg.mail.subject)
+        .header(header::ContentType::TEXT_PLAIN);
+
+    for r in recip {
+        message = message.to(r.parse().unwrap());
+    }
+
+    if let Ok(email) = message.body(clean_string(&msg)) {
         let credentials =
             Credentials::new(cfg.mail.sender_addr.clone(), cfg.mail.sender_pass.clone());
 
         let mut transporter = SmtpTransport::relay(cfg.mail.smtp_server.clone().as_str());
 
         if cfg.mail.starttls {
-            transporter = SmtpTransport::starttls_relay(cfg.mail.smtp_server.clone().as_str())
+            transporter = SmtpTransport::starttls_relay(cfg.mail.smtp_server.clone().as_str());
         }
 
         let mailer = transporter.unwrap().credentials(credentials).build();
 
         // Send the email
         if let Err(e) = mailer.send(&email) {
-            error!("Could not send email: {:?}", e)
+            error!("Could not send email: {:?}", e);
         }
     } else {
-        error!("Mail Message failed!")
+        error!("Mail Message failed!");
     }
 }
 
@@ -62,13 +73,15 @@ fn mail_queue(
     messages: Arc<Mutex<Vec<String>>>,
     interval: u64,
 ) {
-    while !proc_ctl.is_terminated.load(Ordering::SeqCst) {
-        if messages.lock().unwrap().len() > 0 {
-            let msg = messages.lock().unwrap().join("\n");
-            send_mail(&cfg, msg);
+    while !(*proc_ctl.is_terminated).load(Ordering::SeqCst) {
+        let mut msg = messages.lock().unwrap();
 
-            messages.lock().unwrap().clear();
+        if msg.len() > 0 {
+            send_mail(&cfg, msg.join("\n"));
+            msg.clear();
         }
+
+        drop(msg);
 
         sleep(Duration::from_secs(interval));
     }
@@ -104,9 +117,6 @@ impl Log for LogMailer {
 
     fn log(&self, record: &Record<'_>) {
         if self.enabled(record.metadata()) {
-            let local: DateTime<Local> = Local::now();
-            let time_stamp = local.format("[%Y-%m-%d %H:%M:%S%.3f]");
-            let level = record.level().to_string().to_uppercase();
             let rec = record.args().to_string();
             let mut last_msg = self.last_message.lock().unwrap();
 
@@ -114,7 +124,10 @@ impl Log for LogMailer {
             // this we do to prevent spamming the mail box
             if *last_msg != rec {
                 *last_msg = rec.clone();
-                let full_line: String = format!("{time_stamp} [{level: >5}] {rec}");
+                let local: DateTime<Local> = Local::now();
+                let time_stamp = local.format("[%Y-%m-%d %H:%M:%S%.3f]");
+                let level = record.level().to_string().to_uppercase();
+                let full_line = format!("{time_stamp} [{level: >5}] {rec}");
 
                 self.messages.lock().unwrap().push(full_line);
             }
