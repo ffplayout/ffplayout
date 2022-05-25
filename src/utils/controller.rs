@@ -151,11 +151,11 @@ impl ProcessControl {
     }
 }
 
-impl Drop for ProcessControl {
-    fn drop(&mut self) {
-        self.kill_all()
-    }
-}
+// impl Drop for ProcessControl {
+//     fn drop(&mut self) {
+//         self.kill_all()
+//     }
+// }
 
 /// Global player control, to get infos about current clip etc.
 #[derive(Clone)]
