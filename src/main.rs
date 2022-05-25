@@ -61,14 +61,16 @@ fn main() {
     let play_control = PlayerControl::new();
     let playout_stat = PlayoutStatus::new();
     let proc_control = ProcessControl::new();
-    let proc_ctl = proc_control.clone();
+    let play_ctl = play_control.clone();
+    let play_stat = playout_stat.clone();
+    let proc_ctl1 = proc_control.clone();
+    let proc_ctl2 = proc_control.clone();
     let messages = Arc::new(Mutex::new(Vec::new()));
 
-    let logging = init_logging(&config, proc_ctl, messages.clone());
+    let logging = init_logging(&config, proc_ctl1, messages.clone());
     CombinedLogger::init(logging).unwrap();
 
     validate_ffmpeg(&config);
-    status_file(&config.general.stat_file, &playout_stat);
 
     if let Some(range) = config.general.generate.clone() {
         // run a simple playlist generator and save them to disk
@@ -77,14 +79,12 @@ fn main() {
         exit(0);
     }
 
-    let play_ctl = play_control.clone();
-    let play_stat = playout_stat.clone();
-    let proc_ctl = proc_control.clone();
-
     if config.rpc_server.enable {
         // If RPC server is enable we also fire up a JSON RPC server.
-        thread::spawn(move || json_rpc_server(config_clone, play_ctl, play_stat, proc_ctl));
+        thread::spawn(move || json_rpc_server(config_clone, play_ctl, play_stat, proc_ctl2));
     }
+
+    status_file(&config.general.stat_file, &playout_stat);
 
     if &config.out.mode.to_lowercase() == "hls" {
         // write files/playlist to HLS m3u8 playlist
@@ -94,11 +94,13 @@ fn main() {
         player(&config, play_control, playout_stat, proc_control);
     }
 
+    info!("Playout done...");
+
     let msg = messages.lock().unwrap();
 
     if msg.len() > 0 {
         send_mail(&config, msg.join("\n"));
     }
 
-    info!("Playout done...");
+    drop(msg);
 }
