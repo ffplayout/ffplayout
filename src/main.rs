@@ -63,8 +63,8 @@ fn main() {
     let proc_control = ProcessControl::new();
     let play_ctl = play_control.clone();
     let play_stat = playout_stat.clone();
-    let proc_ctl1 = proc_control.clone();
-    let proc_ctl2 = proc_control.clone();
+    let proc_ctl1 = ProcessControl::new();
+    let proc_ctl2 = ProcessControl::new();
     let messages = Arc::new(Mutex::new(Vec::new()));
 
     let logging = init_logging(&config, proc_ctl1, messages.clone());
