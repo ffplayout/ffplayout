@@ -14,8 +14,8 @@ When it notice a incoming stream, it will stop the current playing and continue 
 
 In rare cases it can happen, that for a short moment after switching the image freezes, but then it will continue. Also a short frame flickering can happen.
 
-You need to know, that **ffmpeg in current version has no authentication mechanism and it just listen to the protocol and port (no path or app name).**
+You need to know, that **ffmpeg in current version has no authentication mechanism and it just listen to the protocol and port (no app and stream name).**
 
-For security you should not expose the ingest to the world. You localhost only, with an relay/reverse proxy where you can make your authentication. You could also use a [patch](https://gist.github.com/jb-alvarado/f8ee1e7a3cf5e482e818338f2b62c95f) for ffmpeg, but there is no guarantee if this really works.
+ffplayout catches this problem with monitoring the output from ffmpeg. When the input is **rtmp** and the app or stream name differs to the config it stops the ingest process. So in a way we have a bit control, which stream we let come in and which not.
 
 In theory you can use every [protocol](https://ffmpeg.org/ffmpeg-protocols.html) from ffmpeg which support a **listen** mode.
