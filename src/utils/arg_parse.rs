@@ -15,7 +15,7 @@ pub struct Args {
     #[clap(
         short,
         long,
-        help = "Generate playlist for date. Date-range is possible, like: 2022-01-01 - 2022-01-10.",
+        help = "Generate playlist for date or date-range, like: 2022-01-01 - 2022-01-10",
         name = "YYYY-MM-DD",
         multiple_values = true
     )]

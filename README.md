@@ -165,10 +165,15 @@ When you are in playlist mode and jumping forward or backwards in time, the time
 
 -----
 
-Installation
+Installation under Linux
 -----
 
-Copy the binary to `/usr/local/bin/`
+- copy the binary to `/usr/bin/`
+- copy **assets/ffplayout.yml** to `/etc/ffplayout`
+- copy **assets/ffplayout-engine.service** to `/etc/systemd/system`
+- activate service and run it: `systemctl enable --now ffplayout-engine`
+
+You can also install the released ***.deb** or ***.rpm** package.
 
 Start with Arguments
 -----
@@ -179,8 +184,7 @@ ffplayout also allows the passing of parameters:
 OPTIONS:
     -c, --config <CONFIG>             File path to ffplayout.conf
     -f, --folder <FOLDER>             Play folder content
-    -g, --generate <YYYY-MM-DD>...    Generate playlist for date. Date-range is possible, like:
-                                      2022-01-01 - 2022-01-10.
+    -g, --generate <YYYY-MM-DD>...    Generate playlist for date or date-range, like: 2022-01-01 - 2022-01-10:
     -h, --help                        Print help information
     -i, --infinit                     Loop playlist infinitely
     -l, --log <LOG>                   File path for logging
