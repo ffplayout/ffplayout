@@ -20,6 +20,7 @@ mod generator;
 pub mod json_serializer;
 mod json_validate;
 mod logging;
+mod source;
 
 pub use arg_parse::get_args;
 pub use config::GlobalConfig;
@@ -28,6 +29,7 @@ pub use generator::generate_playlist;
 pub use json_serializer::{read_json, Playlist, DUMMY_LEN};
 pub use json_validate::validate_playlist;
 pub use logging::{init_logging, send_mail};
+pub use source::{validate_source};
 
 use crate::filter::filter_chains;
 
