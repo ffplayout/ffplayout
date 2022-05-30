@@ -29,7 +29,7 @@ pub fn validate_playlist(playlist: Playlist, is_terminated: Arc<AtomicBool>, con
         }
 
         if validate_source(&item.source) {
-            let probe = MediaProbe::new(item.source.clone());
+            let probe = MediaProbe::new(&item.source);
 
             if probe.format.is_none() {
                 error!(

@@ -73,7 +73,7 @@ impl Media {
         let mut probe = None;
 
         if do_probe && Path::new(&src).is_file() {
-            probe = Some(MediaProbe::new(src.clone()));
+            probe = Some(MediaProbe::new(&src));
 
             if let Some(dur) = probe
                 .as_ref()
@@ -103,7 +103,7 @@ impl Media {
 
     pub fn add_probe(&mut self) {
         if self.probe.is_none() {
-            let probe = MediaProbe::new(self.source.clone());
+            let probe = MediaProbe::new(&self.source);
             self.probe = Some(probe.clone());
 
             if let Some(dur) = probe
@@ -136,8 +136,8 @@ pub struct MediaProbe {
 }
 
 impl MediaProbe {
-    fn new(input: String) -> Self {
-        let probe = ffprobe(&input);
+    fn new(input: &str) -> Self {
+        let probe = ffprobe(input);
         let mut a_stream = vec![];
         let mut v_stream = vec![];
 
@@ -489,21 +489,20 @@ pub fn validate_ffmpeg(config: &GlobalConfig) {
     }
 }
 
-pub fn validate_source(source: &String) -> bool {
-    let re: Regex = Regex::new(r"^https?://.*").unwrap();
+pub fn validate_source(source: &str) -> bool {
+    let re = Regex::new(r"^https?://.*").unwrap();
 
     if re.is_match(source) {
-        let probe = MediaProbe::new(source.clone());
-        match probe.video_streams {
-            Some(_video_streams) => true,
+        match MediaProbe::new(source).video_streams {
+            Some(_) => return true,
             None => {
                 error!("Remote file not exist: {source}");
-                false
+                return false;
             }
         }
-    } else {
-        return Path::new(&source).is_file();
     }
+
+    Path::new(&source).is_file()
 }
 
 /// Get system time, in non test case.
