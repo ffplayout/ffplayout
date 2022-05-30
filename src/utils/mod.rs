@@ -489,6 +489,23 @@ pub fn validate_ffmpeg(config: &GlobalConfig) {
     }
 }
 
+pub fn validate_source(source: &String) -> bool {
+    let re: Regex = Regex::new(r"^https?://.*").unwrap();
+
+    if re.is_match(source) {
+        let probe = MediaProbe::new(source.clone());
+        match probe.video_streams {
+            Some(_video_streams) => true,
+            None => {
+                error!("Remote file not exist: {source}");
+                false
+            }
+        }
+    } else {
+        return Path::new(&source).is_file();
+    }
+}
+
 /// Get system time, in non test case.
 #[cfg(not(test))]
 pub fn time_now() -> DateTime<Local> {
