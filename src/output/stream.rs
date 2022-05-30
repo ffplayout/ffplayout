@@ -18,7 +18,6 @@ pub fn output(config: &GlobalConfig, log_format: &str) -> process::Child {
     let mut output_count = 1;
     let mut output_v_map = "[v_out1]".to_string();
     let mut output_params = output_cmd.clone();
-    let mut filter = String::new();
 
     let mut enc_cmd = vec_strings![
         "-hide_banner",
@@ -36,7 +35,8 @@ pub fn output(config: &GlobalConfig, log_format: &str) -> process::Child {
             config.text.bind_address
         );
 
-        filter.push_str("[0:v]null,");
+        let mut filter = "[0:v]null,".to_string();
+
         filter.push_str(
             v_drawtext::filter_node(config, &mut Media::new(0, String::new(), false)).as_str(),
         );
@@ -82,8 +82,6 @@ pub fn output(config: &GlobalConfig, log_format: &str) -> process::Child {
 
             filter.push_str(format!("split={output_count}{output_v_map}").as_str());
 
-            println!("{}", output_params[0]);
-
             if preview.is_empty() {
                 output_params.insert(0, "-map".to_string());
                 output_params.insert(1, "[v_out1]".to_string());
@@ -92,9 +90,7 @@ pub fn output(config: &GlobalConfig, log_format: &str) -> process::Child {
             }
         }
 
-        if !filter.is_empty() {
-            enc_filter = vec!["-filter_complex".to_string(), filter];
-        }
+        enc_filter = vec!["-filter_complex".to_string(), filter];
     } else if config.out.preview {
         preview = preview_cmd;
     }
