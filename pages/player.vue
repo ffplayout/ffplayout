@@ -70,19 +70,7 @@
                                         </b-button>
                                     </div>
                                 </b-col>
-                                <div class="w-100" />
-                                <b-col>
-                                    <div>
-                                        <b-button
-                                            title="Reload Playout Service"
-                                            class="control-button control-button-reload"
-                                            variant="primary"
-                                            @click="playoutControl('reload')"
-                                        >
-                                            <b-icon-arrow-repeat />
-                                        </b-button>
-                                    </div>
-                                </b-col>
+                                <!-- <div class="w-100" />-->
                                 <b-col>
                                     <div>
                                         <b-button
