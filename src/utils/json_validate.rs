@@ -1,13 +1,11 @@
-use std::{
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    },
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
 };
 
 use simplelog::*;
 
-use crate::utils::{sec_to_time, GlobalConfig, MediaProbe, Playlist, validate_source};
+use crate::utils::{sec_to_time, validate_source, GlobalConfig, MediaProbe, Playlist};
 
 /// Validate a given playlist, to check if:
 ///

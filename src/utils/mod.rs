@@ -20,7 +20,6 @@ mod generator;
 pub mod json_serializer;
 mod json_validate;
 mod logging;
-mod source;
 
 pub use arg_parse::get_args;
 pub use config::GlobalConfig;
@@ -29,7 +28,6 @@ pub use generator::generate_playlist;
 pub use json_serializer::{read_json, Playlist, DUMMY_LEN};
 pub use json_validate::validate_playlist;
 pub use logging::{init_logging, send_mail};
-pub use source::{validate_source};
 
 use crate::filter::filter_chains;
 
@@ -488,6 +486,23 @@ pub fn validate_ffmpeg(config: &GlobalConfig) {
 
     if !filters.contains(&"zmq".to_string()) {
         warn!("ffmpeg contains no zmq filter! Text messages will not work...");
+    }
+}
+
+pub fn validate_source(source: &String) -> bool {
+    let re: Regex = Regex::new(r"^https?://.*").unwrap();
+
+    if re.is_match(source) {
+        let probe = MediaProbe::new(source.clone());
+        match probe.video_streams {
+            Some(_video_streams) => true,
+            None => {
+                error!("Remote file not exist: {source}");
+                false
+            }
+        }
+    } else {
+        return Path::new(&source).is_file();
     }
 }
 

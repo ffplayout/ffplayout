@@ -10,7 +10,10 @@ use std::{
 use serde_json::json;
 use simplelog::*;
 
-use crate::utils::{check_sync, gen_dummy, get_delta, get_sec, is_close, json_serializer::read_json, modified_time, seek_and_length, GlobalConfig, Media, PlayoutStatus, DUMMY_LEN, validate_source};
+use crate::utils::{
+    check_sync, gen_dummy, get_delta, get_sec, is_close, json_serializer::read_json, modified_time,
+    seek_and_length, validate_source, GlobalConfig, Media, PlayoutStatus, DUMMY_LEN,
+};
 
 /// Struct for current playlist.
 ///
@@ -427,7 +430,7 @@ fn timed_source(
 
 /// Generate the source CMD, or when clip not exist, get a dummy.
 fn gen_source(config: &GlobalConfig, mut node: Media) -> Media {
-    if  validate_source(&node.source) {
+    if validate_source(&node.source) {
         node.add_probe();
         node.cmd = Some(seek_and_length(
             node.source.clone(),
