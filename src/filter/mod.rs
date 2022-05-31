@@ -74,23 +74,13 @@ fn deinterlace(field_order: &Option<String>, chain: &mut Filters) {
 
 fn pad(aspect: f64, chain: &mut Filters, config: &GlobalConfig) {
     if !is_close(aspect, config.processing.aspect, 0.03) {
-        if aspect < config.processing.aspect {
-            chain.add_filter(
-                &format!(
-                    "pad=ih*{}/{}/sar:ih:(ow-iw)/2:(oh-ih)/2",
-                    config.processing.width, config.processing.height
-                ),
-                "video",
-            )
-        } else if aspect > config.processing.aspect {
-            chain.add_filter(
-                &format!(
-                    "pad=iw:iw*{}/{}/sar:(ow-iw)/2:(oh-ih)/2",
-                    config.processing.width, config.processing.height
-                ),
-                "video",
-            )
-        }
+        chain.add_filter(
+            &format!(
+                "pad=max(iw\\,ih*({0}/{1})):ow/({0}/{1}):(ow-iw)/2:(oh-ih)/2",
+                config.processing.width, config.processing.height
+            ),
+            "video",
+        )
     }
 }
 

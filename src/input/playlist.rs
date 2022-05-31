@@ -12,7 +12,7 @@ use simplelog::*;
 
 use crate::utils::{
     check_sync, gen_dummy, get_delta, get_sec, is_close, json_serializer::read_json, modified_time,
-    seek_and_length, validate_source, GlobalConfig, Media, PlayoutStatus, DUMMY_LEN,
+    seek_and_length, valid_source, GlobalConfig, Media, PlayoutStatus, DUMMY_LEN,
 };
 
 /// Struct for current playlist.
@@ -430,7 +430,7 @@ fn timed_source(
 
 /// Generate the source CMD, or when clip not exist, get a dummy.
 fn gen_source(config: &GlobalConfig, mut node: Media) -> Media {
-    if validate_source(&node.source) {
+    if valid_source(&node.source) {
         node.add_probe();
         node.cmd = Some(seek_and_length(
             node.source.clone(),
@@ -440,13 +440,13 @@ fn gen_source(config: &GlobalConfig, mut node: Media) -> Media {
         ));
         node.add_filter(config);
     } else {
-        if node.source.chars().count() == 0 {
+        if node.source.is_empty() {
             warn!(
                 "Generate filler with <yellow>{:.2}</> seconds length!",
                 node.out - node.seek
             );
         } else {
-            error!("File not found: <b><magenta>{}</></b>", node.source);
+            error!("Source not found: <b><magenta>{}</></b>", node.source);
         }
         let (source, cmd) = gen_dummy(config, node.out - node.seek);
         node.source = source;

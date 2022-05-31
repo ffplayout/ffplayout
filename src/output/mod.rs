@@ -125,7 +125,7 @@ pub fn player(
 
         let mut dec_reader = BufReader::new(dec_proc.stdout.take().unwrap());
         let dec_err = BufReader::new(dec_proc.stderr.take().unwrap());
-        let error_decoder_thread = thread::spawn(move || stderr_reader(dec_err, "Encoder"));
+        let error_decoder_thread = thread::spawn(move || stderr_reader(dec_err, "Decoder"));
 
         *proc_control.decoder_term.lock().unwrap() = Some(dec_proc);
 
