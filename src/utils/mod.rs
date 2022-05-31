@@ -432,17 +432,11 @@ pub fn prepare_output_cmd(
 /// Validate input
 ///
 /// Check if input is a remote source, or from storage and see if it exists.
-pub fn validate_source(source: &str) -> bool {
+pub fn valid_source(source: &str) -> bool {
     let re = Regex::new(r"^https?://.*").unwrap();
 
-    if re.is_match(source) {
-        match MediaProbe::new(source).video_streams {
-            Some(_) => return true,
-            None => {
-                error!("Remote file not exist: {source}");
-                return false;
-            }
-        }
+    if re.is_match(source) && MediaProbe::new(source).video_streams.is_some() {
+        return true;
     }
 
     Path::new(&source).is_file()

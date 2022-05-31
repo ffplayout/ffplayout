@@ -5,7 +5,7 @@ use std::sync::{
 
 use simplelog::*;
 
-use crate::utils::{sec_to_time, validate_source, GlobalConfig, MediaProbe, Playlist};
+use crate::utils::{sec_to_time, valid_source, GlobalConfig, MediaProbe, Playlist};
 
 /// Validate a given playlist, to check if:
 ///
@@ -28,7 +28,7 @@ pub fn validate_playlist(playlist: Playlist, is_terminated: Arc<AtomicBool>, con
             return;
         }
 
-        if validate_source(&item.source) {
+        if valid_source(&item.source) {
             let probe = MediaProbe::new(&item.source);
 
             if probe.format.is_none() {
@@ -40,7 +40,7 @@ pub fn validate_playlist(playlist: Playlist, is_terminated: Arc<AtomicBool>, con
             }
         } else {
             error!(
-                "File on position <yellow>{}</> not exists: <b><magenta>{}</></b>",
+                "Source on position <yellow>{}</> not exists: <b><magenta>{}</></b>",
                 sec_to_time(begin),
                 item.source
             );
