@@ -29,7 +29,7 @@ pub use json_serializer::{read_json, Playlist, DUMMY_LEN};
 pub use json_validate::validate_playlist;
 pub use logging::{init_logging, send_mail};
 
-use crate::filter::filter_chains;
+use crate::{filter::filter_chains, vec_strings};
 
 /// Video clip struct to hold some important states and comments for current media.
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -365,6 +365,89 @@ pub fn format_log_line(line: String, level: &str) -> String {
     line.replace(&format!("[{level: >5}] "), "")
 }
 
+/// Prepare output parameters
+///
+/// seek for multiple outputs and add mapping for it
+pub fn prepare_output_cmd(
+    prefix: Vec<String>,
+    mut filter: Vec<String>,
+    params: Vec<String>,
+    mode: &str,
+) -> Vec<String> {
+    let params_len = params.len();
+    let mut output_params = params.clone();
+    let mut output_a_map = "[a_out1]".to_string();
+    let mut output_v_map = "[v_out1]".to_string();
+    let mut output_count = 1;
+    let mut cmd = prefix;
+
+    if !filter.is_empty() {
+        output_params.clear();
+
+        for (i, param) in params.iter().enumerate() {
+            output_params.push(param.clone());
+
+            if i > 0
+                && !param.starts_with('-')
+                && !params[i - 1].starts_with('-')
+                && i < params_len - 1
+            {
+                output_count += 1;
+                let mut a_map = "0:a".to_string();
+                let v_map = format!("[v_out{output_count}]");
+                output_v_map.push_str(v_map.as_str());
+
+                if mode == "hls" {
+                    a_map = format!("[a_out{output_count}]");
+                }
+
+                output_a_map.push_str(a_map.as_str());
+
+                let mut map = vec!["-map".to_string(), v_map, "-map".to_string(), a_map];
+
+                output_params.append(&mut map);
+            }
+        }
+
+        if output_count > 1 && mode == "hls" {
+            filter[1].push_str(format!(";[vout1]split={output_count}{output_v_map}").as_str());
+            filter[1].push_str(format!(";[aout1]asplit={output_count}{output_a_map}").as_str());
+            filter.drain(2..);
+            cmd.append(&mut filter);
+            cmd.append(&mut vec_strings!["-map", "[v_out1]", "-map", "[a_out1]"]);
+        } else if output_count > 1 && mode == "stream" {
+            filter[1].push_str(format!(",split={output_count}{output_v_map}").as_str());
+            cmd.append(&mut filter);
+            cmd.append(&mut vec_strings!["-map", "[v_out1]", "-map", "0:a"]);
+        } else {
+            cmd.append(&mut filter);
+        }
+    }
+
+    cmd.append(&mut output_params);
+
+    cmd
+}
+
+/// Validate input
+///
+/// Check if input is a remote source, or from storage and see if it exists.
+pub fn validate_source(source: &str) -> bool {
+    let re = Regex::new(r"^https?://.*").unwrap();
+
+    if re.is_match(source) {
+        match MediaProbe::new(source).video_streams {
+            Some(_) => return true,
+            None => {
+                error!("Remote file not exist: {source}");
+                return false;
+            }
+        }
+    }
+
+    Path::new(&source).is_file()
+}
+
 /// Read ffmpeg stderr decoder and encoder instance
 /// and log the output.
 pub fn stderr_reader(buffer: BufReader<ChildStderr>, suffix: &str) -> Result<(), Error> {
@@ -487,22 +570,6 @@ pub fn validate_ffmpeg(config: &GlobalConfig) {
     if !filters.contains(&"zmq".to_string()) {
         warn!("ffmpeg contains no zmq filter! Text messages will not work...");
     }
-}
-
-pub fn validate_source(source: &str) -> bool {
-    let re = Regex::new(r"^https?://.*").unwrap();
-
-    if re.is_match(source) {
-        match MediaProbe::new(source).video_streams {
-            Some(_) => return true,
-            None => {
-                error!("Remote file not exist: {source}");
-                return false;
-            }
-        }
-    }
-
-    Path::new(&source).is_file()
 }
 
 /// Get system time, in non test case.

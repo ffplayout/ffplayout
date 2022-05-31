@@ -30,8 +30,8 @@ use simplelog::*;
 use crate::filter::ingest_filter::filter_cmd;
 use crate::input::{ingest::log_line, source_generator};
 use crate::utils::{
-    sec_to_time, stderr_reader, Decoder, GlobalConfig, Ingest, PlayerControl, PlayoutStatus,
-    ProcessControl,
+    prepare_output_cmd, sec_to_time, stderr_reader, Decoder, GlobalConfig, Ingest, PlayerControl,
+    PlayoutStatus, ProcessControl,
 };
 use crate::vec_strings;
 
@@ -44,12 +44,17 @@ fn ingest_to_hls_server(
     let playlist_init = playout_stat.list_init;
     let level = config.logging.ffmpeg_level.clone();
 
-    let mut server_cmd = vec_strings!["-hide_banner", "-nostats", "-v", "level+info"];
-    let stream_input = config.ingest.input_cmd.clone().unwrap();
+    let mut server_prefix = vec_strings!["-hide_banner", "-nostats", "-v", "level+info"];
+    let mut stream_input = config.ingest.input_cmd.clone().unwrap();
+    server_prefix.append(&mut stream_input);
+    let server_filter = filter_cmd(&config);
 
-    server_cmd.append(&mut stream_input.clone());
-    server_cmd.append(&mut filter_cmd(&config));
-    server_cmd.append(&mut config.out.clone().output_cmd.unwrap());
+    let server_cmd = prepare_output_cmd(
+        server_prefix,
+        server_filter,
+        config.out.clone().output_cmd.unwrap(),
+        "hls",
+    );
 
     let mut is_running;
 
@@ -167,23 +172,23 @@ pub fn write_hls(
             node.source
         );
 
-        let mut filter = node.filter.unwrap();
-        let mut dec_cmd = vec_strings!["-hide_banner", "-nostats", "-v", &ff_log_format];
-        dec_cmd.append(&mut cmd);
-
-        if filter.len() > 1 {
-            dec_cmd.append(&mut filter);
-        }
-
-        dec_cmd.append(&mut config.out.clone().output_cmd.unwrap());
+        let mut enc_prefix = vec_strings!["-hide_banner", "-nostats", "-v", &ff_log_format];
+        enc_prefix.append(&mut cmd);
+        let enc_filter = node.filter.unwrap();
+        let enc_cmd = prepare_output_cmd(
+            enc_prefix,
+            enc_filter,
+            config.out.clone().output_cmd.unwrap(),
+            &config.out.mode,
+        );
 
         debug!(
             "HLS writer CMD: <bright-blue>\"ffmpeg {}\"</>",
-            dec_cmd.join(" ")
+            enc_cmd.join(" ")
         );
 
-        let mut dec_proc = match Command::new("ffmpeg")
-            .args(dec_cmd)
+        let mut enc_proc = match Command::new("ffmpeg")
+            .args(enc_cmd)
             .stderr(Stdio::piped())
             .spawn()
         {
@@ -194,8 +199,8 @@ pub fn write_hls(
             Ok(proc) => proc,
         };
 
-        let dec_err = BufReader::new(dec_proc.stderr.take().unwrap());
-        *proc_control.decoder_term.lock().unwrap() = Some(dec_proc);
+        let dec_err = BufReader::new(enc_proc.stderr.take().unwrap());
+        *proc_control.decoder_term.lock().unwrap() = Some(enc_proc);
 
         if let Err(e) = stderr_reader(dec_err, "Writer") {
             error!("{e:?}")
@@ -209,4 +214,8 @@ pub fn write_hls(
             sleep(Duration::from_secs(1));
         }
     }
+
+    sleep(Duration::from_secs(1));
+
+    proc_control.kill_all();
 }
