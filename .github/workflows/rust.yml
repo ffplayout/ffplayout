@@ -11,8 +11,6 @@ jobs:
       - run: rustup update stable
       - run: rustup component add rustfmt
       - run: rustup component add clippy
-      - name: cargo build
-        uses: actions/checkout@v3
       - run: cargo test --all-features
       - run: cargo fmt --all -- --check
       - run: cargo clippy --all-features --all-targets -- --deny warnings
