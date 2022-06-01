@@ -429,6 +429,10 @@ pub fn prepare_output_cmd(
     cmd
 }
 
+pub fn is_remote(path: &str) -> bool {
+    Regex::new(r"^https?://.*").unwrap().is_match(path)
+}
+
 /// Validate input
 ///
 /// Check if input is a remote source, or from storage and see if it exists.

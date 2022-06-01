@@ -11,8 +11,9 @@ use serde_json::json;
 use simplelog::*;
 
 use crate::utils::{
-    check_sync, gen_dummy, get_delta, get_sec, is_close, json_serializer::read_json, modified_time,
-    seek_and_length, valid_source, GlobalConfig, Media, PlayoutStatus, DUMMY_LEN,
+    check_sync, gen_dummy, get_delta, get_sec, is_close, is_remote, json_serializer::read_json,
+    json_serializer::read_remote_json, modified_time, seek_and_length, valid_source, GlobalConfig,
+    Media, PlayoutStatus, DUMMY_LEN,
 };
 
 /// Struct for current playlist.
@@ -40,7 +41,11 @@ impl CurrentProgram {
         current_list: Arc<Mutex<Vec<Media>>>,
         global_index: Arc<AtomicUsize>,
     ) -> Self {
-        let json = read_json(config, None, is_terminated.clone(), true, 0.0);
+        let json = if is_remote(&config.playlist.path.clone()) {
+            read_remote_json(config, None, is_terminated.clone(), true, 0.0)
+        } else {
+            read_json(config, None, is_terminated.clone(), true, 0.0)
+        };
 
         *current_list.lock().unwrap() = json.program;
         *playout_stat.current_date.lock().unwrap() = json.date.clone();
@@ -103,6 +108,31 @@ impl CurrentProgram {
                     self.index.fetch_add(1, Ordering::SeqCst);
                 }
             }
+        } else if is_remote(&self.json_path.clone().unwrap()) {
+            let resp = reqwest::blocking::Client::new()
+                .head(self.json_path.clone().unwrap())
+                .send()
+                .unwrap();
+
+            if resp.status().is_success() {
+                let headers = resp.headers().clone();
+                let last_modified = headers.get(reqwest::header::LAST_MODIFIED).unwrap();
+
+                if !last_modified.eq(&self.json_mod.clone().unwrap()) {
+                    let json = read_remote_json(
+                        &self.config,
+                        self.json_path.clone(),
+                        self.is_terminated.clone(),
+                        false,
+                        0.0,
+                    );
+                    self.json_mod = json.modified;
+                    *self.nodes.lock().unwrap() = json.program;
+
+                    self.get_current_clip();
+                    self.index.fetch_add(1, Ordering::SeqCst);
+                }
+            }
         } else {
             error!(
                 "Playlist <b><magenta>{}</></b> not exists!",
@@ -143,13 +173,23 @@ impl CurrentProgram {
             || is_close(total_delta, 0.0, 2.0)
             || is_close(total_delta, target_length, 2.0)
         {
-            let json = read_json(
-                &self.config,
-                None,
-                self.is_terminated.clone(),
-                false,
-                next_start,
-            );
+            let json = if is_remote(&self.config.playlist.path.clone()) {
+                read_remote_json(
+                    &self.config,
+                    None,
+                    self.is_terminated.clone(),
+                    false,
+                    next_start,
+                )
+            } else {
+                read_json(
+                    &self.config,
+                    None,
+                    self.is_terminated.clone(),
+                    false,
+                    next_start,
+                )
+            };
 
             let data = json!({
                 "time_shift": 0.0,

@@ -117,3 +117,61 @@ pub fn read_json(
 
     playlist
 }
+
+pub fn read_remote_json(
+    config: &GlobalConfig,
+    path: Option<String>,
+    is_terminated: Arc<AtomicBool>,
+    seek: bool,
+    next_start: f64,
+) -> Playlist {
+    let config_clone = config.clone();
+    let playlist_path = Path::new(&config.playlist.path).to_owned();
+    let mut start_sec = config.playlist.start_sec.unwrap();
+    let date = get_date(seek, start_sec, next_start);
+
+    let mut current_file: String = playlist_path.as_path().display().to_string();
+
+    if let Some(p) = path {
+        current_file = p
+    }
+
+    let resp = reqwest::blocking::Client::new()
+        .get(&current_file)
+        .send()
+        .unwrap();
+    if !resp.status().is_success() {
+        error!("Remote Playlist <b><magenta>{current_file}</></b> not found!");
+
+        return Playlist::new(date, start_sec);
+    }
+
+    let headers = resp.headers().clone();
+    let body = resp.text().unwrap();
+    let last_modified = headers.get(reqwest::header::LAST_MODIFIED).unwrap();
+
+    let mut playlist: Playlist =
+        serde_json::from_str(&body).expect("Could not read json playlist str.");
+
+    playlist.current_file = Some(current_file);
+    playlist.start_sec = Some(start_sec);
+
+    playlist.modified = Some(last_modified.to_str().unwrap().to_string());
+
+    for (i, item) in playlist.program.iter_mut().enumerate() {
+        item.begin = Some(start_sec);
+        item.index = Some(i);
+        item.last_ad = Some(false);
+        item.next_ad = Some(false);
+        item.process = Some(true);
+        item.filter = Some(vec![]);
+
+        start_sec += item.out - item.seek;
+    }
+
+    let list_clone = playlist.clone();
+
+    thread::spawn(move || validate_playlist(list_clone, is_terminated, config_clone));
+
+    playlist
+}
