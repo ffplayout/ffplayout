@@ -7,16 +7,16 @@ jobs:
         os: [ubuntu-latest, macOS-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - run: rustup update stable
+      - run: rustup component add rustfmt
+      - run: rustup component add clippy
       - name: cargo build
-#        uses: actions/cache@v1
+        uses: actions/checkout@v3
 #        with:
 #          path: target
 #          key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
 #          key: ubuntu-latest-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
-      - run: rustup component add rustfmt
-      - run: rustup component add clippy
       - run: cargo build --all-features
       - run: cargo test --all-features
       - run: cargo fmt --all -- --check
