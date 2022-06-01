@@ -190,9 +190,21 @@ impl CurrentProgram {
                 .unwrap()
                 .is_match(&self.config.playlist.path)
             {
-                read_remote_json(&self.config, None, self.is_terminated.clone(), true, 0.0)
+                read_remote_json(
+                    &self.config,
+                    None,
+                    self.is_terminated.clone(),
+                    false,
+                    next_start,
+                )
             } else {
-                read_json(&self.config, None, self.is_terminated.clone(), true, 0.0)
+                read_json(
+                    &self.config,
+                    None,
+                    self.is_terminated.clone(),
+                    false,
+                    next_start,
+                )
             };
 
             let data = json!({
