@@ -6,15 +6,14 @@ jobs:
       matrix:
         os: [ubuntu-latest, macOS-latest, windows-latest]
     runs-on: ${{ matrix.os }}
-#    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
       - run: rustup update stable
-      - name: Cache cargo build
-        uses: actions/cache@v1
-        with:
-          path: target
-          key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
+      - name: cargo build
+#        uses: actions/cache@v1
+#        with:
+#          path: target
+#          key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
 #          key: ubuntu-latest-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
       - run: rustup component add rustfmt
       - run: rustup component add clippy
