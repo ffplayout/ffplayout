@@ -77,7 +77,7 @@ pub fn read_json(
 
     let mut playlist: Playlist;
 
-    if is_remote(&current_file.clone()) {
+    if is_remote(&current_file) {
         let resp = reqwest::blocking::Client::new().get(&current_file).send();
 
         match resp {
@@ -135,7 +135,7 @@ pub fn read_json(
         }
     }
 
-    playlist.current_file = Some(current_file.clone());
+    playlist.current_file = Some(current_file);
     playlist.start_sec = Some(start_sec);
 
     // Add extra values to every media clip
