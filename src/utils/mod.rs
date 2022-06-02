@@ -8,7 +8,9 @@ use std::{
 
 use chrono::{prelude::*, Duration};
 use ffprobe::{ffprobe, Format, Stream};
+use jsonrpc_http_server::hyper::HeaderMap;
 use regex::Regex;
+use reqwest::header;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use simplelog::*;
@@ -233,11 +235,37 @@ pub fn get_date(seek: bool, start: f64, next_start: f64) -> String {
     local.format("%Y-%m-%d").to_string()
 }
 
+pub fn time_from_header(headers: &HeaderMap) -> Option<DateTime<Local>> {
+    if let Some(time) = headers.get(header::LAST_MODIFIED) {
+        if let Ok(t) = time.to_str() {
+            let time = DateTime::parse_from_rfc2822(t);
+            let date_time: DateTime<Local> = time.unwrap().into();
+            return Some(date_time);
+        };
+    }
+
+    None
+}
+
 /// Get file modification time.
-pub fn modified_time(path: &str) -> Option<DateTime<Local>> {
+pub fn modified_time(path: &str) -> Option<String> {
+    if is_remote(path) {
+        let response = reqwest::blocking::Client::new().head(path).send();
+
+        if let Ok(resp) = response {
+            if resp.status().is_success() {
+                if let Some(time) = time_from_header(resp.headers()) {
+                    return Some(time.to_string());
+                }
+            }
+        }
+
+        return None;
+    }
+
     if let Ok(time) = metadata(path).and_then(|metadata| metadata.modified()) {
         let date_time: DateTime<Local> = time.into();
-        return Some(date_time);
+        return Some(date_time.to_string());
     }
 
     None

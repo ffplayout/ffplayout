@@ -42,6 +42,10 @@ impl CurrentProgram {
     ) -> Self {
         let json = read_json(config, None, is_terminated.clone(), true, 0.0);
 
+        if let Some(file) = &json.current_file {
+            info!("Read Playlist: <b><magenta>{}</></b>", file);
+        }
+
         *current_list.lock().unwrap() = json.program;
         *playout_stat.current_date.lock().unwrap() = json.date.clone();
 
@@ -74,48 +78,19 @@ impl CurrentProgram {
         if self.json_path.is_none() {
             let json = read_json(&self.config, None, self.is_terminated.clone(), seek, 0.0);
 
+            if let Some(file) = &json.current_file {
+                info!("Read Playlist: <b><magenta>{}</></b>", file);
+            }
+
             self.json_path = json.current_file;
             self.json_mod = json.modified;
             *self.nodes.lock().unwrap() = json.program;
         } else if Path::new(&self.json_path.clone().unwrap()).is_file()
             || is_remote(&self.json_path.clone().unwrap())
         {
-            let mut is_playlist_changed = false;
+            let mod_time = modified_time(&self.json_path.clone().unwrap());
 
-            if is_remote(&self.json_path.clone().unwrap()) {
-                let resp = reqwest::blocking::Client::new()
-                    .head(self.json_path.clone().unwrap())
-                    .send();
-                match resp {
-                    Ok(resp) => {
-                        if resp.status().is_success() {
-                            match resp.headers().get(reqwest::header::LAST_MODIFIED) {
-                                Some(last_modified) => {
-                                    if !last_modified
-                                        .to_str()
-                                        .unwrap()
-                                        .eq(&self.json_mod.clone().unwrap())
-                                    {
-                                        is_playlist_changed = true
-                                    }
-                                }
-                                None => {}
-                            }
-                        }
-                    }
-                    Err(_) => self.on_check_update_error(),
-                };
-            } else {
-                let mod_time = modified_time(&self.json_path.clone().unwrap());
-
-                if let Some(m) = mod_time {
-                    if !m.to_string().eq(&self.json_mod.clone().unwrap()) {
-                        is_playlist_changed = true;
-                    }
-                }
-            }
-
-            if is_playlist_changed {
+            if self.json_mod != mod_time {
                 // when playlist has changed, reload it
                 info!(
                     "Reload playlist <b><magenta>{}</></b>",
@@ -133,29 +108,24 @@ impl CurrentProgram {
                 self.json_mod = json.modified;
                 *self.nodes.lock().unwrap() = json.program;
 
-                self.get_current_clip();
-                self.index.fetch_add(1, Ordering::SeqCst);
+                self.playout_stat.list_init.store(true, Ordering::SeqCst);
             }
         } else {
-            self.on_check_update_error();
+            error!(
+                "Playlist <b><magenta>{}</></b> not exists!",
+                self.json_path.clone().unwrap()
+            );
+            let mut media = Media::new(0, String::new(), false);
+            media.begin = Some(get_sec());
+            media.duration = DUMMY_LEN;
+            media.out = DUMMY_LEN;
+
+            self.json_path = None;
+            *self.nodes.lock().unwrap() = vec![media.clone()];
+            self.current_node = media;
+            self.playout_stat.list_init.store(true, Ordering::SeqCst);
+            self.index.store(0, Ordering::SeqCst);
         }
-    }
-
-    fn on_check_update_error(&mut self) {
-        error!(
-            "Playlist <b><magenta>{}</></b> not exists!",
-            self.json_path.clone().unwrap()
-        );
-        let mut media = Media::new(0, String::new(), false);
-        media.begin = Some(get_sec());
-        media.duration = DUMMY_LEN;
-        media.out = DUMMY_LEN;
-
-        self.json_path = None;
-        *self.nodes.lock().unwrap() = vec![media.clone()];
-        self.current_node = media;
-        self.playout_stat.list_init.store(true, Ordering::SeqCst);
-        self.index.store(0, Ordering::SeqCst);
     }
 
     // Check if day is past and it is time for a new playlist.
@@ -187,6 +157,10 @@ impl CurrentProgram {
                 false,
                 next_start,
             );
+
+            if let Some(file) = &json.current_file {
+                info!("Read Playlist: <b><magenta>{}</></b>", file);
+            }
 
             let data = json!({
                 "time_shift": 0.0,
@@ -288,9 +262,9 @@ impl Iterator for CurrentProgram {
     type Item = Media;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.playout_stat.list_init.load(Ordering::SeqCst) {
-            self.check_update(true);
+        self.check_update(self.playout_stat.list_init.load(Ordering::SeqCst));
 
+        if self.playout_stat.list_init.load(Ordering::SeqCst) {
             if self.json_path.is_some() {
                 self.init_clip();
             }
@@ -331,9 +305,9 @@ impl Iterator for CurrentProgram {
                     media.out = duration;
 
                     self.current_node = gen_source(&self.config, media);
-                    self.nodes.lock().unwrap().push(self.current_node.clone());
-                    self.index
-                        .store(self.nodes.lock().unwrap().len(), Ordering::SeqCst);
+                    let mut nodes = self.nodes.lock().unwrap();
+                    nodes.push(self.current_node.clone());
+                    self.index.store(nodes.len(), Ordering::SeqCst);
                 }
             }
 
@@ -346,23 +320,23 @@ impl Iterator for CurrentProgram {
             self.check_for_next_playlist();
             let mut is_last = false;
             let index = self.index.load(Ordering::SeqCst);
+            let nodes = self.nodes.lock().unwrap();
 
-            if index == self.nodes.lock().unwrap().len() - 1 {
+            if index == nodes.len() - 1 {
                 is_last = true
             }
 
             self.current_node = timed_source(
-                self.nodes.lock().unwrap()[index].clone(),
+                nodes[index].clone(),
                 &self.config,
                 is_last,
                 &self.playout_stat,
             );
+
+            drop(nodes);
             self.last_next_ad();
             self.index.fetch_add(1, Ordering::SeqCst);
 
-            // update playlist should happen after current clip,
-            // to prevent unknown behaviors.
-            self.check_update(false);
             Some(self.current_node.clone())
         } else {
             let last_playlist = self.json_path.clone();

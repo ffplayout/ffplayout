@@ -42,7 +42,6 @@ The main purpose of ffplayout is to provide a 24/7 broadcasting solution that pl
   - **HLS**
 - JSON RPC server, for getting infos about current playing and controlling
 - [live ingest](/docs/live_ingest.md)
-- [multiple outputs](/docs/multiple_outputs.md)
 
 Requirements
 -----

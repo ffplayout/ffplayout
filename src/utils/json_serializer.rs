@@ -8,7 +8,9 @@ use std::{
 
 use simplelog::*;
 
-use crate::utils::{get_date, is_remote, modified_time, validate_playlist, GlobalConfig, Media};
+use crate::utils::{
+    get_date, is_remote, modified_time, time_from_header, validate_playlist, GlobalConfig, Media,
+};
 
 pub const DUMMY_LEN: f64 = 60.0;
 
@@ -39,102 +41,13 @@ impl Playlist {
             date,
             start_sec: Some(start),
             current_file: None,
-            modified: Some(String::new()),
+            modified: None,
             program: vec![media],
         }
     }
 }
 
-/// Read json playlist file, fills Playlist struct and set some extra values,
-/// which we need to process.
-pub fn read_json(
-    config: &GlobalConfig,
-    path: Option<String>,
-    is_terminated: Arc<AtomicBool>,
-    seek: bool,
-    next_start: f64,
-) -> Playlist {
-    let config_clone = config.clone();
-    let mut playlist_path = Path::new(&config.playlist.path).to_owned();
-    let mut start_sec = config.playlist.start_sec.unwrap();
-    let date = get_date(seek, start_sec, next_start);
-
-    if playlist_path.is_dir() {
-        let d: Vec<&str> = date.split('-').collect();
-        playlist_path = playlist_path
-            .join(d[0])
-            .join(d[1])
-            .join(date.clone())
-            .with_extension("json");
-    }
-
-    let mut current_file: String = playlist_path.as_path().display().to_string();
-
-    if let Some(p) = path {
-        playlist_path = Path::new(&p).to_owned();
-        current_file = p
-    }
-
-    let mut playlist: Playlist;
-
-    if is_remote(&current_file) {
-        let resp = reqwest::blocking::Client::new().get(&current_file).send();
-
-        match resp {
-            Ok(resp) => {
-                if resp.status().is_success() {
-                    info!("Read Remote Playlist: <b><magenta>{current_file}</></b>");
-
-                    let headers = resp.headers().clone();
-                    let body = resp.text().unwrap();
-
-                    playlist =
-                        serde_json::from_str(&body).expect("Could not read json playlist str.");
-
-                    match headers.get(reqwest::header::LAST_MODIFIED) {
-                        Some(t) => {
-                            playlist.modified = Some(t.to_str().unwrap().to_string());
-                        }
-                        None => {}
-                    }
-                } else {
-                    error!(
-                        "Get Remote Playlist <b><magenta>{current_file}</></b> not success!: {}",
-                        resp.text().unwrap()
-                    );
-
-                    return Playlist::new(date, start_sec);
-                }
-            }
-            Err(e) => {
-                error!("Remote Playlist <b><magenta>{current_file}</></b>: {}", e);
-
-                return Playlist::new(date, start_sec);
-            }
-        };
-    } else {
-        if !playlist_path.is_file() {
-            error!("Playlist <b><magenta>{current_file}</></b> not exists!");
-
-            return Playlist::new(date, start_sec);
-        }
-
-        info!("Read Playlist: <b><magenta>{current_file}</></b>");
-
-        let f = File::options()
-            .read(true)
-            .write(false)
-            .open(&current_file)
-            .expect("Could not open json playlist file.");
-        playlist = serde_json::from_reader(f).expect("Could not read json playlist file.");
-
-        let modify = modified_time(&current_file);
-
-        if let Some(modi) = modify {
-            playlist.modified = Some(modi.to_string());
-        }
-    }
-
+fn set_defaults(mut playlist: Playlist, current_file: String, mut start_sec: f64) -> Playlist {
     playlist.current_file = Some(current_file);
     playlist.start_sec = Some(start_sec);
 
@@ -150,9 +63,82 @@ pub fn read_json(
         start_sec += item.out - item.seek;
     }
 
-    let list_clone = playlist.clone();
-
-    thread::spawn(move || validate_playlist(list_clone, is_terminated, config_clone));
-
     playlist
+}
+
+/// Read json playlist file, fills Playlist struct and set some extra values,
+/// which we need to process.
+pub fn read_json(
+    config: &GlobalConfig,
+    path: Option<String>,
+    is_terminated: Arc<AtomicBool>,
+    seek: bool,
+    next_start: f64,
+) -> Playlist {
+    let config_clone = config.clone();
+    let mut playlist_path = Path::new(&config.playlist.path).to_owned();
+    let start_sec = config.playlist.start_sec.unwrap();
+    let date = get_date(seek, start_sec, next_start);
+
+    if playlist_path.is_dir() || is_remote(&config.playlist.path) {
+        let d: Vec<&str> = date.split('-').collect();
+        playlist_path = playlist_path
+            .join(d[0])
+            .join(d[1])
+            .join(date.clone())
+            .with_extension("json");
+    }
+
+    let mut current_file = playlist_path.as_path().display().to_string();
+
+    if let Some(p) = path {
+        playlist_path = Path::new(&p).to_owned();
+        current_file = p
+    }
+
+    if is_remote(&current_file) {
+        let response = reqwest::blocking::Client::new().get(&current_file).send();
+
+        if let Ok(resp) = response {
+            if resp.status().is_success() {
+                let headers = resp.headers().clone();
+
+                if let Ok(body) = resp.text() {
+                    let mut playlist: Playlist =
+                        serde_json::from_str(&body).expect("Could't read remote json playlist.");
+
+                    if let Some(time) = time_from_header(&headers) {
+                        playlist.modified = Some(time.to_string());
+                    }
+
+                    let list_clone = playlist.clone();
+
+                    thread::spawn(move || {
+                        validate_playlist(list_clone, is_terminated, config_clone)
+                    });
+
+                    return set_defaults(playlist, current_file, start_sec);
+                }
+            }
+        }
+    } else if playlist_path.is_file() {
+        let f = File::options()
+            .read(true)
+            .write(false)
+            .open(&current_file)
+            .expect("Could not open json playlist file.");
+        let mut playlist: Playlist =
+            serde_json::from_reader(f).expect("Could't read json playlist file.");
+        playlist.modified = modified_time(&current_file);
+
+        let list_clone = playlist.clone();
+
+        thread::spawn(move || validate_playlist(list_clone, is_terminated, config_clone));
+
+        return set_defaults(playlist, current_file, start_sec);
+    }
+
+    error!("Read playlist error, on: <b><magenta>{current_file}</></b>!");
+
+    Playlist::new(date, start_sec)
 }
