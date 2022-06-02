@@ -8,7 +8,7 @@ use std::{
 
 use simplelog::*;
 
-use crate::utils::{get_date, modified_time, validate_playlist, GlobalConfig, Media};
+use crate::utils::{get_date, is_remote, modified_time, validate_playlist, GlobalConfig, Media};
 
 pub const DUMMY_LEN: f64 = 60.0;
 
@@ -75,29 +75,68 @@ pub fn read_json(
         current_file = p
     }
 
-    if !playlist_path.is_file() {
-        error!("Playlist <b><magenta>{current_file}</></b> not exists!");
+    let mut playlist: Playlist;
 
-        return Playlist::new(date, start_sec);
+    if is_remote(&current_file) {
+        let resp = reqwest::blocking::Client::new().get(&current_file).send();
+
+        match resp {
+            Ok(resp) => {
+                if resp.status().is_success() {
+                    info!("Read Remote Playlist: <b><magenta>{current_file}</></b>");
+
+                    let headers = resp.headers().clone();
+                    let body = resp.text().unwrap();
+
+                    playlist =
+                        serde_json::from_str(&body).expect("Could not read json playlist str.");
+
+                    match headers.get(reqwest::header::LAST_MODIFIED) {
+                        Some(t) => {
+                            playlist.modified = Some(t.to_str().unwrap().to_string());
+                        }
+                        None => {}
+                    }
+                } else {
+                    error!(
+                        "Get Remote Playlist <b><magenta>{current_file}</></b> not success!: {}",
+                        resp.text().unwrap()
+                    );
+
+                    return Playlist::new(date, start_sec);
+                }
+            }
+            Err(e) => {
+                error!("Remote Playlist <b><magenta>{current_file}</></b>: {}", e);
+
+                return Playlist::new(date, start_sec);
+            }
+        };
+    } else {
+        if !playlist_path.is_file() {
+            error!("Playlist <b><magenta>{current_file}</></b> not exists!");
+
+            return Playlist::new(date, start_sec);
+        }
+
+        info!("Read Playlist: <b><magenta>{current_file}</></b>");
+
+        let f = File::options()
+            .read(true)
+            .write(false)
+            .open(&current_file)
+            .expect("Could not open json playlist file.");
+        playlist = serde_json::from_reader(f).expect("Could not read json playlist file.");
+
+        let modify = modified_time(&current_file);
+
+        if let Some(modi) = modify {
+            playlist.modified = Some(modi.to_string());
+        }
     }
 
-    info!("Read Playlist: <b><magenta>{current_file}</></b>");
-
-    let f = File::options()
-        .read(true)
-        .write(false)
-        .open(&current_file)
-        .expect("Could not open json playlist file.");
-    let mut playlist: Playlist =
-        serde_json::from_reader(f).expect("Could not read json playlist file.");
-
-    playlist.current_file = Some(current_file.clone());
+    playlist.current_file = Some(current_file);
     playlist.start_sec = Some(start_sec);
-    let modify = modified_time(&current_file);
-
-    if let Some(modi) = modify {
-        playlist.modified = Some(modi.to_string());
-    }
 
     // Add extra values to every media clip
     for (i, item) in playlist.program.iter_mut().enumerate() {

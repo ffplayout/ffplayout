@@ -429,13 +429,15 @@ pub fn prepare_output_cmd(
     cmd
 }
 
+pub fn is_remote(path: &str) -> bool {
+    Regex::new(r"^https?://.*").unwrap().is_match(path)
+}
+
 /// Validate input
 ///
 /// Check if input is a remote source, or from storage and see if it exists.
 pub fn valid_source(source: &str) -> bool {
-    let re = Regex::new(r"^https?://.*").unwrap();
-
-    if re.is_match(source) && MediaProbe::new(source).video_streams.is_some() {
+    if is_remote(source) && MediaProbe::new(source).video_streams.is_some() {
         return true;
     }
 
