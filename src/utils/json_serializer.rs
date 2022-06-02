@@ -8,7 +8,9 @@ use std::{
 
 use simplelog::*;
 
-use crate::utils::{get_date, is_remote, modified_time, validate_playlist, GlobalConfig, Media};
+use crate::utils::{
+    get_date, is_remote, modified_time, time_from_header, validate_playlist, GlobalConfig, Media,
+};
 
 pub const DUMMY_LEN: f64 = 60.0;
 
@@ -39,7 +41,7 @@ impl Playlist {
             date,
             start_sec: Some(start),
             current_file: None,
-            modified: Some(String::new()),
+            modified: None,
             program: vec![media],
         }
     }
@@ -59,7 +61,7 @@ pub fn read_json(
     let mut start_sec = config.playlist.start_sec.unwrap();
     let date = get_date(seek, start_sec, next_start);
 
-    if playlist_path.is_dir() {
+    if playlist_path.is_dir() || is_remote(&config.playlist.path) {
         let d: Vec<&str> = date.split('-').collect();
         playlist_path = playlist_path
             .join(d[0])
@@ -75,48 +77,36 @@ pub fn read_json(
         current_file = p
     }
 
-    let mut playlist: Playlist;
+    let mut playlist = Playlist::new(date, start_sec);
 
     if is_remote(&current_file) {
-        let resp = reqwest::blocking::Client::new().get(&current_file).send();
+        let response = reqwest::blocking::Client::new().get(&current_file).send();
 
-        match resp {
-            Ok(resp) => {
-                if resp.status().is_success() {
-                    info!("Read Remote Playlist: <b><magenta>{current_file}</></b>");
+        if let Ok(resp) = response {
+            if resp.status().is_success() {
+                info!("Read Remote Playlist: <b><magenta>{current_file}</></b>");
 
-                    let headers = resp.headers().clone();
-                    let body = resp.text().unwrap();
+                let headers = resp.headers().clone();
 
+                if let Ok(body) = resp.text() {
                     playlist =
-                        serde_json::from_str(&body).expect("Could not read json playlist str.");
+                        serde_json::from_str(&body).expect("Could't read remote json playlist.");
 
-                    match headers.get(reqwest::header::LAST_MODIFIED) {
-                        Some(t) => {
-                            playlist.modified = Some(t.to_str().unwrap().to_string());
-                        }
-                        None => {}
+                    if let Some(time) = time_from_header(&headers) {
+                        playlist.modified = Some(time.to_string());
                     }
-                } else {
-                    error!(
-                        "Get Remote Playlist <b><magenta>{current_file}</></b> not success!: {}",
-                        resp.text().unwrap()
-                    );
-
-                    return Playlist::new(date, start_sec);
                 }
             }
-            Err(e) => {
-                error!("Remote Playlist <b><magenta>{current_file}</></b>: {}", e);
+        } else {
+            error!("Can't read remote playlist <b><magenta>{current_file}</></b>");
 
-                return Playlist::new(date, start_sec);
-            }
-        };
+            return playlist;
+        }
     } else {
         if !playlist_path.is_file() {
             error!("Playlist <b><magenta>{current_file}</></b> not exists!");
 
-            return Playlist::new(date, start_sec);
+            return playlist;
         }
 
         info!("Read Playlist: <b><magenta>{current_file}</></b>");
@@ -126,13 +116,8 @@ pub fn read_json(
             .write(false)
             .open(&current_file)
             .expect("Could not open json playlist file.");
-        playlist = serde_json::from_reader(f).expect("Could not read json playlist file.");
-
-        let modify = modified_time(&current_file);
-
-        if let Some(modi) = modify {
-            playlist.modified = Some(modi.to_string());
-        }
+        playlist = serde_json::from_reader(f).expect("Could't read json playlist file.");
+        playlist.modified = modified_time(&current_file);
     }
 
     playlist.current_file = Some(current_file);

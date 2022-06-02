@@ -80,42 +80,9 @@ impl CurrentProgram {
         } else if Path::new(&self.json_path.clone().unwrap()).is_file()
             || is_remote(&self.json_path.clone().unwrap())
         {
-            let mut is_playlist_changed = false;
+            let mod_time = modified_time(&self.json_path.clone().unwrap());
 
-            if is_remote(&self.json_path.clone().unwrap()) {
-                let resp = reqwest::blocking::Client::new()
-                    .head(self.json_path.clone().unwrap())
-                    .send();
-                match resp {
-                    Ok(resp) => {
-                        if resp.status().is_success() {
-                            match resp.headers().get(reqwest::header::LAST_MODIFIED) {
-                                Some(last_modified) => {
-                                    if !last_modified
-                                        .to_str()
-                                        .unwrap()
-                                        .eq(&self.json_mod.clone().unwrap())
-                                    {
-                                        is_playlist_changed = true
-                                    }
-                                }
-                                None => {}
-                            }
-                        }
-                    }
-                    Err(_) => self.on_check_update_error(),
-                };
-            } else {
-                let mod_time = modified_time(&self.json_path.clone().unwrap());
-
-                if let Some(m) = mod_time {
-                    if !m.to_string().eq(&self.json_mod.clone().unwrap()) {
-                        is_playlist_changed = true;
-                    }
-                }
-            }
-
-            if is_playlist_changed {
+            if self.json_mod != mod_time {
                 // when playlist has changed, reload it
                 info!(
                     "Reload playlist <b><magenta>{}</></b>",
@@ -137,25 +104,21 @@ impl CurrentProgram {
                 self.index.fetch_add(1, Ordering::SeqCst);
             }
         } else {
-            self.on_check_update_error();
+            error!(
+                "Playlist <b><magenta>{}</></b> not exists!",
+                self.json_path.clone().unwrap()
+            );
+            let mut media = Media::new(0, String::new(), false);
+            media.begin = Some(get_sec());
+            media.duration = DUMMY_LEN;
+            media.out = DUMMY_LEN;
+
+            self.json_path = None;
+            *self.nodes.lock().unwrap() = vec![media.clone()];
+            self.current_node = media;
+            self.playout_stat.list_init.store(true, Ordering::SeqCst);
+            self.index.store(0, Ordering::SeqCst);
         }
-    }
-
-    fn on_check_update_error(&mut self) {
-        error!(
-            "Playlist <b><magenta>{}</></b> not exists!",
-            self.json_path.clone().unwrap()
-        );
-        let mut media = Media::new(0, String::new(), false);
-        media.begin = Some(get_sec());
-        media.duration = DUMMY_LEN;
-        media.out = DUMMY_LEN;
-
-        self.json_path = None;
-        *self.nodes.lock().unwrap() = vec![media.clone()];
-        self.current_node = media;
-        self.playout_stat.list_init.store(true, Ordering::SeqCst);
-        self.index.store(0, Ordering::SeqCst);
     }
 
     // Check if day is past and it is time for a new playlist.
