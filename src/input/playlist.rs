@@ -42,6 +42,10 @@ impl CurrentProgram {
     ) -> Self {
         let json = read_json(config, None, is_terminated.clone(), true, 0.0);
 
+        if let Some(file) = &json.current_file {
+            info!("Read Playlist: <b><magenta>{}</></b>", file);
+        }
+
         *current_list.lock().unwrap() = json.program;
         *playout_stat.current_date.lock().unwrap() = json.date.clone();
 
@@ -74,6 +78,10 @@ impl CurrentProgram {
         if self.json_path.is_none() {
             let json = read_json(&self.config, None, self.is_terminated.clone(), seek, 0.0);
 
+            if let Some(file) = &json.current_file {
+                info!("Read Playlist: <b><magenta>{}</></b>", file);
+            }
+
             self.json_path = json.current_file;
             self.json_mod = json.modified;
             *self.nodes.lock().unwrap() = json.program;
@@ -100,8 +108,7 @@ impl CurrentProgram {
                 self.json_mod = json.modified;
                 *self.nodes.lock().unwrap() = json.program;
 
-                self.get_current_clip();
-                self.index.fetch_add(1, Ordering::SeqCst);
+                self.playout_stat.list_init.store(true, Ordering::SeqCst);
             }
         } else {
             error!(
@@ -150,6 +157,10 @@ impl CurrentProgram {
                 false,
                 next_start,
             );
+
+            if let Some(file) = &json.current_file {
+                info!("Read Playlist: <b><magenta>{}</></b>", file);
+            }
 
             let data = json!({
                 "time_shift": 0.0,
@@ -251,9 +262,9 @@ impl Iterator for CurrentProgram {
     type Item = Media;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.playout_stat.list_init.load(Ordering::SeqCst) {
-            self.check_update(true);
+        self.check_update(self.playout_stat.list_init.load(Ordering::SeqCst));
 
+        if self.playout_stat.list_init.load(Ordering::SeqCst) {
             if self.json_path.is_some() {
                 self.init_clip();
             }
@@ -294,9 +305,9 @@ impl Iterator for CurrentProgram {
                     media.out = duration;
 
                     self.current_node = gen_source(&self.config, media);
-                    self.nodes.lock().unwrap().push(self.current_node.clone());
-                    self.index
-                        .store(self.nodes.lock().unwrap().len(), Ordering::SeqCst);
+                    let mut nodes = self.nodes.lock().unwrap();
+                    nodes.push(self.current_node.clone());
+                    self.index.store(nodes.len(), Ordering::SeqCst);
                 }
             }
 
@@ -309,23 +320,23 @@ impl Iterator for CurrentProgram {
             self.check_for_next_playlist();
             let mut is_last = false;
             let index = self.index.load(Ordering::SeqCst);
+            let nodes = self.nodes.lock().unwrap();
 
-            if index == self.nodes.lock().unwrap().len() - 1 {
+            if index == nodes.len() - 1 {
                 is_last = true
             }
 
             self.current_node = timed_source(
-                self.nodes.lock().unwrap()[index].clone(),
+                nodes[index].clone(),
                 &self.config,
                 is_last,
                 &self.playout_stat,
             );
+
+            drop(nodes);
             self.last_next_ad();
             self.index.fetch_add(1, Ordering::SeqCst);
 
-            // update playlist should happen after current clip,
-            // to prevent unknown behaviors.
-            self.check_update(false);
             Some(self.current_node.clone())
         } else {
             let last_playlist = self.json_path.clone();
