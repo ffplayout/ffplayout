@@ -23,7 +23,7 @@ pub mod json_serializer;
 mod json_validate;
 mod logging;
 
-pub use arg_parse::get_args;
+pub use arg_parse::{get_args, Args};
 pub use config::GlobalConfig;
 pub use controller::{PlayerControl, PlayoutStatus, ProcessControl, ProcessUnit::*};
 pub use generator::generate_playlist;

@@ -9,9 +9,11 @@ edition = "2021"
 default-run = "ffplayout"
 
 [dependencies]
+actix-web = "4"
 chrono = { git = "https://github.com/sbrocket/chrono", branch = "parse-error-kind-public" }
 clap = { version = "3.1", features = ["derive"] }
 crossbeam-channel = "0.5"
+faccess = "0.2"
 ffprobe = "0.3"
 file-rotate = { git = "https://github.com/Ploppz/file-rotate.git", branch = "timestamp-parse-fix" }
 jsonrpc-http-server = "18.0"
@@ -21,11 +23,14 @@ notify = "4.0"
 rand = "0.8"
 regex = "1"
 reqwest = { version = "0.11", features = ["blocking"] }
+sha-crypt = { version = "0.4", features = ["simple"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_yaml = "0.8"
 shlex = "1.1"
 simplelog = { version = "^0.12", features = ["paris"] }
+
+sqlx = { version = "0.5", features = [ "chrono", "runtime-actix-native-tls", "sqlite" ] }
 time = { version = "0.3", features = ["formatting", "macros"] }
 walkdir = "2"
 
@@ -35,6 +40,10 @@ openssl = { version = "0.10", features = ["vendored"] }
 [[bin]]
 name = "ffplayout"
 path = "src/main.rs"
+
+[[bin]]
+name = "ffpapi"
+path = "src/bin/ffpapi.rs"
 
 [profile.release]
 opt-level = 3

@@ -17,5 +17,6 @@
 *tar.gz
 *.deb
 *.rpm
+/assets/*.db*
 
 .vscode/
