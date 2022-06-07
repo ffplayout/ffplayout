@@ -43,6 +43,7 @@ async fn cretea_schema() -> Result<SqliteQueryResult, sqlx::Error> {
             email                   TEXT NOT NULL,
             username                TEXT NOT NULL,
             password                TEXT NOT NULL,
+            salt                    TEXT NOT NULL,
             group_id                INTEGER NOT NULL DEFAULT 2,
             FOREIGN KEY (group_id)  REFERENCES groups (id) ON UPDATE SET NULL ON DELETE SET NULL,
             UNIQUE(email, username)
@@ -89,13 +90,16 @@ pub async fn add_user(
     mail: &str,
     user: &str,
     pass: &str,
+    salt: &str,
     group: &i64,
 ) -> Result<SqliteQueryResult, sqlx::Error> {
-    let query = "INSERT INTO user (email, username, password, group_id) VALUES($1, $2, $3, $4)";
+    let query =
+        "INSERT INTO user (email, username, password, salt, group_id) VALUES($1, $2, $3, $4, $5)";
     let result = sqlx::query(query)
         .bind(mail)
         .bind(user)
         .bind(pass)
+        .bind(salt)
         .bind(group)
         .execute(instances)
         .await?;
@@ -120,7 +124,7 @@ pub async fn get_users(
 
 pub async fn get_login(user: &str) -> Result<Vec<User>, sqlx::Error> {
     let pool = db_connection().await?;
-    let query = "SELECT id, username, password FROM user WHERE username = $1";
+    let query = "SELECT id, username, password, salt FROM user WHERE username = $1";
     let result: Vec<User> = sqlx::query_as(query).bind(user).fetch_all(&pool).await?;
     pool.close().await;
 

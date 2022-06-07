@@ -1,4 +1,7 @@
-use sha_crypt::{sha512_simple, Sha512Params};
+use argon2::{
+    password_hash::{rand_core::OsRng, PasswordHasher, SaltString},
+    Argon2,
+};
 use simplelog::*;
 
 use crate::api::{
@@ -27,15 +30,29 @@ pub async fn run_args(args: Args) -> Result<(), i32> {
             return Err(1);
         }
 
-        let params = Sha512Params::new(10_000).expect("RandomError!");
+        let salt = SaltString::generate(&mut OsRng);
+        let argon2 = Argon2::default();
+        let password = args.password.unwrap();
 
-        let hashed_password =
-            sha512_simple(&args.password.unwrap(), &params).expect("Should not fail");
+        let password_hash = match argon2.hash_password(password.as_bytes(), &salt) {
+            Ok(hash) => hash.to_string(),
+            Err(e) => {
+                error!("{e}");
+                return Err(1);
+            }
+        };
 
         match db_connection().await {
             Ok(pool) => {
-                if let Err(e) =
-                    add_user(&pool, &args.email.unwrap(), &username, &hashed_password, &1).await
+                if let Err(e) = add_user(
+                    &pool,
+                    &args.email.unwrap(),
+                    &username,
+                    &password_hash.to_string(),
+                    &salt.to_string(),
+                    &1,
+                )
+                .await
                 {
                     pool.close().await;
                     error!("{e}");

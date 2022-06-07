@@ -7,7 +7,7 @@ use simplelog::*;
 use ffplayout_engine::{
     api::{
         args_parse::Args,
-        routes::{get_user, login, user},
+        routes::{get_user, login},
         utils::run_args,
     },
     utils::{init_logging, GlobalConfig},
@@ -35,7 +35,7 @@ async fn main() -> std::io::Result<()> {
         let port = ip_port[1].parse::<u16>().unwrap();
         info!("running ffplayout API, listen on {conn}");
 
-        HttpServer::new(|| App::new().service(get_user).service(login).service(user))
+        HttpServer::new(|| App::new().service(get_user).service(login))
             .bind((addr, port))?
             .run()
             .await

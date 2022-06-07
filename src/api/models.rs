@@ -9,6 +9,8 @@ pub struct User {
     #[sqlx(default)]
     pub password: String,
     #[sqlx(default)]
+    pub salt: Option<String>,
+    #[sqlx(default)]
     pub group_id: Option<i64>,
 }
 
