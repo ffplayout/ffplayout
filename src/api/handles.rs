@@ -4,6 +4,8 @@ use faccess::PathExt;
 use simplelog::*;
 use sqlx::{migrate::MigrateDatabase, sqlite::SqliteQueryResult, Pool, Sqlite, SqlitePool};
 
+use crate::api::models::User;
+
 pub fn db_path() -> Result<String, Box<dyn std::error::Error>> {
     let sys_path = Path::new("/usr/share/ffplayout");
     let mut db_path = String::from("./ffplayout.db");
@@ -97,6 +99,30 @@ pub async fn add_user(
         .bind(group)
         .execute(instances)
         .await?;
+
+    Ok(result)
+}
+
+pub async fn get_users(
+    instances: &SqlitePool,
+    index: Option<i64>,
+) -> Result<Vec<User>, sqlx::Error> {
+    let query = match index {
+        Some(i) => format!("SELECT id, email, username FROM user WHERE id = {i}"),
+        None => "SELECT id, email, username FROM user".to_string(),
+    };
+
+    let result: Vec<User> = sqlx::query_as(&query).fetch_all(instances).await?;
+    instances.close().await;
+
+    Ok(result)
+}
+
+pub async fn get_login(user: &str) -> Result<Vec<User>, sqlx::Error> {
+    let pool = db_connection().await?;
+    let query = "SELECT id, username, password FROM user WHERE username = $1";
+    let result: Vec<User> = sqlx::query_as(query).bind(user).fetch_all(&pool).await?;
+    pool.close().await;
 
     Ok(result)
 }

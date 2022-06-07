@@ -1,15 +1,20 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, sqlx::FromRow)]
 pub struct User {
-    pub email: String,
+    pub id: Option<i64>,
+    #[sqlx(default)]
+    pub email: Option<String>,
     pub username: String,
+    #[sqlx(default)]
     pub password: String,
-    pub group_id: i64,
+    #[sqlx(default)]
+    pub group_id: Option<i64>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Settings {
+    pub id: i64,
     pub channel_name: String,
     pub preview_url: String,
     pub settings_path: String,
