@@ -1,4 +1,4 @@
-use actix_web::{get, post, web, Responder};
+use actix_web::{get, http::StatusCode, post, web, Responder};
 use argon2::{password_hash::PasswordHash, Argon2, PasswordVerifier};
 use serde::Serialize;
 use simplelog::*;
@@ -38,6 +38,8 @@ pub async fn login(credentials: web::Json<User>) -> impl Responder {
                     status: 200,
                     data: Some(user),
                 })
+                .customize()
+                .with_status(StatusCode::OK)
             } else {
                 error!("Wrong password for {}!", credentials.username);
                 web::Json(ResponseObj {
@@ -45,15 +47,19 @@ pub async fn login(credentials: web::Json<User>) -> impl Responder {
                     status: 401,
                     data: None,
                 })
+                .customize()
+                .with_status(StatusCode::FORBIDDEN)
             }
         }
         Err(e) => {
             error!("Login {} failed! {e}", credentials.username);
             return web::Json(ResponseObj {
                 message: format!("Login {} failed!", credentials.username),
-                status: 404,
+                status: 400,
                 data: None,
-            });
+            })
+            .customize()
+            .with_status(StatusCode::BAD_REQUEST);
         }
     }
 }
