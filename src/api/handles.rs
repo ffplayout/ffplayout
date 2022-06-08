@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use faccess::PathExt;
+use rand::{distributions::Alphanumeric, Rng};
 use simplelog::*;
 use sqlx::{migrate::MigrateDatabase, sqlite::SqliteQueryResult, Pool, Sqlite, SqlitePool};
 
@@ -20,7 +21,7 @@ pub fn db_path() -> Result<String, Box<dyn std::error::Error>> {
 }
 
 async fn cretea_schema() -> Result<SqliteQueryResult, sqlx::Error> {
-    let pool = db_connection().await?;
+    let conn = db_connection().await?;
     let query = "PRAGMA foreign_keys = ON;
     CREATE TABLE IF NOT EXISTS groups
         (
@@ -35,6 +36,7 @@ async fn cretea_schema() -> Result<SqliteQueryResult, sqlx::Error> {
             preview_url             TEXT NOT NULL,
             settings_path           TEXT NOT NULL,
             extra_extensions        TEXT NOT NULL,
+            secret                  TEXT NOT NULL,
             UNIQUE(channel_name)
         );
     CREATE TABLE IF NOT EXISTS user
@@ -48,8 +50,8 @@ async fn cretea_schema() -> Result<SqliteQueryResult, sqlx::Error> {
             FOREIGN KEY (group_id)  REFERENCES groups (id) ON UPDATE SET NULL ON DELETE SET NULL,
             UNIQUE(email, username)
         );";
-    let result = sqlx::query(query).execute(&pool).await;
-    pool.close().await;
+    let result = sqlx::query(query).execute(&conn).await;
+    conn.close().await;
 
     result
 }
@@ -64,14 +66,19 @@ pub async fn db_init() -> Result<&'static str, Box<dyn std::error::Error>> {
             Err(e) => panic!("{e}"),
         }
     }
+    let secret: String = rand::thread_rng()
+        .sample_iter(&Alphanumeric)
+        .take(80)
+        .map(char::from)
+        .collect();
+
     let instances = db_connection().await?;
 
     let query = "INSERT INTO groups(name) VALUES('admin'), ('user');
-        INSERT INTO settings(channel_name, preview_url, settings_path, extra_extensions)
+        INSERT INTO settings(channel_name, preview_url, settings_path, extra_extensions, secret)
         VALUES('Channel 1', 'http://localhost/live/preview.m3u8',
-            '/etc/ffplayout/ffplayout.yml', '.jpg,.jpeg,.png');";
-    sqlx::query(query).execute(&instances).await?;
-
+            '/etc/ffplayout/ffplayout.yml', '.jpg,.jpeg,.png', $1);";
+    sqlx::query(query).bind(secret).execute(&instances).await?;
     instances.close().await;
 
     Ok("Database initialized!")
@@ -79,20 +86,19 @@ pub async fn db_init() -> Result<&'static str, Box<dyn std::error::Error>> {
 
 pub async fn db_connection() -> Result<Pool<Sqlite>, sqlx::Error> {
     let db_path = db_path().unwrap();
+    let conn = SqlitePool::connect(&db_path).await?;
 
-    let pool = SqlitePool::connect(&db_path).await?;
-
-    Ok(pool)
+    Ok(conn)
 }
 
 pub async fn add_user(
-    instances: &SqlitePool,
     mail: &str,
     user: &str,
     pass: &str,
     salt: &str,
     group: &i64,
 ) -> Result<SqliteQueryResult, sqlx::Error> {
+    let conn = db_connection().await?;
     let query =
         "INSERT INTO user (email, username, password, salt, group_id) VALUES($1, $2, $3, $4, $5)";
     let result = sqlx::query(query)
@@ -101,32 +107,18 @@ pub async fn add_user(
         .bind(pass)
         .bind(salt)
         .bind(group)
-        .execute(instances)
+        .execute(&conn)
         .await?;
+    conn.close().await;
 
     Ok(result)
 }
 
-pub async fn get_users(
-    instances: &SqlitePool,
-    index: Option<i64>,
-) -> Result<Vec<User>, sqlx::Error> {
-    let query = match index {
-        Some(i) => format!("SELECT id, email, username FROM user WHERE id = {i}"),
-        None => "SELECT id, email, username FROM user".to_string(),
-    };
-
-    let result: Vec<User> = sqlx::query_as(&query).fetch_all(instances).await?;
-    instances.close().await;
-
-    Ok(result)
-}
-
-pub async fn get_login(user: &str) -> Result<Vec<User>, sqlx::Error> {
-    let pool = db_connection().await?;
-    let query = "SELECT id, username, password, salt FROM user WHERE username = $1";
-    let result: Vec<User> = sqlx::query_as(query).bind(user).fetch_all(&pool).await?;
-    pool.close().await;
+pub async fn get_login(user: &str) -> Result<User, sqlx::Error> {
+    let conn = db_connection().await?;
+    let query = "SELECT id, email, username, password, salt FROM user WHERE username = $1";
+    let result: User = sqlx::query_as(query).bind(user).fetch_one(&conn).await?;
+    conn.close().await;
 
     Ok(result)
 }

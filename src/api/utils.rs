@@ -6,7 +6,7 @@ use simplelog::*;
 
 use crate::api::{
     args_parse::Args,
-    handles::{add_user, db_connection, db_init},
+    handles::{add_user, db_init},
 };
 
 pub async fn run_args(args: Args) -> Result<(), i32> {
@@ -42,33 +42,22 @@ pub async fn run_args(args: Args) -> Result<(), i32> {
             }
         };
 
-        match db_connection().await {
-            Ok(pool) => {
-                if let Err(e) = add_user(
-                    &pool,
-                    &args.email.unwrap(),
-                    &username,
-                    &password_hash.to_string(),
-                    &salt.to_string(),
-                    &1,
-                )
-                .await
-                {
-                    pool.close().await;
-                    error!("{e}");
-                    return Err(1);
-                };
+        if let Err(e) = add_user(
+            &args.email.unwrap(),
+            &username,
+            &password_hash.to_string(),
+            &salt.to_string(),
+            &1,
+        )
+        .await
+        {
+            error!("{e}");
+            return Err(1);
+        };
 
-                pool.close().await;
-                info!("Create admin user \"{username}\" done...");
+        info!("Create admin user \"{username}\" done...");
 
-                return Err(0);
-            }
-            Err(e) => {
-                error!("Add admin user failed! Did you init the database?");
-                panic!("{e}")
-            }
-        }
+        return Err(0);
     }
 
     Ok(())
