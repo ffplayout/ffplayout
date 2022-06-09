@@ -6,6 +6,7 @@ use simplelog::*;
 
 use crate::api::{
     auth::{create_jwt, Claims},
+    errors::ServiceError,
     handles::{get_login, get_role},
     models::{LoginUser, User},
 };
@@ -17,21 +18,27 @@ struct ResponseObj<T> {
     data: Option<T>,
 }
 
+/// curl -X GET http://127.0.0.1:8080/api/settings -H "Authorization: Bearer <TOKEN>"
 #[get("/settings")]
 #[has_permissions("admin")]
-async fn settings(user: web::ReqData<LoginUser>) -> impl Responder {
+async fn settings(user: web::ReqData<LoginUser>) -> Result<impl Responder, ServiceError> {
     println!("{:?}", user);
-    "Hello from settings!"
+    Ok("Hello from settings!")
 }
 
 #[put("/user/{user_id}")]
 #[has_permissions("admin")]
-async fn update_user(user_id: web::Path<i64>, user: web::ReqData<LoginUser>) -> impl Responder {
+async fn update_user(
+    user_id: web::Path<i64>,
+    user: web::ReqData<LoginUser>,
+    data: web::Json<User>,
+) -> Result<impl Responder, ServiceError> {
     if user_id.into_inner() == user.id {
-        return "Update allow!";
+        println!("{data:?}");
+        return Ok("Update allow!");
     }
 
-    "Wrong user!"
+    Err(ServiceError::Unauthorized)
 }
 
 /// curl -X POST -H "Content-Type: application/json" -d '{"username": "USER", "password": "abc123" }' \

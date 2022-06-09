@@ -16,6 +16,7 @@ argon2 = "0.4"
 chrono = { git = "https://github.com/sbrocket/chrono", branch = "parse-error-kind-public" }
 clap = { version = "3.1", features = ["derive"] }
 crossbeam-channel = "0.5"
+derive_more = "0.99"
 faccess = "0.2"
 ffprobe = "0.3"
 file-rotate = { git = "https://github.com/Ploppz/file-rotate.git", branch = "timestamp-parse-fix" }

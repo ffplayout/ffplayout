@@ -669,6 +669,7 @@ dependencies = [
  "chrono 0.4.19 (git+https://github.com/sbrocket/chrono?branch=parse-error-kind-public)",
  "clap",
  "crossbeam-channel",
+ "derive_more",
  "faccess",
  "ffprobe",
  "file-rotate",
