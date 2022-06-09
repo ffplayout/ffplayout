@@ -1,11 +1,6 @@
-use std::{process::exit, sync::Mutex};
+use std::process::exit;
 
-use actix_web::{
-    dev::ServiceRequest,
-    middleware,
-    web::{self, Data},
-    App, Error, HttpServer,
-};
+use actix_web::{dev::ServiceRequest, middleware, web, App, Error, HttpMessage, HttpServer};
 use actix_web_grants::permissions::AttachPermissions;
 use actix_web_httpauth::extractors::bearer::BearerAuth;
 use actix_web_httpauth::middleware::HttpAuthentication;
@@ -28,6 +23,9 @@ async fn validator(req: ServiceRequest, credentials: BearerAuth) -> Result<Servi
     // We just get permissions from JWT
     let claims = auth::decode_jwt(credentials.token()).await?;
     req.attach(claims.permissions);
+
+    req.extensions_mut()
+        .insert(LoginUser::new(claims.id, claims.username));
     Ok(req)
 }
 
@@ -52,7 +50,6 @@ async fn main() -> std::io::Result<()> {
         let ip_port = conn.split(':').collect::<Vec<&str>>();
         let addr = ip_port[0];
         let port = ip_port[1].parse::<u16>().unwrap();
-        let data = Data::new(Mutex::new(LoginUser { id: 0 }));
 
         info!("running ffplayout API, listen on {conn}");
 
@@ -61,7 +58,6 @@ async fn main() -> std::io::Result<()> {
             let auth = HttpAuthentication::bearer(validator);
             App::new()
                 .wrap(middleware::Logger::default())
-                .app_data(Data::clone(&data))
                 .service(login)
                 .service(
                     web::scope("/api")

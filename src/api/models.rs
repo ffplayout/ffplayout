@@ -21,9 +21,16 @@ pub struct User {
     pub token: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct LoginUser {
     pub id: i64,
+    pub username: String,
+}
+
+impl LoginUser {
+    pub fn new(id: i64, username: String) -> Self {
+        Self { id, username }
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize, sqlx::FromRow)]
