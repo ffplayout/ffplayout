@@ -2,12 +2,42 @@ use argon2::{
     password_hash::{rand_core::OsRng, PasswordHasher, SaltString},
     Argon2,
 };
+use once_cell::sync::OnceCell;
 use simplelog::*;
 
 use crate::api::{
     args_parse::Args,
-    handles::{add_user, db_init},
+    handles::{add_user, db_init, get_global},
 };
+
+#[derive(Debug, sqlx::FromRow)]
+pub struct GlobalSettings {
+    pub secret: String,
+}
+
+impl GlobalSettings {
+    async fn new() -> Self {
+        let global_settings = get_global();
+
+        match global_settings.await {
+            Ok(g) => g,
+            Err(_) => GlobalSettings {
+                secret: String::new(),
+            },
+        }
+    }
+
+    pub fn global() -> &'static GlobalSettings {
+        INSTANCE.get().expect("Config is not initialized")
+    }
+}
+
+static INSTANCE: OnceCell<GlobalSettings> = OnceCell::new();
+
+pub async fn init_config() {
+    let config = GlobalSettings::new().await;
+    INSTANCE.set(config).unwrap();
+}
 
 pub async fn run_args(args: Args) -> Result<(), i32> {
     if !args.init && args.listen.is_none() && args.username.is_none() {

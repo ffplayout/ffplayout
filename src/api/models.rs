@@ -3,7 +3,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Deserialize, Serialize, sqlx::FromRow)]
 pub struct User {
     #[sqlx(default)]
-    pub id: Option<i64>,
+    #[serde(skip_deserializing)]
+    pub id: i64,
     #[sqlx(default)]
     pub email: Option<String>,
     pub username: String,
@@ -15,7 +16,14 @@ pub struct User {
     pub salt: Option<String>,
     #[sqlx(default)]
     #[serde(skip_serializing)]
-    pub group_id: Option<i64>,
+    pub role_id: Option<i64>,
+    #[sqlx(default)]
+    pub token: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct LoginUser {
+    pub id: i64,
 }
 
 #[derive(Debug, Deserialize, Serialize, sqlx::FromRow)]

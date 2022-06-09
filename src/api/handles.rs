@@ -6,6 +6,12 @@ use simplelog::*;
 use sqlx::{migrate::MigrateDatabase, sqlite::SqliteQueryResult, Pool, Sqlite, SqlitePool};
 
 use crate::api::models::User;
+use crate::api::utils::GlobalSettings;
+
+#[derive(Debug, sqlx::FromRow)]
+struct Role {
+    name: String,
+}
 
 pub fn db_path() -> Result<String, Box<dyn std::error::Error>> {
     let sys_path = Path::new("/usr/share/ffplayout");
@@ -23,7 +29,13 @@ pub fn db_path() -> Result<String, Box<dyn std::error::Error>> {
 async fn cretea_schema() -> Result<SqliteQueryResult, sqlx::Error> {
     let conn = db_connection().await?;
     let query = "PRAGMA foreign_keys = ON;
-    CREATE TABLE IF NOT EXISTS groups
+    CREATE TABLE IF NOT EXISTS global
+        (
+            id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+            secret                  TEXT NOT NULL,
+            UNIQUE(secret)
+        );
+    CREATE TABLE IF NOT EXISTS roles
         (
             id                      INTEGER PRIMARY KEY AUTOINCREMENT,
             name                    TEXT NOT NULL,
@@ -36,7 +48,6 @@ async fn cretea_schema() -> Result<SqliteQueryResult, sqlx::Error> {
             preview_url             TEXT NOT NULL,
             settings_path           TEXT NOT NULL,
             extra_extensions        TEXT NOT NULL,
-            secret                  TEXT NOT NULL,
             UNIQUE(channel_name)
         );
     CREATE TABLE IF NOT EXISTS user
@@ -46,8 +57,8 @@ async fn cretea_schema() -> Result<SqliteQueryResult, sqlx::Error> {
             username                TEXT NOT NULL,
             password                TEXT NOT NULL,
             salt                    TEXT NOT NULL,
-            group_id                INTEGER NOT NULL DEFAULT 2,
-            FOREIGN KEY (group_id)  REFERENCES groups (id) ON UPDATE SET NULL ON DELETE SET NULL,
+            role_id                 INTEGER NOT NULL DEFAULT 2,
+            FOREIGN KEY (role_id)   REFERENCES roles (id) ON UPDATE SET NULL ON DELETE SET NULL,
             UNIQUE(email, username)
         );";
     let result = sqlx::query(query).execute(&conn).await;
@@ -74,10 +85,17 @@ pub async fn db_init() -> Result<&'static str, Box<dyn std::error::Error>> {
 
     let instances = db_connection().await?;
 
-    let query = "INSERT INTO groups(name) VALUES('admin'), ('user');
-        INSERT INTO settings(channel_name, preview_url, settings_path, extra_extensions, secret)
+    let query = "CREATE TRIGGER global_row_count
+        BEFORE INSERT ON global
+        WHEN (SELECT COUNT(*) FROM global) >= 1
+        BEGIN
+            SELECT RAISE(FAIL, 'Database is already init!');
+        END;
+        INSERT INTO global(secret) VALUES($1);
+        INSERT INTO roles(name) VALUES('admin'), ('user'), ('guest');
+        INSERT INTO settings(channel_name, preview_url, settings_path, extra_extensions)
         VALUES('Channel 1', 'http://localhost/live/preview.m3u8',
-            '/etc/ffplayout/ffplayout.yml', '.jpg,.jpeg,.png', $1);";
+            '/etc/ffplayout/ffplayout.yml', '.jpg,.jpeg,.png');";
     sqlx::query(query).bind(secret).execute(&instances).await?;
     instances.close().await;
 
@@ -91,6 +109,24 @@ pub async fn db_connection() -> Result<Pool<Sqlite>, sqlx::Error> {
     Ok(conn)
 }
 
+pub async fn get_global() -> Result<GlobalSettings, sqlx::Error> {
+    let conn = db_connection().await?;
+    let query = "SELECT secret FROM global WHERE id = 1";
+    let result: GlobalSettings = sqlx::query_as(query).fetch_one(&conn).await?;
+    conn.close().await;
+
+    Ok(result)
+}
+
+pub async fn get_role(id: &i64) -> Result<String, sqlx::Error> {
+    let conn = db_connection().await?;
+    let query = "SELECT name FROM roles WHERE id = $1";
+    let result: Role = sqlx::query_as(query).bind(id).fetch_one(&conn).await?;
+    conn.close().await;
+
+    Ok(result.name)
+}
+
 pub async fn add_user(
     mail: &str,
     user: &str,
@@ -100,7 +136,7 @@ pub async fn add_user(
 ) -> Result<SqliteQueryResult, sqlx::Error> {
     let conn = db_connection().await?;
     let query =
-        "INSERT INTO user (email, username, password, salt, group_id) VALUES($1, $2, $3, $4, $5)";
+        "INSERT INTO user (email, username, password, salt, role_id) VALUES($1, $2, $3, $4, $5)";
     let result = sqlx::query(query)
         .bind(mail)
         .bind(user)
@@ -116,7 +152,7 @@ pub async fn add_user(
 
 pub async fn get_login(user: &str) -> Result<User, sqlx::Error> {
     let conn = db_connection().await?;
-    let query = "SELECT id, email, username, password, salt FROM user WHERE username = $1";
+    let query = "SELECT id, email, username, password, salt, role_id FROM user WHERE username = $1";
     let result: User = sqlx::query_as(query).bind(user).fetch_one(&conn).await?;
     conn.close().await;
 

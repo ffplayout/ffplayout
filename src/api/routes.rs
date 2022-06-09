@@ -1,14 +1,22 @@
-use actix_web::{get, http::StatusCode, post, web, Responder};
+use std::sync::Mutex;
+
+use actix_web::{
+    get,
+    http::StatusCode,
+    post, put,
+    web::{self, Data},
+    Responder,
+};
+use actix_web_grants::proc_macro::has_permissions;
 use argon2::{password_hash::PasswordHash, Argon2, PasswordVerifier};
 use serde::Serialize;
 use simplelog::*;
 
-use crate::api::{handles::get_login, models::User};
-
-#[get("/hello/{name}")]
-async fn greet(name: web::Path<String>) -> impl Responder {
-    format!("Hello {name}!")
-}
+use crate::api::{
+    auth::{create_jwt, Claims},
+    handles::{get_login, get_role},
+    models::{LoginUser, User},
+};
 
 #[derive(Serialize)]
 struct ResponseObj<T> {
@@ -17,9 +25,27 @@ struct ResponseObj<T> {
     data: Option<T>,
 }
 
-/// curl -X POST -H "Content-Type: application/json" -d '{"username": "USER", "password": "abc123" }' http://127.0.0.1:8080/auth/login/
+#[get("/settings")]
+#[has_permissions("admin")]
+async fn settings(data: Data<Mutex<LoginUser>>) -> impl Responder {
+    println!("{:?}", data.lock());
+    "Hello from settings!"
+}
+
+#[put("/user/{user_id}")]
+#[has_permissions("admin")]
+async fn update_user(user_id: web::Path<i64>, data: Data<Mutex<LoginUser>>) -> impl Responder {
+    if user_id.into_inner() == data.lock().unwrap().id {
+        return "Update allow!";
+    }
+
+    "Wrong user!"
+}
+
+/// curl -X POST -H "Content-Type: application/json" -d '{"username": "USER", "password": "abc123" }' \
+/// http://127.0.0.1:8080/auth/login/
 #[post("/auth/login/")]
-pub async fn login(credentials: web::Json<User>) -> impl Responder {
+pub async fn login(credentials: web::Json<User>, data: Data<Mutex<LoginUser>>) -> impl Responder {
     match get_login(&credentials.username).await {
         Ok(mut user) => {
             let pass = user.password.clone();
@@ -31,7 +57,19 @@ pub async fn login(credentials: web::Json<User>) -> impl Responder {
                 .verify_password(credentials.password.as_bytes(), &hash)
                 .is_ok()
             {
-                info!("user {} login", credentials.username);
+                let role = get_role(&user.role_id.unwrap_or_default())
+                    .await
+                    .unwrap_or_else(|_| "guest".to_string());
+                let claims = Claims::new(user.id, user.username.clone(), vec![role.clone()]);
+
+                if let Ok(token) = create_jwt(claims) {
+                    user.token = Some(token);
+                };
+
+                let mut my_data = data.lock().unwrap();
+                my_data.id = user.id;
+
+                info!("user {} login, with role: {role}", credentials.username);
 
                 web::Json(ResponseObj {
                     message: "login correct!".into(),
