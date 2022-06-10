@@ -29,6 +29,8 @@ async fn settings(user: web::ReqData<LoginUser>) -> Result<impl Responder, Servi
     Ok("Hello from settings!")
 }
 
+/// curl -X PUT http://localhost:8080/api/user/1 --header 'Content-Type: application/json' \
+/// --data '{"email": "<EMAIL>", "password": "<PASS>"}' --header 'Authorization: <TOKEN>'
 #[put("/user/{user_id}")]
 #[has_permissions("admin")]
 async fn update_user(
@@ -68,8 +70,8 @@ async fn update_user(
     Err(ServiceError::Unauthorized)
 }
 
-/// curl -X POST -H "Content-Type: application/json" -d '{"username": "USER", "password": "abc123" }' \
-/// http://127.0.0.1:8080/auth/login/
+/// curl -X POST http://127.0.0.1:8080/auth/login/ -H "Content-Type: application/json" \
+/// -d '{"username": "USER", "password": "abc123" }'
 #[post("/auth/login/")]
 pub async fn login(credentials: web::Json<User>) -> impl Responder {
     match db_login(&credentials.username).await {
