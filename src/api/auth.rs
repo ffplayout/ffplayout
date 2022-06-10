@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::api::utils::GlobalSettings;
 
 // Token lifetime and Secret key are hardcoded for clarity
-const JWT_EXPIRATION_MINUTES: i64 = 15;
+const JWT_EXPIRATION_MINUTES: i64 = 60;
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct Claims {

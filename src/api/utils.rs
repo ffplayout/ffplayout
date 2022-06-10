@@ -7,7 +7,7 @@ use simplelog::*;
 
 use crate::api::{
     args_parse::Args,
-    handles::{add_user, db_init, get_global},
+    handles::{add_user, db_global, db_init},
 };
 
 #[derive(Debug, sqlx::FromRow)]
@@ -17,7 +17,7 @@ pub struct GlobalSettings {
 
 impl GlobalSettings {
     async fn new() -> Self {
-        let global_settings = get_global();
+        let global_settings = db_global();
 
         match global_settings.await {
             Ok(g) => g,

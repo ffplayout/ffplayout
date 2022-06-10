@@ -9,7 +9,7 @@ pub struct User {
     pub email: Option<String>,
     pub username: String,
     #[sqlx(default)]
-    #[serde(skip_serializing)]
+    #[serde(skip_serializing, default = "empty_string")]
     pub password: String,
     #[sqlx(default)]
     #[serde(skip_serializing)]
@@ -19,6 +19,10 @@ pub struct User {
     pub role_id: Option<i64>,
     #[sqlx(default)]
     pub token: Option<String>,
+}
+
+fn empty_string() -> String {
+    "".to_string()
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]

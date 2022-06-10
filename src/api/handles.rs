@@ -109,7 +109,7 @@ pub async fn db_connection() -> Result<Pool<Sqlite>, sqlx::Error> {
     Ok(conn)
 }
 
-pub async fn get_global() -> Result<GlobalSettings, sqlx::Error> {
+pub async fn db_global() -> Result<GlobalSettings, sqlx::Error> {
     let conn = db_connection().await?;
     let query = "SELECT secret FROM global WHERE id = 1";
     let result: GlobalSettings = sqlx::query_as(query).fetch_one(&conn).await?;
@@ -118,7 +118,7 @@ pub async fn get_global() -> Result<GlobalSettings, sqlx::Error> {
     Ok(result)
 }
 
-pub async fn get_role(id: &i64) -> Result<String, sqlx::Error> {
+pub async fn db_role(id: &i64) -> Result<String, sqlx::Error> {
     let conn = db_connection().await?;
     let query = "SELECT name FROM roles WHERE id = $1";
     let result: Role = sqlx::query_as(query).bind(id).fetch_one(&conn).await?;
@@ -150,10 +150,19 @@ pub async fn add_user(
     Ok(result)
 }
 
-pub async fn get_login(user: &str) -> Result<User, sqlx::Error> {
+pub async fn db_login(user: &str) -> Result<User, sqlx::Error> {
     let conn = db_connection().await?;
     let query = "SELECT id, email, username, password, salt, role_id FROM user WHERE username = $1";
     let result: User = sqlx::query_as(query).bind(user).fetch_one(&conn).await?;
+    conn.close().await;
+
+    Ok(result)
+}
+
+pub async fn db_update_user(id: i64, fields: String) -> Result<SqliteQueryResult, sqlx::Error> {
+    let conn = db_connection().await?;
+    let query = format!("UPDATE user SET {fields} WHERE id = $1");
+    let result: SqliteQueryResult = sqlx::query(&query).bind(id).execute(&conn).await?;
     conn.close().await;
 
     Ok(result)
