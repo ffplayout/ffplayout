@@ -1,11 +1,12 @@
 use std::path::Path;
 
+use actix_web::web;
 use faccess::PathExt;
 use rand::{distributions::Alphanumeric, Rng};
 use simplelog::*;
 use sqlx::{migrate::MigrateDatabase, sqlite::SqliteQueryResult, Pool, Sqlite, SqlitePool};
 
-use crate::api::models::User;
+use crate::api::models::{Settings, User};
 use crate::api::utils::GlobalSettings;
 
 #[derive(Debug, sqlx::FromRow)]
@@ -46,7 +47,7 @@ async fn cretea_schema() -> Result<SqliteQueryResult, sqlx::Error> {
             id                      INTEGER PRIMARY KEY AUTOINCREMENT,
             channel_name            TEXT NOT NULL,
             preview_url             TEXT NOT NULL,
-            settings_path           TEXT NOT NULL,
+            config_path             TEXT NOT NULL,
             extra_extensions        TEXT NOT NULL,
             UNIQUE(channel_name)
         );
@@ -93,7 +94,7 @@ pub async fn db_init() -> Result<&'static str, Box<dyn std::error::Error>> {
         END;
         INSERT INTO global(secret) VALUES($1);
         INSERT INTO roles(name) VALUES('admin'), ('user'), ('guest');
-        INSERT INTO settings(channel_name, preview_url, settings_path, extra_extensions)
+        INSERT INTO settings(channel_name, preview_url, config_path, extra_extensions)
         VALUES('Channel 1', 'http://localhost/live/preview.m3u8',
             '/etc/ffplayout/ffplayout.yml', '.jpg,.jpeg,.png');";
     sqlx::query(query).bind(secret).execute(&instances).await?;
@@ -113,6 +114,36 @@ pub async fn db_global() -> Result<GlobalSettings, sqlx::Error> {
     let conn = db_connection().await?;
     let query = "SELECT secret FROM global WHERE id = 1";
     let result: GlobalSettings = sqlx::query_as(query).fetch_one(&conn).await?;
+    conn.close().await;
+
+    Ok(result)
+}
+
+pub async fn db_get_settings(id: &i64) -> Result<Settings, sqlx::Error> {
+    let conn = db_connection().await?;
+    let query = "SELECT * FROM settings WHERE id = $1";
+    let result: Settings = sqlx::query_as(query).bind(id).fetch_one(&conn).await?;
+    conn.close().await;
+
+    println!("{:#?}", result);
+
+    Ok(result)
+}
+
+pub async fn db_update_settings(
+    id: i64,
+    s: web::Json<Settings>,
+) -> Result<SqliteQueryResult, sqlx::Error> {
+    let conn = db_connection().await?;
+    let query = "UPDATE settings SET channel_name = $2, preview_url = $3, config_path = $4, extra_extensions = $5 WHERE id = $1";
+    let result: SqliteQueryResult = sqlx::query(query)
+        .bind(id)
+        .bind(s.channel_name.clone())
+        .bind(s.preview_url.clone())
+        .bind(s.config_path.clone())
+        .bind(s.extra_extensions.clone())
+        .execute(&conn)
+        .await?;
     conn.close().await;
 
     Ok(result)

@@ -13,7 +13,7 @@ use ffplayout_engine::{
         args_parse::Args,
         auth,
         models::LoginUser,
-        routes::{login, settings, update_user},
+        routes::{get_settings, login, patch_settings, update_user},
         utils::{init_config, run_args},
     },
     utils::{init_logging, GlobalConfig},
@@ -62,7 +62,8 @@ async fn main() -> std::io::Result<()> {
                 .service(
                     web::scope("/api")
                         .wrap(auth)
-                        .service(settings)
+                        .service(get_settings)
+                        .service(patch_settings)
                         .service(update_user),
                 )
         })

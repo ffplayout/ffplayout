@@ -1,4 +1,4 @@
-use actix_web::{get, http::StatusCode, post, put, web, Responder};
+use actix_web::{get, http::StatusCode, patch, post, put, web, Responder};
 use actix_web_grants::proc_macro::has_permissions;
 use argon2::{
     password_hash::{rand_core::OsRng, PasswordHash, SaltString},
@@ -10,8 +10,8 @@ use simplelog::*;
 use crate::api::{
     auth::{create_jwt, Claims},
     errors::ServiceError,
-    handles::{db_login, db_role, db_update_user},
-    models::{LoginUser, User},
+    handles::{db_get_settings, db_login, db_role, db_update_settings, db_update_user},
+    models::{LoginUser, Settings, User},
 };
 
 #[derive(Serialize)]
@@ -21,24 +21,48 @@ struct ResponseObj<T> {
     data: Option<T>,
 }
 
-/// curl -X GET http://127.0.0.1:8080/api/settings -H "Authorization: Bearer <TOKEN>"
-#[get("/settings")]
+/// curl -X GET http://127.0.0.1:8080/api/settings/1 -H "Authorization: Bearer <TOKEN>"
+#[get("/settings/{id}")]
+#[has_permissions("admin", "user")]
+async fn get_settings(id: web::Path<i64>) -> Result<impl Responder, ServiceError> {
+    if let Ok(settings) = db_get_settings(&id).await {
+        return Ok(web::Json(ResponseObj {
+            message: format!("Settings from {}", settings.channel_name),
+            status: 200,
+            data: Some(settings),
+        }));
+    }
+
+    Err(ServiceError::InternalServerError)
+}
+
+/// curl -X PATCH http://127.0.0.1:8080/api/settings/1 -H "Content-Type: application/json"  \
+/// --data '{"id":1,"channel_name":"Channel 1","preview_url":"http://localhost/live/stream.m3u8", \
+/// "config_path":"/etc/ffplayout/ffplayout.yml","extra_extensions":".jpg,.jpeg,.png"}' \
+/// -H "Authorization: Bearer <TOKEN>"
+#[patch("/settings/{id}")]
 #[has_permissions("admin")]
-async fn settings(user: web::ReqData<LoginUser>) -> Result<impl Responder, ServiceError> {
-    println!("{:?}", user);
-    Ok("Hello from settings!")
+async fn patch_settings(
+    id: web::Path<i64>,
+    data: web::Json<Settings>,
+) -> Result<impl Responder, ServiceError> {
+    if db_update_settings(*id, data).await.is_ok() {
+        return Ok("Update Success");
+    };
+
+    Err(ServiceError::InternalServerError)
 }
 
 /// curl -X PUT http://localhost:8080/api/user/1 --header 'Content-Type: application/json' \
 /// --data '{"email": "<EMAIL>", "password": "<PASS>"}' --header 'Authorization: <TOKEN>'
-#[put("/user/{user_id}")]
-#[has_permissions("admin")]
+#[put("/user/{id}")]
+#[has_permissions("admin", "user")]
 async fn update_user(
-    user_id: web::Path<i64>,
+    id: web::Path<i64>,
     user: web::ReqData<LoginUser>,
     data: web::Json<User>,
 ) -> Result<impl Responder, ServiceError> {
-    if user_id.into_inner() == user.id {
+    if id.into_inner() == user.id {
         let mut fields = String::new();
 
         if let Some(email) = data.email.clone() {

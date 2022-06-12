@@ -39,12 +39,13 @@ impl LoginUser {
 
 #[derive(Debug, Deserialize, Serialize, sqlx::FromRow)]
 pub struct Settings {
+    #[serde(skip_deserializing)]
     pub id: i64,
     pub channel_name: String,
     pub preview_url: String,
-    pub settings_path: String,
+    pub config_path: String,
     pub extra_extensions: String,
     #[sqlx(default)]
-    #[serde(skip_serializing)]
+    #[serde(skip_serializing, skip_deserializing)]
     pub secret: String,
 }
