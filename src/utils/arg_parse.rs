@@ -1,6 +1,6 @@
 use clap::Parser;
 
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Clone)]
 #[clap(version,
     about = "ffplayout, Rust based 24/7 playout solution.",
     override_usage = "Run without any command to use config file only, or with commands to override parameters:\n\n    ffplayout [OPTIONS]",

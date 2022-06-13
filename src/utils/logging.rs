@@ -167,8 +167,8 @@ fn clean_string(text: &str) -> String {
 /// - mail logger
 pub fn init_logging(
     config: &GlobalConfig,
-    proc_ctl: ProcessControl,
-    messages: Arc<Mutex<Vec<String>>>,
+    proc_ctl: Option<ProcessControl>,
+    messages: Option<Arc<Mutex<Vec<String>>>>,
 ) -> Vec<Box<dyn SharedLogger>> {
     let config_clone = config.clone();
     let app_config = config.logging.clone();
@@ -182,6 +182,8 @@ pub fn init_logging(
     let mut log_config = ConfigBuilder::new()
         .set_thread_level(LevelFilter::Off)
         .set_target_level(LevelFilter::Off)
+        .add_filter_ignore_str("sqlx")
+        .add_filter_ignore_str("reqwest")
         .set_level_padding(LevelPadding::Left)
         .set_time_level(time_level)
         .clone();
@@ -247,10 +249,12 @@ pub fn init_logging(
 
     // set mail logger only the recipient is set in config
     if config.mail.recipient.contains('@') && config.mail.recipient.contains('.') {
-        let messages_clone = messages.clone();
+        let messages_clone = messages.clone().unwrap();
         let interval = config.mail.interval;
 
-        thread::spawn(move || mail_queue(config_clone, proc_ctl, messages_clone, interval));
+        thread::spawn(move || {
+            mail_queue(config_clone, proc_ctl.unwrap(), messages_clone, interval)
+        });
 
         let mail_config = log_config.build();
 
@@ -260,7 +264,7 @@ pub fn init_logging(
             _ => LevelFilter::Error,
         };
 
-        app_logger.push(LogMailer::new(filter, mail_config, messages));
+        app_logger.push(LogMailer::new(filter, mail_config, messages.unwrap()));
     }
 
     app_logger

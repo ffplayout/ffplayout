@@ -8,7 +8,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 use shlex::split;
 
-use crate::utils::{get_args, time_to_sec};
+use crate::utils::{time_to_sec, Args};
 use crate::vec_strings;
 
 /// Global Config
@@ -136,11 +136,10 @@ pub struct Out {
 
 impl GlobalConfig {
     /// Read config from YAML file, and set some extra config values.
-    pub fn new() -> Self {
-        let args = get_args();
+    pub fn new(args: Option<Args>) -> Self {
         let mut config_path = PathBuf::from("/etc/ffplayout/ffplayout.yml");
 
-        if let Some(cfg) = args.config {
+        if let Some(cfg) = args.clone().and_then(|a| a.config) {
             config_path = PathBuf::from(cfg);
         }
 
@@ -219,55 +218,57 @@ impl GlobalConfig {
 
         // Read command line arguments, and override the config with them.
 
-        if let Some(gen) = args.generate {
-            config.general.generate = Some(gen);
-        }
-
-        if let Some(log_path) = args.log {
-            if Path::new(&log_path).is_dir() {
-                config.logging.log_to_file = true;
+        if let Some(arg) = args {
+            if let Some(gen) = arg.generate {
+                config.general.generate = Some(gen);
             }
-            config.logging.log_path = log_path;
-        }
 
-        if let Some(playlist) = args.playlist {
-            config.playlist.path = playlist;
-        }
-
-        if let Some(mode) = args.play_mode {
-            config.processing.mode = mode;
-        }
-
-        if let Some(folder) = args.folder {
-            config.storage.path = folder;
-            config.processing.mode = "folder".into();
-        }
-
-        if let Some(start) = args.start {
-            config.playlist.day_start = start.clone();
-            config.playlist.start_sec = Some(time_to_sec(&start));
-        }
-
-        if let Some(length) = args.length {
-            config.playlist.length = length.clone();
-
-            if length.contains(':') {
-                config.playlist.length_sec = Some(time_to_sec(&length));
-            } else {
-                config.playlist.length_sec = Some(86400.0);
+            if let Some(log_path) = arg.log {
+                if Path::new(&log_path).is_dir() {
+                    config.logging.log_to_file = true;
+                }
+                config.logging.log_path = log_path;
             }
-        }
 
-        if args.infinit {
-            config.playlist.infinit = args.infinit;
-        }
+            if let Some(playlist) = arg.playlist {
+                config.playlist.path = playlist;
+            }
 
-        if let Some(output) = args.output {
-            config.out.mode = output;
-        }
+            if let Some(mode) = arg.play_mode {
+                config.processing.mode = mode;
+            }
 
-        if let Some(volume) = args.volume {
-            config.processing.volume = volume;
+            if let Some(folder) = arg.folder {
+                config.storage.path = folder;
+                config.processing.mode = "folder".into();
+            }
+
+            if let Some(start) = arg.start {
+                config.playlist.day_start = start.clone();
+                config.playlist.start_sec = Some(time_to_sec(&start));
+            }
+
+            if let Some(length) = arg.length {
+                config.playlist.length = length.clone();
+
+                if length.contains(':') {
+                    config.playlist.length_sec = Some(time_to_sec(&length));
+                } else {
+                    config.playlist.length_sec = Some(86400.0);
+                }
+            }
+
+            if arg.infinit {
+                config.playlist.infinit = arg.infinit;
+            }
+
+            if let Some(output) = arg.output {
+                config.out.mode = output;
+            }
+
+            if let Some(volume) = arg.volume {
+                config.processing.volume = volume;
+            }
         }
 
         config
@@ -276,7 +277,7 @@ impl GlobalConfig {
 
 impl Default for GlobalConfig {
     fn default() -> Self {
-        Self::new()
+        Self::new(None)
     }
 }
 

@@ -39,7 +39,7 @@ fn get_date_tomorrow() {
 
 #[test]
 fn test_delta() {
-    let mut config = GlobalConfig::new();
+    let mut config = GlobalConfig::new(None);
     config.mail.recipient = "".into();
     config.processing.mode = "playlist".into();
     config.playlist.day_start = "00:00:00".into();

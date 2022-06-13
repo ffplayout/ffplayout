@@ -14,8 +14,8 @@ use ffplayout_engine::{
     output::{player, write_hls},
     rpc::json_rpc_server,
     utils::{
-        generate_playlist, init_logging, send_mail, validate_ffmpeg, GlobalConfig, PlayerControl,
-        PlayoutStatus, ProcessControl,
+        generate_playlist, get_args, init_logging, send_mail, validate_ffmpeg, GlobalConfig,
+        PlayerControl, PlayoutStatus, ProcessControl,
     },
 };
 
@@ -56,7 +56,8 @@ fn status_file(stat_file: &str, playout_stat: &PlayoutStatus) {
 }
 
 fn main() {
-    let config = GlobalConfig::new();
+    let args = get_args();
+    let config = GlobalConfig::new(Some(args));
     let config_clone = config.clone();
     let play_control = PlayerControl::new();
     let playout_stat = PlayoutStatus::new();
@@ -67,7 +68,7 @@ fn main() {
     let proc_ctl2 = proc_control.clone();
     let messages = Arc::new(Mutex::new(Vec::new()));
 
-    let logging = init_logging(&config, proc_ctl1, messages.clone());
+    let logging = init_logging(&config, Some(proc_ctl1), Some(messages.clone()));
     CombinedLogger::init(logging).unwrap();
 
     validate_ffmpeg(&config);
