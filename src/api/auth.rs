@@ -13,16 +13,16 @@ const JWT_EXPIRATION_MINUTES: i64 = 60;
 pub struct Claims {
     pub id: i64,
     pub username: String,
-    pub permissions: Vec<String>,
+    pub role: String,
     exp: i64,
 }
 
 impl Claims {
-    pub fn new(id: i64, username: String, permissions: Vec<String>) -> Self {
+    pub fn new(id: i64, username: String, role: String) -> Self {
         Self {
             id,
             username,
-            permissions,
+            role,
             exp: (Utc::now() + Duration::minutes(JWT_EXPIRATION_MINUTES)).timestamp(),
         }
     }

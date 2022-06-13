@@ -128,8 +128,6 @@ pub async fn db_get_settings(id: &i64) -> Result<Settings, sqlx::Error> {
     let result: Settings = sqlx::query_as(query).bind(id).fetch_one(&conn).await?;
     conn.close().await;
 
-    println!("{:#?}", result);
-
     Ok(result)
 }
 

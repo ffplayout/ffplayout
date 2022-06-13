@@ -1,5 +1,5 @@
 use actix_web::{get, http::StatusCode, patch, post, put, web, Responder};
-use actix_web_grants::proc_macro::has_permissions;
+use actix_web_grants::proc_macro::has_any_role;
 use argon2::{
     password_hash::{rand_core::OsRng, PasswordHash, SaltString},
     Argon2, PasswordHasher, PasswordVerifier,
@@ -14,6 +14,7 @@ use crate::api::{
         db_add_user, db_get_settings, db_login, db_role, db_update_settings, db_update_user,
     },
     models::{LoginUser, Settings, User},
+    utils::Role,
 };
 
 #[derive(Serialize)]
@@ -25,7 +26,7 @@ struct ResponseObj<T> {
 
 /// curl -X GET http://127.0.0.1:8080/api/settings/1 -H "Authorization: Bearer <TOKEN>"
 #[get("/settings/{id}")]
-#[has_permissions("admin", "user")]
+#[has_any_role("Role::Admin", "Role::User", type = "Role")]
 async fn get_settings(id: web::Path<i64>) -> Result<impl Responder, ServiceError> {
     if let Ok(settings) = db_get_settings(&id).await {
         return Ok(web::Json(ResponseObj {
@@ -43,7 +44,7 @@ async fn get_settings(id: web::Path<i64>) -> Result<impl Responder, ServiceError
 /// "config_path":"/etc/ffplayout/ffplayout.yml","extra_extensions":".jpg,.jpeg,.png"}' \
 /// -H "Authorization: Bearer <TOKEN>"
 #[patch("/settings/{id}")]
-#[has_permissions("admin")]
+#[has_any_role("Role::Admin", type = "Role")]
 async fn patch_settings(
     id: web::Path<i64>,
     data: web::Json<Settings>,
@@ -55,10 +56,22 @@ async fn patch_settings(
     Err(ServiceError::InternalServerError)
 }
 
+#[get("/playout/config/{id}")]
+#[has_any_role("Role::Admin", "Role::User", type = "Role")]
+async fn get_playout_config(id: web::Path<i64>) -> Result<impl Responder, ServiceError> {
+    if let Ok(settings) = db_get_settings(&id).await {
+        println!("{:?}", settings.config_path);
+
+        return Ok("settings");
+    };
+
+    Err(ServiceError::InternalServerError)
+}
+
 /// curl -X PUT http://localhost:8080/api/user/1 --header 'Content-Type: application/json' \
 /// --data '{"email": "<EMAIL>", "password": "<PASS>"}' --header 'Authorization: <TOKEN>'
 #[put("/user/{id}")]
-#[has_permissions("admin", "user")]
+#[has_any_role("Role::Admin", "Role::User", type = "Role")]
 async fn update_user(
     id: web::Path<i64>,
     user: web::ReqData<LoginUser>,
@@ -98,7 +111,7 @@ async fn update_user(
 /// -d '{"email": "<EMAIL>", "username": "<USER>", "password": "<PASS>", "role_id": 1}' \
 /// --header 'Authorization: Bearer <TOKEN>'
 #[post("/user/")]
-#[has_permissions("admin")]
+#[has_any_role("Role::Admin", type = "Role")]
 async fn add_user(data: web::Json<User>) -> Result<impl Responder, ServiceError> {
     match db_add_user(data.into_inner()).await {
         Ok(_) => Ok("Add User Success"),
@@ -127,7 +140,7 @@ pub async fn login(credentials: web::Json<User>) -> impl Responder {
                 let role = db_role(&user.role_id.unwrap_or_default())
                     .await
                     .unwrap_or_else(|_| "guest".to_string());
-                let claims = Claims::new(user.id, user.username.clone(), vec![role.clone()]);
+                let claims = Claims::new(user.id, user.username.clone(), role.clone());
 
                 if let Ok(token) = create_jwt(claims) {
                     user.token = Some(token);

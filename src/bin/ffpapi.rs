@@ -13,8 +13,8 @@ use ffplayout_engine::{
         args_parse::Args,
         auth,
         models::LoginUser,
-        routes::{add_user, get_settings, login, patch_settings, update_user},
-        utils::{init_config, run_args},
+        routes::{add_user, get_playout_config, get_settings, login, patch_settings, update_user},
+        utils::{init_config, run_args, Role},
     },
     utils::{init_logging, GlobalConfig},
 };
@@ -22,10 +22,12 @@ use ffplayout_engine::{
 async fn validator(req: ServiceRequest, credentials: BearerAuth) -> Result<ServiceRequest, Error> {
     // We just get permissions from JWT
     let claims = auth::decode_jwt(credentials.token()).await?;
-    req.attach(claims.permissions);
+    req.attach(vec![Role::set_role(&claims.role)]);
 
     req.extensions_mut()
         .insert(LoginUser::new(claims.id, claims.username));
+
+    println!("{:#?}", req);
     Ok(req)
 }
 
@@ -63,6 +65,7 @@ async fn main() -> std::io::Result<()> {
                     web::scope("/api")
                         .wrap(auth)
                         .service(add_user)
+                        .service(get_playout_config)
                         .service(get_settings)
                         .service(patch_settings)
                         .service(update_user),

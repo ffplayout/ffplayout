@@ -7,6 +7,23 @@ use crate::api::{
     models::User,
 };
 
+#[derive(PartialEq, Clone)]
+pub enum Role {
+    Admin,
+    User,
+    Guest,
+}
+
+impl Role {
+    pub fn set_role(role: &str) -> Self {
+        match role {
+            "admin" => Role::Admin,
+            "user" => Role::User,
+            _ => Role::Guest,
+        }
+    }
+}
+
 #[derive(Debug, sqlx::FromRow)]
 pub struct GlobalSettings {
     pub secret: String,
