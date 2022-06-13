@@ -25,7 +25,7 @@ for target in "${targets[@]}"; do
         fi
 
         cp ./target/${target}/release/ffplayout.exe .
-        zip -r "ffplayout-engine-v${version}_${target}.zip" assets docs LICENSE README.md ffplayout.exe
+        zip -r "ffplayout-engine-v${version}_${target}.zip" assets docs LICENSE README.md ffplayout.exe -x *.db
         rm -f ffplayout.exe
     else
         if [[ -f "ffplayout-engine-v${version}_${target}.tar.gz" ]]; then
@@ -33,7 +33,7 @@ for target in "${targets[@]}"; do
         fi
 
         cp ./target/${target}/release/ffplayout .
-        tar -czvf "ffplayout-engine-v${version}_${target}.tar.gz" assets docs LICENSE README.md ffplayout
+        tar -czvf "ffplayout-engine-v${version}_${target}.tar.gz" --exclude='*.db' assets docs LICENSE README.md ffplayout
         rm -f ffplayout
     fi
 
