@@ -1,13 +1,10 @@
-use argon2::{
-    password_hash::{rand_core::OsRng, PasswordHasher, SaltString},
-    Argon2,
-};
 use once_cell::sync::OnceCell;
 use simplelog::*;
 
 use crate::api::{
     args_parse::Args,
-    handles::{add_user, db_global, db_init},
+    handles::{db_add_user, db_global, db_init},
+    models::User,
 };
 
 #[derive(Debug, sqlx::FromRow)]
@@ -60,27 +57,17 @@ pub async fn run_args(args: Args) -> Result<(), i32> {
             return Err(1);
         }
 
-        let salt = SaltString::generate(&mut OsRng);
-        let argon2 = Argon2::default();
-        let password = args.password.unwrap();
-
-        let password_hash = match argon2.hash_password(password.as_bytes(), &salt) {
-            Ok(hash) => hash.to_string(),
-            Err(e) => {
-                error!("{e}");
-                return Err(1);
-            }
+        let user = User {
+            id: 0,
+            email: Some(args.email.unwrap()),
+            username: username.clone(),
+            password: args.password.unwrap(),
+            salt: None,
+            role_id: Some(1),
+            token: None,
         };
 
-        if let Err(e) = add_user(
-            &args.email.unwrap(),
-            &username,
-            &password_hash.to_string(),
-            &salt.to_string(),
-            &1,
-        )
-        .await
-        {
+        if let Err(e) = db_add_user(user).await {
             error!("{e}");
             return Err(1);
         };

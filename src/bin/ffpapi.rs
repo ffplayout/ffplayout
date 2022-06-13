@@ -13,7 +13,7 @@ use ffplayout_engine::{
         args_parse::Args,
         auth,
         models::LoginUser,
-        routes::{get_settings, login, patch_settings, update_user},
+        routes::{add_user, get_settings, login, patch_settings, update_user},
         utils::{init_config, run_args},
     },
     utils::{init_logging, GlobalConfig},
@@ -53,7 +53,7 @@ async fn main() -> std::io::Result<()> {
 
         info!("running ffplayout API, listen on {conn}");
 
-        // TODO: add allow origin
+        // TODO: add allow origin (or give it to the proxy)
         HttpServer::new(move || {
             let auth = HttpAuthentication::bearer(validator);
             App::new()
@@ -62,6 +62,7 @@ async fn main() -> std::io::Result<()> {
                 .service(
                     web::scope("/api")
                         .wrap(auth)
+                        .service(add_user)
                         .service(get_settings)
                         .service(patch_settings)
                         .service(update_user),

@@ -10,7 +10,9 @@ use simplelog::*;
 use crate::api::{
     auth::{create_jwt, Claims},
     errors::ServiceError,
-    handles::{db_get_settings, db_login, db_role, db_update_settings, db_update_user},
+    handles::{
+        db_add_user, db_get_settings, db_login, db_role, db_update_settings, db_update_user,
+    },
     models::{LoginUser, Settings, User},
 };
 
@@ -46,7 +48,7 @@ async fn patch_settings(
     id: web::Path<i64>,
     data: web::Json<Settings>,
 ) -> Result<impl Responder, ServiceError> {
-    if db_update_settings(*id, data).await.is_ok() {
+    if db_update_settings(*id, data.into_inner()).await.is_ok() {
         return Ok("Update Success");
     };
 
@@ -75,9 +77,7 @@ async fn update_user(
             }
 
             let salt = SaltString::generate(&mut OsRng);
-            let argon2 = Argon2::default();
-
-            let password_hash = argon2
+            let password_hash = Argon2::default()
                 .hash_password(data.password.clone().as_bytes(), &salt)
                 .unwrap();
 
@@ -94,17 +94,32 @@ async fn update_user(
     Err(ServiceError::Unauthorized)
 }
 
+/// curl -X POST 'http://localhost:8080/api/user/' --header 'Content-Type: application/json' \
+/// -d '{"email": "<EMAIL>", "username": "<USER>", "password": "<PASS>", "role_id": 1}' \
+/// --header 'Authorization: Bearer <TOKEN>'
+#[post("/user/")]
+#[has_permissions("admin")]
+async fn add_user(data: web::Json<User>) -> Result<impl Responder, ServiceError> {
+    match db_add_user(data.into_inner()).await {
+        Ok(_) => Ok("Add User Success"),
+        Err(e) => {
+            error!("{e}");
+            Err(ServiceError::InternalServerError)
+        }
+    }
+}
+
 /// curl -X POST http://127.0.0.1:8080/auth/login/ -H "Content-Type: application/json" \
-/// -d '{"username": "USER", "password": "abc123" }'
+/// -d '{"username": "<USER>", "password": "<PASS>" }'
 #[post("/auth/login/")]
 pub async fn login(credentials: web::Json<User>) -> impl Responder {
     match db_login(&credentials.username).await {
         Ok(mut user) => {
             let pass = user.password.clone();
+            let hash = PasswordHash::new(&pass).unwrap();
             user.password = "".into();
             user.salt = None;
 
-            let hash = PasswordHash::new(&pass).unwrap();
             if Argon2::default()
                 .verify_password(credentials.password.as_bytes(), &hash)
                 .is_ok()
@@ -131,7 +146,7 @@ pub async fn login(credentials: web::Json<User>) -> impl Responder {
                 error!("Wrong password for {}!", credentials.username);
                 web::Json(ResponseObj {
                     message: "Wrong password!".into(),
-                    status: 401,
+                    status: 403,
                     data: None,
                 })
                 .customize()

@@ -1,6 +1,9 @@
 use std::path::Path;
 
-use actix_web::web;
+use argon2::{
+    password_hash::{rand_core::OsRng, SaltString},
+    Argon2, PasswordHasher,
+};
 use faccess::PathExt;
 use rand::{distributions::Alphanumeric, Rng};
 use simplelog::*;
@@ -27,7 +30,7 @@ pub fn db_path() -> Result<String, Box<dyn std::error::Error>> {
     Ok(db_path)
 }
 
-async fn cretea_schema() -> Result<SqliteQueryResult, sqlx::Error> {
+async fn create_schema() -> Result<SqliteQueryResult, sqlx::Error> {
     let conn = db_connection().await?;
     let query = "PRAGMA foreign_keys = ON;
     CREATE TABLE IF NOT EXISTS global
@@ -73,7 +76,7 @@ pub async fn db_init() -> Result<&'static str, Box<dyn std::error::Error>> {
 
     if !Sqlite::database_exists(&db_path).await.unwrap_or(false) {
         Sqlite::create_database(&db_path).await.unwrap();
-        match cretea_schema().await {
+        match create_schema().await {
             Ok(_) => info!("Database created Successfully"),
             Err(e) => panic!("{e}"),
         }
@@ -132,16 +135,17 @@ pub async fn db_get_settings(id: &i64) -> Result<Settings, sqlx::Error> {
 
 pub async fn db_update_settings(
     id: i64,
-    s: web::Json<Settings>,
+    settings: Settings,
 ) -> Result<SqliteQueryResult, sqlx::Error> {
     let conn = db_connection().await?;
+
     let query = "UPDATE settings SET channel_name = $2, preview_url = $3, config_path = $4, extra_extensions = $5 WHERE id = $1";
     let result: SqliteQueryResult = sqlx::query(query)
         .bind(id)
-        .bind(s.channel_name.clone())
-        .bind(s.preview_url.clone())
-        .bind(s.config_path.clone())
-        .bind(s.extra_extensions.clone())
+        .bind(settings.channel_name.clone())
+        .bind(settings.preview_url.clone())
+        .bind(settings.config_path.clone())
+        .bind(settings.extra_extensions.clone())
         .execute(&conn)
         .await?;
     conn.close().await;
@@ -158,33 +162,32 @@ pub async fn db_role(id: &i64) -> Result<String, sqlx::Error> {
     Ok(result.name)
 }
 
-pub async fn add_user(
-    mail: &str,
-    user: &str,
-    pass: &str,
-    salt: &str,
-    group: &i64,
-) -> Result<SqliteQueryResult, sqlx::Error> {
+pub async fn db_login(user: &str) -> Result<User, sqlx::Error> {
     let conn = db_connection().await?;
-    let query =
-        "INSERT INTO user (email, username, password, salt, role_id) VALUES($1, $2, $3, $4, $5)";
-    let result = sqlx::query(query)
-        .bind(mail)
-        .bind(user)
-        .bind(pass)
-        .bind(salt)
-        .bind(group)
-        .execute(&conn)
-        .await?;
+    let query = "SELECT id, email, username, password, salt, role_id FROM user WHERE username = $1";
+    let result: User = sqlx::query_as(query).bind(user).fetch_one(&conn).await?;
     conn.close().await;
 
     Ok(result)
 }
 
-pub async fn db_login(user: &str) -> Result<User, sqlx::Error> {
+pub async fn db_add_user(user: User) -> Result<SqliteQueryResult, sqlx::Error> {
     let conn = db_connection().await?;
-    let query = "SELECT id, email, username, password, salt, role_id FROM user WHERE username = $1";
-    let result: User = sqlx::query_as(query).bind(user).fetch_one(&conn).await?;
+    let salt = SaltString::generate(&mut OsRng);
+    let password_hash = Argon2::default()
+        .hash_password(user.password.clone().as_bytes(), &salt)
+        .unwrap();
+
+    let query =
+        "INSERT INTO user (email, username, password, salt, role_id) VALUES($1, $2, $3, $4, $5)";
+    let result = sqlx::query(query)
+        .bind(user.email)
+        .bind(user.username)
+        .bind(password_hash.to_string())
+        .bind(salt.to_string())
+        .bind(user.role_id)
+        .execute(&conn)
+        .await?;
     conn.close().await;
 
     Ok(result)
