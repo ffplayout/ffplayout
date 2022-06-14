@@ -22,10 +22,10 @@ use log::{Level, LevelFilter, Log, Metadata, Record};
 use regex::Regex;
 use simplelog::*;
 
-use crate::utils::{GlobalConfig, ProcessControl};
+use crate::utils::{PlayoutConfig, ProcessControl};
 
 /// send log messages to mail recipient
-pub fn send_mail(cfg: &GlobalConfig, msg: String) {
+pub fn send_mail(cfg: &PlayoutConfig, msg: String) {
     let recip = cfg
         .mail
         .recipient
@@ -68,7 +68,7 @@ pub fn send_mail(cfg: &GlobalConfig, msg: String) {
 ///
 /// Check every give seconds for messages and send them.
 fn mail_queue(
-    cfg: GlobalConfig,
+    cfg: PlayoutConfig,
     proc_ctl: ProcessControl,
     messages: Arc<Mutex<Vec<String>>>,
     interval: u64,
@@ -166,7 +166,7 @@ fn clean_string(text: &str) -> String {
 /// - file logger
 /// - mail logger
 pub fn init_logging(
-    config: &GlobalConfig,
+    config: &PlayoutConfig,
     proc_ctl: Option<ProcessControl>,
     messages: Option<Arc<Mutex<Vec<String>>>>,
 ) -> Vec<Box<dyn SharedLogger>> {
@@ -195,7 +195,7 @@ pub fn init_logging(
         };
     };
 
-    if app_config.log_to_file {
+    if app_config.log_to_file && &app_config.log_path != "none" {
         let file_config = log_config
             .clone()
             .set_time_format_custom(format_description!(
