@@ -30,14 +30,14 @@ use simplelog::*;
 use crate::filter::ingest_filter::filter_cmd;
 use crate::input::{ingest::log_line, source_generator};
 use crate::utils::{
-    prepare_output_cmd, sec_to_time, stderr_reader, Decoder, GlobalConfig, Ingest, PlayerControl,
+    prepare_output_cmd, sec_to_time, stderr_reader, Decoder, Ingest, PlayerControl, PlayoutConfig,
     PlayoutStatus, ProcessControl,
 };
 use crate::vec_strings;
 
 /// Ingest Server for HLS
 fn ingest_to_hls_server(
-    config: GlobalConfig,
+    config: PlayoutConfig,
     playout_stat: PlayoutStatus,
     mut proc_control: ProcessControl,
 ) -> Result<(), Error> {
@@ -131,7 +131,7 @@ fn ingest_to_hls_server(
 ///
 /// Write with single ffmpeg instance directly to a HLS playlist.
 pub fn write_hls(
-    config: &GlobalConfig,
+    config: &PlayoutConfig,
     play_control: PlayerControl,
     playout_stat: PlayoutStatus,
     mut proc_control: ProcessControl,

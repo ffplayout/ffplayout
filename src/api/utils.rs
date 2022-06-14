@@ -1,3 +1,6 @@
+use std::{error::Error, fs::File, path::Path};
+
+use faccess::PathExt;
 use once_cell::sync::OnceCell;
 use simplelog::*;
 
@@ -6,6 +9,7 @@ use crate::api::{
     handles::{db_add_user, db_global, db_init},
     models::User,
 };
+use crate::utils::PlayoutConfig;
 
 #[derive(PartialEq, Clone)]
 pub enum Role {
@@ -53,6 +57,19 @@ pub async fn init_config() {
     INSTANCE.set(config).unwrap();
 }
 
+pub fn db_path() -> Result<String, Box<dyn std::error::Error>> {
+    let sys_path = Path::new("/usr/share/ffplayout");
+    let mut db_path = String::from("./ffplayout.db");
+
+    if sys_path.is_dir() && sys_path.writable() {
+        db_path = String::from("/usr/share/ffplayout/ffplayout.db");
+    } else if Path::new("./assets").is_dir() {
+        db_path = String::from("./assets/ffplayout.db");
+    }
+
+    Ok(db_path)
+}
+
 pub async fn run_args(args: Args) -> Result<(), i32> {
     if !args.init && args.listen.is_none() && args.username.is_none() {
         error!("Wrong number of arguments! Run ffpapi --help for more information.");
@@ -95,4 +112,11 @@ pub async fn run_args(args: Args) -> Result<(), i32> {
     }
 
     Ok(())
+}
+
+pub fn read_playout_config(path: &str) -> Result<PlayoutConfig, Box<dyn Error>> {
+    let file = File::open(path)?;
+    let config: PlayoutConfig = serde_yaml::from_reader(file)?;
+
+    Ok(config)
 }

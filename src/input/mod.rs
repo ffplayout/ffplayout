@@ -9,7 +9,7 @@ use std::{
 
 use simplelog::*;
 
-use crate::utils::{GlobalConfig, Media, PlayoutStatus};
+use crate::utils::{Media, PlayoutConfig, PlayoutStatus};
 
 pub mod folder;
 pub mod ingest;
@@ -21,7 +21,7 @@ pub use playlist::CurrentProgram;
 
 /// Create a source iterator from playlist, or from folder.
 pub fn source_generator(
-    config: GlobalConfig,
+    config: PlayoutConfig,
     current_list: Arc<Mutex<Vec<Media>>>,
     index: Arc<AtomicUsize>,
     playout_stat: PlayoutStatus,

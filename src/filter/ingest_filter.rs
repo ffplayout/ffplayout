@@ -1,10 +1,10 @@
 use crate::filter::{a_loudnorm, v_overlay};
-use crate::utils::GlobalConfig;
+use crate::utils::PlayoutConfig;
 
 /// Audio Filter
 ///
 /// If needed we add audio filters to the server instance.
-fn audio_filter(config: &GlobalConfig) -> String {
+fn audio_filter(config: &PlayoutConfig) -> String {
     let mut audio_chain = ";[0:a]afade=in:st=0:d=0.5".to_string();
 
     if config.processing.loudnorm_ingest {
@@ -22,7 +22,7 @@ fn audio_filter(config: &GlobalConfig) -> String {
 }
 
 /// Create filter nodes for ingest live stream.
-pub fn filter_cmd(config: &GlobalConfig) -> Vec<String> {
+pub fn filter_cmd(config: &PlayoutConfig) -> Vec<String> {
     let mut filter = format!(
         "[0:v]fps={},scale={}:{},setdar=dar={},fade=in:st=0:d=0.5",
         config.processing.fps,

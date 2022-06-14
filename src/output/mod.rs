@@ -17,7 +17,8 @@ pub use hls::write_hls;
 
 use crate::input::{ingest_server, source_generator};
 use crate::utils::{
-    sec_to_time, stderr_reader, Decoder, GlobalConfig, PlayerControl, PlayoutStatus, ProcessControl,
+    sec_to_time, stderr_reader, Decoder, PlayerControl, PlayoutConfig, PlayoutStatus,
+    ProcessControl,
 };
 use crate::vec_strings;
 
@@ -31,7 +32,7 @@ use crate::vec_strings;
 /// When a live ingest arrive, it stops the current playing and switch to the live source.
 /// When ingest stops, it switch back to playlist/folder mode.
 pub fn player(
-    config: &GlobalConfig,
+    config: &PlayoutConfig,
     play_control: PlayerControl,
     playout_stat: PlayoutStatus,
     mut proc_control: ProcessControl,

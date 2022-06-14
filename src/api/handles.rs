@@ -1,33 +1,21 @@
-use std::path::Path;
-
 use argon2::{
     password_hash::{rand_core::OsRng, SaltString},
     Argon2, PasswordHasher,
 };
-use faccess::PathExt;
+
 use rand::{distributions::Alphanumeric, Rng};
 use simplelog::*;
 use sqlx::{migrate::MigrateDatabase, sqlite::SqliteQueryResult, Pool, Sqlite, SqlitePool};
 
-use crate::api::models::{Settings, User};
 use crate::api::utils::GlobalSettings;
+use crate::api::{
+    models::{Settings, User},
+    utils::db_path,
+};
 
 #[derive(Debug, sqlx::FromRow)]
 struct Role {
     name: String,
-}
-
-pub fn db_path() -> Result<String, Box<dyn std::error::Error>> {
-    let sys_path = Path::new("/usr/share/ffplayout");
-    let mut db_path = String::from("./ffplayout.db");
-
-    if sys_path.is_dir() && sys_path.writable() {
-        db_path = String::from("/usr/share/ffplayout/ffplayout.db");
-    } else if Path::new("./assets").is_dir() {
-        db_path = String::from("./assets/ffplayout.db");
-    }
-
-    Ok(db_path)
 }
 
 async fn create_schema() -> Result<SqliteQueryResult, sqlx::Error> {

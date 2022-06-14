@@ -1,5 +1,5 @@
 use actix_web::{get, http::StatusCode, patch, post, put, web, Responder};
-use actix_web_grants::proc_macro::has_any_role;
+use actix_web_grants::{permissions::AuthDetails, proc_macro::has_any_role};
 use argon2::{
     password_hash::{rand_core::OsRng, PasswordHash, SaltString},
     Argon2, PasswordHasher, PasswordVerifier,
@@ -14,14 +14,47 @@ use crate::api::{
         db_add_user, db_get_settings, db_login, db_role, db_update_settings, db_update_user,
     },
     models::{LoginUser, Settings, User},
-    utils::Role,
+    utils::{read_playout_config, Role},
 };
+
+use crate::utils::playout_config;
 
 #[derive(Serialize)]
 struct ResponseObj<T> {
     message: String,
     status: i32,
     data: Option<T>,
+}
+
+#[derive(Debug, Serialize, Clone)]
+struct ResponsePlayoutConfig {
+    general: Option<playout_config::General>,
+    rpc_server: Option<playout_config::RpcServer>,
+    mail: Option<playout_config::Mail>,
+    logging: Option<playout_config::Logging>,
+    processing: Option<playout_config::Processing>,
+    ingest: Option<playout_config::Ingest>,
+    playlist: Option<playout_config::Playlist>,
+    storage: Option<playout_config::Storage>,
+    text: Option<playout_config::Text>,
+    out: Option<playout_config::Out>,
+}
+
+impl ResponsePlayoutConfig {
+    fn new() -> Self {
+        Self {
+            general: None,
+            rpc_server: None,
+            mail: None,
+            logging: None,
+            processing: None,
+            ingest: None,
+            playlist: None,
+            storage: None,
+            text: None,
+            out: None,
+        }
+    }
 }
 
 /// curl -X GET http://127.0.0.1:8080/api/settings/1 -H "Authorization: Bearer <TOKEN>"
@@ -56,13 +89,35 @@ async fn patch_settings(
     Err(ServiceError::InternalServerError)
 }
 
+/// curl -X GET http://localhost:8080/api/playout/config/1 --header 'Authorization: <TOKEN>'
 #[get("/playout/config/{id}")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
-async fn get_playout_config(id: web::Path<i64>) -> Result<impl Responder, ServiceError> {
+async fn get_playout_config(
+    id: web::Path<i64>,
+    details: AuthDetails<Role>,
+) -> Result<impl Responder, ServiceError> {
     if let Ok(settings) = db_get_settings(&id).await {
-        println!("{:?}", settings.config_path);
+        if let Ok(config) = read_playout_config(&settings.config_path) {
+            let mut playout_cfg = ResponsePlayoutConfig::new();
 
-        return Ok("settings");
+            playout_cfg.playlist = Some(config.playlist);
+            playout_cfg.storage = Some(config.storage);
+            playout_cfg.text = Some(config.text);
+
+            if details.has_role(&Role::Admin) {
+                playout_cfg.general = Some(config.general);
+                playout_cfg.rpc_server = Some(config.rpc_server);
+                playout_cfg.mail = Some(config.mail);
+                playout_cfg.logging = Some(config.logging);
+                playout_cfg.processing = Some(config.processing);
+                playout_cfg.ingest = Some(config.ingest);
+                playout_cfg.out = Some(config.out);
+
+                return Ok(web::Json(playout_cfg));
+            }
+
+            return Ok(web::Json(playout_cfg));
+        }
     };
 
     Err(ServiceError::InternalServerError)

@@ -15,7 +15,7 @@ use crate::vec_strings;
 ///
 /// This we init ones, when ffplayout is starting and use them globally in the hole program.
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct GlobalConfig {
+pub struct PlayoutConfig {
     pub general: General,
     pub rpc_server: RpcServer,
     pub mail: Mail,
@@ -134,7 +134,7 @@ pub struct Out {
     pub output_cmd: Option<Vec<String>>,
 }
 
-impl GlobalConfig {
+impl PlayoutConfig {
     /// Read config from YAML file, and set some extra config values.
     pub fn new(args: Option<Args>) -> Self {
         let mut config_path = PathBuf::from("/etc/ffplayout/ffplayout.yml");
@@ -161,7 +161,7 @@ impl GlobalConfig {
             }
         };
 
-        let mut config: GlobalConfig =
+        let mut config: PlayoutConfig =
             serde_yaml::from_reader(f).expect("Could not read config file.");
         config.general.generate = None;
         config.general.stat_file = env::temp_dir()
@@ -275,7 +275,7 @@ impl GlobalConfig {
     }
 }
 
-impl Default for GlobalConfig {
+impl Default for PlayoutConfig {
     fn default() -> Self {
         Self::new(None)
     }

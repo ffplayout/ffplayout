@@ -1,11 +1,11 @@
 use std::path::Path;
 
-use crate::utils::GlobalConfig;
+use crate::utils::PlayoutConfig;
 
 /// Overlay Filter
 ///
 /// When a logo is set, we create here the filter for the server.
-pub fn filter_node(config: &GlobalConfig, add_tail: bool) -> String {
+pub fn filter_node(config: &PlayoutConfig, add_tail: bool) -> String {
     let mut logo_chain = String::new();
 
     if config.processing.add_logo && Path::new(&config.processing.logo).is_file() {

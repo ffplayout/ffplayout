@@ -16,7 +16,7 @@ use serde_json::json;
 use simplelog::*;
 
 mod arg_parse;
-mod config;
+pub mod config;
 pub mod controller;
 mod generator;
 pub mod json_serializer;
@@ -24,10 +24,10 @@ mod json_validate;
 mod logging;
 
 pub use arg_parse::{get_args, Args};
-pub use config::GlobalConfig;
+pub use config::{self as playout_config, PlayoutConfig};
 pub use controller::{PlayerControl, PlayoutStatus, ProcessControl, ProcessUnit::*};
 pub use generator::generate_playlist;
-pub use json_serializer::{read_json, Playlist, DUMMY_LEN};
+pub use json_serializer::{read_json, JsonPlaylist, DUMMY_LEN};
 pub use json_validate::validate_playlist;
 pub use logging::{init_logging, send_mail};
 
@@ -123,7 +123,7 @@ impl Media {
         }
     }
 
-    pub fn add_filter(&mut self, config: &GlobalConfig) {
+    pub fn add_filter(&mut self, config: &PlayoutConfig) {
         let mut node = self.clone();
         self.filter = Some(filter_chains(config, &mut node))
     }
@@ -191,7 +191,7 @@ impl MediaProbe {
 /// Write current status to status file in temp folder.
 ///
 /// The status file is init in main function and mostly modified in RPC server.
-pub fn write_status(config: &GlobalConfig, date: &str, shift: f64) {
+pub fn write_status(config: &PlayoutConfig, date: &str, shift: f64) {
     let data = json!({
         "time_shift": shift,
         "date": date,
@@ -308,7 +308,7 @@ pub fn is_close(a: f64, b: f64, to: f64) -> bool {
 /// if we still in sync.
 ///
 /// We also get here the global delta between clip start and time when a new playlist should start.
-pub fn get_delta(config: &GlobalConfig, begin: &f64) -> (f64, f64) {
+pub fn get_delta(config: &PlayoutConfig, begin: &f64) -> (f64, f64) {
     let mut current_time = get_sec();
     let start = config.playlist.start_sec.unwrap();
     let length = time_to_sec(&config.playlist.length);
@@ -339,7 +339,7 @@ pub fn get_delta(config: &GlobalConfig, begin: &f64) -> (f64, f64) {
 }
 
 /// Check if clip in playlist is in sync with global time.
-pub fn check_sync(config: &GlobalConfig, delta: f64) -> bool {
+pub fn check_sync(config: &PlayoutConfig, delta: f64) -> bool {
     if delta.abs() > config.general.stop_threshold && config.general.stop_threshold > 0.0 {
         error!("Clip begin out of sync for <yellow>{delta:.3}</> seconds. Stop playout!");
         return false;
@@ -349,7 +349,7 @@ pub fn check_sync(config: &GlobalConfig, delta: f64) -> bool {
 }
 
 /// Create a dummy clip as a placeholder for missing video files.
-pub fn gen_dummy(config: &GlobalConfig, duration: f64) -> (String, Vec<String>) {
+pub fn gen_dummy(config: &PlayoutConfig, duration: f64) -> (String, Vec<String>) {
     let color = "#121212";
     let source = format!(
         "color=c={color}:s={}x{}:d={duration}",
@@ -567,7 +567,7 @@ fn ffmpeg_libs_and_filter() -> (Vec<String>, Vec<String>) {
 /// Validate ffmpeg/ffprobe/ffplay.
 ///
 /// Check if they are in system and has all filters and codecs we need.
-pub fn validate_ffmpeg(config: &GlobalConfig) {
+pub fn validate_ffmpeg(config: &PlayoutConfig) {
     is_in_system("ffmpeg");
     is_in_system("ffprobe");
 

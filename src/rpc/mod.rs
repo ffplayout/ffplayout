@@ -9,7 +9,7 @@ use serde_json::{json, Map};
 use simplelog::*;
 
 use crate::utils::{
-    get_delta, get_sec, sec_to_time, write_status, GlobalConfig, Media, PlayerControl,
+    get_delta, get_sec, sec_to_time, write_status, Media, PlayerControl, PlayoutConfig,
     PlayoutStatus, ProcessControl,
 };
 
@@ -25,7 +25,7 @@ fn get_media_map(media: Media) -> Value {
 }
 
 /// prepare json object for response
-fn get_data_map(config: &GlobalConfig, media: Media) -> Map<String, Value> {
+fn get_data_map(config: &PlayoutConfig, media: Media) -> Map<String, Value> {
     let mut data_map = Map::new();
     let begin = media.begin.unwrap_or(0.0);
 
@@ -56,7 +56,7 @@ fn get_data_map(config: &GlobalConfig, media: Media) -> Map<String, Value> {
 /// - get last clip
 /// - reset player state to original clip
 pub fn json_rpc_server(
-    config: GlobalConfig,
+    config: PlayoutConfig,
     play_control: PlayerControl,
     playout_stat: PlayoutStatus,
     proc_control: ProcessControl,

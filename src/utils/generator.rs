@@ -17,7 +17,7 @@ use chrono::{Duration, NaiveDate};
 use simplelog::*;
 
 use crate::input::FolderSource;
-use crate::utils::{json_serializer::Playlist, GlobalConfig, Media};
+use crate::utils::{json_serializer::JsonPlaylist, Media, PlayoutConfig};
 
 /// Generate a vector with dates, from given range.
 fn get_date_range(date_range: &[String]) -> Vec<String> {
@@ -50,7 +50,7 @@ fn get_date_range(date_range: &[String]) -> Vec<String> {
 }
 
 /// Generate playlists
-pub fn generate_playlist(config: &GlobalConfig, mut date_range: Vec<String>) {
+pub fn generate_playlist(config: &PlayoutConfig, mut date_range: Vec<String>) {
     let total_length = config.playlist.length_sec.unwrap();
     let current_list = Arc::new(Mutex::new(vec![Media::new(0, "".to_string(), false)]));
     let index = Arc::new(AtomicUsize::new(0));
@@ -103,7 +103,7 @@ pub fn generate_playlist(config: &GlobalConfig, mut date_range: Vec<String>) {
         let mut length = 0.0;
         let mut round = 0;
 
-        let mut playlist = Playlist {
+        let mut playlist = JsonPlaylist {
             date,
             current_file: None,
             start_sec: None,

@@ -19,14 +19,14 @@ use rand::{seq::SliceRandom, thread_rng};
 use simplelog::*;
 use walkdir::WalkDir;
 
-use crate::utils::{get_sec, GlobalConfig, Media};
+use crate::utils::{get_sec, Media, PlayoutConfig};
 
 /// Folder Sources
 ///
 /// Like playlist source, we create here a folder list for iterate over it.
 #[derive(Debug, Clone)]
 pub struct FolderSource {
-    config: GlobalConfig,
+    config: PlayoutConfig,
     pub nodes: Arc<Mutex<Vec<Media>>>,
     current_node: Media,
     index: Arc<AtomicUsize>,
@@ -34,7 +34,7 @@ pub struct FolderSource {
 
 impl FolderSource {
     pub fn new(
-        config: &GlobalConfig,
+        config: &PlayoutConfig,
         current_list: Arc<Mutex<Vec<Media>>>,
         global_index: Arc<AtomicUsize>,
     ) -> Self {
@@ -163,7 +163,7 @@ fn file_extension(filename: &Path) -> Option<&str> {
 /// When a change is register, update the current file list.
 /// This makes it possible, to play infinitely and and always new files to it.
 pub fn watchman(
-    config: GlobalConfig,
+    config: PlayoutConfig,
     is_terminated: Arc<AtomicBool>,
     sources: Arc<Mutex<Vec<Media>>>,
 ) {

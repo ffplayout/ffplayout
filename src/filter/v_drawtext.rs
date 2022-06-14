@@ -2,9 +2,9 @@ use std::path::Path;
 
 use regex::Regex;
 
-use crate::utils::{GlobalConfig, Media};
+use crate::utils::{Media, PlayoutConfig};
 
-pub fn filter_node(config: &GlobalConfig, node: &mut Media) -> String {
+pub fn filter_node(config: &PlayoutConfig, node: &mut Media) -> String {
     let mut filter = String::new();
     let mut font = String::new();
 

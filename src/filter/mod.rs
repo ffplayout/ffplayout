@@ -7,7 +7,7 @@ pub mod ingest_filter;
 pub mod v_drawtext;
 pub mod v_overlay;
 
-use crate::utils::{get_delta, is_close, GlobalConfig, Media};
+use crate::utils::{get_delta, is_close, Media, PlayoutConfig};
 
 #[derive(Debug, Clone)]
 struct Filters {
@@ -72,7 +72,7 @@ fn deinterlace(field_order: &Option<String>, chain: &mut Filters) {
     }
 }
 
-fn pad(aspect: f64, chain: &mut Filters, config: &GlobalConfig) {
+fn pad(aspect: f64, chain: &mut Filters, config: &PlayoutConfig) {
     if !is_close(aspect, config.processing.aspect, 0.03) {
         chain.add_filter(
             &format!(
@@ -84,13 +84,13 @@ fn pad(aspect: f64, chain: &mut Filters, config: &GlobalConfig) {
     }
 }
 
-fn fps(fps: f64, chain: &mut Filters, config: &GlobalConfig) {
+fn fps(fps: f64, chain: &mut Filters, config: &PlayoutConfig) {
     if fps != config.processing.fps {
         chain.add_filter(&format!("fps={}", config.processing.fps), "video")
     }
 }
 
-fn scale(v_stream: &ffprobe::Stream, aspect: f64, chain: &mut Filters, config: &GlobalConfig) {
+fn scale(v_stream: &ffprobe::Stream, aspect: f64, chain: &mut Filters, config: &PlayoutConfig) {
     // width: i64, height: i64
     if let (Some(w), Some(h)) = (v_stream.width, v_stream.height) {
         if w != config.processing.width || h != config.processing.height {
@@ -137,7 +137,7 @@ fn fade(node: &mut Media, chain: &mut Filters, codec_type: &str) {
     }
 }
 
-fn overlay(node: &mut Media, chain: &mut Filters, config: &GlobalConfig) {
+fn overlay(node: &mut Media, chain: &mut Filters, config: &PlayoutConfig) {
     if config.processing.add_logo
         && Path::new(&config.processing.logo).is_file()
         && &node.category.clone().unwrap_or_default() != "advertisement"
@@ -183,7 +183,7 @@ fn extend_video(node: &mut Media, chain: &mut Filters) {
 }
 
 /// add drawtext filter for lower thirds messages
-fn add_text(node: &mut Media, chain: &mut Filters, config: &GlobalConfig) {
+fn add_text(node: &mut Media, chain: &mut Filters, config: &PlayoutConfig) {
     if config.text.add_text && config.text.over_pre {
         let filter = v_drawtext::filter_node(config, node);
 
@@ -233,7 +233,7 @@ fn extend_audio(node: &mut Media, chain: &mut Filters) {
 }
 
 /// Add single pass loudnorm filter to audio line.
-fn add_loudnorm(node: &mut Media, chain: &mut Filters, config: &GlobalConfig) {
+fn add_loudnorm(node: &mut Media, chain: &mut Filters, config: &PlayoutConfig) {
     if config.processing.add_loudnorm
         && !node
             .probe
@@ -247,13 +247,13 @@ fn add_loudnorm(node: &mut Media, chain: &mut Filters, config: &GlobalConfig) {
     }
 }
 
-fn audio_volume(chain: &mut Filters, config: &GlobalConfig) {
+fn audio_volume(chain: &mut Filters, config: &PlayoutConfig) {
     if config.processing.volume != 1.0 {
         chain.add_filter(&format!("volume={}", config.processing.volume), "audio")
     }
 }
 
-fn aspect_calc(aspect_string: &Option<String>, config: &GlobalConfig) -> f64 {
+fn aspect_calc(aspect_string: &Option<String>, config: &PlayoutConfig) -> f64 {
     let mut source_aspect = config.processing.aspect;
 
     if let Some(aspect) = aspect_string {
@@ -276,7 +276,12 @@ fn fps_calc(r_frame_rate: &str) -> f64 {
 }
 
 /// This realtime filter is important for HLS output to stay in sync.
-fn realtime_filter(node: &mut Media, chain: &mut Filters, config: &GlobalConfig, codec_type: &str) {
+fn realtime_filter(
+    node: &mut Media,
+    chain: &mut Filters,
+    config: &PlayoutConfig,
+    codec_type: &str,
+) {
     let mut t = "";
 
     if codec_type == "audio" {
@@ -300,7 +305,7 @@ fn realtime_filter(node: &mut Media, chain: &mut Filters, config: &GlobalConfig,
     }
 }
 
-pub fn filter_chains(config: &GlobalConfig, node: &mut Media) -> Vec<String> {
+pub fn filter_chains(config: &PlayoutConfig, node: &mut Media) -> Vec<String> {
     let mut filters = Filters::new();
 
     if let Some(probe) = node.probe.as_ref() {

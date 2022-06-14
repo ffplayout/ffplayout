@@ -3,13 +3,13 @@ use std::process::{self, Command, Stdio};
 use simplelog::*;
 
 use crate::filter::v_drawtext;
-use crate::utils::{prepare_output_cmd, GlobalConfig, Media};
+use crate::utils::{prepare_output_cmd, Media, PlayoutConfig};
 use crate::vec_strings;
 
 /// Streaming Output
 ///
 /// Prepare the ffmpeg command for streaming output
-pub fn output(config: &GlobalConfig, log_format: &str) -> process::Child {
+pub fn output(config: &PlayoutConfig, log_format: &str) -> process::Child {
     let mut enc_cmd = vec![];
     let mut enc_filter = vec![];
     let mut preview_cmd = config.out.preview_cmd.as_ref().unwrap().clone();

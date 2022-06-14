@@ -12,7 +12,7 @@ use simplelog::*;
 
 use crate::utils::{
     check_sync, gen_dummy, get_delta, get_sec, is_close, is_remote, json_serializer::read_json,
-    modified_time, seek_and_length, valid_source, GlobalConfig, Media, PlayoutStatus, DUMMY_LEN,
+    modified_time, seek_and_length, valid_source, Media, PlayoutConfig, PlayoutStatus, DUMMY_LEN,
 };
 
 /// Struct for current playlist.
@@ -20,7 +20,7 @@ use crate::utils::{
 /// Here we prepare the init clip and build a iterator where we pull our clips.
 #[derive(Debug)]
 pub struct CurrentProgram {
-    config: GlobalConfig,
+    config: PlayoutConfig,
     start_sec: f64,
     json_mod: Option<String>,
     json_path: Option<String>,
@@ -34,7 +34,7 @@ pub struct CurrentProgram {
 
 impl CurrentProgram {
     pub fn new(
-        config: &GlobalConfig,
+        config: &PlayoutConfig,
         playout_stat: PlayoutStatus,
         is_terminated: Arc<AtomicBool>,
         current_list: Arc<Mutex<Vec<Media>>>,
@@ -390,7 +390,7 @@ impl Iterator for CurrentProgram {
 /// - return clip only if we are in 24 hours time range
 fn timed_source(
     node: Media,
-    config: &GlobalConfig,
+    config: &PlayoutConfig,
     last: bool,
     playout_stat: &PlayoutStatus,
 ) -> Media {
@@ -440,7 +440,7 @@ fn timed_source(
 }
 
 /// Generate the source CMD, or when clip not exist, get a dummy.
-fn gen_source(config: &GlobalConfig, mut node: Media) -> Media {
+fn gen_source(config: &PlayoutConfig, mut node: Media) -> Media {
     if valid_source(&node.source) {
         node.add_probe();
         node.cmd = Some(seek_and_length(
@@ -470,7 +470,7 @@ fn gen_source(config: &GlobalConfig, mut node: Media) -> Media {
 
 /// Handle init clip, but this clip can be the last one in playlist,
 /// this we have to figure out and calculate the right length.
-fn handle_list_init(config: &GlobalConfig, mut node: Media) -> Media {
+fn handle_list_init(config: &PlayoutConfig, mut node: Media) -> Media {
     debug!("Playlist init");
     let (_, total_delta) = get_delta(config, &node.begin.unwrap());
     let mut out = node.out;

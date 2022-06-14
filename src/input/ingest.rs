@@ -9,7 +9,7 @@ use crossbeam_channel::Sender;
 use simplelog::*;
 
 use crate::filter::ingest_filter::filter_cmd;
-use crate::utils::{format_log_line, GlobalConfig, Ingest, ProcessControl};
+use crate::utils::{format_log_line, Ingest, PlayoutConfig, ProcessControl};
 use crate::vec_strings;
 
 pub fn log_line(line: String, level: &str) {
@@ -55,6 +55,10 @@ fn server_monitor(
             );
         }
 
+        if line.contains("Address already in use") {
+            proc_ctl.kill_all();
+        }
+
         log_line(line, level);
     }
 
@@ -65,7 +69,7 @@ fn server_monitor(
 ///
 /// Start ffmpeg in listen mode, and wait for input.
 pub fn ingest_server(
-    config: GlobalConfig,
+    config: PlayoutConfig,
     ingest_sender: Sender<(usize, [u8; 65088])>,
     mut proc_control: ProcessControl,
 ) -> Result<(), Error> {

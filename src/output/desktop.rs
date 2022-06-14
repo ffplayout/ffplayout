@@ -3,13 +3,13 @@ use std::process::{self, Command, Stdio};
 use simplelog::*;
 
 use crate::filter::v_drawtext;
-use crate::utils::{GlobalConfig, Media};
+use crate::utils::{Media, PlayoutConfig};
 use crate::vec_strings;
 
 /// Desktop Output
 ///
 /// Instead of streaming, we run a ffplay instance and play on desktop.
-pub fn output(config: &GlobalConfig, log_format: &str) -> process::Child {
+pub fn output(config: &PlayoutConfig, log_format: &str) -> process::Child {
     let mut enc_filter: Vec<String> = vec![];
 
     let mut enc_cmd = vec_strings!["-hide_banner", "-nostats", "-v", log_format, "-i", "pipe:0"];

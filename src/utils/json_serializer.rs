@@ -9,14 +9,14 @@ use std::{
 use simplelog::*;
 
 use crate::utils::{
-    get_date, is_remote, modified_time, time_from_header, validate_playlist, GlobalConfig, Media,
+    get_date, is_remote, modified_time, time_from_header, validate_playlist, Media, PlayoutConfig,
 };
 
 pub const DUMMY_LEN: f64 = 60.0;
 
 /// This is our main playlist object, it holds all necessary information for the current day.
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Playlist {
+pub struct JsonPlaylist {
     pub date: String,
 
     #[serde(skip_serializing, skip_deserializing)]
@@ -31,7 +31,7 @@ pub struct Playlist {
     pub program: Vec<Media>,
 }
 
-impl Playlist {
+impl JsonPlaylist {
     fn new(date: String, start: f64) -> Self {
         let mut media = Media::new(0, String::new(), false);
         media.begin = Some(start);
@@ -47,7 +47,11 @@ impl Playlist {
     }
 }
 
-fn set_defaults(mut playlist: Playlist, current_file: String, mut start_sec: f64) -> Playlist {
+fn set_defaults(
+    mut playlist: JsonPlaylist,
+    current_file: String,
+    mut start_sec: f64,
+) -> JsonPlaylist {
     playlist.current_file = Some(current_file);
     playlist.start_sec = Some(start_sec);
 
@@ -66,15 +70,15 @@ fn set_defaults(mut playlist: Playlist, current_file: String, mut start_sec: f64
     playlist
 }
 
-/// Read json playlist file, fills Playlist struct and set some extra values,
+/// Read json playlist file, fills JsonPlaylist struct and set some extra values,
 /// which we need to process.
 pub fn read_json(
-    config: &GlobalConfig,
+    config: &PlayoutConfig,
     path: Option<String>,
     is_terminated: Arc<AtomicBool>,
     seek: bool,
     next_start: f64,
-) -> Playlist {
+) -> JsonPlaylist {
     let config_clone = config.clone();
     let mut playlist_path = Path::new(&config.playlist.path).to_owned();
     let start_sec = config.playlist.start_sec.unwrap();
@@ -104,7 +108,7 @@ pub fn read_json(
                 let headers = resp.headers().clone();
 
                 if let Ok(body) = resp.text() {
-                    let mut playlist: Playlist =
+                    let mut playlist: JsonPlaylist =
                         serde_json::from_str(&body).expect("Could't read remote json playlist.");
 
                     if let Some(time) = time_from_header(&headers) {
@@ -127,7 +131,7 @@ pub fn read_json(
             .write(false)
             .open(&current_file)
             .expect("Could not open json playlist file.");
-        let mut playlist: Playlist =
+        let mut playlist: JsonPlaylist =
             serde_json::from_reader(f).expect("Could't read json playlist file.");
         playlist.modified = modified_time(&current_file);
 
@@ -140,5 +144,5 @@ pub fn read_json(
 
     error!("Read playlist error, on: <b><magenta>{current_file}</></b>!");
 
-    Playlist::new(date, start_sec)
+    JsonPlaylist::new(date, start_sec)
 }

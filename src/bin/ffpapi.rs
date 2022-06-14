@@ -1,4 +1,4 @@
-use std::process::exit;
+use std::{path::Path, process::exit};
 
 use actix_web::{dev::ServiceRequest, middleware, web, App, Error, HttpMessage, HttpServer};
 use actix_web_grants::permissions::AttachPermissions;
@@ -14,9 +14,9 @@ use ffplayout_engine::{
         auth,
         models::LoginUser,
         routes::{add_user, get_playout_config, get_settings, login, patch_settings, update_user},
-        utils::{init_config, run_args, Role},
+        utils::{db_path, init_config, run_args, Role},
     },
-    utils::{init_logging, GlobalConfig},
+    utils::{init_logging, PlayoutConfig},
 };
 
 async fn validator(req: ServiceRequest, credentials: BearerAuth) -> Result<ServiceRequest, Error> {
@@ -35,7 +35,7 @@ async fn validator(req: ServiceRequest, credentials: BearerAuth) -> Result<Servi
 async fn main() -> std::io::Result<()> {
     let args = Args::parse();
 
-    let mut config = GlobalConfig::new(None);
+    let mut config = PlayoutConfig::new(None);
     config.mail.recipient = String::new();
     config.logging.log_to_file = false;
     config.logging.timestamp = false;
@@ -48,6 +48,12 @@ async fn main() -> std::io::Result<()> {
     }
 
     if let Some(conn) = args.listen {
+        if let Ok(p) = db_path() {
+            if !Path::new(&p).is_file() {
+                error!("Database is not initialized! Init DB first and add admin user.");
+                exit(1);
+            }
+        }
         init_config().await;
         let ip_port = conn.split(':').collect::<Vec<&str>>();
         let addr = ip_port[0];

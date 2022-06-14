@@ -5,7 +5,7 @@ use std::sync::{
 
 use simplelog::*;
 
-use crate::utils::{sec_to_time, valid_source, GlobalConfig, MediaProbe, Playlist};
+use crate::utils::{sec_to_time, valid_source, JsonPlaylist, MediaProbe, PlayoutConfig};
 
 /// Validate a given playlist, to check if:
 ///
@@ -14,7 +14,11 @@ use crate::utils::{sec_to_time, valid_source, GlobalConfig, MediaProbe, Playlist
 /// - total playtime fits target length from config
 ///
 /// This function we run in a thread, to don't block the main function.
-pub fn validate_playlist(playlist: Playlist, is_terminated: Arc<AtomicBool>, config: GlobalConfig) {
+pub fn validate_playlist(
+    playlist: JsonPlaylist,
+    is_terminated: Arc<AtomicBool>,
+    config: PlayoutConfig,
+) {
     let date = playlist.date;
     let mut length = config.playlist.length_sec.unwrap();
     let mut begin = config.playlist.start_sec.unwrap();
