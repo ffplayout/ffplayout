@@ -44,8 +44,6 @@ pub fn output(config: &GlobalConfig, log_format: &str) -> process::Child {
         enc_cmd.append(&mut preview_cmd);
     }
 
-    println!("{enc_filter:?}");
-
     enc_cmd.append(&mut output_cmd);
 
     let enc_cmd = prepare_output_cmd(enc_prefix, enc_filter, enc_cmd, &config.out.mode);
