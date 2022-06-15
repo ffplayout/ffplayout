@@ -210,7 +210,7 @@ fn add_audio(node: &mut Media, chain: &mut Filters) {
         .unwrap_or(&vec![])
         .is_empty()
     {
-        warn!("Clip: '{}' has no audio!", node.source);
+        warn!("Clip <b><magenta>{}</></b> has no audio!", node.source);
         let audio = format!(
             "aevalsrc=0:channel_layout=stereo:duration={}:sample_rate=48000",
             node.out - node.seek
