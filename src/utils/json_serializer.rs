@@ -142,7 +142,7 @@ pub fn read_json(
         return set_defaults(playlist, current_file, start_sec);
     }
 
-    error!("Read playlist error, on: <b><magenta>{current_file}</></b>!");
+    error!("Read playlist error, on: <b><magenta>{current_file}</></b>");
 
     JsonPlaylist::new(date, start_sec)
 }

@@ -8,7 +8,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 use shlex::split;
 
-use crate::utils::{time_to_sec, Args};
+use crate::utils::{free_tcp_socket, time_to_sec, Args};
 use crate::vec_strings;
 
 /// Global Config
@@ -137,8 +137,13 @@ pub struct Storage {
 pub struct Text {
     pub help_text: String,
     pub add_text: bool,
-    pub over_pre: bool,
-    pub bind_address: String,
+
+    #[serde(skip_serializing, skip_deserializing)]
+    pub bind_address: Option<String>,
+
+    #[serde(skip_serializing, skip_deserializing)]
+    pub node_pos: Option<usize>,
+
     pub fontfile: String,
     pub text_from_filename: bool,
     pub style: String,
@@ -242,6 +247,17 @@ impl PlayoutConfig {
         config.ingest.input_cmd = split(config.ingest.input_param.as_str());
         config.out.preview_cmd = split(config.out.preview_param.as_str());
         config.out.output_cmd = split(config.out.output_param.as_str());
+
+        // when text overlay without text_from_filename is on, turn also the RPC server on,
+        // to get text messages from it
+        if config.text.add_text && !config.text.text_from_filename {
+            config.rpc_server.enable = true;
+            config.text.bind_address = free_tcp_socket();
+            config.text.node_pos = Some(2);
+        } else {
+            config.text.bind_address = None;
+            config.text.node_pos = None;
+        }
 
         // Read command line arguments, and override the config with them.
 

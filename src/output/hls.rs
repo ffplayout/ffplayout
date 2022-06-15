@@ -13,7 +13,7 @@ out:
         -hls_time 6
         -hls_list_size 600
         -hls_flags append_list+delete_segments+omit_endlist+program_date_time
-        -hls_segment_filename /var/www/html/live/stream-%09d.ts /var/www/html/live/stream.m3u8
+        -hls_segment_filename /var/www/html/live/stream-%d.ts /var/www/html/live/stream.m3u8
 
 */
 

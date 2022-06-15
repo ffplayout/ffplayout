@@ -4,7 +4,7 @@ use regex::Regex;
 
 use crate::utils::{Media, PlayoutConfig};
 
-pub fn filter_node(config: &PlayoutConfig, node: &mut Media) -> String {
+pub fn filter_node(config: &PlayoutConfig, node: &Media) -> String {
     let mut filter = String::new();
     let mut font = String::new();
 
@@ -13,7 +13,7 @@ pub fn filter_node(config: &PlayoutConfig, node: &mut Media) -> String {
             font = format!(":fontfile='{}'", config.text.fontfile)
         }
 
-        if config.text.over_pre && config.text.text_from_filename {
+        if config.text.text_from_filename {
             let source = node.source.clone();
             let regex: Regex = Regex::new(&config.text.regex).unwrap();
 
@@ -27,10 +27,10 @@ pub fn filter_node(config: &PlayoutConfig, node: &mut Media) -> String {
                 .replace('%', "\\\\\\%")
                 .replace(':', "\\:");
             filter = format!("drawtext=text='{escape}':{}{font}", config.text.style)
-        } else {
+        } else if let Some(socket) = config.text.bind_address.clone() {
             filter = format!(
                 "zmq=b=tcp\\\\://'{}',drawtext=text=''{font}",
-                config.text.bind_address.replace(':', "\\:")
+                socket.replace(':', "\\:")
             )
         }
     }

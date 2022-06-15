@@ -184,7 +184,9 @@ fn extend_video(node: &mut Media, chain: &mut Filters) {
 
 /// add drawtext filter for lower thirds messages
 fn add_text(node: &mut Media, chain: &mut Filters, config: &PlayoutConfig) {
-    if config.text.add_text && config.text.over_pre {
+    if config.text.add_text
+        && (config.text.text_from_filename || config.out.mode.to_lowercase() == "hls")
+    {
         let filter = v_drawtext::filter_node(config, node);
 
         chain.add_filter(&filter, "video");

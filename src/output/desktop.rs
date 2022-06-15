@@ -14,17 +14,19 @@ pub fn output(config: &PlayoutConfig, log_format: &str) -> process::Child {
 
     let mut enc_cmd = vec_strings!["-hide_banner", "-nostats", "-v", log_format, "-i", "pipe:0"];
 
-    if config.text.add_text && !config.text.over_pre {
-        info!(
-            "Using drawtext filter, listening on address: <yellow>{}</>",
-            config.text.bind_address
-        );
+    if config.text.add_text && !config.text.text_from_filename {
+        if let Some(socket) = config.text.bind_address.clone() {
+            debug!(
+                "Using drawtext filter, listening on address: <yellow>{}</>",
+                socket
+            );
 
-        let mut filter: String = "null,".to_string();
-        filter.push_str(
-            v_drawtext::filter_node(config, &mut Media::new(0, String::new(), false)).as_str(),
-        );
-        enc_filter = vec!["-vf".to_string(), filter];
+            let mut filter: String = "null,".to_string();
+            filter.push_str(
+                v_drawtext::filter_node(config, &Media::new(0, String::new(), false)).as_str(),
+            );
+            enc_filter = vec!["-vf".to_string(), filter];
+        }
     }
 
     enc_cmd.append(&mut enc_filter);

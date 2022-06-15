@@ -1,6 +1,7 @@
 use std::{
     fs::{self, metadata},
     io::{BufRead, BufReader, Error},
+    net::TcpListener,
     path::Path,
     process::{exit, ChildStderr, Command, Stdio},
     time::{self, UNIX_EPOCH},
@@ -9,6 +10,7 @@ use std::{
 use chrono::{prelude::*, Duration};
 use ffprobe::{ffprobe, Format, Stream};
 use jsonrpc_http_server::hyper::HeaderMap;
+use rand::prelude::*;
 use regex::Regex;
 use reqwest::header;
 use serde::{Deserialize, Serialize};
@@ -594,6 +596,19 @@ pub fn validate_ffmpeg(config: &PlayoutConfig) {
     if !filters.contains(&"zmq".to_string()) {
         warn!("ffmpeg contains no zmq filter! Text messages will not work...");
     }
+}
+
+/// get a free tcp socket
+pub fn free_tcp_socket() -> Option<String> {
+    for _ in 0..100 {
+        let port = rand::thread_rng().gen_range(45321..54268);
+
+        if TcpListener::bind(("127.0.0.1", port)).is_ok() {
+            return Some(format!("127.0.0.1:{port}"));
+        }
+    }
+
+    None
 }
 
 /// Get system time, in non test case.
