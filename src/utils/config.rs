@@ -30,7 +30,10 @@ pub struct PlayoutConfig {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct General {
+    pub help_text: String,
     pub stop_threshold: f64,
+
+    #[serde(skip_serializing, skip_deserializing)]
     pub generate: Option<Vec<String>>,
 
     #[serde(skip_serializing, skip_deserializing)]
@@ -39,6 +42,7 @@ pub struct General {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct RpcServer {
+    pub help_text: String,
     pub enable: bool,
     pub address: String,
     pub authorization: String,
@@ -46,6 +50,7 @@ pub struct RpcServer {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Mail {
+    pub help_text: String,
     pub subject: String,
     pub smtp_server: String,
     pub starttls: bool,
@@ -58,6 +63,7 @@ pub struct Mail {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Logging {
+    pub help_text: String,
     pub log_to_file: bool,
     pub backup_count: usize,
     pub local_time: bool,
@@ -69,6 +75,7 @@ pub struct Logging {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Processing {
+    pub help_text: String,
     pub mode: String,
     pub width: i64,
     pub height: i64,
@@ -85,28 +92,41 @@ pub struct Processing {
     pub loud_tp: f32,
     pub loud_lra: f32,
     pub volume: f64,
+
+    #[serde(skip_serializing, skip_deserializing)]
     pub settings: Option<Vec<String>>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Ingest {
+    pub help_text: String,
     pub enable: bool,
     input_param: String,
+
+    #[serde(skip_serializing, skip_deserializing)]
     pub input_cmd: Option<Vec<String>>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Playlist {
+    pub help_text: String,
     pub path: String,
     pub day_start: String,
+
+    #[serde(skip_serializing, skip_deserializing)]
     pub start_sec: Option<f64>,
+
     pub length: String,
+
+    #[serde(skip_serializing, skip_deserializing)]
     pub length_sec: Option<f64>,
+
     pub infinit: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Storage {
+    pub help_text: String,
     pub path: String,
     pub filler_clip: String,
     pub extensions: Vec<String>,
@@ -115,6 +135,7 @@ pub struct Storage {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Text {
+    pub help_text: String,
     pub add_text: bool,
     pub over_pre: bool,
     pub bind_address: String,
@@ -126,11 +147,17 @@ pub struct Text {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Out {
+    pub help_text: String,
     pub mode: String,
     pub preview: bool,
-    preview_param: String,
+    pub preview_param: String,
+
+    #[serde(skip_serializing, skip_deserializing)]
     pub preview_cmd: Option<Vec<String>>,
-    output_param: String,
+
+    pub output_param: String,
+
+    #[serde(skip_serializing, skip_deserializing)]
     pub output_cmd: Option<Vec<String>>,
 }
 

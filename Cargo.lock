@@ -667,7 +667,7 @@ dependencies = [
 
 [[package]]
 name = "ffplayout-engine"
-version = "0.9.8"
+version = "0.9.9"
 dependencies = [
  "actix-web",
  "actix-web-grants",

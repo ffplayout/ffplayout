@@ -13,7 +13,10 @@ use ffplayout_engine::{
         args_parse::Args,
         auth,
         models::LoginUser,
-        routes::{add_user, get_playout_config, get_settings, login, patch_settings, update_user},
+        routes::{
+            add_user, get_playout_config, get_settings, login, patch_settings,
+            update_playout_config, update_user,
+        },
         utils::{db_path, init_config, run_args, Role},
     },
     utils::{init_logging, PlayoutConfig},
@@ -27,7 +30,6 @@ async fn validator(req: ServiceRequest, credentials: BearerAuth) -> Result<Servi
     req.extensions_mut()
         .insert(LoginUser::new(claims.id, claims.username));
 
-    println!("{:#?}", req);
     Ok(req)
 }
 
@@ -72,6 +74,7 @@ async fn main() -> std::io::Result<()> {
                         .wrap(auth)
                         .service(add_user)
                         .service(get_playout_config)
+                        .service(update_playout_config)
                         .service(get_settings)
                         .service(patch_settings)
                         .service(update_user),

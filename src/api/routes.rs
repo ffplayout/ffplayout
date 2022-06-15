@@ -17,44 +17,13 @@ use crate::api::{
     utils::{read_playout_config, Role},
 };
 
-use crate::utils::playout_config;
+use crate::utils::PlayoutConfig;
 
 #[derive(Serialize)]
 struct ResponseObj<T> {
     message: String,
     status: i32,
     data: Option<T>,
-}
-
-#[derive(Debug, Serialize, Clone)]
-struct ResponsePlayoutConfig {
-    general: Option<playout_config::General>,
-    rpc_server: Option<playout_config::RpcServer>,
-    mail: Option<playout_config::Mail>,
-    logging: Option<playout_config::Logging>,
-    processing: Option<playout_config::Processing>,
-    ingest: Option<playout_config::Ingest>,
-    playlist: Option<playout_config::Playlist>,
-    storage: Option<playout_config::Storage>,
-    text: Option<playout_config::Text>,
-    out: Option<playout_config::Out>,
-}
-
-impl ResponsePlayoutConfig {
-    fn new() -> Self {
-        Self {
-            general: None,
-            rpc_server: None,
-            mail: None,
-            logging: None,
-            processing: None,
-            ingest: None,
-            playlist: None,
-            storage: None,
-            text: None,
-            out: None,
-        }
-    }
 }
 
 /// curl -X GET http://127.0.0.1:8080/api/settings/1 -H "Authorization: Bearer <TOKEN>"
@@ -94,30 +63,37 @@ async fn patch_settings(
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 async fn get_playout_config(
     id: web::Path<i64>,
-    details: AuthDetails<Role>,
+    _details: AuthDetails<Role>,
 ) -> Result<impl Responder, ServiceError> {
     if let Ok(settings) = db_get_settings(&id).await {
         if let Ok(config) = read_playout_config(&settings.config_path) {
-            let mut playout_cfg = ResponsePlayoutConfig::new();
-
-            playout_cfg.playlist = Some(config.playlist);
-            playout_cfg.storage = Some(config.storage);
-            playout_cfg.text = Some(config.text);
-
-            if details.has_role(&Role::Admin) {
-                playout_cfg.general = Some(config.general);
-                playout_cfg.rpc_server = Some(config.rpc_server);
-                playout_cfg.mail = Some(config.mail);
-                playout_cfg.logging = Some(config.logging);
-                playout_cfg.processing = Some(config.processing);
-                playout_cfg.ingest = Some(config.ingest);
-                playout_cfg.out = Some(config.out);
-
-                return Ok(web::Json(playout_cfg));
-            }
-
-            return Ok(web::Json(playout_cfg));
+            return Ok(web::Json(config));
         }
+    };
+
+    Err(ServiceError::InternalServerError)
+}
+
+/// curl -X PUT http://localhost:8080/api/playout/config/1  -H "Content-Type: application/json" \
+/// --data { <CONFIG DATA> } --header 'Authorization: <TOKEN>'
+#[put("/playout/config/{id}")]
+#[has_any_role("Role::Admin", type = "Role")]
+async fn update_playout_config(
+    id: web::Path<i64>,
+    data: web::Json<PlayoutConfig>,
+) -> Result<impl Responder, ServiceError> {
+    if let Ok(settings) = db_get_settings(&id).await {
+        if let Ok(f) = std::fs::OpenOptions::new()
+            .write(true)
+            .truncate(true)
+            .open(&settings.config_path)
+        {
+            serde_yaml::to_writer(f, &data).unwrap();
+
+            return Ok("Update playout config success.");
+        } else {
+            return Err(ServiceError::InternalServerError);
+        };
     };
 
     Err(ServiceError::InternalServerError)
