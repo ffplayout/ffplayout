@@ -14,8 +14,8 @@ use ffplayout_engine::{
         auth,
         models::LoginUser,
         routes::{
-            add_user, get_playout_config, get_settings, login, patch_settings,
-            update_playout_config, update_user,
+            add_preset, add_user, get_playout_config, get_presets, get_settings, login,
+            patch_settings, update_playout_config, update_preset, update_user,
         },
         utils::{db_path, init_config, run_args, Role},
     },
@@ -75,6 +75,9 @@ async fn main() -> std::io::Result<()> {
                         .service(add_user)
                         .service(get_playout_config)
                         .service(update_playout_config)
+                        .service(add_preset)
+                        .service(get_presets)
+                        .service(update_preset)
                         .service(get_settings)
                         .service(patch_settings)
                         .service(update_user),

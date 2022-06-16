@@ -36,6 +36,23 @@ impl LoginUser {
         Self { id, username }
     }
 }
+#[derive(Debug, Deserialize, Serialize, Clone, sqlx::FromRow)]
+pub struct Preset {
+    #[sqlx(default)]
+    #[serde(skip_deserializing)]
+    pub id: i64,
+    pub name: String,
+    pub text: String,
+    pub x: String,
+    pub y: String,
+    pub fontsize: i64,
+    pub line_spacing: i64,
+    pub fontcolor: String,
+    pub r#box: bool,
+    pub boxcolor: String,
+    pub boxborderw: i64,
+    pub alpha: String,
+}
 
 #[derive(Debug, Deserialize, Serialize, sqlx::FromRow)]
 pub struct Settings {

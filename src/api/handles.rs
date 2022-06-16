@@ -9,7 +9,7 @@ use sqlx::{migrate::MigrateDatabase, sqlite::SqliteQueryResult, Pool, Sqlite, Sq
 
 use crate::api::utils::GlobalSettings;
 use crate::api::{
-    models::{Settings, User},
+    models::{Preset, Settings, User},
     utils::db_path,
 };
 
@@ -206,6 +206,64 @@ pub async fn db_update_user(id: i64, fields: String) -> Result<SqliteQueryResult
     let conn = db_connection().await?;
     let query = format!("UPDATE user SET {fields} WHERE id = $1");
     let result: SqliteQueryResult = sqlx::query(&query).bind(id).execute(&conn).await?;
+    conn.close().await;
+
+    Ok(result)
+}
+
+pub async fn db_get_presets() -> Result<Vec<Preset>, sqlx::Error> {
+    let conn = db_connection().await?;
+    let query = "SELECT * FROM presets";
+    let result: Vec<Preset> = sqlx::query_as(query).fetch_all(&conn).await?;
+    conn.close().await;
+
+    Ok(result)
+}
+
+pub async fn db_update_preset(id: &i64, preset: Preset) -> Result<SqliteQueryResult, sqlx::Error> {
+    let conn = db_connection().await?;
+    let query =
+        "UPDATE presets SET name = $1, text = $2, x = $3, y = $4, fontsize = $5, line_spacing = $6,
+        fontcolor = $7, alpha = $8, box = $9, boxcolor = $10, boxborderw = 11 WHERE id = $12";
+    let result: SqliteQueryResult = sqlx::query(query)
+        .bind(preset.name)
+        .bind(preset.text)
+        .bind(preset.x)
+        .bind(preset.y)
+        .bind(preset.fontsize)
+        .bind(preset.line_spacing)
+        .bind(preset.fontcolor)
+        .bind(preset.alpha)
+        .bind(preset.r#box)
+        .bind(preset.boxcolor)
+        .bind(preset.boxborderw)
+        .bind(id)
+        .execute(&conn)
+        .await?;
+    conn.close().await;
+
+    Ok(result)
+}
+
+pub async fn db_add_preset(preset: Preset) -> Result<SqliteQueryResult, sqlx::Error> {
+    let conn = db_connection().await?;
+    let query =
+        "INSERT INTO presets (name, text, x, y, fontsize, line_spacing, fontcolor, alpha, box, boxcolor, boxborderw)
+            VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)";
+    let result: SqliteQueryResult = sqlx::query(query)
+        .bind(preset.name)
+        .bind(preset.text)
+        .bind(preset.x)
+        .bind(preset.y)
+        .bind(preset.fontsize)
+        .bind(preset.line_spacing)
+        .bind(preset.fontcolor)
+        .bind(preset.alpha)
+        .bind(preset.r#box)
+        .bind(preset.boxcolor)
+        .bind(preset.boxborderw)
+        .execute(&conn)
+        .await?;
     conn.close().await;
 
     Ok(result)

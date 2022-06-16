@@ -11,9 +11,10 @@ use crate::api::{
     auth::{create_jwt, Claims},
     errors::ServiceError,
     handles::{
-        db_add_user, db_get_settings, db_login, db_role, db_update_settings, db_update_user,
+        db_add_preset, db_add_user, db_get_presets, db_get_settings, db_login, db_role,
+        db_update_preset, db_update_settings, db_update_user,
     },
-    models::{LoginUser, Settings, User},
+    models::{LoginUser, Preset, Settings, User},
     utils::{read_playout_config, Role},
 };
 
@@ -95,6 +96,49 @@ async fn update_playout_config(
             return Err(ServiceError::InternalServerError);
         };
     };
+
+    Err(ServiceError::InternalServerError)
+}
+
+/// curl -X PUT http://localhost:8080/api/presets/ --header 'Content-Type: application/json' \
+/// --data '{"email": "<EMAIL>", "password": "<PASS>"}' --header 'Authorization: <TOKEN>'
+#[get("/presets/")]
+#[has_any_role("Role::Admin", "Role::User", type = "Role")]
+async fn get_presets() -> Result<impl Responder, ServiceError> {
+    if let Ok(presets) = db_get_presets().await {
+        return Ok(web::Json(presets));
+    }
+
+    Err(ServiceError::InternalServerError)
+}
+
+/// curl -X PUT http://localhost:8080/api/presets/1 --header 'Content-Type: application/json' \
+/// --data '{"name": "<PRESET NAME>", "text": "TEXT>", "x": "<X>", "y": "<Y>", "fontsize": 24, \
+/// "line_spacing": 4, "fontcolor": "#ffffff", "box": 1, "boxcolor": "#000000", "boxborderw": 4, "alpha": 1.0}}' \
+/// --header 'Authorization: <TOKEN>'
+#[put("/presets/{id}")]
+#[has_any_role("Role::Admin", "Role::User", type = "Role")]
+async fn update_preset(
+    id: web::Path<i64>,
+    data: web::Json<Preset>,
+) -> Result<impl Responder, ServiceError> {
+    if db_update_preset(&id, data.into_inner()).await.is_ok() {
+        return Ok("Update Success");
+    }
+
+    Err(ServiceError::InternalServerError)
+}
+
+/// curl -X POST http://localhost:8080/api/presets/ --header 'Content-Type: application/json' \
+/// --data '{"name": "<PRESET NAME>", "text": "TEXT>", "x": "<X>", "y": "<Y>", "fontsize": 24, \
+/// "line_spacing": 4, "fontcolor": "#ffffff", "box": 1, "boxcolor": "#000000", "boxborderw": 4, "alpha": 1.0}}' \
+/// --header 'Authorization: <TOKEN>'
+#[post("/presets/")]
+#[has_any_role("Role::Admin", "Role::User", type = "Role")]
+async fn add_preset(data: web::Json<Preset>) -> Result<impl Responder, ServiceError> {
+    if db_add_preset(data.into_inner()).await.is_ok() {
+        return Ok("Add preset Success");
+    }
 
     Err(ServiceError::InternalServerError)
 }
