@@ -33,6 +33,22 @@ async fn create_schema() -> Result<SqliteQueryResult, sqlx::Error> {
             name                    TEXT NOT NULL,
             UNIQUE(name)
         );
+    CREATE TABLE IF NOT EXISTS presets
+        (
+            id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+            name                    TEXT NOT NULL,
+            text                    TEXT NOT NULL,
+            x                       TEXT NOT NULL,
+            y                       TEXT NOT NULL,
+            fontsize                INTEGER NOT NULL DEFAULT 24,
+            line_spacing            INTEGER NOT NULL DEFAULT 4,
+            fontcolor               TEXT NOT NULL,
+            box                     INTEGER NOT NULL DEFAULT 1,
+            boxcolor                TEXT NOT NULL,
+            boxborderw              INTEGER NOT NULL DEFAULT 4,
+            alpha                   TEXT NOT NULL,
+            UNIQUE(name)
+        );
     CREATE TABLE IF NOT EXISTS settings
         (
             id                      INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -84,6 +100,13 @@ pub async fn db_init() -> Result<&'static str, Box<dyn std::error::Error>> {
             SELECT RAISE(FAIL, 'Database is already init!');
         END;
         INSERT INTO global(secret) VALUES($1);
+        INSERT INTO presets(name, text, x, y, fontsize, line_spacing, fontcolor, alpha, box, boxcolor, boxborderw)
+            VALUES('Default', 'Wellcome to ffplayout messenger!', '(w-text_w)/2', '(h-text_h)/2', '24', '4', '#ffffff@0xff', '1.0', '0', '#000000@0x80', '4'),
+            ('Empty Text', '', '0', '0', '24', '4', '#000000', '0', '0', '#000000', '0'),
+            ('Bottom Text fade in', 'The upcoming event will be delayed by a few minutes.', '(w-text_w)/2', '(h-line_h)*0.9', '24', '4', '#ffffff',
+                'ifnot(ld(1),st(1,t));if(lt(t,ld(1)+1),0,if(lt(t,ld(1)+2),(t-(ld(1)+1))/1,if(lt(t,ld(1)+8),1,if(lt(t,ld(1)+9),(1-(t-(ld(1)+8)))/1,0))))', '1', '#000000@0x80', '4'),
+            ('Scrolling Text', 'We have a very important announcement to make.', 'ifnot(ld(1),st(1,t));if(lt(t,ld(1)+1),w+4,w-w/12*mod(t-ld(1),12*(w+tw)/w))', '(h-line_h)*0.9',
+                '24', '4', '#ffffff', '1.0', '1', '#000000@0x80', '4');
         INSERT INTO roles(name) VALUES('admin'), ('user'), ('guest');
         INSERT INTO settings(channel_name, preview_url, config_path, extra_extensions)
         VALUES('Channel 1', 'http://localhost/live/preview.m3u8',

@@ -1,4 +1,7 @@
+use futures::executor;
 use std::sync::atomic::Ordering;
+
+mod zmq_cmd;
 
 use jsonrpc_http_server::{
     hyper,
@@ -9,9 +12,11 @@ use serde_json::{json, Map};
 use simplelog::*;
 
 use crate::utils::{
-    get_delta, get_sec, sec_to_time, write_status, Media, PlayerControl, PlayoutConfig,
-    PlayoutStatus, ProcessControl,
+    get_delta, get_filter_from_json, get_sec, sec_to_time, write_status, Media, PlayerControl,
+    PlayoutConfig, PlayoutStatus, ProcessControl,
 };
+
+use zmq_cmd::zmq_send;
 
 /// map media struct to json object
 fn get_media_map(media: Media) -> Value {
@@ -72,6 +77,24 @@ pub fn json_rpc_server(
             let current_date = playout_stat.current_date.lock().unwrap().clone();
             let mut date = playout_stat.date.lock().unwrap();
             let current_list = play_control.current_list.lock().unwrap();
+
+            // forward text message to ffmpeg
+            if map.contains_key("control")
+                && &map["control"] == "text"
+                && map.contains_key("message")
+            {
+                let mut filter = get_filter_from_json(map["message"].to_string());
+                let socket = config.text.bind_address.clone();
+
+                if !filter.is_empty() && config.text.bind_address.is_some() {
+                    filter = format!("Parsed_drawtext_2 reinit {filter}");
+                    if let Ok(reply) = executor::block_on(zmq_send(&filter, &socket.unwrap())) {
+                        return Ok(Value::String(reply));
+                    };
+                }
+
+                return Ok(Value::String("Last clip can not be skipped".to_string()));
+            }
 
             // get next clip
             if map.contains_key("control") && &map["control"] == "next" {
