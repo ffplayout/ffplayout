@@ -9,12 +9,13 @@ use simplelog::*;
 
 use crate::api::{
     auth::{create_jwt, Claims},
+    control::send_message,
     errors::ServiceError,
     handles::{
         db_add_preset, db_add_user, db_get_presets, db_get_settings, db_login, db_role,
         db_update_preset, db_update_settings, db_update_user,
     },
-    models::{LoginUser, Preset, Settings, User},
+    models::{LoginUser, Settings, TextPreset, User},
     utils::{read_playout_config, Role},
 };
 
@@ -120,7 +121,7 @@ async fn get_presets() -> Result<impl Responder, ServiceError> {
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 async fn update_preset(
     id: web::Path<i64>,
-    data: web::Json<Preset>,
+    data: web::Json<TextPreset>,
 ) -> Result<impl Responder, ServiceError> {
     if db_update_preset(&id, data.into_inner()).await.is_ok() {
         return Ok("Update Success");
@@ -135,7 +136,7 @@ async fn update_preset(
 /// --header 'Authorization: <TOKEN>'
 #[post("/presets/")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
-async fn add_preset(data: web::Json<Preset>) -> Result<impl Responder, ServiceError> {
+async fn add_preset(data: web::Json<TextPreset>) -> Result<impl Responder, ServiceError> {
     if db_add_preset(data.into_inner()).await.is_ok() {
         return Ok("Add preset Success");
     }
@@ -251,5 +252,27 @@ pub async fn login(credentials: web::Json<User>) -> impl Responder {
             .customize()
             .with_status(StatusCode::BAD_REQUEST);
         }
+    }
+}
+
+/// ----------------------------------------------------------------------------
+/// ffplayout process controlling
+///
+/// here we communicate with the engine for:
+/// - jump to last or next clip
+/// - reset playlist state
+/// - get infos about current, next, last clip
+/// - send text the the engine, for overlaying it (as lower third etc.)
+/// ----------------------------------------------------------------------------
+
+#[post("/control/text/{id}")]
+#[has_any_role("Role::Admin", "Role::User", type = "Role")]
+pub async fn send_text_message(
+    id: web::Path<i64>,
+    data: web::Json<TextPreset>,
+) -> Result<impl Responder, ServiceError> {
+    match send_message(*id, data.into_inner()).await {
+        Ok(res) => return Ok(res.text().await.unwrap_or_else(|_| "Success".into())),
+        Err(e) => Err(e),
     }
 }

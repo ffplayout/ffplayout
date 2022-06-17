@@ -15,7 +15,7 @@ use ffplayout_engine::{
         models::LoginUser,
         routes::{
             add_preset, add_user, get_playout_config, get_presets, get_settings, login,
-            patch_settings, update_playout_config, update_preset, update_user,
+            patch_settings, send_text_message, update_playout_config, update_preset, update_user,
         },
         utils::{db_path, init_config, run_args, Role},
     },
@@ -80,7 +80,8 @@ async fn main() -> std::io::Result<()> {
                         .service(update_preset)
                         .service(get_settings)
                         .service(patch_settings)
-                        .service(update_user),
+                        .service(update_user)
+                        .service(send_text_message),
                 )
         })
         .bind((addr, port))?

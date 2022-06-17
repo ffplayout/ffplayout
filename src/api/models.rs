@@ -37,10 +37,11 @@ impl LoginUser {
     }
 }
 #[derive(Debug, Deserialize, Serialize, Clone, sqlx::FromRow)]
-pub struct Preset {
+pub struct TextPreset {
     #[sqlx(default)]
     #[serde(skip_deserializing)]
     pub id: i64,
+    #[serde(skip_deserializing)]
     pub name: String,
     pub text: String,
     pub x: String,

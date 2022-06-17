@@ -9,7 +9,7 @@ use sqlx::{migrate::MigrateDatabase, sqlite::SqliteQueryResult, Pool, Sqlite, Sq
 
 use crate::api::utils::GlobalSettings;
 use crate::api::{
-    models::{Preset, Settings, User},
+    models::{Settings, TextPreset, User},
     utils::db_path,
 };
 
@@ -211,16 +211,19 @@ pub async fn db_update_user(id: i64, fields: String) -> Result<SqliteQueryResult
     Ok(result)
 }
 
-pub async fn db_get_presets() -> Result<Vec<Preset>, sqlx::Error> {
+pub async fn db_get_presets() -> Result<Vec<TextPreset>, sqlx::Error> {
     let conn = db_connection().await?;
     let query = "SELECT * FROM presets";
-    let result: Vec<Preset> = sqlx::query_as(query).fetch_all(&conn).await?;
+    let result: Vec<TextPreset> = sqlx::query_as(query).fetch_all(&conn).await?;
     conn.close().await;
 
     Ok(result)
 }
 
-pub async fn db_update_preset(id: &i64, preset: Preset) -> Result<SqliteQueryResult, sqlx::Error> {
+pub async fn db_update_preset(
+    id: &i64,
+    preset: TextPreset,
+) -> Result<SqliteQueryResult, sqlx::Error> {
     let conn = db_connection().await?;
     let query =
         "UPDATE presets SET name = $1, text = $2, x = $3, y = $4, fontsize = $5, line_spacing = $6,
@@ -245,7 +248,7 @@ pub async fn db_update_preset(id: &i64, preset: Preset) -> Result<SqliteQueryRes
     Ok(result)
 }
 
-pub async fn db_add_preset(preset: Preset) -> Result<SqliteQueryResult, sqlx::Error> {
+pub async fn db_add_preset(preset: TextPreset) -> Result<SqliteQueryResult, sqlx::Error> {
     let conn = db_connection().await?;
     let query =
         "INSERT INTO presets (name, text, x, y, fontsize, line_spacing, fontcolor, alpha, box, boxcolor, boxborderw)
