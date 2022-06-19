@@ -171,8 +171,10 @@ impl CurrentProgram {
             *self.playout_stat.time_shift.lock().unwrap() = 0.0;
             let status_data: String =
                 serde_json::to_string(&data).expect("Serialize status data failed");
-            fs::write(self.config.general.stat_file.clone(), &status_data)
-                .expect("Unable to write file");
+
+            if let Err(e) = fs::write(self.config.general.stat_file.clone(), &status_data) {
+                error!("Unable to write status file: {e}");
+            };
 
             self.json_path = json.current_file.clone();
             self.json_mod = json.modified;
