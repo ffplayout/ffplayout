@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use reqwest::{
     header::{HeaderMap, AUTHORIZATION, CONTENT_TYPE},
     Client, Response,
@@ -5,9 +7,7 @@ use reqwest::{
 use serde::{Deserialize, Serialize};
 use simplelog::*;
 
-use crate::api::{
-    errors::ServiceError, handles::db_get_settings, models::TextPreset, utils::read_playout_config,
-};
+use crate::api::{errors::ServiceError, handles::db_get_settings, utils::read_playout_config};
 use crate::utils::PlayoutConfig;
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -21,7 +21,17 @@ struct RpcObj<T> {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 struct TextParams {
     control: String,
-    message: TextPreset,
+    message: HashMap<String, String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+struct ControlParams {
+    control: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+struct MediaParams {
+    media: String,
 }
 
 impl<T> RpcObj<T> {
@@ -58,23 +68,18 @@ async fn playout_config(channel_id: &i64) -> Result<PlayoutConfig, ServiceError>
     ))
 }
 
-pub async fn send_message(id: i64, message: TextPreset) -> Result<Response, ServiceError> {
+async fn post_request<T>(id: i64, obj: RpcObj<T>) -> Result<Response, ServiceError>
+where
+    T: Serialize,
+{
     let config = playout_config(&id).await?;
     let url = format!("http://{}", config.rpc_server.address);
     let client = Client::new();
-    let json_obj = RpcObj::new(
-        id,
-        "player".into(),
-        TextParams {
-            control: "text".into(),
-            message,
-        },
-    );
 
     match client
         .post(&url)
         .headers(create_header(&config.rpc_server.authorization))
-        .json(&json_obj)
+        .json(&obj)
         .send()
         .await
     {
@@ -84,4 +89,32 @@ pub async fn send_message(id: i64, message: TextPreset) -> Result<Response, Serv
             Err(ServiceError::BadRequest(e.to_string()))
         }
     }
+}
+
+pub async fn send_message(
+    id: i64,
+    message: HashMap<String, String>,
+) -> Result<Response, ServiceError> {
+    let json_obj = RpcObj::new(
+        id,
+        "player".into(),
+        TextParams {
+            control: "text".into(),
+            message,
+        },
+    );
+
+    post_request(id, json_obj).await
+}
+
+pub async fn control_state(id: i64, command: String) -> Result<Response, ServiceError> {
+    let json_obj = RpcObj::new(id, "player".into(), ControlParams { control: command });
+
+    post_request(id, json_obj).await
+}
+
+pub async fn media_info(id: i64, command: String) -> Result<Response, ServiceError> {
+    let json_obj = RpcObj::new(id, "player".into(), MediaParams { media: command });
+
+    post_request(id, json_obj).await
 }

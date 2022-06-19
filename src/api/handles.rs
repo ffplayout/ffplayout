@@ -40,12 +40,12 @@ async fn create_schema() -> Result<SqliteQueryResult, sqlx::Error> {
             text                    TEXT NOT NULL,
             x                       TEXT NOT NULL,
             y                       TEXT NOT NULL,
-            fontsize                INTEGER NOT NULL DEFAULT 24,
-            line_spacing            INTEGER NOT NULL DEFAULT 4,
+            fontsize                TEXT NOT NULL,
+            line_spacing            TEXT NOT NULL,
             fontcolor               TEXT NOT NULL,
-            box                     INTEGER NOT NULL DEFAULT 1,
+            box                     TEXT NOT NULL,
             boxcolor                TEXT NOT NULL,
-            boxborderw              INTEGER NOT NULL DEFAULT 4,
+            boxborderw              TEXT NOT NULL,
             alpha                   TEXT NOT NULL,
             UNIQUE(name)
         );

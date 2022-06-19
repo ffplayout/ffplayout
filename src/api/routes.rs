@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use actix_web::{get, http::StatusCode, patch, post, put, web, Responder};
 use actix_web_grants::{permissions::AuthDetails, proc_macro::has_any_role};
 use argon2::{
@@ -9,7 +11,7 @@ use simplelog::*;
 
 use crate::api::{
     auth::{create_jwt, Claims},
-    control::send_message,
+    control::{control_state, media_info, send_message},
     errors::ServiceError,
     handles::{
         db_add_preset, db_add_user, db_get_presets, db_get_settings, db_login, db_role,
@@ -265,13 +267,84 @@ pub async fn login(credentials: web::Json<User>) -> impl Responder {
 /// - send text the the engine, for overlaying it (as lower third etc.)
 /// ----------------------------------------------------------------------------
 
-#[post("/control/text/{id}")]
+/// curl -X POST http://localhost:8080/api/control/1/text/ \
+/// --header 'Content-Type: application/json' --header 'Authorization: <TOKEN>' \
+/// --data '{"text": "Hello from ffplayout", "x": "(w-text_w)/2", "y": "(h-text_h)/2", \
+///     "fontsize": "24", "line_spacing": "4", "fontcolor": "#ffffff", "box": "1", \
+///     "boxcolor": "#000000", "boxborderw": "4", "alpha": "1.0"}'
+#[post("/control/{id}/text/")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 pub async fn send_text_message(
     id: web::Path<i64>,
-    data: web::Json<TextPreset>,
+    data: web::Json<HashMap<String, String>>,
 ) -> Result<impl Responder, ServiceError> {
     match send_message(*id, data.into_inner()).await {
+        Ok(res) => return Ok(res.text().await.unwrap_or_else(|_| "Success".into())),
+        Err(e) => Err(e),
+    }
+}
+
+/// curl -X POST http://localhost:8080/api/control/1/playout/next/
+/// --header 'Content-Type: application/json' --header 'Authorization: <TOKEN>'
+#[post("/control/{id}/playout/next/")]
+#[has_any_role("Role::Admin", "Role::User", type = "Role")]
+pub async fn jump_to_next(id: web::Path<i64>) -> Result<impl Responder, ServiceError> {
+    match control_state(*id, "next".into()).await {
+        Ok(res) => return Ok(res.text().await.unwrap_or_else(|_| "Success".into())),
+        Err(e) => Err(e),
+    }
+}
+
+/// curl -X POST http://localhost:8080/api/control/1/playout/back/
+/// --header 'Content-Type: application/json' --header 'Authorization: <TOKEN>'
+#[post("/control/{id}/playout/back/")]
+#[has_any_role("Role::Admin", "Role::User", type = "Role")]
+pub async fn jump_to_last(id: web::Path<i64>) -> Result<impl Responder, ServiceError> {
+    match control_state(*id, "back".into()).await {
+        Ok(res) => return Ok(res.text().await.unwrap_or_else(|_| "Success".into())),
+        Err(e) => Err(e),
+    }
+}
+
+/// curl -X POST http://localhost:8080/api/control/1/playout/reset/
+/// --header 'Content-Type: application/json' --header 'Authorization: <TOKEN>'
+#[post("/control/{id}/playout/reset/")]
+#[has_any_role("Role::Admin", "Role::User", type = "Role")]
+pub async fn reset_playout(id: web::Path<i64>) -> Result<impl Responder, ServiceError> {
+    match control_state(*id, "reset".into()).await {
+        Ok(res) => return Ok(res.text().await.unwrap_or_else(|_| "Success".into())),
+        Err(e) => Err(e),
+    }
+}
+
+/// curl -X GET http://localhost:8080/api/control/1/media/current/
+/// --header 'Content-Type: application/json' --header 'Authorization: <TOKEN>'
+#[get("/control/{id}/media/current/")]
+#[has_any_role("Role::Admin", "Role::User", type = "Role")]
+pub async fn media_current(id: web::Path<i64>) -> Result<impl Responder, ServiceError> {
+    match media_info(*id, "current".into()).await {
+        Ok(res) => return Ok(res.text().await.unwrap_or_else(|_| "Success".into())),
+        Err(e) => Err(e),
+    }
+}
+
+/// curl -X GET http://localhost:8080/api/control/1/media/next/
+/// --header 'Content-Type: application/json' --header 'Authorization: <TOKEN>'
+#[get("/control/{id}/media/next/")]
+#[has_any_role("Role::Admin", "Role::User", type = "Role")]
+pub async fn media_next(id: web::Path<i64>) -> Result<impl Responder, ServiceError> {
+    match media_info(*id, "next".into()).await {
+        Ok(res) => return Ok(res.text().await.unwrap_or_else(|_| "Success".into())),
+        Err(e) => Err(e),
+    }
+}
+
+/// curl -X GET http://localhost:8080/api/control/1/media/last/
+/// --header 'Content-Type: application/json' --header 'Authorization: <TOKEN>'
+#[get("/control/{id}/media/last/")]
+#[has_any_role("Role::Admin", "Role::User", type = "Role")]
+pub async fn media_last(id: web::Path<i64>) -> Result<impl Responder, ServiceError> {
+    match media_info(*id, "last".into()).await {
         Ok(res) => return Ok(res.text().await.unwrap_or_else(|_| "Success".into())),
         Err(e) => Err(e),
     }

@@ -46,12 +46,12 @@ pub struct TextPreset {
     pub text: String,
     pub x: String,
     pub y: String,
-    pub fontsize: i64,
-    pub line_spacing: i64,
+    pub fontsize: String,
+    pub line_spacing: String,
     pub fontcolor: String,
-    pub r#box: bool,
+    pub r#box: String,
     pub boxcolor: String,
-    pub boxborderw: i64,
+    pub boxborderw: String,
     pub alpha: String,
 }
 
