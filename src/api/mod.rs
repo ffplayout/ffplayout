@@ -4,5 +4,6 @@ pub mod control;
 pub mod errors;
 pub mod handles;
 pub mod models;
+pub mod playlist;
 pub mod routes;
 pub mod utils;

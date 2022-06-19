@@ -6,7 +6,8 @@ use simplelog::*;
 
 use crate::api::{
     args_parse::Args,
-    handles::{db_add_user, db_global, db_init},
+    errors::ServiceError,
+    handles::{db_add_user, db_get_settings, db_global, db_init},
     models::User,
 };
 use crate::utils::PlayoutConfig;
@@ -119,4 +120,16 @@ pub fn read_playout_config(path: &str) -> Result<PlayoutConfig, Box<dyn Error>> 
     let config: PlayoutConfig = serde_yaml::from_reader(file)?;
 
     Ok(config)
+}
+
+pub async fn playout_config(channel_id: &i64) -> Result<PlayoutConfig, ServiceError> {
+    if let Ok(settings) = db_get_settings(channel_id).await {
+        if let Ok(config) = read_playout_config(&settings.config_path) {
+            return Ok(config);
+        }
+    }
+
+    Err(ServiceError::BadRequest(
+        "Error in getting config!".to_string(),
+    ))
 }

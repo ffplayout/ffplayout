@@ -7,8 +7,7 @@ use reqwest::{
 use serde::{Deserialize, Serialize};
 use simplelog::*;
 
-use crate::api::{errors::ServiceError, handles::db_get_settings, utils::read_playout_config};
-use crate::utils::PlayoutConfig;
+use crate::api::{errors::ServiceError, utils::playout_config};
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 struct RpcObj<T> {
@@ -54,18 +53,6 @@ fn create_header(auth: &str) -> HeaderMap {
     headers.insert(AUTHORIZATION, auth.parse().unwrap());
 
     headers
-}
-
-async fn playout_config(channel_id: &i64) -> Result<PlayoutConfig, ServiceError> {
-    if let Ok(settings) = db_get_settings(channel_id).await {
-        if let Ok(config) = read_playout_config(&settings.config_path) {
-            return Ok(config);
-        }
-    }
-
-    Err(ServiceError::BadRequest(
-        "Error in getting config!".to_string(),
-    ))
 }
 
 async fn post_request<T>(id: i64, obj: RpcObj<T>) -> Result<Response, ServiceError>

@@ -18,6 +18,7 @@ use crate::api::{
         db_update_preset, db_update_settings, db_update_user,
     },
     models::{LoginUser, Settings, TextPreset, User},
+    playlist::read_playlist,
     utils::{read_playout_config, Role},
 };
 
@@ -319,7 +320,7 @@ pub async fn reset_playout(id: web::Path<i64>) -> Result<impl Responder, Service
 
 /// curl -X GET http://localhost:8080/api/control/1/media/current/
 /// --header 'Content-Type: application/json' --header 'Authorization: <TOKEN>'
-#[get("/control/{id}/media/current/")]
+#[get("/control/{id}/media/current")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 pub async fn media_current(id: web::Path<i64>) -> Result<impl Responder, ServiceError> {
     match media_info(*id, "current".into()).await {
@@ -330,7 +331,7 @@ pub async fn media_current(id: web::Path<i64>) -> Result<impl Responder, Service
 
 /// curl -X GET http://localhost:8080/api/control/1/media/next/
 /// --header 'Content-Type: application/json' --header 'Authorization: <TOKEN>'
-#[get("/control/{id}/media/next/")]
+#[get("/control/{id}/media/next")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 pub async fn media_next(id: web::Path<i64>) -> Result<impl Responder, ServiceError> {
     match media_info(*id, "next".into()).await {
@@ -341,11 +342,29 @@ pub async fn media_next(id: web::Path<i64>) -> Result<impl Responder, ServiceErr
 
 /// curl -X GET http://localhost:8080/api/control/1/media/last/
 /// --header 'Content-Type: application/json' --header 'Authorization: <TOKEN>'
-#[get("/control/{id}/media/last/")]
+#[get("/control/{id}/media/last")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 pub async fn media_last(id: web::Path<i64>) -> Result<impl Responder, ServiceError> {
     match media_info(*id, "last".into()).await {
         Ok(res) => return Ok(res.text().await.unwrap_or_else(|_| "Success".into())),
+        Err(e) => Err(e),
+    }
+}
+
+/// ----------------------------------------------------------------------------
+/// ffplayout playlist operations
+///
+/// ----------------------------------------------------------------------------
+
+/// curl -X GET http://localhost:8080/api/playlist/1/2022-06-20
+/// --header 'Content-Type: application/json' --header 'Authorization: <TOKEN>'
+#[get("/playlist/{id}/{date}")]
+#[has_any_role("Role::Admin", "Role::User", type = "Role")]
+pub async fn get_playlist(
+    params: web::Path<(i64, String)>,
+) -> Result<impl Responder, ServiceError> {
+    match read_playlist(params.0, params.1.clone()).await {
+        Ok(playlist) => Ok(web::Json(playlist)),
         Err(e) => Err(e),
     }
 }

@@ -14,9 +14,10 @@ use ffplayout_engine::{
         auth,
         models::LoginUser,
         routes::{
-            add_preset, add_user, get_playout_config, get_presets, get_settings, jump_to_last,
-            jump_to_next, login, media_current, media_last, media_next, patch_settings,
-            reset_playout, send_text_message, update_playout_config, update_preset, update_user,
+            add_preset, add_user, get_playlist, get_playout_config, get_presets, get_settings,
+            jump_to_last, jump_to_next, login, media_current, media_last, media_next,
+            patch_settings, reset_playout, send_text_message, update_playout_config, update_preset,
+            update_user,
         },
         utils::{db_path, init_config, run_args, Role},
     },
@@ -88,7 +89,8 @@ async fn main() -> std::io::Result<()> {
                         .service(reset_playout)
                         .service(media_current)
                         .service(media_next)
-                        .service(media_last),
+                        .service(media_last)
+                        .service(get_playlist),
                 )
         })
         .bind((addr, port))?
