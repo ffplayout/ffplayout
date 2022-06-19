@@ -39,7 +39,9 @@ fn status_file(stat_file: &str, playout_stat: &PlayoutStatus) {
         });
 
         let json: String = serde_json::to_string(&data).expect("Serialize status data failed");
-        fs::write(stat_file, &json).expect("Unable to write file");
+        if let Err(e) = fs::write(stat_file, &json) {
+            error!("Unable to write status file: {e}");
+        };
     } else {
         let stat_file = File::options()
             .read(true)
