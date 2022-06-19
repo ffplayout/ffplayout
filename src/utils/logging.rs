@@ -92,7 +92,7 @@ pub struct LogMailer {
     level: LevelFilter,
     pub config: Config,
     messages: Arc<Mutex<Vec<String>>>,
-    last_message: Arc<Mutex<String>>,
+    last_messages: Arc<Mutex<Vec<String>>>,
 }
 
 impl LogMailer {
@@ -105,7 +105,7 @@ impl LogMailer {
             level: log_level,
             config,
             messages,
-            last_message: Arc::new(Mutex::new(String::new())),
+            last_messages: Arc::new(Mutex::new(vec![String::new()])),
         })
     }
 }
@@ -118,12 +118,15 @@ impl Log for LogMailer {
     fn log(&self, record: &Record<'_>) {
         if self.enabled(record.metadata()) {
             let rec = record.args().to_string();
-            let mut last_msg = self.last_message.lock().unwrap();
+            let mut last_msgs = self.last_messages.lock().unwrap();
 
             // put message only to mail queue when it differs from last message
             // this we do to prevent spamming the mail box
-            if *last_msg != rec {
-                *last_msg = rec.clone();
+            if !last_msgs.contains(&rec) {
+                if last_msgs.len() > 2 {
+                    last_msgs.clear()
+                }
+                last_msgs.push(rec.clone());
                 let local: DateTime<Local> = Local::now();
                 let time_stamp = local.format("[%Y-%m-%d %H:%M:%S%.3f]");
                 let level = record.level().to_string().to_uppercase();
@@ -182,6 +185,7 @@ pub fn init_logging(
     let mut log_config = ConfigBuilder::new()
         .set_thread_level(LevelFilter::Off)
         .set_target_level(LevelFilter::Off)
+        .add_filter_ignore_str("hyper")
         .add_filter_ignore_str("sqlx")
         .add_filter_ignore_str("reqwest")
         .set_level_padding(LevelPadding::Left)
