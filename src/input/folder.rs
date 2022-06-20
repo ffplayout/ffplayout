@@ -1,5 +1,4 @@
 use std::{
-    ffi::OsStr,
     path::Path,
     process::exit,
     sync::{
@@ -19,7 +18,7 @@ use rand::{seq::SliceRandom, thread_rng};
 use simplelog::*;
 use walkdir::WalkDir;
 
-use crate::utils::{get_sec, Media, PlayoutConfig};
+use crate::utils::{file_extension, get_sec, Media, PlayoutConfig};
 
 /// Folder Sources
 ///
@@ -153,10 +152,6 @@ impl Iterator for FolderSource {
             Some(self.current_node.clone())
         }
     }
-}
-
-fn file_extension(filename: &Path) -> Option<&str> {
-    filename.extension().and_then(OsStr::to_str)
 }
 
 /// Create a watcher, which monitor file changes.

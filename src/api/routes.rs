@@ -413,7 +413,7 @@ pub async fn file_browser(
     data: web::Json<PathObject>,
 ) -> Result<impl Responder, ServiceError> {
     match browser(*id, &data.into_inner()).await {
-        Ok(obj) => return Ok(web::Json(obj)),
+        Ok(obj) => Ok(web::Json(obj)),
         Err(e) => Err(e),
     }
 }

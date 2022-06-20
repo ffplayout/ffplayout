@@ -1,18 +1,18 @@
-use log::error;
+use relative_path::RelativePath;
 use serde::{Deserialize, Serialize};
-use std::{
-    fs::{self, canonicalize},
-    path::{self, PathBuf},
-};
+use std::{fs, path::PathBuf};
 
 use simplelog::*;
 
 use crate::api::{errors::ServiceError, utils::playout_config};
+use crate::utils::file_extension;
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct PathObject {
     root: String,
+    #[serde(skip_deserializing)]
     folders: Vec<String>,
+    #[serde(skip_deserializing)]
     files: Vec<String>,
 }
 
@@ -29,30 +29,42 @@ impl PathObject {
 pub async fn browser(id: i64, path_obj: &PathObject) -> Result<PathObject, ServiceError> {
     let config = playout_config(&id).await?;
     let path = PathBuf::from(config.storage.path);
-    let absolute = match canonicalize(path_obj.root.clone()) {
-        Ok(p) => p,
+    let extensions = config.storage.extensions;
+    let path_component = RelativePath::new(&path_obj.root)
+        .normalize()
+        .to_string()
+        .replace("../", "");
+    let path = path.join(path_component.clone());
+    let mut obj = PathObject::new(path_component.clone());
+
+    let mut paths: Vec<_> = match fs::read_dir(path) {
+        Ok(p) => p.filter_map(|r| r.ok()).collect(),
         Err(e) => {
-            error!("{e}");
+            error!("{e} in {path_component}");
             return Err(ServiceError::InternalServerError);
         }
     };
-    let path = path.join(absolute.clone());
-    let obj = PathObject::new(path_obj.root.clone());
 
-    println!("absolute: {:?}", absolute);
-
-    let paths = fs::read_dir(path).unwrap();
+    paths.sort_by_key(|dir| dir.path());
 
     for path in paths {
-        println!("Name: {:?}", path);
-        // if let Ok(p) = path {
-        //     let file_path = p.path().to_owned();
-        //     if file_path.is_dir() {
-        //         folders.push(file_path.display())
-        //     } else if file_path.is_file() {
-        //         files.push(file_path.clone().display())
-        //     }
-        // }
+        let file_path = path.path().to_owned();
+        let path_str = file_path.display().to_string();
+
+        // ignore hidden files/folders on unix
+        if path_str.contains("/.") {
+            continue;
+        }
+
+        if file_path.is_dir() {
+            obj.folders.push(path_str);
+        } else if file_path.is_file() {
+            if let Some(ext) = file_extension(&file_path) {
+                if extensions.contains(&ext.to_string().to_lowercase()) {
+                    obj.files.push(path_str);
+                }
+            }
+        }
     }
 
     Ok(obj)

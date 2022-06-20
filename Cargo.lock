@@ -1002,6 +1002,7 @@ dependencies = [
  "rand 0.8.5",
  "rand_core 0.6.3",
  "regex",
+ "relative-path",
  "reqwest",
  "serde",
  "serde_json",
@@ -2322,6 +2323,12 @@ name = "regex-syntax"
 version = "0.6.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "49b3de9ec5dc0a3417da371aab17d729997c15010e7fd24ff707773a33bddb64"
+
+[[package]]
+name = "relative-path"
+version = "1.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b4e112eddc95bbf25365df3b5414354ad2fe7ee465eddb9965a515faf8c3b6d9"
 
 [[package]]
 name = "remove_dir_all"

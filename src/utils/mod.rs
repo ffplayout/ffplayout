@@ -1,4 +1,5 @@
 use std::{
+    ffi::OsStr,
     fs::{self, metadata},
     io::{BufRead, BufReader, Error},
     net::TcpListener,
@@ -320,6 +321,11 @@ pub fn sec_to_time(sec: f64) -> String {
     let date_time = DateTime::<Utc>::from(d);
 
     date_time.format("%H:%M:%S%.3f").to_string()
+}
+
+/// get file extension
+pub fn file_extension(filename: &Path) -> Option<&str> {
+    filename.extension().and_then(OsStr::to_str)
 }
 
 /// Test if given numbers are close to each other,
