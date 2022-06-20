@@ -104,6 +104,7 @@ pub fn generate_playlist(config: &PlayoutConfig, mut date_range: Vec<String>) {
         let mut round = 0;
 
         let mut playlist = JsonPlaylist {
+            channel: "Channel 1".into(),
             date,
             current_file: None,
             start_sec: None,

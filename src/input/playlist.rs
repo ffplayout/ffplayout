@@ -195,15 +195,13 @@ impl CurrentProgram {
         let index = self.index.load(Ordering::SeqCst);
         let current_list = self.nodes.lock().unwrap();
 
-        if index + 1 < current_list.len()
-            && &current_list[index + 1].category.clone().unwrap_or_default() == "advertisement"
-        {
+        if index + 1 < current_list.len() && &current_list[index + 1].category == "advertisement" {
             self.current_node.next_ad = Some(true);
         }
 
         if index > 0
             && index < current_list.len()
-            && &current_list[index - 1].category.clone().unwrap_or_default() == "advertisement"
+            && &current_list[index - 1].category == "advertisement"
         {
             self.current_node.last_ad = Some(true);
         }

@@ -48,8 +48,7 @@ pub struct Media {
     pub out: f64,
     pub duration: f64,
 
-    #[serde(skip_serializing)]
-    pub category: Option<String>,
+    pub category: String,
     pub source: String,
 
     #[serde(skip_serializing, skip_deserializing)]
@@ -94,7 +93,7 @@ impl Media {
             seek: 0.0,
             out: duration,
             duration,
-            category: None,
+            category: String::new(),
             source: src.clone(),
             cmd: Some(vec!["-i".to_string(), src]),
             filter: Some(vec![]),
@@ -131,8 +130,20 @@ impl Media {
     }
 }
 
+impl PartialEq for Media {
+    fn eq(&self, other: &Self) -> bool {
+        self.seek == other.seek
+            && self.out == other.out
+            && self.duration == other.duration
+            && self.source == other.source
+            && self.category == other.category
+    }
+}
+
+impl Eq for Media {}
+
 /// We use the ffprobe crate, but we map the metadata to our needs.
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct MediaProbe {
     pub format: Option<Format>,
     pub audio_streams: Option<Vec<Stream>>,

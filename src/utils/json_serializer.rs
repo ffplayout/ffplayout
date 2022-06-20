@@ -17,6 +17,7 @@ pub const DUMMY_LEN: f64 = 60.0;
 /// This is our main playlist object, it holds all necessary information for the current day.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct JsonPlaylist {
+    pub channel: String,
     pub date: String,
 
     #[serde(skip_serializing, skip_deserializing)]
@@ -38,6 +39,7 @@ impl JsonPlaylist {
         media.duration = DUMMY_LEN;
         media.out = DUMMY_LEN;
         Self {
+            channel: "Channel 1".into(),
             date,
             start_sec: Some(start),
             current_file: None,
@@ -46,6 +48,14 @@ impl JsonPlaylist {
         }
     }
 }
+
+impl PartialEq for JsonPlaylist {
+    fn eq(&self, other: &Self) -> bool {
+        self.channel == other.channel && self.date == other.date && self.program == other.program
+    }
+}
+
+impl Eq for JsonPlaylist {}
 
 fn set_defaults(
     mut playlist: JsonPlaylist,

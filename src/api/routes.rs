@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use actix_web::{get, http::StatusCode, patch, post, put, web, Responder};
+use actix_web::{delete, get, http::StatusCode, patch, post, put, web, Responder};
 use actix_web_grants::{permissions::AuthDetails, proc_macro::has_any_role};
 use argon2::{
     password_hash::{rand_core::OsRng, PasswordHash, SaltString},
@@ -9,20 +9,22 @@ use argon2::{
 use serde::Serialize;
 use simplelog::*;
 
-use crate::api::{
-    auth::{create_jwt, Claims},
-    control::{control_state, media_info, send_message},
-    errors::ServiceError,
-    handles::{
-        db_add_preset, db_add_user, db_get_presets, db_get_settings, db_login, db_role,
-        db_update_preset, db_update_settings, db_update_user,
+use crate::{
+    api::{
+        auth::{create_jwt, Claims},
+        control::{control_state, media_info, send_message},
+        errors::ServiceError,
+        files::{browser, PathObject},
+        handles::{
+            db_add_preset, db_add_user, db_get_presets, db_get_settings, db_login, db_role,
+            db_update_preset, db_update_settings, db_update_user,
+        },
+        models::{LoginUser, Settings, TextPreset, User},
+        playlist::{delete_playlist, read_playlist, write_playlist},
+        utils::{read_playout_config, Role},
     },
-    models::{LoginUser, Settings, TextPreset, User},
-    playlist::read_playlist,
-    utils::{read_playout_config, Role},
+    utils::{JsonPlaylist, PlayoutConfig},
 };
-
-use crate::utils::PlayoutConfig;
 
 #[derive(Serialize)]
 struct ResponseObj<T> {
@@ -365,6 +367,53 @@ pub async fn get_playlist(
 ) -> Result<impl Responder, ServiceError> {
     match read_playlist(params.0, params.1.clone()).await {
         Ok(playlist) => Ok(web::Json(playlist)),
+        Err(e) => Err(e),
+    }
+}
+
+/// curl -X POST http://localhost:8080/api/playlist/1/
+/// --header 'Content-Type: application/json' --header 'Authorization: <TOKEN>'
+/// -- data "{<JSON playlist data>}"
+#[post("/playlist/{id}/")]
+#[has_any_role("Role::Admin", "Role::User", type = "Role")]
+pub async fn save_playlist(
+    id: web::Path<i64>,
+    data: web::Json<JsonPlaylist>,
+) -> Result<impl Responder, ServiceError> {
+    match write_playlist(*id, data.into_inner()).await {
+        Ok(res) => Ok(res),
+        Err(e) => Err(e),
+    }
+}
+
+/// curl -X DELETE http://localhost:8080/api/playlist/1/2022-06-20
+/// --header 'Content-Type: application/json' --header 'Authorization: <TOKEN>'
+#[delete("/playlist/{id}/{date}")]
+#[has_any_role("Role::Admin", "Role::User", type = "Role")]
+pub async fn del_playlist(
+    params: web::Path<(i64, String)>,
+) -> Result<impl Responder, ServiceError> {
+    match delete_playlist(params.0, &params.1).await {
+        Ok(_) => Ok(format!("Delete playlist from {} success!", params.1)),
+        Err(e) => Err(e),
+    }
+}
+
+/// ----------------------------------------------------------------------------
+/// file operations
+///
+/// ----------------------------------------------------------------------------
+
+/// curl -X get http://localhost:8080/api/file/1/browse
+/// --header 'Content-Type: application/json' --header 'Authorization: <TOKEN>'
+#[post("/file/{id}/browse/")]
+#[has_any_role("Role::Admin", "Role::User", type = "Role")]
+pub async fn file_browser(
+    id: web::Path<i64>,
+    data: web::Json<PathObject>,
+) -> Result<impl Responder, ServiceError> {
+    match browser(*id, &data.into_inner()).await {
+        Ok(obj) => return Ok(web::Json(obj)),
         Err(e) => Err(e),
     }
 }

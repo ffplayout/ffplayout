@@ -140,7 +140,7 @@ fn fade(node: &mut Media, chain: &mut Filters, codec_type: &str) {
 fn overlay(node: &mut Media, chain: &mut Filters, config: &PlayoutConfig) {
     if config.processing.add_logo
         && Path::new(&config.processing.logo).is_file()
-        && &node.category.clone().unwrap_or_default() != "advertisement"
+        && &node.category != "advertisement"
     {
         let mut logo_chain = v_overlay::filter_node(config, false);
 
