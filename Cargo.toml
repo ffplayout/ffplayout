@@ -14,7 +14,7 @@ actix-web-grants = "3"
 actix-web-httpauth = "0.6"
 argon2 = "0.4"
 chrono = { git = "https://github.com/sbrocket/chrono", branch = "parse-error-kind-public" }
-clap = { version = "3.1", features = ["derive"] }
+clap = { version = "3.2", features = ["derive"] }
 crossbeam-channel = "0.5"
 derive_more = "0.99"
 faccess = "0.2"
@@ -84,7 +84,8 @@ assets = [
     ["assets/logo.png", "/usr/share/ffplayout/logo.png", "644"],
     ["README.md", "/usr/share/doc/ffplayout-engine/README", "644"],
 ]
-systemd-units = { unit-name = "ffplayout-engine", unit-scripts = "assets", enable = false }
+maintainer-scripts = "debian/"
+systemd-units = { enable = false, unit-scripts = "assets" }
 
 # REHL RPM PACKAGE
 [package.metadata.generate-rpm]
