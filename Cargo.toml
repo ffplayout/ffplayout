@@ -81,6 +81,11 @@ assets = [
         "/usr/bin/ffplayout",
         "755"
     ],
+    [
+        "target/x86_64-unknown-linux-musl/release/ffpapi",
+        "/usr/bin/ffpapi",
+        "755"
+    ],
     ["assets/ffplayout.yml", "/etc/ffplayout/ffplayout.yml", "644"],
     ["assets/logo.png", "/usr/share/ffplayout/logo.png", "644"],
     ["README.md", "/usr/share/doc/ffplayout-engine/README", "644"],
@@ -94,6 +99,7 @@ name = "ffplayout-engine"
 license = "GPL-3.0"
 assets = [
     { source = "target/x86_64-unknown-linux-musl/release/ffplayout", dest = "/usr/bin/ffplayout", mode = "755" },
+    { source = "target/x86_64-unknown-linux-musl/release/ffpapi", dest = "/usr/bin/ffpapi", mode = "755" },
     { source = "assets/ffplayout.yml", dest = "/etc/ffplayout/ffplayout.yml", mode = "644", config = true },
     { source = "assets/ffplayout-engine.service", dest = "/lib/systemd/system/ffplayout-engine.service", mode = "644" },
     { source = "README.md", dest = "/usr/share/doc/ffplayout-engine/README", mode = "644", doc = true },

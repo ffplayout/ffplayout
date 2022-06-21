@@ -25,16 +25,18 @@ for target in "${targets[@]}"; do
         fi
 
         cp ./target/${target}/release/ffplayout.exe .
-        zip -r "ffplayout-engine-v${version}_${target}.zip" assets docs LICENSE README.md ffplayout.exe -x *.db
-        rm -f ffplayout.exe
+        cp ./target/${target}/release/ffpapi.exe .
+        zip -r "ffplayout-engine-v${version}_${target}.zip" assets docs LICENSE README.md ffplayout.exe ffpapi.exe -x *.db
+        rm -f ffplayout.exe ffpapi.exe
     else
         if [[ -f "ffplayout-engine-v${version}_${target}.tar.gz" ]]; then
             rm -f "ffplayout-engine-v${version}_${target}.tar.gz"
         fi
 
         cp ./target/${target}/release/ffplayout .
-        tar -czvf "ffplayout-engine-v${version}_${target}.tar.gz" --exclude='*.db' assets docs LICENSE README.md ffplayout
-        rm -f ffplayout
+        cp ./target/${target}/release/ffpapi .
+        tar -czvf "ffplayout-engine-v${version}_${target}.tar.gz" --exclude='*.db' assets docs LICENSE README.md ffplayout ffpapi
+        rm -f ffplayout ffpapi
     fi
 
     echo ""
