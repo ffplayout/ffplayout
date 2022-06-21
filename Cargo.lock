@@ -315,9 +315,9 @@ dependencies = [
 
 [[package]]
 name = "async-global-executor"
-version = "2.1.0"
+version = "2.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fd8b508d585e01084059b60f06ade4cb7415cd2e4084b71dd1cb44e7d3fb9880"
+checksum = "5262ed948da60dd8956c6c5aca4d4163593dddb7b32d73267c93dab7b2e98940"
 dependencies = [
  "async-channel",
  "async-executor",
@@ -325,6 +325,7 @@ dependencies = [
  "async-lock",
  "blocking",
  "futures-lite",
+ "num_cpus",
  "once_cell",
 ]
 
@@ -588,6 +589,7 @@ dependencies = [
  "libc",
  "num-integer",
  "num-traits",
+ "time 0.1.44",
  "winapi 0.3.9",
 ]
 
@@ -605,9 +607,9 @@ dependencies = [
 
 [[package]]
 name = "clap"
-version = "3.2.5"
+version = "3.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d53da17d37dba964b9b3ecb5c5a1f193a2762c700e6829201e645b9381c99dc7"
+checksum = "9f1fe12880bae935d142c8702d500c63a4e8634b6c3c57ad72bf978fc7b6249a"
 dependencies = [
  "atty",
  "bitflags",
@@ -622,9 +624,9 @@ dependencies = [
 
 [[package]]
 name = "clap_derive"
-version = "3.2.5"
+version = "3.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c11d40217d16aee8508cc8e5fde8b4ff24639758608e5374e731b53f85749fb9"
+checksum = "ed6db9e867166a43a53f7199b5e4d1f522a1e5bd626654be263c999ce59df39a"
 dependencies = [
  "heck",
  "proc-macro-error",
@@ -635,9 +637,9 @@ dependencies = [
 
 [[package]]
 name = "clap_lex"
-version = "0.2.2"
+version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5538cd660450ebeb4234cfecf8f2284b844ffc4c50531e66d584ad5b91293613"
+checksum = "87eba3c8c7f42ef17f6c659fc7416d0f4758cd3e58861ee63c5fa4a4dde649e4"
 dependencies = [
  "os_str_bytes",
 ]
@@ -977,26 +979,21 @@ dependencies = [
 ]
 
 [[package]]
-name = "ffplayout-engine"
-version = "0.9.9"
+name = "ffplayout-api"
+version = "0.3.0"
 dependencies = [
  "actix-web",
  "actix-web-grants",
  "actix-web-httpauth",
  "argon2",
- "chrono 0.4.19 (git+https://github.com/sbrocket/chrono?branch=parse-error-kind-public)",
+ "chrono 0.4.19 (registry+https://github.com/rust-lang/crates.io-index)",
  "clap",
- "crossbeam-channel 0.5.5",
  "derive_more",
  "faccess",
+ "ffplayout-lib",
  "ffprobe",
- "file-rotate",
- "futures",
- "jsonrpc-http-server",
  "jsonwebtoken",
- "lettre",
  "log",
- "notify",
  "once_cell",
  "openssl",
  "rand 0.8.5",
@@ -1007,12 +1004,66 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yaml",
- "shlex",
  "simplelog",
  "sqlx",
+]
+
+[[package]]
+name = "ffplayout-engine"
+version = "0.9.9"
+dependencies = [
+ "chrono 0.4.19 (git+https://github.com/sbrocket/chrono?branch=parse-error-kind-public)",
+ "clap",
+ "crossbeam-channel 0.5.5",
+ "faccess",
+ "ffplayout-lib",
+ "ffprobe",
+ "file-rotate",
+ "futures",
+ "jsonrpc-http-server",
+ "lettre",
+ "log",
+ "notify",
+ "openssl",
+ "rand 0.8.5",
+ "regex",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "shlex",
+ "simplelog",
  "time 0.3.10",
  "walkdir",
  "zeromq",
+]
+
+[[package]]
+name = "ffplayout-lib"
+version = "0.9.9"
+dependencies = [
+ "chrono 0.4.19 (git+https://github.com/sbrocket/chrono?branch=parse-error-kind-public)",
+ "crossbeam-channel 0.5.5",
+ "faccess",
+ "ffprobe",
+ "file-rotate",
+ "futures",
+ "jsonrpc-http-server",
+ "lettre",
+ "log",
+ "notify",
+ "once_cell",
+ "openssl",
+ "rand 0.8.5",
+ "regex",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "shlex",
+ "simplelog",
+ "time 0.3.10",
+ "walkdir",
 ]
 
 [[package]]
@@ -1474,9 +1525,9 @@ dependencies = [
 
 [[package]]
 name = "indexmap"
-version = "1.9.0"
+version = "1.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6c6392766afd7964e2531940894cffe4bd8d7d17dbc3c1c4857040fd4b33bdb3"
+checksum = "10a35a97730320ffe8e2d410b5d3b69279b98d2c14bdb8b70ea89ecf7888d41e"
 dependencies = [
  "autocfg",
  "hashbrown 0.12.1",

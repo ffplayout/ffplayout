@@ -1,0 +1,76 @@
+[package]
+name = "ffplayout-api"
+description = "Rest API for ffplayout"
+license = "GPL-3.0"
+authors = ["Jonathan Baecker jonbae77@gmail.com"]
+readme = "README.md"
+version = "0.3.0"
+edition = "2021"
+
+[dependencies]
+ffplayout-lib = { path = "../lib" }
+actix-web = "4"
+actix-web-grants = "3"
+actix-web-httpauth = "0.6"
+argon2 = "0.4"
+chrono = "0.4"
+clap = { version = "3.2", features = ["derive"] }
+derive_more = "0.99"
+faccess = "0.2"
+ffprobe = "0.3"
+jsonwebtoken = "8"
+log = "0.4"
+once_cell = "1.10"
+rand = "0.8"
+rand_core = { version = "0.6", features = ["std"] }
+relative-path = "1.6"
+regex = "1"
+reqwest = { version = "0.11", features = ["blocking", "json"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.8"
+simplelog = { version = "^0.12", features = ["paris"] }
+sqlx = { version = "0.5", features = [
+    "chrono",
+    "runtime-actix-native-tls",
+    "sqlite"
+] }
+
+[target.x86_64-unknown-linux-musl.dependencies]
+openssl = { version = "0.10", features = ["vendored"] }
+
+[[bin]]
+name = "ffpapi"
+path = "src/main.rs"
+
+# DEBIAN DEB PACKAGE
+[package.metadata.deb]
+name = "ffplayout-api"
+priority = "optional"
+section = "net"
+license-file = ["../LICENSE", "0"]
+depends = ""
+suggests = "ffmpeg"
+copyright = "Copyright (c) 2022, Jonathan Baecker. All rights reserved."
+conf-files = ["/etc/ffplayout/ffplayout.yml"]
+assets = [
+    [
+        "../target/x86_64-unknown-linux-musl/release/ffpapi",
+        "/usr/bin/ffpapi",
+        "755"
+    ],
+    ["README.md", "/usr/share/doc/ffplayout/README", "644"],
+]
+maintainer-scripts = "debian/"
+systemd-units = { enable = false, unit-scripts = "unit" }
+
+# REHL RPM PACKAGE
+[package.metadata.generate-rpm]
+name = "ffplayout-api"
+license = "GPL-3.0"
+assets = [
+    { source = "../target/x86_64-unknown-linux-musl/release/ffpapi", dest = "/usr/bin/ffpapi", mode = "755" },
+    { source = "unit/ffpapi.service", dest = "/lib/systemd/system/ffpapi.service", mode = "644" },
+    { source = "README.md", dest = "/usr/share/doc/ffplayout/README", mode = "644", doc = true },
+    { source = "../LICENSE", dest = "/usr/share/doc/ffplayout/LICENSE", mode = "644" },
+]
