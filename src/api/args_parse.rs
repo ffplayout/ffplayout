@@ -3,7 +3,7 @@ use clap::Parser;
 #[derive(Parser, Debug, Clone)]
 #[clap(version,
     name = "ffpapi",
-    version = "0.1.0",
+    version = "0.3.0",
     about = "ffplayout REST API",
     long_about = None)]
 pub struct Args {
