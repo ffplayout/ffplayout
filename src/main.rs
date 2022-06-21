@@ -77,7 +77,10 @@ fn main() {
 
     if let Some(range) = config.general.generate.clone() {
         // run a simple playlist generator and save them to disk
-        generate_playlist(&config, range);
+        if let Err(e) = generate_playlist(&config, range, None) {
+            error!("{e}");
+            exit(1);
+        };
 
         exit(0);
     }

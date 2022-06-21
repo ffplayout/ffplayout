@@ -8,7 +8,7 @@ use crate::api::{
     args_parse::Args,
     errors::ServiceError,
     handles::{db_add_user, db_get_settings, db_global, db_init},
-    models::User,
+    models::{Settings, User},
 };
 use crate::utils::PlayoutConfig;
 
@@ -122,10 +122,10 @@ pub fn read_playout_config(path: &str) -> Result<PlayoutConfig, Box<dyn Error>> 
     Ok(config)
 }
 
-pub async fn playout_config(channel_id: &i64) -> Result<PlayoutConfig, ServiceError> {
+pub async fn playout_config(channel_id: &i64) -> Result<(PlayoutConfig, Settings), ServiceError> {
     if let Ok(settings) = db_get_settings(channel_id).await {
-        if let Ok(config) = read_playout_config(&settings.config_path) {
-            return Ok(config);
+        if let Ok(config) = read_playout_config(&settings.config_path.clone()) {
+            return Ok((config, settings));
         }
     }
 

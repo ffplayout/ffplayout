@@ -20,7 +20,7 @@ use crate::{
             db_update_preset, db_update_settings, db_update_user,
         },
         models::{LoginUser, Settings, TextPreset, User},
-        playlist::{delete_playlist, read_playlist, write_playlist},
+        playlist::{delete_playlist, generate_playlist, read_playlist, write_playlist},
         utils::{read_playout_config, Role},
     },
     utils::{JsonPlaylist, PlayoutConfig},
@@ -382,6 +382,19 @@ pub async fn save_playlist(
 ) -> Result<impl Responder, ServiceError> {
     match write_playlist(*id, data.into_inner()).await {
         Ok(res) => Ok(res),
+        Err(e) => Err(e),
+    }
+}
+
+/// curl -X GET http://localhost:8080/api/playlist/1/generate/2022-06-20
+/// --header 'Content-Type: application/json' --header 'Authorization: <TOKEN>'
+#[get("/playlist/{id}/generate/{date}")]
+#[has_any_role("Role::Admin", "Role::User", type = "Role")]
+pub async fn gen_playlist(
+    params: web::Path<(i64, String)>,
+) -> Result<impl Responder, ServiceError> {
+    match generate_playlist(params.0, params.1.clone()).await {
+        Ok(playlist) => Ok(web::Json(playlist)),
         Err(e) => Err(e),
     }
 }

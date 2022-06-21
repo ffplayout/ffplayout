@@ -59,7 +59,7 @@ async fn post_request<T>(id: i64, obj: RpcObj<T>) -> Result<Response, ServiceErr
 where
     T: Serialize,
 {
-    let config = playout_config(&id).await?;
+    let (config, _) = playout_config(&id).await?;
     let url = format!("http://{}", config.rpc_server.address);
     let client = Client::new();
 

@@ -7,7 +7,7 @@ use std::{
 use simplelog::*;
 
 use crate::api::{errors::ServiceError, utils::playout_config};
-use crate::utils::JsonPlaylist;
+use crate::utils::{generate_playlist as playlist_generator, JsonPlaylist};
 
 fn json_reader(path: &PathBuf) -> Result<JsonPlaylist, Error> {
     let f = File::options().read(true).write(false).open(&path)?;
@@ -28,7 +28,7 @@ fn json_writer(path: &PathBuf, data: JsonPlaylist) -> Result<(), Error> {
 }
 
 pub async fn read_playlist(id: i64, date: String) -> Result<JsonPlaylist, ServiceError> {
-    let config = playout_config(&id).await?;
+    let (config, _) = playout_config(&id).await?;
     let mut playlist_path = PathBuf::from(&config.playlist.path);
     let d: Vec<&str> = date.split('-').collect();
     playlist_path = playlist_path
@@ -45,7 +45,7 @@ pub async fn read_playlist(id: i64, date: String) -> Result<JsonPlaylist, Servic
 }
 
 pub async fn write_playlist(id: i64, json_data: JsonPlaylist) -> Result<String, ServiceError> {
-    let config = playout_config(&id).await?;
+    let (config, _) = playout_config(&id).await?;
     let date = json_data.date.clone();
     let mut playlist_path = PathBuf::from(&config.playlist.path);
     let d: Vec<&str> = date.split('-').collect();
@@ -75,8 +75,28 @@ pub async fn write_playlist(id: i64, json_data: JsonPlaylist) -> Result<String, 
     Err(ServiceError::InternalServerError)
 }
 
+pub async fn generate_playlist(id: i64, date: String) -> Result<JsonPlaylist, ServiceError> {
+    let (config, settings) = playout_config(&id).await?;
+
+    match playlist_generator(&config, vec![date], Some(settings.channel_name)) {
+        Ok(playlists) => {
+            if !playlists.is_empty() {
+                Ok(playlists[0].clone())
+            } else {
+                Err(ServiceError::Conflict(
+                    "Playlist could not be written, possible already exists!".into(),
+                ))
+            }
+        }
+        Err(e) => {
+            error!("{e}");
+            Err(ServiceError::InternalServerError)
+        }
+    }
+}
+
 pub async fn delete_playlist(id: i64, date: &str) -> Result<(), ServiceError> {
-    let config = playout_config(&id).await?;
+    let (config, _) = playout_config(&id).await?;
     let mut playlist_path = PathBuf::from(&config.playlist.path);
     let d: Vec<&str> = date.split('-').collect();
     playlist_path = playlist_path

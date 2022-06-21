@@ -8,6 +8,7 @@
 /// Beside that it is really very basic, without any logic.
 use std::{
     fs::{create_dir_all, write},
+    io::Error,
     path::Path,
     process::exit,
     sync::{atomic::AtomicUsize, Arc, Mutex},
@@ -17,7 +18,7 @@ use chrono::{Duration, NaiveDate};
 use simplelog::*;
 
 use crate::input::FolderSource;
-use crate::utils::{json_serializer::JsonPlaylist, Media, PlayoutConfig};
+use crate::utils::{json_serializer::JsonPlaylist, time_to_sec, Media, PlayoutConfig};
 
 /// Generate a vector with dates, from given range.
 fn get_date_range(date_range: &[String]) -> Vec<String> {
@@ -50,11 +51,30 @@ fn get_date_range(date_range: &[String]) -> Vec<String> {
 }
 
 /// Generate playlists
-pub fn generate_playlist(config: &PlayoutConfig, mut date_range: Vec<String>) {
-    let total_length = config.playlist.length_sec.unwrap();
+pub fn generate_playlist(
+    config: &PlayoutConfig,
+    mut date_range: Vec<String>,
+    channel_name: Option<String>,
+) -> Result<Vec<JsonPlaylist>, Error> {
+    let total_length = match config.playlist.length_sec {
+        Some(length) => length,
+        None => {
+            if config.playlist.length.contains(':') {
+                time_to_sec(&config.playlist.length)
+            } else {
+                86400.0
+            }
+        }
+    };
     let current_list = Arc::new(Mutex::new(vec![Media::new(0, "".to_string(), false)]));
     let index = Arc::new(AtomicUsize::new(0));
     let playlist_root = Path::new(&config.playlist.path);
+    let mut playlists = vec![];
+
+    let channel = match channel_name {
+        Some(name) => name,
+        None => "Channel 1".to_string(),
+    };
 
     if !playlist_root.is_dir() {
         error!(
@@ -79,10 +99,7 @@ pub fn generate_playlist(config: &PlayoutConfig, mut date_range: Vec<String>) {
         let playlist_path = playlist_root.join(year).join(month);
         let playlist_file = &playlist_path.join(format!("{date}.json"));
 
-        if let Err(e) = create_dir_all(playlist_path) {
-            error!("Create folder failed: {e:?}");
-            exit(1);
-        }
+        create_dir_all(playlist_path)?;
 
         if playlist_file.is_file() {
             warn!(
@@ -104,7 +121,7 @@ pub fn generate_playlist(config: &PlayoutConfig, mut date_range: Vec<String>) {
         let mut round = 0;
 
         let mut playlist = JsonPlaylist {
-            channel: "Channel 1".into(),
+            channel: channel.clone(),
             date,
             current_file: None,
             start_sec: None,
@@ -131,17 +148,12 @@ pub fn generate_playlist(config: &PlayoutConfig, mut date_range: Vec<String>) {
             }
         }
 
-        let json: String = match serde_json::to_string_pretty(&playlist) {
-            Ok(j) => j,
-            Err(e) => {
-                error!("Unable to serialize data: {e:?}");
-                exit(0);
-            }
-        };
+        playlists.push(playlist.clone());
 
-        if let Err(e) = write(playlist_file, &json) {
-            error!("Unable to write playlist: {e:?}");
-            exit(1)
-        };
+        let json: String = serde_json::to_string_pretty(&playlist)?;
+
+        write(playlist_file, &json)?;
     }
+
+    Ok(playlists)
 }

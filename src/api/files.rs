@@ -27,7 +27,7 @@ impl PathObject {
 }
 
 pub async fn browser(id: i64, path_obj: &PathObject) -> Result<PathObject, ServiceError> {
-    let config = playout_config(&id).await?;
+    let (config, _) = playout_config(&id).await?;
     let path = PathBuf::from(config.storage.path);
     let extensions = config.storage.extensions;
     let path_component = RelativePath::new(&path_obj.root)
