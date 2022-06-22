@@ -16,7 +16,7 @@ The main purpose of ffplayout is to provide a 24/7 broadcasting solution that pl
 - playing clips in [watched](/docs/folder_mode.md) folder mode
 - send emails with error message
 - overlay a logo
-- overlay text, controllable through [messenger](https://github.com/ffplayout/messenger) or [ffplayout-frontend](https://github.com/ffplayout/ffplayout-frontend) (needs ffmpeg with libzmq)
+- overlay text, controllable through [messenger](https://github.com/ffplayout/messenger) or [ffplayout-frontend](https://github.com/ffplayout/ffplayout-frontend) (needs ffmpeg with libzmq and enabled JSON RPC server)
 - EBU R128 loudness normalization (single pass)
 - loop playlist infinitely
 - [remote source](/docs/remote_source.md)
@@ -122,20 +122,24 @@ The ffplayout engine can run a JSON RPC server. A request show look like:
 
 ```Bash
 curl -X POST -H "Content-Type: application/json" -H "Authorization: ---auth-key---" \
-    -d '{"jsonrpc": "2.0", "method": "player", "params":{"control":"next"}, "id":1 }' \
+    -d '{"jsonrpc": "2.0", "id":1, "method": "player", "params":{"control":"next"}}' \
     127.0.0.1:7070
 ```
 
 At the moment this comments are possible:
 
 ```Bash
-'{"jsonrpc": "2.0", "method": "player", "params":{"media":"current"}, "id":1 }'  # get infos about current clip
-'{"jsonrpc": "2.0", "method": "player", "params":{"media":"next"}, "id":2 }'  # get infos about next clip
-'{"jsonrpc": "2.0", "method": "player", "params":{"media":"last"}, "id":3 }'  # get infos about last clip
-'{"jsonrpc": "2.0", "method": "player", "params":{"control":"next"}, "id":4 }'   # jump to next clip
-'{"jsonrpc": "2.0", "method": "player", "params":{"control":"back"}, "id":5 }'   # jump to last clip
-'{"jsonrpc": "2.0", "method": "player", "params":{"control":"reset"}, "id":6 }'  # reset playlist to old state
+'{"jsonrpc": "2.0", "id":1, "method": "player", "params":{"media":"current"}}'  # get infos about current clip
+'{"jsonrpc": "2.0", "id":2, "method": "player", "params":{"media":"next"}}'  # get infos about next clip
+'{"jsonrpc": "2.0", "id":3, "method": "player", "params":{"media":"last"}}'  # get infos about last clip
+'{"jsonrpc": "2.0", "id":4, "method": "player", "params":{"control":"next"}}'   # jump to next clip
+'{"jsonrpc": "2.0", "id":5, "method": "player", "params":{"control":"back"}}'   # jump to last clip
+'{"jsonrpc": "2.0", "id":6, "method": "player", "params":{"control":"reset"}}'  # reset playlist to old state
 
+'{"jsonrpc": "2.0", "id":7, "method": "player", "params":{"control":"text", \
+  "message": {"text": "Hello from ffplayout", "x": "(w-text_w)/2", "y": "(h-text_h)/2", \
+  "fontsize": 24, "line_spacing": 4, "fontcolor": "#ffffff", "box": 1, \
+  "boxcolor": "#000000", "boxborderw": 4, "alpha": 1.0}}}' # send text to drawtext filter from ffmpeg
 ```
 
 Output from `{"media":"current"}` show:
