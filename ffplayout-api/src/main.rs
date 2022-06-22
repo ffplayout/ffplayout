@@ -17,8 +17,9 @@ use utils::{
     routes::{
         add_preset, add_user, del_playlist, file_browser, gen_playlist, get_playlist,
         get_playout_config, get_presets, get_settings, jump_to_last, jump_to_next, login,
-        media_current, media_last, media_next, patch_settings, reset_playout, save_playlist,
-        send_text_message, update_playout_config, update_preset, update_user,
+        media_current, media_last, media_next, move_rename, patch_settings, remove, reset_playout,
+        save_file, save_playlist, send_text_message, update_playout_config, update_preset,
+        update_user,
     },
     run_args, Role,
 };
@@ -95,7 +96,10 @@ async fn main() -> std::io::Result<()> {
                         .service(save_playlist)
                         .service(gen_playlist)
                         .service(del_playlist)
-                        .service(file_browser),
+                        .service(file_browser)
+                        .service(move_rename)
+                        .service(remove)
+                        .service(save_file),
                 )
         })
         .bind((addr, port))?

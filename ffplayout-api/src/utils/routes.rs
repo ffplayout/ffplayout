@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
-use actix_web::{delete, get, http::StatusCode, patch, post, put, web, Responder};
+use actix_multipart::Multipart;
+use actix_web::{delete, get, http::StatusCode, patch, post, put, web, HttpResponse, Responder};
 use actix_web_grants::{permissions::AuthDetails, proc_macro::has_any_role};
 use argon2::{
     password_hash::{rand_core::OsRng, PasswordHash, SaltString},
@@ -13,7 +14,7 @@ use crate::utils::{
     auth::{create_jwt, Claims},
     control::{control_state, media_info, send_message},
     errors::ServiceError,
-    files::{browser, PathObject},
+    files::{browser, remove_file_or_folder, rename_file, upload, MoveObject, PathObject},
     handles::{
         db_add_preset, db_add_user, db_get_presets, db_get_settings, db_login, db_role,
         db_update_preset, db_update_settings, db_update_user,
@@ -415,7 +416,7 @@ pub async fn del_playlist(
 ///
 /// ----------------------------------------------------------------------------
 
-/// curl -X get http://localhost:8080/api/file/1/browse
+/// curl -X GET http://localhost:8080/api/file/1/browse/
 /// --header 'Content-Type: application/json' --header 'Authorization: <TOKEN>'
 #[post("/file/{id}/browse/")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
@@ -427,4 +428,40 @@ pub async fn file_browser(
         Ok(obj) => Ok(web::Json(obj)),
         Err(e) => Err(e),
     }
+}
+
+/// curl -X POST http://localhost:8080/api/file/1/move/
+/// --header 'Content-Type: application/json' --header 'Authorization: <TOKEN>'
+/// -d '{"source": "<SOURCE>", "target": "<TARGET>"}'
+#[post("/file/{id}/move/")]
+#[has_any_role("Role::Admin", "Role::User", type = "Role")]
+pub async fn move_rename(
+    id: web::Path<i64>,
+    data: web::Json<MoveObject>,
+) -> Result<impl Responder, ServiceError> {
+    match rename_file(*id, &data.into_inner()).await {
+        Ok(obj) => Ok(web::Json(obj)),
+        Err(e) => Err(e),
+    }
+}
+
+/// curl -X DELETE http://localhost:8080/api/file/1/remove/
+/// --header 'Content-Type: application/json' --header 'Authorization: <TOKEN>'
+/// -d '{"source": "<SOURCE>", "target": ""}'
+#[delete("/file/{id}/remove/")]
+#[has_any_role("Role::Admin", "Role::User", type = "Role")]
+pub async fn remove(
+    id: web::Path<i64>,
+    data: web::Json<PathObject>,
+) -> Result<impl Responder, ServiceError> {
+    match remove_file_or_folder(*id, &data.into_inner().source).await {
+        Ok(obj) => Ok(web::Json(obj)),
+        Err(e) => Err(e),
+    }
+}
+
+#[post("/file/{id}/upload/")]
+#[has_any_role("Role::Admin", "Role::User", type = "Role")]
+async fn save_file(id: web::Path<i64>, payload: Multipart) -> Result<HttpResponse, ServiceError> {
+    upload(*id, payload).await
 }
