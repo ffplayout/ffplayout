@@ -125,11 +125,11 @@ JSON Data:
 {
     "text": "Hello from ffplayout",
     "x": "(w-text_w)/2",
-    "y": "(h-text_h)/2", \
+    "y": "(h-text_h)/2",
      "fontsize": "24",
      "line_spacing": "4",
      "fontcolor": "#ffffff",
-     "box": "1", \
+     "box": "1",
      "boxcolor": "#000000",
      "boxborderw": "4",
      "alpha": "1.0"
