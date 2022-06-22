@@ -32,120 +32,61 @@ struct ResponseObj<T> {
     data: Option<T>,
 }
 
-/// curl -X GET http://127.0.0.1:8080/api/settings/1 -H "Authorization: Bearer <TOKEN>"
-#[get("/settings/{id}")]
-#[has_any_role("Role::Admin", "Role::User", type = "Role")]
-async fn get_settings(id: web::Path<i64>) -> Result<impl Responder, ServiceError> {
-    if let Ok(settings) = db_get_settings(&id).await {
-        return Ok(web::Json(ResponseObj {
-            message: format!("Settings from {}", settings.channel_name),
-            status: 200,
-            data: Some(settings),
-        }));
-    }
+/// curl -X POST http://127.0.0.1:8080/auth/login/ -H "Content-Type: application/json" \
+/// -d '{"username": "<USER>", "password": "<PASS>" }'
+#[post("/auth/login/")]
+pub async fn login(credentials: web::Json<User>) -> impl Responder {
+    match db_login(&credentials.username).await {
+        Ok(mut user) => {
+            let pass = user.password.clone();
+            let hash = PasswordHash::new(&pass).unwrap();
+            user.password = "".into();
+            user.salt = None;
 
-    Err(ServiceError::InternalServerError)
-}
+            if Argon2::default()
+                .verify_password(credentials.password.as_bytes(), &hash)
+                .is_ok()
+            {
+                let role = db_role(&user.role_id.unwrap_or_default())
+                    .await
+                    .unwrap_or_else(|_| "guest".to_string());
+                let claims = Claims::new(user.id, user.username.clone(), role.clone());
 
-/// curl -X PATCH http://127.0.0.1:8080/api/settings/1 -H "Content-Type: application/json"  \
-/// --data '{"id":1,"channel_name":"Channel 1","preview_url":"http://localhost/live/stream.m3u8", \
-/// "config_path":"/etc/ffplayout/ffplayout.yml","extra_extensions":".jpg,.jpeg,.png"}' \
-/// -H "Authorization: Bearer <TOKEN>"
-#[patch("/settings/{id}")]
-#[has_any_role("Role::Admin", type = "Role")]
-async fn patch_settings(
-    id: web::Path<i64>,
-    data: web::Json<Settings>,
-) -> Result<impl Responder, ServiceError> {
-    if db_update_settings(*id, data.into_inner()).await.is_ok() {
-        return Ok("Update Success");
-    };
+                if let Ok(token) = create_jwt(claims) {
+                    user.token = Some(token);
+                };
 
-    Err(ServiceError::InternalServerError)
-}
+                info!("user {} login, with role: {role}", credentials.username);
 
-/// curl -X GET http://localhost:8080/api/playout/config/1 --header 'Authorization: <TOKEN>'
-#[get("/playout/config/{id}")]
-#[has_any_role("Role::Admin", "Role::User", type = "Role")]
-async fn get_playout_config(
-    id: web::Path<i64>,
-    _details: AuthDetails<Role>,
-) -> Result<impl Responder, ServiceError> {
-    if let Ok(settings) = db_get_settings(&id).await {
-        if let Ok(config) = read_playout_config(&settings.config_path) {
-            return Ok(web::Json(config));
+                web::Json(ResponseObj {
+                    message: "login correct!".into(),
+                    status: 200,
+                    data: Some(user),
+                })
+                .customize()
+                .with_status(StatusCode::OK)
+            } else {
+                error!("Wrong password for {}!", credentials.username);
+                web::Json(ResponseObj {
+                    message: "Wrong password!".into(),
+                    status: 403,
+                    data: None,
+                })
+                .customize()
+                .with_status(StatusCode::FORBIDDEN)
+            }
         }
-    };
-
-    Err(ServiceError::InternalServerError)
-}
-
-/// curl -X PUT http://localhost:8080/api/playout/config/1  -H "Content-Type: application/json" \
-/// --data { <CONFIG DATA> } --header 'Authorization: <TOKEN>'
-#[put("/playout/config/{id}")]
-#[has_any_role("Role::Admin", type = "Role")]
-async fn update_playout_config(
-    id: web::Path<i64>,
-    data: web::Json<PlayoutConfig>,
-) -> Result<impl Responder, ServiceError> {
-    if let Ok(settings) = db_get_settings(&id).await {
-        if let Ok(f) = std::fs::OpenOptions::new()
-            .write(true)
-            .truncate(true)
-            .open(&settings.config_path)
-        {
-            serde_yaml::to_writer(f, &data).unwrap();
-
-            return Ok("Update playout config success.");
-        } else {
-            return Err(ServiceError::InternalServerError);
-        };
-    };
-
-    Err(ServiceError::InternalServerError)
-}
-
-/// curl -X PUT http://localhost:8080/api/presets/ --header 'Content-Type: application/json' \
-/// --data '{"email": "<EMAIL>", "password": "<PASS>"}' --header 'Authorization: <TOKEN>'
-#[get("/presets/")]
-#[has_any_role("Role::Admin", "Role::User", type = "Role")]
-async fn get_presets() -> Result<impl Responder, ServiceError> {
-    if let Ok(presets) = db_get_presets().await {
-        return Ok(web::Json(presets));
+        Err(e) => {
+            error!("Login {} failed! {e}", credentials.username);
+            return web::Json(ResponseObj {
+                message: format!("Login {} failed!", credentials.username),
+                status: 400,
+                data: None,
+            })
+            .customize()
+            .with_status(StatusCode::BAD_REQUEST);
+        }
     }
-
-    Err(ServiceError::InternalServerError)
-}
-
-/// curl -X PUT http://localhost:8080/api/presets/1 --header 'Content-Type: application/json' \
-/// --data '{"name": "<PRESET NAME>", "text": "TEXT>", "x": "<X>", "y": "<Y>", "fontsize": 24, \
-/// "line_spacing": 4, "fontcolor": "#ffffff", "box": 1, "boxcolor": "#000000", "boxborderw": 4, "alpha": 1.0}}' \
-/// --header 'Authorization: <TOKEN>'
-#[put("/presets/{id}")]
-#[has_any_role("Role::Admin", "Role::User", type = "Role")]
-async fn update_preset(
-    id: web::Path<i64>,
-    data: web::Json<TextPreset>,
-) -> Result<impl Responder, ServiceError> {
-    if db_update_preset(&id, data.into_inner()).await.is_ok() {
-        return Ok("Update Success");
-    }
-
-    Err(ServiceError::InternalServerError)
-}
-
-/// curl -X POST http://localhost:8080/api/presets/ --header 'Content-Type: application/json' \
-/// --data '{"name": "<PRESET NAME>", "text": "TEXT>", "x": "<X>", "y": "<Y>", "fontsize": 24, \
-/// "line_spacing": 4, "fontcolor": "#ffffff", "box": 1, "boxcolor": "#000000", "boxborderw": 4, "alpha": 1.0}}' \
-/// --header 'Authorization: <TOKEN>'
-#[post("/presets/")]
-#[has_any_role("Role::Admin", "Role::User", type = "Role")]
-async fn add_preset(data: web::Json<TextPreset>) -> Result<impl Responder, ServiceError> {
-    if db_add_preset(data.into_inner()).await.is_ok() {
-        return Ok("Add preset Success");
-    }
-
-    Err(ServiceError::InternalServerError)
 }
 
 /// curl -X PUT http://localhost:8080/api/user/1 --header 'Content-Type: application/json' \
@@ -202,61 +143,120 @@ async fn add_user(data: web::Json<User>) -> Result<impl Responder, ServiceError>
     }
 }
 
-/// curl -X POST http://127.0.0.1:8080/auth/login/ -H "Content-Type: application/json" \
-/// -d '{"username": "<USER>", "password": "<PASS>" }'
-#[post("/auth/login/")]
-pub async fn login(credentials: web::Json<User>) -> impl Responder {
-    match db_login(&credentials.username).await {
-        Ok(mut user) => {
-            let pass = user.password.clone();
-            let hash = PasswordHash::new(&pass).unwrap();
-            user.password = "".into();
-            user.salt = None;
-
-            if Argon2::default()
-                .verify_password(credentials.password.as_bytes(), &hash)
-                .is_ok()
-            {
-                let role = db_role(&user.role_id.unwrap_or_default())
-                    .await
-                    .unwrap_or_else(|_| "guest".to_string());
-                let claims = Claims::new(user.id, user.username.clone(), role.clone());
-
-                if let Ok(token) = create_jwt(claims) {
-                    user.token = Some(token);
-                };
-
-                info!("user {} login, with role: {role}", credentials.username);
-
-                web::Json(ResponseObj {
-                    message: "login correct!".into(),
-                    status: 200,
-                    data: Some(user),
-                })
-                .customize()
-                .with_status(StatusCode::OK)
-            } else {
-                error!("Wrong password for {}!", credentials.username);
-                web::Json(ResponseObj {
-                    message: "Wrong password!".into(),
-                    status: 403,
-                    data: None,
-                })
-                .customize()
-                .with_status(StatusCode::FORBIDDEN)
-            }
-        }
-        Err(e) => {
-            error!("Login {} failed! {e}", credentials.username);
-            return web::Json(ResponseObj {
-                message: format!("Login {} failed!", credentials.username),
-                status: 400,
-                data: None,
-            })
-            .customize()
-            .with_status(StatusCode::BAD_REQUEST);
-        }
+/// curl -X GET http://127.0.0.1:8080/api/settings/1 -H "Authorization: Bearer <TOKEN>"
+#[get("/settings/{id}")]
+#[has_any_role("Role::Admin", "Role::User", type = "Role")]
+async fn get_settings(id: web::Path<i64>) -> Result<impl Responder, ServiceError> {
+    if let Ok(settings) = db_get_settings(&id).await {
+        return Ok(web::Json(ResponseObj {
+            message: format!("Settings from {}", settings.channel_name),
+            status: 200,
+            data: Some(settings),
+        }));
     }
+
+    Err(ServiceError::InternalServerError)
+}
+
+/// curl -X PATCH http://127.0.0.1:8080/api/settings/1 -H "Content-Type: application/json"  \
+/// --data '{"id":1,"channel_name":"Channel 1","preview_url":"http://localhost/live/stream.m3u8", \
+/// "config_path":"/etc/ffplayout/ffplayout.yml","extra_extensions":".jpg,.jpeg,.png"}' \
+/// -H "Authorization: Bearer <TOKEN>"
+#[patch("/settings/{id}")]
+#[has_any_role("Role::Admin", type = "Role")]
+async fn patch_settings(
+    id: web::Path<i64>,
+    data: web::Json<Settings>,
+) -> Result<impl Responder, ServiceError> {
+    if db_update_settings(*id, data.into_inner()).await.is_ok() {
+        return Ok("Update Success");
+    };
+
+    Err(ServiceError::InternalServerError)
+}
+
+/// curl -X GET http://localhost:8080/api/playout/config/1 --header 'Authorization: <TOKEN>'
+#[get("/playout/config/{id}")]
+#[has_any_role("Role::Admin", "Role::User", type = "Role")]
+async fn get_playout_config(
+    id: web::Path<i64>,
+    _details: AuthDetails<Role>,
+) -> Result<impl Responder, ServiceError> {
+    if let Ok(settings) = db_get_settings(&id).await {
+        if let Ok(config) = read_playout_config(&settings.config_path) {
+            return Ok(web::Json(config));
+        }
+    };
+
+    Err(ServiceError::InternalServerError)
+}
+
+/// curl -X PUT http://localhost:8080/api/playout/config/1 -H "Content-Type: application/json" \
+/// --data { <CONFIG DATA> } --header 'Authorization: <TOKEN>'
+#[put("/playout/config/{id}")]
+#[has_any_role("Role::Admin", type = "Role")]
+async fn update_playout_config(
+    id: web::Path<i64>,
+    data: web::Json<PlayoutConfig>,
+) -> Result<impl Responder, ServiceError> {
+    if let Ok(settings) = db_get_settings(&id).await {
+        if let Ok(f) = std::fs::OpenOptions::new()
+            .write(true)
+            .truncate(true)
+            .open(&settings.config_path)
+        {
+            serde_yaml::to_writer(f, &data).unwrap();
+
+            return Ok("Update playout config success.");
+        } else {
+            return Err(ServiceError::InternalServerError);
+        };
+    };
+
+    Err(ServiceError::InternalServerError)
+}
+
+/// curl -X GET http://localhost:8080/api/presets/ --header 'Content-Type: application/json' \
+/// --data '{"email": "<EMAIL>", "password": "<PASS>"}' --header 'Authorization: <TOKEN>'
+#[get("/presets/")]
+#[has_any_role("Role::Admin", "Role::User", type = "Role")]
+async fn get_presets() -> Result<impl Responder, ServiceError> {
+    if let Ok(presets) = db_get_presets().await {
+        return Ok(web::Json(presets));
+    }
+
+    Err(ServiceError::InternalServerError)
+}
+
+/// curl -X PUT http://localhost:8080/api/presets/1 --header 'Content-Type: application/json' \
+/// --data '{"name": "<PRESET NAME>", "text": "<TEXT>", "x": "<X>", "y": "<Y>", "fontsize": 24, \
+/// "line_spacing": 4, "fontcolor": "#ffffff", "box": 1, "boxcolor": "#000000", "boxborderw": 4, "alpha": 1.0}' \
+/// --header 'Authorization: <TOKEN>'
+#[put("/presets/{id}")]
+#[has_any_role("Role::Admin", "Role::User", type = "Role")]
+async fn update_preset(
+    id: web::Path<i64>,
+    data: web::Json<TextPreset>,
+) -> Result<impl Responder, ServiceError> {
+    if db_update_preset(&id, data.into_inner()).await.is_ok() {
+        return Ok("Update Success");
+    }
+
+    Err(ServiceError::InternalServerError)
+}
+
+/// curl -X POST http://localhost:8080/api/presets/ --header 'Content-Type: application/json' \
+/// --data '{"name": "<PRESET NAME>", "text": "TEXT>", "x": "<X>", "y": "<Y>", "fontsize": 24, \
+/// "line_spacing": 4, "fontcolor": "#ffffff", "box": 1, "boxcolor": "#000000", "boxborderw": 4, "alpha": 1.0}}' \
+/// --header 'Authorization: <TOKEN>'
+#[post("/presets/")]
+#[has_any_role("Role::Admin", "Role::User", type = "Role")]
+async fn add_preset(data: web::Json<TextPreset>) -> Result<impl Responder, ServiceError> {
+    if db_add_preset(data.into_inner()).await.is_ok() {
+        return Ok("Add preset Success");
+    }
+
+    Err(ServiceError::InternalServerError)
 }
 
 /// ----------------------------------------------------------------------------
@@ -447,7 +447,7 @@ pub async fn move_rename(
 
 /// curl -X DELETE http://localhost:8080/api/file/1/remove/
 /// --header 'Content-Type: application/json' --header 'Authorization: <TOKEN>'
-/// -d '{"source": "<SOURCE>", "target": ""}'
+/// -d '{"source": "<SOURCE>"}'
 #[delete("/file/{id}/remove/")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 pub async fn remove(
