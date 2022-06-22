@@ -29,7 +29,7 @@ For all endpoints an (Bearer) authentication is required.\
 #### Login is
 
 - **POST** `/auth/login/`\
-JSON Data: `'{"username": "<USER>", "password": "<PASS>"`\
+JSON Data: `{"username": "<USER>", "password": "<PASS>"}`\
 JSON Response:
 ```JSON
 {
@@ -50,7 +50,7 @@ From here on all request **must** contain the authorization header:\
 #### User
 
 - **PUT** `/api/user/{user id}`\
-JSON Data: `'{"email": "<EMAIL>", "password": "<PASS>"}'`
+JSON Data: `{"email": "<EMAIL>", "password": "<PASS>"}`
 
 - **POST** `/api/user/`\
 JSON Data:
