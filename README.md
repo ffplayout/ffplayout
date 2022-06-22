@@ -1,12 +1,18 @@
-**ffplayout-engine**
+**ffplayout**
 ================
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
+The ffplayout apps are mostly made to run on Linux as system services. But in general they should run on all platforms which are supported by Rust. At the moment the cross compiled version from *ffpapi* runs on Windows and Linux, and not on Mac. If it is needed there, it should be compile natively.
+
+Check the [releases](https://github.com/ffplayout/ffplayout-engine/releases/latest) for pre compiled version.
+
+**ffplayout-engine (ffplayout)**
+-----
+
 [ffplayout](/ffplayout-engine/README.md) is 24/7 broadcasting solution. It can playout a folder with containing video clips, or play for every day a *JSON* playlist, while keeping the current playlist editable.
 
-**Features**
------
+### Features
 
 - have all values in a separate config file
 - dynamic playlist
