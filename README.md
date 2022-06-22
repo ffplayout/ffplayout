@@ -3,9 +3,7 @@
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
-The main purpose of ffplayout is to provide a 24/7 broadcasting solution that plays a *json* playlist for every day, while keeping the current playlist editable.
-
-**Check [ffplayout-frontend](https://github.com/ffplayout/ffplayout-frontend): web-based GUI for ffplayout**
+[ffplayout](/ffplayout-engine/README.md) is 24/7 broadcasting solution. It can playout a folder with containing video clips, or play for every day a *JSON* playlist, while keeping the current playlist editable.
 
 **Features**
 -----
@@ -42,6 +40,10 @@ The main purpose of ffplayout is to provide a 24/7 broadcasting solution that pl
   - **HLS**
 - JSON RPC server, for getting infos about current playing and controlling
 - [live ingest](/docs/live_ingest.md)
+
+**ffplayout-api (ffpapi)**
+-----
+ffpapi is an [REST API](/ffplayout-api/README.md) for controlling the engine, manipulate playlists, add settings etc.
 
 Requirements
 -----
@@ -166,45 +168,3 @@ Output from `{"media":"current"}` show:
 }
 ```
 When you are in playlist mode and jumping forward or backwards in time, the time shift will be saved so the playlist is still in sync. But have in mind, that then maybe your playlist gets to short. When you are not resetting the state, it will reset on the next day automatically.
-
------
-
-Installation under Linux
------
-
-- copy the binary to `/usr/bin/`
-- copy **assets/ffplayout.yml** to `/etc/ffplayout`
-- copy **assets/ffplayout-engine.service** to `/etc/systemd/system`
-- activate service and run it: `systemctl enable --now ffplayout-engine`
-
-You can also install the released ***.deb** or ***.rpm** package.
-
-Start with Arguments
------
-
-ffplayout also allows the passing of parameters:
-
-```
-OPTIONS:
-    -c, --config <CONFIG>             File path to ffplayout.conf
-    -f, --folder <FOLDER>             Play folder content
-    -g, --generate <YYYY-MM-DD>...    Generate playlist for date or date-range, like: 2022-01-01 - 2022-01-10:
-    -h, --help                        Print help information
-    -i, --infinit                     Loop playlist infinitely
-    -l, --log <LOG>                   File path for logging
-    -m, --play-mode <PLAY_MODE>       Playing mode: folder, playlist
-    -o, --output <OUTPUT>             Set output mode: desktop, hls, stream
-    -p, --playlist <PLAYLIST>         Path from playlist
-    -s, --start <START>               Start time in 'hh:mm:ss', 'now' for start with first
-    -t, --length <LENGTH>             Set length in 'hh:mm:ss', 'none' for no length check
-    -v, --volume <VOLUME>             Set audio volume
-    -V, --version                     Print version information
-
-```
-
-
-You can run the command like:
-
-```Bash
-./ffplayout -l none -p ~/playlist.json -o desktop
-```
