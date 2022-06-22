@@ -252,7 +252,7 @@ async fn valid_path(id: i64, path: &str) -> Result<(), ServiceError> {
 pub async fn upload(id: i64, mut payload: Multipart) -> Result<HttpResponse, ServiceError> {
     while let Some(mut field) = payload.try_next().await? {
         let content_disposition = field.content_disposition();
-        println!("{content_disposition}");
+        debug!("{content_disposition}");
         let rand_string: String = rand::thread_rng()
             .sample_iter(&Alphanumeric)
             .take(20)
