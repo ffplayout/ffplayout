@@ -1,14 +1,18 @@
-**ffplayout-engine**
+**ffplayout**
 ================
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
-The main purpose of ffplayout is to provide a 24/7 broadcasting solution that plays a *json* playlist for every day, while keeping the current playlist editable.
+The ffplayout apps are mostly made to run on Linux as system services. But in general they should run on all platforms which are supported by Rust. At the moment the cross compiled version from *ffpapi* runs on Windows and Linux, and not on Mac. If it is needed there, it should be compile natively.
 
-**Check [ffplayout-frontend](https://github.com/ffplayout/ffplayout-frontend): web-based GUI for ffplayout**
+Check the [releases](https://github.com/ffplayout/ffplayout-engine/releases/latest) for pre compiled version.
 
-**Features**
+**ffplayout-engine (ffplayout)**
 -----
+
+[ffplayout](/ffplayout-engine/README.md) is 24/7 broadcasting solution. It can playout a folder with containing video clips, or play for every day a *JSON* playlist, while keeping the current playlist editable.
+
+### Features
 
 - have all values in a separate config file
 - dynamic playlist
@@ -16,7 +20,7 @@ The main purpose of ffplayout is to provide a 24/7 broadcasting solution that pl
 - playing clips in [watched](/docs/folder_mode.md) folder mode
 - send emails with error message
 - overlay a logo
-- overlay text, controllable through [messenger](https://github.com/ffplayout/messenger) or [ffplayout-frontend](https://github.com/ffplayout/ffplayout-frontend) (needs ffmpeg with libzmq)
+- overlay text, controllable through [messenger](https://github.com/ffplayout/messenger) or [ffplayout-frontend](https://github.com/ffplayout/ffplayout-frontend) (needs ffmpeg with libzmq and enabled JSON RPC server)
 - EBU R128 loudness normalization (single pass)
 - loop playlist infinitely
 - [remote source](/docs/remote_source.md)
@@ -42,6 +46,10 @@ The main purpose of ffplayout is to provide a 24/7 broadcasting solution that pl
   - **HLS**
 - JSON RPC server, for getting infos about current playing and controlling
 - [live ingest](/docs/live_ingest.md)
+
+**ffplayout-api (ffpapi)**
+-----
+ffpapi is an [REST API](/ffplayout-api/README.md) for controlling the engine, manipulate playlists, add settings etc.
 
 Requirements
 -----
@@ -122,20 +130,24 @@ The ffplayout engine can run a JSON RPC server. A request show look like:
 
 ```Bash
 curl -X POST -H "Content-Type: application/json" -H "Authorization: ---auth-key---" \
-    -d '{"jsonrpc": "2.0", "method": "player", "params":{"control":"next"}, "id":1 }' \
+    -d '{"jsonrpc": "2.0", "id":1, "method": "player", "params":{"control":"next"}}' \
     127.0.0.1:7070
 ```
 
 At the moment this comments are possible:
 
 ```Bash
-'{"jsonrpc": "2.0", "method": "player", "params":{"media":"current"}, "id":1 }'  # get infos about current clip
-'{"jsonrpc": "2.0", "method": "player", "params":{"media":"next"}, "id":2 }'  # get infos about next clip
-'{"jsonrpc": "2.0", "method": "player", "params":{"media":"last"}, "id":3 }'  # get infos about last clip
-'{"jsonrpc": "2.0", "method": "player", "params":{"control":"next"}, "id":4 }'   # jump to next clip
-'{"jsonrpc": "2.0", "method": "player", "params":{"control":"back"}, "id":5 }'   # jump to last clip
-'{"jsonrpc": "2.0", "method": "player", "params":{"control":"reset"}, "id":6 }'  # reset playlist to old state
+'{"jsonrpc": "2.0", "id":1, "method": "player", "params":{"media":"current"}}'  # get infos about current clip
+'{"jsonrpc": "2.0", "id":2, "method": "player", "params":{"media":"next"}}'  # get infos about next clip
+'{"jsonrpc": "2.0", "id":3, "method": "player", "params":{"media":"last"}}'  # get infos about last clip
+'{"jsonrpc": "2.0", "id":4, "method": "player", "params":{"control":"next"}}'   # jump to next clip
+'{"jsonrpc": "2.0", "id":5, "method": "player", "params":{"control":"back"}}'   # jump to last clip
+'{"jsonrpc": "2.0", "id":6, "method": "player", "params":{"control":"reset"}}'  # reset playlist to old state
 
+'{"jsonrpc": "2.0", "id":7, "method": "player", "params":{"control":"text", \
+  "message": {"text": "Hello from ffplayout", "x": "(w-text_w)/2", "y": "(h-text_h)/2", \
+  "fontsize": 24, "line_spacing": 4, "fontcolor": "#ffffff", "box": 1, \
+  "boxcolor": "#000000", "boxborderw": 4, "alpha": 1.0}}}' # send text to drawtext filter from ffmpeg
 ```
 
 Output from `{"media":"current"}` show:
@@ -162,45 +174,3 @@ Output from `{"media":"current"}` show:
 }
 ```
 When you are in playlist mode and jumping forward or backwards in time, the time shift will be saved so the playlist is still in sync. But have in mind, that then maybe your playlist gets to short. When you are not resetting the state, it will reset on the next day automatically.
-
------
-
-Installation under Linux
------
-
-- copy the binary to `/usr/bin/`
-- copy **assets/ffplayout.yml** to `/etc/ffplayout`
-- copy **assets/ffplayout-engine.service** to `/etc/systemd/system`
-- activate service and run it: `systemctl enable --now ffplayout-engine`
-
-You can also install the released ***.deb** or ***.rpm** package.
-
-Start with Arguments
------
-
-ffplayout also allows the passing of parameters:
-
-```
-OPTIONS:
-    -c, --config <CONFIG>             File path to ffplayout.conf
-    -f, --folder <FOLDER>             Play folder content
-    -g, --generate <YYYY-MM-DD>...    Generate playlist for date or date-range, like: 2022-01-01 - 2022-01-10:
-    -h, --help                        Print help information
-    -i, --infinit                     Loop playlist infinitely
-    -l, --log <LOG>                   File path for logging
-    -m, --play-mode <PLAY_MODE>       Playing mode: folder, playlist
-    -o, --output <OUTPUT>             Set output mode: desktop, hls, stream
-    -p, --playlist <PLAYLIST>         Path from playlist
-    -s, --start <START>               Start time in 'hh:mm:ss', 'now' for start with first
-    -t, --length <LENGTH>             Set length in 'hh:mm:ss', 'none' for no length check
-    -v, --volume <VOLUME>             Set audio volume
-    -V, --version                     Print version information
-
-```
-
-
-You can run the command like:
-
-```Bash
-./ffplayout -l none -p ~/playlist.json -o desktop
-```

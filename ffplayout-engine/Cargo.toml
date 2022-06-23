@@ -1,0 +1,87 @@
+[package]
+name = "ffplayout"
+description = "24/7 playout based on rust and ffmpeg"
+license = "GPL-3.0"
+authors = ["Jonathan Baecker jonbae77@gmail.com"]
+readme = "README.md"
+version = "0.10.0"
+edition = "2021"
+
+[dependencies]
+ffplayout-lib = { path = "../lib" }
+chrono = { git = "https://github.com/chronotope/chrono.git" }
+clap = { version = "3.2", features = ["derive"] }
+crossbeam-channel = "0.5"
+faccess = "0.2"
+ffprobe = "0.3"
+file-rotate = { git = "https://github.com/Ploppz/file-rotate.git", branch = "timestamp-parse-fix" }
+futures = "0.3"
+jsonrpc-http-server = "18.0"
+lettre = "0.10.0-rc.7"
+log = "0.4"
+notify = "4.0"
+rand = "0.8"
+regex = "1"
+reqwest = { version = "0.11", features = ["blocking", "json"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.8"
+shlex = "1.1"
+simplelog = { version = "^0.12", features = ["paris"] }
+time = { version = "0.3", features = ["formatting", "macros"] }
+walkdir = "2"
+zeromq = { git = "https://github.com/zeromq/zmq.rs.git", default-features = false, features = [
+    "async-std-runtime",
+    "tcp-transport"
+] }
+
+[target.x86_64-unknown-linux-musl.dependencies]
+openssl = { version = "0.10", features = ["vendored"] }
+
+[[bin]]
+name = "ffplayout"
+path = "src/main.rs"
+
+# DEBIAN DEB PACKAGE
+[package.metadata.deb]
+name = "ffplayout"
+priority = "optional"
+section = "net"
+license-file = ["../LICENSE", "0"]
+depends = ""
+suggests = "ffmpeg"
+copyright = "Copyright (c) 2022, Jonathan Baecker. All rights reserved."
+conf-files = ["/etc/ffplayout/ffplayout.yml"]
+assets = [
+    [
+        "../target/x86_64-unknown-linux-musl/release/ffpapi",
+        "/usr/bin/ffpapi",
+        "755"
+    ],
+    [
+        "../target/x86_64-unknown-linux-musl/release/ffplayout",
+        "/usr/bin/ffplayout",
+        "755"
+    ],
+    ["../assets/ffpapi.service", "/lib/systemd/system/ffpapi.service", "644"],
+    ["../assets/ffplayout.yml", "/etc/ffplayout/ffplayout.yml", "644"],
+    ["../assets/logo.png", "/usr/share/ffplayout/logo.png", "644"],
+    ["../README.md", "/usr/share/doc/ffplayout/README", "644"],
+]
+maintainer-scripts = "../debian/"
+systemd-units = { enable = false, unit-scripts = "../assets" }
+
+# REHL RPM PACKAGE
+[package.metadata.generate-rpm]
+name = "ffplayout"
+license = "GPL-3.0"
+assets = [
+    { source = "../target/x86_64-unknown-linux-musl/release/ffpapi", dest = "/usr/bin/ffpapi", mode = "755" },
+    { source = "../target/x86_64-unknown-linux-musl/release/ffplayout", dest = "/usr/bin/ffplayout", mode = "755" },
+    { source = "../assets/ffplayout.yml", dest = "/etc/ffplayout/ffplayout.yml", mode = "644", config = true },
+    { source = "../assets/ffpapi.service", dest = "/lib/systemd/system/ffpapi.service", mode = "644" },
+    { source = "../assets/ffplayout.service", dest = "/lib/systemd/system/ffplayout.service", mode = "644" },
+    { source = "../README.md", dest = "/usr/share/doc/ffplayout/README", mode = "644", doc = true },
+    { source = "../LICENSE", dest = "/usr/share/doc/ffplayout/LICENSE", mode = "644" },
+    { source = "../assets/logo.png", dest = "/usr/share/ffplayout/logo.png", mode = "644" },
+]
