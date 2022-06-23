@@ -6,6 +6,12 @@ members = [
     "lib",
 ]
 
+default-members = [
+    "ffplayout-api",
+    "ffplayout-engine",
+    "lib",
+]
+
 [profile.release]
 opt-level = 3
 strip = true
