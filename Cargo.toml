@@ -9,7 +9,6 @@ members = [
 default-members = [
     "ffplayout-api",
     "ffplayout-engine",
-    "lib",
 ]
 
 [profile.release]
