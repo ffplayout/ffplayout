@@ -194,7 +194,7 @@ dependencies = [
  "serde_urlencoded",
  "smallvec",
  "socket2",
- "time 0.3.10",
+ "time 0.3.11",
  "url",
 ]
 
@@ -386,7 +386,7 @@ dependencies = [
  "async-global-executor",
  "async-io",
  "async-lock",
- "crossbeam-utils 0.8.9",
+ "crossbeam-utils 0.8.10",
  "futures-channel",
  "futures-core",
  "futures-io",
@@ -624,6 +624,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "chrono"
+version = "0.4.19"
+source = "git+https://github.com/chronotope/chrono.git#b1d74aef688c27fccc738c64746535905903471a"
+dependencies = [
+ "num-integer",
+ "num-traits",
+ "time 0.1.44",
+ "winapi 0.3.9",
+]
+
+[[package]]
 name = "clap"
 version = "3.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -706,7 +717,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "94d4706de1b0fa5b132270cddffa8585166037822e260a944fe161acd137ca05"
 dependencies = [
  "percent-encoding",
- "time 0.3.10",
+ "time 0.3.11",
  "version_check",
 ]
 
@@ -790,7 +801,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4c02a4d71819009c192cf4872265391563fd6a84c81ff2c0f2a7026ca4c1d85c"
 dependencies = [
  "cfg-if 1.0.0",
- "crossbeam-utils 0.8.9",
+ "crossbeam-utils 0.8.10",
 ]
 
 [[package]]
@@ -837,7 +848,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1f25d8400f4a7a5778f0e4e52384a48cbd9b5c495d110786187fc750075277a2"
 dependencies = [
  "cfg-if 1.0.0",
- "crossbeam-utils 0.8.9",
+ "crossbeam-utils 0.8.10",
 ]
 
 [[package]]
@@ -853,9 +864,9 @@ dependencies = [
 
 [[package]]
 name = "crossbeam-utils"
-version = "0.8.9"
+version = "0.8.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8ff1f980957787286a554052d03c7aee98d99cc32e09f6d45f0a814133c87978"
+checksum = "7d82ee10ce34d7bc12c2122495e7593a9c41347ecdd64185af4ecf72cb1a7f83"
 dependencies = [
  "cfg-if 1.0.0",
  "once_cell",
@@ -997,43 +1008,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "ffplayout-api"
-version = "0.3.0"
+name = "ffplayout"
+version = "0.10.0"
 dependencies = [
- "actix-multipart",
- "actix-web",
- "actix-web-grants",
- "actix-web-httpauth",
- "argon2",
- "chrono 0.4.19 (registry+https://github.com/rust-lang/crates.io-index)",
- "clap",
- "derive_more",
- "faccess",
- "ffplayout-lib",
- "ffprobe",
- "futures-util",
- "jsonwebtoken",
- "log",
- "once_cell",
- "openssl",
- "rand 0.8.5",
- "rand_core 0.6.3",
- "regex",
- "relative-path",
- "reqwest",
- "sanitize-filename",
- "serde",
- "serde_json",
- "serde_yaml",
- "simplelog",
- "sqlx",
-]
-
-[[package]]
-name = "ffplayout-engine"
-version = "0.9.9"
-dependencies = [
- "chrono 0.4.19 (git+https://github.com/sbrocket/chrono?branch=parse-error-kind-public)",
+ "chrono 0.4.19 (git+https://github.com/chronotope/chrono.git)",
  "clap",
  "crossbeam-channel 0.5.5",
  "faccess",
@@ -1054,9 +1032,41 @@ dependencies = [
  "serde_yaml",
  "shlex",
  "simplelog",
- "time 0.3.10",
+ "time 0.3.11",
  "walkdir",
  "zeromq",
+]
+
+[[package]]
+name = "ffplayout-api"
+version = "0.3.0"
+dependencies = [
+ "actix-multipart",
+ "actix-web",
+ "actix-web-grants",
+ "actix-web-httpauth",
+ "argon2",
+ "chrono 0.4.19 (registry+https://github.com/rust-lang/crates.io-index)",
+ "clap",
+ "derive_more",
+ "faccess",
+ "ffplayout-lib",
+ "ffprobe",
+ "futures-util",
+ "jsonwebtoken",
+ "log",
+ "once_cell",
+ "rand 0.8.5",
+ "rand_core 0.6.3",
+ "regex",
+ "relative-path",
+ "reqwest",
+ "sanitize-filename",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "simplelog",
+ "sqlx",
 ]
 
 [[package]]
@@ -1083,7 +1093,7 @@ dependencies = [
  "serde_yaml",
  "shlex",
  "simplelog",
- "time 0.3.10",
+ "time 0.3.11",
  "walkdir",
 ]
 
@@ -2069,9 +2079,9 @@ checksum = "ff011a302c396a5197692431fc1948019154afc178baf7d8e37367442a4601cf"
 
 [[package]]
 name = "openssl-src"
-version = "111.20.0+1.1.1o"
+version = "111.21.0+1.1.1p"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "92892c4f87d56e376e469ace79f1128fdaded07646ddf73aa0be4706ff712dec"
+checksum = "6d0a8313729211913936f1b95ca47a5fc7f2e04cd658c115388287f8a8361008"
 dependencies = [
  "cc",
 ]
@@ -2643,7 +2653,7 @@ dependencies = [
  "num-bigint",
  "num-traits",
  "thiserror",
- "time 0.3.10",
+ "time 0.3.11",
 ]
 
 [[package]]
@@ -2655,7 +2665,7 @@ dependencies = [
  "log",
  "paris",
  "termcolor",
- "time 0.3.10",
+ "time 0.3.11",
 ]
 
 [[package]]
@@ -2886,9 +2896,9 @@ dependencies = [
 
 [[package]]
 name = "time"
-version = "0.3.10"
+version = "0.3.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "82501a4c1c0330d640a6e176a3d6a204f5ec5237aca029029d21864a902e27b0"
+checksum = "72c91f41dcb2f096c05f0873d667dceec1087ce5bcf984ec8ffb19acddbb3217"
 dependencies = [
  "itoa",
  "libc",

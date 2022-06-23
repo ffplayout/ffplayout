@@ -1,15 +1,15 @@
 [package]
-name = "ffplayout-engine"
+name = "ffplayout"
 description = "24/7 playout based on rust and ffmpeg"
 license = "GPL-3.0"
 authors = ["Jonathan Baecker jonbae77@gmail.com"]
 readme = "README.md"
-version = "0.9.9"
+version = "0.10.0"
 edition = "2021"
 
 [dependencies]
 ffplayout-lib = { path = "../lib" }
-chrono = { git = "https://github.com/sbrocket/chrono", branch = "parse-error-kind-public" }
+chrono = { git = "https://github.com/chronotope/chrono.git" }
 clap = { version = "3.2", features = ["derive"] }
 crossbeam-channel = "0.5"
 faccess = "0.2"
@@ -44,7 +44,7 @@ path = "src/main.rs"
 
 # DEBIAN DEB PACKAGE
 [package.metadata.deb]
-name = "ffplayout-engine"
+name = "ffplayout"
 priority = "optional"
 section = "net"
 license-file = ["../LICENSE", "0"]
@@ -54,25 +54,33 @@ copyright = "Copyright (c) 2022, Jonathan Baecker. All rights reserved."
 conf-files = ["/etc/ffplayout/ffplayout.yml"]
 assets = [
     [
+        "../target/x86_64-unknown-linux-musl/release/ffpapi",
+        "/usr/bin/ffpapi",
+        "755"
+    ],
+    [
         "../target/x86_64-unknown-linux-musl/release/ffplayout",
         "/usr/bin/ffplayout",
         "755"
     ],
+    ["../assets/ffpapi.service", "/lib/systemd/system/ffpapi.service", "644"],
     ["../assets/ffplayout.yml", "/etc/ffplayout/ffplayout.yml", "644"],
     ["../assets/logo.png", "/usr/share/ffplayout/logo.png", "644"],
     ["../README.md", "/usr/share/doc/ffplayout/README", "644"],
 ]
-maintainer-scripts = "debian/"
-systemd-units = { enable = false, unit-scripts = "unit" }
+maintainer-scripts = "../debian/"
+systemd-units = { enable = false, unit-scripts = "../assets" }
 
 # REHL RPM PACKAGE
 [package.metadata.generate-rpm]
-name = "ffplayout-engine"
+name = "ffplayout"
 license = "GPL-3.0"
 assets = [
+    { source = "../target/x86_64-unknown-linux-musl/release/ffpapi", dest = "/usr/bin/ffpapi", mode = "755" },
     { source = "../target/x86_64-unknown-linux-musl/release/ffplayout", dest = "/usr/bin/ffplayout", mode = "755" },
     { source = "../assets/ffplayout.yml", dest = "/etc/ffplayout/ffplayout.yml", mode = "644", config = true },
-    { source = "unit/ffplayout.service", dest = "/lib/systemd/system/ffplayout.service", mode = "644" },
+    { source = "../assets/ffpapi.service", dest = "/lib/systemd/system/ffpapi.service", mode = "644" },
+    { source = "../assets/ffplayout.service", dest = "/lib/systemd/system/ffplayout.service", mode = "644" },
     { source = "../README.md", dest = "/usr/share/doc/ffplayout/README", mode = "644", doc = true },
     { source = "../LICENSE", dest = "/usr/share/doc/ffplayout/LICENSE", mode = "644" },
     { source = "../assets/logo.png", dest = "/usr/share/ffplayout/logo.png", mode = "644" },
