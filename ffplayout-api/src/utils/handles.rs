@@ -56,6 +56,7 @@ async fn create_schema() -> Result<SqliteQueryResult, sqlx::Error> {
             preview_url             TEXT NOT NULL,
             config_path             TEXT NOT NULL,
             extra_extensions        TEXT NOT NULL,
+            service        TEXT NOT NULL,
             UNIQUE(channel_name)
         );
     CREATE TABLE IF NOT EXISTS user
@@ -108,9 +109,9 @@ pub async fn db_init() -> Result<&'static str, Box<dyn std::error::Error>> {
             ('Scrolling Text', 'We have a very important announcement to make.', 'ifnot(ld(1),st(1,t));if(lt(t,ld(1)+1),w+4,w-w/12*mod(t-ld(1),12*(w+tw)/w))', '(h-line_h)*0.9',
                 '24', '4', '#ffffff', '1.0', '1', '#000000@0x80', '4');
         INSERT INTO roles(name) VALUES('admin'), ('user'), ('guest');
-        INSERT INTO settings(channel_name, preview_url, config_path, extra_extensions)
+        INSERT INTO settings(channel_name, preview_url, config_path, extra_extensions, service)
         VALUES('Channel 1', 'http://localhost/live/preview.m3u8',
-            '/etc/ffplayout/ffplayout.yml', '.jpg,.jpeg,.png');";
+            '/etc/ffplayout/ffplayout.yml', '.jpg,.jpeg,.png', 'ffplayout.service');";
     sqlx::query(query).bind(secret).execute(&instances).await?;
     instances.close().await;
 

@@ -138,6 +138,10 @@ Response is in JSON format
 - **GET** `/api/control/{id}/media/last/`\
 Response is in JSON format
 
+- **POST** `/api/control/{id}/process/`\
+JSON Data: `{"command": "<start/stop/restart/status>"}`
+Response is in TEXT format
+
 #### Playlist Operations
 
 - **GET** `/api/playlist/{id}/2022-06-20`\

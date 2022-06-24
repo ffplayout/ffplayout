@@ -59,3 +59,9 @@ impl From<actix_web::error::BlockingError> for ServiceError {
         ServiceError::BadRequest(err.to_string())
     }
 }
+
+impl From<sqlx::Error> for ServiceError {
+    fn from(err: sqlx::Error) -> ServiceError {
+        ServiceError::BadRequest(err.to_string())
+    }
+}

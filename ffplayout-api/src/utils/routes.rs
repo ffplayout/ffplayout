@@ -12,7 +12,7 @@ use simplelog::*;
 
 use crate::utils::{
     auth::{create_jwt, Claims},
-    control::{control_state, media_info, send_message},
+    control::{control_service, control_state, media_info, send_message, Process},
     errors::ServiceError,
     files::{browser, remove_file_or_folder, rename_file, upload, MoveObject, PathObject},
     handles::{
@@ -350,6 +350,18 @@ pub async fn media_last(id: web::Path<i64>) -> Result<impl Responder, ServiceErr
         Ok(res) => return Ok(res.text().await.unwrap_or_else(|_| "Success".into())),
         Err(e) => Err(e),
     }
+}
+
+/// curl -X GET http://localhost:8080/api/control/1/process/
+/// --header 'Content-Type: application/json' --header 'Authorization: <TOKEN>'
+/// -d '{"command": "start"}'
+#[post("/control/{id}/process/")]
+#[has_any_role("Role::Admin", "Role::User", type = "Role")]
+pub async fn process_control(
+    id: web::Path<i64>,
+    proc: web::Json<Process>,
+) -> Result<impl Responder, ServiceError> {
+    control_service(*id, &proc.command).await
 }
 
 /// ----------------------------------------------------------------------------

@@ -52,6 +52,7 @@ assets = [
         "755"
     ],
     ["../assets/ffpapi.service", "/lib/systemd/system/ffpapi.service", "644"],
+    ["../assets/11-ffplayout", "/etc/sudoers.d/11-ffplayout", "644"],
     ["../assets/ffplayout.yml", "/etc/ffplayout/ffplayout.yml", "644"],
     ["../assets/logo.png", "/usr/share/ffplayout/logo.png", "644"],
     ["../README.md", "/usr/share/doc/ffplayout/README", "644"],
@@ -69,6 +70,7 @@ assets = [
     { source = "../assets/ffplayout.yml", dest = "/etc/ffplayout/ffplayout.yml", mode = "644", config = true },
     { source = "../assets/ffpapi.service", dest = "/lib/systemd/system/ffpapi.service", mode = "644" },
     { source = "../assets/ffplayout.service", dest = "/lib/systemd/system/ffplayout.service", mode = "644" },
+    { source = "../assets/11-ffplayout", dest = "/etc/sudoers.d/11-ffplayout", mode = "644" },
     { source = "../README.md", dest = "/usr/share/doc/ffplayout/README", mode = "644", doc = true },
     { source = "../LICENSE", dest = "/usr/share/doc/ffplayout/LICENSE", mode = "644" },
     { source = "../assets/logo.png", dest = "/usr/share/ffplayout/logo.png", mode = "644" },
