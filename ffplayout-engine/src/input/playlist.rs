@@ -275,11 +275,11 @@ impl Iterator for CurrentProgram {
                 // On init load, playlist could be not long enough,
                 // so we check if we can take the next playlist already,
                 // or we fill the gap with a dummy.
-                let list_length = self.nodes.lock().unwrap().len();
-                self.current_node = self.nodes.lock().unwrap()[list_length - 1].clone();
+                let last_index = self.nodes.lock().unwrap().len() - 1;
+                self.current_node = self.nodes.lock().unwrap()[last_index].clone();
                 self.check_for_next_playlist();
 
-                let new_node = self.nodes.lock().unwrap()[list_length - 1].clone();
+                let new_node = self.nodes.lock().unwrap()[last_index].clone();
                 let new_length = new_node.begin.unwrap() + new_node.duration;
 
                 if new_length
