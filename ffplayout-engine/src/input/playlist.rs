@@ -277,10 +277,10 @@ impl Iterator for CurrentProgram {
                 // or we fill the gap with a dummy.
                 let last_index = self.nodes.lock().unwrap().len() - 1;
                 self.current_node = self.nodes.lock().unwrap()[last_index].clone();
-                self.check_for_next_playlist();
-
                 let new_node = self.nodes.lock().unwrap()[last_index].clone();
                 let new_length = new_node.begin.unwrap() + new_node.duration;
+
+                self.check_for_next_playlist();
 
                 if new_length
                     >= self.config.playlist.length_sec.unwrap()
@@ -288,6 +288,7 @@ impl Iterator for CurrentProgram {
                 {
                     self.init_clip();
                 } else {
+                    // fill missing length from playlist
                     let mut current_time = get_sec();
                     let (_, total_delta) = get_delta(&self.config, &current_time);
                     let mut duration = DUMMY_LEN;
