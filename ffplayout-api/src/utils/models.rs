@@ -66,4 +66,5 @@ pub struct Settings {
     #[sqlx(default)]
     #[serde(skip_serializing, skip_deserializing)]
     pub secret: String,
+    pub service: String,
 }

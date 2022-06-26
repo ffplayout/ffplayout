@@ -3,7 +3,7 @@ Description=Rest API for ffplayout
 After=network.target remote-fs.target
 
 [Service]
-ExecStart= /usr/bin/ffpapi
+ExecStart=/usr/bin/ffpapi -l 127.0.0.1:8080
 ExecReload=/bin/kill -1 $MAINPID
 Restart=always
 RestartSec=1

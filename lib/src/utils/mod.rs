@@ -48,6 +48,7 @@ pub struct Media {
     pub out: f64,
     pub duration: f64,
 
+    #[serde(default)]
     pub category: String,
     pub source: String,
 

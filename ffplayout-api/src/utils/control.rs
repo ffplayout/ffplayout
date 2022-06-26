@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, process::Command};
 
 use reqwest::{
     header::{HeaderMap, AUTHORIZATION, CONTENT_TYPE},
@@ -7,7 +7,8 @@ use reqwest::{
 use serde::{Deserialize, Serialize};
 use simplelog::*;
 
-use crate::utils::{errors::ServiceError, playout_config};
+use crate::utils::{errors::ServiceError, handles::db_get_settings, playout_config};
+use ffplayout_lib::vec_strings;
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 struct RpcObj<T> {
@@ -41,6 +42,62 @@ impl<T> RpcObj<T> {
             method,
             params,
         }
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct Process {
+    pub command: String,
+}
+
+struct SystemD {
+    service: String,
+    cmd: Vec<String>,
+}
+
+impl SystemD {
+    async fn new(id: i64) -> Result<Self, ServiceError> {
+        let settings = db_get_settings(&id).await?;
+
+        Ok(Self {
+            service: settings.service,
+            cmd: vec_strings!["systemctl"],
+        })
+    }
+
+    fn start(mut self) -> Result<String, ServiceError> {
+        self.cmd
+            .append(&mut vec!["start".to_string(), self.service]);
+
+        Command::new("sudo").args(self.cmd).spawn()?;
+
+        Ok("Success".to_string())
+    }
+
+    fn stop(mut self) -> Result<String, ServiceError> {
+        self.cmd.append(&mut vec!["stop".to_string(), self.service]);
+
+        Command::new("sudo").args(self.cmd).spawn()?;
+
+        Ok("Success".to_string())
+    }
+
+    fn restart(mut self) -> Result<String, ServiceError> {
+        self.cmd
+            .append(&mut vec!["restart".to_string(), self.service]);
+
+        Command::new("sudo").args(self.cmd).spawn()?;
+
+        Ok("Success".to_string())
+    }
+
+    fn status(mut self) -> Result<String, ServiceError> {
+        self.cmd
+            .append(&mut vec!["is-active".to_string(), self.service]);
+
+        let output = Command::new("sudo").args(self.cmd).output()?;
+
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
     }
 }
 
@@ -104,4 +161,16 @@ pub async fn media_info(id: i64, command: String) -> Result<Response, ServiceErr
     let json_obj = RpcObj::new(id, "player".into(), MediaParams { media: command });
 
     post_request(id, json_obj).await
+}
+
+pub async fn control_service(id: i64, command: &str) -> Result<String, ServiceError> {
+    let system_d = SystemD::new(id).await?;
+
+    match command {
+        "start" => system_d.start(),
+        "stop" => system_d.stop(),
+        "restart" => system_d.restart(),
+        "status" => system_d.status(),
+        _ => Err(ServiceError::BadRequest("Command not found!".to_string())),
+    }
 }
