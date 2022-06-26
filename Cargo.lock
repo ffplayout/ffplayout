@@ -1055,7 +1055,7 @@ dependencies = [
 
 [[package]]
 name = "ffplayout-lib"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "chrono 0.4.19 (git+https://github.com/chronotope/chrono.git)",
  "crossbeam-channel 0.5.5",

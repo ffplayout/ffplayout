@@ -348,7 +348,8 @@ impl Iterator for CurrentProgram {
             let (_, total_delta) =
                 get_delta(&self.config, &self.config.playlist.start_sec.unwrap());
 
-            if last_playlist == self.json_path
+            if !self.config.playlist.infinit
+                && last_playlist == self.json_path
                 && total_delta.abs() > self.config.general.stop_threshold
             {
                 // Test if playlist is to early finish,

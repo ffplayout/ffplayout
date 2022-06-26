@@ -17,6 +17,7 @@ pub const DUMMY_LEN: f64 = 60.0;
 /// This is our main playlist object, it holds all necessary information for the current day.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct JsonPlaylist {
+    #[serde(default = "default_channel")]
     pub channel: String,
     pub date: String,
 
@@ -57,6 +58,10 @@ impl PartialEq for JsonPlaylist {
 
 impl Eq for JsonPlaylist {}
 
+fn default_channel() -> String {
+    "Channel 1".to_string()
+}
+
 fn set_defaults(
     mut playlist: JsonPlaylist,
     current_file: String,
@@ -76,6 +81,54 @@ fn set_defaults(
 
         start_sec += item.out - item.seek;
     }
+
+    playlist
+}
+
+fn loop_playlist(
+    config: &PlayoutConfig,
+    current_file: String,
+    mut playlist: JsonPlaylist,
+) -> JsonPlaylist {
+    let start_sec = config.playlist.start_sec.unwrap();
+    let mut begin = start_sec;
+    let length = config.playlist.length_sec.unwrap();
+    let mut program_list = vec![];
+    let mut index = 0;
+
+    playlist.current_file = Some(current_file);
+    playlist.start_sec = Some(start_sec);
+
+    'program_looper: loop {
+        for item in playlist.program.iter() {
+            let media = Media {
+                index: Some(index),
+                begin: Some(begin),
+                seek: item.seek,
+                out: item.out,
+                duration: item.duration,
+                category: item.category.clone(),
+                source: item.source.clone(),
+                cmd: item.cmd.clone(),
+                probe: item.probe.clone(),
+                process: Some(true),
+                last_ad: Some(false),
+                next_ad: Some(false),
+                filter: Some(vec![]),
+            };
+
+            if begin < start_sec + length {
+                program_list.push(media);
+            } else {
+                break 'program_looper;
+            }
+
+            begin += item.out - item.seek;
+            index += 1;
+        }
+    }
+
+    playlist.program = program_list;
 
     playlist
 }
@@ -131,7 +184,11 @@ pub fn read_json(
                         validate_playlist(list_clone, is_terminated, config_clone)
                     });
 
-                    return set_defaults(playlist, current_file, start_sec);
+                    if config.playlist.infinit {
+                        return loop_playlist(config, current_file, playlist);
+                    } else {
+                        return set_defaults(playlist, current_file, start_sec);
+                    }
                 }
             }
         }
@@ -149,7 +206,11 @@ pub fn read_json(
 
         thread::spawn(move || validate_playlist(list_clone, is_terminated, config_clone));
 
-        return set_defaults(playlist, current_file, start_sec);
+        if config.playlist.infinit {
+            return loop_playlist(config, current_file, playlist);
+        } else {
+            return set_defaults(playlist, current_file, start_sec);
+        }
     }
 
     error!("Playlist <b><magenta>{current_file}</></b> not exist!");
