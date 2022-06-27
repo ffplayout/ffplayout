@@ -44,6 +44,7 @@ Check the [releases](https://github.com/ffplayout/ffplayout-engine/releases/late
   - **stream**
   - **desktop**
   - **HLS**
+  - **null** (for debugging)
 - JSON RPC server, for getting infos about current playing and controlling
 - [live ingest](/docs/live_ingest.md)
 

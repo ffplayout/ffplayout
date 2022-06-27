@@ -115,10 +115,9 @@ text:
     regex: ^.+[/\\](.*)(.mp4|.mkv)$
 
 out:
-    help_text: The final playout compression. Set the settings to your needs.
-        'mode' has the standard options 'desktop', 'hls', 'stream'. Self made
-        outputs can be define, by adding script in output folder with an 'output' function
-        inside. 'preview' works only in streaming output and creates a separate preview stream.
+    help_text: The final playout compression. Set the settings to your needs. 'mode'
+        has the options 'desktop', 'hls', 'null', 'stream'.
+        'preview' works only in streaming output and creates a separate preview stream.
     mode: 'stream'
     preview: false
     preview_param: >-
