@@ -1,7 +1,13 @@
-use std::{error::Error, fs::File, path::Path};
+use std::{
+    error::Error,
+    fs::File,
+    io::{stdin, stdout, Write},
+    path::Path,
+};
 
 use faccess::PathExt;
 use once_cell::sync::OnceCell;
+use rpassword::read_password;
 use simplelog::*;
 
 pub mod args_parse;
@@ -69,20 +75,24 @@ pub async fn init_config() {
 }
 
 pub fn db_path() -> Result<String, Box<dyn std::error::Error>> {
-    let sys_path = Path::new("/usr/share/ffplayout");
-    let mut db_path = String::from("./ffplayout.db");
+    let sys_path = Path::new("/usr/share/ffplayout/db");
+    let mut db_path = "./ffplayout.db".to_string();
+
+    if sys_path.is_dir() && !sys_path.writable() {
+        error!("Path {} is not writable!", sys_path.display());
+    }
 
     if sys_path.is_dir() && sys_path.writable() {
-        db_path = String::from("/usr/share/ffplayout/ffplayout.db");
+        db_path = "/usr/share/ffplayout/db/ffplayout.db".to_string();
     } else if Path::new("./assets").is_dir() {
-        db_path = String::from("./assets/ffplayout.db");
+        db_path = "./assets/ffplayout.db".to_string();
     }
 
     Ok(db_path)
 }
 
-pub async fn run_args(args: Args) -> Result<(), i32> {
-    if !args.init && args.listen.is_none() && args.username.is_none() {
+pub async fn run_args(mut args: Args) -> Result<(), i32> {
+    if !args.init && args.listen.is_none() && !args.ask && args.username.is_none() {
         error!("Wrong number of arguments! Run ffpapi --help for more information.");
 
         return Err(0);
@@ -94,6 +104,46 @@ pub async fn run_args(args: Args) -> Result<(), i32> {
         };
 
         return Err(0);
+    }
+
+    if args.ask {
+        let mut user = String::new();
+        print!("Username: ");
+        stdout().flush().unwrap();
+
+        stdin()
+            .read_line(&mut user)
+            .expect("Did not enter a correct name?");
+        if let Some('\n') = user.chars().next_back() {
+            user.pop();
+        }
+        if let Some('\r') = user.chars().next_back() {
+            user.pop();
+        }
+
+        args.username = Some(user);
+
+        print!("Password: ");
+        stdout().flush().unwrap();
+        let password = read_password();
+
+        args.password = password.ok();
+
+        let mut email = String::new();
+        print!("EMail: ");
+        stdout().flush().unwrap();
+
+        stdin()
+            .read_line(&mut email)
+            .expect("Did not enter a correct name?");
+        if let Some('\n') = email.chars().next_back() {
+            email.pop();
+        }
+        if let Some('\r') = email.chars().next_back() {
+            email.pop();
+        }
+
+        args.email = Some(email);
     }
 
     if let Some(username) = args.username {

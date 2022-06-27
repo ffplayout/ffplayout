@@ -1027,7 +1027,7 @@ dependencies = [
 
 [[package]]
 name = "ffplayout-api"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "actix-multipart",
  "actix-web",
@@ -1045,6 +1045,7 @@ dependencies = [
  "rand 0.8.5",
  "relative-path",
  "reqwest",
+ "rpassword",
  "sanitize-filename",
  "serde",
  "serde_json",
@@ -2451,6 +2452,18 @@ dependencies = [
  "spin 0.5.2",
  "untrusted",
  "web-sys",
+ "winapi 0.3.9",
+]
+
+[[package]]
+name = "rpassword"
+version = "6.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2bf099a1888612545b683d2661a1940089f6c2e5a8e38979b2159da876bfd956"
+dependencies = [
+ "libc",
+ "serde",
+ "serde_json",
  "winapi 0.3.9",
 ]
 

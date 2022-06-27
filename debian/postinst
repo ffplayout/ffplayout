@@ -1,0 +1,10 @@
+#DEBHELPER#
+
+if [ ! -d "/usr/share/ffplayout/db" ]; then
+    mkdir "/usr/share/ffplayout/db"
+    chmod 777 "/usr/share/ffplayout/db"
+
+    /usr/bin/ffpapi -i
+
+    chown www-data. "/usr/share/ffplayout/db/ffplayout.db"
+fi
