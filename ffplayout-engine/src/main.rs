@@ -102,12 +102,11 @@ fn main() {
 
     status_file(&config.general.stat_file, &playout_stat);
 
-    if &config.out.mode.to_lowercase() == "hls" {
+    match config.out.mode.to_lowercase().as_str() {
         // write files/playlist to HLS m3u8 playlist
-        write_hls(&config, play_control, playout_stat, proc_control);
-    } else {
+        "hls" => write_hls(&config, play_control, playout_stat, proc_control),
         // play on desktop or stream to a remote target
-        player(&config, play_control, playout_stat, proc_control);
+        _ => player(&config, play_control, playout_stat, proc_control),
     }
 
     info!("Playout done...");

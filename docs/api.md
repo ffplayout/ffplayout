@@ -129,13 +129,13 @@ Response is in TEXT format
 - **POST** `api/control/{id}/playout/reset/`\
 Response is in TEXT format
 
-- **GET** `/api/control/{id}/media/current/`\
+- **GET** `/api/control/{id}/media/current`\
 Response is in JSON format
 
-- **GET** `/api/control/{id}/media/next/`\
+- **GET** `/api/control/{id}/media/next`\
 Response is in JSON format
 
-- **GET** `/api/control/{id}/media/last/`\
+- **GET** `/api/control/{id}/media/last`\
 Response is in JSON format
 
 - **POST** `/api/control/{id}/process/`\

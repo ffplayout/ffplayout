@@ -41,20 +41,16 @@ suggests = "ffmpeg"
 copyright = "Copyright (c) 2022, Jonathan Baecker. All rights reserved."
 conf-files = ["/etc/ffplayout/ffplayout.yml"]
 assets = [
-    [
-        "../target/x86_64-unknown-linux-musl/release/ffpapi",
-        "/usr/bin/ffpapi",
-        "755"
-    ],
+    ["../target/x86_64-unknown-linux-musl/release/ffpapi", "/usr/bin/", "755"],
     [
         "../target/x86_64-unknown-linux-musl/release/ffplayout",
-        "/usr/bin/ffplayout",
+        "/usr/bin/",
         "755"
     ],
-    ["../assets/ffpapi.service", "/lib/systemd/system/ffpapi.service", "644"],
-    ["../assets/11-ffplayout", "/etc/sudoers.d/11-ffplayout", "644"],
-    ["../assets/ffplayout.yml", "/etc/ffplayout/ffplayout.yml", "644"],
-    ["../assets/logo.png", "/usr/share/ffplayout/logo.png", "644"],
+    ["../assets/ffpapi.service", "/lib/systemd/system/", "644"],
+    ["../assets/11-ffplayout", "/etc/sudoers.d/", "644"],
+    ["../assets/ffplayout.yml", "/etc/ffplayout/", "644"],
+    ["../assets/logo.png", "/usr/share/ffplayout/", "644"],
     ["../README.md", "/usr/share/doc/ffplayout/README", "644"],
 ]
 maintainer-scripts = "../debian/"

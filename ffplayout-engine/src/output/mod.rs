@@ -11,6 +11,7 @@ use simplelog::*;
 
 mod desktop;
 mod hls;
+mod null;
 mod stream;
 
 pub use hls::write_hls;
@@ -55,6 +56,7 @@ pub fn player(
     // get ffmpeg output instance
     let mut enc_proc = match config.out.mode.as_str() {
         "desktop" => desktop::output(config, &ff_log_format),
+        "null" => null::output(config, &ff_log_format),
         "stream" => stream::output(config, &ff_log_format),
         _ => panic!("Output mode doesn't exists!"),
     };
