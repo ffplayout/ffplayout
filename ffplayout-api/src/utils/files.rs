@@ -138,17 +138,15 @@ pub async fn rename_file(id: i64, move_object: &MoveObject) -> Result<MoveObject
         .normalize()
         .to_string();
 
-    if !source_path.starts_with(&relativ_path) {
-        source_path = path.join(source);
-    } else {
-        source_path = path.join(source_path.strip_prefix(&relativ_path).unwrap());
-    }
+    source_path = match source_path.starts_with(&relativ_path) {
+        true => path.join(source_path.strip_prefix(&relativ_path).unwrap()),
+        false => path.join(source),
+    };
 
-    if !target_path.starts_with(&relativ_path) {
-        target_path = path.join(target);
-    } else {
-        target_path = path.join(target_path.strip_prefix(relativ_path).unwrap());
-    }
+    target_path = match target_path.starts_with(&relativ_path) {
+        true => path.join(target_path.strip_prefix(relativ_path).unwrap()),
+        false => path.join(target),
+    };
 
     if !source_path.exists() {
         return Err(ServiceError::BadRequest("Source file not exist!".into()));
@@ -273,7 +271,6 @@ pub async fn upload(id: i64, mut payload: Multipart) -> Result<HttpResponse, Ser
             return Err(ServiceError::BadRequest("Target already exists!".into()));
         }
 
-        // File::create is blocking operation, use threadpool
         let mut f = web::block(|| std::fs::File::create(filepath)).await??;
 
         while let Some(chunk) = field.try_next().await? {

@@ -184,10 +184,9 @@ pub fn read_json(
                         validate_playlist(list_clone, is_terminated, config_clone)
                     });
 
-                    if config.playlist.infinit {
-                        return loop_playlist(config, current_file, playlist);
-                    } else {
-                        return set_defaults(playlist, current_file, start_sec);
+                    match config.playlist.infinit {
+                        true => return loop_playlist(config, current_file, playlist),
+                        false => return set_defaults(playlist, current_file, start_sec),
                     }
                 }
             }
@@ -206,10 +205,9 @@ pub fn read_json(
 
         thread::spawn(move || validate_playlist(list_clone, is_terminated, config_clone));
 
-        if config.playlist.infinit {
-            return loop_playlist(config, current_file, playlist);
-        } else {
-            return set_defaults(playlist, current_file, start_sec);
+        match config.playlist.infinit {
+            true => return loop_playlist(config, current_file, playlist),
+            false => return set_defaults(playlist, current_file, start_sec),
         }
     }
 
