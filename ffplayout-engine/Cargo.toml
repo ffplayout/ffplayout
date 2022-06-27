@@ -70,4 +70,7 @@ assets = [
     { source = "../README.md", dest = "/usr/share/doc/ffplayout/README", mode = "644", doc = true },
     { source = "../LICENSE", dest = "/usr/share/doc/ffplayout/LICENSE", mode = "644" },
     { source = "../assets/logo.png", dest = "/usr/share/ffplayout/logo.png", mode = "644" },
+    { source = "../debian/postinst", dest = "/usr/share/ffplayout/postinst", mode = "755" },
 ]
+auto-req = "no"
+post_install_script = "/usr/share/ffplayout/postinst"

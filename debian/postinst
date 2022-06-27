@@ -6,5 +6,13 @@ if [ ! -d "/usr/share/ffplayout/db" ]; then
 
     /usr/bin/ffpapi -i
 
-    chown www-data. "/usr/share/ffplayout/db/ffplayout.db"
+    if id "www-data" &>/dev/null; then
+        chown www-data. "/usr/share/ffplayout/db/ffplayout.db"
+    else
+        sed -i "s|www-data|root|g" /lib/systemd/system/ffpapi.service
+        sed -i "s|www-data|root|g" /lib/systemd/system/ffplayout.service
+        rm -f /etc/sudoers.d/11-ffplayout
+
+        systemctl daemon-reload
+    fi
 fi
