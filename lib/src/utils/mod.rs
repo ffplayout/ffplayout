@@ -445,13 +445,8 @@ pub fn prepare_output_cmd(
         for (i, p) in params.iter().enumerate() {
             let mut param = p.clone();
 
-            if param.contains("0:v") {
-                param = param.replace("0:v", "vout1");
-            }
-
-            if param.contains("0:a") {
-                param = param.replace("0:a", "aout1");
-            }
+            param = param.replace("[0:v]", "[vout1]");
+            param = param.replace("[0:a]", "[aout1]");
 
             if param != "-filter_complex" {
                 output_params.push(param.clone());
