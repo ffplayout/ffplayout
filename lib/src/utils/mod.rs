@@ -423,10 +423,6 @@ pub fn seek_and_length(src: String, seek: f64, out: f64, duration: f64) -> Vec<S
     source_cmd
 }
 
-pub fn format_log_line(line: String, level: &str) -> String {
-    line.replace(&format!("[{level: >5}] "), "")
-}
-
 /// Prepare output parameters
 ///
 /// seek for multiple outputs and add mapping for it
@@ -446,8 +442,20 @@ pub fn prepare_output_cmd(
     if !filter.is_empty() {
         output_params.clear();
 
-        for (i, param) in params.iter().enumerate() {
-            output_params.push(param.clone());
+        for (i, p) in params.iter().enumerate() {
+            let mut param = p.clone();
+
+            if param.contains("0:v") {
+                param = param.replace("0:v", "vout1");
+            }
+
+            if param.contains("0:a") {
+                param = param.replace("0:a", "aout1");
+            }
+
+            if param != "-filter_complex" {
+                output_params.push(param.clone());
+            }
 
             if i > 0
                 && !param.starts_with('-')
@@ -477,6 +485,11 @@ pub fn prepare_output_cmd(
             filter.drain(2..);
             cmd.append(&mut filter);
             cmd.append(&mut vec_strings!["-map", "[v_out1]", "-map", "[a_out1]"]);
+        } else if output_count == 1 && mode == "hls" && output_params[0].contains("split") {
+            let out_filter = output_params.remove(0);
+            filter[1].push_str(format!(";{out_filter}").as_str());
+            filter.drain(2..);
+            cmd.append(&mut filter);
         } else if output_count > 1 && mode == "stream" {
             filter[1].push_str(format!(",split={output_count}{output_v_map}").as_str());
             cmd.append(&mut filter);
@@ -504,6 +517,10 @@ pub fn valid_source(source: &str) -> bool {
     }
 
     Path::new(&source).is_file()
+}
+
+pub fn format_log_line(line: String, level: &str) -> String {
+    line.replace(&format!("[{level: >5}] "), "")
 }
 
 /// Read ffmpeg stderr decoder and encoder instance

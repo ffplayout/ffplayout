@@ -118,7 +118,7 @@ out:
     help_text: The final playout compression. Set the settings to your needs. 'mode'
         has the options 'desktop', 'hls', 'null', 'stream'.
         'preview' works only in streaming output and creates a separate preview stream.
-    mode: 'stream'
+    mode: stream
     preview: false
     preview_param: >-
         -s 512x288
