@@ -15,11 +15,11 @@ use utils::{
     auth, db_path, init_config,
     models::LoginUser,
     routes::{
-        add_preset, add_user, del_playlist, file_browser, gen_playlist, get_playlist,
-        get_playout_config, get_presets, get_settings, jump_to_last, jump_to_next, login,
-        media_current, media_last, media_next, move_rename, patch_settings, process_control,
-        remove, reset_playout, save_file, save_playlist, send_text_message, update_playout_config,
-        update_preset, update_user,
+        add_preset, add_user, del_playlist, file_browser, gen_playlist, get_all_settings, get_log,
+        get_playlist, get_playout_config, get_presets, get_settings, get_user, jump_to_last,
+        jump_to_next, login, media_current, media_last, media_next, move_rename, patch_settings,
+        process_control, remove, reset_playout, save_file, save_playlist, send_text_message,
+        update_playout_config, update_preset, update_user,
     },
     run_args, Role,
 };
@@ -77,12 +77,14 @@ async fn main() -> std::io::Result<()> {
                     web::scope("/api")
                         .wrap(auth)
                         .service(add_user)
+                        .service(get_user)
                         .service(get_playout_config)
                         .service(update_playout_config)
                         .service(add_preset)
                         .service(get_presets)
                         .service(update_preset)
                         .service(get_settings)
+                        .service(get_all_settings)
                         .service(patch_settings)
                         .service(update_user)
                         .service(send_text_message)
@@ -97,6 +99,7 @@ async fn main() -> std::io::Result<()> {
                         .service(save_playlist)
                         .service(gen_playlist)
                         .service(del_playlist)
+                        .service(get_log)
                         .service(file_browser)
                         .service(move_rename)
                         .service(remove)

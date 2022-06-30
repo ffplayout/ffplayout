@@ -36,6 +36,7 @@ async fn create_schema() -> Result<SqliteQueryResult, sqlx::Error> {
     CREATE TABLE IF NOT EXISTS presets
         (
             id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+            channel_id              INTEGER,
             name                    TEXT NOT NULL,
             text                    TEXT NOT NULL,
             x                       TEXT NOT NULL,
@@ -56,19 +57,20 @@ async fn create_schema() -> Result<SqliteQueryResult, sqlx::Error> {
             preview_url             TEXT NOT NULL,
             config_path             TEXT NOT NULL,
             extra_extensions        TEXT NOT NULL,
-            service        TEXT NOT NULL,
+            timezone                TEXT NOT NULL,
+            service                 TEXT NOT NULL,
             UNIQUE(channel_name)
         );
     CREATE TABLE IF NOT EXISTS user
         (
             id                      INTEGER PRIMARY KEY AUTOINCREMENT,
-            email                   TEXT NOT NULL,
+            mail                   TEXT NOT NULL,
             username                TEXT NOT NULL,
             password                TEXT NOT NULL,
             salt                    TEXT NOT NULL,
             role_id                 INTEGER NOT NULL DEFAULT 2,
             FOREIGN KEY (role_id)   REFERENCES roles (id) ON UPDATE SET NULL ON DELETE SET NULL,
-            UNIQUE(email, username)
+            UNIQUE(mail, username)
         );";
     let result = sqlx::query(query).execute(&conn).await;
     conn.close().await;
@@ -101,17 +103,17 @@ pub async fn db_init() -> Result<&'static str, Box<dyn std::error::Error>> {
             SELECT RAISE(FAIL, 'Database is already init!');
         END;
         INSERT INTO global(secret) VALUES($1);
-        INSERT INTO presets(name, text, x, y, fontsize, line_spacing, fontcolor, alpha, box, boxcolor, boxborderw)
-            VALUES('Default', 'Wellcome to ffplayout messenger!', '(w-text_w)/2', '(h-text_h)/2', '24', '4', '#ffffff@0xff', '1.0', '0', '#000000@0x80', '4'),
-            ('Empty Text', '', '0', '0', '24', '4', '#000000', '0', '0', '#000000', '0'),
-            ('Bottom Text fade in', 'The upcoming event will be delayed by a few minutes.', '(w-text_w)/2', '(h-line_h)*0.9', '24', '4', '#ffffff',
+        INSERT INTO presets(channel_id, name, text, x, y, fontsize, line_spacing, fontcolor, alpha, box, boxcolor, boxborderw)
+            VALUES('1', 'Default', 'Wellcome to ffplayout messenger!', '(w-text_w)/2', '(h-text_h)/2', '24', '4', '#ffffff@0xff', '1.0', '0', '#000000@0x80', '4'),
+            ('1', 'Empty Text', '', '0', '0', '24', '4', '#000000', '0', '0', '#000000', '0'),
+            ('1', 'Bottom Text fade in', 'The upcoming event will be delayed by a few minutes.', '(w-text_w)/2', '(h-line_h)*0.9', '24', '4', '#ffffff',
                 'ifnot(ld(1),st(1,t));if(lt(t,ld(1)+1),0,if(lt(t,ld(1)+2),(t-(ld(1)+1))/1,if(lt(t,ld(1)+8),1,if(lt(t,ld(1)+9),(1-(t-(ld(1)+8)))/1,0))))', '1', '#000000@0x80', '4'),
-            ('Scrolling Text', 'We have a very important announcement to make.', 'ifnot(ld(1),st(1,t));if(lt(t,ld(1)+1),w+4,w-w/12*mod(t-ld(1),12*(w+tw)/w))', '(h-line_h)*0.9',
+            ('1', 'Scrolling Text', 'We have a very important announcement to make.', 'ifnot(ld(1),st(1,t));if(lt(t,ld(1)+1),w+4,w-w/12*mod(t-ld(1),12*(w+tw)/w))', '(h-line_h)*0.9',
                 '24', '4', '#ffffff', '1.0', '1', '#000000@0x80', '4');
         INSERT INTO roles(name) VALUES('admin'), ('user'), ('guest');
-        INSERT INTO settings(channel_name, preview_url, config_path, extra_extensions, service)
+        INSERT INTO settings(channel_name, preview_url, config_path, extra_extensions, timezone, service)
         VALUES('Channel 1', 'http://localhost/live/preview.m3u8',
-            '/etc/ffplayout/ffplayout.yml', '.jpg,.jpeg,.png', 'ffplayout.service');";
+            '/etc/ffplayout/ffplayout.yml', '.jpg,.jpeg,.png', 'UTC', 'ffplayout.service');";
     sqlx::query(query).bind(secret).execute(&instances).await?;
     instances.close().await;
 
@@ -138,6 +140,15 @@ pub async fn db_get_settings(id: &i64) -> Result<Settings, sqlx::Error> {
     let conn = db_connection().await?;
     let query = "SELECT * FROM settings WHERE id = $1";
     let result: Settings = sqlx::query_as(query).bind(id).fetch_one(&conn).await?;
+    conn.close().await;
+
+    Ok(result)
+}
+
+pub async fn db_get_all_settings() -> Result<Vec<Settings>, sqlx::Error> {
+    let conn = db_connection().await?;
+    let query = "SELECT * FROM settings";
+    let result: Vec<Settings> = sqlx::query_as(query).fetch_all(&conn).await?;
     conn.close().await;
 
     Ok(result)
@@ -174,7 +185,16 @@ pub async fn db_role(id: &i64) -> Result<String, sqlx::Error> {
 
 pub async fn db_login(user: &str) -> Result<User, sqlx::Error> {
     let conn = db_connection().await?;
-    let query = "SELECT id, email, username, password, salt, role_id FROM user WHERE username = $1";
+    let query = "SELECT id, mail, username, password, salt, role_id FROM user WHERE username = $1";
+    let result: User = sqlx::query_as(query).bind(user).fetch_one(&conn).await?;
+    conn.close().await;
+
+    Ok(result)
+}
+
+pub async fn db_get_user(user: &str) -> Result<User, sqlx::Error> {
+    let conn = db_connection().await?;
+    let query = "SELECT id, mail, username, role_id FROM user WHERE username = $1";
     let result: User = sqlx::query_as(query).bind(user).fetch_one(&conn).await?;
     conn.close().await;
 
@@ -189,9 +209,9 @@ pub async fn db_add_user(user: User) -> Result<SqliteQueryResult, sqlx::Error> {
         .unwrap();
 
     let query =
-        "INSERT INTO user (email, username, password, salt, role_id) VALUES($1, $2, $3, $4, $5)";
+        "INSERT INTO user (mail, username, password, salt, role_id) VALUES($1, $2, $3, $4, $5)";
     let result = sqlx::query(query)
-        .bind(user.email)
+        .bind(user.mail)
         .bind(user.username)
         .bind(password_hash.to_string())
         .bind(salt.to_string())
@@ -212,10 +232,10 @@ pub async fn db_update_user(id: i64, fields: String) -> Result<SqliteQueryResult
     Ok(result)
 }
 
-pub async fn db_get_presets() -> Result<Vec<TextPreset>, sqlx::Error> {
+pub async fn db_get_presets(id: i64) -> Result<Vec<TextPreset>, sqlx::Error> {
     let conn = db_connection().await?;
-    let query = "SELECT * FROM presets";
-    let result: Vec<TextPreset> = sqlx::query_as(query).fetch_all(&conn).await?;
+    let query = "SELECT * FROM presets WHERE channel_id = $1";
+    let result: Vec<TextPreset> = sqlx::query_as(query).bind(id).fetch_all(&conn).await?;
     conn.close().await;
 
     Ok(result)
@@ -252,9 +272,10 @@ pub async fn db_update_preset(
 pub async fn db_add_preset(preset: TextPreset) -> Result<SqliteQueryResult, sqlx::Error> {
     let conn = db_connection().await?;
     let query =
-        "INSERT INTO presets (name, text, x, y, fontsize, line_spacing, fontcolor, alpha, box, boxcolor, boxborderw)
-            VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)";
+        "INSERT INTO presets (channel_id, name, text, x, y, fontsize, line_spacing, fontcolor, alpha, box, boxcolor, boxborderw)
+            VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)";
     let result: SqliteQueryResult = sqlx::query(query)
+        .bind(preset.channel_id)
         .bind(preset.name)
         .bind(preset.text)
         .bind(preset.x)

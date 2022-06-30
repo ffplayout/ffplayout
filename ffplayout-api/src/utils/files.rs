@@ -62,22 +62,22 @@ pub async fn browser(id: i64, path_obj: &PathObject) -> Result<PathObject, Servi
 
     for path in paths {
         let file_path = path.path().to_owned();
-        let path_str = file_path.display().to_string();
+        let path = file_path.clone();
 
         // ignore hidden files/folders on unix
-        if path_str.contains("/.") {
+        if path.display().to_string().contains("/.") {
             continue;
         }
 
         if file_path.is_dir() {
             if let Some(ref mut folders) = obj.folders {
-                folders.push(path_str);
+                folders.push(path.file_name().unwrap().to_string_lossy().to_string());
             }
         } else if file_path.is_file() {
             if let Some(ext) = file_extension(&file_path) {
                 if extensions.contains(&ext.to_string().to_lowercase()) {
                     if let Some(ref mut files) = obj.files {
-                        files.push(path_str);
+                        files.push(path.file_name().unwrap().to_string_lossy().to_string());
                     }
                 }
             }

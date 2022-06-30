@@ -16,12 +16,12 @@ use crate::utils::{
     errors::ServiceError,
     files::{browser, remove_file_or_folder, rename_file, upload, MoveObject, PathObject},
     handles::{
-        db_add_preset, db_add_user, db_get_presets, db_get_settings, db_login, db_role,
-        db_update_preset, db_update_settings, db_update_user,
+        db_add_preset, db_add_user, db_get_all_settings, db_get_presets, db_get_settings,
+        db_get_user, db_login, db_role, db_update_preset, db_update_settings, db_update_user,
     },
     models::{LoginUser, Settings, TextPreset, User},
     playlist::{delete_playlist, generate_playlist, read_playlist, write_playlist},
-    read_playout_config, Role,
+    read_log_file, read_playout_config, Role,
 };
 use ffplayout_lib::utils::{JsonPlaylist, PlayoutConfig};
 
@@ -30,6 +30,12 @@ struct ResponseObj<T> {
     message: String,
     status: i32,
     data: Option<T>,
+}
+
+#[derive(Serialize)]
+struct UserObj<T> {
+    message: String,
+    user: Option<T>,
 }
 
 /// curl -X POST http://127.0.0.1:8080/auth/login/ -H "Content-Type: application/json" \
@@ -58,19 +64,17 @@ pub async fn login(credentials: web::Json<User>) -> impl Responder {
 
                 info!("user {} login, with role: {role}", credentials.username);
 
-                web::Json(ResponseObj {
+                web::Json(UserObj {
                     message: "login correct!".into(),
-                    status: 200,
-                    data: Some(user),
+                    user: Some(user),
                 })
                 .customize()
                 .with_status(StatusCode::OK)
             } else {
                 error!("Wrong password for {}!", credentials.username);
-                web::Json(ResponseObj {
+                web::Json(UserObj {
                     message: "Wrong password!".into(),
-                    status: 403,
-                    data: None,
+                    user: None,
                 })
                 .customize()
                 .with_status(StatusCode::FORBIDDEN)
@@ -78,10 +82,9 @@ pub async fn login(credentials: web::Json<User>) -> impl Responder {
         }
         Err(e) => {
             error!("Login {} failed! {e}", credentials.username);
-            return web::Json(ResponseObj {
+            return web::Json(UserObj {
                 message: format!("Login {} failed!", credentials.username),
-                status: 400,
-                data: None,
+                user: None,
             })
             .customize()
             .with_status(StatusCode::BAD_REQUEST);
@@ -89,8 +92,22 @@ pub async fn login(credentials: web::Json<User>) -> impl Responder {
     }
 }
 
+/// curl -X GET 'http://localhost:8080/api/user' --header 'Content-Type: application/json' \
+/// --header 'Authorization: Bearer <TOKEN>'
+#[get("/user")]
+#[has_any_role("Role::Admin", "Role::User", type = "Role")]
+async fn get_user(user: web::ReqData<LoginUser>) -> Result<impl Responder, ServiceError> {
+    match db_get_user(&user.username).await {
+        Ok(user) => Ok(web::Json(user)),
+        Err(e) => {
+            error!("{e}");
+            Err(ServiceError::InternalServerError)
+        }
+    }
+}
+
 /// curl -X PUT http://localhost:8080/api/user/1 --header 'Content-Type: application/json' \
-/// --data '{"email": "<EMAIL>", "password": "<PASS>"}' --header 'Authorization: <TOKEN>'
+/// --data '{"mail": "<MAIL>", "password": "<PASS>"}' --header 'Authorization: <TOKEN>'
 #[put("/user/{id}")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 async fn update_user(
@@ -101,8 +118,8 @@ async fn update_user(
     if id.into_inner() == user.id {
         let mut fields = String::new();
 
-        if let Some(email) = data.email.clone() {
-            fields.push_str(format!("email = '{email}'").as_str());
+        if let Some(mail) = data.mail.clone() {
+            fields.push_str(format!("mail = '{mail}'").as_str());
         }
 
         if !data.password.is_empty() {
@@ -129,7 +146,7 @@ async fn update_user(
 }
 
 /// curl -X POST 'http://localhost:8080/api/user/' --header 'Content-Type: application/json' \
-/// -d '{"email": "<EMAIL>", "username": "<USER>", "password": "<PASS>", "role_id": 1}' \
+/// -d '{"mail": "<MAIL>", "username": "<USER>", "password": "<PASS>", "role_id": 1}' \
 /// --header 'Authorization: Bearer <TOKEN>'
 #[post("/user/")]
 #[has_any_role("Role::Admin", type = "Role")]
@@ -148,11 +165,18 @@ async fn add_user(data: web::Json<User>) -> Result<impl Responder, ServiceError>
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 async fn get_settings(id: web::Path<i64>) -> Result<impl Responder, ServiceError> {
     if let Ok(settings) = db_get_settings(&id).await {
-        return Ok(web::Json(ResponseObj {
-            message: format!("Settings from {}", settings.channel_name),
-            status: 200,
-            data: Some(settings),
-        }));
+        return Ok(web::Json(settings));
+    }
+
+    Err(ServiceError::InternalServerError)
+}
+
+/// curl -X GET http://127.0.0.1:8080/api/settings -H "Authorization: Bearer <TOKEN>"
+#[get("/settings")]
+#[has_any_role("Role::Admin", type = "Role")]
+async fn get_all_settings() -> Result<impl Responder, ServiceError> {
+    if let Ok(settings) = db_get_all_settings().await {
+        return Ok(web::Json(settings));
     }
 
     Err(ServiceError::InternalServerError)
@@ -217,11 +241,11 @@ async fn update_playout_config(
 }
 
 /// curl -X GET http://localhost:8080/api/presets/ --header 'Content-Type: application/json' \
-/// --data '{"email": "<EMAIL>", "password": "<PASS>"}' --header 'Authorization: <TOKEN>'
-#[get("/presets/")]
+/// --data '{"mail": "<MAIL>", "password": "<PASS>"}' --header 'Authorization: <TOKEN>'
+#[get("/presets/{id}")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
-async fn get_presets() -> Result<impl Responder, ServiceError> {
-    if let Ok(presets) = db_get_presets().await {
+async fn get_presets(id: web::Path<i64>) -> Result<impl Responder, ServiceError> {
+    if let Ok(presets) = db_get_presets(*id).await {
         return Ok(web::Json(presets));
     }
 
@@ -421,6 +445,21 @@ pub async fn del_playlist(
         Ok(_) => Ok(format!("Delete playlist from {} success!", params.1)),
         Err(e) => Err(e),
     }
+}
+
+/// ----------------------------------------------------------------------------
+/// read log file
+///
+/// ----------------------------------------------------------------------------
+
+#[get("/log/{req:.*}")]
+#[has_any_role("Role::Admin", "Role::User", type = "Role")]
+pub async fn get_log(req: web::Path<String>) -> Result<impl Responder, ServiceError> {
+    let mut segments = req.split('/');
+    let id: i64 = segments.next().unwrap_or_default().parse().unwrap_or(0);
+    let date = segments.next().unwrap_or_default();
+
+    read_log_file(&id, date).await
 }
 
 /// ----------------------------------------------------------------------------

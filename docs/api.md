@@ -32,6 +32,9 @@ From here on all request **must** contain the authorization header:\
 
 #### User
 
+- **GET** `/api/user`\
+Get current user, response is in JSON format
+
 - **PUT** `/api/user/{user id}`\
 JSON Data: `{"email": "<EMAIL>", "password": "<PASS>"}`
 
@@ -48,8 +51,10 @@ JSON Data:
 
 #### API Settings
 
+- **GET** `/api/settings`\
+Response is in JSON format
+
 - **GET** `/api/settings/{id}`\
-HEADER:
 Response is in JSON format
 
 - **PATCH** `/api/settings/{id}`\
@@ -157,10 +162,16 @@ Response is in JSON format
 - **DELETE** `/api/playlist/{id}/2022-06-20`\
 Response is in TEXT format
 
-#### File Operations
+#### Log File
 
 - **GET** `/api/file/{id}/browse/`\
 Response is in JSON format
+
+
+#### File Operations
+
+- **GET** `/api/log/{id}(/{date})`\
+Response is in TEXT format
 
 - **POST** `/api/file/{id}/move/`\
 JSON Data: `{"source": "<SOURCE>", "target": "<TARGET>"}`\
