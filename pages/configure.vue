@@ -184,19 +184,11 @@
                                     </b-form-group>
                                     <b-form-group
                                         label-cols-sm="2"
-                                        :label="'email'"
+                                        :label="'mail'"
                                         label-align-sm="right"
-                                        :label-for="'email'"
+                                        :label-for="'mail'"
                                     >
-                                        <b-form-input id="email" v-model="configUser['email']" :value="configUser['email']" />
-                                    </b-form-group>
-                                    <b-form-group
-                                        label-cols-sm="2"
-                                        label="old password"
-                                        label-align-sm="right"
-                                        label-for="oldPass"
-                                    >
-                                        <b-form-input id="oldPass" v-model="oldPass" type="password" />
+                                        <b-form-input id="mail" v-model="configUser['mail']" :value="configUser['mail']" />
                                     </b-form-group>
                                     <b-form-group
                                         label-cols-sm="2"
@@ -251,7 +243,6 @@ export default {
 
     data () {
         return {
-            oldPass: null,
             newPass: null,
             confirmPass: null,
             showAlert: false,
@@ -368,9 +359,8 @@ export default {
         },
         async onSubmitUser (evt) {
             evt.preventDefault()
-            if (this.oldPass && this.newPass && this.newPass === this.confirmPass) {
-                this.configUser.old_password = this.oldPass
-                this.configUser.new_password = this.newPass
+            if (this.newPass && this.newPass === this.confirmPass) {
+                this.configUser.password = this.newPass
             }
             await this.$store.dispatch('auth/inspectToken')
             const update = await this.$store.dispatch('config/setUserConfig', this.configUser)
@@ -385,7 +375,6 @@ export default {
 
             this.showAlert = true
 
-            this.oldPass = null
             this.newPass = null
             this.confirmPass = null
         },

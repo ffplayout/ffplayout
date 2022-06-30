@@ -99,21 +99,6 @@
                                     />
                                 </b-form-group>
                             </b-col>
-                            <b-col>
-                                <b-form-group
-                                    label="Font Alpha"
-                                    label-for="input-6"
-                                >
-                                    <b-form-input
-                                        id="input-6"
-                                        v-model="form.fontAlpha"
-                                        type="number"
-                                        min="0"
-                                        max="1"
-                                        step="0.01"
-                                    />
-                                </b-form-group>
-                            </b-col>
                         </b-row>
                     </b-col>
                     <b-col>
@@ -135,21 +120,6 @@
                                         v-model="form.boxColor"
                                         type="color"
                                         required
-                                    />
-                                </b-form-group>
-                            </b-col>
-                            <b-col>
-                                <b-form-group
-                                    label="Box Alpha"
-                                    label-for="input-8"
-                                >
-                                    <b-form-input
-                                        id="input-8"
-                                        v-model="form.boxAlpha"
-                                        type="number"
-                                        min="0"
-                                        max="1"
-                                        step="0.01"
                                     />
                                 </b-form-group>
                             </b-col>
@@ -266,8 +236,8 @@ export default {
     },
 
     watch: {
-        selected (name) {
-            this.getPreset(name)
+        selected (id) {
+            this.getPreset(id)
         }
     },
 
@@ -276,34 +246,27 @@ export default {
     },
 
     methods: {
-        async getPreset (preset) {
-            let req = ''
+        async getPreset (id) {
+            const response = await this.$axios.get(`api/presets/${this.configGui[this.configID].id}`)
 
-            if (preset) {
-                req = `?name=${preset}`
-            }
-            const response = await this.$axios.get(`api/player/messenger/${req}`)
-
-            if (response.data && !preset) {
+            if (response.data && !id) {
                 for (const item of response.data) {
-                    this.presets.push({ value: item.name, text: item.name })
+                    this.presets.push({ value: item.id, text: item.name })
                 }
             } else if (response.data) {
                 this.form = {
-                    id: response.data[0].id,
-                    name: response.data[0].name,
-                    text: response.data[0].message,
-                    x: response.data[0].x,
-                    y: response.data[0].y,
-                    fontSize: response.data[0].font_size,
-                    fontSpacing: response.data[0].font_spacing,
-                    fontColor: response.data[0].font_color,
-                    fontAlpha: response.data[0].font_alpha,
-                    showBox: response.data[0].show_box,
-                    boxColor: response.data[0].box_color,
-                    boxAlpha: response.data[0].box_alpha,
-                    border: response.data[0].border_width,
-                    overallAlpha: response.data[0].overall_alpha
+                    id: response.data[id].id,
+                    name: response.data[id].name,
+                    text: response.data[id].text,
+                    x: response.data[id].x,
+                    y: response.data[id].y,
+                    fontSize: response.data[id].font_size,
+                    fontSpacing: response.data[id].line_spacing,
+                    fontColor: response.data[id].fontcolor,
+                    showBox: response.data[id].box,
+                    boxColor: response.data[id].boxcolor,
+                    border: response.data[id].boxborderw,
+                    overallAlpha: response.data[id].alpha
                 }
             }
         },

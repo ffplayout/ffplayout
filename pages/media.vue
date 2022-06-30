@@ -14,7 +14,7 @@
                 </span>
             </div>
 
-            <div v-if="folderTree.tree" class="browser">
+            <div v-if="folderTree" class="browser">
                 <div class="bread-div">
                     <b-breadcrumb>
                         <b-breadcrumb-item
@@ -34,8 +34,8 @@
                             <perfect-scrollbar :options="scrollOP" class="media-browser-scroll">
                                 <b-list-group class="folder-list">
                                     <b-list-group-item
-                                        v-for="folder in folderTree.tree[1]"
-                                        :key="folder.key"
+                                        v-for="folder in folderTree.folders"
+                                        :key="folder"
                                         class="browser-item folder"
                                     >
                                         <b-row>
@@ -43,12 +43,12 @@
                                                 <b-icon-folder-fill class="browser-icons" />
                                             </b-col>
                                             <b-col class="browser-item-text">
-                                                <b-link @click="getPath(extensions, `/${folderTree.tree[0]}/${folder}`)">
+                                                <b-link @click="getPath(extensions, `/${folderTree.source}/${folder}`)">
                                                     {{ folder }}
                                                 </b-link>
                                             </b-col>
                                             <b-col v-if="folder !== '..'" cols="1" class="folder-delete">
-                                                <b-link @click="showDeleteModal('Folder', `/${folderTree.tree[0]}/${folder}`)">
+                                                <b-link @click="showDeleteModal('Folder', `/${folderTree.source}/${folder}`)">
                                                     <b-icon-x-circle-fill />
                                                 </b-link>
                                             </b-col>
@@ -70,8 +70,8 @@
                             <perfect-scrollbar :options="scrollOP" class="media-browser-scroll">
                                 <b-list-group class="files-list">
                                     <b-list-group-item
-                                        v-for="file in folderTree.tree[2]"
-                                        :key="file.key"
+                                        v-for="file in folderTree.files"
+                                        :key="file"
                                         class="browser-item"
                                     >
                                         <b-row>
@@ -79,10 +79,10 @@
                                                 <b-icon-film class="browser-icons" />
                                             </b-col>
                                             <b-col class="browser-item-text">
-                                                {{ file.file }}
+                                                {{ file }}
                                             </b-col>
                                             <b-col cols="1" class="browser-play-col">
-                                                <b-link title="Preview" @click="showPreviewModal(`/${folderTree.tree[0]}/${file.file}`)">
+                                                <b-link title="Preview" @click="showPreviewModal(`/${folderTree.source}/${file}`)">
                                                     <b-icon-play-fill />
                                                 </b-link>
                                             </b-col>
@@ -90,12 +90,12 @@
                                                 <span class="duration">{{ file.duration | toMin }}</span>
                                             </b-col>
                                             <b-col cols="1" class="small-col">
-                                                <b-link title="Rename File" @click="showRenameModal(`/${folderTree.tree[0]}/`, file.file)">
+                                                <b-link title="Rename File" @click="showRenameModal(`/${folderTree.source}/`, file)">
                                                     <b-icon-pencil-square />
                                                 </b-link>
                                             </b-col>
                                             <b-col cols="1" class="small-col">
-                                                <b-link title="Delete File" @click="showDeleteModal('File', `/${folderTree.tree[0]}/${file.file}`)">
+                                                <b-link title="Delete File" @click="showDeleteModal('File', `/${folderTree.source}/${file}`)">
                                                     <b-icon-x-circle-fill />
                                                 </b-link>
                                             </b-col>

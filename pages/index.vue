@@ -33,105 +33,13 @@
         <div v-else>
             <b-container class="login-container">
                 <div>
-                    <b-row cols="3">
-                        <b-col cols="4" class="chart-col chart1">
-                            <br>
-                            <div class="stat-div">
-                                <div class="stat-center" style="text-align: left;">
-                                    <h1>ffplayout</h1>
-                                    <h3 v-if="stat.system">
-                                        {{ stat.system }}<br>
-                                        {{ stat.node }}<br>
-                                        {{ stat.machine }}
-                                    </h3>
-                                </div>
-                            </div>
-                        </b-col>
-                        <b-col cols="4" class="chart-col chart2">
-                            <div v-if="stat.cpu_usage || stat.cpu_usage >= 0">
-                                <div>
-                                    <strong>CPU</strong>
-                                </div>
-                                <div class="stat-div">
-                                    <div class="stat-center">
-                                        <div style="text-align: left;">
-                                            <strong>Usage: </strong>{{ stat.cpu_usage }}%<br>
-                                            <strong>Load: </strong> {{ stat.cpu_load[0] }} {{ stat.cpu_load[1] }} {{ stat.cpu_load[2] }}
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </b-col>
-                        <b-col cols="4" class="chart-col chart3">
-                            <div v-if="stat.ram_total">
-                                <div>
-                                    <strong>RAM</strong>
-                                </div>
-                                <div class="stat-div">
-                                    <div class="stat-center">
-                                        <div style="text-align: left;">
-                                            <strong>Total: </strong> {{ stat.ram_total[1] }}<br>
-                                            <strong>Used: </strong> {{ stat.ram_used[1] }}<br>
-                                            <strong>Free: </strong> {{ stat.ram_free[1] }}<br>
-                                            <strong>Cached: </strong> {{ stat.ram_cached[1] }}
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </b-col>
-                        <b-col cols="4" class="chart-col chart4">
-                            <div v-if="stat.swap_total">
-                                <div>
-                                    <strong>SWAP</strong>
-                                </div>
-                                <div class="stat-div">
-                                    <div class="stat-center">
-                                        <div style="text-align: left;">
-                                            <strong>Total: </strong> {{ stat.swap_total[1] }}<br>
-                                            <strong>Used: </strong> {{ stat.swap_used[1] }}<br>
-                                            <strong>Free: </strong> {{ stat.swap_free[1] }}
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </b-col>
-                        <b-col cols="4" class="chart-col chart5">
-                            <div v-if="stat.disk_total">
-                                <div>
-                                    <strong>DISK</strong>
-                                </div>
-                                <div class="stat-div">
-                                    <div class="stat-center">
-                                        <div style="text-align: left;">
-                                            <strong>Total: </strong> {{ stat.disk_total[1] }}<br>
-                                            <strong>Used: </strong> {{ stat.disk_used[1] }}<br>
-                                            <strong>Free: </strong> {{ stat.disk_free[1] }}
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </b-col>
-                        <b-col cols="4" class="chart-col chart6">
-                            <div v-if="stat.net_send">
-                                <div>
-                                    <strong>NET</strong>
-                                </div>
-                                <div class="stat-div">
-                                    <div class="stat-center">
-                                        <div style="text-align: left;">
-                                            <strong>Download: </strong> {{ stat.net_speed_recv[1] }}/s<br>
-                                            <strong>Upload: </strong> {{ stat.net_speed_send[1] }}/s<br>
-                                            <strong>Downloaded: </strong> {{ stat.net_recv[1] }}<br>
-                                            <strong>Uploaded: </strong> {{ stat.net_send[1] }}<br>
-                                            <strong>Recived Errors: </strong> {{ stat.net_errin }}<br>
-                                            <strong>Sended Errors: </strong> {{ stat.net_errout }}
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </b-col>
-                    </b-row>
-
+                    <div class="logo-div">
+                        <b-img-lazy
+                            src="/images/ffplayout.png"
+                            alt="Logo"
+                            fluid
+                        />
+                    </div>
                     <div class="actions">
                         <b-button-group class="actions-grp">
                             <b-button to="/player" variant="primary">
@@ -183,7 +91,6 @@ export default {
     methods: {
         async init () {
             await this.$store.dispatch('auth/inspectToken')
-            this.checkLogin()
         },
         async login () {
             try {
@@ -195,12 +102,11 @@ export default {
                 this.formPassword = ''
                 this.formError = null
 
-                if (status === 401) {
+                if (status === 401 || status === 400) {
                     this.formError = 'Wrong user or password!'
                     this.showError = true
                 }
 
-                this.checkLogin()
                 await this.$store.dispatch('config/nuxtClientInit')
             } catch (e) {
                 this.formError = e.message
@@ -214,31 +120,6 @@ export default {
                 this.$store.commit('auth/UPDATE_IS_LOGIN', false)
             } catch (e) {
                 this.formError = e.message
-            }
-        },
-        checkLogin () {
-            if (this.$store.state.auth.isLogin) {
-                this.sysStats()
-            }
-        },
-
-        async sysStats () {
-            const response = await this.$axios.get('api/player/stats/?stats=all')
-
-            if (!response.data) {
-                this.$router.push('/configure')
-            }
-            this.stat = response.data
-
-            if (process.browser && !this.interval) {
-                this.interval = setInterval(async () => {
-                    if (this.$store.state.auth.isLogin && this.$route.path === '/') {
-                        const response = await this.$axios.get('api/player/stats/?stats=all')
-                        this.stat = response.data
-                    } else {
-                        clearInterval(this.interval)
-                    }
-                }, 2000)
             }
         }
     }
@@ -256,6 +137,12 @@ export default {
 .header {
     text-align: center;
     margin-bottom: 3em;
+}
+
+.logo-div {
+    width: 100%;
+    text-align: center;
+    margin-bottom: 5em;
 }
 
 .login-form {

@@ -21,25 +21,24 @@ export const actions = {
         const crumbs = []
         let root = '/'
         const channel = rootState.config.configGui[rootState.config.configID].id
-        const response = await this.$axios.get(
-            `api/player/media/?extensions=${extensions}&channel=${channel}&path=${path}`)
+        const response = await this.$axios.post(
+            `api/file/${channel}/browse/`, { source: path })
 
-        if (response.data.tree) {
-            const pathArr = response.data.tree[0].split('/')
-
-            if (response.data.tree[1].length === 0) {
-                response.data.tree[1].push(pathArr[pathArr.length - 1])
-            }
+        if (response.data) {
+            const pathStr = 'Home/' + response.data.source
+            const pathArr = pathStr.split('/')
 
             if (path) {
                 for (const crumb of pathArr) {
-                    if (crumb) {
+                    if (crumb === 'Home') {
+                        crumbs.push({ text: crumb, path: root })
+                    } else if (crumb) {
                         root += crumb + '/'
                         crumbs.push({ text: crumb, path: root })
                     }
                 }
             } else {
-                crumbs.push({ text: pathArr[pathArr.length - 1], path: '' })
+                crumbs.push({ text: 'Home', path: '' })
             }
 
             commit('UPDATE_CURRENT_PATH', path)
