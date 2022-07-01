@@ -358,14 +358,10 @@ export default {
 
         async onSubmitCreateFolder (evt) {
             evt.preventDefault()
+            const path = this.crumbs.map(e => e.text).join('/') + '/' + this.folderName
 
             await this.$axios.post(
-                'api/player/media/op/',
-                {
-                    folder: this.folderName,
-                    path: this.crumbs.map(e => e.text).join('/'),
-                    channel: this.configGui[this.configID].id
-                }
+                `api/file/${this.configGui[this.configID].id}/create-folder/`, { source: path }
             )
 
             this.$root.$emit('bv::hide::modal', 'folder-modal')
@@ -451,7 +447,7 @@ export default {
             this.previewName = src.split('/').slice(-1)[0]
             const ext = this.previewName.split('.').slice(-1)[0]
 
-            if (this.configPlayout.storage.extensions.includes(`.${ext}`)) {
+            if (this.configPlayout.storage.extensions.includes(`${ext}`)) {
                 this.isImage = false
                 this.previewOptions = {
                     liveui: false,
@@ -462,7 +458,7 @@ export default {
                     sources: [
                         {
                             type: `video/${ext}`,
-                            src: '/' + encodeURIComponent(src.replace(/^\//, ''))
+                            src: '/' + encodeURIComponent(src.replace(/^[/]+/, ''))
                         }
                     ]
                 }
