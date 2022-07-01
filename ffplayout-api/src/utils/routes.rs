@@ -14,7 +14,10 @@ use crate::utils::{
     auth::{create_jwt, Claims},
     control::{control_service, control_state, media_info, send_message, Process},
     errors::ServiceError,
-    files::{browser, remove_file_or_folder, rename_file, upload, MoveObject, PathObject},
+    files::{
+        browser, create_directory, remove_file_or_folder, rename_file, upload, MoveObject,
+        PathObject,
+    },
     handles::{
         db_add_preset, db_add_user, db_get_all_settings, db_get_presets, db_get_settings,
         db_get_user, db_login, db_role, db_update_preset, db_update_settings, db_update_user,
@@ -479,6 +482,18 @@ pub async fn file_browser(
         Ok(obj) => Ok(web::Json(obj)),
         Err(e) => Err(e),
     }
+}
+
+/// curl -X POST http://localhost:8080/api/file/1/create-folder/
+/// --header 'Content-Type: application/json' --header 'Authorization: <TOKEN>'
+/// -d '{"source": "<FOLDER PATH>"}'
+#[post("/file/{id}/create-folder/")]
+#[has_any_role("Role::Admin", "Role::User", type = "Role")]
+pub async fn add_dir(
+    id: web::Path<i64>,
+    data: web::Json<PathObject>,
+) -> Result<HttpResponse, ServiceError> {
+    create_directory(*id, &data.into_inner()).await
 }
 
 /// curl -X POST http://localhost:8080/api/file/1/move/

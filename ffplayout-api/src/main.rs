@@ -15,11 +15,11 @@ use utils::{
     auth, db_path, init_config,
     models::LoginUser,
     routes::{
-        add_preset, add_user, del_playlist, file_browser, gen_playlist, get_all_settings, get_log,
-        get_playlist, get_playout_config, get_presets, get_settings, get_user, jump_to_last,
-        jump_to_next, login, media_current, media_last, media_next, move_rename, patch_settings,
-        process_control, remove, reset_playout, save_file, save_playlist, send_text_message,
-        update_playout_config, update_preset, update_user,
+        add_dir, add_preset, add_user, del_playlist, file_browser, gen_playlist, get_all_settings,
+        get_log, get_playlist, get_playout_config, get_presets, get_settings, get_user,
+        jump_to_last, jump_to_next, login, media_current, media_last, media_next, move_rename,
+        patch_settings, process_control, remove, reset_playout, save_file, save_playlist,
+        send_text_message, update_playout_config, update_preset, update_user,
     },
     run_args, Role,
 };
@@ -101,6 +101,7 @@ async fn main() -> std::io::Result<()> {
                         .service(del_playlist)
                         .service(get_log)
                         .service(file_browser)
+                        .service(add_dir)
                         .service(move_rename)
                         .service(remove)
                         .service(save_file),

@@ -19,6 +19,7 @@ use ffplayout_lib::utils::file_extension;
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct PathObject {
     pub source: String,
+    parent: Option<String>,
     folders: Option<Vec<String>>,
     files: Option<Vec<String>>,
 }
@@ -27,6 +28,7 @@ impl PathObject {
     fn new(source: String) -> Self {
         Self {
             source,
+            parent: None,
             folders: Some(vec![]),
             files: Some(vec![]),
         }
@@ -39,21 +41,52 @@ pub struct MoveObject {
     target: String,
 }
 
-pub async fn browser(id: i64, path_obj: &PathObject) -> Result<PathObject, ServiceError> {
-    let (config, _) = playout_config(&id).await?;
-    let path = PathBuf::from(config.storage.path);
-    let extensions = config.storage.extensions;
-    let path_component = RelativePath::new(&path_obj.source)
+/// Normalize absolut path
+///
+/// This function takes care, that it is not possible to break out from root_path.
+/// It also gives alway a relative path back.
+fn norm_abs_path(root_path: String, path_obj: &PathObject) -> (PathBuf, String, String) {
+    let mut path = PathBuf::from(root_path.clone());
+    let path_relative = RelativePath::new(&root_path)
         .normalize()
         .to_string()
         .replace("../", "");
-    let path = path.join(path_component.clone());
-    let mut obj = PathObject::new(path_component.clone());
+    let mut source_relative = RelativePath::new(&path_obj.source)
+        .normalize()
+        .to_string()
+        .replace("../", "");
+    let path_suffix = path.file_name().unwrap().to_string_lossy().to_string();
+
+    if path_obj.source.starts_with(&root_path) || source_relative.starts_with(&path_relative) {
+        source_relative = source_relative
+            .strip_prefix(&path_relative)
+            .and_then(|s| s.strip_prefix('/'))
+            .unwrap_or_default()
+            .to_string();
+    } else {
+        source_relative = source_relative
+            .strip_prefix(&path_suffix)
+            .and_then(|s| s.strip_prefix('/'))
+            .unwrap_or(&source_relative)
+            .to_string();
+    }
+
+    path = path.join(&source_relative);
+
+    (path, path_suffix, source_relative)
+}
+
+pub async fn browser(id: i64, path_obj: &PathObject) -> Result<PathObject, ServiceError> {
+    let (config, _) = playout_config(&id).await?;
+    let extensions = config.storage.extensions;
+    let (path, parent, path_component) = norm_abs_path(config.storage.path, path_obj);
+    let mut obj = PathObject::new(path_component);
+    obj.parent = Some(parent);
 
     let mut paths: Vec<_> = match fs::read_dir(path) {
         Ok(p) => p.filter_map(|r| r.ok()).collect(),
         Err(e) => {
-            error!("{e} in {path_component}");
+            error!("{e} in {}", path_obj.source);
             return Err(ServiceError::InternalServerError);
         }
     };
@@ -85,6 +118,22 @@ pub async fn browser(id: i64, path_obj: &PathObject) -> Result<PathObject, Servi
     }
 
     Ok(obj)
+}
+
+pub async fn create_directory(
+    id: i64,
+    path_obj: &PathObject,
+) -> Result<HttpResponse, ServiceError> {
+    let (config, _) = playout_config(&id).await?;
+    let (path, _, _) = norm_abs_path(config.storage.path, path_obj);
+
+    if let Err(e) = fs::create_dir_all(&path) {
+        return Err(ServiceError::BadRequest(e.to_string()));
+    }
+
+    info!("create folder: <b><magenta>{}</></b>", path.display());
+
+    Ok(HttpResponse::Ok().into())
 }
 
 // fn copy_and_delete(source: &PathBuf, target: &PathBuf) -> Result<PathObject, ServiceError> {
