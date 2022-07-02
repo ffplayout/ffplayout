@@ -1,8 +1,4 @@
-use std::{
-    fs,
-    io::Write,
-    path::{Path, PathBuf},
-};
+use std::{fs, io::Write, path::PathBuf};
 
 use actix_multipart::Multipart;
 use actix_web::{web, HttpResponse};
@@ -25,10 +21,10 @@ pub struct PathObject {
 }
 
 impl PathObject {
-    fn new(source: String) -> Self {
+    fn new(source: String, parent: Option<String>) -> Self {
         Self {
             source,
-            parent: None,
+            parent,
             folders: Some(vec![]),
             files: Some(vec![]),
         }
@@ -45,19 +41,19 @@ pub struct MoveObject {
 ///
 /// This function takes care, that it is not possible to break out from root_path.
 /// It also gives alway a relative path back.
-fn norm_abs_path(root_path: String, path_obj: &PathObject) -> (PathBuf, String, String) {
+fn norm_abs_path(root_path: &String, input_path: &String) -> (PathBuf, String, String) {
     let mut path = PathBuf::from(root_path.clone());
     let path_relative = RelativePath::new(&root_path)
         .normalize()
         .to_string()
         .replace("../", "");
-    let mut source_relative = RelativePath::new(&path_obj.source)
+    let mut source_relative = RelativePath::new(input_path)
         .normalize()
         .to_string()
         .replace("../", "");
     let path_suffix = path.file_name().unwrap().to_string_lossy().to_string();
 
-    if path_obj.source.starts_with(&root_path) || source_relative.starts_with(&path_relative) {
+    if input_path.starts_with(root_path) || source_relative.starts_with(&path_relative) {
         source_relative = source_relative
             .strip_prefix(&path_relative)
             .and_then(|s| s.strip_prefix('/'))
@@ -76,12 +72,16 @@ fn norm_abs_path(root_path: String, path_obj: &PathObject) -> (PathBuf, String, 
     (path, path_suffix, source_relative)
 }
 
+/// File Browser
+///
+/// Take input path and give file and folder list from it back.
+/// Input should be a relative path segment, but when it is a absolut path, the norm_abs_path function
+/// will take care, that user can not break out from given storage path in config.
 pub async fn browser(id: i64, path_obj: &PathObject) -> Result<PathObject, ServiceError> {
     let (config, _) = playout_config(&id).await?;
     let extensions = config.storage.extensions;
-    let (path, parent, path_component) = norm_abs_path(config.storage.path, path_obj);
-    let mut obj = PathObject::new(path_component);
-    obj.parent = Some(parent);
+    let (path, parent, path_component) = norm_abs_path(&config.storage.path, &path_obj.source);
+    let mut obj = PathObject::new(path_component, Some(parent));
 
     let mut paths: Vec<_> = match fs::read_dir(path) {
         Ok(p) => p.filter_map(|r| r.ok()).collect(),
@@ -125,7 +125,7 @@ pub async fn create_directory(
     path_obj: &PathObject,
 ) -> Result<HttpResponse, ServiceError> {
     let (config, _) = playout_config(&id).await?;
-    let (path, _, _) = norm_abs_path(config.storage.path, path_obj);
+    let (path, _, _) = norm_abs_path(&config.storage.path, &path_obj.source);
 
     if let Err(e) = fs::create_dir_all(&path) {
         return Err(ServiceError::BadRequest(e.to_string()));
@@ -170,32 +170,8 @@ fn rename(source: &PathBuf, target: &PathBuf) -> Result<MoveObject, ServiceError
 
 pub async fn rename_file(id: i64, move_object: &MoveObject) -> Result<MoveObject, ServiceError> {
     let (config, _) = playout_config(&id).await?;
-    let path = PathBuf::from(&config.storage.path);
-    let source = RelativePath::new(&move_object.source)
-        .normalize()
-        .to_string()
-        .replace("../", "");
-    let target = RelativePath::new(&move_object.target)
-        .normalize()
-        .to_string()
-        .replace("../", "");
-
-    let mut source_path = PathBuf::from(source.clone());
-    let mut target_path = PathBuf::from(target.clone());
-
-    let relativ_path = RelativePath::new(&config.storage.path)
-        .normalize()
-        .to_string();
-
-    source_path = match source_path.starts_with(&relativ_path) {
-        true => path.join(source_path.strip_prefix(&relativ_path).unwrap()),
-        false => path.join(source),
-    };
-
-    target_path = match target_path.starts_with(&relativ_path) {
-        true => path.join(target_path.strip_prefix(relativ_path).unwrap()),
-        false => path.join(target),
-    };
+    let (source_path, _, _) = norm_abs_path(&config.storage.path, &move_object.source);
+    let (mut target_path, _, _) = norm_abs_path(&config.storage.path, &move_object.target);
 
     if !source_path.exists() {
         return Err(ServiceError::BadRequest("Source file not exist!".into()));
@@ -223,24 +199,9 @@ pub async fn rename_file(id: i64, move_object: &MoveObject) -> Result<MoveObject
     Err(ServiceError::InternalServerError)
 }
 
-pub async fn remove_file_or_folder(id: i64, source_path: &str) -> Result<(), ServiceError> {
+pub async fn remove_file_or_folder(id: i64, source_path: &String) -> Result<(), ServiceError> {
     let (config, _) = playout_config(&id).await?;
-    let source = PathBuf::from(source_path);
-
-    let test_source = RelativePath::new(&source_path)
-        .normalize()
-        .to_string()
-        .replace("../", "");
-
-    let test_path = RelativePath::new(&config.storage.path)
-        .normalize()
-        .to_string();
-
-    if !test_source.starts_with(&test_path) {
-        return Err(ServiceError::BadRequest(
-            "Source file is not in storage!".into(),
-        ));
-    }
+    let (source, _, _) = norm_abs_path(&config.storage.path, source_path);
 
     if !source.exists() {
         return Err(ServiceError::BadRequest("Source does not exists!".into()));
@@ -271,25 +232,11 @@ pub async fn remove_file_or_folder(id: i64, source_path: &str) -> Result<(), Ser
     Err(ServiceError::InternalServerError)
 }
 
-async fn valid_path(id: i64, path: &str) -> Result<(), ServiceError> {
+async fn valid_path(id: i64, path: &String) -> Result<(), ServiceError> {
     let (config, _) = playout_config(&id).await?;
+    let (test_path, _, _) = norm_abs_path(&config.storage.path, path);
 
-    let test_target = RelativePath::new(&path)
-        .normalize()
-        .to_string()
-        .replace("../", "");
-
-    let test_path = RelativePath::new(&config.storage.path)
-        .normalize()
-        .to_string();
-
-    if !test_target.starts_with(&test_path) {
-        return Err(ServiceError::BadRequest(
-            "Target folder is not in storage!".into(),
-        ));
-    }
-
-    if !Path::new(path).is_dir() {
+    if !test_path.is_dir() {
         return Err(ServiceError::BadRequest("Target folder not exists!".into()));
     }
 
@@ -310,7 +257,7 @@ pub async fn upload(id: i64, mut payload: Multipart) -> Result<HttpResponse, Ser
             .get_filename()
             .map_or_else(|| rand_string.to_string(), sanitize_filename::sanitize);
 
-        if let Err(e) = valid_path(id, path_name).await {
+        if let Err(e) = valid_path(id, &path_name.to_string()).await {
             return Err(e);
         }
 
