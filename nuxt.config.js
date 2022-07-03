@@ -7,7 +7,8 @@ export default {
      */
     head: {
         title: process.env.npm_package_name || '',
-        meta: [{
+        meta: [
+            {
                 charset: 'utf-8'
             },
             {
@@ -20,11 +21,13 @@ export default {
                 content: process.env.npm_package_description || ''
             }
         ],
-        link: [{
-            rel: 'icon',
-            type: 'image/x-icon',
-            href: '/favicon.ico'
-        }]
+        link: [
+            {
+                rel: 'icon',
+                type: 'image/x-icon',
+                href: '/favicon.ico'
+            }
+        ]
     },
     /*
      ** Customize the progress-bar color
@@ -35,9 +38,7 @@ export default {
     /*
      ** Global CSS
      */
-    css: [
-        '@/assets/css/bootstrap.min.css'
-    ],
+    css: ['@/assets/css/bootstrap.min.css'],
     /*
      ** Plugins to load before mounting the App
      */
@@ -85,17 +86,11 @@ export default {
         locales: ['en', 'de'],
         defaultLocale: 'en',
         defaultTimeZone: 'Europe/Berlin',
-        plugins: [
-            'utc',
-            'timezone'
-        ]
+        plugins: ['utc', 'timezone']
     },
 
     styleResources: {
-        scss: [
-            '@/assets/css/_variables.scss',
-            '@/assets/scss/globals.scss'
-        ]
+        scss: ['@/assets/css/_variables.scss', '@/assets/scss/globals.scss']
     },
 
     bootstrapVue: {
@@ -110,14 +105,14 @@ export default {
         /*
          ** You can extend webpack config here
          */
-        extend(config, ctx) {},
+        extend (config, ctx) {},
         babel: { compact: true },
         loaders: {
             sass: {
-              implementation: require('sass'),
+                implementation: require('sass')
             },
             scss: {
-              implementation: require('sass'),
+                implementation: require('sass')
             }
         }
     }

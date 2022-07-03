@@ -25,21 +25,20 @@ export const actions = {
             `api/file/${channel}/browse/`, { source: path })
 
         if (response.data) {
-            console.log(response.data)
-            const pathArr = response.data.source.split('/')
-
-            console.log(pathArr)
-            console.log('path', path)
+            const pathStr = 'Home/' + response.data.source
+            const pathArr = pathStr.split('/')
 
             if (path) {
                 for (const crumb of pathArr) {
-                    if (crumb) {
+                    if (crumb === 'Home') {
+                        crumbs.push({ text: crumb, path: root })
+                    } else if (crumb) {
                         root += crumb + '/'
                         crumbs.push({ text: crumb, path: root })
                     }
                 }
             } else {
-                crumbs.push({ text: pathArr[0], path: '' })
+                crumbs.push({ text: 'Home', path: '' })
             }
 
             commit('UPDATE_CURRENT_PATH', path)

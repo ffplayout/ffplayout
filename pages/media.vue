@@ -82,7 +82,7 @@
                                                 {{ file }}
                                             </b-col>
                                             <b-col cols="1" class="browser-play-col">
-                                                <b-link title="Preview" @click="showPreviewModal(`/${folderTree.source}/${file}`)">
+                                                <b-link title="Preview" @click="showPreviewModal(`/${folderTree.parent}/${folderTree.source}/${file}`)">
                                                     <b-icon-play-fill />
                                                 </b-link>
                                             </b-col>
@@ -90,12 +90,12 @@
                                                 <span class="duration">{{ file.duration | toMin }}</span>
                                             </b-col>
                                             <b-col cols="1" class="small-col">
-                                                <b-link title="Rename File" @click="showRenameModal(`/${folderTree.source}/`, file)">
+                                                <b-link title="Rename File" @click="showRenameModal(file)">
                                                     <b-icon-pencil-square />
                                                 </b-link>
                                             </b-col>
                                             <b-col cols="1" class="small-col">
-                                                <b-link title="Delete File" @click="showDeleteModal('File', `/${folderTree.source}/${file}`)">
+                                                <b-link title="Delete File" @click="showDeleteModal('File', `/${folderTree.parent}/${folderTree.source}/${file}`)">
                                                     <b-icon-x-circle-fill />
                                                 </b-link>
                                             </b-col>
@@ -468,8 +468,7 @@ export default {
             this.$root.$emit('bv::show::modal', 'preview-modal')
         },
 
-        showRenameModal (path, file) {
-            this.renamePath = path
+        showRenameModal (file) {
             this.renameOldName = file
             this.renameNewName = file
             this.$root.$emit('bv::show::modal', 'rename-modal')
@@ -478,12 +477,10 @@ export default {
         async renameFile (evt) {
             evt.preventDefault()
 
-            await this.$axios.patch(
-                'api/player/media/op/', {
-                    path: this.renamePath.replace(/^\/\//g, '/'),
-                    oldname: this.renameOldName,
-                    newname: this.renameNewName,
-                    channel: this.configGui[this.configID].id
+            await this.$axios.post(
+                `api/file/${this.configGui[this.configID].id}/rename/`, {
+                    source: `/${this.folderTree.parent}/${this.folderTree.source}/${this.renameOldName}`.replace('//', '/'),
+                    target: `/${this.folderTree.parent}/${this.folderTree.source}/${this.renameNewName}`.replace('//', '/')
                 }
             )
 
