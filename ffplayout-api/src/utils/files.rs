@@ -158,8 +158,16 @@ pub async fn create_directory(
 fn rename(source: &PathBuf, target: &PathBuf) -> Result<MoveObject, ServiceError> {
     match fs::rename(&source, &target) {
         Ok(_) => Ok(MoveObject {
-            source: source.display().to_string(),
-            target: target.display().to_string(),
+            source: source
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string(),
+            target: target
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string(),
         }),
         Err(e) => {
             error!("{e}");

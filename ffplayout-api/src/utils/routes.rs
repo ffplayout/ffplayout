@@ -499,7 +499,7 @@ pub async fn add_dir(
 /// curl -X POST http://localhost:8080/api/file/1/move/
 /// --header 'Content-Type: application/json' --header 'Authorization: <TOKEN>'
 /// -d '{"source": "<SOURCE>", "target": "<TARGET>"}'
-#[post("/file/{id}/move/")]
+#[post("/file/{id}/rename/")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 pub async fn move_rename(
     id: web::Path<i64>,

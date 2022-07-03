@@ -23,53 +23,54 @@ async fn create_schema() -> Result<SqliteQueryResult, sqlx::Error> {
     let query = "PRAGMA foreign_keys = ON;
     CREATE TABLE IF NOT EXISTS global
         (
-            id                      INTEGER PRIMARY KEY AUTOINCREMENT,
-            secret                  TEXT NOT NULL,
+            id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+            secret                   TEXT NOT NULL,
             UNIQUE(secret)
         );
     CREATE TABLE IF NOT EXISTS roles
         (
-            id                      INTEGER PRIMARY KEY AUTOINCREMENT,
-            name                    TEXT NOT NULL,
+            id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+            name                     TEXT NOT NULL,
             UNIQUE(name)
         );
     CREATE TABLE IF NOT EXISTS presets
         (
-            id                      INTEGER PRIMARY KEY AUTOINCREMENT,
-            channel_id              INTEGER,
-            name                    TEXT NOT NULL,
-            text                    TEXT NOT NULL,
-            x                       TEXT NOT NULL,
-            y                       TEXT NOT NULL,
-            fontsize                TEXT NOT NULL,
-            line_spacing            TEXT NOT NULL,
-            fontcolor               TEXT NOT NULL,
-            box                     TEXT NOT NULL,
-            boxcolor                TEXT NOT NULL,
-            boxborderw              TEXT NOT NULL,
-            alpha                   TEXT NOT NULL,
+            id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+            name                     TEXT NOT NULL,
+            text                     TEXT NOT NULL,
+            x                        TEXT NOT NULL,
+            y                        TEXT NOT NULL,
+            fontsize                 TEXT NOT NULL,
+            line_spacing             TEXT NOT NULL,
+            fontcolor                TEXT NOT NULL,
+            box                      TEXT NOT NULL,
+            boxcolor                 TEXT NOT NULL,
+            boxborderw               TEXT NOT NULL,
+            alpha                    TEXT NOT NULL,
+            channel_id               INTEGER NOT NULL DEFAULT 1,
+            FOREIGN KEY (channel_id) REFERENCES settings (id) ON UPDATE SET NULL ON DELETE SET NULL,
             UNIQUE(name)
         );
     CREATE TABLE IF NOT EXISTS settings
         (
-            id                      INTEGER PRIMARY KEY AUTOINCREMENT,
-            channel_name            TEXT NOT NULL,
-            preview_url             TEXT NOT NULL,
-            config_path             TEXT NOT NULL,
-            extra_extensions        TEXT NOT NULL,
-            timezone                TEXT NOT NULL,
-            service                 TEXT NOT NULL,
+            id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+            channel_name             TEXT NOT NULL,
+            preview_url              TEXT NOT NULL,
+            config_path              TEXT NOT NULL,
+            extra_extensions         TEXT NOT NULL,
+            timezone                 TEXT NOT NULL,
+            service                  TEXT NOT NULL,
             UNIQUE(channel_name)
         );
     CREATE TABLE IF NOT EXISTS user
         (
-            id                      INTEGER PRIMARY KEY AUTOINCREMENT,
-            mail                   TEXT NOT NULL,
-            username                TEXT NOT NULL,
-            password                TEXT NOT NULL,
-            salt                    TEXT NOT NULL,
-            role_id                 INTEGER NOT NULL DEFAULT 2,
-            FOREIGN KEY (role_id)   REFERENCES roles (id) ON UPDATE SET NULL ON DELETE SET NULL,
+            id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+            mail                     TEXT NOT NULL,
+            username                 TEXT NOT NULL,
+            password                 TEXT NOT NULL,
+            salt                     TEXT NOT NULL,
+            role_id                  INTEGER NOT NULL DEFAULT 2,
+            FOREIGN KEY (role_id)    REFERENCES roles (id) ON UPDATE SET NULL ON DELETE SET NULL,
             UNIQUE(mail, username)
         );";
     let result = sqlx::query(query).execute(&conn).await;
@@ -100,20 +101,20 @@ pub async fn db_init() -> Result<&'static str, Box<dyn std::error::Error>> {
         BEFORE INSERT ON global
         WHEN (SELECT COUNT(*) FROM global) >= 1
         BEGIN
-            SELECT RAISE(FAIL, 'Database is already init!');
+            SELECT RAISE(FAIL, 'Database is already initialized!');
         END;
         INSERT INTO global(secret) VALUES($1);
-        INSERT INTO presets(channel_id, name, text, x, y, fontsize, line_spacing, fontcolor, alpha, box, boxcolor, boxborderw)
-            VALUES('1', 'Default', 'Wellcome to ffplayout messenger!', '(w-text_w)/2', '(h-text_h)/2', '24', '4', '#ffffff@0xff', '1.0', '0', '#000000@0x80', '4'),
-            ('1', 'Empty Text', '', '0', '0', '24', '4', '#000000', '0', '0', '#000000', '0'),
-            ('1', 'Bottom Text fade in', 'The upcoming event will be delayed by a few minutes.', '(w-text_w)/2', '(h-line_h)*0.9', '24', '4', '#ffffff',
-                'ifnot(ld(1),st(1,t));if(lt(t,ld(1)+1),0,if(lt(t,ld(1)+2),(t-(ld(1)+1))/1,if(lt(t,ld(1)+8),1,if(lt(t,ld(1)+9),(1-(t-(ld(1)+8)))/1,0))))', '1', '#000000@0x80', '4'),
-            ('1', 'Scrolling Text', 'We have a very important announcement to make.', 'ifnot(ld(1),st(1,t));if(lt(t,ld(1)+1),w+4,w-w/12*mod(t-ld(1),12*(w+tw)/w))', '(h-line_h)*0.9',
-                '24', '4', '#ffffff', '1.0', '1', '#000000@0x80', '4');
-        INSERT INTO roles(name) VALUES('admin'), ('user'), ('guest');
         INSERT INTO settings(channel_name, preview_url, config_path, extra_extensions, timezone, service)
         VALUES('Channel 1', 'http://localhost/live/preview.m3u8',
-            '/etc/ffplayout/ffplayout.yml', '.jpg,.jpeg,.png', 'UTC', 'ffplayout.service');";
+            '/etc/ffplayout/ffplayout.yml', '.jpg,.jpeg,.png', 'UTC', 'ffplayout.service');
+        INSERT INTO roles(name) VALUES('admin'), ('user'), ('guest');
+        INSERT INTO presets(name, text, x, y, fontsize, line_spacing, fontcolor, box, boxcolor, boxborderw, alpha, channel_id)
+        VALUES('Default', 'Wellcome to ffplayout messenger!', '(w-text_w)/2', '(h-text_h)/2', '24', '4', '#ffffff@0xff', '0', '#000000@0x80', '4', '1.0', '1'),
+        ('Empty Text', '', '0', '0', '24', '4', '#000000', '0', '#000000', '0', '0', '1'),
+        ('Bottom Text fade in', 'The upcoming event will be delayed by a few minutes.', '(w-text_w)/2', '(h-line_h)*0.9', '24', '4', '#ffffff',
+            '1', '#000000@0x80', '4', 'ifnot(ld(1),st(1,t));if(lt(t,ld(1)+1),0,if(lt(t,ld(1)+2),(t-(ld(1)+1))/1,if(lt(t,ld(1)+8),1,if(lt(t,ld(1)+9),(1-(t-(ld(1)+8)))/1,0))))', '1'),
+        ('Scrolling Text', 'We have a very important announcement to make.', 'ifnot(ld(1),st(1,t));if(lt(t,ld(1)+1),w+4,w-w/12*mod(t-ld(1),12*(w+tw)/w))', '(h-line_h)*0.9',
+            '24', '4', '#ffffff', '1', '#000000@0x80', '4', '1.0', '1');";
     sqlx::query(query).bind(secret).execute(&instances).await?;
     instances.close().await;
 
