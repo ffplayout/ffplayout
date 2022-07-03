@@ -149,6 +149,10 @@ pub fn write_hls(
         proc_control.is_terminated.clone(),
     );
 
+    if config.out.preview {
+        warn!("Preview in HLS mode is not supported!");
+    }
+
     // spawn a thread for ffmpeg ingest server and create a channel for package sending
     if config.ingest.enable {
         thread::spawn(move || ingest_to_hls_server(config_clone, play_stat, proc_control_c));
