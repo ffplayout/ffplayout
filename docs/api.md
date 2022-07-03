@@ -20,7 +20,7 @@ JSON Response:
 	"status": 200,
 	"data": {
 		"id": 1,
-		"email": "user@example.org",
+		"mail": "user@example.org",
 		"username": "user",
 		"token": "<TOKEN>"
 	}
@@ -36,13 +36,13 @@ From here on all request **must** contain the authorization header:\
 Get current user, response is in JSON format
 
 - **PUT** `/api/user/{user id}`\
-JSON Data: `{"email": "<EMAIL>", "password": "<PASS>"}`
+JSON Data: `{"mail": "<MAIL>", "password": "<PASS>"}`
 
 - **POST** `/api/user/`\
 JSON Data:
 ```JSON
 {
-    "email": "<EMAIL>",
+    "mail": "<MAIL>",
     "username": "<USER>",
     "password": "<PASS>",
     "role_id": 1
