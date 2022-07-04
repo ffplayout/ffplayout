@@ -10,14 +10,14 @@ use serde::{Deserialize, Serialize};
 use simplelog::*;
 
 use crate::utils::{errors::ServiceError, playout_config};
-use ffplayout_lib::utils::file_extension;
+use ffplayout_lib::utils::{file_extension, MediaProbe};
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct PathObject {
     pub source: String,
     parent: Option<String>,
     folders: Option<Vec<String>>,
-    files: Option<Vec<String>>,
+    files: Option<Vec<VideoFile>>,
 }
 
 impl PathObject {
@@ -35,6 +35,12 @@ impl PathObject {
 pub struct MoveObject {
     source: String,
     target: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct VideoFile {
+    name: String,
+    duration: f64,
 }
 
 /// Normalize absolut path
@@ -91,7 +97,9 @@ pub async fn browser(id: i64, path_obj: &PathObject) -> Result<PathObject, Servi
         }
     };
 
-    paths.sort_by_key(|dir| dir.path());
+    paths.sort_by_key(|dir| dir.path().display().to_string().to_lowercase());
+    let mut files = vec![];
+    let mut folders = vec![];
 
     for path in paths {
         let file_path = path.path().to_owned();
@@ -103,19 +111,29 @@ pub async fn browser(id: i64, path_obj: &PathObject) -> Result<PathObject, Servi
         }
 
         if file_path.is_dir() {
-            if let Some(ref mut folders) = obj.folders {
-                folders.push(path.file_name().unwrap().to_string_lossy().to_string());
-            }
+            folders.push(path.file_name().unwrap().to_string_lossy().to_string());
         } else if file_path.is_file() {
             if let Some(ext) = file_extension(&file_path) {
                 if extensions.contains(&ext.to_string().to_lowercase()) {
-                    if let Some(ref mut files) = obj.files {
-                        files.push(path.file_name().unwrap().to_string_lossy().to_string());
+                    let media = MediaProbe::new(&path.display().to_string());
+                    let mut duration = 0.0;
+
+                    if let Some(dur) = media.format.and_then(|f| f.duration) {
+                        duration = dur.parse().unwrap_or(0.0)
                     }
+
+                    let video = VideoFile {
+                        name: path.file_name().unwrap().to_string_lossy().to_string(),
+                        duration,
+                    };
+                    files.push(video);
                 }
             }
         }
     }
+
+    obj.folders = Some(folders);
+    obj.files = Some(files);
 
     Ok(obj)
 }
@@ -240,7 +258,7 @@ pub async fn remove_file_or_folder(id: i64, source_path: &String) -> Result<(), 
     Err(ServiceError::InternalServerError)
 }
 
-async fn valid_path(id: i64, path: &String) -> Result<(), ServiceError> {
+async fn valid_path(id: i64, path: &String) -> Result<PathBuf, ServiceError> {
     let (config, _) = playout_config(&id).await?;
     let (test_path, _, _) = norm_abs_path(&config.storage.path, path);
 
@@ -248,10 +266,14 @@ async fn valid_path(id: i64, path: &String) -> Result<(), ServiceError> {
         return Err(ServiceError::BadRequest("Target folder not exists!".into()));
     }
 
-    Ok(())
+    Ok(test_path)
 }
 
-pub async fn upload(id: i64, mut payload: Multipart) -> Result<HttpResponse, ServiceError> {
+pub async fn upload(
+    id: i64,
+    mut payload: Multipart,
+    path: &String,
+) -> Result<HttpResponse, ServiceError> {
     while let Some(mut field) = payload.try_next().await? {
         let content_disposition = field.content_disposition();
         debug!("{content_disposition}");
@@ -260,16 +282,12 @@ pub async fn upload(id: i64, mut payload: Multipart) -> Result<HttpResponse, Ser
             .take(20)
             .map(char::from)
             .collect();
-        let path_name = content_disposition.get_name().unwrap_or(&rand_string);
         let filename = content_disposition
             .get_filename()
             .map_or_else(|| rand_string.to_string(), sanitize_filename::sanitize);
 
-        if let Err(e) = valid_path(id, &path_name.to_string()).await {
-            return Err(e);
-        }
-
-        let filepath = PathBuf::from(path_name).join(filename);
+        let target_path = valid_path(id, path).await?;
+        let filepath = target_path.join(filename);
 
         if filepath.is_file() {
             return Err(ServiceError::BadRequest("Target already exists!".into()));

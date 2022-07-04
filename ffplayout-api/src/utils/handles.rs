@@ -106,7 +106,7 @@ pub async fn db_init() -> Result<&'static str, Box<dyn std::error::Error>> {
         INSERT INTO global(secret) VALUES($1);
         INSERT INTO settings(channel_name, preview_url, config_path, extra_extensions, timezone, service)
         VALUES('Channel 1', 'http://localhost/live/preview.m3u8',
-            '/etc/ffplayout/ffplayout.yml', '.jpg,.jpeg,.png', 'UTC', 'ffplayout.service');
+            '/etc/ffplayout/ffplayout.yml', 'jpg,jpeg,png', 'UTC', 'ffplayout.service');
         INSERT INTO roles(name) VALUES('admin'), ('user'), ('guest');
         INSERT INTO presets(name, text, x, y, fontsize, line_spacing, fontcolor, box, boxcolor, boxborderw, alpha, channel_id)
         VALUES('Default', 'Wellcome to ffplayout messenger!', '(w-text_w)/2', '(h-text_h)/2', '24', '4', '#ffffff@0xff', '0', '#000000@0x80', '4', '1.0', '1'),

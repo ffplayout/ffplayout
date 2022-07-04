@@ -7,7 +7,7 @@ use argon2::{
     password_hash::{rand_core::OsRng, PasswordHash, SaltString},
     Argon2, PasswordHasher, PasswordVerifier,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use simplelog::*;
 
 use crate::utils::{
@@ -39,6 +39,18 @@ struct ResponseObj<T> {
 struct UserObj<T> {
     message: String,
     user: Option<T>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct DateObj {
+    #[serde(default)]
+    date: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct FileObj {
+    #[serde(default)]
+    path: String,
 }
 
 /// curl -X POST http://127.0.0.1:8080/auth/login/ -H "Content-Type: application/json" \
@@ -396,14 +408,15 @@ pub async fn process_control(
 ///
 /// ----------------------------------------------------------------------------
 
-/// curl -X GET http://localhost:8080/api/playlist/1/2022-06-20
+/// curl -X GET http://localhost:8080/api/playlist/1?date=2022-06-20
 /// --header 'Content-Type: application/json' --header 'Authorization: <TOKEN>'
-#[get("/playlist/{id}/{date}")]
+#[get("/playlist/{id}")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 pub async fn get_playlist(
-    params: web::Path<(i64, String)>,
+    id: web::Path<i64>,
+    obj: web::Query<DateObj>,
 ) -> Result<impl Responder, ServiceError> {
-    match read_playlist(params.0, params.1.clone()).await {
+    match read_playlist(*id, obj.date.clone()).await {
         Ok(playlist) => Ok(web::Json(playlist)),
         Err(e) => Err(e),
     }
@@ -455,14 +468,13 @@ pub async fn del_playlist(
 ///
 /// ----------------------------------------------------------------------------
 
-#[get("/log/{req:.*}")]
+#[get("/log/{id}")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
-pub async fn get_log(req: web::Path<String>) -> Result<impl Responder, ServiceError> {
-    let mut segments = req.split('/');
-    let id: i64 = segments.next().unwrap_or_default().parse().unwrap_or(0);
-    let date = segments.next().unwrap_or_default();
-
-    read_log_file(&id, date).await
+pub async fn get_log(
+    id: web::Path<i64>,
+    log: web::Query<DateObj>,
+) -> Result<impl Responder, ServiceError> {
+    read_log_file(&id, &log.date).await
 }
 
 /// ----------------------------------------------------------------------------
@@ -511,10 +523,10 @@ pub async fn move_rename(
     }
 }
 
-/// curl -X DELETE http://localhost:8080/api/file/1/remove/
+/// curl -X POST http://localhost:8080/api/file/1/remove/
 /// --header 'Content-Type: application/json' --header 'Authorization: <TOKEN>'
 /// -d '{"source": "<SOURCE>"}'
-#[delete("/file/{id}/remove/")]
+#[post("/file/{id}/remove/")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 pub async fn remove(
     id: web::Path<i64>,
@@ -526,8 +538,12 @@ pub async fn remove(
     }
 }
 
-#[post("/file/{id}/upload/")]
+#[put("/file/{id}/upload/")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
-async fn save_file(id: web::Path<i64>, payload: Multipart) -> Result<HttpResponse, ServiceError> {
-    upload(*id, payload).await
+async fn save_file(
+    id: web::Path<i64>,
+    payload: Multipart,
+    obj: web::Query<FileObj>,
+) -> Result<HttpResponse, ServiceError> {
+    upload(*id, payload, &obj.path).await
 }

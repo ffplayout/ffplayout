@@ -37,11 +37,10 @@ pub async fn read_playlist(id: i64, date: String) -> Result<JsonPlaylist, Servic
         .join(date.clone())
         .with_extension("json");
 
-    if let Ok(p) = json_reader(&playlist_path) {
-        return Ok(p);
-    };
-
-    Err(ServiceError::InternalServerError)
+    match json_reader(&playlist_path) {
+        Ok(p) => Ok(p),
+        Err(e) => Err(ServiceError::NoContent(e.to_string())),
+    }
 }
 
 pub async fn write_playlist(id: i64, json_data: JsonPlaylist) -> Result<String, ServiceError> {
