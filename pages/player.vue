@@ -6,7 +6,7 @@
                 <b-col cols="3" class="player-col">
                     <b-aspect aspect="16:9">
                         <video
-                            v-if="configGui[configID].player_url.split('.').pop() === 'flv'"
+                            v-if="configGui[configID].preview_url.split('.').pop() === 'flv'"
                             id="httpStream"
                             ref="httpStream"
                             width="100%"
@@ -109,7 +109,7 @@
                         color="#ff9c36"
                     />
 
-                    <div v-if="folderTree.tree" class="browser-div">
+                    <div v-if="folderTree.parent" class="browser-div">
                         <div>
                             <b-breadcrumb>
                                 <b-breadcrumb-item
@@ -126,23 +126,23 @@
                         <perfect-scrollbar :options="scrollOP" class="player-browser-scroll">
                             <b-list-group>
                                 <b-list-group-item
-                                    v-for="folder in folderTree.tree[1]"
+                                    v-for="folder in folderTree.folders"
                                     :key="folder.key"
                                     class="browser-item"
                                 >
-                                    <b-link @click="getPath(extensions, `/${folderTree.tree[0]}/${folder}`)">
+                                    <b-link @click="getPath(extensions, `/${folderTree.source}/${folder}`)">
                                         <b-icon-folder-fill class="browser-icons" /> {{ folder }}
                                     </b-link>
                                 </b-list-group-item>
                                 <draggable
-                                    :list="folderTree.tree[2]"
+                                    :list="folderTree.files"
                                     :clone="cloneClip"
                                     :group="{ name: 'playlist', pull: 'clone', put: false }"
                                     :sort="false"
                                 >
                                     <b-list-group-item
-                                        v-for="file in folderTree.tree[2]"
-                                        :key="file.key"
+                                        v-for="file in folderTree.files"
+                                        :key="file.name"
                                         class="browser-item"
                                     >
                                         <b-row>
@@ -150,10 +150,10 @@
                                                 <b-icon-film class="browser-icons" />
                                             </b-col>
                                             <b-col class="browser-item-text grabbing">
-                                                {{ file.file }}
+                                                {{ file.name }}
                                             </b-col>
                                             <b-col cols="1" class="browser-play-col">
-                                                <b-link @click="showPreviewModal(`/${folderTree.tree[0]}/${file.file}`)">
+                                                <b-link @click="showPreviewModal(`/${folderTree.parent}/${folderTree.source}/${file.name}`)">
                                                     <b-icon-play-fill />
                                                 </b-link>
                                             </b-col>
@@ -407,7 +407,7 @@ export default {
             this.videoOptions.sources = [
                 {
                     type: 'application/x-mpegURL',
-                    src: this.configGui[id].player_url
+                    src: this.configGui[id].preview_url
                 }
             ]
 
@@ -421,7 +421,7 @@ export default {
         this.videoOptions.sources = [
             {
                 type: 'application/x-mpegURL',
-                src: this.configGui[this.configID].player_url
+                src: this.configGui[this.configID].preview_url
             }
         ]
 
@@ -449,11 +449,11 @@ export default {
             this.$store.dispatch('playlist/animClock')
         }
 
-        const streamExtension = this.configGui[this.configID].player_url.split('.').pop()
+        const streamExtension = this.configGui[this.configID].preview_url.split('.').pop()
         let player
 
         if (streamExtension === 'flv') {
-            this.httpFlvSource.url = this.configGui[this.configID].player_url
+            this.httpFlvSource.url = this.configGui[this.configID].preview_url
             const element = this.$refs.httpStream
 
             if (typeof player !== 'undefined') {
@@ -486,7 +486,7 @@ export default {
 
         async getStatus () {
             const channel = this.configGui[this.configID].id
-            const status = await this.$axios.post('api/player/system/', { run: 'status', channel })
+            const status = await this.$axios.post(`api/control/${channel}/process/`, { command: 'status' })
 
             if (status.data.data && (status.data.data === 'RUNNING' || status.data.data === 'active')) {
                 this.isPlaying = 'is-playing'
@@ -497,7 +497,7 @@ export default {
 
         async playoutControl (state) {
             const channel = this.configGui[this.configID].id
-            await this.$axios.post('api/player/system/', { run: state, channel })
+            await this.$axios.post(`api/control/${channel}/process/`, { run: state })
 
             setTimeout(() => { this.getStatus() }, 1000)
         },

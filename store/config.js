@@ -90,9 +90,9 @@ export const actions = {
         let response
 
         if (state.configGuiRaw.some(e => e.id === stringObj.id)) {
-            response = await this.$axios.put(`api/player/guisettings/${obj.id}/`, stringObj)
+            response = await this.$axios.patch(`api/settings/${obj.id}`, stringObj)
         } else {
-            response = await this.$axios.post('api/player/guisettings/', stringObj)
+            response = await this.$axios.post('api/settings/', stringObj)
             const guiConfigs = []
 
             for (const obj of state.configGui) {

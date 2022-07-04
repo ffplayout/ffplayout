@@ -60,7 +60,7 @@ export const actions = {
             dateToday = this.$dayjs(dateToday).tz(rootState.config.timezone).subtract(1, 'day').format('YYYY-MM-DD')
         }
 
-        const response = await this.$axios.get(`api/player/playlist/?date=${date}&channel=${channel}`)
+        const response = await this.$axios.get(`api/playlist/${channel}?date=${date}`)
 
         if (response.data && response.data.program) {
             commit('UPDATE_PLAYLIST', this.$processPlaylist(rootState.config.startInSec, response.data.program))

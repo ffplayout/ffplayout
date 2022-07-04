@@ -71,7 +71,7 @@
                                 <b-list-group class="files-list">
                                     <b-list-group-item
                                         v-for="file in folderTree.files"
-                                        :key="file"
+                                        :key="file.name"
                                         class="browser-item"
                                     >
                                         <b-row>
@@ -79,10 +79,10 @@
                                                 <b-icon-film class="browser-icons" />
                                             </b-col>
                                             <b-col class="browser-item-text">
-                                                {{ file }}
+                                                {{ file.name }}
                                             </b-col>
                                             <b-col cols="1" class="browser-play-col">
-                                                <b-link title="Preview" @click="showPreviewModal(`/${folderTree.parent}/${folderTree.source}/${file}`)">
+                                                <b-link title="Preview" @click="showPreviewModal(`/${folderTree.parent}/${folderTree.source}/${file.name}`)">
                                                     <b-icon-play-fill />
                                                 </b-link>
                                             </b-col>
@@ -90,12 +90,12 @@
                                                 <span class="duration">{{ file.duration | toMin }}</span>
                                             </b-col>
                                             <b-col cols="1" class="small-col">
-                                                <b-link title="Rename File" @click="showRenameModal(file)">
+                                                <b-link title="Rename File" @click="showRenameModal(file.name)">
                                                     <b-icon-pencil-square />
                                                 </b-link>
                                             </b-col>
                                             <b-col cols="1" class="small-col">
-                                                <b-link title="Delete File" @click="showDeleteModal('File', `/${folderTree.parent}/${folderTree.source}/${file}`)">
+                                                <b-link title="Delete File" @click="showDeleteModal('File', `/${folderTree.parent}/${folderTree.source}/${file.name}`)">
                                                     <b-icon-x-circle-fill />
                                                 </b-link>
                                             </b-col>
@@ -309,7 +309,11 @@ export default {
     },
 
     mounted () {
-        this.extensions = [...this.configPlayout.storage.extensions, ...this.configGui[this.configID].extra_extensions].join(',')
+        const exts = [...this.configPlayout.storage.extensions, ...this.configGui[this.configID].extra_extensions].map((ext) => {
+            return `.${ext}`
+        })
+
+        this.extensions = exts.join(',')
         this.getPath(this.extensions, '')
     },
 
@@ -358,7 +362,7 @@ export default {
 
         async onSubmitCreateFolder (evt) {
             evt.preventDefault()
-            const path = this.crumbs.map(e => e.text).join('/') + '/' + this.folderName
+            const path = (this.crumbs[this.crumbs.length - 1].path + '/' + this.folderName).replace(/\/[/]+/, '/')
 
             await this.$axios.post(
                 `api/file/${this.configGui[this.configID].id}/create-folder/`, { source: path }
@@ -396,11 +400,12 @@ export default {
                 this.currentProgress = progress
             }
 
-            const channel = this.configGui[this.configID].id
-
             for (const [i, file] of this.inputFiles.entries()) {
                 this.uploadTask = file.name
                 this.currentNumber = i + 1
+
+                const formData = new FormData()
+                formData.append(file.name, file)
 
                 const config = {
                     onUploadProgress: uploadProgress(file.name),
@@ -409,8 +414,8 @@ export default {
                 }
 
                 await this.$axios.put(
-                    `api/player/media/upload/${encodeURIComponent(file.name)}?path=${encodeURIComponent(this.crumbs.map(e => e.text).join('/'))}&channel=${channel}`,
-                    file,
+                    `api/file/${this.configGui[this.configID].id}/upload/?path=${encodeURIComponent(this.crumbs[this.crumbs.length - 1].path)}`,
+                    formData,
                     config
                 )
                     .then((res) => {
@@ -503,9 +508,9 @@ export default {
             this.deleteSource = src
 
             if (type === 'File') {
-                this.previewName = src.split('/').slice(-1)[0]
+                this.previewName = src.split('/').slice(-1)[0].replace('//', '/')
             } else {
-                this.previewName = src
+                this.previewName = src.replace('//', '/')
             }
 
             this.deleteType = type
@@ -520,12 +525,14 @@ export default {
                 file = this.deleteSource.split('/').slice(-1)[0]
                 pathName = this.deleteSource.substring(0, this.deleteSource.lastIndexOf('/') + 1)
             } else {
-                file = null
+                file = ''
                 pathName = this.deleteSource
             }
 
-            await this.$axios.delete(
-                `api/player/media/op/?file=${encodeURIComponent(file)}&path=${encodeURIComponent(pathName)}&channel=${this.configGui[this.configID].id}`)
+            const source = `${pathName}/${file}`.replace('//', '/')
+
+            await this.$axios.post(
+                `api/file/${this.configGui[this.configID].id}/remove/`, { source })
                 .catch(err => console.log(err))
 
             this.$root.$emit('bv::hide::modal', 'delete-modal')

@@ -88,7 +88,7 @@ export default {
             }
 
             const response = await this.$axios.get(
-                `api/log/${this.$store.state.config.configGui[this.$store.state.config.configID].id}/${date}`)
+                `api/log/${this.$store.state.config.configGui[this.$store.state.config.configID].id}?date=${date}`)
 
             if (response.data) {
                 this.currentLog = response.data
