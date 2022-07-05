@@ -159,6 +159,7 @@ pub async fn run_args(mut args: Args) -> Result<(), i32> {
             password: args.password.unwrap(),
             salt: None,
             role_id: Some(1),
+            channel_id: Some(1),
             token: None,
         };
 

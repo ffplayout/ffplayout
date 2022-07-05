@@ -18,6 +18,9 @@ pub struct User {
     #[serde(skip_serializing)]
     pub role_id: Option<i64>,
     #[sqlx(default)]
+    #[serde(skip_serializing)]
+    pub channel_id: Option<i64>,
+    #[sqlx(default)]
     pub token: Option<String>,
 }
 
@@ -42,7 +45,6 @@ pub struct TextPreset {
     #[serde(skip_deserializing)]
     pub id: i64,
     pub channel_id: i64,
-    #[serde(skip_deserializing)]
     pub name: String,
     pub text: String,
     pub x: String,

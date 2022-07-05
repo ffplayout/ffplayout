@@ -33,6 +33,17 @@ async fn create_schema() -> Result<SqliteQueryResult, sqlx::Error> {
             name                     TEXT NOT NULL,
             UNIQUE(name)
         );
+    CREATE TABLE IF NOT EXISTS settings
+        (
+            id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+            channel_name             TEXT NOT NULL,
+            preview_url              TEXT NOT NULL,
+            config_path              TEXT NOT NULL,
+            extra_extensions         TEXT NOT NULL,
+            timezone                 TEXT NOT NULL,
+            service                  TEXT NOT NULL,
+            UNIQUE(channel_name)
+        );
     CREATE TABLE IF NOT EXISTS presets
         (
             id                       INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -51,17 +62,6 @@ async fn create_schema() -> Result<SqliteQueryResult, sqlx::Error> {
             FOREIGN KEY (channel_id) REFERENCES settings (id) ON UPDATE SET NULL ON DELETE SET NULL,
             UNIQUE(name)
         );
-    CREATE TABLE IF NOT EXISTS settings
-        (
-            id                       INTEGER PRIMARY KEY AUTOINCREMENT,
-            channel_name             TEXT NOT NULL,
-            preview_url              TEXT NOT NULL,
-            config_path              TEXT NOT NULL,
-            extra_extensions         TEXT NOT NULL,
-            timezone                 TEXT NOT NULL,
-            service                  TEXT NOT NULL,
-            UNIQUE(channel_name)
-        );
     CREATE TABLE IF NOT EXISTS user
         (
             id                       INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -70,7 +70,9 @@ async fn create_schema() -> Result<SqliteQueryResult, sqlx::Error> {
             password                 TEXT NOT NULL,
             salt                     TEXT NOT NULL,
             role_id                  INTEGER NOT NULL DEFAULT 2,
+            channel_id               INTEGER NOT NULL DEFAULT 1,
             FOREIGN KEY (role_id)    REFERENCES roles (id) ON UPDATE SET NULL ON DELETE SET NULL,
+            FOREIGN KEY (channel_id) REFERENCES settings (id) ON UPDATE SET NULL ON DELETE SET NULL,
             UNIQUE(mail, username)
         );";
     let result = sqlx::query(query).execute(&conn).await;
@@ -290,6 +292,15 @@ pub async fn db_add_preset(preset: TextPreset) -> Result<SqliteQueryResult, sqlx
         .bind(preset.boxborderw)
         .execute(&conn)
         .await?;
+    conn.close().await;
+
+    Ok(result)
+}
+
+pub async fn db_delete_preset(id: &i64) ->  Result<SqliteQueryResult, sqlx::Error> {
+    let conn = db_connection().await?;
+    let query = "DELETE FROM presets WHERE id = $1;";
+    let result: SqliteQueryResult = sqlx::query(query).bind(id).execute(&conn).await?;
     conn.close().await;
 
     Ok(result)
