@@ -67,7 +67,6 @@ export const actions = {
 
             if (date === dateToday) {
                 commit('UPDATE_TODAYS_PLAYLIST', _.cloneDeep(response.data.program))
-                dispatch('setCurrentClip')
             } else {
                 commit('SET_CURRENT_CLIP_INDEX', null)
             }
@@ -76,43 +75,8 @@ export const actions = {
         }
     },
 
-    setCurrentClip ({ commit, dispatch, state, rootState }) {
-        let begin
-        let lastTime = this.$timeToSeconds(this.$dayjs().tz(rootState.config.timezone).format('HH:mm:ss'))
-
-        if (Number.isFinite(rootState.config.startInSec)) {
-            begin = rootState.config.startInSec
-        } else {
-            commit('SET_CURRENT_CLIP', 'day_start is not set, cannot calculate current clip')
-            return
-        }
-
-        if (lastTime < begin) {
-            lastTime += rootState.config.playlistLength
-        }
-
-        for (let i = 0; i < state.playlistToday.length; i++) {
-            const duration = state.playlistToday[i].out - state.playlistToday[i].in
-
-            // animate the progress bar
-            if (lastTime < begin + duration) {
-                const progValue = (lastTime - begin) * 100 / duration
-                commit('SET_PROGRESS_VALUE', progValue)
-                commit('SET_CURRENT_CLIP', state.playlistToday[i].source)
-                commit('SET_CURRENT_CLIP_INDEX', i)
-                commit('SET_CURRENT_CLIP_START', begin)
-                commit('SET_CURRENT_CLIP_DURATION', duration)
-                commit('SET_CURRENT_CLIP_IN', state.playlistToday[i].in)
-                commit('SET_CURRENT_CLIP_OUT', state.playlistToday[i].out)
-
-                break
-            }
-
-            begin += duration
-        }
-    },
-
-    animClock ({ commit, dispatch, state, rootState }) {
+    async playoutStat ({ commit, dispatch, state, rootState }) {
+        const channel = rootState.config.configGui[rootState.config.configID].id
         const time = this.$dayjs().tz(rootState.config.timezone).format('HH:mm:ss')
         let timeSec = this.$timeToSeconds(time)
 
@@ -126,16 +90,19 @@ export const actions = {
             return
         }
 
-        const playTime = timeSec - state.currentClipStart
-        const progValue = playTime * 100 / state.currentClipDuration
+        const response = await this.$axios.get(`api/control/${channel}/media/current`)
 
-        // set progress bar value
-        if (playTime <= state.currentClipDuration && progValue >= 0) {
+        if (response.data) {
+            const obj = response.data.result
+            const progValue = obj.played_sec * 100 / obj.current_media.out
             commit('SET_PROGRESS_VALUE', progValue)
-            commit('SET_TIME_LEFT', this.$secToHMS(state.currentClipDuration - playTime))
-        } else {
-            commit('SET_PROGRESS_VALUE', 0)
-            dispatch('setCurrentClip')
+            commit('SET_CURRENT_CLIP', obj.current_media.source)
+            commit('SET_CURRENT_CLIP_INDEX', obj.index)
+            commit('SET_CURRENT_CLIP_START', obj.start_sec)
+            commit('SET_CURRENT_CLIP_DURATION', obj.current_media.duration)
+            commit('SET_CURRENT_CLIP_IN', obj.current_media.seek)
+            commit('SET_CURRENT_CLIP_OUT', obj.current_media.out)
+            commit('SET_TIME_LEFT', this.$secToHMS(obj.remaining_sec))
         }
     }
 }

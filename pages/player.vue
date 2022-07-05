@@ -2,7 +2,7 @@
     <div style="height:100%;">
         <Menu />
         <b-container class="control-container">
-            <b-row class="control-row">
+            <b-row class="control-row" align-v="stretch">
                 <b-col cols="3" class="player-col">
                     <b-aspect aspect="16:9">
                         <video
@@ -15,7 +15,7 @@
                         <video-player v-else-if="videoOptions.sources" :key="configID" reference="videoPlayer" :options="videoOptions" />
                     </b-aspect>
                 </b-col>
-                <b-col class="control-col">
+                <b-col>
                     <b-row class="control-col">
                         <b-col cols="8" class="status-col">
                             <b-row class="status-row">
@@ -52,7 +52,7 @@
                                             class="control-button control-button-play"
                                             :class="isPlaying"
                                             variant="primary"
-                                            @click="playoutControl('start')"
+                                            @click="controlProcess('start')"
                                         >
                                             <b-icon-play />
                                         </b-button>
@@ -64,22 +64,58 @@
                                             title="Stop Playout Service"
                                             class="control-button control-button-stop"
                                             variant="primary"
-                                            @click="playoutControl('stop')"
+                                            @click="controlProcess('stop')"
                                         >
                                             <b-icon-stop />
                                         </b-button>
                                     </div>
                                 </b-col>
-                                <!-- <div class="w-100" />-->
                                 <b-col>
                                     <div>
                                         <b-button
                                             title="Restart Playout Service"
                                             class="control-button control-button-restart"
                                             variant="primary"
-                                            @click="playoutControl('restart')"
+                                            @click="controlProcess('restart')"
                                         >
                                             <b-icon-arrow-clockwise />
+                                        </b-button>
+                                    </div>
+                                </b-col>
+                                <div class="w-100" />
+                                <b-col>
+                                    <div>
+                                        <b-button
+                                            title="Jump to last Clip"
+                                            class="control-button control-button-control"
+                                            variant="primary"
+                                            @click="controlPlayout('back')"
+                                        >
+                                            <b-icon-skip-start />
+                                        </b-button>
+                                    </div>
+                                </b-col>
+                                <b-col>
+                                    <div>
+                                        <b-button
+                                            title="Reset Playout State"
+                                            class="control-button control-button-control"
+                                            variant="primary"
+                                            @click="controlPlayout('reset')"
+                                        >
+                                            <b-icon-arrow-repeat />
+                                        </b-button>
+                                    </div>
+                                </b-col>
+                                <b-col>
+                                    <div>
+                                        <b-button
+                                            title="Jump to next Clip"
+                                            class="control-button control-button-control"
+                                            variant="primary"
+                                            @click="controlPlayout('next')"
+                                        >
+                                            <b-icon-skip-end />
                                         </b-button>
                                     </div>
                                 </b-col>
@@ -102,7 +138,7 @@
             <splitpanes class="list-row default-theme pane-row">
                 <pane min-size="20" size="24">
                     <loading
-                        :active.sync="isLoading"
+                        :active.sync="browserIsLoading"
                         :can-cancel="false"
                         :is-full-page="false"
                         background-color="#485159"
@@ -200,6 +236,13 @@
                             </b-list-group-item>
                         </b-list-group>
                         <perfect-scrollbar id="scroll-container" :options="scrollOP">
+                            <loading
+                                :active.sync="playlistIsLoading"
+                                :can-cancel="false"
+                                :is-full-page="false"
+                                background-color="#485159"
+                                color="#ff9c36"
+                            />
                             <b-list-group class="playlist-list-group" :style="`height: ${(playlist) ? playlist.length * 52 + 52 : 300}px`">
                                 <draggable
                                     id="playlist-group"
@@ -266,6 +309,9 @@
                 </b-button>
                 <b-button v-if="!configPlayout.playlist.loop" v-b-tooltip.hover title="Loop Clips in Playlist" variant="primary" @click="loopClips()">
                     <b-icon-view-stacked />
+                </b-button>
+                <b-button v-b-tooltip.hover title="Generate a randomized Playlist" variant="primary" @click="generatePlaylist(listDate)">
+                    <b-icon-sort-down-alt />
                 </b-button>
                 <b-button v-b-tooltip.hover title="Save Playlist" variant="primary" @click="savePlaylist(listDate)">
                     <b-icon-download />
@@ -346,7 +392,8 @@ export default {
 
     data () {
         return {
-            isLoading: false,
+            browserIsLoading: false,
+            playlistIsLoading: false,
             isPlaying: '',
             listDate: this.$dayjs().tz(this.timezone).format('YYYY-MM-DD'),
             targetDate: this.$dayjs().tz(this.timezone).format('YYYY-MM-DD'),
@@ -399,7 +446,9 @@ export default {
 
     watch: {
         listDate () {
+            this.playlistIsLoading = true
             this.getPlaylist()
+            this.playlistIsLoading = false
             setTimeout(() => { scrollTo(this) }, 5000)
         },
 
@@ -440,14 +489,20 @@ export default {
     },
 
     mounted () {
-        if (process.env.NODE_ENV === 'production') {
-            this.interval = setInterval(() => {
-                this.$store.dispatch('playlist/animClock')
-                this.getStatus()
-            }, 5000)
-        } else {
-            this.$store.dispatch('playlist/animClock')
-        }
+        // if (process.env.NODE_ENV === 'production') {
+        //     this.interval = setInterval(() => {
+        //         this.$store.dispatch('playlist/animClock')
+        //         this.getStatus()
+        //     }, 5000)
+        // } else {
+        //     this.$store.dispatch('playlist/animClock')
+        // }
+
+        this.interval = setInterval(() => {
+            this.$store.dispatch('playlist/playoutStat')
+            this.getStatus()
+        }, 5000)
+        this.$store.dispatch('playlist/playoutStat')
 
         const streamExtension = this.configGui[this.configID].preview_url.split('.').pop()
         let player
@@ -479,25 +534,32 @@ export default {
 
     methods: {
         async getPath (extensions, path) {
-            this.isLoading = true
+            this.browserIsLoading = true
             await this.$store.dispatch('media/getTree', { extensions, path })
-            this.isLoading = false
+            this.browserIsLoading = false
         },
 
         async getStatus () {
             const channel = this.configGui[this.configID].id
             const status = await this.$axios.post(`api/control/${channel}/process/`, { command: 'status' })
 
-            if (status.data.data && (status.data.data === 'RUNNING' || status.data.data === 'active')) {
+            if (status.data && status.data === 'active') {
                 this.isPlaying = 'is-playing'
             } else {
                 this.isPlaying = ''
             }
         },
 
-        async playoutControl (state) {
+        async controlProcess (state) {
             const channel = this.configGui[this.configID].id
-            await this.$axios.post(`api/control/${channel}/process/`, { run: state })
+            await this.$axios.post(`api/control/${channel}/process/`, { command: state })
+
+            setTimeout(() => { this.getStatus() }, 1000)
+        },
+
+        async controlPlayout (state) {
+            const channel = this.configGui[this.configID].id
+            await this.$axios.post(`api/control/${channel}/playout/`, { command: state })
 
             setTimeout(() => { this.getStatus() }, 1000)
         },
@@ -592,39 +654,50 @@ export default {
             this.$store.commit('playlist/UPDATE_PLAYLIST', this.$processPlaylist(this.startInSec, tempList))
         },
 
+        async generatePlaylist (listDate) {
+            this.playlistIsLoading = true
+            const generate = await this.$axios.get(
+                `api/playlist/${this.configGui[this.configID].id}/generate/${listDate}`
+            )
+            this.playlistIsLoading = false
+
+            if (generate.status === 200 || generate.status === 201) {
+                this.$store.commit('UPDATE_VARIANT', 'success')
+                this.$store.commit('UPDATE_SHOW_ERROR_ALERT', true)
+                this.$store.commit('UPDATE_ERROR_ALERT_MESSAGE', 'Generate Playlist done...')
+                this.$store.commit('playlist/UPDATE_PLAYLIST', this.$processPlaylist(this.startInSec, generate.data.program))
+
+                setTimeout(() => { this.$store.commit('UPDATE_SHOW_ERROR_ALERT', false) }, 2000)
+            }
+        },
+
         async savePlaylist (saveDate) {
             this.$store.commit('playlist/UPDATE_PLAYLIST', this.$processPlaylist(this.startInSec, this.playlist))
 
             const saveList = this.playlist.map(({ begin, ...item }) => item)
 
             const postSave = await this.$axios.post(
-                'api/player/playlist/',
-                {
-                    data: { channel: this.$store.state.config.configGui.channel, date: saveDate, program: saveList },
-                    channel: this.configGui[this.configID].id
-                }
+                `api/playlist/${this.configGui[this.configID].id}/`,
+                { channel: this.$store.state.config.configGui.channel, date: saveDate, program: saveList }
             )
 
             if (postSave.status === 200 || postSave.status === 201) {
                 this.$store.commit('UPDATE_VARIANT', 'success')
                 this.$store.commit('UPDATE_SHOW_ERROR_ALERT', true)
-                this.$store.commit('UPDATE_ERROR_AERT_MESSAGE', 'Playlist saved...')
+                this.$store.commit('UPDATE_ERROR_ALERT_MESSAGE', 'Playlist saved...')
 
                 setTimeout(() => { this.$store.commit('UPDATE_SHOW_ERROR_ALERT', false) }, 2000)
             }
         },
 
         async deletePlaylist (playlistDate) {
-            this.$store.commit('playlist/UPDATE_PLAYLIST', [])
-            const date = playlistDate.split('-')
-            const playlistPath = `${this.configPlayout.playlist.path}/${date[0]}/${date[1]}/${playlistDate}.json`
-
-            const postDelete = await this.$axios.post('api/player/playlist/', { data: { delete: playlistPath } })
+            const postDelete = await this.$axios.delete(`api/playlist/${this.configGui[this.configID].id}/${playlistDate}`)
 
             if (postDelete.status === 200 || postDelete.status === 201) {
+                this.$store.commit('playlist/UPDATE_PLAYLIST', [])
                 this.$store.commit('UPDATE_VARIANT', 'success')
                 this.$store.commit('UPDATE_SHOW_ERROR_ALERT', true)
-                this.$store.commit('UPDATE_ERROR_AERT_MESSAGE', 'Playlist deleted...')
+                this.$store.commit('UPDATE_ERROR_ALERT_MESSAGE', 'Playlist deleted...')
 
                 setTimeout(() => { this.$store.commit('UPDATE_SHOW_ERROR_ALERT', false) }, 2000)
             }
@@ -655,7 +728,6 @@ export default {
 .player-col {
     max-width: 542px;
     min-width: 380px;
-    margin-bottom: 6px;
 }
 
 .control-col {
@@ -694,6 +766,10 @@ export default {
     line-height: 0;
     width: 80%;
     height: 100%;
+}
+
+.control-button-control {
+    color: #06aad3;
 }
 
 .status-row {

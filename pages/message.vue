@@ -99,6 +99,21 @@
                                     />
                                 </b-form-group>
                             </b-col>
+                            <b-col>
+                                <b-form-group
+                                    label="Font Alpha"
+                                    label-for="input-6"
+                                >
+                                    <b-form-input
+                                        id="input-6"
+                                        v-model="form.fontAlpha"
+                                        type="number"
+                                        min="0"
+                                        max="1"
+                                        step="0.01"
+                                    />
+                                </b-form-group>
+                            </b-col>
                         </b-row>
                     </b-col>
                     <b-col>
@@ -120,6 +135,21 @@
                                         v-model="form.boxColor"
                                         type="color"
                                         required
+                                    />
+                                </b-form-group>
+                            </b-col>
+                            <b-col>
+                                <b-form-group
+                                    label="Box Alpha"
+                                    label-for="input-8"
+                                >
+                                    <b-form-input
+                                        id="input-8"
+                                        v-model="form.boxAlpha"
+                                        type="number"
+                                        min="0"
+                                        max="1"
+                                        step="0.01"
                                     />
                                 </b-form-group>
                             </b-col>
@@ -246,25 +276,40 @@ export default {
     },
 
     methods: {
+        decToHex (num) {
+            return '0x' + Math.round(num * 255).toString(16)
+        },
+
+        hexToDec (num) {
+            return (parseFloat(parseInt(num, 16)) / 255).toFixed(2)
+        },
+
         async getPreset (id) {
             const response = await this.$axios.get(`api/presets/${this.configGui[this.configID].id}`)
 
             if (response.data && !id) {
+                this.presets = []
                 for (const item of response.data) {
                     this.presets.push({ value: item.id, text: item.name })
                 }
             } else if (response.data) {
+                id -= 1
+                const fColor = response.data[id].fontcolor.split('@')
+                const bColor = response.data[id].boxcolor.split('@')
+
                 this.form = {
                     id: response.data[id].id,
                     name: response.data[id].name,
                     text: response.data[id].text,
                     x: response.data[id].x,
                     y: response.data[id].y,
-                    fontSize: response.data[id].font_size,
+                    fontSize: response.data[id].fontsize,
                     fontSpacing: response.data[id].line_spacing,
-                    fontColor: response.data[id].fontcolor,
+                    fontColor: fColor[0],
+                    fontAlpha: (fColor[1]) ? this.hexToDec(fColor[1]) : 1.0,
                     showBox: response.data[id].box,
-                    boxColor: response.data[id].boxcolor,
+                    boxColor: bColor[0],
+                    boxAlpha: (bColor[1]) ? this.hexToDec(bColor[1]) : 1.0,
                     border: response.data[id].boxborderw,
                     overallAlpha: response.data[id].alpha
                 }
@@ -282,24 +327,24 @@ export default {
         async createPreset () {
             const preset = {
                 name: this.newPresetName,
-                message: this.form.text,
-                x: this.form.x,
-                y: this.form.y,
-                font_size: this.form.fontSize,
-                font_spacing: this.form.fontSpacing,
-                font_color: this.form.fontColor,
-                font_alpha: this.form.fontAlpha,
-                show_box: this.form.showBox,
-                box_color: this.form.boxColor,
-                box_alpha: this.form.boxAlpha,
-                border_width: this.form.border,
-                overall_alpha: this.form.overallAlpha
+                text: this.form.text,
+                x: this.form.x.toString(),
+                y: this.form.y.toString(),
+                fontsize: this.form.fontSize.toString(),
+                line_spacing: this.form.fontSpacing.toString(),
+                fontcolor: (this.form.fontAlpha === 1) ? this.form.fontColor : this.form.fontColor + '@' + this.decToHex(this.form.fontAlpha),
+                box: (this.form.showBox) ? '1' : '0',
+                boxcolor: (this.form.boxAlpha === 1) ? this.form.boxColor : this.form.boxColor + '@' + this.decToHex(this.form.boxAlpha),
+                boxborderw: this.form.border.toString(),
+                alpha: this.form.overallAlpha.toString(),
+                channel_id: this.configGui[this.configID].id
             }
 
-            const response = await this.$axios.post('api/player/messenger/', preset)
+            const response = await this.$axios.post('api/presets/', preset)
 
-            if (response.status === 201) {
+            if (response.status === 200) {
                 this.success = true
+                this.getPreset('')
             } else {
                 this.failed = true
             }
@@ -313,21 +358,20 @@ export default {
                 const preset = {
                     id: this.form.id,
                     name: this.form.name,
-                    message: this.form.text,
+                    text: this.form.text,
                     x: this.form.x,
                     y: this.form.y,
-                    font_size: this.form.fontSize,
-                    font_spacing: this.form.fontSpacing,
-                    font_color: this.form.fontColor,
-                    font_alpha: this.form.fontAlpha,
-                    show_box: this.form.showBox,
-                    box_color: this.form.boxColor,
-                    box_alpha: this.form.boxAlpha,
-                    border_width: this.form.border,
-                    overall_alpha: this.form.overallAlpha
+                    fontsize: this.form.fontSize,
+                    line_spacing: this.form.fontSpacing,
+                    fontcolor: (this.form.fontAlpha === 1) ? this.form.fontColor : this.form.fontColor + '@' + this.decToHex(this.form.fontAlpha),
+                    box: (this.form.showBox) ? '1' : '0',
+                    boxcolor: (this.form.boxAlpha === 1) ? this.form.boxColor : this.form.boxColor + '@' + this.decToHex(this.form.boxAlpha),
+                    boxborderw: this.form.border,
+                    alpha: this.form.overallAlpha,
+                    channel_id: this.configGui[this.configID].id
                 }
 
-                const response = await this.$axios.put(`api/player/messenger/${this.form.id}/`, preset)
+                const response = await this.$axios.put(`api/presets/${this.form.id}`, preset)
 
                 if (response.status === 200) {
                     this.success = true
@@ -346,7 +390,7 @@ export default {
         },
         async deletePreset () {
             if (this.selected) {
-                await this.$axios.delete(`api/player/messenger/${this.form.id}/`)
+                await this.$axios.delete(`api/presets/${this.form.id}`)
             }
 
             this.$bvModal.hide('delete-modal')
@@ -354,29 +398,22 @@ export default {
         },
 
         async submitMessage () {
-            function aToHex (num) {
-                return '0x' + Math.round(num * 255).toString(16)
-            }
-
             const obj = {
                 text: this.form.text,
-                x: this.form.x,
-                y: this.form.y,
-                fontsize: this.form.fontSize,
-                line_spacing: this.form.fontSpacing,
-                fontcolor: this.form.fontColor + '@' + aToHex(this.form.fontAlpha),
-                alpha: this.form.overallAlpha,
-                box: (this.form.showBox) ? 1 : 0,
-                boxcolor: this.form.boxColor + '@' + aToHex(this.form.boxAlpha),
-                boxborderw: this.form.border
+                x: this.form.x.toString(),
+                y: this.form.y.toString(),
+                fontsize: this.form.fontSize.toString(),
+                line_spacing: this.form.fontSpacing.toString(),
+                fontcolor: this.form.fontColor + '@' + this.decToHex(this.form.fontAlpha),
+                alpha: this.form.overallAlpha.toString(),
+                box: (this.form.showBox) ? '1' : '0',
+                boxcolor: this.form.boxColor + '@' + this.decToHex(this.form.boxAlpha),
+                boxborderw: this.form.border.toString()
             }
 
-            const response = await this.$axios.post('api/player/send/message/', {
-                data: obj,
-                channel: this.configGui[this.configID].id
-            })
+            const response = await this.$axios.post(`api/control/${this.configGui[this.configID].id}/text/`, obj)
 
-            if (response.data && response.data.status.Success && response.data.status.Success.split(' ')[0] === '0') {
+            if (response.data && response.status === 200) {
                 this.success = true
             } else {
                 this.failed = true

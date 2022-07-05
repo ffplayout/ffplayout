@@ -1,5 +1,3 @@
-require('dotenv').config()
-
 export default {
     ssr: false,
     /*
@@ -79,7 +77,7 @@ export default {
      ** See https://axios.nuxtjs.org/options
      */
     axios: {
-        baseURL: process.env.API_URL
+        baseURL: '/'
     },
 
     dayjs: {

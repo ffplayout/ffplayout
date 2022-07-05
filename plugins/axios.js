@@ -6,7 +6,7 @@ export default function ({ $axios, store, redirect, route }) {
         }
 
         // disable progress on auth
-        if (config.url.includes('auth') || config.url.includes('system')) {
+        if (config.url.includes('auth') || config.url.includes('process') || config.url.includes('current')) {
             config.progress = false
         }
     })
@@ -41,7 +41,7 @@ export default function ({ $axios, store, redirect, route }) {
         } else if (code !== 401) {
             store.commit('UPDATE_VARIANT', 'danger')
             store.commit('UPDATE_SHOW_ERROR_ALERT', true)
-            store.commit('UPDATE_ERROR_AERT_MESSAGE', error)
+            store.commit('UPDATE_ERROR_ALERT_MESSAGE', error)
         }
     })
 }
