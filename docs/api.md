@@ -123,17 +123,24 @@ curl -X GET http://localhost:8000/api/presets/ -H 'Content-Type: application/jso
 
 ```BASH
 curl -X PUT http://localhost:8000/api/presets/1 -H 'Content-Type: application/json' \
--d '{"name": "<PRESET NAME>", "text": "<TEXT>", "x": "<X>", "y": "<Y>", "fontsize": 24, \
-"line_spacing": 4, "fontcolor": "#ffffff", "box": 1, "boxcolor": "#000000", "boxborderw": 4, "alpha": 1.0}' \
+-d '{ "name": "<PRESET NAME>", "text": "<TEXT>", "x": "<X>", "y": "<Y>", "fontsize": 24, \
+"line_spacing": 4, "fontcolor": "#ffffff", "box": 1, "boxcolor": "#000000", "boxborderw": 4, "alpha": 1.0, "channel_id": 1 }' \
 -H 'Authorization: <TOKEN>'
 ```
 
-**Ad new Preset**
+**Add new Preset**
 
 ```BASH
 curl -X POST http://localhost:8000/api/presets/ -H 'Content-Type: application/json' \
--d '{"name": "<PRESET NAME>", "text": "TEXT>", "x": "<X>", "y": "<Y>", "fontsize": 24, \
-"line_spacing": 4, "fontcolor": "#ffffff", "box": 1, "boxcolor": "#000000", "boxborderw": 4, "alpha": 1.0}}' \
+-d '{ "name": "<PRESET NAME>", "text": "TEXT>", "x": "<X>", "y": "<Y>", "fontsize": 24, \
+"line_spacing": 4, "fontcolor": "#ffffff", "box": 1, "boxcolor": "#000000", "boxborderw": 4, "alpha": 1.0, "channel_id": 1 }' \
+-H 'Authorization: <TOKEN>'
+```
+
+**Delete Preset**
+
+```BASH
+curl -X DELETE http://localhost:8000/api/presets/1 -H 'Content-Type: application/json' \
 -H 'Authorization: <TOKEN>'
 ```
 
@@ -155,30 +162,21 @@ curl -X POST http://localhost:8000/api/control/1/text/ \
     "boxcolor": "#000000", "boxborderw": "4", "alpha": "1.0"}'
 ```
 
-**Jump to next Clip**
+**Control Playout**
+
+- next
+- back
+- reset
 
 ```BASH
-curl -X POST http://localhost:8000/api/control/1/playout/next/ -H 'Authorization: <TOKEN>'
-```
-
-**Jump to last Clip**
-
-```BASH
-curl -X POST http://localhost:8000/api/control/1/playout/back/ -H 'Authorization: <TOKEN>'
-```
-
-**Reset ffplayout State**
-
-When before was jumped to next, or last clips, here we go back to the original clip.
-
-```BASH
-curl -X POST http://localhost:8000/api/control/1/playout/reset/ -H 'Authorization: <TOKEN>'
+curl -X POST http://localhost:8000/api/control/1/playout/next/ -H 'Content-Type: application/json'
+-d '{ "command": "reset" }' -H 'Authorization: <TOKEN>'
 ```
 
 **Get current Clip**
 
 ```BASH
-curl -X GET http://localhost:8000/api/control/1/media/current/
+curl -X GET http://localhost:8000/api/control/1/media/current
 -H 'Content-Type: application/json' -H 'Authorization: <TOKEN>'
 ```
 
