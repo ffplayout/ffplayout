@@ -43,7 +43,7 @@ pub fn send_mail(cfg: &PlayoutConfig, msg: String) {
         message = message.to(r.parse().unwrap());
     }
 
-    if let Ok(email) = message.body(clean_string(&msg)) {
+    if let Ok(mail) = message.body(clean_string(&msg)) {
         let credentials =
             Credentials::new(cfg.mail.sender_addr.clone(), cfg.mail.sender_pass.clone());
 
@@ -55,9 +55,9 @@ pub fn send_mail(cfg: &PlayoutConfig, msg: String) {
 
         let mailer = transporter.unwrap().credentials(credentials).build();
 
-        // Send the email
-        if let Err(e) = mailer.send(&email) {
-            error!("Could not send email: {:?}", e);
+        // Send the mail
+        if let Err(e) = mailer.send(&mail) {
+            error!("Could not send mail: {:?}", e);
         }
     } else {
         error!("Mail Message failed!");

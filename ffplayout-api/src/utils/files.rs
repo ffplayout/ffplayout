@@ -1,8 +1,4 @@
-use std::{
-    fs,
-    io::Write,
-    path::{Path, PathBuf},
-};
+use std::{fs, io::Write, path::PathBuf};
 
 use actix_multipart::Multipart;
 use actix_web::{web, HttpResponse};
@@ -14,19 +10,21 @@ use serde::{Deserialize, Serialize};
 use simplelog::*;
 
 use crate::utils::{errors::ServiceError, playout_config};
-use ffplayout_lib::utils::file_extension;
+use ffplayout_lib::utils::{file_extension, MediaProbe};
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct PathObject {
     pub source: String,
+    parent: Option<String>,
     folders: Option<Vec<String>>,
-    files: Option<Vec<String>>,
+    files: Option<Vec<VideoFile>>,
 }
 
 impl PathObject {
-    fn new(source: String) -> Self {
+    fn new(source: String, parent: Option<String>) -> Self {
         Self {
             source,
+            parent,
             folders: Some(vec![]),
             files: Some(vec![]),
         }
@@ -39,52 +37,121 @@ pub struct MoveObject {
     target: String,
 }
 
-pub async fn browser(id: i64, path_obj: &PathObject) -> Result<PathObject, ServiceError> {
-    let (config, _) = playout_config(&id).await?;
-    let path = PathBuf::from(config.storage.path);
-    let extensions = config.storage.extensions;
-    let path_component = RelativePath::new(&path_obj.source)
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct VideoFile {
+    name: String,
+    duration: f64,
+}
+
+/// Normalize absolut path
+///
+/// This function takes care, that it is not possible to break out from root_path.
+/// It also gives alway a relative path back.
+fn norm_abs_path(root_path: &String, input_path: &String) -> (PathBuf, String, String) {
+    let mut path = PathBuf::from(root_path.clone());
+    let path_relative = RelativePath::new(&root_path)
         .normalize()
         .to_string()
         .replace("../", "");
-    let path = path.join(path_component.clone());
-    let mut obj = PathObject::new(path_component.clone());
+    let mut source_relative = RelativePath::new(input_path)
+        .normalize()
+        .to_string()
+        .replace("../", "");
+    let path_suffix = path.file_name().unwrap().to_string_lossy().to_string();
+
+    if input_path.starts_with(root_path) || source_relative.starts_with(&path_relative) {
+        source_relative = source_relative
+            .strip_prefix(&path_relative)
+            .and_then(|s| s.strip_prefix('/'))
+            .unwrap_or_default()
+            .to_string();
+    } else {
+        source_relative = source_relative
+            .strip_prefix(&path_suffix)
+            .and_then(|s| s.strip_prefix('/'))
+            .unwrap_or(&source_relative)
+            .to_string();
+    }
+
+    path = path.join(&source_relative);
+
+    (path, path_suffix, source_relative)
+}
+
+/// File Browser
+///
+/// Take input path and give file and folder list from it back.
+/// Input should be a relative path segment, but when it is a absolut path, the norm_abs_path function
+/// will take care, that user can not break out from given storage path in config.
+pub async fn browser(id: i64, path_obj: &PathObject) -> Result<PathObject, ServiceError> {
+    let (config, _) = playout_config(&id).await?;
+    let extensions = config.storage.extensions;
+    let (path, parent, path_component) = norm_abs_path(&config.storage.path, &path_obj.source);
+    let mut obj = PathObject::new(path_component, Some(parent));
 
     let mut paths: Vec<_> = match fs::read_dir(path) {
         Ok(p) => p.filter_map(|r| r.ok()).collect(),
         Err(e) => {
-            error!("{e} in {path_component}");
+            error!("{e} in {}", path_obj.source);
             return Err(ServiceError::InternalServerError);
         }
     };
 
-    paths.sort_by_key(|dir| dir.path());
+    paths.sort_by_key(|dir| dir.path().display().to_string().to_lowercase());
+    let mut files = vec![];
+    let mut folders = vec![];
 
     for path in paths {
         let file_path = path.path().to_owned();
-        let path_str = file_path.display().to_string();
+        let path = file_path.clone();
 
         // ignore hidden files/folders on unix
-        if path_str.contains("/.") {
+        if path.display().to_string().contains("/.") {
             continue;
         }
 
         if file_path.is_dir() {
-            if let Some(ref mut folders) = obj.folders {
-                folders.push(path_str);
-            }
+            folders.push(path.file_name().unwrap().to_string_lossy().to_string());
         } else if file_path.is_file() {
             if let Some(ext) = file_extension(&file_path) {
                 if extensions.contains(&ext.to_string().to_lowercase()) {
-                    if let Some(ref mut files) = obj.files {
-                        files.push(path_str);
+                    let media = MediaProbe::new(&path.display().to_string());
+                    let mut duration = 0.0;
+
+                    if let Some(dur) = media.format.and_then(|f| f.duration) {
+                        duration = dur.parse().unwrap_or(0.0)
                     }
+
+                    let video = VideoFile {
+                        name: path.file_name().unwrap().to_string_lossy().to_string(),
+                        duration,
+                    };
+                    files.push(video);
                 }
             }
         }
     }
 
+    obj.folders = Some(folders);
+    obj.files = Some(files);
+
     Ok(obj)
+}
+
+pub async fn create_directory(
+    id: i64,
+    path_obj: &PathObject,
+) -> Result<HttpResponse, ServiceError> {
+    let (config, _) = playout_config(&id).await?;
+    let (path, _, _) = norm_abs_path(&config.storage.path, &path_obj.source);
+
+    if let Err(e) = fs::create_dir_all(&path) {
+        return Err(ServiceError::BadRequest(e.to_string()));
+    }
+
+    info!("create folder: <b><magenta>{}</></b>", path.display());
+
+    Ok(HttpResponse::Ok().into())
 }
 
 // fn copy_and_delete(source: &PathBuf, target: &PathBuf) -> Result<PathObject, ServiceError> {
@@ -109,8 +176,16 @@ pub async fn browser(id: i64, path_obj: &PathObject) -> Result<PathObject, Servi
 fn rename(source: &PathBuf, target: &PathBuf) -> Result<MoveObject, ServiceError> {
     match fs::rename(&source, &target) {
         Ok(_) => Ok(MoveObject {
-            source: source.display().to_string(),
-            target: target.display().to_string(),
+            source: source
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string(),
+            target: target
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string(),
         }),
         Err(e) => {
             error!("{e}");
@@ -121,32 +196,8 @@ fn rename(source: &PathBuf, target: &PathBuf) -> Result<MoveObject, ServiceError
 
 pub async fn rename_file(id: i64, move_object: &MoveObject) -> Result<MoveObject, ServiceError> {
     let (config, _) = playout_config(&id).await?;
-    let path = PathBuf::from(&config.storage.path);
-    let source = RelativePath::new(&move_object.source)
-        .normalize()
-        .to_string()
-        .replace("../", "");
-    let target = RelativePath::new(&move_object.target)
-        .normalize()
-        .to_string()
-        .replace("../", "");
-
-    let mut source_path = PathBuf::from(source.clone());
-    let mut target_path = PathBuf::from(target.clone());
-
-    let relativ_path = RelativePath::new(&config.storage.path)
-        .normalize()
-        .to_string();
-
-    source_path = match source_path.starts_with(&relativ_path) {
-        true => path.join(source_path.strip_prefix(&relativ_path).unwrap()),
-        false => path.join(source),
-    };
-
-    target_path = match target_path.starts_with(&relativ_path) {
-        true => path.join(target_path.strip_prefix(relativ_path).unwrap()),
-        false => path.join(target),
-    };
+    let (source_path, _, _) = norm_abs_path(&config.storage.path, &move_object.source);
+    let (mut target_path, _, _) = norm_abs_path(&config.storage.path, &move_object.target);
 
     if !source_path.exists() {
         return Err(ServiceError::BadRequest("Source file not exist!".into()));
@@ -174,24 +225,9 @@ pub async fn rename_file(id: i64, move_object: &MoveObject) -> Result<MoveObject
     Err(ServiceError::InternalServerError)
 }
 
-pub async fn remove_file_or_folder(id: i64, source_path: &str) -> Result<(), ServiceError> {
+pub async fn remove_file_or_folder(id: i64, source_path: &String) -> Result<(), ServiceError> {
     let (config, _) = playout_config(&id).await?;
-    let source = PathBuf::from(source_path);
-
-    let test_source = RelativePath::new(&source_path)
-        .normalize()
-        .to_string()
-        .replace("../", "");
-
-    let test_path = RelativePath::new(&config.storage.path)
-        .normalize()
-        .to_string();
-
-    if !test_source.starts_with(&test_path) {
-        return Err(ServiceError::BadRequest(
-            "Source file is not in storage!".into(),
-        ));
-    }
+    let (source, _, _) = norm_abs_path(&config.storage.path, source_path);
 
     if !source.exists() {
         return Err(ServiceError::BadRequest("Source does not exists!".into()));
@@ -222,32 +258,22 @@ pub async fn remove_file_or_folder(id: i64, source_path: &str) -> Result<(), Ser
     Err(ServiceError::InternalServerError)
 }
 
-async fn valid_path(id: i64, path: &str) -> Result<(), ServiceError> {
+async fn valid_path(id: i64, path: &String) -> Result<PathBuf, ServiceError> {
     let (config, _) = playout_config(&id).await?;
+    let (test_path, _, _) = norm_abs_path(&config.storage.path, path);
 
-    let test_target = RelativePath::new(&path)
-        .normalize()
-        .to_string()
-        .replace("../", "");
-
-    let test_path = RelativePath::new(&config.storage.path)
-        .normalize()
-        .to_string();
-
-    if !test_target.starts_with(&test_path) {
-        return Err(ServiceError::BadRequest(
-            "Target folder is not in storage!".into(),
-        ));
-    }
-
-    if !Path::new(path).is_dir() {
+    if !test_path.is_dir() {
         return Err(ServiceError::BadRequest("Target folder not exists!".into()));
     }
 
-    Ok(())
+    Ok(test_path)
 }
 
-pub async fn upload(id: i64, mut payload: Multipart) -> Result<HttpResponse, ServiceError> {
+pub async fn upload(
+    id: i64,
+    mut payload: Multipart,
+    path: &String,
+) -> Result<HttpResponse, ServiceError> {
     while let Some(mut field) = payload.try_next().await? {
         let content_disposition = field.content_disposition();
         debug!("{content_disposition}");
@@ -256,16 +282,12 @@ pub async fn upload(id: i64, mut payload: Multipart) -> Result<HttpResponse, Ser
             .take(20)
             .map(char::from)
             .collect();
-        let path_name = content_disposition.get_name().unwrap_or(&rand_string);
         let filename = content_disposition
             .get_filename()
             .map_or_else(|| rand_string.to_string(), sanitize_filename::sanitize);
 
-        if let Err(e) = valid_path(id, path_name).await {
-            return Err(e);
-        }
-
-        let filepath = PathBuf::from(path_name).join(filename);
+        let target_path = valid_path(id, path).await?;
+        let filepath = target_path.join(filename);
 
         if filepath.is_file() {
             return Err(ServiceError::BadRequest("Target already exists!".into()));

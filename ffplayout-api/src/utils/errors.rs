@@ -14,6 +14,9 @@ pub enum ServiceError {
 
     #[display(fmt = "Unauthorized")]
     Unauthorized,
+
+    #[display(fmt = "NoContent: {}", _0)]
+    NoContent(String),
 }
 
 // impl ResponseError trait allows to convert our errors into http responses with appropriate data
@@ -26,6 +29,7 @@ impl ResponseError for ServiceError {
             ServiceError::BadRequest(ref message) => HttpResponse::BadRequest().json(message),
             ServiceError::Conflict(ref message) => HttpResponse::Conflict().json(message),
             ServiceError::Unauthorized => HttpResponse::Unauthorized().json("No Permission!"),
+            ServiceError::NoContent(ref message) => HttpResponse::NoContent().json(message),
         }
     }
 }

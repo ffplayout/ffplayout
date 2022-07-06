@@ -37,11 +37,10 @@ pub async fn read_playlist(id: i64, date: String) -> Result<JsonPlaylist, Servic
         .join(date.clone())
         .with_extension("json");
 
-    if let Ok(p) = json_reader(&playlist_path) {
-        return Ok(p);
-    };
-
-    Err(ServiceError::InternalServerError)
+    match json_reader(&playlist_path) {
+        Ok(p) => Ok(p),
+        Err(e) => Err(ServiceError::NoContent(e.to_string())),
+    }
 }
 
 pub async fn write_playlist(id: i64, json_data: JsonPlaylist) -> Result<String, ServiceError> {
@@ -76,9 +75,10 @@ pub async fn write_playlist(id: i64, json_data: JsonPlaylist) -> Result<String, 
 }
 
 pub async fn generate_playlist(id: i64, date: String) -> Result<JsonPlaylist, ServiceError> {
-    let (config, settings) = playout_config(&id).await?;
+    let (mut config, settings) = playout_config(&id).await?;
+    config.general.generate = Some(vec![date.clone()]);
 
-    match playlist_generator(&config, vec![date], Some(settings.channel_name)) {
+    match playlist_generator(&config, Some(settings.channel_name)) {
         Ok(playlists) => {
             if !playlists.is_empty() {
                 Ok(playlists[0].clone())

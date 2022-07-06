@@ -152,7 +152,7 @@ pub struct MediaProbe {
 }
 
 impl MediaProbe {
-    fn new(input: &str) -> Self {
+    pub fn new(input: &str) -> Self {
         let probe = ffprobe(input);
         let mut a_stream = vec![];
         let mut v_stream = vec![];

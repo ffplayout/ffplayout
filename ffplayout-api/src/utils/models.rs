@@ -6,7 +6,7 @@ pub struct User {
     #[serde(skip_deserializing)]
     pub id: i64,
     #[sqlx(default)]
-    pub email: Option<String>,
+    pub mail: Option<String>,
     pub username: String,
     #[sqlx(default)]
     #[serde(skip_serializing, default = "empty_string")]
@@ -17,6 +17,9 @@ pub struct User {
     #[sqlx(default)]
     #[serde(skip_serializing)]
     pub role_id: Option<i64>,
+    #[sqlx(default)]
+    #[serde(skip_serializing)]
+    pub channel_id: Option<i64>,
     #[sqlx(default)]
     pub token: Option<String>,
 }
@@ -41,7 +44,7 @@ pub struct TextPreset {
     #[sqlx(default)]
     #[serde(skip_deserializing)]
     pub id: i64,
-    #[serde(skip_deserializing)]
+    pub channel_id: i64,
     pub name: String,
     pub text: String,
     pub x: String,
@@ -63,6 +66,7 @@ pub struct Settings {
     pub preview_url: String,
     pub config_path: String,
     pub extra_extensions: String,
+    pub timezone: String,
     #[sqlx(default)]
     #[serde(skip_serializing, skip_deserializing)]
     pub secret: String,

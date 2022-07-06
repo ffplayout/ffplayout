@@ -12,7 +12,7 @@ ffpapi -i
 Then add an admin user:
 
 ```BASH
-ffpapi -u <USERNAME> -p <PASSWORD> -e <EMAIL ADDRESS>
+ffpapi -u <USERNAME> -p <PASSWORD> -m <MAIL ADDRESS>
 ```
 
 Then run the API thru the systemd service, or like:

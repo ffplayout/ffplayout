@@ -1,175 +1,313 @@
-#### Possible endpoints
+### Possible endpoints
 
 Run the API thru the systemd service, or like:
 
 ```BASH
-ffpapi -l 127.0.0.1:8080
+ffpapi -l 127.0.0.1:8000
 ```
 
 For all endpoints an (Bearer) authentication is required.\
 `{id}` represent the channel id, and at default is 1.
 
-#### Login is
+#### User Handling
 
-- **POST** `/auth/login/`\
-JSON Data: `{"username": "<USER>", "password": "<PASS>"}`\
-JSON Response:
+**Login**
+
+```BASH
+curl -X POST http://127.0.0.1:8000/auth/login/ -H "Content-Type: application/json" \
+-d '{ "username": "<USER>", "password": "<PASS>" }'
+```
+**Response:**
+
 ```JSON
 {
-	"message": "login correct!",
-	"status": 200,
-	"data": {
-		"id": 1,
-		"email": "user@example.org",
-		"username": "user",
-		"token": "<TOKEN>"
-	}
+    "id": 1,
+    "mail": "user@example.org",
+    "username": "<USER>",
+    "token": "<TOKEN>"
 }
 ```
 
 From here on all request **must** contain the authorization header:\
 `"Authorization: Bearer <TOKEN>"`
 
-#### User
+**Get current User**
 
-- **PUT** `/api/user/{user id}`\
-JSON Data: `{"email": "<EMAIL>", "password": "<PASS>"}`
+```BASH
+curl -X GET 'http://localhost:8000/api/user' -H 'Content-Type: application/json' \
+-H 'Authorization: Bearer <TOKEN>'
+```
 
-- **POST** `/api/user/`\
-JSON Data:
+**Update current User**
+
+```BASH
+curl -X PUT http://localhost:8000/api/user/1 -H 'Content-Type: application/json' \
+-d '{"mail": "<MAIL>", "password": "<PASS>"}' -H 'Authorization: <TOKEN>'
+```
+
+**Add User**
+
+```BASH
+curl -X POST 'http://localhost:8000/api/user/' -H 'Content-Type: application/json' \
+-d '{"mail": "<MAIL>", "username": "<USER>", "password": "<PASS>", "role_id": 1, "channel_id": 1}' \
+-H 'Authorization: Bearer <TOKEN>'
+```
+
+#### ffpapi Settings
+
+**Get Settings**
+
+```BASH
+curl -X GET http://127.0.0.1:8000/api/settings/1 -H "Authorization: Bearer <TOKEN>"
+```
+
+**Response:**
+
 ```JSON
 {
-    "email": "<EMAIL>",
-    "username": "<USER>",
-    "password": "<PASS>",
-    "role_id": 1
+    "id": 1,
+    "channel_name": "Channel 1",
+    "preview_url": "http://localhost/live/preview.m3u8",
+    "config_path": "/etc/ffplayout/ffplayout.yml",
+    "extra_extensions": "jpg,jpeg,png",
+    "timezone": "UTC",
+    "service": "ffplayout.service"
 }
 ```
 
-#### API Settings
+**Get all Settings**
 
-- **GET** `/api/settings/{id}`\
-HEADER:
-Response is in JSON format
-
-- **PATCH** `/api/settings/{id}`\
-JSON Data:
-```JSON
-    "id": 1,
-    "channel_name": "Channel 1",
-    "preview_url": "http://localhost/live/stream.m3u8",
-    "config_path": "/etc/ffplayout/ffplayout.yml",
-    "extra_extensions": ".jpg,.jpeg,.png"
+```BASH
+curl -X GET http://127.0.0.1:8000/api/settings -H "Authorization: Bearer <TOKEN>"
 ```
 
-#### Playout Config
+**Update Settings**
 
-- **GET** `/api/playout/config/{id}`\
-Response is in JSON format
+```BASH
+curl -X PATCH http://127.0.0.1:8000/api/settings/1 -H "Content-Type: application/json"  \
+-d '{ "id": 1, "channel_name": "Channel 1", "preview_url": "http://localhost/live/stream.m3u8", \
+"config_path": "/etc/ffplayout/ffplayout.yml", "extra_extensions": "jpg,jpeg,png",
+"role_id": 1, "channel_id": 1 }' \
+-H "Authorization: Bearer <TOKEN>"
+```
 
-- **PUT** `/api/playout/config/{id}`\
-JSON Data: `{ <CONFIG DATA> }`\
-Response is in TEXT format
+#### ffplayout Config
+
+**Get Config**
+
+```BASH
+curl -X GET http://localhost:8000/api/playout/config/1 -H 'Authorization: <TOKEN>'
+```
+
+Response is a JSON object from the ffplayout.yml
+
+**Update Config**
+
+```BASH
+curl -X PUT http://localhost:8000/api/playout/config/1 -H "Content-Type: application/json" \
+-d { <CONFIG DATA> } -H 'Authorization: <TOKEN>'
+```
 
 #### Text Presets
 
-- **GET** `/api/presets/`\
-Response is in JSON format
+Text presets are made for sending text messages to the ffplayout engine, to overlay them as a lower third.
 
-- **PUT** `/api/playout/presets/{id}`\
-JSON Data:
+**Get all Presets**
+
+```BASH
+curl -X GET http://localhost:8000/api/presets/ -H 'Content-Type: application/json' \
+-H 'Authorization: <TOKEN>'
+```
+
+**Update Preset**
+
+```BASH
+curl -X PUT http://localhost:8000/api/presets/1 -H 'Content-Type: application/json' \
+-d '{"name": "<PRESET NAME>", "text": "<TEXT>", "x": "<X>", "y": "<Y>", "fontsize": 24, \
+"line_spacing": 4, "fontcolor": "#ffffff", "box": 1, "boxcolor": "#000000", "boxborderw": 4, "alpha": 1.0}' \
+-H 'Authorization: <TOKEN>'
+```
+
+**Ad new Preset**
+
+```BASH
+curl -X POST http://localhost:8000/api/presets/ -H 'Content-Type: application/json' \
+-d '{"name": "<PRESET NAME>", "text": "TEXT>", "x": "<X>", "y": "<Y>", "fontsize": 24, \
+"line_spacing": 4, "fontcolor": "#ffffff", "box": 1, "boxcolor": "#000000", "boxborderw": 4, "alpha": 1.0}}' \
+-H 'Authorization: <TOKEN>'
+```
+
+### ffplayout controlling
+
+here we communicate with the engine for:
+- jump to last or next clip
+- reset playlist state
+- get infos about current, next, last clip
+- send text to the engine, for overlaying it (as lower third etc.)
+
+**Send Text to ffplayout**
+
+```BASH
+curl -X POST http://localhost:8000/api/control/1/text/ \
+-H 'Content-Type: application/json' -H 'Authorization: <TOKEN>' \
+-d '{"text": "Hello from ffplayout", "x": "(w-text_w)/2", "y": "(h-text_h)/2", \
+    "fontsize": "24", "line_spacing": "4", "fontcolor": "#ffffff", "box": "1", \
+    "boxcolor": "#000000", "boxborderw": "4", "alpha": "1.0"}'
+```
+
+**Jump to next Clip**
+
+```BASH
+curl -X POST http://localhost:8000/api/control/1/playout/next/ -H 'Authorization: <TOKEN>'
+```
+
+**Jump to last Clip**
+
+```BASH
+curl -X POST http://localhost:8000/api/control/1/playout/back/ -H 'Authorization: <TOKEN>'
+```
+
+**Reset ffplayout State**
+
+When before was jumped to next, or last clips, here we go back to the original clip.
+
+```BASH
+curl -X POST http://localhost:8000/api/control/1/playout/reset/ -H 'Authorization: <TOKEN>'
+```
+
+**Get current Clip**
+
+```BASH
+curl -X GET http://localhost:8000/api/control/1/media/current/
+-H 'Content-Type: application/json' -H 'Authorization: <TOKEN>'
+```
+
+**Response:**
+
 ```JSON
 {
-    "name": "<PRESET NAME>",
-    "text": "<TEXT>",
-    "x": "<X>",
-    "y": "<Y>",
-    "fontsize": 24,
-    "line_spacing": 4,
-    "fontcolor": "#ffffff",
-    "box": 1,
-    "boxcolor": "#000000",
-    "boxborderw": 4,
-    "alpha": "<alpha>"
-}
-
-```
-Response is in TEXT format
-
-- **POST** `/api/playout/presets/`\
-JSON Data: `{ <PRESET DATA> }`\
-Response is in TEXT format
-
-#### Playout Process Control
-
-- **POST** `/api/control/{id}/text/`¸
-JSON Data:
-```JSON
-{
-    "text": "Hello from ffplayout",
-    "x": "(w-text_w)/2",
-    "y": "(h-text_h)/2",
-     "fontsize": "24",
-     "line_spacing": "4",
-     "fontcolor": "#ffffff",
-     "box": "1",
-     "boxcolor": "#000000",
-     "boxborderw": "4",
-     "alpha": "1.0"
+    "jsonrpc": "2.0",
+    "result": {
+      "current_media": {
+        "category": "",
+        "duration": 154.2,
+        "out": 154.2,
+        "seek": 0.0,
+        "source": "/opt/tv-media/clip.mp4"
+      },
+      "index": 39,
+      "play_mode": "playlist",
+      "played_sec": 67.80771999300123,
+      "remaining_sec": 86.39228000699876,
+      "start_sec": 24713.631999999998,
+      "start_time": "06:51:53.631"
+    },
+    "id": 1
 }
 ```
-Response is in TEXT format
 
-- **POST** `api/control/{id}/playout/next/`\
-Response is in TEXT format
+**Get next Clip**
 
-- **POST** `api/control/{id}/playout/back/`\
-Response is in TEXT format
+```BASH
+curl -X GET http://localhost:8000/api/control/1/media/next/ -H 'Authorization: <TOKEN>'
+```
 
-- **POST** `api/control/{id}/playout/reset/`\
-Response is in TEXT format
+**Get last Clip**
 
-- **GET** `/api/control/{id}/media/current`\
-Response is in JSON format
+```BASH
+curl -X GET http://localhost:8000/api/control/1/media/last/
+-H 'Content-Type: application/json' -H 'Authorization: <TOKEN>'
+```
 
-- **GET** `/api/control/{id}/media/next`\
-Response is in JSON format
+#### ffplayout Process Control
 
-- **GET** `/api/control/{id}/media/last`\
-Response is in JSON format
+Control ffplayout process, like:
+- start
+- stop
+- restart
+- status
 
-- **POST** `/api/control/{id}/process/`\
-JSON Data: `{"command": "<start/stop/restart/status>"}`
-Response is in TEXT format
+```BASH
+curl -X POST http://localhost:8000/api/control/1/process/
+-H 'Content-Type: application/json' -H 'Authorization: <TOKEN>'
+-d '{"command": "start"}'
+```
 
-#### Playlist Operations
+#### ffplayout Playlist Operations
 
-- **GET** `/api/playlist/{id}/2022-06-20`\
-Response is in JSON format
+**Get playlist**
 
-- **POST** `/api/playlist/1/`\
-JSON Data: `{ <PLAYLIST DATA> }`\
-Response is in TEXT format
+```BASH
+curl -X GET http://localhost:8000/api/playlist/1?date=2022-06-20
+-H 'Content-Type: application/json' -H 'Authorization: <TOKEN>'
+```
 
-- **GET** `/api/playlist/{id}/generate/2022-06-20`\
-Response is in JSON format
+**Save playlist**
 
-- **DELETE** `/api/playlist/{id}/2022-06-20`\
-Response is in TEXT format
+```BASH
+curl -X POST http://localhost:8000/api/playlist/1/
+-H 'Content-Type: application/json' -H 'Authorization: <TOKEN>'
+-- data "{<JSON playlist data>}"
+```
 
-#### File Operations
+**Generate Playlist**
 
-- **GET** `/api/file/{id}/browse/`\
-Response is in JSON format
+A new playlist will be generated and response.
 
-- **POST** `/api/file/{id}/move/`\
-JSON Data: `{"source": "<SOURCE>", "target": "<TARGET>"}`\
-Response is in JSON format
+```BASH
+curl -X GET http://localhost:8000/api/playlist/1/generate/2022-06-20
+-H 'Content-Type: application/json' -H 'Authorization: <TOKEN>'
+```
 
-- **DELETE** `/api/file/{id}/remove/`\
-JSON Data: `{"source": "<SOURCE>"}`\
-Response is in JSON format
+**Delete Playlist**
 
-- **POST** `/file/{id}/upload/`\
-Multipart Form: `name=<TARGET PATH>, filename=<FILENAME>`\
-Response is in TEXT format
+```BASH
+curl -X DELETE http://localhost:8000/api/playlist/1/2022-06-20
+-H 'Content-Type: application/json' -H 'Authorization: <TOKEN>'
+```
+
+### Log file
+
+**Read Log Life**
+
+```BASH
+curl -X Get http://localhost:8000/api/log/1
+-H 'Content-Type: application/json' -H 'Authorization: <TOKEN>'
+```
+
+### File Operations
+
+**Get File/Folder List**
+
+```BASH
+curl -X POST http://localhost:8000/api/file/1/browse/ -H 'Content-Type: application/json'
+-d '{ "source": "/" }' -H 'Authorization: <TOKEN>'
+```
+
+**Create Folder**
+
+```BASH
+curl -X POST http://localhost:8000/api/file/1/create-folder/ -H 'Content-Type: application/json'
+-d '{"source": "<FOLDER PATH>"}' -H 'Authorization: <TOKEN>'
+```
+
+**Rename File**
+
+```BASH
+curl -X POST http://localhost:8000/api/file/1/rename/ -H 'Content-Type: application/json'
+-d '{"source": "<SOURCE>", "target": "<TARGET>"}' -H 'Authorization: <TOKEN>'
+```
+
+**Remove File/Folder**
+
+```BASH
+curl -X POST http://localhost:8000/api/file/1/remove/ -H 'Content-Type: application/json'
+-d '{"source": "<SOURCE>"}' -H 'Authorization: <TOKEN>'
+```
+
+**Upload File**
+
+```BASH
+curl -X POST http://localhost:8000/api/file/1/upload/ -H 'Authorization: <TOKEN>'
+-F "file=@file.mp4"
+```

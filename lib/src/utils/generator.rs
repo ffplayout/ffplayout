@@ -53,7 +53,6 @@ fn get_date_range(date_range: &[String]) -> Vec<String> {
 /// Generate playlists
 pub fn generate_playlist(
     config: &PlayoutConfig,
-    mut date_range: Vec<String>,
     channel_name: Option<String>,
 ) -> Result<Vec<JsonPlaylist>, Error> {
     let total_length = match config.playlist.length_sec {
@@ -70,6 +69,7 @@ pub fn generate_playlist(
     let index = Arc::new(AtomicUsize::new(0));
     let playlist_root = Path::new(&config.playlist.path);
     let mut playlists = vec![];
+    let mut date_range = vec![];
 
     let channel = match channel_name {
         Some(name) => name,
@@ -83,6 +83,10 @@ pub fn generate_playlist(
         );
 
         exit(1);
+    }
+
+    if let Some(range) = config.general.generate.clone() {
+        date_range = range;
     }
 
     if date_range.contains(&"-".to_string()) && date_range.len() == 3 {

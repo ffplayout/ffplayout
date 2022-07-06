@@ -190,15 +190,6 @@ fn add_text(node: &mut Media, chain: &mut Filters, config: &PlayoutConfig) {
         let filter = v_drawtext::filter_node(config, node);
 
         chain.add_filter(&filter, "video");
-
-        if let Some(filters) = &chain.video_chain {
-            for (i, f) in filters.split(',').enumerate() {
-                if f.contains("drawtext") && !config.text.text_from_filename {
-                    debug!("drawtext node is on index: <yellow>{i}</>");
-                    break;
-                }
-            }
-        }
     }
 }
 
@@ -290,7 +281,7 @@ fn realtime_filter(
         t = "a"
     }
 
-    if &config.out.mode.to_lowercase() == "hls" {
+    if config.general.generate.is_none() && &config.out.mode.to_lowercase() == "hls" {
         let mut speed_filter = format!("{t}realtime=speed=1");
         let (delta, _) = get_delta(config, &node.begin.unwrap());
         let duration = node.out - node.seek;

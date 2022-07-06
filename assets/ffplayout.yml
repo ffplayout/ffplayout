@@ -10,7 +10,7 @@ general:
 rpc_server:
     help_text: Run a JSON RPC server, for getting infos about current playing, and
         control for some functions.
-    enable: false
+    enable: true
     address: 127.0.0.1:7070
     authorization: av2Kx8g67lF9qj5wEH3ym1bI4cCs
 
@@ -108,7 +108,7 @@ text:
         'text_from_filename' activate the extraction from text of a filename. With 'style'
         you can define the drawtext parameters like position, color, etc. Post Text over
         API will override this. With 'regex' you can format file names, to get a title from it.
-    add_text: false
+    add_text: true
     text_from_filename: false
     fontfile: "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
     style: "x=(w-tw)/2:y=(h-line_h)*0.9:fontsize=24:fontcolor=#ffffff:box=1:boxcolor=#000000:boxborderw=4"

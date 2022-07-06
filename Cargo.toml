@@ -1,15 +1,6 @@
 [workspace]
-
-members = [
-    "ffplayout-api",
-    "ffplayout-engine",
-    "lib",
-]
-
-default-members = [
-    "ffplayout-api",
-    "ffplayout-engine",
-]
+members = ["ffplayout-api", "ffplayout-engine", "lib"]
+default-members = ["ffplayout-api", "ffplayout-engine"]
 
 [profile.release]
 opt-level = 3

@@ -21,6 +21,9 @@ The different output modes.
 
 Setup and use a preview stream.
 
-### **[Remove Sources](/docs/remote_source.md)**
+### **[Remote Sources](/docs/remote_source.md)**
 
 Use of remote sources, like https://example.org/video.mp4
+
+### **[ffplayout API](/docs/api.md)**
+Control the engine, playlist and config with a ~REST API

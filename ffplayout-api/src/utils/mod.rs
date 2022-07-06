@@ -1,6 +1,6 @@
 use std::{
     error::Error,
-    fs::File,
+    fs::{self, File},
     io::{stdin, stdout, Write},
     path::Path,
 };
@@ -129,36 +129,37 @@ pub async fn run_args(mut args: Args) -> Result<(), i32> {
 
         args.password = password.ok();
 
-        let mut email = String::new();
-        print!("EMail: ");
+        let mut mail = String::new();
+        print!("Mail: ");
         stdout().flush().unwrap();
 
         stdin()
-            .read_line(&mut email)
+            .read_line(&mut mail)
             .expect("Did not enter a correct name?");
-        if let Some('\n') = email.chars().next_back() {
-            email.pop();
+        if let Some('\n') = mail.chars().next_back() {
+            mail.pop();
         }
-        if let Some('\r') = email.chars().next_back() {
-            email.pop();
+        if let Some('\r') = mail.chars().next_back() {
+            mail.pop();
         }
 
-        args.email = Some(email);
+        args.mail = Some(mail);
     }
 
     if let Some(username) = args.username {
-        if args.email.is_none() || args.password.is_none() {
-            error!("Email/password missing!");
+        if args.mail.is_none() || args.password.is_none() {
+            error!("Mail/password missing!");
             return Err(1);
         }
 
         let user = User {
             id: 0,
-            email: Some(args.email.unwrap()),
+            mail: Some(args.mail.unwrap()),
             username: username.clone(),
             password: args.password.unwrap(),
             salt: None,
             role_id: Some(1),
+            channel_id: Some(1),
             token: None,
         };
 
@@ -191,5 +192,32 @@ pub async fn playout_config(channel_id: &i64) -> Result<(PlayoutConfig, Settings
 
     Err(ServiceError::BadRequest(
         "Error in getting config!".to_string(),
+    ))
+}
+
+pub async fn read_log_file(channel_id: &i64, date: &str) -> Result<String, ServiceError> {
+    if let Ok(settings) = db_get_settings(channel_id).await {
+        let mut date_str = "".to_string();
+
+        if !date.is_empty() {
+            date_str.push('.');
+            date_str.push_str(date);
+        }
+
+        if let Ok(config) = read_playout_config(&settings.config_path) {
+            let mut log_path = Path::new(&config.logging.log_path)
+                .join("ffplayout.log")
+                .display()
+                .to_string();
+            log_path.push_str(&date_str);
+
+            let file = fs::read_to_string(log_path)?;
+
+            return Ok(file);
+        }
+    }
+
+    Err(ServiceError::BadRequest(
+        "Requested log file not exists, or not readable.".to_string(),
     ))
 }
