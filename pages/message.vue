@@ -266,44 +266,52 @@ export default {
     },
 
     watch: {
-        selected (name) {
-            this.getPreset(name)
+        selected (index) {
+            this.getPreset(index)
         }
     },
 
     created () {
-        this.getPreset('')
+        this.getPreset(null)
     },
 
     methods: {
-        async getPreset (preset) {
-            let req = ''
+        decToHex (num) {
+            return '0x' + Math.round(num * 255).toString(16)
+        },
 
-            if (preset) {
-                req = `?name=${preset}`
-            }
-            const response = await this.$axios.get(`api/player/messenger/${req}`)
+        hexToDec (num) {
+            return (parseFloat(parseInt(num, 16)) / 255).toFixed(2)
+        },
 
-            if (response.data && !preset) {
-                for (const item of response.data) {
-                    this.presets.push({ value: item.name, text: item.name })
+        async getPreset (index) {
+            const response = await this.$axios.get(`api/presets/${this.configGui[this.configID].id}`)
+
+            if (response.data && index === null) {
+                this.presets = []
+                for (let index = 0; index < response.data.length; index++) {
+                    const elem = response.data[index]
+                    this.presets.push({ value: index, text: elem.name })
                 }
             } else if (response.data) {
+                const fColor = response.data[index].fontcolor.split('@')
+                const bColor = response.data[index].boxcolor.split('@')
+
                 this.form = {
-                    id: response.data[0].id,
-                    name: response.data[0].name,
-                    text: response.data[0].message,
-                    x: response.data[0].x,
-                    y: response.data[0].y,
-                    fontSize: response.data[0].font_size,
-                    fontSpacing: response.data[0].font_spacing,
-                    fontColor: response.data[0].font_color,
-                    fontAlpha: response.data[0].font_alpha,
-                    showBox: response.data[0].show_box,
-                    boxColor: response.data[0].box_color,
-                    boxAlpha: response.data[0].box_alpha,
-                    border: response.data[0].border_width,
-                    overallAlpha: response.data[0].overall_alpha
+                    id: response.data[index].id,
+                    name: response.data[index].name,
+                    text: response.data[index].text,
+                    x: response.data[index].x,
+                    y: response.data[index].y,
+                    fontSize: response.data[index].fontsize,
+                    fontSpacing: response.data[index].line_spacing,
+                    fontColor: fColor[0],
+                    fontAlpha: (fColor[1]) ? this.hexToDec(fColor[1]) : 1.0,
+                    showBox: response.data[index].box,
+                    boxColor: bColor[0],
+                    boxAlpha: (bColor[1]) ? this.hexToDec(bColor[1]) : 1.0,
+                    border: response.data[index].boxborderw,
+                    overallAlpha: response.data[index].alpha
                 }
             }
         },
@@ -319,24 +327,24 @@ export default {
         async createPreset () {
             const preset = {
                 name: this.newPresetName,
-                message: this.form.text,
-                x: this.form.x,
-                y: this.form.y,
-                font_size: this.form.fontSize,
-                font_spacing: this.form.fontSpacing,
-                font_color: this.form.fontColor,
-                font_alpha: this.form.fontAlpha,
-                show_box: this.form.showBox,
-                box_color: this.form.boxColor,
-                box_alpha: this.form.boxAlpha,
-                border_width: this.form.border,
-                overall_alpha: this.form.overallAlpha
+                text: this.form.text,
+                x: this.form.x.toString(),
+                y: this.form.y.toString(),
+                fontsize: this.form.fontSize.toString(),
+                line_spacing: this.form.fontSpacing.toString(),
+                fontcolor: (this.form.fontAlpha === 1) ? this.form.fontColor : this.form.fontColor + '@' + this.decToHex(this.form.fontAlpha),
+                box: (this.form.showBox) ? '1' : '0',
+                boxcolor: (this.form.boxAlpha === 1) ? this.form.boxColor : this.form.boxColor + '@' + this.decToHex(this.form.boxAlpha),
+                boxborderw: this.form.border.toString(),
+                alpha: this.form.overallAlpha.toString(),
+                channel_id: this.configGui[this.configID].id
             }
 
-            const response = await this.$axios.post('api/player/messenger/', preset)
+            const response = await this.$axios.post('api/presets/', preset)
 
-            if (response.status === 201) {
+            if (response.status === 200) {
                 this.success = true
+                this.getPreset(null)
             } else {
                 this.failed = true
             }
@@ -350,21 +358,20 @@ export default {
                 const preset = {
                     id: this.form.id,
                     name: this.form.name,
-                    message: this.form.text,
+                    text: this.form.text,
                     x: this.form.x,
                     y: this.form.y,
-                    font_size: this.form.fontSize,
-                    font_spacing: this.form.fontSpacing,
-                    font_color: this.form.fontColor,
-                    font_alpha: this.form.fontAlpha,
-                    show_box: this.form.showBox,
-                    box_color: this.form.boxColor,
-                    box_alpha: this.form.boxAlpha,
-                    border_width: this.form.border,
-                    overall_alpha: this.form.overallAlpha
+                    fontsize: this.form.fontSize,
+                    line_spacing: this.form.fontSpacing,
+                    fontcolor: (this.form.fontAlpha === 1) ? this.form.fontColor : this.form.fontColor + '@' + this.decToHex(this.form.fontAlpha),
+                    box: (this.form.showBox) ? '1' : '0',
+                    boxcolor: (this.form.boxAlpha === 1) ? this.form.boxColor : this.form.boxColor + '@' + this.decToHex(this.form.boxAlpha),
+                    boxborderw: this.form.border,
+                    alpha: this.form.overallAlpha,
+                    channel_id: this.configGui[this.configID].id
                 }
 
-                const response = await this.$axios.put(`api/player/messenger/${this.form.id}/`, preset)
+                const response = await this.$axios.put(`api/presets/${this.form.id}`, preset)
 
                 if (response.status === 200) {
                     this.success = true
@@ -383,37 +390,30 @@ export default {
         },
         async deletePreset () {
             if (this.selected) {
-                await this.$axios.delete(`api/player/messenger/${this.form.id}/`)
+                await this.$axios.delete(`api/presets/${this.form.id}`)
             }
 
             this.$bvModal.hide('delete-modal')
-            this.getPreset('')
+            this.getPreset(null)
         },
 
         async submitMessage () {
-            function aToHex (num) {
-                return '0x' + Math.round(num * 255).toString(16)
-            }
-
             const obj = {
                 text: this.form.text,
-                x: this.form.x,
-                y: this.form.y,
-                fontsize: this.form.fontSize,
-                line_spacing: this.form.fontSpacing,
-                fontcolor: this.form.fontColor + '@' + aToHex(this.form.fontAlpha),
-                alpha: this.form.overallAlpha,
-                box: (this.form.showBox) ? 1 : 0,
-                boxcolor: this.form.boxColor + '@' + aToHex(this.form.boxAlpha),
-                boxborderw: this.form.border
+                x: this.form.x.toString(),
+                y: this.form.y.toString(),
+                fontsize: this.form.fontSize.toString(),
+                line_spacing: this.form.fontSpacing.toString(),
+                fontcolor: this.form.fontColor + '@' + this.decToHex(this.form.fontAlpha),
+                alpha: this.form.overallAlpha.toString(),
+                box: (this.form.showBox) ? '1' : '0',
+                boxcolor: this.form.boxColor + '@' + this.decToHex(this.form.boxAlpha),
+                boxborderw: this.form.border.toString()
             }
 
-            const response = await this.$axios.post('api/player/send/message/', {
-                data: obj,
-                channel: this.configGui[this.configID].id
-            })
+            const response = await this.$axios.post(`api/control/${this.configGui[this.configID].id}/text/`, obj)
 
-            if (response.data && response.data.status.Success && response.data.status.Success.split(' ')[0] === '0') {
+            if (response.data && response.status === 200) {
                 this.success = true
             } else {
                 this.failed = true

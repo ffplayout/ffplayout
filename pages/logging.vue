@@ -81,11 +81,17 @@ export default {
 
     methods: {
         async getLog () {
-            const response = await this.$axios.get(
-                `api/player/log/?date=${this.listDate}&channel=${this.$store.state.config.configGui[this.$store.state.config.configID].id}`)
+            let date = this.listDate
 
-            if (response.data.log) {
-                this.currentLog = response.data.log
+            if (date === this.$dayjs().tz(this.timezone).format('YYYY-MM-DD')) {
+                date = ''
+            }
+
+            const response = await this.$axios.get(
+                `api/log/${this.$store.state.config.configGui[this.$store.state.config.configID].id}?date=${date}`)
+
+            if (response.data) {
+                this.currentLog = response.data
             } else {
                 this.currentLog = ''
             }

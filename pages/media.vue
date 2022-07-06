@@ -14,14 +14,14 @@
                 </span>
             </div>
 
-            <div v-if="folderTree.tree" class="browser">
+            <div v-if="folderTree" class="browser">
                 <div class="bread-div">
                     <b-breadcrumb>
                         <b-breadcrumb-item
                             v-for="(crumb, index) in crumbs"
                             :key="crumb.key"
                             :active="index === crumbs.length - 1"
-                            @click="getPath(extensions, crumb.path)"
+                            @click="getPath(crumb.path)"
                         >
                             {{ crumb.text }}
                         </b-breadcrumb-item>
@@ -34,8 +34,8 @@
                             <perfect-scrollbar :options="scrollOP" class="media-browser-scroll">
                                 <b-list-group class="folder-list">
                                     <b-list-group-item
-                                        v-for="folder in folderTree.tree[1]"
-                                        :key="folder.key"
+                                        v-for="folder in folderTree.folders"
+                                        :key="folder"
                                         class="browser-item folder"
                                     >
                                         <b-row>
@@ -43,12 +43,12 @@
                                                 <b-icon-folder-fill class="browser-icons" />
                                             </b-col>
                                             <b-col class="browser-item-text">
-                                                <b-link @click="getPath(extensions, `/${folderTree.tree[0]}/${folder}`)">
+                                                <b-link @click="getPath(`/${folderTree.source}/${folder}`)">
                                                     {{ folder }}
                                                 </b-link>
                                             </b-col>
                                             <b-col v-if="folder !== '..'" cols="1" class="folder-delete">
-                                                <b-link @click="showDeleteModal('Folder', `/${folderTree.tree[0]}/${folder}`)">
+                                                <b-link @click="showDeleteModal('Folder', `/${folderTree.source}/${folder}`)">
                                                     <b-icon-x-circle-fill />
                                                 </b-link>
                                             </b-col>
@@ -70,8 +70,8 @@
                             <perfect-scrollbar :options="scrollOP" class="media-browser-scroll">
                                 <b-list-group class="files-list">
                                     <b-list-group-item
-                                        v-for="file in folderTree.tree[2]"
-                                        :key="file.key"
+                                        v-for="file in folderTree.files"
+                                        :key="file.name"
                                         class="browser-item"
                                     >
                                         <b-row>
@@ -79,10 +79,10 @@
                                                 <b-icon-film class="browser-icons" />
                                             </b-col>
                                             <b-col class="browser-item-text">
-                                                {{ file.file }}
+                                                {{ file.name }}
                                             </b-col>
                                             <b-col cols="1" class="browser-play-col">
-                                                <b-link title="Preview" @click="showPreviewModal(`/${folderTree.tree[0]}/${file.file}`)">
+                                                <b-link title="Preview" @click="showPreviewModal(`/${folderTree.parent}/${folderTree.source}/${file.name}`)">
                                                     <b-icon-play-fill />
                                                 </b-link>
                                             </b-col>
@@ -90,12 +90,12 @@
                                                 <span class="duration">{{ file.duration | toMin }}</span>
                                             </b-col>
                                             <b-col cols="1" class="small-col">
-                                                <b-link title="Rename File" @click="showRenameModal(`/${folderTree.tree[0]}/`, file.file)">
+                                                <b-link title="Rename File" @click="showRenameModal(file.name)">
                                                     <b-icon-pencil-square />
                                                 </b-link>
                                             </b-col>
                                             <b-col cols="1" class="small-col">
-                                                <b-link title="Delete File" @click="showDeleteModal('File', `/${folderTree.tree[0]}/${file.file}`)">
+                                                <b-link title="Delete File" @click="showDeleteModal('File', `/${folderTree.parent}/${folderTree.source}/${file.name}`)">
                                                     <b-icon-x-circle-fill />
                                                 </b-link>
                                             </b-col>
@@ -304,20 +304,24 @@ export default {
 
     watch: {
         configID () {
-            this.getPath(this.extensions, '')
+            this.getPath('')
         }
     },
 
     mounted () {
-        this.extensions = [...this.configPlayout.storage.extensions, ...this.configGui[this.configID].extra_extensions].join(',')
-        this.getPath(this.extensions, '')
+        const exts = [...this.configPlayout.storage.extensions, ...this.configGui[this.configID].extra_extensions].map((ext) => {
+            return `.${ext}`
+        })
+
+        this.extensions = exts.join(',')
+        this.getPath('')
     },
 
     methods: {
-        async getPath (extensions, path) {
+        async getPath (path) {
             this.lastPath = path
             this.isLoading = true
-            await this.$store.dispatch('media/getTree', { extensions, path })
+            await this.$store.dispatch('media/getTree', { path })
             this.isLoading = false
         },
 
@@ -358,18 +362,14 @@ export default {
 
         async onSubmitCreateFolder (evt) {
             evt.preventDefault()
+            const path = (this.crumbs[this.crumbs.length - 1].path + '/' + this.folderName).replace(/\/[/]+/, '/')
 
             await this.$axios.post(
-                'api/player/media/op/',
-                {
-                    folder: this.folderName,
-                    path: this.crumbs.map(e => e.text).join('/'),
-                    channel: this.configGui[this.configID].id
-                }
+                `api/file/${this.configGui[this.configID].id}/create-folder/`, { source: path }
             )
 
             this.$root.$emit('bv::hide::modal', 'folder-modal')
-            this.getPath(this.extensions, this.lastPath)
+            this.getPath(this.lastPath)
         },
 
         onCancelCreateFolder (evt) {
@@ -400,11 +400,12 @@ export default {
                 this.currentProgress = progress
             }
 
-            const channel = this.configGui[this.configID].id
-
             for (const [i, file] of this.inputFiles.entries()) {
                 this.uploadTask = file.name
                 this.currentNumber = i + 1
+
+                const formData = new FormData()
+                formData.append(file.name, file)
 
                 const config = {
                     onUploadProgress: uploadProgress(file.name),
@@ -413,8 +414,8 @@ export default {
                 }
 
                 await this.$axios.put(
-                    `api/player/media/upload/${encodeURIComponent(file.name)}?path=${encodeURIComponent(this.crumbs.map(e => e.text).join('/'))}&channel=${channel}`,
-                    file,
+                    `api/file/${this.configGui[this.configID].id}/upload/?path=${encodeURIComponent(this.crumbs[this.crumbs.length - 1].path)}`,
+                    formData,
                     config
                 )
                     .then((res) => {
@@ -428,7 +429,7 @@ export default {
             this.currentNumber = 0
             this.inputPlaceholder = 'Choose files or drop them here...'
             this.inputFiles = []
-            this.getPath(this.extensions, this.lastPath)
+            this.getPath(this.lastPath)
             this.$root.$emit('bv::hide::modal', 'upload-modal')
         },
 
@@ -441,7 +442,7 @@ export default {
             this.inputPlaceholder = 'Choose files or drop them here...'
 
             this.cancelTokenSource.cancel('Upload cancelled')
-            this.getPath(this.extensions, this.lastPath)
+            this.getPath(this.lastPath)
 
             this.$root.$emit('bv::hide::modal', 'upload-modal')
         },
@@ -451,7 +452,7 @@ export default {
             this.previewName = src.split('/').slice(-1)[0]
             const ext = this.previewName.split('.').slice(-1)[0]
 
-            if (this.configPlayout.storage.extensions.includes(`.${ext}`)) {
+            if (this.configPlayout.storage.extensions.includes(`${ext}`)) {
                 this.isImage = false
                 this.previewOptions = {
                     liveui: false,
@@ -462,7 +463,7 @@ export default {
                     sources: [
                         {
                             type: `video/${ext}`,
-                            src: '/' + encodeURIComponent(src.replace(/^\//, ''))
+                            src: '/' + encodeURIComponent(src.replace(/^[/]+/, ''))
                         }
                     ]
                 }
@@ -472,8 +473,7 @@ export default {
             this.$root.$emit('bv::show::modal', 'preview-modal')
         },
 
-        showRenameModal (path, file) {
-            this.renamePath = path
+        showRenameModal (file) {
             this.renameOldName = file
             this.renameNewName = file
             this.$root.$emit('bv::show::modal', 'rename-modal')
@@ -482,16 +482,14 @@ export default {
         async renameFile (evt) {
             evt.preventDefault()
 
-            await this.$axios.patch(
-                'api/player/media/op/', {
-                    path: this.renamePath.replace(/^\/\//g, '/'),
-                    oldname: this.renameOldName,
-                    newname: this.renameNewName,
-                    channel: this.configGui[this.configID].id
+            await this.$axios.post(
+                `api/file/${this.configGui[this.configID].id}/rename/`, {
+                    source: `/${this.folderTree.parent}/${this.folderTree.source}/${this.renameOldName}`.replace('//', '/'),
+                    target: `/${this.folderTree.parent}/${this.folderTree.source}/${this.renameNewName}`.replace('//', '/')
                 }
             )
 
-            this.getPath(this.extensions, this.lastPath)
+            this.getPath(this.lastPath)
 
             this.renamePath = ''
             this.renameOldName = ''
@@ -510,9 +508,9 @@ export default {
             this.deleteSource = src
 
             if (type === 'File') {
-                this.previewName = src.split('/').slice(-1)[0]
+                this.previewName = src.split('/').slice(-1)[0].replace('//', '/')
             } else {
-                this.previewName = src
+                this.previewName = src.replace('//', '/')
             }
 
             this.deleteType = type
@@ -527,17 +525,19 @@ export default {
                 file = this.deleteSource.split('/').slice(-1)[0]
                 pathName = this.deleteSource.substring(0, this.deleteSource.lastIndexOf('/') + 1)
             } else {
-                file = null
+                file = ''
                 pathName = this.deleteSource
             }
 
-            await this.$axios.delete(
-                `api/player/media/op/?file=${encodeURIComponent(file)}&path=${encodeURIComponent(pathName)}&channel=${this.configGui[this.configID].id}`)
+            const source = `${pathName}/${file}`.replace('//', '/')
+
+            await this.$axios.post(
+                `api/file/${this.configGui[this.configID].id}/remove/`, { source })
                 .catch(err => console.log(err))
 
             this.$root.$emit('bv::hide::modal', 'delete-modal')
 
-            this.getPath(this.extensions, this.lastPath)
+            this.getPath(this.lastPath)
         },
 
         cancelDelete () {

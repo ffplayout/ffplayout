@@ -13,7 +13,7 @@ export const mutations = {
     UPDATE_VARIANT (state, variant) {
         state.variant = variant
     },
-    UPDATE_ERROR_AERT_MESSAGE (state, message) {
+    UPDATE_ERROR_ALERT_MESSAGE (state, message) {
         state.ErrorAlertMessage = message
     }
 }
