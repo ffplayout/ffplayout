@@ -85,9 +85,9 @@ fn main() {
 
     validate_ffmpeg(&config);
 
-    if let Some(range) = config.general.generate.clone() {
+    if config.general.generate.is_some() {
         // run a simple playlist generator and save them to disk
-        if let Err(e) = generate_playlist(&config, range, None) {
+        if let Err(e) = generate_playlist(&config, None) {
             error!("{e}");
             exit(1);
         };
