@@ -15,25 +15,22 @@ After installations you have to setup ssl for your **https** connections.
 
 ## Some Impressions:
 #### Login
-![login](/docs/assets/login.png)
-
-#### Landing Page
-![landing-page](/docs/assets/landing-page.png)
+![login](/docs/images/login.png)
 
 #### Control Page
-![control](/docs/assets/control.png)
+![control](/docs/images/control.png)
 
 #### Media Page
-![media](/docs/assets/media.png)
+![media](/docs/images/media.png)
 
 #### Media Page / Upload
-![media-upload](/docs/assets/media-upload.png)
+![media-upload](/docs/images/media-upload.png)
 
 #### Message Page
-![message](/docs/assets/message.png)
+![message](/docs/images/message.png)
 
 #### Logging Page
-![logging](/docs/assets/logging.png)
+![logging](/docs/images/logging.png)
 
 #### Configuration Page / GUI
-![config-gui](/docs/assets/config-gui.png)
+![config-gui](/docs/images/config-gui.png)

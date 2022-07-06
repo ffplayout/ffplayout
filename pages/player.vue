@@ -152,7 +152,7 @@
                                     v-for="(crumb, index) in crumbs"
                                     :key="crumb.key"
                                     :active="index === crumbs.length - 1"
-                                    @click="getPath(extensions, crumb.path)"
+                                    @click="getPath(crumb.path)"
                                 >
                                     {{ crumb.text }}
                                 </b-breadcrumb-item>
@@ -166,7 +166,7 @@
                                     :key="folder.key"
                                     class="browser-item"
                                 >
-                                    <b-link @click="getPath(extensions, `/${folderTree.source}/${folder}`)">
+                                    <b-link @click="getPath(`/${folderTree.source}/${folder}`)">
                                         <b-icon-folder-fill class="browser-icons" /> {{ folder }}
                                     </b-link>
                                 </b-list-group-item>
@@ -310,6 +310,9 @@
                 <b-button v-if="!configPlayout.playlist.loop" v-b-tooltip.hover title="Loop Clips in Playlist" variant="primary" @click="loopClips()">
                     <b-icon-view-stacked />
                 </b-button>
+                <b-button v-b-tooltip.hover title="Add (remote) Source to Playlist" variant="primary" @click="showAddSource()">
+                    <b-icon-file-earmark-plus />
+                </b-button>
                 <b-button v-b-tooltip.hover title="Generate a randomized Playlist" variant="primary" @click="generatePlaylist(listDate)">
                     <b-icon-sort-down-alt />
                 </b-button>
@@ -350,6 +353,35 @@
             @ok="deletePlaylist(listDate)"
         >
             Delete program from {{ listDate }}
+        </b-modal>
+        <b-modal
+            id="add-source-modal"
+            ref="add-source-modal"
+            title="Add (remote) Source"
+            @ok="handleSource"
+        >
+            <form ref="form" @submit.stop.prevent="addSource">
+                <b-form-group label="In" label-for="in-input">
+                    <b-form-input id="in-input" v-model.number="newSource.in" type="number" inline />
+                </b-form-group>
+                <b-form-group label="Out" label-for="out-input" invalid-feedback="Out is required">
+                    <b-form-input id="out-input" v-model.number="newSource.out" type="number" inline required />
+                </b-form-group>
+                <b-form-group label="Duration" label-for="duration-input" invalid-feedback="Out is required">
+                    <b-form-input id="duration-input" v-model.number="newSource.duration" type="number" inline required />
+                </b-form-group>
+                <b-form-group label="Source" label-for="source-input" invalid-feedback="Source is required">
+                    <b-form-input id="source-input" v-model="newSource.source" required />
+                </b-form-group>
+                <b-form-checkbox
+                    id="ad-input"
+                    v-model="newSource.category"
+                    value="advertisement"
+                    :unchecked-value="newSource.category"
+                >
+                    Advertisement
+                </b-form-checkbox>
+            </form>
         </b-modal>
     </div>
 </template>
@@ -398,7 +430,6 @@ export default {
             listDate: this.$dayjs().tz(this.timezone).format('YYYY-MM-DD'),
             targetDate: this.$dayjs().tz(this.timezone).format('YYYY-MM-DD'),
             interval: null,
-            extensions: '',
             videoOptions: {
                 liveui: true,
                 controls: true,
@@ -424,6 +455,14 @@ export default {
             scrollOP: {
                 suppressScrollX: true,
                 minScrollbarLength: 30
+            },
+            newSource: {
+                begin: 0,
+                in: 0,
+                out: 0,
+                duration: 0,
+                category: '',
+                source: ''
             }
         }
     },
@@ -460,7 +499,7 @@ export default {
                 }
             ]
 
-            this.getPath(this.extensions, '')
+            this.getPath('')
             this.getPlaylist()
             setTimeout(() => { scrollTo(this) }, 3000)
         }
@@ -475,8 +514,7 @@ export default {
         ]
 
         this.getStatus()
-        this.extensions = this.configPlayout.storage.extensions.join(',')
-        await this.getPath(this.extensions, '')
+        await this.getPath('')
 
         const timeInSec = this.$timeToSeconds(this.$dayjs().tz(this.timezone).format('HH:mm:ss'))
         const listStartSec = this.$timeToSeconds(this.configPlayout.playlist.day_start)
@@ -489,20 +527,15 @@ export default {
     },
 
     mounted () {
-        // if (process.env.NODE_ENV === 'production') {
-        //     this.interval = setInterval(() => {
-        //         this.$store.dispatch('playlist/animClock')
-        //         this.getStatus()
-        //     }, 5000)
-        // } else {
-        //     this.$store.dispatch('playlist/animClock')
-        // }
-
-        this.interval = setInterval(() => {
+        if (process.env.NODE_ENV === 'production') {
+            this.interval = setInterval(() => {
+                this.$store.dispatch('playlist/playoutStat')
+                this.getStatus()
+            }, 5000)
             this.$store.dispatch('playlist/playoutStat')
-            this.getStatus()
-        }, 5000)
-        this.$store.dispatch('playlist/playoutStat')
+        } else {
+            this.$store.dispatch('playlist/playoutStat')
+        }
 
         const streamExtension = this.configGui[this.configID].preview_url.split('.').pop()
         let player
@@ -533,9 +566,9 @@ export default {
     },
 
     methods: {
-        async getPath (extensions, path) {
+        async getPath (path) {
             this.browserIsLoading = true
-            await this.$store.dispatch('media/getTree', { extensions, path })
+            await this.$store.dispatch('media/getTree', { path })
             this.browserIsLoading = false
         },
 
@@ -591,14 +624,12 @@ export default {
             this.$root.$emit('bv::show::modal', 'preview-modal')
         },
 
-        cloneClip ({ file, duration }) {
+        cloneClip ({ name, duration }) {
             const storagePath = this.configPlayout.storage.path
-            const storagePathArr = storagePath.split('/')
-            const storageRoot = storagePathArr.pop()
-            const sourcePath = `${storagePathArr.join('/')}/${this.folderTree.tree[0].substring(this.folderTree.tree[0].indexOf(storageRoot))}`
+            const sourcePath = `${storagePath}/${this.folderTree.source}/${name}`.replace('//', '/')
 
             return {
-                source: `${sourcePath}/${file}`,
+                source: sourcePath,
                 in: 0,
                 out: duration,
                 duration
@@ -709,6 +740,36 @@ export default {
 
         showDeleteModal () {
             this.$root.$emit('bv::show::modal', 'delete-modal')
+        },
+
+        showAddSource () {
+            this.$bvModal.show('add-source-modal')
+        },
+
+        handleSource (bvModalEvt) {
+            // Prevent modal from closing
+            bvModalEvt.preventDefault()
+            // Trigger submit handler
+            this.addSource()
+        },
+
+        addSource () {
+            const list = this.playlist
+            list.push(this.newSource)
+            this.$store.commit('playlist/UPDATE_PLAYLIST', this.$processPlaylist(this.startInSec, list))
+
+            this.newSource = {
+                begin: 0,
+                in: 0,
+                out: 0,
+                duration: 0,
+                category: '',
+                source: ''
+            }
+
+            this.$nextTick(() => {
+                this.$bvModal.hide('add-source-modal')
+            })
         }
     }
 }

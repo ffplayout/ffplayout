@@ -266,13 +266,13 @@ export default {
     },
 
     watch: {
-        selected (id) {
-            this.getPreset(id)
+        selected (index) {
+            this.getPreset(index)
         }
     },
 
     created () {
-        this.getPreset('')
+        this.getPreset(null)
     },
 
     methods: {
@@ -284,34 +284,34 @@ export default {
             return (parseFloat(parseInt(num, 16)) / 255).toFixed(2)
         },
 
-        async getPreset (id) {
+        async getPreset (index) {
             const response = await this.$axios.get(`api/presets/${this.configGui[this.configID].id}`)
 
-            if (response.data && !id) {
+            if (response.data && index === null) {
                 this.presets = []
-                for (const item of response.data) {
-                    this.presets.push({ value: item.id, text: item.name })
+                for (let index = 0; index < response.data.length; index++) {
+                    const elem = response.data[index]
+                    this.presets.push({ value: index, text: elem.name })
                 }
             } else if (response.data) {
-                id -= 1
-                const fColor = response.data[id].fontcolor.split('@')
-                const bColor = response.data[id].boxcolor.split('@')
+                const fColor = response.data[index].fontcolor.split('@')
+                const bColor = response.data[index].boxcolor.split('@')
 
                 this.form = {
-                    id: response.data[id].id,
-                    name: response.data[id].name,
-                    text: response.data[id].text,
-                    x: response.data[id].x,
-                    y: response.data[id].y,
-                    fontSize: response.data[id].fontsize,
-                    fontSpacing: response.data[id].line_spacing,
+                    id: response.data[index].id,
+                    name: response.data[index].name,
+                    text: response.data[index].text,
+                    x: response.data[index].x,
+                    y: response.data[index].y,
+                    fontSize: response.data[index].fontsize,
+                    fontSpacing: response.data[index].line_spacing,
                     fontColor: fColor[0],
                     fontAlpha: (fColor[1]) ? this.hexToDec(fColor[1]) : 1.0,
-                    showBox: response.data[id].box,
+                    showBox: response.data[index].box,
                     boxColor: bColor[0],
                     boxAlpha: (bColor[1]) ? this.hexToDec(bColor[1]) : 1.0,
-                    border: response.data[id].boxborderw,
-                    overallAlpha: response.data[id].alpha
+                    border: response.data[index].boxborderw,
+                    overallAlpha: response.data[index].alpha
                 }
             }
         },
@@ -344,7 +344,7 @@ export default {
 
             if (response.status === 200) {
                 this.success = true
-                this.getPreset('')
+                this.getPreset(null)
             } else {
                 this.failed = true
             }
@@ -394,7 +394,7 @@ export default {
             }
 
             this.$bvModal.hide('delete-modal')
-            this.getPreset('')
+            this.getPreset(null)
         },
 
         async submitMessage () {

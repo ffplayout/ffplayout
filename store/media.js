@@ -17,7 +17,7 @@ export const mutations = {
 }
 
 export const actions = {
-    async getTree ({ commit, dispatch, state, rootState }, { extensions, path }) {
+    async getTree ({ commit, dispatch, state, rootState }, { path }) {
         const crumbs = []
         let root = '/'
         const channel = rootState.config.configGui[rootState.config.configID].id

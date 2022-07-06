@@ -21,7 +21,7 @@
                             v-for="(crumb, index) in crumbs"
                             :key="crumb.key"
                             :active="index === crumbs.length - 1"
-                            @click="getPath(extensions, crumb.path)"
+                            @click="getPath(crumb.path)"
                         >
                             {{ crumb.text }}
                         </b-breadcrumb-item>
@@ -43,7 +43,7 @@
                                                 <b-icon-folder-fill class="browser-icons" />
                                             </b-col>
                                             <b-col class="browser-item-text">
-                                                <b-link @click="getPath(extensions, `/${folderTree.source}/${folder}`)">
+                                                <b-link @click="getPath(`/${folderTree.source}/${folder}`)">
                                                     {{ folder }}
                                                 </b-link>
                                             </b-col>
@@ -304,7 +304,7 @@ export default {
 
     watch: {
         configID () {
-            this.getPath(this.extensions, '')
+            this.getPath('')
         }
     },
 
@@ -314,14 +314,14 @@ export default {
         })
 
         this.extensions = exts.join(',')
-        this.getPath(this.extensions, '')
+        this.getPath('')
     },
 
     methods: {
-        async getPath (extensions, path) {
+        async getPath (path) {
             this.lastPath = path
             this.isLoading = true
-            await this.$store.dispatch('media/getTree', { extensions, path })
+            await this.$store.dispatch('media/getTree', { path })
             this.isLoading = false
         },
 
@@ -369,7 +369,7 @@ export default {
             )
 
             this.$root.$emit('bv::hide::modal', 'folder-modal')
-            this.getPath(this.extensions, this.lastPath)
+            this.getPath(this.lastPath)
         },
 
         onCancelCreateFolder (evt) {
@@ -429,7 +429,7 @@ export default {
             this.currentNumber = 0
             this.inputPlaceholder = 'Choose files or drop them here...'
             this.inputFiles = []
-            this.getPath(this.extensions, this.lastPath)
+            this.getPath(this.lastPath)
             this.$root.$emit('bv::hide::modal', 'upload-modal')
         },
 
@@ -442,7 +442,7 @@ export default {
             this.inputPlaceholder = 'Choose files or drop them here...'
 
             this.cancelTokenSource.cancel('Upload cancelled')
-            this.getPath(this.extensions, this.lastPath)
+            this.getPath(this.lastPath)
 
             this.$root.$emit('bv::hide::modal', 'upload-modal')
         },
@@ -489,7 +489,7 @@ export default {
                 }
             )
 
-            this.getPath(this.extensions, this.lastPath)
+            this.getPath(this.lastPath)
 
             this.renamePath = ''
             this.renameOldName = ''
@@ -537,7 +537,7 @@ export default {
 
             this.$root.$emit('bv::hide::modal', 'delete-modal')
 
-            this.getPath(this.extensions, this.lastPath)
+            this.getPath(this.lastPath)
         },
 
         cancelDelete () {
