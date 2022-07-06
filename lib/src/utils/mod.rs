@@ -590,6 +590,7 @@ fn ffmpeg_libs_and_filter() -> (Vec<String>, Vec<String>) {
                     libs.push(config.replace("--enable-", ""));
                 }
             }
+            break;
         }
     }
 
