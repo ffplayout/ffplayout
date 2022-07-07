@@ -33,7 +33,7 @@ logging:
         log timestamps to UTC. Path to /var/log/ only if you run this program as daemon.
         'log_level' can be DEBUG, INFO, WARNING, ERROR. 'ffmpeg_level' can be info,
         warning, error.
-    log_to_file: false
+    log_to_file: true
     backup_count: 7
     local_time: true
     timestamp: true
