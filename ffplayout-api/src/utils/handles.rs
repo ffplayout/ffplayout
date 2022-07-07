@@ -297,7 +297,7 @@ pub async fn db_add_preset(preset: TextPreset) -> Result<SqliteQueryResult, sqlx
     Ok(result)
 }
 
-pub async fn db_delete_preset(id: &i64) ->  Result<SqliteQueryResult, sqlx::Error> {
+pub async fn db_delete_preset(id: &i64) -> Result<SqliteQueryResult, sqlx::Error> {
     let conn = db_connection().await?;
     let query = "DELETE FROM presets WHERE id = $1;";
     let result: SqliteQueryResult = sqlx::query(query).bind(id).execute(&conn).await?;

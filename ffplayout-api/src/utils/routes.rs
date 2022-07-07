@@ -8,7 +8,6 @@
 ///
 /// For all endpoints an (Bearer) authentication is required.\
 /// `{id}` represent the channel id, and at default is 1.
-
 use std::collections::HashMap;
 
 use actix_multipart::Multipart;
@@ -30,9 +29,9 @@ use crate::utils::{
         PathObject,
     },
     handles::{
-        db_add_preset, db_add_user, db_get_all_settings, db_get_presets, db_get_settings,
-        db_get_user, db_login, db_role, db_update_preset, db_update_settings, db_update_user,
-        db_delete_preset,
+        db_add_preset, db_add_user, db_delete_preset, db_get_all_settings, db_get_presets,
+        db_get_settings, db_get_user, db_login, db_role, db_update_preset, db_update_settings,
+        db_update_user,
     },
     models::{LoginUser, Settings, TextPreset, User},
     playlist::{delete_playlist, generate_playlist, read_playlist, write_playlist},
@@ -455,7 +454,10 @@ pub async fn send_text_message(
 /// ```
 #[post("/control/{id}/playout/")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
-pub async fn control_playout(id: web::Path<i64>, control: web::Json<Process>) -> Result<impl Responder, ServiceError> {
+pub async fn control_playout(
+    id: web::Path<i64>,
+    control: web::Json<Process>,
+) -> Result<impl Responder, ServiceError> {
     match control_state(*id, control.command.clone()).await {
         Ok(res) => return Ok(res.text().await.unwrap_or_else(|_| "Success".into())),
         Err(e) => Err(e),

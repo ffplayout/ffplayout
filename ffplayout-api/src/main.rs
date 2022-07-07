@@ -15,11 +15,11 @@ use utils::{
     auth, db_path, init_config,
     models::LoginUser,
     routes::{
-        add_dir, add_preset, add_user, del_playlist, file_browser, gen_playlist, get_all_settings,
-        get_log, get_playlist, get_playout_config, get_presets, get_settings, get_user,
-        control_playout, login, media_current, media_last, media_next, move_rename,
-        patch_settings, process_control, remove, save_file, save_playlist,
-        send_text_message, update_playout_config, update_preset, update_user, delete_preset,
+        add_dir, add_preset, add_user, control_playout, del_playlist, delete_preset, file_browser,
+        gen_playlist, get_all_settings, get_log, get_playlist, get_playout_config, get_presets,
+        get_settings, get_user, login, media_current, media_last, media_next, move_rename,
+        patch_settings, process_control, remove, save_file, save_playlist, send_text_message,
+        update_playout_config, update_preset, update_user,
     },
     run_args, Role,
 };
