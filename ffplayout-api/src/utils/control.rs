@@ -130,7 +130,7 @@ where
         Ok(result) => Ok(result),
         Err(e) => {
             error!("{e:?}");
-            Err(ServiceError::BadRequest(e.to_string()))
+            Err(ServiceError::ServiceUnavailable(e.to_string()))
         }
     }
 }
