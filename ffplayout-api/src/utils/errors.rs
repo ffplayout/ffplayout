@@ -17,6 +17,9 @@ pub enum ServiceError {
 
     #[display(fmt = "NoContent: {}", _0)]
     NoContent(String),
+
+    #[display(fmt = "ServiceUnavailable: {}", _0)]
+    ServiceUnavailable(String),
 }
 
 // impl ResponseError trait allows to convert our errors into http responses with appropriate data
@@ -30,6 +33,9 @@ impl ResponseError for ServiceError {
             ServiceError::Conflict(ref message) => HttpResponse::Conflict().json(message),
             ServiceError::Unauthorized => HttpResponse::Unauthorized().json("No Permission!"),
             ServiceError::NoContent(ref message) => HttpResponse::NoContent().json(message),
+            ServiceError::ServiceUnavailable(ref message) => {
+                HttpResponse::ServiceUnavailable().json(message)
+            }
         }
     }
 }
@@ -54,7 +60,7 @@ impl From<actix_multipart::MultipartError> for ServiceError {
 
 impl From<std::io::Error> for ServiceError {
     fn from(err: std::io::Error) -> ServiceError {
-        ServiceError::BadRequest(err.to_string())
+        ServiceError::NoContent(err.to_string())
     }
 }
 

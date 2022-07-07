@@ -16,3 +16,12 @@ if [ ! -d "/usr/share/ffplayout/db" ]; then
         systemctl daemon-reload
     fi
 fi
+
+if [ ! -d "/var/log/ffplayout" ]; then
+    mkdir /var/log/ffplayout
+
+     if id "www-data" &>/dev/null; then
+        chown www-data. /var/log/ffplayout
+        chown -R www-data. /etc/ffplayout
+     fi
+fi

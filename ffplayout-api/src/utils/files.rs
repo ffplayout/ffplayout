@@ -93,7 +93,7 @@ pub async fn browser(id: i64, path_obj: &PathObject) -> Result<PathObject, Servi
         Ok(p) => p.filter_map(|r| r.ok()).collect(),
         Err(e) => {
             error!("{e} in {}", path_obj.source);
-            return Err(ServiceError::InternalServerError);
+            return Err(ServiceError::NoContent(e.to_string()));
         }
     };
 

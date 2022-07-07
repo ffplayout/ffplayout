@@ -217,7 +217,7 @@ pub async fn read_log_file(channel_id: &i64, date: &str) -> Result<String, Servi
         }
     }
 
-    Err(ServiceError::BadRequest(
+    Err(ServiceError::NoContent(
         "Requested log file not exists, or not readable.".to_string(),
     ))
 }
