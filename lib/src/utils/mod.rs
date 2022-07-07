@@ -561,7 +561,7 @@ fn ffmpeg_libs_and_filter() -> (Vec<String>, Vec<String>) {
     let mut filters: Vec<String> = vec![];
 
     // filter lines which contains filter
-    let re: Regex = Regex::new(r"^( ?) [TSC.]+").unwrap();
+    let re: Regex = Regex::new(r"^ ?[TSC.]+").unwrap();
 
     let mut ff_proc = match Command::new("ffmpeg")
         .arg("-filters")
