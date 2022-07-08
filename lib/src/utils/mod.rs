@@ -564,10 +564,7 @@ fn is_in_system(name: &str) -> Result<(), String> {
 fn ffmpeg_libs() -> Result<Vec<String>, String> {
     let mut libs: Vec<String> = vec![];
 
-    let mut ff_proc = match Command::new("ffmpeg")
-        .stderr(Stdio::piped())
-        .spawn()
-    {
+    let mut ff_proc = match Command::new("ffmpeg").stderr(Stdio::piped()).spawn() {
         Err(e) => {
             return Err(format!("couldn't spawn ffmpeg process: {e}"));
         }
