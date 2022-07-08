@@ -83,7 +83,10 @@ fn main() {
     let logging = init_logging(&config, Some(proc_ctl1), Some(messages.clone()));
     CombinedLogger::init(logging).unwrap();
 
-    validate_ffmpeg(&config);
+    if let Err(e) = validate_ffmpeg(&config) {
+        error!("{e}");
+        exit(1);
+    };
 
     if config.general.generate.is_some() {
         // run a simple playlist generator and save them to disk
