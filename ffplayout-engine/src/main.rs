@@ -50,7 +50,7 @@ fn status_file(stat_file: &str, playout_stat: &PlayoutStatus) {
 
         let json: String = serde_json::to_string(&data).expect("Serialize status data failed");
         if let Err(e) = fs::write(stat_file, &json) {
-            error!("Unable to write status file: {e}");
+            error!("Unable to write to status file <b><magenta>{stat_file}</></b>: {e}");
         };
     } else {
         let stat_file = File::options()
@@ -83,7 +83,10 @@ fn main() {
     let logging = init_logging(&config, Some(proc_ctl1), Some(messages.clone()));
     CombinedLogger::init(logging).unwrap();
 
-    validate_ffmpeg(&config);
+    if let Err(e) = validate_ffmpeg(&config) {
+        error!("{e}");
+        exit(1);
+    };
 
     if config.general.generate.is_some() {
         // run a simple playlist generator and save them to disk

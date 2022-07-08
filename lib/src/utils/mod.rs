@@ -4,7 +4,7 @@ use std::{
     io::{BufRead, BufReader, Error},
     net::TcpListener,
     path::Path,
-    process::{exit, ChildStderr, Command, Stdio},
+    process::{ChildStderr, Command, Stdio},
     time::{self, UNIX_EPOCH},
 };
 
@@ -228,7 +228,10 @@ pub fn write_status(config: &PlayoutConfig, date: &str, shift: f64) {
 
     let status_data: String = serde_json::to_string(&data).expect("Serialize status data failed");
     if let Err(e) = fs::write(&config.general.stat_file, &status_data) {
-        error!("Unable to write status file: {e:?}")
+        error!(
+            "Unable to write to status file <b><magenta>{}</></b>: {e}",
+            config.general.stat_file
+        )
     };
 }
 
@@ -541,43 +544,37 @@ pub fn stderr_reader(buffer: BufReader<ChildStderr>, suffix: &str) -> Result<(),
 }
 
 /// Run program to test if it is in system.
-fn is_in_system(name: &str) {
-    if let Ok(mut proc) = Command::new(name)
+fn is_in_system(name: &str) -> Result<(), String> {
+    match Command::new(name)
         .stderr(Stdio::null())
         .stdout(Stdio::null())
         .spawn()
     {
-        if let Err(e) = proc.wait() {
-            error!("{e:?}")
-        };
-    } else {
-        error!("{name} not found on system!");
-        exit(0x0100);
+        Ok(mut proc) => {
+            if let Err(e) = proc.wait() {
+                return Err(format!("{e}"));
+            };
+        }
+        Err(e) => return Err(format!("{name} not found on system! {e}")),
     }
+
+    Ok(())
 }
 
-fn ffmpeg_libs_and_filter() -> (Vec<String>, Vec<String>) {
+fn ffmpeg_libs() -> Result<Vec<String>, String> {
     let mut libs: Vec<String> = vec![];
-    let mut filters: Vec<String> = vec![];
-
-    // filter lines which contains filter
-    let re: Regex = Regex::new(r"^[T.][S.][C.]").unwrap();
 
     let mut ff_proc = match Command::new("ffmpeg")
-        .arg("-filters")
         .stderr(Stdio::piped())
-        .stdout(Stdio::piped())
         .spawn()
     {
         Err(e) => {
-            error!("couldn't spawn ffmpeg process: {}", e);
-            exit(0x0100);
+            return Err(format!("couldn't spawn ffmpeg process: {e}"));
         }
         Ok(proc) => proc,
     };
 
     let err_buffer = BufReader::new(ff_proc.stderr.take().unwrap());
-    let out_buffer = BufReader::new(ff_proc.stdout.take().unwrap());
 
     // stderr shows only the ffmpeg configuration
     // get codec library's
@@ -594,53 +591,45 @@ fn ffmpeg_libs_and_filter() -> (Vec<String>, Vec<String>) {
         }
     }
 
-    // stdout shows filter help text
-    // get filters
-    for line in out_buffer.lines().flatten() {
-        if re.captures(line.as_str().trim()).is_some() {
-            let filter_line = line.split_whitespace();
-
-            filters.push(filter_line.collect::<Vec<&str>>()[1].to_string());
-        }
-    }
-
     if let Err(e) = ff_proc.wait() {
         error!("{:?}", e)
     };
 
-    (libs, filters)
+    Ok(libs)
 }
 
 /// Validate ffmpeg/ffprobe/ffplay.
 ///
-/// Check if they are in system and has all filters and codecs we need.
-pub fn validate_ffmpeg(config: &PlayoutConfig) {
-    is_in_system("ffmpeg");
-    is_in_system("ffprobe");
+/// Check if they are in system and has all libs and codecs we need.
+pub fn validate_ffmpeg(config: &PlayoutConfig) -> Result<(), String> {
+    is_in_system("ffmpeg")?;
+    is_in_system("ffprobe")?;
 
     if config.out.mode == "desktop" {
-        is_in_system("ffplay");
+        is_in_system("ffplay")?;
     }
 
-    let (libs, filters) = ffmpeg_libs_and_filter();
+    let libs = ffmpeg_libs()?;
 
     if !libs.contains(&"libx264".to_string()) {
-        error!("ffmpeg contains no libx264!");
-        exit(0x0100);
+        return Err("ffmpeg contains no libx264!".to_string());
+    }
+
+    if config.text.add_text
+        && !config.text.text_from_filename
+        && !libs.contains(&"libzmq".to_string())
+    {
+        return Err(
+            "ffmpeg contains no libzmq! Disable add_text in config or compile ffmpeg with libzmq."
+                .to_string(),
+        );
     }
 
     if !libs.contains(&"libfdk-aac".to_string()) {
         warn!("ffmpeg contains no libfdk-aac! Can't use high quality aac encoder...");
     }
 
-    if !filters.contains(&"tpad".to_string()) {
-        error!("ffmpeg contains no tpad filter!");
-        exit(0x0100);
-    }
-
-    if !filters.contains(&"zmq".to_string()) {
-        warn!("ffmpeg contains no zmq filter! Text messages will not work...");
-    }
+    Ok(())
 }
 
 /// get a free tcp socket
