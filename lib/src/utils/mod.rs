@@ -561,17 +561,11 @@ fn is_in_system(name: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn ffmpeg_libs_and_filter() -> Result<(Vec<String>, Vec<String>), String> {
+fn ffmpeg_libs() -> Result<Vec<String>, String> {
     let mut libs: Vec<String> = vec![];
-    let mut filters: Vec<String> = vec![];
-
-    // filter lines which contains filter
-    let re: Regex = Regex::new(r"^[T.][S.][C.]").unwrap();
 
     let mut ff_proc = match Command::new("ffmpeg")
-        .arg("-filters")
         .stderr(Stdio::piped())
-        .stdout(Stdio::piped())
         .spawn()
     {
         Err(e) => {
@@ -581,7 +575,6 @@ fn ffmpeg_libs_and_filter() -> Result<(Vec<String>, Vec<String>), String> {
     };
 
     let err_buffer = BufReader::new(ff_proc.stderr.take().unwrap());
-    let out_buffer = BufReader::new(ff_proc.stdout.take().unwrap());
 
     // stderr shows only the ffmpeg configuration
     // get codec library's
@@ -598,26 +591,16 @@ fn ffmpeg_libs_and_filter() -> Result<(Vec<String>, Vec<String>), String> {
         }
     }
 
-    // stdout shows filter help text
-    // get filters
-    for line in out_buffer.lines().flatten() {
-        if re.captures(line.as_str().trim()).is_some() {
-            let filter_line = line.split_whitespace();
-
-            filters.push(filter_line.collect::<Vec<&str>>()[1].to_string());
-        }
-    }
-
     if let Err(e) = ff_proc.wait() {
         error!("{:?}", e)
     };
 
-    Ok((libs, filters))
+    Ok(libs)
 }
 
 /// Validate ffmpeg/ffprobe/ffplay.
 ///
-/// Check if they are in system and has all filters and codecs we need.
+/// Check if they are in system and has all libs and codecs we need.
 pub fn validate_ffmpeg(config: &PlayoutConfig) -> Result<(), String> {
     is_in_system("ffmpeg")?;
     is_in_system("ffprobe")?;
@@ -626,7 +609,7 @@ pub fn validate_ffmpeg(config: &PlayoutConfig) -> Result<(), String> {
         is_in_system("ffplay")?;
     }
 
-    let (libs, filters) = ffmpeg_libs_and_filter()?;
+    let libs = ffmpeg_libs()?;
 
     if !libs.contains(&"libx264".to_string()) {
         return Err("ffmpeg contains no libx264!".to_string());
@@ -644,10 +627,6 @@ pub fn validate_ffmpeg(config: &PlayoutConfig) -> Result<(), String> {
 
     if !libs.contains(&"libfdk-aac".to_string()) {
         warn!("ffmpeg contains no libfdk-aac! Can't use high quality aac encoder...");
-    }
-
-    if !filters.contains(&"tpad".to_string()) {
-        return Err("ffmpeg contains no tpad filter! Use newer ffmpeg version (4.2+).".to_string());
     }
 
     Ok(())
