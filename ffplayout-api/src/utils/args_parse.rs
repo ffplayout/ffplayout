@@ -14,6 +14,9 @@ pub struct Args {
     #[clap(short, long, help = "Initialize Database")]
     pub init: bool,
 
+    #[clap(short, long, help = "domain name for initialization")]
+    pub domain: Option<String>,
+
     #[clap(short, long, help = "Create admin user")]
     pub username: Option<String>,
 

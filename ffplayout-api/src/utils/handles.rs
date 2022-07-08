@@ -81,7 +81,7 @@ async fn create_schema() -> Result<SqliteQueryResult, sqlx::Error> {
     result
 }
 
-pub async fn db_init() -> Result<&'static str, Box<dyn std::error::Error>> {
+pub async fn db_init(domain: Option<String>) -> Result<&'static str, Box<dyn std::error::Error>> {
     let db_path = db_path()?;
 
     if !Sqlite::database_exists(&db_path).await.unwrap_or(false) {
@@ -99,6 +99,11 @@ pub async fn db_init() -> Result<&'static str, Box<dyn std::error::Error>> {
 
     let instances = db_connection().await?;
 
+    let url = match domain {
+        Some(d) => format!("http://{d}/live/stream.m3u8"),
+        None => "http://localhost/live/stream.m3u8".to_string(),
+    };
+
     let query = "CREATE TRIGGER global_row_count
         BEFORE INSERT ON global
         WHEN (SELECT COUNT(*) FROM global) >= 1
@@ -107,8 +112,7 @@ pub async fn db_init() -> Result<&'static str, Box<dyn std::error::Error>> {
         END;
         INSERT INTO global(secret) VALUES($1);
         INSERT INTO settings(channel_name, preview_url, config_path, extra_extensions, timezone, service)
-        VALUES('Channel 1', 'http://localhost/live/preview.m3u8',
-            '/etc/ffplayout/ffplayout.yml', 'jpg,jpeg,png', 'UTC', 'ffplayout.service');
+        VALUES('Channel 1', $2, '/etc/ffplayout/ffplayout.yml', 'jpg,jpeg,png', 'UTC', 'ffplayout.service');
         INSERT INTO roles(name) VALUES('admin'), ('user'), ('guest');
         INSERT INTO presets(name, text, x, y, fontsize, line_spacing, fontcolor, box, boxcolor, boxborderw, alpha, channel_id)
         VALUES('Default', 'Wellcome to ffplayout messenger!', '(w-text_w)/2', '(h-text_h)/2', '24', '4', '#ffffff@0xff', '0', '#000000@0x80', '4', '1.0', '1'),
@@ -117,7 +121,11 @@ pub async fn db_init() -> Result<&'static str, Box<dyn std::error::Error>> {
             '1', '#000000@0x80', '4', 'ifnot(ld(1),st(1,t));if(lt(t,ld(1)+1),0,if(lt(t,ld(1)+2),(t-(ld(1)+1))/1,if(lt(t,ld(1)+8),1,if(lt(t,ld(1)+9),(1-(t-(ld(1)+8)))/1,0))))', '1'),
         ('Scrolling Text', 'We have a very important announcement to make.', 'ifnot(ld(1),st(1,t));if(lt(t,ld(1)+1),w+4,w-w/12*mod(t-ld(1),12*(w+tw)/w))', '(h-line_h)*0.9',
             '24', '4', '#ffffff', '1', '#000000@0x80', '4', '1.0', '1');";
-    sqlx::query(query).bind(secret).execute(&instances).await?;
+    sqlx::query(query)
+        .bind(secret)
+        .bind(url)
+        .execute(&instances)
+        .await?;
     instances.close().await;
 
     Ok("Database initialized!")
