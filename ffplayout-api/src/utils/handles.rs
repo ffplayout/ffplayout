@@ -121,7 +121,11 @@ pub async fn db_init(domain: Option<String>) -> Result<&'static str, Box<dyn std
             '1', '#000000@0x80', '4', 'ifnot(ld(1),st(1,t));if(lt(t,ld(1)+1),0,if(lt(t,ld(1)+2),(t-(ld(1)+1))/1,if(lt(t,ld(1)+8),1,if(lt(t,ld(1)+9),(1-(t-(ld(1)+8)))/1,0))))', '1'),
         ('Scrolling Text', 'We have a very important announcement to make.', 'ifnot(ld(1),st(1,t));if(lt(t,ld(1)+1),w+4,w-w/12*mod(t-ld(1),12*(w+tw)/w))', '(h-line_h)*0.9',
             '24', '4', '#ffffff', '1', '#000000@0x80', '4', '1.0', '1');";
-    sqlx::query(query).bind(secret).bind(url).execute(&instances).await?;
+    sqlx::query(query)
+        .bind(secret)
+        .bind(url)
+        .execute(&instances)
+        .await?;
     instances.close().await;
 
     Ok("Database initialized!")
