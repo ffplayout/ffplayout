@@ -99,7 +99,7 @@ pub async fn run_args(mut args: Args) -> Result<(), i32> {
     }
 
     if args.init {
-        if let Err(e) = db_init().await {
+        if let Err(e) = db_init(args.domain).await {
             panic!("{e}");
         };
 
