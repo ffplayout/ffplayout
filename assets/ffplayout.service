@@ -6,6 +6,7 @@ After=network.target remote-fs.target
 ExecStart=/usr/bin/ffplayout
 Restart=always
 RestartSec=1
+KillMode=mixed
 User=www-data
 Group=www-data
 
