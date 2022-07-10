@@ -438,6 +438,7 @@ fn timed_source(
         info!("Begin is over play time, skip: {}", node.source);
     } else if total_delta < node.duration - node.seek || last {
         new_node = handle_list_end(node, total_delta);
+        new_node.add_filter(config);
     }
 
     new_node
@@ -492,6 +493,7 @@ fn handle_list_init(config: &PlayoutConfig, mut node: Media) -> Media {
 /// we end up here
 fn handle_list_end(mut node: Media, total_delta: f64) -> Media {
     debug!("Playlist end");
+    node.add_probe();
 
     let mut out = if node.seek > 0.0 {
         node.seek + total_delta
