@@ -6,6 +6,9 @@ use clap::Parser;
     override_usage = "Run without any command to use config file only, or with commands to override parameters:\n\n    ffplayout [OPTIONS]",
     long_about = None)]
 pub struct Args {
+    #[clap(index = 1, value_parser)]
+    pub channel: Option<String>,
+
     #[clap(short, long, help = "File path to ffplayout.yml")]
     pub config: Option<String>,
 
@@ -15,7 +18,7 @@ pub struct Args {
     #[clap(
         short,
         long,
-        help = "Generate playlist for date or date-range, like: 2022-01-01 - 2022-01-10",
+        help = "Generate playlist for dates, like: 2022-01-01 - 2022-01-10",
         name = "YYYY-MM-DD",
         multiple_values = true
     )]

@@ -4,7 +4,7 @@ description = "24/7 playout based on rust and ffmpeg"
 license = "GPL-3.0"
 authors = ["Jonathan Baecker jonbae77@gmail.com"]
 readme = "README.md"
-version = "0.10.5"
+version = "0.10.6"
 edition = "2021"
 
 [dependencies]
@@ -48,6 +48,7 @@ assets = [
         "755"
     ],
     ["../assets/ffpapi.service", "/lib/systemd/system/", "644"],
+    ["../assets/ffplayout@.service", "/lib/systemd/system/", "644"],
     ["../assets/11-ffplayout", "/etc/sudoers.d/", "644"],
     ["../assets/ffplayout.yml", "/etc/ffplayout/", "644"],
     ["../assets/logo.png", "/usr/share/ffplayout/", "644"],
@@ -66,6 +67,7 @@ assets = [
     { source = "../assets/ffplayout.yml", dest = "/etc/ffplayout/ffplayout.yml", mode = "644", config = true },
     { source = "../assets/ffpapi.service", dest = "/lib/systemd/system/ffpapi.service", mode = "644" },
     { source = "../assets/ffplayout.service", dest = "/lib/systemd/system/ffplayout.service", mode = "644" },
+    { source = "../assets/ffplayout@.service", dest = "/lib/systemd/system/ffplayout@.service", mode = "644" },
     { source = "../assets/11-ffplayout", dest = "/etc/sudoers.d/11-ffplayout", mode = "644" },
     { source = "../README.md", dest = "/usr/share/doc/ffplayout/README", mode = "644", doc = true },
     { source = "../LICENSE", dest = "/usr/share/doc/ffplayout/LICENSE", mode = "644" },
