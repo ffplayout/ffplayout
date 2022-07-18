@@ -55,10 +55,10 @@ curl -X POST 'http://localhost:8000/api/user/' -H 'Content-Type: application/jso
 
 #### ffpapi Settings
 
-**Get Settings**
+**Get Settings from Channel**
 
 ```BASH
-curl -X GET http://127.0.0.1:8000/api/settings/1 -H "Authorization: Bearer <TOKEN>"
+curl -X GET http://127.0.0.1:8000/api/channel/1 -H "Authorization: Bearer <TOKEN>"
 ```
 
 **Response:**
@@ -75,20 +75,35 @@ curl -X GET http://127.0.0.1:8000/api/settings/1 -H "Authorization: Bearer <TOKE
 }
 ```
 
-**Get all Settings**
+**Get settings from all Channels**
 
 ```BASH
-curl -X GET http://127.0.0.1:8000/api/settings -H "Authorization: Bearer <TOKEN>"
+curl -X GET http://127.0.0.1:8000/api/channels -H "Authorization: Bearer <TOKEN>"
 ```
 
-**Update Settings**
+**Update Channel**
 
 ```BASH
-curl -X PATCH http://127.0.0.1:8000/api/settings/1 -H "Content-Type: application/json"  \
+curl -X PATCH http://127.0.0.1:8000/api/channel/1 -H "Content-Type: application/json" \
 -d '{ "id": 1, "channel_name": "Channel 1", "preview_url": "http://localhost/live/stream.m3u8", \
-"config_path": "/etc/ffplayout/ffplayout.yml", "extra_extensions": "jpg,jpeg,png",
-"role_id": 1, "channel_id": 1 }' \
+"config_path": "/etc/ffplayout/ffplayout.yml", "extra_extensions": "jpg,jpeg,png", "timezone": "Europe/Berlin"}' \
 -H "Authorization: Bearer <TOKEN>"
+```
+
+**Create new Channel**
+
+```BASH
+curl -X POST http://127.0.0.1:8000/api/channel/ -H "Content-Type: application/json" \
+-d '{ "channel_name": "Channel 2", "preview_url": "http://localhost/live/channel2.m3u8", \
+"config_path": "/etc/ffplayout/channel2.yml", "extra_extensions": "jpg,jpeg,png",
+"timezone": "Europe/Berlin", "service": "ffplayout@channel2.service" }' \
+-H "Authorization: Bearer <TOKEN>"
+```
+
+**Delete Channel**
+
+```BASH
+curl -X DELETE http://127.0.0.1:8000/api/channel/2 -H "Authorization: Bearer <TOKEN>"
 ```
 
 #### ffplayout Config

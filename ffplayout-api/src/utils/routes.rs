@@ -22,6 +22,7 @@ use simplelog::*;
 
 use crate::utils::{
     auth::{create_jwt, Claims},
+    channels::{create_channel, delete_channel},
     control::{control_service, control_state, media_info, send_message, Process},
     errors::ServiceError,
     files::{
@@ -29,11 +30,11 @@ use crate::utils::{
         PathObject,
     },
     handles::{
-        db_add_preset, db_add_user, db_delete_preset, db_get_all_settings, db_get_presets,
-        db_get_settings, db_get_user, db_login, db_role, db_update_preset, db_update_settings,
+        db_add_preset, db_add_user, db_delete_preset, db_get_all_channels, db_get_channel,
+        db_get_presets, db_get_user, db_login, db_role, db_update_channel, db_update_preset,
         db_update_user,
     },
-    models::{LoginUser, Settings, TextPreset, User},
+    models::{Channel, LoginUser, TextPreset, User},
     playlist::{delete_playlist, generate_playlist, read_playlist, write_playlist},
     read_log_file, read_playout_config, Role,
 };
@@ -219,10 +220,10 @@ async fn add_user(data: web::Json<User>) -> Result<impl Responder, ServiceError>
 
 /// #### ffpapi Settings
 ///
-/// **Get Settings**
+/// **Get Settings from Channel**
 ///
 /// ```BASH
-/// curl -X GET http://127.0.0.1:8000/api/settings/1 -H "Authorization: Bearer <TOKEN>"
+/// curl -X GET http://127.0.0.1:8000/api/channel/1 -H "Authorization: Bearer <TOKEN>"
 /// ```
 ///
 /// **Response:**
@@ -238,49 +239,81 @@ async fn add_user(data: web::Json<User>) -> Result<impl Responder, ServiceError>
 ///     "service": "ffplayout.service"
 /// }
 /// ```
-#[get("/settings/{id}")]
+#[get("/channel/{id}")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
-async fn get_settings(id: web::Path<i64>) -> Result<impl Responder, ServiceError> {
-    if let Ok(settings) = db_get_settings(&id).await {
-        return Ok(web::Json(settings));
+async fn get_channel(id: web::Path<i64>) -> Result<impl Responder, ServiceError> {
+    if let Ok(channel) = db_get_channel(&id).await {
+        return Ok(web::Json(channel));
     }
 
     Err(ServiceError::InternalServerError)
 }
 
-/// **Get all Settings**
+/// **Get settings from all Channels**
 ///
 /// ```BASH
-/// curl -X GET http://127.0.0.1:8000/api/settings -H "Authorization: Bearer <TOKEN>"
+/// curl -X GET http://127.0.0.1:8000/api/channels -H "Authorization: Bearer <TOKEN>"
 /// ```
-#[get("/settings")]
+#[get("/channels")]
 #[has_any_role("Role::Admin", type = "Role")]
-async fn get_all_settings() -> Result<impl Responder, ServiceError> {
-    if let Ok(settings) = db_get_all_settings().await {
-        return Ok(web::Json(settings));
+async fn get_all_channels() -> Result<impl Responder, ServiceError> {
+    if let Ok(channel) = db_get_all_channels().await {
+        return Ok(web::Json(channel));
     }
 
     Err(ServiceError::InternalServerError)
 }
 
-/// **Update Settings**
+/// **Update Channel**
 ///
 /// ```BASH
-/// curl -X PATCH http://127.0.0.1:8000/api/settings/1 -H "Content-Type: application/json"  \
+/// curl -X PATCH http://127.0.0.1:8000/api/channel/1 -H "Content-Type: application/json" \
 /// -d '{ "id": 1, "channel_name": "Channel 1", "preview_url": "http://localhost/live/stream.m3u8", \
-/// "config_path": "/etc/ffplayout/ffplayout.yml", "extra_extensions": "jpg,jpeg,png",
-/// "role_id": 1, "channel_id": 1 }' \
+/// "config_path": "/etc/ffplayout/ffplayout.yml", "extra_extensions": "jpg,jpeg,png", "timezone": "Europe/Berlin"}' \
 /// -H "Authorization: Bearer <TOKEN>"
 /// ```
-#[patch("/settings/{id}")]
+#[patch("/channel/{id}")]
 #[has_any_role("Role::Admin", type = "Role")]
-async fn patch_settings(
+async fn patch_channel(
     id: web::Path<i64>,
-    data: web::Json<Settings>,
+    data: web::Json<Channel>,
 ) -> Result<impl Responder, ServiceError> {
-    if db_update_settings(*id, data.into_inner()).await.is_ok() {
+    if db_update_channel(*id, data.into_inner()).await.is_ok() {
         return Ok("Update Success");
     };
+
+    Err(ServiceError::InternalServerError)
+}
+
+/// **Create new Channel**
+///
+/// ```BASH
+/// curl -X POST http://127.0.0.1:8000/api/channel/ -H "Content-Type: application/json" \
+/// -d '{ "channel_name": "Channel 2", "preview_url": "http://localhost/live/channel2.m3u8", \
+/// "config_path": "/etc/ffplayout/channel2.yml", "extra_extensions": "jpg,jpeg,png",
+/// "timezone": "Europe/Berlin", "service": "ffplayout@channel2.service" }' \
+/// -H "Authorization: Bearer <TOKEN>"
+/// ```
+#[post("/channel/")]
+#[has_any_role("Role::Admin", type = "Role")]
+async fn add_channel(data: web::Json<Channel>) -> Result<impl Responder, ServiceError> {
+    match create_channel(data.into_inner()).await {
+        Ok(c) => Ok(web::Json(c)),
+        Err(e) => Err(e),
+    }
+}
+
+/// **Delete Channel**
+///
+/// ```BASH
+/// curl -X DELETE http://127.0.0.1:8000/api/channel/2 -H "Authorization: Bearer <TOKEN>"
+/// ```
+#[delete("/channel/{id}")]
+#[has_any_role("Role::Admin", type = "Role")]
+async fn remove_channel(id: web::Path<i64>) -> Result<impl Responder, ServiceError> {
+    if delete_channel(*id).await.is_ok() {
+        return Ok("Delete Channel Success");
+    }
 
     Err(ServiceError::InternalServerError)
 }
@@ -300,8 +333,8 @@ async fn get_playout_config(
     id: web::Path<i64>,
     _details: AuthDetails<Role>,
 ) -> Result<impl Responder, ServiceError> {
-    if let Ok(settings) = db_get_settings(&id).await {
-        if let Ok(config) = read_playout_config(&settings.config_path) {
+    if let Ok(channel) = db_get_channel(&id).await {
+        if let Ok(config) = read_playout_config(&channel.config_path) {
             return Ok(web::Json(config));
         }
     };
@@ -321,11 +354,11 @@ async fn update_playout_config(
     id: web::Path<i64>,
     data: web::Json<PlayoutConfig>,
 ) -> Result<impl Responder, ServiceError> {
-    if let Ok(settings) = db_get_settings(&id).await {
+    if let Ok(channel) = db_get_channel(&id).await {
         if let Ok(f) = std::fs::OpenOptions::new()
             .write(true)
             .truncate(true)
-            .open(&settings.config_path)
+            .open(&channel.config_path)
         {
             serde_yaml::to_writer(f, &data).unwrap();
 
