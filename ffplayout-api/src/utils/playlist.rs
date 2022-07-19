@@ -54,6 +54,10 @@ pub async fn write_playlist(id: i64, json_data: JsonPlaylist) -> Result<String, 
         .join(date.clone())
         .with_extension("json");
 
+    if let Some(p) = playlist_path.parent() {
+        fs::create_dir_all(p)?;
+    }
+
     if playlist_path.is_file() {
         if let Ok(existing_data) = json_reader(&playlist_path) {
             if json_data == existing_data {

@@ -8,7 +8,6 @@ Restart=always
 RestartSec=1
 KillMode=mixed
 User=ffpu
-Group=ffpu
 
 [Install]
 WantedBy=multi-user.target
