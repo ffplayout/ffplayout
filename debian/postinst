@@ -8,7 +8,7 @@ fi
 
 if [ ! -d "/usr/share/ffplayout/db" ]; then
     mkdir "/usr/share/ffplayout/db"
-    mkdir "/var/lib/ffplayout/playlists"
+    mkdir -p "/var/lib/ffplayout/playlists"
     mkdir "/var/lib/ffplayout/tv-media"
 
     /usr/bin/ffpapi -i
