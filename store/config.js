@@ -10,8 +10,7 @@ export const state = () => ({
     configPlayout: {},
     currentUser: null,
     configUser: null,
-    timezone: 'UTC',
-    multiChannel: false
+    timezone: 'UTC'
 })
 
 export const mutations = {
@@ -58,7 +57,7 @@ export const actions = {
     },
 
     async getGuiConfig ({ commit, state }) {
-        const response = await this.$axios.get('api/settings')
+        const response = await this.$axios.get('api/channels')
 
         if (response.data) {
             for (const data of response.data) {
@@ -90,13 +89,13 @@ export const actions = {
         let response
 
         if (state.configGuiRaw.some(e => e.id === stringObj.id)) {
-            response = await this.$axios.patch(`api/settings/${obj.id}`, stringObj)
+            response = await this.$axios.patch(`api/channel/${obj.id}`, stringObj)
         } else {
-            response = await this.$axios.post('api/settings/', stringObj)
+            response = await this.$axios.post('api/channel/', stringObj)
             const guiConfigs = []
 
             for (const obj of state.configGui) {
-                if (obj.channel === stringObj.channel) {
+                if (obj.name === stringObj.name) {
                     response.data.extra_extensions = response.data.extra_extensions.split(',')
                     guiConfigs.push(response.data)
                 } else {

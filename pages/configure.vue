@@ -8,21 +8,21 @@
                         <b-form v-if="configGui" @submit="onSubmitGui">
                             <b-form-group
                                 label-cols-lg="2"
-                                label="GUI Configuration"
+                                label="Channel Configuration"
                                 label-size="lg"
                                 label-class="font-weight-bold pt-0"
                                 class="config-group"
                             >
                                 <div style="width: 100%; height: 43px;">
                                     <div class="float-right">
-                                        <b-button v-if="multiChannel" size="sm" variant="primary" class="m-md-2" @click="addChannel()">
+                                        <b-button size="sm" variant="primary" class="m-md-2" @click="addChannel()">
                                             Add new Channel
                                         </b-button>
                                     </div>
                                 </div>
                                 <div v-for="(prop, name, idx) in configGui[configID]" :key="idx">
                                     <b-form-group
-                                        v-if="idx >= 1 && name !== 'engine_service'"
+                                        v-if="idx >= 1"
                                         label-cols-sm="2"
                                         :label="name"
                                         label-align-sm="right"
@@ -41,6 +41,13 @@
                                         </b-form-text>
                                         <b-form-select v-else-if="name === 'net_interface'" :id="name" v-model="configGui[configID][name]" :options="netChoices" :value="prop" />
                                         <b-form-input
+                                            v-else-if="name === 'service' || name === 'config_path'"
+                                            :id="name"
+                                            v-model="configGui[configID][name]"
+                                            :value="prop"
+                                            readonly
+                                        />
+                                        <b-form-input
                                             v-else
                                             :id="name"
                                             v-model="configGui[configID][name]"
@@ -55,7 +62,7 @@
                                         <b-button type="submit" variant="primary">
                                             Save
                                         </b-button>
-                                        <b-button v-if="multiChannel && configGui[configID].id > 1" variant="danger" @click="deleteChannel()">
+                                        <b-button v-if="configGui.length > 1 && configGui[configID].id > 1" variant="danger" @click="deleteChannel()">
                                             Delete
                                         </b-button>
                                     </b-button-group>
@@ -252,7 +259,7 @@ export default {
     },
 
     computed: {
-        ...mapState('config', ['configID', 'netChoices', 'multiChannel']),
+        ...mapState('config', ['configID', 'netChoices']),
         configGui: {
             get () {
                 return this.$store.state.config.configGui
@@ -281,27 +288,24 @@ export default {
 
     methods: {
         addChannel () {
-            const config = this.$_.cloneDeep(this.configGui)
-            const newConf = this.$_.cloneDeep(this.configGui[this.configGui.length - 1])
+            const channels = this.$_.cloneDeep(this.configGui)
+            const newChannel = this.$_.cloneDeep(this.configGui[this.configGui.length - 1])
 
-            const playoutConfigPath = newConf.playout_config.match(/.*\//)
-            const playoutConfigFile = newConf.playout_config.replace(/(.*\/|\.yml)/g, '').split('-')
+            const playoutConfigPath = newChannel.config_path.match(/.*\//)
+            const confName = `channel${String(channels.length + 1).padStart(3, '0')}`
 
-            const engineService = newConf.engine_service.split('-')
+            newChannel.id = channels.length + 1
+            newChannel.name = `Channel ${Math.random().toString(36).substring(7)}`
+            newChannel.config_path = `${playoutConfigPath}${confName}.yml`
+            newChannel.service = `ffplayout@${confName}.service`
 
-            newConf.id = config.length + 1
-            newConf.channel = `Channel ${Math.random().toString(36).substring(7)}`
-            newConf.playout_config = `${playoutConfigPath}${playoutConfigFile[0]}-${String(parseInt(playoutConfigFile[1]) + 1).padStart(3, '0')}.yml`
-            newConf.engine_service = `${engineService[0]}-${String(parseInt(engineService[1]) + 1).padStart(3, '0')}`
+            channels.push(newChannel)
 
-            config.push(newConf)
-
-            this.$store.commit('config/UPDATE_GUI_CONFIG', config)
+            this.$store.commit('config/UPDATE_GUI_CONFIG', channels)
             this.$store.commit('config/UPDATE_CONFIG_ID', this.configGui.length - 1)
         },
         async onSubmitGui (evt) {
             evt.preventDefault()
-            await this.$store.dispatch('auth/inspectToken')
             const update = await this.$store.dispatch('config/setGuiConfig', this.configGui[this.configID])
 
             if (update.status === 200 || update.status === 201) {
@@ -324,7 +328,7 @@ export default {
                 this.showAlert = true
                 return
             }
-            const response = await this.$axios.delete(`api/player/guisettings/${id}/`)
+            const response = await this.$axios.delete(`api/channel/${id}`)
 
             config.splice(this.configID, 1)
 
@@ -332,7 +336,7 @@ export default {
             this.$store.commit('config/UPDATE_CONFIG_ID', this.configGui.length - 1)
             await this.$store.dispatch('config/getPlayoutConfig')
 
-            if (response.status === 204) {
+            if (response.status === 200) {
                 this.alertVariant = 'success'
                 this.alertMsg = 'Delete GUI config success!'
             } else {
@@ -367,10 +371,10 @@ export default {
 
             if (update.status === 200) {
                 this.alertVariant = 'success'
-                this.alertMsg = 'Update user profil success!'
+                this.alertMsg = 'Update user profile success!'
             } else {
                 this.alertVariant = 'danger'
-                this.alertMsg = 'Update user profil failed!'
+                this.alertMsg = 'Update user profile failed!'
             }
 
             this.showAlert = true
