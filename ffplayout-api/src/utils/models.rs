@@ -62,7 +62,7 @@ pub struct TextPreset {
 pub struct Channel {
     #[serde(skip_deserializing)]
     pub id: i64,
-    pub channel_name: String,
+    pub name: String,
     pub preview_url: String,
     pub config_path: String,
     pub extra_extensions: String,

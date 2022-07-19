@@ -18,39 +18,27 @@ pub async fn create_channel(target_channel: Channel) -> Result<Channel, ServiceE
         return Err(ServiceError::BadRequest("Bad config path!".to_string()));
     }
 
-    if let Ok(source_channel) = db_get_channel(&1).await {
-        if fs::copy(&source_channel.config_path, &target_channel.config_path).is_ok() {
-            match db_add_channel(target_channel).await {
-                Ok(c) => {
-                    if let Err(e) = control_service(c.id, "enable").await {
-                        return Err(e);
-                    }
-                    return Ok(c);
-                }
-                Err(e) => {
-                    return Err(ServiceError::Conflict(e.to_string()));
-                }
-            };
-        }
-    }
+    fs::copy(
+        "/usr/share/ffplayout/ffplayout.yml.orig",
+        &target_channel.config_path,
+    )?;
 
-    Err(ServiceError::InternalServerError)
+    let new_channel = db_add_channel(target_channel).await?;
+    control_service(new_channel.id, "enable").await?;
+
+    Ok(new_channel)
 }
 
 pub async fn delete_channel(id: i64) -> Result<(), ServiceError> {
-    if let Ok(channel) = db_get_channel(&id).await {
-        if control_service(channel.id, "stop").await.is_ok()
-            && control_service(channel.id, "disable").await.is_ok()
-        {
-            if let Err(e) = fs::remove_file(channel.config_path) {
-                error!("{e}");
-            };
-            match db_delete_channel(&id).await {
-                Ok(_) => return Ok(()),
-                Err(e) => return Err(ServiceError::Conflict(e.to_string())),
-            }
-        }
-    }
+    let channel = db_get_channel(&id).await?;
+    control_service(channel.id, "stop").await?;
+    control_service(channel.id, "disable").await?;
 
-    Err(ServiceError::InternalServerError)
+    if let Err(e) = fs::remove_file(channel.config_path) {
+        error!("{e}");
+    };
+
+    db_delete_channel(&id).await?;
+
+    Ok(())
 }

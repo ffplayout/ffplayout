@@ -75,10 +75,10 @@ pub async fn write_playlist(id: i64, json_data: JsonPlaylist) -> Result<String, 
 }
 
 pub async fn generate_playlist(id: i64, date: String) -> Result<JsonPlaylist, ServiceError> {
-    let (mut config, settings) = playout_config(&id).await?;
+    let (mut config, channel) = playout_config(&id).await?;
     config.general.generate = Some(vec![date.clone()]);
 
-    match playlist_generator(&config, Some(settings.channel_name)) {
+    match playlist_generator(&config, Some(channel.name)) {
         Ok(playlists) => {
             if !playlists.is_empty() {
                 Ok(playlists[0].clone())

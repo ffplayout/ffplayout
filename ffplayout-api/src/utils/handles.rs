@@ -36,13 +36,13 @@ async fn create_schema() -> Result<SqliteQueryResult, sqlx::Error> {
     CREATE TABLE IF NOT EXISTS channels
         (
             id                       INTEGER PRIMARY KEY AUTOINCREMENT,
-            channel_name             TEXT NOT NULL,
+            name                     TEXT NOT NULL,
             preview_url              TEXT NOT NULL,
             config_path              TEXT NOT NULL,
             extra_extensions         TEXT NOT NULL,
             timezone                 TEXT NOT NULL,
             service                  TEXT NOT NULL,
-            UNIQUE(channel_name, service)
+            UNIQUE(name, service)
         );
     CREATE TABLE IF NOT EXISTS presets
         (
@@ -111,7 +111,7 @@ pub async fn db_init(domain: Option<String>) -> Result<&'static str, Box<dyn std
             SELECT RAISE(FAIL, 'Database is already initialized!');
         END;
         INSERT INTO global(secret) VALUES($1);
-        INSERT INTO channels(channel_name, preview_url, config_path, extra_extensions, timezone, service)
+        INSERT INTO channels(name, preview_url, config_path, extra_extensions, timezone, service)
         VALUES('Channel 1', $2, '/etc/ffplayout/ffplayout.yml', 'jpg,jpeg,png', 'UTC', 'ffplayout.service');
         INSERT INTO roles(name) VALUES('admin'), ('user'), ('guest');
         INSERT INTO presets(name, text, x, y, fontsize, line_spacing, fontcolor, box, boxcolor, boxborderw, alpha, channel_id)
@@ -158,7 +158,7 @@ pub async fn db_get_channel(id: &i64) -> Result<Channel, sqlx::Error> {
 
 pub async fn db_get_all_channels() -> Result<Vec<Channel>, sqlx::Error> {
     let conn = db_connection().await?;
-    let query = "SELECT * FROM settings";
+    let query = "SELECT * FROM channels";
     let result: Vec<Channel> = sqlx::query_as(query).fetch_all(&conn).await?;
     conn.close().await;
 
@@ -171,13 +171,14 @@ pub async fn db_update_channel(
 ) -> Result<SqliteQueryResult, sqlx::Error> {
     let conn = db_connection().await?;
 
-    let query = "UPDATE channels SET channel_name = $2, preview_url = $3, config_path = $4, extra_extensions = $5 WHERE id = $1";
+    let query = "UPDATE channels SET name = $2, preview_url = $3, config_path = $4, extra_extensions = $5, timezone = $6 WHERE id = $1";
     let result: SqliteQueryResult = sqlx::query(query)
         .bind(id)
-        .bind(channel.channel_name.clone())
-        .bind(channel.preview_url.clone())
-        .bind(channel.config_path.clone())
-        .bind(channel.extra_extensions.clone())
+        .bind(channel.name)
+        .bind(channel.preview_url)
+        .bind(channel.config_path)
+        .bind(channel.extra_extensions)
+        .bind(channel.timezone)
         .execute(&conn)
         .await?;
     conn.close().await;
@@ -188,9 +189,9 @@ pub async fn db_update_channel(
 pub async fn db_add_channel(channel: Channel) -> Result<Channel, sqlx::Error> {
     let conn = db_connection().await?;
 
-    let query = "INSERT INTO channels (channel_name, preview_url, config_path, extra_extensions, timezone, service) VALUES($1, $2, $3, $4, $5, $6)";
+    let query = "INSERT INTO channels (name, preview_url, config_path, extra_extensions, timezone, service) VALUES($1, $2, $3, $4, $5, $6)";
     let result = sqlx::query(query)
-        .bind(channel.channel_name)
+        .bind(channel.name)
         .bind(channel.preview_url)
         .bind(channel.config_path)
         .bind(channel.extra_extensions)

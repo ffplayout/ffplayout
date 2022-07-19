@@ -231,7 +231,7 @@ async fn add_user(data: web::Json<User>) -> Result<impl Responder, ServiceError>
 /// ```JSON
 /// {
 ///     "id": 1,
-///     "channel_name": "Channel 1",
+///     "name": "Channel 1",
 ///     "preview_url": "http://localhost/live/preview.m3u8",
 ///     "config_path": "/etc/ffplayout/ffplayout.yml",
 ///     "extra_extensions": "jpg,jpeg,png",
@@ -268,7 +268,7 @@ async fn get_all_channels() -> Result<impl Responder, ServiceError> {
 ///
 /// ```BASH
 /// curl -X PATCH http://127.0.0.1:8000/api/channel/1 -H "Content-Type: application/json" \
-/// -d '{ "id": 1, "channel_name": "Channel 1", "preview_url": "http://localhost/live/stream.m3u8", \
+/// -d '{ "id": 1, "name": "Channel 1", "preview_url": "http://localhost/live/stream.m3u8", \
 /// "config_path": "/etc/ffplayout/ffplayout.yml", "extra_extensions": "jpg,jpeg,png", "timezone": "Europe/Berlin"}' \
 /// -H "Authorization: Bearer <TOKEN>"
 /// ```
@@ -289,7 +289,7 @@ async fn patch_channel(
 ///
 /// ```BASH
 /// curl -X POST http://127.0.0.1:8000/api/channel/ -H "Content-Type: application/json" \
-/// -d '{ "channel_name": "Channel 2", "preview_url": "http://localhost/live/channel2.m3u8", \
+/// -d '{ "name": "Channel 2", "preview_url": "http://localhost/live/channel2.m3u8", \
 /// "config_path": "/etc/ffplayout/channel2.yml", "extra_extensions": "jpg,jpeg,png",
 /// "timezone": "Europe/Berlin", "service": "ffplayout@channel2.service" }' \
 /// -H "Authorization: Bearer <TOKEN>"
