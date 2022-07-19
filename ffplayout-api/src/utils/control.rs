@@ -7,7 +7,7 @@ use reqwest::{
 use serde::{Deserialize, Serialize};
 use simplelog::*;
 
-use crate::utils::{errors::ServiceError, handles::db_get_settings, playout_config};
+use crate::utils::{errors::ServiceError, handles::db_get_channel, playout_config};
 use ffplayout_lib::vec_strings;
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -57,12 +57,30 @@ struct SystemD {
 
 impl SystemD {
     async fn new(id: i64) -> Result<Self, ServiceError> {
-        let settings = db_get_settings(&id).await?;
+        let channel = db_get_channel(&id).await?;
 
         Ok(Self {
-            service: settings.service,
-            cmd: vec_strings!["systemctl"],
+            service: channel.service,
+            cmd: vec_strings!["/usr/bin/systemctl"],
         })
+    }
+
+    fn enable(mut self) -> Result<String, ServiceError> {
+        self.cmd
+            .append(&mut vec!["enable".to_string(), self.service]);
+
+        Command::new("sudo").args(self.cmd).spawn()?;
+
+        Ok("Success".to_string())
+    }
+
+    fn disable(mut self) -> Result<String, ServiceError> {
+        self.cmd
+            .append(&mut vec!["disable".to_string(), self.service]);
+
+        Command::new("sudo").args(self.cmd).spawn()?;
+
+        Ok("Success".to_string())
     }
 
     fn start(mut self) -> Result<String, ServiceError> {
@@ -167,6 +185,8 @@ pub async fn control_service(id: i64, command: &str) -> Result<String, ServiceEr
     let system_d = SystemD::new(id).await?;
 
     match command {
+        "enable" => system_d.enable(),
+        "disable" => system_d.disable(),
         "start" => system_d.start(),
         "stop" => system_d.stop(),
         "restart" => system_d.restart(),

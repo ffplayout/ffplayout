@@ -1,3 +1,5 @@
-# give user www-data permission to control the ffplayout systemd service
+# give user ffpu permission to control the ffplayout systemd service
 
-www-data ALL = NOPASSWD: /bin/systemctl start ffplayout.service, /bin/systemctl stop ffplayout.service, /bin/systemctl reload ffplayout.service, /bin/systemctl restart ffplayout.service, /bin/systemctl status ffplayout.service, /bin/systemctl is-active ffplayout.service
+ffpu ALL = NOPASSWD: /usr/bin/systemctl start ffplayout.service, /usr/bin/systemctl stop ffplayout.service, /usr/bin/systemctl restart ffplayout.service, /usr/bin/systemctl status ffplayout.service, /usr/bin/systemctl is-active ffplayout.service, /usr/bin/systemctl enable ffplayout.service, /usr/bin/systemctl disable ffplayout.service
+
+ffpu ALL = NOPASSWD: /usr/bin/systemctl start ffplayout@*, /usr/bin/systemctl stop ffplayout@*, /usr/bin/systemctl restart ffplayout@*, /usr/bin/systemctl status ffplayout@*, /usr/bin/systemctl is-active ffplayout@*, /usr/bin/systemctl enable ffplayout@*, /usr/bin/systemctl disable ffplayout@*

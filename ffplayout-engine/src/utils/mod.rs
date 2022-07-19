@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub mod arg_parse;
 
@@ -6,7 +6,20 @@ pub use arg_parse::Args;
 use ffplayout_lib::utils::{time_to_sec, PlayoutConfig};
 
 pub fn get_config(args: Args) -> PlayoutConfig {
-    let mut config = PlayoutConfig::new(args.config);
+    let cfg_path = match args.channel {
+        Some(c) => {
+            let path = PathBuf::from(format!("/etc/ffplayout/{c}.yml"));
+
+            if path.is_file() {
+                Some(path.display().to_string())
+            } else {
+                println!("no file");
+                args.config
+            }
+        }
+        None => args.config,
+    };
+    let mut config = PlayoutConfig::new(cfg_path);
 
     if let Some(gen) = args.generate {
         config.general.generate = Some(gen);

@@ -15,11 +15,11 @@ use utils::{
     auth, db_path, init_config,
     models::LoginUser,
     routes::{
-        add_dir, add_preset, add_user, control_playout, del_playlist, delete_preset, file_browser,
-        gen_playlist, get_all_settings, get_log, get_playlist, get_playout_config, get_presets,
-        get_settings, get_user, login, media_current, media_last, media_next, move_rename,
-        patch_settings, process_control, remove, save_file, save_playlist, send_text_message,
-        update_playout_config, update_preset, update_user,
+        add_channel, add_dir, add_preset, add_user, control_playout, del_playlist, delete_preset,
+        file_browser, gen_playlist, get_all_channels, get_channel, get_log, get_playlist,
+        get_playout_config, get_presets, get_user, login, media_current, media_last, media_next,
+        move_rename, patch_channel, process_control, remove, remove_channel, save_file,
+        save_playlist, send_text_message, update_playout_config, update_preset, update_user,
     },
     run_args, Role,
 };
@@ -84,9 +84,11 @@ async fn main() -> std::io::Result<()> {
                         .service(get_presets)
                         .service(update_preset)
                         .service(delete_preset)
-                        .service(get_settings)
-                        .service(get_all_settings)
-                        .service(patch_settings)
+                        .service(get_channel)
+                        .service(get_all_channels)
+                        .service(patch_channel)
+                        .service(add_channel)
+                        .service(remove_channel)
                         .service(update_user)
                         .service(send_text_message)
                         .service(control_playout)

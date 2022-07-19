@@ -12,6 +12,7 @@ use simplelog::*;
 
 pub mod args_parse;
 pub mod auth;
+pub mod channels;
 pub mod control;
 pub mod errors;
 pub mod files;
@@ -23,8 +24,8 @@ pub mod routes;
 use crate::utils::{
     args_parse::Args,
     errors::ServiceError,
-    handles::{db_add_user, db_get_settings, db_global, db_init},
-    models::{Settings, User},
+    handles::{db_add_user, db_get_channel, db_global, db_init},
+    models::{Channel, User},
 };
 use ffplayout_lib::utils::PlayoutConfig;
 
@@ -183,10 +184,10 @@ pub fn read_playout_config(path: &str) -> Result<PlayoutConfig, Box<dyn Error>> 
     Ok(config)
 }
 
-pub async fn playout_config(channel_id: &i64) -> Result<(PlayoutConfig, Settings), ServiceError> {
-    if let Ok(settings) = db_get_settings(channel_id).await {
-        if let Ok(config) = read_playout_config(&settings.config_path.clone()) {
-            return Ok((config, settings));
+pub async fn playout_config(channel_id: &i64) -> Result<(PlayoutConfig, Channel), ServiceError> {
+    if let Ok(channel) = db_get_channel(channel_id).await {
+        if let Ok(config) = read_playout_config(&channel.config_path.clone()) {
+            return Ok((config, channel));
         }
     }
 
@@ -196,7 +197,7 @@ pub async fn playout_config(channel_id: &i64) -> Result<(PlayoutConfig, Settings
 }
 
 pub async fn read_log_file(channel_id: &i64, date: &str) -> Result<String, ServiceError> {
-    if let Ok(settings) = db_get_settings(channel_id).await {
+    if let Ok(channel) = db_get_channel(channel_id).await {
         let mut date_str = "".to_string();
 
         if !date.is_empty() {
@@ -204,7 +205,7 @@ pub async fn read_log_file(channel_id: &i64, date: &str) -> Result<String, Servi
             date_str.push_str(date);
         }
 
-        if let Ok(config) = read_playout_config(&settings.config_path) {
+        if let Ok(config) = read_playout_config(&channel.config_path) {
             let mut log_path = Path::new(&config.logging.log_path)
                 .join("ffplayout.log")
                 .display()

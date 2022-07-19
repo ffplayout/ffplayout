@@ -59,16 +59,13 @@ pub struct TextPreset {
 }
 
 #[derive(Debug, Deserialize, Serialize, sqlx::FromRow)]
-pub struct Settings {
+pub struct Channel {
     #[serde(skip_deserializing)]
     pub id: i64,
-    pub channel_name: String,
+    pub name: String,
     pub preview_url: String,
     pub config_path: String,
     pub extra_extensions: String,
     pub timezone: String,
-    #[sqlx(default)]
-    #[serde(skip_serializing, skip_deserializing)]
-    pub secret: String,
     pub service: String,
 }

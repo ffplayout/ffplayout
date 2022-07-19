@@ -85,7 +85,7 @@ playlist:
         should always start at the begin. 'length' represent the target length from
         playlist, when is blank real length will not consider. 'infinit true' works with
         single playlist file and loops it infinitely.
-    path: /playlists
+    path: /var/lib/ffplayout/playlists
     day_start: "5:59:25"
     length: "24:00:00"
     infinit: false
@@ -94,8 +94,8 @@ storage:
     help_text: Play ordered or randomly files from path. 'filler_clip' is for fill
         the end to reach 24 hours, it will loop when is necessary. 'extensions' search
         only files with this extension. Set 'shuffle' to 'True' to pick files randomly.
-    path: "/mediaStorage"
-    filler_clip: "/mediaStorage/filler/filler.mp4"
+    path: "/var/lib/ffplayout/tv-media"
+    filler_clip: "/var/lib/ffplayout/tv-media/filler/filler.mp4"
     extensions:
         - "mp4"
         - "mkv"

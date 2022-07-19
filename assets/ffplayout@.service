@@ -1,9 +1,9 @@
 [Unit]
-Description=Rust and ffmpeg based playout solution
+Description=Rust and ffmpeg based multi channel playout solution
 After=network.target remote-fs.target
 
 [Service]
-ExecStart=/usr/bin/ffplayout
+ExecStart=/usr/bin/ffplayout %I
 Restart=always
 RestartSec=1
 KillMode=mixed
