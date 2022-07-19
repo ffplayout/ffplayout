@@ -6,8 +6,8 @@ After=network.target remote-fs.target
 ExecStart=/usr/bin/ffpapi -l 127.0.0.1:8000
 Restart=always
 RestartSec=1
-User=www-data
-Group=www-data
+User=ffpu
+Group=ffpu
 
 [Install]
 WantedBy=multi-user.target

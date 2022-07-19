@@ -1,27 +1,25 @@
 #DEBHELPER#
 
+sysUser="ffpu"
+
+if ! id $sysUser &>/dev/null; then
+    adduser --system $sysUser
+fi
+
 if [ ! -d "/usr/share/ffplayout/db" ]; then
     mkdir "/usr/share/ffplayout/db"
-    chmod 777 "/usr/share/ffplayout/db"
+    mkdir "/var/lib/ffplayout/playlists"
+    mkdir "/var/lib/ffplayout/tv-media"
 
     /usr/bin/ffpapi -i
 
-    if id "www-data" &>/dev/null; then
-        chown www-data. "/usr/share/ffplayout/db/ffplayout.db"
-    else
-        sed -i "s|www-data|root|g" /lib/systemd/system/ffpapi.service
-        sed -i "s|www-data|root|g" /lib/systemd/system/ffplayout.service
-        rm -f /etc/sudoers.d/11-ffplayout
-
-        systemctl daemon-reload
-    fi
+    chown -R ${sysUser}. "/usr/share/ffplayout"
+    chown -R ${sysUser}. "/var/lib/ffplayout"
+    chown -R ${sysUser}. "/etc/ffplayout"
 fi
 
 if [ ! -d "/var/log/ffplayout" ]; then
-    mkdir /var/log/ffplayout
+    mkdir "/var/log/ffplayout"
 
-     if id "www-data" &>/dev/null; then
-        chown www-data. /var/log/ffplayout
-        chown -R www-data. /etc/ffplayout
-     fi
+    chown ${sysUser}. "/var/log/ffplayout"
 fi
