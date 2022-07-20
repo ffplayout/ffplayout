@@ -48,6 +48,7 @@ assets = [
         "755"
     ],
     ["../assets/ffpapi.service", "/lib/systemd/system/", "644"],
+    ["../assets/ffplayout.service", "/lib/systemd/system/", "644"],
     ["../assets/ffplayout@.service", "/lib/systemd/system/", "644"],
     ["../assets/11-ffplayout", "/etc/sudoers.d/", "644"],
     ["../assets/ffplayout.yml", "/etc/ffplayout/", "644"],
@@ -58,23 +59,6 @@ assets = [
 maintainer-scripts = "../debian/"
 systemd-units = { enable = false, unit-scripts = "../assets" }
 
-[package.metadata.deb.variants.armhf]
-assets = [
-    ["../target/armv7-unknown-linux-gnueabihf/release/ffpapi", "/usr/bin/", "755"],
-    [
-        "../target/armv7-unknown-linux-gnueabihf/release/ffplayout",
-        "/usr/bin/",
-        "755"
-    ],
-    ["../assets/ffpapi.service", "/lib/systemd/system/", "644"],
-    ["../assets/ffplayout@.service", "/lib/systemd/system/", "644"],
-    ["../assets/11-ffplayout", "/etc/sudoers.d/", "644"],
-    ["../assets/ffplayout.yml", "/etc/ffplayout/", "644"],
-    ["../assets/logo.png", "/usr/share/ffplayout/", "644"],
-    ["../assets/ffplayout.yml", "/usr/share/ffplayout/ffplayout.yml.orig", "644"],
-    ["../README.md", "/usr/share/doc/ffplayout/README", "644"],
-]
-
 [package.metadata.deb.variants.arm64]
 assets = [
     ["../target/aarch64-unknown-linux-gnu/release/ffpapi", "/usr/bin/", "755"],
@@ -84,6 +68,7 @@ assets = [
         "755"
     ],
     ["../assets/ffpapi.service", "/lib/systemd/system/", "644"],
+    ["../assets/ffplayout.service", "/lib/systemd/system/", "644"],
     ["../assets/ffplayout@.service", "/lib/systemd/system/", "644"],
     ["../assets/11-ffplayout", "/etc/sudoers.d/", "644"],
     ["../assets/ffplayout.yml", "/etc/ffplayout/", "644"],
