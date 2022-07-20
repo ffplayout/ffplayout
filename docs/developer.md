@@ -67,6 +67,54 @@ CC="aarch64-apple-darwin20.4-clang -arch arm64e" cargo build --release --target=
 CC="o64-clang" cargo build --release --target=x86_64-apple-darwin
 ```
 
+### Compile for armv7 Linux
+
+Add toolchain:
+
+```Bash
+rustup target add armv7-unknown-linux-gnueabihf
+```
+
+Add cross compiler:
+
+```Bash
+dnf copr enable lantw44/arm-linux-gnueabihf-toolchain
+
+dnf install arm-linux-gnueabihf-{binutils,gcc,glibc}
+```
+
+Add target to `~/.cargo/config`:
+
+```Bash
+[target.armv7-unknown-linux-gnueabihf]
+linker = "arm-linux-gnueabihf-gcc"
+rustflags = [ "-C", "target-feature=+crt-static", "-C", "link-arg=-lgcc" ]
+```
+
+### Compile for aarch64 Linux
+
+Add toolchain:
+
+```Bash
+rustup target add aarch64-unknown-linux-gnu
+```
+
+Add cross compiler:
+
+```Bash
+dnf copr enable lantw44/aarch64-linux-gnu-toolchain
+
+dnf install aarch64-linux-gnu-{binutils,gcc,glibc}
+```
+
+Add target to `~/.cargo/config`:
+
+```Bash
+[target.aarch64-unknown-linux-gnu]
+linker = "aarch64-linux-gnu-gcc"
+rustflags = [ "-C", "target-feature=+crt-static", "-C", "link-arg=-lgcc" ]
+```
+
 ### Create debian DEB and RHEL RPM packages
 
 install:
@@ -78,6 +126,12 @@ And run with:
 ```Bash
 # for debian based systems:
 cargo deb --target=x86_64-unknown-linux-musl
+
+# for armhf
+cargo deb --target=armv7-unknown-linux-gnueabihf --variant=armhf -p ffplayout --manifest-path=ffplayout-engine/Cargo.toml
+
+# for arm64
+cargo deb --target=aarch64-unknown-linux-gnu --variant=arm64 -p ffplayout --manifest-path=ffplayout-engine/Cargo.toml
 
 # for rhel based systems:
 cargo generate-rpm --target=x86_64-unknown-linux-musl
