@@ -130,8 +130,8 @@ cargo deb --target=x86_64-unknown-linux-musl
 # for armhf
 cargo deb --target=armv7-unknown-linux-gnueabihf --variant=armhf -p ffplayout --manifest-path=ffplayout-engine/Cargo.toml
 
-# for arm64
-cargo deb --target=aarch64-unknown-linux-gnu --variant=arm64 -p ffplayout --manifest-path=ffplayout-engine/Cargo.toml
+# for aarch64
+cargo deb --target=aarch64-unknown-linux-gnu --variant=aarch64 -p ffplayout --manifest-path=ffplayout-engine/Cargo.toml
 
 # for rhel based systems:
 cargo generate-rpm --target=x86_64-unknown-linux-musl

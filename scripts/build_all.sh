@@ -56,9 +56,9 @@ done
 
 cargo deb --target=x86_64-unknown-linux-musl -p ffplayout --manifest-path=ffplayout-engine/Cargo.toml -o ffplayout_${version}_amd64.deb
 
-cargo deb --target=aarch64-unknown-linux-gnu --variant=arm64 -p ffplayout --manifest-path=ffplayout-engine/Cargo.toml -o ffplayout_${version}_arm64.deb
-
 # cargo deb --target=armv7-unknown-linux-gnueabihf --variant=armhf -p ffplayout --manifest-path=ffplayout-engine/Cargo.toml -o ffplayout_${version}_armhf.deb
+
+cargo deb --target=aarch64-unknown-linux-gnu --variant=aarch64 -p ffplayout --manifest-path=ffplayout-engine/Cargo.toml -o ffplayout_${version}_aarch64.deb
 
 cargo generate-rpm --target=x86_64-unknown-linux-musl -p ffplayout-engine -o ffplayout-${version}-1.x86_64.rpm
 

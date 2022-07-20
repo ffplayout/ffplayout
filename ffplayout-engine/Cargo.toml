@@ -75,7 +75,7 @@ assets = [
     ["../README.md", "/usr/share/doc/ffplayout/README", "644"],
 ]
 
-[package.metadata.deb.variants.arm64]
+[package.metadata.deb.variants.aarch64]
 assets = [
     ["../target/aarch64-unknown-linux-gnu/release/ffpapi", "/usr/bin/", "755"],
     [
