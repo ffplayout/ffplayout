@@ -1,7 +1,7 @@
 #!/usr/bin/bash
 
 
-targets=("x86_64-unknown-linux-musl" "x86_64-pc-windows-gnu" "x86_64-apple-darwin" "aarch64-apple-darwin")
+targets=("x86_64-unknown-linux-musl" "aarch64-unknown-linux-gnu" "x86_64-pc-windows-gnu" "x86_64-apple-darwin" "aarch64-apple-darwin")
 
 IFS="= "
 while read -r name value; do
@@ -55,6 +55,10 @@ for target in "${targets[@]}"; do
 done
 
 cargo deb --target=x86_64-unknown-linux-musl -p ffplayout --manifest-path=ffplayout-engine/Cargo.toml -o ffplayout_${version}_amd64.deb
+
+cargo deb --target=aarch64-unknown-linux-gnu --variant=arm64 -p ffplayout --manifest-path=ffplayout-engine/Cargo.toml -o ffplayout_${version}_arm64.deb
+
+# cargo deb --target=armv7-unknown-linux-gnueabihf --variant=armhf -p ffplayout --manifest-path=ffplayout-engine/Cargo.toml -o ffplayout_${version}_armhf.deb
 
 cargo generate-rpm --target=x86_64-unknown-linux-musl -p ffplayout-engine -o ffplayout-${version}-1.x86_64.rpm
 
