@@ -6,6 +6,9 @@ Installation under Linux
 
 - copy the binary to `/usr/bin/`
 - copy **assets/ffplayout.yml** to `/etc/ffplayout`
+- create folder `/var/log/ffplayout`
+- create system user **ffpu**
+- give ownership from `/etc/ffplayout` and `/var/log/ffplayout` to **ffpu**
 - copy **assets/ffplayout.service** to `/etc/systemd/system`
 - activate service and run it: `systemctl enable --now ffplayout`
 
