@@ -154,12 +154,6 @@ pub struct Text {
 pub struct Out {
     pub help_text: String,
     pub mode: String,
-    pub preview: bool,
-    pub preview_param: String,
-
-    #[serde(skip_serializing, skip_deserializing)]
-    pub preview_cmd: Option<Vec<String>>,
-
     pub output_param: String,
 
     #[serde(skip_serializing, skip_deserializing)]
@@ -245,7 +239,6 @@ impl PlayoutConfig {
         config.processing.settings = Some(settings);
 
         config.ingest.input_cmd = split(config.ingest.input_param.as_str());
-        config.out.preview_cmd = split(config.out.preview_param.as_str());
         config.out.output_cmd = split(config.out.output_param.as_str());
 
         // when text overlay without text_from_filename is on, turn also the RPC server on,
