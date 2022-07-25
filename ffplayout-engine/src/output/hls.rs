@@ -109,8 +109,6 @@ fn ingest_to_hls_server(
             log_line(line, &level);
         }
 
-        info!("Switch from live ingest to {}", config.processing.mode);
-
         proc_control
             .server_is_running
             .store(false, Ordering::SeqCst);
@@ -122,6 +120,8 @@ fn ingest_to_hls_server(
         if proc_control.is_terminated.load(Ordering::SeqCst) {
             break;
         }
+
+        info!("Switch from live ingest to {}", config.processing.mode);
     }
 
     Ok(())
