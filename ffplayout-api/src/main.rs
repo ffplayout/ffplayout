@@ -1,5 +1,6 @@
 use std::{path::Path, process::exit};
 
+use actix_files::Files;
 use actix_web::{dev::ServiceRequest, middleware, web, App, Error, HttpMessage, HttpServer};
 use actix_web_grants::permissions::AttachPermissions;
 use actix_web_httpauth::extractors::bearer::BearerAuth;
@@ -35,6 +36,18 @@ async fn validator(req: ServiceRequest, credentials: BearerAuth) -> Result<Servi
         .insert(LoginUser::new(claims.id, claims.username));
 
     Ok(req)
+}
+
+fn public_path() -> &'static str {
+    if Path::new("/usr/share/ffplayout/public/").is_dir() {
+        return "/usr/share/ffplayout/public/"
+    }
+
+    if Path::new("./public/").is_dir() {
+        return "./public/"
+    }
+
+    "./ffplayout-frontend/dist"
 }
 
 #[actix_web::main]
@@ -107,6 +120,7 @@ async fn main() -> std::io::Result<()> {
                         .service(remove)
                         .service(save_file),
                 )
+                .service(Files::new("/", public_path()).index_file("index.html"))
         })
         .bind((addr, port))?
         .run()

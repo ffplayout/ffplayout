@@ -12,7 +12,6 @@ use ffplayout_lib::vec_strings;
 pub fn output(config: &PlayoutConfig, log_format: &str) -> process::Child {
     let mut enc_cmd = vec![];
     let mut enc_filter = vec![];
-    let mut preview_cmd = config.out.preview_cmd.as_ref().unwrap().clone();
     let mut output_cmd = config.out.output_cmd.as_ref().unwrap().clone();
 
     let enc_prefix = vec_strings![
@@ -40,10 +39,6 @@ pub fn output(config: &PlayoutConfig, log_format: &str) -> process::Child {
 
             enc_filter = vec!["-filter_complex".to_string(), filter];
         }
-    }
-
-    if config.out.preview {
-        enc_cmd.append(&mut preview_cmd);
     }
 
     enc_cmd.append(&mut output_cmd);

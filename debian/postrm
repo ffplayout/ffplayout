@@ -1,0 +1,15 @@
+#DEBHELPER#
+
+sysUser="ffpu"
+
+if [ -d "/usr/share/ffplayout" ]; then
+    yes | rm -rf "/usr/share/ffplayout" "/var/lib/ffplayout"
+fi
+
+if [ -d "/var/log/ffplayout" ]; then
+    yes | rm -rf "/var/log/ffplayout"
+fi
+
+if id $sysUser &>/dev/null; then
+    userdel -rf $sysUser
+fi

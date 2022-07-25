@@ -1,6 +1,26 @@
 ### Preview Stream
 
-The ffplayout engine output provides a setting for previewing. In general you can use any technique to display your streaming preview, even SDL could be possible.
+The ffplayout engine has no special preview config parameters, but you can add your settings to the **output_param**, like:
+
+```YAML
+    -s 512x288
+    -c:v libx264
+    -crf 24
+    -x264-params keyint=50:min-keyint=25:scenecut=-1
+    -maxrate 800k
+    -bufsize 1600k
+    -preset ultrafast
+    -tune zerolatency
+    -profile:v Main
+    -level 3.1
+    -c:a aac
+    -ar 44100
+    -b:a 128k
+    -flags +global_header
+    -f flv rtmp://preview.local/live/stream
+
+    ...
+```
 
 In this documentation we suspect, that you are using [ffplayout-frontend](https://github.com/ffplayout/ffplayout-frontend) and that you using [SRS](https://github.com/ossrs/srs) at least for the preview stream. In the past we used HLS for the preview, but now it is possible to also use [HTTP-FLV](https://github.com/ossrs/srs/wiki/v4_EN_DeliveryHttpStream) for less latency.
 
@@ -8,7 +28,6 @@ To get this working we have to follow some steps. ffplayout engine needs a direc
 
 ```
 ...
-
 127.0.0.1   preview.local
 ```
 

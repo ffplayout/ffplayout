@@ -19,5 +19,7 @@
 *.deb
 *.rpm
 /assets/*.db*
-
+/dist/
+/public/
+tmp/
 .vscode/

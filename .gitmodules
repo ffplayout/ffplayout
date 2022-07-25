@@ -1,0 +1,3 @@
+[submodule "ffplayout-frontend"]
+	path = ffplayout-frontend
+	url = git@github.com:ffplayout/ffplayout-frontend.git
