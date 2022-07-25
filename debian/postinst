@@ -16,6 +16,8 @@ if [ ! -d "/usr/share/ffplayout/db" ]; then
     chown -R ${sysUser}. "/usr/share/ffplayout"
     chown -R ${sysUser}. "/var/lib/ffplayout"
     chown -R ${sysUser}. "/etc/ffplayout"
+
+    ln -s "/var/lib/ffplayout/tv-media" "/usr/share/ffplayout/public/"
 fi
 
 if [ ! -d "/var/log/ffplayout" ]; then
@@ -23,8 +25,3 @@ if [ ! -d "/var/log/ffplayout" ]; then
 
     chown ${sysUser}. "/var/log/ffplayout"
 fi
-
-tar xf "/usr/share/ffplayout/public.tar.gz" --overwrite -C "/usr/share/ffplayout/"
-ln -s "/var/lib/ffplayout/tv-media" "/usr/share/ffplayout/public/"
-chown -R ${sysUser}. "/usr/share/ffplayout/public"
-yes | rm "/usr/share/ffplayout/public.tar.gz"

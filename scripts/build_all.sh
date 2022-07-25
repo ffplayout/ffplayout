@@ -26,7 +26,7 @@ for target in "${targets[@]}"; do
 
         cp ./target/${target}/release/ffpapi.exe .
         cp ./target/${target}/release/ffplayout.exe .
-        zip -r "ffplayout-v${version}_${target}.zip" assets docs LICENSE README.md ffplayout.exe ffpapi.exe -x *.db
+        zip -r "ffplayout-v${version}_${target}.zip" assets docs public LICENSE README.md ffplayout.exe ffpapi.exe -x *.db
         rm -f ffplayout.exe ffpapi.exe
     elif [[ $target == "x86_64-apple-darwin" ]] || [[ $target == "aarch64-apple-darwin" ]]; then
         if [[ -f "ffplayout-v${version}_${target}.tar.gz" ]]; then
@@ -36,7 +36,7 @@ for target in "${targets[@]}"; do
         cargo build --release --target=$target --bin ffplayout
 
         cp ./target/${target}/release/ffplayout .
-        tar -czvf "ffplayout-v${version}_${target}.tar.gz" --exclude='*.db' assets docs LICENSE README.md ffplayout
+        tar -czvf "ffplayout-v${version}_${target}.tar.gz" --exclude='*.db' assets docs public LICENSE README.md ffplayout
         rm -f ffplayout
     else
         if [[ -f "ffplayout-v${version}_${target}.tar.gz" ]]; then
@@ -47,33 +47,26 @@ for target in "${targets[@]}"; do
 
         cp ./target/${target}/release/ffpapi .
         cp ./target/${target}/release/ffplayout .
-        tar -czvf "ffplayout-v${version}_${target}.tar.gz" --exclude='*.db' assets docs LICENSE README.md ffplayout ffpapi
+        tar -czvf "ffplayout-v${version}_${target}.tar.gz" --exclude='*.db' assets docs public LICENSE README.md ffplayout ffpapi
         rm -f ffplayout ffpapi
     fi
 
     echo ""
 done
 
-
-
-
 cd ffplayout-frontend
 
 npm install
 npm run build
-yes | rm -rf public ../public.tar.gz
-mv dist public
-tar czf public.tar.gz public
-mv public.tar.gz ../
-yes | rm -rf public
+yes | rm -rf ../public
+mv dist ../public
 
 cd ..
 
 cargo deb --target=x86_64-unknown-linux-musl -p ffplayout --manifest-path=ffplayout-engine/Cargo.toml -o ffplayout_${version}_amd64.deb
-
 cargo deb --target=aarch64-unknown-linux-gnu --variant=arm64 -p ffplayout --manifest-path=ffplayout-engine/Cargo.toml -o ffplayout_${version}_arm64.deb
 
-# cargo deb --target=armv7-unknown-linux-gnueabihf --variant=armhf -p ffplayout --manifest-path=ffplayout-engine/Cargo.toml -o ffplayout_${version}_armhf.deb
+cd ffplayout-engine
+cargo generate-rpm --target=x86_64-unknown-linux-musl -o ../ffplayout-${version}-1.x86_64.rpm
 
-cargo generate-rpm --target=x86_64-unknown-linux-musl -p ffplayout-engine -o ffplayout-${version}-1.x86_64.rpm
-
+cd ..

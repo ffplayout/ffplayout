@@ -38,6 +38,18 @@ async fn validator(req: ServiceRequest, credentials: BearerAuth) -> Result<Servi
     Ok(req)
 }
 
+fn public_path() -> &'static str {
+    if Path::new("/usr/share/ffplayout/public/").is_dir() {
+        return "/usr/share/ffplayout/public/"
+    }
+
+    if Path::new("./public/").is_dir() {
+        return "./public/"
+    }
+
+    "./ffplayout-frontend/dist"
+}
+
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     let args = Args::parse();
@@ -108,7 +120,7 @@ async fn main() -> std::io::Result<()> {
                         .service(remove)
                         .service(save_file),
                 )
-                .service(Files::new("/", "/usr/share/ffplayout/public/").index_file("index.html"))
+                .service(Files::new("/", public_path()).index_file("index.html"))
         })
         .bind((addr, port))?
         .run()

@@ -18,9 +18,11 @@ ffpapi -u <USERNAME> -p <PASSWORD> -m <MAIL ADDRESS>
 Then run the API thru the systemd service, or like:
 
 ```BASH
-ffpapi -l 127.0.0.1:8080
+ffpapi -l 127.0.0.1:8787
 ```
 
 If you plan to run ffpapi with systemd set permission from **/usr/share/ffplayout** and content to user **www-data:www-data**.
 
 **For possible endpoints read: [api endpoints](/docs/api.md)**
+
+ffpapi can also serve the browser based frontend, just run in your browser `127.0.0.1:8787`.
