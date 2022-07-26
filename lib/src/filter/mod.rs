@@ -275,18 +275,18 @@ fn realtime_filter(
     config: &PlayoutConfig,
     codec_type: &str,
 ) {
-    let mut t = "";
-
-    if codec_type == "audio" {
-        t = "a"
-    }
-
     if config.general.generate.is_none() && &config.out.mode.to_lowercase() == "hls" {
+        let mut t = "";
+
+        if codec_type == "audio" {
+            t = "a"
+        }
+
         let mut speed_filter = format!("{t}realtime=speed=1");
         let (delta, _) = get_delta(config, &node.begin.unwrap());
-        let duration = node.out - node.seek;
 
-        if delta < 0.0 {
+        if delta < 0.0 && node.seek == 0.0 {
+            let duration = node.out - node.seek;
             let speed = duration / (duration + delta);
 
             if speed > 0.0 && speed < 1.1 && delta < config.general.stop_threshold {
