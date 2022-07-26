@@ -3,7 +3,7 @@
 Run the API thru the systemd service, or like:
 
 ```BASH
-ffpapi -l 127.0.0.1:8000
+ffpapi -l 127.0.0.1:8787
 ```
 
 For all endpoints an (Bearer) authentication is required.\
@@ -14,7 +14,7 @@ For all endpoints an (Bearer) authentication is required.\
 **Login**
 
 ```BASH
-curl -X POST http://127.0.0.1:8000/auth/login/ -H "Content-Type: application/json" \
+curl -X POST http://127.0.0.1:8787/auth/login/ -H "Content-Type: application/json" \
 -d '{ "username": "<USER>", "password": "<PASS>" }'
 ```
 **Response:**
@@ -34,21 +34,21 @@ From here on all request **must** contain the authorization header:\
 **Get current User**
 
 ```BASH
-curl -X GET 'http://localhost:8000/api/user' -H 'Content-Type: application/json' \
+curl -X GET 'http://127.0.0.1:8787/api/user' -H 'Content-Type: application/json' \
 -H 'Authorization: Bearer <TOKEN>'
 ```
 
 **Update current User**
 
 ```BASH
-curl -X PUT http://localhost:8000/api/user/1 -H 'Content-Type: application/json' \
+curl -X PUT http://127.0.0.1:8787/api/user/1 -H 'Content-Type: application/json' \
 -d '{"mail": "<MAIL>", "password": "<PASS>"}' -H 'Authorization: <TOKEN>'
 ```
 
 **Add User**
 
 ```BASH
-curl -X POST 'http://localhost:8000/api/user/' -H 'Content-Type: application/json' \
+curl -X POST 'http://127.0.0.1:8787/api/user/' -H 'Content-Type: application/json' \
 -d '{"mail": "<MAIL>", "username": "<USER>", "password": "<PASS>", "role_id": 1, "channel_id": 1}' \
 -H 'Authorization: Bearer <TOKEN>'
 ```
@@ -58,7 +58,7 @@ curl -X POST 'http://localhost:8000/api/user/' -H 'Content-Type: application/jso
 **Get Settings from Channel**
 
 ```BASH
-curl -X GET http://127.0.0.1:8000/api/channel/1 -H "Authorization: Bearer <TOKEN>"
+curl -X GET http://127.0.0.1:8787/api/channel/1 -H "Authorization: Bearer <TOKEN>"
 ```
 
 **Response:**
@@ -78,13 +78,13 @@ curl -X GET http://127.0.0.1:8000/api/channel/1 -H "Authorization: Bearer <TOKEN
 **Get settings from all Channels**
 
 ```BASH
-curl -X GET http://127.0.0.1:8000/api/channels -H "Authorization: Bearer <TOKEN>"
+curl -X GET http://127.0.0.1:8787/api/channels -H "Authorization: Bearer <TOKEN>"
 ```
 
 **Update Channel**
 
 ```BASH
-curl -X PATCH http://127.0.0.1:8000/api/channel/1 -H "Content-Type: application/json" \
+curl -X PATCH http://127.0.0.1:8787/api/channel/1 -H "Content-Type: application/json" \
 -d '{ "id": 1, "name": "Channel 1", "preview_url": "http://localhost/live/stream.m3u8", \
 "config_path": "/etc/ffplayout/ffplayout.yml", "extra_extensions": "jpg,jpeg,png", "timezone": "Europe/Berlin"}' \
 -H "Authorization: Bearer <TOKEN>"
@@ -93,7 +93,7 @@ curl -X PATCH http://127.0.0.1:8000/api/channel/1 -H "Content-Type: application/
 **Create new Channel**
 
 ```BASH
-curl -X POST http://127.0.0.1:8000/api/channel/ -H "Content-Type: application/json" \
+curl -X POST http://127.0.0.1:8787/api/channel/ -H "Content-Type: application/json" \
 -d '{ "name": "Channel 2", "preview_url": "http://localhost/live/channel2.m3u8", \
 "config_path": "/etc/ffplayout/channel2.yml", "extra_extensions": "jpg,jpeg,png",
 "timezone": "Europe/Berlin", "service": "ffplayout@channel2.service" }' \
@@ -103,7 +103,7 @@ curl -X POST http://127.0.0.1:8000/api/channel/ -H "Content-Type: application/js
 **Delete Channel**
 
 ```BASH
-curl -X DELETE http://127.0.0.1:8000/api/channel/2 -H "Authorization: Bearer <TOKEN>"
+curl -X DELETE http://127.0.0.1:8787/api/channel/2 -H "Authorization: Bearer <TOKEN>"
 ```
 
 #### ffplayout Config
@@ -111,7 +111,7 @@ curl -X DELETE http://127.0.0.1:8000/api/channel/2 -H "Authorization: Bearer <TO
 **Get Config**
 
 ```BASH
-curl -X GET http://localhost:8000/api/playout/config/1 -H 'Authorization: <TOKEN>'
+curl -X GET http://127.0.0.1:8787/api/playout/config/1 -H 'Authorization: <TOKEN>'
 ```
 
 Response is a JSON object from the ffplayout.yml
@@ -119,7 +119,7 @@ Response is a JSON object from the ffplayout.yml
 **Update Config**
 
 ```BASH
-curl -X PUT http://localhost:8000/api/playout/config/1 -H "Content-Type: application/json" \
+curl -X PUT http://127.0.0.1:8787/api/playout/config/1 -H "Content-Type: application/json" \
 -d { <CONFIG DATA> } -H 'Authorization: <TOKEN>'
 ```
 
@@ -130,14 +130,14 @@ Text presets are made for sending text messages to the ffplayout engine, to over
 **Get all Presets**
 
 ```BASH
-curl -X GET http://localhost:8000/api/presets/ -H 'Content-Type: application/json' \
+curl -X GET http://127.0.0.1:8787/api/presets/ -H 'Content-Type: application/json' \
 -H 'Authorization: <TOKEN>'
 ```
 
 **Update Preset**
 
 ```BASH
-curl -X PUT http://localhost:8000/api/presets/1 -H 'Content-Type: application/json' \
+curl -X PUT http://127.0.0.1:8787/api/presets/1 -H 'Content-Type: application/json' \
 -d '{ "name": "<PRESET NAME>", "text": "<TEXT>", "x": "<X>", "y": "<Y>", "fontsize": 24, \
 "line_spacing": 4, "fontcolor": "#ffffff", "box": 1, "boxcolor": "#000000", "boxborderw": 4, "alpha": 1.0, "channel_id": 1 }' \
 -H 'Authorization: <TOKEN>'
@@ -146,7 +146,7 @@ curl -X PUT http://localhost:8000/api/presets/1 -H 'Content-Type: application/js
 **Add new Preset**
 
 ```BASH
-curl -X POST http://localhost:8000/api/presets/ -H 'Content-Type: application/json' \
+curl -X POST http://127.0.0.1:8787/api/presets/ -H 'Content-Type: application/json' \
 -d '{ "name": "<PRESET NAME>", "text": "TEXT>", "x": "<X>", "y": "<Y>", "fontsize": 24, \
 "line_spacing": 4, "fontcolor": "#ffffff", "box": 1, "boxcolor": "#000000", "boxborderw": 4, "alpha": 1.0, "channel_id": 1 }' \
 -H 'Authorization: <TOKEN>'
@@ -155,7 +155,7 @@ curl -X POST http://localhost:8000/api/presets/ -H 'Content-Type: application/js
 **Delete Preset**
 
 ```BASH
-curl -X DELETE http://localhost:8000/api/presets/1 -H 'Content-Type: application/json' \
+curl -X DELETE http://127.0.0.1:8787/api/presets/1 -H 'Content-Type: application/json' \
 -H 'Authorization: <TOKEN>'
 ```
 
@@ -170,7 +170,7 @@ here we communicate with the engine for:
 **Send Text to ffplayout**
 
 ```BASH
-curl -X POST http://localhost:8000/api/control/1/text/ \
+curl -X POST http://127.0.0.1:8787/api/control/1/text/ \
 -H 'Content-Type: application/json' -H 'Authorization: <TOKEN>' \
 -d '{"text": "Hello from ffplayout", "x": "(w-text_w)/2", "y": "(h-text_h)/2", \
     "fontsize": "24", "line_spacing": "4", "fontcolor": "#ffffff", "box": "1", \
@@ -184,14 +184,14 @@ curl -X POST http://localhost:8000/api/control/1/text/ \
 - reset
 
 ```BASH
-curl -X POST http://localhost:8000/api/control/1/playout/next/ -H 'Content-Type: application/json'
+curl -X POST http://127.0.0.1:8787/api/control/1/playout/next/ -H 'Content-Type: application/json'
 -d '{ "command": "reset" }' -H 'Authorization: <TOKEN>'
 ```
 
 **Get current Clip**
 
 ```BASH
-curl -X GET http://localhost:8000/api/control/1/media/current
+curl -X GET http://127.0.0.1:8787/api/control/1/media/current
 -H 'Content-Type: application/json' -H 'Authorization: <TOKEN>'
 ```
 
@@ -222,13 +222,13 @@ curl -X GET http://localhost:8000/api/control/1/media/current
 **Get next Clip**
 
 ```BASH
-curl -X GET http://localhost:8000/api/control/1/media/next/ -H 'Authorization: <TOKEN>'
+curl -X GET http://127.0.0.1:8787/api/control/1/media/next/ -H 'Authorization: <TOKEN>'
 ```
 
 **Get last Clip**
 
 ```BASH
-curl -X GET http://localhost:8000/api/control/1/media/last/
+curl -X GET http://127.0.0.1:8787/api/control/1/media/last/
 -H 'Content-Type: application/json' -H 'Authorization: <TOKEN>'
 ```
 
@@ -241,7 +241,7 @@ Control ffplayout process, like:
 - status
 
 ```BASH
-curl -X POST http://localhost:8000/api/control/1/process/
+curl -X POST http://127.0.0.1:8787/api/control/1/process/
 -H 'Content-Type: application/json' -H 'Authorization: <TOKEN>'
 -d '{"command": "start"}'
 ```
@@ -251,14 +251,14 @@ curl -X POST http://localhost:8000/api/control/1/process/
 **Get playlist**
 
 ```BASH
-curl -X GET http://localhost:8000/api/playlist/1?date=2022-06-20
+curl -X GET http://127.0.0.1:8787/api/playlist/1?date=2022-06-20
 -H 'Content-Type: application/json' -H 'Authorization: <TOKEN>'
 ```
 
 **Save playlist**
 
 ```BASH
-curl -X POST http://localhost:8000/api/playlist/1/
+curl -X POST http://127.0.0.1:8787/api/playlist/1/
 -H 'Content-Type: application/json' -H 'Authorization: <TOKEN>'
 -- data "{<JSON playlist data>}"
 ```
@@ -268,14 +268,14 @@ curl -X POST http://localhost:8000/api/playlist/1/
 A new playlist will be generated and response.
 
 ```BASH
-curl -X GET http://localhost:8000/api/playlist/1/generate/2022-06-20
+curl -X GET http://127.0.0.1:8787/api/playlist/1/generate/2022-06-20
 -H 'Content-Type: application/json' -H 'Authorization: <TOKEN>'
 ```
 
 **Delete Playlist**
 
 ```BASH
-curl -X DELETE http://localhost:8000/api/playlist/1/2022-06-20
+curl -X DELETE http://127.0.0.1:8787/api/playlist/1/2022-06-20
 -H 'Content-Type: application/json' -H 'Authorization: <TOKEN>'
 ```
 
@@ -284,7 +284,7 @@ curl -X DELETE http://localhost:8000/api/playlist/1/2022-06-20
 **Read Log Life**
 
 ```BASH
-curl -X Get http://localhost:8000/api/log/1
+curl -X Get http://127.0.0.1:8787/api/log/1
 -H 'Content-Type: application/json' -H 'Authorization: <TOKEN>'
 ```
 
@@ -293,34 +293,34 @@ curl -X Get http://localhost:8000/api/log/1
 **Get File/Folder List**
 
 ```BASH
-curl -X POST http://localhost:8000/api/file/1/browse/ -H 'Content-Type: application/json'
+curl -X POST http://127.0.0.1:8787/api/file/1/browse/ -H 'Content-Type: application/json'
 -d '{ "source": "/" }' -H 'Authorization: <TOKEN>'
 ```
 
 **Create Folder**
 
 ```BASH
-curl -X POST http://localhost:8000/api/file/1/create-folder/ -H 'Content-Type: application/json'
+curl -X POST http://127.0.0.1:8787/api/file/1/create-folder/ -H 'Content-Type: application/json'
 -d '{"source": "<FOLDER PATH>"}' -H 'Authorization: <TOKEN>'
 ```
 
 **Rename File**
 
 ```BASH
-curl -X POST http://localhost:8000/api/file/1/rename/ -H 'Content-Type: application/json'
+curl -X POST http://127.0.0.1:8787/api/file/1/rename/ -H 'Content-Type: application/json'
 -d '{"source": "<SOURCE>", "target": "<TARGET>"}' -H 'Authorization: <TOKEN>'
 ```
 
 **Remove File/Folder**
 
 ```BASH
-curl -X POST http://localhost:8000/api/file/1/remove/ -H 'Content-Type: application/json'
+curl -X POST http://127.0.0.1:8787/api/file/1/remove/ -H 'Content-Type: application/json'
 -d '{"source": "<SOURCE>"}' -H 'Authorization: <TOKEN>'
 ```
 
 **Upload File**
 
 ```BASH
-curl -X POST http://localhost:8000/api/file/1/upload/ -H 'Authorization: <TOKEN>'
+curl -X POST http://127.0.0.1:8787/api/file/1/upload/ -H 'Authorization: <TOKEN>'
 -F "file=@file.mp4"
 ```

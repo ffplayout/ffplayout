@@ -109,8 +109,6 @@ fn ingest_to_hls_server(
             log_line(line, &level);
         }
 
-        info!("Switch from live ingest to {}", config.processing.mode);
-
         proc_control
             .server_is_running
             .store(false, Ordering::SeqCst);
@@ -122,6 +120,8 @@ fn ingest_to_hls_server(
         if proc_control.is_terminated.load(Ordering::SeqCst) {
             break;
         }
+
+        info!("Switch from live ingest to {}", config.processing.mode);
     }
 
     Ok(())
@@ -148,10 +148,6 @@ pub fn write_hls(
         playout_stat,
         proc_control.is_terminated.clone(),
     );
-
-    if config.out.preview {
-        warn!("Preview in HLS mode is not supported!");
-    }
 
     // spawn a thread for ffmpeg ingest server and create a channel for package sending
     if config.ingest.enable {

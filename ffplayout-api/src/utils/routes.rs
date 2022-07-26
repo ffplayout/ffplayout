@@ -3,7 +3,7 @@
 /// Run the API thru the systemd service, or like:
 ///
 /// ```BASH
-/// ffpapi -l 127.0.0.1:8000
+/// ffpapi -l 127.0.0.1:8787
 /// ```
 ///
 /// For all endpoints an (Bearer) authentication is required.\
@@ -70,7 +70,7 @@ pub struct FileObj {
 /// **Login**
 ///
 /// ```BASH
-/// curl -X POST http://127.0.0.1:8000/auth/login/ -H "Content-Type: application/json" \
+/// curl -X POST http://127.0.0.1:8787/auth/login/ -H "Content-Type: application/json" \
 /// -d '{ "username": "<USER>", "password": "<PASS>" }'
 /// ```
 /// **Response:**
@@ -141,7 +141,7 @@ pub async fn login(credentials: web::Json<User>) -> impl Responder {
 /// **Get current User**
 ///
 /// ```BASH
-/// curl -X GET 'http://localhost:8000/api/user' -H 'Content-Type: application/json' \
+/// curl -X GET 'http://127.0.0.1:8787/api/user' -H 'Content-Type: application/json' \
 /// -H 'Authorization: Bearer <TOKEN>'
 /// ```
 #[get("/user")]
@@ -159,7 +159,7 @@ async fn get_user(user: web::ReqData<LoginUser>) -> Result<impl Responder, Servi
 /// **Update current User**
 ///
 /// ```BASH
-/// curl -X PUT http://localhost:8000/api/user/1 -H 'Content-Type: application/json' \
+/// curl -X PUT http://127.0.0.1:8787/api/user/1 -H 'Content-Type: application/json' \
 /// -d '{"mail": "<MAIL>", "password": "<PASS>"}' -H 'Authorization: <TOKEN>'
 /// ```
 #[put("/user/{id}")]
@@ -202,7 +202,7 @@ async fn update_user(
 /// **Add User**
 ///
 /// ```BASH
-/// curl -X POST 'http://localhost:8000/api/user/' -H 'Content-Type: application/json' \
+/// curl -X POST 'http://127.0.0.1:8787/api/user/' -H 'Content-Type: application/json' \
 /// -d '{"mail": "<MAIL>", "username": "<USER>", "password": "<PASS>", "role_id": 1, "channel_id": 1}' \
 /// -H 'Authorization: Bearer <TOKEN>'
 /// ```
@@ -223,7 +223,7 @@ async fn add_user(data: web::Json<User>) -> Result<impl Responder, ServiceError>
 /// **Get Settings from Channel**
 ///
 /// ```BASH
-/// curl -X GET http://127.0.0.1:8000/api/channel/1 -H "Authorization: Bearer <TOKEN>"
+/// curl -X GET http://127.0.0.1:8787/api/channel/1 -H "Authorization: Bearer <TOKEN>"
 /// ```
 ///
 /// **Response:**
@@ -252,7 +252,7 @@ async fn get_channel(id: web::Path<i64>) -> Result<impl Responder, ServiceError>
 /// **Get settings from all Channels**
 ///
 /// ```BASH
-/// curl -X GET http://127.0.0.1:8000/api/channels -H "Authorization: Bearer <TOKEN>"
+/// curl -X GET http://127.0.0.1:8787/api/channels -H "Authorization: Bearer <TOKEN>"
 /// ```
 #[get("/channels")]
 #[has_any_role("Role::Admin", type = "Role")]
@@ -267,7 +267,7 @@ async fn get_all_channels() -> Result<impl Responder, ServiceError> {
 /// **Update Channel**
 ///
 /// ```BASH
-/// curl -X PATCH http://127.0.0.1:8000/api/channel/1 -H "Content-Type: application/json" \
+/// curl -X PATCH http://127.0.0.1:8787/api/channel/1 -H "Content-Type: application/json" \
 /// -d '{ "id": 1, "name": "Channel 1", "preview_url": "http://localhost/live/stream.m3u8", \
 /// "config_path": "/etc/ffplayout/ffplayout.yml", "extra_extensions": "jpg,jpeg,png", "timezone": "Europe/Berlin"}' \
 /// -H "Authorization: Bearer <TOKEN>"
@@ -288,7 +288,7 @@ async fn patch_channel(
 /// **Create new Channel**
 ///
 /// ```BASH
-/// curl -X POST http://127.0.0.1:8000/api/channel/ -H "Content-Type: application/json" \
+/// curl -X POST http://127.0.0.1:8787/api/channel/ -H "Content-Type: application/json" \
 /// -d '{ "name": "Channel 2", "preview_url": "http://localhost/live/channel2.m3u8", \
 /// "config_path": "/etc/ffplayout/channel2.yml", "extra_extensions": "jpg,jpeg,png",
 /// "timezone": "Europe/Berlin", "service": "ffplayout@channel2.service" }' \
@@ -306,7 +306,7 @@ async fn add_channel(data: web::Json<Channel>) -> Result<impl Responder, Service
 /// **Delete Channel**
 ///
 /// ```BASH
-/// curl -X DELETE http://127.0.0.1:8000/api/channel/2 -H "Authorization: Bearer <TOKEN>"
+/// curl -X DELETE http://127.0.0.1:8787/api/channel/2 -H "Authorization: Bearer <TOKEN>"
 /// ```
 #[delete("/channel/{id}")]
 #[has_any_role("Role::Admin", type = "Role")]
@@ -323,7 +323,7 @@ async fn remove_channel(id: web::Path<i64>) -> Result<impl Responder, ServiceErr
 /// **Get Config**
 ///
 /// ```BASH
-/// curl -X GET http://localhost:8000/api/playout/config/1 -H 'Authorization: <TOKEN>'
+/// curl -X GET http://127.0.0.1:8787/api/playout/config/1 -H 'Authorization: <TOKEN>'
 /// ```
 ///
 /// Response is a JSON object from the ffplayout.yml
@@ -345,7 +345,7 @@ async fn get_playout_config(
 /// **Update Config**
 ///
 /// ```BASH
-/// curl -X PUT http://localhost:8000/api/playout/config/1 -H "Content-Type: application/json" \
+/// curl -X PUT http://127.0.0.1:8787/api/playout/config/1 -H "Content-Type: application/json" \
 /// -d { <CONFIG DATA> } -H 'Authorization: <TOKEN>'
 /// ```
 #[put("/playout/config/{id}")]
@@ -378,7 +378,7 @@ async fn update_playout_config(
 /// **Get all Presets**
 ///
 /// ```BASH
-/// curl -X GET http://localhost:8000/api/presets/ -H 'Content-Type: application/json' \
+/// curl -X GET http://127.0.0.1:8787/api/presets/ -H 'Content-Type: application/json' \
 /// -H 'Authorization: <TOKEN>'
 /// ```
 #[get("/presets/{id}")]
@@ -394,7 +394,7 @@ async fn get_presets(id: web::Path<i64>) -> Result<impl Responder, ServiceError>
 /// **Update Preset**
 ///
 /// ```BASH
-/// curl -X PUT http://localhost:8000/api/presets/1 -H 'Content-Type: application/json' \
+/// curl -X PUT http://127.0.0.1:8787/api/presets/1 -H 'Content-Type: application/json' \
 /// -d '{ "name": "<PRESET NAME>", "text": "<TEXT>", "x": "<X>", "y": "<Y>", "fontsize": 24, \
 /// "line_spacing": 4, "fontcolor": "#ffffff", "box": 1, "boxcolor": "#000000", "boxborderw": 4, "alpha": 1.0, "channel_id": 1 }' \
 /// -H 'Authorization: <TOKEN>'
@@ -415,7 +415,7 @@ async fn update_preset(
 /// **Add new Preset**
 ///
 /// ```BASH
-/// curl -X POST http://localhost:8000/api/presets/ -H 'Content-Type: application/json' \
+/// curl -X POST http://127.0.0.1:8787/api/presets/ -H 'Content-Type: application/json' \
 /// -d '{ "name": "<PRESET NAME>", "text": "TEXT>", "x": "<X>", "y": "<Y>", "fontsize": 24, \
 /// "line_spacing": 4, "fontcolor": "#ffffff", "box": 1, "boxcolor": "#000000", "boxborderw": 4, "alpha": 1.0, "channel_id": 1 }' \
 /// -H 'Authorization: <TOKEN>'
@@ -433,7 +433,7 @@ async fn add_preset(data: web::Json<TextPreset>) -> Result<impl Responder, Servi
 /// **Delete Preset**
 ///
 /// ```BASH
-/// curl -X DELETE http://localhost:8000/api/presets/1 -H 'Content-Type: application/json' \
+/// curl -X DELETE http://127.0.0.1:8787/api/presets/1 -H 'Content-Type: application/json' \
 /// -H 'Authorization: <TOKEN>'
 /// ```
 #[delete("/presets/{id}")]
@@ -457,7 +457,7 @@ async fn delete_preset(id: web::Path<i64>) -> Result<impl Responder, ServiceErro
 /// **Send Text to ffplayout**
 ///
 /// ```BASH
-/// curl -X POST http://localhost:8000/api/control/1/text/ \
+/// curl -X POST http://127.0.0.1:8787/api/control/1/text/ \
 /// -H 'Content-Type: application/json' -H 'Authorization: <TOKEN>' \
 /// -d '{"text": "Hello from ffplayout", "x": "(w-text_w)/2", "y": "(h-text_h)/2", \
 ///     "fontsize": "24", "line_spacing": "4", "fontcolor": "#ffffff", "box": "1", \
@@ -482,7 +482,7 @@ pub async fn send_text_message(
 /// - reset
 ///
 /// ```BASH
-/// curl -X POST http://localhost:8000/api/control/1/playout/next/ -H 'Content-Type: application/json'
+/// curl -X POST http://127.0.0.1:8787/api/control/1/playout/next/ -H 'Content-Type: application/json'
 /// -d '{ "command": "reset" }' -H 'Authorization: <TOKEN>'
 /// ```
 #[post("/control/{id}/playout/")]
@@ -500,7 +500,7 @@ pub async fn control_playout(
 /// **Get current Clip**
 ///
 /// ```BASH
-/// curl -X GET http://localhost:8000/api/control/1/media/current
+/// curl -X GET http://127.0.0.1:8787/api/control/1/media/current
 /// -H 'Content-Type: application/json' -H 'Authorization: <TOKEN>'
 /// ```
 ///
@@ -539,7 +539,7 @@ pub async fn media_current(id: web::Path<i64>) -> Result<impl Responder, Service
 /// **Get next Clip**
 ///
 /// ```BASH
-/// curl -X GET http://localhost:8000/api/control/1/media/next/ -H 'Authorization: <TOKEN>'
+/// curl -X GET http://127.0.0.1:8787/api/control/1/media/next/ -H 'Authorization: <TOKEN>'
 /// ```
 #[get("/control/{id}/media/next")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
@@ -553,7 +553,7 @@ pub async fn media_next(id: web::Path<i64>) -> Result<impl Responder, ServiceErr
 /// **Get last Clip**
 ///
 /// ```BASH
-/// curl -X GET http://localhost:8000/api/control/1/media/last/
+/// curl -X GET http://127.0.0.1:8787/api/control/1/media/last/
 /// -H 'Content-Type: application/json' -H 'Authorization: <TOKEN>'
 /// ```
 #[get("/control/{id}/media/last")]
@@ -574,7 +574,7 @@ pub async fn media_last(id: web::Path<i64>) -> Result<impl Responder, ServiceErr
 /// - status
 ///
 /// ```BASH
-/// curl -X POST http://localhost:8000/api/control/1/process/
+/// curl -X POST http://127.0.0.1:8787/api/control/1/process/
 /// -H 'Content-Type: application/json' -H 'Authorization: <TOKEN>'
 /// -d '{"command": "start"}'
 /// ```
@@ -592,7 +592,7 @@ pub async fn process_control(
 /// **Get playlist**
 ///
 /// ```BASH
-/// curl -X GET http://localhost:8000/api/playlist/1?date=2022-06-20
+/// curl -X GET http://127.0.0.1:8787/api/playlist/1?date=2022-06-20
 /// -H 'Content-Type: application/json' -H 'Authorization: <TOKEN>'
 /// ```
 #[get("/playlist/{id}")]
@@ -610,7 +610,7 @@ pub async fn get_playlist(
 /// **Save playlist**
 ///
 /// ```BASH
-/// curl -X POST http://localhost:8000/api/playlist/1/
+/// curl -X POST http://127.0.0.1:8787/api/playlist/1/
 /// -H 'Content-Type: application/json' -H 'Authorization: <TOKEN>'
 /// -- data "{<JSON playlist data>}"
 /// ```
@@ -631,7 +631,7 @@ pub async fn save_playlist(
 /// A new playlist will be generated and response.
 ///
 /// ```BASH
-/// curl -X GET http://localhost:8000/api/playlist/1/generate/2022-06-20
+/// curl -X GET http://127.0.0.1:8787/api/playlist/1/generate/2022-06-20
 /// -H 'Content-Type: application/json' -H 'Authorization: <TOKEN>'
 /// ```
 #[get("/playlist/{id}/generate/{date}")]
@@ -648,7 +648,7 @@ pub async fn gen_playlist(
 /// **Delete Playlist**
 ///
 /// ```BASH
-/// curl -X DELETE http://localhost:8000/api/playlist/1/2022-06-20
+/// curl -X DELETE http://127.0.0.1:8787/api/playlist/1/2022-06-20
 /// -H 'Content-Type: application/json' -H 'Authorization: <TOKEN>'
 /// ```
 #[delete("/playlist/{id}/{date}")]
@@ -667,7 +667,7 @@ pub async fn del_playlist(
 /// **Read Log Life**
 ///
 /// ```BASH
-/// curl -X Get http://localhost:8000/api/log/1
+/// curl -X Get http://127.0.0.1:8787/api/log/1
 /// -H 'Content-Type: application/json' -H 'Authorization: <TOKEN>'
 /// ```
 #[get("/log/{id}")]
@@ -684,7 +684,7 @@ pub async fn get_log(
 /// **Get File/Folder List**
 ///
 /// ```BASH
-/// curl -X POST http://localhost:8000/api/file/1/browse/ -H 'Content-Type: application/json'
+/// curl -X POST http://127.0.0.1:8787/api/file/1/browse/ -H 'Content-Type: application/json'
 /// -d '{ "source": "/" }' -H 'Authorization: <TOKEN>'
 /// ```
 #[post("/file/{id}/browse/")]
@@ -702,7 +702,7 @@ pub async fn file_browser(
 /// **Create Folder**
 ///
 /// ```BASH
-/// curl -X POST http://localhost:8000/api/file/1/create-folder/ -H 'Content-Type: application/json'
+/// curl -X POST http://127.0.0.1:8787/api/file/1/create-folder/ -H 'Content-Type: application/json'
 /// -d '{"source": "<FOLDER PATH>"}' -H 'Authorization: <TOKEN>'
 /// ```
 #[post("/file/{id}/create-folder/")]
@@ -717,7 +717,7 @@ pub async fn add_dir(
 /// **Rename File**
 ///
 /// ```BASH
-/// curl -X POST http://localhost:8000/api/file/1/rename/ -H 'Content-Type: application/json'
+/// curl -X POST http://127.0.0.1:8787/api/file/1/rename/ -H 'Content-Type: application/json'
 /// -d '{"source": "<SOURCE>", "target": "<TARGET>"}' -H 'Authorization: <TOKEN>'
 /// ```
 #[post("/file/{id}/rename/")]
@@ -735,7 +735,7 @@ pub async fn move_rename(
 /// **Remove File/Folder**
 ///
 /// ```BASH
-/// curl -X POST http://localhost:8000/api/file/1/remove/ -H 'Content-Type: application/json'
+/// curl -X POST http://127.0.0.1:8787/api/file/1/remove/ -H 'Content-Type: application/json'
 /// -d '{"source": "<SOURCE>"}' -H 'Authorization: <TOKEN>'
 /// ```
 #[post("/file/{id}/remove/")]
@@ -753,7 +753,7 @@ pub async fn remove(
 /// **Upload File**
 ///
 /// ```BASH
-/// curl -X POST http://localhost:8000/api/file/1/upload/ -H 'Authorization: <TOKEN>'
+/// curl -X POST http://127.0.0.1:8787/api/file/1/upload/ -H 'Authorization: <TOKEN>'
 /// -F "file=@file.mp4"
 /// ```
 #[put("/file/{id}/upload/")]

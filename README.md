@@ -5,10 +5,9 @@
 
 The ffplayout apps are mostly made to run on Linux as system services. But in general they should run on all platforms which are supported by Rust. At the moment the cross compiled version from *ffpapi* runs on Windows and Linux, and not on Mac. If it is needed there, it should be compile natively.
 
-Check the [releases](https://github.com/ffplayout/ffplayout-engine/releases/latest) for pre compiled version.
+Check the [releases](https://github.com/ffplayout/ffplayout/releases/latest) for pre compiled version.
 
-**ffplayout-engine (ffplayout)**
------
+## **ffplayout-engine (ffplayout)**
 
 [ffplayout](/ffplayout-engine/README.md) is 24/7 broadcasting solution. It can playout a folder with containing video clips, or play for every day a *JSON* playlist, while keeping the current playlist editable.
 
@@ -39,7 +38,6 @@ Check the [releases](https://github.com/ffplayout/ffplayout-engine/releases/late
   - **aevalsrc** (if video have no audio)
   - **apad** (add silence if audio duration is to short)
   - **tpad** (add black frames if video duration is to short)
-- [separate preview stream](/docs/preview_stream.md)
 - [output](/docs/output.md):
   - **stream**
   - **desktop**
@@ -48,21 +46,25 @@ Check the [releases](https://github.com/ffplayout/ffplayout-engine/releases/late
 - JSON RPC server, for getting infos about current playing and controlling
 - [live ingest](/docs/live_ingest.md)
 
-**ffplayout-api (ffpapi)**
------
+For preview stream, read: [/docs/preview_stream.md](/docs/preview_stream.md)
+
+## **ffplayout-api (ffpapi)**
+
 ffpapi is an [REST API](/ffplayout-api/README.md) for controlling the engine, manipulate playlists, add settings etc.
 
-Requirements
------
+### Requirements
 
 - RAM and CPU depends on video resolution, minimum 4 threads and 3GB RAM for 720p are recommend
 - **ffmpeg** v4.2+ and **ffprobe** (**ffplay** if you want to play on desktop)
 - if you want to overlay text, ffmpeg needs to have **libzmq**
 
+### Install
+
+Check [install](docs/install.md) for details about how to install ffplayout.
+
 -----
 
-JSON Playlist Example
------
+### JSON Playlist Example
 
 ```json
 {
@@ -95,15 +97,14 @@ JSON Playlist Example
 }
 ```
 
-**Warning**
------
+## **Warning**
+
 
 (Endless) streaming over multiple days will only work when config have **day_start** value and the **length** value is **24 hours**. If you need only some hours for every day, use a *cron* job, or something similar.
 
 -----
 
-HLS output
------
+## HLS output
 
 For outputting to HLS, output parameters should look like:
 
@@ -124,8 +125,7 @@ out:
 
 -----
 
-JSON RPC
------
+## JSON RPC
 
 The ffplayout engine can run a JSON RPC server. A request show look like:
 
