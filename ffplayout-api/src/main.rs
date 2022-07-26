@@ -40,11 +40,11 @@ async fn validator(req: ServiceRequest, credentials: BearerAuth) -> Result<Servi
 
 fn public_path() -> &'static str {
     if Path::new("/usr/share/ffplayout/public/").is_dir() {
-        return "/usr/share/ffplayout/public/"
+        return "/usr/share/ffplayout/public/";
     }
 
     if Path::new("./public/").is_dir() {
-        return "./public/"
+        return "./public/";
     }
 
     "./ffplayout-frontend/dist"
