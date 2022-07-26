@@ -5,6 +5,10 @@
 
 Learn how to setup a developer environment and to cross compile for different platforms.
 
+### **[Install](/docs/install.md)**
+
+How to install ffplayout with API and frontend.
+
 ### **[Folder Mode](/docs/folder_mode.md)**
 
 Learn more about playing the content of a folder.
