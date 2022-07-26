@@ -44,7 +44,7 @@ for target in "${targets[@]}"; do
         cargo build --release --target=$target --bin ffplayout
 
         cp ./target/${target}/release/ffplayout .
-        tar -czvf "ffplayout-v${version}_${target}.tar.gz" --exclude='*.db' assets docs public LICENSE README.md ffplayout
+        tar -czvf "ffplayout-v${version}_${target}.tar.gz" --exclude='*.db' assets docs LICENSE README.md ffplayout
         rm -f ffplayout
     else
         if [[ -f "ffplayout-v${version}_${target}.tar.gz" ]]; then
@@ -55,7 +55,7 @@ for target in "${targets[@]}"; do
 
         cp ./target/${target}/release/ffpapi .
         cp ./target/${target}/release/ffplayout .
-        tar -czvf "ffplayout-v${version}_${target}.tar.gz" --exclude='*.db' assets docs public LICENSE README.md ffplayout ffpapi
+        tar -czvf "ffplayout-v${version}_${target}.tar.gz" --exclude='*.db' assets docs LICENSE README.md ffplayout ffpapi
         rm -f ffplayout ffpapi
     fi
 
