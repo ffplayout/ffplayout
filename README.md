@@ -58,6 +58,10 @@ ffpapi is an [REST API](/ffplayout-api/README.md) for controlling the engine, ma
 - **ffmpeg** v4.2+ and **ffprobe** (**ffplay** if you want to play on desktop)
 - if you want to overlay text, ffmpeg needs to have **libzmq**
 
+### Install
+
+Check [install](docs/install.md) for details about how to install ffplayout.
+
 -----
 
 ### JSON Playlist Example

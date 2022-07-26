@@ -54,6 +54,7 @@ assets = [
     ["../assets/ffplayout.yml", "/etc/ffplayout/", "644"],
     ["../assets/logo.png", "/usr/share/ffplayout/", "644"],
     ["../assets/ffplayout.yml", "/usr/share/ffplayout/ffplayout.yml.orig", "644"],
+    ["../assets/ffplayout.conf", "/usr/share/ffplayout/ffplayout.conf.example", "644"],
     ["../README.md", "/usr/share/doc/ffplayout/README", "644"],
     ["../public/**/*", "/usr/share/ffplayout/public/", "644"],
 ]
@@ -75,6 +76,7 @@ assets = [
     ["../assets/ffplayout.yml", "/etc/ffplayout/", "644"],
     ["../assets/logo.png", "/usr/share/ffplayout/", "644"],
     ["../assets/ffplayout.yml", "/usr/share/ffplayout/ffplayout.yml.orig", "644"],
+    ["../assets/ffplayout.conf", "/usr/share/ffplayout/ffplayout.conf.example", "644"],
     ["../README.md", "/usr/share/doc/ffplayout/README", "644"],
     ["../public/**/*", "/usr/share/ffplayout/public/", "644"],
 ]
@@ -95,6 +97,7 @@ assets = [
     { source = "../LICENSE", dest = "/usr/share/doc/ffplayout/LICENSE", mode = "644" },
     { source = "../assets/logo.png", dest = "/usr/share/ffplayout/logo.png", mode = "644" },
     { source = "../assets/ffplayout.yml", dest = "/usr/share/ffplayout/ffplayout.yml.orig", mode = "644" },
+    { source = "../assets/ffplayout.conf", dest = "/usr/share/ffplayout/ffplayout.conf.example", mode = "644" },
     { source = "../public/**/*", dest = "/usr/share/ffplayout/public/", mode = "644" },
     { source = "../debian/postinst", dest = "/usr/share/ffplayout/postinst", mode = "755" },
     { source = "../debian/postrm", dest = "/usr/share/ffplayout/postrm", mode = "755" },
