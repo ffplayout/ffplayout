@@ -2,6 +2,7 @@ use std::{
     io::{BufRead, BufReader, Error, Read},
     process::{ChildStderr, Command, Stdio},
     sync::atomic::Ordering,
+    sync::{Arc, Mutex},
     thread,
 };
 
@@ -78,7 +79,7 @@ pub fn ingest_server(
     let stream_input = config.ingest.input_cmd.clone().unwrap();
 
     server_cmd.append(&mut stream_input.clone());
-    server_cmd.append(&mut filter_cmd(&config));
+    server_cmd.append(&mut filter_cmd(&config, &Arc::new(Mutex::new(vec![]))));
     server_cmd.append(&mut config.processing.settings.unwrap());
 
     let mut is_running;

@@ -38,7 +38,7 @@ pub fn source_generator(
             );
 
             let config_clone = config.clone();
-            let folder_source = FolderSource::new(&config, current_list, index);
+            let folder_source = FolderSource::new(&config, playout_stat.chain, current_list, index);
             let node_clone = folder_source.nodes.clone();
 
             // Spawn a thread to monitor folder for file changes.

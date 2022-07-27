@@ -37,7 +37,7 @@ pub fn validate_playlist(
 
             if probe.format.is_none() {
                 error!(
-                    "No Metadata from file <b><magenta>{}</></b> at <yellow>{}</>",
+                    "No Metadata at <yellow>{}</>, from file <b><magenta>{}</></b>",
                     sec_to_time(begin),
                     item.source
                 );

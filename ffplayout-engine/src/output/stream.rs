@@ -1,9 +1,12 @@
-use std::process::{self, Command, Stdio};
+use std::{
+    process::{self, Command, Stdio},
+    sync::{Arc, Mutex},
+};
 
 use simplelog::*;
 
 use ffplayout_lib::filter::v_drawtext;
-use ffplayout_lib::utils::{prepare_output_cmd, Media, PlayoutConfig};
+use ffplayout_lib::utils::{prepare_output_cmd, PlayoutConfig};
 use ffplayout_lib::vec_strings;
 
 /// Streaming Output
@@ -34,7 +37,7 @@ pub fn output(config: &PlayoutConfig, log_format: &str) -> process::Child {
             let mut filter = "[0:v]null,".to_string();
 
             filter.push_str(
-                v_drawtext::filter_node(config, &Media::new(0, String::new(), false)).as_str(),
+                v_drawtext::filter_node(config, None, &Arc::new(Mutex::new(vec![]))).as_str(),
             );
 
             enc_filter = vec!["-filter_complex".to_string(), filter];

@@ -86,8 +86,12 @@ pub fn json_rpc_server(
                 let mut filter = get_filter_from_json(map["message"].to_string());
                 let socket = config.text.bind_address.clone();
 
+                // TODO: in Rust 1.64 use let_chains instead
                 if !filter.is_empty() && config.text.bind_address.is_some() {
+                    let mut clips_filter = playout_stat.chain.lock().unwrap();
+                    *clips_filter = vec![filter.clone()];
                     filter = format!("Parsed_drawtext_2 reinit {filter}");
+
                     if let Ok(reply) = executor::block_on(zmq_send(&filter, &socket.unwrap())) {
                         return Ok(Value::String(reply));
                     };

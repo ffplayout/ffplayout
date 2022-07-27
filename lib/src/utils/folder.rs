@@ -19,6 +19,7 @@ use crate::utils::{file_extension, get_sec, Media, PlayoutConfig};
 #[derive(Debug, Clone)]
 pub struct FolderSource {
     config: PlayoutConfig,
+    filter_chain: Arc<Mutex<Vec<String>>>,
     pub nodes: Arc<Mutex<Vec<Media>>>,
     current_node: Media,
     index: Arc<AtomicUsize>,
@@ -27,6 +28,7 @@ pub struct FolderSource {
 impl FolderSource {
     pub fn new(
         config: &PlayoutConfig,
+        filter_chain: Arc<Mutex<Vec<String>>>,
         current_list: Arc<Mutex<Vec<Media>>>,
         global_index: Arc<AtomicUsize>,
     ) -> Self {
@@ -77,6 +79,7 @@ impl FolderSource {
 
         Self {
             config: config.clone(),
+            filter_chain,
             nodes: current_list,
             current_node: Media::new(0, String::new(), false),
             index: global_index,
@@ -114,7 +117,8 @@ impl Iterator for FolderSource {
             let i = self.index.load(Ordering::SeqCst);
             self.current_node = self.nodes.lock().unwrap()[i].clone();
             self.current_node.add_probe();
-            self.current_node.add_filter(&self.config);
+            self.current_node
+                .add_filter(&self.config, &self.filter_chain);
             self.current_node.begin = Some(get_sec());
 
             self.index.fetch_add(1, Ordering::SeqCst);
@@ -137,7 +141,8 @@ impl Iterator for FolderSource {
 
             self.current_node = self.nodes.lock().unwrap()[0].clone();
             self.current_node.add_probe();
-            self.current_node.add_filter(&self.config);
+            self.current_node
+                .add_filter(&self.config, &self.filter_chain);
             self.current_node.begin = Some(get_sec());
 
             self.index.store(1, Ordering::SeqCst);

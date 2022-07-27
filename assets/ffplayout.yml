@@ -116,8 +116,9 @@ text:
 
 out:
     help_text: The final playout compression. Set the settings to your needs. 'mode'
-        has the options 'desktop', 'hls', 'null', 'stream'. Use 'stream' and adjust 'output_param:' settings,
-        when you want to stream to a rtmp/rtsp/srt/... server.
+        has the options 'desktop', 'hls', 'null', 'stream'. Use 'stream' and adjust
+        'output_param:' settings, when you want to stream to a rtmp/rtsp/srt/... server.
+        In production don't server hls playlist with ffpapi, use nginx or another web server!
     mode: hls
     output_param: >-
         -c:v libx264
