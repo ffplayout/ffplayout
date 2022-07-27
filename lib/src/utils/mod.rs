@@ -5,6 +5,7 @@ use std::{
     net::TcpListener,
     path::Path,
     process::{ChildStderr, Command, Stdio},
+    sync::{Arc, Mutex},
     time::{self, UNIX_EPOCH},
 };
 
@@ -125,9 +126,9 @@ impl Media {
         }
     }
 
-    pub fn add_filter(&mut self, config: &PlayoutConfig) {
+    pub fn add_filter(&mut self, config: &PlayoutConfig, filter_chain: &Arc<Mutex<Vec<String>>>) {
         let mut node = self.clone();
-        self.filter = Some(filter_chains(config, &mut node))
+        self.filter = Some(filter_chains(config, &mut node, filter_chain))
     }
 }
 
@@ -536,6 +537,11 @@ pub fn stderr_reader(buffer: BufReader<ChildStderr>, suffix: &str) -> Result<(),
             warn!(
                 "<bright black>[{suffix}]</> {}",
                 format_log_line(line, "warning")
+            )
+        } else if line.contains("[error]") {
+            error!(
+                "<bright black>[{suffix}]</> {}",
+                format_log_line(line, "error")
             )
         }
     }

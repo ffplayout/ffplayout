@@ -229,6 +229,8 @@ pub fn init_logging(
             ),
             ContentLimit::Time(TimeFrequency::Daily),
             Compression::None,
+            #[cfg(unix)]
+            None,
         );
 
         app_logger.push(WriteLogger::new(LevelFilter::Debug, file_config, log_file));

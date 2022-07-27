@@ -1,4 +1,7 @@
-use std::path::Path;
+use std::{
+    path::Path,
+    sync::{Arc, Mutex},
+};
 
 use simplelog::*;
 
@@ -100,7 +103,9 @@ fn scale(v_stream: &ffprobe::Stream, aspect: f64, chain: &mut Filters, config: &
                     config.processing.width, config.processing.height
                 ),
                 "video",
-            )
+            );
+        } else {
+            chain.add_filter("null", "video");
         }
 
         if !is_close(aspect, config.processing.aspect, 0.03) {
@@ -183,11 +188,16 @@ fn extend_video(node: &mut Media, chain: &mut Filters) {
 }
 
 /// add drawtext filter for lower thirds messages
-fn add_text(node: &mut Media, chain: &mut Filters, config: &PlayoutConfig) {
+fn add_text(
+    node: &mut Media,
+    chain: &mut Filters,
+    config: &PlayoutConfig,
+    filter_chain: &Arc<Mutex<Vec<String>>>,
+) {
     if config.text.add_text
         && (config.text.text_from_filename || config.out.mode.to_lowercase() == "hls")
     {
-        let filter = v_drawtext::filter_node(config, node);
+        let filter = v_drawtext::filter_node(config, Some(node), filter_chain);
 
         chain.add_filter(&filter, "video");
     }
@@ -298,7 +308,11 @@ fn realtime_filter(
     }
 }
 
-pub fn filter_chains(config: &PlayoutConfig, node: &mut Media) -> Vec<String> {
+pub fn filter_chains(
+    config: &PlayoutConfig,
+    node: &mut Media,
+    filter_chain: &Arc<Mutex<Vec<String>>>,
+) -> Vec<String> {
     let mut filters = Filters::new();
 
     if let Some(probe) = node.probe.as_ref() {
@@ -324,7 +338,7 @@ pub fn filter_chains(config: &PlayoutConfig, node: &mut Media) -> Vec<String> {
         extend_audio(node, &mut filters);
     }
 
-    add_text(node, &mut filters, config);
+    add_text(node, &mut filters, config, filter_chain);
     fade(node, &mut filters, "video");
     overlay(node, &mut filters, config);
     realtime_filter(node, &mut filters, config, "video");

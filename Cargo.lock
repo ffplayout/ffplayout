@@ -463,9 +463,9 @@ dependencies = [
 
 [[package]]
 name = "atoi"
-version = "0.4.0"
+version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "616896e05fc0e2649463a93a15183c6a16bf03413a7af88ef1285ddedfa9cda5"
+checksum = "d7c57d12312ff59c811c0643f4d80830505833c9ffaebd193d819392b265be8e"
 dependencies = [
  "num-traits",
 ]
@@ -629,33 +629,9 @@ checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
 name = "chrono"
-version = "0.4.19"
+version = "0.4.20-rc.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "670ad68c9088c2a963aaa298cb369688cf3f9465ce5e2d4ca10e6e0098a1ce73"
-dependencies = [
- "libc",
- "num-integer",
- "num-traits",
- "time 0.1.44",
- "winapi 0.3.9",
-]
-
-[[package]]
-name = "chrono"
-version = "0.4.19"
-source = "git+https://github.com/sbrocket/chrono?branch=parse-error-kind-public#d9cac30bd0fb46ed410718e6c83753a7c9daa669"
-dependencies = [
- "libc",
- "num-integer",
- "num-traits",
- "time 0.1.44",
- "winapi 0.3.9",
-]
-
-[[package]]
-name = "chrono"
-version = "0.4.20-beta.1"
-source = "git+https://github.com/chronotope/chrono.git#acd4ecf09fd0e5e35e2b5d5e074f6e1cc77172fc"
+checksum = "856628f00a013eb30ae7b136b20fba37f7a39f8026d6f735dfac07c6fce1b8cf"
 dependencies = [
  "num-integer",
  "num-traits",
@@ -777,18 +753,18 @@ dependencies = [
 
 [[package]]
 name = "crc"
-version = "2.1.0"
+version = "3.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "49fc9a695bca7f35f5f4c15cddc84415f66a74ea78eef08e90c5024f2b540e23"
+checksum = "53757d12b596c16c78b83458d732a5d1a17ab3f53f2f7412f6fb57cc8a140ab3"
 dependencies = [
  "crc-catalog",
 ]
 
 [[package]]
 name = "crc-catalog"
-version = "1.1.1"
+version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ccaeedb56da03b09f598226e25e80088cb4cd25f316e6e4df7d695f0feeb1403"
+checksum = "2d0165d2900ae6778e36e80bbc4da3b5eefccee9ba939761f9c2882a5d9af3ff"
 
 [[package]]
 name = "crc32fast"
@@ -1038,7 +1014,7 @@ dependencies = [
 
 [[package]]
 name = "ffplayout"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "clap",
  "crossbeam-channel 0.5.6",
@@ -1056,7 +1032,7 @@ dependencies = [
 
 [[package]]
 name = "ffplayout-api"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "actix-files",
  "actix-multipart",
@@ -1064,7 +1040,7 @@ dependencies = [
  "actix-web-grants",
  "actix-web-httpauth",
  "argon2",
- "chrono 0.4.19 (registry+https://github.com/rust-lang/crates.io-index)",
+ "chrono",
  "clap",
  "derive_more",
  "faccess",
@@ -1086,9 +1062,9 @@ dependencies = [
 
 [[package]]
 name = "ffplayout-lib"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
- "chrono 0.4.20-beta.1",
+ "chrono",
  "crossbeam-channel 0.5.6",
  "ffprobe",
  "file-rotate",
@@ -1121,10 +1097,11 @@ dependencies = [
 
 [[package]]
 name = "file-rotate"
-version = "0.6.0"
-source = "git+https://github.com/Ploppz/file-rotate.git?branch=timestamp-parse-fix#cb1874a15a7a18de820a57df48d3513e5a4076f4"
+version = "0.7.0-rc.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8453b56141b15cd55cac61ce49326799d31fe4a602ad41f9f5b9b88a42ecbdcf"
 dependencies = [
- "chrono 0.4.19 (git+https://github.com/sbrocket/chrono?branch=parse-error-kind-public)",
+ "chrono",
  "flate2",
 ]
 
@@ -1427,26 +1404,20 @@ dependencies = [
 
 [[package]]
 name = "hashbrown"
-version = "0.11.2"
+version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ab5ef0d4909ef3724cc8cce6ccc8572c5c817592e9285f5464f8e86f8bd3726e"
+checksum = "8a9ee70c43aaf417c914396645a0fa852624801b24ebb7ae78fe8272889ac888"
 dependencies = [
  "ahash 0.7.6",
 ]
 
 [[package]]
-name = "hashbrown"
-version = "0.12.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8a9ee70c43aaf417c914396645a0fa852624801b24ebb7ae78fe8272889ac888"
-
-[[package]]
 name = "hashlink"
-version = "0.7.0"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7249a3129cbc1ffccd74857f81464a323a152173cdb134e0fd81bc803b29facf"
+checksum = "d452c155cb93fecdfb02a73dd57b5d8e442c2063bd7aac72f1bc5e4263a43086"
 dependencies = [
- "hashbrown 0.11.2",
+ "hashbrown",
 ]
 
 [[package]]
@@ -1579,7 +1550,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "10a35a97730320ffe8e2d410b5d3b69279b98d2c14bdb8b70ea89ecf7888d41e"
 dependencies = [
  "autocfg",
- "hashbrown 0.12.3",
+ "hashbrown",
 ]
 
 [[package]]
@@ -2761,9 +2732,9 @@ dependencies = [
 
 [[package]]
 name = "sqlx"
-version = "0.5.13"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "551873805652ba0d912fec5bbb0f8b4cdd96baf8e2ebf5970e5671092966019b"
+checksum = "1f82cbe94f41641d6c410ded25bbf5097c240cefdf8e3b06d04198d0a96af6a4"
 dependencies = [
  "sqlx-core",
  "sqlx-macros",
@@ -2771,16 +2742,15 @@ dependencies = [
 
 [[package]]
 name = "sqlx-core"
-version = "0.5.13"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e48c61941ccf5ddcada342cd59e3e5173b007c509e1e8e990dafc830294d9dc5"
+checksum = "6b69bf218860335ddda60d6ce85ee39f6cf6e5630e300e19757d1de15886a093"
 dependencies = [
  "ahash 0.7.6",
  "atoi",
  "bitflags",
  "byteorder",
  "bytes",
- "chrono 0.4.19 (registry+https://github.com/rust-lang/crates.io-index)",
  "crc",
  "crossbeam-queue 0.3.6",
  "either",
@@ -2814,9 +2784,9 @@ dependencies = [
 
 [[package]]
 name = "sqlx-macros"
-version = "0.5.13"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bc0fba2b0cae21fc00fe6046f8baa4c7fcb49e379f0f592b04696607f69ed2e1"
+checksum = "f40c63177cf23d356b159b60acd27c54af7423f1736988502e36bae9a712118f"
 dependencies = [
  "dotenv",
  "either",
@@ -2833,9 +2803,9 @@ dependencies = [
 
 [[package]]
 name = "sqlx-rt"
-version = "0.5.13"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4db708cd3e459078f85f39f96a00960bd841f66ee2a669e90bf36907f5a79aae"
+checksum = "874e93a365a598dc3dadb197565952cb143ae4aa716f7bcc933a8d836f6bf89f"
 dependencies = [
  "actix-rt",
  "native-tls",

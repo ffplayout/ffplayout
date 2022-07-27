@@ -482,7 +482,7 @@ pub async fn send_text_message(
 /// - reset
 ///
 /// ```BASH
-/// curl -X POST http://127.0.0.1:8787/api/control/1/playout/next/ -H 'Content-Type: application/json'
+/// curl -X POST http://127.0.0.1:8787/api/control/1/playout/ -H 'Content-Type: application/json'
 /// -d '{ "command": "reset" }' -H 'Authorization: <TOKEN>'
 /// ```
 #[post("/control/{id}/playout/")]

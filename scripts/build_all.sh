@@ -1,5 +1,15 @@
 #!/usr/bin/bash
 
+if [[ ! -d public ]]; then
+    cd ffplayout-frontend
+
+    npm install
+    npm run build
+    yes | rm -rf ../public
+    mv dist ../public
+
+    cd ..
+fi
 
 targets=("x86_64-unknown-linux-musl" "aarch64-unknown-linux-gnu" "x86_64-pc-windows-gnu" "x86_64-apple-darwin" "aarch64-apple-darwin")
 
@@ -33,11 +43,12 @@ for target in "${targets[@]}"; do
             rm -f "ffplayout-v${version}_${target}.tar.gz"
         fi
 
-        cargo build --release --target=$target --bin ffplayout
+        CC="x86_64-apple-darwin20.4-cc" cargo build --release --target=$target
 
+        cp ./target/${target}/release/ffpapi .
         cp ./target/${target}/release/ffplayout .
-        tar -czvf "ffplayout-v${version}_${target}.tar.gz" --exclude='*.db' assets docs public LICENSE README.md ffplayout
-        rm -f ffplayout
+        tar -czvf "ffplayout-v${version}_${target}.tar.gz" --exclude='*.db' assets docs public LICENSE README.md ffplayout ffpapi
+        rm -f ffplayout ffpapi
     else
         if [[ -f "ffplayout-v${version}_${target}.tar.gz" ]]; then
             rm -f "ffplayout-v${version}_${target}.tar.gz"
@@ -53,15 +64,6 @@ for target in "${targets[@]}"; do
 
     echo ""
 done
-
-cd ffplayout-frontend
-
-npm install
-npm run build
-yes | rm -rf ../public
-mv dist ../public
-
-cd ..
 
 cargo deb --target=x86_64-unknown-linux-musl -p ffplayout --manifest-path=ffplayout-engine/Cargo.toml -o ffplayout_${version}_amd64.deb
 cargo deb --target=aarch64-unknown-linux-gnu --variant=arm64 -p ffplayout --manifest-path=ffplayout-engine/Cargo.toml -o ffplayout_${version}_arm64.deb

@@ -178,19 +178,21 @@ impl Default for PlayerControl {
 /// Global playout control, for move forward/backward clip, or resetting playlist/state.
 #[derive(Clone, Debug)]
 pub struct PlayoutStatus {
-    pub time_shift: Arc<Mutex<f64>>,
-    pub date: Arc<Mutex<String>>,
+    pub chain: Arc<Mutex<Vec<String>>>,
     pub current_date: Arc<Mutex<String>>,
+    pub date: Arc<Mutex<String>>,
     pub list_init: Arc<AtomicBool>,
+    pub time_shift: Arc<Mutex<f64>>,
 }
 
 impl PlayoutStatus {
     pub fn new() -> Self {
         Self {
-            time_shift: Arc::new(Mutex::new(0.0)),
-            date: Arc::new(Mutex::new(String::new())),
+            chain: Arc::new(Mutex::new(vec![])),
             current_date: Arc::new(Mutex::new(String::new())),
+            date: Arc::new(Mutex::new(String::new())),
             list_init: Arc::new(AtomicBool::new(true)),
+            time_shift: Arc::new(Mutex::new(0.0)),
         }
     }
 }

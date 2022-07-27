@@ -254,7 +254,8 @@ impl CurrentProgram {
             let mut node_clone = self.nodes.lock().unwrap()[index].clone();
 
             node_clone.seek = time_sec - node_clone.begin.unwrap();
-            self.current_node = handle_list_init(&self.config, node_clone);
+            self.current_node =
+                handle_list_init(&self.config, node_clone, &self.playout_stat.chain);
         }
     }
 }
@@ -307,7 +308,7 @@ impl Iterator for CurrentProgram {
                     media.duration = duration;
                     media.out = duration;
 
-                    self.current_node = gen_source(&self.config, media);
+                    self.current_node = gen_source(&self.config, media, &self.playout_stat.chain);
                     let mut nodes = self.nodes.lock().unwrap();
                     nodes.push(self.current_node.clone());
                     self.index.store(nodes.len(), Ordering::SeqCst);
@@ -364,12 +365,17 @@ impl Iterator for CurrentProgram {
                 }
                 self.current_node.duration = duration;
                 self.current_node.out = duration;
-                self.current_node = gen_source(&self.config, self.current_node.clone());
+                self.current_node = gen_source(
+                    &self.config,
+                    self.current_node.clone(),
+                    &self.playout_stat.chain,
+                );
                 self.nodes.lock().unwrap().push(self.current_node.clone());
                 self.last_next_ad();
 
                 self.current_node.last_ad = last_ad;
-                self.current_node.add_filter(&self.config);
+                self.current_node
+                    .add_filter(&self.config, &self.playout_stat.chain);
 
                 self.index.fetch_add(1, Ordering::SeqCst);
 
@@ -377,7 +383,11 @@ impl Iterator for CurrentProgram {
             }
 
             self.index.store(0, Ordering::SeqCst);
-            self.current_node = gen_source(&self.config, self.nodes.lock().unwrap()[0].clone());
+            self.current_node = gen_source(
+                &self.config,
+                self.nodes.lock().unwrap()[0].clone(),
+                &self.playout_stat.chain,
+            );
             self.last_next_ad();
             self.current_node.last_ad = last_ad;
 
@@ -432,20 +442,24 @@ fn timed_source(
         || !config.playlist.length.contains(':')
     {
         // when we are in the 24 hour range, get the clip
-        new_node = gen_source(config, node);
+        new_node = gen_source(config, node, &playout_stat.chain);
         new_node.process = Some(true);
     } else if total_delta <= 0.0 {
         info!("Begin is over play time, skip: {}", node.source);
     } else if total_delta < node.duration - node.seek || last {
         new_node = handle_list_end(node, total_delta);
-        new_node.add_filter(config);
+        new_node.add_filter(config, &playout_stat.chain);
     }
 
     new_node
 }
 
 /// Generate the source CMD, or when clip not exist, get a dummy.
-fn gen_source(config: &PlayoutConfig, mut node: Media) -> Media {
+fn gen_source(
+    config: &PlayoutConfig,
+    mut node: Media,
+    filter_chain: &Arc<Mutex<Vec<String>>>,
+) -> Media {
     if valid_source(&node.source) {
         node.add_probe();
         node.cmd = Some(seek_and_length(
@@ -454,7 +468,7 @@ fn gen_source(config: &PlayoutConfig, mut node: Media) -> Media {
             node.out,
             node.duration,
         ));
-        node.add_filter(config);
+        node.add_filter(config, filter_chain);
     } else {
         if node.source.is_empty() {
             warn!(
@@ -467,7 +481,7 @@ fn gen_source(config: &PlayoutConfig, mut node: Media) -> Media {
         let (source, cmd) = gen_dummy(config, node.out - node.seek);
         node.source = source;
         node.cmd = Some(cmd);
-        node.add_filter(config);
+        node.add_filter(config, filter_chain);
     }
 
     node
@@ -475,7 +489,11 @@ fn gen_source(config: &PlayoutConfig, mut node: Media) -> Media {
 
 /// Handle init clip, but this clip can be the last one in playlist,
 /// this we have to figure out and calculate the right length.
-fn handle_list_init(config: &PlayoutConfig, mut node: Media) -> Media {
+fn handle_list_init(
+    config: &PlayoutConfig,
+    mut node: Media,
+    filter_chain: &Arc<Mutex<Vec<String>>>,
+) -> Media {
     debug!("Playlist init");
     let (_, total_delta) = get_delta(config, &node.begin.unwrap());
     let mut out = node.out;
@@ -485,7 +503,7 @@ fn handle_list_init(config: &PlayoutConfig, mut node: Media) -> Media {
     }
 
     node.out = out;
-    gen_source(config, node)
+    gen_source(config, node, filter_chain)
 }
 
 /// when we come to last clip in playlist,

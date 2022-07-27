@@ -8,12 +8,10 @@ ffplayout provides ***.deb** amd ***.rpm** packages, which makes it more easy to
 4. activate systemd services:
     - `systemctl enable ffplayout`
     - `systemctl enable --now ffpapi`
-5. initialize sqlite database for ffpapi:
-    - `ffpapi -i`
-6. add admin user to ffpapi:
+5. add admin user to ffpapi:
     - `ffpapi -a`
-7. use a revers proxy for SSL, Port is **8787**.
-8. login with your browser, address without proxy would be: **http://[IP ADDRESS]:8787**
+6. use a revers proxy for SSL, Port is **8787**.
+7. login with your browser, address without proxy would be: **http://[IP ADDRESS]:8787**
 
 Default location for playlists and media files are: **/var/lib/ffplayout/**. If you need to change them, the media storage folder needs a symlink to **/usr/share/ffplayout/public/**.
 

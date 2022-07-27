@@ -80,7 +80,7 @@ async fn main() -> std::io::Result<()> {
 
         info!("running ffplayout API, listen on {conn}");
 
-        // TODO: add allow origin (or give it to the proxy)
+        // no allow origin here, give it to the reverse proxy
         HttpServer::new(move || {
             let auth = HttpAuthentication::bearer(validator);
             App::new()

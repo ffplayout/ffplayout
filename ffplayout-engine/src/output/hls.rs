@@ -47,7 +47,7 @@ fn ingest_to_hls_server(
     let mut server_prefix = vec_strings!["-hide_banner", "-nostats", "-v", "level+info"];
     let mut stream_input = config.ingest.input_cmd.clone().unwrap();
     server_prefix.append(&mut stream_input);
-    let server_filter = filter_cmd(&config);
+    let server_filter = filter_cmd(&config, &playout_stat.chain);
 
     let server_cmd = prepare_output_cmd(
         server_prefix,

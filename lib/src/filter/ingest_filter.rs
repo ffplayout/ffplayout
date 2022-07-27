@@ -1,4 +1,6 @@
-use crate::filter::{a_loudnorm, v_overlay};
+use std::sync::{Arc, Mutex};
+
+use crate::filter::{a_loudnorm, v_drawtext, v_overlay};
 use crate::utils::PlayoutConfig;
 
 /// Audio Filter
@@ -22,7 +24,7 @@ fn audio_filter(config: &PlayoutConfig) -> String {
 }
 
 /// Create filter nodes for ingest live stream.
-pub fn filter_cmd(config: &PlayoutConfig) -> Vec<String> {
+pub fn filter_cmd(config: &PlayoutConfig, filter_chain: &Arc<Mutex<Vec<String>>>) -> Vec<String> {
     let mut filter = format!(
         "[0:v]fps={},scale={}:{},setdar=dar={},fade=in:st=0:d=0.5",
         config.processing.fps,
@@ -32,12 +34,18 @@ pub fn filter_cmd(config: &PlayoutConfig) -> Vec<String> {
     );
 
     let overlay = v_overlay::filter_node(config, true);
+    let drawtext = v_drawtext::filter_node(config, None, filter_chain);
 
     if !overlay.is_empty() {
         filter.push(',');
     }
 
+    if !drawtext.is_empty() {
+        filter.push(',');
+    }
+
     filter.push_str(&overlay);
+    filter.push_str(&drawtext);
     filter.push_str("[vout1]");
     filter.push_str(audio_filter(config).as_str());
 
