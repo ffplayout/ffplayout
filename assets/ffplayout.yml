@@ -116,8 +116,9 @@ text:
 
 out:
     help_text: The final playout compression. Set the settings to your needs. 'mode'
-        has the options 'desktop', 'hls', 'null', 'stream'.
-    mode: stream
+        has the options 'desktop', 'hls', 'null', 'stream'. Use 'stream' and adjust 'output_param:' settings,
+        when you want to stream to a rtmp/rtsp/srt/... server.
+    mode: hls
     output_param: >-
         -c:v libx264
         -crf 23
@@ -131,5 +132,10 @@ out:
         -c:a aac
         -ar 44100
         -b:a 128k
-        -flags +global_header
-        -f flv rtmp://localhost/live/stream
+        -flags +cgop
+        -f hls
+        -hls_time 6
+        -hls_list_size 600
+        -hls_flags append_list+delete_segments+omit_endlist
+        -hls_segment_filename /usr/share/ffplayout/public/live/stream-%d.ts
+        /usr/share/ffplayout/public/live/stream.m3u8
