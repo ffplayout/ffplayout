@@ -1,11 +1,3 @@
----
-title: ffplayout
-section: 1
-header: User Manual
-footer: ffplayout 0.13.0
-date: July 28, 2022
----
-
 **ffplayout**
 ================
 
