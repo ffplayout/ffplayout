@@ -1,19 +1,6 @@
 **ffplayout-engine**
 ================
 
-Installation under Linux
------
-
-- copy the binary to `/usr/bin/`
-- copy **assets/ffplayout.yml** to `/etc/ffplayout`
-- create folder `/var/log/ffplayout`
-- create system user **ffpu**
-- give ownership from `/etc/ffplayout` and `/var/log/ffplayout` to **ffpu**
-- copy **assets/ffplayout.service** to `/etc/systemd/system`
-- activate service and run it: `systemctl enable --now ffplayout`
-
-You can also install the [released](https://github.com/ffplayout/ffplayout/releases/latest) ***.deb** or ***.rpm** package.
-
 Start with Arguments
 -----
 
@@ -36,7 +23,6 @@ OPTIONS:
     -V, --version                     Print version information
 
 ```
-
 
 You can run the command like:
 

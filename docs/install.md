@@ -20,3 +20,16 @@ When you don't need the frontend and API, skip enable the systemd service **ffpa
 When playlists are created and the ffplayout output is configured, you can start the process: `systemctl start ffplayout`, or click start in frontend.
 
 If you want to configure ffplayout over terminal, you can edit **/etc/ffplayout/ffplayout.yml**.
+
+### Manual Install
+-----
+
+- copy the binary to `/usr/bin/`
+- copy **assets/ffplayout.yml** to `/etc/ffplayout`
+- create folder `/var/log/ffplayout`
+- create system user **ffpu**
+- give ownership from `/etc/ffplayout` and `/var/log/ffplayout` to **ffpu**
+- copy **assets/ffplayout.service** to `/etc/systemd/system`
+- activate service and run it: `systemctl enable --now ffplayout`
+
+You can also install the [released](https://github.com/ffplayout/ffplayout/releases/latest) ***.deb** or ***.rpm** package.

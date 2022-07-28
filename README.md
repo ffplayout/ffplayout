@@ -1,15 +1,23 @@
+---
+title: ffplayout
+section: 1
+header: User Manual
+footer: ffplayout 0.13.0
+date: July 28, 2022
+---
+
 **ffplayout**
 ================
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
-The ffplayout apps are mostly made to run on Linux as system services. But in general they should run on all platforms which are supported by Rust.
-
-Check the [releases](https://github.com/ffplayout/ffplayout/releases/latest) for pre compiled version.
-
 ## **ffplayout-engine (ffplayout)**
 
 [ffplayout](/ffplayout-engine/README.md) is 24/7 broadcasting solution. It can playout a folder with containing video clips, or play for every day a *JSON* playlist, while keeping the current playlist editable.
+
+The ffplayout apps are mostly made to run on Linux as system services. But in general they should run on all platforms which are supported by Rust.
+
+Check the [releases](https://github.com/ffplayout/ffplayout/releases/latest) for pre compiled version.
 
 ### Features
 
@@ -19,7 +27,7 @@ Check the [releases](https://github.com/ffplayout/ffplayout/releases/latest) for
 - playing clips in [watched](/docs/folder_mode.md) folder mode
 - send emails with error message
 - overlay a logo
-- overlay text, controllable through [messenger](https://github.com/ffplayout/messenger) or [ffplayout-frontend](https://github.com/ffplayout/ffplayout-frontend) (needs ffmpeg with libzmq and enabled JSON RPC server)
+- overlay text, controllable through [ffplayout-frontend](https://github.com/ffplayout/ffplayout-frontend) (needs ffmpeg with libzmq and enabled JSON RPC server)
 - EBU R128 loudness normalization (single pass)
 - loop playlist infinitely
 - [remote source](/docs/remote_source.md)
@@ -50,7 +58,7 @@ For preview stream, read: [/docs/preview_stream.md](/docs/preview_stream.md)
 
 ## **ffplayout-api (ffpapi)**
 
-ffpapi is an [REST API](/ffplayout-api/README.md) for controlling the engine, manipulate playlists, add settings etc.
+ffpapi serves the [frontend](https://github.com/ffplayout/ffplayout-frontend) and it acts as a [REST API](/ffplayout-api/README.md) for controlling the engine, manipulate playlists, add settings etc.
 
 ### Requirements
 
@@ -98,7 +106,6 @@ Check [install](docs/install.md) for details about how to install ffplayout.
 ```
 
 ## **Warning**
-
 
 (Endless) streaming over multiple days will only work when config have **day_start** value and the **length** value is **24 hours**. If you need only some hours for every day, use a *cron* job, or something similar.
 
@@ -174,4 +181,5 @@ Output from `{"media":"current"}` show:
   "id": 1
 }
 ```
+
 When you are in playlist mode and jumping forward or backwards in time, the time shift will be saved so the playlist is still in sync. But have in mind, that then maybe your playlist gets to short. When you are not resetting the state, it will reset on the next day automatically.

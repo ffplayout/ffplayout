@@ -1,5 +1,7 @@
 #!/usr/bin/bash
 
+source $(dirname "$0")/man_create.sh
+
 if [[ ! -d public ]]; then
     cd ffplayout-frontend
 

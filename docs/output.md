@@ -2,7 +2,18 @@ ffplayout supports different types of outputs, let's explain them a bit:
 
 ## Stream
 
-The streaming output can be used for ever kind of classical streaming. For example for **rtmp, srt, rtp** etc. Every streaming type, which are supported from ffmpeg should be working
+The streaming output can be used for ever kind of classical streaming. For example for **rtmp, srt, rtp** etc. Any streaming type supported by ffmpeg should work.
+
+**Remember that you need a streaming server as a destination if you want to use this mode.**
+
+You can use for example:
+
+- [SRS](https://github.com/ossrs/srs)
+- [OvenMediaEngine](https://www.ovenmediaengine.com/ome)
+- [Nginx-RTMP](https://www.digitalocean.com/community/tutorials/how-to-set-up-a-video-streaming-server-using-nginx-rtmp-on-ubuntu-20-04)
+- [Ant-Media-Server](https://github.com/ant-media/Ant-Media-Server)
+
+Of course, you can also use media platforms that support streaming input.
 
 ### Multiple Outputs:
 
@@ -58,6 +69,10 @@ In desktop mode you will get your picture on screen. For this you need a desktop
 ## HLS
 
 In this mode you can output directly to a hls playlist. The nice thing here is, that ffplayout need less resources then in streaming mode.
+
+HLS output is currently the default, mostly because it works out of the box and don't need a streaming target. In default settings it saves the segments to **/usr/share/ffplayout/public/live/**.
+
+**It is recommend to serve the HLS stream with nginx or another web server, and not with ffpapi (which is more meant for previewing).**
 
 **HLS multiple outputs example:**
 
