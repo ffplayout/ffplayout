@@ -197,8 +197,13 @@ pub fn read_json(
             .write(false)
             .open(&current_file)
             .expect("Could not open json playlist file.");
-        let mut playlist: JsonPlaylist =
-            serde_json::from_reader(f).expect("Could't read json playlist file.");
+        let mut playlist: JsonPlaylist = match serde_json::from_reader(f) {
+            Ok(p) => p,
+            Err(e) => {
+                error!("Playlist file not readable! {e}");
+                JsonPlaylist::new(date, start_sec)
+            }
+        };
         playlist.modified = modified_time(&current_file);
 
         let list_clone = playlist.clone();
