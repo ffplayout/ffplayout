@@ -37,14 +37,14 @@ pub fn validate_playlist(
 
             if probe.format.is_none() {
                 error!(
-                    "No Metadata at <yellow>{}</>, from file <b><magenta>{}</></b>",
+                    "No Metadata at <yellow>{}</>, from file <b><magenta>\"{}\"</></b>",
                     sec_to_time(begin),
                     item.source
                 );
             }
         } else {
             error!(
-                "Source on position <yellow>{}</> not exists: <b><magenta>{}</></b>",
+                "Source on position <yellow>{}</> not exists: <b><magenta>\"{}\"</></b>",
                 sec_to_time(begin),
                 item.source
             );

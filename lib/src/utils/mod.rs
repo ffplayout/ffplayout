@@ -15,7 +15,7 @@ use jsonrpc_http_server::hyper::HeaderMap;
 use rand::prelude::*;
 use regex::Regex;
 use reqwest::header;
-use serde::{Deserialize, Serialize};
+use serde::{de::Deserializer, Deserialize, Serialize};
 use serde_json::json;
 use simplelog::*;
 
@@ -49,8 +49,9 @@ pub struct Media {
     pub out: f64,
     pub duration: f64,
 
-    #[serde(default)]
+    #[serde(deserialize_with = "null_string")]
     pub category: String,
+    #[serde(deserialize_with = "null_string")]
     pub source: String,
 
     #[serde(skip_serializing, skip_deserializing)]
@@ -143,6 +144,13 @@ impl PartialEq for Media {
 }
 
 impl Eq for Media {}
+
+fn null_string<'de, D>(d: D) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    Deserialize::deserialize(d).map(|x: Option<_>| x.unwrap_or_default())
+}
 
 /// We use the ffprobe crate, but we map the metadata to our needs.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
