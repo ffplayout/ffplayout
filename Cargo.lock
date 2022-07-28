@@ -1014,7 +1014,7 @@ dependencies = [
 
 [[package]]
 name = "ffplayout"
-version = "0.13.1"
+version = "0.13.2"
 dependencies = [
  "clap",
  "crossbeam-channel 0.5.6",
