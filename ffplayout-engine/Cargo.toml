@@ -4,7 +4,7 @@ description = "24/7 playout based on rust and ffmpeg"
 license = "GPL-3.0"
 authors = ["Jonathan Baecker jonbae77@gmail.com"]
 readme = "README.md"
-version = "0.13.1"
+version = "0.13.2"
 edition = "2021"
 
 [dependencies]
@@ -106,8 +106,6 @@ assets = [
     { source = "../assets/ffplayout.conf", dest = "/usr/share/ffplayout/ffplayout.conf.example", mode = "644" },
     { source = "../public/**/*", dest = "/usr/share/ffplayout/public/", mode = "644" },
     { source = "../debian/postinst", dest = "/usr/share/ffplayout/postinst", mode = "755" },
-    { source = "../debian/postrm", dest = "/usr/share/ffplayout/postrm", mode = "755" },
 ]
 auto-req = "no"
 post_install_script = "/usr/share/ffplayout/postinst"
-post_uninstall_script = "/usr/share/ffplayout/postrm"
