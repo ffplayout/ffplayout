@@ -56,6 +56,8 @@ assets = [
     ["../assets/ffplayout.yml", "/usr/share/ffplayout/ffplayout.yml.orig", "644"],
     ["../assets/ffplayout.conf", "/usr/share/ffplayout/ffplayout.conf.example", "644"],
     ["../README.md", "/usr/share/doc/ffplayout/README", "644"],
+    ["../assets/ffpapi.1.gz", "/usr/share/man/man1/", "644"],
+    ["../assets/ffplayout.1.gz", "/usr/share/man/man1/", "644"],
     ["../public/**/*", "/usr/share/ffplayout/public/", "644"],
 ]
 maintainer-scripts = "../debian/"
@@ -78,6 +80,8 @@ assets = [
     ["../assets/ffplayout.yml", "/usr/share/ffplayout/ffplayout.yml.orig", "644"],
     ["../assets/ffplayout.conf", "/usr/share/ffplayout/ffplayout.conf.example", "644"],
     ["../README.md", "/usr/share/doc/ffplayout/README", "644"],
+    ["../assets/ffpapi.1.gz", "/usr/share/man/man1/", "644"],
+    ["../assets/ffplayout.1.gz", "/usr/share/man/man1/", "644"],
     ["../public/**/*", "/usr/share/ffplayout/public/", "644"],
 ]
 
@@ -93,7 +97,9 @@ assets = [
     { source = "../assets/ffplayout.service", dest = "/lib/systemd/system/ffplayout.service", mode = "644" },
     { source = "../assets/ffplayout@.service", dest = "/lib/systemd/system/ffplayout@.service", mode = "644" },
     { source = "../assets/11-ffplayout", dest = "/etc/sudoers.d/11-ffplayout", mode = "644" },
-    { source = "../README.md", dest = "/usr/share/doc/ffplayout/README", mode = "644", doc = true },
+    { source = "../README.md", dest = "/usr/share/doc/ffplayout/README", mode = "644" },
+    { source = "../assets/ffpapi.1.gz", dest = "/usr/share/man/man1/ffpapi.1.gz", mode = "644", doc = true },
+    { source = "../assets/ffplayout.1.gz", dest = "/usr/share/man/man1/ffplayout.1.gz", mode = "644", doc = true },
     { source = "../LICENSE", dest = "/usr/share/doc/ffplayout/LICENSE", mode = "644" },
     { source = "../assets/logo.png", dest = "/usr/share/ffplayout/logo.png", mode = "644" },
     { source = "../assets/ffplayout.yml", dest = "/usr/share/ffplayout/ffplayout.yml.orig", mode = "644" },

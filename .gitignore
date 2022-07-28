@@ -18,6 +18,8 @@
 *tar.gz
 *.deb
 *.rpm
+ffplayout.1.gz
+ffpapi.1.gz
 /assets/*.db*
 /dist/
 /public/

@@ -2,8 +2,8 @@
 
 sysUser="ffpu"
 
-if ! id $sysUser &>/dev/null; then
-    adduser --system --no-create-home $sysUser
+if [ $(id -u $sysUser 2>/dev/null || echo -1) -ge -1 ]; then
+    adduser --system $sysUser
 fi
 
 if [ ! -d "/usr/share/ffplayout/db" ]; then

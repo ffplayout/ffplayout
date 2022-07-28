@@ -10,6 +10,6 @@ if [ -d "/var/log/ffplayout" ]; then
     yes | rm -rf "/var/log/ffplayout"
 fi
 
-if id $sysUser &>/dev/null; then
+if [ $(id -u $sysUser 2>/dev/null || echo -1) -ge 0 ]; then
     userdel -rf $sysUser
 fi

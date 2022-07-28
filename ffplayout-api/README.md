@@ -1,3 +1,11 @@
+---
+title: ffpapi
+section: 1
+header: User Manual
+footer: ffpapi 0.5.1
+date: July 28, 2022
+---
+
 **ffplayout-api**
 ================
 
@@ -21,7 +29,23 @@ Then run the API thru the systemd service, or like:
 ffpapi -l 127.0.0.1:8787
 ```
 
-If you plan to run ffpapi with systemd set permission from **/usr/share/ffplayout** and content to user **www-data:www-data**.
+Possible Arguments
+-----
+
+```BASH
+OPTIONS:
+    -a, --ask                    ask for user credentials
+    -d, --domain <DOMAIN>        domain name for initialization
+    -h, --help                   Print help information
+    -i, --init                   Initialize Database
+    -l, --listen <LISTEN>        Listen on IP:PORT, like: 127.0.0.1:8787
+    -m, --mail <MAIL>            Admin mail address
+    -p, --password <PASSWORD>    Admin password
+    -u, --username <USERNAME>    Create admin user
+    -V, --version                Print version information
+```
+
+If you plan to run ffpapi with systemd set permission from **/usr/share/ffplayout** and content to user **ffpu:ffpu**. User **ffpu** has to be created.
 
 **For possible endpoints read: [api endpoints](/docs/api.md)**
 
