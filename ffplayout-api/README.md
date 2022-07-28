@@ -1,11 +1,3 @@
----
-title: ffpapi
-section: 1
-header: User Manual
-footer: ffpapi 0.5.1
-date: July 28, 2022
----
-
 **ffplayout-api**
 ================
 
