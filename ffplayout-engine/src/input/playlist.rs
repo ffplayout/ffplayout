@@ -12,7 +12,8 @@ use simplelog::*;
 
 use ffplayout_lib::utils::{
     check_sync, gen_dummy, get_delta, get_sec, is_close, is_remote, json_serializer::read_json,
-    modified_time, seek_and_length, valid_source, Media, PlayoutConfig, PlayoutStatus, DUMMY_LEN,
+    loop_input, modified_time, seek_and_length, valid_source, Media, MediaProbe, PlayoutConfig,
+    PlayoutStatus, DUMMY_LEN,
 };
 
 /// Struct for current playlist.
@@ -470,20 +471,30 @@ fn gen_source(
         ));
         node.add_filter(config, filter_chain);
     } else {
+        let duration = node.out - node.seek;
         if node.source.is_empty() {
-            warn!(
-                "Generate filler with <yellow>{:.2}</> seconds length!",
-                node.out - node.seek
-            );
+            warn!("Generate filler with <yellow>{duration:.2}</> seconds length!");
         } else {
             error!("Source not found: <b><magenta>{}</></b>", node.source);
         }
-        let (source, cmd) = gen_dummy(config, node.out - node.seek);
-        node.source = source.clone();
-        node.cmd = Some(cmd);
 
-        if source == config.storage.filler_clip {
+        let probe = MediaProbe::new(&config.storage.filler_clip);
+
+        if let Some(length) = probe
+            .format
+            .and_then(|f| f.duration)
+            .and_then(|d| d.parse::<f64>().ok())
+        {
+            // create placeholder from config filler.
+            let cmd = loop_input(&config.storage.filler_clip, length, duration);
+            node.source = config.storage.filler_clip.clone();
+            node.cmd = Some(cmd);
             node.add_probe();
+        } else {
+            // create colored placeholder.
+            let (source, cmd) = gen_dummy(config, duration);
+            node.source = source;
+            node.cmd = Some(cmd);
         }
 
         node.add_filter(config, filter_chain);

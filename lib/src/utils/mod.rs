@@ -198,7 +198,7 @@ impl MediaProbe {
             }
             Err(e) => {
                 error!(
-                    "Can't read source '{input}' with ffprobe, source is probably damaged! Error is: {e:?}"
+                    "Can't read source <b><magenta>{input}</></b> with ffprobe, source not exists or damaged! Error is: {e:?}"
                 );
 
                 MediaProbe {
@@ -395,39 +395,28 @@ pub fn check_sync(config: &PlayoutConfig, delta: f64) -> bool {
 }
 
 /// Loop source until target duration is reached.
-fn loop_input(source: &str, source_duration: f64, target_duration: f64) -> Vec<String> {
+pub fn loop_input(source: &str, source_duration: f64, target_duration: f64) -> Vec<String> {
     let loop_count = (target_duration / source_duration).ceil() as i32;
+    let mut cmd = vec![];
 
-    info!("Loop <b><magenta>{source}</></b> <yellow>{loop_count}</> times, total duration: {target_duration:.2}");
+    if loop_count > 1 {
+        info!("Loop <b><magenta>{source}</></b> <yellow>{loop_count}</> times, total duration: <yellow>{target_duration:.2}</>");
 
-    vec_strings![
-        "-stream_loop",
-        loop_count.to_string(),
+        cmd.append(&mut vec_strings!["-stream_loop", loop_count.to_string()]);
+    }
+
+    cmd.append(&mut vec_strings![
         "-i",
         source,
         "-t",
         target_duration.to_string()
-    ]
+    ]);
+
+    cmd
 }
 
 /// Create a dummy clip as a placeholder for missing video files.
 pub fn gen_dummy(config: &PlayoutConfig, duration: f64) -> (String, Vec<String>) {
-    // create placeholder from config filler.
-    if Path::new(&config.storage.filler_clip).is_file() {
-        let probe = MediaProbe::new(&config.storage.filler_clip);
-
-        if let Some(length) = probe
-            .format
-            .and_then(|f| f.duration)
-            .and_then(|d| d.parse::<f64>().ok())
-        {
-            let cmd = loop_input(&config.storage.filler_clip, length, duration);
-
-            return (config.storage.filler_clip.clone(), cmd);
-        }
-    }
-
-    // create colored placeholder.
     let color = "#121212";
     let source = format!(
         "color=c={color}:s={}x{}:d={duration}",
