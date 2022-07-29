@@ -479,8 +479,13 @@ fn gen_source(
             error!("Source not found: <b><magenta>{}</></b>", node.source);
         }
         let (source, cmd) = gen_dummy(config, node.out - node.seek);
-        node.source = source;
+        node.source = source.clone();
         node.cmd = Some(cmd);
+
+        if source == config.storage.filler_clip {
+            node.add_probe();
+        }
+
         node.add_filter(config, filter_chain);
     }
 

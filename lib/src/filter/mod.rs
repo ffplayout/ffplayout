@@ -167,19 +167,18 @@ fn overlay(node: &mut Media, chain: &mut Filters, config: &PlayoutConfig) {
 }
 
 fn extend_video(node: &mut Media, chain: &mut Filters) {
-    if let Some(duration) = node
+    if let Some(video_duration) = node
         .probe
         .as_ref()
         .and_then(|p| p.video_streams.as_ref())
         .and_then(|v| v[0].duration.as_ref())
+        .and_then(|v| v.parse::<f64>().ok())
     {
-        let duration_float = duration.clone().parse::<f64>().unwrap();
-
-        if node.out - node.seek > duration_float - node.seek + 0.1 {
+        if node.out - node.seek > video_duration - node.seek + 0.1 && node.duration >= node.out {
             chain.add_filter(
                 &format!(
                     "tpad=stop_mode=add:stop_duration={}",
-                    (node.out - node.seek) - (duration_float - node.seek)
+                    (node.out - node.seek) - (video_duration - node.seek)
                 ),
                 "video",
             )
@@ -221,15 +220,14 @@ fn add_audio(node: &mut Media, chain: &mut Filters) {
 }
 
 fn extend_audio(node: &mut Media, chain: &mut Filters) {
-    if let Some(duration) = node
+    if let Some(audio_duration) = node
         .probe
         .as_ref()
         .and_then(|p| p.audio_streams.as_ref())
         .and_then(|a| a[0].duration.as_ref())
+        .and_then(|a| a.parse::<f64>().ok())
     {
-        let duration_float = duration.clone().parse::<f64>().unwrap();
-
-        if node.out - node.seek > duration_float - node.seek + 0.1 {
+        if node.out - node.seek > audio_duration - node.seek + 0.1 && node.duration >= node.out {
             chain.add_filter(&format!("apad=whole_dur={}", node.out - node.seek), "audio")
         }
     }

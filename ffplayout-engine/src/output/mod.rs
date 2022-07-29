@@ -119,11 +119,11 @@ pub fn player(
             .stderr(Stdio::piped())
             .spawn()
         {
+            Ok(proc) => proc,
             Err(e) => {
                 error!("couldn't spawn decoder process: {}", e);
                 panic!("couldn't spawn decoder process: {}", e)
             }
-            Ok(proc) => proc,
         };
 
         let mut dec_reader = BufReader::new(dec_proc.stdout.take().unwrap());
