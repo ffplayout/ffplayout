@@ -10,9 +10,8 @@ use simplelog::*;
 
 use crate::utils::{
     get_date, is_remote, modified_time, time_from_header, validate_playlist, Media, PlayoutConfig,
+    DUMMY_LEN,
 };
-
-pub const DUMMY_LEN: f64 = 60.0;
 
 /// This is our main playlist object, it holds all necessary information for the current day.
 #[derive(Debug, Serialize, Deserialize, Clone)]

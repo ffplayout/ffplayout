@@ -27,10 +27,10 @@ pub mod json_serializer;
 mod json_validate;
 mod logging;
 
-pub use config::{self as playout_config, PlayoutConfig};
+pub use config::{self as playout_config, PlayoutConfig, DUMMY_LEN, IMAGE_CODEC_NAME};
 pub use controller::{PlayerControl, PlayoutStatus, ProcessControl, ProcessUnit::*};
 pub use generator::generate_playlist;
-pub use json_serializer::{read_json, JsonPlaylist, DUMMY_LEN};
+pub use json_serializer::{read_json, JsonPlaylist};
 pub use json_validate::validate_playlist;
 pub use logging::{init_logging, send_mail};
 
@@ -392,6 +392,13 @@ pub fn check_sync(config: &PlayoutConfig, delta: f64) -> bool {
     }
 
     true
+}
+
+/// Loop image until target duration is reached.
+pub fn loop_image(source: &str, duration: f64) -> Vec<String> {
+    info!("Loop image <b><magenta>{source}</></b>, total duration: <yellow>{duration:.2}</>");
+
+    vec_strings!["-loop", "1", "-i", source, "-t", duration.to_string()]
 }
 
 /// Loop source until target duration is reached.

@@ -75,11 +75,20 @@ fn deinterlace(field_order: &Option<String>, chain: &mut Filters) {
     }
 }
 
-fn pad(aspect: f64, chain: &mut Filters, config: &PlayoutConfig) {
+fn pad(aspect: f64, chain: &mut Filters, v_stream: &ffprobe::Stream, config: &PlayoutConfig) {
     if !is_close(aspect, config.processing.aspect, 0.03) {
+        let mut scale = String::new();
+
+        if let (Some(w), Some(h)) = (v_stream.width, v_stream.height) {
+            if w > config.processing.width && aspect > config.processing.aspect {
+                scale = format!("scale={}:-1,", config.processing.width);
+            } else if h > config.processing.height && aspect < config.processing.aspect {
+                scale = format!("scale=-1:{},", config.processing.height);
+            }
+        }
         chain.add_filter(
             &format!(
-                "pad=max(iw\\,ih*({0}/{1})):ow/({0}/{1}):(ow-iw)/2:(oh-ih)/2",
+                "{scale}pad=max(iw\\,ih*({0}/{1})):ow/({0}/{1}):(ow-iw)/2:(oh-ih)/2",
                 config.processing.width, config.processing.height
             ),
             "video",
@@ -325,7 +334,7 @@ pub fn filter_chains(
             let frame_per_sec = fps_calc(&v_stream.r_frame_rate);
 
             deinterlace(&v_stream.field_order, &mut filters);
-            pad(aspect, &mut filters, config);
+            pad(aspect, &mut filters, v_stream, config);
             fps(frame_per_sec, &mut filters, config);
             scale(v_stream, aspect, &mut filters, config);
         }

@@ -12,8 +12,8 @@ use simplelog::*;
 
 use ffplayout_lib::utils::{
     check_sync, gen_dummy, get_delta, get_sec, is_close, is_remote, json_serializer::read_json,
-    loop_input, modified_time, seek_and_length, valid_source, Media, MediaProbe, PlayoutConfig,
-    PlayoutStatus, DUMMY_LEN,
+    loop_image, loop_input, modified_time, seek_and_length, valid_source, Media, MediaProbe,
+    PlayoutConfig, PlayoutStatus, DUMMY_LEN, IMAGE_CODEC_NAME,
 };
 
 /// Struct for current playlist.
@@ -461,26 +461,51 @@ fn gen_source(
     mut node: Media,
     filter_chain: &Arc<Mutex<Vec<String>>>,
 ) -> Media {
+    let duration = node.out - node.seek;
+
     if valid_source(&node.source) {
         node.add_probe();
-        node.cmd = Some(seek_and_length(
-            node.source.clone(),
-            node.seek,
-            node.out,
-            node.duration,
-        ));
-        node.add_filter(config, filter_chain);
+
+        if node
+            .probe
+            .clone()
+            .and_then(|p| p.video_streams)
+            .and_then(|v| v[0].codec_name.clone())
+            .filter(|c| IMAGE_CODEC_NAME.contains(&c.as_str()))
+            .is_some()
+        {
+            let cmd = loop_image(&node.source, duration);
+            node.cmd = Some(cmd);
+        } else {
+            node.cmd = Some(seek_and_length(
+                node.source.clone(),
+                node.seek,
+                node.out,
+                node.duration,
+            ));
+        }
     } else {
-        let duration = node.out - node.seek;
+        let probe = MediaProbe::new(&config.storage.filler_clip);
+
         if node.source.is_empty() {
             warn!("Generate filler with <yellow>{duration:.2}</> seconds length!");
         } else {
             error!("Source not found: <b><magenta>{}</></b>", node.source);
         }
 
-        let probe = MediaProbe::new(&config.storage.filler_clip);
-
-        if let Some(length) = probe
+        if probe
+            .clone()
+            .video_streams
+            .and_then(|v| v[0].codec_name.clone())
+            .filter(|c| IMAGE_CODEC_NAME.contains(&c.as_str()))
+            .is_some()
+        {
+            let cmd = loop_image(&config.storage.filler_clip, duration);
+            node.source = config.storage.filler_clip.clone();
+            node.cmd = Some(cmd);
+            node.probe = Some(probe);
+        } else if let Some(length) = probe
+            .clone()
             .format
             .and_then(|f| f.duration)
             .and_then(|d| d.parse::<f64>().ok())
@@ -489,16 +514,16 @@ fn gen_source(
             let cmd = loop_input(&config.storage.filler_clip, length, duration);
             node.source = config.storage.filler_clip.clone();
             node.cmd = Some(cmd);
-            node.add_probe();
+            node.probe = Some(probe);
         } else {
             // create colored placeholder.
             let (source, cmd) = gen_dummy(config, duration);
             node.source = source;
             node.cmd = Some(cmd);
         }
-
-        node.add_filter(config, filter_chain);
     }
+
+    node.add_filter(config, filter_chain);
 
     node
 }
@@ -566,12 +591,24 @@ fn handle_list_end(mut node: Media, total_delta: f64) -> Media {
     }
 
     node.process = Some(true);
-    node.cmd = Some(seek_and_length(
-        node.source.clone(),
-        node.seek,
-        node.out,
-        node.duration,
-    ));
+
+    if node
+        .probe
+        .clone()
+        .and_then(|p| p.video_streams)
+        .and_then(|v| v[0].codec_name.clone())
+        .filter(|c| IMAGE_CODEC_NAME.contains(&c.as_str()))
+        .is_some()
+    {
+        node.cmd = Some(loop_image(&node.source, total_delta));
+    } else {
+        node.cmd = Some(seek_and_length(
+            node.source.clone(),
+            node.seek,
+            node.out,
+            node.duration,
+        ));
+    }
 
     node
 }
