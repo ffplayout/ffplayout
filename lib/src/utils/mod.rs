@@ -27,7 +27,7 @@ pub mod json_serializer;
 mod json_validate;
 mod logging;
 
-pub use config::{self as playout_config, PlayoutConfig, DUMMY_LEN, IMAGE_CODEC_NAME};
+pub use config::{self as playout_config, PlayoutConfig, DUMMY_LEN, IMAGE_FORMAT};
 pub use controller::{PlayerControl, PlayoutStatus, ProcessControl, ProcessUnit::*};
 pub use generator::generate_playlist;
 pub use json_serializer::{read_json, JsonPlaylist};

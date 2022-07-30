@@ -13,7 +13,7 @@ use simplelog::*;
 use ffplayout_lib::utils::{
     check_sync, gen_dummy, get_delta, get_sec, is_close, is_remote, json_serializer::read_json,
     loop_image, loop_input, modified_time, seek_and_length, valid_source, Media, MediaProbe,
-    PlayoutConfig, PlayoutStatus, DUMMY_LEN, IMAGE_CODEC_NAME,
+    PlayoutConfig, PlayoutStatus, DUMMY_LEN, IMAGE_FORMAT,
 };
 
 /// Struct for current playlist.
@@ -448,8 +448,7 @@ fn timed_source(
     } else if total_delta <= 0.0 {
         info!("Begin is over play time, skip: {}", node.source);
     } else if total_delta < node.duration - node.seek || last {
-        new_node = handle_list_end(node, total_delta);
-        new_node.add_filter(config, &playout_stat.chain);
+        new_node = handle_list_end(config, node, total_delta, &playout_stat.chain);
     }
 
     new_node
@@ -467,11 +466,10 @@ fn gen_source(
         node.add_probe();
 
         if node
-            .probe
-            .clone()
-            .and_then(|p| p.video_streams)
-            .and_then(|v| v[0].codec_name.clone())
-            .filter(|c| IMAGE_CODEC_NAME.contains(&c.as_str()))
+            .source
+            .rsplit_once('.')
+            .map(|(_, e)| e.to_lowercase())
+            .filter(|c| IMAGE_FORMAT.contains(&c.as_str()))
             .is_some()
         {
             let cmd = loop_image(&node.source, duration);
@@ -493,11 +491,12 @@ fn gen_source(
             error!("Source not found: <b><magenta>{}</></b>", node.source);
         }
 
-        if probe
-            .clone()
-            .video_streams
-            .and_then(|v| v[0].codec_name.clone())
-            .filter(|c| IMAGE_CODEC_NAME.contains(&c.as_str()))
+        if config
+            .storage
+            .filler_clip
+            .rsplit_once('.')
+            .map(|(_, e)| e.to_lowercase())
+            .filter(|c| IMAGE_FORMAT.contains(&c.as_str()))
             .is_some()
         {
             let cmd = loop_image(&config.storage.filler_clip, duration);
@@ -550,21 +549,24 @@ fn handle_list_init(
 /// when we come to last clip in playlist,
 /// or when we reached total playtime,
 /// we end up here
-fn handle_list_end(mut node: Media, total_delta: f64) -> Media {
+fn handle_list_end(
+    config: &PlayoutConfig,
+    mut node: Media,
+    total_delta: f64,
+    filter_chain: &Arc<Mutex<Vec<String>>>,
+) -> Media {
     debug!("Playlist end");
-    node.add_probe();
 
     let mut out = if node.seek > 0.0 {
         node.seek + total_delta
     } else {
+        warn!("Clip length is not in time, new duration is: <yellow>{total_delta:.2}</>");
         total_delta
     };
 
-    // prevent looping
+    // out can't be longer then duration
     if out > node.duration {
         out = node.duration
-    } else {
-        warn!("Clip length is not in time, new duration is: <yellow>{total_delta:.2}</>")
     }
 
     if node.duration > total_delta && total_delta > 1.0 && node.duration - node.seek >= total_delta
@@ -592,23 +594,5 @@ fn handle_list_end(mut node: Media, total_delta: f64) -> Media {
 
     node.process = Some(true);
 
-    if node
-        .probe
-        .clone()
-        .and_then(|p| p.video_streams)
-        .and_then(|v| v[0].codec_name.clone())
-        .filter(|c| IMAGE_CODEC_NAME.contains(&c.as_str()))
-        .is_some()
-    {
-        node.cmd = Some(loop_image(&node.source, total_delta));
-    } else {
-        node.cmd = Some(seek_and_length(
-            node.source.clone(),
-            node.seek,
-            node.out,
-            node.duration,
-        ));
-    }
-
-    node
+    gen_source(config, node, filter_chain)
 }

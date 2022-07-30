@@ -12,9 +12,9 @@ use crate::utils::{free_tcp_socket, time_to_sec};
 use crate::vec_strings;
 
 pub const DUMMY_LEN: f64 = 60.0;
-pub const IMAGE_CODEC_NAME: [&str; 23] = [
-    "bmp", "dds", "dpx", "exr", "gif", "hdr", "j2k", "jpeg2000", "jpegls", "jpegxl", "mjpeg",
-    "pcx", "pfm", "pgm", "phm", "png", "psd", "ppm", "sgi", "svg", "targa", "tiff", "webp",
+pub const IMAGE_FORMAT: [&str; 21] = [
+    "bmp", "dds", "dpx", "exr", "gif", "hdr", "j2k", "jpg", "jpeg", "pcx", "pfm", "pgm", "phm",
+    "png", "psd", "ppm", "sgi", "svg", "tga", "tif", "webp",
 ];
 
 /// Global Config
