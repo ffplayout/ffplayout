@@ -64,7 +64,7 @@ pub fn json_rpc_server(
     config: PlayoutConfig,
     play_control: PlayerControl,
     playout_stat: PlayoutStatus,
-    proc_control: ProcessControl,
+    mut proc_control: ProcessControl,
 ) {
     let addr = config.rpc_server.address.clone();
     let auth = config.rpc_server.authorization.clone();
@@ -249,7 +249,7 @@ pub fn json_rpc_server(
     info!("Run JSON RPC server, listening on: <b><magenta>http://{addr}</></b>");
 
     // build rpc server
-    let server = ServerBuilder::new(io)
+    match ServerBuilder::new(io)
         .cors(DomainsValidation::AllowOnly(vec![
             AccessControlAllowOrigin::Null,
         ]))
@@ -269,9 +269,14 @@ pub fn json_rpc_server(
         })
         .rest_api(RestApi::Secure)
         .start_http(&addr.parse().unwrap())
-        .expect("Unable to start RPC server");
-
-    *proc_control.rpc_handle.lock().unwrap() = Some(server.close_handle());
-
-    server.wait();
+    {
+        Ok(server) => {
+            *proc_control.rpc_handle.lock().unwrap() = Some(server.close_handle());
+            server.wait();
+        }
+        Err(e) => {
+            error!("Unable to start RPC server: {e}");
+            proc_control.kill_all();
+        }
+    };
 }

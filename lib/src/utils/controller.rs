@@ -1,6 +1,6 @@
 use std::{
     fmt,
-    process::Child,
+    process::{exit, Child},
     sync::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc, Mutex,
@@ -148,6 +148,8 @@ impl ProcessControl {
                 }
             }
         }
+
+        exit(1);
     }
 }
 
