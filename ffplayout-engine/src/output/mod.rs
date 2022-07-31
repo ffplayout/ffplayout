@@ -92,9 +92,10 @@ pub fn player(
         }
 
         info!(
-            "Play for <yellow>{}</>: <b><magenta>{}</></b>",
+            "Play for <yellow>{}</>: <b><magenta>{}  {}</></b>",
             sec_to_time(node.out - node.seek),
-            node.source
+            node.source,
+            node.audio
         );
 
         let mut filter = node.filter.unwrap();

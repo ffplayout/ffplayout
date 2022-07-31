@@ -12,7 +12,7 @@ use simplelog::*;
 
 use ffplayout_lib::utils::{
     check_sync, gen_dummy, get_delta, get_sec, is_close, is_remote, json_serializer::read_json,
-    loop_image, loop_input, modified_time, seek_and_length, valid_source, Media, MediaProbe,
+    loop_filler, loop_image, modified_time, seek_and_length, valid_source, Media, MediaProbe,
     PlayoutConfig, PlayoutStatus, DUMMY_LEN, IMAGE_FORMAT,
 };
 
@@ -460,8 +460,6 @@ fn gen_source(
     mut node: Media,
     filter_chain: &Arc<Mutex<Vec<String>>>,
 ) -> Media {
-    let duration = node.out - node.seek;
-
     if valid_source(&node.source) {
         node.add_probe();
 
@@ -472,17 +470,12 @@ fn gen_source(
             .filter(|c| IMAGE_FORMAT.contains(&c.as_str()))
             .is_some()
         {
-            let cmd = loop_image(&node.source, duration);
-            node.cmd = Some(cmd);
+            node.cmd = Some(loop_image(&node));
         } else {
-            node.cmd = Some(seek_and_length(
-                node.source.clone(),
-                node.seek,
-                node.out,
-                node.duration,
-            ));
+            node.cmd = Some(seek_and_length(&node));
         }
     } else {
+        let duration = node.out - node.seek;
         let probe = MediaProbe::new(&config.storage.filler_clip);
 
         if node.source.is_empty() {
@@ -499,9 +492,8 @@ fn gen_source(
             .filter(|c| IMAGE_FORMAT.contains(&c.as_str()))
             .is_some()
         {
-            let cmd = loop_image(&config.storage.filler_clip, duration);
             node.source = config.storage.filler_clip.clone();
-            node.cmd = Some(cmd);
+            node.cmd = Some(loop_image(&node));
             node.probe = Some(probe);
         } else if let Some(length) = probe
             .clone()
@@ -510,9 +502,11 @@ fn gen_source(
             .and_then(|d| d.parse::<f64>().ok())
         {
             // create placeholder from config filler.
-            let cmd = loop_input(&config.storage.filler_clip, length, duration);
+
             node.source = config.storage.filler_clip.clone();
-            node.cmd = Some(cmd);
+            node.duration = length;
+            node.out = duration;
+            node.cmd = Some(loop_filler(&node));
             node.probe = Some(probe);
         } else {
             // create colored placeholder.
@@ -578,12 +572,7 @@ fn handle_list_end(
             node.source
         );
         node.out = out;
-        node.cmd = Some(seek_and_length(
-            node.source.clone(),
-            node.seek,
-            node.out,
-            node.duration,
-        ));
+        node.cmd = Some(seek_and_length(&node));
 
         node.process = Some(false);
 

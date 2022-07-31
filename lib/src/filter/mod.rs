@@ -10,7 +10,7 @@ pub mod ingest_filter;
 pub mod v_drawtext;
 pub mod v_overlay;
 
-use crate::utils::{get_delta, is_close, Media, PlayoutConfig};
+use crate::utils::{get_delta, is_close, Media, MediaProbe, PlayoutConfig};
 
 #[derive(Debug, Clone)]
 struct Filters {
@@ -218,6 +218,7 @@ fn add_audio(node: &mut Media, chain: &mut Filters) {
         .and_then(|p| p.audio_streams.as_ref())
         .unwrap_or(&vec![])
         .is_empty()
+        && !Path::new(&node.audio).is_file()
     {
         warn!("Clip <b><magenta>{}</></b> has no audio!", node.source);
         let audio = format!(
@@ -229,11 +230,15 @@ fn add_audio(node: &mut Media, chain: &mut Filters) {
 }
 
 fn extend_audio(node: &mut Media, chain: &mut Filters) {
-    if let Some(audio_duration) = node
-        .probe
-        .as_ref()
-        .and_then(|p| p.audio_streams.as_ref())
-        .and_then(|a| a[0].duration.as_ref())
+    let probe = if Path::new(&node.audio).is_file() {
+        Some(MediaProbe::new(&node.audio))
+    } else {
+        node.probe.clone()
+    };
+
+    if let Some(audio_duration) = probe
+        .and_then(|p| p.audio_streams)
+        .and_then(|a| a[0].duration.clone())
         .and_then(|a| a.parse::<f64>().ok())
     {
         if node.out - node.seek > audio_duration - node.seek + 0.1 && node.duration >= node.out {
@@ -323,7 +328,7 @@ pub fn filter_chains(
     let mut filters = Filters::new();
 
     if let Some(probe) = node.probe.as_ref() {
-        if probe.audio_streams.is_some() {
+        if probe.audio_streams.is_some() && !Path::new(&node.audio).is_file() {
             filters.audio_map = "0:a".to_string();
         }
 

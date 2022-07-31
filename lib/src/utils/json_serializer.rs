@@ -108,6 +108,7 @@ fn loop_playlist(
                 duration: item.duration,
                 category: item.category.clone(),
                 source: item.source.clone(),
+                audio: item.audio.clone(),
                 cmd: item.cmd.clone(),
                 probe: item.probe.clone(),
                 process: Some(true),

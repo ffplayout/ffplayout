@@ -54,6 +54,9 @@ pub struct Media {
     #[serde(deserialize_with = "null_string")]
     pub source: String,
 
+    #[serde(default, deserialize_with = "null_string")]
+    pub audio: String,
+
     #[serde(skip_serializing, skip_deserializing)]
     pub cmd: Option<Vec<String>>,
 
@@ -98,6 +101,7 @@ impl Media {
             duration,
             category: String::new(),
             source: src.clone(),
+            audio: String::new(),
             cmd: Some(vec!["-i".to_string(), src]),
             filter: Some(vec![]),
             probe,
@@ -395,31 +399,79 @@ pub fn check_sync(config: &PlayoutConfig, delta: f64) -> bool {
 }
 
 /// Loop image until target duration is reached.
-pub fn loop_image(source: &str, duration: f64) -> Vec<String> {
-    info!("Loop image <b><magenta>{source}</></b>, total duration: <yellow>{duration:.2}</>");
+pub fn loop_image(node: &Media) -> Vec<String> {
+    let duration = node.out - node.seek;
+    let mut source_cmd: Vec<String> = vec_strings!["-loop", "1", "-i", node.source.clone()];
 
-    vec_strings!["-loop", "1", "-i", source, "-t", duration.to_string()]
-}
+    info!(
+        "Loop image <b><magenta>{}</></b>, total duration: <yellow>{duration:.2}</>",
+        node.source
+    );
 
-/// Loop source until target duration is reached.
-pub fn loop_input(source: &str, source_duration: f64, target_duration: f64) -> Vec<String> {
-    let loop_count = (target_duration / source_duration).ceil() as i32;
-    let mut cmd = vec![];
+    if Path::new(&node.audio).is_file() {
+        if node.seek > 0.0 {
+            source_cmd.append(&mut vec_strings!["-ss", node.seek])
+        }
 
-    if loop_count > 1 {
-        info!("Loop <b><magenta>{source}</></b> <yellow>{loop_count}</> times, total duration: <yellow>{target_duration:.2}</>");
-
-        cmd.append(&mut vec_strings!["-stream_loop", loop_count.to_string()]);
+        source_cmd.append(&mut vec_strings!["-i", node.audio.clone()]);
     }
 
-    cmd.append(&mut vec_strings![
-        "-i",
-        source,
-        "-t",
-        target_duration.to_string()
-    ]);
+    source_cmd.append(&mut vec_strings!["-t", duration]);
 
-    cmd
+    source_cmd
+}
+
+/// Loop filler until target duration is reached.
+pub fn loop_filler(node: &Media) -> Vec<String> {
+    let loop_count = (node.out / node.duration).ceil() as i32;
+    let mut source_cmd = vec![];
+
+    if loop_count > 1 {
+        info!("Loop <b><magenta>{}</></b> <yellow>{loop_count}</> times, total duration: <yellow>{:.2}</>", node.source, node.out);
+
+        source_cmd.append(&mut vec_strings!["-stream_loop", loop_count]);
+    }
+
+    source_cmd.append(&mut vec_strings!["-i", node.source, "-t", node.out]);
+
+    source_cmd
+}
+
+/// Set clip seek in and length value.
+pub fn seek_and_length(node: &Media) -> Vec<String> {
+    let mut source_cmd = vec![];
+    let mut cut_audio = false;
+
+    if node.seek > 0.0 {
+        source_cmd.append(&mut vec_strings!["-ss", node.seek])
+    }
+
+    source_cmd.append(&mut vec_strings!["-i", node.source.clone()]);
+
+    if Path::new(&node.audio).is_file() {
+        let audio_probe = MediaProbe::new(&node.audio);
+
+        if node.seek > 0.0 {
+            source_cmd.append(&mut vec_strings!["-ss", node.seek])
+        }
+
+        source_cmd.append(&mut vec_strings!["-i", node.audio.clone()]);
+
+        if audio_probe
+            .audio_streams
+            .and_then(|a| a[0].duration.clone())
+            .and_then(|d| d.parse::<f64>().ok())
+            > Some(node.out - node.seek)
+        {
+            cut_audio = true;
+        }
+    }
+
+    if node.duration > node.out || cut_audio {
+        source_cmd.append(&mut vec_strings!["-t", node.out - node.seek]);
+    }
+
+    source_cmd
 }
 
 /// Create a dummy clip as a placeholder for missing video files.
@@ -444,23 +496,6 @@ pub fn gen_dummy(config: &PlayoutConfig, duration: f64) -> (String, Vec<String>)
     ];
 
     (source, cmd)
-}
-
-/// Set clip seek in and length value.
-pub fn seek_and_length(src: String, seek: f64, out: f64, duration: f64) -> Vec<String> {
-    let mut source_cmd: Vec<String> = vec![];
-
-    if seek > 0.0 {
-        source_cmd.append(&mut vec!["-ss".to_string(), format!("{seek}")])
-    }
-
-    source_cmd.append(&mut vec!["-i".to_string(), src]);
-
-    if duration > out {
-        source_cmd.append(&mut vec!["-t".to_string(), format!("{}", out - seek)]);
-    }
-
-    source_cmd
 }
 
 /// Prepare output parameters
