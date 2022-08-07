@@ -4,7 +4,7 @@ description = "Rest API for ffplayout"
 license = "GPL-3.0"
 authors = ["Jonathan Baecker jonbae77@gmail.com"]
 readme = "README.md"
-version = "0.5.1"
+version = "0.5.2"
 edition = "2021"
 
 [dependencies]
@@ -15,7 +15,7 @@ actix-web = "4"
 actix-web-grants = "3"
 actix-web-httpauth = "0.6"
 argon2 = "0.4"
-chrono = "0.4.20-rc.1"
+chrono = "0.4.20"
 clap = { version = "3.2", features = ["derive"] }
 derive_more = "0.99"
 faccess = "0.2"

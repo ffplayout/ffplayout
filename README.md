@@ -5,7 +5,7 @@
 
 ## **ffplayout-engine (ffplayout)**
 
-[ffplayout](/ffplayout-engine/README.md) is 24/7 broadcasting solution. It can playout a folder with containing video clips, or play for every day a *JSON* playlist, while keeping the current playlist editable.
+[ffplayout](/ffplayout-engine/README.md) is a 24/7 broadcasting solution. It can playout a folder with containing video clips, or play for every day a *JSON* playlist, while keeping the current playlist editable.
 
 The ffplayout apps are mostly made to run on Linux as system services. But in general they should run on all platforms which are supported by Rust.
 
@@ -45,6 +45,8 @@ Check the [releases](https://github.com/ffplayout/ffplayout/releases/latest) for
   - **null** (for debugging)
 - JSON RPC server, for getting infos about current playing and controlling
 - [live ingest](/docs/live_ingest.md)
+- image source (will loop until out duration is reached)
+- extra audio source (experimental) (has priority over audio from video source)
 
 For preview stream, read: [/docs/preview_stream.md](/docs/preview_stream.md)
 
@@ -79,13 +81,19 @@ Check [install](docs/install.md) for details about how to install ffplayout.
             "in": 0,
             "out": 149,
             "duration": 149,
-            "source": "/Media/clip2.mp4"
+            "source": "/Media/clip2.mp4",
+            "category": "advertisement"
         }, {
             "in": 0,
             "out": 114.72,
             "duration": 114.72,
-            "source": "/Media/clip3.mp4",
-            "category": "advertisement"
+            "source": "/Media/image1.jpg",
+        }, {
+            "in": 0,
+            "out": 230.30,
+            "duration": 230.30,
+            "source": "/Media/image2.jpg",
+            "audio": "/Media/audio1.mp3"
         }, {
             "in": 0,
             "out": 2531.36,

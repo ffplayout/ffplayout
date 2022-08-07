@@ -1,5 +1,5 @@
 use futures::executor;
-use std::sync::atomic::Ordering;
+use std::{process::exit, sync::atomic::Ordering};
 
 mod zmq_cmd;
 
@@ -277,6 +277,8 @@ pub fn json_rpc_server(
         Err(e) => {
             error!("Unable to start RPC server: {e}");
             proc_control.kill_all();
+
+            exit(1);
         }
     };
 }
