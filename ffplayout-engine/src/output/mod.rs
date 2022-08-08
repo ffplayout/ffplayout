@@ -99,7 +99,7 @@ pub fn player(
         );
 
         let mut filter = node.filter.unwrap();
-        let mut dec_cmd = vec_strings!["-hide_banner", "-nostats", "-v", &ff_log_format];
+        let mut dec_cmd = vec_strings!["-hide_banner", "-nostats", "-v", &ff_log_format, "-ignore_chapters", "1"];
         dec_cmd.append(&mut cmd);
 
         if filter.len() > 1 {
