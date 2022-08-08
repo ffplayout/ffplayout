@@ -31,5 +31,3 @@ If you want to configure ffplayout over terminal, you can edit **/etc/ffplayout/
 - give ownership from `/etc/ffplayout` and `/var/log/ffplayout` to **ffpu**
 - copy **assets/ffplayout.service** to `/etc/systemd/system`
 - activate service and run it: `systemctl enable --now ffplayout`
-
-You can also install the [released](https://github.com/ffplayout/ffplayout/releases/latest) ***.deb** or ***.rpm** package.

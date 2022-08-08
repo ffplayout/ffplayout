@@ -1,6 +1,6 @@
 #[macro_export]
 macro_rules! vec_strings {
     ($($str:expr),*) => ({
-        vec![$(String::from($str),)*] as Vec<String>
+        vec![$($str.to_string(),)*] as Vec<String>
     });
 }

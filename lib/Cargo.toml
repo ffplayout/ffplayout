@@ -4,14 +4,14 @@ description = "Library for ffplayout"
 license = "GPL-3.0"
 authors = ["Jonathan Baecker jonbae77@gmail.com"]
 readme = "README.md"
-version = "0.13.1"
+version = "0.14.0"
 edition = "2021"
 
 [dependencies]
-chrono = "0.4.20-rc.1"
+chrono = "0.4.20"
 crossbeam-channel = "0.5"
 ffprobe = "0.3"
-file-rotate = "0.7.0-rc.0"
+file-rotate = "0.7.0"
 jsonrpc-http-server = "18.0"
 lettre = "0.10"
 log = "0.4"

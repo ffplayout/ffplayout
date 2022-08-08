@@ -92,13 +92,21 @@ pub fn player(
         }
 
         info!(
-            "Play for <yellow>{}</>: <b><magenta>{}</></b>",
+            "Play for <yellow>{}</>: <b><magenta>{}  {}</></b>",
             sec_to_time(node.out - node.seek),
-            node.source
+            node.source,
+            node.audio
         );
 
         let mut filter = node.filter.unwrap();
-        let mut dec_cmd = vec_strings!["-hide_banner", "-nostats", "-v", &ff_log_format];
+        let mut dec_cmd = vec_strings![
+            "-hide_banner",
+            "-nostats",
+            "-v",
+            &ff_log_format,
+            "-ignore_chapters",
+            "1"
+        ];
         dec_cmd.append(&mut cmd);
 
         if filter.len() > 1 {
@@ -119,11 +127,11 @@ pub fn player(
             .stderr(Stdio::piped())
             .spawn()
         {
+            Ok(proc) => proc,
             Err(e) => {
                 error!("couldn't spawn decoder process: {}", e);
                 panic!("couldn't spawn decoder process: {}", e)
             }
-            Ok(proc) => proc,
         };
 
         let mut dec_reader = BufReader::new(dec_proc.stdout.take().unwrap());

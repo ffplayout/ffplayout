@@ -10,7 +10,7 @@ pub mod ingest_filter;
 pub mod v_drawtext;
 pub mod v_overlay;
 
-use crate::utils::{get_delta, is_close, Media, PlayoutConfig};
+use crate::utils::{get_delta, is_close, Media, MediaProbe, PlayoutConfig};
 
 #[derive(Debug, Clone)]
 struct Filters {
@@ -75,11 +75,20 @@ fn deinterlace(field_order: &Option<String>, chain: &mut Filters) {
     }
 }
 
-fn pad(aspect: f64, chain: &mut Filters, config: &PlayoutConfig) {
+fn pad(aspect: f64, chain: &mut Filters, v_stream: &ffprobe::Stream, config: &PlayoutConfig) {
     if !is_close(aspect, config.processing.aspect, 0.03) {
+        let mut scale = String::new();
+
+        if let (Some(w), Some(h)) = (v_stream.width, v_stream.height) {
+            if w > config.processing.width && aspect > config.processing.aspect {
+                scale = format!("scale={}:-1,", config.processing.width);
+            } else if h > config.processing.height && aspect < config.processing.aspect {
+                scale = format!("scale=-1:{},", config.processing.height);
+            }
+        }
         chain.add_filter(
             &format!(
-                "pad=max(iw\\,ih*({0}/{1})):ow/({0}/{1}):(ow-iw)/2:(oh-ih)/2",
+                "{scale}pad=max(iw\\,ih*({0}/{1})):ow/({0}/{1}):(ow-iw)/2:(oh-ih)/2",
                 config.processing.width, config.processing.height
             ),
             "video",
@@ -167,19 +176,18 @@ fn overlay(node: &mut Media, chain: &mut Filters, config: &PlayoutConfig) {
 }
 
 fn extend_video(node: &mut Media, chain: &mut Filters) {
-    if let Some(duration) = node
+    if let Some(video_duration) = node
         .probe
         .as_ref()
         .and_then(|p| p.video_streams.as_ref())
         .and_then(|v| v[0].duration.as_ref())
+        .and_then(|v| v.parse::<f64>().ok())
     {
-        let duration_float = duration.clone().parse::<f64>().unwrap();
-
-        if node.out - node.seek > duration_float - node.seek + 0.1 {
+        if node.out - node.seek > video_duration - node.seek + 0.1 && node.duration >= node.out {
             chain.add_filter(
                 &format!(
                     "tpad=stop_mode=add:stop_duration={}",
-                    (node.out - node.seek) - (duration_float - node.seek)
+                    (node.out - node.seek) - (video_duration - node.seek)
                 ),
                 "video",
             )
@@ -210,6 +218,7 @@ fn add_audio(node: &mut Media, chain: &mut Filters) {
         .and_then(|p| p.audio_streams.as_ref())
         .unwrap_or(&vec![])
         .is_empty()
+        && !Path::new(&node.audio).is_file()
     {
         warn!("Clip <b><magenta>{}</></b> has no audio!", node.source);
         let audio = format!(
@@ -221,15 +230,18 @@ fn add_audio(node: &mut Media, chain: &mut Filters) {
 }
 
 fn extend_audio(node: &mut Media, chain: &mut Filters) {
-    if let Some(duration) = node
-        .probe
-        .as_ref()
-        .and_then(|p| p.audio_streams.as_ref())
-        .and_then(|a| a[0].duration.as_ref())
-    {
-        let duration_float = duration.clone().parse::<f64>().unwrap();
+    let probe = if Path::new(&node.audio).is_file() {
+        Some(MediaProbe::new(&node.audio))
+    } else {
+        node.probe.clone()
+    };
 
-        if node.out - node.seek > duration_float - node.seek + 0.1 {
+    if let Some(audio_duration) = probe
+        .and_then(|p| p.audio_streams)
+        .and_then(|a| a[0].duration.clone())
+        .and_then(|a| a.parse::<f64>().ok())
+    {
+        if node.out - node.seek > audio_duration - node.seek + 0.1 && node.duration >= node.out {
             chain.add_filter(&format!("apad=whole_dur={}", node.out - node.seek), "audio")
         }
     }
@@ -316,7 +328,7 @@ pub fn filter_chains(
     let mut filters = Filters::new();
 
     if let Some(probe) = node.probe.as_ref() {
-        if probe.audio_streams.is_some() {
+        if probe.audio_streams.is_some() && !Path::new(&node.audio).is_file() {
             filters.audio_map = "0:a".to_string();
         }
 
@@ -327,7 +339,7 @@ pub fn filter_chains(
             let frame_per_sec = fps_calc(&v_stream.r_frame_rate);
 
             deinterlace(&v_stream.field_order, &mut filters);
-            pad(aspect, &mut filters, config);
+            pad(aspect, &mut filters, v_stream, config);
             fps(frame_per_sec, &mut filters, config);
             scale(v_stream, aspect, &mut filters, config);
         }
