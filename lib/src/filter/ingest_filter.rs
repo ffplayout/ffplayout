@@ -34,18 +34,18 @@ pub fn filter_cmd(config: &PlayoutConfig, filter_chain: &Arc<Mutex<Vec<String>>>
     );
 
     let overlay = v_overlay::filter_node(config, true);
-    let drawtext = v_drawtext::filter_node(config, None, filter_chain);
+    let drawtext = v_drawtext::filter_node(config, None, filter_chain, true);
 
     if !overlay.is_empty() {
         filter.push(',');
+        filter.push_str(&overlay);
     }
 
-    if !drawtext.is_empty() {
+    if config.out.mode == "hls" && !drawtext.is_empty() {
         filter.push(',');
+        filter.push_str(&drawtext);
     }
 
-    filter.push_str(&overlay);
-    filter.push_str(&drawtext);
     filter.push_str("[vout1]");
     filter.push_str(audio_filter(config).as_str());
 

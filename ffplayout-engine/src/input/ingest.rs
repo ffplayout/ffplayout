@@ -34,6 +34,11 @@ pub fn log_line(line: String, level: &str) {
             "<bright black>[Server]</> {}",
             format_log_line(line, "error")
         );
+    } else if line.contains("[fatal]") {
+        error!(
+            "<bright black>[Server]</> {}",
+            format_log_line(line, "fatal")
+        )
     }
 }
 

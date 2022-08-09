@@ -145,10 +145,13 @@ pub struct Text {
     pub add_text: bool,
 
     #[serde(skip_serializing, skip_deserializing)]
-    pub bind_address: Option<String>,
+    pub node_pos: Option<usize>,
 
     #[serde(skip_serializing, skip_deserializing)]
-    pub node_pos: Option<usize>,
+    pub zmq_stream_socket: Option<String>,
+
+    #[serde(skip_serializing, skip_deserializing)]
+    pub zmq_server_socket: Option<String>,
 
     pub fontfile: String,
     pub text_from_filename: bool,
@@ -251,10 +254,13 @@ impl PlayoutConfig {
         // to get text messages from it
         if config.text.add_text && !config.text.text_from_filename {
             config.rpc_server.enable = true;
-            config.text.bind_address = free_tcp_socket();
+            config.text.zmq_stream_socket = free_tcp_socket(String::new());
+            config.text.zmq_server_socket =
+                free_tcp_socket(config.text.zmq_stream_socket.clone().unwrap_or_default());
             config.text.node_pos = Some(2);
         } else {
-            config.text.bind_address = None;
+            config.text.zmq_stream_socket = None;
+            config.text.zmq_server_socket = None;
             config.text.node_pos = None;
         }
 
@@ -272,7 +278,7 @@ impl Default for PlayoutConfig {
 /// s302m has higher quality, but is experimental
 /// and works not well together with the loudnorm filter.
 fn pre_audio_codec(add_loudnorm: bool) -> Vec<String> {
-    let mut codec = vec_strings!["-c:a", "s302m", "-strict", "-2"];
+    let mut codec = vec_strings!["-c:a", "s302m", "-strict", "-2", "-sample_fmt", "s16"];
 
     if add_loudnorm {
         codec = vec_strings!["-c:a", "mp2", "-b:a", "384k"];
