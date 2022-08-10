@@ -205,7 +205,7 @@ fn add_text(
     if config.text.add_text
         && (config.text.text_from_filename || config.out.mode.to_lowercase() == "hls")
     {
-        let filter = v_drawtext::filter_node(config, Some(node), filter_chain);
+        let filter = v_drawtext::filter_node(config, Some(node), filter_chain, false);
 
         chain.add_filter(&filter, "video");
     }

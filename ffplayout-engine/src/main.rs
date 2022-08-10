@@ -42,6 +42,8 @@ struct StatusData {
 ///
 /// When file not exists we create it, and when it exists we get its values.
 fn status_file(stat_file: &str, playout_stat: &PlayoutStatus) {
+    debug!("Status file path: <b><magenta>{stat_file}</></b>");
+
     if !PathBuf::from(stat_file).exists() {
         let data = json!({
             "time_shift": 0.0,

@@ -11,6 +11,7 @@ pub fn filter_node(
     config: &PlayoutConfig,
     node: Option<&Media>,
     filter_chain: &Arc<Mutex<Vec<String>>>,
+    is_server: bool,
 ) -> String {
     let mut filter = String::new();
     let mut font = String::new();
@@ -19,6 +20,11 @@ pub fn filter_node(
         if Path::new(&config.text.fontfile).is_file() {
             font = format!(":fontfile='{}'", config.text.fontfile)
         }
+
+        let zmq_socket = match is_server {
+            true => config.text.zmq_server_socket.clone(),
+            false => config.text.zmq_stream_socket.clone(),
+        };
 
         // TODO: in Rust 1.64 use let_chains instead
         if config.text.text_from_filename && node.is_some() {
@@ -38,7 +44,7 @@ pub fn filter_node(
                 .replace('%', "\\\\\\%")
                 .replace(':', "\\:");
             filter = format!("drawtext=text='{escape}':{}{font}", config.text.style)
-        } else if let Some(socket) = config.text.bind_address.clone() {
+        } else if let Some(socket) = zmq_socket {
             let chain = filter_chain.lock().unwrap();
             let mut filter_cmd = format!("text=''{font}");
 

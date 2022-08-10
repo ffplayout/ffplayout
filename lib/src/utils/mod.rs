@@ -3,11 +3,14 @@ use std::{
     fs::{self, metadata},
     io::{BufRead, BufReader, Error},
     net::TcpListener,
-    path::Path,
+    path::{Path, PathBuf},
     process::{ChildStderr, Command, Stdio},
     sync::{Arc, Mutex},
     time::{self, UNIX_EPOCH},
 };
+
+#[cfg(not(windows))]
+use std::env;
 
 use chrono::{prelude::*, Duration};
 use ffprobe::{ffprobe, Format, Stream};
@@ -26,6 +29,9 @@ mod generator;
 pub mod json_serializer;
 mod json_validate;
 mod logging;
+
+#[cfg(windows)]
+mod windows;
 
 pub use config::{self as playout_config, PlayoutConfig, DUMMY_LEN, IMAGE_FORMAT};
 pub use controller::{PlayerControl, PlayoutStatus, ProcessControl, ProcessUnit::*};
@@ -712,16 +718,30 @@ pub fn validate_ffmpeg(config: &PlayoutConfig) -> Result<(), String> {
 }
 
 /// get a free tcp socket
-pub fn free_tcp_socket() -> Option<String> {
+pub fn free_tcp_socket(exclude_socket: String) -> Option<String> {
     for _ in 0..100 {
         let port = rand::thread_rng().gen_range(45321..54268);
+        let socket = format!("127.0.0.1:{port}");
 
-        if TcpListener::bind(("127.0.0.1", port)).is_ok() {
-            return Some(format!("127.0.0.1:{port}"));
+        if socket != exclude_socket && TcpListener::bind(("127.0.0.1", port)).is_ok() {
+            return Some(socket);
         }
     }
 
     None
+}
+
+pub fn home_dir() -> Option<PathBuf> {
+    home_dir_inner()
+}
+
+#[cfg(windows)]
+use windows::home_dir_inner;
+
+#[cfg(any(unix, target_os = "redox"))]
+fn home_dir_inner() -> Option<PathBuf> {
+    #[allow(deprecated)]
+    env::home_dir()
 }
 
 /// Get system time, in non test case.

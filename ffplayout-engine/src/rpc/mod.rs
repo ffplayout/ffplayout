@@ -1,8 +1,8 @@
-use futures::executor;
 use std::{process::exit, sync::atomic::Ordering};
 
 mod zmq_cmd;
 
+use futures::executor::block_on;
 use jsonrpc_http_server::{
     hyper,
     jsonrpc_core::{IoHandler, Params, Value},
@@ -83,18 +83,40 @@ pub fn json_rpc_server(
                 && &map["control"] == "text"
                 && map.contains_key("message")
             {
-                let mut filter = get_filter_from_json(map["message"].to_string());
-                let socket = config.text.bind_address.clone();
+                let filter = get_filter_from_json(map["message"].to_string());
 
                 // TODO: in Rust 1.64 use let_chains instead
-                if !filter.is_empty() && config.text.bind_address.is_some() {
+                if !filter.is_empty() && config.text.zmq_stream_socket.is_some() {
                     let mut clips_filter = playout_stat.chain.lock().unwrap();
                     *clips_filter = vec![filter.clone()];
-                    filter = format!("Parsed_drawtext_2 reinit {filter}");
 
-                    if let Ok(reply) = executor::block_on(zmq_send(&filter, &socket.unwrap())) {
-                        return Ok(Value::String(reply));
-                    };
+                    if config.out.mode != "hls" || !proc.server_is_running.load(Ordering::SeqCst) {
+                        let filter_stream = format!(
+                            "Parsed_drawtext_{} reinit {filter}",
+                            playout_stat.drawtext_stream_index.load(Ordering::SeqCst)
+                        );
+
+                        if let Ok(reply) = block_on(zmq_send(
+                            &filter_stream,
+                            &config.text.zmq_stream_socket.clone().unwrap(),
+                        )) {
+                            return Ok(Value::String(reply));
+                        };
+                    }
+
+                    if config.out.mode == "hls" && proc.server_is_running.load(Ordering::SeqCst) {
+                        let filter_server = format!(
+                            "Parsed_drawtext_{} reinit {filter}",
+                            playout_stat.drawtext_server_index.load(Ordering::SeqCst)
+                        );
+
+                        if let Ok(reply) = block_on(zmq_send(
+                            &filter_server,
+                            &config.text.zmq_server_socket.clone().unwrap(),
+                        )) {
+                            return Ok(Value::String(reply));
+                        };
+                    }
                 }
 
                 return Ok(Value::String("Last clip can not be skipped".to_string()));

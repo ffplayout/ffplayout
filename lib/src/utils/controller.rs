@@ -183,6 +183,8 @@ pub struct PlayoutStatus {
     pub date: Arc<Mutex<String>>,
     pub list_init: Arc<AtomicBool>,
     pub time_shift: Arc<Mutex<f64>>,
+    pub drawtext_server_index: Arc<AtomicUsize>,
+    pub drawtext_stream_index: Arc<AtomicUsize>,
 }
 
 impl PlayoutStatus {
@@ -193,6 +195,8 @@ impl PlayoutStatus {
             date: Arc::new(Mutex::new(String::new())),
             list_init: Arc::new(AtomicBool::new(true)),
             time_shift: Arc::new(Mutex::new(0.0)),
+            drawtext_server_index: Arc::new(AtomicUsize::new(2)),
+            drawtext_stream_index: Arc::new(AtomicUsize::new(2)),
         }
     }
 }

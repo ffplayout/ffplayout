@@ -8,7 +8,7 @@ version = "0.14.0"
 edition = "2021"
 
 [dependencies]
-chrono = "0.4.20"
+chrono = "0.4"
 crossbeam-channel = "0.5"
 ffprobe = "0.3"
 file-rotate = "0.7.0"
@@ -26,6 +26,14 @@ shlex = "1.1"
 simplelog = { version = "^0.12", features = ["paris"] }
 time = { version = "0.3", features = ["formatting", "macros"] }
 walkdir = "2"
+
+[target."cfg(windows)".dependencies.winapi]
+version = "0.3"
+features = [
+    "shlobj",
+    "std",
+    "winerror",
+]
 
 [target.x86_64-unknown-linux-musl.dependencies]
 openssl = { version = "0.10", features = ["vendored"] }

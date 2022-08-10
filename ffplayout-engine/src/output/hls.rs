@@ -49,6 +49,20 @@ fn ingest_to_hls_server(
     server_prefix.append(&mut stream_input);
     let server_filter = filter_cmd(&config, &playout_stat.chain);
 
+    if server_filter.len() > 1 {
+        let filter_chain = server_filter[1]
+            .split_terminator([',', ';'])
+            .collect::<Vec<&str>>();
+
+        for (i, link) in filter_chain.iter().enumerate() {
+            if link.contains("drawtext") {
+                playout_stat
+                    .drawtext_server_index
+                    .store(i, Ordering::SeqCst);
+            }
+        }
+    }
+
     let server_cmd = prepare_output_cmd(
         server_prefix,
         server_filter,

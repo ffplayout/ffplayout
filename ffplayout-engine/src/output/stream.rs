@@ -28,7 +28,7 @@ pub fn output(config: &PlayoutConfig, log_format: &str) -> process::Child {
     ];
 
     if config.text.add_text && !config.text.text_from_filename {
-        if let Some(socket) = config.text.bind_address.clone() {
+        if let Some(socket) = config.text.zmq_stream_socket.clone() {
             debug!(
                 "Using drawtext filter, listening on address: <yellow>{}</>",
                 socket
@@ -37,7 +37,8 @@ pub fn output(config: &PlayoutConfig, log_format: &str) -> process::Child {
             let mut filter = "[0:v]null,".to_string();
 
             filter.push_str(
-                v_drawtext::filter_node(config, None, &Arc::new(Mutex::new(vec![]))).as_str(),
+                v_drawtext::filter_node(config, None, &Arc::new(Mutex::new(vec![])), false)
+                    .as_str(),
             );
 
             enc_filter = vec!["-filter_complex".to_string(), filter];
