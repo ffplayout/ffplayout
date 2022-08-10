@@ -1,5 +1,4 @@
 use std::{
-    env,
     ffi::OsStr,
     fs::{self, metadata},
     io::{BufRead, BufReader, Error},
@@ -9,6 +8,9 @@ use std::{
     sync::{Arc, Mutex},
     time::{self, UNIX_EPOCH},
 };
+
+#[cfg(not(windows))]
+use std::env;
 
 use chrono::{prelude::*, Duration};
 use ffprobe::{ffprobe, Format, Stream};
