@@ -2,7 +2,7 @@ use std::{process::exit, sync::atomic::Ordering};
 
 mod zmq_cmd;
 
-use futures::executor;
+use futures::executor::block_on;
 use jsonrpc_http_server::{
     hyper,
     jsonrpc_core::{IoHandler, Params, Value},
@@ -90,49 +90,32 @@ pub fn json_rpc_server(
                     let mut clips_filter = playout_stat.chain.lock().unwrap();
                     *clips_filter = vec![filter.clone()];
 
-                    let reply = executor::block_on(async {
-                        let mut reply_text = String::new();
+                    if config.out.mode != "hls" || !proc.server_is_running.load(Ordering::SeqCst) {
+                        let filter_stream = format!(
+                            "Parsed_drawtext_{} reinit {filter}",
+                            playout_stat.drawtext_stream_index.load(Ordering::SeqCst)
+                        );
 
-                        if config.out.mode != "hls"
-                            || !proc.server_is_running.load(Ordering::SeqCst)
-                        {
-                            let filter_stream = format!(
-                                "Parsed_drawtext_{} reinit {filter}",
-                                playout_stat.drawtext_stream_index.load(Ordering::SeqCst)
-                            );
+                        if let Ok(reply) = block_on(zmq_send(
+                            &filter_stream,
+                            &config.text.zmq_stream_socket.clone().unwrap(),
+                        )) {
+                            return Ok(Value::String(reply));
+                        };
+                    }
 
-                            if let Ok(reply) = zmq_send(
-                                &filter_stream,
-                                &config.text.zmq_stream_socket.clone().unwrap(),
-                            )
-                            .await
-                            {
-                                reply_text = reply;
-                            };
-                        }
+                    if config.out.mode == "hls" && proc.server_is_running.load(Ordering::SeqCst) {
+                        let filter_server = format!(
+                            "Parsed_drawtext_{} reinit {filter}",
+                            playout_stat.drawtext_server_index.load(Ordering::SeqCst)
+                        );
 
-                        if config.out.mode == "hls" && proc.server_is_running.load(Ordering::SeqCst)
-                        {
-                            let filter_server = format!(
-                                "Parsed_drawtext_{} reinit {filter}",
-                                playout_stat.drawtext_server_index.load(Ordering::SeqCst)
-                            );
-
-                            if let Ok(reply) = zmq_send(
-                                &filter_server,
-                                &config.text.zmq_server_socket.clone().unwrap(),
-                            )
-                            .await
-                            {
-                                reply_text = reply;
-                            };
-                        }
-
-                        reply_text
-                    });
-
-                    if !reply.is_empty() {
-                        return Ok(Value::String(reply));
+                        if let Ok(reply) = block_on(zmq_send(
+                            &filter_server,
+                            &config.text.zmq_server_socket.clone().unwrap(),
+                        )) {
+                            return Ok(Value::String(reply));
+                        };
                     }
                 }
 

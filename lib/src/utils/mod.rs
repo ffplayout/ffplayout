@@ -1,9 +1,10 @@
 use std::{
+    env,
     ffi::OsStr,
     fs::{self, metadata},
     io::{BufRead, BufReader, Error},
     net::TcpListener,
-    path::Path,
+    path::{Path, PathBuf},
     process::{ChildStderr, Command, Stdio},
     sync::{Arc, Mutex},
     time::{self, UNIX_EPOCH},
@@ -26,6 +27,9 @@ mod generator;
 pub mod json_serializer;
 mod json_validate;
 mod logging;
+
+#[cfg(windows)]
+mod windows;
 
 pub use config::{self as playout_config, PlayoutConfig, DUMMY_LEN, IMAGE_FORMAT};
 pub use controller::{PlayerControl, PlayoutStatus, ProcessControl, ProcessUnit::*};
@@ -723,6 +727,19 @@ pub fn free_tcp_socket(exclude_socket: String) -> Option<String> {
     }
 
     None
+}
+
+pub fn home_dir() -> Option<PathBuf> {
+    home_dir_inner()
+}
+
+#[cfg(windows)]
+use windows::home_dir_inner;
+
+#[cfg(any(unix, target_os = "redox"))]
+fn home_dir_inner() -> Option<PathBuf> {
+    #[allow(deprecated)]
+    env::home_dir()
 }
 
 /// Get system time, in non test case.

@@ -8,7 +8,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 use shlex::split;
 
-use crate::utils::{free_tcp_socket, time_to_sec};
+use crate::utils::{free_tcp_socket, home_dir, time_to_sec};
 use crate::vec_strings;
 
 pub const DUMMY_LEN: f64 = 60.0;
@@ -199,8 +199,9 @@ impl PlayoutConfig {
         let mut config: PlayoutConfig =
             serde_yaml::from_reader(f).expect("Could not read config file.");
         config.general.generate = None;
-        config.general.stat_file = env::temp_dir()
-            .join("ffplayout_status.json")
+        config.general.stat_file = home_dir()
+            .unwrap_or_else(env::temp_dir)
+            .join(".ffp_status")
             .display()
             .to_string();
         let bitrate = format!(
