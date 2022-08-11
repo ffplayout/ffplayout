@@ -427,8 +427,6 @@ fn timed_source(
             debug!("Delta: <yellow>{shifted_delta:.3}</>");
         }
 
-        debug!("Total time remaining: <yellow>{total_delta:.3}</>");
-
         let sync = check_sync(config, shifted_delta);
 
         if !sync {
