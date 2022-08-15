@@ -6,6 +6,8 @@ use std::{
     thread,
 };
 
+#[cfg(debug_assertions)]
+use chrono::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use simplelog::*;
@@ -28,6 +30,12 @@ use ffplayout_lib::utils::{
     generate_playlist, init_logging, send_mail, validate_ffmpeg, PlayerControl, PlayoutStatus,
     ProcessControl,
 };
+
+#[cfg(debug_assertions)]
+use utils::Args;
+
+#[cfg(debug_assertions)]
+use ffplayout_lib::utils::{mock_time, time_now};
 
 #[derive(Serialize, Deserialize)]
 struct StatusData {
@@ -69,8 +77,22 @@ fn status_file(stat_file: &str, playout_stat: &PlayoutStatus) {
     }
 }
 
+#[cfg(debug_assertions)]
+fn fake_time(args: &Args) {
+    if let Some(fake_time) = &args.fake_time {
+        mock_time::set_mock_time(fake_time);
+    } else {
+        let local: DateTime<Local> = time_now();
+        mock_time::set_mock_time(&local.format("%Y-%m-%dT%H:%M:%S").to_string());
+    }
+}
+
 fn main() {
     let args = get_args();
+
+    #[cfg(debug_assertions)]
+    fake_time(&args);
+
     let config = get_config(args);
     let config_clone = config.clone();
     let play_control = PlayerControl::new();

@@ -8,8 +8,8 @@ general:
     stop_threshold: 11
 
 rpc_server:
-    help_text: Run a JSON RPC server, for getting infos about current playing, and
-        control for some functions.
+    help_text: Run a JSON RPC server, for getting infos about current playing and
+        for some control functions.
     enable: true
     address: 127.0.0.1:7070
     authorization: av2Kx8g67lF9qj5wEH3ym1bI4cCs
@@ -17,7 +17,8 @@ rpc_server:
 mail:
     help_text: Send error messages to email address, like missing playlist; invalid
         json format; missing clip path. Leave recipient blank, if you don't need this.
-        'mail_level' can be INFO, WARNING or ERROR. 'interval' means seconds until a new mail will be sended.
+        'mail_level' can be INFO, WARNING or ERROR. 'interval' means seconds until
+        a new mail will be sended.
     subject: Playout Error
     smtp_server: mail.example.org
     starttls: true
@@ -28,11 +29,11 @@ mail:
     interval: 30
 
 logging:
-    help_text: Logging to file, if 'log_to_file' false log to console. 'backup_count'
-        says how long log files will be saved in days. 'local_time' to false will set
-        log timestamps to UTC. Path to /var/log/ only if you run this program as daemon.
-        'log_level' can be DEBUG, INFO, WARNING, ERROR. 'ffmpeg_level' can be info,
-        warning, error.
+    help_text: If 'log_to_file' is true, log to file, when is false log to console.
+        'backup_count' says how long log files will be saved in days. 'local_time' to
+        false will set log timestamps to UTC. Path to /var/log/ only if you run this
+        program as daemon. 'log_level' can be DEBUG, INFO, WARNING, ERROR.
+        'ffmpeg_level' can be info, warning, error.
     log_to_file: true
     backup_count: 7
     local_time: true
@@ -42,15 +43,14 @@ logging:
     ffmpeg_level: error
 
 processing:
-    help_text: Default processing, for all clips that they get prepared in that way,
-        so the output is unique. Set playing mode, like playlist, or folder.
-        'aspect' must be a float number. 'logo' is only used if the path exist.
+    help_text: Default processing for all clips, to have them unique. Mode can be playlist
+        or folder. 'aspect' must be a float number. 'logo' is only used if the path exist.
         'logo_scale' scale the logo to target size, leave it blank when no scaling
         is needed, format is 'number:number', for example '100:-1' for proportional
         scaling. With 'logo_opacity' logo can become transparent. With 'logo_filter'
         'overlay=W-w-12:12' you can modify the logo position. With 'use_loudnorm'
-        you can activate single pass EBU R128 loudness normalization.
-        'loud_*' can adjust the loudnorm filter.
+        you can activate single pass EBU R128 loudness normalization. 'loud_*' can
+        adjust the loudnorm filter.
     mode: playlist
     width: 1024
     height: 576
@@ -69,10 +69,9 @@ processing:
     volume: 1
 
 ingest:
-    help_text: Works not with direct hls output, it always needs full processing! Run a server
-        for a ingest stream. This stream will override the normal streaming until is done.
-        There is no authentication, this is up to you. The recommend way is to set address to
-        localhost, stream to a local server with authentication and from there stream to this app.
+    help_text: Run a server for a ingest stream. This stream will override the normal streaming
+        until is done. There is only a very simple authentication mechanism, which check if the
+        stream name is correct.
     enable: false
     input_param: -f live_flv -listen 1 -i rtmp://localhost:1936/live/stream
 
@@ -83,7 +82,7 @@ playlist:
         script. Subdirectories needs this structure '/playlists/2018/01'. 'day_start'
         means at which time the playlist should start, leave day_start blank when playlist
         should always start at the begin. 'length' represent the target length from
-        playlist, when is blank real length will not consider. 'infinit true' works with
+        playlist, when is blank real length will not consider. 'infinit: true' works with
         single playlist file and loops it infinitely.
     path: /var/lib/ffplayout/playlists
     day_start: "5:59:25"
@@ -93,7 +92,7 @@ playlist:
 storage:
     help_text: Play ordered or randomly files from path. 'filler_clip' is for fill
         the end to reach 24 hours, it will loop when is necessary. 'extensions' search
-        only files with this extension. Set 'shuffle' to 'True' to pick files randomly.
+        only files with this extension. Set 'shuffle' to 'true' to pick files randomly.
     path: "/var/lib/ffplayout/tv-media"
     filler_clip: "/var/lib/ffplayout/tv-media/filler/filler.mp4"
     extensions:
@@ -104,7 +103,6 @@ storage:
 text:
     help_text: Overlay text in combination with libzmq for remote text manipulation.
         On windows fontfile path need to be like this 'C\:/WINDOWS/fonts/DejaVuSans.ttf'.
-        In a standard environment the filter drawtext node is Parsed_drawtext_2.
         'text_from_filename' activate the extraction from text of a filename. With 'style'
         you can define the drawtext parameters like position, color, etc. Post Text over
         API will override this. With 'regex' you can format file names, to get a title from it.
@@ -117,8 +115,8 @@ text:
 out:
     help_text: The final playout compression. Set the settings to your needs. 'mode'
         has the options 'desktop', 'hls', 'null', 'stream'. Use 'stream' and adjust
-        'output_param:' settings, when you want to stream to a rtmp/rtsp/srt/... server.
-        In production don't server hls playlist with ffpapi, use nginx or another web server!
+        'output_param:' settings when you want to stream to a rtmp/rtsp/srt/... server.
+        In production don't serve hls playlist with ffpapi, use nginx or another web server!
     mode: hls
     output_param: >-
         -c:v libx264

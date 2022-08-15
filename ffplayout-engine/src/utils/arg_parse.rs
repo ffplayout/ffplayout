@@ -55,6 +55,10 @@ pub struct Args {
 
     #[clap(short, long, help = "Set audio volume")]
     pub volume: Option<f64>,
+
+    #[cfg(debug_assertions)]
+    #[clap(long, help = "fake date time, for debugging")]
+    pub fake_time: Option<String>,
 }
 
 /// Get arguments from command line, and return them.

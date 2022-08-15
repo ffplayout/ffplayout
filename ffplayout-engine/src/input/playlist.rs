@@ -352,7 +352,7 @@ impl Iterator for CurrentProgram {
 
             if !self.config.playlist.infinit
                 && last_playlist == self.json_path
-                && total_delta.abs() > self.config.general.stop_threshold
+                && total_delta.abs() > 1.0
             {
                 // Test if playlist is to early finish,
                 // and if we have to fill it with a placeholder.
@@ -383,6 +383,7 @@ impl Iterator for CurrentProgram {
                 return Some(self.current_node.clone());
             }
 
+            // Get first clip from next playlist.
             self.index.store(0, Ordering::SeqCst);
             self.current_node = gen_source(
                 &self.config,
@@ -426,8 +427,6 @@ fn timed_source(
         } else {
             debug!("Delta: <yellow>{shifted_delta:.3}</>");
         }
-
-        debug!("Total time remaining: <yellow>{total_delta:.3}</>");
 
         let sync = check_sync(config, shifted_delta);
 
@@ -554,7 +553,10 @@ fn handle_list_end(
     let mut out = if node.seek > 0.0 {
         node.seek + total_delta
     } else {
-        warn!("Clip length is not in time, new duration is: <yellow>{total_delta:.2}</>");
+        if node.duration > total_delta {
+            warn!("Clip length is not in time, new duration is: <yellow>{total_delta:.2}</>");
+        }
+
         total_delta
     };
 

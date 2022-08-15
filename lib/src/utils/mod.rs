@@ -452,7 +452,12 @@ pub fn seek_and_length(node: &Media) -> Vec<String> {
         source_cmd.append(&mut vec_strings!["-ss", node.seek])
     }
 
-    source_cmd.append(&mut vec_strings!["-i", node.source.clone()]);
+    source_cmd.append(&mut vec_strings![
+        "-ignore_chapters",
+        "1",
+        "-i",
+        node.source.clone()
+    ]);
 
     if Path::new(&node.audio).is_file() {
         let audio_probe = MediaProbe::new(&node.audio);
@@ -744,14 +749,14 @@ fn home_dir_inner() -> Option<PathBuf> {
     env::home_dir()
 }
 
-/// Get system time, in non test case.
-#[cfg(not(test))]
+/// Get system time, in non test/debug case.
+#[cfg(not(any(test, debug_assertions)))]
 pub fn time_now() -> DateTime<Local> {
     Local::now()
 }
 
-/// Get mocked system time, in test case.
-#[cfg(test)]
+/// Get mocked system time, in test/debug case.
+#[cfg(any(test, debug_assertions))]
 pub mod mock_time {
     use super::*;
     use std::cell::RefCell;
@@ -776,5 +781,5 @@ pub mod mock_time {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, debug_assertions))]
 pub use mock_time::time_now;
