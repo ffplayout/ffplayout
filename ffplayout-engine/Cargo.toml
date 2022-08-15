@@ -4,11 +4,12 @@ description = "24/7 playout based on rust and ffmpeg"
 license = "GPL-3.0"
 authors = ["Jonathan Baecker jonbae77@gmail.com"]
 readme = "README.md"
-version = "0.14.0"
+version = "0.14.1"
 edition = "2021"
 
 [dependencies]
 ffplayout-lib = { path = "../lib" }
+chrono = "0.4"
 clap = { version = "3.2", features = ["derive"] }
 crossbeam-channel = "0.5"
 futures = "0.3"

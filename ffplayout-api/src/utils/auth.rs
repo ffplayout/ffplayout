@@ -9,7 +9,7 @@ use crate::utils::GlobalSettings;
 // Token lifetime
 const JWT_EXPIRATION_DAYS: i64 = 7;
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Claims {
     pub id: i64,
     pub username: String,

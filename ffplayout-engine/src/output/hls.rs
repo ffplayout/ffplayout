@@ -186,14 +186,7 @@ pub fn write_hls(
             node.source
         );
 
-        let mut enc_prefix = vec_strings![
-            "-hide_banner",
-            "-nostats",
-            "-v",
-            &ff_log_format,
-            "-ignore_chapters",
-            "1"
-        ];
+        let mut enc_prefix = vec_strings!["-hide_banner", "-nostats", "-v", &ff_log_format];
         enc_prefix.append(&mut cmd);
         let enc_filter = node.filter.unwrap();
         let enc_cmd = prepare_output_cmd(

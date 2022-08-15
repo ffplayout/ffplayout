@@ -125,12 +125,12 @@ pub async fn login(credentials: web::Json<User>) -> impl Responder {
         }
         Err(e) => {
             error!("Login {} failed! {e}", credentials.username);
-            return web::Json(UserObj {
+            web::Json(UserObj {
                 message: format!("Login {} failed!", credentials.username),
                 user: None,
             })
             .customize()
-            .with_status(StatusCode::BAD_REQUEST);
+            .with_status(StatusCode::BAD_REQUEST)
         }
     }
 }
@@ -470,7 +470,7 @@ pub async fn send_text_message(
     data: web::Json<HashMap<String, String>>,
 ) -> Result<impl Responder, ServiceError> {
     match send_message(*id, data.into_inner()).await {
-        Ok(res) => return Ok(res.text().await.unwrap_or_else(|_| "Success".into())),
+        Ok(res) => Ok(res.text().await.unwrap_or_else(|_| "Success".into())),
         Err(e) => Err(e),
     }
 }
@@ -492,7 +492,7 @@ pub async fn control_playout(
     control: web::Json<Process>,
 ) -> Result<impl Responder, ServiceError> {
     match control_state(*id, control.command.clone()).await {
-        Ok(res) => return Ok(res.text().await.unwrap_or_else(|_| "Success".into())),
+        Ok(res) => Ok(res.text().await.unwrap_or_else(|_| "Success".into())),
         Err(e) => Err(e),
     }
 }
@@ -531,7 +531,7 @@ pub async fn control_playout(
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 pub async fn media_current(id: web::Path<i64>) -> Result<impl Responder, ServiceError> {
     match media_info(*id, "current".into()).await {
-        Ok(res) => return Ok(res.text().await.unwrap_or_else(|_| "Success".into())),
+        Ok(res) => Ok(res.text().await.unwrap_or_else(|_| "Success".into())),
         Err(e) => Err(e),
     }
 }
@@ -545,7 +545,7 @@ pub async fn media_current(id: web::Path<i64>) -> Result<impl Responder, Service
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 pub async fn media_next(id: web::Path<i64>) -> Result<impl Responder, ServiceError> {
     match media_info(*id, "next".into()).await {
-        Ok(res) => return Ok(res.text().await.unwrap_or_else(|_| "Success".into())),
+        Ok(res) => Ok(res.text().await.unwrap_or_else(|_| "Success".into())),
         Err(e) => Err(e),
     }
 }
@@ -560,7 +560,7 @@ pub async fn media_next(id: web::Path<i64>) -> Result<impl Responder, ServiceErr
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 pub async fn media_last(id: web::Path<i64>) -> Result<impl Responder, ServiceError> {
     match media_info(*id, "last".into()).await {
-        Ok(res) => return Ok(res.text().await.unwrap_or_else(|_| "Success".into())),
+        Ok(res) => Ok(res.text().await.unwrap_or_else(|_| "Success".into())),
         Err(e) => Err(e),
     }
 }

@@ -29,7 +29,7 @@ use crate::utils::{
 };
 use ffplayout_lib::utils::PlayoutConfig;
 
-#[derive(PartialEq, Clone)]
+#[derive(Clone, Eq, PartialEq)]
 pub enum Role {
     Admin,
     User,
