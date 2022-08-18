@@ -577,17 +577,6 @@ fn handle_list_end(
     if node.duration > total_delta && total_delta > 1.0 && node.duration - node.seek >= total_delta
     {
         node.out = out;
-    } else if node.duration > total_delta && total_delta < 1.0 {
-        warn!(
-            "Last clip less then 1 second long, skip: <b><magenta>{}</></b>",
-            node.source
-        );
-        node.out = out;
-        node.cmd = Some(seek_and_length(&node));
-
-        node.process = Some(false);
-
-        return node;
     } else {
         warn!("Playlist is not long enough: <yellow>{total_delta:.2}</> seconds needed");
     }
