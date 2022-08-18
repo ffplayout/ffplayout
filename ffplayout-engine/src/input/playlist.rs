@@ -517,6 +517,15 @@ fn gen_source(
 
     node.add_filter(config, filter_chain);
 
+    if node.out - node.seek < 1.0 {
+        warn!(
+            "Clip is less then 1 second long, skip: <b><magenta>{}</></b>",
+            node.source
+        );
+
+        node.process = Some(false);
+    }
+
     node
 }
 
