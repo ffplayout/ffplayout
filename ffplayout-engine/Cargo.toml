@@ -38,6 +38,7 @@ priority = "optional"
 section = "net"
 license-file = ["../LICENSE", "0"]
 depends = ""
+recommends = "sudo"
 suggests = "ffmpeg"
 copyright = "Copyright (c) 2022, Jonathan Baecker. All rights reserved."
 conf-files = ["/etc/ffplayout/ffplayout.yml"]
