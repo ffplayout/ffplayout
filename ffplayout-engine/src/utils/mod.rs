@@ -1,4 +1,7 @@
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    process::exit,
+};
 
 pub mod arg_parse;
 
@@ -10,15 +13,18 @@ pub fn get_config(args: Args) -> PlayoutConfig {
         Some(c) => {
             let path = PathBuf::from(format!("/etc/ffplayout/{c}.yml"));
 
-            if path.is_file() {
-                Some(path.display().to_string())
-            } else {
-                println!("no file");
-                args.config
+            if !path.is_file() {
+                println!(
+                    "Config file \"{c}\" under \"/etc/ffplayout/\" not found.\n\nCheck arguments!"
+                );
+                exit(1)
             }
+
+            Some(path.display().to_string())
         }
         None => args.config,
     };
+
     let mut config = PlayoutConfig::new(cfg_path);
 
     if let Some(gen) = args.generate {
