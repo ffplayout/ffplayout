@@ -53,12 +53,14 @@ pub async fn write_playlist(id: i64, json_data: JsonPlaylist) -> Result<String, 
         .join(d[1])
         .join(date.clone())
         .with_extension("json");
+    let mut file_exists = false;
 
     if let Some(p) = playlist_path.parent() {
         fs::create_dir_all(p)?;
     }
 
     if playlist_path.is_file() {
+        file_exists = true;
         if let Ok(existing_data) = json_reader(&playlist_path) {
             if json_data == existing_data {
                 return Err(ServiceError::Conflict(format!(
@@ -69,7 +71,15 @@ pub async fn write_playlist(id: i64, json_data: JsonPlaylist) -> Result<String, 
     }
 
     match json_writer(&playlist_path, json_data) {
-        Ok(_) => return Ok(format!("Write playlist from {date} success!")),
+        Ok(_) => {
+            let mut msg = format!("Write playlist from {date} success!");
+
+            if file_exists {
+                msg = format!("Update playlist from {date} success!");
+            }
+
+            return Ok(msg);
+        }
         Err(e) => {
             error!("{e}");
         }
