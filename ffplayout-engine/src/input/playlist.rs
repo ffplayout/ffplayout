@@ -459,6 +459,8 @@ fn gen_source(
     mut node: Media,
     filter_chain: &Arc<Mutex<Vec<String>>>,
 ) -> Media {
+    let duration = node.out - node.seek;
+
     if valid_source(&node.source) {
         node.add_probe();
 
@@ -474,7 +476,6 @@ fn gen_source(
             node.cmd = Some(seek_and_length(&node));
         }
     } else {
-        let duration = node.out - node.seek;
         let probe = MediaProbe::new(&config.storage.filler_clip);
 
         if node.source.is_empty() {
@@ -501,7 +502,6 @@ fn gen_source(
             .and_then(|d| d.parse::<f64>().ok())
         {
             // create placeholder from config filler.
-
             node.source = config.storage.filler_clip.clone();
             node.duration = length;
             node.out = duration;
@@ -517,9 +517,9 @@ fn gen_source(
 
     node.add_filter(config, filter_chain);
 
-    if node.out - node.seek < 1.0 {
+    if duration < 1.0 {
         warn!(
-            "Clip is less then 1 second long, skip: <b><magenta>{}</></b>",
+            "Clip is less then 1 second long (<yellow>{duration:.3}</>), skip: <b><magenta>{}</></b>",
             node.source
         );
 
