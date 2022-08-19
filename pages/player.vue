@@ -284,7 +284,7 @@
                                                 <b-form-checkbox
                                                     v-model="item.category"
                                                     value="advertisement"
-                                                    :unchecked-value="item.category"
+                                                    unchecked-value=""
                                                 />
                                             </b-col>
                                             <b-col cols="1" class="text-center playlist-input">
@@ -373,11 +373,14 @@
                 <b-form-group label="Source" label-for="source-input" invalid-feedback="Source is required">
                     <b-form-input id="source-input" v-model="newSource.source" required />
                 </b-form-group>
+                <b-form-group label="Audio" label-for="audio-input">
+                    <b-form-input id="audio-input" v-model="newSource.audio" />
+                </b-form-group>
                 <b-form-checkbox
                     id="ad-input"
                     v-model="newSource.category"
                     value="advertisement"
-                    :unchecked-value="newSource.category"
+                    unchecked-value=""
                 >
                     Advertisement
                 </b-form-checkbox>
@@ -715,9 +718,17 @@ export default {
             if (postSave.status === 200 || postSave.status === 201) {
                 this.$store.commit('UPDATE_VARIANT', 'success')
                 this.$store.commit('UPDATE_SHOW_ERROR_ALERT', true)
-                this.$store.commit('UPDATE_ERROR_ALERT_MESSAGE', 'Playlist saved...')
+                this.$store.commit('UPDATE_ERROR_ALERT_MESSAGE', postSave.data)
 
                 setTimeout(() => { this.$store.commit('UPDATE_SHOW_ERROR_ALERT', false) }, 2000)
+            }
+
+            if (postSave.status === 409) {
+                this.$store.commit('UPDATE_VARIANT', 'success')
+                this.$store.commit('UPDATE_SHOW_ERROR_ALERT', true)
+                this.$store.commit('UPDATE_ERROR_ALERT_MESSAGE', postSave.data)
+
+                setTimeout(() => { this.$store.commit('UPDATE_SHOW_ERROR_ALERT', false) }, 4000)
             }
         },
 
