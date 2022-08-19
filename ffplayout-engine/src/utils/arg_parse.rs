@@ -3,10 +3,11 @@ use clap::Parser;
 #[derive(Parser, Debug, Clone)]
 #[clap(version,
     about = "ffplayout, Rust based 24/7 playout solution.",
-    override_usage = "Run without any command to use config file only, or with commands to override parameters:\n\n    ffplayout [OPTIONS]",
+    override_usage = "Run without any command to use config file only, or with commands to override parameters:
+                      \n    ffplayout (ARGS) [OPTIONS]\n\n    Pass channel name only in multi channel environment!",
     long_about = None)]
 pub struct Args {
-    #[clap(index = 1, value_parser)]
+    #[clap(index = 1, value_parser, help = "Channel name")]
     pub channel: Option<String>,
 
     #[clap(short, long, help = "File path to ffplayout.yml")]
