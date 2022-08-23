@@ -15,14 +15,14 @@
     "@nuxtjs/axios": "^5.13.6",
     "@nuxtjs/dayjs": "^1.4.1",
     "@nuxtjs/dotenv": "^1.4.1",
-    "bootstrap": "^4.6.1",
+    "bootstrap": "^4.6.2",
     "bootstrap-vue": "^2.22.0",
     "cookie-universal-nuxt": "^2.2.2",
     "jwt-decode": "^3.1.2",
     "lodash": "^4.17.21",
     "mpegts.js": "^1.6.10",
     "nuxt": "^2.15.8",
-    "splitpanes": "^2.3.8",
+    "splitpanes": "^2.4.1",
     "video.js": "^7.20.2",
     "vue-loading-overlay": "^3.4.2",
     "vue2-perfect-scrollbar": "^1.5.5",
@@ -35,8 +35,8 @@
     "@nuxtjs/eslint-module": "^3.1.0",
     "@nuxtjs/style-resources": "^1.2.1",
     "eslint": "^7.32.0",
-    "eslint-plugin-nuxt": ">=2.0.0",
-    "sass": "^1.54.4",
-    "sass-loader": "^10.2.1"
+    "eslint-plugin-nuxt": "3.2.0",
+    "sass": "^1.54.5",
+    "sass-loader": "^10.3.1"
   }
 }
