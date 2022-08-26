@@ -305,14 +305,17 @@ fn realtime_filter(
         }
 
         let mut speed_filter = format!("{t}realtime=speed=1");
-        let (delta, _) = get_delta(config, &node.begin.unwrap());
 
-        if delta < 0.0 && node.seek == 0.0 {
-            let duration = node.out - node.seek;
-            let speed = duration / (duration + delta);
+        if let Some(begin) = &node.begin {
+            let (delta, _) = get_delta(config, begin);
 
-            if speed > 0.0 && speed < 1.1 && delta < config.general.stop_threshold {
-                speed_filter = format!("{t}realtime=speed={speed}");
+            if delta < 0.0 && node.seek == 0.0 {
+                let duration = node.out - node.seek;
+                let speed = duration / (duration + delta);
+
+                if speed > 0.0 && speed < 1.1 && delta < config.general.stop_threshold {
+                    speed_filter = format!("{t}realtime=speed={speed}");
+                }
             }
         }
 

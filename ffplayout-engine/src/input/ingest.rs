@@ -1,6 +1,6 @@
 use std::{
     io::{BufRead, BufReader, Error, Read},
-    process::{ChildStderr, Command, Stdio},
+    process::{exit, ChildStderr, Command, Stdio},
     sync::atomic::Ordering,
     sync::{Arc, Mutex},
     thread,
@@ -10,7 +10,7 @@ use crossbeam_channel::Sender;
 use simplelog::*;
 
 use ffplayout_lib::filter::ingest_filter::filter_cmd;
-use ffplayout_lib::utils::{format_log_line, Ingest, PlayoutConfig, ProcessControl};
+use ffplayout_lib::utils::{format_log_line, test_tcp_port, Ingest, PlayoutConfig, ProcessControl};
 use ffplayout_lib::vec_strings;
 
 pub fn log_line(line: String, level: &str) {
@@ -90,6 +90,11 @@ pub fn ingest_server(
     let mut is_running;
 
     if let Some(url) = stream_input.iter().find(|s| s.contains("://")) {
+        if !test_tcp_port(url) {
+            proc_control.kill_all();
+            exit(1);
+        }
+
         info!("Start ingest server, listening on: <b><magenta>{url}</></b>",);
     };
 

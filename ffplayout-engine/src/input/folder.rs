@@ -15,7 +15,7 @@ use notify::{
 };
 use simplelog::*;
 
-use ffplayout_lib::utils::{Media, PlayoutConfig};
+use ffplayout_lib::utils::{include_file, Media, PlayoutConfig};
 
 /// Create a watcher, which monitor file changes.
 /// When a change is register, update the current file list.
@@ -27,7 +27,7 @@ pub fn watchman(
 ) {
     let (tx, rx) = channel();
 
-    let path = config.storage.path;
+    let path = config.storage.path.clone();
 
     if !Path::new(&path).exists() {
         error!("Folder path not exists: '{path}'");
@@ -44,15 +44,19 @@ pub fn watchman(
                     let index = sources.lock().unwrap().len();
                     let media = Media::new(index, new_path.display().to_string(), false);
 
-                    sources.lock().unwrap().push(media);
-                    info!("Create new file: <b><magenta>{new_path:?}</></b>");
+                    if include_file(config.clone(), &new_path) {
+                        sources.lock().unwrap().push(media);
+                        info!("Create new file: <b><magenta>{new_path:?}</></b>");
+                    }
                 }
                 Remove(old_path) => {
-                    sources
-                        .lock()
-                        .unwrap()
-                        .retain(|x| x.source != old_path.display().to_string());
-                    info!("Remove file: <b><magenta>{old_path:?}</></b>");
+                    if include_file(config.clone(), &old_path) {
+                        sources
+                            .lock()
+                            .unwrap()
+                            .retain(|x| x.source != old_path.display().to_string());
+                        info!("Remove file: <b><magenta>{old_path:?}</></b>");
+                    }
                 }
                 Rename(old_path, new_path) => {
                     let index = sources

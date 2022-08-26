@@ -942,7 +942,7 @@ dependencies = [
 
 [[package]]
 name = "ffplayout"
-version = "0.14.2"
+version = "0.14.3"
 dependencies = [
  "chrono",
  "clap",
@@ -991,7 +991,7 @@ dependencies = [
 
 [[package]]
 name = "ffplayout-lib"
-version = "0.14.1"
+version = "0.14.3"
 dependencies = [
  "chrono",
  "crossbeam-channel",
