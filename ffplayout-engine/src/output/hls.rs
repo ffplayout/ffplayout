@@ -19,7 +19,7 @@ out:
 
 use std::{
     io::{BufRead, BufReader, Error},
-    process::{Command, Stdio},
+    process::{exit, Command, Stdio},
     sync::atomic::Ordering,
     thread::{self, sleep},
     time::Duration,
@@ -30,8 +30,8 @@ use simplelog::*;
 use crate::input::{ingest::log_line, source_generator};
 use ffplayout_lib::filter::ingest_filter::filter_cmd;
 use ffplayout_lib::utils::{
-    prepare_output_cmd, sec_to_time, stderr_reader, Decoder, Ingest, PlayerControl, PlayoutConfig,
-    PlayoutStatus, ProcessControl,
+    prepare_output_cmd, sec_to_time, stderr_reader, test_tcp_port, Decoder, Ingest, PlayerControl,
+    PlayoutConfig, PlayoutStatus, ProcessControl,
 };
 use ffplayout_lib::vec_strings;
 
@@ -45,8 +45,8 @@ fn ingest_to_hls_server(
     let level = config.logging.ffmpeg_level.clone();
 
     let mut server_prefix = vec_strings!["-hide_banner", "-nostats", "-v", "level+info"];
-    let mut stream_input = config.ingest.input_cmd.clone().unwrap();
-    server_prefix.append(&mut stream_input);
+    let stream_input = config.ingest.input_cmd.clone().unwrap();
+    server_prefix.append(&mut stream_input.clone());
     let server_filter = filter_cmd(&config, &playout_stat.chain);
 
     if server_filter.len() > 1 {
@@ -73,6 +73,11 @@ fn ingest_to_hls_server(
     let mut is_running;
 
     if let Some(url) = stream_input.iter().find(|s| s.contains("://")) {
+        if !test_tcp_port(url) {
+            proc_control.kill_all();
+            exit(1);
+        }
+
         info!("Start ingest server, listening on: <b><magenta>{url}</></b>");
     };
 

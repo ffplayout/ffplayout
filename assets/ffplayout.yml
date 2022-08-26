@@ -73,7 +73,7 @@ ingest:
         until is done. There is only a very simple authentication mechanism, which check if the
         stream name is correct.
     enable: false
-    input_param: -f live_flv -listen 1 -i rtmp://localhost:1936/live/stream
+    input_param: -f live_flv -listen 1 -i rtmp://127.0.0.1:1936/live/stream
 
 playlist:
     help_text: >

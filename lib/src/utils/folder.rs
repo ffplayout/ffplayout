@@ -11,7 +11,7 @@ use rand::{seq::SliceRandom, thread_rng};
 use simplelog::*;
 use walkdir::WalkDir;
 
-use crate::utils::{file_extension, get_sec, Media, PlayoutConfig};
+use crate::utils::{get_sec, include_file, Media, PlayoutConfig};
 
 /// Folder Sources
 ///
@@ -48,17 +48,19 @@ impl FolderSource {
             .flat_map(|e| e.ok())
             .filter(|f| f.path().is_file())
         {
-            if let Some(ext) = file_extension(entry.path()) {
-                if config
-                    .storage
-                    .extensions
-                    .clone()
-                    .contains(&ext.to_lowercase())
-                {
-                    let media = Media::new(0, entry.path().display().to_string(), false);
-                    media_list.push(media);
-                }
+            if include_file(config.clone(), entry.path()) {
+                let media = Media::new(0, entry.path().display().to_string(), false);
+                media_list.push(media);
             }
+        }
+
+        if media_list.is_empty() {
+            error!(
+                "no playable files found under: <b><magenta>{}</></b>",
+                config.storage.path
+            );
+
+            exit(1);
         }
 
         if config.storage.shuffle {

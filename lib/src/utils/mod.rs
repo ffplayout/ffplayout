@@ -600,6 +600,52 @@ pub fn valid_source(source: &str) -> bool {
     Path::new(&source).is_file()
 }
 
+/// Check if file can include or has to exclude.
+/// For example when a file is on given HLS output path, it should exclude.
+/// Or when the file extension is set under storage config it can be include.
+pub fn include_file(config: PlayoutConfig, file_path: &Path) -> bool {
+    let mut include = false;
+
+    if let Some(ext) = file_extension(file_path) {
+        if config.storage.extensions.contains(&ext.to_lowercase()) {
+            include = true;
+        }
+    }
+
+    if config.out.mode.to_lowercase() == "hls" {
+        if let Some(ts_path) = config
+            .out
+            .output_cmd
+            .clone()
+            .unwrap()
+            .iter()
+            .find(|s| s.contains(".ts"))
+        {
+            if let Some(p) = Path::new(ts_path).parent() {
+                if file_path.starts_with(p) {
+                    include = false;
+                }
+            }
+        }
+
+        if let Some(m3u8_path) = config
+            .out
+            .output_cmd
+            .unwrap()
+            .iter()
+            .find(|s| s.contains(".m3u8") && !s.contains("master.m3u8"))
+        {
+            if let Some(p) = Path::new(m3u8_path).parent() {
+                if file_path.starts_with(p) {
+                    include = false;
+                }
+            }
+        }
+    }
+
+    include
+}
+
 pub fn format_log_line(line: String, level: &str) -> String {
     line.replace(&format!("[{level: >5}] "), "")
 }
@@ -734,6 +780,28 @@ pub fn free_tcp_socket(exclude_socket: String) -> Option<String> {
     }
 
     None
+}
+
+/// check if tcp port is free
+pub fn test_tcp_port(url: &str) -> bool {
+    let raw_addr = url.split('/').collect::<Vec<&str>>();
+
+    if raw_addr.len() > 1 {
+        if let Some(socket) = raw_addr[2].split_once(':') {
+            if TcpListener::bind((
+                socket.0,
+                socket.1.to_string().parse::<u16>().unwrap_or_default(),
+            ))
+            .is_ok()
+            {
+                return true;
+            }
+        };
+    }
+
+    error!("Address <b><magenta>{url}</></b> already in use!");
+
+    false
 }
 
 pub fn home_dir() -> Option<PathBuf> {
