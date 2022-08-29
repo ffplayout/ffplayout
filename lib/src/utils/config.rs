@@ -8,7 +8,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 use shlex::split;
 
-use crate::utils::{free_tcp_socket, home_dir, time_to_sec};
+use crate::utils::{free_tcp_socket, home_dir, time_to_sec, MediaProbe};
 use crate::vec_strings;
 
 pub const DUMMY_LEN: f64 = 60.0;
@@ -89,6 +89,10 @@ pub struct Processing {
     pub fps: f64,
     pub add_logo: bool,
     pub logo: String,
+
+    #[serde(skip_serializing, skip_deserializing)]
+    pub logo_fps: Option<String>,
+
     pub logo_scale: String,
     pub logo_opacity: f32,
     pub logo_filter: String,
@@ -219,6 +223,19 @@ impl PlayoutConfig {
             config.playlist.length_sec = Some(time_to_sec(&config.playlist.length));
         } else {
             config.playlist.length_sec = Some(86400.0);
+        }
+
+        config.processing.logo_fps = None;
+
+        if Path::new(&config.processing.logo).is_file() {
+            if let Some(fps) = MediaProbe::new(&config.processing.logo)
+                .video_streams
+                .get(0)
+                .and_then(|v| v.r_frame_rate.split_once('/'))
+                .map(|f| f.0)
+            {
+                config.processing.logo_fps = Some(fps.to_string());
+            };
         }
 
         // We set the decoder settings here, so we only define them ones.

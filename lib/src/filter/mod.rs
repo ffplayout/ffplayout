@@ -179,8 +179,8 @@ fn extend_video(node: &mut Media, chain: &mut Filters) {
     if let Some(video_duration) = node
         .probe
         .as_ref()
-        .and_then(|p| p.video_streams.as_ref())
-        .and_then(|v| v[0].duration.as_ref())
+        .and_then(|p| p.video_streams.get(0))
+        .and_then(|v| v.duration.as_ref())
         .and_then(|v| v.parse::<f64>().ok())
     {
         if node.out - node.seek > video_duration - node.seek + 0.1 && node.duration >= node.out {
@@ -215,9 +215,8 @@ fn add_audio(node: &mut Media, chain: &mut Filters) {
     if node
         .probe
         .as_ref()
-        .and_then(|p| p.audio_streams.as_ref())
-        .unwrap_or(&vec![])
-        .is_empty()
+        .and_then(|p| p.audio_streams.get(0))
+        .is_none()
         && !Path::new(&node.audio).is_file()
     {
         warn!("Clip <b><magenta>{}</></b> has no audio!", node.source);
@@ -237,8 +236,9 @@ fn extend_audio(node: &mut Media, chain: &mut Filters) {
     };
 
     if let Some(audio_duration) = probe
-        .and_then(|p| p.audio_streams)
-        .and_then(|a| a[0].duration.clone())
+        .as_ref()
+        .and_then(|p| p.audio_streams.get(0))
+        .and_then(|a| a.duration.clone())
         .and_then(|a| a.parse::<f64>().ok())
     {
         if node.out - node.seek > audio_duration - node.seek + 0.1 && node.duration >= node.out {
@@ -250,12 +250,11 @@ fn extend_audio(node: &mut Media, chain: &mut Filters) {
 /// Add single pass loudnorm filter to audio line.
 fn add_loudnorm(node: &mut Media, chain: &mut Filters, config: &PlayoutConfig) {
     if config.processing.add_loudnorm
-        && !node
+        && node
             .probe
             .as_ref()
-            .and_then(|p| p.audio_streams.as_ref())
-            .unwrap_or(&vec![])
-            .is_empty()
+            .and_then(|p| p.audio_streams.get(0))
+            .is_none()
     {
         let loud_filter = a_loudnorm::filter_node(config);
         chain.add_filter(&loud_filter, "audio");
@@ -331,13 +330,11 @@ pub fn filter_chains(
     let mut filters = Filters::new();
 
     if let Some(probe) = node.probe.as_ref() {
-        if probe.audio_streams.is_some() && !Path::new(&node.audio).is_file() {
+        if probe.audio_streams.get(0).is_some() && !Path::new(&node.audio).is_file() {
             filters.audio_map = "0:a".to_string();
         }
 
-        if let Some(v_streams) = &probe.video_streams.as_ref() {
-            let v_stream = &v_streams[0];
-
+        if let Some(v_stream) = &probe.video_streams.get(0) {
             let aspect = aspect_calc(&v_stream.display_aspect_ratio, config);
             let frame_per_sec = fps_calc(&v_stream.r_frame_rate);
 

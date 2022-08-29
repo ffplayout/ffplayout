@@ -166,8 +166,8 @@ where
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct MediaProbe {
     pub format: Option<Format>,
-    pub audio_streams: Option<Vec<Stream>>,
-    pub video_streams: Option<Vec<Stream>>,
+    pub audio_streams: Vec<Stream>,
+    pub video_streams: Vec<Stream>,
 }
 
 impl MediaProbe {
@@ -194,16 +194,8 @@ impl MediaProbe {
 
                 MediaProbe {
                     format: Some(obj.format),
-                    audio_streams: if !a_stream.is_empty() {
-                        Some(a_stream)
-                    } else {
-                        None
-                    },
-                    video_streams: if !v_stream.is_empty() {
-                        Some(v_stream)
-                    } else {
-                        None
-                    },
+                    audio_streams: a_stream,
+                    video_streams: v_stream,
                 }
             }
             Err(e) => {
@@ -213,8 +205,8 @@ impl MediaProbe {
 
                 MediaProbe {
                     format: None,
-                    audio_streams: None,
-                    video_streams: None,
+                    audio_streams: vec![],
+                    video_streams: vec![],
                 }
             }
         }
@@ -468,11 +460,12 @@ pub fn seek_and_length(node: &Media) -> Vec<String> {
 
         source_cmd.append(&mut vec_strings!["-i", node.audio.clone()]);
 
-        if audio_probe
-            .audio_streams
-            .and_then(|a| a[0].duration.clone())
-            .and_then(|d| d.parse::<f64>().ok())
-            > Some(node.out - node.seek)
+        if !audio_probe.audio_streams.is_empty()
+            && audio_probe.audio_streams[0]
+                .duration
+                .clone()
+                .and_then(|d| d.parse::<f64>().ok())
+                > Some(node.out - node.seek)
         {
             cut_audio = true;
         }
@@ -593,7 +586,7 @@ pub fn is_remote(path: &str) -> bool {
 ///
 /// Check if input is a remote source, or from storage and see if it exists.
 pub fn valid_source(source: &str) -> bool {
-    if is_remote(source) && MediaProbe::new(source).video_streams.is_some() {
+    if is_remote(source) && !MediaProbe::new(source).video_streams.is_empty() {
         return true;
     }
 
