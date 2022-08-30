@@ -10,7 +10,7 @@ pub fn filter_node(config: &PlayoutConfig, add_tail: bool) -> String {
         return logo_chain;
     }
 
-    if let Some(fps) = config.processing.logo_fps.clone() {
+    if let Some(fps) = config.processing.logo_fps {
         let opacity = format!(
             "format=rgba,colorchannelmixer=aa={}",
             config.processing.logo_opacity

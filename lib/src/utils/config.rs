@@ -91,7 +91,7 @@ pub struct Processing {
     pub logo: String,
 
     #[serde(skip_serializing, skip_deserializing)]
-    pub logo_fps: Option<String>,
+    pub logo_fps: Option<f64>,
 
     pub logo_scale: String,
     pub logo_opacity: f32,
@@ -232,9 +232,13 @@ impl PlayoutConfig {
                 .video_streams
                 .get(0)
                 .and_then(|v| v.r_frame_rate.split_once('/'))
-                .map(|f| f.0)
+                .and_then(|f| {
+                    f.0.parse::<f64>()
+                        .ok()
+                        .and_then(|x_num| f.1.parse::<f64>().ok().map(|y_num| x_num / y_num))
+                })
             {
-                config.processing.logo_fps = Some(fps.to_string());
+                config.processing.logo_fps = Some(fps);
             };
         }
 
