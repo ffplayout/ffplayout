@@ -147,59 +147,21 @@ server {
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
 
     location / {
-        if ($http_origin ~ '^https?://(localhost|ffplayout\.example\.org)') {
-            add_header 'Access-Control-Allow-Origin' "$http_origin" always;
-            add_header 'Access-Control-Allow-Credentials' 'true' always;
-            add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS' always;
-            add_header 'Access-Control-Allow-Headers' 'Accept,Authorization,Cache-Control,Content-Type,DNT,If-Modified-Since,Keep-Alive,Origin,User-Agent,X-Requested-With' always;
-        }
-
-        if ($request_method = OPTIONS ) {
-            add_header 'Access-Control-Max-Age' 1728000;
-            add_header 'Content-Type' 'text/plain charset=UTF-8';
-            add_header 'Content-Length' 0;
-            return 204;
-        }
-
-        root /var/www/ffplayout-frontend/dist/;
-
-    }
-
-    location ~ ^/(api|admin|auth|api-auth) {
-        if ($http_origin ~ '^https?://(localhost|ffplayout\.local)') {
-            add_header 'Access-Control-Allow-Origin' "$http_origin" always;
-            add_header 'Access-Control-Allow-Credentials' 'true' always;
-            add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS' always;
-            add_header 'Access-Control-Allow-Headers' 'Accept,Authorization,Cache-Control,Content-Type,DNT,If-Modified-Since,Keep-Alive,Origin,User-Agent,X-Requested-With' always;
-        }
-
-        add_header Last-Modified $date_gmt;
-        add_header Cache-Control 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0';
-        if_modified_since off;
-        expires off;
-        etag off;
-
         proxy_set_header Host $http_host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_read_timeout 36000s;
-        proxy_connect_timeout 36000s;
+        proxy_connect_timeout 36000s; 
         proxy_send_timeout 36000s;
         proxy_buffer_size 128k;
         proxy_buffers 4 256k;
         proxy_busy_buffers_size 256k;
         send_timeout 36000s;
-        proxy_no_cache 1;
-        proxy_pass http://127.0.0.1:8001;
-
+        proxy_pass http://127.0.0.1:8787;
     }
-
-    location /static/ {
-        alias /var/www/ffplayout-api/ffplayout/static/;
-    }
-
-     location /live/ {
+    
+    location /live/ {
         alias /var/www/srs/live/;
     }
 
