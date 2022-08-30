@@ -102,6 +102,8 @@ pub struct Processing {
     pub loud_tp: f32,
     pub loud_lra: f32,
     pub volume: f64,
+    #[serde(default)]
+    pub custom_filter: String,
 
     #[serde(skip_serializing, skip_deserializing)]
     pub settings: Option<Vec<String>>,

@@ -4,7 +4,7 @@ use std::{
     io::{BufRead, BufReader, Error},
     net::TcpListener,
     path::{Path, PathBuf},
-    process::{ChildStderr, Command, Stdio},
+    process::{ChildStderr, Command, Stdio, exit},
     sync::{Arc, Mutex},
     time::{self, UNIX_EPOCH},
 };
@@ -200,7 +200,7 @@ impl MediaProbe {
             }
             Err(e) => {
                 error!(
-                    "Can't read source <b><magenta>{input}</></b> with ffprobe, source not exists or damaged! Error is: {e:?}"
+                    "Can't read source <b><magenta>{input}</></b> with ffprobe, source not exists or damaged! Error in: {e:?}"
                 );
 
                 MediaProbe {
@@ -645,7 +645,7 @@ pub fn format_log_line(line: String, level: &str) -> String {
 
 /// Read ffmpeg stderr decoder and encoder instance
 /// and log the output.
-pub fn stderr_reader(buffer: BufReader<ChildStderr>, suffix: &str) -> Result<(), Error> {
+pub fn stderr_reader(buffer: BufReader<ChildStderr>, suffix: &str, mut proc_control: ProcessControl) -> Result<(), Error> {
     for line in buffer.lines() {
         let line = line?;
 
@@ -667,8 +667,13 @@ pub fn stderr_reader(buffer: BufReader<ChildStderr>, suffix: &str) -> Result<(),
         } else if line.contains("[fatal]") {
             error!(
                 "<bright black>[{suffix}]</> {}",
-                format_log_line(line, "fatal")
-            )
+                format_log_line(line.clone(), "fatal")
+            );
+
+            if line.contains("Invalid argument") {
+                proc_control.kill_all();
+                exit(1);
+            }
         }
     }
 

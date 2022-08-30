@@ -4,7 +4,7 @@ description = "Library for ffplayout"
 license = "GPL-3.0"
 authors = ["Jonathan Baecker jonbae77@gmail.com"]
 readme = "README.md"
-version = "0.14.3"
+version = "0.15.0"
 edition = "2021"
 
 [dependencies]
