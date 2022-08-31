@@ -382,6 +382,7 @@ pub fn filter_chains(
     realtime_filter(node, &mut filters, config, Audio);
 
     custom(&config.processing.custom_filter, &mut filters);
+    custom(&node.custom_filter, &mut filters);
 
     let mut filter_cmd = vec![];
     let mut filter_str: String = String::new();

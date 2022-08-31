@@ -116,6 +116,7 @@ fn loop_playlist(
                 last_ad: Some(false),
                 next_ad: Some(false),
                 filter: Some(vec![]),
+                custom_filter: String::new(),
             };
 
             if begin < start_sec + length {

@@ -69,6 +69,9 @@ pub struct Media {
     #[serde(skip_serializing, skip_deserializing)]
     pub filter: Option<Vec<String>>,
 
+    #[serde(default)]
+    pub custom_filter: String,
+
     #[serde(skip_serializing, skip_deserializing)]
     pub probe: Option<MediaProbe>,
 
@@ -113,6 +116,7 @@ impl Media {
             audio: String::new(),
             cmd: Some(vec!["-i".to_string(), src]),
             filter: Some(vec![]),
+            custom_filter: String::new(),
             probe,
             last_ad: Some(false),
             next_ad: Some(false),
