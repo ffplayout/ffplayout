@@ -47,6 +47,7 @@ Check the [releases](https://github.com/ffplayout/ffplayout/releases/latest) for
 - [live ingest](/docs/live_ingest.md)
 - image source (will loop until out duration is reached)
 - extra audio source (experimental) (has priority over audio from video source)
+- [custom filter](/docs/custom_filters.md)
 
 For preview stream, read: [/docs/preview_stream.md](/docs/preview_stream.md)
 
