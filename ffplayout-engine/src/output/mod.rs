@@ -134,7 +134,8 @@ pub fn player(
         *proc_control.decoder_term.lock().unwrap() = Some(dec_proc);
         let dec_p_ctl = proc_control.clone();
 
-        let error_decoder_thread = thread::spawn(move || stderr_reader(dec_err, "Decoder", dec_p_ctl));
+        let error_decoder_thread =
+            thread::spawn(move || stderr_reader(dec_err, "Decoder", dec_p_ctl));
 
         loop {
             // when server is running, read from channel

@@ -4,7 +4,7 @@ use std::{
     io::{BufRead, BufReader, Error},
     net::TcpListener,
     path::{Path, PathBuf},
-    process::{ChildStderr, Command, Stdio, exit},
+    process::{exit, ChildStderr, Command, Stdio},
     sync::{Arc, Mutex},
     time::{self, UNIX_EPOCH},
 };
@@ -80,6 +80,9 @@ pub struct Media {
 
     #[serde(skip_serializing, skip_deserializing)]
     pub process: Option<bool>,
+
+    #[serde(skip_serializing, skip_deserializing)]
+    pub is_live: Option<bool>,
 }
 
 impl Media {
@@ -114,6 +117,7 @@ impl Media {
             last_ad: Some(false),
             next_ad: Some(false),
             process: Some(true),
+            is_live: Some(false),
         }
     }
 
@@ -211,6 +215,17 @@ impl MediaProbe {
             }
         }
     }
+}
+
+/// Calculate fps from rae/factor string
+pub fn fps_calc(r_frame_rate: &str, default: f64) -> f64 {
+    let mut fps = default;
+
+    if let Some((r, f)) = r_frame_rate.split_once('/') {
+        fps = r.parse::<f64>().unwrap_or(1.0) / f.parse::<f64>().unwrap_or(1.0);
+    }
+
+    fps
 }
 
 /// Covert JSON string to ffmpeg filter command.
@@ -645,7 +660,11 @@ pub fn format_log_line(line: String, level: &str) -> String {
 
 /// Read ffmpeg stderr decoder and encoder instance
 /// and log the output.
-pub fn stderr_reader(buffer: BufReader<ChildStderr>, suffix: &str, mut proc_control: ProcessControl) -> Result<(), Error> {
+pub fn stderr_reader(
+    buffer: BufReader<ChildStderr>,
+    suffix: &str,
+    mut proc_control: ProcessControl,
+) -> Result<(), Error> {
     for line in buffer.lines() {
         let line = line?;
 
@@ -659,18 +678,17 @@ pub fn stderr_reader(buffer: BufReader<ChildStderr>, suffix: &str, mut proc_cont
                 "<bright black>[{suffix}]</> {}",
                 format_log_line(line, "warning")
             )
-        } else if line.contains("[error]") {
+        } else if line.contains("[error]") || line.contains("[fatal]") {
             error!(
                 "<bright black>[{suffix}]</> {}",
-                format_log_line(line, "error")
-            )
-        } else if line.contains("[fatal]") {
-            error!(
-                "<bright black>[{suffix}]</> {}",
-                format_log_line(line.clone(), "fatal")
+                line.replace("[error]", "").replace("[fatal]", "")
             );
 
-            if line.contains("Invalid argument") || line.contains("Numerical result") {
+            if line.contains("Invalid argument")
+                || line.contains("Numerical result")
+                || line.contains("No such file or directory")
+                || line.contains("Error initializing complex filters")
+            {
                 proc_control.kill_all();
                 exit(1);
             }

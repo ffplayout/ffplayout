@@ -8,7 +8,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 use shlex::split;
 
-use crate::utils::{free_tcp_socket, home_dir, time_to_sec, MediaProbe};
+use crate::utils::{fps_calc, free_tcp_socket, home_dir, time_to_sec, MediaProbe};
 use crate::vec_strings;
 
 pub const DUMMY_LEN: f64 = 60.0;
@@ -230,16 +230,12 @@ impl PlayoutConfig {
         config.processing.logo_fps = None;
 
         if Path::new(&config.processing.logo).is_file() {
-            if let Some(fps) = MediaProbe::new(&config.processing.logo)
+            if let Some(v_stream) = MediaProbe::new(&config.processing.logo)
                 .video_streams
                 .get(0)
-                .and_then(|v| v.r_frame_rate.split_once('/'))
-                .and_then(|f| {
-                    f.0.parse::<f64>()
-                        .ok()
-                        .and_then(|x_num| f.1.parse::<f64>().ok().map(|y_num| x_num / y_num))
-                })
             {
+                let fps = fps_calc(&v_stream.r_frame_rate, config.processing.fps);
+
                 config.processing.logo_fps = Some(fps);
             };
         }

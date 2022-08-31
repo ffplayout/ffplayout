@@ -112,6 +112,7 @@ fn loop_playlist(
                 cmd: item.cmd.clone(),
                 probe: item.probe.clone(),
                 process: Some(true),
+                is_live: Some(false),
                 last_ad: Some(false),
                 next_ad: Some(false),
                 filter: Some(vec![]),

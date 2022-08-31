@@ -9,8 +9,10 @@ use std::{
 use crossbeam_channel::Sender;
 use simplelog::*;
 
-use ffplayout_lib::filter::ingest_filter::filter_cmd;
-use ffplayout_lib::utils::{format_log_line, test_tcp_port, Ingest, PlayoutConfig, ProcessControl};
+use ffplayout_lib::filter::filter_chains;
+use ffplayout_lib::utils::{
+    format_log_line, test_tcp_port, Ingest, Media, PlayoutConfig, ProcessControl,
+};
 use ffplayout_lib::vec_strings;
 
 pub fn log_line(line: String, level: &str) {
@@ -82,9 +84,12 @@ pub fn ingest_server(
     let mut buffer: [u8; 65088] = [0; 65088];
     let mut server_cmd = vec_strings!["-hide_banner", "-nostats", "-v", "level+info"];
     let stream_input = config.ingest.input_cmd.clone().unwrap();
+    let mut dummy_media = Media::new(0, "Live Stream".to_string(), false);
+    dummy_media.is_live = Some(true);
+    let mut filters = filter_chains(&config, &mut dummy_media, &Arc::new(Mutex::new(vec![])));
 
     server_cmd.append(&mut stream_input.clone());
-    server_cmd.append(&mut filter_cmd(&config, &Arc::new(Mutex::new(vec![]))));
+    server_cmd.append(&mut filters);
     server_cmd.append(&mut config.processing.settings.unwrap());
 
     let mut is_running;

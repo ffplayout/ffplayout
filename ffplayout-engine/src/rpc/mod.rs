@@ -12,8 +12,8 @@ use serde_json::{json, Map};
 use simplelog::*;
 
 use ffplayout_lib::utils::{
-    get_delta, get_filter_from_json, get_sec, sec_to_time, write_status, Media, PlayerControl,
-    PlayoutConfig, PlayoutStatus, ProcessControl,
+    get_delta, get_filter_from_json, get_sec, sec_to_time, write_status, Ingest, Media,
+    PlayerControl, PlayoutConfig, PlayoutStatus, ProcessControl,
 };
 
 use zmq_cmd::zmq_send;
@@ -90,6 +90,24 @@ pub fn json_rpc_server(
                     let mut clips_filter = playout_stat.chain.lock().unwrap();
                     *clips_filter = vec![filter.clone()];
 
+                    if config.out.mode == "hls" {
+                        if proc.server_is_running.load(Ordering::SeqCst) {
+                            let filter_server = format!(
+                                "Parsed_drawtext_{} reinit {filter}",
+                                playout_stat.drawtext_server_index.load(Ordering::SeqCst)
+                            );
+
+                            if let Ok(reply) = block_on(zmq_send(
+                                &filter_server,
+                                &config.text.zmq_server_socket.clone().unwrap(),
+                            )) {
+                                return Ok(Value::String(reply));
+                            };
+                        } else if let Err(e) = proc.kill(Ingest) {
+                            error!("Ingest {e:?}")
+                        }
+                    }
+
                     if config.out.mode != "hls" || !proc.server_is_running.load(Ordering::SeqCst) {
                         let filter_stream = format!(
                             "Parsed_drawtext_{} reinit {filter}",
@@ -99,20 +117,6 @@ pub fn json_rpc_server(
                         if let Ok(reply) = block_on(zmq_send(
                             &filter_stream,
                             &config.text.zmq_stream_socket.clone().unwrap(),
-                        )) {
-                            return Ok(Value::String(reply));
-                        };
-                    }
-
-                    if config.out.mode == "hls" && proc.server_is_running.load(Ordering::SeqCst) {
-                        let filter_server = format!(
-                            "Parsed_drawtext_{} reinit {filter}",
-                            playout_stat.drawtext_server_index.load(Ordering::SeqCst)
-                        );
-
-                        if let Ok(reply) = block_on(zmq_send(
-                            &filter_server,
-                            &config.text.zmq_server_socket.clone().unwrap(),
                         )) {
                             return Ok(Value::String(reply));
                         };
