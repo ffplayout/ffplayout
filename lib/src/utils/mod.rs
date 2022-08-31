@@ -670,7 +670,7 @@ pub fn stderr_reader(buffer: BufReader<ChildStderr>, suffix: &str, mut proc_cont
                 format_log_line(line.clone(), "fatal")
             );
 
-            if line.contains("Invalid argument") {
+            if line.contains("Invalid argument") || line.contains("Numerical result") {
                 proc_control.kill_all();
                 exit(1);
             }
