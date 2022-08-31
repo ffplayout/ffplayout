@@ -367,7 +367,7 @@ fn custom_filter(filter: &str, chain: &mut Filters) {
         video_filter = strip_str(filter);
     } else if filter.contains("[c_a_out]") {
         audio_filter = strip_str(filter);
-    } else if !filter.is_empty() {
+    } else if !filter.is_empty() && filter != "~" {
         error!("Custom filter is not well formatted, use correct out link names (\"[c_v_out]\" and/or \"[c_a_out]\"). Filter skipped!")
     }
 
