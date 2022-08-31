@@ -67,8 +67,8 @@ impl Default for ProcessControl {
 }
 
 impl ProcessControl {
-    pub fn kill(&mut self, proc: ProcessUnit) -> Result<(), String> {
-        match proc {
+    pub fn kill(&self, unit: ProcessUnit) -> Result<(), String> {
+        match unit {
             Decoder => {
                 if let Some(proc) = self.decoder_term.lock().unwrap().as_mut() {
                     if let Err(e) = proc.kill() {
@@ -92,7 +92,7 @@ impl ProcessControl {
             }
         }
 
-        if let Err(e) = self.wait(proc) {
+        if let Err(e) = self.wait(unit) {
             return Err(e);
         };
 
@@ -101,8 +101,8 @@ impl ProcessControl {
 
     /// Wait for process to proper close.
     /// This prevents orphaned/zombi processes in system
-    pub fn wait(&mut self, proc: ProcessUnit) -> Result<(), String> {
-        match proc {
+    pub fn wait(&self, unit: ProcessUnit) -> Result<(), String> {
+        match unit {
             Decoder => {
                 if let Some(proc) = self.decoder_term.lock().unwrap().as_mut() {
                     if let Err(e) = proc.wait() {
@@ -150,6 +150,12 @@ impl ProcessControl {
         }
     }
 }
+
+// impl Drop for ProcessControl {
+//     fn drop(&mut self) {
+//         self.kill_all()
+//     }
+// }
 
 /// Global player control, to get infos about current clip etc.
 #[derive(Clone)]

@@ -47,6 +47,7 @@ Check the [releases](https://github.com/ffplayout/ffplayout/releases/latest) for
 - [live ingest](/docs/live_ingest.md)
 - image source (will loop until out duration is reached)
 - extra audio source (experimental) (has priority over audio from video source)
+- [custom filter](/docs/custom_filters.md) globally in config, or in playlist for specific clips
 
 For preview stream, read: [/docs/preview_stream.md](/docs/preview_stream.md)
 
@@ -79,9 +80,15 @@ Check [install](docs/install.md) for details about how to install ffplayout.
             "source": "/Media/clip1.mp4"
         }, {
             "in": 0,
+            "out": 890.02,
+            "duration": 890.02,
+            "source": "/Media/clip2.mp4",
+            "custom_filter": "eq=gamma_b=0.6:gamma_g=0.7[c_v_out]"
+        }, {
+            "in": 0,
             "out": 149,
             "duration": 149,
-            "source": "/Media/clip2.mp4",
+            "source": "/Media/clip3.mp4",
             "category": "advertisement"
         }, {
             "in": 0,

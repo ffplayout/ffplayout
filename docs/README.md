@@ -21,6 +21,10 @@ Using live ingest to inject a live stream.
 
 The different output modes.
 
+### **[Custom Filter](/docs/custom_filters.md)**
+
+Apply self defined audio/video filters.
+
 ### **[Preview Stream](/docs/preview_stream.md)**
 
 Setup and use a preview stream.

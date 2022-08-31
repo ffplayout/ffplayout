@@ -4,7 +4,7 @@ use std::{
     io::{BufRead, BufReader, Error},
     net::TcpListener,
     path::{Path, PathBuf},
-    process::{ChildStderr, Command, Stdio},
+    process::{exit, ChildStderr, Command, Stdio},
     sync::{Arc, Mutex},
     time::{self, UNIX_EPOCH},
 };
@@ -69,6 +69,9 @@ pub struct Media {
     #[serde(skip_serializing, skip_deserializing)]
     pub filter: Option<Vec<String>>,
 
+    #[serde(default)]
+    pub custom_filter: String,
+
     #[serde(skip_serializing, skip_deserializing)]
     pub probe: Option<MediaProbe>,
 
@@ -80,6 +83,9 @@ pub struct Media {
 
     #[serde(skip_serializing, skip_deserializing)]
     pub process: Option<bool>,
+
+    #[serde(skip_serializing, skip_deserializing)]
+    pub is_live: Option<bool>,
 }
 
 impl Media {
@@ -110,10 +116,12 @@ impl Media {
             audio: String::new(),
             cmd: Some(vec!["-i".to_string(), src]),
             filter: Some(vec![]),
+            custom_filter: String::new(),
             probe,
             last_ad: Some(false),
             next_ad: Some(false),
             process: Some(true),
+            is_live: Some(false),
         }
     }
 
@@ -166,8 +174,8 @@ where
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct MediaProbe {
     pub format: Option<Format>,
-    pub audio_streams: Option<Vec<Stream>>,
-    pub video_streams: Option<Vec<Stream>>,
+    pub audio_streams: Vec<Stream>,
+    pub video_streams: Vec<Stream>,
 }
 
 impl MediaProbe {
@@ -194,31 +202,34 @@ impl MediaProbe {
 
                 MediaProbe {
                     format: Some(obj.format),
-                    audio_streams: if !a_stream.is_empty() {
-                        Some(a_stream)
-                    } else {
-                        None
-                    },
-                    video_streams: if !v_stream.is_empty() {
-                        Some(v_stream)
-                    } else {
-                        None
-                    },
+                    audio_streams: a_stream,
+                    video_streams: v_stream,
                 }
             }
             Err(e) => {
                 error!(
-                    "Can't read source <b><magenta>{input}</></b> with ffprobe, source not exists or damaged! Error is: {e:?}"
+                    "Can't read source <b><magenta>{input}</></b> with ffprobe, source not exists or damaged! Error in: {e:?}"
                 );
 
                 MediaProbe {
                     format: None,
-                    audio_streams: None,
-                    video_streams: None,
+                    audio_streams: vec![],
+                    video_streams: vec![],
                 }
             }
         }
     }
+}
+
+/// Calculate fps from rae/factor string
+pub fn fps_calc(r_frame_rate: &str, default: f64) -> f64 {
+    let mut fps = default;
+
+    if let Some((r, f)) = r_frame_rate.split_once('/') {
+        fps = r.parse::<f64>().unwrap_or(1.0) / f.parse::<f64>().unwrap_or(1.0);
+    }
+
+    fps
 }
 
 /// Covert JSON string to ffmpeg filter command.
@@ -468,11 +479,12 @@ pub fn seek_and_length(node: &Media) -> Vec<String> {
 
         source_cmd.append(&mut vec_strings!["-i", node.audio.clone()]);
 
-        if audio_probe
-            .audio_streams
-            .and_then(|a| a[0].duration.clone())
-            .and_then(|d| d.parse::<f64>().ok())
-            > Some(node.out - node.seek)
+        if !audio_probe.audio_streams.is_empty()
+            && audio_probe.audio_streams[0]
+                .duration
+                .clone()
+                .and_then(|d| d.parse::<f64>().ok())
+                > Some(node.out - node.seek)
         {
             cut_audio = true;
         }
@@ -593,7 +605,7 @@ pub fn is_remote(path: &str) -> bool {
 ///
 /// Check if input is a remote source, or from storage and see if it exists.
 pub fn valid_source(source: &str) -> bool {
-    if is_remote(source) && MediaProbe::new(source).video_streams.is_some() {
+    if is_remote(source) && !MediaProbe::new(source).video_streams.is_empty() {
         return true;
     }
 
@@ -652,7 +664,11 @@ pub fn format_log_line(line: String, level: &str) -> String {
 
 /// Read ffmpeg stderr decoder and encoder instance
 /// and log the output.
-pub fn stderr_reader(buffer: BufReader<ChildStderr>, suffix: &str) -> Result<(), Error> {
+pub fn stderr_reader(
+    buffer: BufReader<ChildStderr>,
+    suffix: &str,
+    mut proc_control: ProcessControl,
+) -> Result<(), Error> {
     for line in buffer.lines() {
         let line = line?;
 
@@ -666,16 +682,20 @@ pub fn stderr_reader(buffer: BufReader<ChildStderr>, suffix: &str) -> Result<(),
                 "<bright black>[{suffix}]</> {}",
                 format_log_line(line, "warning")
             )
-        } else if line.contains("[error]") {
+        } else if line.contains("[error]") || line.contains("[fatal]") {
             error!(
                 "<bright black>[{suffix}]</> {}",
-                format_log_line(line, "error")
-            )
-        } else if line.contains("[fatal]") {
-            error!(
-                "<bright black>[{suffix}]</> {}",
-                format_log_line(line, "fatal")
-            )
+                line.replace("[error]", "").replace("[fatal]", "")
+            );
+
+            if line.contains("Invalid argument")
+                || line.contains("Numerical result")
+                || line.contains("No such file or directory")
+                || line.contains("Error initializing complex filters")
+            {
+                proc_control.kill_all();
+                exit(1);
+            }
         }
     }
 

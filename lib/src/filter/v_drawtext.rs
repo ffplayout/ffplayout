@@ -11,7 +11,6 @@ pub fn filter_node(
     config: &PlayoutConfig,
     node: Option<&Media>,
     filter_chain: &Arc<Mutex<Vec<String>>>,
-    is_server: bool,
 ) -> String {
     let mut filter = String::new();
     let mut font = String::new();
@@ -21,9 +20,10 @@ pub fn filter_node(
             font = format!(":fontfile='{}'", config.text.fontfile)
         }
 
-        let zmq_socket = match is_server {
-            true => config.text.zmq_server_socket.clone(),
-            false => config.text.zmq_stream_socket.clone(),
+        let zmq_socket = match node.and_then(|n| n.is_live) {
+            Some(true) => config.text.zmq_server_socket.clone(),
+            Some(false) => config.text.zmq_stream_socket.clone(),
+            None => config.text.zmq_stream_socket.clone(),
         };
 
         // TODO: in Rust 1.64 use let_chains instead

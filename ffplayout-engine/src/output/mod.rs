@@ -64,10 +64,11 @@ pub fn player(
     let mut enc_writer = BufWriter::new(enc_proc.stdin.take().unwrap());
     let enc_err = BufReader::new(enc_proc.stderr.take().unwrap());
 
-    // spawn a thread to log ffmpeg output error messages
-    let error_encoder_thread = thread::spawn(move || stderr_reader(enc_err, "Encoder"));
-
     *proc_control.encoder_term.lock().unwrap() = Some(enc_proc);
+    let enc_p_ctl = proc_control.clone();
+
+    // spawn a thread to log ffmpeg output error messages
+    let error_encoder_thread = thread::spawn(move || stderr_reader(enc_err, "Encoder", enc_p_ctl));
 
     let proc_control_c = proc_control.clone();
     let mut ingest_receiver = None;
@@ -129,9 +130,12 @@ pub fn player(
 
         let mut dec_reader = BufReader::new(dec_proc.stdout.take().unwrap());
         let dec_err = BufReader::new(dec_proc.stderr.take().unwrap());
-        let error_decoder_thread = thread::spawn(move || stderr_reader(dec_err, "Decoder"));
 
         *proc_control.decoder_term.lock().unwrap() = Some(dec_proc);
+        let dec_p_ctl = proc_control.clone();
+
+        let error_decoder_thread =
+            thread::spawn(move || stderr_reader(dec_err, "Decoder", dec_p_ctl));
 
         loop {
             // when server is running, read from channel

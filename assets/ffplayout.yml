@@ -50,7 +50,9 @@ processing:
         scaling. With 'logo_opacity' logo can become transparent. With 'logo_filter'
         'overlay=W-w-12:12' you can modify the logo position. With 'use_loudnorm'
         you can activate single pass EBU R128 loudness normalization. 'loud_*' can
-        adjust the loudnorm filter.
+        adjust the loudnorm filter. With 'custom_filter' it is possible, to apply further
+        filters. The filter outputs should end with [c_v_out] for video filter,
+        and [c_a_out] for audio filter.
     mode: playlist
     width: 1024
     height: 576
@@ -67,6 +69,7 @@ processing:
     loud_tp: -1.5
     loud_lra: 11
     volume: 1
+    custom_filter:
 
 ingest:
     help_text: Run a server for a ingest stream. This stream will override the normal streaming

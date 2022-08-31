@@ -28,10 +28,10 @@ use std::{
 use simplelog::*;
 
 use crate::input::{ingest::log_line, source_generator};
-use ffplayout_lib::filter::ingest_filter::filter_cmd;
+use ffplayout_lib::filter::filter_chains;
 use ffplayout_lib::utils::{
-    prepare_output_cmd, sec_to_time, stderr_reader, test_tcp_port, Decoder, Ingest, PlayerControl,
-    PlayoutConfig, PlayoutStatus, ProcessControl,
+    prepare_output_cmd, sec_to_time, stderr_reader, test_tcp_port, Decoder, Ingest, Media,
+    PlayerControl, PlayoutConfig, PlayoutStatus, ProcessControl,
 };
 use ffplayout_lib::vec_strings;
 
@@ -47,28 +47,8 @@ fn ingest_to_hls_server(
     let mut server_prefix = vec_strings!["-hide_banner", "-nostats", "-v", "level+info"];
     let stream_input = config.ingest.input_cmd.clone().unwrap();
     server_prefix.append(&mut stream_input.clone());
-    let server_filter = filter_cmd(&config, &playout_stat.chain);
-
-    if server_filter.len() > 1 {
-        let filter_chain = server_filter[1]
-            .split_terminator([',', ';'])
-            .collect::<Vec<&str>>();
-
-        for (i, link) in filter_chain.iter().enumerate() {
-            if link.contains("drawtext") {
-                playout_stat
-                    .drawtext_server_index
-                    .store(i, Ordering::SeqCst);
-            }
-        }
-    }
-
-    let server_cmd = prepare_output_cmd(
-        server_prefix,
-        server_filter,
-        config.out.clone().output_cmd.unwrap(),
-        "hls",
-    );
+    let mut dummy_media = Media::new(0, "Live Stream".to_string(), false);
+    dummy_media.is_live = Some(true);
 
     let mut is_running;
 
@@ -81,13 +61,37 @@ fn ingest_to_hls_server(
         info!("Start ingest server, listening on: <b><magenta>{url}</></b>");
     };
 
-    debug!(
-        "Server CMD: <bright-blue>\"ffmpeg {}\"</>",
-        server_cmd.join(" ")
-    );
-
     loop {
-        let mut proc_ctl = proc_control.clone();
+        let filters = filter_chains(&config, &mut dummy_media, &playout_stat.chain);
+
+        if filters.len() > 1 {
+            // get correct filter index from drawtext node for zmq
+            let filter_chain = filters[1]
+                .split_terminator([',', ';'])
+                .collect::<Vec<&str>>();
+
+            for (i, link) in filter_chain.iter().enumerate() {
+                if link.contains("drawtext") {
+                    playout_stat
+                        .drawtext_server_index
+                        .store(i, Ordering::SeqCst);
+                }
+            }
+        }
+
+        let server_cmd = prepare_output_cmd(
+            server_prefix.clone(),
+            filters,
+            config.out.clone().output_cmd.unwrap(),
+            "hls",
+        );
+
+        debug!(
+            "Server CMD: <bright-blue>\"ffmpeg {}\"</>",
+            server_cmd.join(" ")
+        );
+
+        let proc_ctl = proc_control.clone();
         let mut server_proc = match Command::new("ffmpeg")
             .args(server_cmd.clone())
             .stderr(Stdio::piped())
@@ -128,6 +132,10 @@ fn ingest_to_hls_server(
             log_line(line, &level);
         }
 
+        if proc_control.server_is_running.load(Ordering::SeqCst) {
+            info!("Switch from live ingest to {}", config.processing.mode);
+        }
+
         proc_control
             .server_is_running
             .store(false, Ordering::SeqCst);
@@ -139,8 +147,6 @@ fn ingest_to_hls_server(
         if proc_control.is_terminated.load(Ordering::SeqCst) {
             break;
         }
-
-        info!("Switch from live ingest to {}", config.processing.mode);
     }
 
     Ok(())
@@ -221,7 +227,7 @@ pub fn write_hls(
         let dec_err = BufReader::new(enc_proc.stderr.take().unwrap());
         *proc_control.decoder_term.lock().unwrap() = Some(enc_proc);
 
-        if let Err(e) = stderr_reader(dec_err, "Writer") {
+        if let Err(e) = stderr_reader(dec_err, "Writer", proc_control.clone()) {
             error!("{e:?}")
         };
 
