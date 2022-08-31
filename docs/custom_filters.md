@@ -1,6 +1,6 @@
 ## Custom filter
 
-ffplayout allows it to define a custom filter string. For that is the parameter **custom_filter** in the **ffplayout.yml** config file. The playlist can also contain a **custom_filter** paramter for every clip, with the same usage.
+ffplayout allows it to define a custom filter string. For that is the parameter **custom_filter** in the **ffplayout.yml** config file. The playlist can also contain a **custom_filter** parameter for every clip, with the same usage.
 
 The filter outputs should end with `[c_v_out]` for video filter, and `[c_a_out]` for audio filter. The filters will be apply on every clip and after the filters which unify the clips.
 
