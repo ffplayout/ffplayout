@@ -68,7 +68,7 @@ export const actions = {
                 }
             }
 
-            commit('UPDATE_TIMEZONE', response.data.timezone)
+            commit('UPDATE_TIMEZONE', response.data[0].timezone)
             commit('UPDATE_GUI_CONFIG', response.data)
             commit('UPDATE_GUI_CONFIG_RAW', _.cloneDeep(response.data))
             commit('UPDATE_CONFIG_COUNT', response.data.length)

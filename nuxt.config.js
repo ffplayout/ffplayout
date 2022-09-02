@@ -83,7 +83,7 @@ export default {
     dayjs: {
         locales: ['en', 'de'],
         defaultLocale: 'en',
-        defaultTimeZone: 'Europe/Berlin',
+        defaultTimeZone: 'UTC',
         plugins: ['utc', 'timezone']
     },
 
