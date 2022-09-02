@@ -149,7 +149,7 @@ curl -X POST -H "Content-Type: application/json" -H "Authorization: ---auth-key-
     127.0.0.1:7070
 ```
 
-At the moment this comments are possible:
+At the moment this commends are possible:
 
 ```Bash
 '{"jsonrpc": "2.0", "id":1, "method": "player", "params":{"media":"current"}}'  # get infos about current clip
