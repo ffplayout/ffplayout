@@ -5,6 +5,7 @@ use std::{
     path::Path,
 };
 
+use chrono::prelude::*;
 use faccess::PathExt;
 use once_cell::sync::OnceCell;
 use rpassword::read_password;
@@ -221,4 +222,20 @@ pub async fn read_log_file(channel_id: &i64, date: &str) -> Result<String, Servi
     Err(ServiceError::NoContent(
         "Requested log file not exists, or not readable.".to_string(),
     ))
+}
+
+pub fn local_utc_offset() -> i32 {
+    let mut offset = Local::now().format("%:z").to_string();
+    let operator = offset.remove(0);
+    let mut utc_offset = 0;
+
+    if let Some((r, f)) = offset.split_once(':') {
+        utc_offset = r.parse::<i32>().unwrap_or(0) * 60 + f.parse::<i32>().unwrap_or(0);
+
+        if operator == '-' && utc_offset > 0 {
+            utc_offset = -utc_offset;
+        }
+    }
+
+    utc_offset
 }

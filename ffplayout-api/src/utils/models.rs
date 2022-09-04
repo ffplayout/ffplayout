@@ -66,6 +66,9 @@ pub struct Channel {
     pub preview_url: String,
     pub config_path: String,
     pub extra_extensions: String,
-    pub timezone: String,
     pub service: String,
+
+    #[sqlx(default)]
+    #[serde(default)]
+    pub utc_offset: i32,
 }
