@@ -141,7 +141,7 @@ out:
 
 ## JSON RPC
 
-The ffplayout engine can run a JSON RPC server. A request show look like:
+The ffplayout engine can run a JSON RPC server. A request looks like:
 
 ```Bash
 curl -X POST -H "Content-Type: application/json" -H "Authorization: ---auth-key---" \
@@ -149,7 +149,7 @@ curl -X POST -H "Content-Type: application/json" -H "Authorization: ---auth-key-
     127.0.0.1:7070
 ```
 
-At the moment this comments are possible:
+At the moment this commends are possible:
 
 ```Bash
 '{"jsonrpc": "2.0", "id":1, "method": "player", "params":{"media":"current"}}'  # get infos about current clip
@@ -158,7 +158,6 @@ At the moment this comments are possible:
 '{"jsonrpc": "2.0", "id":4, "method": "player", "params":{"control":"next"}}'   # jump to next clip
 '{"jsonrpc": "2.0", "id":5, "method": "player", "params":{"control":"back"}}'   # jump to last clip
 '{"jsonrpc": "2.0", "id":6, "method": "player", "params":{"control":"reset"}}'  # reset playlist to old state
-
 '{"jsonrpc": "2.0", "id":7, "method": "player", "params":{"control":"text", \
   "message": {"text": "Hello from ffplayout", "x": "(w-text_w)/2", "y": "(h-text_h)/2", \
   "fontsize": 24, "line_spacing": 4, "fontcolor": "#ffffff", "box": 1, \
