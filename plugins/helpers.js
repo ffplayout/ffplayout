@@ -9,8 +9,16 @@ export default ({ app }, inject) => {
         for (const item of list) {
             item.begin = begin
 
+            if (!item.audio) {
+                delete item.audio
+            }
+
             if (!item.category) {
-                item.category = ''
+                delete item.category
+            }
+
+            if (!item.custom_filter) {
+                delete item.custom_filter
             }
 
             begin += (item.out - item.in)

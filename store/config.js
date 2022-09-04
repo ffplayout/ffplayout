@@ -10,7 +10,7 @@ export const state = () => ({
     configPlayout: {},
     currentUser: null,
     configUser: null,
-    timezone: 'UTC'
+    utcOffset: 0
 })
 
 export const mutations = {
@@ -41,13 +41,13 @@ export const mutations = {
     UPDATE_USER_CONFIG (state, config) {
         state.configUser = config
     },
-    UPDATE_TIMEZONE (state, zone) {
-        state.timezone = zone
+    UPDATE_UTC_OFFSET (state, offset) {
+        state.utcOffset = offset
     }
 }
 
 export const actions = {
-    async nuxtClientInit ({ commit, dispatch, rootState }) {
+    async nuxtClientInit ({ dispatch, rootState }) {
         await dispatch('auth/inspectToken', null, { root: true })
         if (rootState.auth.isLogin) {
             await dispatch('getGuiConfig')
@@ -56,7 +56,7 @@ export const actions = {
         }
     },
 
-    async getGuiConfig ({ commit, state }) {
+    async getGuiConfig ({ commit }) {
         const response = await this.$axios.get('api/channels')
 
         if (response.data) {
@@ -68,7 +68,7 @@ export const actions = {
                 }
             }
 
-            commit('UPDATE_TIMEZONE', response.data[0].timezone)
+            commit('UPDATE_UTC_OFFSET', response.data[0].utc_offset)
             commit('UPDATE_GUI_CONFIG', response.data)
             commit('UPDATE_GUI_CONFIG_RAW', _.cloneDeep(response.data))
             commit('UPDATE_CONFIG_COUNT', response.data.length)
@@ -78,7 +78,8 @@ export const actions = {
                 channel: '',
                 preview_url: '',
                 playout_config: '',
-                extra_extensions: []
+                extra_extensions: [],
+                utc_offset: 0
             }])
         }
     },
@@ -133,13 +134,13 @@ export const actions = {
         }
     },
 
-    async setPlayoutConfig ({ commit, state }, obj) {
+    async setPlayoutConfig ({ state }, obj) {
         const channel = state.configGui[state.configID].id
         const update = await this.$axios.put(`api/playout/config/${channel}`, obj)
         return update
     },
 
-    async getUserConfig ({ commit, state }) {
+    async getUserConfig ({ commit }) {
         const user = await this.$axios.get('api/user')
 
         if (user.data) {
@@ -150,7 +151,7 @@ export const actions = {
         }
     },
 
-    async setUserConfig ({ commit, state }, obj) {
+    async setUserConfig (obj) {
         const update = await this.$axios.put(`api/user/${obj.id}`, obj)
         return update
     }

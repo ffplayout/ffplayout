@@ -53,7 +53,7 @@ export default {
     data () {
         return {
             currentLog: null,
-            listDate: this.$dayjs().tz(this.timezone).format('YYYY-MM-DD'),
+            listDate: this.$dayjs().utcOffset(0).format('YYYY-MM-DD'),
             scrollOP: {
                 wheelSpeed: 5,
                 minScrollbarLength: 30
@@ -62,7 +62,7 @@ export default {
     },
 
     computed: {
-        ...mapState('config', ['configID', 'timezone'])
+        ...mapState('config', ['configID', 'utcOffset'])
     },
 
     watch: {
@@ -76,6 +76,7 @@ export default {
     },
 
     async created () {
+        this.listDate = this.$dayjs().utcOffset(this.utcOffset).format('YYYY-MM-DD')
         await this.getLog()
     },
 
@@ -83,7 +84,7 @@ export default {
         async getLog () {
             let date = this.listDate
 
-            if (date === this.$dayjs().tz(this.timezone).format('YYYY-MM-DD')) {
+            if (date === this.$dayjs().utcOffset(this.utcOffset).format('YYYY-MM-DD')) {
                 date = ''
             }
 

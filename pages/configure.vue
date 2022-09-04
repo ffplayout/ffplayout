@@ -22,7 +22,7 @@
                                 </div>
                                 <div v-for="(prop, name, idx) in configGui[configID]" :key="idx">
                                     <b-form-group
-                                        v-if="idx >= 1"
+                                        v-if="name !== 'id' && name !== 'utc_offset'"
                                         label-cols-sm="2"
                                         :label="name"
                                         label-align-sm="right"

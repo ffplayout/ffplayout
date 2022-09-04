@@ -51,13 +51,13 @@ export const mutations = {
 }
 
 export const actions = {
-    async getPlaylist ({ commit, dispatch, state, rootState }, { date }) {
-        const timeInSec = this.$timeToSeconds(this.$dayjs().tz(rootState.config.timezone).format('HH:mm:ss'))
+    async getPlaylist ({ commit, rootState }, { date }) {
+        const timeInSec = this.$timeToSeconds(this.$dayjs().utcOffset(rootState.config.utcOffset).format('HH:mm:ss'))
         const channel = rootState.config.configGui[rootState.config.configID].id
-        let dateToday = this.$dayjs().tz(this.timezone).format('YYYY-MM-DD')
+        let dateToday = this.$dayjs().utcOffset(rootState.config.utcOffset).format('YYYY-MM-DD')
 
         if (rootState.config.startInSec > timeInSec) {
-            dateToday = this.$dayjs(dateToday).tz(rootState.config.timezone).subtract(1, 'day').format('YYYY-MM-DD')
+            dateToday = this.$dayjs(dateToday).utcOffset(rootState.config.utcOffset).subtract(1, 'day').format('YYYY-MM-DD')
         }
 
         const response = await this.$axios.get(`api/playlist/${channel}?date=${date}`)
@@ -75,9 +75,9 @@ export const actions = {
         }
     },
 
-    async playoutStat ({ commit, dispatch, state, rootState }) {
+    async playoutStat ({ commit, state, rootState }) {
         const channel = rootState.config.configGui[rootState.config.configID].id
-        const time = this.$dayjs().tz(rootState.config.timezone).format('HH:mm:ss')
+        const time = this.$dayjs().utcOffset(rootState.config.utcOffset).format('HH:mm:ss')
         let timeSec = this.$timeToSeconds(time)
 
         commit('SET_TIME', time)

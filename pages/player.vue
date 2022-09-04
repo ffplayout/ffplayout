@@ -230,6 +230,9 @@
                                         Ad
                                     </b-col>
                                     <b-col cols="1" class="text-center playlist-input">
+                                        Edit
+                                    </b-col>
+                                    <b-col cols="1" class="text-center playlist-input">
                                         Delete
                                     </b-col>
                                 </b-row>
@@ -286,6 +289,11 @@
                                                     value="advertisement"
                                                     unchecked-value=""
                                                 />
+                                            </b-col>
+                                            <b-col cols="1" class="text-center playlist-input">
+                                                <b-link @click="editItem(index)">
+                                                    <b-icon-pencil-square />
+                                                </b-link>
                                             </b-col>
                                             <b-col cols="1" class="text-center playlist-input">
                                                 <b-link @click="removeItemFromPlaylist(index)">
@@ -357,7 +365,7 @@
         <b-modal
             id="add-source-modal"
             ref="add-source-modal"
-            title="Add (remote) Source"
+            title="Add/Edit Source"
             @ok="handleSource"
         >
             <form ref="form" @submit.stop.prevent="addSource">
@@ -375,6 +383,9 @@
                 </b-form-group>
                 <b-form-group label="Audio" label-for="audio-input">
                     <b-form-input id="audio-input" v-model="newSource.audio" />
+                </b-form-group>
+                <b-form-group label="Custom Filter" label-for="filter-input">
+                    <b-form-input id="filter-input" v-model="newSource.custom_filter" />
                 </b-form-group>
                 <b-form-checkbox
                     id="ad-input"
@@ -430,8 +441,8 @@ export default {
             browserIsLoading: false,
             playlistIsLoading: false,
             isPlaying: '',
-            listDate: this.$dayjs().tz(this.timezone).format('YYYY-MM-DD'),
-            targetDate: this.$dayjs().tz(this.timezone).format('YYYY-MM-DD'),
+            listDate: this.$dayjs().format('YYYY-MM-DD'),
+            targetDate: this.$dayjs().format('YYYY-MM-DD'),
             interval: null,
             videoOptions: {
                 liveui: true,
@@ -459,19 +470,21 @@ export default {
                 suppressScrollX: true,
                 minScrollbarLength: 30
             },
+            editId: undefined,
             newSource: {
                 begin: 0,
                 in: 0,
                 out: 0,
                 duration: 0,
                 category: '',
+                custom_filter: '',
                 source: ''
             }
         }
     },
 
     computed: {
-        ...mapState('config', ['configID', 'configGui', 'configPlayout', 'timezone', 'startInSec']),
+        ...mapState('config', ['configID', 'configGui', 'configPlayout', 'utcOffset', 'startInSec']),
         ...mapState('media', ['crumbs', 'folderTree']),
         ...mapState('playlist', [
             'timeStr', 'timeLeft', 'currentClip', 'progressValue', 'currentClipIndex',
@@ -509,6 +522,9 @@ export default {
     },
 
     async created () {
+        this.listDate = this.$dayjs().utcOffset(this.utcOffset).format('YYYY-MM-DD')
+        this.targetDate = this.listDate
+
         this.videoOptions.sources = [
             {
                 type: 'application/x-mpegURL',
@@ -519,11 +535,11 @@ export default {
         this.getStatus()
         await this.getPath('')
 
-        const timeInSec = this.$timeToSeconds(this.$dayjs().tz(this.timezone).format('HH:mm:ss'))
+        const timeInSec = this.$timeToSeconds(this.$dayjs().utcOffset(this.utcOffset).format('HH:mm:ss'))
         const listStartSec = this.$timeToSeconds(this.configPlayout.playlist.day_start)
 
         if (listStartSec > timeInSec) {
-            this.listDate = this.$dayjs(this.listDate).tz(this.timezone).subtract(1, 'day').format('YYYY-MM-DD')
+            this.listDate = this.$dayjs(this.listDate).utcOffset(this.utcOffset).subtract(1, 'day').format('YYYY-MM-DD')
         }
 
         await this.getPlaylist()
@@ -707,12 +723,11 @@ export default {
 
         async savePlaylist (saveDate) {
             this.$store.commit('playlist/UPDATE_PLAYLIST', this.$processPlaylist(this.startInSec, this.playlist))
-
             const saveList = this.playlist.map(({ begin, ...item }) => item)
 
             const postSave = await this.$axios.post(
                 `api/playlist/${this.configGui[this.configID].id}/`,
-                { channel: this.$store.state.config.configGui.channel, date: saveDate, program: saveList }
+                { channel: this.configGui[this.configID].name, date: saveDate, program: saveList }
             )
 
             if (postSave.status === 200 || postSave.status === 201) {
@@ -765,9 +780,14 @@ export default {
         },
 
         addSource () {
-            const list = this.playlist
-            list.push(this.newSource)
-            this.$store.commit('playlist/UPDATE_PLAYLIST', this.$processPlaylist(this.startInSec, list))
+            if (this.editId === undefined) {
+                const list = this.playlist
+                list.push(this.newSource)
+                this.$store.commit('playlist/UPDATE_PLAYLIST', this.$processPlaylist(this.startInSec, list))
+            } else {
+                this.playlist[this.editId] = this.newSource
+                this.editId = undefined
+            }
 
             this.newSource = {
                 begin: 0,
@@ -775,12 +795,29 @@ export default {
                 out: 0,
                 duration: 0,
                 category: '',
+                custom_filter: '',
                 source: ''
             }
 
             this.$nextTick(() => {
                 this.$bvModal.hide('add-source-modal')
             })
+        },
+
+        editItem (i) {
+            this.editId = i
+
+            this.newSource = {
+                begin: this.playlist[i].begin,
+                in: this.playlist[i].in,
+                out: this.playlist[i].out,
+                duration: this.playlist[i].duration,
+                category: this.playlist[i].category,
+                custom_filter: this.playlist[i].custom_filter,
+                source: this.playlist[i].source
+            }
+
+            this.$bvModal.show('add-source-modal')
         }
     }
 }

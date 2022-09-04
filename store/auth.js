@@ -26,7 +26,7 @@ export const mutations = {
 }
 
 export const actions = {
-    async obtainToken ({ commit, state }, { username, password }) {
+    async obtainToken ({ commit }, { username, password }) {
         const payload = {
             username,
             password
@@ -45,7 +45,7 @@ export const actions = {
         return code
     },
 
-    inspectToken ({ commit, dispatch, state }) {
+    inspectToken ({ commit, state }) {
         const token = this.$cookies.get('token')
 
         if (token) {
