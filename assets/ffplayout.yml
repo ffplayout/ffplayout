@@ -117,10 +117,13 @@ text:
 
 out:
     help_text: The final playout compression. Set the settings to your needs. 'mode'
-        has the options 'desktop', 'hls', 'null', 'stream'. Use 'stream' and adjust
-        'output_param:' settings when you want to stream to a rtmp/rtsp/srt/... server.
-        In production don't serve hls playlist with ffpapi, use nginx or another web server!
-    mode: hls
+        has the options 'desktop', 'hls', 'null', 'stream'. In 'custom_filter' it is possible
+        to define custom ffmpeg filters. They need to end with [c_v_out] for video filter,
+        and [c_a_out] for audio filter. Use 'stream' and adjust 'output_param:' settings when
+        you want to stream to a rtmp/rtsp/srt/... server. In production don't serve hls
+        playlist with ffpapi, use nginx or another web server!
+    mode: desktop
+    custom_filter:
     output_param: >-
         -c:v libx264
         -crf 23
