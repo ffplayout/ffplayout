@@ -38,16 +38,7 @@ File -> | Decoder / Filtering / custom filter |------------| Encoder / text over
 Loop    +-------------------------------------+            +------------------------+
 ```
 
-The **custom filter** from **config -> out** got applied on the encoder side:
-
-```
-        +---------------------+    PIPE    +----------------------------------------+
-File -> | Decoder / Filtering |------------| Encoder / text overlay / custom filter | -> Output
-Loop    +---------------------+            +----------------------------------------+
-```
-
 #### When which one to take
 
 * If you want to use for every clip a different filter chain, you should use the custom filter parameter from **playlist**.
 * When you want to use the same filter for every clip you can use the custom filter from **config -> processing**.
-* If you need a global filter for all clips, which has movements, like a animated logo, or different lower thirds, you should use the custom filter from **config -> out**.
