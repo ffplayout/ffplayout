@@ -70,8 +70,8 @@ curl -X GET http://127.0.0.1:8787/api/channel/1 -H "Authorization: Bearer <TOKEN
     "preview_url": "http://localhost/live/preview.m3u8",
     "config_path": "/etc/ffplayout/ffplayout.yml",
     "extra_extensions": "jpg,jpeg,png",
-    "timezone": "UTC",
-    "service": "ffplayout.service"
+    "service": "ffplayout.service",
+    "utc_offset": "+120"
 }
 ```
 
@@ -86,7 +86,7 @@ curl -X GET http://127.0.0.1:8787/api/channels -H "Authorization: Bearer <TOKEN>
 ```BASH
 curl -X PATCH http://127.0.0.1:8787/api/channel/1 -H "Content-Type: application/json" \
 -d '{ "id": 1, "name": "Channel 1", "preview_url": "http://localhost/live/stream.m3u8", \
-"config_path": "/etc/ffplayout/ffplayout.yml", "extra_extensions": "jpg,jpeg,png", "timezone": "Europe/Berlin"}' \
+"config_path": "/etc/ffplayout/ffplayout.yml", "extra_extensions": "jpg,jpeg,png"}' \
 -H "Authorization: Bearer <TOKEN>"
 ```
 
@@ -96,7 +96,7 @@ curl -X PATCH http://127.0.0.1:8787/api/channel/1 -H "Content-Type: application/
 curl -X POST http://127.0.0.1:8787/api/channel/ -H "Content-Type: application/json" \
 -d '{ "name": "Channel 2", "preview_url": "http://localhost/live/channel2.m3u8", \
 "config_path": "/etc/ffplayout/channel2.yml", "extra_extensions": "jpg,jpeg,png",
-"timezone": "Europe/Berlin", "service": "ffplayout@channel2.service" }' \
+"service": "ffplayout@channel2.service" }' \
 -H "Authorization: Bearer <TOKEN>"
 ```
 

@@ -8,7 +8,7 @@ use simplelog::*;
 use sqlx::{migrate::MigrateDatabase, sqlite::SqliteQueryResult, Pool, Sqlite, SqlitePool};
 
 use crate::utils::{
-    db_path,
+    db_path, local_utc_offset,
     models::{Channel, TextPreset, User},
     GlobalSettings,
 };
@@ -40,7 +40,6 @@ async fn create_schema() -> Result<SqliteQueryResult, sqlx::Error> {
             preview_url              TEXT NOT NULL,
             config_path              TEXT NOT NULL,
             extra_extensions         TEXT NOT NULL,
-            timezone                 TEXT NOT NULL,
             service                  TEXT NOT NULL,
             UNIQUE(name, service)
         );
@@ -111,8 +110,8 @@ pub async fn db_init(domain: Option<String>) -> Result<&'static str, Box<dyn std
             SELECT RAISE(FAIL, 'Database is already initialized!');
         END;
         INSERT INTO global(secret) VALUES($1);
-        INSERT INTO channels(name, preview_url, config_path, extra_extensions, timezone, service)
-        VALUES('Channel 1', $2, '/etc/ffplayout/ffplayout.yml', 'jpg,jpeg,png', 'UTC', 'ffplayout.service');
+        INSERT INTO channels(name, preview_url, config_path, extra_extensions, service)
+        VALUES('Channel 1', $2, '/etc/ffplayout/ffplayout.yml', 'jpg,jpeg,png', 'ffplayout.service');
         INSERT INTO roles(name) VALUES('admin'), ('user'), ('guest');
         INSERT INTO presets(name, text, x, y, fontsize, line_spacing, fontcolor, box, boxcolor, boxborderw, alpha, channel_id)
         VALUES('Default', 'Wellcome to ffplayout messenger!', '(w-text_w)/2', '(h-text_h)/2', '24', '4', '#ffffff@0xff', '0', '#000000@0x80', '4', '1.0', '1'),
@@ -150,8 +149,10 @@ pub async fn db_global() -> Result<GlobalSettings, sqlx::Error> {
 pub async fn db_get_channel(id: &i64) -> Result<Channel, sqlx::Error> {
     let conn = db_connection().await?;
     let query = "SELECT * FROM channels WHERE id = $1";
-    let result: Channel = sqlx::query_as(query).bind(id).fetch_one(&conn).await?;
+    let mut result: Channel = sqlx::query_as(query).bind(id).fetch_one(&conn).await?;
     conn.close().await;
+
+    result.utc_offset = local_utc_offset();
 
     Ok(result)
 }
@@ -159,10 +160,14 @@ pub async fn db_get_channel(id: &i64) -> Result<Channel, sqlx::Error> {
 pub async fn db_get_all_channels() -> Result<Vec<Channel>, sqlx::Error> {
     let conn = db_connection().await?;
     let query = "SELECT * FROM channels";
-    let result: Vec<Channel> = sqlx::query_as(query).fetch_all(&conn).await?;
+    let mut results: Vec<Channel> = sqlx::query_as(query).fetch_all(&conn).await?;
     conn.close().await;
 
-    Ok(result)
+    for result in results.iter_mut() {
+        result.utc_offset = local_utc_offset();
+    }
+
+    Ok(results)
 }
 
 pub async fn db_update_channel(
@@ -171,14 +176,13 @@ pub async fn db_update_channel(
 ) -> Result<SqliteQueryResult, sqlx::Error> {
     let conn = db_connection().await?;
 
-    let query = "UPDATE channels SET name = $2, preview_url = $3, config_path = $4, extra_extensions = $5, timezone = $6 WHERE id = $1";
+    let query = "UPDATE channels SET name = $2, preview_url = $3, config_path = $4, extra_extensions = $5 WHERE id = $1";
     let result: SqliteQueryResult = sqlx::query(query)
         .bind(id)
         .bind(channel.name)
         .bind(channel.preview_url)
         .bind(channel.config_path)
         .bind(channel.extra_extensions)
-        .bind(channel.timezone)
         .execute(&conn)
         .await?;
     conn.close().await;
@@ -189,13 +193,12 @@ pub async fn db_update_channel(
 pub async fn db_add_channel(channel: Channel) -> Result<Channel, sqlx::Error> {
     let conn = db_connection().await?;
 
-    let query = "INSERT INTO channels (name, preview_url, config_path, extra_extensions, timezone, service) VALUES($1, $2, $3, $4, $5, $6)";
+    let query = "INSERT INTO channels (name, preview_url, config_path, extra_extensions, service) VALUES($1, $2, $3, $4, $5)";
     let result = sqlx::query(query)
         .bind(channel.name)
         .bind(channel.preview_url)
         .bind(channel.config_path)
         .bind(channel.extra_extensions)
-        .bind(channel.timezone)
         .bind(channel.service)
         .execute(&conn)
         .await?;
