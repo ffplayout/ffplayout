@@ -708,7 +708,8 @@ pub fn stderr_reader(
 
             if line.contains("Invalid argument")
                 || line.contains("Numerical result")
-                || line.contains("No such file or directory")
+                || (line.contains("No such file or directory")
+                    && !line.contains("failed to delete old segment"))
                 || line.contains("Error initializing complex filters")
             {
                 proc_control.kill_all();
