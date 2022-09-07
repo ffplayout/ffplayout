@@ -154,10 +154,14 @@
 
 .player-browser-scroll {
     height: calc(100% - 50px);
+    overflow: auto;
+    scrollbar-width: medium;
 }
 
 .browser-div .media-browser-scroll {
     height: 100%;
+    overflow: auto;
+    scrollbar-width: medium;
 }
 
 .playlist-container .ps {

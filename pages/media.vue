@@ -31,7 +31,7 @@
                 <splitpanes class="browser-row default-theme pane-row">
                     <pane min-size="20" size="24">
                         <div class="browser-div">
-                            <perfect-scrollbar :options="scrollOP" class="media-browser-scroll">
+                            <div class="media-browser-scroll">
                                 <b-list-group class="folder-list">
                                     <b-list-group-item
                                         v-for="folder in folderTree.folders"
@@ -55,7 +55,7 @@
                                         </b-row>
                                     </b-list-group-item>
                                 </b-list-group>
-                            </perfect-scrollbar>
+                            </div>
                         </div>
                     </pane>
                     <pane class="files-col">
@@ -67,7 +67,7 @@
                             color="#ff9c36"
                         />
                         <div class="browser-div">
-                            <perfect-scrollbar :options="scrollOP" class="media-browser-scroll">
+                            <div class="media-browser-scroll">
                                 <b-list-group class="files-list">
                                     <b-list-group-item
                                         v-for="file in folderTree.files"
@@ -102,7 +102,7 @@
                                         </b-row>
                                     </b-list-group-item>
                                 </b-list-group>
-                            </perfect-scrollbar>
+                            </div>
                         </div>
                     </pane>
                 </splitpanes>
@@ -290,10 +290,7 @@ export default {
             overallProgress: 0,
             currentProgress: 0,
             cancelTokenSource: this.$axios.CancelToken.source(),
-            lastPath: '',
-            scrollOP: {
-                suppressScrollX: true
-            }
+            lastPath: ''
         }
     },
 
@@ -614,6 +611,7 @@ export default {
 .folder-list {
     height: 100%;
     padding: .5em;
+    width: 98%;
 }
 
 .folder-delete {

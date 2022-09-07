@@ -158,7 +158,7 @@
                             </b-breadcrumb>
                         </div>
 
-                        <perfect-scrollbar :options="scrollOP" class="player-browser-scroll">
+                        <div class="player-browser-scroll">
                             <b-list-group>
                                 <b-list-group-item
                                     v-for="folder in folderTree.folders"
@@ -199,7 +199,7 @@
                                     </b-list-group-item>
                                 </draggable>
                             </b-list-group>
-                        </perfect-scrollbar>
+                        </div>
                     </div>
                 </pane>
                 <pane>
@@ -237,7 +237,7 @@
                                 </b-row>
                             </b-list-group-item>
                         </b-list-group>
-                        <perfect-scrollbar id="scroll-container" :options="scrollOP">
+                        <div id="scroll-container">
                             <loading
                                 :active.sync="playlistIsLoading"
                                 :can-cancel="false"
@@ -303,7 +303,7 @@
                                     </b-list-group-item>
                                 </draggable>
                             </b-list-group>
-                        </perfect-scrollbar>
+                        </div>
                     </div>
                 </pane>
             </splitpanes>
@@ -465,10 +465,6 @@ export default {
             previewOptions: {},
             previewComp: null,
             previewSource: '',
-            scrollOP: {
-                suppressScrollX: true,
-                minScrollbarLength: 30
-            },
             editId: undefined,
             newSource: {
                 begin: 0,
@@ -1084,6 +1080,8 @@ export default {
 
 #scroll-container {
     height: calc(100% - 47px);
+    overflow: auto;
+    scrollbar-width: medium;
 }
 
 .playlist-item {

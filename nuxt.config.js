@@ -46,7 +46,6 @@ export default {
         { src: '~/plugins/helpers.js' },
         { src: '~/plugins/nuxt-client-init.js', ssr: false },
         { src: '~plugins/video.js', ssr: false },
-        { src: '~plugins/scrollbar.js', ssr: false },
         { src: '~plugins/splitpanes.js', ssr: false },
         { src: '~plugins/loading.js', ssr: false },
         { src: '~plugins/draggable.js', ssr: false },

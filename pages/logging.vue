@@ -7,10 +7,8 @@
             </b-col>
         </b-row>
         <b-container class="log-container">
-            <!-- eslint-disable-next-line -->
-            <perfect-scrollbar
+            <div
                 v-if="currentLog"
-                :options="scrollOP"
                 class="log-content"
                 :inner-html.prop="currentLog | formatStr"
             />
@@ -53,11 +51,7 @@ export default {
     data () {
         return {
             currentLog: null,
-            listDate: this.$dayjs().utcOffset(0).format('YYYY-MM-DD'),
-            scrollOP: {
-                wheelSpeed: 5,
-                minScrollbarLength: 30
-            }
+            listDate: this.$dayjs().utcOffset(0).format('YYYY-MM-DD')
         }
     },
 
@@ -139,6 +133,8 @@ export default {
     font-family: monospace;
     font-size: 13px;
     white-space: pre;
+    overflow: scroll;
+    scrollbar-width: medium;
 }
 
 .log-info {
