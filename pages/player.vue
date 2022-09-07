@@ -29,8 +29,7 @@
                                         {{ timeLeft }}
                                     </div>
                                 </b-col>
-                                <div class="w-100" />
-                                <b-col class="current-clip" align-self="end">
+                                <b-col class="current-clip">
                                     <div class="current-clip-text">
                                         {{ currentClip | filename }}
                                     </div>
@@ -850,6 +849,7 @@ export default {
 
 .control-unit-col {
     min-width: 250px;
+    padding: 2px 17px 2px 2px;
 }
 
 .control-unit-row {
@@ -883,15 +883,11 @@ export default {
 
 .status-row {
     height: 100%;
-    min-width: 370px;
+    min-width: 325px;
 }
 
-.clock-col {
-    margin-right: 3px;
-}
-
-.counter-col {
-    margin-left: 3px;
+.status-row .col {
+    margin: 2px;
 }
 
 .time-col {
@@ -916,9 +912,9 @@ export default {
 
 .current-clip {
     background: #32383E;
-    height: calc(50% - 3px);
     padding: 10px;
     border-radius: 0.25rem;
+    min-width: 700px;
 }
 
 .current-clip-text {
@@ -971,46 +967,82 @@ export default {
     .status-col {
         padding-right: 0;
         height: 100%;
+        flex: 0 0 60%;
+        max-width: 60%;
+    }
+    .current-clip {
+        min-width: 300px;
     }
     .time-str {
         font-size: 3.5em;
-    }
-    .time-col {
-        margin-bottom: 6px;
     }
     .control-unit-row {
         margin-right: -30px;
     }
     .control-unit-col {
-        flex: 0 0 28.5%;
-        max-width: 28.5%;
-        margin: 0 10px 0 20px;
+        flex: 0 0 35%;
+        max-width: 35%;
+        margin: 0 0 0 30px;
     }
 }
 
-@media (max-width: 1280px) {
+@media (max-width: 1337px) {
+    .status-col {
+        flex: 0 0 47%;
+        max-width: 47%;
+        height: 68%;
+    }
+    .control-unit-col {
+        flex: 0 0 47%;
+        max-width: 47%;
+    }
+}
+
+@media (max-width: 1102px) {
+    .control-unit-row .col {
+        min-height: 70px;
+        padding-right: 0;
+        padding-left: 0;
+    }
+    .control-button {
+        font-size: 2em;
+    }
+}
+
+@media (max-width: 889px) {
+    .control-row {
+        min-height: 540px;
+    }
+
+    .status-col {
+        flex: 0 0 94%;
+        max-width: 94%;
+        height: 68%;
+    }
+    .control-unit-col {
+        flex: 0 0 94%;
+        max-width: 94%;
+        margin: 0;
+        padding-left: 17px;
+    }
+}
+
+@media (max-width: 689px) {
+    .player-col {
+        flex: 0 0 98%;
+        max-width: 98%;
+        padding-top: 30px;
+    }
+    .control-row {
+        min-height: 830px;
+    }
     .control-col {
-        min-height: inherit;
+        margin: 0;
     }
-    .control-unit-col {
-        flex: 0 0 25%;
-        max-width: 25%;
-        height: auto;
-        margin: 0 0 0 20px;
-    }
-}
-
-@media (max-width: 1225px) {
-    .control-unit-col {
-        flex: 0 0 66.6666666667%;
-        max-width: 66.6666666667%;
-        margin: 6px 0 0 0;
-    }
-    .clock-col {
-        margin-right: 0;
-    }
-    .counter-col {
-        margin-left: 0;
+    .control-unit-col,
+    .status-col {
+        flex: 0 0 96%;
+        max-width: 96%;
     }
 }
 
