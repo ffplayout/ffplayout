@@ -9,13 +9,13 @@ It is possible to apply only video or audio filters, or both. For a better under
 #### Apply Gaussian blur and volume filter:
 
 ```YAML
-custom_filter: 'gblur=5[c_v_out];volume=0.5[c_a_out]'
+custom_filter: "gblur=5[c_v_out];volume=0.5[c_a_out]"
 ```
 
 #### Add lower third:
 
 ```YAML
-custom_filter: '[v_in];movie=/path/to/lower_third.png:loop=0,scale=1024:576,setpts=N/(25*TB)[lower];[v_in][lower]overlay=0:0:shortest=1[c_v_out]'
+custom_filter: "[v_in];movie=/path/to/lower_third.png:loop=0,scale=1024:576,setpts=N/(25*TB)[lower];[v_in][lower]overlay=0:0:shortest=1[c_v_out]"
 ```
 
 Pay attention to the filter prefix `[v_in];`, this is necessary to get the output from the regular filters.
@@ -23,7 +23,7 @@ Pay attention to the filter prefix `[v_in];`, this is necessary to get the outpu
 #### Paint effect
 
 ```YAML
-custom_filter: edgedetect=mode=colormix:high=0[c_v_out]
+custom_filter: "edgedetect=mode=colormix:high=0[c_v_out]"
 ```
 
 ### Where the filters applied in stream mode
@@ -50,7 +50,7 @@ The **custom filter** from **config -> processing** and from **playlist** got ap
 This example takes a image and a animated mov clip with alpha and overlays them two times on different positions in time:
 
 ```YAML
-custom_filter: '[v_in];movie=image_input.png:s=v,loop=loop=250.0:size=1:start=0,scale=1024:576,split=2[lower_1_out_1][lower_1_out_2];[lower_1_out_1]fifo,fade=in:duration=0.5:alpha=1,fade=out:start_time=9.5:duration=0.5:alpha=1,setpts=PTS+5.0/TB[fade_1];[v_in][fade_1]overlay=enable=between(t\,5.0\,15.0)[base_1];[lower_1_out_2]fifo,fade=in:duration=0.5:alpha=1,fade=out:start_time=9.5:duration=0.5:alpha=1,setpts=PTS+30.0/TB[fade_2];[base_1][fade_2]overlay=enable=between(t\,30.0\,40.0)[base_2];movie=animated_input.mov:s=v,scale=1024:576,split=2[lower_2_out_1][lower_2_out_2];[lower_2_out_1]fifo,setpts=PTS+20.0/TB[layer_1];[base_2][layer_1]overlay=repeatlast=0[base_3];[lower_2_out_2]fifo,setpts=PTS+50.0/TB[layer_2];[base_3][layer_2]overlay=repeatlast=0[c_v_out]'
+custom_filter: "[v_in];movie=image_input.png:s=v,loop=loop=250.0:size=1:start=0,scale=1024:576,split=2[lower_1_out_1][lower_1_out_2];[lower_1_out_1]fifo,fade=in:duration=0.5:alpha=1,fade=out:start_time=9.5:duration=0.5:alpha=1,setpts=PTS+5.0/TB[fade_1];[v_in][fade_1]overlay=enable=between(t\,5.0\,15.0)[base_1];[lower_1_out_2]fifo,fade=in:duration=0.5:alpha=1,fade=out:start_time=9.5:duration=0.5:alpha=1,setpts=PTS+30.0/TB[fade_2];[base_1][fade_2]overlay=enable=between(t\,30.0\,40.0)[base_2];movie=animated_input.mov:s=v,scale=1024:576,split=2[lower_2_out_1][lower_2_out_2];[lower_2_out_1]fifo,setpts=PTS+20.0/TB[layer_1];[base_2][layer_1]overlay=repeatlast=0[base_3];[lower_2_out_2]fifo,setpts=PTS+50.0/TB[layer_2];[base_3][layer_2]overlay=repeatlast=0[c_v_out]"
 ```
 
 And here are the explanation for each filter:

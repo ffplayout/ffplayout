@@ -173,11 +173,11 @@ fn overlay(node: &mut Media, chain: &mut Filters, config: &PlayoutConfig) {
     {
         let mut logo_chain = v_overlay::filter_node(config, false);
 
-        if node.last_ad.unwrap() {
+        if node.last_ad.unwrap_or(false) {
             logo_chain.push_str(",fade=in:st=0:d=1.0:alpha=1")
         }
 
-        if node.next_ad.unwrap() {
+        if node.next_ad.unwrap_or(false) {
             logo_chain.push_str(
                 format!(",fade=out:st={}:d=1.0:alpha=1", node.out - node.seek - 1.0).as_str(),
             )

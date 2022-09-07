@@ -141,7 +141,7 @@ pub fn generate_playlist(
 
                 length += duration;
             } else if filler_length > 0.0 && filler_length > total_length - length {
-                filler.out = filler_length - (total_length - length);
+                filler.out = total_length - length;
                 playlist.program.push(filler);
 
                 break;
