@@ -5,7 +5,6 @@ use reqwest::{
     Client, Response,
 };
 use serde::{Deserialize, Serialize};
-use simplelog::*;
 
 use crate::utils::{errors::ServiceError, handles::db_get_channel, playout_config};
 use ffplayout_lib::vec_strings;
@@ -146,10 +145,7 @@ where
         .await
     {
         Ok(result) => Ok(result),
-        Err(e) => {
-            error!("{e:?}");
-            Err(ServiceError::ServiceUnavailable(e.to_string()))
-        }
+        Err(e) => Err(ServiceError::ServiceUnavailable(e.to_string())),
     }
 }
 
