@@ -55,12 +55,20 @@ pub struct Media {
     pub out: f64,
     pub duration: f64,
 
-    #[serde(default, deserialize_with = "null_string")]
+    #[serde(
+        default,
+        deserialize_with = "null_string",
+        skip_serializing_if = "is_empty_string"
+    )]
     pub category: String,
     #[serde(deserialize_with = "null_string")]
     pub source: String,
 
-    #[serde(default, deserialize_with = "null_string")]
+    #[serde(
+        default,
+        deserialize_with = "null_string",
+        skip_serializing_if = "is_empty_string"
+    )]
     pub audio: String,
 
     #[serde(skip_serializing, skip_deserializing)]
@@ -69,7 +77,7 @@ pub struct Media {
     #[serde(skip_serializing, skip_deserializing)]
     pub filter: Option<Vec<String>>,
 
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_empty_string")]
     pub custom_filter: String,
 
     #[serde(skip_serializing, skip_deserializing)]
@@ -158,6 +166,8 @@ impl PartialEq for Media {
             && self.duration == other.duration
             && self.source == other.source
             && self.category == other.category
+            && self.audio == other.audio
+            && self.custom_filter == other.custom_filter
     }
 }
 
@@ -168,6 +178,11 @@ where
     D: Deserializer<'de>,
 {
     Deserialize::deserialize(d).map(|x: Option<_>| x.unwrap_or_default())
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_empty_string(st: &String) -> bool {
+    *st == String::new()
 }
 
 /// We use the ffprobe crate, but we map the metadata to our needs.
@@ -463,12 +478,15 @@ pub fn seek_and_length(node: &Media) -> Vec<String> {
         source_cmd.append(&mut vec_strings!["-ss", node.seek])
     }
 
-    source_cmd.append(&mut vec_strings![
-        "-ignore_chapters",
-        "1",
-        "-i",
-        node.source.clone()
-    ]);
+    if file_extension(Path::new(&node.source))
+        .unwrap_or_default()
+        .to_lowercase()
+        == "mp4"
+    {
+        source_cmd.append(&mut vec_strings!["-ignore_chapters", "1"]);
+    }
+
+    source_cmd.append(&mut vec_strings!["-i", node.source.clone()]);
 
     if Path::new(&node.audio).is_file() {
         let audio_probe = MediaProbe::new(&node.audio);
