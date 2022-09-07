@@ -55,9 +55,17 @@ fn check_media(
 
     node.add_filter(config, &Arc::new(Mutex::new(vec![])));
 
+    let mut filter = node.filter.unwrap_or_default();
+
+    if filter.len() > 1 {
+        filter[1] = filter[1]
+            .replace("realtime=speed=1", "null")
+            .replace("arealtime=speed=1", "snull")
+    }
+
     enc_cmd.append(&mut node.cmd.unwrap_or_default());
-    enc_cmd.append(&mut node.filter.unwrap_or_default());
-    enc_cmd.append(&mut vec_strings!["-t", "0.15", "-f", "null", "-"]);
+    enc_cmd.append(&mut filter);
+    enc_cmd.append(&mut vec_strings!["-t", "0.1", "-f", "null", "-"]);
 
     let mut enc_proc = match Command::new("ffmpeg")
         .args(enc_cmd.clone())
@@ -112,9 +120,15 @@ fn check_media(
 pub fn validate_playlist(
     playlist: JsonPlaylist,
     is_terminated: Arc<AtomicBool>,
-    config: PlayoutConfig,
+    mut config: PlayoutConfig,
 ) {
     let date = playlist.date;
+
+    if config.text.add_text && !config.text.text_from_filename {
+        // Turn of drawtext filter with zmq, because its port is needed by the decoder instance.
+        config.text.add_text = false;
+    }
+
     let mut length = config.playlist.length_sec.unwrap();
     let mut begin = config.playlist.start_sec.unwrap();
 
