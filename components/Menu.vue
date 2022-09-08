@@ -31,7 +31,7 @@
                 <b-nav-text v-if="configGui.length > 1">
                     &nbsp;&nbsp;
                 </b-nav-text>
-                <b-nav-item to="/" @click="logout()">
+                <b-nav-item @click="logout()">
                     Logout
                 </b-nav-item>
             </b-nav>
@@ -54,6 +54,7 @@ export default {
             try {
                 this.$store.commit('auth/REMOVE_TOKEN')
                 this.$store.commit('auth/UPDATE_IS_LOGIN', false)
+                this.$router.push('/')
             } catch (e) {
                 this.formError = e.message
             }

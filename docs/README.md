@@ -6,7 +6,7 @@
 
 create `.env`file with `API_URL`, for example:
 ```
-API_URL="http://localhost:8000"
+API_URL="http://localhost:8787"
 ```
 
 ``` bash
