@@ -32,9 +32,9 @@ export default {
             return text
                 /* eslint-disable no-control-regex */
                 .replace(/\x1B\[33m(.*?)\x1B\[0m/g, '<span class="log-number">$1</span>')
-                .replace(/\[1m\x1B\[35m(.*?)\[0m\x1B\[22m/g, '<span class="log-addr">$1</span>')
-                .replace(/\[94m(.*?)\[0m/g, '<span class="log-cmd">$1</span>')
-                .replace(/\[90m(.*?)\[0m/g, '<span class="log-debug">$1</span>')
+                .replace(/\x1B\[1m\x1B\[35m(.*?)\x1B\[0m\x1B\[22m/g, '<span class="log-addr">$1</span>')
+                .replace(/\x1B\[94m(.*?)\x1B\[0m/g, '<span class="log-cmd">$1</span>')
+                .replace(/\x1B\[90m(.*?)\x1B\[0m/g, '<span class="log-debug">$1</span>')
                 .replace(/(\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}.[\d]+\])/g, '<span class="log-time">$1</span>')
                 .replace(/\[ INFO\]/g, '<span class="log-info">[ INFO]</span>')
                 .replace(/\[ WARN\]/g, '<span class="log-warning">[ WARN]</span>')
@@ -43,6 +43,7 @@ export default {
                 .replace(/\[Decoder\]/g, '<span class="log-decoder">[Decoder]</span>')
                 .replace(/\[Encoder\]/g, '<span class="log-encoder">[Encoder]</span>')
                 .replace(/\[Server\]/g, '<span class="log-server">[Server]</span>')
+                .replace(/\[Validator\]/g, '<span class="log-server">[Validator]</span>')
         }
     },
 
