@@ -647,7 +647,7 @@ pub fn include_file(config: PlayoutConfig, file_path: &Path) -> bool {
             .out
             .output_cmd
             .clone()
-            .unwrap()
+            .unwrap_or_else(|| vec![String::new()])
             .iter()
             .find(|s| s.contains(".ts"))
         {
@@ -661,7 +661,7 @@ pub fn include_file(config: PlayoutConfig, file_path: &Path) -> bool {
         if let Some(m3u8_path) = config
             .out
             .output_cmd
-            .unwrap()
+            .unwrap_or_else(|| vec![String::new()])
             .iter()
             .find(|s| s.contains(".m3u8") && !s.contains("master.m3u8"))
         {
