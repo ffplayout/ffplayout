@@ -92,7 +92,7 @@ export const actions = {
 
         const response = await this.$axios.get(`api/control/${channel}/media/current`)
 
-        if (response.data) {
+        if (response.data && response.data.result && response.data.result.played_sec) {
             const obj = response.data.result
             const progValue = obj.played_sec * 100 / obj.current_media.out
             commit('SET_PROGRESS_VALUE', progValue)
