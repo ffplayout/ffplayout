@@ -4,8 +4,9 @@ description = "24/7 playout based on rust and ffmpeg"
 license = "GPL-3.0"
 authors = ["Jonathan Baecker jonbae77@gmail.com"]
 readme = "README.md"
-version = "0.15.2"
+version = "0.16.0"
 edition = "2021"
+default-run = "ffplayout"
 
 [dependencies]
 ffplayout-lib = { path = "../lib" }

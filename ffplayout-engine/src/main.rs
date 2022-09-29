@@ -35,7 +35,7 @@ use ffplayout_lib::utils::{
 use utils::Args;
 
 #[cfg(debug_assertions)]
-use ffplayout_lib::utils::{mock_time, time_now};
+use ffplayout_lib::utils::{import::import_file, mock_time, time_now};
 
 #[derive(Serialize, Deserialize)]
 struct StatusData {
@@ -93,7 +93,7 @@ fn main() {
     #[cfg(debug_assertions)]
     fake_time(&args);
 
-    let config = get_config(args);
+    let config = get_config(args.clone());
     let config_clone = config.clone();
     let play_control = PlayerControl::new();
     let playout_stat = PlayoutStatus::new();
@@ -120,6 +120,26 @@ fn main() {
         };
 
         exit(0);
+    }
+
+    if let Some(path) = args.import {
+        if args.date.is_none() {
+            error!("Import needs date parameter!");
+
+            exit(1);
+        }
+
+        // convert text/m3u file to playlist
+        match import_file(&config, &args.date.unwrap(), None, &path) {
+            Ok(m) => {
+                info!("{m}");
+                exit(0);
+            }
+            Err(e) => {
+                error!("{e}");
+                exit(1);
+            }
+        }
     }
 
     if config.rpc_server.enable {

@@ -941,7 +941,7 @@ dependencies = [
 
 [[package]]
 name = "ffplayout"
-version = "0.15.2"
+version = "0.16.0"
 dependencies = [
  "chrono",
  "clap",
@@ -960,7 +960,7 @@ dependencies = [
 
 [[package]]
 name = "ffplayout-api"
-version = "0.6.2"
+version = "0.6.3"
 dependencies = [
  "actix-files",
  "actix-multipart",
@@ -990,7 +990,7 @@ dependencies = [
 
 [[package]]
 name = "ffplayout-lib"
-version = "0.15.2"
+version = "0.16.0"
 dependencies = [
  "chrono",
  "crossbeam-channel",

@@ -1,6 +1,6 @@
 use std::{
     ffi::OsStr,
-    fs::{self, metadata},
+    fs::{self, metadata, File},
     io::{BufRead, BufReader, Error},
     net::TcpListener,
     path::{Path, PathBuf},
@@ -26,6 +26,7 @@ pub mod config;
 pub mod controller;
 pub mod folder;
 mod generator;
+pub mod import;
 pub mod json_serializer;
 mod json_validate;
 mod logging;
@@ -245,6 +246,24 @@ pub fn fps_calc(r_frame_rate: &str, default: f64) -> f64 {
     }
 
     fps
+}
+
+pub fn json_reader(path: &PathBuf) -> Result<JsonPlaylist, Error> {
+    let f = File::options().read(true).write(false).open(&path)?;
+    let p = serde_json::from_reader(f)?;
+
+    Ok(p)
+}
+
+pub fn json_writer(path: &PathBuf, data: JsonPlaylist) -> Result<(), Error> {
+    let f = File::options()
+        .write(true)
+        .truncate(true)
+        .create(true)
+        .open(&path)?;
+    serde_json::to_writer_pretty(f, &data)?;
+
+    Ok(())
 }
 
 /// Covert JSON string to ffmpeg filter command.

@@ -31,6 +31,19 @@ pub struct Args {
     #[clap(short, long, help = "Play folder content")]
     pub folder: Option<String>,
 
+    #[clap(
+        short,
+        long,
+        help = "Target date (YYYY-MM-DD) for text/m3u to playlist import"
+    )]
+    pub date: Option<String>,
+
+    #[clap(
+        long,
+        help = "Import a given text/m3u file and create a playlist from it"
+    )]
+    pub import: Option<String>,
+
     #[clap(short, long, help = "Path from playlist")]
     pub playlist: Option<String>,
 

@@ -1,31 +1,11 @@
-use std::{
-    fs::{self, File},
-    io::Error,
-    path::PathBuf,
-};
+use std::{fs, path::PathBuf};
 
 use simplelog::*;
 
 use crate::utils::{errors::ServiceError, playout_config};
-use ffplayout_lib::utils::{generate_playlist as playlist_generator, JsonPlaylist};
-
-fn json_reader(path: &PathBuf) -> Result<JsonPlaylist, Error> {
-    let f = File::options().read(true).write(false).open(&path)?;
-    let p = serde_json::from_reader(f)?;
-
-    Ok(p)
-}
-
-fn json_writer(path: &PathBuf, data: JsonPlaylist) -> Result<(), Error> {
-    let f = File::options()
-        .write(true)
-        .truncate(true)
-        .create(true)
-        .open(&path)?;
-    serde_json::to_writer_pretty(f, &data)?;
-
-    Ok(())
-}
+use ffplayout_lib::utils::{
+    generate_playlist as playlist_generator, json_reader, json_writer, JsonPlaylist,
+};
 
 pub async fn read_playlist(id: i64, date: String) -> Result<JsonPlaylist, ServiceError> {
     let (config, _) = playout_config(&id).await?;
