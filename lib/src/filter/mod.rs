@@ -171,7 +171,7 @@ fn overlay(node: &mut Media, chain: &mut Filters, config: &PlayoutConfig) {
         && Path::new(&config.processing.logo).is_file()
         && &node.category != "advertisement"
     {
-        let mut logo_chain = v_overlay::filter_node(config, false);
+        let mut logo_chain = v_overlay::filter_node(config);
 
         if node.last_ad.unwrap_or(false) {
             logo_chain.push_str(",fade=in:st=0:d=1.0:alpha=1")
@@ -182,9 +182,6 @@ fn overlay(node: &mut Media, chain: &mut Filters, config: &PlayoutConfig) {
                 format!(",fade=out:st={}:d=1.0:alpha=1", node.out - node.seek - 1.0).as_str(),
             )
         }
-
-        logo_chain
-            .push_str(format!("[l];[v][l]{}:shortest=1", config.processing.logo_filter).as_str());
 
         chain.add_filter(&logo_chain, Video);
     }

@@ -92,9 +92,7 @@ impl ProcessControl {
             }
         }
 
-        if let Err(e) = self.wait(unit) {
-            return Err(e);
-        };
+        self.wait(unit)?;
 
         Ok(())
     }

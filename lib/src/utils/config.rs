@@ -17,6 +17,13 @@ pub const IMAGE_FORMAT: [&str; 21] = [
     "png", "psd", "ppm", "sgi", "svg", "tga", "tif", "webp",
 ];
 
+// Some well known errors can be safely ignore
+pub const FFMPEG_IGNORE_ERRORS: [&str; 3] = [
+    "Referenced QT chapter track not found",
+    "ac-tex damaged",
+    "Warning MVs not available",
+];
+
 /// Global Config
 ///
 /// This we init ones, when ffplayout is starting and use them globally in the hole program.

@@ -85,7 +85,7 @@ pub fn json_rpc_server(
             {
                 let filter = get_filter_from_json(map["message"].to_string());
 
-                // TODO: in Rust 1.64 use let_chains instead
+                // TODO: in Rust 1.65 use let_chains instead
                 if !filter.is_empty() && config.text.zmq_stream_socket.is_some() {
                     let mut clips_filter = playout_stat.chain.lock().unwrap();
                     *clips_filter = vec![filter.clone()];

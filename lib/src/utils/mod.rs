@@ -34,7 +34,9 @@ mod logging;
 #[cfg(windows)]
 mod windows;
 
-pub use config::{self as playout_config, PlayoutConfig, DUMMY_LEN, IMAGE_FORMAT};
+pub use config::{
+    self as playout_config, PlayoutConfig, DUMMY_LEN, FFMPEG_IGNORE_ERRORS, IMAGE_FORMAT,
+};
 pub use controller::{PlayerControl, PlayoutStatus, ProcessControl, ProcessUnit::*};
 pub use generator::generate_playlist;
 pub use json_serializer::{read_json, JsonPlaylist};
@@ -497,14 +499,6 @@ pub fn seek_and_length(node: &Media) -> Vec<String> {
         source_cmd.append(&mut vec_strings!["-ss", node.seek])
     }
 
-    if file_extension(Path::new(&node.source))
-        .unwrap_or_default()
-        .to_lowercase()
-        == "mp4"
-    {
-        source_cmd.append(&mut vec_strings!["-ignore_chapters", "1"]);
-    }
-
     source_cmd.append(&mut vec_strings!["-i", node.source.clone()]);
 
     if Path::new(&node.audio).is_file() {
@@ -719,7 +713,9 @@ pub fn stderr_reader(
                 "<bright black>[{suffix}]</> {}",
                 format_log_line(line, "warning")
             )
-        } else if line.contains("[error]") || line.contains("[fatal]") {
+        } else if (line.contains("[error]") || line.contains("[fatal]"))
+            && !FFMPEG_IGNORE_ERRORS.iter().any(|i| line.contains(*i))
+        {
             error!(
                 "<bright black>[{suffix}]</> {}",
                 line.replace("[error]", "").replace("[fatal]", "")
