@@ -27,15 +27,15 @@ use crate::{
 };
 
 use ffplayout_lib::utils::{
-    generate_playlist, init_logging, send_mail, validate_ffmpeg, PlayerControl, PlayoutStatus,
-    ProcessControl,
+    generate_playlist, import::import_file, init_logging, send_mail, validate_ffmpeg,
+    PlayerControl, PlayoutStatus, ProcessControl,
 };
 
 #[cfg(debug_assertions)]
 use utils::Args;
 
 #[cfg(debug_assertions)]
-use ffplayout_lib::utils::{import::import_file, mock_time, time_now};
+use ffplayout_lib::utils::{mock_time, time_now};
 
 #[derive(Serialize, Deserialize)]
 struct StatusData {
