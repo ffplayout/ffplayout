@@ -495,7 +495,7 @@ pub fn seek_and_length(node: &Media) -> Vec<String> {
     let mut source_cmd = vec![];
     let mut cut_audio = false;
 
-    if node.seek > 0.0 {
+    if node.seek > 0.5 {
         source_cmd.append(&mut vec_strings!["-ss", node.seek])
     }
 
@@ -504,7 +504,7 @@ pub fn seek_and_length(node: &Media) -> Vec<String> {
     if Path::new(&node.audio).is_file() {
         let audio_probe = MediaProbe::new(&node.audio);
 
-        if node.seek > 0.0 {
+        if node.seek > 0.5 {
             source_cmd.append(&mut vec_strings!["-ss", node.seek])
         }
 

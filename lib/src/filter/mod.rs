@@ -8,7 +8,6 @@ use simplelog::*;
 pub mod a_loudnorm;
 pub mod custom_filter;
 pub mod v_drawtext;
-pub mod v_overlay;
 
 use crate::utils::{fps_calc, get_delta, is_close, Media, MediaProbe, PlayoutConfig};
 
@@ -171,7 +170,10 @@ fn overlay(node: &mut Media, chain: &mut Filters, config: &PlayoutConfig) {
         && Path::new(&config.processing.logo).is_file()
         && &node.category != "advertisement"
     {
-        let mut logo_chain = v_overlay::filter_node(config);
+        let mut logo_chain = format!(
+            "null[v];movie={}:loop=0,setpts=N/(FRAME_RATE*TB),format=rgba,colorchannelmixer=aa={}[l];[v][l]{}:shortest=1",
+            config.processing.logo, config.processing.logo_opacity, config.processing.logo_filter
+        );
 
         if node.last_ad.unwrap_or(false) {
             logo_chain.push_str(",fade=in:st=0:d=1.0:alpha=1")
@@ -287,20 +289,9 @@ fn aspect_calc(aspect_string: &Option<String>, config: &PlayoutConfig) -> f64 {
 }
 
 /// This realtime filter is important for HLS output to stay in sync.
-fn realtime_filter(
-    node: &mut Media,
-    chain: &mut Filters,
-    config: &PlayoutConfig,
-    codec_type: FilterType,
-) {
+fn realtime_filter(node: &mut Media, chain: &mut Filters, config: &PlayoutConfig) {
     if config.general.generate.is_none() && &config.out.mode.to_lowercase() == "hls" {
-        let mut t = "";
-
-        if codec_type == Audio {
-            t = "a"
-        }
-
-        let mut speed_filter = format!("{t}realtime=speed=1");
+        let mut speed_filter = "realtime=speed=1".to_string();
 
         if let Some(begin) = &node.begin {
             let (delta, _) = get_delta(config, begin);
@@ -310,12 +301,12 @@ fn realtime_filter(
                 let speed = duration / (duration + delta);
 
                 if speed > 0.0 && speed < 1.1 && delta < config.general.stop_threshold {
-                    speed_filter = format!("{t}realtime=speed={speed}");
+                    speed_filter = format!("realtime=speed={speed}");
                 }
             }
         }
 
-        chain.add_filter(&speed_filter, codec_type);
+        chain.add_filter(&speed_filter, Video);
     }
 }
 
@@ -371,12 +362,11 @@ pub fn filter_chains(
     add_text(node, &mut filters, config, filter_chain);
     fade(node, &mut filters, Video);
     overlay(node, &mut filters, config);
-    realtime_filter(node, &mut filters, config, Video);
+    realtime_filter(node, &mut filters, config);
 
     add_loudnorm(&mut filters, config);
     fade(node, &mut filters, Audio);
     audio_volume(&mut filters, config);
-    realtime_filter(node, &mut filters, config, Audio);
 
     custom(&config.processing.custom_filter, &mut filters);
     custom(&node.custom_filter, &mut filters);
