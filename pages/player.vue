@@ -308,9 +308,6 @@
                 </pane>
             </splitpanes>
             <b-button-group class="media-button">
-                <b-button v-b-tooltip.hover title="Reset Playlist" variant="primary" @click="resetPlaylist()">
-                    <b-icon-arrow-counterclockwise />
-                </b-button>
                 <b-button v-b-tooltip.hover title="Copy Playlist" variant="primary" @click="showCopyModal()">
                     <b-icon-files />
                 </b-button>
@@ -320,8 +317,14 @@
                 <b-button v-b-tooltip.hover title="Add (remote) Source to Playlist" variant="primary" @click="showAddSource()">
                     <b-icon-file-earmark-plus />
                 </b-button>
+                <b-button v-b-tooltip.hover title="Import text/m3u file" variant="primary" @click="showImport()">
+                    <b-icon-file-text />
+                </b-button>
                 <b-button v-b-tooltip.hover title="Generate a randomized Playlist" variant="primary" @click="generatePlaylist(listDate)">
                     <b-icon-sort-down-alt />
+                </b-button>
+                <b-button v-b-tooltip.hover title="Reset Playlist" variant="primary" @click="resetPlaylist()">
+                    <b-icon-arrow-counterclockwise />
                 </b-button>
                 <b-button v-b-tooltip.hover title="Save Playlist" variant="primary" @click="savePlaylist(listDate)">
                     <b-icon-download />
@@ -340,6 +343,32 @@
             hide-footer
         >
             <video-player v-if="previewOptions" reference="previewPlayer" :options="previewOptions" />
+        </b-modal>
+        <b-modal
+            id="import-modal"
+            ref="import-modal"
+            centered
+            title="Import Playlist"
+            hide-footer
+            no-close-on-backdrop
+        >
+            <b-form @submit="onSubmitImport" @reset="onResetImport">
+                <b-form-file
+                    v-model="textFile"
+                    :state="Boolean(textFile)"
+                    placeholder="Choose a file or drop it here..."
+                    drop-placeholder="Drop file here..."
+                    @reset="onResetImport"
+                />
+                <div class="media-button">
+                    <b-button type="submit" variant="primary">
+                        Import
+                    </b-button>
+                    <b-button type="reset" variant="primary">
+                        Cancel
+                    </b-button>
+                </div>
+            </b-form>
         </b-modal>
         <b-modal
             id="copy-modal"
@@ -466,6 +495,7 @@ export default {
             previewComp: null,
             previewSource: '',
             editId: undefined,
+            textFile: null,
             newSource: {
                 begin: 0,
                 in: 0,
@@ -679,6 +709,46 @@ export default {
 
         async resetPlaylist () {
             await this.$store.dispatch('playlist/getPlaylist', { date: this.listDate })
+        },
+
+        showImport () {
+            this.$root.$emit('bv::show::modal', 'import-modal')
+        },
+
+        onResetImport (evt) {
+            evt.preventDefault()
+            this.textFile = null
+            this.inputPlaceholder = 'Choose files or drop them here...'
+
+            this.$root.$emit('bv::hide::modal', 'import-modal')
+        },
+
+        async onSubmitImport (evt) {
+            evt.preventDefault()
+
+            if (this.textFile === null) {
+                this.$root.$emit('bv::hide::modal', 'import-modal')
+                return
+            }
+
+            const formData = new FormData()
+            formData.append(this.textFile.name, this.textFile)
+
+            const config = {
+                headers: { Authorization: 'Bearer ' + this.$store.state.auth.jwtToken }
+            }
+
+            await this.$axios.put(
+                `api/file/${this.configGui[this.configID].id}/import/?file=${this.textFile.name}&date=${this.listDate}`,
+                formData,
+                config
+            )
+                .catch(err => console.log(err))
+
+            this.$root.$emit('bv::hide::modal', 'import-modal')
+            this.textFile = null
+
+            await this.getPlaylist()
         },
 
         loopClips () {
