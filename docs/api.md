@@ -324,3 +324,14 @@ curl -X POST http://127.0.0.1:8787/api/file/1/remove/ -H 'Content-Type: applicat
 curl -X POST http://127.0.0.1:8787/api/file/1/upload/ -H 'Authorization: <TOKEN>'
 -F "file=@file.mp4"
 ```
+
+**Import playlist**
+
+Import text/m3u file and convert it to a playlist
+lines with leading "#" will be ignore
+
+```BASH
+curl -X POST http://127.0.0.1:8787/api/file/1/import/ -H 'Authorization: <TOKEN>'
+-F "file=@list.m3u"
+```
+
