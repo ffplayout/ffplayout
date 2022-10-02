@@ -90,6 +90,7 @@ fn fake_time(args: &Args) {
 fn main() {
     let args = get_args();
 
+    // use fake time function only in debugging mode
     #[cfg(debug_assertions)]
     fake_time(&args);
 

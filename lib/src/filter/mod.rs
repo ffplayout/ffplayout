@@ -364,6 +364,10 @@ pub fn filter_chains(
     overlay(node, &mut filters, config);
     realtime_filter(node, &mut filters, config);
 
+    // add at least anull filter, for correct filter construction,
+    // is important for split filter in HLS mode
+    filters.add_filter("anull", Audio);
+
     add_loudnorm(&mut filters, config);
     fade(node, &mut filters, Audio);
     audio_volume(&mut filters, config);
