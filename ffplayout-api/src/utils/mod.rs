@@ -12,22 +12,17 @@ use rpassword::read_password;
 use simplelog::*;
 
 pub mod args_parse;
-pub mod auth;
 pub mod channels;
 pub mod control;
 pub mod errors;
 pub mod files;
-pub mod handles;
-pub mod models;
 pub mod playlist;
-pub mod routes;
 
-use crate::utils::{
-    args_parse::Args,
-    errors::ServiceError,
-    handles::{db_add_user, db_get_channel, db_global, db_init},
+use crate::db::{
+    handles::{db_init, insert_user, select_channel, select_global},
     models::{Channel, User},
 };
+use crate::utils::{args_parse::Args, errors::ServiceError};
 use ffplayout_lib::utils::PlayoutConfig;
 
 #[derive(Clone, Eq, PartialEq)]
@@ -54,7 +49,7 @@ pub struct GlobalSettings {
 
 impl GlobalSettings {
     async fn new() -> Self {
-        let global_settings = db_global();
+        let global_settings = select_global();
 
         match global_settings.await {
             Ok(g) => g,
@@ -165,7 +160,7 @@ pub async fn run_args(mut args: Args) -> Result<(), i32> {
             token: None,
         };
 
-        if let Err(e) = db_add_user(user).await {
+        if let Err(e) = insert_user(user).await {
             error!("{e}");
             return Err(1);
         };
@@ -186,7 +181,7 @@ pub fn read_playout_config(path: &str) -> Result<PlayoutConfig, Box<dyn Error>> 
 }
 
 pub async fn playout_config(channel_id: &i64) -> Result<(PlayoutConfig, Channel), ServiceError> {
-    if let Ok(channel) = db_get_channel(channel_id).await {
+    if let Ok(channel) = select_channel(channel_id).await {
         if let Ok(config) = read_playout_config(&channel.config_path.clone()) {
             return Ok((config, channel));
         }
@@ -198,7 +193,7 @@ pub async fn playout_config(channel_id: &i64) -> Result<(PlayoutConfig, Channel)
 }
 
 pub async fn read_log_file(channel_id: &i64, date: &str) -> Result<String, ServiceError> {
-    if let Ok(channel) = db_get_channel(channel_id).await {
+    if let Ok(channel) = select_channel(channel_id).await {
         let mut date_str = "".to_string();
 
         if !date.is_empty() {

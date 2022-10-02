@@ -47,9 +47,9 @@ pub struct VideoFile {
 ///
 /// This function takes care, that it is not possible to break out from root_path.
 /// It also gives alway a relative path back.
-fn norm_abs_path(root_path: &String, input_path: &String) -> (PathBuf, String, String) {
-    let mut path = PathBuf::from(root_path.clone());
-    let path_relative = RelativePath::new(&root_path)
+fn norm_abs_path(root_path: &str, input_path: &str) -> (PathBuf, String, String) {
+    let mut path = PathBuf::from(root_path);
+    let path_relative = RelativePath::new(root_path)
         .normalize()
         .to_string()
         .replace("../", "");
@@ -57,7 +57,11 @@ fn norm_abs_path(root_path: &String, input_path: &String) -> (PathBuf, String, S
         .normalize()
         .to_string()
         .replace("../", "");
-    let path_suffix = path.file_name().unwrap().to_string_lossy().to_string();
+    let path_suffix = path
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
 
     if input_path.starts_with(root_path) || source_relative.starts_with(&path_relative) {
         source_relative = source_relative
@@ -225,7 +229,7 @@ pub async fn rename_file(id: i64, move_object: &MoveObject) -> Result<MoveObject
     Err(ServiceError::InternalServerError)
 }
 
-pub async fn remove_file_or_folder(id: i64, source_path: &String) -> Result<(), ServiceError> {
+pub async fn remove_file_or_folder(id: i64, source_path: &str) -> Result<(), ServiceError> {
     let (config, _) = playout_config(&id).await?;
     let (source, _, _) = norm_abs_path(&config.storage.path, source_path);
 
@@ -258,7 +262,7 @@ pub async fn remove_file_or_folder(id: i64, source_path: &String) -> Result<(), 
     Err(ServiceError::InternalServerError)
 }
 
-async fn valid_path(id: i64, path: &String) -> Result<PathBuf, ServiceError> {
+async fn valid_path(id: i64, path: &str) -> Result<PathBuf, ServiceError> {
     let (config, _) = playout_config(&id).await?;
     let (test_path, _, _) = norm_abs_path(&config.storage.path, path);
 
@@ -272,7 +276,8 @@ async fn valid_path(id: i64, path: &String) -> Result<PathBuf, ServiceError> {
 pub async fn upload(
     id: i64,
     mut payload: Multipart,
-    path: &String,
+    path: &str,
+    abs_path: bool,
 ) -> Result<HttpResponse, ServiceError> {
     while let Some(mut field) = payload.try_next().await? {
         let content_disposition = field.content_disposition();
@@ -286,8 +291,14 @@ pub async fn upload(
             .get_filename()
             .map_or_else(|| rand_string.to_string(), sanitize_filename::sanitize);
 
-        let target_path = valid_path(id, path).await?;
-        let filepath = target_path.join(filename);
+        let filepath;
+
+        if abs_path {
+            filepath = PathBuf::from(path);
+        } else {
+            let target_path = valid_path(id, path).await?;
+            filepath = target_path.join(filename);
+        }
 
         if filepath.is_file() {
             return Err(ServiceError::BadRequest("Target already exists!".into()));

@@ -6,7 +6,8 @@ use reqwest::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::utils::{errors::ServiceError, handles::db_get_channel, playout_config};
+use crate::db::handles::select_channel;
+use crate::utils::{errors::ServiceError, playout_config};
 use ffplayout_lib::vec_strings;
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -56,7 +57,7 @@ struct SystemD {
 
 impl SystemD {
     async fn new(id: i64) -> Result<Self, ServiceError> {
-        let channel = db_get_channel(&id).await?;
+        let channel = select_channel(&id).await?;
 
         Ok(Self {
             service: channel.service,
