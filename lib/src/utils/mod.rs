@@ -574,8 +574,8 @@ pub fn prepare_output_cmd(
         for (i, p) in params.iter().enumerate() {
             let mut param = p.clone();
 
-            param = param.replace("[0:v]", "[vout1]");
-            param = param.replace("[0:a]", "[aout1]");
+            param = param.replace("[0:v]", "[vout0]");
+            param = param.replace("[0:a]", "[aout0]");
 
             if param != "-filter_complex" {
                 output_params.push(param.clone());
@@ -604,8 +604,8 @@ pub fn prepare_output_cmd(
         }
 
         if output_count > 1 && mode == "hls" {
-            filter[1].push_str(format!(";[vout1]split={output_count}{output_v_map}").as_str());
-            filter[1].push_str(format!(";[aout1]asplit={output_count}{output_a_map}").as_str());
+            filter[1].push_str(format!(";[vout0]split={output_count}{output_v_map}").as_str());
+            filter[1].push_str(format!(";[aout0]asplit={output_count}{output_a_map}").as_str());
             filter.drain(2..);
             cmd.append(&mut filter);
             cmd.append(&mut vec_strings!["-map", "[v_out1]", "-map", "[a_out1]"]);
