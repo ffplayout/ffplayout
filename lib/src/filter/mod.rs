@@ -1,4 +1,5 @@
 use std::{
+    fmt,
     path::Path,
     sync::{Arc, Mutex},
 };
@@ -13,10 +14,19 @@ pub mod v_drawtext;
 use self::custom_filter::custom_filter;
 use crate::utils::{fps_calc, get_delta, is_close, Media, MediaProbe, PlayoutConfig};
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Debug, Copy, PartialEq)]
 enum FilterType {
     Audio,
     Video,
+}
+
+impl fmt::Display for FilterType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            FilterType::Audio => write!(f, "a"),
+            FilterType::Video => write!(f, "v"),
+        }
+    }
 }
 
 use FilterType::*;
@@ -25,13 +35,13 @@ use FilterType::*;
 struct Filters {
     chain: String,
     map: Vec<String>,
-    typ: String,
+    typ: FilterType,
     pos: i32,
     last: i32,
 }
 
 impl Filters {
-    pub fn new(typ: String, pos: i32) -> Self {
+    fn new(typ: FilterType, pos: i32) -> Self {
         Filters {
             chain: String::new(),
             map: vec![],
@@ -41,7 +51,7 @@ impl Filters {
         }
     }
 
-    pub fn add_filter(&mut self, filter: &str, track_nr: i32) {
+    fn add_filter(&mut self, filter: &str, track_nr: i32) {
         if self.last != track_nr {
             // start new filter chain
             let mut selector = String::new();
@@ -53,23 +63,26 @@ impl Filters {
 
             self.chain.push_str(selector.as_str());
 
-            if !filter.is_empty() {
-                if filter.starts_with("aevalsrc") {
-                    self.chain.push_str(format!("{sep}{filter}").as_str());
-                } else {
-                    self.chain.push_str(
-                        format!("{sep}[{}:{}:{track_nr}]{filter}", self.pos, self.typ).as_str(),
-                    );
-                }
-
-                self.map.push(format!("[{}out{track_nr}]", self.typ));
-                self.last = track_nr;
+            if filter.starts_with("aevalsrc") {
+                self.chain.push_str(format!("{sep}{filter}").as_str());
+            } else {
+                self.chain.push_str(
+                    format!("{sep}[{}:{}:{track_nr}]{filter}", self.pos, self.typ).as_str(),
+                );
             }
+
+            self.map.push(format!("[{}out{track_nr}]", self.typ));
+            self.last = track_nr;
         } else if filter.starts_with(';') || filter.starts_with('[') {
             self.chain.push_str(filter);
         } else {
             self.chain.push_str(format!(",{filter}").as_str())
         }
+    }
+
+    fn close(&mut self) {
+        self.chain
+            .push_str(format!("[{}out{}]", self.typ, self.last).as_str());
     }
 }
 
@@ -144,10 +157,10 @@ fn scale(
     }
 }
 
-fn fade(node: &mut Media, chain: &mut Filters, codec_type: FilterType, nr: i32) {
+fn fade(node: &mut Media, chain: &mut Filters, nr: i32) {
     let mut t = "";
 
-    if codec_type == Audio {
+    if chain.typ == Audio {
         t = "a"
     }
 
@@ -310,8 +323,8 @@ pub fn filter_chains(
     node: &mut Media,
     filter_chain: &Arc<Mutex<Vec<String>>>,
 ) -> Vec<String> {
-    let mut a_filters = Filters::new("a".into(), 0);
-    let mut v_filters = Filters::new("v".into(), 0);
+    let mut a_filters = Filters::new(Audio, 0);
+    let mut v_filters = Filters::new(Video, 0);
 
     if let Some(probe) = node.probe.as_ref() {
         if Path::new(&node.audio).is_file() {
@@ -341,7 +354,7 @@ pub fn filter_chains(
     }
 
     add_text(node, &mut v_filters, config, filter_chain);
-    fade(node, &mut v_filters, Video, 0);
+    fade(node, &mut v_filters, 0);
     overlay(node, &mut v_filters, config);
     realtime(node, &mut v_filters, config);
 
@@ -371,26 +384,19 @@ pub fn filter_chains(
         a_filters.add_filter("anull", i);
 
         add_loudnorm(&mut a_filters, config, i);
-        fade(node, &mut a_filters, Audio, i);
+        fade(node, &mut a_filters, i);
         audio_volume(&mut a_filters, config, i);
 
         custom(&proc_af, &mut v_filters, i);
         custom(&list_af, &mut v_filters, i);
     }
 
-    // close filters
-    a_filters.add_filter("", 999);
-    v_filters.add_filter("", 999);
+    // close filters to add final output selector
+    a_filters.close();
+    v_filters.close();
 
     let mut filter_cmd = vec![];
     let mut filter_str: String = String::new();
-    let mut filter_map: Vec<String> = vec![];
-
-    v_filters.map.append(&mut a_filters.map);
-
-    for map in &v_filters.map {
-        filter_map.append(&mut vec!["-map".to_string(), map.clone()]);
-    }
 
     filter_str.push_str(&v_filters.chain);
 
@@ -404,7 +410,13 @@ pub fn filter_chains(
         filter_cmd.push(filter_str);
     }
 
-    filter_cmd.append(&mut filter_map);
+    for map in &v_filters.map {
+        filter_cmd.append(&mut vec!["-map".to_string(), map.clone()]);
+    }
+
+    for map in &a_filters.map {
+        filter_cmd.append(&mut vec!["-map".to_string(), map.clone()]);
+    }
 
     filter_cmd
 }
