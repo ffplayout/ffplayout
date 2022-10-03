@@ -99,6 +99,8 @@ pub struct Processing {
     pub logo_scale: String,
     pub logo_opacity: f32,
     pub logo_filter: String,
+    #[serde(default)]
+    pub audio_tracks: i32,
     pub add_loudnorm: bool,
     pub loudnorm_ingest: bool,
     pub loud_i: f32,
@@ -232,6 +234,10 @@ impl PlayoutConfig {
 
         if config.processing.add_logo && !Path::new(&config.processing.logo).is_file() {
             config.processing.add_logo = false;
+        }
+
+        if config.processing.audio_tracks < 1 {
+            config.processing.audio_tracks = 1
         }
 
         // We set the decoder settings here, so we only define them ones.

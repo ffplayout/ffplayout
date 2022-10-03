@@ -535,18 +535,18 @@ pub fn gen_dummy(config: &PlayoutConfig, duration: f64) -> (String, Vec<String>)
         "color=c={color}:s={}x{}:d={duration}",
         config.processing.width, config.processing.height
     );
-    let cmd: Vec<String> = vec![
-        "-f".to_string(),
-        "lavfi".to_string(),
-        "-i".to_string(),
+    let cmd: Vec<String> = vec_strings![
+        "-f",
+        "lavfi",
+        "-i",
         format!(
             "{source}:r={},format=pix_fmts=yuv420p",
             config.processing.fps
         ),
-        "-f".to_string(),
-        "lavfi".to_string(),
-        "-i".to_string(),
-        format!("anoisesrc=d={duration}:c=pink:r=48000:a=0.3"),
+        "-f",
+        "lavfi",
+        "-i",
+        format!("anoisesrc=d={duration}:c=pink:r=48000:a=0.3")
     ];
 
     (source, cmd)
