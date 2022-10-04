@@ -589,33 +589,33 @@ pub fn prepare_output_cmd(
                 output_count += 1;
                 let mut a_map = "0:a".to_string();
                 let v_map = format!("[v_out{output_count}]");
-                output_v_map.push_str(v_map.as_str());
+                output_v_map.push_str(&v_map);
 
                 if mode == "hls" {
                     a_map = format!("[a_out{output_count}]");
                 }
 
-                output_a_map.push_str(a_map.as_str());
+                output_a_map.push_str(&a_map);
 
-                let mut map = vec!["-map".to_string(), v_map, "-map".to_string(), a_map];
+                let mut map = vec_strings!["-map", v_map, "-map", a_map];
 
                 output_params.append(&mut map);
             }
         }
 
         if output_count > 1 && mode == "hls" {
-            filter[1].push_str(format!(";[vout0]split={output_count}{output_v_map}").as_str());
-            filter[1].push_str(format!(";[aout0]asplit={output_count}{output_a_map}").as_str());
+            filter[1].push_str(&format!(";[vout0]split={output_count}{output_v_map}"));
+            filter[1].push_str(&format!(";[aout0]asplit={output_count}{output_a_map}"));
             filter.drain(2..);
             cmd.append(&mut filter);
             cmd.append(&mut vec_strings!["-map", "[v_out1]", "-map", "[a_out1]"]);
         } else if output_count == 1 && mode == "hls" && output_params[0].contains("split") {
             let out_filter = output_params.remove(0);
-            filter[1].push_str(format!(";{out_filter}").as_str());
+            filter[1].push_str(&format!(";{out_filter}"));
             filter.drain(2..);
             cmd.append(&mut filter);
         } else if output_count > 1 && mode == "stream" {
-            filter[1].push_str(format!(",split={output_count}{output_v_map}").as_str());
+            filter[1].push_str(&format!(",split={output_count}{output_v_map}"));
             cmd.append(&mut filter);
             cmd.append(&mut vec_strings!["-map", "[v_out1]", "-map", "0:a"]);
         } else {
