@@ -143,7 +143,7 @@ pub async fn select_global() -> Result<GlobalSettings, sqlx::Error> {
     Ok(result)
 }
 
-pub async fn select_channel(id: &i64) -> Result<Channel, sqlx::Error> {
+pub async fn select_channel(id: &i32) -> Result<Channel, sqlx::Error> {
     let conn = connection().await?;
     let query = "SELECT * FROM channels WHERE id = $1";
     let mut result: Channel = sqlx::query_as(query).bind(id).fetch_one(&conn).await?;
@@ -167,7 +167,7 @@ pub async fn select_all_channels() -> Result<Vec<Channel>, sqlx::Error> {
     Ok(results)
 }
 
-pub async fn update_channel(id: i64, channel: Channel) -> Result<SqliteQueryResult, sqlx::Error> {
+pub async fn update_channel(id: i32, channel: Channel) -> Result<SqliteQueryResult, sqlx::Error> {
     let conn = connection().await?;
 
     let query = "UPDATE channels SET name = $2, preview_url = $3, config_path = $4, extra_extensions = $5 WHERE id = $1";
@@ -205,7 +205,7 @@ pub async fn insert_channel(channel: Channel) -> Result<Channel, sqlx::Error> {
     Ok(new_channel)
 }
 
-pub async fn delete_channel(id: &i64) -> Result<SqliteQueryResult, sqlx::Error> {
+pub async fn delete_channel(id: &i32) -> Result<SqliteQueryResult, sqlx::Error> {
     let conn = connection().await?;
 
     let query = "DELETE FROM channels WHERE id = $1";
@@ -215,7 +215,7 @@ pub async fn delete_channel(id: &i64) -> Result<SqliteQueryResult, sqlx::Error> 
     Ok(result)
 }
 
-pub async fn select_role(id: &i64) -> Result<String, sqlx::Error> {
+pub async fn select_role(id: &i32) -> Result<String, sqlx::Error> {
     let conn = connection().await?;
     let query = "SELECT name FROM roles WHERE id = $1";
     let result: Role = sqlx::query_as(query).bind(id).fetch_one(&conn).await?;
@@ -264,7 +264,7 @@ pub async fn insert_user(user: User) -> Result<SqliteQueryResult, sqlx::Error> {
     Ok(result)
 }
 
-pub async fn update_user(id: i64, fields: String) -> Result<SqliteQueryResult, sqlx::Error> {
+pub async fn update_user(id: i32, fields: String) -> Result<SqliteQueryResult, sqlx::Error> {
     let conn = connection().await?;
     let query = format!("UPDATE user SET {fields} WHERE id = $1");
     let result: SqliteQueryResult = sqlx::query(&query).bind(id).execute(&conn).await?;
@@ -273,7 +273,7 @@ pub async fn update_user(id: i64, fields: String) -> Result<SqliteQueryResult, s
     Ok(result)
 }
 
-pub async fn select_presets(id: i64) -> Result<Vec<TextPreset>, sqlx::Error> {
+pub async fn select_presets(id: i32) -> Result<Vec<TextPreset>, sqlx::Error> {
     let conn = connection().await?;
     let query = "SELECT * FROM presets WHERE channel_id = $1";
     let result: Vec<TextPreset> = sqlx::query_as(query).bind(id).fetch_all(&conn).await?;
@@ -282,7 +282,7 @@ pub async fn select_presets(id: i64) -> Result<Vec<TextPreset>, sqlx::Error> {
     Ok(result)
 }
 
-pub async fn update_preset(id: &i64, preset: TextPreset) -> Result<SqliteQueryResult, sqlx::Error> {
+pub async fn update_preset(id: &i32, preset: TextPreset) -> Result<SqliteQueryResult, sqlx::Error> {
     let conn = connection().await?;
     let query =
         "UPDATE presets SET name = $1, text = $2, x = $3, y = $4, fontsize = $5, line_spacing = $6,
@@ -332,7 +332,7 @@ pub async fn insert_preset(preset: TextPreset) -> Result<SqliteQueryResult, sqlx
     Ok(result)
 }
 
-pub async fn delete_preset(id: &i64) -> Result<SqliteQueryResult, sqlx::Error> {
+pub async fn delete_preset(id: &i32) -> Result<SqliteQueryResult, sqlx::Error> {
     let conn = connection().await?;
     let query = "DELETE FROM presets WHERE id = $1;";
     let result: SqliteQueryResult = sqlx::query(query).bind(id).execute(&conn).await?;

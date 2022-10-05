@@ -7,7 +7,7 @@ use ffplayout_lib::utils::{
     generate_playlist as playlist_generator, json_reader, json_writer, JsonPlaylist,
 };
 
-pub async fn read_playlist(id: i64, date: String) -> Result<JsonPlaylist, ServiceError> {
+pub async fn read_playlist(id: i32, date: String) -> Result<JsonPlaylist, ServiceError> {
     let (config, _) = playout_config(&id).await?;
     let mut playlist_path = PathBuf::from(&config.playlist.path);
     let d: Vec<&str> = date.split('-').collect();
@@ -23,7 +23,7 @@ pub async fn read_playlist(id: i64, date: String) -> Result<JsonPlaylist, Servic
     }
 }
 
-pub async fn write_playlist(id: i64, json_data: JsonPlaylist) -> Result<String, ServiceError> {
+pub async fn write_playlist(id: i32, json_data: JsonPlaylist) -> Result<String, ServiceError> {
     let (config, _) = playout_config(&id).await?;
     let date = json_data.date.clone();
     let mut playlist_path = PathBuf::from(&config.playlist.path);
@@ -68,7 +68,7 @@ pub async fn write_playlist(id: i64, json_data: JsonPlaylist) -> Result<String, 
     Err(ServiceError::InternalServerError)
 }
 
-pub async fn generate_playlist(id: i64, date: String) -> Result<JsonPlaylist, ServiceError> {
+pub async fn generate_playlist(id: i32, date: String) -> Result<JsonPlaylist, ServiceError> {
     let (mut config, channel) = playout_config(&id).await?;
     config.general.generate = Some(vec![date.clone()]);
 
@@ -89,7 +89,7 @@ pub async fn generate_playlist(id: i64, date: String) -> Result<JsonPlaylist, Se
     }
 }
 
-pub async fn delete_playlist(id: i64, date: &str) -> Result<(), ServiceError> {
+pub async fn delete_playlist(id: i32, date: &str) -> Result<(), ServiceError> {
     let (config, _) = playout_config(&id).await?;
     let mut playlist_path = PathBuf::from(&config.playlist.path);
     let d: Vec<&str> = date.split('-').collect();

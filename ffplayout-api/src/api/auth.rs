@@ -11,14 +11,14 @@ const JWT_EXPIRATION_DAYS: i64 = 7;
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Claims {
-    pub id: i64,
+    pub id: i32,
     pub username: String,
     pub role: String,
     exp: i64,
 }
 
 impl Claims {
-    pub fn new(id: i64, username: String, role: String) -> Self {
+    pub fn new(id: i32, username: String, role: String) -> Self {
         Self {
             id,
             username,

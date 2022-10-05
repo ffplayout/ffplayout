@@ -180,7 +180,7 @@ pub fn read_playout_config(path: &str) -> Result<PlayoutConfig, Box<dyn Error>> 
     Ok(config)
 }
 
-pub async fn playout_config(channel_id: &i64) -> Result<(PlayoutConfig, Channel), ServiceError> {
+pub async fn playout_config(channel_id: &i32) -> Result<(PlayoutConfig, Channel), ServiceError> {
     if let Ok(channel) = select_channel(channel_id).await {
         if let Ok(config) = read_playout_config(&channel.config_path.clone()) {
             return Ok((config, channel));
@@ -192,7 +192,7 @@ pub async fn playout_config(channel_id: &i64) -> Result<(PlayoutConfig, Channel)
     ))
 }
 
-pub async fn read_log_file(channel_id: &i64, date: &str) -> Result<String, ServiceError> {
+pub async fn read_log_file(channel_id: &i32, date: &str) -> Result<String, ServiceError> {
     if let Ok(channel) = select_channel(channel_id).await {
         let mut date_str = "".to_string();
 

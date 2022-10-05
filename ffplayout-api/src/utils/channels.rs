@@ -26,7 +26,7 @@ pub async fn create_channel(target_channel: Channel) -> Result<Channel, ServiceE
     Ok(new_channel)
 }
 
-pub async fn delete_channel(id: i64) -> Result<(), ServiceError> {
+pub async fn delete_channel(id: i32) -> Result<(), ServiceError> {
     let channel = handles::select_channel(&id).await?;
     control_service(channel.id, "stop").await?;
     control_service(channel.id, "disable").await?;

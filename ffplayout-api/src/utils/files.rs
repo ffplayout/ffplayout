@@ -87,7 +87,7 @@ fn norm_abs_path(root_path: &str, input_path: &str) -> (PathBuf, String, String)
 /// Take input path and give file and folder list from it back.
 /// Input should be a relative path segment, but when it is a absolut path, the norm_abs_path function
 /// will take care, that user can not break out from given storage path in config.
-pub async fn browser(id: i64, path_obj: &PathObject) -> Result<PathObject, ServiceError> {
+pub async fn browser(id: i32, path_obj: &PathObject) -> Result<PathObject, ServiceError> {
     let (config, _) = playout_config(&id).await?;
     let extensions = config.storage.extensions;
     let (path, parent, path_component) = norm_abs_path(&config.storage.path, &path_obj.source);
@@ -143,7 +143,7 @@ pub async fn browser(id: i64, path_obj: &PathObject) -> Result<PathObject, Servi
 }
 
 pub async fn create_directory(
-    id: i64,
+    id: i32,
     path_obj: &PathObject,
 ) -> Result<HttpResponse, ServiceError> {
     let (config, _) = playout_config(&id).await?;
@@ -198,7 +198,7 @@ fn rename(source: &PathBuf, target: &PathBuf) -> Result<MoveObject, ServiceError
     }
 }
 
-pub async fn rename_file(id: i64, move_object: &MoveObject) -> Result<MoveObject, ServiceError> {
+pub async fn rename_file(id: i32, move_object: &MoveObject) -> Result<MoveObject, ServiceError> {
     let (config, _) = playout_config(&id).await?;
     let (source_path, _, _) = norm_abs_path(&config.storage.path, &move_object.source);
     let (mut target_path, _, _) = norm_abs_path(&config.storage.path, &move_object.target);
@@ -229,7 +229,7 @@ pub async fn rename_file(id: i64, move_object: &MoveObject) -> Result<MoveObject
     Err(ServiceError::InternalServerError)
 }
 
-pub async fn remove_file_or_folder(id: i64, source_path: &str) -> Result<(), ServiceError> {
+pub async fn remove_file_or_folder(id: i32, source_path: &str) -> Result<(), ServiceError> {
     let (config, _) = playout_config(&id).await?;
     let (source, _, _) = norm_abs_path(&config.storage.path, source_path);
 
@@ -262,7 +262,7 @@ pub async fn remove_file_or_folder(id: i64, source_path: &str) -> Result<(), Ser
     Err(ServiceError::InternalServerError)
 }
 
-async fn valid_path(id: i64, path: &str) -> Result<PathBuf, ServiceError> {
+async fn valid_path(id: i32, path: &str) -> Result<PathBuf, ServiceError> {
     let (config, _) = playout_config(&id).await?;
     let (test_path, _, _) = norm_abs_path(&config.storage.path, path);
 
@@ -274,7 +274,7 @@ async fn valid_path(id: i64, path: &str) -> Result<PathBuf, ServiceError> {
 }
 
 pub async fn upload(
-    id: i64,
+    id: i32,
     mut payload: Multipart,
     path: &str,
     abs_path: bool,

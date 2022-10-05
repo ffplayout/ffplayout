@@ -301,10 +301,10 @@ pub fn write_status(config: &PlayoutConfig, date: &str, shift: f64) {
     };
 }
 
-// pub fn get_timestamp() -> i64 {
+// pub fn get_timestamp() -> i32 {
 //     let local: DateTime<Local> = time_now();
 
-//     local.timestamp_millis() as i64
+//     local.timestamp_millis() as i32
 // }
 
 /// Get current time in seconds.
