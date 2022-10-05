@@ -107,6 +107,10 @@ fn check_media(
 
     error_list.clear();
 
+    if let Err(e) = enc_proc.wait() {
+        error!("Validation process: {e:?}");
+    }
+
     Ok(())
 }
 
