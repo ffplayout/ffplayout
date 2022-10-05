@@ -30,7 +30,7 @@ use simplelog::*;
 use crate::input::{ingest::log_line, source_generator};
 use ffplayout_lib::filter::filter_chains;
 use ffplayout_lib::utils::{
-    prepare_output_cmd, sec_to_time, stderr_reader, test_tcp_port, Decoder, Ingest, Media,
+    prepare_output_cmd, sec_to_time, stderr_reader, test_tcp_port, Encoder, Ingest, Media,
     PlayerControl, PlayoutConfig, PlayoutStatus, ProcessControl,
 };
 use ffplayout_lib::vec_strings;
@@ -124,7 +124,7 @@ fn ingest_to_hls_server(
 
                 info!("Switch from {} to live ingest", config.processing.mode);
 
-                if let Err(e) = proc_control.kill(Decoder) {
+                if let Err(e) = proc_control.kill(Encoder) {
                     error!("{e}");
                 }
             }
@@ -218,20 +218,20 @@ pub fn write_hls(
             .spawn()
         {
             Err(e) => {
-                error!("couldn't spawn decoder process: {e}");
-                panic!("couldn't spawn decoder process: {e}")
+                error!("couldn't spawn encoder process: {e}");
+                panic!("couldn't spawn encoder process: {e}")
             }
             Ok(proc) => proc,
         };
 
-        let dec_err = BufReader::new(enc_proc.stderr.take().unwrap());
-        *proc_control.decoder_term.lock().unwrap() = Some(enc_proc);
+        let enc_err = BufReader::new(enc_proc.stderr.take().unwrap());
+        *proc_control.encoder_term.lock().unwrap() = Some(enc_proc);
 
-        if let Err(e) = stderr_reader(dec_err, "Writer", proc_control.clone()) {
+        if let Err(e) = stderr_reader(enc_err, "Writer", proc_control.clone()) {
             error!("{e:?}")
         };
 
-        if let Err(e) = proc_control.wait(Decoder) {
+        if let Err(e) = proc_control.wait(Encoder) {
             error!("{e}");
         }
 
