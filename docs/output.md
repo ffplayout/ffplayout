@@ -126,7 +126,7 @@ HLS output is currently the default, mostly because it works out of the box and 
         -f hls
         -hls_time 6
         -hls_list_size 600
-        -hls_flags append_list+delete_segments+omit_endlist+program_date_time
+        -hls_flags append_list+delete_segments+omit_endlist
         -hls_segment_filename /var/www/html/live/stream_%v-%d.ts
         -master_pl_name master.m3u8
         -var_stream_map "v:0,a:0,name:720p v:1,a:1,name:540p v:2,a:2,name:360p"
