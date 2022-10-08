@@ -120,11 +120,7 @@ impl Filters {
 
     fn build_final_chain(&mut self) {
         self.final_chain.push_str(&self.video_chain);
-
-        if self.final_chain.len() > 10 {
-            self.final_chain.push(';')
-        }
-
+        self.final_chain.push(';');
         self.final_chain.push_str(&self.audio_chain);
 
         self.cmd.push("-filter_complex".to_string());

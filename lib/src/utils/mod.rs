@@ -552,6 +552,24 @@ pub fn gen_dummy(config: &PlayoutConfig, duration: f64) -> (String, Vec<String>)
     (source, cmd)
 }
 
+// fn get_output_count(cmd: &[String]) -> i32 {
+//     let mut count = 0;
+
+//     if let Some(index) = cmd.iter().position(|c| c == "-var_stream_map") {
+//         if let Some(mapping) = cmd.get(index + 1) {
+//             return mapping.split(' ').count() as i32;
+//         };
+//     };
+
+//     for (i, param) in cmd.iter().enumerate() {
+//         if i > 0 && !param.starts_with('-') && !cmd[i - 1].starts_with('-') {
+//             count += 1;
+//         }
+//     }
+
+//     count
+// }
+
 /// Prepare output parameters
 ///
 /// seek for multiple outputs and add mapping for it
