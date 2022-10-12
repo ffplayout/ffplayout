@@ -6,8 +6,12 @@ use std::{
 pub mod arg_parse;
 
 pub use arg_parse::Args;
-use ffplayout_lib::utils::{time_to_sec, PlayoutConfig};
+use ffplayout_lib::{
+    utils::{time_to_sec, PlayoutConfig},
+    vec_strings,
+};
 
+/// Read command line arguments, and override the config with them.
 pub fn get_config(args: Args) -> PlayoutConfig {
     let cfg_path = match args.channel {
         Some(c) => {
@@ -80,4 +84,79 @@ pub fn get_config(args: Args) -> PlayoutConfig {
 
     config
 }
-// Read command line arguments, and override the config with them.
+
+/// Prepare output parameters
+///
+/// seek for multiple outputs and add mapping for it
+pub fn prepare_output_cmd(
+    prefix: Vec<String>,
+    mut filter: Vec<String>,
+    params: Vec<String>,
+    mode: &str,
+) -> Vec<String> {
+    let params_len = params.len();
+    let mut output_params = params.clone();
+    let mut output_a_map = "[a_out1]".to_string();
+    let mut output_v_map = "[v_out1]".to_string();
+    let mut output_count = 1;
+    let mut cmd = prefix;
+
+    if !filter.is_empty() {
+        output_params.clear();
+
+        for (i, p) in params.iter().enumerate() {
+            let mut param = p.clone();
+
+            param = param.replace("[0:v]", "[vout0]");
+            param = param.replace("[0:a]", "[aout0]");
+
+            if param != "-filter_complex" {
+                output_params.push(param.clone());
+            }
+
+            if i > 0
+                && !param.starts_with('-')
+                && !params[i - 1].starts_with('-')
+                && i < params_len - 1
+            {
+                output_count += 1;
+                let mut a_map = "0:a".to_string();
+                let v_map = format!("[v_out{output_count}]");
+                output_v_map.push_str(&v_map);
+
+                if mode == "hls" {
+                    a_map = format!("[a_out{output_count}]");
+                }
+
+                output_a_map.push_str(&a_map);
+
+                let mut map = vec_strings!["-map", v_map, "-map", a_map];
+
+                output_params.append(&mut map);
+            }
+        }
+
+        if output_count > 1 && mode == "hls" {
+            filter[1].push_str(&format!(";[vout0]split={output_count}{output_v_map}"));
+            filter[1].push_str(&format!(";[aout0]asplit={output_count}{output_a_map}"));
+            filter.drain(2..);
+            cmd.append(&mut filter);
+            cmd.append(&mut vec_strings!["-map", "[v_out1]", "-map", "[a_out1]"]);
+        } else if output_count == 1 && mode == "hls" && output_params[0].contains("split") {
+            let out_filter = output_params.remove(0);
+            filter[1].push_str(&format!(";{out_filter}"));
+            filter.drain(2..);
+            cmd.append(&mut filter);
+        } else if output_count > 1 && mode == "stream" {
+            filter[1].push_str(&format!(",split={output_count}{output_v_map}"));
+            cmd.append(&mut filter);
+            cmd.append(&mut vec_strings!["-map", "[v_out1]", "-map", "0:a"]);
+        } else {
+            cmd.append(&mut filter);
+        }
+    }
+
+    cmd.append(&mut output_params);
+
+    cmd
+}

@@ -5,8 +5,9 @@ use std::{
 
 use simplelog::*;
 
+use crate::utils::prepare_output_cmd;
 use ffplayout_lib::filter::v_drawtext;
-use ffplayout_lib::utils::{prepare_output_cmd, PlayoutConfig};
+use ffplayout_lib::utils::PlayoutConfig;
 use ffplayout_lib::vec_strings;
 
 /// Streaming Output

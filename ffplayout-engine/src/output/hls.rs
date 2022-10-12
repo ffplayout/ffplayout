@@ -28,10 +28,11 @@ use std::{
 use simplelog::*;
 
 use crate::input::{ingest::log_line, source_generator};
+use crate::utils::prepare_output_cmd;
 use ffplayout_lib::filter::filter_chains;
 use ffplayout_lib::utils::{
-    prepare_output_cmd, sec_to_time, stderr_reader, test_tcp_port, Encoder, Ingest, Media,
-    PlayerControl, PlayoutConfig, PlayoutStatus, ProcessControl,
+    sec_to_time, stderr_reader, test_tcp_port, Encoder, Ingest, Media, PlayerControl,
+    PlayoutConfig, PlayoutStatus, ProcessControl,
 };
 use ffplayout_lib::vec_strings;
 
