@@ -3,12 +3,10 @@ use std::{
     time::Duration,
 };
 
-#[cfg(test)]
-use crate::output::player;
-#[cfg(test)]
-use ffplayout_lib::utils::*;
-#[cfg(test)]
 use simplelog::*;
+
+use ffplayout::output::player;
+use ffplayout_lib::utils::*;
 
 fn timed_kill(sec: u64, mut proc_ctl: ProcessControl) {
     sleep(Duration::from_secs(sec));

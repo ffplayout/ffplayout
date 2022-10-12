@@ -47,7 +47,7 @@ fn ingest_to_hls_server(
     let mut server_prefix = vec_strings!["-hide_banner", "-nostats", "-v", "level+info"];
     let stream_input = config.ingest.input_cmd.clone().unwrap();
     server_prefix.append(&mut stream_input.clone());
-    let mut dummy_media = Media::new(0, "Live Stream".to_string(), false);
+    let mut dummy_media = Media::new(0, "Live Stream", false);
     dummy_media.is_live = Some(true);
 
     let mut is_running;

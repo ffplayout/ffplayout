@@ -28,10 +28,7 @@ pub fn filter_node(
 
         // TODO: in Rust 1.65 use let_chains instead
         if config.text.text_from_filename && node.is_some() {
-            let source = node
-                .unwrap_or(&Media::new(0, String::new(), false))
-                .source
-                .clone();
+            let source = node.unwrap_or(&Media::new(0, "", false)).source.clone();
             let regex: Regex = Regex::new(&config.text.regex).unwrap();
 
             let text: String = match regex.captures(&source) {

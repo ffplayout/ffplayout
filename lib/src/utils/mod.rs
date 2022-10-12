@@ -100,12 +100,12 @@ pub struct Media {
 }
 
 impl Media {
-    pub fn new(index: usize, src: String, do_probe: bool) -> Self {
+    pub fn new(index: usize, src: &str, do_probe: bool) -> Self {
         let mut duration = 0.0;
         let mut probe = None;
 
-        if do_probe && Path::new(&src).is_file() {
-            probe = Some(MediaProbe::new(&src));
+        if do_probe && Path::new(src).is_file() {
+            probe = Some(MediaProbe::new(src));
 
             if let Some(dur) = probe
                 .as_ref()
@@ -123,9 +123,9 @@ impl Media {
             out: duration,
             duration,
             category: String::new(),
-            source: src.clone(),
+            source: src.to_string(),
             audio: String::new(),
-            cmd: Some(vec!["-i".to_string(), src]),
+            cmd: Some(vec_strings!["-i", src]),
             filter: Some(vec![]),
             custom_filter: String::new(),
             probe,

@@ -2744,6 +2744,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "tests"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "crossbeam-channel",
+ "ffplayout",
+ "ffplayout-lib",
+ "ffprobe",
+ "file-rotate",
+ "jsonrpc-http-server",
+ "lettre",
+ "log",
+ "notify",
+ "rand",
+ "regex",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "shlex",
+ "simplelog",
+ "time 0.3.14",
+ "walkdir",
+]
+
+[[package]]
 name = "textwrap"
 version = "0.15.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

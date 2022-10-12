@@ -34,7 +34,7 @@ pub struct JsonPlaylist {
 
 impl JsonPlaylist {
     fn new(date: String, start: f64) -> Self {
-        let mut media = Media::new(0, String::new(), false);
+        let mut media = Media::new(0, "", false);
         media.begin = Some(start);
         media.duration = DUMMY_LEN;
         media.out = DUMMY_LEN;

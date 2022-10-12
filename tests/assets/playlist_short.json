@@ -1,0 +1,56 @@
+{
+  "channel": "Channel 1",
+  "date": "2022-11-01",
+  "program": [
+    {
+      "in": 0.0,
+      "out": 30.0,
+      "duration": 30.0,
+      "source": "tests/assets/av_sync.mp4"
+    },
+    {
+      "in": 0.0,
+      "out": 30.0,
+      "duration": 30.0,
+      "source": "tests/assets/dual_audio.mp4"
+    },
+    {
+      "in": 0.0,
+      "out": 10.0,
+      "duration": 10.0,
+      "source": "tests/assets/short_video.mp4"
+    },
+    {
+      "in": 0.0,
+      "out": 10.0,
+      "duration": 10.0,
+      "source": "tests/assets/still.jpg"
+    },
+    {
+      "in": 0.0,
+      "out": 10.0,
+      "duration": 10.0,
+      "source": "tests/assets/short_audio.mp4"
+    },
+    {
+      "in": 0.0,
+      "out": 30.0,
+      "duration": 30.0,
+      "source": "tests/assets/no_audio.mp4"
+    },
+    {
+      "in": 0.0,
+      "out": 10.0,
+      "duration": 10.0,
+      "source": "tests/assets/still.jpg",
+      "audio": "tests/assets/audio.mp3"
+    },
+    {
+      "in": 0.0,
+      "out": 25.0,
+      "duration": 25.0,
+      "source": "tests/assets/ad.mp4",
+      "category": "advertisement"
+    }
+  ]
+}

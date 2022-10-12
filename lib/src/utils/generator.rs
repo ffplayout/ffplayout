@@ -65,7 +65,7 @@ pub fn generate_playlist(
             }
         }
     };
-    let current_list = Arc::new(Mutex::new(vec![Media::new(0, "".to_string(), false)]));
+    let current_list = Arc::new(Mutex::new(vec![Media::new(0, "", false)]));
     let index = Arc::new(AtomicUsize::new(0));
     let playlist_root = Path::new(&config.playlist.path);
     let mut playlists = vec![];
@@ -119,7 +119,7 @@ pub fn generate_playlist(
             playlist_file.display()
         );
 
-        let mut filler = Media::new(0, config.storage.filler_clip.clone(), true);
+        let mut filler = Media::new(0, &config.storage.filler_clip, true);
         let filler_length = filler.duration;
         let mut length = 0.0;
         let mut round = 0;

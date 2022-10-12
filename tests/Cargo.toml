@@ -1,0 +1,42 @@
+[package]
+name = "tests"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dev-dependencies]
+ffplayout = { path = "../ffplayout-engine" }
+# ffplayout-api = { path = "../ffplayout-api" }
+ffplayout-lib = { path = "../lib" }
+
+chrono = "0.4"
+crossbeam-channel = "0.5"
+ffprobe = "0.3"
+file-rotate = "0.7.0"
+jsonrpc-http-server = "18.0"
+lettre = "0.10"
+log = "0.4"
+notify = "4.0"
+rand = "0.8"
+regex = "1"
+reqwest = { version = "0.11", features = ["blocking", "json"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.8"
+shlex = "1.1"
+simplelog = { version = "^0.12", features = ["paris"] }
+time = { version = "0.3", features = ["formatting", "macros"] }
+walkdir = "2"
+
+[[test]]
+name = "lib_utils"
+path = "src/lib_utils.rs"
+
+[[test]]
+name = "engine_playlist"
+path = "src/engine_playlist.rs"
+
+[[test]]
+name = "engine_cmd"
+path = "src/engine_cmd.rs"
+

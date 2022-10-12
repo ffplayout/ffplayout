@@ -49,7 +49,7 @@ impl FolderSource {
             .filter(|f| f.path().is_file())
         {
             if include_file(config.clone(), entry.path()) {
-                let media = Media::new(0, entry.path().display().to_string(), false);
+                let media = Media::new(0, &entry.path().to_string_lossy(), false);
                 media_list.push(media);
             }
         }
@@ -83,7 +83,7 @@ impl FolderSource {
             config: config.clone(),
             filter_chain,
             nodes: current_list,
-            current_node: Media::new(0, String::new(), false),
+            current_node: Media::new(0, "", false),
             index: global_index,
         }
     }

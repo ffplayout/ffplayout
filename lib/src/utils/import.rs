@@ -48,7 +48,7 @@ pub fn import_file(
         let line = line?;
 
         if !line.starts_with('#') {
-            let item = Media::new(0, line, true);
+            let item = Media::new(0, &line, true);
 
             playlist.program.push(item);
         }

@@ -12,18 +12,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use simplelog::*;
 
-pub mod input;
-pub mod output;
-pub mod rpc;
-// #[cfg(test)]
-// mod tests;
-pub mod utils;
-
-use utils::{arg_parse::get_args, get_config};
-
-use crate::{
+use ffplayout::{
     output::{player, write_hls},
     rpc::json_rpc_server,
+    utils::{arg_parse::get_args, get_config},
 };
 
 use ffplayout_lib::utils::{
@@ -32,7 +24,7 @@ use ffplayout_lib::utils::{
 };
 
 #[cfg(debug_assertions)]
-use utils::Args;
+use ffplayout::utils::Args;
 
 #[cfg(debug_assertions)]
 use ffplayout_lib::utils::{mock_time, time_now};

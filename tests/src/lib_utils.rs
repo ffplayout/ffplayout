@@ -2,8 +2,7 @@
 use chrono::prelude::*;
 
 #[cfg(test)]
-use crate::utils::*;
-use crate::vec_strings;
+use ffplayout_lib::{utils::*, vec_strings};
 
 #[test]
 fn mock_date_time() {
