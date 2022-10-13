@@ -40,7 +40,7 @@ fn get_date_tomorrow() {
 fn test_delta() {
     let mut config = PlayoutConfig::new(None);
     config.mail.recipient = "".into();
-    config.processing.mode = "playlist".into();
+    config.processing.mode = Playlist;
     config.playlist.day_start = "00:00:00".into();
     config.playlist.length = "24:00:00".into();
     config.logging.log_to_file = false;

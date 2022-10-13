@@ -1,5 +1,5 @@
 use std::{
-    env,
+    env, fmt,
     fs::File,
     path::{Path, PathBuf},
     process,
@@ -43,6 +43,34 @@ impl FromStr for OutputMode {
             "hls" => Ok(Self::HLS),
             "null" => Ok(Self::Null),
             "stream" => Ok(Self::Stream),
+            _ => Err(String::new()),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum ProcessMode {
+    Folder,
+    Playlist,
+}
+
+impl fmt::Display for ProcessMode {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            ProcessMode::Folder => write!(f, "folder"),
+            ProcessMode::Playlist => write!(f, "playlist"),
+        }
+    }
+}
+
+impl FromStr for ProcessMode {
+    type Err = String;
+
+    fn from_str(input: &str) -> Result<Self, Self::Err> {
+        match input {
+            "folder" => Ok(Self::Folder),
+            "playlist" => Ok(Self::Playlist),
             _ => Err(String::new()),
         }
     }
@@ -113,7 +141,7 @@ pub struct Logging {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Processing {
     pub help_text: String,
-    pub mode: String,
+    pub mode: ProcessMode,
     pub width: i64,
     pub height: i64,
     pub aspect: f64,

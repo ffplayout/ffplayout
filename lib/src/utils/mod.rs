@@ -37,7 +37,9 @@ mod windows;
 pub use config::{
     self as playout_config,
     OutputMode::{self, *},
-    PlayoutConfig, DUMMY_LEN, FFMPEG_IGNORE_ERRORS, IMAGE_FORMAT,
+    PlayoutConfig,
+    ProcessMode::{self, *},
+    DUMMY_LEN, FFMPEG_IGNORE_ERRORS, IMAGE_FORMAT,
 };
 pub use controller::{PlayerControl, PlayoutStatus, ProcessControl, ProcessUnit::*};
 pub use generator::generate_playlist;

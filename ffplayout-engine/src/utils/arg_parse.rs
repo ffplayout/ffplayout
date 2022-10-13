@@ -1,6 +1,6 @@
 use clap::Parser;
 
-use ffplayout_lib::utils::OutputMode;
+use ffplayout_lib::utils::{OutputMode, ProcessMode};
 
 #[derive(Parser, Debug, Clone)]
 #[clap(version,
@@ -28,7 +28,7 @@ pub struct Args {
     pub generate: Option<Vec<String>>,
 
     #[clap(short = 'm', long, help = "Playing mode: folder, playlist")]
-    pub play_mode: Option<String>,
+    pub play_mode: Option<ProcessMode>,
 
     #[clap(short, long, help = "Play folder content")]
     pub folder: Option<String>,

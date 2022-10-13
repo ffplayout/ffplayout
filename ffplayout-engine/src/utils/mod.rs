@@ -7,7 +7,7 @@ pub mod arg_parse;
 
 pub use arg_parse::Args;
 use ffplayout_lib::{
-    utils::{time_to_sec, OutputMode::*, PlayoutConfig},
+    utils::{time_to_sec, OutputMode::*, PlayoutConfig, ProcessMode::*},
     vec_strings,
 };
 
@@ -52,7 +52,7 @@ pub fn get_config(args: Args) -> PlayoutConfig {
 
     if let Some(folder) = args.folder {
         config.storage.path = folder;
-        config.processing.mode = "folder".into();
+        config.processing.mode = Folder;
     }
 
     if let Some(start) = args.start {
