@@ -13,7 +13,7 @@ use simplelog::*;
 
 use ffplayout_lib::utils::{
     get_delta, get_filter_from_json, get_sec, sec_to_time, write_status, Ingest, Media,
-    PlayerControl, PlayoutConfig, PlayoutStatus, ProcessControl,
+    OutputMode::*, PlayerControl, PlayoutConfig, PlayoutStatus, ProcessControl,
 };
 
 use zmq_cmd::zmq_send;
@@ -90,7 +90,7 @@ pub fn json_rpc_server(
                     let mut clips_filter = playout_stat.chain.lock().unwrap();
                     *clips_filter = vec![filter.clone()];
 
-                    if config.out.mode == "hls" {
+                    if config.out.mode == HLS {
                         if proc.server_is_running.load(Ordering::SeqCst) {
                             let filter_server = format!(
                                 "Parsed_drawtext_{} reinit {filter}",
@@ -108,7 +108,7 @@ pub fn json_rpc_server(
                         }
                     }
 
-                    if config.out.mode != "hls" || !proc.server_is_running.load(Ordering::SeqCst) {
+                    if config.out.mode != HLS || !proc.server_is_running.load(Ordering::SeqCst) {
                         let filter_stream = format!(
                             "Parsed_drawtext_{} reinit {filter}",
                             playout_stat.drawtext_stream_index.load(Ordering::SeqCst)

@@ -80,12 +80,7 @@ fn ingest_to_hls_server(
             }
         }
 
-        let server_cmd = prepare_output_cmd(
-            server_prefix.clone(),
-            filters,
-            config.out.clone().output_cmd.unwrap(),
-            "hls",
-        );
+        let server_cmd = prepare_output_cmd(server_prefix.clone(), filters, &config);
 
         debug!(
             "Server CMD: <bright-blue>\"ffmpeg {}\"</>",
@@ -201,12 +196,7 @@ pub fn write_hls(
         let mut enc_prefix = vec_strings!["-hide_banner", "-nostats", "-v", &ff_log_format];
         enc_prefix.append(&mut cmd);
         let enc_filter = node.filter.unwrap();
-        let enc_cmd = prepare_output_cmd(
-            enc_prefix,
-            enc_filter,
-            config.out.clone().output_cmd.unwrap(),
-            &config.out.mode,
-        );
+        let enc_cmd = prepare_output_cmd(enc_prefix, enc_filter, config);
 
         debug!(
             "HLS writer CMD: <bright-blue>\"ffmpeg {}\"</>",

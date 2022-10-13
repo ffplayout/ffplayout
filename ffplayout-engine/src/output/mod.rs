@@ -18,8 +18,8 @@ pub use hls::write_hls;
 
 use crate::input::{ingest_server, source_generator};
 use ffplayout_lib::utils::{
-    sec_to_time, stderr_reader, Decoder, PlayerControl, PlayoutConfig, PlayoutStatus,
-    ProcessControl,
+    sec_to_time, stderr_reader, Decoder, OutputMode::*, PlayerControl, PlayoutConfig,
+    PlayoutStatus, ProcessControl,
 };
 use ffplayout_lib::vec_strings;
 
@@ -54,10 +54,10 @@ pub fn player(
     );
 
     // get ffmpeg output instance
-    let mut enc_proc = match config.out.mode.as_str() {
-        "desktop" => desktop::output(config, &ff_log_format),
-        "null" => null::output(config, &ff_log_format),
-        "stream" => stream::output(config, &ff_log_format),
+    let mut enc_proc = match config.out.mode {
+        Desktop => desktop::output(config, &ff_log_format),
+        Null => null::output(config, &ff_log_format),
+        Stream => stream::output(config, &ff_log_format),
         _ => panic!("Output mode doesn't exists!"),
     };
 

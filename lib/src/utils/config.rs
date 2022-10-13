@@ -3,6 +3,7 @@ use std::{
     fs::File,
     path::{Path, PathBuf},
     process,
+    str::FromStr,
 };
 
 use serde::{Deserialize, Serialize};
@@ -23,6 +24,29 @@ pub const FFMPEG_IGNORE_ERRORS: [&str; 3] = [
     "ac-tex damaged",
     "Warning MVs not available",
 ];
+
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum OutputMode {
+    Desktop,
+    HLS,
+    Null,
+    Stream,
+}
+
+impl FromStr for OutputMode {
+    type Err = String;
+
+    fn from_str(input: &str) -> Result<Self, Self::Err> {
+        match input {
+            "desktop" => Ok(Self::Desktop),
+            "hls" => Ok(Self::HLS),
+            "null" => Ok(Self::Null),
+            "stream" => Ok(Self::Stream),
+            _ => Err(String::new()),
+        }
+    }
+}
 
 /// Global Config
 ///
@@ -173,7 +197,7 @@ pub struct Text {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Out {
     pub help_text: String,
-    pub mode: String,
+    pub mode: OutputMode,
     pub output_param: String,
 
     #[serde(skip_serializing, skip_deserializing)]

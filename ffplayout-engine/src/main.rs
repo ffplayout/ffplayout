@@ -20,7 +20,7 @@ use ffplayout::{
 
 use ffplayout_lib::utils::{
     generate_playlist, import::import_file, init_logging, send_mail, validate_ffmpeg,
-    PlayerControl, PlayoutStatus, ProcessControl,
+    OutputMode::*, PlayerControl, PlayoutStatus, ProcessControl,
 };
 
 #[cfg(debug_assertions)]
@@ -142,9 +142,9 @@ fn main() {
 
     status_file(&config.general.stat_file, &playout_stat);
 
-    match config.out.mode.to_lowercase().as_str() {
+    match config.out.mode {
         // write files/playlist to HLS m3u8 playlist
-        "hls" => write_hls(&config, play_control, playout_stat, proc_control),
+        HLS => write_hls(&config, play_control, playout_stat, proc_control),
         // play on desktop or stream to a remote target
         _ => player(&config, play_control, playout_stat, proc_control),
     }

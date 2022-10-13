@@ -1,5 +1,7 @@
 use clap::Parser;
 
+use ffplayout_lib::utils::OutputMode;
+
 #[derive(Parser, Debug, Clone)]
 #[clap(version,
     about = "ffplayout, Rust based 24/7 playout solution.",
@@ -64,8 +66,8 @@ pub struct Args {
     #[clap(short, long, help = "Loop playlist infinitely")]
     pub infinit: bool,
 
-    #[clap(short, long, help = "Set output mode: desktop, hls, stream")]
-    pub output: Option<String>,
+    #[clap(short, long, help = "Set output mode: desktop, hls, null, stream")]
+    pub output: Option<OutputMode>,
 
     #[clap(short, long, help = "Set audio volume")]
     pub volume: Option<f64>,

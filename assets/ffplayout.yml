@@ -122,7 +122,7 @@ out:
         has the options 'desktop', 'hls', 'null', 'stream'. Use 'stream' and adjust
         'output_param:' settings when you want to stream to a rtmp/rtsp/srt/... server.
         In production don't serve hls playlist with ffpapi, use nginx or another web server!
-    mode: desktop
+    mode: hls
     output_param: >-
         -c:v libx264
         -crf 23

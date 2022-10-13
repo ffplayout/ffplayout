@@ -7,7 +7,7 @@ pub mod arg_parse;
 
 pub use arg_parse::Args;
 use ffplayout_lib::{
-    utils::{time_to_sec, PlayoutConfig},
+    utils::{time_to_sec, OutputMode::*, PlayoutConfig},
     vec_strings,
 };
 
@@ -91,68 +91,98 @@ pub fn get_config(args: Args) -> PlayoutConfig {
 pub fn prepare_output_cmd(
     prefix: Vec<String>,
     mut filter: Vec<String>,
-    params: Vec<String>,
-    mode: &str,
+    config: &PlayoutConfig,
 ) -> Vec<String> {
-    let params_len = params.len();
-    let mut output_params = params.clone();
+    let mut output_params = config.out.clone().output_cmd.unwrap();
+    let params_len = output_params.len();
     let mut output_a_map = "[a_out1]".to_string();
     let mut output_v_map = "[v_out1]".to_string();
-    let mut output_count = 1;
+    let mut out_count = 1;
     let mut cmd = prefix;
+    let params = config.out.clone().output_cmd.unwrap();
+    let mut new_params = vec![];
 
-    if !filter.is_empty() {
-        output_params.clear();
+    for (i, p) in params.iter().enumerate() {
+        let mut param = p.clone();
 
-        for (i, p) in params.iter().enumerate() {
-            let mut param = p.clone();
+        param = param.replace("[0:v]", "[vout0]");
+        param = param.replace("[0:a]", "[aout0]");
 
-            param = param.replace("[0:v]", "[vout0]");
-            param = param.replace("[0:a]", "[aout0]");
-
-            if param != "-filter_complex" {
-                output_params.push(param.clone());
-            }
-
-            if i > 0
-                && !param.starts_with('-')
-                && !params[i - 1].starts_with('-')
-                && i < params_len - 1
-            {
-                output_count += 1;
-                let mut a_map = "0:a".to_string();
-                let v_map = format!("[v_out{output_count}]");
-                output_v_map.push_str(&v_map);
-
-                if mode == "hls" {
-                    a_map = format!("[a_out{output_count}]");
-                }
-
-                output_a_map.push_str(&a_map);
-
-                let mut map = vec_strings!["-map", v_map, "-map", a_map];
-
-                output_params.append(&mut map);
-            }
+        if param != "-filter_complex" {
+            new_params.push(param.clone());
         }
 
-        if output_count > 1 && mode == "hls" {
-            filter[1].push_str(&format!(";[vout0]split={output_count}{output_v_map}"));
-            filter[1].push_str(&format!(";[aout0]asplit={output_count}{output_a_map}"));
+        if i > 0 && !param.starts_with('-') && !params[i - 1].starts_with('-') && i < params_len - 1
+        {
+            out_count += 1;
+            let mut a_map = "0:a".to_string();
+            let v_map = format!("[v_out{out_count}]");
+            output_v_map.push_str(&v_map);
+
+            if config.out.mode == HLS {
+                a_map = format!("[a_out{out_count}]");
+            }
+
+            output_a_map.push_str(&a_map);
+
+            if !output_params.contains(&"-map".to_string()) {
+                let mut map = vec_strings!["-map", v_map, "-map", a_map];
+                new_params.append(&mut map);
+            }
+        }
+    }
+
+    if !filter.is_empty() {
+        output_params = new_params;
+
+        // Process A/V mapping
+        //
+        // Check if there is multiple outputs, and/or multiple audio tracks
+        // and add the correct mapping for it.
+        if out_count > 1 && config.processing.audio_tracks == 1 && config.out.mode == HLS {
+            filter[1].push_str(&format!(";[vout0]split={out_count}{output_v_map}"));
+            filter[1].push_str(&format!(";[aout0]asplit={out_count}{output_a_map}"));
             filter.drain(2..);
             cmd.append(&mut filter);
             cmd.append(&mut vec_strings!["-map", "[v_out1]", "-map", "[a_out1]"]);
-        } else if output_count == 1 && mode == "hls" && output_params[0].contains("split") {
+        } else if out_count == 1
+            && config.processing.audio_tracks == 1
+            && config.out.mode == HLS
+            && output_params[0].contains("split")
+        {
             let out_filter = output_params.remove(0);
             filter[1].push_str(&format!(";{out_filter}"));
             filter.drain(2..);
             cmd.append(&mut filter);
-        } else if output_count > 1 && mode == "stream" {
-            filter[1].push_str(&format!(",split={output_count}{output_v_map}"));
+        } else if out_count > 1 && config.processing.audio_tracks == 1 && config.out.mode == Stream
+        {
+            filter[1].push_str(&format!(",split={out_count}{output_v_map}"));
             cmd.append(&mut filter);
             cmd.append(&mut vec_strings!["-map", "[v_out1]", "-map", "0:a"]);
+        } else if config.processing.audio_tracks > 1 && config.out.mode == Stream {
+            filter[1].push_str("[v_out1]");
+            cmd.append(&mut filter);
+
+            output_params = output_params
+                .iter()
+                .map(|p| p.replace("0:v", "[v_out1]"))
+                .collect();
+
+            if out_count == 1 {
+                cmd.append(&mut vec_strings!["-map", "[v_out1]"]);
+
+                for i in 0..config.processing.audio_tracks {
+                    cmd.append(&mut vec_strings!["-map", format!("0:a:{i}")]);
+                }
+            }
         } else {
             cmd.append(&mut filter);
+        }
+    } else if out_count == 1 && config.processing.audio_tracks > 1 && config.out.mode == Stream {
+        cmd.append(&mut vec_strings!["-map", "0:v"]);
+
+        for i in 0..config.processing.audio_tracks {
+            cmd.append(&mut vec_strings!["-map", format!("0:a:{i}")]);
         }
     }
 

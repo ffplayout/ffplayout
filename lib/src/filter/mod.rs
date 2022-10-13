@@ -12,7 +12,9 @@ pub mod v_drawtext;
 
 // get_delta
 use self::custom_filter::custom_filter;
-use crate::utils::{fps_calc, get_delta, is_close, Media, MediaProbe, PlayoutConfig};
+use crate::utils::{
+    fps_calc, get_delta, is_close, Media, MediaProbe, OutputMode::*, PlayoutConfig,
+};
 
 #[derive(Clone, Debug, Copy, PartialEq)]
 enum FilterType {
@@ -283,9 +285,7 @@ fn add_text(
     config: &PlayoutConfig,
     filter_chain: &Arc<Mutex<Vec<String>>>,
 ) {
-    if config.text.add_text
-        && (config.text.text_from_filename || config.out.mode.to_lowercase() == "hls")
-    {
+    if config.text.add_text && (config.text.text_from_filename || config.out.mode == HLS) {
         let filter = v_drawtext::filter_node(config, Some(node), filter_chain);
 
         chain.add_filter(&filter, 0, Video);
@@ -352,7 +352,7 @@ fn aspect_calc(aspect_string: &Option<String>, config: &PlayoutConfig) -> f64 {
 
 /// This realtime filter is important for HLS output to stay in sync.
 fn realtime(node: &mut Media, chain: &mut Filters, config: &PlayoutConfig) {
-    if config.general.generate.is_none() && &config.out.mode.to_lowercase() == "hls" {
+    if config.general.generate.is_none() && config.out.mode == HLS {
         let mut speed_filter = "realtime=speed=1".to_string();
 
         if let Some(begin) = &node.begin {

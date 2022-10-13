@@ -35,7 +35,9 @@ mod logging;
 mod windows;
 
 pub use config::{
-    self as playout_config, PlayoutConfig, DUMMY_LEN, FFMPEG_IGNORE_ERRORS, IMAGE_FORMAT,
+    self as playout_config,
+    OutputMode::{self, *},
+    PlayoutConfig, DUMMY_LEN, FFMPEG_IGNORE_ERRORS, IMAGE_FORMAT,
 };
 pub use controller::{PlayerControl, PlayoutStatus, ProcessControl, ProcessUnit::*};
 pub use generator::generate_playlist;
@@ -597,7 +599,7 @@ pub fn include_file(config: PlayoutConfig, file_path: &Path) -> bool {
         }
     }
 
-    if config.out.mode.to_lowercase() == "hls" {
+    if config.out.mode == HLS {
         if let Some(ts_path) = config
             .out
             .output_cmd
@@ -737,7 +739,7 @@ pub fn validate_ffmpeg(config: &PlayoutConfig) -> Result<(), String> {
     is_in_system("ffmpeg")?;
     is_in_system("ffprobe")?;
 
-    if config.out.mode == "desktop" {
+    if config.out.mode == Desktop {
         is_in_system("ffplay")?;
     }
 
