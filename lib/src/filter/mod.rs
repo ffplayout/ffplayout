@@ -429,6 +429,7 @@ pub fn filter_chains(
             .as_ref()
             .and_then(|p| p.audio_streams.get(i as usize))
             .is_some()
+            || Path::new(&node.audio).is_file()
         {
             extend_audio(node, &mut filters, i);
         } else if !node.is_live.unwrap_or(false) {
