@@ -8,15 +8,17 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v3
-      - uses: FedericoCarboni/setup-ffmpeg@v1
-        id: setup-ffmpeg
       - run: rustup update stable
       - run: rustup component add rustfmt
       - run: rustup component add clippy
-      - run: |
-          if [ "$RUNNER_OS" == "Linux" ]; then
-            cargo test --all-features
-          fi
-      - run: cargo fmt --all -- --check
-      - run: cargo clippy --all-features --all-targets -- --deny warnings
-      - run: cargo build --all-features
+
+      - name: Run on Linux
+        if: ${{ matrix.os == 'ubuntu-latest' }}
+        uses: FedericoCarboni/setup-ffmpeg@v1
+        id: setup-ffmpeg
+        run: cargo fmt --all -- --check
+        run: cargo clippy --all-features --all-targets -- --deny warnings
+        run: cargo build --all-features
+
+      - name: Run on macOS/Windows
+        run: cargo build --all-features
