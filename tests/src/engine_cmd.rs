@@ -12,7 +12,7 @@ fn video_audio_input() {
     config.out.mode = Stream;
     config.processing.logo = "../assets/logo.png".to_string();
 
-    let media_obj = Media::new(0, "assets/with_audio.mp4", true);
+    let media_obj = Media::new(0, "./assets/with_audio.mp4", true);
     let media = gen_source(&config, media_obj, &Arc::new(Mutex::new(vec![])));
 
     let test_filter_cmd = Some(
@@ -26,7 +26,10 @@ fn video_audio_input() {
         ],
     );
 
-    assert_eq!(media.cmd, Some(vec_strings!["-i", "assets/with_audio.mp4"]));
+    assert_eq!(
+        media.cmd,
+        Some(vec_strings!["-i", "./assets/with_audio.mp4"])
+    );
     assert_eq!(media.filter, test_filter_cmd);
 }
 
@@ -37,7 +40,7 @@ fn dual_audio_aevalsrc_input() {
     config.processing.audio_tracks = 2;
     config.processing.add_logo = false;
 
-    let media_obj = Media::new(0, "assets/with_audio.mp4", true);
+    let media_obj = Media::new(0, "./assets/with_audio.mp4", true);
     let media = gen_source(&config, media_obj, &Arc::new(Mutex::new(vec![])));
 
     let test_filter_cmd = Some(
@@ -53,7 +56,10 @@ fn dual_audio_aevalsrc_input() {
         ],
     );
 
-    assert_eq!(media.cmd, Some(vec_strings!["-i", "assets/with_audio.mp4"]));
+    assert_eq!(
+        media.cmd,
+        Some(vec_strings!["-i", "./assets/with_audio.mp4"])
+    );
     assert_eq!(media.filter, test_filter_cmd);
 }
 
@@ -64,7 +70,7 @@ fn dual_audio_input() {
     config.processing.audio_tracks = 2;
     config.processing.add_logo = false;
 
-    let media_obj = Media::new(0, "assets/dual_audio.mp4", true);
+    let media_obj = Media::new(0, "./assets/dual_audio.mp4", true);
     let media = gen_source(&config, media_obj, &Arc::new(Mutex::new(vec![])));
 
     let test_filter_cmd = Some(vec_strings![
@@ -78,7 +84,10 @@ fn dual_audio_input() {
         "[aout1]"
     ]);
 
-    assert_eq!(media.cmd, Some(vec_strings!["-i", "assets/dual_audio.mp4"]));
+    assert_eq!(
+        media.cmd,
+        Some(vec_strings!["-i", "./assets/dual_audio.mp4"])
+    );
     assert_eq!(media.filter, test_filter_cmd);
 }
 
@@ -225,6 +234,7 @@ fn video_dual_audio_filter_stream() {
     config.out.mode = Stream;
     config.processing.add_logo = false;
     config.processing.audio_tracks = 2;
+    config.text.fontfile = String::new();
     config.out.output_cmd = Some(vec_strings![
         "-c:v",
         "libx264",
@@ -525,6 +535,7 @@ fn video_dual_audio_multi_filter_stream() {
     config.out.mode = Stream;
     config.processing.add_logo = false;
     config.processing.audio_tracks = 2;
+    config.text.fontfile = String::new();
     config.out.output_cmd = Some(vec_strings![
         "-map",
         "0:v",
@@ -684,7 +695,7 @@ fn video_audio_hls() {
         "/usr/share/ffplayout/public/live/stream.m3u8"
     ]);
 
-    let media_obj = Media::new(0, "assets/with_audio.mp4", true);
+    let media_obj = Media::new(0, "./assets/with_audio.mp4", true);
     let media = gen_source(&config, media_obj, &Arc::new(Mutex::new(vec![])));
     let enc_filter = media.filter.unwrap();
 
@@ -695,7 +706,7 @@ fn video_audio_hls() {
         "level+error",
         "-re",
         "-i",
-        "assets/with_audio.mp4"
+        "./assets/with_audio.mp4"
     ];
 
     let enc_cmd = prepare_output_cmd(enc_prefix, enc_filter, &config);
@@ -707,7 +718,7 @@ fn video_audio_hls() {
         "level+error",
         "-re",
         "-i",
-        "assets/with_audio.mp4",
+        "./assets/with_audio.mp4",
         "-filter_complex",
         "[0:v:0]scale=1024:576,realtime=speed=1[vout0];[0:a:0]anull[aout0]",
         "-map",
@@ -771,7 +782,7 @@ fn video_multi_audio_hls() {
         "/usr/share/ffplayout/public/live/stream.m3u8"
     ]);
 
-    let media_obj = Media::new(0, "assets/dual_audio.mp4", true);
+    let media_obj = Media::new(0, "./assets/dual_audio.mp4", true);
     let media = gen_source(&config, media_obj, &Arc::new(Mutex::new(vec![])));
     let enc_filter = media.filter.unwrap();
 
@@ -782,7 +793,7 @@ fn video_multi_audio_hls() {
         "level+error",
         "-re",
         "-i",
-        "assets/dual_audio.mp4"
+        "./assets/dual_audio.mp4"
     ];
 
     let enc_cmd = prepare_output_cmd(enc_prefix, enc_filter, &config);
@@ -794,7 +805,7 @@ fn video_multi_audio_hls() {
         "level+error",
         "-re",
         "-i",
-        "assets/dual_audio.mp4",
+        "./assets/dual_audio.mp4",
         "-filter_complex",
         "[0:v:0]scale=1024:576,realtime=speed=1[vout0];[0:a:0]anull[aout0];[0:a:1]anull[aout1]",
         "-map",
@@ -875,7 +886,7 @@ fn multi_video_audio_hls() {
         "/usr/share/ffplayout/public/live/stream_%v.m3u8"
     ]);
 
-    let media_obj = Media::new(0, "assets/with_audio.mp4", true);
+    let media_obj = Media::new(0, "./assets/with_audio.mp4", true);
     let media = gen_source(&config, media_obj, &Arc::new(Mutex::new(vec![])));
     let enc_filter = media.filter.unwrap();
 
@@ -886,7 +897,7 @@ fn multi_video_audio_hls() {
         "level+error",
         "-re",
         "-i",
-        "assets/with_audio.mp4"
+        "./assets/with_audio.mp4"
     ];
 
     let enc_cmd = prepare_output_cmd(enc_prefix, enc_filter, &config);
@@ -898,7 +909,7 @@ fn multi_video_audio_hls() {
         "level+error",
         "-re",
         "-i",
-        "assets/with_audio.mp4",
+        "./assets/with_audio.mp4",
         "-filter_complex",
         "[0:v:0]scale=1024:576,realtime=speed=1[vout0];[0:a:0]anull[aout0];[vout0]split=2[v1_out][v2];[v2]scale=w=512:h=288[v2_out];[aout0]asplit=2[a1][a2]",
         "-map",
@@ -992,7 +1003,7 @@ fn multi_video_multi_audio_hls() {
         "/usr/share/ffplayout/public/live/stream_%v.m3u8"
     ]);
 
-    let media_obj = Media::new(0, "assets/dual_audio.mp4", true);
+    let media_obj = Media::new(0, "./assets/dual_audio.mp4", true);
     let media = gen_source(&config, media_obj, &Arc::new(Mutex::new(vec![])));
     let enc_filter = media.filter.unwrap();
 
@@ -1003,7 +1014,7 @@ fn multi_video_multi_audio_hls() {
         "level+error",
         "-re",
         "-i",
-        "assets/dual_audio.mp4"
+        "./assets/dual_audio.mp4"
     ];
 
     let enc_cmd = prepare_output_cmd(enc_prefix, enc_filter, &config);
@@ -1015,7 +1026,7 @@ fn multi_video_multi_audio_hls() {
         "level+error",
         "-re",
         "-i",
-        "assets/dual_audio.mp4",
+        "./assets/dual_audio.mp4",
         "-filter_complex",
         "[0:v:0]scale=1024:576,realtime=speed=1[vout0];[0:a:0]anull[aout0];[0:a:1]anull[aout1];[vout0]split=2[v1_out][v2];[v2]scale=w=512:h=288[v2_out];[aout0]asplit=2[a_0_1][a_0_2];[aout1]asplit=2[a_1_1][a_1_2]",
         "-map",
@@ -1055,7 +1066,7 @@ fn multi_video_multi_audio_hls() {
         "-master_pl_name",
         "master.m3u8",
         "-var_stream_map",
-        "v:0,a:0,a:2,name:720p v:1,a:1,a:3,name:288p",
+        "v:0,a:0,a:1,name:720p v:1,a:2,a:3,name:288p",
         "/usr/share/ffplayout/public/live/stream_%v.m3u8"
     ];
 
