@@ -26,4 +26,4 @@ jobs:
           cargo fmt --all -- --check
 
       - name: Run build on all Systems
-          cargo build --all-features
+        run: cargo build --all-features
