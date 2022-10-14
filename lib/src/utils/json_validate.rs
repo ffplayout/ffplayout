@@ -11,7 +11,7 @@ use simplelog::*;
 
 use crate::utils::{
     format_log_line, loop_image, sec_to_time, seek_and_length, valid_source, vec_strings,
-    JsonPlaylist, Media, PlayoutConfig, IMAGE_FORMAT,
+    JsonPlaylist, Media, PlayoutConfig, FFMPEG_IGNORE_ERRORS, IMAGE_FORMAT,
 };
 
 /// check if ffmpeg can read the file and apply filter to it.
@@ -58,9 +58,7 @@ fn check_media(
     let mut filter = node.filter.unwrap_or_default();
 
     if filter.len() > 1 {
-        filter[1] = filter[1]
-            .replace("realtime=speed=1", "null")
-            .replace("arealtime=speed=1", "snull")
+        filter[1] = filter[1].replace("realtime=speed=1", "null")
     }
 
     enc_cmd.append(&mut node.cmd.unwrap_or_default());
@@ -81,24 +79,26 @@ fn check_media(
     for line in enc_err.lines() {
         let line = line?;
 
-        if line.contains("[error]") {
-            let log_line = format_log_line(line, "error");
+        if !FFMPEG_IGNORE_ERRORS.iter().any(|i| line.contains(*i)) {
+            if line.contains("[error]") {
+                let log_line = format_log_line(line, "error");
 
-            if !error_list.contains(&log_line) {
-                error_list.push(log_line);
-            }
-        } else if line.contains("[fatal]") {
-            let log_line = format_log_line(line, "fatal");
+                if !error_list.contains(&log_line) {
+                    error_list.push(log_line);
+                }
+            } else if line.contains("[fatal]") {
+                let log_line = format_log_line(line, "fatal");
 
-            if !error_list.contains(&log_line) {
-                error_list.push(log_line);
+                if !error_list.contains(&log_line) {
+                    error_list.push(log_line);
+                }
             }
         }
     }
 
     if !error_list.is_empty() {
         error!(
-            "<bright black>[Validator]</> Compressing error on position <yellow>{pos}</> {}: <b><magenta>{}</></b>:\n{}",
+            "<bright black>[Validator]</> ffmpeg error on position <yellow>{pos}</> - {}: <b><magenta>{}</></b>:\n{}",
             sec_to_time(begin),
             node.source,
             error_list.join("\n")
@@ -106,6 +106,10 @@ fn check_media(
     }
 
     error_list.clear();
+
+    if let Err(e) = enc_proc.wait() {
+        error!("Validation process: {e:?}");
+    }
 
     Ok(())
 }

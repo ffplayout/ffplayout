@@ -1,6 +1,6 @@
 use std::{
     ffi::OsStr,
-    fs::{self, metadata},
+    fs::{self, metadata, File},
     io::{BufRead, BufReader, Error},
     net::TcpListener,
     path::{Path, PathBuf},
@@ -26,6 +26,7 @@ pub mod config;
 pub mod controller;
 pub mod folder;
 mod generator;
+pub mod import;
 pub mod json_serializer;
 mod json_validate;
 mod logging;
@@ -33,7 +34,13 @@ mod logging;
 #[cfg(windows)]
 mod windows;
 
-pub use config::{self as playout_config, PlayoutConfig, DUMMY_LEN, IMAGE_FORMAT};
+pub use config::{
+    self as playout_config,
+    OutputMode::{self, *},
+    PlayoutConfig,
+    ProcessMode::{self, *},
+    DUMMY_LEN, FFMPEG_IGNORE_ERRORS, IMAGE_FORMAT,
+};
 pub use controller::{PlayerControl, PlayoutStatus, ProcessControl, ProcessUnit::*};
 pub use generator::generate_playlist;
 pub use json_serializer::{read_json, JsonPlaylist};
@@ -97,12 +104,12 @@ pub struct Media {
 }
 
 impl Media {
-    pub fn new(index: usize, src: String, do_probe: bool) -> Self {
+    pub fn new(index: usize, src: &str, do_probe: bool) -> Self {
         let mut duration = 0.0;
         let mut probe = None;
 
-        if do_probe && Path::new(&src).is_file() {
-            probe = Some(MediaProbe::new(&src));
+        if do_probe && Path::new(src).is_file() {
+            probe = Some(MediaProbe::new(src));
 
             if let Some(dur) = probe
                 .as_ref()
@@ -120,9 +127,9 @@ impl Media {
             out: duration,
             duration,
             category: String::new(),
-            source: src.clone(),
+            source: src.to_string(),
             audio: String::new(),
-            cmd: Some(vec!["-i".to_string(), src]),
+            cmd: Some(vec_strings!["-i", src]),
             filter: Some(vec![]),
             custom_filter: String::new(),
             probe,
@@ -247,6 +254,24 @@ pub fn fps_calc(r_frame_rate: &str, default: f64) -> f64 {
     fps
 }
 
+pub fn json_reader(path: &PathBuf) -> Result<JsonPlaylist, Error> {
+    let f = File::options().read(true).write(false).open(&path)?;
+    let p = serde_json::from_reader(f)?;
+
+    Ok(p)
+}
+
+pub fn json_writer(path: &PathBuf, data: JsonPlaylist) -> Result<(), Error> {
+    let f = File::options()
+        .write(true)
+        .truncate(true)
+        .create(true)
+        .open(&path)?;
+    serde_json::to_writer_pretty(f, &data)?;
+
+    Ok(())
+}
+
 /// Covert JSON string to ffmpeg filter command.
 pub fn get_filter_from_json(raw_text: String) -> String {
     let re1 = Regex::new(r#""|}|\{"#).unwrap();
@@ -280,10 +305,10 @@ pub fn write_status(config: &PlayoutConfig, date: &str, shift: f64) {
     };
 }
 
-// pub fn get_timestamp() -> i64 {
+// pub fn get_timestamp() -> i32 {
 //     let local: DateTime<Local> = time_now();
 
-//     local.timestamp_millis() as i64
+//     local.timestamp_millis() as i32
 // }
 
 /// Get current time in seconds.
@@ -474,16 +499,8 @@ pub fn seek_and_length(node: &Media) -> Vec<String> {
     let mut source_cmd = vec![];
     let mut cut_audio = false;
 
-    if node.seek > 0.0 {
+    if node.seek > 0.5 {
         source_cmd.append(&mut vec_strings!["-ss", node.seek])
-    }
-
-    if file_extension(Path::new(&node.source))
-        .unwrap_or_default()
-        .to_lowercase()
-        == "mp4"
-    {
-        source_cmd.append(&mut vec_strings!["-ignore_chapters", "1"]);
     }
 
     source_cmd.append(&mut vec_strings!["-i", node.source.clone()]);
@@ -491,7 +508,7 @@ pub fn seek_and_length(node: &Media) -> Vec<String> {
     if Path::new(&node.audio).is_file() {
         let audio_probe = MediaProbe::new(&node.audio);
 
-        if node.seek > 0.0 {
+        if node.seek > 0.5 {
             source_cmd.append(&mut vec_strings!["-ss", node.seek])
         }
 
@@ -522,98 +539,40 @@ pub fn gen_dummy(config: &PlayoutConfig, duration: f64) -> (String, Vec<String>)
         "color=c={color}:s={}x{}:d={duration}",
         config.processing.width, config.processing.height
     );
-    let cmd: Vec<String> = vec![
-        "-f".to_string(),
-        "lavfi".to_string(),
-        "-i".to_string(),
+    let cmd: Vec<String> = vec_strings![
+        "-f",
+        "lavfi",
+        "-i",
         format!(
             "{source}:r={},format=pix_fmts=yuv420p",
             config.processing.fps
         ),
-        "-f".to_string(),
-        "lavfi".to_string(),
-        "-i".to_string(),
-        format!("anoisesrc=d={duration}:c=pink:r=48000:a=0.3"),
+        "-f",
+        "lavfi",
+        "-i",
+        format!("anoisesrc=d={duration}:c=pink:r=48000:a=0.3")
     ];
 
     (source, cmd)
 }
 
-/// Prepare output parameters
-///
-/// seek for multiple outputs and add mapping for it
-pub fn prepare_output_cmd(
-    prefix: Vec<String>,
-    mut filter: Vec<String>,
-    params: Vec<String>,
-    mode: &str,
-) -> Vec<String> {
-    let params_len = params.len();
-    let mut output_params = params.clone();
-    let mut output_a_map = "[a_out1]".to_string();
-    let mut output_v_map = "[v_out1]".to_string();
-    let mut output_count = 1;
-    let mut cmd = prefix;
+// fn get_output_count(cmd: &[String]) -> i32 {
+//     let mut count = 0;
 
-    if !filter.is_empty() {
-        output_params.clear();
+//     if let Some(index) = cmd.iter().position(|c| c == "-var_stream_map") {
+//         if let Some(mapping) = cmd.get(index + 1) {
+//             return mapping.split(' ').count() as i32;
+//         };
+//     };
 
-        for (i, p) in params.iter().enumerate() {
-            let mut param = p.clone();
+//     for (i, param) in cmd.iter().enumerate() {
+//         if i > 0 && !param.starts_with('-') && !cmd[i - 1].starts_with('-') {
+//             count += 1;
+//         }
+//     }
 
-            param = param.replace("[0:v]", "[vout1]");
-            param = param.replace("[0:a]", "[aout1]");
-
-            if param != "-filter_complex" {
-                output_params.push(param.clone());
-            }
-
-            if i > 0
-                && !param.starts_with('-')
-                && !params[i - 1].starts_with('-')
-                && i < params_len - 1
-            {
-                output_count += 1;
-                let mut a_map = "0:a".to_string();
-                let v_map = format!("[v_out{output_count}]");
-                output_v_map.push_str(v_map.as_str());
-
-                if mode == "hls" {
-                    a_map = format!("[a_out{output_count}]");
-                }
-
-                output_a_map.push_str(a_map.as_str());
-
-                let mut map = vec!["-map".to_string(), v_map, "-map".to_string(), a_map];
-
-                output_params.append(&mut map);
-            }
-        }
-
-        if output_count > 1 && mode == "hls" {
-            filter[1].push_str(format!(";[vout1]split={output_count}{output_v_map}").as_str());
-            filter[1].push_str(format!(";[aout1]asplit={output_count}{output_a_map}").as_str());
-            filter.drain(2..);
-            cmd.append(&mut filter);
-            cmd.append(&mut vec_strings!["-map", "[v_out1]", "-map", "[a_out1]"]);
-        } else if output_count == 1 && mode == "hls" && output_params[0].contains("split") {
-            let out_filter = output_params.remove(0);
-            filter[1].push_str(format!(";{out_filter}").as_str());
-            filter.drain(2..);
-            cmd.append(&mut filter);
-        } else if output_count > 1 && mode == "stream" {
-            filter[1].push_str(format!(",split={output_count}{output_v_map}").as_str());
-            cmd.append(&mut filter);
-            cmd.append(&mut vec_strings!["-map", "[v_out1]", "-map", "0:a"]);
-        } else {
-            cmd.append(&mut filter);
-        }
-    }
-
-    cmd.append(&mut output_params);
-
-    cmd
-}
+//     count
+// }
 
 pub fn is_remote(path: &str) -> bool {
     Regex::new(r"^https?://.*").unwrap().is_match(path)
@@ -642,7 +601,7 @@ pub fn include_file(config: PlayoutConfig, file_path: &Path) -> bool {
         }
     }
 
-    if config.out.mode.to_lowercase() == "hls" {
+    if config.out.mode == HLS {
         if let Some(ts_path) = config
             .out
             .output_cmd
@@ -700,7 +659,9 @@ pub fn stderr_reader(
                 "<bright black>[{suffix}]</> {}",
                 format_log_line(line, "warning")
             )
-        } else if line.contains("[error]") || line.contains("[fatal]") {
+        } else if (line.contains("[error]") || line.contains("[fatal]"))
+            && !FFMPEG_IGNORE_ERRORS.iter().any(|i| line.contains(*i))
+        {
             error!(
                 "<bright black>[{suffix}]</> {}",
                 line.replace("[error]", "").replace("[fatal]", "")
@@ -780,7 +741,7 @@ pub fn validate_ffmpeg(config: &PlayoutConfig) -> Result<(), String> {
     is_in_system("ffmpeg")?;
     is_in_system("ffprobe")?;
 
-    if config.out.mode == "desktop" {
+    if config.out.mode == Desktop {
         is_in_system("ffplay")?;
     }
 

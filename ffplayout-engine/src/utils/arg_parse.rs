@@ -1,5 +1,7 @@
 use clap::Parser;
 
+use ffplayout_lib::utils::{OutputMode, ProcessMode};
+
 #[derive(Parser, Debug, Clone)]
 #[clap(version,
     about = "ffplayout, Rust based 24/7 playout solution.",
@@ -26,10 +28,23 @@ pub struct Args {
     pub generate: Option<Vec<String>>,
 
     #[clap(short = 'm', long, help = "Playing mode: folder, playlist")]
-    pub play_mode: Option<String>,
+    pub play_mode: Option<ProcessMode>,
 
     #[clap(short, long, help = "Play folder content")]
     pub folder: Option<String>,
+
+    #[clap(
+        short,
+        long,
+        help = "Target date (YYYY-MM-DD) for text/m3u to playlist import"
+    )]
+    pub date: Option<String>,
+
+    #[clap(
+        long,
+        help = "Import a given text/m3u file and create a playlist from it"
+    )]
+    pub import: Option<String>,
 
     #[clap(short, long, help = "Path from playlist")]
     pub playlist: Option<String>,
@@ -51,8 +66,8 @@ pub struct Args {
     #[clap(short, long, help = "Loop playlist infinitely")]
     pub infinit: bool,
 
-    #[clap(short, long, help = "Set output mode: desktop, hls, stream")]
-    pub output: Option<String>,
+    #[clap(short, long, help = "Set output mode: desktop, hls, null, stream")]
+    pub output: Option<OutputMode>,
 
     #[clap(short, long, help = "Set audio volume")]
     pub volume: Option<f64>,

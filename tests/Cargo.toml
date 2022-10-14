@@ -1,13 +1,14 @@
 [package]
-name = "ffplayout-lib"
-description = "Library for ffplayout"
-license = "GPL-3.0"
-authors = ["Jonathan Baecker jonbae77@gmail.com"]
-readme = "README.md"
-version = "0.16.0"
+name = "tests"
+version = "0.1.0"
 edition = "2021"
+publish = false
 
-[dependencies]
+[dev-dependencies]
+ffplayout = { path = "../ffplayout-engine" }
+# ffplayout-api = { path = "../ffplayout-api" }
+ffplayout-lib = { path = "../lib" }
+
 chrono = "0.4"
 crossbeam-channel = "0.5"
 ffprobe = "0.3"
@@ -27,13 +28,15 @@ simplelog = { version = "^0.12", features = ["paris"] }
 time = { version = "0.3", features = ["formatting", "macros"] }
 walkdir = "2"
 
-[target."cfg(windows)".dependencies.winapi]
-version = "0.3"
-features = [
-    "shlobj",
-    "std",
-    "winerror",
-]
+[[test]]
+name = "lib_utils"
+path = "src/lib_utils.rs"
 
-[target.x86_64-unknown-linux-musl.dependencies]
-openssl = { version = "0.10", features = ["vendored"] }
+[[test]]
+name = "engine_playlist"
+path = "src/engine_playlist.rs"
+
+[[test]]
+name = "engine_cmd"
+path = "src/engine_cmd.rs"
+

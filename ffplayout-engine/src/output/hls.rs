@@ -28,10 +28,11 @@ use std::{
 use simplelog::*;
 
 use crate::input::{ingest::log_line, source_generator};
+use crate::utils::prepare_output_cmd;
 use ffplayout_lib::filter::filter_chains;
 use ffplayout_lib::utils::{
-    prepare_output_cmd, sec_to_time, stderr_reader, test_tcp_port, Decoder, Ingest, Media,
-    PlayerControl, PlayoutConfig, PlayoutStatus, ProcessControl,
+    sec_to_time, stderr_reader, test_tcp_port, Encoder, Ingest, Media, PlayerControl,
+    PlayoutConfig, PlayoutStatus, ProcessControl,
 };
 use ffplayout_lib::vec_strings;
 
@@ -47,7 +48,7 @@ fn ingest_to_hls_server(
     let mut server_prefix = vec_strings!["-hide_banner", "-nostats", "-v", "level+info"];
     let stream_input = config.ingest.input_cmd.clone().unwrap();
     server_prefix.append(&mut stream_input.clone());
-    let mut dummy_media = Media::new(0, "Live Stream".to_string(), false);
+    let mut dummy_media = Media::new(0, "Live Stream", false);
     dummy_media.is_live = Some(true);
 
     let mut is_running;
@@ -79,12 +80,7 @@ fn ingest_to_hls_server(
             }
         }
 
-        let server_cmd = prepare_output_cmd(
-            server_prefix.clone(),
-            filters,
-            config.out.clone().output_cmd.unwrap(),
-            "hls",
-        );
+        let server_cmd = prepare_output_cmd(server_prefix.clone(), filters, &config);
 
         debug!(
             "Server CMD: <bright-blue>\"ffmpeg {}\"</>",
@@ -124,7 +120,7 @@ fn ingest_to_hls_server(
 
                 info!("Switch from {} to live ingest", config.processing.mode);
 
-                if let Err(e) = proc_control.kill(Decoder) {
+                if let Err(e) = proc_control.kill(Encoder) {
                     error!("{e}");
                 }
             }
@@ -200,12 +196,7 @@ pub fn write_hls(
         let mut enc_prefix = vec_strings!["-hide_banner", "-nostats", "-v", &ff_log_format];
         enc_prefix.append(&mut cmd);
         let enc_filter = node.filter.unwrap();
-        let enc_cmd = prepare_output_cmd(
-            enc_prefix,
-            enc_filter,
-            config.out.clone().output_cmd.unwrap(),
-            &config.out.mode,
-        );
+        let enc_cmd = prepare_output_cmd(enc_prefix, enc_filter, config);
 
         debug!(
             "HLS writer CMD: <bright-blue>\"ffmpeg {}\"</>",
@@ -218,20 +209,20 @@ pub fn write_hls(
             .spawn()
         {
             Err(e) => {
-                error!("couldn't spawn decoder process: {e}");
-                panic!("couldn't spawn decoder process: {e}")
+                error!("couldn't spawn encoder process: {e}");
+                panic!("couldn't spawn encoder process: {e}")
             }
             Ok(proc) => proc,
         };
 
-        let dec_err = BufReader::new(enc_proc.stderr.take().unwrap());
-        *proc_control.decoder_term.lock().unwrap() = Some(enc_proc);
+        let enc_err = BufReader::new(enc_proc.stderr.take().unwrap());
+        *proc_control.encoder_term.lock().unwrap() = Some(enc_proc);
 
-        if let Err(e) = stderr_reader(dec_err, "Writer", proc_control.clone()) {
+        if let Err(e) = stderr_reader(enc_err, "Writer", proc_control.clone()) {
             error!("{e:?}")
         };
 
-        if let Err(e) = proc_control.wait(Decoder) {
+        if let Err(e) = proc_control.wait(Encoder) {
             error!("{e}");
         }
 

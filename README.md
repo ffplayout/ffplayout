@@ -46,10 +46,14 @@ Check the [releases](https://github.com/ffplayout/ffplayout/releases/latest) for
 - JSON RPC server, for getting infos about current playing and controlling
 - [live ingest](/docs/live_ingest.md)
 - image source (will loop until out duration is reached)
-- extra audio source (experimental) (has priority over audio from video source)
+- extra audio source (experimental *) (has priority over audio from video source)
+- [multiple audio tracks](/docs/multi_audio.md) (experimental *)
 - [custom filter](/docs/custom_filters.md) globally in config, or in playlist for specific clips
+- import playlist from text or m3u file, with CLI or frontend
 
 For preview stream, read: [/docs/preview_stream.md](/docs/preview_stream.md)
+
+**\* Experimental functions do not guarantee the same stability, also they can fail in unusual circumstances. The code and configuration options may change in the future.**
 
 ## **ffplayout-api (ffpapi)**
 

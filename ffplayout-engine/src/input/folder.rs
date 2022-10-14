@@ -42,7 +42,7 @@ pub fn watchman(
             match res {
                 Create(new_path) => {
                     let index = sources.lock().unwrap().len();
-                    let media = Media::new(index, new_path.display().to_string(), false);
+                    let media = Media::new(index, &new_path.to_string_lossy(), false);
 
                     if include_file(config.clone(), &new_path) {
                         sources.lock().unwrap().push(media);
@@ -66,7 +66,7 @@ pub fn watchman(
                         .position(|x| *x.source == old_path.display().to_string())
                         .unwrap();
 
-                    let media = Media::new(index, new_path.display().to_string(), false);
+                    let media = Media::new(index, &new_path.to_string_lossy(), false);
                     sources.lock().unwrap()[index] = media;
 
                     info!("Rename file: <b><magenta>{old_path:?}</></b> to <b><magenta>{new_path:?}</></b>");

@@ -8,7 +8,7 @@
 ///
 /// For all endpoints an (Bearer) authentication is required.\
 /// `{id}` represent the channel id, and at default is 1.
-use std::collections::HashMap;
+use std::{collections::HashMap, env, fs, path::Path};
 
 use actix_multipart::Multipart;
 use actix_web::{delete, get, http::StatusCode, patch, post, put, web, HttpResponse, Responder};
@@ -20,8 +20,12 @@ use argon2::{
 use serde::{Deserialize, Serialize};
 use simplelog::*;
 
+use crate::auth::{create_jwt, Claims};
+use crate::db::{
+    handles,
+    models::{Channel, LoginUser, TextPreset, User},
+};
 use crate::utils::{
-    auth::{create_jwt, Claims},
     channels::{create_channel, delete_channel},
     control::{control_service, control_state, media_info, send_message, Process},
     errors::ServiceError,
@@ -29,16 +33,10 @@ use crate::utils::{
         browser, create_directory, remove_file_or_folder, rename_file, upload, MoveObject,
         PathObject,
     },
-    handles::{
-        db_add_preset, db_add_user, db_delete_preset, db_get_all_channels, db_get_channel,
-        db_get_presets, db_get_user, db_login, db_role, db_update_channel, db_update_preset,
-        db_update_user,
-    },
-    models::{Channel, LoginUser, TextPreset, User},
     playlist::{delete_playlist, generate_playlist, read_playlist, write_playlist},
-    read_log_file, read_playout_config, Role,
+    playout_config, read_log_file, read_playout_config, Role,
 };
-use ffplayout_lib::utils::{JsonPlaylist, PlayoutConfig};
+use ffplayout_lib::utils::{import::import_file, JsonPlaylist, PlayoutConfig};
 
 #[derive(Serialize)]
 struct ResponseObj<T> {
@@ -60,9 +58,17 @@ pub struct DateObj {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-pub struct FileObj {
+struct FileObj {
     #[serde(default)]
     path: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct ImportObj {
+    #[serde(default)]
+    file: String,
+    #[serde(default)]
+    date: String,
 }
 
 /// #### User Handling
@@ -85,7 +91,7 @@ pub struct FileObj {
 /// ```
 #[post("/auth/login/")]
 pub async fn login(credentials: web::Json<User>) -> impl Responder {
-    match db_login(&credentials.username).await {
+    match handles::select_login(&credentials.username).await {
         Ok(mut user) => {
             let pass = user.password.clone();
             let hash = PasswordHash::new(&pass).unwrap();
@@ -96,7 +102,7 @@ pub async fn login(credentials: web::Json<User>) -> impl Responder {
                 .verify_password(credentials.password.as_bytes(), &hash)
                 .is_ok()
             {
-                let role = db_role(&user.role_id.unwrap_or_default())
+                let role = handles::select_role(&user.role_id.unwrap_or_default())
                     .await
                     .unwrap_or_else(|_| "guest".to_string());
                 let claims = Claims::new(user.id, user.username.clone(), role.clone());
@@ -147,7 +153,7 @@ pub async fn login(credentials: web::Json<User>) -> impl Responder {
 #[get("/user")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 async fn get_user(user: web::ReqData<LoginUser>) -> Result<impl Responder, ServiceError> {
-    match db_get_user(&user.username).await {
+    match handles::select_user(&user.username).await {
         Ok(user) => Ok(web::Json(user)),
         Err(e) => {
             error!("{e}");
@@ -165,7 +171,7 @@ async fn get_user(user: web::ReqData<LoginUser>) -> Result<impl Responder, Servi
 #[put("/user/{id}")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 async fn update_user(
-    id: web::Path<i64>,
+    id: web::Path<i32>,
     user: web::ReqData<LoginUser>,
     data: web::Json<User>,
 ) -> Result<impl Responder, ServiceError> {
@@ -189,7 +195,7 @@ async fn update_user(
             fields.push_str(format!("password = '{}', salt = '{salt}'", password_hash).as_str());
         }
 
-        if db_update_user(user.id, fields).await.is_ok() {
+        if handles::update_user(user.id, fields).await.is_ok() {
             return Ok("Update Success");
         };
 
@@ -209,7 +215,7 @@ async fn update_user(
 #[post("/user/")]
 #[has_any_role("Role::Admin", type = "Role")]
 async fn add_user(data: web::Json<User>) -> Result<impl Responder, ServiceError> {
-    match db_add_user(data.into_inner()).await {
+    match handles::insert_user(data.into_inner()).await {
         Ok(_) => Ok("Add User Success"),
         Err(e) => {
             error!("{e}");
@@ -241,8 +247,8 @@ async fn add_user(data: web::Json<User>) -> Result<impl Responder, ServiceError>
 /// ```
 #[get("/channel/{id}")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
-async fn get_channel(id: web::Path<i64>) -> Result<impl Responder, ServiceError> {
-    if let Ok(channel) = db_get_channel(&id).await {
+async fn get_channel(id: web::Path<i32>) -> Result<impl Responder, ServiceError> {
+    if let Ok(channel) = handles::select_channel(&id).await {
         return Ok(web::Json(channel));
     }
 
@@ -257,7 +263,7 @@ async fn get_channel(id: web::Path<i64>) -> Result<impl Responder, ServiceError>
 #[get("/channels")]
 #[has_any_role("Role::Admin", type = "Role")]
 async fn get_all_channels() -> Result<impl Responder, ServiceError> {
-    if let Ok(channel) = db_get_all_channels().await {
+    if let Ok(channel) = handles::select_all_channels().await {
         return Ok(web::Json(channel));
     }
 
@@ -275,10 +281,13 @@ async fn get_all_channels() -> Result<impl Responder, ServiceError> {
 #[patch("/channel/{id}")]
 #[has_any_role("Role::Admin", type = "Role")]
 async fn patch_channel(
-    id: web::Path<i64>,
+    id: web::Path<i32>,
     data: web::Json<Channel>,
 ) -> Result<impl Responder, ServiceError> {
-    if db_update_channel(*id, data.into_inner()).await.is_ok() {
+    if handles::update_channel(*id, data.into_inner())
+        .await
+        .is_ok()
+    {
         return Ok("Update Success");
     };
 
@@ -310,7 +319,7 @@ async fn add_channel(data: web::Json<Channel>) -> Result<impl Responder, Service
 /// ```
 #[delete("/channel/{id}")]
 #[has_any_role("Role::Admin", type = "Role")]
-async fn remove_channel(id: web::Path<i64>) -> Result<impl Responder, ServiceError> {
+async fn remove_channel(id: web::Path<i32>) -> Result<impl Responder, ServiceError> {
     if delete_channel(*id).await.is_ok() {
         return Ok("Delete Channel Success");
     }
@@ -330,10 +339,10 @@ async fn remove_channel(id: web::Path<i64>) -> Result<impl Responder, ServiceErr
 #[get("/playout/config/{id}")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 async fn get_playout_config(
-    id: web::Path<i64>,
+    id: web::Path<i32>,
     _details: AuthDetails<Role>,
 ) -> Result<impl Responder, ServiceError> {
-    if let Ok(channel) = db_get_channel(&id).await {
+    if let Ok(channel) = handles::select_channel(&id).await {
         if let Ok(config) = read_playout_config(&channel.config_path) {
             return Ok(web::Json(config));
         }
@@ -351,10 +360,10 @@ async fn get_playout_config(
 #[put("/playout/config/{id}")]
 #[has_any_role("Role::Admin", type = "Role")]
 async fn update_playout_config(
-    id: web::Path<i64>,
+    id: web::Path<i32>,
     data: web::Json<PlayoutConfig>,
 ) -> Result<impl Responder, ServiceError> {
-    if let Ok(channel) = db_get_channel(&id).await {
+    if let Ok(channel) = handles::select_channel(&id).await {
         if let Ok(f) = std::fs::OpenOptions::new()
             .write(true)
             .truncate(true)
@@ -383,8 +392,8 @@ async fn update_playout_config(
 /// ```
 #[get("/presets/{id}")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
-async fn get_presets(id: web::Path<i64>) -> Result<impl Responder, ServiceError> {
-    if let Ok(presets) = db_get_presets(*id).await {
+async fn get_presets(id: web::Path<i32>) -> Result<impl Responder, ServiceError> {
+    if let Ok(presets) = handles::select_presets(*id).await {
         return Ok(web::Json(presets));
     }
 
@@ -402,10 +411,10 @@ async fn get_presets(id: web::Path<i64>) -> Result<impl Responder, ServiceError>
 #[put("/presets/{id}")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 async fn update_preset(
-    id: web::Path<i64>,
+    id: web::Path<i32>,
     data: web::Json<TextPreset>,
 ) -> Result<impl Responder, ServiceError> {
-    if db_update_preset(&id, data.into_inner()).await.is_ok() {
+    if handles::update_preset(&id, data.into_inner()).await.is_ok() {
         return Ok("Update Success");
     }
 
@@ -423,7 +432,7 @@ async fn update_preset(
 #[post("/presets/")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 async fn add_preset(data: web::Json<TextPreset>) -> Result<impl Responder, ServiceError> {
-    if db_add_preset(data.into_inner()).await.is_ok() {
+    if handles::insert_preset(data.into_inner()).await.is_ok() {
         return Ok("Add preset Success");
     }
 
@@ -438,8 +447,8 @@ async fn add_preset(data: web::Json<TextPreset>) -> Result<impl Responder, Servi
 /// ```
 #[delete("/presets/{id}")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
-async fn delete_preset(id: web::Path<i64>) -> Result<impl Responder, ServiceError> {
-    if db_delete_preset(&id).await.is_ok() {
+async fn delete_preset(id: web::Path<i32>) -> Result<impl Responder, ServiceError> {
+    if handles::delete_preset(&id).await.is_ok() {
         return Ok("Delete preset Success");
     }
 
@@ -466,7 +475,7 @@ async fn delete_preset(id: web::Path<i64>) -> Result<impl Responder, ServiceErro
 #[post("/control/{id}/text/")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 pub async fn send_text_message(
-    id: web::Path<i64>,
+    id: web::Path<i32>,
     data: web::Json<HashMap<String, String>>,
 ) -> Result<impl Responder, ServiceError> {
     match send_message(*id, data.into_inner()).await {
@@ -488,7 +497,7 @@ pub async fn send_text_message(
 #[post("/control/{id}/playout/")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 pub async fn control_playout(
-    id: web::Path<i64>,
+    id: web::Path<i32>,
     control: web::Json<Process>,
 ) -> Result<impl Responder, ServiceError> {
     match control_state(*id, control.command.clone()).await {
@@ -529,7 +538,7 @@ pub async fn control_playout(
 /// ```
 #[get("/control/{id}/media/current")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
-pub async fn media_current(id: web::Path<i64>) -> Result<impl Responder, ServiceError> {
+pub async fn media_current(id: web::Path<i32>) -> Result<impl Responder, ServiceError> {
     match media_info(*id, "current".into()).await {
         Ok(res) => Ok(res.text().await.unwrap_or_else(|_| "Success".into())),
         Err(e) => Err(e),
@@ -543,7 +552,7 @@ pub async fn media_current(id: web::Path<i64>) -> Result<impl Responder, Service
 /// ```
 #[get("/control/{id}/media/next")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
-pub async fn media_next(id: web::Path<i64>) -> Result<impl Responder, ServiceError> {
+pub async fn media_next(id: web::Path<i32>) -> Result<impl Responder, ServiceError> {
     match media_info(*id, "next".into()).await {
         Ok(res) => Ok(res.text().await.unwrap_or_else(|_| "Success".into())),
         Err(e) => Err(e),
@@ -558,7 +567,7 @@ pub async fn media_next(id: web::Path<i64>) -> Result<impl Responder, ServiceErr
 /// ```
 #[get("/control/{id}/media/last")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
-pub async fn media_last(id: web::Path<i64>) -> Result<impl Responder, ServiceError> {
+pub async fn media_last(id: web::Path<i32>) -> Result<impl Responder, ServiceError> {
     match media_info(*id, "last".into()).await {
         Ok(res) => Ok(res.text().await.unwrap_or_else(|_| "Success".into())),
         Err(e) => Err(e),
@@ -581,7 +590,7 @@ pub async fn media_last(id: web::Path<i64>) -> Result<impl Responder, ServiceErr
 #[post("/control/{id}/process/")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 pub async fn process_control(
-    id: web::Path<i64>,
+    id: web::Path<i32>,
     proc: web::Json<Process>,
 ) -> Result<impl Responder, ServiceError> {
     control_service(*id, &proc.command).await
@@ -598,7 +607,7 @@ pub async fn process_control(
 #[get("/playlist/{id}")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 pub async fn get_playlist(
-    id: web::Path<i64>,
+    id: web::Path<i32>,
     obj: web::Query<DateObj>,
 ) -> Result<impl Responder, ServiceError> {
     match read_playlist(*id, obj.date.clone()).await {
@@ -617,7 +626,7 @@ pub async fn get_playlist(
 #[post("/playlist/{id}/")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 pub async fn save_playlist(
-    id: web::Path<i64>,
+    id: web::Path<i32>,
     data: web::Json<JsonPlaylist>,
 ) -> Result<impl Responder, ServiceError> {
     match write_playlist(*id, data.into_inner()).await {
@@ -637,7 +646,7 @@ pub async fn save_playlist(
 #[get("/playlist/{id}/generate/{date}")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 pub async fn gen_playlist(
-    params: web::Path<(i64, String)>,
+    params: web::Path<(i32, String)>,
 ) -> Result<impl Responder, ServiceError> {
     match generate_playlist(params.0, params.1.clone()).await {
         Ok(playlist) => Ok(web::Json(playlist)),
@@ -654,7 +663,7 @@ pub async fn gen_playlist(
 #[delete("/playlist/{id}/{date}")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 pub async fn del_playlist(
-    params: web::Path<(i64, String)>,
+    params: web::Path<(i32, String)>,
 ) -> Result<impl Responder, ServiceError> {
     match delete_playlist(params.0, &params.1).await {
         Ok(_) => Ok(format!("Delete playlist from {} success!", params.1)),
@@ -673,7 +682,7 @@ pub async fn del_playlist(
 #[get("/log/{id}")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 pub async fn get_log(
-    id: web::Path<i64>,
+    id: web::Path<i32>,
     log: web::Query<DateObj>,
 ) -> Result<impl Responder, ServiceError> {
     read_log_file(&id, &log.date).await
@@ -690,7 +699,7 @@ pub async fn get_log(
 #[post("/file/{id}/browse/")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 pub async fn file_browser(
-    id: web::Path<i64>,
+    id: web::Path<i32>,
     data: web::Json<PathObject>,
 ) -> Result<impl Responder, ServiceError> {
     match browser(*id, &data.into_inner()).await {
@@ -708,7 +717,7 @@ pub async fn file_browser(
 #[post("/file/{id}/create-folder/")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 pub async fn add_dir(
-    id: web::Path<i64>,
+    id: web::Path<i32>,
     data: web::Json<PathObject>,
 ) -> Result<HttpResponse, ServiceError> {
     create_directory(*id, &data.into_inner()).await
@@ -723,7 +732,7 @@ pub async fn add_dir(
 #[post("/file/{id}/rename/")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 pub async fn move_rename(
-    id: web::Path<i64>,
+    id: web::Path<i32>,
     data: web::Json<MoveObject>,
 ) -> Result<impl Responder, ServiceError> {
     match rename_file(*id, &data.into_inner()).await {
@@ -741,7 +750,7 @@ pub async fn move_rename(
 #[post("/file/{id}/remove/")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 pub async fn remove(
-    id: web::Path<i64>,
+    id: web::Path<i32>,
     data: web::Json<PathObject>,
 ) -> Result<impl Responder, ServiceError> {
     match remove_file_or_folder(*id, &data.into_inner().source).await {
@@ -759,9 +768,38 @@ pub async fn remove(
 #[put("/file/{id}/upload/")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 async fn save_file(
-    id: web::Path<i64>,
+    id: web::Path<i32>,
     payload: Multipart,
     obj: web::Query<FileObj>,
 ) -> Result<HttpResponse, ServiceError> {
-    upload(*id, payload, &obj.path).await
+    upload(*id, payload, &obj.path, false).await
+}
+
+/// **Import playlist**
+///
+/// Import text/m3u file and convert it to a playlist
+/// lines with leading "#" will be ignore
+///
+/// ```BASH
+/// curl -X POST http://127.0.0.1:8787/api/file/1/import/ -H 'Authorization: <TOKEN>'
+/// -F "file=@list.m3u"
+/// ```
+#[put("/file/{id}/import/")]
+#[has_any_role("Role::Admin", "Role::User", type = "Role")]
+async fn import_playlist(
+    id: web::Path<i32>,
+    payload: Multipart,
+    obj: web::Query<ImportObj>,
+) -> Result<HttpResponse, ServiceError> {
+    let file = Path::new(&obj.file).file_name().unwrap_or_default();
+    let path = env::temp_dir().join(&file).to_string_lossy().to_string();
+    let (config, _) = playout_config(&id).await?;
+    let channel = handles::select_channel(&id).await?;
+
+    upload(*id, payload, &path, true).await?;
+    import_file(&config, &obj.date, Some(channel.name), &path)?;
+
+    fs::remove_file(path)?;
+
+    Ok(HttpResponse::Ok().into())
 }

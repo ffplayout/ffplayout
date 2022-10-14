@@ -21,6 +21,10 @@ Using live ingest to inject a live stream.
 
 The different output modes.
 
+### **[Multi Audio Tracks](/docs/multi_audio.md)**
+
+Output multiple audio tracks.
+
 ### **[Custom Filter](/docs/custom_filters.md)**
 
 Apply self defined audio/video filters.

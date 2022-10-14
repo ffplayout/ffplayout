@@ -12,27 +12,19 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use simplelog::*;
 
-pub mod input;
-pub mod output;
-pub mod rpc;
-// #[cfg(test)]
-// mod tests;
-pub mod utils;
-
-use utils::{arg_parse::get_args, get_config};
-
-use crate::{
+use ffplayout::{
     output::{player, write_hls},
     rpc::json_rpc_server,
+    utils::{arg_parse::get_args, get_config},
 };
 
 use ffplayout_lib::utils::{
-    generate_playlist, init_logging, send_mail, validate_ffmpeg, PlayerControl, PlayoutStatus,
-    ProcessControl,
+    generate_playlist, import::import_file, init_logging, send_mail, validate_ffmpeg,
+    OutputMode::*, PlayerControl, PlayoutStatus, ProcessControl,
 };
 
 #[cfg(debug_assertions)]
-use utils::Args;
+use ffplayout::utils::Args;
 
 #[cfg(debug_assertions)]
 use ffplayout_lib::utils::{mock_time, time_now};
@@ -90,10 +82,11 @@ fn fake_time(args: &Args) {
 fn main() {
     let args = get_args();
 
+    // use fake time function only in debugging mode
     #[cfg(debug_assertions)]
     fake_time(&args);
 
-    let config = get_config(args);
+    let config = get_config(args.clone());
     let config_clone = config.clone();
     let play_control = PlayerControl::new();
     let playout_stat = PlayoutStatus::new();
@@ -122,6 +115,26 @@ fn main() {
         exit(0);
     }
 
+    if let Some(path) = args.import {
+        if args.date.is_none() {
+            error!("Import needs date parameter!");
+
+            exit(1);
+        }
+
+        // convert text/m3u file to playlist
+        match import_file(&config, &args.date.unwrap(), None, &path) {
+            Ok(m) => {
+                info!("{m}");
+                exit(0);
+            }
+            Err(e) => {
+                error!("{e}");
+                exit(1);
+            }
+        }
+    }
+
     if config.rpc_server.enable {
         // If RPC server is enable we also fire up a JSON RPC server.
         thread::spawn(move || json_rpc_server(config_clone, play_ctl, play_stat, proc_ctl2));
@@ -129,9 +142,9 @@ fn main() {
 
     status_file(&config.general.stat_file, &playout_stat);
 
-    match config.out.mode.to_lowercase().as_str() {
+    match config.out.mode {
         // write files/playlist to HLS m3u8 playlist
-        "hls" => write_hls(&config, play_control, playout_stat, proc_control),
+        HLS => write_hls(&config, play_control, playout_stat, proc_control),
         // play on desktop or stream to a remote target
         _ => player(&config, play_control, playout_stat, proc_control),
     }

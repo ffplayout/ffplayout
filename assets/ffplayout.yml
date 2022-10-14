@@ -47,7 +47,8 @@ processing:
         or folder. 'aspect' must be a float number. 'logo' is only used if the path exist.
         'logo_scale' scale the logo to target size, leave it blank when no scaling
         is needed, format is 'number:number', for example '100:-1' for proportional
-        scaling. With 'logo_opacity' logo can become transparent. With 'logo_filter'
+        scaling. With 'logo_opacity' logo can become transparent. With 'audio_tracks' it
+        is possible to configure how many audio tracks should be processed. With 'logo_filter'
         'overlay=W-w-12:12' you can modify the logo position. With 'use_loudnorm'
         you can activate single pass EBU R128 loudness normalization. 'loud_*' can
         adjust the loudnorm filter. With 'custom_filter' it is possible, to apply further
@@ -63,6 +64,7 @@ processing:
     logo_scale:
     logo_opacity: 0.7
     logo_filter: overlay=W-w-12:12
+    audio_tracks: 1
     add_loudnorm: false
     loudnorm_ingest: false
     loud_i: -18
@@ -120,7 +122,7 @@ out:
         has the options 'desktop', 'hls', 'null', 'stream'. Use 'stream' and adjust
         'output_param:' settings when you want to stream to a rtmp/rtsp/srt/... server.
         In production don't serve hls playlist with ffpapi, use nginx or another web server!
-    mode: desktop
+    mode: hls
     output_param: >-
         -c:v libx264
         -crf 23

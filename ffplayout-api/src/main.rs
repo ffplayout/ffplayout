@@ -9,21 +9,23 @@ use actix_web_httpauth::middleware::HttpAuthentication;
 use clap::Parser;
 use simplelog::*;
 
+pub mod api;
+pub mod db;
 pub mod utils;
 
-use utils::{
-    args_parse::Args,
-    auth, db_path, init_config,
-    models::LoginUser,
+use api::{
+    auth,
     routes::{
         add_channel, add_dir, add_preset, add_user, control_playout, del_playlist, delete_preset,
         file_browser, gen_playlist, get_all_channels, get_channel, get_log, get_playlist,
-        get_playout_config, get_presets, get_user, login, media_current, media_last, media_next,
-        move_rename, patch_channel, process_control, remove, remove_channel, save_file,
-        save_playlist, send_text_message, update_playout_config, update_preset, update_user,
+        get_playout_config, get_presets, get_user, import_playlist, login, media_current,
+        media_last, media_next, move_rename, patch_channel, process_control, remove,
+        remove_channel, save_file, save_playlist, send_text_message, update_playout_config,
+        update_preset, update_user,
     },
-    run_args, Role,
 };
+use db::models::LoginUser;
+use utils::{args_parse::Args, db_path, init_config, run_args, Role};
 
 use ffplayout_lib::utils::{init_logging, PlayoutConfig};
 
@@ -118,7 +120,8 @@ async fn main() -> std::io::Result<()> {
                         .service(add_dir)
                         .service(move_rename)
                         .service(remove)
-                        .service(save_file),
+                        .service(save_file)
+                        .service(import_playlist),
                 )
                 .service(Files::new("/", public_path()).index_file("index.html"))
         })

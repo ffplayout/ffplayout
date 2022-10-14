@@ -84,7 +84,7 @@ pub fn ingest_server(
     let mut buffer: [u8; 65088] = [0; 65088];
     let mut server_cmd = vec_strings!["-hide_banner", "-nostats", "-v", "level+info"];
     let stream_input = config.ingest.input_cmd.clone().unwrap();
-    let mut dummy_media = Media::new(0, "Live Stream".to_string(), false);
+    let mut dummy_media = Media::new(0, "Live Stream", false);
     dummy_media.is_live = Some(true);
     let mut filters = filter_chains(&config, &mut dummy_media, &Arc::new(Mutex::new(vec![])));
 

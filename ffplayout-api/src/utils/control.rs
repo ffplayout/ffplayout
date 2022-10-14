@@ -6,13 +6,14 @@ use reqwest::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::utils::{errors::ServiceError, handles::db_get_channel, playout_config};
+use crate::db::handles::select_channel;
+use crate::utils::{errors::ServiceError, playout_config};
 use ffplayout_lib::vec_strings;
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 struct RpcObj<T> {
     jsonrpc: String,
-    id: i64,
+    id: i32,
     method: String,
     params: T,
 }
@@ -34,7 +35,7 @@ struct MediaParams {
 }
 
 impl<T> RpcObj<T> {
-    fn new(id: i64, method: String, params: T) -> Self {
+    fn new(id: i32, method: String, params: T) -> Self {
         Self {
             jsonrpc: "2.0".into(),
             id,
@@ -55,8 +56,8 @@ struct SystemD {
 }
 
 impl SystemD {
-    async fn new(id: i64) -> Result<Self, ServiceError> {
-        let channel = db_get_channel(&id).await?;
+    async fn new(id: i32) -> Result<Self, ServiceError> {
+        let channel = select_channel(&id).await?;
 
         Ok(Self {
             service: channel.service,
@@ -129,7 +130,7 @@ fn create_header(auth: &str) -> HeaderMap {
     headers
 }
 
-async fn post_request<T>(id: i64, obj: RpcObj<T>) -> Result<Response, ServiceError>
+async fn post_request<T>(id: i32, obj: RpcObj<T>) -> Result<Response, ServiceError>
 where
     T: Serialize,
 {
@@ -150,7 +151,7 @@ where
 }
 
 pub async fn send_message(
-    id: i64,
+    id: i32,
     message: HashMap<String, String>,
 ) -> Result<Response, ServiceError> {
     let json_obj = RpcObj::new(
@@ -165,19 +166,19 @@ pub async fn send_message(
     post_request(id, json_obj).await
 }
 
-pub async fn control_state(id: i64, command: String) -> Result<Response, ServiceError> {
+pub async fn control_state(id: i32, command: String) -> Result<Response, ServiceError> {
     let json_obj = RpcObj::new(id, "player".into(), ControlParams { control: command });
 
     post_request(id, json_obj).await
 }
 
-pub async fn media_info(id: i64, command: String) -> Result<Response, ServiceError> {
+pub async fn media_info(id: i32, command: String) -> Result<Response, ServiceError> {
     let json_obj = RpcObj::new(id, "player".into(), MediaParams { media: command });
 
     post_request(id, json_obj).await
 }
 
-pub async fn control_service(id: i64, command: &str) -> Result<String, ServiceError> {
+pub async fn control_service(id: i32, command: &str) -> Result<String, ServiceError> {
     let system_d = SystemD::new(id).await?;
 
     match command {

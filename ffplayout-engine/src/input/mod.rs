@@ -1,5 +1,4 @@
 use std::{
-    process,
     sync::{
         atomic::{AtomicBool, AtomicUsize},
         Arc, Mutex,
@@ -9,7 +8,7 @@ use std::{
 
 use simplelog::*;
 
-use ffplayout_lib::utils::{Media, PlayoutConfig, PlayoutStatus};
+use ffplayout_lib::utils::{Media, PlayoutConfig, PlayoutStatus, ProcessMode::*};
 
 pub mod folder;
 pub mod ingest;
@@ -29,8 +28,8 @@ pub fn source_generator(
     playout_stat: PlayoutStatus,
     is_terminated: Arc<AtomicBool>,
 ) -> Box<dyn Iterator<Item = Media>> {
-    let get_source = match config.processing.mode.as_str() {
-        "folder" => {
+    match config.processing.mode {
+        Folder => {
             info!("Playout in folder mode");
             debug!(
                 "Monitor folder: <b><magenta>{}</></b>",
@@ -46,18 +45,12 @@ pub fn source_generator(
 
             Box::new(folder_source) as Box<dyn Iterator<Item = Media>>
         }
-        "playlist" => {
+        Playlist => {
             info!("Playout in playlist mode");
             let program =
                 CurrentProgram::new(&config, playout_stat, is_terminated, current_list, index);
 
             Box::new(program) as Box<dyn Iterator<Item = Media>>
         }
-        _ => {
-            error!("Process Mode not exists!");
-            process::exit(1);
-        }
-    };
-
-    get_source
+    }
 }

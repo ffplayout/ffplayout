@@ -69,7 +69,7 @@ impl CurrentProgram {
             json_path: json.current_file,
             json_date: json.date,
             nodes: current_list,
-            current_node: Media::new(0, String::new(), false),
+            current_node: Media::new(0, "", false),
             index: global_index,
             is_terminated,
             playout_stat,
@@ -118,7 +118,7 @@ impl CurrentProgram {
                 "Playlist <b><magenta>{}</></b> not exists!",
                 self.json_path.clone().unwrap()
             );
-            let mut media = Media::new(0, String::new(), false);
+            let mut media = Media::new(0, "", false);
             media.begin = Some(get_sec());
             media.duration = DUMMY_LEN;
             media.out = DUMMY_LEN;
@@ -304,7 +304,7 @@ impl Iterator for CurrentProgram {
                         current_time += self.config.playlist.length_sec.unwrap() + 1.0;
                     }
 
-                    let mut media = Media::new(0, String::new(), false);
+                    let mut media = Media::new(0, "", false);
                     media.begin = Some(current_time);
                     media.duration = duration;
                     media.out = duration;
@@ -357,7 +357,7 @@ impl Iterator for CurrentProgram {
                 // Test if playlist is to early finish,
                 // and if we have to fill it with a placeholder.
                 let index = self.index.load(Ordering::SeqCst);
-                self.current_node = Media::new(index, String::new(), false);
+                self.current_node = Media::new(index, "", false);
                 self.current_node.begin = Some(get_sec());
                 let mut duration = total_delta.abs();
 
@@ -454,7 +454,7 @@ fn timed_source(
 }
 
 /// Generate the source CMD, or when clip not exist, get a dummy.
-fn gen_source(
+pub fn gen_source(
     config: &PlayoutConfig,
     mut node: Media,
     filter_chain: &Arc<Mutex<Vec<String>>>,

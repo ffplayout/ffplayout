@@ -1,14 +1,15 @@
 use std::{
-    env,
+    env, fmt,
     fs::File,
     path::{Path, PathBuf},
     process,
+    str::FromStr,
 };
 
 use serde::{Deserialize, Serialize};
 use shlex::split;
 
-use crate::utils::{fps_calc, free_tcp_socket, home_dir, time_to_sec, MediaProbe};
+use crate::utils::{free_tcp_socket, home_dir, time_to_sec};
 use crate::vec_strings;
 
 pub const DUMMY_LEN: f64 = 60.0;
@@ -16,6 +17,64 @@ pub const IMAGE_FORMAT: [&str; 21] = [
     "bmp", "dds", "dpx", "exr", "gif", "hdr", "j2k", "jpg", "jpeg", "pcx", "pfm", "pgm", "phm",
     "png", "psd", "ppm", "sgi", "svg", "tga", "tif", "webp",
 ];
+
+// Some well known errors can be safely ignore
+pub const FFMPEG_IGNORE_ERRORS: [&str; 3] = [
+    "Referenced QT chapter track not found",
+    "ac-tex damaged",
+    "Warning MVs not available",
+];
+
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum OutputMode {
+    Desktop,
+    HLS,
+    Null,
+    Stream,
+}
+
+impl FromStr for OutputMode {
+    type Err = String;
+
+    fn from_str(input: &str) -> Result<Self, Self::Err> {
+        match input {
+            "desktop" => Ok(Self::Desktop),
+            "hls" => Ok(Self::HLS),
+            "null" => Ok(Self::Null),
+            "stream" => Ok(Self::Stream),
+            _ => Err(String::new()),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum ProcessMode {
+    Folder,
+    Playlist,
+}
+
+impl fmt::Display for ProcessMode {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            ProcessMode::Folder => write!(f, "folder"),
+            ProcessMode::Playlist => write!(f, "playlist"),
+        }
+    }
+}
+
+impl FromStr for ProcessMode {
+    type Err = String;
+
+    fn from_str(input: &str) -> Result<Self, Self::Err> {
+        match input {
+            "folder" => Ok(Self::Folder),
+            "playlist" => Ok(Self::Playlist),
+            _ => Err(String::new()),
+        }
+    }
+}
 
 /// Global Config
 ///
@@ -82,20 +141,18 @@ pub struct Logging {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Processing {
     pub help_text: String,
-    pub mode: String,
+    pub mode: ProcessMode,
     pub width: i64,
     pub height: i64,
     pub aspect: f64,
     pub fps: f64,
     pub add_logo: bool,
     pub logo: String,
-
-    #[serde(skip_serializing, skip_deserializing)]
-    pub logo_fps: Option<f64>,
-
     pub logo_scale: String,
     pub logo_opacity: f32,
     pub logo_filter: String,
+    #[serde(default)]
+    pub audio_tracks: i32,
     pub add_loudnorm: bool,
     pub loudnorm_ingest: bool,
     pub loud_i: f32,
@@ -168,7 +225,7 @@ pub struct Text {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Out {
     pub help_text: String,
-    pub mode: String,
+    pub mode: OutputMode,
     pub output_param: String,
 
     #[serde(skip_serializing, skip_deserializing)]
@@ -227,17 +284,12 @@ impl PlayoutConfig {
             config.playlist.length_sec = Some(86400.0);
         }
 
-        config.processing.logo_fps = None;
+        if config.processing.add_logo && !Path::new(&config.processing.logo).is_file() {
+            config.processing.add_logo = false;
+        }
 
-        if Path::new(&config.processing.logo).is_file() {
-            if let Some(v_stream) = MediaProbe::new(&config.processing.logo)
-                .video_streams
-                .get(0)
-            {
-                let fps = fps_calc(&v_stream.r_frame_rate, config.processing.fps);
-
-                config.processing.logo_fps = Some(fps);
-            };
+        if config.processing.audio_tracks < 1 {
+            config.processing.audio_tracks = 1
         }
 
         // We set the decoder settings here, so we only define them ones.
