@@ -3,6 +3,8 @@ use std::{
     process::exit,
 };
 
+use regex::Regex;
+
 pub mod arg_parse;
 
 pub use arg_parse::Args;
@@ -89,30 +91,47 @@ pub fn get_config(args: Args) -> PlayoutConfig {
 ///
 /// seek for multiple outputs and add mapping for it
 pub fn prepare_output_cmd(
-    prefix: Vec<String>,
+    mut cmd: Vec<String>,
     mut filter: Vec<String>,
     config: &PlayoutConfig,
 ) -> Vec<String> {
     let mut output_params = config.out.clone().output_cmd.unwrap();
+    let mut new_params = vec![];
     let params_len = output_params.len();
     let mut output_a_map = "[a_out1]".to_string();
     let mut output_v_map = "[v_out1]".to_string();
     let mut out_count = 1;
-    let mut cmd = prefix;
-    let params = config.out.clone().output_cmd.unwrap();
-    let mut new_params = vec![];
+    let mut output_filter = String::new();
+    let mut next_is_filter = false;
+    let re_audio_map = Regex::new(r"\[0:a:(?P<num>[0-9]+)\]").unwrap();
 
-    for (i, p) in params.iter().enumerate() {
+    // Loop over output parameters
+    //
+    // Check if it contains a filtergraph, count its outputs and set correct mapping values.
+    for (i, p) in output_params.iter().enumerate() {
         let mut param = p.clone();
 
         param = param.replace("[0:v]", "[vout0]");
         param = param.replace("[0:a]", "[aout0]");
+        param = re_audio_map.replace_all(&param, "[aout$num]").to_string();
 
+        // Skip filter command, to concat existing filters with new ones.
         if param != "-filter_complex" {
-            new_params.push(param.clone());
+            if next_is_filter {
+                output_filter = param.clone();
+                next_is_filter = false;
+            } else {
+                new_params.push(param.clone());
+            }
+        } else {
+            next_is_filter = true;
         }
 
-        if i > 0 && !param.starts_with('-') && !params[i - 1].starts_with('-') && i < params_len - 1
+        // Check if parameter is a output
+        if i > 0
+            && !param.starts_with('-')
+            && !output_params[i - 1].starts_with('-')
+            && i < params_len - 1
         {
             out_count += 1;
             let mut a_map = "0:a".to_string();
@@ -145,6 +164,10 @@ pub fn prepare_output_cmd(
             filter.drain(2..);
             cmd.append(&mut filter);
             cmd.append(&mut vec_strings!["-map", "[v_out1]", "-map", "[a_out1]"]);
+        } else if !output_filter.is_empty() && config.out.mode == HLS {
+            filter[1].push_str(&format!(";{output_filter}"));
+            filter.drain(2..);
+            cmd.append(&mut filter);
         } else if out_count == 1
             && config.processing.audio_tracks == 1
             && config.out.mode == HLS

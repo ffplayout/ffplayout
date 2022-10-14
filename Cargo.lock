@@ -940,6 +940,7 @@ dependencies = [
  "jsonrpc-http-server",
  "notify",
  "openssl",
+ "regex",
  "reqwest",
  "serde",
  "serde_json",

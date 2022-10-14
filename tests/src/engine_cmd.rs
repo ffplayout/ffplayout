@@ -839,7 +839,7 @@ fn multi_video_audio_hls() {
         "-filter_complex",
         "[0:v]split=2[v1_out][v2];[v2]scale=w=512:h=288[v2_out];[0:a]asplit=2[a1][a2]",
         "-map",
-        "v1_out",
+        "[v1_out]",
         "-map",
         "[a1]",
         "-c:v",
@@ -902,7 +902,7 @@ fn multi_video_audio_hls() {
         "-filter_complex",
         "[0:v:0]scale=1024:576,realtime=speed=1[vout0];[0:a:0]anull[aout0];[vout0]split=2[v1_out][v2];[v2]scale=w=512:h=288[v2_out];[aout0]asplit=2[a1][a2]",
         "-map",
-        "v1_out",
+        "[v1_out]",
         "-map",
         "[a1]",
         "-c:v",
@@ -935,6 +935,127 @@ fn multi_video_audio_hls() {
         "master.m3u8",
         "-var_stream_map",
         "v:0,a:0,name:720p v:1,a:1,name:288p",
+        "/usr/share/ffplayout/public/live/stream_%v.m3u8"
+    ];
+
+    assert_eq!(enc_cmd, test_cmd);
+}
+
+#[test]
+fn multi_video_multi_audio_hls() {
+    let mut config = PlayoutConfig::new(Some("../assets/ffplayout.yml".to_string()));
+    config.out.mode = HLS;
+    config.processing.add_logo = false;
+    config.processing.audio_tracks = 2;
+    config.text.add_text = false;
+    config.out.output_cmd = Some(vec_strings![
+        "-filter_complex",
+        "[0:v]split=2[v1_out][v2];[v2]scale=w=512:h=288[v2_out];[0:a:0]asplit=2[a_0_1][a_0_2];[0:a:1]asplit=2[a_1_1][a_1_2]",
+        "-map",
+        "[v1_out]",
+        "-map",
+        "[a_0_1]",
+        "-map",
+        "[a_1_1]",
+        "-c:v",
+        "libx264",
+        "-flags",
+        "+cgop",
+        "-c:a",
+        "aac",
+        "-map",
+        "[v2_out]",
+        "-map",
+        "[a_0_2]",
+        "-map",
+        "[a_1_2]",
+        "-c:v:1",
+        "libx264",
+        "-flags",
+        "+cgop",
+        "-c:a:1",
+        "aac",
+        "-f",
+        "hls",
+        "-hls_time",
+        "6",
+        "-hls_list_size",
+        "600",
+        "-hls_flags",
+        "append_list+delete_segments+omit_endlist",
+        "-hls_segment_filename",
+        "/usr/share/ffplayout/public/live/stream_%v-%d.ts",
+        "-master_pl_name",
+        "master.m3u8",
+        "-var_stream_map",
+        "v:0,a:0,a:1,name:720p v:1,a:2,a:3,name:288p",
+        "/usr/share/ffplayout/public/live/stream_%v.m3u8"
+    ]);
+
+    let media_obj = Media::new(0, "assets/dual_audio.mp4", true);
+    let media = gen_source(&config, media_obj, &Arc::new(Mutex::new(vec![])));
+    let enc_filter = media.filter.unwrap();
+
+    let enc_prefix = vec_strings![
+        "-hide_banner",
+        "-nostats",
+        "-v",
+        "level+error",
+        "-re",
+        "-i",
+        "assets/dual_audio.mp4"
+    ];
+
+    let enc_cmd = prepare_output_cmd(enc_prefix, enc_filter, &config);
+
+    let test_cmd = vec_strings![
+        "-hide_banner",
+        "-nostats",
+        "-v",
+        "level+error",
+        "-re",
+        "-i",
+        "assets/dual_audio.mp4",
+        "-filter_complex",
+        "[0:v:0]scale=1024:576,realtime=speed=1[vout0];[0:a:0]anull[aout0];[0:a:1]anull[aout1];[vout0]split=2[v1_out][v2];[v2]scale=w=512:h=288[v2_out];[aout0]asplit=2[a_0_1][a_0_2];[aout1]asplit=2[a_1_1][a_1_2]",
+        "-map",
+        "[v1_out]",
+        "-map",
+        "[a_0_1]",
+        "-map",
+        "[a_1_1]",
+        "-c:v",
+        "libx264",
+        "-flags",
+        "+cgop",
+        "-c:a",
+        "aac",
+        "-map",
+        "[v2_out]",
+        "-map",
+        "[a_0_2]",
+        "-map",
+        "[a_1_2]",
+        "-c:v:1",
+        "libx264",
+        "-flags",
+        "+cgop",
+        "-c:a:1",
+        "aac",
+        "-f",
+        "hls",
+        "-hls_time",
+        "6",
+        "-hls_list_size",
+        "600",
+        "-hls_flags",
+        "append_list+delete_segments+omit_endlist",
+        "-hls_segment_filename",
+        "/usr/share/ffplayout/public/live/stream_%v-%d.ts",
+        "-master_pl_name",
+        "master.m3u8",
+        "-var_stream_map",
+        "v:0,a:0,a:2,name:720p v:1,a:1,a:3,name:288p",
         "/usr/share/ffplayout/public/live/stream_%v.m3u8"
     ];
 
