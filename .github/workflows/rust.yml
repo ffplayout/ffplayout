@@ -17,11 +17,12 @@ jobs:
       - name: Run on Linux
         if: ${{ matrix.os == 'ubuntu-latest' }}
         uses: FedericoCarboni/setup-ffmpeg@v1
-        id: setup-ffmpeg
-        run: |
-          cargo fmt --all -- --check
-          cargo clippy --all-features --all-targets -- --deny warnings
-          cargo build --all-features
 
-      - name: Run on macOS/Windows
-        run: cargo build --all-features
+      - name: Run Cargo
+        run: |
+          if [ "$RUNNER_OS" == "Linux" ]; then
+            cargo test --all-features
+            cargo clippy --all-features --all-targets -- --deny warnings
+            cargo fmt --all -- --check
+          fi
+          cargo build --all-features
