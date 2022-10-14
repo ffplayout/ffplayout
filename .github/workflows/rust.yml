@@ -18,7 +18,7 @@ jobs:
         if: ${{ matrix.os == 'ubuntu-latest' }}
         uses: FedericoCarboni/setup-ffmpeg@v1
 
-      - name: Tests and Linux
+      - name: Tests on Linux
         if: ${{ matrix.os == 'ubuntu-latest' }}
         run: |
           cargo test --all-features

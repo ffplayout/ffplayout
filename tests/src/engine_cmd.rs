@@ -15,8 +15,10 @@ fn video_audio_input() {
     let mut config = PlayoutConfig::new(Some("../assets/ffplayout.yml".to_string()));
     config.out.mode = Stream;
     let logo_path = fs::canonicalize("./assets/logo.png").unwrap();
-    println!("{logo_path:?}");
     config.processing.logo = logo_path.to_string_lossy().to_string();
+
+    println!("{:?}", config.processing.logo);
+    println!("--is file {:?}", logo_path.is_file());
 
     let media_obj = Media::new(0, "./assets/with_audio.mp4", true);
     let media = gen_source(&config, media_obj, &Arc::new(Mutex::new(vec![])));
