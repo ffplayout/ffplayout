@@ -8,9 +8,11 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v3
-      - run: rustup update stable
-      - run: rustup component add rustfmt
-      - run: rustup component add clippy
+      - name: On all Systems
+        run: |
+          rustup update stable
+          rustup component add rustfmt
+          rustup component add clippy
 
       - name: Run on Linux
         if: ${{ matrix.os == 'ubuntu-latest' }}

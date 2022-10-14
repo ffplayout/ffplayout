@@ -24,7 +24,7 @@ fn video_audio_input() {
     let test_filter_cmd = Some(
         vec_strings![
             "-filter_complex",
-            "[0:v:0]scale=1024:576,null[v];movie=/home/runner/work/ffplayout/assets/logo.png:loop=0,setpts=N/(FRAME_RATE*TB),format=rgba,colorchannelmixer=aa=0.7[l];[v][l]overlay=W-w-12:12:shortest=1[vout0];[0:a:0]anull[aout0]",
+            format!("[0:v:0]scale=1024:576,null[v];movie={}:loop=0,setpts=N/(FRAME_RATE*TB),format=rgba,colorchannelmixer=aa=0.7[l];[v][l]overlay=W-w-12:12:shortest=1[vout0];[0:a:0]anull[aout0]", config.processing.logo),
             "-map",
             "[vout0]",
             "-map",
