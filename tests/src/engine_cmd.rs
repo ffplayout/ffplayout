@@ -18,15 +18,8 @@ fn video_audio_input() {
     let logo_path = fs::canonicalize("./assets/logo.png").unwrap();
     config.processing.logo = logo_path.to_string_lossy().to_string();
 
-    println!("{:?}", config.processing.logo);
-    println!("--is file {:?}", logo_path.is_file());
-
     let media_obj = Media::new(0, "./assets/with_audio.mp4", true);
-    println!("{media_obj:?}");
     let media = gen_source(&config, media_obj, &Arc::new(Mutex::new(vec![])));
-
-    println!("{:?}", media.filter);
-    println!("category {:?}", media.category);
 
     let test_filter_cmd = Some(
         vec_strings![
