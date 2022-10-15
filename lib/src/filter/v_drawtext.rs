@@ -52,7 +52,7 @@ pub fn filter_node(
             }
 
             filter = format!(
-                "zmq=b=tcp\\\\://'{}',drawtext={filter_cmd}",
+                "zmq=b=tcp\\\\://'{}',drawtext@dyntext={filter_cmd}",
                 socket.replace(':', "\\:")
             )
         }

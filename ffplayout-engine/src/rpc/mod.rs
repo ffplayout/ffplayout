@@ -92,10 +92,7 @@ pub fn json_rpc_server(
 
                     if config.out.mode == HLS {
                         if proc.server_is_running.load(Ordering::SeqCst) {
-                            let filter_server = format!(
-                                "Parsed_drawtext_{} reinit {filter}",
-                                playout_stat.drawtext_server_index.load(Ordering::SeqCst)
-                            );
+                            let filter_server = format!("drawtext@dyntext reinit {filter}");
 
                             if let Ok(reply) = block_on(zmq_send(
                                 &filter_server,
@@ -109,10 +106,7 @@ pub fn json_rpc_server(
                     }
 
                     if config.out.mode != HLS || !proc.server_is_running.load(Ordering::SeqCst) {
-                        let filter_stream = format!(
-                            "Parsed_drawtext_{} reinit {filter}",
-                            playout_stat.drawtext_stream_index.load(Ordering::SeqCst)
-                        );
+                        let filter_stream = format!("drawtext@dyntext reinit {filter}");
 
                         if let Ok(reply) = block_on(zmq_send(
                             &filter_stream,
