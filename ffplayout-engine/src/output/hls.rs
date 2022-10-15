@@ -64,22 +64,6 @@ fn ingest_to_hls_server(
 
     loop {
         let filters = filter_chains(&config, &mut dummy_media, &playout_stat.chain);
-
-        if filters.len() > 1 {
-            // get correct filter index from drawtext node for zmq
-            let filter_chain = filters[1]
-                .split_terminator([',', ';'])
-                .collect::<Vec<&str>>();
-
-            for (i, link) in filter_chain.iter().enumerate() {
-                if link.contains("drawtext") {
-                    playout_stat
-                        .drawtext_server_index
-                        .store(i, Ordering::SeqCst);
-                }
-            }
-        }
-
         let server_cmd = prepare_output_cmd(server_prefix.clone(), filters, &config);
 
         debug!(
