@@ -99,7 +99,6 @@ pub fn prepare_output_cmd(
     let params_len = output_params.len();
     let mut new_params = vec![];
     let mut output_filter = String::new();
-    let mut next_is_filter = false;
     let re_map = Regex::new(r"(\[?[0-9]:[av](:[0-9]+)?\]?|-map|\[[a-z_0-9]+\])").unwrap();
 
     if let Some(mut filter) = filters.clone() {
@@ -109,9 +108,8 @@ pub fn prepare_output_cmd(
         for (i, param) in output_params.iter().enumerate() {
             // Skip filter command, to concat existing filters with new ones.
             if param != "-filter_complex" {
-                if next_is_filter {
+                if i > 0 && output_params[i - 1] == "-filter_complex" {
                     output_filter = param.clone();
-                    next_is_filter = false;
                 } else if !output_filter.contains("split") {
                     if !re_map.is_match(param) {
                         // Skip mapping parameters, when no split filter is set
@@ -120,8 +118,6 @@ pub fn prepare_output_cmd(
                 } else {
                     new_params.push(param.clone());
                 }
-            } else {
-                next_is_filter = true;
             }
 
             // Check if parameter is a output
