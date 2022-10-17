@@ -130,6 +130,7 @@ pub fn prepare_output_cmd(
                 && !output_params[i - 1].starts_with('-')
                 && i < params_len - 1
             {
+                // add mapping to following outputs
                 new_params.append(&mut filter.output_map.clone());
             }
         }
@@ -138,8 +139,7 @@ pub fn prepare_output_cmd(
 
             // Process A/V mapping
             //
-            // Check if there is multiple outputs, and/or multiple audio tracks
-            // and add the correct mapping for it.
+            // when filter in output_param are found and we are in HLS mode, fix the mapping
             if !output_filter.is_empty() && config.out.mode == HLS {
                 let re = Regex::new(r"0:a:(?P<num>[0-9]+)").unwrap();
                 output_filter = re
