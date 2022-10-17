@@ -31,7 +31,7 @@ out:
         srt://127.0.0.1:40051
         -map 0:v
         -map 0:a:0
-        -map  0:a:1
+        -map 0:a:1
         -s 512x288
         -c:v libx264
         -c:a aac

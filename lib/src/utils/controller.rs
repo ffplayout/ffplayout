@@ -8,11 +8,13 @@ use std::{
 };
 
 use jsonrpc_http_server::CloseHandle;
+use serde::{Deserialize, Serialize};
 use simplelog::*;
 
 use crate::utils::Media;
 
 /// Defined process units.
+#[derive(Clone, Debug, Copy, Eq, Serialize, Deserialize, PartialEq)]
 pub enum ProcessUnit {
     Decoder,
     Encoder,
@@ -26,6 +28,12 @@ impl fmt::Display for ProcessUnit {
             ProcessUnit::Encoder => write!(f, "Encoder"),
             ProcessUnit::Ingest => write!(f, "Ingest"),
         }
+    }
+}
+
+impl Default for ProcessUnit {
+    fn default() -> Self {
+        ProcessUnit::Decoder
     }
 }
 
@@ -182,7 +190,7 @@ impl Default for PlayerControl {
 /// Global playout control, for move forward/backward clip, or resetting playlist/state.
 #[derive(Clone, Debug)]
 pub struct PlayoutStatus {
-    pub chain: Arc<Mutex<Vec<String>>>,
+    pub chain: Option<Arc<Mutex<Vec<String>>>>,
     pub current_date: Arc<Mutex<String>>,
     pub date: Arc<Mutex<String>>,
     pub list_init: Arc<AtomicBool>,
@@ -192,7 +200,7 @@ pub struct PlayoutStatus {
 impl PlayoutStatus {
     pub fn new() -> Self {
         Self {
-            chain: Arc::new(Mutex::new(vec![])),
+            chain: None,
             current_date: Arc::new(Mutex::new(String::new())),
             date: Arc::new(Mutex::new(String::new())),
             list_init: Arc::new(AtomicBool::new(true)),

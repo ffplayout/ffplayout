@@ -87,8 +87,9 @@ pub fn json_rpc_server(
 
                 // TODO: in Rust 1.65 use let_chains instead
                 if !filter.is_empty() && config.text.zmq_stream_socket.is_some() {
-                    let mut clips_filter = playout_stat.chain.lock().unwrap();
-                    *clips_filter = vec![filter.clone()];
+                    if let Some(clips_filter) = playout_stat.chain.clone() {
+                        *clips_filter.lock().unwrap() = vec![filter.clone()];
+                    }
 
                     if config.out.mode == HLS {
                         if proc.server_is_running.load(Ordering::SeqCst) {

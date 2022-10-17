@@ -1,7 +1,4 @@
-use std::{
-    process::{self, Command, Stdio},
-    sync::{Arc, Mutex},
-};
+use std::process::{self, Command, Stdio};
 
 use simplelog::*;
 
@@ -34,9 +31,7 @@ pub fn output(config: &PlayoutConfig, log_format: &str) -> process::Child {
             );
 
             let mut filter: String = "null,".to_string();
-            filter.push_str(
-                v_drawtext::filter_node(config, None, &Arc::new(Mutex::new(vec![]))).as_str(),
-            );
+            filter.push_str(v_drawtext::filter_node(config, None, &None).as_str());
             enc_filter = vec!["-vf".to_string(), filter];
         }
     }

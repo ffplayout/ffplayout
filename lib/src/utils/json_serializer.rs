@@ -9,8 +9,8 @@ use std::{
 use simplelog::*;
 
 use crate::utils::{
-    get_date, is_remote, modified_time, time_from_header, validate_playlist, Media, PlayoutConfig,
-    DUMMY_LEN,
+    controller::ProcessUnit::*, get_date, is_remote, modified_time, time_from_header,
+    validate_playlist, Media, PlayoutConfig, DUMMY_LEN,
 };
 
 /// This is our main playlist object, it holds all necessary information for the current day.
@@ -76,7 +76,7 @@ fn set_defaults(
         item.last_ad = Some(false);
         item.next_ad = Some(false);
         item.process = Some(true);
-        item.filter = Some(vec![]);
+        item.filter = None;
 
         start_sec += item.out - item.seek;
     }
@@ -112,10 +112,10 @@ fn loop_playlist(
                 cmd: item.cmd.clone(),
                 probe: item.probe.clone(),
                 process: Some(true),
-                is_live: Some(false),
+                unit: Decoder,
                 last_ad: Some(false),
                 next_ad: Some(false),
-                filter: Some(vec![]),
+                filter: None,
                 custom_filter: String::new(),
             };
 

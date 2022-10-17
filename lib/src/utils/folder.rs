@@ -19,7 +19,7 @@ use crate::utils::{get_sec, include_file, Media, PlayoutConfig};
 #[derive(Debug, Clone)]
 pub struct FolderSource {
     config: PlayoutConfig,
-    filter_chain: Arc<Mutex<Vec<String>>>,
+    filter_chain: Option<Arc<Mutex<Vec<String>>>>,
     pub nodes: Arc<Mutex<Vec<Media>>>,
     current_node: Media,
     index: Arc<AtomicUsize>,
@@ -28,7 +28,7 @@ pub struct FolderSource {
 impl FolderSource {
     pub fn new(
         config: &PlayoutConfig,
-        filter_chain: Arc<Mutex<Vec<String>>>,
+        filter_chain: Option<Arc<Mutex<Vec<String>>>>,
         current_list: Arc<Mutex<Vec<Media>>>,
         global_index: Arc<AtomicUsize>,
     ) -> Self {

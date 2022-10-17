@@ -43,7 +43,7 @@ impl FromStr for OutputMode {
             "hls" => Ok(Self::HLS),
             "null" => Ok(Self::Null),
             "stream" => Ok(Self::Stream),
-            _ => Err(String::new()),
+            _ => Err("Use 'desktop', 'hls', 'null' or 'stream'".to_string()),
         }
     }
 }
@@ -71,7 +71,7 @@ impl FromStr for ProcessMode {
         match input {
             "folder" => Ok(Self::Folder),
             "playlist" => Ok(Self::Playlist),
-            _ => Err(String::new()),
+            _ => Err("Use 'folder' or 'playlist'".to_string()),
         }
     }
 }
@@ -267,14 +267,6 @@ impl PlayoutConfig {
             .join(".ffp_status")
             .display()
             .to_string();
-        let bitrate = format!(
-            "{}k",
-            config.processing.width * config.processing.height / 10
-        );
-        let buf_size = format!(
-            "{}k",
-            (config.processing.width * config.processing.height / 10) / 2
-        );
 
         config.playlist.start_sec = Some(time_to_sec(&config.playlist.day_start));
 
@@ -297,19 +289,13 @@ impl PlayoutConfig {
             "-pix_fmt",
             "yuv420p",
             "-r",
-            &config.processing.fps.to_string(),
+            &config.processing.fps,
             "-c:v",
             "mpeg2video",
             "-g",
             "1",
-            "-b:v",
-            &bitrate,
-            "-minrate",
-            &bitrate,
-            "-maxrate",
-            &bitrate,
-            "-bufsize",
-            &buf_size
+            "-qscale:v",
+            "2"
         ];
 
         settings.append(&mut pre_audio_codec(config.processing.add_loudnorm));
