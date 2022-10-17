@@ -12,8 +12,6 @@ use ffplayout_lib::{
 ///
 /// Prepare the ffmpeg command for streaming output
 pub fn output(config: &PlayoutConfig, log_format: &str) -> process::Child {
-    let mut enc_cmd = vec![];
-    let mut output_cmd = config.out.output_cmd.as_ref().unwrap().clone();
     let mut media = Media::new(0, "", false);
     media.unit = Encoder;
     media.add_filter(config, &None);
@@ -27,8 +25,6 @@ pub fn output(config: &PlayoutConfig, log_format: &str) -> process::Child {
         "-i",
         "pipe:0"
     ];
-
-    enc_cmd.append(&mut output_cmd);
 
     let enc_cmd = prepare_output_cmd(enc_prefix, &media.filter, config);
 

@@ -9,8 +9,8 @@ use std::{
 use serde::{Deserialize, Serialize};
 use shlex::split;
 
-use crate::utils::{free_tcp_socket, home_dir, time_to_sec};
-use crate::vec_strings;
+use super::vec_strings;
+use crate::utils::{free_tcp_socket, home_dir, time_to_sec, OutputMode::*};
 
 pub const DUMMY_LEN: f64 = 60.0;
 pub const IMAGE_FORMAT: [&str; 21] = [
@@ -306,7 +306,12 @@ impl PlayoutConfig {
         config.processing.settings = Some(settings);
 
         config.ingest.input_cmd = split(config.ingest.input_param.as_str());
-        config.out.output_cmd = split(config.out.output_param.as_str());
+
+        if config.out.mode == Null {
+            config.out.output_cmd = Some(vec_strings!["-f", "null", "-"]);
+        } else {
+            config.out.output_cmd = split(config.out.output_param.as_str());
+        }
 
         // when text overlay without text_from_filename is on, turn also the RPC server on,
         // to get text messages from it
