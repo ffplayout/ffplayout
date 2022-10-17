@@ -9,8 +9,8 @@ use std::{
 use serde::{Deserialize, Serialize};
 use shlex::split;
 
-use crate::utils::{free_tcp_socket, home_dir, time_to_sec};
-use crate::vec_strings;
+use super::vec_strings;
+use crate::utils::{free_tcp_socket, home_dir, time_to_sec, OutputMode::*};
 
 pub const DUMMY_LEN: f64 = 60.0;
 pub const IMAGE_FORMAT: [&str; 21] = [
@@ -43,7 +43,7 @@ impl FromStr for OutputMode {
             "hls" => Ok(Self::HLS),
             "null" => Ok(Self::Null),
             "stream" => Ok(Self::Stream),
-            _ => Err(String::new()),
+            _ => Err("Use 'desktop', 'hls', 'null' or 'stream'".to_string()),
         }
     }
 }
@@ -71,7 +71,7 @@ impl FromStr for ProcessMode {
         match input {
             "folder" => Ok(Self::Folder),
             "playlist" => Ok(Self::Playlist),
-            _ => Err(String::new()),
+            _ => Err("Use 'folder' or 'playlist'".to_string()),
         }
     }
 }
@@ -267,14 +267,6 @@ impl PlayoutConfig {
             .join(".ffp_status")
             .display()
             .to_string();
-        let bitrate = format!(
-            "{}k",
-            config.processing.width * config.processing.height / 10
-        );
-        let buf_size = format!(
-            "{}k",
-            (config.processing.width * config.processing.height / 10) / 2
-        );
 
         config.playlist.start_sec = Some(time_to_sec(&config.playlist.day_start));
 
@@ -297,19 +289,13 @@ impl PlayoutConfig {
             "-pix_fmt",
             "yuv420p",
             "-r",
-            &config.processing.fps.to_string(),
+            &config.processing.fps,
             "-c:v",
             "mpeg2video",
             "-g",
             "1",
-            "-b:v",
-            &bitrate,
-            "-minrate",
-            &bitrate,
-            "-maxrate",
-            &bitrate,
-            "-bufsize",
-            &buf_size
+            "-qscale:v",
+            "2"
         ];
 
         settings.append(&mut pre_audio_codec(config.processing.add_loudnorm));
@@ -320,7 +306,12 @@ impl PlayoutConfig {
         config.processing.settings = Some(settings);
 
         config.ingest.input_cmd = split(config.ingest.input_param.as_str());
-        config.out.output_cmd = split(config.out.output_param.as_str());
+
+        if config.out.mode == Null {
+            config.out.output_cmd = Some(vec_strings!["-f", "null", "-"]);
+        } else {
+            config.out.output_cmd = split(config.out.output_param.as_str());
+        }
 
         // when text overlay without text_from_filename is on, turn also the RPC server on,
         // to get text messages from it

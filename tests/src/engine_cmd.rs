@@ -1,12 +1,8 @@
-use std::{
-    fs,
-    sync::{Arc, Mutex},
-};
+use std::fs;
 
 use ffplayout::{input::playlist::gen_source, utils::prepare_output_cmd};
 use ffplayout_lib::{
-    filter::v_drawtext,
-    utils::{Media, OutputMode::*, PlayoutConfig},
+    utils::{Media, OutputMode::*, PlayoutConfig, ProcessUnit::*},
     vec_strings,
 };
 
@@ -19,9 +15,9 @@ fn video_audio_input() {
     config.processing.logo = logo_path.to_string_lossy().to_string();
 
     let media_obj = Media::new(0, "./assets/with_audio.mp4", true);
-    let media = gen_source(&config, media_obj, &Arc::new(Mutex::new(vec![])));
+    let media = gen_source(&config, media_obj, &None);
 
-    let test_filter_cmd = Some(
+    let test_filter_cmd =
         vec_strings![
             "-filter_complex",
             format!("[0:v:0]scale=1024:576,null[v];movie={}:loop=0,setpts=N/(FRAME_RATE*TB),format=rgba,colorchannelmixer=aa=0.7[l];[v][l]overlay=W-w-12:12:shortest=1[vout0];[0:a:0]anull[aout0]", config.processing.logo),
@@ -29,14 +25,13 @@ fn video_audio_input() {
             "[vout0]",
             "-map",
             "[aout0]"
-        ],
-    );
+        ];
 
     assert_eq!(
         media.cmd,
         Some(vec_strings!["-i", "./assets/with_audio.mp4"])
     );
-    assert_eq!(media.filter, test_filter_cmd);
+    assert_eq!(media.filter.unwrap().cmd, test_filter_cmd);
 }
 
 #[test]
@@ -47,9 +42,9 @@ fn dual_audio_aevalsrc_input() {
     config.processing.add_logo = false;
 
     let media_obj = Media::new(0, "./assets/with_audio.mp4", true);
-    let media = gen_source(&config, media_obj, &Arc::new(Mutex::new(vec![])));
+    let media = gen_source(&config, media_obj, &None);
 
-    let test_filter_cmd = Some(
+    let test_filter_cmd =
         vec_strings![
             "-filter_complex",
             "[0:v:0]scale=1024:576[vout0];[0:a:0]anull[aout0];aevalsrc=0:channel_layout=stereo:duration=30:sample_rate=48000,anull[aout1]",
@@ -59,14 +54,13 @@ fn dual_audio_aevalsrc_input() {
             "[aout0]",
             "-map",
             "[aout1]"
-        ],
-    );
+        ];
 
     assert_eq!(
         media.cmd,
         Some(vec_strings!["-i", "./assets/with_audio.mp4"])
     );
-    assert_eq!(media.filter, test_filter_cmd);
+    assert_eq!(media.filter.unwrap().cmd, test_filter_cmd);
 }
 
 #[test]
@@ -77,9 +71,9 @@ fn dual_audio_input() {
     config.processing.add_logo = false;
 
     let media_obj = Media::new(0, "./assets/dual_audio.mp4", true);
-    let media = gen_source(&config, media_obj, &Arc::new(Mutex::new(vec![])));
+    let media = gen_source(&config, media_obj, &None);
 
-    let test_filter_cmd = Some(vec_strings![
+    let test_filter_cmd = vec_strings![
         "-filter_complex",
         "[0:v:0]scale=1024:576[vout0];[0:a:0]anull[aout0];[0:a:1]anull[aout1]",
         "-map",
@@ -88,13 +82,13 @@ fn dual_audio_input() {
         "[aout0]",
         "-map",
         "[aout1]"
-    ]);
+    ];
 
     assert_eq!(
         media.cmd,
         Some(vec_strings!["-i", "./assets/dual_audio.mp4"])
     );
-    assert_eq!(media.filter, test_filter_cmd);
+    assert_eq!(media.filter.unwrap().cmd, test_filter_cmd);
 }
 
 #[test]
@@ -106,16 +100,16 @@ fn video_separate_audio_input() {
 
     let mut media_obj = Media::new(0, "./assets/no_audio.mp4", true);
     media_obj.audio = "./assets/audio.mp3".to_string();
-    let media = gen_source(&config, media_obj, &Arc::new(Mutex::new(vec![])));
+    let media = gen_source(&config, media_obj, &None);
 
-    let test_filter_cmd = Some(vec_strings![
+    let test_filter_cmd = vec_strings![
         "-filter_complex",
         "[0:v:0]scale=1024:576[vout0];[1:a:0]anull[aout0]",
         "-map",
         "[vout0]",
         "-map",
         "[aout0]"
-    ]);
+    ];
 
     assert_eq!(
         media.cmd,
@@ -128,7 +122,7 @@ fn video_separate_audio_input() {
             "30"
         ])
     );
-    assert_eq!(media.filter, test_filter_cmd);
+    assert_eq!(media.filter.unwrap().cmd, test_filter_cmd);
 }
 
 #[test]
@@ -153,7 +147,6 @@ fn video_audio_stream() {
     ]);
 
     let mut enc_cmd = vec![];
-    let enc_filter = vec![];
     let mut output_cmd = config.out.output_cmd.as_ref().unwrap().clone();
 
     let enc_prefix = vec_strings![
@@ -168,7 +161,7 @@ fn video_audio_stream() {
 
     enc_cmd.append(&mut output_cmd);
 
-    let enc_cmd = prepare_output_cmd(enc_prefix, enc_filter, &config);
+    let enc_cmd = prepare_output_cmd(enc_prefix, &None, &config);
 
     let test_cmd = vec_strings![
         "-hide_banner",
@@ -202,6 +195,7 @@ fn video_dual_audio_stream() {
     config.out.mode = Stream;
     config.processing.add_logo = false;
     config.processing.audio_tracks = 2;
+    config.text.add_text = false;
     config.out.output_cmd = Some(vec_strings![
         "-c:v",
         "libx264",
@@ -218,8 +212,12 @@ fn video_dual_audio_stream() {
         "srt://127.0.0.1:40051"
     ]);
 
+    let mut media = Media::new(0, "", false);
+    media.unit = Encoder;
+    media.add_filter(&config, &None);
+
     let mut enc_cmd = vec![];
-    let enc_filter = vec![];
+
     let mut output_cmd = config.out.output_cmd.as_ref().unwrap().clone();
 
     let enc_prefix = vec_strings![
@@ -234,7 +232,7 @@ fn video_dual_audio_stream() {
 
     enc_cmd.append(&mut output_cmd);
 
-    let enc_cmd = prepare_output_cmd(enc_prefix, enc_filter, &config);
+    let enc_cmd = prepare_output_cmd(enc_prefix, &media.filter, &config);
 
     let test_cmd = vec_strings![
         "-hide_banner",
@@ -308,17 +306,16 @@ fn video_dual_audio_filter_stream() {
         .clone()
         .unwrap()
         .replace(':', "\\:");
-    let mut filter = "[0:v]null,".to_string();
 
-    filter.push_str(v_drawtext::filter_node(&config, None, &Arc::new(Mutex::new(vec![]))).as_str());
-
-    let enc_filter = vec!["-filter_complex".to_string(), filter];
+    let mut media = Media::new(0, "", false);
+    media.unit = Encoder;
+    media.add_filter(&config, &None);
 
     let mut output_cmd = config.out.output_cmd.as_ref().unwrap().clone();
 
     enc_cmd.append(&mut output_cmd);
 
-    let enc_cmd = prepare_output_cmd(enc_prefix, enc_filter, &config);
+    let enc_cmd = prepare_output_cmd(enc_prefix, &media.filter, &config);
 
     let test_cmd = vec_strings![
         "-hide_banner",
@@ -329,9 +326,9 @@ fn video_dual_audio_filter_stream() {
         "-i",
         "pipe:0",
         "-filter_complex",
-        format!("[0:v]null,zmq=b=tcp\\\\://'{socket}',drawtext@dyntext=text=''[v_out1]"),
+        format!("[0:v:0]zmq=b=tcp\\\\://'{socket}',drawtext@dyntext=text=''[vout0]"),
         "-map",
-        "[v_out1]",
+        "[vout0]",
         "-map",
         "0:a:0",
         "-map",
@@ -391,7 +388,6 @@ fn video_audio_multi_stream() {
     ]);
 
     let mut enc_cmd = vec![];
-    let enc_filter = vec![];
     let mut output_cmd = config.out.output_cmd.as_ref().unwrap().clone();
 
     let enc_prefix = vec_strings![
@@ -406,7 +402,7 @@ fn video_audio_multi_stream() {
 
     enc_cmd.append(&mut output_cmd);
 
-    let enc_cmd = prepare_output_cmd(enc_prefix, enc_filter, &config);
+    let enc_cmd = prepare_output_cmd(enc_prefix, &None, &config);
 
     let test_cmd = vec_strings![
         "-hide_banner",
@@ -499,7 +495,6 @@ fn video_dual_audio_multi_stream() {
     ]);
 
     let mut enc_cmd = vec![];
-    let enc_filter = vec![];
     let mut output_cmd = config.out.output_cmd.as_ref().unwrap().clone();
 
     let enc_prefix = vec_strings![
@@ -514,7 +509,7 @@ fn video_dual_audio_multi_stream() {
 
     enc_cmd.append(&mut output_cmd);
 
-    let enc_cmd = prepare_output_cmd(enc_prefix, enc_filter, &config);
+    let enc_cmd = prepare_output_cmd(enc_prefix, &None, &config);
 
     let test_cmd = vec_strings![
         "-hide_banner",
@@ -636,17 +631,16 @@ fn video_dual_audio_multi_filter_stream() {
         .clone()
         .unwrap()
         .replace(':', "\\:");
-    let mut filter = "[0:v]null,".to_string();
 
-    filter.push_str(v_drawtext::filter_node(&config, None, &Arc::new(Mutex::new(vec![]))).as_str());
-
-    let enc_filter = vec!["-filter_complex".to_string(), filter];
+    let mut media = Media::new(0, "", false);
+    media.unit = Encoder;
+    media.add_filter(&config, &None);
 
     let mut output_cmd = config.out.output_cmd.as_ref().unwrap().clone();
 
     enc_cmd.append(&mut output_cmd);
 
-    let enc_cmd = prepare_output_cmd(enc_prefix, enc_filter, &config);
+    let enc_cmd = prepare_output_cmd(enc_prefix, &media.filter, &config);
 
     let test_cmd = vec_strings![
         "-hide_banner",
@@ -657,9 +651,9 @@ fn video_dual_audio_multi_filter_stream() {
         "-i",
         "pipe:0",
         "-filter_complex",
-        format!("[0:v]null,zmq=b=tcp\\\\://'{socket}',drawtext@dyntext=text=''[v_out1]"),
+        format!("[0:v:0]zmq=b=tcp\\\\://'{socket}',drawtext@dyntext=text=''[vout0]"),
         "-map",
-        "[v_out1]",
+        "[vout0]",
         "-map",
         "0:a:0",
         "-map",
@@ -678,7 +672,7 @@ fn video_dual_audio_multi_filter_stream() {
         "mpegts",
         "srt://127.0.0.1:40051",
         "-map",
-        "[v_out1]",
+        "[vout0]",
         "-map",
         "0:a:0",
         "-map",
@@ -736,8 +730,7 @@ fn video_audio_hls() {
     ]);
 
     let media_obj = Media::new(0, "./assets/with_audio.mp4", true);
-    let media = gen_source(&config, media_obj, &Arc::new(Mutex::new(vec![])));
-    let enc_filter = media.filter.unwrap();
+    let media = gen_source(&config, media_obj, &None);
 
     let enc_prefix = vec_strings![
         "-hide_banner",
@@ -749,7 +742,7 @@ fn video_audio_hls() {
         "./assets/with_audio.mp4"
     ];
 
-    let enc_cmd = prepare_output_cmd(enc_prefix, enc_filter, &config);
+    let enc_cmd = prepare_output_cmd(enc_prefix, &media.filter, &config);
 
     let test_cmd = vec_strings![
         "-hide_banner",
@@ -823,8 +816,7 @@ fn video_multi_audio_hls() {
     ]);
 
     let media_obj = Media::new(0, "./assets/dual_audio.mp4", true);
-    let media = gen_source(&config, media_obj, &Arc::new(Mutex::new(vec![])));
-    let enc_filter = media.filter.unwrap();
+    let media = gen_source(&config, media_obj, &None);
 
     let enc_prefix = vec_strings![
         "-hide_banner",
@@ -836,7 +828,7 @@ fn video_multi_audio_hls() {
         "./assets/dual_audio.mp4"
     ];
 
-    let enc_cmd = prepare_output_cmd(enc_prefix, enc_filter, &config);
+    let enc_cmd = prepare_output_cmd(enc_prefix, &media.filter, &config);
 
     let test_cmd = vec_strings![
         "-hide_banner",
@@ -927,8 +919,7 @@ fn multi_video_audio_hls() {
     ]);
 
     let media_obj = Media::new(0, "./assets/with_audio.mp4", true);
-    let media = gen_source(&config, media_obj, &Arc::new(Mutex::new(vec![])));
-    let enc_filter = media.filter.unwrap();
+    let media = gen_source(&config, media_obj, &None);
 
     let enc_prefix = vec_strings![
         "-hide_banner",
@@ -940,7 +931,7 @@ fn multi_video_audio_hls() {
         "./assets/with_audio.mp4"
     ];
 
-    let enc_cmd = prepare_output_cmd(enc_prefix, enc_filter, &config);
+    let enc_cmd = prepare_output_cmd(enc_prefix, &media.filter, &config);
 
     let test_cmd = vec_strings![
         "-hide_banner",
@@ -1044,8 +1035,7 @@ fn multi_video_multi_audio_hls() {
     ]);
 
     let media_obj = Media::new(0, "./assets/dual_audio.mp4", true);
-    let media = gen_source(&config, media_obj, &Arc::new(Mutex::new(vec![])));
-    let enc_filter = media.filter.unwrap();
+    let media = gen_source(&config, media_obj, &None);
 
     let enc_prefix = vec_strings![
         "-hide_banner",
@@ -1057,7 +1047,7 @@ fn multi_video_multi_audio_hls() {
         "./assets/dual_audio.mp4"
     ];
 
-    let enc_cmd = prepare_output_cmd(enc_prefix, enc_filter, &config);
+    let enc_cmd = prepare_output_cmd(enc_prefix, &media.filter, &config);
 
     let test_cmd = vec_strings![
         "-hide_banner",

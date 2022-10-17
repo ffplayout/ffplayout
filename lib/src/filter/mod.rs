@@ -13,11 +13,12 @@ pub mod v_drawtext;
 // get_delta
 use self::custom_filter::custom_filter;
 use crate::utils::{
-    fps_calc, get_delta, is_close, Media, MediaProbe, OutputMode::*, PlayoutConfig,
+    controller::ProcessUnit::*, fps_calc, get_delta, is_close, Media, MediaProbe, OutputMode::*,
+    PlayoutConfig,
 };
 
-#[derive(Clone, Debug, Copy, PartialEq)]
-enum FilterType {
+#[derive(Clone, Debug, Copy, Eq, PartialEq)]
+pub enum FilterType {
     Audio,
     Video,
 }
@@ -34,22 +35,23 @@ impl fmt::Display for FilterType {
 use FilterType::*;
 
 #[derive(Debug, Clone)]
-struct Filters {
+pub struct Filters {
     audio_chain: String,
     video_chain: String,
-    final_chain: String,
-    audio_map: Vec<String>,
-    video_map: Vec<String>,
-    output_map: Vec<String>,
+    pub final_chain: String,
+    pub audio_map: Vec<String>,
+    pub video_map: Vec<String>,
+    pub output_map: Vec<String>,
+    audio_track_count: i32,
     audio_position: i32,
     video_position: i32,
     audio_last: i32,
     video_last: i32,
-    cmd: Vec<String>,
+    pub cmd: Vec<String>,
 }
 
 impl Filters {
-    fn new(position: i32) -> Self {
+    pub fn new(audio_track_count: i32, audio_position: i32) -> Self {
         Self {
             audio_chain: String::new(),
             video_chain: String::new(),
@@ -57,15 +59,16 @@ impl Filters {
             audio_map: vec![],
             video_map: vec![],
             output_map: vec![],
-            audio_position: position,
-            video_position: position,
+            audio_track_count,
+            audio_position,
+            video_position: 0,
             audio_last: -1,
             video_last: -1,
             cmd: vec![],
         }
     }
 
-    fn add_filter(&mut self, filter: &str, track_nr: i32, filter_type: FilterType) {
+    pub fn add_filter(&mut self, filter: &str, track_nr: i32, filter_type: FilterType) {
         let (map, chain, position, last) = match filter_type {
             Audio => (
                 &mut self.audio_map,
@@ -114,20 +117,47 @@ impl Filters {
 
     fn close_chains(&mut self) {
         // add final output selector
-        self.audio_chain
-            .push_str(&format!("[aout{}]", self.audio_last));
-        self.video_chain
-            .push_str(&format!("[vout{}]", self.video_last));
+        if self.video_last >= 0 {
+            self.video_chain
+                .push_str(&format!("[vout{}]", self.video_last));
+        } else {
+            self.output_map
+                .append(&mut vec!["-map".to_string(), "0:v".to_string()]);
+        }
+
+        if self.audio_last >= 0 {
+            self.audio_chain
+                .push_str(&format!("[aout{}]", self.audio_last));
+        } else {
+            for i in 0..self.audio_track_count {
+                self.output_map.append(&mut vec![
+                    "-map".to_string(),
+                    format!("{}:a:{i}", self.audio_position),
+                ]);
+            }
+        }
     }
 
     fn build_final_chain(&mut self) {
         self.final_chain.push_str(&self.video_chain);
-        self.final_chain.push(';');
-        self.final_chain.push_str(&self.audio_chain);
 
-        self.cmd.push("-filter_complex".to_string());
-        self.cmd.push(self.final_chain.clone());
-        self.cmd.append(&mut self.output_map);
+        if !self.audio_chain.is_empty() {
+            self.final_chain.push(';');
+            self.final_chain.push_str(&self.audio_chain);
+        }
+
+        if !self.final_chain.is_empty() {
+            self.cmd.push("-filter_complex".to_string());
+            self.cmd.push(self.final_chain.clone());
+        }
+
+        self.cmd.append(&mut self.output_map.clone());
+    }
+}
+
+impl Default for Filters {
+    fn default() -> Self {
+        Self::new(1, 0)
     }
 }
 
@@ -220,7 +250,7 @@ fn fade(node: &mut Media, chain: &mut Filters, nr: i32, filter_type: FilterType)
         t = "a"
     }
 
-    if node.seek > 0.0 || node.is_live == Some(true) {
+    if node.seek > 0.0 || node.unit == Ingest {
         chain.add_filter(&format!("{t}fade=in:st=0:d=0.5"), nr, filter_type)
     }
 
@@ -283,9 +313,11 @@ fn add_text(
     node: &mut Media,
     chain: &mut Filters,
     config: &PlayoutConfig,
-    filter_chain: &Arc<Mutex<Vec<String>>>,
+    filter_chain: &Option<Arc<Mutex<Vec<String>>>>,
 ) {
-    if config.text.add_text && (config.text.text_from_filename || config.out.mode == HLS) {
+    if config.text.add_text
+        && (config.text.text_from_filename || config.out.mode == HLS || node.unit == Encoder)
+    {
         let filter = v_drawtext::filter_node(config, Some(node), filter_chain);
 
         chain.add_filter(&filter, 0, Video);
@@ -325,8 +357,7 @@ fn extend_audio(node: &mut Media, chain: &mut Filters, nr: i32) {
 
 /// Add single pass loudnorm filter to audio line.
 fn add_loudnorm(node: &Media, chain: &mut Filters, config: &PlayoutConfig, nr: i32) {
-    if config.processing.add_loudnorm
-        || (node.is_live.unwrap_or_default() && config.processing.loudnorm_ingest)
+    if config.processing.add_loudnorm || (node.unit == Ingest && config.processing.loudnorm_ingest)
     {
         let loud_filter = a_loudnorm::filter_node(config);
         chain.add_filter(&loud_filter, nr, Audio);
@@ -383,9 +414,18 @@ fn custom(filter: &str, chain: &mut Filters, nr: i32, filter_type: FilterType) {
 pub fn filter_chains(
     config: &PlayoutConfig,
     node: &mut Media,
-    filter_chain: &Arc<Mutex<Vec<String>>>,
-) -> Vec<String> {
-    let mut filters = Filters::new(0);
+    filter_chain: &Option<Arc<Mutex<Vec<String>>>>,
+) -> Filters {
+    let mut filters = Filters::new(config.processing.audio_tracks, 0);
+
+    if node.unit == Encoder {
+        add_text(node, &mut filters, config, filter_chain);
+
+        filters.close_chains();
+        filters.build_final_chain();
+
+        return filters;
+    }
 
     if let Some(probe) = node.probe.as_ref() {
         if Path::new(&node.audio).is_file() {
@@ -434,7 +474,7 @@ pub fn filter_chains(
             || Path::new(&node.audio).is_file()
         {
             extend_audio(node, &mut filters, i);
-        } else if !node.is_live.unwrap_or(false) {
+        } else if node.unit == Decoder {
             warn!(
                 "Missing audio track (id {i}) from <b><magenta>{}</></b>",
                 node.source
@@ -456,5 +496,5 @@ pub fn filter_chains(
     filters.close_chains();
     filters.build_final_chain();
 
-    filters.cmd
+    filters
 }

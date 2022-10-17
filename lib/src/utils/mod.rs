@@ -41,13 +41,19 @@ pub use config::{
     ProcessMode::{self, *},
     DUMMY_LEN, FFMPEG_IGNORE_ERRORS, IMAGE_FORMAT,
 };
-pub use controller::{PlayerControl, PlayoutStatus, ProcessControl, ProcessUnit::*};
+pub use controller::{
+    PlayerControl, PlayoutStatus, ProcessControl,
+    ProcessUnit::{self, *},
+};
 pub use generator::generate_playlist;
 pub use json_serializer::{read_json, JsonPlaylist};
 pub use json_validate::validate_playlist;
 pub use logging::{init_logging, send_mail};
 
-use crate::{filter::filter_chains, vec_strings};
+use crate::{
+    filter::{filter_chains, Filters},
+    vec_strings,
+};
 
 /// Video clip struct to hold some important states and comments for current media.
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -82,7 +88,7 @@ pub struct Media {
     pub cmd: Option<Vec<String>>,
 
     #[serde(skip_serializing, skip_deserializing)]
-    pub filter: Option<Vec<String>>,
+    pub filter: Option<Filters>,
 
     #[serde(default, skip_serializing_if = "is_empty_string")]
     pub custom_filter: String,
@@ -99,8 +105,8 @@ pub struct Media {
     #[serde(skip_serializing, skip_deserializing)]
     pub process: Option<bool>,
 
-    #[serde(skip_serializing, skip_deserializing)]
-    pub is_live: Option<bool>,
+    #[serde(default, skip_serializing)]
+    pub unit: ProcessUnit,
 }
 
 impl Media {
@@ -130,13 +136,13 @@ impl Media {
             source: src.to_string(),
             audio: String::new(),
             cmd: Some(vec_strings!["-i", src]),
-            filter: Some(vec![]),
+            filter: None,
             custom_filter: String::new(),
             probe,
             last_ad: Some(false),
             next_ad: Some(false),
             process: Some(true),
-            is_live: Some(false),
+            unit: Decoder,
         }
     }
 
@@ -160,7 +166,11 @@ impl Media {
         }
     }
 
-    pub fn add_filter(&mut self, config: &PlayoutConfig, filter_chain: &Arc<Mutex<Vec<String>>>) {
+    pub fn add_filter(
+        &mut self,
+        config: &PlayoutConfig,
+        filter_chain: &Option<Arc<Mutex<Vec<String>>>>,
+    ) {
         let mut node = self.clone();
         self.filter = Some(filter_chains(config, &mut node, filter_chain))
     }

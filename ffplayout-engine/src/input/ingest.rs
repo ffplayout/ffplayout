@@ -2,16 +2,15 @@ use std::{
     io::{BufRead, BufReader, Error, Read},
     process::{exit, ChildStderr, Command, Stdio},
     sync::atomic::Ordering,
-    sync::{Arc, Mutex},
     thread,
 };
 
 use crossbeam_channel::Sender;
 use simplelog::*;
 
-use ffplayout_lib::filter::filter_chains;
 use ffplayout_lib::utils::{
-    format_log_line, test_tcp_port, Ingest, Media, PlayoutConfig, ProcessControl,
+    controller::ProcessUnit::*, format_log_line, test_tcp_port, Media, PlayoutConfig,
+    ProcessControl,
 };
 use ffplayout_lib::vec_strings;
 
@@ -85,11 +84,15 @@ pub fn ingest_server(
     let mut server_cmd = vec_strings!["-hide_banner", "-nostats", "-v", "level+info"];
     let stream_input = config.ingest.input_cmd.clone().unwrap();
     let mut dummy_media = Media::new(0, "Live Stream", false);
-    dummy_media.is_live = Some(true);
-    let mut filters = filter_chains(&config, &mut dummy_media, &Arc::new(Mutex::new(vec![])));
+    dummy_media.unit = Ingest;
+    dummy_media.add_filter(&config, &None);
 
     server_cmd.append(&mut stream_input.clone());
-    server_cmd.append(&mut filters);
+
+    if let Some(mut filter) = dummy_media.filter {
+        server_cmd.append(&mut filter.cmd);
+    }
+
     server_cmd.append(&mut config.processing.settings.unwrap());
 
     let mut is_running;

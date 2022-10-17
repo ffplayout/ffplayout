@@ -457,7 +457,7 @@ fn timed_source(
 pub fn gen_source(
     config: &PlayoutConfig,
     mut node: Media,
-    filter_chain: &Arc<Mutex<Vec<String>>>,
+    filter_chain: &Option<Arc<Mutex<Vec<String>>>>,
 ) -> Media {
     let duration = node.out - node.seek;
 
@@ -534,7 +534,7 @@ pub fn gen_source(
 fn handle_list_init(
     config: &PlayoutConfig,
     mut node: Media,
-    filter_chain: &Arc<Mutex<Vec<String>>>,
+    filter_chain: &Option<Arc<Mutex<Vec<String>>>>,
 ) -> Media {
     debug!("Playlist init");
     let (_, total_delta) = get_delta(config, &node.begin.unwrap());
@@ -555,7 +555,7 @@ fn handle_list_end(
     config: &PlayoutConfig,
     mut node: Media,
     total_delta: f64,
-    filter_chain: &Arc<Mutex<Vec<String>>>,
+    filter_chain: &Option<Arc<Mutex<Vec<String>>>>,
 ) -> Media {
     debug!("Playlist end");
 

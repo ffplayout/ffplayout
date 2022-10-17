@@ -93,7 +93,7 @@ pub fn generate_playlist(
         date_range = get_date_range(&date_range)
     }
 
-    let media_list = FolderSource::new(config, Arc::new(Mutex::new(vec![])), current_list, index);
+    let media_list = FolderSource::new(config, None, current_list, index);
     let list_length = media_list.nodes.lock().unwrap().len();
 
     for date in date_range {

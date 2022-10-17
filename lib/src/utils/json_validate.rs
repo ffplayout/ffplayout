@@ -3,7 +3,7 @@ use std::{
     process::{Command, Stdio},
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc, Mutex,
+        Arc,
     },
 };
 
@@ -53,16 +53,16 @@ fn check_media(
         node.cmd = Some(seek_and_length(&node));
     }
 
-    node.add_filter(config, &Arc::new(Mutex::new(vec![])));
+    node.add_filter(config, &None);
 
     let mut filter = node.filter.unwrap_or_default();
 
-    if filter.len() > 1 {
-        filter[1] = filter[1].replace("realtime=speed=1", "null")
+    if filter.cmd.len() > 1 {
+        filter.cmd[1] = filter.cmd[1].replace("realtime=speed=1", "null")
     }
 
     enc_cmd.append(&mut node.cmd.unwrap_or_default());
-    enc_cmd.append(&mut filter);
+    enc_cmd.append(&mut filter.cmd);
     enc_cmd.append(&mut vec_strings!["-t", "0.1", "-f", "null", "-"]);
 
     let mut enc_proc = match Command::new("ffmpeg")

@@ -29,12 +29,13 @@ use simplelog::*;
 
 use crate::input::{ingest::log_line, source_generator};
 use crate::utils::prepare_output_cmd;
-use ffplayout_lib::filter::filter_chains;
-use ffplayout_lib::utils::{
-    sec_to_time, stderr_reader, test_tcp_port, Encoder, Ingest, Media, PlayerControl,
-    PlayoutConfig, PlayoutStatus, ProcessControl,
+use ffplayout_lib::{
+    utils::{
+        controller::ProcessUnit::*, sec_to_time, stderr_reader, test_tcp_port, Media,
+        PlayerControl, PlayoutConfig, PlayoutStatus, ProcessControl,
+    },
+    vec_strings,
 };
-use ffplayout_lib::vec_strings;
 
 /// Ingest Server for HLS
 fn ingest_to_hls_server(
@@ -49,7 +50,7 @@ fn ingest_to_hls_server(
     let stream_input = config.ingest.input_cmd.clone().unwrap();
     server_prefix.append(&mut stream_input.clone());
     let mut dummy_media = Media::new(0, "Live Stream", false);
-    dummy_media.is_live = Some(true);
+    dummy_media.unit = Ingest;
 
     let mut is_running;
 
@@ -63,8 +64,8 @@ fn ingest_to_hls_server(
     };
 
     loop {
-        let filters = filter_chains(&config, &mut dummy_media, &playout_stat.chain);
-        let server_cmd = prepare_output_cmd(server_prefix.clone(), filters, &config);
+        dummy_media.add_filter(&config, &playout_stat.chain);
+        let server_cmd = prepare_output_cmd(server_prefix.clone(), &dummy_media.filter, &config);
 
         debug!(
             "Server CMD: <bright-blue>\"ffmpeg {}\"</>",
@@ -179,8 +180,7 @@ pub fn write_hls(
 
         let mut enc_prefix = vec_strings!["-hide_banner", "-nostats", "-v", &ff_log_format];
         enc_prefix.append(&mut cmd);
-        let enc_filter = node.filter.unwrap();
-        let enc_cmd = prepare_output_cmd(enc_prefix, enc_filter, config);
+        let enc_cmd = prepare_output_cmd(enc_prefix, &node.filter, config);
 
         debug!(
             "HLS writer CMD: <bright-blue>\"ffmpeg {}\"</>",

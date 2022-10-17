@@ -99,12 +99,11 @@ pub fn player(
             node.audio
         );
 
-        let mut filter = node.filter.unwrap();
         let mut dec_cmd = vec_strings!["-hide_banner", "-nostats", "-v", &ff_log_format];
         dec_cmd.append(&mut cmd);
 
-        if filter.len() > 1 {
-            dec_cmd.append(&mut filter);
+        if let Some(mut filter) = node.filter {
+            dec_cmd.append(&mut filter.cmd);
         }
 
         dec_cmd.append(&mut config.processing.clone().settings.unwrap());

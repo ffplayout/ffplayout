@@ -1,47 +1,32 @@
-use std::{
-    process::{self, Command, Stdio},
-    sync::{Arc, Mutex},
-};
+use std::process::{self, Command, Stdio};
 
 use simplelog::*;
 
-use ffplayout_lib::{filter::v_drawtext, utils::PlayoutConfig, vec_strings};
+use crate::utils::prepare_output_cmd;
+use ffplayout_lib::{
+    utils::{Media, PlayoutConfig, ProcessUnit::*},
+    vec_strings,
+};
 
 /// Desktop Output
 ///
 /// Instead of streaming, we run a ffplay instance and play on desktop.
 pub fn output(config: &PlayoutConfig, log_format: &str) -> process::Child {
-    let mut enc_filter: Vec<String> = vec![];
+    let mut media = Media::new(0, "", false);
+    media.unit = Encoder;
+    media.add_filter(config, &None);
 
-    let mut enc_cmd = vec_strings![
+    let enc_prefix = vec_strings![
         "-hide_banner",
         "-nostats",
         "-v",
         log_format,
         "-re",
         "-i",
-        "pipe:0",
-        "-f",
-        "null",
-        "-"
+        "pipe:0"
     ];
 
-    if config.text.add_text && !config.text.text_from_filename {
-        if let Some(socket) = config.text.zmq_stream_socket.clone() {
-            debug!(
-                "Using drawtext filter, listening on address: <yellow>{}</>",
-                socket
-            );
-
-            let mut filter: String = "null,".to_string();
-            filter.push_str(
-                v_drawtext::filter_node(config, None, &Arc::new(Mutex::new(vec![]))).as_str(),
-            );
-            enc_filter = vec!["-vf".to_string(), filter];
-        }
-    }
-
-    enc_cmd.splice(7..7, enc_filter);
+    let enc_cmd = prepare_output_cmd(enc_prefix, &media.filter, config);
 
     debug!(
         "Encoder CMD: <bright-blue>\"ffmpeg {}\"</>",
