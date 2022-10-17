@@ -4,7 +4,6 @@ use std::{
 };
 
 use regex::Regex;
-use simplelog::*;
 
 use crate::utils::{controller::ProcessUnit::*, Media, PlayoutConfig};
 
@@ -48,11 +47,6 @@ pub fn filter_node(
                 filter_cmd = link.to_string();
             }
         }
-
-        debug!(
-            "Using drawtext filter, listening on address: <yellow>{}</>",
-            socket
-        );
 
         filter = format!(
             "zmq=b=tcp\\\\://'{}',drawtext@dyntext={filter_cmd}",
