@@ -258,6 +258,7 @@ fn video_audio_filter2_stream() {
     config.out.mode = Stream;
     config.processing.add_logo = false;
     config.text.add_text = true;
+    config.text.fontfile = String::new();
     config.out.output_cmd = Some(vec_strings![
         "-filter_complex",
         "[0:v]gblur=2[vout0];[0:a]volume=0.2[aout0]",
@@ -341,6 +342,7 @@ fn video_audio_filter3_stream() {
     config.out.mode = Stream;
     config.processing.add_logo = false;
     config.text.add_text = true;
+    config.text.fontfile = String::new();
     config.out.output_cmd = Some(vec_strings![
         "-filter_complex",
         "[0:v]null[o];movie=/path/to/lower_third.png[l];[o][l]overlay=shortest=1[v_out0]",
@@ -420,6 +422,7 @@ fn video_audio_filter4_stream() {
     config.out.mode = Stream;
     config.processing.add_logo = false;
     config.text.add_text = true;
+    config.text.fontfile = String::new();
     config.out.output_cmd = Some(vec_strings![
         "-filter_complex",
         "[0:v]null[o];movie=/path/to/lower_third.png[l];[o][l]overlay=shortest=1[v_out0];[0:a:0]volume=0.2[a_out0]",
