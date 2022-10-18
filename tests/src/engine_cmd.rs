@@ -20,18 +20,17 @@ fn video_audio_input() {
     let test_filter_cmd =
         vec_strings![
             "-filter_complex",
-            format!("[0:v:0]scale=1024:576,null[v];movie={}:loop=0,setpts=N/(FRAME_RATE*TB),format=rgba,colorchannelmixer=aa=0.7[l];[v][l]overlay=W-w-12:12:shortest=1[vout0];[0:a:0]anull[aout0]", config.processing.logo),
-            "-map",
-            "[vout0]",
-            "-map",
-            "[aout0]"
+            format!("[0:v:0]scale=1024:576,null[v];movie={}:loop=0,setpts=N/(FRAME_RATE*TB),format=rgba,colorchannelmixer=aa=0.7[l];[v][l]overlay=W-w-12:12:shortest=1[vout0];[0:a:0]anull[aout0]", config.processing.logo)
         ];
+
+    let test_filter_map = vec_strings!["-map", "[vout0]", "-map", "[aout0]"];
 
     assert_eq!(
         media.cmd,
         Some(vec_strings!["-i", "./assets/with_audio.mp4"])
     );
-    assert_eq!(media.filter.unwrap().cmd, test_filter_cmd);
+    assert_eq!(media.filter.clone().unwrap().cmd(), test_filter_cmd);
+    assert_eq!(media.filter.unwrap().map(), test_filter_map);
 }
 
 #[test]
@@ -47,20 +46,17 @@ fn dual_audio_aevalsrc_input() {
     let test_filter_cmd =
         vec_strings![
             "-filter_complex",
-            "[0:v:0]scale=1024:576[vout0];[0:a:0]anull[aout0];aevalsrc=0:channel_layout=stereo:duration=30:sample_rate=48000,anull[aout1]",
-            "-map",
-            "[vout0]",
-            "-map",
-            "[aout0]",
-            "-map",
-            "[aout1]"
+            "[0:v:0]scale=1024:576[vout0];[0:a:0]anull[aout0];aevalsrc=0:channel_layout=stereo:duration=30:sample_rate=48000,anull[aout1]"
         ];
+
+    let test_filter_map = vec_strings!["-map", "[vout0]", "-map", "[aout0]", "-map", "[aout1]"];
 
     assert_eq!(
         media.cmd,
         Some(vec_strings!["-i", "./assets/with_audio.mp4"])
     );
-    assert_eq!(media.filter.unwrap().cmd, test_filter_cmd);
+    assert_eq!(media.filter.clone().unwrap().cmd(), test_filter_cmd);
+    assert_eq!(media.filter.unwrap().map(), test_filter_map);
 }
 
 #[test]
@@ -75,20 +71,17 @@ fn dual_audio_input() {
 
     let test_filter_cmd = vec_strings![
         "-filter_complex",
-        "[0:v:0]scale=1024:576[vout0];[0:a:0]anull[aout0];[0:a:1]anull[aout1]",
-        "-map",
-        "[vout0]",
-        "-map",
-        "[aout0]",
-        "-map",
-        "[aout1]"
+        "[0:v:0]scale=1024:576[vout0];[0:a:0]anull[aout0];[0:a:1]anull[aout1]"
     ];
+
+    let test_filter_map = vec_strings!["-map", "[vout0]", "-map", "[aout0]", "-map", "[aout1]"];
 
     assert_eq!(
         media.cmd,
         Some(vec_strings!["-i", "./assets/dual_audio.mp4"])
     );
-    assert_eq!(media.filter.unwrap().cmd, test_filter_cmd);
+    assert_eq!(media.filter.clone().unwrap().cmd(), test_filter_cmd);
+    assert_eq!(media.filter.unwrap().map(), test_filter_map);
 }
 
 #[test]
@@ -104,12 +97,10 @@ fn video_separate_audio_input() {
 
     let test_filter_cmd = vec_strings![
         "-filter_complex",
-        "[0:v:0]scale=1024:576[vout0];[1:a:0]anull[aout0]",
-        "-map",
-        "[vout0]",
-        "-map",
-        "[aout0]"
+        "[0:v:0]scale=1024:576[vout0];[1:a:0]anull[aout0]"
     ];
+
+    let test_filter_map = vec_strings!["-map", "[vout0]", "-map", "[aout0]"];
 
     assert_eq!(
         media.cmd,
@@ -122,7 +113,8 @@ fn video_separate_audio_input() {
             "30"
         ])
     );
-    assert_eq!(media.filter.unwrap().cmd, test_filter_cmd);
+    assert_eq!(media.filter.clone().unwrap().cmd(), test_filter_cmd);
+    assert_eq!(media.filter.unwrap().map(), test_filter_map);
 }
 
 #[test]
@@ -146,8 +138,75 @@ fn video_audio_stream() {
         "rtmp://localhost/live/stream"
     ]);
 
-    let mut enc_cmd = vec![];
-    let mut output_cmd = config.out.output_cmd.as_ref().unwrap().clone();
+    let enc_prefix = vec_strings![
+        "-hide_banner",
+        "-nostats",
+        "-v",
+        "level+error",
+        "-re",
+        "-i",
+        "pipe:0"
+    ];
+
+    let enc_cmd = prepare_output_cmd(&config, enc_prefix, &None);
+
+    let test_cmd = vec_strings![
+        "-hide_banner",
+        "-nostats",
+        "-v",
+        "level+error",
+        "-re",
+        "-i",
+        "pipe:0",
+        "-c:v",
+        "libx264",
+        "-c:a",
+        "aac",
+        "-ar",
+        "44100",
+        "-b:a",
+        "128k",
+        "-flags",
+        "+global_header",
+        "-f",
+        "flv",
+        "rtmp://localhost/live/stream"
+    ];
+
+    assert_eq!(enc_cmd, test_cmd);
+}
+
+#[test]
+fn video_audio_filter_stream() {
+    let mut config = PlayoutConfig::new(Some("../assets/ffplayout.yml".to_string()));
+    config.out.mode = Stream;
+    config.processing.add_logo = false;
+    config.text.add_text = false;
+    config.out.output_cmd = Some(vec_strings![
+        "-filter_complex",
+        "[0:v]gblur=2[vout0];[0:a]volume=0.2[aout0]",
+        "-map",
+        "[vout0]",
+        "-map",
+        "[aout0]",
+        "-c:v",
+        "libx264",
+        "-c:a",
+        "aac",
+        "-ar",
+        "44100",
+        "-b:a",
+        "128k",
+        "-flags",
+        "+global_header",
+        "-f",
+        "flv",
+        "rtmp://localhost/live/stream"
+    ]);
+
+    let mut media = Media::new(0, "", false);
+    media.unit = Encoder;
+    media.add_filter(&config, &None);
 
     let enc_prefix = vec_strings![
         "-hide_banner",
@@ -159,9 +218,7 @@ fn video_audio_stream() {
         "pipe:0"
     ];
 
-    enc_cmd.append(&mut output_cmd);
-
-    let enc_cmd = prepare_output_cmd(enc_prefix, &None, &config);
+    let enc_cmd = prepare_output_cmd(&config, enc_prefix, &media.filter);
 
     let test_cmd = vec_strings![
         "-hide_banner",
@@ -171,6 +228,260 @@ fn video_audio_stream() {
         "-re",
         "-i",
         "pipe:0",
+        "-filter_complex",
+        "[0:v:0]gblur=2[vout0];[0:a:0]volume=0.2[aout0]",
+        "-map",
+        "[vout0]",
+        "-map",
+        "[aout0]",
+        "-c:v",
+        "libx264",
+        "-c:a",
+        "aac",
+        "-ar",
+        "44100",
+        "-b:a",
+        "128k",
+        "-flags",
+        "+global_header",
+        "-f",
+        "flv",
+        "rtmp://localhost/live/stream"
+    ];
+
+    assert_eq!(enc_cmd, test_cmd);
+}
+
+#[test]
+fn video_audio_filter2_stream() {
+    let mut config = PlayoutConfig::new(Some("../assets/ffplayout.yml".to_string()));
+    config.out.mode = Stream;
+    config.processing.add_logo = false;
+    config.text.add_text = true;
+    config.text.fontfile = String::new();
+    config.out.output_cmd = Some(vec_strings![
+        "-filter_complex",
+        "[0:v]gblur=2[vout0];[0:a]volume=0.2[aout0]",
+        "-map",
+        "[vout0]",
+        "-map",
+        "[aout0]",
+        "-c:v",
+        "libx264",
+        "-c:a",
+        "aac",
+        "-ar",
+        "44100",
+        "-b:a",
+        "128k",
+        "-flags",
+        "+global_header",
+        "-f",
+        "flv",
+        "rtmp://localhost/live/stream"
+    ]);
+
+    let mut media = Media::new(0, "", false);
+    media.unit = Encoder;
+    media.add_filter(&config, &None);
+
+    let socket = config
+        .text
+        .zmq_stream_socket
+        .clone()
+        .unwrap()
+        .replace(':', "\\:");
+
+    let enc_prefix = vec_strings![
+        "-hide_banner",
+        "-nostats",
+        "-v",
+        "level+error",
+        "-re",
+        "-i",
+        "pipe:0"
+    ];
+
+    let enc_cmd = prepare_output_cmd(&config, enc_prefix, &media.filter);
+
+    let test_cmd = vec_strings![
+        "-hide_banner",
+        "-nostats",
+        "-v",
+        "level+error",
+        "-re",
+        "-i",
+        "pipe:0",
+        "-filter_complex",
+        format!("[0:v:0]zmq=b=tcp\\\\://'{socket}',drawtext@dyntext=text='',gblur=2[vout0];[0:a:0]volume=0.2[aout0]"),
+        "-map",
+        "[vout0]",
+        "-map",
+        "[aout0]",
+        "-c:v",
+        "libx264",
+        "-c:a",
+        "aac",
+        "-ar",
+        "44100",
+        "-b:a",
+        "128k",
+        "-flags",
+        "+global_header",
+        "-f",
+        "flv",
+        "rtmp://localhost/live/stream"
+    ];
+
+    assert_eq!(enc_cmd, test_cmd);
+}
+
+#[test]
+fn video_audio_filter3_stream() {
+    let mut config = PlayoutConfig::new(Some("../assets/ffplayout.yml".to_string()));
+    config.out.mode = Stream;
+    config.processing.add_logo = false;
+    config.text.add_text = true;
+    config.text.fontfile = String::new();
+    config.out.output_cmd = Some(vec_strings![
+        "-filter_complex",
+        "[0:v]null[o];movie=/path/to/lower_third.png[l];[o][l]overlay=shortest=1[v_out0]",
+        "-map",
+        "[v_out0]",
+        "-c:v",
+        "libx264",
+        "-c:a",
+        "aac",
+        "-ar",
+        "44100",
+        "-b:a",
+        "128k",
+        "-flags",
+        "+global_header",
+        "-f",
+        "flv",
+        "rtmp://localhost/live/stream"
+    ]);
+
+    let mut media = Media::new(0, "", false);
+    media.unit = Encoder;
+    media.add_filter(&config, &None);
+
+    let socket = config
+        .text
+        .zmq_stream_socket
+        .clone()
+        .unwrap()
+        .replace(':', "\\:");
+
+    let enc_prefix = vec_strings![
+        "-hide_banner",
+        "-nostats",
+        "-v",
+        "level+error",
+        "-re",
+        "-i",
+        "pipe:0"
+    ];
+
+    let enc_cmd = prepare_output_cmd(&config, enc_prefix, &media.filter);
+
+    let test_cmd = vec_strings![
+        "-hide_banner",
+        "-nostats",
+        "-v",
+        "level+error",
+        "-re",
+        "-i",
+        "pipe:0",
+        "-filter_complex",
+        format!("[0:v:0]zmq=b=tcp\\\\://'{socket}',drawtext@dyntext=text=''[vout0];[vout0]null[o];movie=/path/to/lower_third.png[l];[o][l]overlay=shortest=1[v_out0]"),
+        "-map",
+        "[v_out0]",
+        "-c:v",
+        "libx264",
+        "-c:a",
+        "aac",
+        "-ar",
+        "44100",
+        "-b:a",
+        "128k",
+        "-flags",
+        "+global_header",
+        "-f",
+        "flv",
+        "rtmp://localhost/live/stream"
+    ];
+
+    assert_eq!(enc_cmd, test_cmd);
+}
+
+#[test]
+fn video_audio_filter4_stream() {
+    let mut config = PlayoutConfig::new(Some("../assets/ffplayout.yml".to_string()));
+    config.out.mode = Stream;
+    config.processing.add_logo = false;
+    config.text.add_text = true;
+    config.text.fontfile = String::new();
+    config.out.output_cmd = Some(vec_strings![
+        "-filter_complex",
+        "[0:v]null[o];movie=/path/to/lower_third.png[l];[o][l]overlay=shortest=1[v_out0];[0:a:0]volume=0.2[a_out0]",
+        "-map",
+        "[v_out0]",
+        "-map",
+        "[a_out0]",
+        "-c:v",
+        "libx264",
+        "-c:a",
+        "aac",
+        "-ar",
+        "44100",
+        "-b:a",
+        "128k",
+        "-flags",
+        "+global_header",
+        "-f",
+        "flv",
+        "rtmp://localhost/live/stream"
+    ]);
+
+    let mut media = Media::new(0, "", false);
+    media.unit = Encoder;
+    media.add_filter(&config, &None);
+
+    let socket = config
+        .text
+        .zmq_stream_socket
+        .clone()
+        .unwrap()
+        .replace(':', "\\:");
+
+    let enc_prefix = vec_strings![
+        "-hide_banner",
+        "-nostats",
+        "-v",
+        "level+error",
+        "-re",
+        "-i",
+        "pipe:0"
+    ];
+
+    let enc_cmd = prepare_output_cmd(&config, enc_prefix, &media.filter);
+
+    let test_cmd = vec_strings![
+        "-hide_banner",
+        "-nostats",
+        "-v",
+        "level+error",
+        "-re",
+        "-i",
+        "pipe:0",
+        "-filter_complex",
+        format!("[0:v:0]zmq=b=tcp\\\\://'{socket}',drawtext@dyntext=text=''[vout0];[vout0]null[o];movie=/path/to/lower_third.png[l];[o][l]overlay=shortest=1[v_out0];[0:a:0]volume=0.2[a_out0]"),
+        "-map",
+        "[v_out0]",
+        "-map",
+        "[a_out0]",
         "-c:v",
         "libx264",
         "-c:a",
@@ -216,10 +527,6 @@ fn video_dual_audio_stream() {
     media.unit = Encoder;
     media.add_filter(&config, &None);
 
-    let mut enc_cmd = vec![];
-
-    let mut output_cmd = config.out.output_cmd.as_ref().unwrap().clone();
-
     let enc_prefix = vec_strings![
         "-hide_banner",
         "-nostats",
@@ -230,9 +537,7 @@ fn video_dual_audio_stream() {
         "pipe:0"
     ];
 
-    enc_cmd.append(&mut output_cmd);
-
-    let enc_cmd = prepare_output_cmd(enc_prefix, &media.filter, &config);
+    let enc_cmd = prepare_output_cmd(&config, enc_prefix, &media.filter);
 
     let test_cmd = vec_strings![
         "-hide_banner",
@@ -289,7 +594,6 @@ fn video_dual_audio_filter_stream() {
         "srt://127.0.0.1:40051"
     ]);
 
-    let mut enc_cmd = vec![];
     let enc_prefix = vec_strings![
         "-hide_banner",
         "-nostats",
@@ -311,11 +615,7 @@ fn video_dual_audio_filter_stream() {
     media.unit = Encoder;
     media.add_filter(&config, &None);
 
-    let mut output_cmd = config.out.output_cmd.as_ref().unwrap().clone();
-
-    enc_cmd.append(&mut output_cmd);
-
-    let enc_cmd = prepare_output_cmd(enc_prefix, &media.filter, &config);
+    let enc_cmd = prepare_output_cmd(&config, enc_prefix, &media.filter);
 
     let test_cmd = vec_strings![
         "-hide_banner",
@@ -387,9 +687,6 @@ fn video_audio_multi_stream() {
         "rtmp://localhost:1936/live/stream"
     ]);
 
-    let mut enc_cmd = vec![];
-    let mut output_cmd = config.out.output_cmd.as_ref().unwrap().clone();
-
     let enc_prefix = vec_strings![
         "-hide_banner",
         "-nostats",
@@ -400,9 +697,7 @@ fn video_audio_multi_stream() {
         "pipe:0"
     ];
 
-    enc_cmd.append(&mut output_cmd);
-
-    let enc_cmd = prepare_output_cmd(enc_prefix, &None, &config);
+    let enc_cmd = prepare_output_cmd(&config, enc_prefix, &None);
 
     let test_cmd = vec_strings![
         "-hide_banner",
@@ -494,9 +789,6 @@ fn video_dual_audio_multi_stream() {
         "srt://127.0.0.1:40052"
     ]);
 
-    let mut enc_cmd = vec![];
-    let mut output_cmd = config.out.output_cmd.as_ref().unwrap().clone();
-
     let enc_prefix = vec_strings![
         "-hide_banner",
         "-nostats",
@@ -507,9 +799,7 @@ fn video_dual_audio_multi_stream() {
         "pipe:0"
     ];
 
-    enc_cmd.append(&mut output_cmd);
-
-    let enc_cmd = prepare_output_cmd(enc_prefix, &None, &config);
+    let enc_cmd = prepare_output_cmd(&config, enc_prefix, &None);
 
     let test_cmd = vec_strings![
         "-hide_banner",
@@ -614,7 +904,6 @@ fn video_dual_audio_multi_filter_stream() {
         "srt://127.0.0.1:40052"
     ]);
 
-    let mut enc_cmd = vec![];
     let enc_prefix = vec_strings![
         "-hide_banner",
         "-nostats",
@@ -636,11 +925,7 @@ fn video_dual_audio_multi_filter_stream() {
     media.unit = Encoder;
     media.add_filter(&config, &None);
 
-    let mut output_cmd = config.out.output_cmd.as_ref().unwrap().clone();
-
-    enc_cmd.append(&mut output_cmd);
-
-    let enc_cmd = prepare_output_cmd(enc_prefix, &media.filter, &config);
+    let enc_cmd = prepare_output_cmd(&config, enc_prefix, &media.filter);
 
     let test_cmd = vec_strings![
         "-hide_banner",
@@ -694,8 +979,6 @@ fn video_dual_audio_multi_filter_stream() {
         "srt://127.0.0.1:40052"
     ];
 
-    // println!("{enc_cmd:?}");
-
     assert_eq!(enc_cmd, test_cmd);
 }
 
@@ -742,7 +1025,7 @@ fn video_audio_hls() {
         "./assets/with_audio.mp4"
     ];
 
-    let enc_cmd = prepare_output_cmd(enc_prefix, &media.filter, &config);
+    let enc_cmd = prepare_output_cmd(&config, enc_prefix, &media.filter);
 
     let test_cmd = vec_strings![
         "-hide_banner",
@@ -758,6 +1041,99 @@ fn video_audio_hls() {
         "[vout0]",
         "-map",
         "[aout0]",
+        "-c:v",
+        "libx264",
+        "-c:a",
+        "aac",
+        "-ar",
+        "44100",
+        "-b:a",
+        "128k",
+        "-flags",
+        "+cgop",
+        "-f",
+        "hls",
+        "-hls_time",
+        "6",
+        "-hls_list_size",
+        "600",
+        "-hls_flags",
+        "append_list+delete_segments+omit_endlist",
+        "-hls_segment_filename",
+        "/usr/share/ffplayout/public/live/stream-%d.ts",
+        "/usr/share/ffplayout/public/live/stream.m3u8"
+    ];
+
+    assert_eq!(enc_cmd, test_cmd);
+}
+
+#[test]
+fn video_audio_sub_meta_hls() {
+    let mut config = PlayoutConfig::new(Some("../assets/ffplayout.yml".to_string()));
+    config.out.mode = HLS;
+    config.processing.add_logo = false;
+    config.text.add_text = false;
+    config.out.output_cmd = Some(vec_strings![
+        "-map",
+        "0:s:0",
+        "-map_metadata",
+        "0",
+        "-c:v",
+        "libx264",
+        "-c:a",
+        "aac",
+        "-ar",
+        "44100",
+        "-b:a",
+        "128k",
+        "-flags",
+        "+cgop",
+        "-f",
+        "hls",
+        "-hls_time",
+        "6",
+        "-hls_list_size",
+        "600",
+        "-hls_flags",
+        "append_list+delete_segments+omit_endlist",
+        "-hls_segment_filename",
+        "/usr/share/ffplayout/public/live/stream-%d.ts",
+        "/usr/share/ffplayout/public/live/stream.m3u8"
+    ]);
+
+    let media_obj = Media::new(0, "./assets/with_audio.mp4", true);
+    let media = gen_source(&config, media_obj, &None);
+
+    let enc_prefix = vec_strings![
+        "-hide_banner",
+        "-nostats",
+        "-v",
+        "level+error",
+        "-re",
+        "-i",
+        "./assets/with_audio.mp4"
+    ];
+
+    let enc_cmd = prepare_output_cmd(&config, enc_prefix, &media.filter);
+
+    let test_cmd = vec_strings![
+        "-hide_banner",
+        "-nostats",
+        "-v",
+        "level+error",
+        "-re",
+        "-i",
+        "./assets/with_audio.mp4",
+        "-filter_complex",
+        "[0:v:0]scale=1024:576,realtime=speed=1[vout0];[0:a:0]anull[aout0]",
+        "-map",
+        "[vout0]",
+        "-map",
+        "[aout0]",
+        "-map",
+        "0:s:0",
+        "-map_metadata",
+        "0",
         "-c:v",
         "libx264",
         "-c:a",
@@ -828,7 +1204,7 @@ fn video_multi_audio_hls() {
         "./assets/dual_audio.mp4"
     ];
 
-    let enc_cmd = prepare_output_cmd(enc_prefix, &media.filter, &config);
+    let enc_cmd = prepare_output_cmd(&config, enc_prefix, &media.filter);
 
     let test_cmd = vec_strings![
         "-hide_banner",
@@ -931,7 +1307,7 @@ fn multi_video_audio_hls() {
         "./assets/with_audio.mp4"
     ];
 
-    let enc_cmd = prepare_output_cmd(enc_prefix, &media.filter, &config);
+    let enc_cmd = prepare_output_cmd(&config, enc_prefix, &media.filter);
 
     let test_cmd = vec_strings![
         "-hide_banner",
@@ -1047,7 +1423,7 @@ fn multi_video_multi_audio_hls() {
         "./assets/dual_audio.mp4"
     ];
 
-    let enc_cmd = prepare_output_cmd(enc_prefix, &media.filter, &config);
+    let enc_cmd = prepare_output_cmd(&config, enc_prefix, &media.filter);
 
     let test_cmd = vec_strings![
         "-hide_banner",

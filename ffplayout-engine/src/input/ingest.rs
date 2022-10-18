@@ -90,7 +90,8 @@ pub fn ingest_server(
     server_cmd.append(&mut stream_input.clone());
 
     if let Some(mut filter) = dummy_media.filter {
-        server_cmd.append(&mut filter.cmd);
+        server_cmd.append(&mut filter.cmd());
+        server_cmd.append(&mut filter.map());
     }
 
     server_cmd.append(&mut config.processing.settings.unwrap());

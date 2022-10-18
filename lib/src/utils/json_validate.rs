@@ -57,12 +57,13 @@ fn check_media(
 
     let mut filter = node.filter.unwrap_or_default();
 
-    if filter.cmd.len() > 1 {
-        filter.cmd[1] = filter.cmd[1].replace("realtime=speed=1", "null")
+    if filter.cmd().len() > 1 {
+        filter.cmd()[1] = filter.cmd()[1].replace("realtime=speed=1", "null")
     }
 
     enc_cmd.append(&mut node.cmd.unwrap_or_default());
-    enc_cmd.append(&mut filter.cmd);
+    enc_cmd.append(&mut filter.cmd());
+    enc_cmd.append(&mut filter.map());
     enc_cmd.append(&mut vec_strings!["-t", "0.1", "-f", "null", "-"]);
 
     let mut enc_proc = match Command::new("ffmpeg")
