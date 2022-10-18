@@ -65,7 +65,7 @@ fn ingest_to_hls_server(
 
     loop {
         dummy_media.add_filter(&config, &playout_stat.chain);
-        let server_cmd = prepare_output_cmd(server_prefix.clone(), &dummy_media.filter, &config);
+        let server_cmd = prepare_output_cmd(&config, server_prefix.clone(), &dummy_media.filter);
 
         debug!(
             "Server CMD: <bright-blue>\"ffmpeg {}\"</>",
@@ -180,7 +180,7 @@ pub fn write_hls(
 
         let mut enc_prefix = vec_strings!["-hide_banner", "-nostats", "-v", &ff_log_format];
         enc_prefix.append(&mut cmd);
-        let enc_cmd = prepare_output_cmd(enc_prefix, &node.filter, config);
+        let enc_cmd = prepare_output_cmd(config, enc_prefix, &node.filter);
 
         debug!(
             "HLS writer CMD: <bright-blue>\"ffmpeg {}\"</>",

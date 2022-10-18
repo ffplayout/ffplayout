@@ -26,7 +26,7 @@ pub fn output(config: &PlayoutConfig, log_format: &str) -> process::Child {
         "pipe:0"
     ];
 
-    let enc_cmd = prepare_output_cmd(enc_prefix, &media.filter, config);
+    let enc_cmd = prepare_output_cmd(config, enc_prefix, &media.filter);
 
     debug!(
         "Encoder CMD: <bright-blue>\"ffmpeg {}\"</>",

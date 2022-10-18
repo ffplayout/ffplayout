@@ -36,9 +36,8 @@ use FilterType::*;
 
 #[derive(Debug, Clone)]
 pub struct Filters {
-    audio_chain: String,
-    video_chain: String,
-    pub final_chain: String,
+    pub audio_chain: String,
+    pub video_chain: String,
     pub audio_map: Vec<String>,
     pub video_map: Vec<String>,
     pub output_map: Vec<String>,
@@ -47,7 +46,6 @@ pub struct Filters {
     video_position: i32,
     audio_last: i32,
     video_last: i32,
-    pub cmd: Vec<String>,
 }
 
 impl Filters {
@@ -55,7 +53,6 @@ impl Filters {
         Self {
             audio_chain: String::new(),
             video_chain: String::new(),
-            final_chain: String::new(),
             audio_map: vec![],
             video_map: vec![],
             output_map: vec![],
@@ -64,7 +61,6 @@ impl Filters {
             video_position: 0,
             audio_last: -1,
             video_last: -1,
-            cmd: vec![],
         }
     }
 
@@ -115,43 +111,56 @@ impl Filters {
         }
     }
 
-    fn close_chains(&mut self) {
-        // add final output selector
+    pub fn cmd(&mut self) -> Vec<String> {
+        let mut v_chain = self.video_chain.clone();
+        let mut a_chain = self.audio_chain.clone();
+
         if self.video_last >= 0 {
-            self.video_chain
-                .push_str(&format!("[vout{}]", self.video_last));
-        } else {
-            self.output_map
-                .append(&mut vec!["-map".to_string(), "0:v".to_string()]);
+            v_chain.push_str(&format!("[vout{}]", self.video_last));
         }
 
         if self.audio_last >= 0 {
-            self.audio_chain
-                .push_str(&format!("[aout{}]", self.audio_last));
-        } else {
-            for i in 0..self.audio_track_count {
-                self.output_map.append(&mut vec![
-                    "-map".to_string(),
-                    format!("{}:a:{i}", self.audio_position),
-                ]);
-            }
+            a_chain.push_str(&format!("[aout{}]", self.audio_last));
         }
+
+        let mut f_chain = v_chain;
+        let mut cmd = vec![];
+
+        if !a_chain.is_empty() {
+            f_chain.push(';');
+            f_chain.push_str(&a_chain);
+        }
+
+        if !f_chain.is_empty() {
+            cmd.push("-filter_complex".to_string());
+            cmd.push(f_chain);
+        }
+
+        cmd
     }
 
-    fn build_final_chain(&mut self) {
-        self.final_chain.push_str(&self.video_chain);
+    pub fn map(&mut self) -> Vec<String> {
+        let mut o_map = self.output_map.clone();
 
-        if !self.audio_chain.is_empty() {
-            self.final_chain.push(';');
-            self.final_chain.push_str(&self.audio_chain);
+        if self.video_last == -1 {
+            let v_map = "0:v".to_string();
+
+            if !o_map.contains(&v_map) {
+                o_map.append(&mut vec!["-map".to_string(), v_map]);
+            };
         }
 
-        if !self.final_chain.is_empty() {
-            self.cmd.push("-filter_complex".to_string());
-            self.cmd.push(self.final_chain.clone());
+        if self.audio_last == -1 {
+            for i in 0..self.audio_track_count {
+                let a_map = format!("{}:a:{i}", self.audio_position);
+
+                if !o_map.contains(&a_map) {
+                    o_map.append(&mut vec!["-map".to_string(), a_map]);
+                };
+            }
         }
 
-        self.cmd.append(&mut self.output_map.clone());
+        o_map
     }
 }
 
@@ -421,9 +430,6 @@ pub fn filter_chains(
     if node.unit == Encoder {
         add_text(node, &mut filters, config, filter_chain);
 
-        filters.close_chains();
-        filters.build_final_chain();
-
         return filters;
     }
 
@@ -492,9 +498,6 @@ pub fn filter_chains(
         custom(&proc_af, &mut filters, i, Audio);
         custom(&list_af, &mut filters, i, Audio);
     }
-
-    filters.close_chains();
-    filters.build_final_chain();
 
     filters
 }
