@@ -152,11 +152,8 @@ pub fn prepare_output_cmd(
     let re_multi = Regex::new(r"\[[\w:_-]+\]\[[\w:_-]+\]").unwrap();
 
     if let Some(mut filter) = filters.clone() {
-        // Loop over output parameters
-        //
-        // Check if it contains a filtergraph, count its outputs and set correct mapping values.
+        // Check if it contains a filtergraph and set correct output mapping.
         for (i, param) in output_params.iter().enumerate() {
-            // Skip filter command, to concat existing filters with new ones.
             if param != "-filter_complex" {
                 if i > 0 && output_params[i - 1] == "-filter_complex" {
                     output_filter = param.clone();
