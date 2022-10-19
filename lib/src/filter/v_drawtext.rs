@@ -1,4 +1,5 @@
 use std::{
+    ffi::OsStr,
     path::Path,
     sync::{Arc, Mutex},
 };
@@ -27,11 +28,16 @@ pub fn filter_node(
     // TODO: in Rust 1.65 use let_chains instead
     if config.text.text_from_filename && node.is_some() {
         let source = node.unwrap_or(&Media::new(0, "", false)).source.clone();
-        let regex: Regex = Regex::new(&config.text.regex).unwrap();
-
-        let text: String = match regex.captures(&source) {
+        let text = match Regex::new(&config.text.regex)
+            .ok()
+            .and_then(|r| r.captures(&source))
+        {
             Some(t) => t[1].to_string(),
-            None => source,
+            None => Path::new(&source)
+                .file_stem()
+                .unwrap_or_else(|| OsStr::new(&source))
+                .to_string_lossy()
+                .to_string(),
         };
 
         let escape = text

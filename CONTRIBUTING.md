@@ -34,4 +34,4 @@ cargo fmt --all -- --check
 cargo clippy --all-features --all-targets -- --deny warnings
 ```
 
-And if you can provide a test, this would be wonderful.
+For bigger changes and complied new functions a test is required.
