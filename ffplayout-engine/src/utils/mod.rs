@@ -91,9 +91,9 @@ pub fn get_config(args: Args) -> PlayoutConfig {
 ///
 /// Split filter string and add them to the existing filtergraph.
 fn process_filters(filters: &mut Filters, output_filter: &str) {
-    let re_v = Regex::new(r"(\[0:v(:[0-9]+)?\]|\[v[\w_-]+\])").unwrap();
-    let re_a = Regex::new(r"(\[0:a(:[0-9]+)?\]|\[a[\w_-]+\])").unwrap();
-    let nr = Regex::new(r"\[[\w:-_]+([0-9])\]").unwrap();
+    let re_v = Regex::new(r"(\[0:v(:[0-9]+)?\]|\[v[\w_-]+\])").unwrap(); // match video filter links
+    let re_a = Regex::new(r"(\[0:a(:[0-9]+)?\]|\[a[\w_-]+\])").unwrap(); // match audio filter links
+    let nr = Regex::new(r"\[[\w:-_]+([0-9])\]").unwrap(); // match filter link and get track number
 
     for f in output_filter.split(';') {
         if re_v.is_match(f) {
@@ -114,8 +114,8 @@ fn process_filters(filters: &mut Filters, output_filter: &str) {
 fn process_multi_in_out(filters: &mut Filters, output_filter: &str) -> Vec<String> {
     let v_map = filters.video_map[filters.video_map.len() - 1].clone();
     let mut new_filter = format!("{}{v_map}", filters.video_chain);
-    let re_v = Regex::new(r"\[0:v(:[0-9]+)?\]").unwrap();
-    let re_a = Regex::new(r"\[0:a(:(?P<num>[0-9]+))?\]").unwrap();
+    let re_v = Regex::new(r"\[0:v(:[0-9]+)?\]").unwrap(); // match video input
+    let re_a = Regex::new(r"\[0:a(:(?P<num>[0-9]+))?\]").unwrap(); // match audio input, with getting track number
     let mut o_filter = re_v.replace(output_filter, v_map).to_string();
 
     if !filters.audio_map.is_empty() {
@@ -148,8 +148,8 @@ pub fn prepare_output_cmd(
     let mut output_params = config.out.clone().output_cmd.unwrap();
     let mut new_params = vec![];
     let mut output_filter = String::new();
-    let re_map = Regex::new(r"(\[?[0-9]:[av](:[0-9]+)?\]?|-map$|\[[a-z_0-9]+\])").unwrap();
-    let re_multi = Regex::new(r"\[[\w:_-]+\]\[[\w:_-]+\]").unwrap();
+    let re_map = Regex::new(r"(\[?[0-9]:[av](:[0-9]+)?\]?|-map$|\[[a-z_0-9]+\])").unwrap(); // match a/v filter links and mapping
+    let re_multi = Regex::new(r"\[[\w:_-]+\]\[[\w:_-]+\]").unwrap(); // match multiple filter in/outputs links
 
     if let Some(mut filter) = filters.clone() {
         // Check if it contains a filtergraph and set correct output mapping.
