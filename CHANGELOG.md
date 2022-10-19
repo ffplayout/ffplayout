@@ -10,7 +10,7 @@
 - use realtime video filter only [9d094d9](https://github.com/ffplayout/ffplayout/commit/9d094d983878563960fb7fc222ce9877a583e4e9)
 - update dependencies
 - add at least anull filter [dcc4616](https://github.com/ffplayout/ffplayout/commit/dcc461642169bf2c5db812c2a806e6d64baf8101)
--  multi audio track support, fix [#158](https://github.com/ffplayout/ffplayout/issues/158) [#198](https://github.com/ffplayout/ffplayout/issues/198), [c85e550](https://github.com/ffplayout/ffplayout/commit/c85e5503b432f1c44fcbf11870d2dfc140c65db9)
+- multi audio track support, fix [#158](https://github.com/ffplayout/ffplayout/issues/158) [#198](https://github.com/ffplayout/ffplayout/issues/198), [c85e550](https://github.com/ffplayout/ffplayout/commit/c85e5503b432f1c44fcbf11870d2dfc140c65db9)
 - add filter type enum [1d11d36](https://github.com/ffplayout/ffplayout/commit/1d11d36ef9cccbdfe215adfe970e8c4219774227)
 - switch most integers to i32 [c3b5762](https://github.com/ffplayout/ffplayout/commit/c3b57622bbc19e55d203b5ee66b76ac3307fef10)
 - fix wrong log message in HLS mode: Decoder -> Encoder [8a5889b](https://github.com/ffplayout/ffplayout/commit/8a5889be3710e92d88c4ad4815cf5805a77f84c9)
@@ -19,13 +19,14 @@
 - add test files [87c508b](https://github.com/ffplayout/ffplayout/commit/87c508be541cacbbae5d9efedfb903506e573ad5)
 - add ProcessMode enum [61f57e2](https://github.com/ffplayout/ffplayout/commit/61f57e2f9e0498d2939f57fade0daf2efbdc2824)
 - multi audio outputs [06b5d6a](https://github.com/ffplayout/ffplayout/commit/06b5d6a2275f286f165d173b834f92e18e0514ac)
--  fix case when video has no audio, but separate audio is set [a93440e](https://github.com/ffplayout/ffplayout/commit/a93440e06b4533689beae4dd6b07767db300757a)
+- fix case when video has no audio, but separate audio is set [a93440e](https://github.com/ffplayout/ffplayout/commit/a93440e06b4533689beae4dd6b07767db300757a)
 - allow loudnorm on ingest only [69b6207](https://github.com/ffplayout/ffplayout/commit/69b62071656c3d4a3ab8b0f84341c1f584d47e40)
 - use named drawtext filter instead of getting its index [84addbc](https://github.com/ffplayout/ffplayout/commit/84addbcb2a21725f2de34d2b4602ee95f1753311)
 - use filters struct for stream encoder [096c018f](https://github.com/ffplayout/ffplayout/commit/096c018fe38a0653c1dfc279775b7131584f5463)
 - unify null output [31b72db](https://github.com/ffplayout/ffplayout/commit/31b72db10640a6508ab50eca43625f04c26f2030)
 - build output filters from scratch, fix [#210](https://github.com/ffplayout/ffplayout/issues/210), [09dace9](https://github.com/ffplayout/ffplayout/commit/09dace92f4100aecfc92ad7df06f1e8b7174f690)
 - simplify prepare_output_cmd [4afba402](https://github.com/ffplayout/ffplayout/commit/4afba4028aad488d404db9b09bac3166d7f33917)
+- validate config regex
 
 ### ffpapi
 
