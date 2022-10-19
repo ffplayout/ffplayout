@@ -73,7 +73,7 @@ for target in "${targets[@]}"; do
     echo ""
 done
 
-if [[ -z $target ]] || [[ $target == "x86_64-unknown-linux-musl" ]]; then
+if [[ "${#targets[@]}" == "5" ]] || [[ $targets == "x86_64-unknown-linux-musl" ]]; then
     cargo deb --target=x86_64-unknown-linux-musl -p ffplayout --manifest-path=ffplayout-engine/Cargo.toml -o ffplayout_${version}_amd64.deb
     cd ffplayout-engine
     cargo generate-rpm --target=x86_64-unknown-linux-musl -o ../ffplayout-${version}-1.x86_64.rpm
@@ -81,6 +81,6 @@ if [[ -z $target ]] || [[ $target == "x86_64-unknown-linux-musl" ]]; then
     cd ..
 fi
 
-if [[ -z $target ]] || [[ $target == "aarch64-unknown-linux-gnu" ]]; then
+if [[ "${#targets[@]}" == "5" ]] || [[ $targets == "aarch64-unknown-linux-gnu" ]]; then
     cargo deb --target=aarch64-unknown-linux-gnu --variant=arm64 -p ffplayout --manifest-path=ffplayout-engine/Cargo.toml -o ffplayout_${version}_arm64.deb
 fi
