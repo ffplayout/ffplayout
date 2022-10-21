@@ -4,16 +4,16 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use regex::Regex;
 use simplelog::*;
 
 mod a_loudnorm;
-mod custom_filter;
 pub mod v_drawtext;
 
-// get_delta
-use self::custom_filter::custom_filter;
 use crate::utils::{
-    controller::ProcessUnit::*, fps_calc, get_delta, is_close, Media, MediaProbe, OutputMode::*,
+    controller::ProcessUnit::{self, *},
+    fps_calc, get_delta, is_close, Media, MediaProbe,
+    OutputMode::*,
     PlayoutConfig,
 };
 
@@ -40,6 +40,8 @@ pub struct Filters {
     pub video_chain: String,
     pub audio_map: Vec<String>,
     pub video_map: Vec<String>,
+    pub audio_out_link: Vec<String>,
+    pub video_out_link: Vec<String>,
     pub output_map: Vec<String>,
     audio_track_count: i32,
     audio_position: i32,
@@ -55,6 +57,8 @@ impl Filters {
             video_chain: String::new(),
             audio_map: vec![],
             video_map: vec![],
+            audio_out_link: vec![],
+            video_out_link: vec![],
             output_map: vec![],
             audio_track_count,
             audio_position,
@@ -115,11 +119,11 @@ impl Filters {
         let mut v_chain = self.video_chain.clone();
         let mut a_chain = self.audio_chain.clone();
 
-        if self.video_last >= 0 {
+        if self.video_last >= 0 && !v_chain.ends_with(']') {
             v_chain.push_str(&format!("[vout{}]", self.video_last));
         }
 
-        if self.audio_last >= 0 {
+        if self.audio_last >= 0 && !a_chain.ends_with(']') {
             a_chain.push_str(&format!("[aout{}]", self.audio_last));
         }
 
@@ -414,10 +418,133 @@ fn realtime(node: &mut Media, chain: &mut Filters, config: &PlayoutConfig) {
     }
 }
 
-fn custom(filter: &str, chain: &mut Filters, nr: i32, filter_type: FilterType) {
-    if !filter.is_empty() {
-        chain.add_filter(filter, nr, filter_type);
+pub fn split_filter(chain: &mut Filters, count: usize, nr: i32, filter_type: FilterType) {
+    if count > 1 {
+        let out_link = match filter_type {
+            Audio => &mut chain.audio_out_link,
+            Video => &mut chain.video_out_link,
+        };
+
+        for i in 0..count {
+            let link = format!("[{filter_type}out_{nr}_{i}]");
+            if !out_link.contains(&link) {
+                out_link.push(link)
+            }
+        }
+
+        let split_filter = format!("split={count}{}", out_link.join(""));
+        chain.add_filter(&split_filter, nr, filter_type);
     }
+}
+
+/// Process custom/output filter
+///
+/// Split filter string and add them to the existing filtergraph.
+fn process_custom_filters(
+    config: &PlayoutConfig,
+    chain: &mut Filters,
+    custom_filter: &str,
+    unit: ProcessUnit,
+) {
+    let re_v =
+        Regex::new(r"(^\[([0-9:]+)?[v^\[]([\w:_-]+)?\]|\[([0-9:]+)?[v^\[]([\w:_-]+)?\]$)").unwrap(); // match first/last video filter links
+    let re_a =
+        Regex::new(r"(^\[([0-9:]+)?[a^\[]([\w:_-]+)?\]|\[([0-9:]+)?[a^\[]([\w:_-]+)?\]$)").unwrap(); // match first/last audio filter links
+    let re_v_delim = Regex::new(r";\[[0-9:]+[v^\[]([0-9:]+)?\]").unwrap(); // match video filter link as delimiter
+    let re_a_delim = Regex::new(r";\[[0-9:]+[a^\[]([0-9:]+)?\]").unwrap(); // match video filter link as delimiter
+
+    let mut video_filter = String::new();
+    let mut audio_filter = String::new();
+
+    if custom_filter.contains("split") && unit == Decoder {
+        error!("No split filter in {unit} allow! Skip filter...");
+
+        return;
+    }
+
+    if let Some(v_d) = re_v_delim.find(custom_filter) {
+        if let Some((a, v)) = custom_filter.split_once(v_d.as_str()) {
+            video_filter = re_v.replace_all(v, "").to_string();
+            audio_filter = re_a.replace_all(a, "").to_string();
+        }
+    } else if let Some(a_d) = re_a_delim.find(custom_filter) {
+        if let Some((v, a)) = custom_filter.split_once(a_d.as_str()) {
+            video_filter = re_v.replace_all(v, "").to_string();
+            audio_filter = re_a.replace_all(a, "").to_string();
+        }
+    } else if re_v.is_match(custom_filter) {
+        video_filter = re_v.replace_all(custom_filter, "").to_string();
+    } else if re_a.is_match(custom_filter) {
+        audio_filter = re_a.replace_all(custom_filter, "").to_string();
+    }
+
+    if video_filter.contains("split") {
+        let nr = Regex::new(".*split=([0-9]+).*").unwrap();
+        let re_s = Regex::new(r"(;?\[[^\]]*\])?,?split=[0-9]+(\[[\w]+\])+;?").unwrap();
+        let split_nr = nr
+            .replace(&video_filter, "$1")
+            .parse::<usize>()
+            .unwrap_or(1);
+        let new_filter = re_s.replace_all(&video_filter, "").to_string();
+
+        if !new_filter.is_empty() {
+            chain.add_filter(&new_filter, 0, Video);
+        }
+
+        split_filter(chain, split_nr, 0, Video);
+    } else if !video_filter.is_empty() {
+        chain.add_filter(&video_filter, 0, Video);
+    }
+
+    if audio_filter.contains("asplit") {
+        let nr = Regex::new(".*split=([0-9]+).*").unwrap();
+        let re_s = Regex::new(r"(;?\[[^\]]*\])?,?asplit=[0-9]+(\[[\w]+\])+;?").unwrap();
+        let split_nr = nr
+            .replace(&audio_filter, "$1")
+            .parse::<usize>()
+            .unwrap_or(1);
+        let new_filter = re_s.replace_all(&audio_filter, "").to_string();
+
+        if !new_filter.is_empty() {
+            for i in 0..config.processing.audio_tracks {
+                chain.add_filter(&new_filter, i, Audio);
+            }
+        }
+
+        for i in 0..config.processing.audio_tracks {
+            split_filter(chain, split_nr, i, Audio);
+        }
+    } else if !audio_filter.is_empty() {
+        for i in 0..config.processing.audio_tracks {
+            chain.add_filter(&audio_filter, i, Audio);
+        }
+    }
+
+    // for f in custom_filter.split(delim) {
+    //     if re_v.is_match(f) {
+    //         if f.contains("split") {
+    //             let re = Regex::new(r"split=([0-9]+)").unwrap();
+    //             let split_nr = re.replace(f, "$1").parse::<usize>().unwrap_or(1);
+
+    //             split_filter(chain, split_nr, 0, Video);
+    //         } else {
+    //             let filter_str = re_v.replace_all(f, "").to_string();
+    //             chain.add_filter(&filter_str, 0, Video);
+    //         }
+    //     } else if re_a.is_match(f) {
+    //         for i in 0..config.processing.audio_tracks {
+    //             if f.contains("asplit") {
+    //                 let re = Regex::new(r"asplit=([0-9]+)").unwrap();
+    //                 let split_nr = re.replace(f, "$1").parse::<usize>().unwrap_or(1);
+
+    //                 split_filter(chain, split_nr, i, Audio);
+    //             } else {
+    //                 let filter_str = re_a.replace_all(f, "").to_string();
+    //                 chain.add_filter(&filter_str, i, Audio);
+    //             }
+    //         }
+    //     }
+    // }
 }
 
 pub fn filter_chains(
@@ -429,6 +556,12 @@ pub fn filter_chains(
 
     if node.unit == Encoder {
         add_text(node, &mut filters, config, filter_chain);
+
+        if let Some(f) = config.out.output_filter.clone() {
+            process_custom_filters(config, &mut filters, &f, Encoder)
+        } else if config.out.output_count > 1 {
+            split_filter(&mut filters, config.out.output_count, 0, Video)
+        }
 
         return filters;
     }
@@ -465,12 +598,6 @@ pub fn filter_chains(
     overlay(node, &mut filters, config);
     realtime(node, &mut filters, config);
 
-    let (proc_vf, proc_af) = custom_filter(&config.processing.custom_filter);
-    let (list_vf, list_af) = custom_filter(&node.custom_filter);
-
-    custom(&proc_vf, &mut filters, 0, Video);
-    custom(&list_vf, &mut filters, 0, Video);
-
     for i in 0..config.processing.audio_tracks {
         if node
             .probe
@@ -487,6 +614,7 @@ pub fn filter_chains(
             );
             add_audio(node, &mut filters, i);
         }
+
         // add at least anull filter, for correct filter construction,
         // is important for split filter in HLS mode
         filters.add_filter("anull", i, Audio);
@@ -494,10 +622,15 @@ pub fn filter_chains(
         add_loudnorm(node, &mut filters, config, i);
         fade(node, &mut filters, i, Audio);
         audio_volume(&mut filters, config, i);
-
-        custom(&proc_af, &mut filters, i, Audio);
-        custom(&list_af, &mut filters, i, Audio);
     }
+
+    process_custom_filters(
+        config,
+        &mut filters,
+        &config.processing.custom_filter,
+        node.unit,
+    );
+    process_custom_filters(config, &mut filters, &node.custom_filter, node.unit);
 
     filters
 }

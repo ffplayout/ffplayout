@@ -230,6 +230,10 @@ pub struct Out {
     pub output_param: String,
 
     #[serde(skip_serializing, skip_deserializing)]
+    pub output_count: usize,
+    #[serde(skip_serializing, skip_deserializing)]
+    pub output_filter: Option<String>,
+    #[serde(skip_serializing, skip_deserializing)]
     pub output_cmd: Option<Vec<String>>,
 }
 
@@ -308,10 +312,30 @@ impl PlayoutConfig {
 
         config.ingest.input_cmd = split(config.ingest.input_param.as_str());
 
+        config.out.output_count = 1;
+        config.out.output_filter = None;
+
         if config.out.mode == Null {
             config.out.output_cmd = Some(vec_strings!["-f", "null", "-"]);
-        } else {
-            config.out.output_cmd = split(config.out.output_param.as_str());
+        } else if let Some(mut cmd) = split(config.out.output_param.as_str()) {
+            // get output count according to the var_stream_map value, or by counting output parameters
+            if let Some(i) = cmd.clone().iter().position(|m| m == "-var_stream_map") {
+                config.out.output_count = cmd[i + 1].split_whitespace().count();
+            } else {
+                config.out.output_count = cmd
+                    .iter()
+                    .enumerate()
+                    .filter(|(i, p)| i > &0 && !p.starts_with('-') && !cmd[i - 1].starts_with('-'))
+                    .count();
+            }
+
+            if let Some(i) = cmd.clone().iter().position(|r| r == "-filter_complex") {
+                config.out.output_filter = Some(cmd[i + 1].clone());
+                cmd.remove(i);
+                cmd.remove(i + 1);
+            }
+
+            config.out.output_cmd = Some(cmd);
         }
 
         // when text overlay without text_from_filename is on, turn also the RPC server on,
