@@ -97,7 +97,7 @@ pub fn prepare_output_cmd(
 ) -> Vec<String> {
     let mut output_params = config.out.clone().output_cmd.unwrap();
     let mut new_params = vec![];
-    let mut count = 0;
+    let mut count = 1;
     let re_map = Regex::new(r"(\[?[0-9]:[av](:[0-9]+)?\]?|-map$|\[[a-z_0-9]+\])").unwrap(); // match a/v filter links and mapping
 
     if let Some(mut filter) = filters.clone() {
@@ -119,23 +119,7 @@ pub fn prepare_output_cmd(
                 && i < output_params.len() - 1
             {
                 // add mapping to following outputs
-                if filter.video_out_link.len() > count {
-                    new_params.append(&mut vec![
-                        "-map".to_string(),
-                        filter.video_out_link[count].clone(),
-                    ]);
-                } else {
-                    new_params.append(&mut vec!["-map".to_string(), "0:v".to_string()]);
-                }
-
-                if filter.audio_out_link.len() > count {
-                    new_params.append(&mut vec![
-                        "-map".to_string(),
-                        filter.audio_out_link[count].clone(),
-                    ]);
-                } else if filter.audio_out_link.is_empty() {
-                    new_params.append(&mut vec!["-map".to_string(), "0:a:0".to_string()]);
-                }
+                new_params.append(&mut filter.map(Some(count)));
 
                 count += 1
             }
@@ -144,7 +128,12 @@ pub fn prepare_output_cmd(
         output_params = new_params;
 
         cmd.append(&mut filter.cmd());
-        cmd.append(&mut filter.map());
+
+        if config.out.output_count > 1 {
+            cmd.append(&mut filter.map(Some(0)));
+        } else {
+            cmd.append(&mut filter.map(None));
+        }
     }
 
     cmd.append(&mut output_params);

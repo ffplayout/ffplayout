@@ -17,6 +17,8 @@ use crate::utils::{
     PlayoutConfig,
 };
 
+use super::vec_strings;
+
 #[derive(Clone, Debug, Copy, Eq, PartialEq)]
 pub enum FilterType {
     Audio,
@@ -106,7 +108,7 @@ impl Filters {
 
             let m = format!("[{}out{track_nr}]", filter_type);
             map.push(m.clone());
-            self.output_map.append(&mut vec!["-map".to_string(), m]);
+            self.output_map.append(&mut vec_strings!["-map", m]);
             *last = track_nr;
         } else if filter.starts_with(';') || filter.starts_with('[') {
             chain.push_str(filter);
@@ -143,14 +145,38 @@ impl Filters {
         cmd
     }
 
-    pub fn map(&mut self) -> Vec<String> {
+    pub fn map(&mut self, output_number: Option<usize>) -> Vec<String> {
         let mut o_map = self.output_map.clone();
+
+        if let Some(n) = output_number {
+            o_map.clear();
+
+            if self.video_out_link.len() > n {
+                o_map.append(&mut vec_strings!["-map", self.video_out_link[n]])
+            } else {
+                o_map.append(&mut vec_strings!["-map", "0:v"])
+            }
+
+            if self.audio_out_link.len() > n {
+                o_map.append(&mut vec_strings!["-map", self.audio_out_link[n]])
+            } else {
+                for i in 0..self.audio_track_count {
+                    let a_map = format!("{}:a:{i}", self.audio_position);
+
+                    if !o_map.contains(&a_map) {
+                        o_map.append(&mut vec_strings!["-map", a_map]);
+                    };
+                }
+            }
+
+            return o_map;
+        }
 
         if self.video_last == -1 {
             let v_map = "0:v".to_string();
 
             if !o_map.contains(&v_map) {
-                o_map.append(&mut vec!["-map".to_string(), v_map]);
+                o_map.append(&mut vec_strings!["-map", v_map]);
             };
         }
 
@@ -159,7 +185,7 @@ impl Filters {
                 let a_map = format!("{}:a:{i}", self.audio_position);
 
                 if !o_map.contains(&a_map) {
-                    o_map.append(&mut vec!["-map".to_string(), a_map]);
+                    o_map.append(&mut vec_strings!["-map", a_map]);
                 };
             }
         }

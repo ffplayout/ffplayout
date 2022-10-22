@@ -104,7 +104,7 @@ pub fn player(
 
         if let Some(mut filter) = node.filter {
             dec_cmd.append(&mut filter.cmd());
-            dec_cmd.append(&mut filter.map());
+            dec_cmd.append(&mut filter.map(None));
         }
 
         dec_cmd.append(&mut config.processing.clone().settings.unwrap());
