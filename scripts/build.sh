@@ -44,7 +44,7 @@ for target in "${targets[@]}"; do
 
         cp ./target/${target}/release/ffpapi.exe .
         cp ./target/${target}/release/ffplayout.exe .
-        zip -r "ffplayout-v${version}_${target}.zip" assets docs public LICENSE README.md ffplayout.exe ffpapi.exe -x *.db
+        zip -r "ffplayout-v${version}_${target}.zip" assets docs public LICENSE README.md CHANGELOG.md ffplayout.exe ffpapi.exe -x *.db
         rm -f ffplayout.exe ffpapi.exe
     elif [[ $target == "x86_64-apple-darwin" ]] || [[ $target == "aarch64-apple-darwin" ]]; then
         if [[ -f "ffplayout-v${version}_${target}.tar.gz" ]]; then
@@ -55,7 +55,7 @@ for target in "${targets[@]}"; do
 
         cp ./target/${target}/release/ffpapi .
         cp ./target/${target}/release/ffplayout .
-        tar -czvf "ffplayout-v${version}_${target}.tar.gz" --exclude='*.db' assets docs public LICENSE README.md ffplayout ffpapi
+        tar -czvf "ffplayout-v${version}_${target}.tar.gz" --exclude='*.db' assets docs public LICENSE README.md CHANGELOG.md ffplayout ffpapi
         rm -f ffplayout ffpapi
     else
         if [[ -f "ffplayout-v${version}_${target}.tar.gz" ]]; then
@@ -66,14 +66,14 @@ for target in "${targets[@]}"; do
 
         cp ./target/${target}/release/ffpapi .
         cp ./target/${target}/release/ffplayout .
-        tar -czvf "ffplayout-v${version}_${target}.tar.gz" --exclude='*.db' assets docs public LICENSE README.md ffplayout ffpapi
+        tar -czvf "ffplayout-v${version}_${target}.tar.gz" --exclude='*.db' assets docs public LICENSE README.md CHANGELOG.md ffplayout ffpapi
         rm -f ffplayout ffpapi
     fi
 
     echo ""
 done
 
-if [[ -z $target ]] || [[ $target == "x86_64-unknown-linux-musl" ]]; then
+if [[ "${#targets[@]}" == "5" ]] || [[ $targets == "x86_64-unknown-linux-musl" ]]; then
     cargo deb --target=x86_64-unknown-linux-musl -p ffplayout --manifest-path=ffplayout-engine/Cargo.toml -o ffplayout_${version}_amd64.deb
     cd ffplayout-engine
     cargo generate-rpm --target=x86_64-unknown-linux-musl -o ../ffplayout-${version}-1.x86_64.rpm
@@ -81,6 +81,6 @@ if [[ -z $target ]] || [[ $target == "x86_64-unknown-linux-musl" ]]; then
     cd ..
 fi
 
-if [[ -z $target ]] || [[ $target == "aarch64-unknown-linux-gnu" ]]; then
+if [[ "${#targets[@]}" == "5" ]] || [[ $targets == "aarch64-unknown-linux-gnu" ]]; then
     cargo deb --target=aarch64-unknown-linux-gnu --variant=arm64 -p ffplayout --manifest-path=ffplayout-engine/Cargo.toml -o ffplayout_${version}_arm64.deb
 fi

@@ -34,6 +34,58 @@ fn video_audio_input() {
 }
 
 #[test]
+fn video_audio_custom_filter1_input() {
+    let mut config = PlayoutConfig::new(Some("../assets/ffplayout.yml".to_string()));
+    config.out.mode = Stream;
+    config.processing.add_logo = false;
+    config.processing.custom_filter = "[0:v]gblur=2[c_v_out];[0:a]volume=0.2[c_a_out]".to_string();
+
+    let media_obj = Media::new(0, "./assets/with_audio.mp4", true);
+    let media = gen_source(&config, media_obj, &None);
+
+    let test_filter_cmd = vec_strings![
+        "-filter_complex",
+        "[0:v:0]scale=1024:576,gblur=2[vout0];[0:a:0]anull,volume=0.2[aout0]"
+    ];
+
+    let test_filter_map = vec_strings!["-map", "[vout0]", "-map", "[aout0]"];
+
+    assert_eq!(
+        media.cmd,
+        Some(vec_strings!["-i", "./assets/with_audio.mp4"])
+    );
+    assert_eq!(media.filter.clone().unwrap().cmd(), test_filter_cmd);
+    assert_eq!(media.filter.unwrap().map(), test_filter_map);
+}
+
+#[test]
+fn video_audio_custom_filter2_input() {
+    let mut config = PlayoutConfig::new(Some("../assets/ffplayout.yml".to_string()));
+    config.out.mode = Stream;
+    config.processing.add_logo = false;
+    config.processing.custom_filter =
+        "[0:v]null[v];movie=logo.png[l];[v][l]overlay[c_v_out];[0:a]volume=0.2[c_a_out]"
+            .to_string();
+
+    let media_obj = Media::new(0, "./assets/with_audio.mp4", true);
+    let media = gen_source(&config, media_obj, &None);
+
+    let test_filter_cmd = vec_strings![
+        "-filter_complex",
+        "[0:v:0]scale=1024:576,null[v];movie=logo.png[l];[v][l]overlay[vout0];[0:a:0]anull,volume=0.2[aout0]"
+    ];
+
+    let test_filter_map = vec_strings!["-map", "[vout0]", "-map", "[aout0]"];
+
+    assert_eq!(
+        media.cmd,
+        Some(vec_strings!["-i", "./assets/with_audio.mp4"])
+    );
+    assert_eq!(media.filter.clone().unwrap().cmd(), test_filter_cmd);
+    assert_eq!(media.filter.unwrap().map(), test_filter_map);
+}
+
+#[test]
 fn dual_audio_aevalsrc_input() {
     let mut config = PlayoutConfig::new(Some("../assets/ffplayout.yml".to_string()));
     config.out.mode = Stream;
@@ -177,14 +229,13 @@ fn video_audio_stream() {
 }
 
 #[test]
-fn video_audio_filter_stream() {
+fn video_audio_filter1_stream() {
     let mut config = PlayoutConfig::new(Some("../assets/ffplayout.yml".to_string()));
     config.out.mode = Stream;
     config.processing.add_logo = false;
     config.text.add_text = false;
+    config.out.output_filter = Some("[0:v]gblur=2[vout0];[0:a]volume=0.2[aout0]".to_string());
     config.out.output_cmd = Some(vec_strings![
-        "-filter_complex",
-        "[0:v]gblur=2[vout0];[0:a]volume=0.2[aout0]",
         "-map",
         "[vout0]",
         "-map",
@@ -229,7 +280,7 @@ fn video_audio_filter_stream() {
         "-i",
         "pipe:0",
         "-filter_complex",
-        "[0:v:0]gblur=2[vout0];[0:a:0]volume=0.2[aout0]",
+        "[0:v]gblur=2[vout0];[0:a]volume=0.2[aout0]",
         "-map",
         "[vout0]",
         "-map",
@@ -259,9 +310,8 @@ fn video_audio_filter2_stream() {
     config.processing.add_logo = false;
     config.text.add_text = true;
     config.text.fontfile = String::new();
+    config.out.output_filter = Some("[0:v]gblur=2[vout0];[0:a]volume=0.2[aout0]".to_string());
     config.out.output_cmd = Some(vec_strings![
-        "-filter_complex",
-        "[0:v]gblur=2[vout0];[0:a]volume=0.2[aout0]",
         "-map",
         "[vout0]",
         "-map",
@@ -313,7 +363,7 @@ fn video_audio_filter2_stream() {
         "-i",
         "pipe:0",
         "-filter_complex",
-        format!("[0:v:0]zmq=b=tcp\\\\://'{socket}',drawtext@dyntext=text='',gblur=2[vout0];[0:a:0]volume=0.2[aout0]"),
+        format!("[0:v:0]zmq=b=tcp\\\\://'{socket}',drawtext@dyntext=text='',gblur=2[vout0];[0:a]volume=0.2[aout0]"),
         "-map",
         "[vout0]",
         "-map",
@@ -343,11 +393,15 @@ fn video_audio_filter3_stream() {
     config.processing.add_logo = false;
     config.text.add_text = true;
     config.text.fontfile = String::new();
+    config.out.output_filter = Some(
+        "[0:v]null[o];movie=/path/to/lower_third.png[l];[o][l]overlay=shortest=1[vout0]"
+            .to_string(),
+    );
     config.out.output_cmd = Some(vec_strings![
-        "-filter_complex",
-        "[0:v]null[o];movie=/path/to/lower_third.png[l];[o][l]overlay=shortest=1[v_out0]",
         "-map",
-        "[v_out0]",
+        "[vout0]",
+        "-map",
+        "0:a",
         "-c:v",
         "libx264",
         "-c:a",
@@ -395,9 +449,11 @@ fn video_audio_filter3_stream() {
         "-i",
         "pipe:0",
         "-filter_complex",
-        format!("[0:v:0]zmq=b=tcp\\\\://'{socket}',drawtext@dyntext=text=''[vout0];[vout0]null[o];movie=/path/to/lower_third.png[l];[o][l]overlay=shortest=1[v_out0]"),
+        format!("[0:v:0]zmq=b=tcp\\\\://'{socket}',drawtext@dyntext=text='',null[o];movie=/path/to/lower_third.png[l];[o][l]overlay=shortest=1[vout0]"),
         "-map",
-        "[v_out0]",
+        "[vout0]",
+        "-map",
+        "0:a",
         "-c:v",
         "libx264",
         "-c:a",
@@ -423,13 +479,15 @@ fn video_audio_filter4_stream() {
     config.processing.add_logo = false;
     config.text.add_text = true;
     config.text.fontfile = String::new();
+    config.out.output_filter = Some(
+        "[0:v]null[o];movie=/path/to/lower_third.png[l];[o][l]overlay=shortest=1[vout0];[0:a:0]volume=0.2[aout0]"
+            .to_string(),
+    );
     config.out.output_cmd = Some(vec_strings![
-        "-filter_complex",
-        "[0:v]null[o];movie=/path/to/lower_third.png[l];[o][l]overlay=shortest=1[v_out0];[0:a:0]volume=0.2[a_out0]",
         "-map",
-        "[v_out0]",
+        "[vout0]",
         "-map",
-        "[a_out0]",
+        "[aout0]",
         "-c:v",
         "libx264",
         "-c:a",
@@ -477,11 +535,11 @@ fn video_audio_filter4_stream() {
         "-i",
         "pipe:0",
         "-filter_complex",
-        format!("[0:v:0]zmq=b=tcp\\\\://'{socket}',drawtext@dyntext=text=''[vout0];[vout0]null[o];movie=/path/to/lower_third.png[l];[o][l]overlay=shortest=1[v_out0];[0:a:0]volume=0.2[a_out0]"),
+        format!("[0:v:0]zmq=b=tcp\\\\://'{socket}',drawtext@dyntext=text='',null[o];movie=/path/to/lower_third.png[l];[o][l]overlay=shortest=1[vout0];[0:a:0]volume=0.2[aout0]"),
         "-map",
-        "[v_out0]",
+        "[vout0]",
         "-map",
-        "[a_out0]",
+        "[aout0]",
         "-c:v",
         "libx264",
         "-c:a",
@@ -855,11 +913,125 @@ fn video_dual_audio_multi_stream() {
 }
 
 #[test]
+fn video_audio_text_multi_stream() {
+    let mut config = PlayoutConfig::new(Some("../assets/ffplayout.yml".to_string()));
+    config.out.mode = Stream;
+    config.processing.add_logo = false;
+    config.text.add_text = true;
+    config.text.fontfile = String::new();
+    config.out.output_count = 2;
+    config.out.output_cmd = Some(vec_strings![
+        "-c:v",
+        "libx264",
+        "-c:a",
+        "aac",
+        "-ar",
+        "44100",
+        "-b:a",
+        "128k",
+        "-flags",
+        "+global_header",
+        "-f",
+        "mpegts",
+        "srt://127.0.0.1:40051",
+        "-s",
+        "512x288",
+        "-c:v",
+        "libx264",
+        "-c:a",
+        "aac",
+        "-ar",
+        "44100",
+        "-b:a",
+        "128k",
+        "-flags",
+        "+global_header",
+        "-f",
+        "mpegts",
+        "srt://127.0.0.1:40052"
+    ]);
+
+    let enc_prefix = vec_strings![
+        "-hide_banner",
+        "-nostats",
+        "-v",
+        "level+error",
+        "-re",
+        "-i",
+        "pipe:0"
+    ];
+
+    let socket = config
+        .text
+        .zmq_stream_socket
+        .clone()
+        .unwrap()
+        .replace(':', "\\:");
+
+    let mut media = Media::new(0, "", false);
+    media.unit = Encoder;
+    media.add_filter(&config, &None);
+
+    let enc_cmd = prepare_output_cmd(&config, enc_prefix, &media.filter);
+
+    let test_cmd = vec_strings![
+        "-hide_banner",
+        "-nostats",
+        "-v",
+        "level+error",
+        "-re",
+        "-i",
+        "pipe:0",
+        "-filter_complex",
+        format!("[0:v:0]zmq=b=tcp\\\\://'{socket}',drawtext@dyntext=text='',split=2[vout_0_0][vout_0_1]"),
+        "-map",
+        "[vout_0_0]",
+        "-map",
+        "0:a:0",
+        "-c:v",
+        "libx264",
+        "-c:a",
+        "aac",
+        "-ar",
+        "44100",
+        "-b:a",
+        "128k",
+        "-flags",
+        "+global_header",
+        "-f",
+        "mpegts",
+        "srt://127.0.0.1:40051",
+        "-map",
+        "[vout_0_1]",
+        "-map",
+        "0:a:0",
+        "-s",
+        "512x288",
+        "-c:v",
+        "libx264",
+        "-c:a",
+        "aac",
+        "-ar",
+        "44100",
+        "-b:a",
+        "128k",
+        "-flags",
+        "+global_header",
+        "-f",
+        "mpegts",
+        "srt://127.0.0.1:40052"
+    ];
+
+    assert_eq!(enc_cmd, test_cmd);
+}
+
+#[test]
 fn video_dual_audio_multi_filter_stream() {
     let mut config = PlayoutConfig::new(Some("../assets/ffplayout.yml".to_string()));
     config.out.mode = Stream;
     config.processing.add_logo = false;
     config.processing.audio_tracks = 2;
+    config.out.output_count = 2;
     config.text.fontfile = String::new();
     config.out.output_cmd = Some(vec_strings![
         "-map",
@@ -936,9 +1108,9 @@ fn video_dual_audio_multi_filter_stream() {
         "-i",
         "pipe:0",
         "-filter_complex",
-        format!("[0:v:0]zmq=b=tcp\\\\://'{socket}',drawtext@dyntext=text=''[vout0]"),
+        format!("[0:v:0]zmq=b=tcp\\\\://'{socket}',drawtext@dyntext=text='',split=2[vout_0_0][vout_0_1]"),
         "-map",
-        "[vout0]",
+        "[vout_0_0]",
         "-map",
         "0:a:0",
         "-map",
@@ -957,11 +1129,133 @@ fn video_dual_audio_multi_filter_stream() {
         "mpegts",
         "srt://127.0.0.1:40051",
         "-map",
-        "[vout0]",
+        "[vout_0_1]",
         "-map",
         "0:a:0",
         "-map",
         "0:a:1",
+        "-s",
+        "512x288",
+        "-c:v",
+        "libx264",
+        "-c:a",
+        "aac",
+        "-ar",
+        "44100",
+        "-b:a",
+        "128k",
+        "-flags",
+        "+global_header",
+        "-f",
+        "mpegts",
+        "srt://127.0.0.1:40052"
+    ];
+
+    assert_eq!(enc_cmd, test_cmd);
+}
+
+#[test]
+fn video_audio_text_filter_stream() {
+    let mut config = PlayoutConfig::new(Some("../assets/ffplayout.yml".to_string()));
+    config.out.mode = Stream;
+    config.processing.add_logo = false;
+    config.processing.audio_tracks = 1;
+    config.text.add_text = true;
+    config.text.fontfile = String::new();
+    config.out.output_count = 2;
+    config.out.output_cmd = Some(vec_strings![
+        "-map",
+        "0:v",
+        "-map",
+        "0:a:0",
+        "-c:v",
+        "libx264",
+        "-c:a",
+        "aac",
+        "-ar",
+        "44100",
+        "-b:a",
+        "128k",
+        "-flags",
+        "+global_header",
+        "-f",
+        "mpegts",
+        "srt://127.0.0.1:40051",
+        "-map",
+        "0:v",
+        "-map",
+        "0:a:0",
+        "-s",
+        "512x288",
+        "-c:v",
+        "libx264",
+        "-c:a",
+        "aac",
+        "-ar",
+        "44100",
+        "-b:a",
+        "128k",
+        "-flags",
+        "+global_header",
+        "-f",
+        "mpegts",
+        "srt://127.0.0.1:40052"
+    ]);
+
+    let enc_prefix = vec_strings![
+        "-hide_banner",
+        "-nostats",
+        "-v",
+        "level+error",
+        "-re",
+        "-i",
+        "pipe:0"
+    ];
+
+    let socket = config
+        .text
+        .zmq_stream_socket
+        .clone()
+        .unwrap()
+        .replace(':', "\\:");
+
+    let mut media = Media::new(0, "", false);
+    media.unit = Encoder;
+    media.add_filter(&config, &None);
+
+    let enc_cmd = prepare_output_cmd(&config, enc_prefix, &media.filter);
+
+    let test_cmd = vec_strings![
+        "-hide_banner",
+        "-nostats",
+        "-v",
+        "level+error",
+        "-re",
+        "-i",
+        "pipe:0",
+        "-filter_complex",
+        format!("[0:v:0]zmq=b=tcp\\\\://'{socket}',drawtext@dyntext=text='',split=2[vout_0_0][vout_0_1]"),
+        "-map",
+        "[vout_0_0]",
+        "-map",
+        "0:a:0",
+        "-c:v",
+        "libx264",
+        "-c:a",
+        "aac",
+        "-ar",
+        "44100",
+        "-b:a",
+        "128k",
+        "-flags",
+        "+global_header",
+        "-f",
+        "mpegts",
+        "srt://127.0.0.1:40051",
+        "-map",
+        "[vout_0_1]",
+        "-map",
+        "0:a:0",
         "-s",
         "512x288",
         "-c:v",
@@ -1254,9 +1548,11 @@ fn multi_video_audio_hls() {
     config.out.mode = HLS;
     config.processing.add_logo = false;
     config.text.add_text = false;
+    config.out.output_count = 2;
+    config.out.output_filter = Some(
+        "[0:v]split=2[v1_out][v2];[v2]scale=w=512:h=288[v2_out];[0:a]asplit=2[a1][a2]".to_string(),
+    );
     config.out.output_cmd = Some(vec_strings![
-        "-filter_complex",
-        "[0:v]split=2[v1_out][v2];[v2]scale=w=512:h=288[v2_out];[0:a]asplit=2[a1][a2]",
         "-map",
         "[v1_out]",
         "-map",
@@ -1318,7 +1614,7 @@ fn multi_video_audio_hls() {
         "-i",
         "./assets/with_audio.mp4",
         "-filter_complex",
-        "[0:v:0]scale=1024:576,realtime=speed=1[vout0];[0:a:0]anull[aout0];[vout0]split=2[v1_out][v2];[v2]scale=w=512:h=288[v2_out];[aout0]asplit=2[a1][a2]",
+        "[0:v:0]scale=1024:576,realtime=speed=1,split=2[v1_out][v2];[v2]scale=w=512:h=288[v2_out];[0:a]asplit=2[a1][a2]",
         "-map",
         "[v1_out]",
         "-map",
@@ -1366,9 +1662,9 @@ fn multi_video_multi_audio_hls() {
     config.processing.add_logo = false;
     config.processing.audio_tracks = 2;
     config.text.add_text = false;
+    config.out.output_count = 2;
+    config.out.output_filter = Some("[0:v]split=2[v1_out][v2];[v2]scale=w=512:h=288[v2_out];[0:a:0]asplit=2[a_0_1][a_0_2];[0:a:1]asplit=2[a_1_1][a_1_2]".to_string());
     config.out.output_cmd = Some(vec_strings![
-        "-filter_complex",
-        "[0:v]split=2[v1_out][v2];[v2]scale=w=512:h=288[v2_out];[0:a:0]asplit=2[a_0_1][a_0_2];[0:a:1]asplit=2[a_1_1][a_1_2]",
         "-map",
         "[v1_out]",
         "-map",
@@ -1434,7 +1730,7 @@ fn multi_video_multi_audio_hls() {
         "-i",
         "./assets/dual_audio.mp4",
         "-filter_complex",
-        "[0:v:0]scale=1024:576,realtime=speed=1[vout0];[0:a:0]anull[aout0];[0:a:1]anull[aout1];[vout0]split=2[v1_out][v2];[v2]scale=w=512:h=288[v2_out];[aout0]asplit=2[a_0_1][a_0_2];[aout1]asplit=2[a_1_1][a_1_2]",
+        "[0:v:0]scale=1024:576,realtime=speed=1,split=2[v1_out][v2];[v2]scale=w=512:h=288[v2_out];[0:a:0]anull,asplit=2[a_0_1][a_0_2];[0:a:1]anull,asplit=2[a_1_1][a_1_2]",
         "-map",
         "[v1_out]",
         "-map",

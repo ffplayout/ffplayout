@@ -4,18 +4,19 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use regex::Regex;
 use simplelog::*;
 
 mod a_loudnorm;
-mod custom_filter;
+mod custom;
 pub mod v_drawtext;
 
-// get_delta
-use self::custom_filter::custom_filter;
 use crate::utils::{
     controller::ProcessUnit::*, fps_calc, get_delta, is_close, Media, MediaProbe, OutputMode::*,
     PlayoutConfig,
 };
+
+use super::vec_strings;
 
 #[derive(Clone, Debug, Copy, Eq, PartialEq)]
 pub enum FilterType {
@@ -38,8 +39,11 @@ use FilterType::*;
 pub struct Filters {
     pub audio_chain: String,
     pub video_chain: String,
+    pub output_chain: Vec<String>,
     pub audio_map: Vec<String>,
     pub video_map: Vec<String>,
+    pub audio_out_link: Vec<String>,
+    pub video_out_link: Vec<String>,
     pub output_map: Vec<String>,
     audio_track_count: i32,
     audio_position: i32,
@@ -53,8 +57,11 @@ impl Filters {
         Self {
             audio_chain: String::new(),
             video_chain: String::new(),
+            output_chain: vec![],
             audio_map: vec![],
             video_map: vec![],
+            audio_out_link: vec![],
+            video_out_link: vec![],
             output_map: vec![],
             audio_track_count,
             audio_position,
@@ -102,7 +109,7 @@ impl Filters {
 
             let m = format!("[{}out{track_nr}]", filter_type);
             map.push(m.clone());
-            self.output_map.append(&mut vec!["-map".to_string(), m]);
+            self.output_map.append(&mut vec_strings!["-map", m]);
             *last = track_nr;
         } else if filter.starts_with(';') || filter.starts_with('[') {
             chain.push_str(filter);
@@ -112,14 +119,18 @@ impl Filters {
     }
 
     pub fn cmd(&mut self) -> Vec<String> {
+        if !self.output_chain.is_empty() {
+            return self.output_chain.clone();
+        }
+
         let mut v_chain = self.video_chain.clone();
         let mut a_chain = self.audio_chain.clone();
 
-        if self.video_last >= 0 {
+        if self.video_last >= 0 && !v_chain.ends_with(']') {
             v_chain.push_str(&format!("[vout{}]", self.video_last));
         }
 
-        if self.audio_last >= 0 {
+        if self.audio_last >= 0 && !a_chain.ends_with(']') {
             a_chain.push_str(&format!("[aout{}]", self.audio_last));
         }
 
@@ -146,7 +157,7 @@ impl Filters {
             let v_map = "0:v".to_string();
 
             if !o_map.contains(&v_map) {
-                o_map.append(&mut vec!["-map".to_string(), v_map]);
+                o_map.append(&mut vec_strings!["-map", v_map]);
             };
         }
 
@@ -155,7 +166,7 @@ impl Filters {
                 let a_map = format!("{}:a:{i}", self.audio_position);
 
                 if !o_map.contains(&a_map) {
-                    o_map.append(&mut vec!["-map".to_string(), a_map]);
+                    o_map.append(&mut vec_strings!["-map", a_map]);
                 };
             }
         }
@@ -414,6 +425,63 @@ fn realtime(node: &mut Media, chain: &mut Filters, config: &PlayoutConfig) {
     }
 }
 
+pub fn split_filter(chain: &mut Filters, count: usize, nr: i32, filter_type: FilterType) {
+    if count > 1 {
+        let out_link = match filter_type {
+            Audio => &mut chain.audio_out_link,
+            Video => &mut chain.video_out_link,
+        };
+
+        for i in 0..count {
+            let link = format!("[{filter_type}out_{nr}_{i}]");
+            if !out_link.contains(&link) {
+                out_link.push(link)
+            }
+        }
+
+        let split_filter = format!("split={count}{}", out_link.join(""));
+        chain.add_filter(&split_filter, nr, filter_type);
+    }
+}
+
+/// Process output filter chain and add new filters to existing ones.
+fn process_output_filters(config: &PlayoutConfig, chain: &mut Filters, custom_filter: &str) {
+    let filter =
+        if (config.text.add_text && !config.text.text_from_filename) || config.out.mode == HLS {
+            let re_v = Regex::new(r"\[[0:]+[v^\[]+([:0]+)?\]").unwrap(); // match video filter input link
+            let _re_a = Regex::new(r"\[[0:]+[a^\[]+([:0]+)?\]").unwrap(); // match video filter input link
+            let mut cf = custom_filter.to_string();
+
+            if !chain.video_chain.is_empty() {
+                cf = re_v
+                    .replace(&cf, &format!("{},", chain.video_chain))
+                    .to_string()
+            }
+
+            if !chain.audio_chain.is_empty() {
+                let audio_split = chain
+                    .audio_chain
+                    .split(';')
+                    .enumerate()
+                    .map(|(i, p)| p.replace(&format!("[aout{i}]"), ""))
+                    .collect::<Vec<String>>();
+
+                for i in 0..config.processing.audio_tracks {
+                    cf = cf.replace(
+                        &format!("[0:a:{i}]"),
+                        &format!("{},", &audio_split[i as usize]),
+                    )
+                }
+            }
+
+            cf
+        } else {
+            custom_filter.to_string()
+        };
+
+    chain.output_chain = vec_strings!["-filter_complex", filter]
+}
+
 fn custom(filter: &str, chain: &mut Filters, nr: i32, filter_type: FilterType) {
     if !filter.is_empty() {
         chain.add_filter(filter, nr, filter_type);
@@ -429,6 +497,12 @@ pub fn filter_chains(
 
     if node.unit == Encoder {
         add_text(node, &mut filters, config, filter_chain);
+
+        if let Some(f) = config.out.output_filter.clone() {
+            process_output_filters(config, &mut filters, &f)
+        } else if config.out.output_count > 1 {
+            split_filter(&mut filters, config.out.output_count, 0, Video);
+        }
 
         return filters;
     }
@@ -465,8 +539,8 @@ pub fn filter_chains(
     overlay(node, &mut filters, config);
     realtime(node, &mut filters, config);
 
-    let (proc_vf, proc_af) = custom_filter(&config.processing.custom_filter);
-    let (list_vf, list_af) = custom_filter(&node.custom_filter);
+    let (proc_vf, proc_af) = custom::filter_node(&config.processing.custom_filter);
+    let (list_vf, list_af) = custom::filter_node(&node.custom_filter);
 
     custom(&proc_vf, &mut filters, 0, Video);
     custom(&list_vf, &mut filters, 0, Video);
@@ -487,6 +561,7 @@ pub fn filter_chains(
             );
             add_audio(node, &mut filters, i);
         }
+
         // add at least anull filter, for correct filter construction,
         // is important for split filter in HLS mode
         filters.add_filter("anull", i, Audio);
@@ -497,6 +572,12 @@ pub fn filter_chains(
 
         custom(&proc_af, &mut filters, i, Audio);
         custom(&list_af, &mut filters, i, Audio);
+    }
+
+    if config.out.mode == HLS {
+        if let Some(f) = config.out.output_filter.clone() {
+            process_output_filters(config, &mut filters, &f)
+        }
     }
 
     filters
