@@ -44,7 +44,7 @@ for target in "${targets[@]}"; do
 
         cp ./target/${target}/release/ffpapi.exe .
         cp ./target/${target}/release/ffplayout.exe .
-        zip -r "ffplayout-v${version}_${target}.zip" assets docs public LICENSE README.md ffplayout.exe ffpapi.exe -x *.db
+        zip -r "ffplayout-v${version}_${target}.zip" assets docs public LICENSE README.md CHANGELOG.md ffplayout.exe ffpapi.exe -x *.db
         rm -f ffplayout.exe ffpapi.exe
     elif [[ $target == "x86_64-apple-darwin" ]] || [[ $target == "aarch64-apple-darwin" ]]; then
         if [[ -f "ffplayout-v${version}_${target}.tar.gz" ]]; then
@@ -55,7 +55,7 @@ for target in "${targets[@]}"; do
 
         cp ./target/${target}/release/ffpapi .
         cp ./target/${target}/release/ffplayout .
-        tar -czvf "ffplayout-v${version}_${target}.tar.gz" --exclude='*.db' assets docs public LICENSE README.md ffplayout ffpapi
+        tar -czvf "ffplayout-v${version}_${target}.tar.gz" --exclude='*.db' assets docs public LICENSE README.md CHANGELOG.md ffplayout ffpapi
         rm -f ffplayout ffpapi
     else
         if [[ -f "ffplayout-v${version}_${target}.tar.gz" ]]; then
@@ -66,7 +66,7 @@ for target in "${targets[@]}"; do
 
         cp ./target/${target}/release/ffpapi .
         cp ./target/${target}/release/ffplayout .
-        tar -czvf "ffplayout-v${version}_${target}.tar.gz" --exclude='*.db' assets docs public LICENSE README.md ffplayout ffpapi
+        tar -czvf "ffplayout-v${version}_${target}.tar.gz" --exclude='*.db' assets docs public LICENSE README.md CHANGELOG.md ffplayout ffpapi
         rm -f ffplayout ffpapi
     fi
 

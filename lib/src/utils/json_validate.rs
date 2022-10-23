@@ -11,7 +11,7 @@ use simplelog::*;
 
 use crate::utils::{
     format_log_line, loop_image, sec_to_time, seek_and_length, valid_source, vec_strings,
-    JsonPlaylist, Media, PlayoutConfig, FFMPEG_IGNORE_ERRORS, IMAGE_FORMAT,
+    JsonPlaylist, Media, OutputMode::Null, PlayoutConfig, FFMPEG_IGNORE_ERRORS, IMAGE_FORMAT,
 };
 
 /// check if ffmpeg can read the file and apply filter to it.
@@ -23,6 +23,8 @@ fn check_media(
 ) -> Result<(), Error> {
     let mut enc_cmd = vec_strings!["-hide_banner", "-nostats", "-v", "level+error"];
     let mut error_list = vec![];
+    let mut config = config.clone();
+    config.out.mode = Null;
 
     node.add_probe();
 
@@ -53,7 +55,7 @@ fn check_media(
         node.cmd = Some(seek_and_length(&node));
     }
 
-    node.add_filter(config, &None);
+    node.add_filter(&config, &None);
 
     let mut filter = node.filter.unwrap_or_default();
 
