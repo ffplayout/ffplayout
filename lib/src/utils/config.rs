@@ -332,7 +332,7 @@ impl PlayoutConfig {
             if let Some(i) = cmd.clone().iter().position(|r| r == "-filter_complex") {
                 config.out.output_filter = Some(cmd[i + 1].clone());
                 cmd.remove(i);
-                cmd.remove(i + 1);
+                cmd.remove(i);
             }
 
             config.out.output_cmd = Some(cmd);
