@@ -11,6 +11,7 @@ pub use arg_parse::Args;
 use ffplayout_lib::{
     filter::Filters,
     utils::{time_to_sec, PlayoutConfig, ProcessMode::*},
+    vec_strings,
 };
 
 /// Read command line arguments, and override the config with them.
@@ -97,18 +98,14 @@ pub fn prepare_output_cmd(
 ) -> Vec<String> {
     let mut output_params = config.out.clone().output_cmd.unwrap();
     let mut new_params = vec![];
-    let mut count = 1;
-    let re_map = Regex::new(r"(\[?[0-9]:[av](:[0-9]+)?\]?|-map$|\[[a-z_0-9]+\])").unwrap(); // match a/v filter links and mapping
+    let mut count = 0;
+    let re_v = Regex::new(r"\[?0:v(:0)?\]?").unwrap();
 
     if let Some(mut filter) = filters.clone() {
-        println!("filter: {filter:#?}\n");
         for (i, param) in output_params.iter().enumerate() {
-            if !re_map.is_match(param)
-                || (i < output_params.len() - 2
-                    && (output_params[i + 1].contains("0:s") || param.contains("0:s")))
-            {
-                // Skip mapping parameters, when no multi in/out filter is set.
-                // Only add subtitle mapping.
+            if filter.video_out_link.len() > count && re_v.is_match(param) {
+                new_params.push(filter.video_out_link[count].clone());
+            } else {
                 new_params.push(param.clone());
             }
 
@@ -118,10 +115,20 @@ pub fn prepare_output_cmd(
                 && !output_params[i - 1].starts_with('-')
                 && i < output_params.len() - 1
             {
-                // add mapping to following outputs
-                new_params.append(&mut filter.map(Some(count)));
+                count += 1;
 
-                count += 1
+                if filter.video_out_link.len() > count
+                    && !output_params.contains(&"-map".to_string())
+                {
+                    new_params.append(&mut vec_strings![
+                        "-map",
+                        filter.video_out_link[count].clone()
+                    ]);
+
+                    for i in 0..config.processing.audio_tracks {
+                        new_params.append(&mut vec_strings!["-map", format!("0:a:{i}")]);
+                    }
+                }
             }
         }
 
@@ -129,10 +136,17 @@ pub fn prepare_output_cmd(
 
         cmd.append(&mut filter.cmd());
 
-        if config.out.output_count > 1 {
-            cmd.append(&mut filter.map(Some(0)));
-        } else {
-            cmd.append(&mut filter.map(None));
+        if !filter.map().iter().all(|item| output_params.contains(item))
+            && filter.output_chain.is_empty()
+            && filter.video_out_link.is_empty()
+        {
+            cmd.append(&mut filter.map())
+        } else if &output_params[0] != "-map" && !filter.video_out_link.is_empty() {
+            cmd.append(&mut vec_strings!["-map", filter.video_out_link[0].clone()]);
+
+            for i in 0..config.processing.audio_tracks {
+                cmd.append(&mut vec_strings!["-map", format!("0:a:{i}")]);
+            }
         }
     }
 

@@ -63,7 +63,7 @@ fn check_media(
 
     enc_cmd.append(&mut node.cmd.unwrap_or_default());
     enc_cmd.append(&mut filter.cmd());
-    enc_cmd.append(&mut filter.map(None));
+    enc_cmd.append(&mut filter.map());
     enc_cmd.append(&mut vec_strings!["-t", "0.1", "-f", "null", "-"]);
 
     let mut enc_proc = match Command::new("ffmpeg")

@@ -8,12 +8,11 @@ use regex::Regex;
 use simplelog::*;
 
 mod a_loudnorm;
+mod custom;
 pub mod v_drawtext;
 
 use crate::utils::{
-    controller::ProcessUnit::{self, *},
-    fps_calc, get_delta, is_close, Media, MediaProbe,
-    OutputMode::*,
+    controller::ProcessUnit::*, fps_calc, get_delta, is_close, Media, MediaProbe, OutputMode::*,
     PlayoutConfig,
 };
 
@@ -40,6 +39,7 @@ use FilterType::*;
 pub struct Filters {
     pub audio_chain: String,
     pub video_chain: String,
+    pub output_chain: Vec<String>,
     pub audio_map: Vec<String>,
     pub video_map: Vec<String>,
     pub audio_out_link: Vec<String>,
@@ -57,6 +57,7 @@ impl Filters {
         Self {
             audio_chain: String::new(),
             video_chain: String::new(),
+            output_chain: vec![],
             audio_map: vec![],
             video_map: vec![],
             audio_out_link: vec![],
@@ -118,6 +119,10 @@ impl Filters {
     }
 
     pub fn cmd(&mut self) -> Vec<String> {
+        if !self.output_chain.is_empty() {
+            return self.output_chain.clone();
+        }
+
         let mut v_chain = self.video_chain.clone();
         let mut a_chain = self.audio_chain.clone();
 
@@ -145,32 +150,8 @@ impl Filters {
         cmd
     }
 
-    pub fn map(&mut self, output_number: Option<usize>) -> Vec<String> {
+    pub fn map(&mut self) -> Vec<String> {
         let mut o_map = self.output_map.clone();
-
-        if let Some(n) = output_number {
-            o_map.clear();
-
-            if self.video_out_link.len() > n {
-                o_map.append(&mut vec_strings!["-map", self.video_out_link[n]])
-            } else {
-                o_map.append(&mut vec_strings!["-map", "0:v"])
-            }
-
-            if self.audio_out_link.len() > n {
-                o_map.append(&mut vec_strings!["-map", self.audio_out_link[n]])
-            } else {
-                for i in 0..self.audio_track_count {
-                    let a_map = format!("{}:a:{i}", self.audio_position);
-
-                    if !o_map.contains(&a_map) {
-                        o_map.append(&mut vec_strings!["-map", a_map]);
-                    };
-                }
-            }
-
-            return o_map;
-        }
 
         if self.video_last == -1 {
             let v_map = "0:v".to_string();
@@ -463,114 +444,48 @@ pub fn split_filter(chain: &mut Filters, count: usize, nr: i32, filter_type: Fil
     }
 }
 
-/// Process custom/output filter
-///
-/// Split filter string and add them to the existing filtergraph.
-fn process_custom_filters(
-    config: &PlayoutConfig,
-    chain: &mut Filters,
-    custom_filter: &str,
-    unit: ProcessUnit,
-) {
-    let re_v =
-        Regex::new(r"(^\[([0-9:]+)?[v^\[]([\w:_-]+)?\]|\[([0-9:]+)?[v^\[]([\w:_-]+)?\]$)").unwrap(); // match first/last video filter links
-    let re_a =
-        Regex::new(r"(^\[([0-9:]+)?[a^\[]([\w:_-]+)?\]|\[([0-9:]+)?[a^\[]([\w:_-]+)?\]$)").unwrap(); // match first/last audio filter links
-    let re_v_delim = Regex::new(r";\[[0-9:]+[v^\[]([0-9:]+)?\]").unwrap(); // match video filter link as delimiter
-    let re_a_delim = Regex::new(r";\[[0-9:]+[a^\[]([0-9:]+)?\]").unwrap(); // match video filter link as delimiter
+/// Process output filter chain and add new filters to existing ones.
+fn process_output_filters(config: &PlayoutConfig, chain: &mut Filters, custom_filter: &str) {
+    let filter =
+        if (config.text.add_text && !config.text.text_from_filename) || config.out.mode == HLS {
+            let re_v = Regex::new(r"\[[0:]+[v^\[]+([:0]+)?\]").unwrap(); // match video filter input link
+            let _re_a = Regex::new(r"\[[0:]+[a^\[]+([:0]+)?\]").unwrap(); // match video filter input link
+            let mut cf = custom_filter.to_string();
 
-    let mut video_filter = String::new();
-    let mut audio_filter = String::new();
-
-    if custom_filter.contains("split") && unit == Decoder {
-        error!("No split filter in {unit} allow! Skip filter...");
-
-        return;
-    }
-
-    if let Some(v_d) = re_v_delim.find(custom_filter) {
-        if let Some((a, v)) = custom_filter.split_once(v_d.as_str()) {
-            video_filter = re_v.replace_all(v, "").to_string();
-            audio_filter = re_a.replace_all(a, "").to_string();
-        }
-    } else if let Some(a_d) = re_a_delim.find(custom_filter) {
-        if let Some((v, a)) = custom_filter.split_once(a_d.as_str()) {
-            video_filter = re_v.replace_all(v, "").to_string();
-            audio_filter = re_a.replace_all(a, "").to_string();
-        }
-    } else if re_v.is_match(custom_filter) {
-        video_filter = re_v.replace_all(custom_filter, "").to_string();
-    } else if re_a.is_match(custom_filter) {
-        audio_filter = re_a.replace_all(custom_filter, "").to_string();
-    }
-
-    if video_filter.contains("split") {
-        let nr = Regex::new(".*split=([0-9]+).*").unwrap();
-        let re_s = Regex::new(r"(;?\[[^\]]*\])?,?split=[0-9]+(\[[\w]+\])+;?").unwrap();
-        let split_nr = nr
-            .replace(&video_filter, "$1")
-            .parse::<usize>()
-            .unwrap_or(1);
-        let new_filter = re_s.replace_all(&video_filter, "").to_string();
-
-        if !new_filter.is_empty() {
-            chain.add_filter(&new_filter, 0, Video);
-        }
-
-        split_filter(chain, split_nr, 0, Video);
-    } else if !video_filter.is_empty() {
-        chain.add_filter(&video_filter, 0, Video);
-    }
-
-    if audio_filter.contains("asplit") {
-        let nr = Regex::new(".*split=([0-9]+).*").unwrap();
-        let re_s = Regex::new(r"(;?\[[^\]]*\])?,?asplit=[0-9]+(\[[\w]+\])+;?").unwrap();
-        let split_nr = nr
-            .replace(&audio_filter, "$1")
-            .parse::<usize>()
-            .unwrap_or(1);
-        let new_filter = re_s.replace_all(&audio_filter, "").to_string();
-
-        if !new_filter.is_empty() {
-            for i in 0..config.processing.audio_tracks {
-                chain.add_filter(&new_filter, i, Audio);
+            if !chain.video_chain.is_empty() {
+                cf = re_v
+                    .replace(&cf, &format!("{},", chain.video_chain))
+                    .to_string()
             }
-        }
 
-        for i in 0..config.processing.audio_tracks {
-            split_filter(chain, split_nr, i, Audio);
-        }
-    } else if !audio_filter.is_empty() {
-        for i in 0..config.processing.audio_tracks {
-            chain.add_filter(&audio_filter, i, Audio);
-        }
+            if !chain.audio_chain.is_empty() {
+                let audio_split = chain
+                    .audio_chain
+                    .split(';')
+                    .enumerate()
+                    .map(|(i, p)| p.replace(&format!("[aout{i}]"), ""))
+                    .collect::<Vec<String>>();
+
+                for i in 0..config.processing.audio_tracks {
+                    cf = cf.replace(
+                        &format!("[0:a:{i}]"),
+                        &format!("{},", &audio_split[i as usize]),
+                    )
+                }
+            }
+
+            cf
+        } else {
+            custom_filter.to_string()
+        };
+
+    chain.output_chain = vec_strings!["-filter_complex", filter]
+}
+
+fn custom(filter: &str, chain: &mut Filters, nr: i32, filter_type: FilterType) {
+    if !filter.is_empty() {
+        chain.add_filter(filter, nr, filter_type);
     }
-
-    // for f in custom_filter.split(delim) {
-    //     if re_v.is_match(f) {
-    //         if f.contains("split") {
-    //             let re = Regex::new(r"split=([0-9]+)").unwrap();
-    //             let split_nr = re.replace(f, "$1").parse::<usize>().unwrap_or(1);
-
-    //             split_filter(chain, split_nr, 0, Video);
-    //         } else {
-    //             let filter_str = re_v.replace_all(f, "").to_string();
-    //             chain.add_filter(&filter_str, 0, Video);
-    //         }
-    //     } else if re_a.is_match(f) {
-    //         for i in 0..config.processing.audio_tracks {
-    //             if f.contains("asplit") {
-    //                 let re = Regex::new(r"asplit=([0-9]+)").unwrap();
-    //                 let split_nr = re.replace(f, "$1").parse::<usize>().unwrap_or(1);
-
-    //                 split_filter(chain, split_nr, i, Audio);
-    //             } else {
-    //                 let filter_str = re_a.replace_all(f, "").to_string();
-    //                 chain.add_filter(&filter_str, i, Audio);
-    //             }
-    //         }
-    //     }
-    // }
 }
 
 pub fn filter_chains(
@@ -584,9 +499,9 @@ pub fn filter_chains(
         add_text(node, &mut filters, config, filter_chain);
 
         if let Some(f) = config.out.output_filter.clone() {
-            process_custom_filters(config, &mut filters, &f, Encoder)
+            process_output_filters(config, &mut filters, &f)
         } else if config.out.output_count > 1 {
-            split_filter(&mut filters, config.out.output_count, 0, Video)
+            split_filter(&mut filters, config.out.output_count, 0, Video);
         }
 
         return filters;
@@ -624,6 +539,12 @@ pub fn filter_chains(
     overlay(node, &mut filters, config);
     realtime(node, &mut filters, config);
 
+    let (proc_vf, proc_af) = custom::filter_node(&config.processing.custom_filter);
+    let (list_vf, list_af) = custom::filter_node(&node.custom_filter);
+
+    custom(&proc_vf, &mut filters, 0, Video);
+    custom(&list_vf, &mut filters, 0, Video);
+
     for i in 0..config.processing.audio_tracks {
         if node
             .probe
@@ -648,15 +569,16 @@ pub fn filter_chains(
         add_loudnorm(node, &mut filters, config, i);
         fade(node, &mut filters, i, Audio);
         audio_volume(&mut filters, config, i);
+
+        custom(&proc_af, &mut filters, i, Audio);
+        custom(&list_af, &mut filters, i, Audio);
     }
 
-    process_custom_filters(
-        config,
-        &mut filters,
-        &config.processing.custom_filter,
-        node.unit,
-    );
-    process_custom_filters(config, &mut filters, &node.custom_filter, node.unit);
+    if config.out.mode == HLS {
+        if let Some(f) = config.out.output_filter.clone() {
+            process_output_filters(config, &mut filters, &f)
+        }
+    }
 
     filters
 }
