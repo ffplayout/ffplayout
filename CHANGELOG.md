@@ -6,10 +6,12 @@
 
 - fix deb and rpm bundle [79e4d5d](https://github.com/ffplayout/ffplayout/pull/217/commits/79e4d5dda05e715df96a38070466ea7a4c8378b2)
 - rearrange custom filters (fix missing output mapping on multiple outputs) [9cb3a62](https://github.com/ffplayout/ffplayout/pull/217/commits/9cb3a6206938adcf1fbe4ce0ec763cad9e812c76)
+- use mp2 for loudnorm_ingest to prevent number of samples in frame too big error [45197c2](https://github.com/ffplayout/ffplayout/pull/218/commits/45197c276df1c0394c26b030991b7e0e5490b0ce)
 
 ## Development
 
 - add subtitle example [d0ef717](https://github.com/ffplayout/ffplayout/pull/217/commits/d0ef71767b2af7d6053aeb83e3a6906fb84c984c), [e72967a](https://github.com/ffplayout/ffplayout/pull/217/commits/e72967a21c14ee8c71e18085dc397740d3586d01)
+- use NODE_OPTIONS for nodejs 18 [bcf212d](https://github.com/ffplayout/ffplayout/pull/218/commits/bcf212d8de6c2b87571e73cd73023af0e4b7941b)
 
 ## [1.6.0](https://github.com/ffplayout/ffplayout/compare/v0.15.2...v0.16.0) (2022-10-19)
 
