@@ -104,6 +104,7 @@ pub fn prepare_output_cmd(
     if let Some(mut filter) = filters.clone() {
         for (i, param) in output_params.iter().enumerate() {
             if filter.video_out_link.len() > count && re_v.is_match(param) {
+                // replace mapping with link from filter struct
                 new_params.push(filter.video_out_link[count].clone());
             } else {
                 new_params.push(param.clone());
@@ -136,6 +137,7 @@ pub fn prepare_output_cmd(
 
         cmd.append(&mut filter.cmd());
 
+        // add mapping at the begin, if needed
         if !filter.map().iter().all(|item| output_params.contains(item))
             && filter.output_chain.is_empty()
             && filter.video_out_link.is_empty()
