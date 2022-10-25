@@ -164,7 +164,7 @@ pub struct Processing {
     pub custom_filter: String,
 
     #[serde(skip_serializing, skip_deserializing)]
-    pub settings: Option<Vec<String>>,
+    pub cmd: Option<Vec<String>>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -289,8 +289,7 @@ impl PlayoutConfig {
             config.processing.audio_tracks = 1
         }
 
-        // We set the decoder settings here, so we only define them ones.
-        let mut settings = vec_strings![
+        config.processing.cmd = Some(vec_strings![
             "-pix_fmt",
             "yuv420p",
             "-r",
@@ -300,10 +299,7 @@ impl PlayoutConfig {
             "-g",
             "1",
             "-qscale:v",
-            "2"
-        ];
-
-        settings.append(&mut vec_strings![
+            "2",
             "-c:a",
             "pcm_bluray",
             "-mpegts_m2ts_mode",
@@ -316,8 +312,6 @@ impl PlayoutConfig {
             "mpegts",
             "-"
         ]);
-
-        config.processing.settings = Some(settings);
 
         config.ingest.input_cmd = split(config.ingest.input_param.as_str());
 
