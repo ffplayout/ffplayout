@@ -10,8 +10,8 @@ use std::{
 use simplelog::*;
 
 use crate::utils::{
-    format_log_line, loop_image, sec_to_time, seek_and_length, valid_source, vec_strings,
-    JsonPlaylist, Media, OutputMode::Null, PlayoutConfig, FFMPEG_IGNORE_ERRORS, IMAGE_FORMAT,
+    loop_image, sec_to_time, seek_and_length, valid_source, vec_strings, JsonPlaylist, Media,
+    OutputMode::Null, PlayoutConfig, FFMPEG_IGNORE_ERRORS, IMAGE_FORMAT,
 };
 
 /// check if ffmpeg can read the file and apply filter to it.
@@ -82,19 +82,13 @@ fn check_media(
     for line in enc_err.lines() {
         let line = line?;
 
-        if !FFMPEG_IGNORE_ERRORS.iter().any(|i| line.contains(*i)) {
-            if line.contains("[error]") {
-                let log_line = format_log_line(line, "error");
+        if !FFMPEG_IGNORE_ERRORS.iter().any(|i| line.contains(*i))
+            && (line.contains("[error]") || line.contains("[fatal]"))
+        {
+            let log_line = line.replace("[error] ", "").replace("[fatal] ", "");
 
-                if !error_list.contains(&log_line) {
-                    error_list.push(log_line);
-                }
-            } else if line.contains("[fatal]") {
-                let log_line = format_log_line(line, "fatal");
-
-                if !error_list.contains(&log_line) {
-                    error_list.push(log_line);
-                }
+            if !error_list.contains(&log_line) {
+                error_list.push(log_line);
             }
         }
     }

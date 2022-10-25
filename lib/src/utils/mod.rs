@@ -630,10 +630,6 @@ pub fn include_file(config: PlayoutConfig, file_path: &Path) -> bool {
     include
 }
 
-pub fn format_log_line(line: String, level: &str) -> String {
-    line.replace(&format!("[{level: >5}] "), "")
-}
-
 /// Read ffmpeg stderr decoder and encoder instance
 /// and log the output.
 pub fn stderr_reader(
@@ -647,19 +643,19 @@ pub fn stderr_reader(
         if line.contains("[info]") {
             info!(
                 "<bright black>[{suffix}]</> {}",
-                format_log_line(line, "info")
+                line.replace("[info] ", "")
             )
         } else if line.contains("[warning]") {
             warn!(
                 "<bright black>[{suffix}]</> {}",
-                format_log_line(line, "warning")
+                line.replace("[warning] ", "")
             )
         } else if (line.contains("[error]") || line.contains("[fatal]"))
             && !FFMPEG_IGNORE_ERRORS.iter().any(|i| line.contains(*i))
         {
             error!(
                 "<bright black>[{suffix}]</> {}",
-                line.replace("[error]", "").replace("[fatal]", "")
+                line.replace("[error] ", "").replace("[fatal] ", "")
             );
 
             if line.contains("Invalid argument")
