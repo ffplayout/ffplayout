@@ -107,7 +107,9 @@ pub fn player(
             dec_cmd.append(&mut filter.map());
         }
 
-        dec_cmd.append(&mut config.processing.clone().settings.unwrap());
+        if let Some(mut cmd) = config.processing.cmd.clone() {
+            dec_cmd.append(&mut cmd);
+        }
 
         debug!(
             "Decoder CMD: <bright-blue>\"ffmpeg {}\"</>",

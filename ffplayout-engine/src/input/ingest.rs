@@ -94,7 +94,9 @@ pub fn ingest_server(
         server_cmd.append(&mut filter.map());
     }
 
-    server_cmd.append(&mut config.processing.settings.unwrap());
+    if let Some(mut cmd) = config.processing.cmd {
+        server_cmd.append(&mut cmd);
+    }
 
     let mut is_running;
 

@@ -164,7 +164,7 @@ pub struct Processing {
     pub custom_filter: String,
 
     #[serde(skip_serializing, skip_deserializing)]
-    pub settings: Option<Vec<String>>,
+    pub cmd: Option<Vec<String>>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -289,8 +289,7 @@ impl PlayoutConfig {
             config.processing.audio_tracks = 1
         }
 
-        // We set the decoder settings here, so we only define them ones.
-        let mut settings = vec_strings![
+        config.processing.cmd = Some(vec_strings![
             "-pix_fmt",
             "yuv420p",
             "-r",
@@ -300,15 +299,19 @@ impl PlayoutConfig {
             "-g",
             "1",
             "-qscale:v",
-            "2"
-        ];
-
-        settings.append(&mut pre_audio_codec(config.processing.add_loudnorm));
-        settings.append(&mut vec_strings![
-            "-ar", "48000", "-ac", "2", "-f", "mpegts", "-"
+            "2",
+            "-c:a",
+            "pcm_bluray",
+            "-mpegts_m2ts_mode",
+            "true",
+            "-ar",
+            "48000",
+            "-ac",
+            "2",
+            "-f",
+            "mpegts",
+            "-"
         ]);
-
-        config.processing.settings = Some(settings);
 
         config.ingest.input_cmd = split(config.ingest.input_param.as_str());
 
@@ -360,17 +363,4 @@ impl Default for PlayoutConfig {
     fn default() -> Self {
         Self::new(None)
     }
-}
-
-/// When add_loudnorm is False we use a different audio encoder,
-/// s302m has higher quality, but is experimental
-/// and works not well together with the loudnorm filter.
-fn pre_audio_codec(add_loudnorm: bool) -> Vec<String> {
-    let mut codec = vec_strings!["-c:a", "s302m", "-strict", "-2", "-sample_fmt", "s16"];
-
-    if add_loudnorm {
-        codec = vec_strings!["-c:a", "mp2", "-b:a", "384k"];
-    }
-
-    codec
 }

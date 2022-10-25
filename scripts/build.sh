@@ -9,9 +9,13 @@ echo
 yes | rm -rf public
 cd ffplayout-frontend
 
+# for node version 17+
+export NODE_OPTIONS=--openssl-legacy-provider
 npm install
 npm run build
 mv dist ../public
+
+unset NODE_OPTIONS
 
 cd ..
 
