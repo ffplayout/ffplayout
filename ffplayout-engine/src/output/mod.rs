@@ -18,8 +18,8 @@ pub use hls::write_hls;
 
 use crate::input::{ingest_server, source_generator};
 use ffplayout_lib::utils::{
-    sec_to_time, stderr_reader, Decoder, OutputMode::*, PlayerControl, PlayoutConfig,
-    PlayoutStatus, ProcessControl,
+    sec_to_time, stderr_reader, OutputMode::*, PlayerControl, PlayoutConfig, PlayoutStatus,
+    ProcessControl, ProcessUnit::*,
 };
 use ffplayout_lib::vec_strings;
 
@@ -68,7 +68,7 @@ pub fn player(
     let enc_p_ctl = proc_control.clone();
 
     // spawn a thread to log ffmpeg output error messages
-    let error_encoder_thread = thread::spawn(move || stderr_reader(enc_err, "Encoder", enc_p_ctl));
+    let error_encoder_thread = thread::spawn(move || stderr_reader(enc_err, Encoder, enc_p_ctl));
 
     let proc_control_c = proc_control.clone();
     let mut ingest_receiver = None;
@@ -137,7 +137,7 @@ pub fn player(
         let dec_p_ctl = proc_control.clone();
 
         let error_decoder_thread =
-            thread::spawn(move || stderr_reader(dec_err, "Decoder", dec_p_ctl));
+            thread::spawn(move || stderr_reader(dec_err, Decoder, dec_p_ctl));
 
         loop {
             // when server is running, read from channel

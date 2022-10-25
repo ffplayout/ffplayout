@@ -9,37 +9,27 @@ use crossbeam_channel::Sender;
 use simplelog::*;
 
 use ffplayout_lib::utils::{
-    controller::ProcessUnit::*, format_log_line, test_tcp_port, Media, PlayoutConfig,
-    ProcessControl,
+    controller::ProcessUnit::*, test_tcp_port, Media, PlayoutConfig, ProcessControl,
 };
 use ffplayout_lib::vec_strings;
 
 pub fn log_line(line: String, level: &str) {
     if line.contains("[info]") && level.to_lowercase() == "info" {
-        info!(
-            "<bright black>[Server]</> {}",
-            format_log_line(line, "info")
-        )
+        info!("<bright black>[Server]</> {}", line.replace("[info] ", ""))
     } else if line.contains("[warning]")
         && (level.to_lowercase() == "warning" || level.to_lowercase() == "info")
     {
         warn!(
             "<bright black>[Server]</> {}",
-            format_log_line(line, "warning")
+            line.replace("[warning] ", "")
         )
     } else if line.contains("[error]")
         && !line.contains("Input/output error")
         && !line.contains("Broken pipe")
     {
-        error!(
-            "<bright black>[Server]</> {}",
-            format_log_line(line, "error")
-        );
+        error!("<bright black>[Server]</> {}", line.replace("[error] ", ""));
     } else if line.contains("[fatal]") {
-        error!(
-            "<bright black>[Server]</> {}",
-            format_log_line(line, "fatal")
-        )
+        error!("<bright black>[Server]</> {}", line.replace("[fatal] ", ""))
     }
 }
 
@@ -56,10 +46,7 @@ fn server_monitor(
                 error!("{e}");
             };
 
-            warn!(
-                "<bright black>[Server]</> {}",
-                format_log_line(line.clone(), "error")
-            );
+            warn!("<bright black>[Server]</> {}", line.replace("[error] ", ""));
         }
 
         if line.contains("Address already in use") {

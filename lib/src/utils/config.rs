@@ -19,8 +19,9 @@ pub const IMAGE_FORMAT: [&str; 21] = [
 ];
 
 // Some well known errors can be safely ignore
-pub const FFMPEG_IGNORE_ERRORS: [&str; 4] = [
+pub const FFMPEG_IGNORE_ERRORS: [&str; 5] = [
     "ac-tex damaged",
+    "end mismatch left",
     "Referenced QT chapter track not found",
     "skipped MB in I-frame at",
     "Warning MVs not available",
