@@ -6,7 +6,8 @@
 
 - fix deb and rpm bundle [79e4d5d](https://github.com/ffplayout/ffplayout/pull/217/commits/79e4d5dda05e715df96a38070466ea7a4c8378b2)
 - rearrange custom filters (fix missing output mapping on multiple outputs) [9cb3a62](https://github.com/ffplayout/ffplayout/pull/217/commits/9cb3a6206938adcf1fbe4ce0ec763cad9e812c76)
-- use mp2 for loudnorm_ingest to prevent number of samples in frame too big error [45197c2](https://github.com/ffplayout/ffplayout/pull/218/commits/45197c276df1c0394c26b030991b7e0e5490b0ce)
+- switch decoder audio codec to pcm_bluray [8b3a80f](https://github.com/ffplayout/ffplayout/pull/218/commits/8b3a80f5602eda240c6a59178c33886c9e81cb1d)
+- deserialize drawtext message with struct object and add single quotes around values
 
 ## Development
 

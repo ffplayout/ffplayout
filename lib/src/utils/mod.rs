@@ -282,21 +282,6 @@ pub fn json_writer(path: &PathBuf, data: JsonPlaylist) -> Result<(), Error> {
     Ok(())
 }
 
-/// Covert JSON string to ffmpeg filter command.
-pub fn get_filter_from_json(raw_text: String) -> String {
-    let re1 = Regex::new(r#""|}|\{"#).unwrap();
-    let re2 = Regex::new(r#"id:[0-9]+,?|name:[^,]?,?"#).unwrap();
-    let re3 = Regex::new(r#"text:([^,]*)"#).unwrap();
-    let text = re1.replace_all(&raw_text, "");
-    let text = re2.replace_all(&text, "").clone();
-    let filter = re3
-        .replace_all(&text, "text:'$1'")
-        .replace(':', "=")
-        .replace(',', ":");
-
-    filter
-}
-
 /// Write current status to status file in temp folder.
 ///
 /// The status file is init in main function and mostly modified in RPC server.

@@ -1,4 +1,4 @@
-use std::{process::exit, sync::atomic::Ordering};
+use std::{fmt, process::exit, sync::atomic::Ordering};
 
 mod zmq_cmd;
 
@@ -8,15 +8,91 @@ use jsonrpc_http_server::{
     jsonrpc_core::{IoHandler, Params, Value},
     AccessControlAllowOrigin, DomainsValidation, Response, RestApi, ServerBuilder,
 };
+use serde::Deserialize;
 use serde_json::{json, Map};
 use simplelog::*;
 
 use ffplayout_lib::utils::{
-    get_delta, get_filter_from_json, get_sec, sec_to_time, write_status, Ingest, Media,
-    OutputMode::*, PlayerControl, PlayoutConfig, PlayoutStatus, ProcessControl,
+    get_delta, get_sec, sec_to_time, write_status, Ingest, Media, OutputMode::*, PlayerControl,
+    PlayoutConfig, PlayoutStatus, ProcessControl,
 };
 
 use zmq_cmd::zmq_send;
+
+#[derive(Default, Deserialize, Clone)]
+struct TextFilter {
+    text: Option<String>,
+    x: Option<String>,
+    y: Option<String>,
+    fontsize: Option<String>,
+    line_spacing: Option<String>,
+    fontcolor: Option<String>,
+    alpha: Option<String>,
+    r#box: Option<String>,
+    boxcolor: Option<String>,
+    boxborderw: Option<String>,
+}
+
+impl fmt::Display for TextFilter {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let mut s = format!("text='{}'", self.text.clone().unwrap_or_default());
+
+        if let Some(v) = &self.x {
+            if !v.is_empty() {
+                s.push_str(&format!(":x='{v}'"));
+            }
+        }
+        if let Some(v) = &self.y {
+            if !v.is_empty() {
+                s.push_str(&format!(":y='{v}'"));
+            }
+        }
+        if let Some(v) = &self.fontsize {
+            if !v.is_empty() {
+                s.push_str(&format!(":fontsize={v}"));
+            }
+        }
+        if let Some(v) = &self.line_spacing {
+            if !v.is_empty() {
+                s.push_str(&format!(":line_spacing={v}"));
+            }
+        }
+        if let Some(v) = &self.fontcolor {
+            if !v.is_empty() {
+                s.push_str(&format!(":fontcolor={v}"));
+            }
+        }
+        if let Some(v) = &self.alpha {
+            if !v.is_empty() {
+                s.push_str(&format!(":alpha='{v}'"));
+            }
+        }
+        if let Some(v) = &self.r#box {
+            if !v.is_empty() {
+                s.push_str(&format!(":box={v}"));
+            }
+        }
+        if let Some(v) = &self.boxcolor {
+            if !v.is_empty() {
+                s.push_str(&format!(":boxcolor={v}"));
+            }
+        }
+        if let Some(v) = &self.boxborderw {
+            if !v.is_empty() {
+                s.push_str(&format!(":boxborderw={v}"));
+            }
+        }
+
+        write!(f, "{}", s)
+    }
+}
+
+/// Covert JSON string to ffmpeg filter command.
+fn filter_from_json(raw_text: serde_json::Value) -> String {
+    let filter: TextFilter = serde_json::from_value(raw_text).unwrap_or_default();
+
+    filter.to_string()
+}
 
 /// map media struct to json object
 fn get_media_map(media: Media) -> Value {
@@ -83,7 +159,7 @@ pub fn json_rpc_server(
                 && &map["control"] == "text"
                 && map.contains_key("message")
             {
-                let filter = get_filter_from_json(map["message"].to_string());
+                let filter = filter_from_json(map["message"].clone());
 
                 // TODO: in Rust 1.65 use let_chains instead
                 if !filter.is_empty() && config.text.zmq_stream_socket.is_some() {
