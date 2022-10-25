@@ -9,7 +9,7 @@
 - deserialize drawtext message with struct object and add single quotes around values [1373182](https://github.com/ffplayout/ffplayout/pull/218/commits/1373182c2ad457d34bff449385e73203b9ba5791)
 - update dependencies
 
-## Development
+### Development
 
 - fix deb and rpm bundle [79e4d5d](https://github.com/ffplayout/ffplayout/pull/217/commits/79e4d5dda05e715df96a38070466ea7a4c8378b2)
 - add subtitle example [d0ef717](https://github.com/ffplayout/ffplayout/pull/217/commits/d0ef71767b2af7d6053aeb83e3a6906fb84c984c), [e72967a](https://github.com/ffplayout/ffplayout/pull/217/commits/e72967a21c14ee8c71e18085dc397740d3586d01)
@@ -59,7 +59,7 @@
 - add doc for multiple audio outputs
 - add info about experimental features
 
-## Development
+### Development
 
 - use ffmpeg in action
 - run tests only on Linux
