@@ -202,7 +202,7 @@ pub fn write_hls(
         let enc_err = BufReader::new(enc_proc.stderr.take().unwrap());
         *proc_control.encoder_term.lock().unwrap() = Some(enc_proc);
 
-        if let Err(e) = stderr_reader(enc_err, "Writer", proc_control.clone()) {
+        if let Err(e) = stderr_reader(enc_err, Encoder, proc_control.clone()) {
             error!("{e:?}")
         };
 

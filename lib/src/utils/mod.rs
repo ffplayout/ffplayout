@@ -638,7 +638,7 @@ pub fn format_log_line(line: String, level: &str) -> String {
 /// and log the output.
 pub fn stderr_reader(
     buffer: BufReader<ChildStderr>,
-    suffix: &str,
+    suffix: ProcessUnit,
     mut proc_control: ProcessControl,
 ) -> Result<(), Error> {
     for line in buffer.lines() {
