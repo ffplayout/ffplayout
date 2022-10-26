@@ -9,6 +9,7 @@
 - fix null output, when is set per command line parameter [5b910d6](https://github.com/ffplayout/ffplayout/pull/221/commits/5b910d6e65d6cd1800fffe914a859a2b121be3cf)
 - revert to video bitrate and mp2 audio codec [c326c3b](https://github.com/ffplayout/ffplayout/pull/221/commits/c326c3b61fdedf2cd4f609c74160ad5e3c470f43)
     - When video bitrate is not fixed the delta delay is more unstable and can reach error threshold. Same is with audio codec pcm_bluray, maybe because it changes the format to m2ts. s302m would be best option, but is not working correctly with loudnorm filter.
+- print version in debug level [241d8ee](https://github.com/ffplayout/ffplayout/pull/221/commits/241d8ee3f661f0c2585cd288a695cb5099b05677)
 
 ### Dokumentation
 
