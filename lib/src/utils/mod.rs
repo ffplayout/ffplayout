@@ -640,6 +640,10 @@ pub fn stderr_reader(
     for line in buffer.lines() {
         let line = line?;
 
+        if FFMPEG_IGNORE_ERRORS.iter().any(|i| line.contains(*i)) {
+            continue;
+        }
+
         if line.contains("[info]") {
             info!(
                 "<bright black>[{suffix}]</> {}",
@@ -650,9 +654,7 @@ pub fn stderr_reader(
                 "<bright black>[{suffix}]</> {}",
                 line.replace("[warning] ", "")
             )
-        } else if (line.contains("[error]") || line.contains("[fatal]"))
-            && !FFMPEG_IGNORE_ERRORS.iter().any(|i| line.contains(*i))
-        {
+        } else if line.contains("[error]") || line.contains("[fatal]") {
             error!(
                 "<bright black>[{suffix}]</> {}",
                 line.replace("[error] ", "").replace("[fatal] ", "")

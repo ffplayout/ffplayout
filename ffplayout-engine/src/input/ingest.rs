@@ -10,6 +10,7 @@ use simplelog::*;
 
 use ffplayout_lib::utils::{
     controller::ProcessUnit::*, test_tcp_port, Media, PlayoutConfig, ProcessControl,
+    FFMPEG_IGNORE_ERRORS,
 };
 use ffplayout_lib::vec_strings;
 
@@ -53,7 +54,9 @@ fn server_monitor(
             proc_ctl.kill_all();
         }
 
-        log_line(line, level);
+        if !FFMPEG_IGNORE_ERRORS.iter().any(|i| line.contains(*i)) {
+            log_line(line, level);
+        }
     }
 
     Ok(())

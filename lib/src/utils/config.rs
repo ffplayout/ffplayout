@@ -19,11 +19,15 @@ pub const IMAGE_FORMAT: [&str; 21] = [
 ];
 
 // Some well known errors can be safely ignore
-pub const FFMPEG_IGNORE_ERRORS: [&str; 5] = [
+pub const FFMPEG_IGNORE_ERRORS: [&str; 9] = [
     "ac-tex damaged",
+    "corrupt decoded frame in stream",
+    "corrupt input packet in stream",
     "end mismatch left",
+    "Packet corrupt",
     "Referenced QT chapter track not found",
     "skipped MB in I-frame at",
+    "Thread message queue blocking",
     "Warning MVs not available",
 ];
 
@@ -290,6 +294,11 @@ impl PlayoutConfig {
             config.processing.audio_tracks = 1
         }
 
+        let bitrate = format!(
+            "{}k",
+            config.processing.width * config.processing.height / 16
+        );
+
         config.processing.cmd = Some(vec_strings![
             "-pix_fmt",
             "yuv420p",
@@ -299,12 +308,18 @@ impl PlayoutConfig {
             "mpeg2video",
             "-g",
             "1",
-            "-qscale:v",
-            "2",
+            "-b:v",
+            &bitrate,
+            "-minrate",
+            &bitrate,
+            "-maxrate",
+            &bitrate,
+            "-bufsize",
+            &bitrate,
             "-c:a",
-            "pcm_bluray",
-            "-mpegts_m2ts_mode",
-            "true",
+            "mp2",
+            "-b:a",
+            "384k",
             "-ar",
             "48000",
             "-ac",
