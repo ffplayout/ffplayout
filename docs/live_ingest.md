@@ -2,10 +2,16 @@
 
 With live ingest you have the possibility to switch from playlist, or folder mode to a live stream.
 
-It works in a way, that it crate a ffmpeg instance in _listen_ (_server_) mode. For example when you stream over RTMP to it, you can set the ingest input parameters to:
+It works in a way, that it create a ffmpeg instance in _listen_ (_server_) mode. For example when you stream over RTMP to it, you can set the ingest input parameters to:
 
 ```
--f live_flv -listen 1 -i rtmp://localhost:1936/live/stream
+-f live_flv -listen 1 -i rtmp://0.0.0.0:1936/live/my-secrete-streaming-key
+```
+
+For SRT you could use:
+
+```
+-f mpegts -i 'srt://0.0.0.0:40077?mode=listener&passphrase=12345abcde'
 ```
 
 Have in mind, that the ingest mode **can't** pull from a server, it only can act as its own server and listen for income.
