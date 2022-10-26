@@ -29,6 +29,8 @@ use ffplayout::utils::Args;
 #[cfg(debug_assertions)]
 use ffplayout_lib::utils::{mock_time, time_now};
 
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+
 #[derive(Serialize, Deserialize)]
 struct StatusData {
     time_shift: f64,
@@ -42,7 +44,7 @@ struct StatusData {
 ///
 /// When file not exists we create it, and when it exists we get its values.
 fn status_file(stat_file: &str, playout_stat: &PlayoutStatus) {
-    debug!("Status file path: <b><magenta>{stat_file}</></b>");
+    debug!("Start ffplayout v{VERSION}, status file path: <b><magenta>{stat_file}</></b>");
 
     if !PathBuf::from(stat_file).exists() {
         let data = json!({
