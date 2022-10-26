@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.6.2](https://github.com/ffplayout/ffplayout/compare/v0.16.1...v0.16.2) (2022-10-26)
+
+### ffplayout
+
+- ignore more ffmpeg errors and ignore them also on ingest server [2f8c2de](https://github.com/ffplayout/ffplayout/pull/221/commits/2f8c2deebc857c23f0bdc96ef977aaa174981fd3)
+- update dependencies [bdf43f7](https://github.com/ffplayout/ffplayout/pull/221/commits/bdf43f7e6bd765ebb88afac7761a0a246b5cdfb4)
+- fix null output, when is set per command line parameter [5b910d6](https://github.com/ffplayout/ffplayout/pull/221/commits/5b910d6e65d6cd1800fffe914a859a2b121be3cf)
+- revert to video bitrate and mp2 audio codec [c326c3b](https://github.com/ffplayout/ffplayout/pull/221/commits/c326c3b61fdedf2cd4f609c74160ad5e3c470f43)
+    - When video bitrate is not fixed the delta delay is more unstable and can reach error threshold. Same is with audio codec pcm_bluray, maybe because it changes the format to m2ts. s302m would be best option, but is not working correctly with loudnorm filter.
+
+### Dokumentation
+
+- add info for srt ingest [2f8c2de](https://github.com/ffplayout/ffplayout/pull/221/commits/2f8c2deebc857c23f0bdc96ef977aaa174981fd3)
+
 ## [1.6.1](https://github.com/ffplayout/ffplayout/compare/v0.16.0...v0.16.1) (2022-10-25)
 
 ### ffplayout
@@ -7,7 +21,7 @@
 - rearrange custom filters (fix missing output mapping on multiple outputs) [9cb3a62](https://github.com/ffplayout/ffplayout/pull/217/commits/9cb3a6206938adcf1fbe4ce0ec763cad9e812c76)
 - switch decoder audio codec to pcm_bluray [8b3a80f](https://github.com/ffplayout/ffplayout/pull/218/commits/8b3a80f5602eda240c6a59178c33886c9e81cb1d)
 - deserialize drawtext message with struct object and add single quotes around values [1373182](https://github.com/ffplayout/ffplayout/pull/218/commits/1373182c2ad457d34bff449385e73203b9ba5791)
-- update dependencies
+- update dependencies [a246a60](https://github.com/ffplayout/ffplayout/commit/a246a6018eb024cbeac11dd206b76eaffd7fd20c)
 
 ## Development
 
