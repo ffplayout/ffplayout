@@ -10,7 +10,7 @@ pub mod arg_parse;
 pub use arg_parse::Args;
 use ffplayout_lib::{
     filter::Filters,
-    utils::{time_to_sec, PlayoutConfig, ProcessMode::*},
+    utils::{time_to_sec, OutputMode::*, PlayoutConfig, ProcessMode::*},
     vec_strings,
 };
 
@@ -79,6 +79,12 @@ pub fn get_config(args: Args) -> PlayoutConfig {
 
     if let Some(output) = args.output {
         config.out.mode = output;
+
+        if config.out.mode == Null {
+            config.out.output_count = 1;
+            config.out.output_filter = None;
+            config.out.output_cmd = Some(vec_strings!["-f", "null", "-"]);
+        }
     }
 
     if let Some(volume) = args.volume {
