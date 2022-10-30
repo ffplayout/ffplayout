@@ -40,11 +40,11 @@ pub fn filter_node(
                 .to_string(),
         };
 
-        let escape = text
+        let escaped_text = text
             .replace('\'', "'\\\\\\''")
             .replace('%', "\\\\\\%")
             .replace(':', "\\:");
-        filter = format!("drawtext=text='{escape}':{}{font}", config.text.style)
+        filter = format!("drawtext=text='{escaped_text}':{}{font}", config.text.style)
     } else if let Some(socket) = zmq_socket {
         let mut filter_cmd = format!("text=''{font}");
 

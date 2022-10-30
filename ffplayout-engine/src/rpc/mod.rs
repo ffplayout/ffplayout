@@ -35,7 +35,16 @@ struct TextFilter {
 
 impl fmt::Display for TextFilter {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let mut s = format!("text='{}'", self.text.clone().unwrap_or_default());
+        let escaped_text = self
+            .text
+            .clone()
+            .unwrap_or_default()
+            .replace('\'', "'\\\\\\''")
+            .replace('\\', "\\\\\\\\")
+            .replace('%', "\\\\\\%")
+            .replace(':', "\\:");
+
+        let mut s = format!("text='{escaped_text}'");
 
         if let Some(v) = &self.x {
             if !v.is_empty() {
