@@ -299,7 +299,12 @@ impl PlayoutConfig {
             config.processing.width * config.processing.height / 16
         );
 
-        config.processing.cmd = Some(vec_strings![
+        let buff_size = format!(
+            "{}k",
+            (config.processing.width * config.processing.height / 16) / 2
+        );
+
+        let mut process_cmd = vec_strings![
             "-pix_fmt",
             "yuv420p",
             "-r",
@@ -315,19 +320,18 @@ impl PlayoutConfig {
             "-maxrate",
             &bitrate,
             "-bufsize",
-            &bitrate,
-            "-c:a",
-            "mp2",
-            "-b:a",
-            "384k",
-            "-ar",
-            "48000",
-            "-ac",
-            "2",
-            "-f",
-            "mpegts",
-            "-"
+            &buff_size
+        ];
+
+        process_cmd.append(&mut pre_audio_codec(
+            config.processing.add_loudnorm,
+            config.processing.loudnorm_ingest,
+        ));
+        process_cmd.append(&mut vec_strings![
+            "-ar", "48000", "-ac", "2", "-f", "mpegts", "-"
         ]);
+
+        config.processing.cmd = Some(process_cmd);
 
         config.ingest.input_cmd = split(config.ingest.input_param.as_str());
 
@@ -379,4 +383,17 @@ impl Default for PlayoutConfig {
     fn default() -> Self {
         Self::new(None)
     }
+}
+
+/// When add_loudnorm is False we use a different audio encoder,
+/// s302m has higher quality, but is experimental
+/// and works not well together with the loudnorm filter.
+fn pre_audio_codec(add_loudnorm: bool, loudnorm_ingest: bool) -> Vec<String> {
+    let mut codec = vec_strings!["-c:a", "s302m", "-strict", "-2", "-sample_fmt", "s16"];
+
+    if add_loudnorm || loudnorm_ingest {
+        codec = vec_strings!["-c:a", "mp2", "-b:a", "384k"];
+    }
+
+    codec
 }
