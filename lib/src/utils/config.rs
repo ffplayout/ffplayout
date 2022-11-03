@@ -19,8 +19,9 @@ pub const IMAGE_FORMAT: [&str; 21] = [
 ];
 
 // Some well known errors can be safely ignore
-pub const FFMPEG_IGNORE_ERRORS: [&str; 9] = [
+pub const FFMPEG_IGNORE_ERRORS: [&str; 10] = [
     "ac-tex damaged",
+    "codec s302m, is muxed as a private data stream",
     "corrupt decoded frame in stream",
     "corrupt input packet in stream",
     "end mismatch left",
@@ -160,7 +161,7 @@ pub struct Processing {
     #[serde(default = "default_tracks")]
     pub audio_tracks: i32,
     #[serde(default = "default_channels")]
-    pub audio_channels: i32,
+    pub audio_channels: u8,
     pub add_loudnorm: bool,
     pub loudnorm_ingest: bool,
     pub loud_i: f32,
@@ -248,7 +249,7 @@ fn default_tracks() -> i32 {
     1
 }
 
-fn default_channels() -> i32 {
+fn default_channels() -> u8 {
     2
 }
 
