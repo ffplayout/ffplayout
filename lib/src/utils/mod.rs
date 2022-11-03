@@ -265,7 +265,7 @@ pub fn fps_calc(r_frame_rate: &str, default: f64) -> f64 {
 }
 
 pub fn json_reader(path: &PathBuf) -> Result<JsonPlaylist, Error> {
-    let f = File::options().read(true).write(false).open(&path)?;
+    let f = File::options().read(true).write(false).open(path)?;
     let p = serde_json::from_reader(f)?;
 
     Ok(p)
@@ -276,7 +276,7 @@ pub fn json_writer(path: &PathBuf, data: JsonPlaylist) -> Result<(), Error> {
         .write(true)
         .truncate(true)
         .create(true)
-        .open(&path)?;
+        .open(path)?;
     serde_json::to_writer_pretty(f, &data)?;
 
     Ok(())

@@ -60,7 +60,7 @@ fn status_file(stat_file: &str, playout_stat: &PlayoutStatus) {
         let stat_file = File::options()
             .read(true)
             .write(false)
-            .open(&stat_file)
+            .open(stat_file)
             .expect("Could not open status file");
 
         let data: StatusData =

@@ -171,7 +171,7 @@ pub fn json_rpc_server(
                 let filter = filter_from_json(map["message"].clone());
                 debug!("Got drawtext command: <bright-blue>\"{filter}\"</>");
 
-                // TODO: in Rust 1.65 use let_chains instead
+                // TODO: in Rust 1.66 use let_chains instead
                 if !filter.is_empty() && config.text.zmq_stream_socket.is_some() {
                     if let Some(clips_filter) = playout_stat.chain.clone() {
                         *clips_filter.lock().unwrap() = vec![filter.clone()];
