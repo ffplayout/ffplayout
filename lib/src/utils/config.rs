@@ -157,8 +157,10 @@ pub struct Processing {
     pub logo_scale: String,
     pub logo_opacity: f32,
     pub logo_filter: String,
-    #[serde(default)]
+    #[serde(default = "default_tracks")]
     pub audio_tracks: i32,
+    #[serde(default = "default_channels")]
+    pub audio_channels: i32,
     pub add_loudnorm: bool,
     pub loudnorm_ingest: bool,
     pub loud_i: f32,
@@ -240,6 +242,14 @@ pub struct Out {
     pub output_filter: Option<String>,
     #[serde(skip_serializing, skip_deserializing)]
     pub output_cmd: Option<Vec<String>>,
+}
+
+fn default_tracks() -> i32 {
+    1
+}
+
+fn default_channels() -> i32 {
+    2
 }
 
 impl PlayoutConfig {
@@ -328,7 +338,13 @@ impl PlayoutConfig {
             config.processing.loudnorm_ingest,
         ));
         process_cmd.append(&mut vec_strings![
-            "-ar", "48000", "-ac", "2", "-f", "mpegts", "-"
+            "-ar",
+            "48000",
+            "-ac",
+            config.processing.audio_channels,
+            "-f",
+            "mpegts",
+            "-"
         ]);
 
         config.processing.cmd = Some(process_cmd);
