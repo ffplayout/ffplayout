@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.6.3](https://github.com/ffplayout/ffplayout/compare/v0.16.2...v0.16.3) (2022-11-04)
+
+### ffplayout
+
+- escape characters in drawtext filter [76e26f0](https://github.com/ffplayout/ffplayout/pull/223/commits/76e26f0f704948371638308cb844ee560d679e62)
+- revert to old audio codec settings [0e3b9e3](https://github.com/ffplayout/ffplayout/pull/223/commits/0e3b9e3f806f06177883226ebbe49097292df0c7)
+    - Some how with s302m there is a smaller time delta. MP2 works in general, and also better with loudnorm filter, but s302m is uncompressed and time stays more in sync.
+- expose audio channel layout to the config [#222](https://github.com/ffplayout/ffplayout/issues/222), [960280f](https://github.com/ffplayout/ffplayout/pull/223/commits/960280f1423d159fb8a4af79a14f97b35840f3a9)
+- ignore muxed as a private data stream warning, validate channel count [6149288](https://github.com/ffplayout/ffplayout/pull/223/commits/6149288d2fbeef8d122c9e44b7420dc795f67d5b)
+
+### Development
+
+- fix cross compile for osx [5cbf5e7](https://github.com/ffplayout/ffplayout/pull/223/commits/5cbf5e7a4c20d9560dada978bad51a7556031b73)
+
 ## [1.6.2](https://github.com/ffplayout/ffplayout/compare/v0.16.1...v0.16.2) (2022-10-26)
 
 ### ffplayout
