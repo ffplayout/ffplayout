@@ -54,8 +54,15 @@ for target in "${targets[@]}"; do
         if [[ -f "ffplayout-v${version}_${target}.tar.gz" ]]; then
             rm -f "ffplayout-v${version}_${target}.tar.gz"
         fi
+        c_cc="x86_64-apple-darwin20.4-clang"
+        c_cxx="x86_64-apple-darwin20.4-clang++"
 
-        CC="x86_64-apple-darwin20.4-cc" cargo build --release --target=$target
+        if [[ $target == "aarch64-apple-darwin" ]]; then
+            c_cc="aarch64-apple-darwin20.4-clang"
+            c_cxx="aarch64-apple-darwin20.4-clang++"
+        fi
+
+        CC="$c_cc" CXX="$c_cxx" cargo build --release --target=$target
 
         cp ./target/${target}/release/ffpapi .
         cp ./target/${target}/release/ffplayout .
