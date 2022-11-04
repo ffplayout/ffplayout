@@ -19,8 +19,9 @@ pub const IMAGE_FORMAT: [&str; 21] = [
 ];
 
 // Some well known errors can be safely ignore
-pub const FFMPEG_IGNORE_ERRORS: [&str; 9] = [
+pub const FFMPEG_IGNORE_ERRORS: [&str; 10] = [
     "ac-tex damaged",
+    "codec s302m, is muxed as a private data stream",
     "corrupt decoded frame in stream",
     "corrupt input packet in stream",
     "end mismatch left",
@@ -157,8 +158,10 @@ pub struct Processing {
     pub logo_scale: String,
     pub logo_opacity: f32,
     pub logo_filter: String,
-    #[serde(default)]
+    #[serde(default = "default_tracks")]
     pub audio_tracks: i32,
+    #[serde(default = "default_channels")]
+    pub audio_channels: u8,
     pub add_loudnorm: bool,
     pub loudnorm_ingest: bool,
     pub loud_i: f32,
@@ -242,6 +245,14 @@ pub struct Out {
     pub output_cmd: Option<Vec<String>>,
 }
 
+fn default_tracks() -> i32 {
+    1
+}
+
+fn default_channels() -> u8 {
+    2
+}
+
 impl PlayoutConfig {
     /// Read config from YAML file, and set some extra config values.
     pub fn new(cfg_path: Option<String>) -> Self {
@@ -299,7 +310,12 @@ impl PlayoutConfig {
             config.processing.width * config.processing.height / 16
         );
 
-        config.processing.cmd = Some(vec_strings![
+        let buff_size = format!(
+            "{}k",
+            (config.processing.width * config.processing.height / 16) / 2
+        );
+
+        let mut process_cmd = vec_strings![
             "-pix_fmt",
             "yuv420p",
             "-r",
@@ -315,19 +331,24 @@ impl PlayoutConfig {
             "-maxrate",
             &bitrate,
             "-bufsize",
-            &bitrate,
-            "-c:a",
-            "mp2",
-            "-b:a",
-            "384k",
+            &buff_size
+        ];
+
+        process_cmd.append(&mut pre_audio_codec(
+            config.processing.add_loudnorm,
+            config.processing.loudnorm_ingest,
+        ));
+        process_cmd.append(&mut vec_strings![
             "-ar",
             "48000",
             "-ac",
-            "2",
+            config.processing.audio_channels,
             "-f",
             "mpegts",
             "-"
         ]);
+
+        config.processing.cmd = Some(process_cmd);
 
         config.ingest.input_cmd = split(config.ingest.input_param.as_str());
 
@@ -379,4 +400,17 @@ impl Default for PlayoutConfig {
     fn default() -> Self {
         Self::new(None)
     }
+}
+
+/// When add_loudnorm is False we use a different audio encoder,
+/// s302m has higher quality, but is experimental
+/// and works not well together with the loudnorm filter.
+fn pre_audio_codec(add_loudnorm: bool, loudnorm_ingest: bool) -> Vec<String> {
+    let mut codec = vec_strings!["-c:a", "s302m", "-strict", "-2", "-sample_fmt", "s16"];
+
+    if add_loudnorm || loudnorm_ingest {
+        codec = vec_strings!["-c:a", "mp2", "-b:a", "384k"];
+    }
+
+    codec
 }

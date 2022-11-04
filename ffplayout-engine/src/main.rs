@@ -60,7 +60,7 @@ fn status_file(stat_file: &str, playout_stat: &PlayoutStatus) {
         let stat_file = File::options()
             .read(true)
             .write(false)
-            .open(&stat_file)
+            .open(stat_file)
             .expect("Could not open status file");
 
         let data: StatusData =
@@ -107,20 +107,26 @@ fn main() {
         exit(1);
     };
 
+    if ![2, 4, 6, 8].contains(&config.processing.audio_channels) {
+        error!(
+            "Encoding {} channel(s) is not allowed. Only 2, 4, 6 and 8 channels are supported!",
+            config.processing.audio_channels
+        );
+        exit(1);
+    }
+
     if config.general.generate.is_some() {
         // run a simple playlist generator and save them to disk
         if let Err(e) = generate_playlist(&config, None) {
             error!("{e}");
             exit(1);
         };
-
         exit(0);
     }
 
     if let Some(path) = args.import {
         if args.date.is_none() {
             error!("Import needs date parameter!");
-
             exit(1);
         }
 

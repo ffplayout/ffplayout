@@ -792,7 +792,7 @@ async fn import_playlist(
     obj: web::Query<ImportObj>,
 ) -> Result<HttpResponse, ServiceError> {
     let file = Path::new(&obj.file).file_name().unwrap_or_default();
-    let path = env::temp_dir().join(&file).to_string_lossy().to_string();
+    let path = env::temp_dir().join(file).to_string_lossy().to_string();
     let (config, _) = playout_config(&id).await?;
     let channel = handles::select_channel(&id).await?;
 

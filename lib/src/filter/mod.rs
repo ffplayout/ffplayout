@@ -274,7 +274,7 @@ fn fade(node: &mut Media, chain: &mut Filters, nr: i32, filter_type: FilterType)
         chain.add_filter(&format!("{t}fade=in:st=0:d=0.5"), nr, filter_type)
     }
 
-    if node.out != node.duration && node.out - node.seek - 1.0 > 0.0 {
+    if node.out != node.duration && node.out - node.seek > 1.0 {
         chain.add_filter(
             &format!("{t}fade=out:st={}:d=1.0", (node.out - node.seek - 1.0)),
             nr,
