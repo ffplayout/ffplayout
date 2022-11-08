@@ -42,7 +42,7 @@ curl -X GET 'http://127.0.0.1:8787/api/user' -H 'Content-Type: application/json'
 
 ```BASH
 curl -X PUT http://127.0.0.1:8787/api/user/1 -H 'Content-Type: application/json' \
--d '{"mail": "<MAIL>", "password": "<PASS>"}' -H 'Authorization: <TOKEN>'
+-d '{"mail": "<MAIL>", "password": "<PASS>"}' -H 'Authorization: Bearer <TOKEN>'
 ```
 
 **Add User**
@@ -111,7 +111,7 @@ curl -X DELETE http://127.0.0.1:8787/api/channel/2 -H "Authorization: Bearer <TO
 **Get Config**
 
 ```BASH
-curl -X GET http://127.0.0.1:8787/api/playout/config/1 -H 'Authorization: <TOKEN>'
+curl -X GET http://127.0.0.1:8787/api/playout/config/1 -H 'Authorization: Bearer <TOKEN>'
 ```
 
 Response is a JSON object from the ffplayout.yml
@@ -120,7 +120,7 @@ Response is a JSON object from the ffplayout.yml
 
 ```BASH
 curl -X PUT http://127.0.0.1:8787/api/playout/config/1 -H "Content-Type: application/json" \
--d { <CONFIG DATA> } -H 'Authorization: <TOKEN>'
+-d { <CONFIG DATA> } -H 'Authorization: Bearer <TOKEN>'
 ```
 
 #### Text Presets
@@ -131,7 +131,7 @@ Text presets are made for sending text messages to the ffplayout engine, to over
 
 ```BASH
 curl -X GET http://127.0.0.1:8787/api/presets/ -H 'Content-Type: application/json' \
--H 'Authorization: <TOKEN>'
+-H 'Authorization: Bearer <TOKEN>'
 ```
 
 **Update Preset**
@@ -140,7 +140,7 @@ curl -X GET http://127.0.0.1:8787/api/presets/ -H 'Content-Type: application/jso
 curl -X PUT http://127.0.0.1:8787/api/presets/1 -H 'Content-Type: application/json' \
 -d '{ "name": "<PRESET NAME>", "text": "<TEXT>", "x": "<X>", "y": "<Y>", "fontsize": 24, \
 "line_spacing": 4, "fontcolor": "#ffffff", "box": 1, "boxcolor": "#000000", "boxborderw": 4, "alpha": 1.0, "channel_id": 1 }' \
--H 'Authorization: <TOKEN>'
+-H 'Authorization: Bearer <TOKEN>'
 ```
 
 **Add new Preset**
@@ -149,14 +149,14 @@ curl -X PUT http://127.0.0.1:8787/api/presets/1 -H 'Content-Type: application/js
 curl -X POST http://127.0.0.1:8787/api/presets/ -H 'Content-Type: application/json' \
 -d '{ "name": "<PRESET NAME>", "text": "TEXT>", "x": "<X>", "y": "<Y>", "fontsize": 24, \
 "line_spacing": 4, "fontcolor": "#ffffff", "box": 1, "boxcolor": "#000000", "boxborderw": 4, "alpha": 1.0, "channel_id": 1 }' \
--H 'Authorization: <TOKEN>'
+-H 'Authorization: Bearer <TOKEN>'
 ```
 
 **Delete Preset**
 
 ```BASH
 curl -X DELETE http://127.0.0.1:8787/api/presets/1 -H 'Content-Type: application/json' \
--H 'Authorization: <TOKEN>'
+-H 'Authorization: Bearer <TOKEN>'
 ```
 
 ### ffplayout controlling
@@ -171,7 +171,7 @@ here we communicate with the engine for:
 
 ```BASH
 curl -X POST http://127.0.0.1:8787/api/control/1/text/ \
--H 'Content-Type: application/json' -H 'Authorization: <TOKEN>' \
+-H 'Content-Type: application/json' -H 'Authorization: Bearer <TOKEN>' \
 -d '{"text": "Hello from ffplayout", "x": "(w-text_w)/2", "y": "(h-text_h)/2", \
     "fontsize": "24", "line_spacing": "4", "fontcolor": "#ffffff", "box": "1", \
     "boxcolor": "#000000", "boxborderw": "4", "alpha": "1.0"}'
@@ -185,14 +185,14 @@ curl -X POST http://127.0.0.1:8787/api/control/1/text/ \
 
 ```BASH
 curl -X POST http://127.0.0.1:8787/api/control/1/playout/ -H 'Content-Type: application/json'
--d '{ "command": "reset" }' -H 'Authorization: <TOKEN>'
+-d '{ "command": "reset" }' -H 'Authorization: Bearer <TOKEN>'
 ```
 
 **Get current Clip**
 
 ```BASH
 curl -X GET http://127.0.0.1:8787/api/control/1/media/current
--H 'Content-Type: application/json' -H 'Authorization: <TOKEN>'
+-H 'Content-Type: application/json' -H 'Authorization: Bearer <TOKEN>'
 ```
 
 **Response:**
@@ -222,14 +222,14 @@ curl -X GET http://127.0.0.1:8787/api/control/1/media/current
 **Get next Clip**
 
 ```BASH
-curl -X GET http://127.0.0.1:8787/api/control/1/media/next/ -H 'Authorization: <TOKEN>'
+curl -X GET http://127.0.0.1:8787/api/control/1/media/next/ -H 'Authorization: Bearer <TOKEN>'
 ```
 
 **Get last Clip**
 
 ```BASH
 curl -X GET http://127.0.0.1:8787/api/control/1/media/last/
--H 'Content-Type: application/json' -H 'Authorization: <TOKEN>'
+-H 'Content-Type: application/json' -H 'Authorization: Bearer <TOKEN>'
 ```
 
 #### ffplayout Process Control
@@ -242,7 +242,7 @@ Control ffplayout process, like:
 
 ```BASH
 curl -X POST http://127.0.0.1:8787/api/control/1/process/
--H 'Content-Type: application/json' -H 'Authorization: <TOKEN>'
+-H 'Content-Type: application/json' -H 'Authorization: Bearer <TOKEN>'
 -d '{"command": "start"}'
 ```
 
@@ -252,14 +252,14 @@ curl -X POST http://127.0.0.1:8787/api/control/1/process/
 
 ```BASH
 curl -X GET http://127.0.0.1:8787/api/playlist/1?date=2022-06-20
--H 'Content-Type: application/json' -H 'Authorization: <TOKEN>'
+-H 'Content-Type: application/json' -H 'Authorization: Bearer <TOKEN>'
 ```
 
 **Save playlist**
 
 ```BASH
 curl -X POST http://127.0.0.1:8787/api/playlist/1/
--H 'Content-Type: application/json' -H 'Authorization: <TOKEN>'
+-H 'Content-Type: application/json' -H 'Authorization: Bearer <TOKEN>'
 -- data "{<JSON playlist data>}"
 ```
 
@@ -269,14 +269,14 @@ A new playlist will be generated and response.
 
 ```BASH
 curl -X GET http://127.0.0.1:8787/api/playlist/1/generate/2022-06-20
--H 'Content-Type: application/json' -H 'Authorization: <TOKEN>'
+-H 'Content-Type: application/json' -H 'Authorization: Bearer <TOKEN>'
 ```
 
 **Delete Playlist**
 
 ```BASH
 curl -X DELETE http://127.0.0.1:8787/api/playlist/1/2022-06-20
--H 'Content-Type: application/json' -H 'Authorization: <TOKEN>'
+-H 'Content-Type: application/json' -H 'Authorization: Bearer <TOKEN>'
 ```
 
 ### Log file
@@ -285,7 +285,7 @@ curl -X DELETE http://127.0.0.1:8787/api/playlist/1/2022-06-20
 
 ```BASH
 curl -X Get http://127.0.0.1:8787/api/log/1
--H 'Content-Type: application/json' -H 'Authorization: <TOKEN>'
+-H 'Content-Type: application/json' -H 'Authorization: Bearer <TOKEN>'
 ```
 
 ### File Operations
@@ -294,34 +294,34 @@ curl -X Get http://127.0.0.1:8787/api/log/1
 
 ```BASH
 curl -X POST http://127.0.0.1:8787/api/file/1/browse/ -H 'Content-Type: application/json'
--d '{ "source": "/" }' -H 'Authorization: <TOKEN>'
+-d '{ "source": "/" }' -H 'Authorization: Bearer <TOKEN>'
 ```
 
 **Create Folder**
 
 ```BASH
 curl -X POST http://127.0.0.1:8787/api/file/1/create-folder/ -H 'Content-Type: application/json'
--d '{"source": "<FOLDER PATH>"}' -H 'Authorization: <TOKEN>'
+-d '{"source": "<FOLDER PATH>"}' -H 'Authorization: Bearer <TOKEN>'
 ```
 
 **Rename File**
 
 ```BASH
 curl -X POST http://127.0.0.1:8787/api/file/1/rename/ -H 'Content-Type: application/json'
--d '{"source": "<SOURCE>", "target": "<TARGET>"}' -H 'Authorization: <TOKEN>'
+-d '{"source": "<SOURCE>", "target": "<TARGET>"}' -H 'Authorization: Bearer <TOKEN>'
 ```
 
 **Remove File/Folder**
 
 ```BASH
 curl -X POST http://127.0.0.1:8787/api/file/1/remove/ -H 'Content-Type: application/json'
--d '{"source": "<SOURCE>"}' -H 'Authorization: <TOKEN>'
+-d '{"source": "<SOURCE>"}' -H 'Authorization: Bearer <TOKEN>'
 ```
 
 **Upload File**
 
 ```BASH
-curl -X POST http://127.0.0.1:8787/api/file/1/upload/ -H 'Authorization: <TOKEN>'
+curl -X POST http://127.0.0.1:8787/api/file/1/upload/ -H 'Authorization: Bearer <TOKEN>'
 -F "file=@file.mp4"
 ```
 
@@ -331,7 +331,7 @@ Import text/m3u file and convert it to a playlist
 lines with leading "#" will be ignore
 
 ```BASH
-curl -X POST http://127.0.0.1:8787/api/file/1/import/ -H 'Authorization: <TOKEN>'
+curl -X POST http://127.0.0.1:8787/api/file/1/import/ -H 'Authorization: Bearer <TOKEN>'
 -F "file=@list.m3u"
 ```
 
