@@ -5,6 +5,7 @@ After=network.target remote-fs.target
 [Service]
 ExecStart=/usr/bin/ffplayout %I
 Restart=always
+StartLimitIntervalSec=20
 RestartSec=1
 KillMode=mixed
 User=ffpu

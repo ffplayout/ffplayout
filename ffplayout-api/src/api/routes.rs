@@ -166,7 +166,7 @@ async fn get_user(user: web::ReqData<LoginUser>) -> Result<impl Responder, Servi
 ///
 /// ```BASH
 /// curl -X PUT http://127.0.0.1:8787/api/user/1 -H 'Content-Type: application/json' \
-/// -d '{"mail": "<MAIL>", "password": "<PASS>"}' -H 'Authorization: <TOKEN>'
+/// -d '{"mail": "<MAIL>", "password": "<PASS>"}' -H 'Authorization: Bearer <TOKEN>'
 /// ```
 #[put("/user/{id}")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
@@ -332,7 +332,7 @@ async fn remove_channel(id: web::Path<i32>) -> Result<impl Responder, ServiceErr
 /// **Get Config**
 ///
 /// ```BASH
-/// curl -X GET http://127.0.0.1:8787/api/playout/config/1 -H 'Authorization: <TOKEN>'
+/// curl -X GET http://127.0.0.1:8787/api/playout/config/1 -H 'Authorization: Bearer <TOKEN>'
 /// ```
 ///
 /// Response is a JSON object from the ffplayout.yml
@@ -355,7 +355,7 @@ async fn get_playout_config(
 ///
 /// ```BASH
 /// curl -X PUT http://127.0.0.1:8787/api/playout/config/1 -H "Content-Type: application/json" \
-/// -d { <CONFIG DATA> } -H 'Authorization: <TOKEN>'
+/// -d { <CONFIG DATA> } -H 'Authorization: Bearer <TOKEN>'
 /// ```
 #[put("/playout/config/{id}")]
 #[has_any_role("Role::Admin", type = "Role")]
@@ -388,7 +388,7 @@ async fn update_playout_config(
 ///
 /// ```BASH
 /// curl -X GET http://127.0.0.1:8787/api/presets/ -H 'Content-Type: application/json' \
-/// -H 'Authorization: <TOKEN>'
+/// -H 'Authorization: Bearer <TOKEN>'
 /// ```
 #[get("/presets/{id}")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
@@ -406,7 +406,7 @@ async fn get_presets(id: web::Path<i32>) -> Result<impl Responder, ServiceError>
 /// curl -X PUT http://127.0.0.1:8787/api/presets/1 -H 'Content-Type: application/json' \
 /// -d '{ "name": "<PRESET NAME>", "text": "<TEXT>", "x": "<X>", "y": "<Y>", "fontsize": 24, \
 /// "line_spacing": 4, "fontcolor": "#ffffff", "box": 1, "boxcolor": "#000000", "boxborderw": 4, "alpha": 1.0, "channel_id": 1 }' \
-/// -H 'Authorization: <TOKEN>'
+/// -H 'Authorization: Bearer <TOKEN>'
 /// ```
 #[put("/presets/{id}")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
@@ -427,7 +427,7 @@ async fn update_preset(
 /// curl -X POST http://127.0.0.1:8787/api/presets/ -H 'Content-Type: application/json' \
 /// -d '{ "name": "<PRESET NAME>", "text": "TEXT>", "x": "<X>", "y": "<Y>", "fontsize": 24, \
 /// "line_spacing": 4, "fontcolor": "#ffffff", "box": 1, "boxcolor": "#000000", "boxborderw": 4, "alpha": 1.0, "channel_id": 1 }' \
-/// -H 'Authorization: <TOKEN>'
+/// -H 'Authorization: Bearer <TOKEN>'
 /// ```
 #[post("/presets/")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
@@ -443,7 +443,7 @@ async fn add_preset(data: web::Json<TextPreset>) -> Result<impl Responder, Servi
 ///
 /// ```BASH
 /// curl -X DELETE http://127.0.0.1:8787/api/presets/1 -H 'Content-Type: application/json' \
-/// -H 'Authorization: <TOKEN>'
+/// -H 'Authorization: Bearer <TOKEN>'
 /// ```
 #[delete("/presets/{id}")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
@@ -467,7 +467,7 @@ async fn delete_preset(id: web::Path<i32>) -> Result<impl Responder, ServiceErro
 ///
 /// ```BASH
 /// curl -X POST http://127.0.0.1:8787/api/control/1/text/ \
-/// -H 'Content-Type: application/json' -H 'Authorization: <TOKEN>' \
+/// -H 'Content-Type: application/json' -H 'Authorization: Bearer <TOKEN>' \
 /// -d '{"text": "Hello from ffplayout", "x": "(w-text_w)/2", "y": "(h-text_h)/2", \
 ///     "fontsize": "24", "line_spacing": "4", "fontcolor": "#ffffff", "box": "1", \
 ///     "boxcolor": "#000000", "boxborderw": "4", "alpha": "1.0"}'
@@ -492,7 +492,7 @@ pub async fn send_text_message(
 ///
 /// ```BASH
 /// curl -X POST http://127.0.0.1:8787/api/control/1/playout/ -H 'Content-Type: application/json'
-/// -d '{ "command": "reset" }' -H 'Authorization: <TOKEN>'
+/// -d '{ "command": "reset" }' -H 'Authorization: Bearer <TOKEN>'
 /// ```
 #[post("/control/{id}/playout/")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
@@ -510,7 +510,7 @@ pub async fn control_playout(
 ///
 /// ```BASH
 /// curl -X GET http://127.0.0.1:8787/api/control/1/media/current
-/// -H 'Content-Type: application/json' -H 'Authorization: <TOKEN>'
+/// -H 'Content-Type: application/json' -H 'Authorization: Bearer <TOKEN>'
 /// ```
 ///
 /// **Response:**
@@ -548,7 +548,7 @@ pub async fn media_current(id: web::Path<i32>) -> Result<impl Responder, Service
 /// **Get next Clip**
 ///
 /// ```BASH
-/// curl -X GET http://127.0.0.1:8787/api/control/1/media/next/ -H 'Authorization: <TOKEN>'
+/// curl -X GET http://127.0.0.1:8787/api/control/1/media/next/ -H 'Authorization: Bearer <TOKEN>'
 /// ```
 #[get("/control/{id}/media/next")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
@@ -563,7 +563,7 @@ pub async fn media_next(id: web::Path<i32>) -> Result<impl Responder, ServiceErr
 ///
 /// ```BASH
 /// curl -X GET http://127.0.0.1:8787/api/control/1/media/last/
-/// -H 'Content-Type: application/json' -H 'Authorization: <TOKEN>'
+/// -H 'Content-Type: application/json' -H 'Authorization: Bearer <TOKEN>'
 /// ```
 #[get("/control/{id}/media/last")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
@@ -584,7 +584,7 @@ pub async fn media_last(id: web::Path<i32>) -> Result<impl Responder, ServiceErr
 ///
 /// ```BASH
 /// curl -X POST http://127.0.0.1:8787/api/control/1/process/
-/// -H 'Content-Type: application/json' -H 'Authorization: <TOKEN>'
+/// -H 'Content-Type: application/json' -H 'Authorization: Bearer <TOKEN>'
 /// -d '{"command": "start"}'
 /// ```
 #[post("/control/{id}/process/")]
@@ -602,7 +602,7 @@ pub async fn process_control(
 ///
 /// ```BASH
 /// curl -X GET http://127.0.0.1:8787/api/playlist/1?date=2022-06-20
-/// -H 'Content-Type: application/json' -H 'Authorization: <TOKEN>'
+/// -H 'Content-Type: application/json' -H 'Authorization: Bearer <TOKEN>'
 /// ```
 #[get("/playlist/{id}")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
@@ -620,7 +620,7 @@ pub async fn get_playlist(
 ///
 /// ```BASH
 /// curl -X POST http://127.0.0.1:8787/api/playlist/1/
-/// -H 'Content-Type: application/json' -H 'Authorization: <TOKEN>'
+/// -H 'Content-Type: application/json' -H 'Authorization: Bearer <TOKEN>'
 /// -- data "{<JSON playlist data>}"
 /// ```
 #[post("/playlist/{id}/")]
@@ -641,7 +641,7 @@ pub async fn save_playlist(
 ///
 /// ```BASH
 /// curl -X GET http://127.0.0.1:8787/api/playlist/1/generate/2022-06-20
-/// -H 'Content-Type: application/json' -H 'Authorization: <TOKEN>'
+/// -H 'Content-Type: application/json' -H 'Authorization: Bearer <TOKEN>'
 /// ```
 #[get("/playlist/{id}/generate/{date}")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
@@ -658,7 +658,7 @@ pub async fn gen_playlist(
 ///
 /// ```BASH
 /// curl -X DELETE http://127.0.0.1:8787/api/playlist/1/2022-06-20
-/// -H 'Content-Type: application/json' -H 'Authorization: <TOKEN>'
+/// -H 'Content-Type: application/json' -H 'Authorization: Bearer <TOKEN>'
 /// ```
 #[delete("/playlist/{id}/{date}")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
@@ -677,7 +677,7 @@ pub async fn del_playlist(
 ///
 /// ```BASH
 /// curl -X Get http://127.0.0.1:8787/api/log/1
-/// -H 'Content-Type: application/json' -H 'Authorization: <TOKEN>'
+/// -H 'Content-Type: application/json' -H 'Authorization: Bearer <TOKEN>'
 /// ```
 #[get("/log/{id}")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
@@ -694,7 +694,7 @@ pub async fn get_log(
 ///
 /// ```BASH
 /// curl -X POST http://127.0.0.1:8787/api/file/1/browse/ -H 'Content-Type: application/json'
-/// -d '{ "source": "/" }' -H 'Authorization: <TOKEN>'
+/// -d '{ "source": "/" }' -H 'Authorization: Bearer <TOKEN>'
 /// ```
 #[post("/file/{id}/browse/")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
@@ -712,7 +712,7 @@ pub async fn file_browser(
 ///
 /// ```BASH
 /// curl -X POST http://127.0.0.1:8787/api/file/1/create-folder/ -H 'Content-Type: application/json'
-/// -d '{"source": "<FOLDER PATH>"}' -H 'Authorization: <TOKEN>'
+/// -d '{"source": "<FOLDER PATH>"}' -H 'Authorization: Bearer <TOKEN>'
 /// ```
 #[post("/file/{id}/create-folder/")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
@@ -727,7 +727,7 @@ pub async fn add_dir(
 ///
 /// ```BASH
 /// curl -X POST http://127.0.0.1:8787/api/file/1/rename/ -H 'Content-Type: application/json'
-/// -d '{"source": "<SOURCE>", "target": "<TARGET>"}' -H 'Authorization: <TOKEN>'
+/// -d '{"source": "<SOURCE>", "target": "<TARGET>"}' -H 'Authorization: Bearer <TOKEN>'
 /// ```
 #[post("/file/{id}/rename/")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
@@ -745,7 +745,7 @@ pub async fn move_rename(
 ///
 /// ```BASH
 /// curl -X POST http://127.0.0.1:8787/api/file/1/remove/ -H 'Content-Type: application/json'
-/// -d '{"source": "<SOURCE>"}' -H 'Authorization: <TOKEN>'
+/// -d '{"source": "<SOURCE>"}' -H 'Authorization: Bearer <TOKEN>'
 /// ```
 #[post("/file/{id}/remove/")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
@@ -762,7 +762,7 @@ pub async fn remove(
 /// **Upload File**
 ///
 /// ```BASH
-/// curl -X POST http://127.0.0.1:8787/api/file/1/upload/ -H 'Authorization: <TOKEN>'
+/// curl -X POST http://127.0.0.1:8787/api/file/1/upload/ -H 'Authorization: Bearer <TOKEN>'
 /// -F "file=@file.mp4"
 /// ```
 #[put("/file/{id}/upload/")]
@@ -781,7 +781,7 @@ async fn save_file(
 /// lines with leading "#" will be ignore
 ///
 /// ```BASH
-/// curl -X POST http://127.0.0.1:8787/api/file/1/import/ -H 'Authorization: <TOKEN>'
+/// curl -X POST http://127.0.0.1:8787/api/file/1/import/ -H 'Authorization: Bearer <TOKEN>'
 /// -F "file=@list.m3u"
 /// ```
 #[put("/file/{id}/import/")]
