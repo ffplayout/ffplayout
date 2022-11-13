@@ -284,7 +284,7 @@ curl -X DELETE http://127.0.0.1:8787/api/playlist/1/2022-06-20
 **Read Log Life**
 
 ```BASH
-curl -X Get http://127.0.0.1:8787/api/log/1
+curl -X GET http://127.0.0.1:8787/api/log/1
 -H 'Content-Type: application/json' -H 'Authorization: Bearer <TOKEN>'
 ```
 
@@ -321,7 +321,7 @@ curl -X POST http://127.0.0.1:8787/api/file/1/remove/ -H 'Content-Type: applicat
 **Upload File**
 
 ```BASH
-curl -X POST http://127.0.0.1:8787/api/file/1/upload/ -H 'Authorization: Bearer <TOKEN>'
+curl -X PUT http://127.0.0.1:8787/api/file/1/upload/ -H 'Authorization: Bearer <TOKEN>'
 -F "file=@file.mp4"
 ```
 
@@ -331,6 +331,16 @@ Import text/m3u file and convert it to a playlist
 lines with leading "#" will be ignore
 
 ```BASH
-curl -X POST http://127.0.0.1:8787/api/file/1/import/ -H 'Authorization: Bearer <TOKEN>'
+curl -X PUT http://127.0.0.1:8787/api/file/1/import/ -H 'Authorization: Bearer <TOKEN>'
 -F "file=@list.m3u"
 ```
+
+**Program info**
+
+Get program infos about given date, or current day
+
+```BASH
+curl -X GET http://127.0.0.1:8787/program/1/?start_after=2022-11-13T12:00:00&start_before=2022-11-20T11:59:59 \
+-H 'Authorization: Bearer <TOKEN>'
+```
+
