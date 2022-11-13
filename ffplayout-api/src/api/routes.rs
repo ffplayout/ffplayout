@@ -848,7 +848,7 @@ async fn import_playlist(
     Ok(HttpResponse::Ok().into())
 }
 
-/// **Program nfo**
+/// **Program info**
 ///
 /// Get program infos about given date, or current day
 ///
