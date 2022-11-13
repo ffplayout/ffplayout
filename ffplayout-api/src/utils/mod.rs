@@ -238,24 +238,20 @@ pub fn local_utc_offset() -> i32 {
     utc_offset
 }
 
-pub fn naive_date_time_from_str<'de, D>(deserializer: D) -> Result<Option<NaiveDateTime>, D::Error>
+pub fn naive_date_time_from_str<'de, D>(deserializer: D) -> Result<NaiveDateTime, D::Error>
 where
     D: Deserializer<'de>,
 {
     let s: String = Deserialize::deserialize(deserializer)?;
+
     match NaiveDateTime::parse_from_str(&s, "%Y-%m-%dT%H:%M:%S") {
-        Ok(date_time) => Ok(Some(date_time)),
+        Ok(date_time) => Ok(date_time),
         Err(e) => {
             if e.kind() == ParseErrorKind::TooShort {
-                match NaiveDateTime::parse_from_str(&format!("{s}T00:00:00"), "%Y-%m-%dT%H:%M:%S") {
-                    Ok(date_time) => Ok(Some(date_time)),
-                    Err(e) => Err(de::Error::custom(e)),
-                }
+                NaiveDateTime::parse_from_str(&format!("{s}T00:00:00"), "%Y-%m-%dT%H:%M:%S")
+                    .map_err(de::Error::custom)
             } else {
-                match NaiveDateTime::parse_from_str(&s, "%Y-%m-%dT%H:%M:%S%#z") {
-                    Ok(date_time) => Ok(Some(date_time)),
-                    Err(_) => Err(de::Error::custom(e)),
-                }
+                NaiveDateTime::parse_from_str(&s, "%Y-%m-%dT%H:%M:%S%#z").map_err(de::Error::custom)
             }
         }
     }

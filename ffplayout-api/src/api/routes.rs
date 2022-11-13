@@ -17,7 +17,7 @@ use argon2::{
     password_hash::{rand_core::OsRng, PasswordHash, SaltString},
     Argon2, PasswordHasher, PasswordVerifier,
 };
-use chrono::{DateTime, Duration, Local, NaiveDateTime, TimeZone, Utc};
+use chrono::{DateTime, Datelike, Duration, Local, NaiveDateTime, TimeZone, Utc};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use simplelog::*;
@@ -79,16 +79,34 @@ pub struct ImportObj {
     date: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct ProgramObj {
-    #[serde(deserialize_with = "naive_date_time_from_str")]
-    start_after: Option<NaiveDateTime>,
-    #[serde(deserialize_with = "naive_date_time_from_str")]
-    start_before: Option<NaiveDateTime>,
+    #[serde(default = "def_after", deserialize_with = "naive_date_time_from_str")]
+    start_after: NaiveDateTime,
+    #[serde(default = "def_before", deserialize_with = "naive_date_time_from_str")]
+    start_before: NaiveDateTime,
+}
+
+fn def_after() -> NaiveDateTime {
+    let today = Utc::now();
+
+    chrono::Local
+        .ymd(today.year(), today.month(), today.day())
+        .and_hms(0, 0, 0)
+        .naive_local()
+}
+
+fn def_before() -> NaiveDateTime {
+    let today = Utc::now();
+
+    chrono::Local
+        .ymd(today.year(), today.month(), today.day())
+        .and_hms_milli(23, 59, 59, 999)
+        .naive_local()
 }
 
 #[derive(Debug, Serialize)]
-struct ProgramTtem {
+struct ProgramItem {
     source: String,
     start: String,
     r#in: f64,
@@ -848,16 +866,8 @@ async fn get_program(
     let start_sec = config.playlist.start_sec.unwrap();
     let mut days = 0;
     let mut program = vec![];
-
-    let after = match obj.start_after {
-        Some(d) => d,
-        None => Utc::now().naive_utc(),
-    };
-
-    let before = match obj.start_before {
-        Some(d) => d,
-        None => Utc::now().naive_utc(),
-    };
+    let after = obj.start_after;
+    let before = obj.start_before;
 
     if start_sec > time_to_sec(&after.format("%H:%M:%S").to_string()) {
         days = 1;
@@ -879,7 +889,7 @@ async fn get_program(
         let playlist = match read_playlist(*id, date.clone()).await {
             Ok(p) => p,
             Err(e) => {
-                error!("Error in PLaylist from {date}: {e}");
+                error!("Error in Playlist from {date}: {e}");
                 continue;
             }
         };
@@ -895,7 +905,7 @@ async fn get_program(
                 None => item.source,
             };
 
-            let p_item = ProgramTtem {
+            let p_item = ProgramItem {
                 source,
                 start: start.format("%Y-%m-%d %H:%M:%S%.3f%:z").to_string(),
                 r#in: item.seek,
