@@ -848,9 +848,9 @@ async fn import_playlist(
     Ok(HttpResponse::Ok().into())
 }
 
-/// **Program info**
+/// **Program nfo**
 ///
-/// Get infos about give program
+/// Get program infos about given date, or current day
 ///
 /// ```BASH
 /// curl -X GET http://127.0.0.1:8787/program/1/?start_after=2022-11-13T12:00:00&start_before=2022-11-20T11:59:59 \
