@@ -17,6 +17,8 @@ use argon2::{
     password_hash::{rand_core::OsRng, PasswordHash, SaltString},
     Argon2, PasswordHasher, PasswordVerifier,
 };
+use chrono::{DateTime, Duration, Local, NaiveDateTime, TimeZone, Utc};
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use simplelog::*;
 
@@ -33,10 +35,16 @@ use crate::utils::{
         browser, create_directory, remove_file_or_folder, rename_file, upload, MoveObject,
         PathObject,
     },
+    naive_date_time_from_str,
     playlist::{delete_playlist, generate_playlist, read_playlist, write_playlist},
     playout_config, read_log_file, read_playout_config, Role,
 };
-use ffplayout_lib::utils::{import::import_file, JsonPlaylist, PlayoutConfig};
+use ffplayout_lib::{
+    utils::{
+        get_date_range, import::import_file, sec_to_time, time_to_sec, JsonPlaylist, PlayoutConfig,
+    },
+    vec_strings,
+};
 
 #[derive(Serialize)]
 struct ResponseObj<T> {
@@ -69,6 +77,24 @@ pub struct ImportObj {
     file: String,
     #[serde(default)]
     date: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ProgramObj {
+    #[serde(deserialize_with = "naive_date_time_from_str")]
+    start_after: Option<NaiveDateTime>,
+    #[serde(deserialize_with = "naive_date_time_from_str")]
+    start_before: Option<NaiveDateTime>,
+}
+
+#[derive(Debug, Serialize)]
+struct ProgramTtem {
+    source: String,
+    start: String,
+    r#in: f64,
+    out: f64,
+    duration: f64,
+    category: String,
 }
 
 /// #### User Handling
@@ -676,7 +702,7 @@ pub async fn del_playlist(
 /// **Read Log Life**
 ///
 /// ```BASH
-/// curl -X Get http://127.0.0.1:8787/api/log/1
+/// curl -X GET http://127.0.0.1:8787/api/log/1
 /// -H 'Content-Type: application/json' -H 'Authorization: Bearer <TOKEN>'
 /// ```
 #[get("/log/{id}")]
@@ -762,7 +788,7 @@ pub async fn remove(
 /// **Upload File**
 ///
 /// ```BASH
-/// curl -X POST http://127.0.0.1:8787/api/file/1/upload/ -H 'Authorization: Bearer <TOKEN>'
+/// curl -X PUT http://127.0.0.1:8787/api/file/1/upload/ -H 'Authorization: Bearer <TOKEN>'
 /// -F "file=@file.mp4"
 /// ```
 #[put("/file/{id}/upload/")]
@@ -781,7 +807,7 @@ async fn save_file(
 /// lines with leading "#" will be ignore
 ///
 /// ```BASH
-/// curl -X POST http://127.0.0.1:8787/api/file/1/import/ -H 'Authorization: Bearer <TOKEN>'
+/// curl -X PUT http://127.0.0.1:8787/api/file/1/import/ -H 'Authorization: Bearer <TOKEN>'
 /// -F "file=@list.m3u"
 /// ```
 #[put("/file/{id}/import/")]
@@ -802,4 +828,89 @@ async fn import_playlist(
     fs::remove_file(path)?;
 
     Ok(HttpResponse::Ok().into())
+}
+
+/// **Program info**
+///
+/// Get infos about give program
+///
+/// ```BASH
+/// curl -X GET http://127.0.0.1:8787/program/1/?start_after=2022-11-13T12:00:00&start_before=2022-11-20T11:59:59 \
+/// -H 'Authorization: Bearer <TOKEN>'
+/// ```
+#[get("/program/{id}/")]
+#[has_any_role("Role::Admin", "Role::User", type = "Role")]
+async fn get_program(
+    id: web::Path<i32>,
+    obj: web::Query<ProgramObj>,
+) -> Result<impl Responder, ServiceError> {
+    let (config, _) = playout_config(&*id).await?;
+    let start_sec = config.playlist.start_sec.unwrap();
+    let mut days = 0;
+    let mut program = vec![];
+
+    let after = match obj.start_after {
+        Some(d) => d,
+        None => Utc::now().naive_utc(),
+    };
+
+    let before = match obj.start_before {
+        Some(d) => d,
+        None => Utc::now().naive_utc(),
+    };
+
+    if start_sec > time_to_sec(&after.format("%H:%M:%S").to_string()) {
+        days = 1;
+    }
+
+    let date_range = get_date_range(&vec_strings![
+        (after - Duration::days(days)).format("%Y-%m-%d"),
+        "-",
+        before.format("%Y-%m-%d")
+    ]);
+
+    for date in date_range {
+        let mut naive = NaiveDateTime::parse_from_str(
+            &format!("{date} {}", sec_to_time(start_sec)),
+            "%Y-%m-%d %H:%M:%S%.3f",
+        )
+        .unwrap();
+
+        let playlist = match read_playlist(*id, date.clone()).await {
+            Ok(p) => p,
+            Err(e) => {
+                error!("Error in PLaylist from {date}: {e}");
+                continue;
+            }
+        };
+
+        for item in playlist.program {
+            let start: DateTime<Local> = Local.from_local_datetime(&naive).unwrap();
+
+            let source = match Regex::new(&config.text.regex)
+                .ok()
+                .and_then(|r| r.captures(&item.source))
+            {
+                Some(t) => t[1].to_string(),
+                None => item.source,
+            };
+
+            let p_item = ProgramTtem {
+                source,
+                start: start.format("%Y-%m-%d %H:%M:%S%.3f%:z").to_string(),
+                r#in: item.seek,
+                out: item.out,
+                duration: item.duration,
+                category: item.category,
+            };
+
+            if naive >= after && naive <= before {
+                program.push(p_item);
+            }
+
+            naive += Duration::milliseconds(((item.out - item.seek) * 1000.0) as i64);
+        }
+    }
+
+    Ok(web::Json(program))
 }

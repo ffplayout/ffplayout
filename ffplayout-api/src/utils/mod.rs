@@ -5,10 +5,11 @@ use std::{
     path::Path,
 };
 
-use chrono::prelude::*;
+use chrono::{format::ParseErrorKind, prelude::*};
 use faccess::PathExt;
 use once_cell::sync::OnceCell;
 use rpassword::read_password;
+use serde::{de, Deserialize, Deserializer};
 use simplelog::*;
 
 pub mod args_parse;
@@ -23,7 +24,7 @@ use crate::db::{
     models::{Channel, User},
 };
 use crate::utils::{args_parse::Args, errors::ServiceError};
-use ffplayout_lib::utils::PlayoutConfig;
+use ffplayout_lib::utils::{time_to_sec, PlayoutConfig};
 
 #[derive(Clone, Eq, PartialEq)]
 pub enum Role {
@@ -175,7 +176,9 @@ pub async fn run_args(mut args: Args) -> Result<(), i32> {
 
 pub fn read_playout_config(path: &str) -> Result<PlayoutConfig, Box<dyn Error>> {
     let file = File::open(path)?;
-    let config: PlayoutConfig = serde_yaml::from_reader(file)?;
+    let mut config: PlayoutConfig = serde_yaml::from_reader(file)?;
+
+    config.playlist.start_sec = Some(time_to_sec(&config.playlist.day_start));
 
     Ok(config)
 }
@@ -233,4 +236,27 @@ pub fn local_utc_offset() -> i32 {
     }
 
     utc_offset
+}
+
+pub fn naive_date_time_from_str<'de, D>(deserializer: D) -> Result<Option<NaiveDateTime>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s: String = Deserialize::deserialize(deserializer)?;
+    match NaiveDateTime::parse_from_str(&s, "%Y-%m-%dT%H:%M:%S") {
+        Ok(date_time) => Ok(Some(date_time)),
+        Err(e) => {
+            if e.kind() == ParseErrorKind::TooShort {
+                match NaiveDateTime::parse_from_str(&format!("{s}T00:00:00"), "%Y-%m-%dT%H:%M:%S") {
+                    Ok(date_time) => Ok(Some(date_time)),
+                    Err(e) => Err(de::Error::custom(e)),
+                }
+            } else {
+                match NaiveDateTime::parse_from_str(&s, "%Y-%m-%dT%H:%M:%S%#z") {
+                    Ok(date_time) => Ok(Some(date_time)),
+                    Err(_) => Err(de::Error::custom(e)),
+                }
+            }
+        }
+    }
 }
