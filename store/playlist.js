@@ -63,7 +63,7 @@ export const actions = {
         const response = await this.$axios.get(`api/playlist/${channel}?date=${date}`)
 
         if (response.data && response.data.program) {
-            commit('UPDATE_PLAYLIST', this.$processPlaylist(rootState.config.startInSec, response.data.program))
+            commit('UPDATE_PLAYLIST', this.$processPlaylist(rootState.config.startInSec, rootState.config.playlistLength, response.data.program, false))
 
             if (date === dateToday) {
                 commit('UPDATE_TODAYS_PLAYLIST', _.cloneDeep(response.data.program))

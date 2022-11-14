@@ -1,10 +1,11 @@
 export default ({ app }, inject) => {
-    inject('processPlaylist', (dayStart, list) => {
+    inject('processPlaylist', (dayStart, length, list, forSave) => {
         if (!dayStart) {
             dayStart = 0
         }
 
         let begin = dayStart
+        const newList = []
 
         for (const item of list) {
             item.begin = begin
@@ -21,9 +22,24 @@ export default ({ app }, inject) => {
                 delete item.custom_filter
             }
 
+            if (begin + (item.out - item.in) > length + dayStart) {
+                item.class = 'overLength'
+
+                if (forSave) {
+                    item.out = (length + dayStart) - begin
+                }
+            }
+
+            if (forSave && begin >= length + dayStart) {
+                break
+            }
+
+            newList.push(item)
+
             begin += (item.out - item.in)
         }
-        return list
+
+        return newList
     })
 
     // convert time (00:00:00) string to seconds

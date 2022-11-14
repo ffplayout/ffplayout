@@ -1,6 +1,6 @@
 {
   "name": "ffplayout-frontend",
-  "version": "5.3.0",
+  "version": "5.3.1",
   "description": "Web GUI for ffplayout",
   "author": "Jonathan Baecker",
   "private": true,
@@ -16,7 +16,7 @@
     "@nuxtjs/dayjs": "^1.4.1",
     "@nuxtjs/dotenv": "^1.4.1",
     "bootstrap": "^4.6.2",
-    "bootstrap-vue": "^2.22.0",
+    "bootstrap-vue": "^2.23.1",
     "cookie-universal-nuxt": "^2.2.2",
     "jwt-decode": "^3.1.2",
     "lodash": "^4.17.21",
@@ -35,7 +35,7 @@
     "@nuxtjs/style-resources": "^1.2.1",
     "eslint": "^7.32.0",
     "eslint-plugin-nuxt": "3.2.0",
-    "sass": "^1.55.0",
+    "sass": "^1.56.1",
     "sass-loader": "^10.3.1"
   }
 }

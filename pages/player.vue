@@ -259,13 +259,13 @@
                                         :id="`clip_${index}`"
                                         :key="item.key"
                                         class="playlist-item"
-                                        :class="index === currentClipIndex ? 'active-playlist-clip' : ''"
+                                        :class="index === currentClipIndex ? 'active-playlist-clip' : item.class"
                                     >
                                         <b-row class="playlist-row">
                                             <b-col v-if="configPlayout.playlist.day_start" cols="1" class="timecode">
                                                 {{ item.begin | secondsToTime }}
                                             </b-col>
-                                            <b-col class="grabbing filename">
+                                            <b-col class="grabbing filename" :title="item.class === 'overLength' ? 'Clip exceeds the length of the day!' : ''">
                                                 {{ item.source | filename }}
                                             </b-col>
                                             <b-col cols="1" class="text-center playlist-input">
@@ -509,7 +509,7 @@ export default {
     },
 
     computed: {
-        ...mapState('config', ['configID', 'configGui', 'configPlayout', 'utcOffset', 'startInSec']),
+        ...mapState('config', ['configID', 'configGui', 'configPlayout', 'utcOffset', 'startInSec', 'playlistLength']),
         ...mapState('media', ['crumbs', 'folderTree']),
         ...mapState('playlist', [
             'timeStr', 'timeLeft', 'currentClip', 'progressValue', 'currentClipIndex',
@@ -519,7 +519,7 @@ export default {
                 return this.$store.state.playlist.playlist
             },
             set (list) {
-                this.$store.commit('playlist/UPDATE_PLAYLIST', this.$processPlaylist(this.startInSec, list))
+                this.$store.commit('playlist/UPDATE_PLAYLIST', this.$processPlaylist(this.startInSec, this.playlistLength, list, false))
             }
         }
     },
@@ -697,14 +697,14 @@ export default {
                     this.playlist[index].out = sec
                 }
 
-                this.$store.commit('playlist/UPDATE_PLAYLIST', this.$processPlaylist(this.startInSec, this.playlist))
+                this.$store.commit('playlist/UPDATE_PLAYLIST', this.$processPlaylist(this.startInSec, this.playlistLength, this.playlist, false))
             }
         },
 
         removeItemFromPlaylist (index) {
             this.playlist.splice(index, 1)
 
-            this.$store.commit('playlist/UPDATE_PLAYLIST', this.$processPlaylist(this.startInSec, this.playlist))
+            this.$store.commit('playlist/UPDATE_PLAYLIST', this.$processPlaylist(this.startInSec, this.playlistLength, this.playlist, false))
         },
 
         async resetPlaylist () {
@@ -766,7 +766,7 @@ export default {
                 }
             }
 
-            this.$store.commit('playlist/UPDATE_PLAYLIST', this.$processPlaylist(this.startInSec, tempList))
+            this.$store.commit('playlist/UPDATE_PLAYLIST', this.$processPlaylist(this.startInSec, this.playlistLength, tempList, false))
         },
 
         async generatePlaylist (listDate) {
@@ -780,14 +780,14 @@ export default {
                 this.$store.commit('UPDATE_VARIANT', 'success')
                 this.$store.commit('UPDATE_SHOW_ERROR_ALERT', true)
                 this.$store.commit('UPDATE_ERROR_ALERT_MESSAGE', 'Generate Playlist done...')
-                this.$store.commit('playlist/UPDATE_PLAYLIST', this.$processPlaylist(this.startInSec, generate.data.program))
+                this.$store.commit('playlist/UPDATE_PLAYLIST', this.$processPlaylist(this.startInSec, this.playlistLength, generate.data.program, false))
 
                 setTimeout(() => { this.$store.commit('UPDATE_SHOW_ERROR_ALERT', false) }, 2000)
             }
         },
 
         async savePlaylist (saveDate) {
-            this.$store.commit('playlist/UPDATE_PLAYLIST', this.$processPlaylist(this.startInSec, this.playlist))
+            this.$store.commit('playlist/UPDATE_PLAYLIST', this.$processPlaylist(this.startInSec, this.playlistLength, this.playlist, true))
             const saveList = this.playlist.map(({ begin, ...item }) => item)
 
             const postSave = await this.$axios.post(
@@ -848,7 +848,7 @@ export default {
             if (this.editId === undefined) {
                 const list = this.playlist
                 list.push(this.newSource)
-                this.$store.commit('playlist/UPDATE_PLAYLIST', this.$processPlaylist(this.startInSec, list))
+                this.$store.commit('playlist/UPDATE_PLAYLIST', this.$processPlaylist(this.startInSec, this.playlistLength, list, false))
             } else {
                 this.playlist[this.editId] = this.newSource
                 this.editId = undefined
@@ -1179,6 +1179,10 @@ export default {
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
+}
+
+.overLength {
+    background-color: #ed890641 !important;
 }
 
 </style>
