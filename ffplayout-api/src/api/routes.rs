@@ -81,13 +81,13 @@ pub struct ImportObj {
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct ProgramObj {
-    #[serde(default = "def_after", deserialize_with = "naive_date_time_from_str")]
+    #[serde(default = "time_after", deserialize_with = "naive_date_time_from_str")]
     start_after: NaiveDateTime,
-    #[serde(default = "def_before", deserialize_with = "naive_date_time_from_str")]
+    #[serde(default = "time_before", deserialize_with = "naive_date_time_from_str")]
     start_before: NaiveDateTime,
 }
 
-fn def_after() -> NaiveDateTime {
+fn time_after() -> NaiveDateTime {
     let today = Utc::now();
 
     chrono::Local
@@ -96,7 +96,7 @@ fn def_after() -> NaiveDateTime {
         .naive_local()
 }
 
-fn def_before() -> NaiveDateTime {
+fn time_before() -> NaiveDateTime {
     let today = Utc::now();
 
     chrono::Local
@@ -852,8 +852,22 @@ async fn import_playlist(
 ///
 /// Get program infos about given date, or current day
 ///
+/// Examples:
+///
+/// * get program from current day
+/// ```BASH
+/// curl -X GET http://127.0.0.1:8787/program/1/ -H 'Authorization: Bearer <TOKEN>'
+/// ```
+///
+/// * get a program range between two dates
 /// ```BASH
 /// curl -X GET http://127.0.0.1:8787/program/1/?start_after=2022-11-13T12:00:00&start_before=2022-11-20T11:59:59 \
+/// -H 'Authorization: Bearer <TOKEN>'
+/// ```
+///
+/// * get program from give day
+/// ```BASH
+/// curl -X GET http://127.0.0.1:8787/program/1/?start_after=2022-11-13T10:00:00 \
 /// -H 'Authorization: Bearer <TOKEN>'
 /// ```
 #[get("/program/{id}/")]
@@ -867,7 +881,14 @@ async fn get_program(
     let mut days = 0;
     let mut program = vec![];
     let after = obj.start_after;
-    let before = obj.start_before;
+    let mut before = obj.start_before;
+
+    if after > before {
+        before = chrono::Local
+            .ymd(after.year(), after.month(), after.day())
+            .and_hms_milli(23, 59, 59, 999)
+            .naive_local()
+    }
 
     if start_sec > time_to_sec(&after.format("%H:%M:%S").to_string()) {
         days = 1;
