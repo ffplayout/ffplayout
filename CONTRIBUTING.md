@@ -10,7 +10,7 @@
 
 #### **Ask for help**
 
-When something is not working, you can feel free to ask your question under issues. But please make some effort, so it makes it more easy to help. Please don't open issues in a "WhatsApp style", with only one line of text. As a general rule of thumb answer this points:
+When something is not working, you can feel free to ask your question under [discussions](https://github.com/ffplayout/ffplayout/discussions/categories/q-a). But please make some effort, so it makes it more easy to help. Please don't open discussion in a "WhatsApp style", with only one line of text. As a general rule of thumb answer this points:
 
 - what do you want to achieve?
 - what have you already tried?
