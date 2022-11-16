@@ -343,18 +343,18 @@ Examples:
 
 * get program from current day
 ```BASH
-curl -X GET http://127.0.0.1:8787/program/1/ -H 'Authorization: Bearer <TOKEN>'
+curl -X GET http://127.0.0.1:8787/api/program/1/ -H 'Authorization: Bearer <TOKEN>'
 ```
 
 * get a program range between two dates
 ```BASH
-curl -X GET http://127.0.0.1:8787/program/1/?start_after=2022-11-13T12:00:00&start_before=2022-11-20T11:59:59 \
+curl -X GET http://127.0.0.1:8787/api/program/1/?start_after=2022-11-13T12:00:00&start_before=2022-11-20T11:59:59 \
 -H 'Authorization: Bearer <TOKEN>'
 ```
 
 * get program from give day
 ```BASH
-curl -X GET http://127.0.0.1:8787/program/1/?start_after=2022-11-13T10:00:00 \
+curl -X GET http://127.0.0.1:8787/api/program/1/?start_after=2022-11-13T10:00:00 \
 -H 'Authorization: Bearer <TOKEN>'
 ```
 

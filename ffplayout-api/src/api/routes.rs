@@ -856,18 +856,18 @@ async fn import_playlist(
 ///
 /// * get program from current day
 /// ```BASH
-/// curl -X GET http://127.0.0.1:8787/program/1/ -H 'Authorization: Bearer <TOKEN>'
+/// curl -X GET http://127.0.0.1:8787/api/program/1/ -H 'Authorization: Bearer <TOKEN>'
 /// ```
 ///
 /// * get a program range between two dates
 /// ```BASH
-/// curl -X GET http://127.0.0.1:8787/program/1/?start_after=2022-11-13T12:00:00&start_before=2022-11-20T11:59:59 \
+/// curl -X GET http://127.0.0.1:8787/api/program/1/?start_after=2022-11-13T12:00:00&start_before=2022-11-20T11:59:59 \
 /// -H 'Authorization: Bearer <TOKEN>'
 /// ```
 ///
 /// * get program from give day
 /// ```BASH
-/// curl -X GET http://127.0.0.1:8787/program/1/?start_after=2022-11-13T10:00:00 \
+/// curl -X GET http://127.0.0.1:8787/api/program/1/?start_after=2022-11-13T10:00:00 \
 /// -H 'Authorization: Bearer <TOKEN>'
 /// ```
 #[get("/program/{id}/")]
@@ -876,7 +876,7 @@ async fn get_program(
     id: web::Path<i32>,
     obj: web::Query<ProgramObj>,
 ) -> Result<impl Responder, ServiceError> {
-    let (config, _) = playout_config(&*id).await?;
+    let (config, _) = playout_config(&id).await?;
     let start_sec = config.playlist.start_sec.unwrap();
     let mut days = 0;
     let mut program = vec![];
