@@ -24,7 +24,7 @@ use api::{
         update_preset, update_user,
     },
 };
-use db::models::LoginUser;
+use db::{db_pool, models::LoginUser};
 use utils::{args_parse::Args, db_path, init_config, run_args, Role};
 
 use ffplayout_lib::utils::{init_logging, PlayoutConfig};
@@ -64,7 +64,15 @@ async fn main() -> std::io::Result<()> {
     let logging = init_logging(&config, None, None);
     CombinedLogger::init(logging).unwrap();
 
-    if let Err(c) = run_args(args.clone()).await {
+    let pool = match db_pool().await {
+        Ok(p) => p,
+        Err(e) => {
+            error!("{e}");
+            exit(1);
+        }
+    };
+
+    if let Err(c) = run_args(&pool, args.clone()).await {
         exit(c);
     }
 
@@ -85,7 +93,10 @@ async fn main() -> std::io::Result<()> {
         // no allow origin here, give it to the reverse proxy
         HttpServer::new(move || {
             let auth = HttpAuthentication::bearer(validator);
+            let db_pool = web::Data::new(pool.clone());
+
             App::new()
+                .app_data(db_pool)
                 .wrap(middleware::Logger::default())
                 .service(login)
                 .service(

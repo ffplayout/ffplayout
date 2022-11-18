@@ -6,6 +6,7 @@ use futures_util::TryStreamExt as _;
 use rand::{distributions::Alphanumeric, Rng};
 use relative_path::RelativePath;
 use serde::{Deserialize, Serialize};
+use sqlx::{Pool, Sqlite};
 
 use simplelog::*;
 
@@ -87,8 +88,12 @@ fn norm_abs_path(root_path: &str, input_path: &str) -> (PathBuf, String, String)
 /// Take input path and give file and folder list from it back.
 /// Input should be a relative path segment, but when it is a absolut path, the norm_abs_path function
 /// will take care, that user can not break out from given storage path in config.
-pub async fn browser(id: i32, path_obj: &PathObject) -> Result<PathObject, ServiceError> {
-    let (config, _) = playout_config(&id).await?;
+pub async fn browser(
+    conn: &Pool<Sqlite>,
+    id: i32,
+    path_obj: &PathObject,
+) -> Result<PathObject, ServiceError> {
+    let (config, _) = playout_config(conn, &id).await?;
     let extensions = config.storage.extensions;
     let (path, parent, path_component) = norm_abs_path(&config.storage.path, &path_obj.source);
     let mut obj = PathObject::new(path_component, Some(parent));
@@ -143,10 +148,11 @@ pub async fn browser(id: i32, path_obj: &PathObject) -> Result<PathObject, Servi
 }
 
 pub async fn create_directory(
+    conn: &Pool<Sqlite>,
     id: i32,
     path_obj: &PathObject,
 ) -> Result<HttpResponse, ServiceError> {
-    let (config, _) = playout_config(&id).await?;
+    let (config, _) = playout_config(conn, &id).await?;
     let (path, _, _) = norm_abs_path(&config.storage.path, &path_obj.source);
 
     if let Err(e) = fs::create_dir_all(&path) {
@@ -198,8 +204,12 @@ fn rename(source: &PathBuf, target: &PathBuf) -> Result<MoveObject, ServiceError
     }
 }
 
-pub async fn rename_file(id: i32, move_object: &MoveObject) -> Result<MoveObject, ServiceError> {
-    let (config, _) = playout_config(&id).await?;
+pub async fn rename_file(
+    conn: &Pool<Sqlite>,
+    id: i32,
+    move_object: &MoveObject,
+) -> Result<MoveObject, ServiceError> {
+    let (config, _) = playout_config(conn, &id).await?;
     let (source_path, _, _) = norm_abs_path(&config.storage.path, &move_object.source);
     let (mut target_path, _, _) = norm_abs_path(&config.storage.path, &move_object.target);
 
@@ -229,8 +239,12 @@ pub async fn rename_file(id: i32, move_object: &MoveObject) -> Result<MoveObject
     Err(ServiceError::InternalServerError)
 }
 
-pub async fn remove_file_or_folder(id: i32, source_path: &str) -> Result<(), ServiceError> {
-    let (config, _) = playout_config(&id).await?;
+pub async fn remove_file_or_folder(
+    conn: &Pool<Sqlite>,
+    id: i32,
+    source_path: &str,
+) -> Result<(), ServiceError> {
+    let (config, _) = playout_config(conn, &id).await?;
     let (source, _, _) = norm_abs_path(&config.storage.path, source_path);
 
     if !source.exists() {
@@ -262,8 +276,8 @@ pub async fn remove_file_or_folder(id: i32, source_path: &str) -> Result<(), Ser
     Err(ServiceError::InternalServerError)
 }
 
-async fn valid_path(id: i32, path: &str) -> Result<PathBuf, ServiceError> {
-    let (config, _) = playout_config(&id).await?;
+async fn valid_path(conn: &Pool<Sqlite>, id: i32, path: &str) -> Result<PathBuf, ServiceError> {
+    let (config, _) = playout_config(conn, &id).await?;
     let (test_path, _, _) = norm_abs_path(&config.storage.path, path);
 
     if !test_path.is_dir() {
@@ -274,6 +288,7 @@ async fn valid_path(id: i32, path: &str) -> Result<PathBuf, ServiceError> {
 }
 
 pub async fn upload(
+    conn: &Pool<Sqlite>,
     id: i32,
     mut payload: Multipart,
     path: &str,
@@ -296,7 +311,7 @@ pub async fn upload(
         if abs_path {
             filepath = PathBuf::from(path);
         } else {
-            let target_path = valid_path(id, path).await?;
+            let target_path = valid_path(conn, id, path).await?;
             filepath = target_path.join(filename);
         }
 

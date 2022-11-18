@@ -11,6 +11,7 @@ use once_cell::sync::OnceCell;
 use rpassword::read_password;
 use serde::{de, Deserialize, Deserializer};
 use simplelog::*;
+use sqlx::{Pool, Sqlite};
 
 pub mod args_parse;
 pub mod channels;
@@ -89,7 +90,7 @@ pub fn db_path() -> Result<String, Box<dyn std::error::Error>> {
     Ok(db_path)
 }
 
-pub async fn run_args(mut args: Args) -> Result<(), i32> {
+pub async fn run_args(conn: &Pool<Sqlite>, mut args: Args) -> Result<(), i32> {
     if !args.init && args.listen.is_none() && !args.ask && args.username.is_none() {
         error!("Wrong number of arguments! Run ffpapi --help for more information.");
 
@@ -161,7 +162,7 @@ pub async fn run_args(mut args: Args) -> Result<(), i32> {
             token: None,
         };
 
-        if let Err(e) = insert_user(user).await {
+        if let Err(e) = insert_user(conn, user).await {
             error!("{e}");
             return Err(1);
         };
@@ -183,8 +184,11 @@ pub fn read_playout_config(path: &str) -> Result<PlayoutConfig, Box<dyn Error>> 
     Ok(config)
 }
 
-pub async fn playout_config(channel_id: &i32) -> Result<(PlayoutConfig, Channel), ServiceError> {
-    if let Ok(channel) = select_channel(channel_id).await {
+pub async fn playout_config(
+    conn: &Pool<Sqlite>,
+    channel_id: &i32,
+) -> Result<(PlayoutConfig, Channel), ServiceError> {
+    if let Ok(channel) = select_channel(conn, channel_id).await {
         if let Ok(config) = read_playout_config(&channel.config_path.clone()) {
             return Ok((config, channel));
         }
@@ -195,8 +199,12 @@ pub async fn playout_config(channel_id: &i32) -> Result<(PlayoutConfig, Channel)
     ))
 }
 
-pub async fn read_log_file(channel_id: &i32, date: &str) -> Result<String, ServiceError> {
-    if let Ok(channel) = select_channel(channel_id).await {
+pub async fn read_log_file(
+    conn: &Pool<Sqlite>,
+    channel_id: &i32,
+    date: &str,
+) -> Result<String, ServiceError> {
+    if let Ok(channel) = select_channel(conn, channel_id).await {
         let mut date_str = "".to_string();
 
         if !date.is_empty() {
