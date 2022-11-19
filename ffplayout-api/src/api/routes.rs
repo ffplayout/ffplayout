@@ -135,9 +135,9 @@ struct ProgramItem {
 /// }
 /// ```
 #[post("/auth/login/")]
-pub async fn login(pool: web::Data<&Pool<Sqlite>>, credentials: web::Json<User>) -> impl Responder {
-    let conn = &pool.into_inner();
-    match handles::select_login(conn, &credentials.username).await {
+pub async fn login(pool: web::Data<Pool<Sqlite>>, credentials: web::Json<User>) -> impl Responder {
+    let conn = pool.into_inner();
+    match handles::select_login(&conn, &credentials.username).await {
         Ok(mut user) => {
             let pass = user.password.clone();
             let hash = PasswordHash::new(&pass).unwrap();
@@ -148,7 +148,7 @@ pub async fn login(pool: web::Data<&Pool<Sqlite>>, credentials: web::Json<User>)
                 .verify_password(credentials.password.as_bytes(), &hash)
                 .is_ok()
             {
-                let role = handles::select_role(conn, &user.role_id.unwrap_or_default())
+                let role = handles::select_role(&conn, &user.role_id.unwrap_or_default())
                     .await
                     .unwrap_or_else(|_| "guest".to_string());
                 let claims = Claims::new(user.id, user.username.clone(), role.clone());
@@ -199,7 +199,7 @@ pub async fn login(pool: web::Data<&Pool<Sqlite>>, credentials: web::Json<User>)
 #[get("/user")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 async fn get_user(
-    pool: web::Data<&Pool<Sqlite>>,
+    pool: web::Data<Pool<Sqlite>>,
     user: web::ReqData<LoginUser>,
 ) -> Result<impl Responder, ServiceError> {
     match handles::select_user(&pool.into_inner(), &user.username).await {
@@ -220,7 +220,7 @@ async fn get_user(
 #[put("/user/{id}")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 async fn update_user(
-    pool: web::Data<&Pool<Sqlite>>,
+    pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
     user: web::ReqData<LoginUser>,
     data: web::Json<User>,
@@ -268,7 +268,7 @@ async fn update_user(
 #[post("/user/")]
 #[has_any_role("Role::Admin", type = "Role")]
 async fn add_user(
-    pool: web::Data<&Pool<Sqlite>>,
+    pool: web::Data<Pool<Sqlite>>,
     data: web::Json<User>,
 ) -> Result<impl Responder, ServiceError> {
     match handles::insert_user(&pool.into_inner(), data.into_inner()).await {
@@ -304,7 +304,7 @@ async fn add_user(
 #[get("/channel/{id}")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 async fn get_channel(
-    pool: web::Data<&Pool<Sqlite>>,
+    pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
 ) -> Result<impl Responder, ServiceError> {
     if let Ok(channel) = handles::select_channel(&pool.into_inner(), &id).await {
@@ -321,7 +321,7 @@ async fn get_channel(
 /// ```
 #[get("/channels")]
 #[has_any_role("Role::Admin", type = "Role")]
-async fn get_all_channels(pool: web::Data<&Pool<Sqlite>>) -> Result<impl Responder, ServiceError> {
+async fn get_all_channels(pool: web::Data<Pool<Sqlite>>) -> Result<impl Responder, ServiceError> {
     if let Ok(channel) = handles::select_all_channels(&pool.into_inner()).await {
         return Ok(web::Json(channel));
     }
@@ -340,7 +340,7 @@ async fn get_all_channels(pool: web::Data<&Pool<Sqlite>>) -> Result<impl Respond
 #[patch("/channel/{id}")]
 #[has_any_role("Role::Admin", type = "Role")]
 async fn patch_channel(
-    pool: web::Data<&Pool<Sqlite>>,
+    pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
     data: web::Json<Channel>,
 ) -> Result<impl Responder, ServiceError> {
@@ -366,7 +366,7 @@ async fn patch_channel(
 #[post("/channel/")]
 #[has_any_role("Role::Admin", type = "Role")]
 async fn add_channel(
-    pool: web::Data<&Pool<Sqlite>>,
+    pool: web::Data<Pool<Sqlite>>,
     data: web::Json<Channel>,
 ) -> Result<impl Responder, ServiceError> {
     match create_channel(&pool.into_inner(), data.into_inner()).await {
@@ -383,7 +383,7 @@ async fn add_channel(
 #[delete("/channel/{id}")]
 #[has_any_role("Role::Admin", type = "Role")]
 async fn remove_channel(
-    pool: web::Data<&Pool<Sqlite>>,
+    pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
 ) -> Result<impl Responder, ServiceError> {
     if delete_channel(&pool.into_inner(), *id).await.is_ok() {
@@ -405,7 +405,7 @@ async fn remove_channel(
 #[get("/playout/config/{id}")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 async fn get_playout_config(
-    pool: web::Data<&Pool<Sqlite>>,
+    pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
     _details: AuthDetails<Role>,
 ) -> Result<impl Responder, ServiceError> {
@@ -427,7 +427,7 @@ async fn get_playout_config(
 #[put("/playout/config/{id}")]
 #[has_any_role("Role::Admin", type = "Role")]
 async fn update_playout_config(
-    pool: web::Data<&Pool<Sqlite>>,
+    pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
     data: web::Json<PlayoutConfig>,
 ) -> Result<impl Responder, ServiceError> {
@@ -461,7 +461,7 @@ async fn update_playout_config(
 #[get("/presets/{id}")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 async fn get_presets(
-    pool: web::Data<&Pool<Sqlite>>,
+    pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
 ) -> Result<impl Responder, ServiceError> {
     if let Ok(presets) = handles::select_presets(&pool.into_inner(), *id).await {
@@ -482,7 +482,7 @@ async fn get_presets(
 #[put("/presets/{id}")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 async fn update_preset(
-    pool: web::Data<&Pool<Sqlite>>,
+    pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
     data: web::Json<TextPreset>,
 ) -> Result<impl Responder, ServiceError> {
@@ -507,7 +507,7 @@ async fn update_preset(
 #[post("/presets/")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 async fn add_preset(
-    pool: web::Data<&Pool<Sqlite>>,
+    pool: web::Data<Pool<Sqlite>>,
     data: web::Json<TextPreset>,
 ) -> Result<impl Responder, ServiceError> {
     if handles::insert_preset(&pool.into_inner(), data.into_inner())
@@ -529,7 +529,7 @@ async fn add_preset(
 #[delete("/presets/{id}")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 async fn delete_preset(
-    pool: web::Data<&Pool<Sqlite>>,
+    pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
 ) -> Result<impl Responder, ServiceError> {
     if handles::delete_preset(&pool.into_inner(), &id)
@@ -562,7 +562,7 @@ async fn delete_preset(
 #[post("/control/{id}/text/")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 pub async fn send_text_message(
-    pool: web::Data<&Pool<Sqlite>>,
+    pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
     data: web::Json<HashMap<String, String>>,
 ) -> Result<impl Responder, ServiceError> {
@@ -585,7 +585,7 @@ pub async fn send_text_message(
 #[post("/control/{id}/playout/")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 pub async fn control_playout(
-    pool: web::Data<&Pool<Sqlite>>,
+    pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
     control: web::Json<Process>,
 ) -> Result<impl Responder, ServiceError> {
@@ -628,7 +628,7 @@ pub async fn control_playout(
 #[get("/control/{id}/media/current")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 pub async fn media_current(
-    pool: web::Data<&Pool<Sqlite>>,
+    pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
 ) -> Result<impl Responder, ServiceError> {
     match media_info(&pool.into_inner(), *id, "current".into()).await {
@@ -645,7 +645,7 @@ pub async fn media_current(
 #[get("/control/{id}/media/next")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 pub async fn media_next(
-    pool: web::Data<&Pool<Sqlite>>,
+    pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
 ) -> Result<impl Responder, ServiceError> {
     match media_info(&pool.into_inner(), *id, "next".into()).await {
@@ -663,7 +663,7 @@ pub async fn media_next(
 #[get("/control/{id}/media/last")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 pub async fn media_last(
-    pool: web::Data<&Pool<Sqlite>>,
+    pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
 ) -> Result<impl Responder, ServiceError> {
     match media_info(&pool.into_inner(), *id, "last".into()).await {
@@ -688,7 +688,7 @@ pub async fn media_last(
 #[post("/control/{id}/process/")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 pub async fn process_control(
-    pool: web::Data<&Pool<Sqlite>>,
+    pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
     proc: web::Json<Process>,
 ) -> Result<impl Responder, ServiceError> {
@@ -706,7 +706,7 @@ pub async fn process_control(
 #[get("/playlist/{id}")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 pub async fn get_playlist(
-    pool: web::Data<&Pool<Sqlite>>,
+    pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
     obj: web::Query<DateObj>,
 ) -> Result<impl Responder, ServiceError> {
@@ -726,7 +726,7 @@ pub async fn get_playlist(
 #[post("/playlist/{id}/")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 pub async fn save_playlist(
-    pool: web::Data<&Pool<Sqlite>>,
+    pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
     data: web::Json<JsonPlaylist>,
 ) -> Result<impl Responder, ServiceError> {
@@ -747,7 +747,7 @@ pub async fn save_playlist(
 #[get("/playlist/{id}/generate/{date}")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 pub async fn gen_playlist(
-    pool: web::Data<&Pool<Sqlite>>,
+    pool: web::Data<Pool<Sqlite>>,
     params: web::Path<(i32, String)>,
 ) -> Result<impl Responder, ServiceError> {
     match generate_playlist(&pool.into_inner(), params.0, params.1.clone()).await {
@@ -765,7 +765,7 @@ pub async fn gen_playlist(
 #[delete("/playlist/{id}/{date}")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 pub async fn del_playlist(
-    pool: web::Data<&Pool<Sqlite>>,
+    pool: web::Data<Pool<Sqlite>>,
     params: web::Path<(i32, String)>,
 ) -> Result<impl Responder, ServiceError> {
     match delete_playlist(&pool.into_inner(), params.0, &params.1).await {
@@ -785,7 +785,7 @@ pub async fn del_playlist(
 #[get("/log/{id}")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 pub async fn get_log(
-    pool: web::Data<&Pool<Sqlite>>,
+    pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
     log: web::Query<DateObj>,
 ) -> Result<impl Responder, ServiceError> {
@@ -803,7 +803,7 @@ pub async fn get_log(
 #[post("/file/{id}/browse/")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 pub async fn file_browser(
-    pool: web::Data<&Pool<Sqlite>>,
+    pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
     data: web::Json<PathObject>,
 ) -> Result<impl Responder, ServiceError> {
@@ -822,7 +822,7 @@ pub async fn file_browser(
 #[post("/file/{id}/create-folder/")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 pub async fn add_dir(
-    pool: web::Data<&Pool<Sqlite>>,
+    pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
     data: web::Json<PathObject>,
 ) -> Result<HttpResponse, ServiceError> {
@@ -838,7 +838,7 @@ pub async fn add_dir(
 #[post("/file/{id}/rename/")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 pub async fn move_rename(
-    pool: web::Data<&Pool<Sqlite>>,
+    pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
     data: web::Json<MoveObject>,
 ) -> Result<impl Responder, ServiceError> {
@@ -857,7 +857,7 @@ pub async fn move_rename(
 #[post("/file/{id}/remove/")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 pub async fn remove(
-    pool: web::Data<&Pool<Sqlite>>,
+    pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
     data: web::Json<PathObject>,
 ) -> Result<impl Responder, ServiceError> {
@@ -876,7 +876,7 @@ pub async fn remove(
 #[put("/file/{id}/upload/")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 async fn save_file(
-    pool: web::Data<&Pool<Sqlite>>,
+    pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
     payload: Multipart,
     obj: web::Query<FileObj>,
@@ -896,7 +896,7 @@ async fn save_file(
 #[put("/file/{id}/import/")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 async fn import_playlist(
-    pool: web::Data<&Pool<Sqlite>>,
+    pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
     payload: Multipart,
     obj: web::Query<ImportObj>,
@@ -939,7 +939,7 @@ async fn import_playlist(
 #[get("/program/{id}/")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 async fn get_program(
-    pool: web::Data<&Pool<Sqlite>>,
+    pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
     obj: web::Query<ProgramObj>,
 ) -> Result<impl Responder, ServiceError> {
