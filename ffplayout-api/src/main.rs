@@ -83,7 +83,7 @@ async fn main() -> std::io::Result<()> {
                 exit(1);
             }
         }
-        init_config().await;
+        init_config(&pool).await;
         let ip_port = conn.split(':').collect::<Vec<&str>>();
         let addr = ip_port[0];
         let port = ip_port[1].parse::<u16>().unwrap();

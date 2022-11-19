@@ -50,8 +50,8 @@ pub struct GlobalSettings {
 }
 
 impl GlobalSettings {
-    async fn new() -> Self {
-        let global_settings = select_global();
+    async fn new(conn: &Pool<Sqlite>) -> Self {
+        let global_settings = select_global(conn);
 
         match global_settings.await {
             Ok(g) => g,
@@ -68,8 +68,8 @@ impl GlobalSettings {
 
 static INSTANCE: OnceCell<GlobalSettings> = OnceCell::new();
 
-pub async fn init_config() {
-    let config = GlobalSettings::new().await;
+pub async fn init_config(conn: &Pool<Sqlite>) {
+    let config = GlobalSettings::new(conn).await;
     INSTANCE.set(config).unwrap();
 }
 
@@ -98,7 +98,7 @@ pub async fn run_args(conn: &Pool<Sqlite>, mut args: Args) -> Result<(), i32> {
     }
 
     if args.init {
-        if let Err(e) = db_init(args.domain).await {
+        if let Err(e) = db_init(conn, args.domain).await {
             panic!("{e}");
         };
 

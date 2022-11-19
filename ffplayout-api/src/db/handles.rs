@@ -7,10 +7,7 @@ use rand::{distributions::Alphanumeric, Rng};
 use simplelog::*;
 use sqlx::{migrate::MigrateDatabase, sqlite::SqliteQueryResult, Pool, Sqlite};
 
-use crate::db::{
-    db_pool,
-    models::{Channel, TextPreset, User},
-};
+use crate::db::models::{Channel, TextPreset, User};
 use crate::utils::{db_path, local_utc_offset, GlobalSettings};
 
 #[derive(Debug, sqlx::FromRow)]
@@ -77,13 +74,15 @@ async fn create_schema(conn: &Pool<Sqlite>) -> Result<SqliteQueryResult, sqlx::E
     sqlx::query(query).execute(conn).await
 }
 
-pub async fn db_init(domain: Option<String>) -> Result<&'static str, Box<dyn std::error::Error>> {
-    let conn = db_pool().await?;
+pub async fn db_init(
+    conn: &Pool<Sqlite>,
+    domain: Option<String>,
+) -> Result<&'static str, Box<dyn std::error::Error>> {
     let db_path = db_path()?;
 
     if !Sqlite::database_exists(&db_path).await.unwrap_or(false) {
         Sqlite::create_database(&db_path).await.unwrap();
-        match create_schema(&conn).await {
+        match create_schema(conn).await {
             Ok(_) => info!("Database created Successfully"),
             Err(e) => panic!("{e}"),
         }
@@ -119,17 +118,16 @@ pub async fn db_init(domain: Option<String>) -> Result<&'static str, Box<dyn std
     sqlx::query(query)
         .bind(secret)
         .bind(url)
-        .execute(&conn)
+        .execute(conn)
         .await?;
 
     Ok("Database initialized!")
 }
 
-pub async fn select_global() -> Result<GlobalSettings, sqlx::Error> {
-    let conn = db_pool().await?;
+pub async fn select_global(conn: &Pool<Sqlite>) -> Result<GlobalSettings, sqlx::Error> {
     let query = "SELECT secret FROM global WHERE id = 1";
 
-    sqlx::query_as(query).fetch_one(&conn).await
+    sqlx::query_as(query).fetch_one(conn).await
 }
 
 pub async fn select_channel(conn: &Pool<Sqlite>, id: &i32) -> Result<Channel, sqlx::Error> {
