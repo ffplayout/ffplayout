@@ -92,8 +92,8 @@ fn time_after() -> NaiveDateTime {
     let today = Utc::now();
 
     chrono::Local
-        .ymd(today.year(), today.month(), today.day())
-        .and_hms(0, 0, 0)
+        .with_ymd_and_hms(today.year(), today.month(), today.day(), 0, 0, 0)
+        .unwrap()
         .naive_local()
 }
 
@@ -101,8 +101,8 @@ fn time_before() -> NaiveDateTime {
     let today = Utc::now();
 
     chrono::Local
-        .ymd(today.year(), today.month(), today.day())
-        .and_hms_milli(23, 59, 59, 999)
+        .with_ymd_and_hms(today.year(), today.month(), today.day(), 23, 59, 59)
+        .unwrap()
         .naive_local()
 }
 
@@ -952,8 +952,8 @@ async fn get_program(
 
     if after > before {
         before = chrono::Local
-            .ymd(after.year(), after.month(), after.day())
-            .and_hms_milli(23, 59, 59, 999)
+            .with_ymd_and_hms(after.year(), after.month(), after.day(), 23, 59, 59)
+            .unwrap()
             .naive_local()
     }
 
