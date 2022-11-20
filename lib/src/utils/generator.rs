@@ -14,41 +14,12 @@ use std::{
     sync::{atomic::AtomicUsize, Arc, Mutex},
 };
 
-use chrono::{Duration, NaiveDate};
 use simplelog::*;
 
 use super::folder::FolderSource;
-use crate::utils::{json_serializer::JsonPlaylist, time_to_sec, Media, PlayoutConfig};
-
-/// Generate a vector with dates, from given range.
-fn get_date_range(date_range: &[String]) -> Vec<String> {
-    let mut range = vec![];
-
-    let start = match NaiveDate::parse_from_str(&date_range[0], "%Y-%m-%d") {
-        Ok(s) => s,
-        Err(_) => {
-            error!("date format error in: <yellow>{:?}</>", date_range[0]);
-            exit(1);
-        }
-    };
-
-    let end = match NaiveDate::parse_from_str(&date_range[2], "%Y-%m-%d") {
-        Ok(e) => e,
-        Err(_) => {
-            error!("date format error in: <yellow>{:?}</>", date_range[2]);
-            exit(1);
-        }
-    };
-
-    let duration = end.signed_duration_since(start);
-    let days = duration.num_days() + 1;
-
-    for day in 0..days {
-        range.push((start + Duration::days(day)).format("%Y-%m-%d").to_string());
-    }
-
-    range
-}
+use crate::utils::{
+    get_date_range, json_serializer::JsonPlaylist, time_to_sec, Media, PlayoutConfig,
+};
 
 /// Generate playlists
 pub fn generate_playlist(

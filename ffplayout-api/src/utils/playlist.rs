@@ -1,14 +1,19 @@
 use std::{fs, path::PathBuf};
 
 use simplelog::*;
+use sqlx::{Pool, Sqlite};
 
 use crate::utils::{errors::ServiceError, playout_config};
 use ffplayout_lib::utils::{
     generate_playlist as playlist_generator, json_reader, json_writer, JsonPlaylist,
 };
 
-pub async fn read_playlist(id: i32, date: String) -> Result<JsonPlaylist, ServiceError> {
-    let (config, _) = playout_config(&id).await?;
+pub async fn read_playlist(
+    conn: &Pool<Sqlite>,
+    id: i32,
+    date: String,
+) -> Result<JsonPlaylist, ServiceError> {
+    let (config, _) = playout_config(conn, &id).await?;
     let mut playlist_path = PathBuf::from(&config.playlist.path);
     let d: Vec<&str> = date.split('-').collect();
     playlist_path = playlist_path
@@ -23,8 +28,12 @@ pub async fn read_playlist(id: i32, date: String) -> Result<JsonPlaylist, Servic
     }
 }
 
-pub async fn write_playlist(id: i32, json_data: JsonPlaylist) -> Result<String, ServiceError> {
-    let (config, _) = playout_config(&id).await?;
+pub async fn write_playlist(
+    conn: &Pool<Sqlite>,
+    id: i32,
+    json_data: JsonPlaylist,
+) -> Result<String, ServiceError> {
+    let (config, _) = playout_config(conn, &id).await?;
     let date = json_data.date.clone();
     let mut playlist_path = PathBuf::from(&config.playlist.path);
     let d: Vec<&str> = date.split('-').collect();
@@ -68,8 +77,12 @@ pub async fn write_playlist(id: i32, json_data: JsonPlaylist) -> Result<String, 
     Err(ServiceError::InternalServerError)
 }
 
-pub async fn generate_playlist(id: i32, date: String) -> Result<JsonPlaylist, ServiceError> {
-    let (mut config, channel) = playout_config(&id).await?;
+pub async fn generate_playlist(
+    conn: &Pool<Sqlite>,
+    id: i32,
+    date: String,
+) -> Result<JsonPlaylist, ServiceError> {
+    let (mut config, channel) = playout_config(conn, &id).await?;
     config.general.generate = Some(vec![date.clone()]);
 
     match playlist_generator(&config, Some(channel.name)) {
@@ -89,8 +102,8 @@ pub async fn generate_playlist(id: i32, date: String) -> Result<JsonPlaylist, Se
     }
 }
 
-pub async fn delete_playlist(id: i32, date: &str) -> Result<(), ServiceError> {
-    let (config, _) = playout_config(&id).await?;
+pub async fn delete_playlist(conn: &Pool<Sqlite>, id: i32, date: &str) -> Result<(), ServiceError> {
+    let (config, _) = playout_config(conn, &id).await?;
     let mut playlist_path = PathBuf::from(&config.playlist.path);
     let d: Vec<&str> = date.split('-').collect();
     playlist_path = playlist_path

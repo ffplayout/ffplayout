@@ -797,6 +797,36 @@ pub fn test_tcp_port(url: &str) -> bool {
     false
 }
 
+/// Generate a vector with dates, from given range.
+pub fn get_date_range(date_range: &[String]) -> Vec<String> {
+    let mut range = vec![];
+
+    let start = match NaiveDate::parse_from_str(&date_range[0], "%Y-%m-%d") {
+        Ok(s) => s,
+        Err(_) => {
+            error!("date format error in: <yellow>{:?}</>", date_range[0]);
+            exit(1);
+        }
+    };
+
+    let end = match NaiveDate::parse_from_str(&date_range[2], "%Y-%m-%d") {
+        Ok(e) => e,
+        Err(_) => {
+            error!("date format error in: <yellow>{:?}</>", date_range[2]);
+            exit(1);
+        }
+    };
+
+    let duration = end.signed_duration_since(start);
+    let days = duration.num_days() + 1;
+
+    for day in 0..days {
+        range.push((start + Duration::days(day)).format("%Y-%m-%d").to_string());
+    }
+
+    range
+}
+
 pub fn home_dir() -> Option<PathBuf> {
     home_dir_inner()
 }

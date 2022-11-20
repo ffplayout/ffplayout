@@ -17,8 +17,11 @@ use argon2::{
     password_hash::{rand_core::OsRng, PasswordHash, SaltString},
     Argon2, PasswordHasher, PasswordVerifier,
 };
+use chrono::{DateTime, Datelike, Duration, Local, NaiveDateTime, TimeZone, Utc};
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use simplelog::*;
+use sqlx::{Pool, Sqlite};
 
 use crate::auth::{create_jwt, Claims};
 use crate::db::{
@@ -33,10 +36,16 @@ use crate::utils::{
         browser, create_directory, remove_file_or_folder, rename_file, upload, MoveObject,
         PathObject,
     },
+    naive_date_time_from_str,
     playlist::{delete_playlist, generate_playlist, read_playlist, write_playlist},
     playout_config, read_log_file, read_playout_config, Role,
 };
-use ffplayout_lib::utils::{import::import_file, JsonPlaylist, PlayoutConfig};
+use ffplayout_lib::{
+    utils::{
+        get_date_range, import::import_file, sec_to_time, time_to_sec, JsonPlaylist, PlayoutConfig,
+    },
+    vec_strings,
+};
 
 #[derive(Serialize)]
 struct ResponseObj<T> {
@@ -71,6 +80,42 @@ pub struct ImportObj {
     date: String,
 }
 
+#[derive(Debug, Deserialize, Clone)]
+pub struct ProgramObj {
+    #[serde(default = "time_after", deserialize_with = "naive_date_time_from_str")]
+    start_after: NaiveDateTime,
+    #[serde(default = "time_before", deserialize_with = "naive_date_time_from_str")]
+    start_before: NaiveDateTime,
+}
+
+fn time_after() -> NaiveDateTime {
+    let today = Utc::now();
+
+    chrono::Local
+        .with_ymd_and_hms(today.year(), today.month(), today.day(), 0, 0, 0)
+        .unwrap()
+        .naive_local()
+}
+
+fn time_before() -> NaiveDateTime {
+    let today = Utc::now();
+
+    chrono::Local
+        .with_ymd_and_hms(today.year(), today.month(), today.day(), 23, 59, 59)
+        .unwrap()
+        .naive_local()
+}
+
+#[derive(Debug, Serialize)]
+struct ProgramItem {
+    source: String,
+    start: String,
+    r#in: f64,
+    out: f64,
+    duration: f64,
+    category: String,
+}
+
 /// #### User Handling
 ///
 /// **Login**
@@ -90,8 +135,9 @@ pub struct ImportObj {
 /// }
 /// ```
 #[post("/auth/login/")]
-pub async fn login(credentials: web::Json<User>) -> impl Responder {
-    match handles::select_login(&credentials.username).await {
+pub async fn login(pool: web::Data<Pool<Sqlite>>, credentials: web::Json<User>) -> impl Responder {
+    let conn = pool.into_inner();
+    match handles::select_login(&conn, &credentials.username).await {
         Ok(mut user) => {
             let pass = user.password.clone();
             let hash = PasswordHash::new(&pass).unwrap();
@@ -102,7 +148,7 @@ pub async fn login(credentials: web::Json<User>) -> impl Responder {
                 .verify_password(credentials.password.as_bytes(), &hash)
                 .is_ok()
             {
-                let role = handles::select_role(&user.role_id.unwrap_or_default())
+                let role = handles::select_role(&conn, &user.role_id.unwrap_or_default())
                     .await
                     .unwrap_or_else(|_| "guest".to_string());
                 let claims = Claims::new(user.id, user.username.clone(), role.clone());
@@ -152,8 +198,11 @@ pub async fn login(credentials: web::Json<User>) -> impl Responder {
 /// ```
 #[get("/user")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
-async fn get_user(user: web::ReqData<LoginUser>) -> Result<impl Responder, ServiceError> {
-    match handles::select_user(&user.username).await {
+async fn get_user(
+    pool: web::Data<Pool<Sqlite>>,
+    user: web::ReqData<LoginUser>,
+) -> Result<impl Responder, ServiceError> {
+    match handles::select_user(&pool.into_inner(), &user.username).await {
         Ok(user) => Ok(web::Json(user)),
         Err(e) => {
             error!("{e}");
@@ -171,6 +220,7 @@ async fn get_user(user: web::ReqData<LoginUser>) -> Result<impl Responder, Servi
 #[put("/user/{id}")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 async fn update_user(
+    pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
     user: web::ReqData<LoginUser>,
     data: web::Json<User>,
@@ -195,7 +245,10 @@ async fn update_user(
             fields.push_str(format!("password = '{}', salt = '{salt}'", password_hash).as_str());
         }
 
-        if handles::update_user(user.id, fields).await.is_ok() {
+        if handles::update_user(&pool.into_inner(), user.id, fields)
+            .await
+            .is_ok()
+        {
             return Ok("Update Success");
         };
 
@@ -214,8 +267,11 @@ async fn update_user(
 /// ```
 #[post("/user/")]
 #[has_any_role("Role::Admin", type = "Role")]
-async fn add_user(data: web::Json<User>) -> Result<impl Responder, ServiceError> {
-    match handles::insert_user(data.into_inner()).await {
+async fn add_user(
+    pool: web::Data<Pool<Sqlite>>,
+    data: web::Json<User>,
+) -> Result<impl Responder, ServiceError> {
+    match handles::insert_user(&pool.into_inner(), data.into_inner()).await {
         Ok(_) => Ok("Add User Success"),
         Err(e) => {
             error!("{e}");
@@ -247,8 +303,11 @@ async fn add_user(data: web::Json<User>) -> Result<impl Responder, ServiceError>
 /// ```
 #[get("/channel/{id}")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
-async fn get_channel(id: web::Path<i32>) -> Result<impl Responder, ServiceError> {
-    if let Ok(channel) = handles::select_channel(&id).await {
+async fn get_channel(
+    pool: web::Data<Pool<Sqlite>>,
+    id: web::Path<i32>,
+) -> Result<impl Responder, ServiceError> {
+    if let Ok(channel) = handles::select_channel(&pool.into_inner(), &id).await {
         return Ok(web::Json(channel));
     }
 
@@ -262,8 +321,8 @@ async fn get_channel(id: web::Path<i32>) -> Result<impl Responder, ServiceError>
 /// ```
 #[get("/channels")]
 #[has_any_role("Role::Admin", type = "Role")]
-async fn get_all_channels() -> Result<impl Responder, ServiceError> {
-    if let Ok(channel) = handles::select_all_channels().await {
+async fn get_all_channels(pool: web::Data<Pool<Sqlite>>) -> Result<impl Responder, ServiceError> {
+    if let Ok(channel) = handles::select_all_channels(&pool.into_inner()).await {
         return Ok(web::Json(channel));
     }
 
@@ -281,10 +340,11 @@ async fn get_all_channels() -> Result<impl Responder, ServiceError> {
 #[patch("/channel/{id}")]
 #[has_any_role("Role::Admin", type = "Role")]
 async fn patch_channel(
+    pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
     data: web::Json<Channel>,
 ) -> Result<impl Responder, ServiceError> {
-    if handles::update_channel(*id, data.into_inner())
+    if handles::update_channel(&pool.into_inner(), *id, data.into_inner())
         .await
         .is_ok()
     {
@@ -305,8 +365,11 @@ async fn patch_channel(
 /// ```
 #[post("/channel/")]
 #[has_any_role("Role::Admin", type = "Role")]
-async fn add_channel(data: web::Json<Channel>) -> Result<impl Responder, ServiceError> {
-    match create_channel(data.into_inner()).await {
+async fn add_channel(
+    pool: web::Data<Pool<Sqlite>>,
+    data: web::Json<Channel>,
+) -> Result<impl Responder, ServiceError> {
+    match create_channel(&pool.into_inner(), data.into_inner()).await {
         Ok(c) => Ok(web::Json(c)),
         Err(e) => Err(e),
     }
@@ -319,8 +382,11 @@ async fn add_channel(data: web::Json<Channel>) -> Result<impl Responder, Service
 /// ```
 #[delete("/channel/{id}")]
 #[has_any_role("Role::Admin", type = "Role")]
-async fn remove_channel(id: web::Path<i32>) -> Result<impl Responder, ServiceError> {
-    if delete_channel(*id).await.is_ok() {
+async fn remove_channel(
+    pool: web::Data<Pool<Sqlite>>,
+    id: web::Path<i32>,
+) -> Result<impl Responder, ServiceError> {
+    if delete_channel(&pool.into_inner(), *id).await.is_ok() {
         return Ok("Delete Channel Success");
     }
 
@@ -339,10 +405,11 @@ async fn remove_channel(id: web::Path<i32>) -> Result<impl Responder, ServiceErr
 #[get("/playout/config/{id}")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 async fn get_playout_config(
+    pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
     _details: AuthDetails<Role>,
 ) -> Result<impl Responder, ServiceError> {
-    if let Ok(channel) = handles::select_channel(&id).await {
+    if let Ok(channel) = handles::select_channel(&pool.into_inner(), &id).await {
         if let Ok(config) = read_playout_config(&channel.config_path) {
             return Ok(web::Json(config));
         }
@@ -360,10 +427,11 @@ async fn get_playout_config(
 #[put("/playout/config/{id}")]
 #[has_any_role("Role::Admin", type = "Role")]
 async fn update_playout_config(
+    pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
     data: web::Json<PlayoutConfig>,
 ) -> Result<impl Responder, ServiceError> {
-    if let Ok(channel) = handles::select_channel(&id).await {
+    if let Ok(channel) = handles::select_channel(&pool.into_inner(), &id).await {
         if let Ok(f) = std::fs::OpenOptions::new()
             .write(true)
             .truncate(true)
@@ -392,8 +460,11 @@ async fn update_playout_config(
 /// ```
 #[get("/presets/{id}")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
-async fn get_presets(id: web::Path<i32>) -> Result<impl Responder, ServiceError> {
-    if let Ok(presets) = handles::select_presets(*id).await {
+async fn get_presets(
+    pool: web::Data<Pool<Sqlite>>,
+    id: web::Path<i32>,
+) -> Result<impl Responder, ServiceError> {
+    if let Ok(presets) = handles::select_presets(&pool.into_inner(), *id).await {
         return Ok(web::Json(presets));
     }
 
@@ -411,10 +482,14 @@ async fn get_presets(id: web::Path<i32>) -> Result<impl Responder, ServiceError>
 #[put("/presets/{id}")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 async fn update_preset(
+    pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
     data: web::Json<TextPreset>,
 ) -> Result<impl Responder, ServiceError> {
-    if handles::update_preset(&id, data.into_inner()).await.is_ok() {
+    if handles::update_preset(&pool.into_inner(), &id, data.into_inner())
+        .await
+        .is_ok()
+    {
         return Ok("Update Success");
     }
 
@@ -431,8 +506,14 @@ async fn update_preset(
 /// ```
 #[post("/presets/")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
-async fn add_preset(data: web::Json<TextPreset>) -> Result<impl Responder, ServiceError> {
-    if handles::insert_preset(data.into_inner()).await.is_ok() {
+async fn add_preset(
+    pool: web::Data<Pool<Sqlite>>,
+    data: web::Json<TextPreset>,
+) -> Result<impl Responder, ServiceError> {
+    if handles::insert_preset(&pool.into_inner(), data.into_inner())
+        .await
+        .is_ok()
+    {
         return Ok("Add preset Success");
     }
 
@@ -447,8 +528,14 @@ async fn add_preset(data: web::Json<TextPreset>) -> Result<impl Responder, Servi
 /// ```
 #[delete("/presets/{id}")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
-async fn delete_preset(id: web::Path<i32>) -> Result<impl Responder, ServiceError> {
-    if handles::delete_preset(&id).await.is_ok() {
+async fn delete_preset(
+    pool: web::Data<Pool<Sqlite>>,
+    id: web::Path<i32>,
+) -> Result<impl Responder, ServiceError> {
+    if handles::delete_preset(&pool.into_inner(), &id)
+        .await
+        .is_ok()
+    {
         return Ok("Delete preset Success");
     }
 
@@ -475,10 +562,11 @@ async fn delete_preset(id: web::Path<i32>) -> Result<impl Responder, ServiceErro
 #[post("/control/{id}/text/")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 pub async fn send_text_message(
+    pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
     data: web::Json<HashMap<String, String>>,
 ) -> Result<impl Responder, ServiceError> {
-    match send_message(*id, data.into_inner()).await {
+    match send_message(&pool.into_inner(), *id, data.into_inner()).await {
         Ok(res) => Ok(res.text().await.unwrap_or_else(|_| "Success".into())),
         Err(e) => Err(e),
     }
@@ -497,10 +585,11 @@ pub async fn send_text_message(
 #[post("/control/{id}/playout/")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 pub async fn control_playout(
+    pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
     control: web::Json<Process>,
 ) -> Result<impl Responder, ServiceError> {
-    match control_state(*id, control.command.clone()).await {
+    match control_state(&pool.into_inner(), *id, control.command.clone()).await {
         Ok(res) => Ok(res.text().await.unwrap_or_else(|_| "Success".into())),
         Err(e) => Err(e),
     }
@@ -538,8 +627,11 @@ pub async fn control_playout(
 /// ```
 #[get("/control/{id}/media/current")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
-pub async fn media_current(id: web::Path<i32>) -> Result<impl Responder, ServiceError> {
-    match media_info(*id, "current".into()).await {
+pub async fn media_current(
+    pool: web::Data<Pool<Sqlite>>,
+    id: web::Path<i32>,
+) -> Result<impl Responder, ServiceError> {
+    match media_info(&pool.into_inner(), *id, "current".into()).await {
         Ok(res) => Ok(res.text().await.unwrap_or_else(|_| "Success".into())),
         Err(e) => Err(e),
     }
@@ -552,8 +644,11 @@ pub async fn media_current(id: web::Path<i32>) -> Result<impl Responder, Service
 /// ```
 #[get("/control/{id}/media/next")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
-pub async fn media_next(id: web::Path<i32>) -> Result<impl Responder, ServiceError> {
-    match media_info(*id, "next".into()).await {
+pub async fn media_next(
+    pool: web::Data<Pool<Sqlite>>,
+    id: web::Path<i32>,
+) -> Result<impl Responder, ServiceError> {
+    match media_info(&pool.into_inner(), *id, "next".into()).await {
         Ok(res) => Ok(res.text().await.unwrap_or_else(|_| "Success".into())),
         Err(e) => Err(e),
     }
@@ -567,8 +662,11 @@ pub async fn media_next(id: web::Path<i32>) -> Result<impl Responder, ServiceErr
 /// ```
 #[get("/control/{id}/media/last")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
-pub async fn media_last(id: web::Path<i32>) -> Result<impl Responder, ServiceError> {
-    match media_info(*id, "last".into()).await {
+pub async fn media_last(
+    pool: web::Data<Pool<Sqlite>>,
+    id: web::Path<i32>,
+) -> Result<impl Responder, ServiceError> {
+    match media_info(&pool.into_inner(), *id, "last".into()).await {
         Ok(res) => Ok(res.text().await.unwrap_or_else(|_| "Success".into())),
         Err(e) => Err(e),
     }
@@ -590,10 +688,11 @@ pub async fn media_last(id: web::Path<i32>) -> Result<impl Responder, ServiceErr
 #[post("/control/{id}/process/")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 pub async fn process_control(
+    pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
     proc: web::Json<Process>,
 ) -> Result<impl Responder, ServiceError> {
-    control_service(*id, &proc.command).await
+    control_service(&pool.into_inner(), *id, &proc.command).await
 }
 
 /// #### ffplayout Playlist Operations
@@ -607,10 +706,11 @@ pub async fn process_control(
 #[get("/playlist/{id}")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 pub async fn get_playlist(
+    pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
     obj: web::Query<DateObj>,
 ) -> Result<impl Responder, ServiceError> {
-    match read_playlist(*id, obj.date.clone()).await {
+    match read_playlist(&pool.into_inner(), *id, obj.date.clone()).await {
         Ok(playlist) => Ok(web::Json(playlist)),
         Err(e) => Err(e),
     }
@@ -626,10 +726,11 @@ pub async fn get_playlist(
 #[post("/playlist/{id}/")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 pub async fn save_playlist(
+    pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
     data: web::Json<JsonPlaylist>,
 ) -> Result<impl Responder, ServiceError> {
-    match write_playlist(*id, data.into_inner()).await {
+    match write_playlist(&pool.into_inner(), *id, data.into_inner()).await {
         Ok(res) => Ok(res),
         Err(e) => Err(e),
     }
@@ -646,9 +747,10 @@ pub async fn save_playlist(
 #[get("/playlist/{id}/generate/{date}")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 pub async fn gen_playlist(
+    pool: web::Data<Pool<Sqlite>>,
     params: web::Path<(i32, String)>,
 ) -> Result<impl Responder, ServiceError> {
-    match generate_playlist(params.0, params.1.clone()).await {
+    match generate_playlist(&pool.into_inner(), params.0, params.1.clone()).await {
         Ok(playlist) => Ok(web::Json(playlist)),
         Err(e) => Err(e),
     }
@@ -663,9 +765,10 @@ pub async fn gen_playlist(
 #[delete("/playlist/{id}/{date}")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 pub async fn del_playlist(
+    pool: web::Data<Pool<Sqlite>>,
     params: web::Path<(i32, String)>,
 ) -> Result<impl Responder, ServiceError> {
-    match delete_playlist(params.0, &params.1).await {
+    match delete_playlist(&pool.into_inner(), params.0, &params.1).await {
         Ok(_) => Ok(format!("Delete playlist from {} success!", params.1)),
         Err(e) => Err(e),
     }
@@ -676,16 +779,17 @@ pub async fn del_playlist(
 /// **Read Log Life**
 ///
 /// ```BASH
-/// curl -X Get http://127.0.0.1:8787/api/log/1
+/// curl -X GET http://127.0.0.1:8787/api/log/1
 /// -H 'Content-Type: application/json' -H 'Authorization: Bearer <TOKEN>'
 /// ```
 #[get("/log/{id}")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 pub async fn get_log(
+    pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
     log: web::Query<DateObj>,
 ) -> Result<impl Responder, ServiceError> {
-    read_log_file(&id, &log.date).await
+    read_log_file(&pool.into_inner(), &id, &log.date).await
 }
 
 /// ### File Operations
@@ -699,10 +803,11 @@ pub async fn get_log(
 #[post("/file/{id}/browse/")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 pub async fn file_browser(
+    pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
     data: web::Json<PathObject>,
 ) -> Result<impl Responder, ServiceError> {
-    match browser(*id, &data.into_inner()).await {
+    match browser(&pool.into_inner(), *id, &data.into_inner()).await {
         Ok(obj) => Ok(web::Json(obj)),
         Err(e) => Err(e),
     }
@@ -717,10 +822,11 @@ pub async fn file_browser(
 #[post("/file/{id}/create-folder/")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 pub async fn add_dir(
+    pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
     data: web::Json<PathObject>,
 ) -> Result<HttpResponse, ServiceError> {
-    create_directory(*id, &data.into_inner()).await
+    create_directory(&pool.into_inner(), *id, &data.into_inner()).await
 }
 
 /// **Rename File**
@@ -732,10 +838,11 @@ pub async fn add_dir(
 #[post("/file/{id}/rename/")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 pub async fn move_rename(
+    pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
     data: web::Json<MoveObject>,
 ) -> Result<impl Responder, ServiceError> {
-    match rename_file(*id, &data.into_inner()).await {
+    match rename_file(&pool.into_inner(), *id, &data.into_inner()).await {
         Ok(obj) => Ok(web::Json(obj)),
         Err(e) => Err(e),
     }
@@ -750,10 +857,11 @@ pub async fn move_rename(
 #[post("/file/{id}/remove/")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 pub async fn remove(
+    pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
     data: web::Json<PathObject>,
 ) -> Result<impl Responder, ServiceError> {
-    match remove_file_or_folder(*id, &data.into_inner().source).await {
+    match remove_file_or_folder(&pool.into_inner(), *id, &data.into_inner().source).await {
         Ok(obj) => Ok(web::Json(obj)),
         Err(e) => Err(e),
     }
@@ -762,17 +870,18 @@ pub async fn remove(
 /// **Upload File**
 ///
 /// ```BASH
-/// curl -X POST http://127.0.0.1:8787/api/file/1/upload/ -H 'Authorization: Bearer <TOKEN>'
+/// curl -X PUT http://127.0.0.1:8787/api/file/1/upload/ -H 'Authorization: Bearer <TOKEN>'
 /// -F "file=@file.mp4"
 /// ```
 #[put("/file/{id}/upload/")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 async fn save_file(
+    pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
     payload: Multipart,
     obj: web::Query<FileObj>,
 ) -> Result<HttpResponse, ServiceError> {
-    upload(*id, payload, &obj.path, false).await
+    upload(&pool.into_inner(), *id, payload, &obj.path, false).await
 }
 
 /// **Import playlist**
@@ -781,25 +890,126 @@ async fn save_file(
 /// lines with leading "#" will be ignore
 ///
 /// ```BASH
-/// curl -X POST http://127.0.0.1:8787/api/file/1/import/ -H 'Authorization: Bearer <TOKEN>'
+/// curl -X PUT http://127.0.0.1:8787/api/file/1/import/ -H 'Authorization: Bearer <TOKEN>'
 /// -F "file=@list.m3u"
 /// ```
 #[put("/file/{id}/import/")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 async fn import_playlist(
+    pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
     payload: Multipart,
     obj: web::Query<ImportObj>,
 ) -> Result<HttpResponse, ServiceError> {
     let file = Path::new(&obj.file).file_name().unwrap_or_default();
     let path = env::temp_dir().join(file).to_string_lossy().to_string();
-    let (config, _) = playout_config(&id).await?;
-    let channel = handles::select_channel(&id).await?;
+    let (config, _) = playout_config(&pool.clone().into_inner(), &id).await?;
+    let channel = handles::select_channel(&pool.clone().into_inner(), &id).await?;
 
-    upload(*id, payload, &path, true).await?;
+    upload(&pool.into_inner(), *id, payload, &path, true).await?;
     import_file(&config, &obj.date, Some(channel.name), &path)?;
 
     fs::remove_file(path)?;
 
     Ok(HttpResponse::Ok().into())
+}
+
+/// **Program info**
+///
+/// Get program infos about given date, or current day
+///
+/// Examples:
+///
+/// * get program from current day
+/// ```BASH
+/// curl -X GET http://127.0.0.1:8787/api/program/1/ -H 'Authorization: Bearer <TOKEN>'
+/// ```
+///
+/// * get a program range between two dates
+/// ```BASH
+/// curl -X GET http://127.0.0.1:8787/api/program/1/?start_after=2022-11-13T12:00:00&start_before=2022-11-20T11:59:59 \
+/// -H 'Authorization: Bearer <TOKEN>'
+/// ```
+///
+/// * get program from give day
+/// ```BASH
+/// curl -X GET http://127.0.0.1:8787/api/program/1/?start_after=2022-11-13T10:00:00 \
+/// -H 'Authorization: Bearer <TOKEN>'
+/// ```
+#[get("/program/{id}/")]
+#[has_any_role("Role::Admin", "Role::User", type = "Role")]
+async fn get_program(
+    pool: web::Data<Pool<Sqlite>>,
+    id: web::Path<i32>,
+    obj: web::Query<ProgramObj>,
+) -> Result<impl Responder, ServiceError> {
+    let (config, _) = playout_config(&pool.clone().into_inner(), &id).await?;
+    let start_sec = config.playlist.start_sec.unwrap();
+    let mut days = 0;
+    let mut program = vec![];
+    let after = obj.start_after;
+    let mut before = obj.start_before;
+
+    if after > before {
+        before = chrono::Local
+            .with_ymd_and_hms(after.year(), after.month(), after.day(), 23, 59, 59)
+            .unwrap()
+            .naive_local()
+    }
+
+    if start_sec > time_to_sec(&after.format("%H:%M:%S").to_string()) {
+        days = 1;
+    }
+
+    let date_range = get_date_range(&vec_strings![
+        (after - Duration::days(days)).format("%Y-%m-%d"),
+        "-",
+        before.format("%Y-%m-%d")
+    ]);
+
+    for date in date_range {
+        let conn = pool.clone().into_inner();
+        let mut naive = NaiveDateTime::parse_from_str(
+            &format!("{date} {}", sec_to_time(start_sec)),
+            "%Y-%m-%d %H:%M:%S%.3f",
+        )
+        .unwrap();
+
+        let playlist = match read_playlist(&conn, *id, date.clone()).await {
+            Ok(p) => p,
+            Err(e) => {
+                error!("Error in Playlist from {date}: {e}");
+                continue;
+            }
+        };
+
+        for item in playlist.program {
+            let start: DateTime<Local> = Local.from_local_datetime(&naive).unwrap();
+
+            let source = match Regex::new(&config.text.regex)
+                .ok()
+                .and_then(|r| r.captures(&item.source))
+            {
+                Some(t) => t[1].to_string(),
+                None => item.source,
+            };
+
+            let p_item = ProgramItem {
+                source,
+                start: start.format("%Y-%m-%d %H:%M:%S%.3f%:z").to_string(),
+                r#in: item.seek,
+                out: item.out,
+                duration: item.duration,
+                category: item.category,
+            };
+
+            if naive >= after && naive <= before {
+                program.push(p_item);
+            }
+
+            naive += Duration::milliseconds(((item.out - item.seek) * 1000.0) as i64);
+        }
+    }
+
+    Ok(web::Json(program))
 }

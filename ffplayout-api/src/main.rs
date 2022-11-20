@@ -18,13 +18,13 @@ use api::{
     routes::{
         add_channel, add_dir, add_preset, add_user, control_playout, del_playlist, delete_preset,
         file_browser, gen_playlist, get_all_channels, get_channel, get_log, get_playlist,
-        get_playout_config, get_presets, get_user, import_playlist, login, media_current,
-        media_last, media_next, move_rename, patch_channel, process_control, remove,
+        get_playout_config, get_presets, get_program, get_user, import_playlist, login,
+        media_current, media_last, media_next, move_rename, patch_channel, process_control, remove,
         remove_channel, save_file, save_playlist, send_text_message, update_playout_config,
         update_preset, update_user,
     },
 };
-use db::models::LoginUser;
+use db::{db_pool, models::LoginUser};
 use utils::{args_parse::Args, db_path, init_config, run_args, Role};
 
 use ffplayout_lib::utils::{init_logging, PlayoutConfig};
@@ -64,7 +64,15 @@ async fn main() -> std::io::Result<()> {
     let logging = init_logging(&config, None, None);
     CombinedLogger::init(logging).unwrap();
 
-    if let Err(c) = run_args(args.clone()).await {
+    let pool = match db_pool().await {
+        Ok(p) => p,
+        Err(e) => {
+            error!("{e}");
+            exit(1);
+        }
+    };
+
+    if let Err(c) = run_args(&pool, args.clone()).await {
         exit(c);
     }
 
@@ -75,7 +83,7 @@ async fn main() -> std::io::Result<()> {
                 exit(1);
             }
         }
-        init_config().await;
+        init_config(&pool).await;
         let ip_port = conn.split(':').collect::<Vec<&str>>();
         let addr = ip_port[0];
         let port = ip_port[1].parse::<u16>().unwrap();
@@ -85,7 +93,10 @@ async fn main() -> std::io::Result<()> {
         // no allow origin here, give it to the reverse proxy
         HttpServer::new(move || {
             let auth = HttpAuthentication::bearer(validator);
+            let db_pool = web::Data::new(pool.clone());
+
             App::new()
+                .app_data(db_pool)
                 .wrap(middleware::Logger::default())
                 .service(login)
                 .service(
@@ -121,7 +132,8 @@ async fn main() -> std::io::Result<()> {
                         .service(move_rename)
                         .service(remove)
                         .service(save_file)
-                        .service(import_playlist),
+                        .service(import_playlist)
+                        .service(get_program),
                 )
                 .service(Files::new("/", public_path()).index_file("index.html"))
         })

@@ -5,11 +5,13 @@ use std::{
     path::Path,
 };
 
-use chrono::prelude::*;
+use chrono::{format::ParseErrorKind, prelude::*};
 use faccess::PathExt;
 use once_cell::sync::OnceCell;
 use rpassword::read_password;
+use serde::{de, Deserialize, Deserializer};
 use simplelog::*;
+use sqlx::{Pool, Sqlite};
 
 pub mod args_parse;
 pub mod channels;
@@ -23,7 +25,7 @@ use crate::db::{
     models::{Channel, User},
 };
 use crate::utils::{args_parse::Args, errors::ServiceError};
-use ffplayout_lib::utils::PlayoutConfig;
+use ffplayout_lib::utils::{time_to_sec, PlayoutConfig};
 
 #[derive(Clone, Eq, PartialEq)]
 pub enum Role {
@@ -48,8 +50,8 @@ pub struct GlobalSettings {
 }
 
 impl GlobalSettings {
-    async fn new() -> Self {
-        let global_settings = select_global();
+    async fn new(conn: &Pool<Sqlite>) -> Self {
+        let global_settings = select_global(conn);
 
         match global_settings.await {
             Ok(g) => g,
@@ -66,8 +68,8 @@ impl GlobalSettings {
 
 static INSTANCE: OnceCell<GlobalSettings> = OnceCell::new();
 
-pub async fn init_config() {
-    let config = GlobalSettings::new().await;
+pub async fn init_config(conn: &Pool<Sqlite>) {
+    let config = GlobalSettings::new(conn).await;
     INSTANCE.set(config).unwrap();
 }
 
@@ -88,7 +90,7 @@ pub fn db_path() -> Result<String, Box<dyn std::error::Error>> {
     Ok(db_path)
 }
 
-pub async fn run_args(mut args: Args) -> Result<(), i32> {
+pub async fn run_args(conn: &Pool<Sqlite>, mut args: Args) -> Result<(), i32> {
     if !args.init && args.listen.is_none() && !args.ask && args.username.is_none() {
         error!("Wrong number of arguments! Run ffpapi --help for more information.");
 
@@ -96,7 +98,7 @@ pub async fn run_args(mut args: Args) -> Result<(), i32> {
     }
 
     if args.init {
-        if let Err(e) = db_init(args.domain).await {
+        if let Err(e) = db_init(conn, args.domain).await {
             panic!("{e}");
         };
 
@@ -160,7 +162,7 @@ pub async fn run_args(mut args: Args) -> Result<(), i32> {
             token: None,
         };
 
-        if let Err(e) = insert_user(user).await {
+        if let Err(e) = insert_user(conn, user).await {
             error!("{e}");
             return Err(1);
         };
@@ -175,13 +177,18 @@ pub async fn run_args(mut args: Args) -> Result<(), i32> {
 
 pub fn read_playout_config(path: &str) -> Result<PlayoutConfig, Box<dyn Error>> {
     let file = File::open(path)?;
-    let config: PlayoutConfig = serde_yaml::from_reader(file)?;
+    let mut config: PlayoutConfig = serde_yaml::from_reader(file)?;
+
+    config.playlist.start_sec = Some(time_to_sec(&config.playlist.day_start));
 
     Ok(config)
 }
 
-pub async fn playout_config(channel_id: &i32) -> Result<(PlayoutConfig, Channel), ServiceError> {
-    if let Ok(channel) = select_channel(channel_id).await {
+pub async fn playout_config(
+    conn: &Pool<Sqlite>,
+    channel_id: &i32,
+) -> Result<(PlayoutConfig, Channel), ServiceError> {
+    if let Ok(channel) = select_channel(conn, channel_id).await {
         if let Ok(config) = read_playout_config(&channel.config_path.clone()) {
             return Ok((config, channel));
         }
@@ -192,8 +199,12 @@ pub async fn playout_config(channel_id: &i32) -> Result<(PlayoutConfig, Channel)
     ))
 }
 
-pub async fn read_log_file(channel_id: &i32, date: &str) -> Result<String, ServiceError> {
-    if let Ok(channel) = select_channel(channel_id).await {
+pub async fn read_log_file(
+    conn: &Pool<Sqlite>,
+    channel_id: &i32,
+    date: &str,
+) -> Result<String, ServiceError> {
+    if let Ok(channel) = select_channel(conn, channel_id).await {
         let mut date_str = "".to_string();
 
         if !date.is_empty() {
@@ -233,4 +244,23 @@ pub fn local_utc_offset() -> i32 {
     }
 
     utc_offset
+}
+
+pub fn naive_date_time_from_str<'de, D>(deserializer: D) -> Result<NaiveDateTime, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s: String = Deserialize::deserialize(deserializer)?;
+
+    match NaiveDateTime::parse_from_str(&s, "%Y-%m-%dT%H:%M:%S") {
+        Ok(date_time) => Ok(date_time),
+        Err(e) => {
+            if e.kind() == ParseErrorKind::TooShort {
+                NaiveDateTime::parse_from_str(&format!("{s}T00:00:00"), "%Y-%m-%dT%H:%M:%S")
+                    .map_err(de::Error::custom)
+            } else {
+                NaiveDateTime::parse_from_str(&s, "%Y-%m-%dT%H:%M:%S%#z").map_err(de::Error::custom)
+            }
+        }
+    }
 }
