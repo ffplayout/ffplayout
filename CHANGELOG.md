@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.6.4](https://github.com/ffplayout/ffplayout/compare/v0.16.3...v0.16.4) (2022-11-21)
+
+### ffpapi
+
+- add enpoint for gettting program infos, mainly usefull for generating xmltv [f576ded](https://github.com/ffplayout/ffplayout/commit/f576dedcb9ebac259ec2283a622cd521a2f614b8); [aa820b2](https://github.com/ffplayout/ffplayout/commit/aa820b29c2be0b2b6c946466ca6a274e8771ce4d); [0d87bae](https://github.com/ffplayout/ffplayout/commit/0d87baece7df9dfb40969a5b34c5cf944967aba0)
+- use only one DB pool and share them with web::Data [a5f0813](https://github.com/ffplayout/ffplayout/commit/a5f0813d2acd1a41b132d114fa4dfa1ea6150c45); [4122aaa](https://github.com/ffplayout/ffplayout/commit/4122aaa7a6b52038dc61f643deeb30fdeee7e09e); [5780de3](https://github.com/ffplayout/ffplayout/commit/5780de38c40429402ead35d2815aa3d99feaa3be)
+
+### ffplayout
+
+- limit restart count from systemd service [694c9f8](https://github.com/ffplayout/ffplayout/commit/694c9f8c4b75f5e1d3c219dfe77317f1d2788627)
+- update dependencies, migrate chrono to 0.4.23 [8be1992](https://github.com/ffplayout/ffplayout/commit/8be199222e82c69fa7bcf23c87511642aec7a156)
+
+### frontend
+- update dependencies
+
+
+### Dokumentation
+
+- fix api examples [#232](https://github.com/ffplayout/ffplayout/discussions/232); [#238](https://github.com/ffplayout/ffplayout/issues/238); [694c9f8](https://github.com/ffplayout/ffplayout/commit/694c9f8c4b75f5e1d3c219dfe77317f1d2788627); [8f84b70](https://github.com/ffplayout/ffplayout/commit/8f84b702057b4bcbd6103fe8f8d468f36c09ffa5)
+- set EBU R128 loudness normalization again to experimental [f576ded](https://github.com/ffplayout/ffplayout/commit/f576dedcb9ebac259ec2283a622cd521a2f614b8)
+    - the audio quality is not very good and it is not recommended to use the filter if a good quality is desired
+    - maybe this function will be removed again in the future
+
 ## [1.6.3](https://github.com/ffplayout/ffplayout/compare/v0.16.2...v0.16.3) (2022-11-04)
 
 ### ffplayout
