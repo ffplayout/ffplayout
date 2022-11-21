@@ -15,7 +15,6 @@
 ### frontend
 - update dependencies
 
-
 ### Dokumentation
 
 - fix api examples [#232](https://github.com/ffplayout/ffplayout/discussions/232); [#238](https://github.com/ffplayout/ffplayout/issues/238); [694c9f8](https://github.com/ffplayout/ffplayout/commit/694c9f8c4b75f5e1d3c219dfe77317f1d2788627); [8f84b70](https://github.com/ffplayout/ffplayout/commit/8f84b702057b4bcbd6103fe8f8d468f36c09ffa5)
