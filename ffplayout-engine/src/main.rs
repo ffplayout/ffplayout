@@ -88,8 +88,7 @@ fn main() {
     #[cfg(debug_assertions)]
     fake_time(&args);
 
-    let config = get_config(args.clone());
-    let config_clone = config.clone();
+    let mut config = get_config(args.clone());
     let play_control = PlayerControl::new();
     let playout_stat = PlayoutStatus::new();
     let proc_control = ProcessControl::new();
@@ -102,10 +101,12 @@ fn main() {
     let logging = init_logging(&config, Some(proc_ctl1), Some(messages.clone()));
     CombinedLogger::init(logging).unwrap();
 
-    if let Err(e) = validate_ffmpeg(&config) {
+    if let Err(e) = validate_ffmpeg(&mut config) {
         error!("{e}");
         exit(1);
     };
+
+    let config_clone = config.clone();
 
     if ![2, 4, 6, 8].contains(&config.processing.audio_channels) {
         error!(

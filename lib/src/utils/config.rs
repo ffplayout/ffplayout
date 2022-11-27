@@ -110,6 +110,12 @@ pub struct General {
 
     #[serde(skip_serializing, skip_deserializing)]
     pub stat_file: String,
+
+    #[serde(skip_serializing, skip_deserializing)]
+    pub ffmpeg_filters: Vec<String>,
+
+    #[serde(skip_serializing, skip_deserializing)]
+    pub ffmpeg_libs: Vec<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
