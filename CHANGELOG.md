@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.6.5](https://github.com/ffplayout/ffplayout/compare/v0.16.4...v0.16.5) (2022-11-28)
+
+### ffpapi
+
+- init db needs its own connection, fix #241 [edfff82](https://github.com/ffplayout/ffplayout/commit/edfff8269b660ef149023d859451b94c198474ba)
+
+### ffplayout
+
+- change StartLimitIntervalSec in systemd service [010fc29](https://github.com/ffplayout/ffplayout/commit/010fc29b38129e503c12b80a6710dccd90056851)
+- get list of filters and libs for future usage (#201 #219) [52856d3](https://github.com/ffplayout/ffplayout/commit/52856d3f0945cae310b7bbae39ae0a5626b4822f)
+
 ## [1.6.4](https://github.com/ffplayout/ffplayout/compare/v0.16.3...v0.16.4) (2022-11-21)
 
 ### ffpapi
