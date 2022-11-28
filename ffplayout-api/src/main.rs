@@ -64,6 +64,10 @@ async fn main() -> std::io::Result<()> {
     let logging = init_logging(&config, None, None);
     CombinedLogger::init(logging).unwrap();
 
+    if let Err(c) = run_args(args.clone()).await {
+        exit(c);
+    }
+
     let pool = match db_pool().await {
         Ok(p) => p,
         Err(e) => {
@@ -71,10 +75,6 @@ async fn main() -> std::io::Result<()> {
             exit(1);
         }
     };
-
-    if let Err(c) = run_args(&pool, args.clone()).await {
-        exit(c);
-    }
 
     if let Some(conn) = args.listen {
         if let Ok(p) = db_path() {
