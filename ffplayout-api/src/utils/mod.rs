@@ -21,6 +21,7 @@ pub mod files;
 pub mod playlist;
 
 use crate::db::{
+    db_pool,
     handles::{db_init, insert_user, select_channel, select_global},
     models::{Channel, User},
 };
@@ -90,7 +91,7 @@ pub fn db_path() -> Result<String, Box<dyn std::error::Error>> {
     Ok(db_path)
 }
 
-pub async fn run_args(conn: &Pool<Sqlite>, mut args: Args) -> Result<(), i32> {
+pub async fn run_args(mut args: Args) -> Result<(), i32> {
     if !args.init && args.listen.is_none() && !args.ask && args.username.is_none() {
         error!("Wrong number of arguments! Run ffpapi --help for more information.");
 
@@ -98,7 +99,7 @@ pub async fn run_args(conn: &Pool<Sqlite>, mut args: Args) -> Result<(), i32> {
     }
 
     if args.init {
-        if let Err(e) = db_init(conn, args.domain).await {
+        if let Err(e) = db_init(args.domain).await {
             panic!("{e}");
         };
 
@@ -162,9 +163,18 @@ pub async fn run_args(conn: &Pool<Sqlite>, mut args: Args) -> Result<(), i32> {
             token: None,
         };
 
-        if let Err(e) = insert_user(conn, user).await {
-            error!("{e}");
-            return Err(1);
+        match db_pool().await {
+            Ok(conn) => {
+                if let Err(e) = insert_user(&conn, user).await {
+                    error!("{e}");
+                    return Err(1);
+                };
+            }
+
+            Err(e) => {
+                error!("{e}");
+                return Err(1);
+            }
         };
 
         info!("Create admin user \"{username}\" done...");

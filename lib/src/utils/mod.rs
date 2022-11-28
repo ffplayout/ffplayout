@@ -693,16 +693,30 @@ fn is_in_system(name: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn ffmpeg_libs() -> Result<Vec<String>, String> {
-    let mut libs: Vec<String> = vec![];
+fn ffmpeg_filter_and_libs(config: &mut PlayoutConfig) -> Result<(), String> {
+    let ignore_flags = [
+        "--enable-gpl",
+        "--enable-version3",
+        "--enable-runtime-cpudetect",
+        "--enable-avfilter",
+        "--enable-zlib",
+        "--enable-pic",
+        "--enable-nonfree",
+    ];
 
-    let mut ff_proc = match Command::new("ffmpeg").stderr(Stdio::piped()).spawn() {
+    let mut ff_proc = match Command::new("ffmpeg")
+        .args(["-filters"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+    {
         Err(e) => {
             return Err(format!("couldn't spawn ffmpeg process: {e}"));
         }
         Ok(proc) => proc,
     };
 
+    let out_buffer = BufReader::new(ff_proc.stdout.take().unwrap());
     let err_buffer = BufReader::new(ff_proc.stderr.take().unwrap());
 
     // stderr shows only the ffmpeg configuration
@@ -711,12 +725,30 @@ fn ffmpeg_libs() -> Result<Vec<String>, String> {
         if line.contains("configuration:") {
             let configs = line.split_whitespace();
 
-            for config in configs {
-                if config.contains("--enable-lib") {
-                    libs.push(config.replace("--enable-", ""));
+            for flag in configs {
+                if flag.contains("--enable") && !ignore_flags.contains(&flag) {
+                    config
+                        .general
+                        .ffmpeg_libs
+                        .push(flag.replace("--enable-", ""));
                 }
             }
             break;
+        }
+    }
+
+    // stdout shows filter from ffmpeg
+    // get filters
+    for line in out_buffer.lines().flatten() {
+        if line.contains('>') {
+            let filter_line = line.split_whitespace().collect::<Vec<_>>();
+
+            if filter_line.len() > 2 {
+                config
+                    .general
+                    .ffmpeg_filters
+                    .push(filter_line[1].to_string())
+            }
         }
     }
 
@@ -724,13 +756,13 @@ fn ffmpeg_libs() -> Result<Vec<String>, String> {
         error!("{:?}", e)
     };
 
-    Ok(libs)
+    Ok(())
 }
 
 /// Validate ffmpeg/ffprobe/ffplay.
 ///
 /// Check if they are in system and has all libs and codecs we need.
-pub fn validate_ffmpeg(config: &PlayoutConfig) -> Result<(), String> {
+pub fn validate_ffmpeg(config: &mut PlayoutConfig) -> Result<(), String> {
     is_in_system("ffmpeg")?;
     is_in_system("ffprobe")?;
 
@@ -738,15 +770,15 @@ pub fn validate_ffmpeg(config: &PlayoutConfig) -> Result<(), String> {
         is_in_system("ffplay")?;
     }
 
-    let libs = ffmpeg_libs()?;
+    ffmpeg_filter_and_libs(config)?;
 
-    if !libs.contains(&"libx264".to_string()) {
+    if !config.general.ffmpeg_libs.contains(&"libx264".to_string()) {
         return Err("ffmpeg contains no libx264!".to_string());
     }
 
     if config.text.add_text
         && !config.text.text_from_filename
-        && !libs.contains(&"libzmq".to_string())
+        && !config.general.ffmpeg_libs.contains(&"libzmq".to_string())
     {
         return Err(
             "ffmpeg contains no libzmq! Disable add_text in config or compile ffmpeg with libzmq."
@@ -754,7 +786,11 @@ pub fn validate_ffmpeg(config: &PlayoutConfig) -> Result<(), String> {
         );
     }
 
-    if !libs.contains(&"libfdk-aac".to_string()) {
+    if !config
+        .general
+        .ffmpeg_libs
+        .contains(&"libfdk-aac".to_string())
+    {
         warn!("ffmpeg contains no libfdk-aac! Can't use high quality aac encoder...");
     }
 

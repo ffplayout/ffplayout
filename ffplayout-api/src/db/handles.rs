@@ -7,7 +7,10 @@ use rand::{distributions::Alphanumeric, Rng};
 use simplelog::*;
 use sqlx::{migrate::MigrateDatabase, sqlite::SqliteQueryResult, Pool, Sqlite};
 
-use crate::db::models::{Channel, TextPreset, User};
+use crate::db::{
+    db_pool,
+    models::{Channel, TextPreset, User},
+};
 use crate::utils::{db_path, local_utc_offset, GlobalSettings};
 
 #[derive(Debug, sqlx::FromRow)]
@@ -74,15 +77,15 @@ async fn create_schema(conn: &Pool<Sqlite>) -> Result<SqliteQueryResult, sqlx::E
     sqlx::query(query).execute(conn).await
 }
 
-pub async fn db_init(
-    conn: &Pool<Sqlite>,
-    domain: Option<String>,
-) -> Result<&'static str, Box<dyn std::error::Error>> {
+pub async fn db_init(domain: Option<String>) -> Result<&'static str, Box<dyn std::error::Error>> {
     let db_path = db_path()?;
 
     if !Sqlite::database_exists(&db_path).await.unwrap_or(false) {
         Sqlite::create_database(&db_path).await.unwrap();
-        match create_schema(conn).await {
+
+        let pool = db_pool().await?;
+
+        match create_schema(&pool).await {
             Ok(_) => info!("Database created Successfully"),
             Err(e) => panic!("{e}"),
         }
@@ -115,10 +118,13 @@ pub async fn db_init(
             '1', '#000000@0x80', '4', 'ifnot(ld(1),st(1,t));if(lt(t,ld(1)+1),0,if(lt(t,ld(1)+2),(t-(ld(1)+1))/1,if(lt(t,ld(1)+8),1,if(lt(t,ld(1)+9),(1-(t-(ld(1)+8)))/1,0))))', '1'),
         ('Scrolling Text', 'We have a very important announcement to make.', 'ifnot(ld(1),st(1,t));if(lt(t,ld(1)+1),w+4,w-w/12*mod(t-ld(1),12*(w+tw)/w))', '(h-line_h)*0.9',
             '24', '4', '#ffffff', '1', '#000000@0x80', '4', '1.0', '1');";
+
+    let pool = db_pool().await?;
+
     sqlx::query(query)
         .bind(secret)
         .bind(url)
-        .execute(conn)
+        .execute(&pool)
         .await?;
 
     Ok("Database initialized!")
