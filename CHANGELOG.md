@@ -1,6 +1,6 @@
 # Changelog
 
-## [1.6.5](https://github.com/ffplayout/ffplayout/compare/v0.16.4...v0.16.5) (2022-11-28)
+## [0.16.5](https://github.com/ffplayout/ffplayout/compare/v0.16.4...v0.16.5) (2022-11-28)
 
 ### ffpapi
 
@@ -11,7 +11,7 @@
 - change StartLimitIntervalSec in systemd service [010fc29](https://github.com/ffplayout/ffplayout/commit/010fc29b38129e503c12b80a6710dccd90056851)
 - get list of filters and libs for future usage (#201 #219) [52856d3](https://github.com/ffplayout/ffplayout/commit/52856d3f0945cae310b7bbae39ae0a5626b4822f)
 
-## [1.6.4](https://github.com/ffplayout/ffplayout/compare/v0.16.3...v0.16.4) (2022-11-21)
+## [0.16.4](https://github.com/ffplayout/ffplayout/compare/v0.16.3...v0.16.4) (2022-11-21)
 
 ### ffpapi
 
@@ -33,7 +33,7 @@
     - the audio quality is not very good and it is not recommended to use the filter if a good quality is desired
     - maybe this function will be removed again in the future
 
-## [1.6.3](https://github.com/ffplayout/ffplayout/compare/v0.16.2...v0.16.3) (2022-11-04)
+## [0.16.3](https://github.com/ffplayout/ffplayout/compare/v0.16.2...v0.16.3) (2022-11-04)
 
 ### ffplayout
 
@@ -47,7 +47,7 @@
 
 - fix cross compile for osx [5cbf5e7](https://github.com/ffplayout/ffplayout/pull/223/commits/5cbf5e7a4c20d9560dada978bad51a7556031b73)
 
-## [1.6.2](https://github.com/ffplayout/ffplayout/compare/v0.16.1...v0.16.2) (2022-10-26)
+## [0.16.2](https://github.com/ffplayout/ffplayout/compare/v0.16.1...v0.16.2) (2022-10-26)
 
 ### ffplayout
 
@@ -62,7 +62,7 @@
 
 - add info for srt ingest [2f8c2de](https://github.com/ffplayout/ffplayout/pull/221/commits/2f8c2deebc857c23f0bdc96ef977aaa174981fd3)
 
-## [1.6.1](https://github.com/ffplayout/ffplayout/compare/v0.16.0...v0.16.1) (2022-10-25)
+## [0.16.1](https://github.com/ffplayout/ffplayout/compare/v0.16.0...v0.16.1) (2022-10-25)
 
 ### ffplayout
 
@@ -77,7 +77,7 @@
 - add subtitle example [d0ef717](https://github.com/ffplayout/ffplayout/pull/217/commits/d0ef71767b2af7d6053aeb83e3a6906fb84c984c), [e72967a](https://github.com/ffplayout/ffplayout/pull/217/commits/e72967a21c14ee8c71e18085dc397740d3586d01)
 - use NODE_OPTIONS for nodejs 18 [bcf212d](https://github.com/ffplayout/ffplayout/pull/218/commits/bcf212d8de6c2b87571e73cd73023af0e4b7941b)
 
-## [1.6.0](https://github.com/ffplayout/ffplayout/compare/v0.15.2...v0.16.0) (2022-10-19)
+## [0.16.0](https://github.com/ffplayout/ffplayout/compare/v0.15.2...v0.16.0) (2022-10-19)
 
 ### ffplayout
 
@@ -126,7 +126,7 @@
 - use ffmpeg in action
 - run tests only on Linux
 
-## [1.5](https://github.com/ffplayout/ffplayout/compare/v0.15.0...v0.15.2) (2022-09-02)
+## [0.15.0](https://github.com/ffplayout/ffplayout/compare/v0.15.0...v0.15.2) (2022-09-02)
 
 ### ffplayout
 
