@@ -288,8 +288,14 @@ fn overlay(node: &mut Media, chain: &mut Filters, config: &PlayoutConfig) {
         && Path::new(&config.processing.logo).is_file()
         && &node.category != "advertisement"
     {
+        let mut scale = String::new();
+
+        if !config.processing.logo_scale.is_empty() {
+            scale = format!(",scale={}", config.processing.logo_scale);
+        }
+
         let mut logo_chain = format!(
-            "null[v];movie={}:loop=0,setpts=N/(FRAME_RATE*TB),format=rgba,colorchannelmixer=aa={}[l];[v][l]{}:shortest=1",
+            "null[v];movie={}:loop=0,setpts=N/(FRAME_RATE*TB),format=rgba,colorchannelmixer=aa={}{scale}[l];[v][l]{}:shortest=1",
             config.processing.logo, config.processing.logo_opacity, config.processing.logo_filter
         );
 
