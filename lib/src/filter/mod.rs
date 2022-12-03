@@ -298,9 +298,10 @@ fn overlay(node: &mut Media, chain: &mut Filters, config: &PlayoutConfig) {
         }
 
         if node.next_ad.unwrap_or(false) {
-            logo_chain.push_str(
-                format!(",fade=out:st={}:d=1.0:alpha=1", node.out - node.seek - 1.0).as_str(),
-            )
+            logo_chain.push_str(&format!(
+                ",fade=out:st={}:d=1.0:alpha=1",
+                node.out - node.seek - 1.0
+            ))
         }
 
         chain.add_filter(&logo_chain, 0, Video);
