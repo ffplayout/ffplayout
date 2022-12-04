@@ -1,3 +1,7 @@
+## Build ffplayout
+
+For compiling use always the news Rust version, the best is to install it from [rustup](https://rustup.rs/).
+
 ### Cross Compile
 
 For cross compiling on fedora linux, you need to install some extra packages:
