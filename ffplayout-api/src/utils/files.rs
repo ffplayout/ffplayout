@@ -3,6 +3,7 @@ use std::{fs, io::Write, path::PathBuf};
 use actix_multipart::Multipart;
 use actix_web::{web, HttpResponse};
 use futures_util::TryStreamExt as _;
+use lexical_sort::{natural_lexical_cmp, PathSort};
 use rand::{distributions::Alphanumeric, Rng};
 use relative_path::RelativePath;
 use serde::{Deserialize, Serialize};
@@ -98,31 +99,28 @@ pub async fn browser(
     let (path, parent, path_component) = norm_abs_path(&config.storage.path, &path_obj.source);
     let mut obj = PathObject::new(path_component, Some(parent));
 
-    let mut paths: Vec<_> = match fs::read_dir(path) {
-        Ok(p) => p.filter_map(|r| r.ok()).collect(),
+    let mut paths: Vec<PathBuf> = match fs::read_dir(path) {
+        Ok(p) => p.filter_map(|r| r.ok()).map(|p| p.path()).collect(),
         Err(e) => {
             error!("{e} in {}", path_obj.source);
             return Err(ServiceError::NoContent(e.to_string()));
         }
     };
 
-    paths.sort_by_key(|dir| dir.path().display().to_string().to_lowercase());
+    paths.path_sort(natural_lexical_cmp);
     let mut files = vec![];
     let mut folders = vec![];
 
     for path in paths {
-        let file_path = path.path().to_owned();
-        let path = file_path.clone();
-
         // ignore hidden files/folders on unix
         if path.display().to_string().contains("/.") {
             continue;
         }
 
-        if file_path.is_dir() {
+        if path.is_dir() {
             folders.push(path.file_name().unwrap().to_string_lossy().to_string());
-        } else if file_path.is_file() {
-            if let Some(ext) = file_extension(&file_path) {
+        } else if path.is_file() {
+            if let Some(ext) = file_extension(&path) {
                 if extensions.contains(&ext.to_string().to_lowercase()) {
                     let media = MediaProbe::new(&path.display().to_string());
                     let mut duration = 0.0;
