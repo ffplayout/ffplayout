@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.16.6](https://github.com/ffplayout/ffplayout/compare/v0.16.5...v0.1665) (2022-12-17)
+
+### ffplayout
+- add logo scale
+- add optional ingest_level
+- set windows title in desktop mode [f388820](https://github.com/ffplayout/ffplayout/commit/f38882032f809f094cef895beff07582f0fe9b8f)
+
+### Development
+- migrate to Rust 1.66.0 [f388820](https://github.com/ffplayout/ffplayout/commit/f38882032f809f094cef895beff07582f0fe9b8f)
+- update packages [f388820](https://github.com/ffplayout/ffplayout/commit/f38882032f809f094cef895beff07582f0fe9b8f)
+ 
 ## [0.16.5](https://github.com/ffplayout/ffplayout/compare/v0.16.4...v0.16.5) (2022-11-28)
 
 ### ffpapi
