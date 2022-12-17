@@ -149,6 +149,7 @@ pub struct Logging {
     pub log_path: String,
     pub log_level: String,
     pub ffmpeg_level: String,
+    pub ingest_level: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -294,6 +295,10 @@ impl PlayoutConfig {
             .join(".ffp_status")
             .display()
             .to_string();
+
+        if config.logging.ingest_level.is_none() {
+            config.logging.ingest_level = Some(config.logging.ffmpeg_level.clone())
+        }
 
         config.playlist.start_sec = Some(time_to_sec(&config.playlist.day_start));
 

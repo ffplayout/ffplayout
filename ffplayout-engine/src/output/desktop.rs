@@ -12,7 +12,16 @@ use ffplayout_lib::vec_strings;
 pub fn output(config: &PlayoutConfig, log_format: &str) -> process::Child {
     let mut enc_filter: Vec<String> = vec![];
 
-    let mut enc_cmd = vec_strings!["-hide_banner", "-nostats", "-v", log_format, "-i", "pipe:0"];
+    let mut enc_cmd = vec_strings![
+        "-hide_banner",
+        "-nostats",
+        "-v",
+        log_format,
+        "-i",
+        "pipe:0",
+        "-window_title",
+        "ffplayout"
+    ];
 
     if config.text.add_text && !config.text.text_from_filename {
         if let Some(socket) = config.text.zmq_stream_socket.clone() {

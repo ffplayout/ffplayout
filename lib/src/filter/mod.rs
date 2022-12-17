@@ -288,8 +288,15 @@ fn overlay(node: &mut Media, chain: &mut Filters, config: &PlayoutConfig) {
         && Path::new(&config.processing.logo).is_file()
         && &node.category != "advertisement"
     {
+        let mut scale = String::new();
+        let re = Regex::new(r"[)(\d\w-]+:[)(\d\w-]+").unwrap();
+
+        if re.is_match(&config.processing.logo_scale) {
+            scale = format!(",scale={}", config.processing.logo_scale);
+        }
+
         let mut logo_chain = format!(
-            "null[v];movie={}:loop=0,setpts=N/(FRAME_RATE*TB),format=rgba,colorchannelmixer=aa={}[l];[v][l]{}:shortest=1",
+            "null[v];movie={}:loop=0,setpts=N/(FRAME_RATE*TB),format=rgba,colorchannelmixer=aa={}{scale}[l];[v][l]{}:shortest=1",
             config.processing.logo, config.processing.logo_opacity, config.processing.logo_filter
         );
 
@@ -298,9 +305,10 @@ fn overlay(node: &mut Media, chain: &mut Filters, config: &PlayoutConfig) {
         }
 
         if node.next_ad.unwrap_or(false) {
-            logo_chain.push_str(
-                format!(",fade=out:st={}:d=1.0:alpha=1", node.out - node.seek - 1.0).as_str(),
-            )
+            logo_chain.push_str(&format!(
+                ",fade=out:st={}:d=1.0:alpha=1",
+                node.out - node.seek - 1.0
+            ))
         }
 
         chain.add_filter(&logo_chain, 0, Video);
@@ -395,9 +403,9 @@ fn aspect_calc(aspect_string: &Option<String>, config: &PlayoutConfig) -> f64 {
 
     if let Some(aspect) = aspect_string {
         let aspect_vec: Vec<&str> = aspect.split(':').collect();
-        let w: f64 = aspect_vec[0].parse().unwrap();
-        let h: f64 = aspect_vec[1].parse().unwrap();
-        source_aspect = w as f64 / h as f64;
+        let w = aspect_vec[0].parse::<f64>().unwrap();
+        let h = aspect_vec[1].parse::<f64>().unwrap();
+        source_aspect = w / h;
     }
 
     source_aspect

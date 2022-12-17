@@ -57,7 +57,7 @@ impl CurrentProgram {
             });
 
             let json: String = serde_json::to_string(&data).expect("Serialize status data failed");
-            if let Err(e) = fs::write(config.general.stat_file.clone(), &json) {
+            if let Err(e) = fs::write(config.general.stat_file.clone(), json) {
                 error!("Unable to write status file: {e}");
             };
         }
@@ -175,7 +175,7 @@ impl CurrentProgram {
             let status_data: String =
                 serde_json::to_string(&data).expect("Serialize status data failed");
 
-            if let Err(e) = fs::write(self.config.general.stat_file.clone(), &status_data) {
+            if let Err(e) = fs::write(self.config.general.stat_file.clone(), status_data) {
                 error!("Unable to write status file: {e}");
             };
 

@@ -435,7 +435,7 @@ async fn update_playout_config(
         if let Ok(f) = std::fs::OpenOptions::new()
             .write(true)
             .truncate(true)
-            .open(&channel.config_path)
+            .open(channel.config_path)
         {
             serde_yaml::to_writer(f, &data).unwrap();
 

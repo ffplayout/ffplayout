@@ -41,6 +41,7 @@ logging:
     log_path: /var/log/ffplayout/
     log_level: DEBUG
     ffmpeg_level: error
+    ingest_level: warning
 
 processing:
     help_text: Default processing for all clips, to have them unique. Mode can be playlist

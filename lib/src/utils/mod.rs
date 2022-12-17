@@ -292,7 +292,7 @@ pub fn write_status(config: &PlayoutConfig, date: &str, shift: f64) {
     });
 
     let status_data: String = serde_json::to_string(&data).expect("Serialize status data failed");
-    if let Err(e) = fs::write(&config.general.stat_file, &status_data) {
+    if let Err(e) = fs::write(&config.general.stat_file, status_data) {
         error!(
             "Unable to write to status file <b><magenta>{}</></b>: {e}",
             config.general.stat_file
