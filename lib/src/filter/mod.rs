@@ -289,8 +289,9 @@ fn overlay(node: &mut Media, chain: &mut Filters, config: &PlayoutConfig) {
         && &node.category != "advertisement"
     {
         let mut scale = String::new();
+        let re = Regex::new(r"[)(\d\w-]+:[)(\d\w-]+").unwrap();
 
-        if !config.processing.logo_scale.is_empty() {
+        if re.is_match(&config.processing.logo_scale) {
             scale = format!(",scale={}", config.processing.logo_scale);
         }
 
@@ -402,9 +403,9 @@ fn aspect_calc(aspect_string: &Option<String>, config: &PlayoutConfig) -> f64 {
 
     if let Some(aspect) = aspect_string {
         let aspect_vec: Vec<&str> = aspect.split(':').collect();
-        let w: f64 = aspect_vec[0].parse().unwrap();
-        let h: f64 = aspect_vec[1].parse().unwrap();
-        source_aspect = w as f64 / h as f64;
+        let w = aspect_vec[0].parse::<f64>().unwrap();
+        let h = aspect_vec[1].parse::<f64>().unwrap();
+        source_aspect = w / h;
     }
 
     source_aspect

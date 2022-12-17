@@ -106,7 +106,7 @@ pub fn ingest_server(
 
     while !proc_control.is_terminated.load(Ordering::SeqCst) {
         let proc_ctl = proc_control.clone();
-        let level = config.logging.ffmpeg_level.clone();
+        let level = config.logging.ingest_level.clone().unwrap();
         let mut server_proc = match Command::new("ffmpeg")
             .args(server_cmd.clone())
             .stdout(Stdio::piped())

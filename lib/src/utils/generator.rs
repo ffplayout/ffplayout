@@ -127,7 +127,7 @@ pub fn generate_playlist(
 
         let json: String = serde_json::to_string_pretty(&playlist)?;
 
-        write(playlist_file, &json)?;
+        write(playlist_file, json)?;
     }
 
     Ok(playlists)
