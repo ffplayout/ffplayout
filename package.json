@@ -20,7 +20,7 @@
     "cookie-universal-nuxt": "^2.2.2",
     "jwt-decode": "^3.1.2",
     "lodash": "^4.17.21",
-    "mpegts.js": "^1.6.10",
+    "mpegts.js": "^1.7.1",
     "nuxt": "^2.15.8",
     "splitpanes": "^2.4.1",
     "video.js": "^7.20.3",
@@ -35,7 +35,7 @@
     "@nuxtjs/style-resources": "^1.2.1",
     "eslint": "^7.32.0",
     "eslint-plugin-nuxt": "3.2.0",
-    "sass": "^1.56.1",
+    "sass": "^1.57.0",
     "sass-loader": "^10.3.1"
   }
 }
