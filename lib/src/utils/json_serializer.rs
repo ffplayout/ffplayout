@@ -203,9 +203,15 @@ pub fn read_json(
             Ok(p) => p,
             Err(e) => {
                 error!("Playlist file not readable! {e}");
-                JsonPlaylist::new(date, start_sec)
+                JsonPlaylist::new(date.clone(), start_sec)
             }
         };
+
+        // catch empty program list
+        if playlist.program.is_empty() {
+            playlist = JsonPlaylist::new(date, start_sec)
+        }
+
         playlist.modified = modified_time(&current_file);
 
         let list_clone = playlist.clone();
