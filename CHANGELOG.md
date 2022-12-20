@@ -1,16 +1,32 @@
 # Changelog
 
-## [0.16.6](https://github.com/ffplayout/ffplayout/compare/v0.16.5...v0.1665) (2022-12-17)
+## [0.16.6](https://github.com/ffplayout/ffplayout/compare/v0.16.6...v0.16.7) (2022-12-20)
 
 ### ffplayout
+
+- log error only when fdk_aac is in use [8ac3688](https://github.com/ffplayout/ffplayout/pull/249/commits/8ac3688d2bd178db9b5a54efa1bde4e688432564)
+- make libx264 optional [1491f46](https://github.com/ffplayout/ffplayout/pull/249/commits/1491f46e3dbb9a4dfa14fe2ab3680c6d0cc89b3d)
+- catch empty program list in [#101](playlist https://github.com/ffplayout/ffplayout-frontend/issues/101) [850a48e](https://github.com/ffplayout/ffplayout/pull/249/commits/850a48ed43a671e7a0d924510b80592e489fff94)
+- update packages, set correct port [a3ce014](https://github.com/ffplayout/ffplayout/pull/249/commits/a3ce014444672704d9c33af6f6105f57c40a544d)
+
+### frontend
+
+- remove dotenv, update packages [3ddec8c](https://github.com/ffplayout/ffplayout/pull/249/commits/3ddec8cf19db692412c603718038cf3f0ffa7815), should fix [#101](playlist https://github.com/ffplayout/ffplayout-frontend/issues/101)
+- suppress 408 error [b812de9](https://github.com/ffplayout/ffplayout/pull/249/commits/b812de97470fd21e8734fe6e5282cc0e871384ca)
+
+## [0.16.6](https://github.com/ffplayout/ffplayout/compare/v0.16.5...v0.16.6) (2022-12-17)
+
+### ffplayout
+
 - add logo scale
 - add optional ingest_level
 - set windows title in desktop mode [f388820](https://github.com/ffplayout/ffplayout/commit/f38882032f809f094cef895beff07582f0fe9b8f)
 
 ### Development
+
 - migrate to Rust 1.66.0 [f388820](https://github.com/ffplayout/ffplayout/commit/f38882032f809f094cef895beff07582f0fe9b8f)
 - update packages [f388820](https://github.com/ffplayout/ffplayout/commit/f38882032f809f094cef895beff07582f0fe9b8f)
- 
+
 ## [0.16.5](https://github.com/ffplayout/ffplayout/compare/v0.16.4...v0.16.5) (2022-11-28)
 
 ### ffpapi

@@ -772,7 +772,14 @@ pub fn validate_ffmpeg(config: &mut PlayoutConfig) -> Result<(), String> {
 
     ffmpeg_filter_and_libs(config)?;
 
-    if !config.general.ffmpeg_libs.contains(&"libx264".to_string()) {
+    if config
+        .out
+        .output_cmd
+        .as_ref()
+        .unwrap()
+        .contains(&"libx264".to_string())
+        && !config.general.ffmpeg_libs.contains(&"libx264".to_string())
+    {
         return Err("ffmpeg contains no libx264!".to_string());
     }
 
@@ -786,12 +793,18 @@ pub fn validate_ffmpeg(config: &mut PlayoutConfig) -> Result<(), String> {
         );
     }
 
-    if !config
-        .general
-        .ffmpeg_libs
-        .contains(&"libfdk-aac".to_string())
+    if config
+        .out
+        .output_cmd
+        .as_ref()
+        .unwrap()
+        .contains(&"libfdk_aac".to_string())
+        && !config
+            .general
+            .ffmpeg_libs
+            .contains(&"libfdk-aac".to_string())
     {
-        warn!("ffmpeg contains no libfdk-aac! Can't use high quality aac encoder...");
+        return Err("ffmpeg contains no libfdk-aac!".to_string());
     }
 
     Ok(())
