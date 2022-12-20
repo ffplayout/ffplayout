@@ -38,7 +38,7 @@ export default function ({ $axios, store, redirect, route }) {
 
         if (code === 401 && route.path !== '/') {
             redirect('/')
-        } else if (code !== 401 && code !== 409 && code !== 503) {
+        } else if (code !== 401 && code !== 409 && code !== 503 !== (code === 408 && route.path.includes('/media/current'))) {
             store.commit('UPDATE_VARIANT', 'danger')
             store.commit('UPDATE_SHOW_ERROR_ALERT', true)
             store.commit('UPDATE_ERROR_ALERT_MESSAGE', error)
