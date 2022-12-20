@@ -6,12 +6,12 @@
 
 - log error only when fdk_aac is in use [8ac3688](https://github.com/ffplayout/ffplayout/pull/249/commits/8ac3688d2bd178db9b5a54efa1bde4e688432564)
 - make libx264 optional [1491f46](https://github.com/ffplayout/ffplayout/pull/249/commits/1491f46e3dbb9a4dfa14fe2ab3680c6d0cc89b3d)
-- catch empty program list in [#101](playlist https://github.com/ffplayout/ffplayout-frontend/issues/101) [850a48e](https://github.com/ffplayout/ffplayout/pull/249/commits/850a48ed43a671e7a0d924510b80592e489fff94)
+- catch empty program list in [#101](https://github.com/ffplayout/ffplayout-frontend/issues/101) [850a48e](https://github.com/ffplayout/ffplayout/pull/249/commits/850a48ed43a671e7a0d924510b80592e489fff94)
 - update packages, set correct port [a3ce014](https://github.com/ffplayout/ffplayout/pull/249/commits/a3ce014444672704d9c33af6f6105f57c40a544d)
 
 ### frontend
 
-- remove dotenv, update packages [3ddec8c](https://github.com/ffplayout/ffplayout/pull/249/commits/3ddec8cf19db692412c603718038cf3f0ffa7815), should fix [#101](playlist https://github.com/ffplayout/ffplayout-frontend/issues/101)
+- remove dotenv, update packages [3ddec8c](https://github.com/ffplayout/ffplayout/pull/249/commits/3ddec8cf19db692412c603718038cf3f0ffa7815), should fix [#101](https://github.com/ffplayout/ffplayout-frontend/issues/101)
 - suppress 408 error [b812de9](https://github.com/ffplayout/ffplayout/pull/249/commits/b812de97470fd21e8734fe6e5282cc0e871384ca)
 
 ## [0.16.6](https://github.com/ffplayout/ffplayout/compare/v0.16.5...v0.16.6) (2022-12-17)
