@@ -14,7 +14,7 @@
 <script>
 /* eslint-disable camelcase */
 import videojs from 'video.js'
-require('video.js/dist/video-js.css')
+import 'video.js/dist/video-js.css'
 
 export default {
     name: 'VideoPlayer',

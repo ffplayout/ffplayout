@@ -57,13 +57,6 @@ export default {
         { src: '~plugins/lodash.js', ssr: false }
     ],
     /*
-     ** Nuxt.js dev-modules
-     */
-    buildModules: [
-        // Doc: https://github.com/nuxt-community/eslint-module
-        '@nuxtjs/eslint-module'
-    ],
-    /*
      ** Nuxt.js modules
      */
     modules: [
@@ -71,8 +64,8 @@ export default {
         'bootstrap-vue/nuxt',
         '@nuxtjs/axios',
         '@nuxtjs/dayjs',
+        '@nuxtjs/eslint-module',
         '@nuxtjs/style-resources',
-        '@nuxtjs/dotenv',
         'cookie-universal-nuxt'
     ],
 

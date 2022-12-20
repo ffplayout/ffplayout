@@ -5,7 +5,7 @@
   "author": "Jonathan Baecker",
   "private": true,
   "scripts": {
-    "dev": "nuxt",
+    "dev": "NODE_OPTIONS=--openssl-legacy-provider nuxt",
     "build": "nuxt build",
     "start": "nuxt start",
     "generate": "nuxt generate",
@@ -14,7 +14,6 @@
   "dependencies": {
     "@nuxtjs/axios": "^5.13.6",
     "@nuxtjs/dayjs": "^1.4.1",
-    "@nuxtjs/dotenv": "^1.4.1",
     "bootstrap": "^4.6.2",
     "bootstrap-vue": "^2.23.1",
     "cookie-universal-nuxt": "^2.2.2",
@@ -35,7 +34,7 @@
     "@nuxtjs/style-resources": "^1.2.1",
     "eslint": "^7.32.0",
     "eslint-plugin-nuxt": "3.2.0",
-    "sass": "^1.57.0",
+    "sass": "^1.57.1",
     "sass-loader": "^10.3.1"
   }
 }
