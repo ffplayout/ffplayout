@@ -13,7 +13,7 @@ if [ ! -d "/usr/share/ffplayout/db" ]; then
 
     IP=$(hostname -I | cut -d ' ' -f1)
 
-    /usr/bin/ffpapi -i -d $IP
+    /usr/bin/ffpapi -i -d "${IP}:8787"
 
     chown -R ${sysUser}. "/usr/share/ffplayout"
     chown -R ${sysUser}. "/var/lib/ffplayout"
