@@ -168,7 +168,7 @@ pub async fn update_channel(
         .bind(channel.name)
         .bind(channel.preview_url)
         .bind(channel.config_path)
-        .bind(channel.extra_extensions)
+        .bind(channel.extra_extensions.join(","))
         .execute(conn)
         .await
 }
@@ -179,7 +179,7 @@ pub async fn insert_channel(conn: &Pool<Sqlite>, channel: Channel) -> Result<Cha
         .bind(channel.name)
         .bind(channel.preview_url)
         .bind(channel.config_path)
-        .bind(channel.extra_extensions)
+        .bind(channel.extra_extensions.join(","))
         .bind(channel.service)
         .execute(conn)
         .await?;
