@@ -982,7 +982,7 @@ dependencies = [
 
 [[package]]
 name = "ffplayout-api"
-version = "0.9.0"
+version = "0.8.3"
 dependencies = [
  "actix-files",
  "actix-multipart",
