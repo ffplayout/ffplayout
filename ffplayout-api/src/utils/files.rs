@@ -94,8 +94,15 @@ pub async fn browser(
     id: i32,
     path_obj: &PathObject,
 ) -> Result<PathObject, ServiceError> {
-    let (config, _) = playout_config(conn, &id).await?;
-    let extensions = config.storage.extensions;
+    let (config, channel) = playout_config(conn, &id).await?;
+    let mut channel_extensions = channel
+        .extra_extensions
+        .split(',')
+        .map(|e| e.to_string())
+        .collect::<Vec<String>>();
+    let mut extensions = config.storage.extensions;
+    extensions.append(&mut channel_extensions);
+
     let (path, parent, path_component) = norm_abs_path(&config.storage.path, &path_obj.source);
     let mut obj = PathObject::new(path_component, Some(parent));
 
