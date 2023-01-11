@@ -678,7 +678,7 @@ async function onSubmitImport(evt: any) {
 
     playlistIsLoading.value = true
     await $fetch(
-        `api/file/${configStore.configGui[configStore.configID].id}/import/?file=${textFile.value[0].name}&date=${
+        `/api/file/${configStore.configGui[configStore.configID].id}/import/?file=${textFile.value[0].name}&date=${
             listDate.value
         }`,
         {
@@ -698,7 +698,7 @@ async function onSubmitImport(evt: any) {
                 indexStore.showAlert = false
             }, 2000)
         })
-        .catch((e) => {
+        .catch((e: string) => {
             indexStore.alertVariant = 'alert-danger'
             indexStore.alertMsg = e
             indexStore.showAlert = true
@@ -716,7 +716,7 @@ async function onSubmitImport(evt: any) {
 async function generatePlaylist() {
     playlistIsLoading.value = true
 
-    await $fetch(`api/playlist/${configStore.configGui[configStore.configID].id}/generate/${listDate.value}`, {
+    await $fetch(`/api/playlist/${configStore.configGui[configStore.configID].id}/generate/${listDate.value}`, {
         method: 'GET',
         headers: authStore.authHeader,
     })
@@ -735,7 +735,7 @@ async function generatePlaylist() {
                 indexStore.showAlert = false
             }, 2000)
         })
-        .catch((e) => {
+        .catch((e: string) => {
             indexStore.alertVariant = 'alert-danger'
             indexStore.alertMsg = e
             indexStore.showAlert = true
@@ -757,7 +757,7 @@ async function savePlaylist(saveDate: string) {
     )
     const saveList = playlistStore.playlist.map(({ begin, ...item }) => item)
 
-    await $fetch(`api/playlist/${configStore.configGui[configStore.configID].id}/`, {
+    await $fetch(`/api/playlist/${configStore.configGui[configStore.configID].id}/`, {
         method: 'POST',
         headers: { ...contentType, ...authStore.authHeader },
         body: JSON.stringify({
@@ -775,7 +775,7 @@ async function savePlaylist(saveDate: string) {
                 indexStore.showAlert = false
             }, 2000)
         })
-        .catch((e) => {
+        .catch((e: any) => {
             if (e.status === 409) {
                 indexStore.alertVariant = 'alert-warning'
                 indexStore.alertMsg = e.data
@@ -797,7 +797,7 @@ async function savePlaylist(saveDate: string) {
 }
 
 async function deletePlaylist(playlistDate: string) {
-    await $fetch(`api/playlist/${configStore.configGui[configStore.configID].id}/${playlistDate}`, {
+    await $fetch(`/api/playlist/${configStore.configGui[configStore.configID].id}/${playlistDate}`, {
         method: 'DELETE',
         headers: { ...contentType, ...authStore.authHeader },
     }).then(() => {

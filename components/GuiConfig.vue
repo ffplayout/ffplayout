@@ -149,7 +149,7 @@ async function deleteChannel() {
         return
     }
 
-    const response = await fetch(`api/channel/${id}`, {
+    const response = await fetch(`/api/channel/${id}`, {
         method: 'DELETE',
         headers: authStore.authHeader,
     })

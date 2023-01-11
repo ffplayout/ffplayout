@@ -20,7 +20,7 @@ export const useMedia = defineStore('media', {
             const crumbs: Crumb[] = []
             let root = '/'
 
-            await fetch(`api/file/${channel}/browse/`, {
+            await fetch(`/api/file/${channel}/browse/`, {
                 method: 'POST',
                 headers: { ...contentType, ...authStore.authHeader },
                 body: JSON.stringify({ source: path }),

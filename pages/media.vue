@@ -179,7 +179,7 @@ async function onSubmitCreateFolder(evt: any) {
         return
     }
 
-    await $fetch(`api/file/${configStore.configGui[configStore.configID].id}/create-folder/`, {
+    await $fetch(`/api/file/${configStore.configGui[configStore.configID].id}/create-folder/`, {
         method: 'POST',
         headers: { ...contentType, ...authStore.authHeader },
         body: JSON.stringify({ source: path }),
@@ -188,7 +188,7 @@ async function onSubmitCreateFolder(evt: any) {
             indexStore.alertVariant = 'alert-success'
             indexStore.alertMsg = 'Folder create done...'
         })
-        .catch((e) => {
+        .catch((e: string) => {
             indexStore.alertVariant = 'alert-danger'
             indexStore.alertMsg = `Folder create error: ${e}`
         })
@@ -236,7 +236,7 @@ async function onSubmitUpload(evt: any) {
 
         xhr.value.open(
             'PUT',
-            `api/file/${configStore.configGui[configStore.configID].id}/upload/?path=${encodeURIComponent(
+            `/api/file/${configStore.configGui[configStore.configID].id}/upload/?path=${encodeURIComponent(
                 mediaStore.crumbs[mediaStore.crumbs.length - 1].path
             )}`
         )

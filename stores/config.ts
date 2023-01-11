@@ -92,7 +92,7 @@ export const useConfig = defineStore('config', {
 
         async getGuiConfig() {
             let statusCode = 0
-            await fetch('api/channels', {
+            await fetch('/api/channels', {
                 method: 'GET',
                 headers: authStore.authHeader,
             })
@@ -129,8 +129,9 @@ export const useConfig = defineStore('config', {
                         },
                     ])
 
-                    indexStore.errorAlertMessage = e
-                    indexStore.showErrorAlert = true
+                    indexStore.alertMsg = e
+                    indexStore.alertVariant = 'alert-danger'
+                    indexStore.showAlert = true
                 })
         },
 
@@ -140,13 +141,13 @@ export const useConfig = defineStore('config', {
             let response
 
             if (this.configGuiRaw.some((e) => e.id === stringObj.id)) {
-                response = await fetch(`api/channel/${obj.id}`, {
+                response = await fetch(`/api/channel/${obj.id}`, {
                     method: 'PATCH',
                     headers: { ...contentType, ...authStore.authHeader },
                     body: JSON.stringify(stringObj),
                 })
             } else {
-                response = await fetch('api/channel/', {
+                response = await fetch('/api/channel/', {
                     method: 'POST',
                     headers: { ...contentType, ...authStore.authHeader },
                     body: JSON.stringify(stringObj),
@@ -176,7 +177,7 @@ export const useConfig = defineStore('config', {
         async getPlayoutConfig() {
             const channel = this.configGui[this.configID].id
 
-            await fetch(`api/playout/config/${channel}`, {
+            await fetch(`/api/playout/config/${channel}`, {
                 method: 'GET',
                 headers: authStore.authHeader,
             })
@@ -195,8 +196,9 @@ export const useConfig = defineStore('config', {
                     this.updatePlayoutConfig(data)
                 })
                 .catch(() => {
-                    indexStore.showErrorAlert = true
-                    indexStore.errorAlertMessage = 'No playout config found!'
+                    indexStore.alertMsg = 'No playout config found!'
+                    indexStore.alertVariant = 'alert-danger'
+                    indexStore.showAlert = true
                 })
         },
 
@@ -204,7 +206,7 @@ export const useConfig = defineStore('config', {
             const channel = this.configGui[this.configID].id
             const contentType = { 'content-type': 'application/json;charset=UTF-8' }
 
-            const update = await fetch(`api/playout/config/${channel}`, {
+            const update = await fetch(`/api/playout/config/${channel}`, {
                 method: 'PUT',
                 headers: { ...contentType, ...authStore.authHeader },
                 body: JSON.stringify(obj),
@@ -214,7 +216,7 @@ export const useConfig = defineStore('config', {
         },
 
         async getUserConfig() {
-            await fetch('api/user', {
+            await fetch('/api/user', {
                 method: 'GET',
                 headers: authStore.authHeader,
             })
@@ -228,7 +230,7 @@ export const useConfig = defineStore('config', {
         async setUserConfig(obj: any) {
             const contentType = { 'content-type': 'application/json;charset=UTF-8' }
 
-            const update = await fetch(`api/user/${obj.id}`, {
+            const update = await fetch(`/api/user/${obj.id}`, {
                 method: 'PUT',
                 headers: { ...contentType, ...authStore.authHeader },
                 body: JSON.stringify(obj),

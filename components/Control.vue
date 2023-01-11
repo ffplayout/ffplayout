@@ -249,7 +249,7 @@ async function playoutStatus() {
     */
     const channel = configStore.configGui[configStore.configID].id
 
-    await $fetch(`api/control/${channel}/process/`, {
+    await $fetch(`/api/control/${channel}/process/`, {
         method: 'POST',
         headers: { ...contentType, ...authStore.authHeader },
         body: JSON.stringify({ command: 'status' }),
@@ -273,7 +273,7 @@ async function controlProcess(state: string) {
     */
     const channel = configStore.configGui[configStore.configID].id
 
-    await $fetch(`api/control/${channel}/process/`, {
+    await $fetch(`/api/control/${channel}/process/`, {
         method: 'POST',
         headers: { ...contentType, ...authStore.authHeader },
         body: JSON.stringify({ command: state }),
@@ -294,7 +294,7 @@ async function controlPlayout(state: string) {
     */
     const channel = configStore.configGui[configStore.configID].id
 
-    await $fetch(`api/control/${channel}/playout/`, {
+    await $fetch(`/api/control/${channel}/playout/`, {
         method: 'POST',
         headers: { ...contentType, ...authStore.authHeader },
         body: JSON.stringify({ command: state }),

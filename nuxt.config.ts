@@ -13,8 +13,8 @@ export default defineNuxtConfig({
     },
 
     ignore: ['**/public/tv-media**', '**/public/Videos**', '**/public/live**', '**/public/home**'],
-
     ssr: false,
+    // debug: true,
 
     app: {
         head: {
@@ -44,14 +44,23 @@ export default defineNuxtConfig({
     },
 
     modules: ['@pinia/nuxt'],
+    css: ['@/assets/scss/main.scss'],
 
     vite: {
         css: {
             preprocessorOptions: {
                 scss: {
-                    additionalData: '@import "@/assets/scss/main.scss";',
+                    additionalData: '@import "@/assets/scss/_variables.scss";',
                 },
             },
         },
     },
+
+    experimental: {
+        payloadExtraction: false,
+    },
+
+    // build: {
+    //     chunkSizeWarningLimit: 800000,
+    // },
 })

@@ -1,4 +1,4 @@
-import * as dayjs from 'dayjs'
+import dayjs from 'dayjs'
 import utc from 'dayjs/plugin/utc.js'
 import timezone from 'dayjs/plugin/timezone.js'
 
@@ -45,7 +45,7 @@ export const usePlaylist = defineStore('playlist', {
                 dateToday = dayjs(dateToday).utcOffset(configStore.utcOffset).subtract(1, 'day').format('YYYY-MM-DD')
             }
 
-            await fetch(`api/playlist/${channel}?date=${date}`, {
+            await fetch(`/api/playlist/${channel}?date=${date}`, {
                 method: 'GET',
                 headers: authStore.authHeader,
             })
@@ -65,7 +65,7 @@ export const usePlaylist = defineStore('playlist', {
         async playoutStat() {
             const channel = configStore.configGui[configStore.configID].id
 
-            await fetch(`api/control/${channel}/media/current`, {
+            await fetch(`/api/control/${channel}/media/current`, {
                 method: 'GET',
                 headers: authStore.authHeader,
             })

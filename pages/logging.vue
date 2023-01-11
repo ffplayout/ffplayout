@@ -24,13 +24,20 @@ useHead({
     title: 'Logging | ffplayout'
 })
 
+onMounted(() => {
+    getLog()
+})
+
 const { $dayjs } = useNuxtApp()
 const authStore = useAuth()
 const configStore = useConfig()
 const currentLog = ref('')
 const listDate = ref($dayjs().utcOffset(configStore.utcOffset).format('YYYY-MM-DD'))
-const configID = ref(configStore.configID)
 const { formatLog } = stringFormatter()
+
+watch([listDate, configStore.configID], () => {
+    getLog()
+})
 
 async function getLog() {
     let date = listDate.value
@@ -39,7 +46,7 @@ async function getLog() {
         date = ''
     }
 
-    await fetch(`api/log/${configStore.configGui[configStore.configID].id}?date=${date}`, {
+    await fetch(`/api/log/${configStore.configGui[configStore.configID].id}?date=${date}`, {
         method: 'GET',
         headers: authStore.authHeader,
     })
@@ -51,16 +58,6 @@ async function getLog() {
             currentLog.value = ''
         })
 }
-
-onMounted(() => {
-    getLog()
-})
-
-watch([listDate, configID], () => {
-    getLog()
-})
-
-
 </script>
 
 <style lang="scss">

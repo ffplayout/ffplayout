@@ -313,7 +313,7 @@ async function deleteFileOrFolder() {
     /*
         Delete function, works for files and folders.
     */
-    await fetch(`api/file/${configStore.configGui[configStore.configID].id}/remove/`, {
+    await fetch(`/api/file/${configStore.configGui[configStore.configID].id}/remove/`, {
         method: 'POST',
         headers: { ...contentType, ...authStore.authHeader },
         body: JSON.stringify({ source: deleteName.value }),
@@ -349,7 +349,7 @@ async function onSubmitRenameFile(evt: any) {
     */
     evt.preventDefault()
 
-    await fetch(`api/file/${configStore.configGui[configStore.configID].id}/rename/`, {
+    await fetch(`/api/file/${configStore.configGui[configStore.configID].id}/rename/`, {
         method: 'POST',
         headers: { ...contentType, ...authStore.authHeader },
         body: JSON.stringify({ source: renameOldName.value, target: renameNewName.value }),

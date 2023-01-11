@@ -3,7 +3,7 @@ import { defineStore } from 'pinia'
 export const useIndex = defineStore('index', {
     state: () => ({
         showAlert: false,
-        alertVariant: 'success',
+        alertVariant: 'alert-success',
         alertMsg: '',
     }),
 
@@ -11,7 +11,7 @@ export const useIndex = defineStore('index', {
     actions: {
         resetAlert() {
             this.showAlert = false
-            this.alertVariant = 'success'
+            this.alertVariant = 'alert-success'
             this.alertMsg = ''
         },
     },
