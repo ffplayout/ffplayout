@@ -1,4 +1,8 @@
 {
+  "name": "ffplayout-frontend",
+  "version": "0.1.0",
+  "description": "Web GUI for ffplayout",
+  "author": "Jonathan Baecker",
   "private": true,
   "scripts": {
     "build": "nuxt build",
