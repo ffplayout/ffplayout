@@ -1,642 +1,301 @@
 <template>
     <div>
         <Menu />
-        <b-container
-            class="browser-container"
-            @drop.prevent="addFile"
-            @dragover.prevent
-            @dragenter.prevent="dragEnter"
-            @dragleave.prevent="dragLeave"
-        >
-            <div class="drag-file" :class="fileDragClass">
-                <span>
-                    <b-icon-box-arrow-in-down />
-                </span>
-            </div>
+        <div class="container-fluid browser-container">
+            <Browser ref="browser" />
+        </div>
+        <div class="btn-group media-button">
+            <button
+                type="button"
+                class="btn btn-primary"
+                title="Create Folder"
+                data-bs-toggle="modal"
+                data-bs-target="#folderModal"
+            >
+                <i class="bi-folder-plus" />
+            </button>
+            <button
+                type="button"
+                class="btn btn-primary"
+                title="Upload File"
+                data-bs-toggle="modal"
+                data-bs-target="#uploadModal"
+            >
+                <i class="bi-upload" />
+            </button>
+        </div>
 
-            <div v-if="folderTree" class="browser">
-                <div class="bread-div">
-                    <b-breadcrumb>
-                        <b-breadcrumb-item
-                            v-for="(crumb, index) in crumbs"
-                            :key="crumb.key"
-                            :active="index === crumbs.length - 1"
-                            @click="getPath(crumb.path)"
-                        >
-                            {{ crumb.text }}
-                        </b-breadcrumb-item>
-                    </b-breadcrumb>
-                </div>
-
-                <splitpanes class="browser-row default-theme pane-row">
-                    <pane min-size="20" size="24">
-                        <div class="browser-div">
-                            <div class="media-browser-scroll">
-                                <b-list-group class="folder-list">
-                                    <b-list-group-item
-                                        v-for="folder in folderTree.folders"
-                                        :key="folder"
-                                        class="browser-item folder"
-                                    >
-                                        <b-row>
-                                            <b-col cols="1" class="browser-icons-col">
-                                                <b-icon-folder-fill class="browser-icons" />
-                                            </b-col>
-                                            <b-col class="browser-item-text">
-                                                <b-link @click="getPath(`/${folderTree.source}/${folder}`)">
-                                                    {{ folder }}
-                                                </b-link>
-                                            </b-col>
-                                            <b-col v-if="folder !== '..'" cols="1" class="folder-delete">
-                                                <b-link @click="showDeleteModal('Folder', `/${folderTree.source}/${folder}`)">
-                                                    <b-icon-x-circle-fill />
-                                                </b-link>
-                                            </b-col>
-                                        </b-row>
-                                    </b-list-group-item>
-                                </b-list-group>
-                            </div>
+        <div id="folderModal" class="modal" tabindex="-1" aria-labelledby="folderModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h1 class="modal-title fs-5" id="folderModalLabel">Create Folder</h1>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cancel"></button>
+                    </div>
+                    <form @submit.prevent="onSubmitCreateFolder" @reset="onCancelCreateFolder">
+                        <div class="modal-body">
+                            <input type="text" class="form-control" v-model="folderName" />
                         </div>
-                    </pane>
-                    <pane class="files-col">
-                        <loading
-                            :active.sync="isLoading"
-                            :can-cancel="false"
-                            :is-full-page="false"
-                            background-color="#485159"
-                            color="#ff9c36"
-                        />
-                        <div class="browser-div">
-                            <div class="media-browser-scroll">
-                                <b-list-group class="files-list">
-                                    <b-list-group-item
-                                        v-for="file in folderTree.files"
-                                        :key="file.name"
-                                        class="browser-item"
-                                    >
-                                        <b-row>
-                                            <b-col cols="1" class="browser-icons-col">
-                                                <b-icon-film class="browser-icons" />
-                                            </b-col>
-                                            <b-col class="browser-item-text">
-                                                {{ file.name }}
-                                            </b-col>
-                                            <b-col cols="1" class="browser-play-col">
-                                                <b-link title="Preview" @click="showPreviewModal(`/${folderTree.parent}/${folderTree.source}/${file.name}`)">
-                                                    <b-icon-play-fill />
-                                                </b-link>
-                                            </b-col>
-                                            <b-col cols="1" class="browser-dur-col">
-                                                <span class="duration">{{ file.duration | toMin }}</span>
-                                            </b-col>
-                                            <b-col cols="1" class="small-col">
-                                                <b-link title="Rename File" @click="showRenameModal(file.name)">
-                                                    <b-icon-pencil-square />
-                                                </b-link>
-                                            </b-col>
-                                            <b-col cols="1" class="small-col">
-                                                <b-link title="Delete File" @click="showDeleteModal('File', `/${folderTree.parent}/${folderTree.source}/${file.name}`)">
-                                                    <b-icon-x-circle-fill />
-                                                </b-link>
-                                            </b-col>
-                                        </b-row>
-                                    </b-list-group-item>
-                                </b-list-group>
-                            </div>
-                        </div>
-                    </pane>
-                </splitpanes>
-                <b-button-group class="media-button">
-                    <b-button title="Create Folder" variant="primary" @click="showCreateFolderModal()">
-                        <b-icon-folder-plus />
-                    </b-button>
-                    <b-button title="Upload File" variant="primary" @click="showUploadModal()">
-                        <b-icon-upload />
-                    </b-button>
-                </b-button-group>
-            </div>
-        </b-container>
-        <b-modal
-            id="preview-modal"
-            ref="prev-modal"
-            size="xl"
-            centered
-            :title="`Preview: ${previewName}`"
-            hide-footer
-        >
-            <b-img v-if="isImage" :src="previewSource" fluid :alt="previewName" />
-            <video-player v-else-if="!isImage && previewOptions" reference="previewPlayer" :options="previewOptions" />
-        </b-modal>
-
-        <b-modal
-            id="folder-modal"
-            ref="folder-modal"
-            size="xl"
-            centered
-            title="Create Folder"
-            hide-footer
-        >
-            <b-form @submit="onSubmitCreateFolder" @reset="onCancelCreateFolder">
-                <b-form-input
-                    id="folder-name"
-                    v-model="folderName"
-                    type="text"
-                    required
-                    autofocus
-                    placeholder="Enter a unique folder name"
-                />
-                <div class="media-button">
-                    <b-button type="submit" variant="primary">
-                        Create
-                    </b-button>
-                    <b-button type="reset" variant="primary">
-                        Cancel
-                    </b-button>
-                </div>
-            </b-form>
-        </b-modal>
-
-        <b-modal
-            id="upload-modal"
-            ref="up-modal"
-            size="xl"
-            centered
-            title="File Upload"
-            hide-footer
-            no-close-on-backdrop
-        >
-            <b-form @submit="onSubmitUpload" @reset="onResetUpload">
-                <b-form-file
-                    v-model="inputFiles"
-                    :state="Boolean(inputFiles)"
-                    :placeholder="inputPlaceholder"
-                    drop-placeholder="Drop files here..."
-                    multiple
-                    :accept="extensions.replace(/,/g, ', ')"
-                    :file-name-formatter="formatNames"
-                />
-                <b-row>
-                    <b-col cols="10">
-                        <b-row class="progress-row">
-                            <b-col cols="1" style="min-width: 125px">
-                                Overall ({{ currentNumber }}/{{ inputFiles.length }}):
-                            </b-col>
-                            <b-col cols="10">
-                                <b-progress :value="overallProgress" />
-                            </b-col>
-                            <div class="w-100" />
-                            <b-col cols="1" style="min-width: 125px">
-                                Current:
-                            </b-col>
-                            <b-col cols="10">
-                                <b-progress :value="currentProgress" />
-                            </b-col>
-                            <div class="w-100" />
-                            <b-col cols="1" style="min-width: 125px">
-                                Uploading:
-                            </b-col>
-                            <b-col cols="10">
-                                <strong>{{ uploadTask }}</strong>
-                            </b-col>
-                        </b-row>
-                    </b-col>
-                    <b-col cols="2">
-                        <div class="media-button">
-                            <b-button type="submit" variant="primary">
-                                Upload
-                            </b-button>
-                            <b-button type="reset" variant="primary">
+                        <div class="modal-footer">
+                            <button type="reset" class="btn btn-primary" data-bs-dismiss="modal" aria-label="Cancel">
                                 Cancel
-                            </b-button>
+                            </button>
+                            <button type="submit" class="btn btn-primary" data-bs-dismiss="modal">Ok</button>
                         </div>
-                    </b-col>
-                </b-row>
-            </b-form>
-        </b-modal>
-        <b-modal id="rename-modal" title="Rename File" centered hide-footer>
-            <b-form @submit="renameFile">
-                <b-form-group
-                    id="input-group-1"
-                    label-for="input-1"
-                >
-                    <b-form-input
-                        id="input-1"
-                        v-model="renameNewName"
-                        type="text"
-                        placeholder=""
-                    />
-                </b-form-group>
-                <div class="media-button">
-                    <b-button type="submit" variant="primary">
-                        Rename
-                    </b-button>
-                    <b-button variant="primary" @click="cancelRename()">
-                        Cancel
-                    </b-button>
+                    </form>
                 </div>
-            </b-form>
-        </b-modal>
-        <b-modal id="delete-modal" :title="`Delete ${deleteType}`" centered hide-footer>
-            <p>
-                Are you sure that you want to delete:<br>
-                <strong>{{ previewName }}</strong>
-            </p>
-            <div class="media-button">
-                <b-button variant="primary" @click="deleteFileOrFolder()">
-                    Ok
-                </b-button>
-                <b-button variant="primary" @click="cancelDelete()">
-                    Cancel
-                </b-button>
             </div>
-        </b-modal>
+        </div>
+
+        <div
+            id="uploadModal"
+            ref="uploadModal"
+            class="modal"
+            tabindex="-1"
+            aria-labelledby="uploadModalLabel"
+            data-bs-backdrop="static"
+        >
+            <div class="modal-dialog modal-dialog-centered modal-xl">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h1 class="modal-title fs-5" id="uploadModalLabel">Upload Files</h1>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cancel"></button>
+                    </div>
+                    <form @submit.prevent="onSubmitUpload" @reset="onResetUpload">
+                        <div class="modal-body">
+                            <input
+                                class="form-control"
+                                type="file"
+                                :accept="extensions"
+                                v-on:change="onFileChange"
+                                multiple
+                            />
+
+                            <div class="row">
+                                <div class="col-10">
+                                    <div class="row progress-row">
+                                        <div class="col-1" style="min-width: 125px">
+                                            Overall ({{ currentNumber }}/{{ inputFiles.length }}):
+                                        </div>
+                                        <div class="col-10 progress">
+                                            <div
+                                                class="progress-bar bg-warning"
+                                                role="progressbar"
+                                                :aria-valuenow="overallProgress"
+                                                :style="`width: ${overallProgress}%`"
+                                            />
+                                        </div>
+                                        <div class="w-100" />
+                                        <div class="col-1" style="min-width: 125px">Current:</div>
+                                        <div class="col-10 progress">
+                                            <div
+                                                class="progress-bar bg-warning"
+                                                role="progressbar"
+                                                :aria-valuenow="currentProgress"
+                                                :style="`width: ${currentProgress}%`"
+                                            />
+                                        </div>
+                                        <div class="w-100" />
+                                        <div class="col-1" style="min-width: 125px">Uploading:</div>
+                                        <div class="col-10">
+                                            <strong>{{ uploadTask }}</strong>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-2">
+                                    <div class="media-button">
+                                        <button type="reset" class="btn btn-primary me-2" data-bs-dismiss="modal">
+                                            Cancel
+                                        </button>
+                                        <button type="submit" class="btn btn-primary">Upload</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
     </div>
 </template>
 
-<script>
-/* eslint-disable vue/custom-event-name-casing */
-import { mapState } from 'vuex'
-import Menu from '@/components/Menu.vue'
+<script setup lang="ts">
+import { useAuth } from '~/stores/auth'
+import { useConfig } from '~/stores/config'
+import { useIndex } from '~/stores/index'
+import { useMedia } from '~/stores/media'
+import Browser from '../components/Browser.vue'
 
-export default {
-    name: 'Media',
+const { $bootstrap } = useNuxtApp()
+const authStore = useAuth()
+const configStore = useConfig()
+const indexStore = useIndex()
+const mediaStore = useMedia()
+const contentType = { 'content-type': 'application/json;charset=UTF-8' }
 
-    components: {
-        Menu
-    },
+definePageMeta({
+    middleware: ['auth'],
+})
 
-    middleware: 'auth',
+useHead({
+    title: 'Media | ffplayout'
+})
 
-    data () {
-        return {
-            isLoading: false,
-            fileDragClass: '',
-            extensions: '',
-            folderName: '',
-            inputFiles: [],
-            currentNumber: 0,
-            inputPlaceholder: 'Choose files or drop them here...',
-            previewOptions: {},
-            previewComp: null,
-            previewName: '',
-            previewSource: '',
-            renamePath: '',
-            renameOldName: '',
-            renameNewName: '',
-            deleteType: 'File',
-            deleteSource: '',
-            isImage: false,
-            uploadTask: '',
-            overallProgress: 0,
-            currentProgress: 0,
-            cancelTokenSource: this.$axios.CancelToken.source(),
-            lastPath: ''
-        }
-    },
+const browser = ref()
+const uploadModal = ref()
+const extensions = ref('')
+const folderName = ref('')
+const inputFiles = ref([] as File[])
+const currentNumber = ref(0)
+const uploadTask = ref('')
+const overallProgress = ref(0)
+const currentProgress = ref(0)
+const lastPath = ref('')
+const thisUploadModal = ref()
+const xhr = ref(new XMLHttpRequest())
 
-    computed: {
-        ...mapState('config', ['configID', 'configGui', 'configPlayout']),
-        ...mapState('media', ['crumbs', 'folderTree'])
-    },
+onMounted(async () => {
+    const exts = [
+        ...configStore.configPlayout.storage.extensions,
+        ...configStore.configGui[configStore.configID].extra_extensions.split(','),
+    ].map((ext) => {
+        return `.${ext}`
+    })
 
-    watch: {
-        configID () {
-            this.getPath('')
-        }
-    },
+    extensions.value = exts.join(', ')
+    thisUploadModal.value = $bootstrap.Modal.getOrCreateInstance(uploadModal.value)
+})
 
-    mounted () {
-        const exts = [...this.configPlayout.storage.extensions, ...this.configGui[this.configID].extra_extensions].map((ext) => {
-            return `.${ext}`
+async function onSubmitCreateFolder(evt: any) {
+    evt.preventDefault()
+    const path = `${mediaStore.folderTree.source}/${folderName.value}`.replace(/\/[/]+/g, '/')
+    lastPath.value = mediaStore.folderTree.source
+
+    if (mediaStore.folderTree.folders.includes(folderName.value)) {
+        indexStore.alertVariant = 'alert-warning'
+        indexStore.alertMsg = `Folder "${folderName.value}" exists already!`
+        indexStore.showAlert = true
+
+        return
+    }
+
+    await $fetch(`api/file/${configStore.configGui[configStore.configID].id}/create-folder/`, {
+        method: 'POST',
+        headers: { ...contentType, ...authStore.authHeader },
+        body: JSON.stringify({ source: path }),
+    })
+        .then(() => {
+            indexStore.alertVariant = 'alert-success'
+            indexStore.alertMsg = 'Folder create done...'
+        })
+        .catch((e) => {
+            indexStore.alertVariant = 'alert-danger'
+            indexStore.alertMsg = `Folder create error: ${e}`
         })
 
-        this.extensions = exts.join(',')
-        this.getPath('')
-    },
+    indexStore.showAlert = true
+    folderName.value = ''
 
-    methods: {
-        async getPath (path) {
-            this.lastPath = path
-            this.isLoading = true
-            await this.$store.dispatch('media/getTree', { path })
-            this.isLoading = false
-        },
+    setTimeout(() => {
+        indexStore.alertMsg = ''
+        indexStore.showAlert = false
+    }, 2000)
 
-        dragEnter (evt) {
-            evt.preventDefault()
-            this.fileDragClass = 'drop-file-visible'
-        },
+    browser.value.getPath(lastPath.value)
+}
 
-        dragLeave (evt) {
-            evt.preventDefault()
-            this.fileDragClass = ''
-            this.inputPlaceholder = 'Choose files or drop them here...'
-        },
+function onCancelCreateFolder(evt: any) {
+    evt.preventDefault()
+    folderName.value = ''
+}
 
-        addFile (evt) {
-            evt.preventDefault()
-            const droppedFiles = evt.dataTransfer.files
-            if (!droppedFiles) {
-                return
-            }
-            ([...droppedFiles]).forEach((f) => {
-                this.inputFiles.push(f)
-            })
+function onFileChange(evt: any) {
+    const files = evt.target.files || evt.dataTransfer.files
 
-            if (this.inputFiles.length === 1) {
-                this.inputPlaceholder = this.inputFiles[0].name
-            } else {
-                this.inputPlaceholder = `${this.inputFiles.length} files selected`
-            }
-
-            this.fileDragClass = ''
-            this.showUploadModal()
-        },
-
-        showCreateFolderModal () {
-            this.$root.$emit('bv::show::modal', 'folder-modal')
-        },
-
-        async onSubmitCreateFolder (evt) {
-            evt.preventDefault()
-            const path = (this.crumbs[this.crumbs.length - 1].path + '/' + this.folderName).replace(/\/[/]+/, '/')
-
-            await this.$axios.post(
-                `api/file/${this.configGui[this.configID].id}/create-folder/`, { source: path }
-            )
-
-            this.$root.$emit('bv::hide::modal', 'folder-modal')
-            this.getPath(this.lastPath)
-        },
-
-        onCancelCreateFolder (evt) {
-            evt.preventDefault()
-            this.$root.$emit('bv::hide::modal', 'folder-modal')
-        },
-
-        showUploadModal () {
-            this.uploadTask = ''
-            this.currentProgress = 0
-            this.overallProgress = 0
-            this.$root.$emit('bv::show::modal', 'upload-modal')
-        },
-
-        formatNames (files) {
-            if (files.length === 1) {
-                return files[0].name
-            } else {
-                return `${files.length} files selected`
-            }
-        },
-
-        async onSubmitUpload (evt) {
-            evt.preventDefault()
-            const uploadProgress = fileName => (progressEvent) => {
-                const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total)
-                this.$store.dispatch('auth/inspectToken')
-                this.currentProgress = progress
-            }
-
-            for (const [i, file] of this.inputFiles.entries()) {
-                this.uploadTask = file.name
-                this.currentNumber = i + 1
-
-                const formData = new FormData()
-                formData.append(file.name, file)
-
-                const config = {
-                    onUploadProgress: uploadProgress(file.name),
-                    cancelToken: this.cancelTokenSource.token,
-                    headers: { Authorization: 'Bearer ' + this.$store.state.auth.jwtToken }
-                }
-
-                await this.$axios.put(
-                    `api/file/${this.configGui[this.configID].id}/upload/?path=${encodeURIComponent(this.crumbs[this.crumbs.length - 1].path)}`,
-                    formData,
-                    config
-                )
-                    .then((res) => {
-                        this.overallProgress = this.currentNumber * 100 / this.inputFiles.length
-                        this.currentProgress = 0
-                    })
-                    .catch(err => console.log(err))
-            }
-
-            this.uploadTask = 'Done...'
-            this.currentNumber = 0
-            this.inputPlaceholder = 'Choose files or drop them here...'
-            this.inputFiles = []
-            this.getPath(this.lastPath)
-            this.$root.$emit('bv::hide::modal', 'upload-modal')
-        },
-
-        onResetUpload (evt) {
-            evt.preventDefault()
-            this.inputFiles = []
-            this.overallProgress = 0
-            this.currentProgress = 0
-            this.uploadTask = ''
-            this.inputPlaceholder = 'Choose files or drop them here...'
-
-            this.cancelTokenSource.cancel('Upload cancelled')
-            this.getPath(this.lastPath)
-
-            this.$root.$emit('bv::hide::modal', 'upload-modal')
-        },
-
-        showPreviewModal (src) {
-            this.previewSource = src
-            this.previewName = src.split('/').slice(-1)[0]
-            const ext = this.previewName.split('.').slice(-1)[0]
-
-            if (this.configPlayout.storage.extensions.includes(`${ext}`)) {
-                this.isImage = false
-                this.previewOptions = {
-                    liveui: false,
-                    controls: true,
-                    suppressNotSupportedError: true,
-                    autoplay: false,
-                    preload: 'auto',
-                    sources: [
-                        {
-                            type: `video/${ext}`,
-                            src: '/' + encodeURIComponent(src.replace(/^[/]+/, '').replace(/[/]+/, '/')).replace(/%2F/g, '/')
-                        }
-                    ]
-                }
-            } else {
-                this.isImage = true
-            }
-            this.$root.$emit('bv::show::modal', 'preview-modal')
-        },
-
-        showRenameModal (file) {
-            this.renameOldName = file
-            this.renameNewName = file
-            this.$root.$emit('bv::show::modal', 'rename-modal')
-        },
-
-        async renameFile (evt) {
-            evt.preventDefault()
-
-            await this.$axios.post(
-                `api/file/${this.configGui[this.configID].id}/rename/`, {
-                    source: `/${this.folderTree.parent}/${this.folderTree.source}/${this.renameOldName}`.replace('//', '/'),
-                    target: `/${this.folderTree.parent}/${this.folderTree.source}/${this.renameNewName}`.replace('//', '/')
-                }
-            )
-
-            this.getPath(this.lastPath)
-
-            this.renamePath = ''
-            this.renameOldName = ''
-            this.renameNewName = ''
-            this.$root.$emit('bv::hide::modal', 'rename-modal')
-        },
-
-        cancelRename () {
-            this.renamePath = ''
-            this.renameOldName = ''
-            this.renameNewName = ''
-            this.$root.$emit('bv::hide::modal', 'rename-modal')
-        },
-
-        showDeleteModal (type, src) {
-            this.deleteSource = src
-
-            if (type === 'File') {
-                this.previewName = src.split('/').slice(-1)[0].replace('//', '/')
-            } else {
-                this.previewName = src.replace('//', '/')
-            }
-
-            this.deleteType = type
-            this.$root.$emit('bv::show::modal', 'delete-modal')
-        },
-
-        async deleteFileOrFolder () {
-            let file
-            let pathName
-
-            if (this.deleteType === 'File') {
-                file = this.deleteSource.split('/').slice(-1)[0]
-                pathName = this.deleteSource.substring(0, this.deleteSource.lastIndexOf('/') + 1)
-            } else {
-                file = ''
-                pathName = this.deleteSource
-            }
-
-            const source = `${pathName}/${file}`.replace('//', '/')
-
-            await this.$axios.post(
-                `api/file/${this.configGui[this.configID].id}/remove/`, { source })
-                .catch(err => console.log(err))
-
-            this.$root.$emit('bv::hide::modal', 'delete-modal')
-
-            this.getPath(this.lastPath)
-        },
-
-        cancelDelete () {
-            this.deleteSource = ''
-            this.$root.$emit('bv::hide::modal', 'delete-modal')
-        }
+    if (!files.length) {
+        return
     }
+
+    inputFiles.value = files
+}
+
+async function onSubmitUpload(evt: any) {
+    evt.preventDefault()
+
+    lastPath.value = mediaStore.folderTree.source
+
+    for (let i = 0; i < inputFiles.value.length; i++) {
+        const file = inputFiles.value[i]
+        uploadTask.value = file.name
+        currentNumber.value = i + 1
+
+        const formData = new FormData()
+        formData.append(file.name, file)
+
+        xhr.value = new XMLHttpRequest()
+
+        xhr.value.open(
+            'PUT',
+            `api/file/${configStore.configGui[configStore.configID].id}/upload/?path=${encodeURIComponent(
+                mediaStore.crumbs[mediaStore.crumbs.length - 1].path
+            )}`
+        )
+
+        xhr.value.setRequestHeader('Authorization', `Bearer ${authStore.jwtToken}`)
+
+        xhr.value.upload.onprogress = function (event) {
+            currentProgress.value = Math.round((100 * event.loaded) / event.total)
+        }
+
+        xhr.value.upload.onerror = function () {
+            indexStore.alertVariant = 'alert-danger'
+            indexStore.alertMsg = `Upload error: ${xhr.value.status}`
+            indexStore.showAlert = true
+        }
+
+        // upload completed successfully
+        xhr.value.onload = function () {
+            overallProgress.value = (currentNumber.value * 100) / inputFiles.value.length
+            currentProgress.value = 100
+        }
+
+        xhr.value.send(formData)
+    }
+
+    uploadTask.value = 'Done...'
+    browser.value.getPath(lastPath.value)
+
+    setTimeout(() => {
+        thisUploadModal.value.hide()
+        currentNumber.value = 0
+        currentProgress.value = 0
+        overallProgress.value = 0
+        inputFiles.value = []
+        indexStore.showAlert = false
+    }, 1000)
+}
+
+function onResetUpload(evt: any) {
+    evt.preventDefault()
+    inputFiles.value = []
+    overallProgress.value = 0
+    currentProgress.value = 0
+    uploadTask.value = ''
+
+    xhr.value.abort()
 }
 </script>
 
-<style>
+<style lang="scss">
 .browser-container {
     position: relative;
     width: 100%;
     max-width: 100%;
-    height: calc(100% - 40px);
+    height: calc(100% - 140px);
 }
 
-.browser {
-    position: absolute;
-    width: calc(100% - 30px);
-    height: calc(100% - 40px);
-}
-
-.drag-file {
-    position: absolute;
-    display: none;
-    background: rgba(48, 54, 61, 0.75);
-    width: calc(100% - 30px);
-    height: calc(100% - 80px);
-    text-align: center;
-    border: 2px solid #ddd;
-    border-radius: .25em;
-    z-index: 2;
-    margin: auto;
-}
-
-.drop-file-visible {
-    display: table;
-}
-
-.drag-file span {
-    display: table-cell;
-    vertical-align: middle;
-    font-size: 10em;
-}
-
-.bread-div {
-    height: 50px;
-}
-
-.browser-div {
-    background: #30363d;
+.browser-container > div {
     height: 100%;
-    border: 1px solid #000;
-    border-radius: 5px;
-}
-
-.browser-row {
-    height: calc(100% - 90px);
-    min-height: 50px;
-}
-
-.folder-col {
-    min-width: 320px;
-    max-width: 460px;
-    height: 100%;
-}
-
-.folder:hover > div > .folder-delete {
-    display: inline;
-}
-
-.folder-list {
-    height: 100%;
-    padding: .5em;
-    width: 98%;
-}
-
-.folder-delete {
-    margin-right: .5em;
-    display: none;
-}
-
-.files-col {
-    min-width: 320px;
-    height: 100%;
-}
-
-.small-col {
-    max-width: 50px;
-}
-
-.files-list {
-    width: 99.5%;
-    height: 100%;
-    padding: .5em;
-}
-
-.media-button {
-    float: right;
-    margin-top: 1em;
 }
 
 .progress-row {
@@ -644,10 +303,10 @@ export default {
 }
 
 .progress-row .col-1 {
-    min-width: 60px
+    min-width: 60px;
 }
 
 .progress-row .col-10 {
-    margin: auto 0 auto 0
+    margin: auto 0 auto 0;
 }
 </style>

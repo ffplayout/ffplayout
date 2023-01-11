@@ -1,433 +1,492 @@
 <template>
     <div>
         <Menu />
-        <b-container class="messege-container">
+        <div class="container mt-5">
             <div class="preset-div">
-                <b-row>
-                    <b-col>
-                        <b-form-select v-model="selected" :options="presets" />
-                    </b-col>
-                    <b-col cols="2">
-                        <b-button-group class="mr-1">
-                            <b-button title="Save Preset" variant="primary" @click="savePreset()">
-                                <b-icon icon="cloud-upload" />
-                            </b-button>
-                            <b-button title="New Preset" variant="primary" @click="openDialog()">
-                                <b-icon-file-plus />
-                            </b-button>
-                            <b-button title="Delete Preset" variant="primary" @click="deleteDialog()">
-                                <b-icon-file-minus />
-                            </b-button>
-                        </b-button-group>
-                    </b-col>
-                </b-row>
+                <div class="row">
+                    <div class="col">
+                        <select class="form-select" v-model="selected" @change="onChange($event)">
+                            <option v-for="item in presets">{{ item.name }}</option>
+                        </select>
+                    </div>
+                    <div class="col-2">
+                        <div class="btn-group" role="group">
+                            <button class="btn btn-primary" title="Save Preset" @click="savePreset()">
+                                <i class="bi-cloud-upload" />
+                            </button>
+                            <button
+                                class="btn btn-primary"
+                                title="New Preset"
+                                data-bs-toggle="modal"
+                                data-bs-target="#createModal"
+                            >
+                                <i class="bi-file-plus" />
+                            </button>
+                            <button
+                                class="btn btn-primary"
+                                title="Delete Preset"
+                                data-bs-toggle="modal"
+                                data-bs-target="#deleteModal"
+                            >
+                                <i class="bi-file-minus" />
+                            </button>
+                        </div>
+                    </div>
+                </div>
             </div>
-            <b-form @submit.prevent="submitMessage">
-                <b-form-group>
-                    <b-form-textarea
-                        v-model="form.text"
-                        placeholder="Message"
-                        rows="7"
-                        class="message"
-                    />
-                </b-form-group>
 
-                <b-row>
-                    <b-col>
-                        <b-form-group>
-                            <b-form-input
-                                id="input-1"
-                                v-model="form.x"
-                                type="text"
-                                required
-                                placeholder="X"
-                            />
-                        </b-form-group>
+            <form @submit.prevent="submitMessage">
+                <textarea class="form-control message" v-model="form.text" rows="7" placeholder="Message" />
 
-                        <b-form-group>
-                            <b-form-input
-                                id="input-2"
-                                v-model="form.y"
-                                type="text"
-                                required
-                                placeholder="Y"
-                            />
-                        </b-form-group>
+                <div class="row mt-3">
+                    <div class="col">
+                        <input
+                            class="form-control mt-1"
+                            v-model="form.x"
+                            type="text"
+                            title="X Axis"
+                            placeholder="X"
+                            required
+                        />
+                        <input
+                            class="form-control mt-2"
+                            v-model="form.y"
+                            type="text"
+                            title="Y Axis"
+                            placeholder="Y"
+                            required
+                        />
 
-                        <b-row>
-                            <b-col>
-                                <b-form-group
-                                    label="Size"
-                                    label-for="input-3"
-                                >
-                                    <b-form-input
-                                        id="input-3"
-                                        v-model="form.fontSize"
-                                        type="number"
-                                        required
-                                        value="24"
-                                    />
-                                </b-form-group>
-                            </b-col>
-                            <b-col>
-                                <b-form-group
-                                    label="Spacing"
-                                    label-for="input-4"
-                                >
-                                    <b-form-input
-                                        id="input-4"
-                                        v-model="form.fontSpacing"
-                                        type="number"
-                                        required
-                                        value="4"
-                                    />
-                                </b-form-group>
-                            </b-col>
-                        </b-row>
+                        <div class="row mt-2">
+                            <div class="col">
+                                <label for="input-size">Size</label>
+                                <input
+                                    id="input-size"
+                                    class="form-control mt-2"
+                                    v-model="form.fontSize"
+                                    type="number"
+                                    required
+                                />
+                            </div>
+                            <div class="col">
+                                <label for="input-spacing">Spacing</label>
+                                <input
+                                    id="input-spacing"
+                                    class="form-control mt-2"
+                                    v-model="form.fontSpacing"
+                                    type="number"
+                                    required
+                                />
+                            </div>
+                        </div>
 
-                        <b-row>
-                            <b-col>
-                                <b-form-group
-                                    label="Font Color"
-                                    label-for="input-5"
-                                >
-                                    <b-form-input
-                                        id="input-5"
-                                        v-model="form.fontColor"
-                                        type="color"
-                                        required
-                                    />
-                                </b-form-group>
-                            </b-col>
-                            <b-col>
-                                <b-form-group
-                                    label="Font Alpha"
-                                    label-for="input-6"
-                                >
-                                    <b-form-input
-                                        id="input-6"
-                                        v-model="form.fontAlpha"
-                                        type="number"
-                                        min="0"
-                                        max="1"
-                                        step="0.01"
-                                    />
-                                </b-form-group>
-                            </b-col>
-                        </b-row>
-                    </b-col>
-                    <b-col>
-                        <b-form-checkbox
-                            v-model="form.showBox"
-                            style="margin-bottom: 8px;"
-                        >
-                            Show Box
-                        </b-form-checkbox>
+                        <div class="row mt-2">
+                            <div class="col">
+                                <label for="input-color">Font Color</label>
+                                <input
+                                    id="input-color"
+                                    class="form-control mt-2"
+                                    v-model="form.fontColor"
+                                    type="color"
+                                    required
+                                />
+                            </div>
+                            <div class="col">
+                                <label for="input-alpha">Font Alpha</label>
+                                <input
+                                    id="input-alpha"
+                                    class="form-control mt-2"
+                                    v-model="form.fontAlpha"
+                                    type="number"
+                                    min="0"
+                                    max="1"
+                                    step="0.01"
+                                />
+                            </div>
+                        </div>
+                    </div>
 
-                        <b-row>
-                            <b-col>
-                                <b-form-group
-                                    label="Box Color"
-                                    label-for="input-7"
-                                >
-                                    <b-form-input
-                                        id="input-7"
-                                        v-model="form.boxColor"
-                                        type="color"
-                                        required
-                                    />
-                                </b-form-group>
-                            </b-col>
-                            <b-col>
-                                <b-form-group
-                                    label="Box Alpha"
-                                    label-for="input-8"
-                                >
-                                    <b-form-input
-                                        id="input-8"
-                                        v-model="form.boxAlpha"
-                                        type="number"
-                                        min="0"
-                                        max="1"
-                                        step="0.01"
-                                    />
-                                </b-form-group>
-                            </b-col>
-                        </b-row>
-                        <b-form-group
-                            label="Border Width"
-                            label-for="input-9"
-                        >
-                            <b-form-input
-                                id="input-9"
+                    <div class="col">
+                        <div class="form-check">
+                            <input id="input-box" type="checkbox" class="form-check-input" v-model="form.showBox" />
+                            <label for="input-box" class="form-check-label">Show Box</label>
+                        </div>
+
+                        <div class="row">
+                            <div class="col">
+                                <label for="input-box-color">Box Color</label>
+                                <input
+                                    id="input-box-color"
+                                    class="form-control mt-2"
+                                    v-model="form.boxColor"
+                                    type="color"
+                                    required
+                                />
+                            </div>
+                            <div class="col">
+                                <label for="input-box-alpha" class="form-check-label">Box Alpha</label>
+                                <input
+                                    id="input-box-alpha"
+                                    class="form-control mt-2"
+                                    v-model="form.boxAlpha"
+                                    type="number"
+                                    min="0"
+                                    max="1"
+                                    step="0.01"
+                                />
+                            </div>
+                            <label for="input-border-w" class="form-check-label">Border Width</label>
+                            <input
+                                id="input-border-w"
+                                class="form-control mt-2"
                                 v-model="form.border"
                                 type="number"
                                 required
-                                value="4"
                             />
-                        </b-form-group>
-                    </b-col>
-                </b-row>
+                            <label for="input-overall-alpha" class="form-check-label mt-2">Overall Alpha</label>
+                            <input
+                                id="input-overall-alpha"
+                                class="form-control mt-2"
+                                v-model="form.overallAlpha"
+                                type="text"
+                                required
+                            />
+                        </div>
+                    </div>
+                </div>
 
-                <b-form-group
-                    label="Overall Alpha"
-                    label-for="input-10"
-                >
-                    <b-form-input
-                        id="input-10"
-                        v-model="form.overallAlpha"
-                        type="text"
-                        required
-                        value="1"
-                    />
-                </b-form-group>
-
-                <b-row>
-                    <b-col class="sub-btn">
-                        <b-button type="submit" class="send-btn" variant="primary">
-                            Send
-                        </b-button>
-                    </b-col>
-                    <b-col>
-                        <b-alert variant="success" :show="success" dismissible @dismissed="success=false">
-                            Sending success...
-                        </b-alert>
-                        <b-alert variant="warning" :show="failed" dismissible @dismissed="success=failed">
-                            Sending failed...
-                        </b-alert>
-                    </b-col>
-                </b-row>
-            </b-form>
-        </b-container>
-        <b-modal
-            id="create-modal"
-            ref="create-modal"
-            title="Create Preset"
-            @ok="handleCreate"
-        >
-            <form ref="form" @submit.stop.prevent="createPreset">
-                <b-form-group label="Name" label-for="name-input" invalid-feedback="Name is required">
-                    <b-form-input id="name-input" v-model="newPresetName" required />
-                </b-form-group>
+                <div class="row">
+                    <div class="col sub-btn">
+                        <button class="btn btn-primary send-btn" type="submit">Send</button>
+                    </div>
+                    <div class="col">
+                        <div
+                            v-if="indexStore.showAlert"
+                            class="alert show alert-dismissible fade login-alert"
+                            :class="indexStore.alertVariant"
+                            role="alert"
+                        >
+                            {{ indexStore.alertMsg }}
+                            <button
+                                type="button"
+                                class="btn-close"
+                                data-bs-dismiss="alert"
+                                aria-label="Close"
+                                @click="indexStore.resetAlert()"
+                            ></button>
+                        </div>
+                    </div>
+                </div>
             </form>
-        </b-modal>
-        <b-modal
-            id="delete-modal"
-            ref="delete-modal"
-            title="Delete Preset"
-            @ok="handleDelete"
-        >
-            <strong>Delete: "{{ selected }}"?</strong>
-        </b-modal>
+        </div>
+
+        <div class="modal fade" id="createModal" tabindex="-1" aria-labelledby="createModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h1 class="modal-title fs-5" id="createModalLabel">New Preset</h1>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cancel"></button>
+                    </div>
+                    <div class="modal-body">
+                        <form>
+                            <div class="mb-3">
+                                <label for="preset-name" class="col-form-label">Name:</label>
+                                <input type="text" class="form-control" id="preset-name" v-model="newPresetName" />
+                            </div>
+                        </form>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Cancel</button>
+                        <button
+                            type="button"
+                            class="btn btn-primary"
+                            @click="createNewPreset()"
+                            data-bs-dismiss="modal"
+                        >
+                            Save
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="modal fade" id="deleteModal" tabindex="-1" aria-labelledby="deleteModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h1 class="modal-title fs-5" id="deleteModalLabel">Delete Preset</h1>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cancel"></button>
+                    </div>
+                    <div class="modal-body">Are you sure that you want to delete preset: "{{ selected }}"?</div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="button" class="btn btn-primary" @click="deletePreset()" data-bs-dismiss="modal">
+                            Ok
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 </template>
 
-<script>
-import { mapState } from 'vuex'
-import Menu from '@/components/Menu.vue'
+<script setup lang="ts">
+import { useAuth } from '~/stores/auth'
+import { useConfig } from '~/stores/config'
+import { useIndex } from '~/stores/index'
 
-export default {
-    name: 'Media',
+const authStore = useAuth()
+const configStore = useConfig()
+const indexStore = useIndex()
+const { numberToHex, hexToNumber } = stringFormatter()
+const contentType = { 'content-type': 'application/json;charset=UTF-8' }
 
-    components: {
-        Menu
-    },
+definePageMeta({
+    middleware: ['auth'],
+})
 
-    middleware: 'auth',
+useHead({
+    title: 'Messages | ffplayout'
+})
 
-    data () {
-        return {
-            form: {
-                id: 0,
-                name: '',
-                text: '',
-                x: '0',
-                y: '0',
-                fontSize: 24,
-                fontSpacing: 4,
-                fontColor: '#ffffff',
-                fontAlpha: 1.0,
-                showBox: true,
-                boxColor: '#000000',
-                boxAlpha: 0.8,
-                border: 4,
-                overallAlpha: 1
-            },
-            selected: null,
-            newPresetName: '',
-            presets: [],
-            success: false,
-            failed: false
-        }
-    },
+interface Preset {
+    id: number
+    name: string
+    text: string
+    x: string
+    y: string
+    fontSize: number
+    fontSpacing: number
+    fontColor: string
+    fontAlpha: number
+    showBox: boolean
+    boxColor: string
+    boxAlpha: number
+    border: number
+    overallAlpha: number
+}
 
-    computed: {
-        ...mapState('config', ['configID', 'configGui'])
-    },
+interface PresetName {
+    name: string
+    value: number
+}
 
-    watch: {
-        selected (index) {
-            this.getPreset(index)
-        }
-    },
+const form = ref({
+    id: 0,
+    name: '',
+    text: '',
+    x: '0',
+    y: '0',
+    fontSize: 24,
+    fontSpacing: 4,
+    fontColor: '#ffffff',
+    fontAlpha: 1.0,
+    showBox: true,
+    boxColor: '#000000',
+    boxAlpha: 0.8,
+    border: 4,
+    overallAlpha: '1',
+})
 
-    created () {
-        this.getPreset(null)
-    },
+const selected = ref(null)
+const newPresetName = ref('')
+const presets = ref([] as PresetName[])
 
-    methods: {
-        decToHex (num) {
-            return '0x' + Math.round(num * 255).toString(16)
-        },
+onMounted(() => {
+    getPreset(-1)
+})
 
-        hexToDec (num) {
-            return (parseFloat(parseInt(num, 16)) / 255).toFixed(2)
-        },
+onBeforeUnmount(() => {
+    indexStore.resetAlert()
+})
 
-        async getPreset (index) {
-            const response = await this.$axios.get(`api/presets/${this.configGui[this.configID].id}`)
+async function getPreset(index: number) {
+    fetch(`api/presets/${configStore.configGui[configStore.configID].id}`, {
+        method: 'GET',
+        headers: authStore.authHeader,
+    })
+        .then((response) => response.json())
+        .then((data) => {
+            if (index === -1) {
+                presets.value = [{ value: -1, name: '' }]
 
-            if (response.data && index === null) {
-                this.presets = []
-                for (let index = 0; index < response.data.length; index++) {
-                    const elem = response.data[index]
-                    this.presets.push({ value: index, text: elem.name })
+                for (let i = 0; i < data.length; i++) {
+                    const elem = data[i]
+                    presets.value.push({ value: i, name: elem.name })
                 }
-            } else if (response.data) {
-                const fColor = response.data[index].fontcolor.split('@')
-                const bColor = response.data[index].boxcolor.split('@')
 
-                this.form = {
-                    id: response.data[index].id,
-                    name: response.data[index].name,
-                    text: response.data[index].text,
-                    x: response.data[index].x,
-                    y: response.data[index].y,
-                    fontSize: response.data[index].fontsize,
-                    fontSpacing: response.data[index].line_spacing,
+                form.value = {
+                    id: 0,
+                    name: '',
+                    text: '',
+                    x: '0',
+                    y: '0',
+                    fontSize: 24,
+                    fontSpacing: 4,
+                    fontColor: '#ffffff',
+                    fontAlpha: 1.0,
+                    showBox: true,
+                    boxColor: '#000000',
+                    boxAlpha: 0.8,
+                    border: 4,
+                    overallAlpha: '1',
+                }
+            } else {
+                const fColor = data[index].fontcolor.split('@')
+                const bColor = data[index].boxcolor.split('@')
+
+                form.value = {
+                    id: data[index].id,
+                    name: data[index].name,
+                    text: data[index].text,
+                    x: data[index].x,
+                    y: data[index].y,
+                    fontSize: data[index].fontsize,
+                    fontSpacing: data[index].line_spacing,
                     fontColor: fColor[0],
-                    fontAlpha: (fColor[1]) ? this.hexToDec(fColor[1]) : 1.0,
-                    showBox: response.data[index].box,
+                    fontAlpha: fColor[1] ? hexToNumber(fColor[1]) : 1.0,
+                    showBox: data[index].box === '1' ? true : false,
                     boxColor: bColor[0],
-                    boxAlpha: (bColor[1]) ? this.hexToDec(bColor[1]) : 1.0,
-                    border: response.data[index].boxborderw,
-                    overallAlpha: response.data[index].alpha
+                    boxAlpha: bColor[1] ? hexToNumber(bColor[1]) : 1.0,
+                    border: data[index].boxborderw,
+                    overallAlpha: data[index].alpha,
                 }
             }
-        },
-        openDialog () {
-            this.$bvModal.show('create-modal')
-        },
-        handleCreate (bvModalEvt) {
-            // Prevent modal from closing
-            bvModalEvt.preventDefault()
-            // Trigger submit handler
-            this.createPreset()
-        },
-        async createPreset () {
-            const preset = {
-                name: this.newPresetName,
-                text: this.form.text,
-                x: this.form.x.toString(),
-                y: this.form.y.toString(),
-                fontsize: this.form.fontSize.toString(),
-                line_spacing: this.form.fontSpacing.toString(),
-                fontcolor: (this.form.fontAlpha === 1) ? this.form.fontColor : this.form.fontColor + '@' + this.decToHex(this.form.fontAlpha),
-                box: (this.form.showBox) ? '1' : '0',
-                boxcolor: (this.form.boxAlpha === 1) ? this.form.boxColor : this.form.boxColor + '@' + this.decToHex(this.form.boxAlpha),
-                boxborderw: this.form.border.toString(),
-                alpha: this.form.overallAlpha.toString(),
-                channel_id: this.configGui[this.configID].id
-            }
+        })
+}
 
-            const response = await this.$axios.post('api/presets/', preset)
+function onChange(event: any) {
+    selected.value = event.target.value
 
-            if (response.status === 200) {
-                this.success = true
-                this.getPreset(null)
-            } else {
-                this.failed = true
-            }
+    getPreset(event.target.selectedIndex - 1)
+}
 
-            this.$nextTick(() => {
-                this.$bvModal.hide('create-modal')
-            })
-        },
-        async savePreset () {
-            if (this.selected) {
-                const preset = {
-                    id: this.form.id,
-                    name: this.form.name,
-                    text: this.form.text,
-                    x: this.form.x,
-                    y: this.form.y,
-                    fontsize: this.form.fontSize,
-                    line_spacing: this.form.fontSpacing,
-                    fontcolor: (this.form.fontAlpha === 1) ? this.form.fontColor : this.form.fontColor + '@' + this.decToHex(this.form.fontAlpha),
-                    box: (this.form.showBox) ? '1' : '0',
-                    boxcolor: (this.form.boxAlpha === 1) ? this.form.boxColor : this.form.boxColor + '@' + this.decToHex(this.form.boxAlpha),
-                    boxborderw: this.form.border,
-                    alpha: this.form.overallAlpha,
-                    channel_id: this.configGui[this.configID].id
-                }
-
-                const response = await this.$axios.put(`api/presets/${this.form.id}`, preset)
-
-                if (response.status === 200) {
-                    this.success = true
-                } else {
-                    this.failed = true
-                }
-            }
-        },
-
-        deleteDialog () {
-            this.$bvModal.show('delete-modal')
-        },
-        handleDelete (evt) {
-            evt.preventDefault()
-            this.deletePreset()
-        },
-        async deletePreset () {
-            if (this.selected) {
-                await this.$axios.delete(`api/presets/${this.form.id}`)
-            }
-
-            this.$bvModal.hide('delete-modal')
-            this.getPreset(null)
-        },
-
-        async submitMessage () {
-            const obj = {
-                text: this.form.text,
-                x: this.form.x.toString(),
-                y: this.form.y.toString(),
-                fontsize: this.form.fontSize.toString(),
-                line_spacing: this.form.fontSpacing.toString(),
-                fontcolor: this.form.fontColor + '@' + this.decToHex(this.form.fontAlpha),
-                alpha: this.form.overallAlpha.toString(),
-                box: (this.form.showBox) ? '1' : '0',
-                boxcolor: this.form.boxColor + '@' + this.decToHex(this.form.boxAlpha),
-                boxborderw: this.form.border.toString()
-            }
-
-            const response = await this.$axios.post(`api/control/${this.configGui[this.configID].id}/text/`, obj)
-
-            if (response.data && response.status === 200) {
-                this.success = true
-            } else {
-                this.failed = true
-            }
+async function savePreset() {
+    if (selected.value) {
+        const preset = {
+            id: form.value.id,
+            name: form.value.name,
+            text: form.value.text,
+            x: form.value.x,
+            y: form.value.y,
+            fontsize: form.value.fontSize,
+            line_spacing: form.value.fontSpacing,
+            fontcolor:
+                form.value.fontAlpha === 1
+                    ? form.value.fontColor
+                    : form.value.fontColor + '@' + numberToHex(form.value.fontAlpha),
+            box: form.value.showBox ? '1' : '0',
+            boxcolor:
+                form.value.boxAlpha === 1
+                    ? form.value.boxColor
+                    : form.value.boxColor + '@' + numberToHex(form.value.boxAlpha),
+            boxborderw: form.value.border,
+            alpha: form.value.overallAlpha,
+            channel_id: configStore.configGui[configStore.configID].id,
         }
+
+        const response = await fetch(`api/presets/${form.value.id}`, {
+            method: 'PUT',
+            headers: { ...contentType, ...authStore.authHeader },
+            body: JSON.stringify(preset),
+        })
+
+        if (response.status === 200) {
+            indexStore.alertVariant = 'alert-success'
+            indexStore.alertMsg = 'Save Preset done!'
+        } else {
+            indexStore.alertVariant = 'alert-danger'
+            indexStore.alertMsg = 'Save Preset failed!'
+        }
+
+        indexStore.showAlert = true
     }
+}
+
+async function createNewPreset() {
+    const preset = {
+        name: newPresetName.value,
+        text: form.value.text,
+        x: form.value.x.toString(),
+        y: form.value.y.toString(),
+        fontsize: form.value.fontSize.toString(),
+        line_spacing: form.value.fontSpacing.toString(),
+        fontcolor:
+            form.value.fontAlpha === 1
+                ? form.value.fontColor
+                : form.value.fontColor + '@' + numberToHex(form.value.fontAlpha),
+        box: form.value.showBox ? '1' : '0',
+        boxcolor:
+            form.value.boxAlpha === 1
+                ? form.value.boxColor
+                : form.value.boxColor + '@' + numberToHex(form.value.boxAlpha),
+        boxborderw: form.value.border.toString(),
+        alpha: form.value.overallAlpha.toString(),
+        channel_id: configStore.configGui[configStore.configID].id,
+    }
+
+    const response = await fetch('api/presets/', {
+        method: 'POST',
+        headers: { ...contentType, ...authStore.authHeader },
+        body: JSON.stringify(preset),
+    })
+
+    if (response.status === 200) {
+        indexStore.alertVariant = 'alert-success'
+        indexStore.alertMsg = 'Save Preset done!'
+        getPreset(-1)
+    } else {
+        indexStore.alertVariant = 'alert-danger'
+        indexStore.alertMsg = 'Save Preset failed!'
+    }
+
+    indexStore.showAlert = true
+}
+
+async function deletePreset() {
+    if (selected.value && selected.value !== '') {
+        await fetch(`api/presets/${form.value.id}`, {
+            method: 'DELETE',
+            headers: authStore.authHeader,
+        })
+
+        getPreset(-1)
+    }
+}
+
+async function submitMessage() {
+    const obj = {
+        text: form.value.text,
+        x: form.value.x.toString(),
+        y: form.value.y.toString(),
+        fontsize: form.value.fontSize.toString(),
+        line_spacing: form.value.fontSpacing.toString(),
+        fontcolor: form.value.fontColor + '@' + numberToHex(form.value.fontAlpha),
+        alpha: form.value.overallAlpha.toString(),
+        box: form.value.showBox ? '1' : '0',
+        boxcolor: form.value.boxColor + '@' + numberToHex(form.value.boxAlpha),
+        boxborderw: form.value.border.toString(),
+    }
+
+    const response = await fetch(`api/control/${configStore.configGui[configStore.configID].id}/text/`, {
+        method: 'POST',
+        headers: { ...contentType, ...authStore.authHeader },
+        body: JSON.stringify(obj),
+    })
+
+    if (response.status === 200) {
+        indexStore.alertVariant = 'alert-success'
+        indexStore.alertMsg = 'Sending success...'
+    } else {
+        indexStore.alertVariant = 'alert-danger'
+        indexStore.alertMsg = 'Sending failed...'
+    }
+
+    indexStore.showAlert = true
 }
 </script>
 
 <style scoped>
-.messege-container {
-    margin-top: 5em;
-}
-
 .preset-div {
     width: 50%;
     margin-bottom: 2em;

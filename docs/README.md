@@ -2,26 +2,46 @@
 
 > web GUI for ffplayout engine
 
-## Build Setup
+# Nuxt 3 Minimal Starter
 
-create `.env`file with `API_URL`, for example:
-```
-API_URL="http://localhost:8787"
-```
+Look at the [Nuxt 3 documentation](https://nuxt.com/docs/getting-started/introduction) to learn more.
 
-``` bash
-# install dependencies
-$ npm run install
+## Setup
 
-# serve with hot reload at localhost:3000
-$ npm run dev
+Make sure to install the dependencies:
 
-# build for production and launch server
-$ npm run build
-$ npm run start
+```bash
+# yarn
+yarn install
 
-# generate static project
-$ npm run generate
+# npm
+npm install
+
+# pnpm
+pnpm install --shamefully-hoist
 ```
 
-For detailed explanation on how things work, check out [Nuxt.js docs](https://nuxtjs.org).
+## Development Server
+
+Start the development server on http://localhost:3000
+
+```bash
+npm run dev
+```
+
+## Production
+
+Build the application for production:
+
+```bash
+npm run build
+```
+
+Locally preview production build:
+
+```bash
+npm run preview
+```
+
+Check out the [deployment documentation](https://nuxt.com/docs/getting-started/deployment) for more information.
+

@@ -1,132 +1,131 @@
 <template>
     <div>
-        <div v-if="!$store.state.auth.isLogin">
+        <div v-if="authStore.isLogin">
+            <div class="container login-container">
+                <div>
+                    <div class="logo-div">
+                        <img
+                            src="~/assets/images/ffplayout.png"
+                            class="img-fluid"
+                            alt="Logo"
+                            width="256"
+                            height="256"
+                        />
+                    </div>
+                    <div class="actions">
+                        <div class="btn-group actions-grp btn-group-lg" role="group">
+                            <NuxtLink to="/player" class="btn btn-primary">Player</NuxtLink>
+                            <NuxtLink to="/media" class="btn btn-primary">Media</NuxtLink>
+                            <NuxtLink to="/message" class="btn btn-primary">Message</NuxtLink>
+                            <NuxtLink to="logging" class="btn btn-primary">Logging</NuxtLink>
+                            <NuxtLink to="/configure" class="btn btn-primary"> Configure </NuxtLink>
+                            <button class="btn btn-primary" @click="logout()">Logout</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div v-else>
             <div class="logout-div" />
-            <b-container class="login-container">
+            <div class="container login-container">
                 <div>
                     <div class="header">
                         <h1>ffplayout</h1>
                     </div>
-                    <b-form class="login-form" @submit.prevent="login">
-                        <b-form-group id="input-group-1" label="User:" label-for="input-user">
-                            <b-form-input id="input-user" v-model="formUsername" type="text" required placeholder="Username" />
-                        </b-form-group>
-                        <b-form-group id="input-group-1" label="Password:" label-for="input-pass">
-                            <b-form-input id="input-pass" v-model="formPassword" type="password" required placeholder="Password" />
-                        </b-form-group>
-                        <b-row>
-                            <b-col cols="3">
-                                <b-button type="submit" variant="primary">
-                                    Login
-                                </b-button>
-                            </b-col>
-                            <b-col cols="9">
-                                <b-alert variant="danger" :show="showError" dismissible @dismissed="showError=false">
+
+                    <form class="login-form" @submit.prevent="login">
+                        <div id="input-group-1" class="mb-3">
+                            <label for="input-user" class="form-label">User:</label>
+                            <input
+                                type="text"
+                                id="input-user"
+                                class="form-control"
+                                v-model="formUsername"
+                                aria-describedby="Username"
+                                required
+                            />
+                        </div>
+                        <div class="mb-3">
+                            <label for="input-pass" class="form-label">Password:</label>
+                            <input
+                                type="password"
+                                id="input-pass"
+                                class="form-control"
+                                v-model="formPassword"
+                                required
+                            />
+                        </div>
+                        <div class="row">
+                            <div class="col-3">
+                                <button class="btn btn-primary" type="submit">Login</button>
+                            </div>
+                            <div class="col-9">
+                                <div
+                                    class="alert alert-danger alert-dismissible fade login-alert"
+                                    :class="{ show: showError }"
+                                    role="alert"
+                                >
                                     {{ formError }}
-                                </b-alert>
-                            </b-col>
-                        </b-row>
-                    </b-form>
+                                    <button
+                                        type="button"
+                                        class="btn-close"
+                                        data-bs-dismiss="alert"
+                                        aria-label="Close"
+                                    ></button>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
                 </div>
-            </b-container>
-        </div>
-        <div v-else>
-            <b-container class="login-container">
-                <div>
-                    <div class="logo-div">
-                        <b-img-lazy
-                            src="/images/ffplayout.png"
-                            alt="Logo"
-                            fluid
-                        />
-                    </div>
-                    <div class="actions">
-                        <b-button-group class="actions-grp">
-                            <b-button to="/player" variant="primary">
-                                Player
-                            </b-button>
-                            <b-button to="/media" variant="primary">
-                                Media
-                            </b-button>
-                            <b-button to="/message" variant="primary">
-                                Message
-                            </b-button>
-                            <b-button to="logging" variant="primary">
-                                Logging
-                            </b-button>
-                            <b-button to="/configure" variant="primary">
-                                Configure
-                            </b-button>
-                            <b-button variant="primary" @click="logout()">
-                                Logout
-                            </b-button>
-                        </b-button-group>
-                    </div>
-                </div>
-            </b-container>
+            </div>
         </div>
     </div>
 </template>
 
-<script>
-export default {
-    components: {},
+<script setup lang="ts">
+import { useAuth } from '~/stores/auth'
+import { useConfig } from '~/stores/config'
 
-    data () {
-        return {
-            showError: false,
-            formError: null,
-            formUsername: '',
-            formPassword: '',
-            interval: null,
-            stat: {}
+const authStore = useAuth()
+const configStore = useConfig()
+
+const formError = ref('')
+const showError = ref(false)
+const formUsername = ref('')
+const formPassword = ref('')
+
+authStore.inspectToken()
+
+async function login() {
+    try {
+        const status = await authStore.obtainToken(formUsername.value, formPassword.value)
+
+        formUsername.value = ''
+        formPassword.value = ''
+        formError.value = ''
+
+        if (status === 401 || status === 400 || status === 403) {
+            formError.value = 'Wrong User/Password!'
+            showError.value = true
         }
-    },
-    created () {
-        this.init()
-    },
-    beforeDestroy () {
-        clearInterval(this.interval)
-    },
-    methods: {
-        async init () {
-            await this.$store.dispatch('auth/inspectToken')
-        },
-        async login () {
-            try {
-                const status = await this.$store.dispatch('auth/obtainToken', {
-                    username: this.formUsername,
-                    password: this.formPassword
-                })
-                this.formUsername = ''
-                this.formPassword = ''
-                this.formError = null
 
-                if (status === 401 || status === 400) {
-                    this.formError = 'Wrong user or password!'
-                    this.showError = true
-                }
+        await configStore.nuxtClientInit()
+    } catch (e) {
+        formError.value = e as string
+    }
+}
 
-                await this.$store.dispatch('config/nuxtClientInit')
-            } catch (e) {
-                this.formError = e.message
-            }
-        },
-        logout () {
-            clearInterval(this.interval)
-
-            try {
-                this.$store.commit('auth/REMOVE_TOKEN')
-                this.$store.commit('auth/UPDATE_IS_LOGIN', false)
-            } catch (e) {
-                this.formError = e.message
-            }
-        }
+async function logout() {
+    try {
+        authStore.removeToken()
+        authStore.updateIsLogin(false)
+    } catch (e) {
+        formError.value = e as string
     }
 }
 </script>
 
-<style>
+<style lang="scss">
 .login-container {
     display: flex;
     align-items: center;
@@ -149,49 +148,13 @@ export default {
     min-width: 300px;
 }
 
-.manage-btn {
-    margin: 0 auto 0 auto;
-}
+.login-alert {
+    padding: 0.4em;
+    --bs-alert-margin-bottom: 0;
 
-.chart-col {
-    text-align: center;
-    min-width: 10em;
-    min-height: 15em;
-    border: solid #c3c3c3;
-}
-
-.stat-div {
-    padding-top: .5em;
-    position: relative;
-    height: 12em;
-}
-
-.stat-center {
-    margin: 0;
-    position: absolute;
-    width: 100%;
-    top: 50%;
-    -ms-transform: translateY(-50%);
-    transform: translateY(-50%);
-}
-
-.chart1 {
-    background: rgba(210, 85, 23, 0.1);
-}
-.chart2 {
-    background: rgba(122, 210, 23, 0.1);
-}
-.chart3 {
-    background: rgba(23, 210, 149, 0.1);
-}
-.chart4 {
-    background: rgba(23, 160, 210, 0.1);
-}
-.chart5 {
-    background: rgba(122, 23, 210, 0.1);
-}
-.chart6 {
-    background: rgba(210, 23, 74, 0.1);
+    .btn-close {
+        padding: 0.65rem 0.5rem;
+    }
 }
 
 .actions {

@@ -1,40 +1,41 @@
 {
-  "name": "ffplayout-frontend",
-  "version": "5.3.1",
-  "description": "Web GUI for ffplayout",
-  "author": "Jonathan Baecker",
   "private": true,
   "scripts": {
-    "dev": "NODE_OPTIONS=--openssl-legacy-provider nuxt",
     "build": "nuxt build",
-    "start": "nuxt start",
+    "dev": "nuxt dev",
     "generate": "nuxt generate",
-    "lint": "eslint --ext .js,.vue --ignore-path .gitignore ."
+    "preview": "nuxt preview",
+    "postinstall": "nuxt prepare"
   },
   "dependencies": {
-    "@nuxtjs/axios": "^5.13.6",
-    "@nuxtjs/dayjs": "^1.4.1",
-    "bootstrap": "^4.6.2",
-    "bootstrap-vue": "^2.23.1",
+    "@nuxt/types": "^2.15.8",
+    "@pinia/nuxt": "^0.4.6",
+    "@popperjs/core": "^2.11.6",
+    "@vueuse/core": "^9.10.0",
+    "bootstrap": "^5.3.0-alpha1",
+    "bootstrap-icons": "^1.10.3",
     "cookie-universal-nuxt": "^2.2.2",
+    "dayjs": "^1.11.7",
     "jwt-decode": "^3.1.2",
     "lodash": "^4.17.21",
-    "mpegts.js": "^1.7.1",
-    "nuxt": "^2.15.8",
-    "splitpanes": "^2.4.1",
+    "mpegts.js": "^1.7.2",
+    "pinia": "^2.0.28",
+    "sortablejs": "^1.15.0",
+    "sortablejs-vue3": "^1.2.5",
+    "splitpanes": "^3.1.5",
     "video.js": "^7.20.3",
-    "vue-loading-overlay": "^3.4.2",
-    "vuedraggable": "^2.24.3"
+    "vuedraggable": "^4.1.0"
   },
   "devDependencies": {
-    "@babel/eslint-parser": "^7.19.1",
-    "@babel/preset-react": "^7.18.6",
-    "@nuxtjs/eslint-config": "^5.0.0",
-    "@nuxtjs/eslint-module": "^3.1.0",
-    "@nuxtjs/style-resources": "^1.2.1",
-    "eslint": "^7.32.0",
-    "eslint-plugin-nuxt": "3.2.0",
+    "@nuxtjs/eslint-config": "^12.0.0",
+    "@types/bootstrap": "^5.2.6",
+    "@types/lodash": "^4.14.191",
+    "@types/splitpanes": "^2.2.1",
+    "@types/video.js": "^7.3.50",
+    "eslint": "^8.31.0",
+    "eslint-plugin-nuxt": "^4.0.0",
+    "nuxt": "3.0.0",
     "sass": "^1.57.1",
-    "sass-loader": "^10.3.1"
+    "sass-loader": "^13.2.0"
   }
 }

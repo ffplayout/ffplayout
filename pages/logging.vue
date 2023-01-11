@@ -1,134 +1,100 @@
 <template>
     <div>
         <Menu />
-        <b-row class="date-row">
-            <b-col>
-                <b-datepicker v-model="listDate" size="sm" class="date-div" offset="-35px" />
-            </b-col>
-        </b-row>
-        <b-container class="log-container">
-            <div
-                v-if="currentLog"
-                class="log-content"
-                :inner-html.prop="currentLog | formatStr"
-            />
-        </b-container>
+        <div class="date-container">
+            <div class="date-div">
+                <input type="date" class="form-control" v-model="listDate" />
+            </div>
+        </div>
+        <div class="log-container mt-2">
+            <div class="log-content" v-html="formatLog(currentLog)" />
+        </div>
     </div>
 </template>
 
-<script>
-import { mapState } from 'vuex'
-import Menu from '@/components/Menu.vue'
+<script setup lang="ts">
+import { useAuth } from '~/stores/auth'
+import { useConfig } from '~/stores/config'
 
-export default {
-    name: 'Logging',
+definePageMeta({
+    middleware: ['auth'],
+})
 
-    components: {
-        Menu
-    },
+useHead({
+    title: 'Logging | ffplayout'
+})
 
-    filters: {
-        formatStr (text) {
-            return text
-                /* eslint-disable no-control-regex */
-                .replace(/\x1B\[33m(.*?)\x1B\[0m/g, '<span class="log-number">$1</span>')
-                .replace(/\x1B\[1m\x1B\[35m(.*?)\x1B\[0m\x1B\[22m/g, '<span class="log-addr">$1</span>')
-                .replace(/\x1B\[94m(.*?)\x1B\[0m/g, '<span class="log-cmd">$1</span>')
-                .replace(/\x1B\[90m(.*?)\x1B\[0m/g, '<span class="log-debug">$1</span>')
-                .replace(/(\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}.[\d]+\])/g, '<span class="log-time">$1</span>')
-                .replace(/\[ INFO\]/g, '<span class="log-info">[ INFO]</span>')
-                .replace(/\[ WARN\]/g, '<span class="log-warning">[ WARN]</span>')
-                .replace(/\[ERROR\]/g, '<span class="log-error">[ERROR]</span>')
-                .replace(/\[DEBUG\]/g, '<span class="log-debug">[DEBUG]</span>')
-                .replace(/\[Decoder\]/g, '<span class="log-decoder">[Decoder]</span>')
-                .replace(/\[Encoder\]/g, '<span class="log-encoder">[Encoder]</span>')
-                .replace(/\[Server\]/g, '<span class="log-server">[Server]</span>')
-                .replace(/\[Validator\]/g, '<span class="log-server">[Validator]</span>')
-        }
-    },
+const { $dayjs } = useNuxtApp()
+const authStore = useAuth()
+const configStore = useConfig()
+const currentLog = ref('')
+const listDate = ref($dayjs().utcOffset(configStore.utcOffset).format('YYYY-MM-DD'))
+const configID = ref(configStore.configID)
+const { formatLog } = stringFormatter()
 
-    middleware: 'auth',
+async function getLog() {
+    let date = listDate.value
 
-    data () {
-        return {
-            currentLog: null,
-            listDate: this.$dayjs().utcOffset(0).format('YYYY-MM-DD')
-        }
-    },
-
-    computed: {
-        ...mapState('config', ['configID', 'utcOffset'])
-    },
-
-    watch: {
-        listDate () {
-            this.getLog()
-        },
-
-        configID () {
-            this.getLog()
-        }
-    },
-
-    async created () {
-        this.listDate = this.$dayjs().utcOffset(this.utcOffset).format('YYYY-MM-DD')
-        await this.getLog()
-    },
-
-    methods: {
-        async getLog () {
-            let date = this.listDate
-
-            if (date === this.$dayjs().utcOffset(this.utcOffset).format('YYYY-MM-DD')) {
-                date = ''
-            }
-
-            const response = await this.$axios.get(
-                `api/log/${this.$store.state.config.configGui[this.$store.state.config.configID].id}?date=${date}`)
-
-            if (response.data) {
-                this.currentLog = response.data
-            } else {
-                this.currentLog = ''
-            }
-        }
+    if (date === $dayjs().utcOffset(configStore.utcOffset).format('YYYY-MM-DD')) {
+        date = ''
     }
+
+    await fetch(`api/log/${configStore.configGui[configStore.configID].id}?date=${date}`, {
+        method: 'GET',
+        headers: authStore.authHeader,
+    })
+        .then((response) => response.text())
+        .then((data) => {
+            currentLog.value = data
+        })
+        .catch(() => {
+            currentLog.value = ''
+        })
 }
+
+onMounted(() => {
+    getLog()
+})
+
+watch([listDate, configID], () => {
+    getLog()
+})
+
+
 </script>
 
-<style>
-.ps__thumb-x {
-    display: inherit !important;
+<style lang="scss">
+.date-container {
+    width: 100%;
+    height: 37px;
 }
-
 .log-container {
-    background: #1d2024;
-    max-width: 99%;
-    width: 99%;
-    height: calc(100% - 90px);
-    padding: 1em;
-    overflow: hidden
+    background: $bg-secondary;
+    height: calc(100% - 120px);
+    margin: 1em;
+    padding: .5em;
+    overflow: hidden;
 }
 
 .log-time {
-    color: #666864;
+    color: $log-time;
 }
 
 .log-number {
-    color: #e2c317;
+    color: $log-number;
 }
 
 .log-addr {
-    color: #ad7fa8;
+    color: $log-addr ;
     font-weight: 500;
 }
 
 .log-cmd {
-    color: #6c95c2;
+    color: $log-cmd;
 }
 
 .log-content {
-    color: #ececec;
+    color: $log-content;
     width: 100%;
     height: 100%;
     font-family: monospace;
@@ -139,31 +105,30 @@ export default {
 }
 
 .log-info {
-    color: #8ae234;
+    color: $log-info;
 }
 
 .log-warning {
-    color: #ff8700;
+    color: $log-warning;
 }
 
 .log-error {
-    color: #d32828;
+    color: $log-error;
 }
 
 .log-debug {
-    color: #6e99c7;
+    color: $log-debug;
 }
 
 .log-decoder {
-    color: #56efff;
+    color: $log-decoder;
 }
 
 .log-encoder {
-    color: #45ccee;
+    color: $log-encoder;
 }
 
 .log-server {
-    color: #23cbdd;
+    color: $log-server;
 }
-
 </style>

@@ -1,1119 +1,862 @@
 <template>
-    <div style="height:100%;">
+    <div>
         <Menu />
-        <b-container class="control-container">
-            <b-row class="control-row" align-v="stretch">
-                <b-col cols="3" class="player-col">
-                    <b-aspect aspect="16:9">
-                        <video
-                            v-if="configGui[configID].preview_url.split('.').pop() === 'flv'"
-                            id="httpStream"
-                            ref="httpStream"
-                            width="100%"
-                            controls
-                        />
-                        <video-player v-else-if="videoOptions.sources" :key="configID" reference="videoPlayer" :options="videoOptions" />
-                    </b-aspect>
-                </b-col>
-                <b-col>
-                    <b-row class="control-col">
-                        <b-col cols="8" class="status-col">
-                            <b-row class="status-row">
-                                <b-col class="time-col clock-col">
-                                    <div class="time-str">
-                                        {{ timeStr }}
-                                    </div>
-                                </b-col>
-                                <b-col class="time-col counter-col">
-                                    <div class="time-str">
-                                        {{ timeLeft }}
-                                    </div>
-                                </b-col>
-                                <b-col class="current-clip">
-                                    <div class="current-clip-text">
-                                        {{ currentClip | filename }}
-                                    </div>
-                                    <div class="current-clip-meta">
-                                        <strong>Duration:</strong> {{ $secToHMS(currentClipDuration) }} | <strong>In:</strong> {{ $secToHMS(currentClipIn) }} | <strong>Out:</strong> {{ $secToHMS(currentClipOut) }}
-                                    </div>
-                                    <div class="current-clip-progress">
-                                        <b-progress :value="progressValue" variant="warning" />
-                                    </div>
-                                </b-col>
-                            </b-row>
-                        </b-col>
-                        <b-col cols="4" class="control-unit-col">
-                            <b-row class="control-unit-row">
-                                <b-col>
-                                    <div>
-                                        <b-button
-                                            title="Start Playout Service"
-                                            class="control-button control-button-play"
-                                            :class="isPlaying"
-                                            variant="primary"
-                                            @click="controlProcess('start')"
-                                        >
-                                            <b-icon-play />
-                                        </b-button>
-                                    </div>
-                                </b-col>
-                                <b-col>
-                                    <div>
-                                        <b-button
-                                            title="Stop Playout Service"
-                                            class="control-button control-button-stop"
-                                            variant="primary"
-                                            @click="controlProcess('stop')"
-                                        >
-                                            <b-icon-stop />
-                                        </b-button>
-                                    </div>
-                                </b-col>
-                                <b-col>
-                                    <div>
-                                        <b-button
-                                            title="Restart Playout Service"
-                                            class="control-button control-button-restart"
-                                            variant="primary"
-                                            @click="controlProcess('restart')"
-                                        >
-                                            <b-icon-arrow-clockwise />
-                                        </b-button>
-                                    </div>
-                                </b-col>
-                                <div class="w-100" />
-                                <b-col>
-                                    <div>
-                                        <b-button
-                                            title="Jump to last Clip"
-                                            class="control-button control-button-control"
-                                            variant="primary"
-                                            @click="controlPlayout('back')"
-                                        >
-                                            <b-icon-skip-start />
-                                        </b-button>
-                                    </div>
-                                </b-col>
-                                <b-col>
-                                    <div>
-                                        <b-button
-                                            title="Reset Playout State"
-                                            class="control-button control-button-control"
-                                            variant="primary"
-                                            @click="controlPlayout('reset')"
-                                        >
-                                            <b-icon-arrow-repeat />
-                                        </b-button>
-                                    </div>
-                                </b-col>
-                                <b-col>
-                                    <div>
-                                        <b-button
-                                            title="Jump to next Clip"
-                                            class="control-button control-button-control"
-                                            variant="primary"
-                                            @click="controlPlayout('next')"
-                                        >
-                                            <b-icon-skip-end />
-                                        </b-button>
-                                    </div>
-                                </b-col>
-                            </b-row>
-                        </b-col>
-                    </b-row>
-                </b-col>
-            </b-row>
-            <b-row class="date-row">
-                <b-col>
-                    <b-datepicker
-                        v-if="configPlayout.playlist.path.split('.').pop() !== 'json'"
-                        v-model="listDate"
-                        size="sm"
-                        class="date-div"
-                        offset="-35px"
-                    />
-                </b-col>
-            </b-row>
-            <splitpanes class="list-row default-theme pane-row">
-                <pane min-size="20" size="24">
-                    <loading
-                        :active.sync="browserIsLoading"
-                        :can-cancel="false"
-                        :is-full-page="false"
-                        background-color="#485159"
-                        color="#ff9c36"
-                    />
-
-                    <div v-if="folderTree.parent" class="browser-div">
-                        <div>
-                            <b-breadcrumb>
-                                <b-breadcrumb-item
-                                    v-for="(crumb, index) in crumbs"
-                                    :key="crumb.key"
-                                    :active="index === crumbs.length - 1"
-                                    @click="getPath(crumb.path)"
+        <Control />
+        <div class="date-row">
+            <div class="col">
+                <input type="date" class="form-control date-div mt-2 mb-2" v-model="listDate" />
+            </div>
+        </div>
+        <splitpanes class="container list-row pane-row player-container">
+            <pane class="mobile-hidden" min-size="14" max-size="80" size="20">
+                <div v-if="browserIsLoading" class="d-flex justify-content-center loading-overlay">
+                    <div class="spinner-border" role="status" />
+                </div>
+                <div v-if="mediaStore.folderTree.parent && mediaStore.crumbs">
+                    <nav aria-label="breadcrumb">
+                        <ol class="breadcrumb">
+                            <li
+                                class="breadcrumb-item"
+                                v-for="(crumb, index) in mediaStore.crumbs"
+                                :key="index"
+                                :active="index === mediaStore.crumbs.length - 1"
+                                @click="getPath(crumb.path)"
+                            >
+                                <a
+                                    v-if="mediaStore.crumbs.length > 1 && mediaStore.crumbs.length - 1 > index"
+                                    class="link-secondary"
+                                    href="#"
                                 >
                                     {{ crumb.text }}
-                                </b-breadcrumb-item>
-                            </b-breadcrumb>
-                        </div>
-
-                        <div class="player-browser-scroll">
-                            <b-list-group>
-                                <b-list-group-item
-                                    v-for="folder in folderTree.folders"
-                                    :key="folder.key"
-                                    class="browser-item"
-                                >
-                                    <b-link @click="getPath(`/${folderTree.source}/${folder}`)">
-                                        <b-icon-folder-fill class="browser-icons" /> {{ folder }}
-                                    </b-link>
-                                </b-list-group-item>
-                                <draggable
-                                    :list="folderTree.files"
-                                    :clone="cloneClip"
-                                    :group="{ name: 'playlist', pull: 'clone', put: false }"
-                                    :sort="false"
-                                >
-                                    <b-list-group-item
-                                        v-for="file in folderTree.files"
-                                        :key="file.name"
-                                        class="browser-item"
-                                    >
-                                        <b-row>
-                                            <b-col cols="1" class="browser-icons-col">
-                                                <b-icon-film class="browser-icons" />
-                                            </b-col>
-                                            <b-col class="browser-item-text grabbing">
-                                                {{ file.name }}
-                                            </b-col>
-                                            <b-col cols="1" class="browser-play-col">
-                                                <b-link @click="showPreviewModal(`/${folderTree.parent}/${folderTree.source}/${file.name}`)">
-                                                    <b-icon-play-fill />
-                                                </b-link>
-                                            </b-col>
-                                            <b-col cols="1" class="browser-dur-col">
-                                                <span class="duration">{{ file.duration | toMin }}</span>
-                                            </b-col>
-                                        </b-row>
-                                    </b-list-group-item>
-                                </draggable>
-                            </b-list-group>
-                        </div>
-                    </div>
-                </pane>
-                <pane>
-                    <div class="playlist-container">
-                        <b-list-group class="list-group-header">
-                            <b-list-group-item>
-                                <b-row class="playlist-row">
-                                    <b-col v-if="configPlayout.playlist.day_start" cols="1" class="timecode">
-                                        Start
-                                    </b-col>
-                                    <b-col>
-                                        File
-                                    </b-col>
-                                    <b-col cols="1" class="text-center playlist-input">
-                                        Play
-                                    </b-col>
-                                    <b-col cols="1" class="timecode">
-                                        Duration
-                                    </b-col>
-                                    <b-col cols="1" class="timecode">
-                                        In
-                                    </b-col>
-                                    <b-col cols="1" class="timecode">
-                                        Out
-                                    </b-col>
-                                    <b-col cols="1" class="text-center playlist-input">
-                                        Ad
-                                    </b-col>
-                                    <b-col cols="1" class="text-center playlist-input">
-                                        Edit
-                                    </b-col>
-                                    <b-col cols="1" class="text-center playlist-input">
-                                        Delete
-                                    </b-col>
-                                </b-row>
-                            </b-list-group-item>
-                        </b-list-group>
-                        <div id="scroll-container">
-                            <loading
-                                :active.sync="playlistIsLoading"
-                                :can-cancel="false"
-                                :is-full-page="false"
-                                background-color="#485159"
-                                color="#ff9c36"
-                            />
-                            <b-list-group class="playlist-list-group" :style="`height: ${(playlist) ? playlist.length * 52 + 52 : 300}px`">
-                                <draggable
-                                    id="playlist-group"
-                                    v-model="playlist"
-                                    group="playlist"
-                                    @start="drag=true"
-                                    @add="scrollEnd"
-                                    @end="drag=false"
-                                >
-                                    <b-list-group-item
-                                        v-for="(item, index) in playlist"
-                                        :id="`clip_${index}`"
-                                        :key="item.key"
-                                        class="playlist-item"
-                                        :class="index === currentClipIndex ? 'active-playlist-clip' : item.class"
-                                    >
-                                        <b-row class="playlist-row">
-                                            <b-col v-if="configPlayout.playlist.day_start" cols="1" class="timecode">
-                                                {{ item.begin | secondsToTime }}
-                                            </b-col>
-                                            <b-col class="grabbing filename" :title="item.class === 'overLength' ? 'Clip exceeds the length of the day!' : ''">
-                                                {{ item.source | filename }}
-                                            </b-col>
-                                            <b-col cols="1" class="text-center playlist-input">
-                                                <b-link @click="showPreviewModal(item.source)">
-                                                    <b-icon-play-fill />
-                                                </b-link>
-                                            </b-col>
-                                            <b-col cols="1" text class="timecode">
-                                                {{ item.duration | secondsToTime }}
-                                            </b-col>
-                                            <b-col cols="1" class="timecode">
-                                                <b-form-input :value="item.in | secondsToTime" size="sm" @input="changeTime('in', index, $event)" />
-                                            </b-col>
-                                            <b-col cols="1" class="timecode">
-                                                <b-form-input :value="item.out | secondsToTime" size="sm" @input="changeTime('out', index, $event)" />
-                                            </b-col>
-                                            <b-col cols="1" class="text-center playlist-input">
-                                                <b-form-checkbox
-                                                    v-model="item.category"
-                                                    value="advertisement"
-                                                    unchecked-value=""
-                                                />
-                                            </b-col>
-                                            <b-col cols="1" class="text-center playlist-input">
-                                                <b-link @click="editItem(index)">
-                                                    <b-icon-pencil-square />
-                                                </b-link>
-                                            </b-col>
-                                            <b-col cols="1" class="text-center playlist-input">
-                                                <b-link @click="removeItemFromPlaylist(index)">
-                                                    <b-icon-x-circle-fill />
-                                                </b-link>
-                                            </b-col>
-                                        </b-row>
-                                    </b-list-group-item>
-                                </draggable>
-                            </b-list-group>
-                        </div>
-                    </div>
-                </pane>
-            </splitpanes>
-            <b-button-group class="media-button">
-                <b-button v-b-tooltip.hover title="Copy Playlist" variant="primary" @click="showCopyModal()">
-                    <b-icon-files />
-                </b-button>
-                <b-button v-if="!configPlayout.playlist.loop" v-b-tooltip.hover title="Loop Clips in Playlist" variant="primary" @click="loopClips()">
-                    <b-icon-view-stacked />
-                </b-button>
-                <b-button v-b-tooltip.hover title="Add (remote) Source to Playlist" variant="primary" @click="showAddSource()">
-                    <b-icon-file-earmark-plus />
-                </b-button>
-                <b-button v-b-tooltip.hover title="Import text/m3u file" variant="primary" @click="showImport()">
-                    <b-icon-file-text />
-                </b-button>
-                <b-button v-b-tooltip.hover title="Generate a randomized Playlist" variant="primary" @click="generatePlaylist(listDate)">
-                    <b-icon-sort-down-alt />
-                </b-button>
-                <b-button v-b-tooltip.hover title="Reset Playlist" variant="primary" @click="resetPlaylist()">
-                    <b-icon-arrow-counterclockwise />
-                </b-button>
-                <b-button v-b-tooltip.hover title="Save Playlist" variant="primary" @click="savePlaylist(listDate)">
-                    <b-icon-download />
-                </b-button>
-                <b-button v-b-tooltip.hover title="Delete Playlist" variant="primary" @click="showDeleteModal()">
-                    <b-icon-trash />
-                </b-button>
-            </b-button-group>
-        </b-container>
-        <b-modal
-            id="preview-modal"
-            ref="prev-modal"
-            size="xl"
-            centered
-            :title="`Preview: ${previewSource}`"
-            hide-footer
-        >
-            <video-player v-if="previewOptions" reference="previewPlayer" :options="previewOptions" />
-        </b-modal>
-        <b-modal
-            id="import-modal"
-            ref="import-modal"
-            centered
-            title="Import Playlist"
-            hide-footer
-            no-close-on-backdrop
-        >
-            <b-form @submit="onSubmitImport" @reset="onResetImport">
-                <b-form-file
-                    v-model="textFile"
-                    :state="Boolean(textFile)"
-                    placeholder="Choose a file or drop it here..."
-                    drop-placeholder="Drop file here..."
-                    @reset="onResetImport"
-                />
-                <div class="media-button">
-                    <b-button type="submit" variant="primary">
-                        Import
-                    </b-button>
-                    <b-button type="reset" variant="primary">
-                        Cancel
-                    </b-button>
+                                </a>
+                                <span v-else>{{ crumb.text }}</span>
+                            </li>
+                        </ol>
+                    </nav>
                 </div>
-            </b-form>
-        </b-modal>
-        <b-modal
-            id="copy-modal"
-            ref="copy-modal"
-            centered
-            :title="`Copy Program ${listDate} to:`"
-            content-class="copy-program"
-            @ok="savePlaylist(targetDate)"
-        >
-            <b-calendar v-model="targetDate" locale="en-US" class="centered" />
-        </b-modal>
-        <b-modal
-            id="delete-modal"
-            ref="delete-modal"
-            centered
-            title="Delete Program"
-            content-class="copy-program"
-            @ok="deletePlaylist(listDate)"
-        >
-            Delete program from {{ listDate }}
-        </b-modal>
-        <b-modal
-            id="add-source-modal"
-            ref="add-source-modal"
-            title="Add/Edit Source"
-            @ok="handleSource"
-        >
-            <form ref="form" @submit.stop.prevent="addSource">
-                <b-form-group label="In" label-for="in-input">
-                    <b-form-input id="in-input" v-model.number="newSource.in" type="number" inline />
-                </b-form-group>
-                <b-form-group label="Out" label-for="out-input" invalid-feedback="Out is required">
-                    <b-form-input id="out-input" v-model.number="newSource.out" type="number" inline required />
-                </b-form-group>
-                <b-form-group label="Duration" label-for="duration-input" invalid-feedback="Out is required">
-                    <b-form-input id="duration-input" v-model.number="newSource.duration" type="number" inline required />
-                </b-form-group>
-                <b-form-group label="Source" label-for="source-input" invalid-feedback="Source is required">
-                    <b-form-input id="source-input" v-model="newSource.source" required />
-                </b-form-group>
-                <b-form-group label="Audio" label-for="audio-input">
-                    <b-form-input id="audio-input" v-model="newSource.audio" />
-                </b-form-group>
-                <b-form-group label="Custom Filter" label-for="filter-input">
-                    <b-form-input id="filter-input" v-model="newSource.custom_filter" />
-                </b-form-group>
-                <b-form-checkbox
-                    id="ad-input"
-                    v-model="newSource.category"
-                    value="advertisement"
-                    unchecked-value=""
-                >
-                    Advertisement
-                </b-form-checkbox>
-            </form>
-        </b-modal>
+                <ul class="list-group media-browser-scroll browser-div">
+                    <li
+                        class="list-group-item browser-item"
+                        v-for="folder in mediaStore.folderTree.folders"
+                        :key="folder"
+                    >
+                        <div class="row">
+                            <div class="col-1 browser-icons-col">
+                                <i class="bi-folder-fill browser-icons" />
+                            </div>
+                            <div class="col browser-item-text">
+                                <a
+                                    class="link-light"
+                                    href="#"
+                                    @click="getPath(`/${mediaStore.folderTree.source}/${folder}`)"
+                                >
+                                    {{ folder }}
+                                </a>
+                            </div>
+                        </div>
+                    </li>
+                    <Sortable :list="mediaStore.folderTree.files" :options="browserSortOptions" item-key="name">
+                        <template #item="{ element, index }">
+                            <li
+                                :id="`file_${index}`"
+                                class="draggable list-group-item browser-item"
+                                :key="element.name"
+                            >
+                                <div class="row">
+                                    <div class="col-1 browser-icons-col">
+                                        <i class="bi-film browser-icons" />
+                                    </div>
+                                    <div class="col browser-item-text grabbing">
+                                        {{ element.name }}
+                                    </div>
+                                    <div class="col-1 browser-play-col">
+                                        <a
+                                            href="#"
+                                            class="btn-link"
+                                            data-bs-toggle="modal"
+                                            data-bs-target="#previewModal"
+                                            @click="setPreviewData(element.name)"
+                                        >
+                                            <i class="bi-play-fill" />
+                                        </a>
+                                    </div>
+                                    <div class="col-1 browser-dur-col">
+                                        <span class="duration">{{ toMin(element.duration) }}</span>
+                                    </div>
+                                </div>
+                            </li>
+                        </template>
+                    </Sortable>
+                </ul>
+            </pane>
+            <pane class="playlist-pane">
+                <div class="playlist-container">
+                    <ul class="list-group list-group-header">
+                        <li class="list-group-item">
+                            <div class="row playlist-row">
+                                <div class="col-1 timecode">Start</div>
+                                <div class="col">File</div>
+                                <div class="col-1 text-center playlist-input">Play</div>
+                                <div class="col-1 timecode">Duration</div>
+                                <div class="col-1 timecode mobile-hidden">In</div>
+                                <div class="col-1 timecode mobile-hidden">Out</div>
+                                <div class="col-1 text-center playlist-input mobile-hidden">Ad</div>
+                                <div class="col-1 text-center playlist-input">Edit</div>
+                                <div class="col-1 text-center playlist-input mobile-hidden">Delete</div>
+                            </div>
+                        </li>
+                    </ul>
+                    <div v-if="playlistIsLoading" class="d-flex justify-content-center loading-overlay">
+                        <div class="spinner-border" role="status" />
+                    </div>
+                    <div id="scroll-container">
+                        <Sortable
+                            :list="playlistStore.playlist"
+                            item-key="uid"
+                            class="list-group playlist-list-group"
+                            :style="`height: ${
+                                playlistStore.playlist ? playlistStore.playlist.length * 38 + 76 : 300
+                            }px`"
+                            tag="ul"
+                            :options="playlistSortOptions"
+                            @add="cloneClip"
+                            @end="moveItemInArray"
+                        >
+                            <template #item="{ element, index }">
+                                <li
+                                    :id="`clip_${index}`"
+                                    class="draggable list-group-item playlist-item"
+                                    :key="element.uid"
+                                >
+                                    <div class="row playlist-row">
+                                        <div class="col-1 timecode">{{ secondsToTime(element.begin) }}</div>
+                                        <div class="col grabbing filename">{{ filename(element.source) }}</div>
+                                        <div class="col-1 text-center playlist-input">
+                                            <a
+                                                href="#"
+                                                class="btn-link"
+                                                data-bs-toggle="modal"
+                                                data-bs-target="#previewModal"
+                                                @click="setPreviewData(element.source)"
+                                            >
+                                                <i class="bi-play-fill" />
+                                            </a>
+                                        </div>
+                                        <div class="col-1 timecode">{{ secToHMS(element.duration) }}</div>
+                                        <div class="col-1 timecode mobile-hidden">{{ secToHMS(element.in) }}</div>
+                                        <div class="col-1 timecode mobile-hidden">{{ secToHMS(element.out) }}</div>
+                                        <div class="col-1 text-center playlist-input mobile-hidden">
+                                            <input
+                                                class="form-check-input"
+                                                type="checkbox"
+                                                :checked="
+                                                    element.category && element.category === 'advertisement'
+                                                        ? true
+                                                        : false
+                                                "
+                                                @change="setCategory($event, element)"
+                                            />
+                                        </div>
+                                        <div class="col-1 text-center playlist-input">
+                                            <a
+                                                href="#"
+                                                class="btn-link"
+                                                data-bs-toggle="modal"
+                                                data-bs-target="#sourceModal"
+                                                @click="editPlaylistItem(index)"
+                                            >
+                                                <i class="bi-pencil-square" />
+                                            </a>
+                                        </div>
+                                        <div class="col-1 text-center playlist-input mobile-hidden">
+                                            <a href="#" class="btn-link" @click="deletePlaylistItem(index)">
+                                                <i class="bi-x-circle-fill" />
+                                            </a>
+                                        </div>
+                                    </div>
+                                </li>
+                            </template>
+                        </Sortable>
+                    </div>
+                </div>
+            </pane>
+        </splitpanes>
+
+        <div class="btn-group media-button mb-3">
+            <div class="btn btn-primary" title="Copy Playlist" data-bs-toggle="modal" data-bs-target="#copyModal">
+                <i class="bi-files" />
+            </div>
+            <div
+                v-if="!configStore.configPlayout.playlist.loop"
+                class="btn btn-primary"
+                title="Loop Clips in Playlist"
+                @click="loopClips()"
+            >
+                <i class="bi-view-stacked" />
+            </div>
+            <div
+                class="btn btn-primary"
+                title="Add (remote) Source to Playlist"
+                data-bs-toggle="modal"
+                data-bs-target="#sourceModal"
+                @click="clearNewSource()"
+            >
+                <i class="bi-file-earmark-plus" />
+            </div>
+            <div
+                class="btn btn-primary"
+                title="Import text/m3u file"
+                data-bs-toggle="modal"
+                data-bs-target="#importModal"
+            >
+                <i class="bi-file-text" />
+            </div>
+            <div class="btn btn-primary" title="Generate a randomized Playlist" @click="generatePlaylist()">
+                <i class="bi-sort-down-alt" />
+            </div>
+            <div class="btn btn-primary" title="Reset Playlist" @click="getPlaylist()">
+                <i class="bi-arrow-counterclockwise" />
+            </div>
+            <div class="btn btn-primary" title="Save Playlist" @click="savePlaylist(listDate)">
+                <i class="bi-download" />
+            </div>
+            <div class="btn btn-primary" title="Delete Playlist" data-bs-toggle="modal" data-bs-target="#deleteModal">
+                <i class="bi-trash" />
+            </div>
+        </div>
+
+        <div id="previewModal" class="modal" tabindex="-1" aria-labelledby="previewModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered modal-xl">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h1 class="modal-title fs-5" id="previewModalLabel">Preview: {{ previewName }}</h1>
+                        <button
+                            type="button"
+                            class="btn-close"
+                            data-bs-dismiss="modal"
+                            aria-label="Cancel"
+                            @click="closePlayer()"
+                        ></button>
+                    </div>
+                    <div class="modal-body">
+                        <VideoPlayer v-if="isVideo && previewOpt" reference="previewPlayer" :options="previewOpt" />
+                        <img v-else :src="previewUrl" class="img-fluid" :alt="previewName" />
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="sourceModal" class="modal" tabindex="-1" aria-labelledby="sourceModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h1 class="modal-title fs-5" id="sourceModalLabel">Add/Edit Source</h1>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cancel"></button>
+                    </div>
+                    <form @reset="clearNewSource">
+                        <div class="modal-body">
+                            <label for="in-input" class="form-label">In</label>
+                            <input
+                                type="number"
+                                class="form-control"
+                                id="in-input"
+                                aria-describedby="in"
+                                v-model.number="newSource.in"
+                            />
+                            <label for="out-input" class="form-label mt-2">Out</label>
+                            <input
+                                type="number"
+                                class="form-control"
+                                id="out-input"
+                                aria-describedby="out"
+                                v-model.number="newSource.out"
+                            />
+                            <label for="duration-input" class="form-label mt-2">Duration</label>
+                            <input
+                                type="number"
+                                class="form-control"
+                                id="duration-input"
+                                aria-describedby="out"
+                                v-model.number="newSource.duration"
+                            />
+                            <label for="source-input" class="form-label mt-2">Source</label>
+                            <input
+                                type="text"
+                                class="form-control"
+                                id="source-input"
+                                aria-describedby="out"
+                                v-model="newSource.source"
+                            />
+                            <label for="audio-input" class="form-label mt-2">Audio</label>
+                            <input
+                                type="text"
+                                class="form-control"
+                                id="audio-input"
+                                aria-describedby="out"
+                                v-model="newSource.audio"
+                            />
+                            <label for="filter-input" class="form-label mt-2">Custom Filter</label>
+                            <input
+                                type="text"
+                                class="form-control"
+                                id="filter-input"
+                                aria-describedby="out"
+                                v-model="newSource.custom_filter"
+                            />
+                            <div class="form-check">
+                                <label class="form-check-label" for="ad-input"> Advertisement </label>
+                                <input class="form-check-input" type="checkbox" value="" id="ad-input" @click="isAd" />
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="reset" class="btn btn-primary" data-bs-dismiss="modal" aria-label="Cancel">
+                                Cancel
+                            </button>
+                            <button type="submit" class="btn btn-primary" data-bs-dismiss="modal"
+                            @click="processSource">Ok</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div id="importModal" class="modal" tabindex="-1" aria-labelledby="importModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h1 class="modal-title fs-5" id="importModalLabel">Import Playlist</h1>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cancel"></button>
+                    </div>
+                    <form @submit.prevent="onSubmitImport">
+                        <div class="modal-body">
+                            <input class="form-control" ref="fileImport" type="file" v-on:change="onFileChange" />
+                        </div>
+                        <div class="modal-footer">
+                            <button type="reset" class="btn btn-primary" data-bs-dismiss="modal" aria-label="Cancel">
+                                Cancel
+                            </button>
+                            <button type="submit" class="btn btn-primary" data-bs-dismiss="modal">Import</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div id="copyModal" class="modal" tabindex="-1" aria-labelledby="copyModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h1 class="modal-title fs-5" id="copyModalLabel">Copy Program {{ listDate }} to:</h1>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cancel"></button>
+                    </div>
+                    <div class="modal-body">
+                        <input type="date" class="form-control centered" v-model="targetDate" />
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Cancel</button>
+                        <button
+                            type="button"
+                            class="btn btn-primary"
+                            data-bs-dismiss="modal"
+                            @click="savePlaylist(targetDate)"
+                        >
+                            Ok
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="deleteModal" class="modal" tabindex="-1" aria-labelledby="deleteModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h1 class="modal-title fs-5" id="deleteModalLabel">Delete Program</h1>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cancel"></button>
+                    </div>
+                    <div class="modal-body">
+                        Delete program from <strong>{{ listDate }}</strong>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Cancel</button>
+                        <button
+                            type="button"
+                            class="btn btn-primary"
+                            data-bs-dismiss="modal"
+                            @click="deletePlaylist(listDate)"
+                        >
+                            Ok
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 </template>
 
-<script>
-import mpegts from 'mpegts.js'
-/* eslint-disable vue/custom-event-name-casing */
-import { mapState } from 'vuex'
-import Menu from '@/components/Menu.vue'
+<script setup lang="ts">
+import { Splitpanes, Pane } from 'splitpanes'
+import 'splitpanes/dist/splitpanes.css'
 
-function scrollTo (t) {
-    let child
-    if (t.currentClipIndex === null) {
-        child = document.getElementById('clip_0')
-    } else {
-        child = document.getElementById(`clip_${t.currentClipIndex}`)
+import { useAuth } from '~/stores/auth'
+import { useConfig } from '~/stores/config'
+import { useIndex } from '~/stores/index'
+import { useMedia } from '~/stores/media'
+import { usePlaylist } from '~/stores/playlist'
+
+const { $_, $dayjs } = useNuxtApp()
+const { secToHMS, filename, secondsToTime, toMin } = stringFormatter()
+const { processPlaylist, genUID } = playlistOperations()
+const contentType = { 'content-type': 'application/json;charset=UTF-8' }
+
+const authStore = useAuth()
+const configStore = useConfig()
+const indexStore = useIndex()
+const mediaStore = useMedia()
+const playlistStore = usePlaylist()
+
+definePageMeta({
+    middleware: ['auth'],
+})
+
+useHead({
+    title: 'Player | ffplayout'
+})
+
+const fileImport = ref()
+const browserIsLoading = ref(false)
+const playlistIsLoading = ref(false)
+const listDate = ref($dayjs().utcOffset(configStore.utcOffset).format('YYYY-MM-DD'))
+const targetDate = ref($dayjs().utcOffset(configStore.utcOffset).format('YYYY-MM-DD'))
+const editId = ref(-1)
+const textFile = ref()
+const previewName = ref('')
+const previewUrl = ref('')
+const previewOpt = ref()
+const isVideo = ref(false)
+const configID = ref(configStore.configID)
+const browserSortOptions = ref({
+    group: { name: 'playlist', pull: 'clone', put: false },
+    sort: false,
+})
+const playlistSortOptions = ref({
+    group: 'playlist',
+    animation: 100,
+    handle: '.grabbing',
+})
+const newSource = ref({
+    begin: 0,
+    in: 0,
+    out: 0,
+    duration: 0,
+    category: '',
+    custom_filter: '',
+    source: '',
+    uid: '',
+} as PlaylistItem)
+
+onMounted(() => {
+    if (!mediaStore.folderTree.parent) {
+        getPath('')
     }
 
-    if (child) {
-        const parent = document.getElementById('scroll-container')
-        const topPos = child.offsetTop
-        parent.scrollTop = topPos - 50
+    getPlaylist()
+})
+
+watch([listDate, configID], () => {
+    getPlaylist()
+})
+
+async function getPath(path: string) {
+    browserIsLoading.value = true
+    await mediaStore.getTree(path)
+    browserIsLoading.value = false
+}
+
+async function getPlaylist() {
+    playlistIsLoading.value = true
+    await playlistStore.getPlaylist(listDate.value)
+    playlistIsLoading.value = false
+}
+
+function closePlayer() {
+    isVideo.value = false
+}
+
+function setCategory(event: any, item: PlaylistItem) {
+    if (event.target.checked) {
+        item.category = 'advertisement'
+    } else {
+        item.category = ''
+    }
+}
+function onFileChange(evt: any) {
+    const files = evt.target.files || evt.dataTransfer.files
+
+    if (!files.length) {
+        return
+    }
+
+    textFile.value = files
+}
+
+function cloneClip(event: any) {
+    const o = event.oldIndex
+    const n = event.newIndex
+
+    event.item.remove()
+
+    const storagePath = configStore.configPlayout.storage.path
+    const sourcePath = `${storagePath}/${mediaStore.folderTree.source}/${mediaStore.folderTree.files[o].name}`.replace(
+        /\/[/]+/g,
+        '/'
+    )
+
+    playlistStore.playlist.splice(n, 0, {
+        uid: genUID(),
+        begin: 0,
+        source: sourcePath,
+        in: 0,
+        out: mediaStore.folderTree.files[o].duration,
+        duration: mediaStore.folderTree.files[o].duration,
+    })
+
+    playlistStore.playlist = processPlaylist(
+        configStore.startInSec,
+        configStore.playlistLength,
+        playlistStore.playlist,
+        false
+    )
+}
+
+function moveItemInArray(event: any) {
+    playlistStore.playlist.splice(event.newIndex, 0, playlistStore.playlist.splice(event.oldIndex, 1)[0])
+
+    playlistStore.playlist = processPlaylist(
+        configStore.startInSec,
+        configStore.playlistLength,
+        playlistStore.playlist,
+        false
+    )
+}
+
+function setPreviewData(path: string) {
+    let fullPath = path
+    if (!path.includes('/')) {
+        const parent = mediaStore.folderTree.parent ? mediaStore.folderTree.parent : ''
+        fullPath = `/${parent}/${mediaStore.folderTree.source}/${path}`.replace(/\/[/]+/g, '/')
+    }
+
+    previewName.value = fullPath.split('/').slice(-1)[0]
+    previewUrl.value = encodeURIComponent(`${fullPath}`).replace(/%2F/g, '/')
+
+    const ext = previewName.value.split('.').slice(-1)[0].toLowerCase()
+
+    if (configStore.configPlayout.storage.extensions.includes(`${ext}`)) {
+        isVideo.value = true
+        previewOpt.value = {
+            liveui: false,
+            controls: true,
+            suppressNotSupportedError: true,
+            autoplay: false,
+            preload: 'auto',
+            sources: [
+                {
+                    type: `video/${ext}`,
+                    src: previewUrl.value,
+                },
+            ],
+        }
+    } else {
+        isVideo.value = false
     }
 }
 
-export default {
-    name: 'Player',
+function processSource(evt: any) {
+    evt.preventDefault()
 
-    components: {
-        Menu
-    },
+    if (editId.value === -1) {
+        playlistStore.playlist.push(newSource.value)
+        playlistStore.playlist = processPlaylist(
+            configStore.startInSec,
+            configStore.playlistLength,
+            playlistStore.playlist,
+            false
+        )
+    } else {
+        playlistStore.playlist[editId.value] = newSource.value
+        playlistStore.playlist = processPlaylist(
+            configStore.startInSec,
+            configStore.playlistLength,
+            playlistStore.playlist,
+            false
+        )
 
-    filters: {
-        secondsToTime (sec) {
-            return new Date(sec * 1000).toISOString().substr(11, 8)
-        }
-    },
+        editId.value = -1
+    }
 
-    middleware: 'auth',
+    newSource.value = {
+        begin: 0,
+        in: 0,
+        out: 0,
+        duration: 0,
+        category: '',
+        custom_filter: '',
+        source: '',
+        uid: '',
+    }
+}
 
-    data () {
-        return {
-            browserIsLoading: false,
-            playlistIsLoading: false,
-            isPlaying: '',
-            listDate: this.$dayjs().format('YYYY-MM-DD'),
-            targetDate: this.$dayjs().format('YYYY-MM-DD'),
-            interval: null,
-            videoOptions: {
-                liveui: true,
-                controls: true,
-                suppressNotSupportedError: true,
-                autoplay: false,
-                preload: 'auto',
-                sources: []
-            },
-            httpFlvSource: {
-                type: 'flv',
-                isLive: true,
-                url: ''
-            },
-            mpegtsOptions: {
-                enableWorker: true,
-                lazyLoadMaxDuration: 3 * 60,
-                seekType: 'range',
-                liveBufferLatencyChasing: true
-            },
-            previewOptions: {},
-            previewComp: null,
-            previewSource: '',
-            editId: undefined,
-            textFile: null,
-            newSource: {
-                begin: 0,
-                in: 0,
-                out: 0,
-                duration: 0,
-                category: '',
-                custom_filter: '',
-                source: ''
-            }
-        }
-    },
+function clearNewSource() {
+    editId.value = -1
+    newSource.value = {
+        begin: 0,
+        in: 0,
+        out: 0,
+        duration: 0,
+        category: '',
+        custom_filter: '',
+        source: '',
+        uid: genUID(),
+    }
+}
 
-    computed: {
-        ...mapState('config', ['configID', 'configGui', 'configPlayout', 'utcOffset', 'startInSec', 'playlistLength']),
-        ...mapState('media', ['crumbs', 'folderTree']),
-        ...mapState('playlist', [
-            'timeStr', 'timeLeft', 'currentClip', 'progressValue', 'currentClipIndex',
-            'currentClipDuration', 'currentClipIn', 'currentClipOut']),
-        playlist: {
-            get () {
-                return this.$store.state.playlist.playlist
-            },
-            set (list) {
-                this.$store.commit('playlist/UPDATE_PLAYLIST', this.$processPlaylist(this.startInSec, this.playlistLength, list, false))
-            }
-        }
-    },
+function editPlaylistItem(i: number) {
+    editId.value = i
 
-    watch: {
-        listDate () {
-            this.playlistIsLoading = true
-            this.getPlaylist()
-            this.playlistIsLoading = false
-            setTimeout(() => { scrollTo(this) }, 5000)
-        },
+    newSource.value = {
+        begin: playlistStore.playlist[i].begin,
+        in: playlistStore.playlist[i].in,
+        out: playlistStore.playlist[i].out,
+        duration: playlistStore.playlist[i].duration,
+        category: playlistStore.playlist[i].category,
+        custom_filter: playlistStore.playlist[i].custom_filter,
+        source: playlistStore.playlist[i].source,
+        uid: playlistStore.playlist[i].uid,
+    }
+}
 
-        configID (id) {
-            this.videoOptions.sources = [
-                {
-                    type: 'application/x-mpegURL',
-                    src: this.configGui[id].preview_url
-                }
-            ]
+function isAd(evt: any) {
+    if (evt.target.checked) {
+        newSource.value.category = 'advertisement'
+    } else {
+        newSource.value.category = ''
+    }
+}
 
-            this.getPath('')
-            this.getPlaylist()
-            setTimeout(() => { scrollTo(this) }, 3000)
-        }
-    },
+function deletePlaylistItem(index: number) {
+    playlistStore.playlist.splice(index, 1)
+}
 
-    async created () {
-        this.listDate = this.$dayjs().utcOffset(this.utcOffset).format('YYYY-MM-DD')
-        this.targetDate = this.listDate
+function loopClips() {
+    const tempList = []
+    let length = 0
 
-        this.videoOptions.sources = [
-            {
-                type: 'application/x-mpegURL',
-                src: this.configGui[this.configID].preview_url
-            }
-        ]
-
-        this.getStatus()
-        await this.getPath('')
-
-        const timeInSec = this.$timeToSeconds(this.$dayjs().utcOffset(this.utcOffset).format('HH:mm:ss'))
-        const listStartSec = this.$timeToSeconds(this.configPlayout.playlist.day_start)
-
-        if (listStartSec > timeInSec) {
-            this.listDate = this.$dayjs(this.listDate).utcOffset(this.utcOffset).subtract(1, 'day').format('YYYY-MM-DD')
-        }
-
-        await this.getPlaylist()
-    },
-
-    mounted () {
-        if (process.env.NODE_ENV === 'production') {
-            this.interval = setInterval(() => {
-                this.$store.dispatch('playlist/playoutStat')
-                this.getStatus()
-            }, 5000)
-            this.$store.dispatch('playlist/playoutStat')
-        } else {
-            this.$store.dispatch('playlist/playoutStat')
-        }
-
-        const streamExtension = this.configGui[this.configID].preview_url.split('.').pop()
-        let player
-
-        if (streamExtension === 'flv') {
-            this.httpFlvSource.url = this.configGui[this.configID].preview_url
-            const element = this.$refs.httpStream
-
-            if (typeof player !== 'undefined') {
-                if (player != null) {
-                    player.unload()
-                    player.detachMediaElement()
-                    player.destroy()
-                    player = null
-                }
-            }
-
-            player = mpegts.createPlayer(this.httpFlvSource, this.mpegtsOptions)
-            player.attachMediaElement(element)
-            player.load()
-        }
-
-        setTimeout(() => { scrollTo(this) }, 4000)
-    },
-
-    beforeDestroy () {
-        clearInterval(this.interval)
-    },
-
-    methods: {
-        async getPath (path) {
-            this.browserIsLoading = true
-            await this.$store.dispatch('media/getTree', { path })
-            this.browserIsLoading = false
-        },
-
-        async getStatus () {
-            const channel = this.configGui[this.configID].id
-            const status = await this.$axios.post(`api/control/${channel}/process/`, { command: 'status' })
-
-            if (status.data && status.data === 'active') {
-                this.isPlaying = 'is-playing'
+    while (length < configStore.playlistLength) {
+        for (const item of playlistStore.playlist) {
+            if (length < configStore.playlistLength) {
+                tempList.push($_.cloneDeep(item))
+                length += item.out - item.in
             } else {
-                this.isPlaying = ''
+                break
             }
-        },
-
-        async controlProcess (state) {
-            const channel = this.configGui[this.configID].id
-            await this.$axios.post(`api/control/${channel}/process/`, { command: state })
-
-            setTimeout(() => { this.getStatus() }, 1000)
-        },
-
-        async controlPlayout (state) {
-            const channel = this.configGui[this.configID].id
-            await this.$axios.post(`api/control/${channel}/playout/`, { command: state })
-
-            setTimeout(() => { this.getStatus() }, 1000)
-        },
-
-        async getPlaylist () {
-            await this.$store.dispatch('playlist/getPlaylist', { date: this.listDate })
-        },
-
-        showPreviewModal (src) {
-            const storagePath = this.configPlayout.storage.path
-            const storagePathArr = storagePath.split('/')
-            const storageRoot = storagePathArr.pop()
-            src = '/' + src.substring(src.indexOf(storageRoot))
-            this.previewSource = src.split('/').slice(-1)[0]
-            const ext = this.previewSource.split('.').slice(-1)[0]
-            this.previewOptions = {
-                liveui: false,
-                controls: true,
-                suppressNotSupportedError: true,
-                autoplay: false,
-                preload: 'auto',
-                sources: [
-                    {
-                        type: `video/${ext}`,
-                        src: '/' + encodeURIComponent(src.replace(/^[/]+/, '').replace(/[/]+/, '/')).replace(/%2F/g, '/')
-                    }
-                ]
-            }
-            this.$root.$emit('bv::show::modal', 'preview-modal')
-        },
-
-        cloneClip ({ name, duration }) {
-            const storagePath = this.configPlayout.storage.path
-            const sourcePath = `${storagePath}/${this.folderTree.source}/${name}`.replace('//', '/')
-
-            return {
-                source: sourcePath,
-                in: 0,
-                out: duration,
-                duration
-            }
-        },
-
-        scrollEnd (event) {
-            if (event.newIndex + 1 === this.playlist.length) {
-                const objDiv = document.getElementById('scroll-container')
-                objDiv.scrollTop = objDiv.scrollHeight
-            }
-        },
-
-        changeTime (pos, index, input) {
-            if (input.match(/(?:[01]\d|2[0123]):(?:[012345]\d):(?:[012345]\d)/gm)) {
-                const sec = this.$timeToSeconds(input)
-
-                if (pos === 'in') {
-                    this.playlist[index].in = sec
-                } else if (pos === 'out') {
-                    this.playlist[index].out = sec
-                }
-
-                this.$store.commit('playlist/UPDATE_PLAYLIST', this.$processPlaylist(this.startInSec, this.playlistLength, this.playlist, false))
-            }
-        },
-
-        removeItemFromPlaylist (index) {
-            this.playlist.splice(index, 1)
-
-            this.$store.commit('playlist/UPDATE_PLAYLIST', this.$processPlaylist(this.startInSec, this.playlistLength, this.playlist, false))
-        },
-
-        async resetPlaylist () {
-            await this.$store.dispatch('playlist/getPlaylist', { date: this.listDate })
-        },
-
-        showImport () {
-            this.$root.$emit('bv::show::modal', 'import-modal')
-        },
-
-        onResetImport (evt) {
-            evt.preventDefault()
-            this.textFile = null
-            this.inputPlaceholder = 'Choose files or drop them here...'
-
-            this.$root.$emit('bv::hide::modal', 'import-modal')
-        },
-
-        async onSubmitImport (evt) {
-            evt.preventDefault()
-
-            if (this.textFile === null) {
-                this.$root.$emit('bv::hide::modal', 'import-modal')
-                return
-            }
-
-            const formData = new FormData()
-            formData.append(this.textFile.name, this.textFile)
-
-            const config = {
-                headers: { Authorization: 'Bearer ' + this.$store.state.auth.jwtToken }
-            }
-
-            await this.$axios.put(
-                `api/file/${this.configGui[this.configID].id}/import/?file=${this.textFile.name}&date=${this.listDate}`,
-                formData,
-                config
-            )
-                .catch(err => console.log(err))
-
-            this.$root.$emit('bv::hide::modal', 'import-modal')
-            this.textFile = null
-
-            await this.getPlaylist()
-        },
-
-        loopClips () {
-            const tempList = []
-            let count = 0
-
-            while (count < 86400) {
-                for (const item of this.playlist) {
-                    if (count < 86400) {
-                        tempList.push(this.$_.cloneDeep(item))
-                        count += item.out - item.in
-                    } else {
-                        break
-                    }
-                }
-            }
-
-            this.$store.commit('playlist/UPDATE_PLAYLIST', this.$processPlaylist(this.startInSec, this.playlistLength, tempList, false))
-        },
-
-        async generatePlaylist (listDate) {
-            this.playlistIsLoading = true
-            const generate = await this.$axios.get(
-                `api/playlist/${this.configGui[this.configID].id}/generate/${listDate}`
-            )
-            this.playlistIsLoading = false
-
-            if (generate.status === 200 || generate.status === 201) {
-                this.$store.commit('UPDATE_VARIANT', 'success')
-                this.$store.commit('UPDATE_SHOW_ERROR_ALERT', true)
-                this.$store.commit('UPDATE_ERROR_ALERT_MESSAGE', 'Generate Playlist done...')
-                this.$store.commit('playlist/UPDATE_PLAYLIST', this.$processPlaylist(this.startInSec, this.playlistLength, generate.data.program, false))
-
-                setTimeout(() => { this.$store.commit('UPDATE_SHOW_ERROR_ALERT', false) }, 2000)
-            }
-        },
-
-        async savePlaylist (saveDate) {
-            this.$store.commit('playlist/UPDATE_PLAYLIST', this.$processPlaylist(this.startInSec, this.playlistLength, this.playlist, true))
-            const saveList = this.playlist.map(({ begin, ...item }) => item)
-
-            const postSave = await this.$axios.post(
-                `api/playlist/${this.configGui[this.configID].id}/`,
-                { channel: this.configGui[this.configID].name, date: saveDate, program: saveList }
-            )
-
-            if (postSave.status === 200 || postSave.status === 201) {
-                this.$store.commit('UPDATE_VARIANT', 'success')
-                this.$store.commit('UPDATE_SHOW_ERROR_ALERT', true)
-                this.$store.commit('UPDATE_ERROR_ALERT_MESSAGE', postSave.data)
-
-                setTimeout(() => { this.$store.commit('UPDATE_SHOW_ERROR_ALERT', false) }, 2000)
-            }
-
-            if (postSave.status === 409) {
-                this.$store.commit('UPDATE_VARIANT', 'success')
-                this.$store.commit('UPDATE_SHOW_ERROR_ALERT', true)
-                this.$store.commit('UPDATE_ERROR_ALERT_MESSAGE', postSave.data)
-
-                setTimeout(() => { this.$store.commit('UPDATE_SHOW_ERROR_ALERT', false) }, 4000)
-            }
-        },
-
-        async deletePlaylist (playlistDate) {
-            const postDelete = await this.$axios.delete(`api/playlist/${this.configGui[this.configID].id}/${playlistDate}`)
-
-            if (postDelete.status === 200 || postDelete.status === 201) {
-                this.$store.commit('playlist/UPDATE_PLAYLIST', [])
-                this.$store.commit('UPDATE_VARIANT', 'success')
-                this.$store.commit('UPDATE_SHOW_ERROR_ALERT', true)
-                this.$store.commit('UPDATE_ERROR_ALERT_MESSAGE', 'Playlist deleted...')
-
-                setTimeout(() => { this.$store.commit('UPDATE_SHOW_ERROR_ALERT', false) }, 2000)
-            }
-        },
-
-        showCopyModal () {
-            this.$root.$emit('bv::show::modal', 'copy-modal')
-        },
-
-        showDeleteModal () {
-            this.$root.$emit('bv::show::modal', 'delete-modal')
-        },
-
-        showAddSource () {
-            this.$bvModal.show('add-source-modal')
-        },
-
-        handleSource (bvModalEvt) {
-            // Prevent modal from closing
-            bvModalEvt.preventDefault()
-            // Trigger submit handler
-            this.addSource()
-        },
-
-        addSource () {
-            if (this.editId === undefined) {
-                const list = this.playlist
-                list.push(this.newSource)
-                this.$store.commit('playlist/UPDATE_PLAYLIST', this.$processPlaylist(this.startInSec, this.playlistLength, list, false))
-            } else {
-                this.playlist[this.editId] = this.newSource
-                this.editId = undefined
-            }
-
-            this.newSource = {
-                begin: 0,
-                in: 0,
-                out: 0,
-                duration: 0,
-                category: '',
-                custom_filter: '',
-                source: ''
-            }
-
-            this.$nextTick(() => {
-                this.$bvModal.hide('add-source-modal')
-            })
-        },
-
-        editItem (i) {
-            this.editId = i
-
-            this.newSource = {
-                begin: this.playlist[i].begin,
-                in: this.playlist[i].in,
-                out: this.playlist[i].out,
-                duration: this.playlist[i].duration,
-                category: this.playlist[i].category,
-                custom_filter: this.playlist[i].custom_filter,
-                source: this.playlist[i].source
-            }
-
-            this.$bvModal.show('add-source-modal')
         }
     }
+
+    playlistStore.playlist = processPlaylist(configStore.startInSec, configStore.playlistLength, tempList, false)
+}
+
+async function onSubmitImport(evt: any) {
+    evt.preventDefault()
+
+    if (!textFile.value || !textFile.value[0]) {
+        return
+    }
+
+    const formData = new FormData()
+    formData.append(textFile.value[0].name, textFile.value[0])
+
+    playlistIsLoading.value = true
+    await $fetch(
+        `api/file/${configStore.configGui[configStore.configID].id}/import/?file=${textFile.value[0].name}&date=${
+            listDate.value
+        }`,
+        {
+            method: 'PUT',
+            headers: authStore.authHeader,
+            body: formData,
+        }
+    )
+        .then(() => {
+            indexStore.alertVariant = 'alert-success'
+            indexStore.alertMsg = 'Import success!'
+            indexStore.showAlert = true
+
+            playlistStore.getPlaylist(listDate.value)
+
+            setTimeout(() => {
+                indexStore.showAlert = false
+            }, 2000)
+        })
+        .catch((e) => {
+            indexStore.alertVariant = 'alert-danger'
+            indexStore.alertMsg = e
+            indexStore.showAlert = true
+
+            setTimeout(() => {
+                indexStore.showAlert = false
+            }, 4000)
+        })
+    playlistIsLoading.value = false
+
+    textFile.value = null
+    fileImport.value.value = null
+}
+
+async function generatePlaylist() {
+    playlistIsLoading.value = true
+
+    await $fetch(`api/playlist/${configStore.configGui[configStore.configID].id}/generate/${listDate.value}`, {
+        method: 'GET',
+        headers: authStore.authHeader,
+    })
+        .then((response: any) => {
+            playlistStore.playlist = processPlaylist(
+                configStore.startInSec,
+                configStore.playlistLength,
+                response.program,
+                false
+            )
+            indexStore.alertVariant = 'alert-success'
+            indexStore.alertMsg = 'Generate Playlist done...'
+            indexStore.showAlert = true
+
+            setTimeout(() => {
+                indexStore.showAlert = false
+            }, 2000)
+        })
+        .catch((e) => {
+            indexStore.alertVariant = 'alert-danger'
+            indexStore.alertMsg = e
+            indexStore.showAlert = true
+
+            setTimeout(() => {
+                indexStore.showAlert = false
+            }, 4000)
+        })
+
+    playlistIsLoading.value = false
+}
+
+async function savePlaylist(saveDate: string) {
+    playlistStore.playlist = processPlaylist(
+        configStore.startInSec,
+        configStore.playlistLength,
+        playlistStore.playlist,
+        true
+    )
+    const saveList = playlistStore.playlist.map(({ begin, ...item }) => item)
+
+    await $fetch(`api/playlist/${configStore.configGui[configStore.configID].id}/`, {
+        method: 'POST',
+        headers: { ...contentType, ...authStore.authHeader },
+        body: JSON.stringify({
+            channel: configStore.configGui[configStore.configID].name,
+            date: saveDate,
+            program: saveList,
+        }),
+    })
+        .then((response: any) => {
+            indexStore.alertVariant = 'alert-success'
+            indexStore.alertMsg = response
+            indexStore.showAlert = true
+
+            setTimeout(() => {
+                indexStore.showAlert = false
+            }, 2000)
+        })
+        .catch((e) => {
+            if (e.status === 409) {
+                indexStore.alertVariant = 'alert-warning'
+                indexStore.alertMsg = e.data
+                indexStore.showAlert = true
+
+                setTimeout(() => {
+                    indexStore.showAlert = false
+                }, 2000)
+            } else {
+                indexStore.alertVariant = 'alert-danger'
+                indexStore.alertMsg = e
+                indexStore.showAlert = true
+
+                setTimeout(() => {
+                    indexStore.showAlert = false
+                }, 4000)
+            }
+        })
+}
+
+async function deletePlaylist(playlistDate: string) {
+    await $fetch(`api/playlist/${configStore.configGui[configStore.configID].id}/${playlistDate}`, {
+        method: 'DELETE',
+        headers: { ...contentType, ...authStore.authHeader },
+    }).then(() => {
+        playlistStore.playlist = []
+
+        indexStore.alertVariant = 'alert-warning'
+        indexStore.alertMsg = 'Playlist deleted...'
+        indexStore.showAlert = true
+
+        setTimeout(() => {
+            indexStore.showAlert = false
+        }, 2000)
+    })
 }
 </script>
 
 <style lang="scss" scoped>
-.control-container {
-    width: auto;
+.filename,
+.browser-item {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.loading-overlay {
+    width: 100%;
+    height: 100%;
+}
+
+.player-container {
+    position: relative;
+    width: 100%;
     max-width: 100%;
+    height: calc(100% - 140px);
+}
+
+.playlist-container {
+    height: 100%;
+    border: 1px solid $border-color;
+    border-top: none;
+    border-left: none;
+    border-radius: $b-radius;
+}
+
+.player-container .media-browser-scroll {
+    height: calc(100% - 39px);
+}
+
+#scroll-container {
     height: calc(100% - 40px);
+    overflow: auto;
+    scrollbar-width: medium;
 }
-
-.control-row {
-    min-height: 254px;
-}
-
-.player-col {
-    max-width: 542px;
-    min-width: 380px;
-}
-
-.control-col {
-    height: 100%;
-    min-height: 254px;
-}
-
-.status-col {
-    padding-right: 30px;
-}
-
-.control-unit-col {
-    min-width: 250px;
-    padding: 2px 17px 2px 2px;
-}
-
-.control-unit-row {
-    background: #32383E;
-    height: 100%;
-    margin-right: 0;
-    border-radius: 0.25rem;
-    text-align: center;
-}
-
-.control-unit-row .col {
-    height: 50%;
-    min-height: 90px;
-}
-
-.control-unit-row .col div {
-    height: 80%;
-    margin: .6em 0;
-}
-
-.control-button {
-    font-size: 3em;
-    line-height: 0;
-    width: 80%;
-    height: 100%;
-}
-
-.control-button-control {
-    color: #06aad3;
-}
-
-.status-row {
-    height: 100%;
-    min-width: 325px;
-}
-
-.status-row .col {
-    margin: 2px;
-}
-
-.time-col {
-    position: relative;
-    background: #32383E;
-    padding: .5em;
-    text-align: center;
-    border-radius: .25rem;
-}
-
-.time-str {
-    position: relative;
-    top: 50%;
-    -webkit-transform: translateY(-50%);
-    -ms-transform: translateY(-50%);
-    transform: translateY(-50%);
-    font-family: 'DigitalNumbers-Regular';
-    font-size: 4.5em;
-    letter-spacing: -.18em;
-    padding-right: 14px;
-}
-
-.current-clip {
-    background: #32383E;
-    padding: 10px;
-    border-radius: 0.25rem;
-    min-width: 700px;
-}
-
-.current-clip-text {
-    height: 40%;
-    padding-top: .5em;
-    text-align: left;
-    font-weight: bold;
-}
-
-.current-clip-meta {
-    margin-bottom: .7em;
-}
-
-.current-clip-progress {
-    top: 80%;
-    margin-top: .2em;
-}
-
-.control-button:hover {
-    background-image: linear-gradient(#3b4046, #2c3034 60%, #24272a) !important;
-}
-
-.control-button-play {
-    color: #43c32e;
-}
-
-.is-playing {
-    box-shadow: 0 0 15px  #43c32e;
-}
-
-.control-button-stop {
-    color: #d01111;
-}
-.control-button-reload {
-    color: #ed7c06;
-}
-.control-button-restart {
-    color: #f6e502;
-}
-
-@media (max-width: 1555px) {
-    .control-row {
-        min-height: 200px;
-    }
-
-    .control-col {
-        height: 100%;
-        min-height: inherit;
-    }
-    .status-col {
-        padding-right: 0;
-        height: 100%;
-        flex: 0 0 60%;
-        max-width: 60%;
-    }
-    .current-clip {
-        min-width: 300px;
-    }
-    .time-str {
-        font-size: 3.5em;
-    }
-    .control-unit-row {
-        margin-right: -30px;
-    }
-    .control-unit-col {
-        flex: 0 0 35%;
-        max-width: 35%;
-        margin: 0 0 0 30px;
-    }
-}
-
-@media (max-width: 1337px) {
-    .status-col {
-        flex: 0 0 47%;
-        max-width: 47%;
-        height: 68%;
-    }
-    .control-unit-col {
-        flex: 0 0 47%;
-        max-width: 47%;
-    }
-}
-
-@media (max-width: 1102px) {
-    .control-unit-row .col {
-        min-height: 70px;
-        padding-right: 0;
-        padding-left: 0;
-    }
-    .control-button {
-        font-size: 2em;
-    }
-}
-
-@media (max-width: 889px) {
-    .control-row {
-        min-height: 540px;
-    }
-
-    .status-col {
-        flex: 0 0 94%;
-        max-width: 94%;
-        height: 68%;
-    }
-    .control-unit-col {
-        flex: 0 0 94%;
-        max-width: 94%;
-        margin: 0;
-        padding-left: 17px;
-    }
-}
-
-@media (max-width: 689px) {
-    .player-col {
-        flex: 0 0 98%;
-        max-width: 98%;
-        padding-top: 30px;
-    }
-    .control-row {
-        min-height: 830px;
-    }
-    .control-col {
-        margin: 0;
-    }
-    .control-unit-col,
-    .status-col {
-        flex: 0 0 96%;
-        max-width: 96%;
-    }
+.active-playlist-clip {
+    background-color: #565e6a !important;
 }
 
 .list-row {
-    height: calc(100% - 40px - 254px - 46px - 70px);
+    height: calc(100% - 487px);
     min-height: 300px;
 }
 
@@ -1127,58 +870,30 @@ export default {
 }
 
 .timecode {
-    min-width: 56px;
+    min-width: 65px;
     max-width: 90px;
 }
 
 .playlist-input {
-    min-width: 35px;
+    min-width: 42px;
     max-width: 60px;
 }
 
-.timecode input {
-    border-color: #515763;
-}
-
-.list-group-header {
-    height: 47px;
-}
-
-.playlist-list-group, #playlist-group {
+.playlist-list-group,
+#playlist-group {
     height: 100%;
 }
 
-#scroll-container {
-    height: calc(100% - 47px);
-    overflow: auto;
-    scrollbar-width: medium;
-}
-
 .playlist-item {
-    height: 52px;
+    height: 38px;
 }
 
-.playlist-item:nth-of-type(even), .playlist-item:nth-of-type(even) div .timecode input {
+.playlist-item:nth-of-type(odd) {
     background-color: #3b424a;
 }
 
-.playlist-item:nth-of-type(even):hover {
-    background-color: #1C1E22;
-}
-
-.clip-progress {
-    height: 5px;
-    padding-top: 3px;
-}
-
-.active-playlist-clip {
-    background-color: #565e6a !important;
-}
-
-.filename, .browser-item {
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
+.playlist-item:hover {
+    background-color: #1c1e22;
 }
 
 .overLength {
@@ -1186,9 +901,18 @@ export default {
 }
 
 </style>
-
 <style>
-.copy-program {
-    width: 302px !important;
+    @media (max-width: 575px) {
+    .mobile-hidden {
+        display: none;
+    }
+
+    .splitpanes__splitter {
+        display: none !important;
+    }
+
+    .playlist-pane {
+        width: 100% !important;
+    }
 }
 </style>

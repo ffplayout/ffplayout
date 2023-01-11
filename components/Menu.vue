@@ -1,113 +1,129 @@
 <template>
     <div>
         <div class="menu">
-            <b-nav align="right">
-                <b-nav-item to="/" class="nav-item" exact-active-class="active-menu-item">
-                    Home
-                </b-nav-item>
-                <b-nav-item to="/player" exact-active-class="active-menu-item">
-                    Player
-                </b-nav-item>
-                <b-nav-item to="/media" exact-active-class="active-menu-item">
-                    Media
-                </b-nav-item>
-                <b-nav-item to="/message" exact-active-class="active-menu-item">
-                    Message
-                </b-nav-item>
-                <b-nav-item to="/logging" exact-active-class="active-menu-item">
-                    Logging
-                </b-nav-item>
-                <b-nav-item to="/configure" exact-active-class="active-menu-item">
-                    Configure
-                </b-nav-item>
-                <b-nav-text v-if="configGui.length > 1">
-                    &nbsp;&nbsp;
-                </b-nav-text>
-                <b-nav-item-dropdown v-if="configGui.length > 1" :text="configGui[configID].name" right>
-                    <b-dropdown-item v-for="(channel, index) in configGui" :key="index" @click="selectChannel(index)">
-                        {{ channel.name }}
-                    </b-dropdown-item>
-                </b-nav-item-dropdown>
-                <b-nav-text v-if="configGui.length > 1">
-                    &nbsp;&nbsp;
-                </b-nav-text>
-                <b-nav-item @click="logout()">
-                    Logout
-                </b-nav-item>
-            </b-nav>
+            <nav class="navbar navbar-expand-sm fixed-top custom-nav">
+                <div class="container-fluid">
+                    <NuxtLink class="navbar-brand p-2" href="/"
+                        ><img
+                            src="~/assets/images/ffplayout-small.png"
+                            class="img-fluid"
+                            alt="Logo"
+                            width="30"
+                            height="30"
+                    /></NuxtLink>
+                    <button
+                        class="navbar-toggler"
+                        type="button"
+                        data-bs-toggle="collapse"
+                        data-bs-target="#navbarNavDropdown"
+                        aria-controls="navbarNavDropdown"
+                        aria-expanded="false"
+                        aria-label="Toggle navigation"
+                    >
+                        <span class="navbar-toggler-icon"> </span>
+                    </button>
+                    <div class="collapse navbar-collapse justify-content-end" id="navbarNavDropdown">
+                        <ul class="navbar-nav">
+                            <li class="nav-item">
+                                <NuxtLink class="btn btn-primary btn-sm" to="/player">Player</NuxtLink>
+                            </li>
+                            <li class="nav-item">
+                                <NuxtLink class="btn btn-primary btn-sm" to="/media">Media</NuxtLink>
+                            </li>
+                            <li class="nav-item">
+                                <NuxtLink class="btn btn-primary btn-sm" to="/message">Message</NuxtLink>
+                            </li>
+                            <li class="nav-item">
+                                <NuxtLink class="btn btn-primary btn-sm" to="/logging">Logging</NuxtLink>
+                            </li>
+                            <li class="nav-item">
+                                <NuxtLink class="btn btn-primary btn-sm" to="/configure">Configure</NuxtLink>
+                            </li>
+                            <li v-if="configStore.configGui.length > 1" class="nav-item dropdown">
+                                &nbsp;
+                                <a
+                                    class="btn btn-primary btn-sm dropdown-toggle"
+                                    href="#"
+                                    role="button"
+                                    data-bs-toggle="dropdown"
+                                    aria-expanded="false"
+                                >
+                                    {{ configStore.configGui[configStore.configID].name }}
+                                </a>
+                                <ul class="dropdown-menu dropdown-menu-dark dropdown-menu-end">
+                                    <li v-for="(channel, index) in configStore.configGui" :key="index">
+                                        <a class="dropdown-item" @click="selectChannel(index)">{{ channel.name }}</a>
+                                    </li>
+                                </ul>
+                                &nbsp;
+                            </li>
+                            <li class="nav-item">
+                                <a class="btn btn-primary btn-sm" @click="logout()">Logout</a>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </nav>
         </div>
     </div>
 </template>
 
-<script>
-import { mapState } from 'vuex'
+<script setup lang="ts">
+import { useAuth } from '~/stores/auth'
+import { useConfig } from '~/stores/config'
 
-export default {
-    name: 'Menu',
+const authStore = useAuth()
+const configStore = useConfig()
+const router = useRouter()
 
-    computed: {
-        ...mapState('config', ['configID', 'configGui'])
-    },
+function logout() {
+    authStore.removeToken()
+    authStore.updateIsLogin(false)
+    router.push({ path: '/' })
+}
 
-    methods: {
-        logout () {
-            try {
-                this.$store.commit('auth/REMOVE_TOKEN')
-                this.$store.commit('auth/UPDATE_IS_LOGIN', false)
-                this.$router.push('/')
-            } catch (e) {
-                this.formError = e.message
-            }
-        },
-
-        selectChannel (index) {
-            this.$store.commit('config/UPDATE_CONFIG_ID', index)
-            this.$store.dispatch('config/getPlayoutConfig')
-        }
-    }
+function selectChannel(index: number) {
+    configStore.updateConfigID(index)
+    configStore.getPlayoutConfig()
 }
 </script>
 
-<style lang="scss" >
+<style lang="scss">
 .menu {
     width: 100%;
-    height: 40px;
+    height: 60px;
     margin: 0;
-    padding: .5em;
+
+    div {
+        padding: 0.3em;
+    }
 }
 
-.nav-item {
-    background-image: linear-gradient(#484e55, #3A3F44 60%, #313539);
-    background-repeat: no-repeat;
-    height: 28px;
-    margin: .05em;
-    border-radius: 3px;
-    font-size: .95em;
+.custom-nav {
+    background-color: $bg-primary;
 }
 
-.nav-item:hover {
-    background-image: linear-gradient(#5a636c, #4c545b 60%, #42484e);
-    background-repeat: no-repeat;
-}
-
-.nav-item a {
-    padding: .2em .6em .2em .6em;
-}
-
-.active-menu-item {
+.nav-item .btn {
     position: relative;
 }
 
-.active-menu-item::after {
-    background: #ff9c36;
-    content: " ";
+.router-link-exact-active::after {
+    background: $accent;
+    content: ' ';
     width: 100%;
     height: 2px;
-    color: red;
     position: absolute;
     display: block;
     left: 0;
     right: 0;
     border-radius: 1px;
+}
+
+@media (max-width: 575px) {
+    .nav-item .btn {
+        width: 100%;
+        text-align: left;
+        margin-bottom: .3em;
+    }
 }
 </style>

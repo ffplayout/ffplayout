@@ -11,46 +11,32 @@
     </div>
 </template>
 
-<script>
-/* eslint-disable camelcase */
+<script setup lang="ts">
 import videojs from 'video.js'
 import 'video.js/dist/video-js.css'
 
-export default {
-    name: 'VideoPlayer',
-    props: {
-        options: {
-            type: Object,
-            default () {
-                return {}
-            }
-        },
-        reference: {
-            type: String,
-            default () {
-                return ''
-            }
-        }
-    },
-    data () {
-        return {
-            player: null
-        }
-    },
+const player = ref()
 
-    mounted () {
-        this.player = videojs(this.reference, this.options, function onPlayerReady () {
-            // console.log('onPlayerReady', this);
-        })
+const props = defineProps({
+    options: {
+        type: Object,
+        required: true,
     },
-
-    beforeDestroy () {
-        if (this.player) {
-            this.player.dispose()
-        }
+    reference: {
+        type: String,
+        required: true,
     },
+})
 
-    methods: {
+onMounted(() => {
+    player.value = videojs(props.reference, props.options, function onPlayerReady() {
+        // console.log('onPlayerReady', this);
+    })
+})
+
+onBeforeUnmount(() => {
+    if (player.value) {
+        player.value.dispose()
     }
-}
+})
 </script>

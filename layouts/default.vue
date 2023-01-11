@@ -1,67 +1,32 @@
 <template>
-    <div>
-        <nuxt />
-        <b-alert
-            :show="showErrorAlert"
-            dismissible
-            :variant="variant"
-            class="status-alert"
-            @dismissed="showErrorAlert=!showErrorAlert"
+    <main>
+        <NuxtPage />
+        <div
+            v-if="indexStore.showAlert"
+            class="alert show alert-dismissible fade media-alert"
+            :class="indexStore.alertVariant"
+            role="alert"
         >
-            <p>{{ ErrorAlertMessage }}</p>
-        </b-alert>
-    </div>
+            {{ indexStore.alertMsg }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    </main>
 </template>
 
-<script>
-import { mapState } from 'vuex'
+<script setup lang="ts">
+import { useConfig } from '~/stores/config'
+import { useIndex } from '~/stores/index'
 
-export default {
-    computed: {
-        ...mapState(['ErrorAlertMessage', 'variant']),
+const configStore = useConfig()
+const indexStore = useIndex()
 
-        showErrorAlert: {
-            get () {
-                return this.$store.state.showErrorAlert
-            },
-            set () {
-                this.$store.commit('UPDATE_SHOW_ERROR_ALERT', false)
-            }
-        }
+useHead({
+    htmlAttrs: {
+        lang: 'en',
+        "data-bs-theme": "dark"
     }
-}
+})
+
+await configStore.nuxtClientInit()
 </script>
 
-<style>
-html, body {
-    font-family: 'Source Sans Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI',
-        Roboto, 'Helvetica Neue', Arial, sans-serif;
-    color: #c4c4c4;
-    font-size: 15px;
-    word-spacing: 1px;
-    -ms-text-size-adjust: 100%;
-    -webkit-text-size-adjust: 100%;
-    -moz-osx-font-smoothing: grayscale;
-    -webkit-font-smoothing: antialiased;
-    box-sizing: border-box;
-    width: 100%;
-    height: 100%;
-    padding: 0;
-    margin: 0;
-}
-
-a {
-    color: #c4c4c4;
-}
-
-.status-alert {
-    position: fixed;
-    z-index: 1001;
-    top: 55px;
-    right: 10px;
-    width: 400px;
-    max-width: 500px;
-    height: 100px;
-    max-height: 100px;
-}
-</style>
