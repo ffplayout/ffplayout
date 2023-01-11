@@ -9,13 +9,9 @@ echo
 yes | rm -rf public
 cd ffplayout-frontend
 
-# for node version 17+
-export NODE_OPTIONS=--openssl-legacy-provider
 npm install
-npm run build
-mv dist ../public
-
-unset NODE_OPTIONS
+npm run generate
+cp -r .output/public ../public
 
 cd ..
 
@@ -32,7 +28,7 @@ while read -r name value; do
     fi
 done < ffplayout-engine/Cargo.toml
 
-echo "Compile ffplayout version is: \"$version\""
+echo "Compile ffplayout \"$version\""
 echo ""
 
 for target in "${targets[@]}"; do
