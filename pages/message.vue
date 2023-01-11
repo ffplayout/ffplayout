@@ -155,7 +155,7 @@
                     </div>
                 </div>
 
-                <div class="row">
+                <div class="row mt-4">
                     <div class="col sub-btn">
                         <button class="btn btn-primary send-btn" type="submit">Send</button>
                     </div>
