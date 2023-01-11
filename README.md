@@ -2,12 +2,13 @@ ffplayout-frontend
 =====
 
 ----------------------------
+
 ### **Waring: The frontend uses bootstrap 5.3 Alpha and for that is not production ready!**
 **Use [nuxt2-v5.1.0](https://github.com/ffplayout/ffplayout-frontend/tree/nuxt2-v5.1.0) branch, if you need a production ready version.**
 
 ----------------------------
 
-This web GUI is for managing [ffplayout](https://github.com/ffplayout/ffplayout).
+This Web-APP is for managing [ffplayout](https://github.com/ffplayout/ffplayout).
 
 **The Interface is mostly made for 24/7 streaming.** Other scenarios like streaming in folder mode or playlists with no starting time will work, but is not shown correctly.
 
@@ -15,9 +16,8 @@ For a better understanding about the functionality, take a look to the screensho
 
 Read [install.md](docs/INSTALL.md) for manual installation.
 
-After installations you have to setup ssl for your **https** connections.
-
 ## Some Impressions:
+
 ### Login
 ![login](/docs/images/login.png)
 
