@@ -26,12 +26,12 @@
                             <div class="row status-row">
                                 <div class="col time-col clock-col">
                                     <div class="time-str">
-                                        {{ playlistStore.timeStr }}
+                                        {{ timeStr }}
                                     </div>
                                 </div>
                                 <div class="col time-col counter-col">
                                     <div class="time-str">
-                                        {{ secToHMS(playlistStore.remainingSec) }}
+                                        {{ secToHMS((playlistStore.remainingSec >= 0) ? playlistStore.remainingSec : 0) }}
                                     </div>
                                 </div>
                                 <div class="col current-clip">
@@ -147,6 +147,7 @@ const contentType = { 'content-type': 'application/json;charset=UTF-8' }
 
 const isPlaying = ref('')
 const breakStatusCheck = ref(false)
+const timeStr = ref('00:00:00')
 const timer = ref()
 const streamExtension = ref(configStore.configGui[configStore.configID].preview_url.split('.').pop())
 const httpStream = ref()
@@ -222,8 +223,8 @@ async function status() {
         /*
             recursive function as a endless loop
         */
-        playlistStore.timeStr = $dayjs().utcOffset(configStore.utcOffset).format('HH:mm:ss')
-        const timeInSec = timeToSeconds(playlistStore.timeStr)
+        timeStr.value = $dayjs().utcOffset(configStore.utcOffset).format('HH:mm:ss')
+        const timeInSec = timeToSeconds(timeStr.value)
         playlistStore.remainingSec = playlistStore.currentClipStart + playlistStore.currentClipOut - timeInSec
         const playedSec = playlistStore.currentClipOut - playlistStore.remainingSec
         playlistStore.progressValue = (playedSec * 100) / playlistStore.currentClipOut

@@ -25,7 +25,6 @@ export const usePlaylist = defineStore('playlist', {
         currentClipDuration: 0,
         currentClipIn: 0,
         currentClipOut: 0,
-        timeStr: '00:00:00',
         remainingSec: 0,
         playoutIsRunning: true,
     }),
