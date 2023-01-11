@@ -159,23 +159,6 @@
                     <div class="col sub-btn">
                         <button class="btn btn-primary send-btn" type="submit">Send</button>
                     </div>
-                    <div class="col">
-                        <div
-                            v-if="indexStore.showAlert"
-                            class="alert show alert-dismissible fade login-alert"
-                            :class="indexStore.alertVariant"
-                            role="alert"
-                        >
-                            {{ indexStore.alertMsg }}
-                            <button
-                                type="button"
-                                class="btn-close"
-                                data-bs-dismiss="alert"
-                                aria-label="Close"
-                                @click="indexStore.resetAlert()"
-                            ></button>
-                        </div>
-                    </div>
                 </div>
             </form>
         </div>
@@ -400,6 +383,10 @@ async function savePreset() {
         }
 
         indexStore.showAlert = true
+
+        setTimeout(() => {
+            indexStore.showAlert = false
+        }, 3000)
     }
 }
 
@@ -441,6 +428,10 @@ async function createNewPreset() {
     }
 
     indexStore.showAlert = true
+
+    setTimeout(() => {
+        indexStore.showAlert = false
+    }, 3000)
 }
 
 async function deletePreset() {
@@ -483,6 +474,10 @@ async function submitMessage() {
     }
 
     indexStore.showAlert = true
+
+    setTimeout(() => {
+        indexStore.showAlert = false
+    }, 3000)
 }
 </script>
 
