@@ -28,8 +28,6 @@ tv-media/
 Videos
 Videos/
 *.tar*
-live
-live/
 .vscode
 .vscode/
 home
