@@ -253,7 +253,7 @@ impl MediaProbe {
     }
 }
 
-/// Calculate fps from rae/factor string
+/// Calculate fps from rate/factor string
 pub fn fps_calc(r_frame_rate: &str, default: f64) -> f64 {
     let mut fps = default;
 
