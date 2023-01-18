@@ -85,8 +85,7 @@ curl -X GET http://127.0.0.1:8787/api/channels -H "Authorization: Bearer <TOKEN>
 
 ```BASH
 curl -X PATCH http://127.0.0.1:8787/api/channel/1 -H "Content-Type: application/json" \
--d '{ "id": 1, "name": "Channel 1", "preview_url": "http://localhost/live/stream.m3u8", \
-"config_path": "/etc/ffplayout/ffplayout.yml", "extra_extensions": "jpg,jpeg,png"}' \
+-d '{ "id": 1, "name": "Channel 1", "preview_url": "http://localhost/live/stream.m3u8", "config_path": "/etc/ffplayout/ffplayout.yml", "extra_extensions": "jpg,jpeg,png"}' \
 -H "Authorization: Bearer <TOKEN>"
 ```
 
@@ -94,9 +93,7 @@ curl -X PATCH http://127.0.0.1:8787/api/channel/1 -H "Content-Type: application/
 
 ```BASH
 curl -X POST http://127.0.0.1:8787/api/channel/ -H "Content-Type: application/json" \
--d '{ "name": "Channel 2", "preview_url": "http://localhost/live/channel2.m3u8", \
-"config_path": "/etc/ffplayout/channel2.yml", "extra_extensions": "jpg,jpeg,png",
-"service": "ffplayout@channel2.service" }' \
+-d '{ "name": "Channel 2", "preview_url": "http://localhost/live/channel2.m3u8", "config_path": "/etc/ffplayout/channel2.yml", "extra_extensions": "jpg,jpeg,png", "service": "ffplayout@channel2.service" }' \
 -H "Authorization: Bearer <TOKEN>"
 ```
 
@@ -138,8 +135,7 @@ curl -X GET http://127.0.0.1:8787/api/presets/ -H 'Content-Type: application/jso
 
 ```BASH
 curl -X PUT http://127.0.0.1:8787/api/presets/1 -H 'Content-Type: application/json' \
--d '{ "name": "<PRESET NAME>", "text": "<TEXT>", "x": "<X>", "y": "<Y>", "fontsize": 24, \
-"line_spacing": 4, "fontcolor": "#ffffff", "box": 1, "boxcolor": "#000000", "boxborderw": 4, "alpha": 1.0, "channel_id": 1 }' \
+-d '{ "name": "<PRESET NAME>", "text": "<TEXT>", "x": "<X>", "y": "<Y>", "fontsize": 24, "line_spacing": 4, "fontcolor": "#ffffff", "box": 1, "boxcolor": "#000000", "boxborderw": 4, "alpha": 1.0, "channel_id": 1 }' \
 -H 'Authorization: Bearer <TOKEN>'
 ```
 
@@ -147,8 +143,7 @@ curl -X PUT http://127.0.0.1:8787/api/presets/1 -H 'Content-Type: application/js
 
 ```BASH
 curl -X POST http://127.0.0.1:8787/api/presets/ -H 'Content-Type: application/json' \
--d '{ "name": "<PRESET NAME>", "text": "TEXT>", "x": "<X>", "y": "<Y>", "fontsize": 24, \
-"line_spacing": 4, "fontcolor": "#ffffff", "box": 1, "boxcolor": "#000000", "boxborderw": 4, "alpha": 1.0, "channel_id": 1 }' \
+-d '{ "name": "<PRESET NAME>", "text": "TEXT>", "x": "<X>", "y": "<Y>", "fontsize": 24, "line_spacing": 4, "fontcolor": "#ffffff", "box": 1, "boxcolor": "#000000", "boxborderw": 4, "alpha": 1.0, "channel_id": 1 }' \
 -H 'Authorization: Bearer <TOKEN>'
 ```
 
@@ -172,9 +167,7 @@ here we communicate with the engine for:
 ```BASH
 curl -X POST http://127.0.0.1:8787/api/control/1/text/ \
 -H 'Content-Type: application/json' -H 'Authorization: Bearer <TOKEN>' \
--d '{"text": "Hello from ffplayout", "x": "(w-text_w)/2", "y": "(h-text_h)/2", \
-    "fontsize": "24", "line_spacing": "4", "fontcolor": "#ffffff", "box": "1", \
-    "boxcolor": "#000000", "boxborderw": "4", "alpha": "1.0"}'
+-d '{"text": "Hello from ffplayout", "x": "(w-text_w)/2", "y": "(h-text_h)/2", fontsize": "24", "line_spacing": "4", "fontcolor": "#ffffff", "box": "1", "boxcolor": "#000000", "boxborderw": "4", "alpha": "1.0"}'
 ```
 
 **Control Playout**
