@@ -24,11 +24,17 @@ declare global {
         duration: number
     }
 
-    interface FolderObject {
+    interface FileFolderObject {
         source: string
         parent: string
         folders: string[]
         files: FileObject[]
+    }
+
+    interface FolderObject {
+        source: string
+        parent: string
+        folders: string[]
     }
 
     interface SourceObject {

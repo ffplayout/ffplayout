@@ -211,7 +211,13 @@
             >
                 <i class="bi-file-text" />
             </div>
-            <div class="btn btn-primary" title="Generate a randomized Playlist" @click="generatePlaylist()">
+            <div
+                class="btn btn-primary"
+                title="Generate a randomized Playlist"
+                data-bs-toggle="modal"
+                data-bs-target="#generateModal"
+                @click="mediaStore.getTree('', true)"
+            >
                 <i class="bi-sort-down-alt" />
             </div>
             <div class="btn btn-primary" title="Reset Playlist" @click="getPlaylist()">
@@ -312,8 +318,14 @@
                             <button type="reset" class="btn btn-primary" data-bs-dismiss="modal" aria-label="Cancel">
                                 Cancel
                             </button>
-                            <button type="submit" class="btn btn-primary" data-bs-dismiss="modal"
-                            @click="processSource">Ok</button>
+                            <button
+                                type="submit"
+                                class="btn btn-primary"
+                                data-bs-dismiss="modal"
+                                @click="processSource"
+                            >
+                                Ok
+                            </button>
                         </div>
                     </form>
                 </div>
@@ -391,6 +403,115 @@
                 </div>
             </div>
         </div>
+
+        <div
+            id="generateModal"
+            class="modal modal-xl"
+            tabindex="-1"
+            aria-labelledby="generateModalLabel"
+            aria-hidden="true"
+        >
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h1 class="modal-title fs-5" id="generateModalLabel">Generate Program</h1>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cancel"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div>
+                            <nav aria-label="breadcrumb">
+                                <ol class="breadcrumb">
+                                    <li
+                                        class="breadcrumb-item"
+                                        v-for="(crumb, index) in mediaStore.folderCrumbs"
+                                        :key="index"
+                                        :active="index === mediaStore.folderCrumbs.length - 1"
+                                        @click="mediaStore.getTree(crumb.path, true)"
+                                    >
+                                        <a
+                                            v-if="
+                                                mediaStore.folderCrumbs.length > 1 &&
+                                                mediaStore.folderCrumbs.length - 1 > index
+                                            "
+                                            class="link-secondary"
+                                            href="#"
+                                        >
+                                            {{ crumb.text }}
+                                        </a>
+                                        <span v-else>{{ crumb.text }}</span>
+                                    </li>
+                                </ol>
+                            </nav>
+                        </div>
+                        <ul class="list-group media-browser-scroll browser-div">
+                            <li
+                                class="list-group-item browser-item"
+                                v-for="folder in mediaStore.folderList.folders"
+                                :key="folder"
+                            >
+                                <div class="row">
+                                    <div class="col-1 browser-icons-col">
+                                        <i class="bi-folder-fill browser-icons" />
+                                    </div>
+                                    <div class="col browser-item-text">
+                                        <a
+                                            class="link-light"
+                                            href="#"
+                                            @click="
+                                                ;[
+                                                    (selectedFolders = []),
+                                                    mediaStore.getTree(
+                                                        `/${mediaStore.folderList.source}/${folder}`.replace(
+                                                            /\/[/]+/g,
+                                                            '/'
+                                                        ),
+                                                        true
+                                                    ),
+                                                ]
+                                            "
+                                        >
+                                            {{ folder }}
+                                        </a>
+                                    </div>
+                                    <div v-if="!generateFromAll" class="col-1 text-center playlist-input">
+                                        <input
+                                            class="form-check-input"
+                                            type="checkbox"
+                                            @change="
+                                                setSelectedFolder(
+                                                    $event,
+                                                    `/${mediaStore.folderList.source}/${folder}`.replace(/\/[/]+/g, '/')
+                                                )
+                                            "
+                                        />
+                                    </div>
+                                </div>
+                            </li>
+                        </ul>
+                    </div>
+                    <div class="modal-footer">
+                        <div class="form-check select-all-div">
+                            <input
+                                id="checkAll"
+                                class="form-check-input"
+                                type="checkbox"
+                                v-model="generateFromAll"
+                            />
+                            <label class="form-check-label" for="checkAll">All</label>
+                        </div>
+                        <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Cancel</button>
+                        <button
+                            type="button"
+                            class="btn btn-primary"
+                            data-bs-dismiss="modal"
+                            @click="generatePlaylist()"
+                        >
+                            Ok
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 </template>
 
@@ -420,7 +541,7 @@ definePageMeta({
 })
 
 useHead({
-    title: 'Player | ffplayout'
+    title: 'Player | ffplayout',
 })
 
 const fileImport = ref()
@@ -435,6 +556,8 @@ const previewUrl = ref('')
 const previewOpt = ref()
 const isVideo = ref(false)
 const configID = ref(configStore.configID)
+const selectedFolders = ref([])
+const generateFromAll =ref(false)
 const browserSortOptions = ref({
     group: { name: 'playlist', pull: 'clone', put: false },
     sort: false,
@@ -716,10 +839,16 @@ async function onSubmitImport(evt: any) {
 async function generatePlaylist() {
     playlistIsLoading.value = true
 
-    await $fetch(`/api/playlist/${configStore.configGui[configStore.configID].id}/generate/${listDate.value}`, {
-        method: 'GET',
+    let payload = {
+        method: 'POST',
         headers: authStore.authHeader,
-    })
+    }
+
+    if (selectedFolders.value.length > 0 && !generateFromAll.value) {
+        payload.body = { paths: selectedFolders.value }
+    }
+
+    await $fetch(`/api/playlist/${configStore.configGui[configStore.configID].id}/generate/${listDate.value}`, payload)
         .then((response: any) => {
             playlistStore.playlist = processPlaylist(
                 configStore.startInSec,
@@ -812,6 +941,18 @@ async function deletePlaylist(playlistDate: string) {
         }, 2000)
     })
 }
+
+function setSelectedFolder(event: any, folder: string) {
+    if (event.target.checked) {
+        selectedFolders.value.push(folder)
+    } else {
+        const index = selectedFolders.value.indexOf(folder)
+
+        if (index > -1) {
+            selectedFolders.value.splice(index, 1)
+        }
+    }
+}
 </script>
 
 <style lang="scss" scoped>
@@ -900,9 +1041,28 @@ async function deletePlaylist(playlistDate: string) {
     background-color: #ed890641 !important;
 }
 
+#generateModal .modal-body {
+    height: 500px;
+}
+
+#generateModal {
+    --bs-modal-width: 600px;
+}
+
+#generateModal .media-browser-scroll {
+    height: calc(100% - 35px);
+}
+
+#generateModal .browser-div li:nth-of-type(odd) {
+    background-color: #3b424a;
+}
+
+.select-all-div {
+    margin-right: 20px;
+}
 </style>
 <style>
-    @media (max-width: 575px) {
+@media (max-width: 575px) {
     .mobile-hidden {
         display: none;
     }

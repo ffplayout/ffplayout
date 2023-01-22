@@ -9,12 +9,14 @@ export const useMedia = defineStore('media', {
     state: () => ({
         currentPath: '',
         crumbs: [] as Crumb[],
-        folderTree: {} as FolderObject,
+        folderTree: {} as FileFolderObject,
+        folderList: [] as FolderObject[],
+        folderCrumbs: [] as Crumb[],
     }),
 
     getters: {},
     actions: {
-        async getTree(path: string) {
+        async getTree(path: string, foldersOnly: boolean = false) {
             const contentType = { 'content-type': 'application/json;charset=UTF-8' }
             const channel = configStore.configGui[configStore.configID].id
             const crumbs: Crumb[] = []
@@ -23,7 +25,7 @@ export const useMedia = defineStore('media', {
             await fetch(`/api/file/${channel}/browse/`, {
                 method: 'POST',
                 headers: { ...contentType, ...authStore.authHeader },
-                body: JSON.stringify({ source: path }),
+                body: JSON.stringify({ source: path, folders_only: foldersOnly }),
             })
                 .then((response) => response.json())
                 .then((data) => {
@@ -43,10 +45,15 @@ export const useMedia = defineStore('media', {
                         crumbs.push({ text: 'Home', path: '' })
                     }
 
-                    this.currentPath = path
-                    this.crumbs = crumbs
-                    this.folderTree = data
+                    if (foldersOnly) {
+                        this.folderCrumbs = crumbs
+                        this.folderList = data
+                    } else {
+                        this.currentPath = path
+                        this.crumbs = crumbs
+                        this.folderTree = data
+                    }
                 })
-        },
+        }
     },
 })
