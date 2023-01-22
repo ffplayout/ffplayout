@@ -1,6 +1,5 @@
 use std::{
     path::Path,
-    process::exit,
     sync::{
         atomic::{AtomicUsize, Ordering},
         {Arc, Mutex},
@@ -46,11 +45,7 @@ impl FolderSource {
 
         for path in &path_list {
             if !Path::new(path).is_dir() {
-                error!(
-                    "Path not exists: <b><magenta>{}</></b>",
-                    path
-                );
-                exit(1);
+                error!("Path not exists: <b><magenta>{path}</></b>");
             }
 
             for entry in WalkDir::new(path.clone())
@@ -70,8 +65,6 @@ impl FolderSource {
                 "no playable files found under: <b><magenta>{:?}</></b>",
                 path_list
             );
-
-            exit(1);
         }
 
         if config.storage.shuffle {
