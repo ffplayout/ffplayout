@@ -213,6 +213,8 @@ pub struct Playlist {
 pub struct Storage {
     pub help_text: String,
     pub path: String,
+    #[serde(skip_serializing, skip_deserializing)]
+    pub paths: Vec<String>,
     pub filler_clip: String,
     pub extensions: Vec<String>,
     pub shuffle: bool,

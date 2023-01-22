@@ -27,6 +27,13 @@ pub struct Args {
     )]
     pub generate: Option<Vec<String>>,
 
+    #[clap(
+        long,
+        help = "Optional path list for playlist generations",
+        multiple_values = true
+    )]
+    pub paths: Option<Vec<String>>,
+
     #[clap(short = 'm', long, help = "Playing mode: folder, playlist")]
     pub play_mode: Option<ProcessMode>,
 
@@ -46,7 +53,7 @@ pub struct Args {
     )]
     pub import: Option<String>,
 
-    #[clap(short, long, help = "Path from playlist")]
+    #[clap(short, long, help = "Path to playlist, or playlist root folder.")]
     pub playlist: Option<String>,
 
     #[clap(

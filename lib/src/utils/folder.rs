@@ -32,32 +32,43 @@ impl FolderSource {
         current_list: Arc<Mutex<Vec<Media>>>,
         global_index: Arc<AtomicUsize>,
     ) -> Self {
+        let mut path_list = vec![];
         let mut media_list = vec![];
         let mut index: usize = 0;
 
-        if !Path::new(&config.storage.path).is_dir() {
-            error!(
-                "Path not exists: <b><magenta>{}</></b>",
-                config.storage.path
-            );
-            exit(1);
+        if config.general.generate.is_some() && !config.storage.paths.is_empty() {
+            for path in &config.storage.paths {
+                path_list.push(path.clone())
+            }
+        } else {
+            path_list.push(config.storage.path.clone())
         }
 
-        for entry in WalkDir::new(config.storage.path.clone())
-            .into_iter()
-            .flat_map(|e| e.ok())
-            .filter(|f| f.path().is_file())
-        {
-            if include_file(config.clone(), entry.path()) {
-                let media = Media::new(0, &entry.path().to_string_lossy(), false);
-                media_list.push(media);
+        for path in &path_list {
+            if !Path::new(path).is_dir() {
+                error!(
+                    "Path not exists: <b><magenta>{}</></b>",
+                    path
+                );
+                exit(1);
+            }
+
+            for entry in WalkDir::new(path.clone())
+                .into_iter()
+                .flat_map(|e| e.ok())
+                .filter(|f| f.path().is_file())
+            {
+                if include_file(config.clone(), entry.path()) {
+                    let media = Media::new(0, &entry.path().to_string_lossy(), false);
+                    media_list.push(media);
+                }
             }
         }
 
         if media_list.is_empty() {
             error!(
-                "no playable files found under: <b><magenta>{}</></b>",
-                config.storage.path
+                "no playable files found under: <b><magenta>{:?}</></b>",
+                path_list
             );
 
             exit(1);

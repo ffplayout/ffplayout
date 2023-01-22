@@ -49,7 +49,7 @@ pub struct VideoFile {
 ///
 /// This function takes care, that it is not possible to break out from root_path.
 /// It also gives alway a relative path back.
-fn norm_abs_path(root_path: &str, input_path: &str) -> (PathBuf, String, String) {
+pub fn norm_abs_path(root_path: &str, input_path: &str) -> (PathBuf, String, String) {
     let mut path = PathBuf::from(root_path);
     let path_relative = RelativePath::new(root_path)
         .normalize()
