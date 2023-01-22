@@ -33,8 +33,8 @@ use crate::utils::{
     control::{control_service, control_state, media_info, send_message, Process},
     errors::ServiceError,
     files::{
-        browser, create_directory, remove_file_or_folder, rename_file, upload, MoveObject,
-        PathObject, norm_abs_path,
+        browser, create_directory, norm_abs_path, remove_file_or_folder, rename_file, upload,
+        MoveObject, PathObject,
     },
     naive_date_time_from_str,
     playlist::{delete_playlist, generate_playlist, read_playlist, write_playlist},
@@ -758,7 +758,7 @@ pub async fn gen_playlist(
         let mut path_list = vec![];
 
         for path in &obj.paths {
-            let (p, _, _) = norm_abs_path(&config.storage.path, &path);
+            let (p, _, _) = norm_abs_path(&config.storage.path, path);
 
             path_list.push(p.to_string_lossy().to_string());
         }
