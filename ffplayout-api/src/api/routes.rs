@@ -33,8 +33,8 @@ use crate::utils::{
     control::{control_service, control_state, media_info, send_message, Process},
     errors::ServiceError,
     files::{
-        browser, create_directory, remove_file_or_folder, rename_file, upload, MoveObject,
-        PathObject,
+        browser, create_directory, norm_abs_path, remove_file_or_folder, rename_file, upload,
+        MoveObject, PathObject,
     },
     naive_date_time_from_str,
     playlist::{delete_playlist, generate_playlist, read_playlist, write_playlist},
@@ -70,6 +70,12 @@ pub struct DateObj {
 struct FileObj {
     #[serde(default)]
     path: String,
+}
+
+#[derive(Debug, Default, Deserialize, Serialize)]
+pub struct PathsObj {
+    #[serde(default)]
+    paths: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -734,16 +740,33 @@ pub async fn save_playlist(
 /// A new playlist will be generated and response.
 ///
 /// ```BASH
-/// curl -X GET http://127.0.0.1:8787/api/playlist/1/generate/2022-06-20
+/// curl -X POST http://127.0.0.1:8787/api/playlist/1/generate/2022-06-20
 /// -H 'Content-Type: application/json' -H 'Authorization: Bearer <TOKEN>'
+/// /// -- data '{ "paths": [<list of paths>] }' # <- data is optional
 /// ```
-#[get("/playlist/{id}/generate/{date}")]
+#[post("/playlist/{id}/generate/{date}")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 pub async fn gen_playlist(
     pool: web::Data<Pool<Sqlite>>,
     params: web::Path<(i32, String)>,
+    data: Option<web::Json<PathsObj>>,
 ) -> Result<impl Responder, ServiceError> {
-    match generate_playlist(&pool.into_inner(), params.0, params.1.clone()).await {
+    let (mut config, channel) = playout_config(&pool.into_inner(), &params.0).await?;
+    config.general.generate = Some(vec![params.1.clone()]);
+
+    if let Some(obj) = data {
+        let mut path_list = vec![];
+
+        for path in &obj.paths {
+            let (p, _, _) = norm_abs_path(&config.storage.path, path);
+
+            path_list.push(p.to_string_lossy().to_string());
+        }
+
+        config.storage.paths = path_list;
+    }
+
+    match generate_playlist(config, channel.name).await {
         Ok(playlist) => Ok(web::Json(playlist)),
         Err(e) => Err(e),
     }

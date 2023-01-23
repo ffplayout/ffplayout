@@ -38,6 +38,10 @@ pub fn get_config(args: Args) -> PlayoutConfig {
         config.general.generate = Some(gen);
     }
 
+    if let Some(paths) = args.paths {
+        config.storage.paths = paths;
+    }
+
     if let Some(log_path) = args.log {
         if Path::new(&log_path).is_dir() {
             config.logging.log_to_file = true;
