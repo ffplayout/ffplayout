@@ -8,15 +8,13 @@ ffplayout-frontend
 
 ----------------------------
 
-This Web-APP is for managing [ffplayout](https://github.com/ffplayout/ffplayout).
+This web application is used to manage the [ffplayout](https://github.com/ffplayout/ffplayout).
 
-**The Interface is mostly made for 24/7 streaming.** Other scenarios like streaming in folder mode or playlists with no starting time will work, but is not shown correctly.
+The interface is mostly designed for 24/7 streaming. Other scenarios like streaming in folder mode or playlists with no start time will work but will not be displayed correctly.
 
-For a better understanding about the functionality, take a look to the screenshots below.
+For a better understanding of the functionality, take a look at the screenshots below.
 
-Read [install.md](docs/INSTALL.md) for manual installation.
-
-## Some Impressions:
+Read the [install.md](docs/INSTALL.md) for manual installation.
 
 ### Login
 ![login](/docs/images/login.png)
