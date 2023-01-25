@@ -556,7 +556,7 @@ const previewUrl = ref('')
 const previewOpt = ref()
 const isVideo = ref(false)
 const configID = ref(configStore.configID)
-const selectedFolders = ref([])
+const selectedFolders = ref([] as string[])
 const generateFromAll =ref(false)
 const browserSortOptions = ref({
     group: { name: 'playlist', pull: 'clone', put: false },
@@ -842,7 +842,7 @@ async function generatePlaylist() {
     let payload = {
         method: 'POST',
         headers: authStore.authHeader,
-    }
+    } as Payload
 
     if (selectedFolders.value.length > 0 && !generateFromAll.value) {
         payload.body = { paths: selectedFolders.value }

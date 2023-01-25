@@ -6,6 +6,12 @@ declare global {
         path: string
     }
 
+    interface Payload {
+        method: string,
+        headers: any,
+        body?: any,
+    }
+
     interface PlaylistItem {
         uid: string
         begin: number

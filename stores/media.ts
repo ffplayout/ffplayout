@@ -10,7 +10,7 @@ export const useMedia = defineStore('media', {
         currentPath: '',
         crumbs: [] as Crumb[],
         folderTree: {} as FileFolderObject,
-        folderList: [] as FolderObject[],
+        folderList: {} as FolderObject,
         folderCrumbs: [] as Crumb[],
     }),
 

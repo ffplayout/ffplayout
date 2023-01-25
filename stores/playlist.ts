@@ -12,7 +12,7 @@ import { useConfig } from '~/stores/config'
 
 const authStore = useAuth()
 const configStore = useConfig()
-const { timeToSeconds, secToHMS } = stringFormatter()
+const { timeToSeconds } = stringFormatter()
 const { processPlaylist } = playlistOperations()
 
 export const usePlaylist = defineStore('playlist', {
