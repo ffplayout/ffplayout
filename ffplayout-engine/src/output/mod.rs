@@ -125,8 +125,8 @@ pub fn player(
         {
             Ok(proc) => proc,
             Err(e) => {
-                error!("couldn't spawn decoder process: {}", e);
-                panic!("couldn't spawn decoder process: {}", e)
+                error!("couldn't spawn decoder process: {e}");
+                panic!("couldn't spawn decoder process: {e}")
             }
         };
 

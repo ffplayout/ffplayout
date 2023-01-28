@@ -6,19 +6,19 @@ pub enum ServiceError {
     #[display(fmt = "Internal Server Error")]
     InternalServerError,
 
-    #[display(fmt = "BadRequest: {}", _0)]
+    #[display(fmt = "BadRequest: {_0}")]
     BadRequest(String),
 
-    #[display(fmt = "Conflict: {}", _0)]
+    #[display(fmt = "Conflict: {_0}")]
     Conflict(String),
 
     #[display(fmt = "Unauthorized")]
     Unauthorized,
 
-    #[display(fmt = "NoContent: {}", _0)]
+    #[display(fmt = "NoContent: {_0}")]
     NoContent(String),
 
-    #[display(fmt = "ServiceUnavailable: {}", _0)]
+    #[display(fmt = "ServiceUnavailable: {_0}")]
     ServiceUnavailable(String),
 }
 
