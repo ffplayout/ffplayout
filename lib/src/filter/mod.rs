@@ -92,7 +92,7 @@ impl Filters {
             let mut selector = String::new();
             let mut sep = String::new();
             if !chain.is_empty() {
-                selector = format!("[{}out{}]", filter_type, last);
+                selector = format!("[{filter_type}out{last}]");
                 sep = ";".to_string()
             }
 
@@ -102,12 +102,11 @@ impl Filters {
                 chain.push_str(&format!("{sep}{filter}"));
             } else {
                 chain.push_str(&format!(
-                    "{sep}[{}:{}:{track_nr}]{filter}",
-                    position, filter_type
+                    "{sep}[{position}:{filter_type}:{track_nr}]{filter}",
                 ));
             }
 
-            let m = format!("[{}out{track_nr}]", filter_type);
+            let m = format!("[{filter_type}out{track_nr}]");
             map.push(m.clone());
             self.output_map.append(&mut vec_strings!["-map", m]);
             *last = track_nr;
