@@ -138,7 +138,10 @@ impl Filters {
         let mut cmd = vec![];
 
         if !a_chain.is_empty() {
-            f_chain.push(';');
+            if !f_chain.is_empty() {
+                f_chain.push(';');
+            }
+
             f_chain.push_str(&a_chain);
         }
 
@@ -153,7 +156,7 @@ impl Filters {
     pub fn map(&mut self) -> Vec<String> {
         let mut o_map = self.output_map.clone();
 
-        if self.video_last == -1 {
+        if self.video_last == -1 && !self.video_chain.is_empty() {
             let v_map = "0:v".to_string();
 
             if !o_map.contains(&v_map) {
@@ -412,9 +415,19 @@ fn aspect_calc(aspect_string: &Option<String>, config: &PlayoutConfig) -> f64 {
 }
 
 /// This realtime filter is important for HLS output to stay in sync.
-fn realtime(node: &mut Media, chain: &mut Filters, config: &PlayoutConfig) {
+fn realtime(
+    node: &mut Media,
+    chain: &mut Filters,
+    config: &PlayoutConfig,
+    filter_type: FilterType,
+) {
     if config.general.generate.is_none() && config.out.mode == HLS {
-        let mut speed_filter = "realtime=speed=1".to_string();
+        let prefix = match filter_type {
+            Audio => "a",
+            Video => "",
+        };
+
+        let mut speed_filter = format!("{prefix}realtime=speed=1");
 
         if let Some(begin) = &node.begin {
             let (delta, _) = get_delta(config, begin);
@@ -424,12 +437,12 @@ fn realtime(node: &mut Media, chain: &mut Filters, config: &PlayoutConfig) {
                 let speed = duration / (duration + delta);
 
                 if speed > 0.0 && speed < 1.1 && delta < config.general.stop_threshold {
-                    speed_filter = format!("realtime=speed={speed}");
+                    speed_filter = format!("{prefix}realtime=speed={speed}");
                 }
             }
         }
 
-        chain.add_filter(&speed_filter, 0, Video);
+        chain.add_filter(&speed_filter, 0, filter_type);
     }
 }
 
@@ -504,54 +517,62 @@ pub fn filter_chains(
     let mut filters = Filters::new(config.processing.audio_tracks, 0);
 
     if node.unit == Encoder {
-        add_text(node, &mut filters, config, filter_chain);
+        if !config.processing.audio_only {
+            add_text(node, &mut filters, config, filter_chain);
+        }
 
         if let Some(f) = config.out.output_filter.clone() {
             process_output_filters(config, &mut filters, &f)
-        } else if config.out.output_count > 1 {
+        } else if config.out.output_count > 1 && !config.processing.audio_only {
             split_filter(&mut filters, config.out.output_count, 0, Video);
         }
 
         return filters;
     }
 
-    if let Some(probe) = node.probe.as_ref() {
-        if Path::new(&node.audio).is_file() {
-            filters.audio_position = 1;
+    if !config.processing.audio_only {
+        if let Some(probe) = node.probe.as_ref() {
+            if Path::new(&node.audio).is_file() {
+                filters.audio_position = 1;
+            }
+
+            if let Some(v_stream) = &probe.video_streams.get(0) {
+                let aspect = aspect_calc(&v_stream.display_aspect_ratio, config);
+                let frame_per_sec = fps_calc(&v_stream.r_frame_rate, 1.0);
+
+                deinterlace(&v_stream.field_order, &mut filters);
+                pad(aspect, &mut filters, v_stream, config);
+                fps(frame_per_sec, &mut filters, config);
+                scale(
+                    v_stream.width,
+                    v_stream.height,
+                    aspect,
+                    &mut filters,
+                    config,
+                );
+            }
+
+            extend_video(node, &mut filters);
+        } else {
+            fps(0.0, &mut filters, config);
+            scale(None, None, 1.0, &mut filters, config);
         }
 
-        if let Some(v_stream) = &probe.video_streams.get(0) {
-            let aspect = aspect_calc(&v_stream.display_aspect_ratio, config);
-            let frame_per_sec = fps_calc(&v_stream.r_frame_rate, 1.0);
-
-            deinterlace(&v_stream.field_order, &mut filters);
-            pad(aspect, &mut filters, v_stream, config);
-            fps(frame_per_sec, &mut filters, config);
-            scale(
-                v_stream.width,
-                v_stream.height,
-                aspect,
-                &mut filters,
-                config,
-            );
-        }
-
-        extend_video(node, &mut filters);
-    } else {
-        fps(0.0, &mut filters, config);
-        scale(None, None, 1.0, &mut filters, config);
+        add_text(node, &mut filters, config, filter_chain);
+        fade(node, &mut filters, 0, Video);
+        overlay(node, &mut filters, config);
+        realtime(node, &mut filters, config, Video);
     }
-
-    add_text(node, &mut filters, config, filter_chain);
-    fade(node, &mut filters, 0, Video);
-    overlay(node, &mut filters, config);
-    realtime(node, &mut filters, config);
 
     let (proc_vf, proc_af) = custom::filter_node(&config.processing.custom_filter);
     let (list_vf, list_af) = custom::filter_node(&node.custom_filter);
 
-    custom(&proc_vf, &mut filters, 0, Video);
-    custom(&list_vf, &mut filters, 0, Video);
+    if config.processing.audio_only {
+        realtime(node, &mut filters, config, Audio);
+    } else {
+        custom(&proc_vf, &mut filters, 0, Video);
+        custom(&list_vf, &mut filters, 0, Video);
+    }
 
     for i in 0..config.processing.audio_tracks {
         if node
