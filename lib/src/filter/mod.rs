@@ -45,7 +45,7 @@ pub struct Filters {
     pub audio_out_link: Vec<String>,
     pub video_out_link: Vec<String>,
     pub output_map: Vec<String>,
-    audio_track_count: i32,
+    config: PlayoutConfig,
     audio_position: i32,
     video_position: i32,
     audio_last: i32,
@@ -53,7 +53,7 @@ pub struct Filters {
 }
 
 impl Filters {
-    pub fn new(audio_track_count: i32, audio_position: i32) -> Self {
+    pub fn new(config: PlayoutConfig, audio_position: i32) -> Self {
         Self {
             audio_chain: String::new(),
             video_chain: String::new(),
@@ -63,7 +63,7 @@ impl Filters {
             audio_out_link: vec![],
             video_out_link: vec![],
             output_map: vec![],
-            audio_track_count,
+            config,
             audio_position,
             video_position: 0,
             audio_last: -1,
@@ -155,7 +155,7 @@ impl Filters {
     pub fn map(&mut self) -> Vec<String> {
         let mut o_map = self.output_map.clone();
 
-        if self.video_last == -1 && !self.video_chain.is_empty() {
+        if self.video_last == -1 && !self.config.processing.audio_only {
             let v_map = "0:v".to_string();
 
             if !o_map.contains(&v_map) {
@@ -164,7 +164,7 @@ impl Filters {
         }
 
         if self.audio_last == -1 {
-            for i in 0..self.audio_track_count {
+            for i in 0..self.config.processing.audio_tracks {
                 let a_map = format!("{}:a:{i}", self.audio_position);
 
                 if !o_map.contains(&a_map) {
@@ -179,7 +179,7 @@ impl Filters {
 
 impl Default for Filters {
     fn default() -> Self {
-        Self::new(1, 0)
+        Self::new(PlayoutConfig::new(None), 0)
     }
 }
 
@@ -513,7 +513,7 @@ pub fn filter_chains(
     node: &mut Media,
     filter_chain: &Option<Arc<Mutex<Vec<String>>>>,
 ) -> Filters {
-    let mut filters = Filters::new(config.processing.audio_tracks, 0);
+    let mut filters = Filters::new(config.clone(), 0);
 
     if node.unit == Encoder {
         if !config.processing.audio_only {
