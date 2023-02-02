@@ -852,7 +852,7 @@ async function generatePlaylist() {
 
     let payload = {
         method: 'POST',
-        headers: authStore.authHeader,
+        headers: { ...contentType, ...authStore.authHeader },
     } as Payload
 
     if (selectedFolders.value.length > 0 && !generateFromAll.value) {
@@ -875,9 +875,9 @@ async function generatePlaylist() {
                 indexStore.showAlert = false
             }, 2000)
         })
-        .catch((e: string) => {
+        .catch((e: any) => {
             indexStore.alertVariant = 'alert-danger'
-            indexStore.alertMsg = e
+            indexStore.alertMsg = e.data ? e.data : e
             indexStore.showAlert = true
 
             setTimeout(() => {
