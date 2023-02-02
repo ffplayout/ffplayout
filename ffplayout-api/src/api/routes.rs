@@ -248,7 +248,7 @@ async fn update_user(
                 .hash_password(data.password.clone().as_bytes(), &salt)
                 .unwrap();
 
-            fields.push_str(format!("password = '{}', salt = '{salt}'", password_hash).as_str());
+            fields.push_str(format!("password = '{password_hash}', salt = '{salt}'").as_str());
         }
 
         if handles::update_user(&pool.into_inner(), user.id, fields)
