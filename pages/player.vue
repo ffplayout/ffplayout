@@ -64,7 +64,19 @@
                             >
                                 <div class="row">
                                     <div class="col-1 browser-icons-col">
-                                        <i class="bi-film browser-icons" />
+                                        <i
+                                            v-if="mediaType(element.name) === 'audio'"
+                                            class="bi-music-note-beamed browser-icons"
+                                        />
+                                        <i
+                                            v-else-if="mediaType(element.name) === 'video'"
+                                            class="bi-film browser-icons"
+                                        />
+                                        <i
+                                            v-else-if="mediaType(element.name) === 'image'"
+                                            class="bi-file-earmark-image browser-icons"
+                                        />
+                                        <i v-else class="bi-file-binary browser-icons" />
                                     </div>
                                     <div class="col browser-item-text grabbing">
                                         {{ element.name }}
@@ -491,12 +503,7 @@
                     </div>
                     <div class="modal-footer">
                         <div class="form-check select-all-div">
-                            <input
-                                id="checkAll"
-                                class="form-check-input"
-                                type="checkbox"
-                                v-model="generateFromAll"
-                            />
+                            <input id="checkAll" class="form-check-input" type="checkbox" v-model="generateFromAll" />
                             <label class="form-check-label" for="checkAll">All</label>
                         </div>
                         <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Cancel</button>
@@ -526,7 +533,7 @@ import { useMedia } from '~/stores/media'
 import { usePlaylist } from '~/stores/playlist'
 
 const { $_, $dayjs } = useNuxtApp()
-const { secToHMS, filename, secondsToTime, toMin } = stringFormatter()
+const { secToHMS, filename, secondsToTime, toMin, mediaType } = stringFormatter()
 const { processPlaylist, genUID } = playlistOperations()
 const contentType = { 'content-type': 'application/json;charset=UTF-8' }
 
@@ -575,6 +582,7 @@ const newSource = ref({
     category: '',
     custom_filter: '',
     source: '',
+    audio: '',
     uid: '',
 } as PlaylistItem)
 
@@ -726,6 +734,7 @@ function processSource(evt: any) {
         category: '',
         custom_filter: '',
         source: '',
+        audio: '',
         uid: '',
     }
 }
@@ -740,6 +749,7 @@ function clearNewSource() {
         category: '',
         custom_filter: '',
         source: '',
+        audio: '',
         uid: genUID(),
     }
 }
@@ -755,6 +765,7 @@ function editPlaylistItem(i: number) {
         category: playlistStore.playlist[i].category,
         custom_filter: playlistStore.playlist[i].custom_filter,
         source: playlistStore.playlist[i].source,
+        audio: playlistStore.playlist[i].audio,
         uid: playlistStore.playlist[i].uid,
     }
 }

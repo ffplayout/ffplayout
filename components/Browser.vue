@@ -96,7 +96,19 @@
                             >
                                 <div class="row">
                                     <div class="col-1 browser-icons-col">
-                                        <i class="bi-film browser-icons" />
+                                        <i
+                                            v-if="mediaType(element.name) === 'audio'"
+                                            class="bi-music-note-beamed browser-icons"
+                                        />
+                                        <i
+                                            v-else-if="mediaType(element.name) === 'video'"
+                                            class="bi-film browser-icons"
+                                        />
+                                        <i
+                                            v-else-if="mediaType(element.name) === 'image'"
+                                            class="bi-file-earmark-image browser-icons"
+                                        />
+                                        <i v-else class="bi-file-binary browser-icons" />
                                     </div>
                                     <div class="col browser-item-text grabbing">
                                         {{ element.name }}
@@ -251,7 +263,7 @@ const authStore = useAuth()
 const configStore = useConfig()
 const indexStore = useIndex()
 const mediaStore = useMedia()
-const { toMin } = stringFormatter()
+const { toMin, mediaType } = stringFormatter()
 const contentType = { 'content-type': 'application/json;charset=UTF-8' }
 
 const browserIsLoading = ref(false)
@@ -288,6 +300,7 @@ function setPreviewData(path: string) {
     previewUrl.value = encodeURIComponent(`${fullPath}`).replace(/%2F/g, '/')
 
     const ext = previewName.value.split('.').slice(-1)[0].toLowerCase()
+    const fileType = (mediaType(previewName.value) === 'audio') ? `audio/${ext}` : `video/${ext}`
 
     if (configStore.configPlayout.storage.extensions.includes(`${ext}`)) {
         isVideo.value = true
@@ -299,7 +312,7 @@ function setPreviewData(path: string) {
             preload: 'auto',
             sources: [
                 {
-                    type: `video/${ext}`,
+                    type: fileType,
                     src: previewUrl.value,
                 },
             ],

@@ -63,10 +63,29 @@ export const stringFormatter = () => {
     }
 
     function secondsToTime(sec: number) {
-        return new Date(sec * 1000).toISOString().substr(11, 8)
+        return new Date(sec * 1000).toISOString().substring(11, 8)
     }
 
-    return { formatLog, timeToSeconds, secToHMS, numberToHex, hexToNumber, filename, toMin, secondsToTime }
+    function mediaType(path: string) {
+        const videoType = ['avi', 'flv', 'm2v', 'm4v', 'mkv', 'mov', 'mp4', 'mpeg', 'mpg', 'mts', 'mxf', 'ts', 'vob','ogv', 'webm', 'wmv']
+        const audioType = ['aac', 'aiff', 'flac', 'm4a', 'mp2', 'mp3', 'ogg', 'opus', 'wav', 'wma']
+        const imageType = ['apng', 'avif', 'bmp', 'exr', 'gif', 'jpeg', 'jpg', 'png', 'psd', 'tga', 'tif', 'tiff', 'webp']
+        const ext = path.split('.').pop()
+
+        if (ext) {
+            if (videoType.includes(ext)) {
+                return 'video'
+            } else if (audioType.includes(ext)) {
+                return 'audio'
+            } else if (imageType.includes(ext)) {
+                return 'image'
+            }
+        }
+
+        return null
+    }
+
+    return { formatLog, timeToSeconds, secToHMS, numberToHex, hexToNumber, filename, toMin, secondsToTime, mediaType }
 }
 
 export const playlistOperations = () => {

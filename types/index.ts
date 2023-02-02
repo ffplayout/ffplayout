@@ -1,7 +1,7 @@
-export {}
+export { }
 
 declare global {
-    interface Crumb {
+   interface Crumb {
         text: string
         path: string
     }
