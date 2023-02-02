@@ -63,7 +63,7 @@ export const stringFormatter = () => {
     }
 
     function secondsToTime(sec: number) {
-        return new Date(sec * 1000).toISOString().substring(11, 8)
+        return new Date(sec * 1000).toISOString().substring(11, 19)
     }
 
     function mediaType(path: string) {
