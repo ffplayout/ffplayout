@@ -19,7 +19,7 @@ pub const IMAGE_FORMAT: [&str; 21] = [
 ];
 
 // Some well known errors can be safely ignore
-pub const FFMPEG_IGNORE_ERRORS: [&str; 10] = [
+pub const FFMPEG_IGNORE_ERRORS: [&str; 11] = [
     "ac-tex damaged",
     "codec s302m, is muxed as a private data stream",
     "corrupt decoded frame in stream",
@@ -30,6 +30,7 @@ pub const FFMPEG_IGNORE_ERRORS: [&str; 10] = [
     "skipped MB in I-frame at",
     "Thread message queue blocking",
     "Warning MVs not available",
+    "frame size not set",
 ];
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
@@ -156,6 +157,8 @@ pub struct Logging {
 pub struct Processing {
     pub help_text: String,
     pub mode: ProcessMode,
+    #[serde(default)]
+    pub audio_only: bool,
     pub width: i64,
     pub height: i64,
     pub aspect: f64,
@@ -328,24 +331,30 @@ impl PlayoutConfig {
             (config.processing.width * config.processing.height / 16) / 2
         );
 
-        let mut process_cmd = vec_strings![
-            "-pix_fmt",
-            "yuv420p",
-            "-r",
-            &config.processing.fps,
-            "-c:v",
-            "mpeg2video",
-            "-g",
-            "1",
-            "-b:v",
-            &bitrate,
-            "-minrate",
-            &bitrate,
-            "-maxrate",
-            &bitrate,
-            "-bufsize",
-            &buff_size
-        ];
+        let mut process_cmd = vec_strings![];
+
+        if config.processing.audio_only {
+            process_cmd.append(&mut vec_strings!["-vn"]);
+        } else {
+            process_cmd.append(&mut vec_strings![
+                "-pix_fmt",
+                "yuv420p",
+                "-r",
+                &config.processing.fps,
+                "-c:v",
+                "mpeg2video",
+                "-g",
+                "1",
+                "-b:v",
+                &bitrate,
+                "-minrate",
+                &bitrate,
+                "-maxrate",
+                &bitrate,
+                "-bufsize",
+                &buff_size
+            ]);
+        }
 
         process_cmd.append(&mut pre_audio_codec(
             config.processing.add_loudnorm,

@@ -35,5 +35,9 @@ pub fn filter_node(filter: &str) -> (String, String) {
         error!("Custom filter is not well formatted, use correct out link names (\"[c_v_out]\" and/or \"[c_a_out]\"). Filter skipped!")
     }
 
+    if filter.starts_with("[v_in]") {
+        video_filter = format!("[v_in]{video_filter}");
+    }
+
     (video_filter, audio_filter)
 }
