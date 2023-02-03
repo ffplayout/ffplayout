@@ -86,6 +86,32 @@ fn video_audio_custom_filter2_input() {
 }
 
 #[test]
+fn video_audio_custom_filter3_input() {
+    let mut config = PlayoutConfig::new(Some("../assets/ffplayout.yml".to_string()));
+    config.out.mode = Stream;
+    config.processing.add_logo = false;
+    config.processing.custom_filter =
+        "[v_in];movie=logo.png[l];[v_in][l]overlay[c_v_out];[0:a]volume=0.2[c_a_out]".to_string();
+
+    let media_obj = Media::new(0, "./assets/with_audio.mp4", true);
+    let media = gen_source(&config, media_obj, &None);
+
+    let test_filter_cmd = vec_strings![
+        "-filter_complex",
+        "[0:v:0]scale=1024:576[v_in];movie=logo.png[l];[v_in][l]overlay[vout0];[0:a:0]anull,volume=0.2[aout0]"
+    ];
+
+    let test_filter_map = vec_strings!["-map", "[vout0]", "-map", "[aout0]"];
+
+    assert_eq!(
+        media.cmd,
+        Some(vec_strings!["-i", "./assets/with_audio.mp4"])
+    );
+    assert_eq!(media.filter.clone().unwrap().cmd(), test_filter_cmd);
+    assert_eq!(media.filter.unwrap().map(), test_filter_map);
+}
+
+#[test]
 fn dual_audio_aevalsrc_input() {
     let mut config = PlayoutConfig::new(Some("../assets/ffplayout.yml".to_string()));
     config.out.mode = Stream;
