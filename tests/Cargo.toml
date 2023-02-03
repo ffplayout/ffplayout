@@ -1,7 +1,10 @@
 [package]
 name = "tests"
-version = "0.1.1"
-edition = "2021"
+version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+edition.workspace = true
 publish = false
 
 [dev-dependencies]
@@ -39,4 +42,3 @@ path = "src/engine_playlist.rs"
 [[test]]
 name = "engine_cmd"
 path = "src/engine_cmd.rs"
-
