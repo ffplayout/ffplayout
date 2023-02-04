@@ -1,11 +1,12 @@
 [package]
 name = "ffplayout-lib"
 description = "Library for ffplayout"
-license = "GPL-3.0"
-authors = ["Jonathan Baecker jonbae77@gmail.com"]
 readme = "README.md"
-version = "0.17.0-beta3"
-edition = "2021"
+version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+edition.workspace = true
 
 [dependencies]
 chrono = "0.4"
@@ -29,11 +30,7 @@ walkdir = "2"
 
 [target."cfg(windows)".dependencies.winapi]
 version = "0.3"
-features = [
-    "shlobj",
-    "std",
-    "winerror",
-]
+features = ["shlobj", "std", "winerror"]
 
 [target.x86_64-unknown-linux-musl.dependencies]
 openssl = { version = "0.10", features = ["vendored"] }

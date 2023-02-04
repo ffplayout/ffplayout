@@ -1,11 +1,13 @@
 [package]
 name = "ffplayout"
 description = "24/7 playout based on rust and ffmpeg"
-license = "GPL-3.0"
-authors = ["Jonathan Baecker jonbae77@gmail.com"]
 readme = "README.md"
-version = "0.17.0-beta3"
-edition = "2021"
+version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+edition.workspace = true
+
 default-run = "ffplayout"
 
 [dependencies]
@@ -23,7 +25,7 @@ serde_json = "1.0"
 simplelog = { version = "^0.12", features = ["paris"] }
 zeromq = { git = "https://github.com/zeromq/zmq.rs.git", default-features = false, features = [
     "async-std-runtime",
-    "tcp-transport"
+    "tcp-transport",
 ] }
 
 [target.x86_64-unknown-linux-musl.dependencies]
@@ -45,48 +47,152 @@ suggests = "ffmpeg"
 copyright = "Copyright (c) 2022, Jonathan Baecker. All rights reserved."
 conf-files = ["/etc/ffplayout/ffplayout.yml"]
 assets = [
-    ["../target/x86_64-unknown-linux-musl/release/ffpapi", "/usr/bin/", "755"],
+    [
+        "../target/x86_64-unknown-linux-musl/release/ffpapi",
+        "/usr/bin/",
+        "755",
+    ],
     [
         "../target/x86_64-unknown-linux-musl/release/ffplayout",
         "/usr/bin/",
-        "755"
+        "755",
     ],
-    ["../assets/ffpapi.service", "/lib/systemd/system/", "644"],
-    ["../assets/ffplayout.service", "/lib/systemd/system/", "644"],
-    ["../assets/ffplayout@.service", "/lib/systemd/system/", "644"],
-    ["../assets/11-ffplayout", "/etc/sudoers.d/", "644"],
-    ["../assets/ffplayout.yml", "/etc/ffplayout/", "644"],
-    ["../assets/logo.png", "/usr/share/ffplayout/", "644"],
-    ["../assets/ffplayout.yml", "/usr/share/ffplayout/ffplayout.yml.orig", "644"],
-    ["../assets/ffplayout.conf", "/usr/share/ffplayout/ffplayout.conf.example", "644"],
-    ["../README.md", "/usr/share/doc/ffplayout/README", "644"],
-    ["../assets/ffpapi.1.gz", "/usr/share/man/man1/", "644"],
-    ["../assets/ffplayout.1.gz", "/usr/share/man/man1/", "644"],
-    ["../public/**/*", "/usr/share/ffplayout/public/", "644"],
+    [
+        "../assets/ffpapi.service",
+        "/lib/systemd/system/",
+        "644",
+    ],
+    [
+        "../assets/ffplayout.service",
+        "/lib/systemd/system/",
+        "644",
+    ],
+    [
+        "../assets/ffplayout@.service",
+        "/lib/systemd/system/",
+        "644",
+    ],
+    [
+        "../assets/11-ffplayout",
+        "/etc/sudoers.d/",
+        "644",
+    ],
+    [
+        "../assets/ffplayout.yml",
+        "/etc/ffplayout/",
+        "644",
+    ],
+    [
+        "../assets/logo.png",
+        "/usr/share/ffplayout/",
+        "644",
+    ],
+    [
+        "../assets/ffplayout.yml",
+        "/usr/share/ffplayout/ffplayout.yml.orig",
+        "644",
+    ],
+    [
+        "../assets/ffplayout.conf",
+        "/usr/share/ffplayout/ffplayout.conf.example",
+        "644",
+    ],
+    [
+        "../README.md",
+        "/usr/share/doc/ffplayout/README",
+        "644",
+    ],
+    [
+        "../assets/ffpapi.1.gz",
+        "/usr/share/man/man1/",
+        "644",
+    ],
+    [
+        "../assets/ffplayout.1.gz",
+        "/usr/share/man/man1/",
+        "644",
+    ],
+    [
+        "../public/**/*",
+        "/usr/share/ffplayout/public/",
+        "644",
+    ],
 ]
 maintainer-scripts = "../debian/"
 systemd-units = { enable = false, unit-scripts = "../assets" }
 
 [package.metadata.deb.variants.arm64]
 assets = [
-    ["../target/aarch64-unknown-linux-gnu/release/ffpapi", "/usr/bin/", "755"],
+    [
+        "../target/aarch64-unknown-linux-gnu/release/ffpapi",
+        "/usr/bin/",
+        "755",
+    ],
     [
         "../target/aarch64-unknown-linux-gnu/release/ffplayout",
         "/usr/bin/",
-        "755"
+        "755",
     ],
-    ["../assets/ffpapi.service", "/lib/systemd/system/", "644"],
-    ["../assets/ffplayout.service", "/lib/systemd/system/", "644"],
-    ["../assets/ffplayout@.service", "/lib/systemd/system/", "644"],
-    ["../assets/11-ffplayout", "/etc/sudoers.d/", "644"],
-    ["../assets/ffplayout.yml", "/etc/ffplayout/", "644"],
-    ["../assets/logo.png", "/usr/share/ffplayout/", "644"],
-    ["../assets/ffplayout.yml", "/usr/share/ffplayout/ffplayout.yml.orig", "644"],
-    ["../assets/ffplayout.conf", "/usr/share/ffplayout/ffplayout.conf.example", "644"],
-    ["../README.md", "/usr/share/doc/ffplayout/README", "644"],
-    ["../assets/ffpapi.1.gz", "/usr/share/man/man1/", "644"],
-    ["../assets/ffplayout.1.gz", "/usr/share/man/man1/", "644"],
-    ["../public/**/*", "/usr/share/ffplayout/public/", "644"],
+    [
+        "../assets/ffpapi.service",
+        "/lib/systemd/system/",
+        "644",
+    ],
+    [
+        "../assets/ffplayout.service",
+        "/lib/systemd/system/",
+        "644",
+    ],
+    [
+        "../assets/ffplayout@.service",
+        "/lib/systemd/system/",
+        "644",
+    ],
+    [
+        "../assets/11-ffplayout",
+        "/etc/sudoers.d/",
+        "644",
+    ],
+    [
+        "../assets/ffplayout.yml",
+        "/etc/ffplayout/",
+        "644",
+    ],
+    [
+        "../assets/logo.png",
+        "/usr/share/ffplayout/",
+        "644",
+    ],
+    [
+        "../assets/ffplayout.yml",
+        "/usr/share/ffplayout/ffplayout.yml.orig",
+        "644",
+    ],
+    [
+        "../assets/ffplayout.conf",
+        "/usr/share/ffplayout/ffplayout.conf.example",
+        "644",
+    ],
+    [
+        "../README.md",
+        "/usr/share/doc/ffplayout/README",
+        "644",
+    ],
+    [
+        "../assets/ffpapi.1.gz",
+        "/usr/share/man/man1/",
+        "644",
+    ],
+    [
+        "../assets/ffplayout.1.gz",
+        "/usr/share/man/man1/",
+        "644",
+    ],
+    [
+        "../public/**/*",
+        "/usr/share/ffplayout/public/",
+        "644",
+    ],
 ]
 
 # REHL RPM PACKAGE
