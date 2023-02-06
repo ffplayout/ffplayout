@@ -27,3 +27,5 @@ The error behavior can be simulated under Linux using the tool **tc**. Then carr
 - undo **tc** rule: `tc qdisc delete dev eth0 root`
 
 `eth0` must be replaced with the physical network interface.
+
+Reference: [simulate-delayed-and-dropped-packets-on-linux](https://stackoverflow.com/questions/614795/simulate-delayed-and-dropped-packets-on-linux)
