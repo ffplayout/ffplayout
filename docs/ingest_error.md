@@ -28,4 +28,6 @@ The error behavior can be simulated under Linux using the tool **tc**. Then carr
 
 `eth0` must be replaced with the physical network interface.
 
-Reference: [simulate-delayed-and-dropped-packets-on-linux](https://stackoverflow.com/questions/614795/simulate-delayed-and-dropped-packets-on-linux)
+Reference:
+- [simulate-delayed-and-dropped-packets-on-linux](https://stackoverflow.com/questions/614795/simulate-delayed-and-dropped-packets-on-linux)
+- [publish-normal-timeout](https://ossrs.io/lts/en-us/docs/v4/doc/special-control/#publish-normal-timeout)
