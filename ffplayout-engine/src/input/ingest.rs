@@ -6,6 +6,7 @@ use std::{
 };
 
 use crossbeam_channel::Sender;
+use regex::Regex;
 use simplelog::*;
 
 use ffplayout_lib::utils::{
@@ -34,6 +35,20 @@ pub fn log_line(line: String, level: &str) {
     }
 }
 
+fn valid_stream(msg: &str) -> bool {
+    if let Some((unexpected, expected)) = msg.split_once(',') {
+        let re = Regex::new(r".*Unexpected stream|expecting|[\s]+|\?$").unwrap();
+        let unexpected = re.replace_all(unexpected, "");
+        let expected = re.replace_all(expected, "");
+
+        if unexpected == expected {
+            return true;
+        }
+    }
+
+    false
+}
+
 fn server_monitor(
     level: &str,
     buffer: BufReader<ChildStderr>,
@@ -42,12 +57,15 @@ fn server_monitor(
     for line in buffer.lines() {
         let line = line?;
 
-        if line.contains("rtmp") && line.contains("Unexpected stream") {
+        if line.contains("rtmp") && line.contains("Unexpected stream") && !valid_stream(&line) {
             if let Err(e) = proc_ctl.kill(Ingest) {
                 error!("{e}");
             };
 
-            warn!("<bright black>[Server]</> {}", line.replace("[error] ", ""));
+            warn!(
+                "<bright black>[Server]</> {}",
+                line.replace("[warning] ", "")
+            );
         }
 
         if line.contains("Address already in use") {
