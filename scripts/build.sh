@@ -26,7 +26,7 @@ while read -r name value; do
     if [[ $name == "version" ]]; then
         version=${value//\"/}
     fi
-done < ffplayout-engine/Cargo.toml
+done < Cargo.toml
 
 echo "Compile ffplayout \"$version\""
 echo ""
