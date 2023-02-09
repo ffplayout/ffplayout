@@ -27,8 +27,8 @@ use std::{
 
 use simplelog::*;
 
-use crate::input::{ingest::log_line, source_generator};
-use crate::utils::prepare_output_cmd;
+use crate::input::source_generator;
+use crate::utils::{log_line, prepare_output_cmd, valid_stream};
 use ffplayout_lib::{
     utils::{
         controller::ProcessUnit::*, sec_to_time, stderr_reader, test_tcp_port, Media,
@@ -92,7 +92,7 @@ fn ingest_to_hls_server(
         for line in server_err.lines() {
             let line = line?;
 
-            if line.contains("rtmp") && line.contains("Unexpected stream") {
+            if line.contains("rtmp") && line.contains("Unexpected stream") && !valid_stream(&line) {
                 if let Err(e) = proc_ctl.kill(Ingest) {
                     error!("{e}");
                 };
@@ -110,7 +110,7 @@ fn ingest_to_hls_server(
                 }
             }
 
-            log_line(line, &level);
+            log_line(&line, &level);
         }
 
         if proc_control.server_is_running.load(Ordering::SeqCst) {

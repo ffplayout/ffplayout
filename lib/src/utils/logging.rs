@@ -233,7 +233,11 @@ pub fn init_logging(
             None,
         );
 
-        app_logger.push(WriteLogger::new(LevelFilter::Debug, file_config, log_file));
+        app_logger.push(WriteLogger::new(
+            app_config.log_level,
+            file_config,
+            log_file,
+        ));
     } else {
         let term_config = log_config
             .clone()
@@ -247,7 +251,7 @@ pub fn init_logging(
             .build();
 
         app_logger.push(TermLogger::new(
-            LevelFilter::Debug,
+            app_config.log_level,
             term_config,
             TerminalMode::Mixed,
             ColorChoice::Auto,

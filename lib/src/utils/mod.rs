@@ -39,7 +39,7 @@ pub use config::{
     OutputMode::{self, *},
     PlayoutConfig,
     ProcessMode::{self, *},
-    DUMMY_LEN, FFMPEG_IGNORE_ERRORS, IMAGE_FORMAT,
+    DUMMY_LEN, FFMPEG_IGNORE_ERRORS, FFMPEG_UNRECOVERABLE_ERRORS, IMAGE_FORMAT,
 };
 pub use controller::{
     PlayerControl, PlayoutStatus, ProcessControl,
@@ -660,11 +660,11 @@ pub fn stderr_reader(
                 line.replace("[error] ", "").replace("[fatal] ", "")
             );
 
-            if line.contains("Invalid argument")
-                || line.contains("Numerical result")
+            if FFMPEG_UNRECOVERABLE_ERRORS
+                .iter()
+                .any(|i| line.contains(*i))
                 || (line.contains("No such file or directory")
                     && !line.contains("failed to delete old segment"))
-                || line.contains("Error initializing complex filters")
             {
                 proc_control.kill_all();
                 exit(1);

@@ -6,48 +6,16 @@ use std::{
 };
 
 use crossbeam_channel::Sender;
-use regex::Regex;
 use simplelog::*;
 
-use ffplayout_lib::utils::{
-    controller::ProcessUnit::*, test_tcp_port, Media, PlayoutConfig, ProcessControl,
-    FFMPEG_IGNORE_ERRORS,
+use crate::utils::{log_line, valid_stream};
+use ffplayout_lib::{
+    utils::{
+        controller::ProcessUnit::*, test_tcp_port, Media, PlayoutConfig, ProcessControl,
+        FFMPEG_IGNORE_ERRORS, FFMPEG_UNRECOVERABLE_ERRORS,
+    },
+    vec_strings,
 };
-use ffplayout_lib::vec_strings;
-
-pub fn log_line(line: String, level: &str) {
-    if line.contains("[info]") && level.to_lowercase() == "info" {
-        info!("<bright black>[Server]</> {}", line.replace("[info] ", ""))
-    } else if line.contains("[warning]")
-        && (level.to_lowercase() == "warning" || level.to_lowercase() == "info")
-    {
-        warn!(
-            "<bright black>[Server]</> {}",
-            line.replace("[warning] ", "")
-        )
-    } else if line.contains("[error]")
-        && !line.contains("Input/output error")
-        && !line.contains("Broken pipe")
-    {
-        error!("<bright black>[Server]</> {}", line.replace("[error] ", ""));
-    } else if line.contains("[fatal]") {
-        error!("<bright black>[Server]</> {}", line.replace("[fatal] ", ""))
-    }
-}
-
-fn valid_stream(msg: &str) -> bool {
-    if let Some((unexpected, expected)) = msg.split_once(',') {
-        let re = Regex::new(r".*Unexpected stream|expecting|[\s]+|\?$").unwrap();
-        let unexpected = re.replace_all(unexpected, "");
-        let expected = re.replace_all(expected, "");
-
-        if unexpected == expected {
-            return true;
-        }
-    }
-
-    false
-}
 
 fn server_monitor(
     level: &str,
@@ -57,23 +25,21 @@ fn server_monitor(
     for line in buffer.lines() {
         let line = line?;
 
+        if !FFMPEG_IGNORE_ERRORS.iter().any(|i| line.contains(*i)) {
+            log_line(&line, level);
+        }
+
         if line.contains("rtmp") && line.contains("Unexpected stream") && !valid_stream(&line) {
             if let Err(e) = proc_ctl.kill(Ingest) {
                 error!("{e}");
             };
-
-            warn!(
-                "<bright black>[Server]</> {}",
-                line.replace("[warning] ", "")
-            );
         }
 
-        if line.contains("Address already in use") {
+        if FFMPEG_UNRECOVERABLE_ERRORS
+            .iter()
+            .any(|i| line.contains(*i))
+        {
             proc_ctl.kill_all();
-        }
-
-        if !FFMPEG_IGNORE_ERRORS.iter().any(|i| line.contains(*i)) {
-            log_line(line, level);
         }
     }
 
