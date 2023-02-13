@@ -34,11 +34,12 @@ pub const FFMPEG_IGNORE_ERRORS: [&str; 11] = [
     "frame size not set",
 ];
 
-pub const FFMPEG_UNRECOVERABLE_ERRORS: [&str; 4] = [
+pub const FFMPEG_UNRECOVERABLE_ERRORS: [&str; 5] = [
     "Address already in use",
     "Invalid argument",
     "Numerical result",
     "Error initializing complex filters",
+    "Error while decoding stream #0:0: Invalid data found when processing input",
 ];
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
