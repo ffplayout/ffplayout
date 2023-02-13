@@ -35,6 +35,8 @@ fn playlist_change_at_midnight() {
     config.logging.log_to_file = false;
     config.logging.timestamp = false;
     config.out.mode = Null;
+    config.out.output_count = 1;
+    config.out.output_filter = None;
     config.out.output_cmd = Some(vec_strings!["-f", "null", "-"]);
 
     let play_control = PlayerControl::new();
@@ -74,6 +76,8 @@ fn playlist_change_at_six() {
     config.logging.log_to_file = false;
     config.logging.timestamp = false;
     config.out.mode = Null;
+    config.out.output_count = 1;
+    config.out.output_filter = None;
     config.out.output_cmd = Some(vec_strings!["-f", "null", "-"]);
 
     let play_control = PlayerControl::new();
