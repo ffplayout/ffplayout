@@ -62,7 +62,7 @@ for target in "${targets[@]}"; do
 
         cp ./target/${target}/release/ffpapi .
         cp ./target/${target}/release/ffplayout .
-        tar -czvf "ffplayout-v${version}_${target}.tar.gz" --exclude='*.db' assets docs public LICENSE README.md CHANGELOG.md ffplayout ffpapi
+        tar -czvf "ffplayout-v${version}_${target}.tar.gz" --exclude='*.db' --exclude='*.db-shm' --exclude='*.db-wal' assets docs public LICENSE README.md CHANGELOG.md ffplayout ffpapi
         rm -f ffplayout ffpapi
     else
         if [[ -f "ffplayout-v${version}_${target}.tar.gz" ]]; then
@@ -73,7 +73,7 @@ for target in "${targets[@]}"; do
 
         cp ./target/${target}/release/ffpapi .
         cp ./target/${target}/release/ffplayout .
-        tar -czvf "ffplayout-v${version}_${target}.tar.gz" --exclude='*.db' assets docs public LICENSE README.md CHANGELOG.md ffplayout ffpapi
+        tar -czvf "ffplayout-v${version}_${target}.tar.gz" --exclude='*.db' --exclude='*.db-shm' --exclude='*.db-wal' assets docs public LICENSE README.md CHANGELOG.md ffplayout ffpapi
         rm -f ffplayout ffpapi
     fi
 
