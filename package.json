@@ -13,9 +13,9 @@
   },
   "dependencies": {
     "@nuxt/types": "^2.16.0",
-    "@pinia/nuxt": "^0.4.6",
+    "@pinia/nuxt": "^0.4.7",
     "@popperjs/core": "^2.11.6",
-    "@vueuse/core": "^9.12.0",
+    "@vueuse/core": "^9.13.0",
     "bootstrap": "^5.3.0-alpha1",
     "bootstrap-icons": "^1.10.3",
     "cookie-universal-nuxt": "^2.2.2",
@@ -23,9 +23,9 @@
     "jwt-decode": "^3.1.2",
     "lodash": "^4.17.21",
     "mpegts.js": "^1.7.2",
-    "pinia": "^2.0.28",
+    "pinia": "^2.0.31",
     "sortablejs": "^1.15.0",
-    "sortablejs-vue3": "^1.2.6",
+    "sortablejs-vue3": "^1.2.7",
     "splitpanes": "^3.1.5",
     "video.js": "^8.0.4",
     "vuedraggable": "^4.1.0"
@@ -36,10 +36,10 @@
     "@types/lodash": "^4.14.191",
     "@types/splitpanes": "^2.2.1",
     "@types/video.js": "^7.3.51",
-    "eslint": "^8.33.0",
+    "eslint": "^8.34.0",
     "eslint-plugin-nuxt": "^4.0.0",
-    "nuxt": "3.1.2",
-    "sass": "^1.58.0",
+    "nuxt": "3.2.2",
+    "sass": "^1.58.3",
     "sass-loader": "^13.2.0"
   }
 }
