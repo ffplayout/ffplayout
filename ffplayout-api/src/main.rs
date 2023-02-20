@@ -25,7 +25,7 @@ use api::{
     },
 };
 use db::{db_pool, models::LoginUser};
-use utils::{args_parse::Args, db_path, init_config, run_args, Role};
+use utils::{args_parse::Args, control::ProcessControl, db_path, init_config, run_args, Role};
 
 use ffplayout_lib::utils::{init_logging, PlayoutConfig};
 
@@ -94,9 +94,11 @@ async fn main() -> std::io::Result<()> {
         HttpServer::new(move || {
             let auth = HttpAuthentication::bearer(validator);
             let db_pool = web::Data::new(pool.clone());
+            let engine_process = web::Data::new(ProcessControl::new());
 
             App::new()
                 .app_data(db_pool)
+                .app_data(engine_process)
                 .wrap(middleware::Logger::default())
                 .service(login)
                 .service(

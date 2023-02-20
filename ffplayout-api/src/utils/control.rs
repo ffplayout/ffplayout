@@ -1,5 +1,16 @@
-use std::{collections::HashMap, process::Command};
+use std::{
+    collections::HashMap,
+    env, fmt,
+    process::Child,
+    process::Command,
+    str::FromStr,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Mutex,
+    },
+};
 
+use actix_web::web;
 use reqwest::{
     header::{HeaderMap, AUTHORIZATION, CONTENT_TYPE},
     Client, Response,
@@ -26,8 +37,8 @@ struct TextParams {
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
-struct ControlParams {
-    control: String,
+pub struct ControlParams {
+    pub control: String,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -46,9 +57,132 @@ impl<T> RpcObj<T> {
     }
 }
 
+/// ffplayout engine process
+///
+/// When running not on Linux, or with environment variable `PIGGYBACK_MODE=true`,
+/// the engine get startet and conntrolled from ffpapi
+pub struct ProcessControl {
+    pub engine_child: Mutex<Option<Child>>,
+    pub is_running: AtomicBool,
+}
+
+impl ProcessControl {
+    pub fn new() -> Self {
+        Self {
+            engine_child: Mutex::new(None),
+            is_running: AtomicBool::new(false),
+        }
+    }
+}
+
+impl ProcessControl {
+    pub fn start(&self) -> Result<String, ServiceError> {
+        match Command::new("ffplayout").spawn() {
+            Ok(proc) => *self.engine_child.lock().unwrap() = Some(proc),
+            Err(_) => return Err(ServiceError::InternalServerError),
+        };
+
+        self.is_running.store(true, Ordering::SeqCst);
+
+        Ok("Success".to_string())
+    }
+
+    pub fn kill(&self) -> Result<String, ServiceError> {
+        if let Some(proc) = self.engine_child.lock().unwrap().as_mut() {
+            if proc.kill().is_err() {
+                return Err(ServiceError::InternalServerError);
+            };
+        }
+
+        self.wait()?;
+        self.is_running.store(false, Ordering::SeqCst);
+
+        Ok("Success".to_string())
+    }
+
+    pub fn restart(&self) -> Result<String, ServiceError> {
+        self.kill()?;
+
+        match Command::new("ffplayout").spawn() {
+            Ok(proc) => *self.engine_child.lock().unwrap() = Some(proc),
+            Err(_) => return Err(ServiceError::InternalServerError),
+        };
+
+        self.is_running.store(true, Ordering::SeqCst);
+
+        Ok("Success".to_string())
+    }
+
+    /// Wait for process to proper close.
+    /// This prevents orphaned/zombi processes in system
+    pub fn wait(&self) -> Result<String, ServiceError> {
+        if let Some(proc) = self.engine_child.lock().unwrap().as_mut() {
+            if proc.wait().is_err() {
+                return Err(ServiceError::InternalServerError);
+            };
+        }
+
+        Ok("Success".to_string())
+    }
+
+    pub fn status(&self) -> Result<String, ServiceError> {
+        if self.is_running.load(Ordering::SeqCst) {
+            Ok("active".to_string())
+        } else {
+            Ok("not running".to_string())
+        }
+    }
+}
+
+impl Default for ProcessControl {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ServiceCmd {
+    Enable,
+    Disable,
+    Start,
+    Stop,
+    Restart,
+    Status,
+}
+
+impl FromStr for ServiceCmd {
+    type Err = String;
+
+    fn from_str(input: &str) -> Result<Self, Self::Err> {
+        match input.to_lowercase().as_str() {
+            "enable" => Ok(Self::Enable),
+            "disable" => Ok(Self::Disable),
+            "start" => Ok(Self::Start),
+            "stop" => Ok(Self::Stop),
+            "restart" => Ok(Self::Restart),
+            "status" => Ok(Self::Status),
+            _ => Err(format!("Command '{input}' not found!")),
+        }
+    }
+}
+
+impl fmt::Display for ServiceCmd {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            Self::Enable => write!(f, "enable"),
+            Self::Disable => write!(f, "disable"),
+            Self::Start => write!(f, "start"),
+            Self::Stop => write!(f, "stop"),
+            Self::Restart => write!(f, "restart"),
+            Self::Status => write!(f, "status"),
+        }
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Process {
-    pub command: String,
+    pub command: ServiceCmd,
 }
 
 struct SystemD {
@@ -175,9 +309,15 @@ pub async fn send_message(
 pub async fn control_state(
     conn: &Pool<Sqlite>,
     id: i32,
-    command: String,
+    command: &str,
 ) -> Result<Response, ServiceError> {
-    let json_obj = RpcObj::new(id, "player".into(), ControlParams { control: command });
+    let json_obj = RpcObj::new(
+        id,
+        "player".into(),
+        ControlParams {
+            control: command.to_owned(),
+        },
+    );
 
     post_request(conn, id, json_obj).await
 }
@@ -195,17 +335,32 @@ pub async fn media_info(
 pub async fn control_service(
     conn: &Pool<Sqlite>,
     id: i32,
-    command: &str,
+    command: &ServiceCmd,
+    engine: Option<web::Data<ProcessControl>>,
 ) -> Result<String, ServiceError> {
-    let system_d = SystemD::new(conn, id).await?;
+    let piggyback = env::var("PIGGYBACK_MODE");
 
-    match command {
-        "enable" => system_d.enable(),
-        "disable" => system_d.disable(),
-        "start" => system_d.start(),
-        "stop" => system_d.stop(),
-        "restart" => system_d.restart(),
-        "status" => system_d.status(),
-        _ => Err(ServiceError::BadRequest("Command not found!".to_string())),
+    if (env::consts::OS != "linux" || piggyback.is_ok()) && engine.is_some() {
+        match command {
+            ServiceCmd::Start => engine.unwrap().start(),
+            ServiceCmd::Stop => engine.unwrap().kill(),
+            ServiceCmd::Restart => engine.unwrap().restart(),
+            ServiceCmd::Status => engine.unwrap().status(),
+            _ => Err(ServiceError::Conflict(
+                "Engine runs in piggyback mode, in this mode this command is not allowed."
+                    .to_string(),
+            )),
+        }
+    } else {
+        let system_d = SystemD::new(conn, id).await?;
+
+        match command {
+            ServiceCmd::Enable => system_d.enable(),
+            ServiceCmd::Disable => system_d.disable(),
+            ServiceCmd::Start => system_d.start(),
+            ServiceCmd::Stop => system_d.stop(),
+            ServiceCmd::Restart => system_d.restart(),
+            ServiceCmd::Status => system_d.status(),
+        }
     }
 }
