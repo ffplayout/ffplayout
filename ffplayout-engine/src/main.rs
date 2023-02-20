@@ -81,7 +81,7 @@ fn fake_time(args: &Args) {
     }
 }
 
-fn main() {
+fn main() -> Result<(), ()> {
     let args = get_args();
 
     // use fake time function only in debugging mode
@@ -153,9 +153,9 @@ fn main() {
 
     match config.out.mode {
         // write files/playlist to HLS m3u8 playlist
-        HLS => write_hls(&config, play_control, playout_stat, proc_control),
+        HLS => write_hls(&config, play_control, playout_stat, proc_control.clone()),
         // play on desktop or stream to a remote target
-        _ => player(&config, play_control, playout_stat, proc_control),
+        _ => player(&config, play_control, playout_stat, proc_control.clone()),
     }
 
     info!("Playout done...");
@@ -167,4 +167,7 @@ fn main() {
     }
 
     drop(msg);
+    drop(proc_control);
+
+    Ok(())
 }

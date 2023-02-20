@@ -1,13 +1,8 @@
 use std::{
     collections::HashMap,
     env, fmt,
-    process::Child,
-    process::Command,
     str::FromStr,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Mutex,
-    },
+    sync::atomic::{AtomicBool, Ordering},
 };
 
 use actix_web::web;
@@ -17,6 +12,10 @@ use reqwest::{
 };
 use serde::{Deserialize, Serialize};
 use sqlx::{Pool, Sqlite};
+use tokio::{
+    process::{Child, Command},
+    sync::Mutex,
+};
 
 use crate::db::handles::select_channel;
 use crate::utils::{errors::ServiceError, playout_config};
@@ -60,25 +59,39 @@ impl<T> RpcObj<T> {
 /// ffplayout engine process
 ///
 /// When running not on Linux, or with environment variable `PIGGYBACK_MODE=true`,
-/// the engine get startet and conntrolled from ffpapi
+/// the engine get startet and controlled from ffpapi
 pub struct ProcessControl {
     pub engine_child: Mutex<Option<Child>>,
     pub is_running: AtomicBool,
+    pub piggyback: AtomicBool,
 }
 
 impl ProcessControl {
     pub fn new() -> Self {
+        let piggyback = if env::consts::OS != "linux" || env::var("PIGGYBACK_MODE").is_ok() {
+            AtomicBool::new(true)
+        } else {
+            AtomicBool::new(false)
+        };
+
         Self {
             engine_child: Mutex::new(None),
             is_running: AtomicBool::new(false),
+            piggyback,
         }
     }
 }
 
 impl ProcessControl {
-    pub fn start(&self) -> Result<String, ServiceError> {
-        match Command::new("ffplayout").spawn() {
-            Ok(proc) => *self.engine_child.lock().unwrap() = Some(proc),
+    pub async fn start(&self) -> Result<String, ServiceError> {
+        #[cfg(not(debug_assertions))]
+        let engine_path = "ffplayout";
+
+        #[cfg(debug_assertions)]
+        let engine_path = "./target/debug/ffplayout";
+
+        match Command::new(engine_path).kill_on_drop(true).spawn() {
+            Ok(proc) => *self.engine_child.lock().await = Some(proc),
             Err(_) => return Err(ServiceError::InternalServerError),
         };
 
@@ -87,26 +100,22 @@ impl ProcessControl {
         Ok("Success".to_string())
     }
 
-    pub fn kill(&self) -> Result<String, ServiceError> {
-        if let Some(proc) = self.engine_child.lock().unwrap().as_mut() {
-            if proc.kill().is_err() {
+    pub async fn kill(&self) -> Result<String, ServiceError> {
+        if let Some(proc) = self.engine_child.lock().await.as_mut() {
+            if proc.kill().await.is_err() {
                 return Err(ServiceError::InternalServerError);
             };
         }
 
-        self.wait()?;
+        self.wait().await?;
         self.is_running.store(false, Ordering::SeqCst);
 
         Ok("Success".to_string())
     }
 
-    pub fn restart(&self) -> Result<String, ServiceError> {
-        self.kill()?;
-
-        match Command::new("ffplayout").spawn() {
-            Ok(proc) => *self.engine_child.lock().unwrap() = Some(proc),
-            Err(_) => return Err(ServiceError::InternalServerError),
-        };
+    pub async fn restart(&self) -> Result<String, ServiceError> {
+        self.kill().await?;
+        self.start().await?;
 
         self.is_running.store(true, Ordering::SeqCst);
 
@@ -115,9 +124,9 @@ impl ProcessControl {
 
     /// Wait for process to proper close.
     /// This prevents orphaned/zombi processes in system
-    pub fn wait(&self) -> Result<String, ServiceError> {
-        if let Some(proc) = self.engine_child.lock().unwrap().as_mut() {
-            if proc.wait().is_err() {
+    pub async fn wait(&self) -> Result<String, ServiceError> {
+        if let Some(proc) = self.engine_child.lock().await.as_mut() {
+            if proc.wait().await.is_err() {
                 return Err(ServiceError::InternalServerError);
             };
         }
@@ -244,11 +253,11 @@ impl SystemD {
         Ok("Success".to_string())
     }
 
-    fn status(mut self) -> Result<String, ServiceError> {
+    async fn status(mut self) -> Result<String, ServiceError> {
         self.cmd
             .append(&mut vec!["is-active".to_string(), self.service]);
 
-        let output = Command::new("sudo").args(self.cmd).output()?;
+        let output = Command::new("sudo").args(self.cmd).output().await?;
 
         Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
     }
@@ -338,13 +347,11 @@ pub async fn control_service(
     command: &ServiceCmd,
     engine: Option<web::Data<ProcessControl>>,
 ) -> Result<String, ServiceError> {
-    let piggyback = env::var("PIGGYBACK_MODE");
-
-    if (env::consts::OS != "linux" || piggyback.is_ok()) && engine.is_some() {
+    if engine.is_some() && engine.as_ref().unwrap().piggyback.load(Ordering::SeqCst) {
         match command {
-            ServiceCmd::Start => engine.unwrap().start(),
-            ServiceCmd::Stop => engine.unwrap().kill(),
-            ServiceCmd::Restart => engine.unwrap().restart(),
+            ServiceCmd::Start => engine.unwrap().start().await,
+            ServiceCmd::Stop => engine.unwrap().kill().await,
+            ServiceCmd::Restart => engine.unwrap().restart().await,
             ServiceCmd::Status => engine.unwrap().status(),
             _ => Err(ServiceError::Conflict(
                 "Engine runs in piggyback mode, in this mode this command is not allowed."
@@ -360,7 +367,7 @@ pub async fn control_service(
             ServiceCmd::Start => system_d.start(),
             ServiceCmd::Stop => system_d.stop(),
             ServiceCmd::Restart => system_d.restart(),
-            ServiceCmd::Status => system_d.status(),
+            ServiceCmd::Status => system_d.status().await,
         }
     }
 }

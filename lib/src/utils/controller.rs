@@ -146,8 +146,13 @@ impl ProcessControl {
                 rpc.clone().close()
             };
 
-            for unit in [Decoder, Encoder, Ingest] {
+            for unit in [Encoder, Decoder, Ingest] {
                 if let Err(e) = self.kill(unit) {
+                    if !e.contains("exited process") {
+                        error!("{e}")
+                    }
+                }
+                if let Err(e) = self.wait(unit) {
                     if !e.contains("exited process") {
                         error!("{e}")
                     }
@@ -157,11 +162,11 @@ impl ProcessControl {
     }
 }
 
-// impl Drop for ProcessControl {
-//     fn drop(&mut self) {
-//         self.kill_all()
-//     }
-// }
+impl Drop for ProcessControl {
+    fn drop(&mut self) {
+        self.kill_all()
+    }
+}
 
 /// Global player control, to get infos about current clip etc.
 #[derive(Clone)]
