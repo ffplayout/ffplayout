@@ -298,7 +298,7 @@ async function controlPlayout(state: string) {
     await $fetch(`/api/control/${channel}/playout/`, {
         method: 'POST',
         headers: { ...contentType, ...authStore.authHeader },
-        body: JSON.stringify({ command: state }),
+        body: JSON.stringify({ control: state }),
     })
 
     setTimeout(() => {
