@@ -20,7 +20,7 @@ use ffplayout_lib::{
 fn server_monitor(
     level: &str,
     buffer: BufReader<ChildStderr>,
-    mut proc_ctl: ProcessControl,
+    proc_ctl: ProcessControl,
 ) -> Result<(), Error> {
     for line in buffer.lines() {
         let line = line?;
@@ -30,7 +30,7 @@ fn server_monitor(
         }
 
         if line.contains("rtmp") && line.contains("Unexpected stream") && !valid_stream(&line) {
-            if let Err(e) = proc_ctl.kill(Ingest) {
+            if let Err(e) = proc_ctl.stop(Ingest) {
                 error!("{e}");
             };
         }
@@ -39,7 +39,7 @@ fn server_monitor(
             .iter()
             .any(|i| line.contains(*i))
         {
-            proc_ctl.kill_all();
+            proc_ctl.stop_all();
         }
     }
 
@@ -52,7 +52,7 @@ fn server_monitor(
 pub fn ingest_server(
     config: PlayoutConfig,
     ingest_sender: Sender<(usize, [u8; 65088])>,
-    mut proc_control: ProcessControl,
+    proc_control: ProcessControl,
 ) -> Result<(), Error> {
     let mut buffer: [u8; 65088] = [0; 65088];
     let mut server_cmd = vec_strings!["-hide_banner", "-nostats", "-v", "level+info"];
@@ -76,7 +76,7 @@ pub fn ingest_server(
 
     if let Some(url) = stream_input.iter().find(|s| s.contains("://")) {
         if !test_tcp_port(url) {
-            proc_control.kill_all();
+            proc_control.stop_all();
             exit(1);
         }
 

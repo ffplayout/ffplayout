@@ -635,7 +635,7 @@ pub fn include_file(config: PlayoutConfig, file_path: &Path) -> bool {
 pub fn stderr_reader(
     buffer: BufReader<ChildStderr>,
     suffix: ProcessUnit,
-    mut proc_control: ProcessControl,
+    proc_control: ProcessControl,
 ) -> Result<(), Error> {
     for line in buffer.lines() {
         let line = line?;
@@ -666,7 +666,7 @@ pub fn stderr_reader(
                 || (line.contains("No such file or directory")
                     && !line.contains("failed to delete old segment"))
             {
-                proc_control.kill_all();
+                proc_control.stop_all();
                 exit(1);
             }
         }

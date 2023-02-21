@@ -23,14 +23,13 @@ use serde::{Deserialize, Serialize};
 use simplelog::*;
 use sqlx::{Pool, Sqlite};
 
-use crate::auth::{create_jwt, Claims};
 use crate::db::{
     handles,
     models::{Channel, LoginUser, TextPreset, User},
 };
 use crate::utils::{
     channels::{create_channel, delete_channel},
-    control::{control_service, control_state, media_info, send_message, Process},
+    control::{control_service, control_state, media_info, send_message, ControlParams, Process},
     errors::ServiceError,
     files::{
         browser, create_directory, norm_abs_path, remove_file_or_folder, rename_file, upload,
@@ -39,6 +38,10 @@ use crate::utils::{
     naive_date_time_from_str,
     playlist::{delete_playlist, generate_playlist, read_playlist, write_playlist},
     playout_config, read_log_file, read_playout_config, Role,
+};
+use crate::{
+    auth::{create_jwt, Claims},
+    utils::control::ProcessControl,
 };
 use ffplayout_lib::{
     utils::{
@@ -586,9 +589,9 @@ pub async fn send_text_message(
 pub async fn control_playout(
     pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
-    control: web::Json<Process>,
+    control: web::Json<ControlParams>,
 ) -> Result<impl Responder, ServiceError> {
-    match control_state(&pool.into_inner(), *id, control.command.clone()).await {
+    match control_state(&pool.into_inner(), *id, &control.control).await {
         Ok(res) => Ok(res.text().await.unwrap_or_else(|_| "Success".into())),
         Err(e) => Err(e),
     }
@@ -690,8 +693,9 @@ pub async fn process_control(
     pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
     proc: web::Json<Process>,
+    engine_process: web::Data<ProcessControl>,
 ) -> Result<impl Responder, ServiceError> {
-    control_service(&pool.into_inner(), *id, &proc.command).await
+    control_service(&pool.into_inner(), *id, &proc.command, Some(engine_process)).await
 }
 
 /// #### ffplayout Playlist Operations

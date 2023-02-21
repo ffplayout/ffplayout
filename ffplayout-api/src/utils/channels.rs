@@ -3,7 +3,10 @@ use std::fs;
 use simplelog::*;
 use sqlx::{Pool, Sqlite};
 
-use crate::utils::{control::control_service, errors::ServiceError};
+use crate::utils::{
+    control::{control_service, ServiceCmd},
+    errors::ServiceError,
+};
 
 use crate::db::{handles, models::Channel};
 
@@ -25,15 +28,15 @@ pub async fn create_channel(
     )?;
 
     let new_channel = handles::insert_channel(conn, target_channel).await?;
-    control_service(conn, new_channel.id, "enable").await?;
+    control_service(conn, new_channel.id, &ServiceCmd::Enable, None).await?;
 
     Ok(new_channel)
 }
 
 pub async fn delete_channel(conn: &Pool<Sqlite>, id: i32) -> Result<(), ServiceError> {
     let channel = handles::select_channel(conn, &id).await?;
-    control_service(conn, channel.id, "stop").await?;
-    control_service(conn, channel.id, "disable").await?;
+    control_service(conn, channel.id, &ServiceCmd::Stop, None).await?;
+    control_service(conn, channel.id, &ServiceCmd::Disable, None).await?;
 
     if let Err(e) = fs::remove_file(channel.config_path) {
         error!("{e}");
