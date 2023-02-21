@@ -41,7 +41,6 @@
                             class="form-control"
                             id="configPath"
                             v-model="configStore.configGui[configStore.configID].config_path"
-                            disabled
                         />
                     </div>
                 </div>
