@@ -81,7 +81,7 @@ fn fake_time(args: &Args) {
     }
 }
 
-fn main() -> Result<(), ()> {
+fn main() {
     let args = get_args();
 
     // use fake time function only in debugging mode
@@ -167,7 +167,4 @@ fn main() -> Result<(), ()> {
     }
 
     drop(msg);
-    // drop(proc_control);
-
-    Ok(())
 }

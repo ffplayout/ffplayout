@@ -1,3 +1,5 @@
+use std::env;
+
 use argon2::{
     password_hash::{rand_core::OsRng, SaltString},
     Argon2, PasswordHasher,
@@ -101,6 +103,12 @@ pub async fn db_init(domain: Option<String>) -> Result<&'static str, Box<dyn std
         None => "http://localhost/live/stream.m3u8".to_string(),
     };
 
+    let config_path = if env::consts::OS == "linux" {
+        "/etc/ffplayout/ffplayout.yml"
+    } else {
+        "./assets/ffplayout.yml"
+    };
+
     let query = "CREATE TRIGGER global_row_count
         BEFORE INSERT ON global
         WHEN (SELECT COUNT(*) FROM global) >= 1
@@ -109,7 +117,7 @@ pub async fn db_init(domain: Option<String>) -> Result<&'static str, Box<dyn std
         END;
         INSERT INTO global(secret) VALUES($1);
         INSERT INTO channels(name, preview_url, config_path, extra_extensions, service)
-        VALUES('Channel 1', $2, '/etc/ffplayout/ffplayout.yml', 'jpg,jpeg,png', 'ffplayout.service');
+        VALUES('Channel 1', $2, $3, 'jpg,jpeg,png', 'ffplayout.service');
         INSERT INTO roles(name) VALUES('admin'), ('user'), ('guest');
         INSERT INTO presets(name, text, x, y, fontsize, line_spacing, fontcolor, box, boxcolor, boxborderw, alpha, channel_id)
         VALUES('Default', 'Wellcome to ffplayout messenger!', '(w-text_w)/2', '(h-text_h)/2', '24', '4', '#ffffff@0xff', '0', '#000000@0x80', '4', '1.0', '1'),
@@ -124,6 +132,7 @@ pub async fn db_init(domain: Option<String>) -> Result<&'static str, Box<dyn std
     sqlx::query(query)
         .bind(secret)
         .bind(url)
+        .bind(config_path)
         .execute(&pool)
         .await?;
 

@@ -100,7 +100,7 @@ impl ProcessControl {
         Ok("Success".to_string())
     }
 
-    pub async fn kill(&self) -> Result<String, ServiceError> {
+    pub async fn stop(&self) -> Result<String, ServiceError> {
         if let Some(proc) = self.engine_child.lock().await.as_mut() {
             if proc.kill().await.is_err() {
                 return Err(ServiceError::InternalServerError);
@@ -114,7 +114,7 @@ impl ProcessControl {
     }
 
     pub async fn restart(&self) -> Result<String, ServiceError> {
-        self.kill().await?;
+        self.stop().await?;
         self.start().await?;
 
         self.is_running.store(true, Ordering::SeqCst);
@@ -350,8 +350,20 @@ pub async fn control_service(
     if engine.is_some() && engine.as_ref().unwrap().piggyback.load(Ordering::SeqCst) {
         match command {
             ServiceCmd::Start => engine.unwrap().start().await,
-            ServiceCmd::Stop => engine.unwrap().kill().await,
-            ServiceCmd::Restart => engine.unwrap().restart().await,
+            ServiceCmd::Stop => {
+                if control_state(conn, id, "stop_all").await.is_ok() {
+                    engine.unwrap().stop().await
+                } else {
+                    Err(ServiceError::NoContent("Nothing to stop".to_string()))
+                }
+            }
+            ServiceCmd::Restart => {
+                if control_state(conn, id, "stop_all").await.is_ok() {
+                    engine.unwrap().restart().await
+                } else {
+                    Err(ServiceError::NoContent("Nothing to stop".to_string()))
+                }
+            }
             ServiceCmd::Status => engine.unwrap().status(),
             _ => Err(ServiceError::Conflict(
                 "Engine runs in piggyback mode, in this mode this command is not allowed."

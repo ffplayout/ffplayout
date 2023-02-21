@@ -9,12 +9,12 @@ use simplelog::*;
 use ffplayout::output::player;
 use ffplayout_lib::{utils::*, vec_strings};
 
-fn timed_kill(sec: u64, mut proc_ctl: ProcessControl) {
+fn timed_stop(sec: u64, proc_ctl: ProcessControl) {
     sleep(Duration::from_secs(sec));
 
-    info!("Timed kill of process");
+    info!("Timed stop of process");
 
-    proc_ctl.kill_all();
+    proc_ctl.stop_all();
 }
 
 #[test]
@@ -49,7 +49,7 @@ fn playlist_change_at_midnight() {
 
     mock_time::set_mock_time("2023-02-08T23:59:45");
 
-    thread::spawn(move || timed_kill(28, proc_ctl));
+    thread::spawn(move || timed_stop(28, proc_ctl));
 
     player(&config, play_control, playout_stat.clone(), proc_control);
 
@@ -90,7 +90,7 @@ fn playlist_change_at_six() {
 
     mock_time::set_mock_time("2023-02-09T05:59:45");
 
-    thread::spawn(move || timed_kill(28, proc_ctl));
+    thread::spawn(move || timed_stop(28, proc_ctl));
 
     player(&config, play_control, playout_stat.clone(), proc_control);
 

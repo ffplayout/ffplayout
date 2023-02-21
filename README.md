@@ -46,11 +46,12 @@ Check the [releases](https://github.com/ffplayout/ffplayout/releases/latest) for
 - JSON RPC server, to get information about what is playing and to control it
 - [live ingest](/docs/live_ingest.md)
 - image source (will loop until out duration is reached)
-- extra audio source (experimental *) (has priority over audio from video source)
+- extra audio source, has priority over audio from video (experimental *)
 - [multiple audio tracks](/docs/multi_audio.md) (experimental *)
 - [custom filters](/docs/custom_filters.md) globally in config, or in playlist for specific clips
 - import playlist from text or m3u file, with CLI or frontend
 - audio only, for radio mode (experimental *)
+- [Piggyback Mode](/ffplayout-api/README.md#piggyback-mode), mostly for non Linux systems (experimental *)
 
 For preview stream, read: [/docs/preview_stream.md](/docs/preview_stream.md)
 

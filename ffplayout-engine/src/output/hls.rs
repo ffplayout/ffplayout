@@ -41,7 +41,7 @@ use ffplayout_lib::{
 fn ingest_to_hls_server(
     config: PlayoutConfig,
     playout_stat: PlayoutStatus,
-    mut proc_control: ProcessControl,
+    proc_control: ProcessControl,
 ) -> Result<(), Error> {
     let playlist_init = playout_stat.list_init;
     let level = config.logging.ffmpeg_level.clone();
@@ -56,7 +56,7 @@ fn ingest_to_hls_server(
 
     if let Some(url) = stream_input.iter().find(|s| s.contains("://")) {
         if !test_tcp_port(url) {
-            proc_control.kill_all();
+            proc_control.stop_all();
             exit(1);
         }
 
@@ -93,7 +93,7 @@ fn ingest_to_hls_server(
             let line = line?;
 
             if line.contains("rtmp") && line.contains("Unexpected stream") && !valid_stream(&line) {
-                if let Err(e) = proc_ctl.kill(Ingest) {
+                if let Err(e) = proc_ctl.stop(Ingest) {
                     error!("{e}");
                 };
             }
@@ -105,7 +105,7 @@ fn ingest_to_hls_server(
 
                 info!("Switch from {} to live ingest", config.processing.mode);
 
-                if let Err(e) = proc_control.kill(Encoder) {
+                if let Err(e) = proc_control.stop(Encoder) {
                     error!("{e}");
                 }
             }
@@ -140,7 +140,7 @@ pub fn write_hls(
     config: &PlayoutConfig,
     play_control: PlayerControl,
     playout_stat: PlayoutStatus,
-    mut proc_control: ProcessControl,
+    proc_control: ProcessControl,
 ) {
     let config_clone = config.clone();
     let ff_log_format = format!("level+{}", config.logging.ffmpeg_level.to_lowercase());
@@ -217,5 +217,5 @@ pub fn write_hls(
 
     sleep(Duration::from_secs(1));
 
-    proc_control.kill_all();
+    proc_control.stop_all();
 }

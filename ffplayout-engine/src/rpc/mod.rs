@@ -149,7 +149,7 @@ pub fn json_rpc_server(
     config: PlayoutConfig,
     play_control: PlayerControl,
     playout_stat: PlayoutStatus,
-    mut proc_control: ProcessControl,
+    proc_control: ProcessControl,
 ) {
     let addr = config.rpc_server.address.clone();
     let auth = config.rpc_server.authorization.clone();
@@ -187,7 +187,7 @@ pub fn json_rpc_server(
                             )) {
                                 return Ok(Value::String(reply));
                             };
-                        } else if let Err(e) = proc.kill(Ingest) {
+                        } else if let Err(e) = proc.stop(Ingest) {
                             error!("Ingest {e:?}")
                         }
                     }
@@ -310,6 +310,13 @@ pub fn json_rpc_server(
                 return Ok(Value::String("Reset playout state failed".to_string()));
             }
 
+            // stop playout
+            if map.contains_key("control") && &map["control"] == "stop_all" {
+                proc.stop_all();
+
+                return Ok(Value::String("Stop playout!".to_string()));
+            }
+
             // get infos about current clip
             if map.contains_key("media") && &map["media"] == "current" {
                 if let Some(media) = play_control.current_media.lock().unwrap().clone() {
@@ -383,7 +390,7 @@ pub fn json_rpc_server(
         }
         Err(e) => {
             error!("Unable to start RPC server: {e}");
-            proc_control.kill_all();
+            proc_control.stop_all();
 
             exit(1);
         }

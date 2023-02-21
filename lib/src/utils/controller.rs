@@ -75,7 +75,7 @@ impl Default for ProcessControl {
 }
 
 impl ProcessControl {
-    pub fn kill(&self, unit: ProcessUnit) -> Result<(), String> {
+    pub fn stop(&self, unit: ProcessUnit) -> Result<(), String> {
         match unit {
             Decoder => {
                 if let Some(proc) = self.decoder_term.lock().unwrap().as_mut() {
@@ -136,18 +136,20 @@ impl ProcessControl {
     }
 
     /// No matter what is running, terminate them all.
-    pub fn kill_all(&mut self) {
+    pub fn stop_all(&self) {
+        debug!("Stop all child processes");
         self.is_terminated.store(true, Ordering::SeqCst);
+        self.server_is_running.store(false, Ordering::SeqCst);
 
         if self.is_alive.load(Ordering::SeqCst) {
             self.is_alive.store(false, Ordering::SeqCst);
 
-            if let Some(rpc) = &*self.rpc_handle.lock().unwrap() {
-                rpc.clone().close()
-            };
+            // if let Some(rpc) = &*self.rpc_handle.lock().unwrap() {
+            //     rpc.clone().close()
+            // };
 
-            for unit in [Encoder, Decoder, Ingest] {
-                if let Err(e) = self.kill(unit) {
+            for unit in [Decoder, Encoder, Ingest] {
+                if let Err(e) = self.stop(unit) {
                     if !e.contains("exited process") {
                         error!("{e}")
                     }
@@ -164,7 +166,7 @@ impl ProcessControl {
 
 // impl Drop for ProcessControl {
 //     fn drop(&mut self) {
-//         self.kill_all()
+//         self.stop_all()
 //     }
 // }
 
