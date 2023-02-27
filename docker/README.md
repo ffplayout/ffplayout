@@ -31,7 +31,9 @@ It may be useful to create/link volume for those folders/files.
 ## Docker
 
 How to build the image  
-`docker build -t ffplayout-image .`
+`docker build -t ffplayout-image .`  
+`docker build -f fromSource.Dockerfile -t ffplayout-image:from-source .`  
+`docker build -f Almalinux.Dockerfile -t ffplayout-image:almalinux .`
 
 example of command to start the container:
 
@@ -90,7 +92,7 @@ spec:
         hostPath:
           path: '/sys/fs/cgroup'
           type: Directory
-	  - name: database-volume
+      - name: database-volume
         ephemeral:
           volumeClaimTemplate:
             metadata:
