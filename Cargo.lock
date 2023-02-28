@@ -2581,7 +2581,7 @@ dependencies = [
 [[package]]
 name = "serial_test"
 version = "1.0.0"
-source = "git+https://github.com/palfrey/serial_test.git?branch=remove-ignore-ignore#fc0497c8e8f08c2fc5c50ffab40a8f51d7c1effe"
+source = "git+https://github.com/palfrey/serial_test.git?branch=main#21b7a7fa6f94d8f132a9344c5e530a60c8aead41"
 dependencies = [
  "dashmap",
  "futures",
@@ -2594,7 +2594,7 @@ dependencies = [
 [[package]]
 name = "serial_test_derive"
 version = "1.0.0"
-source = "git+https://github.com/palfrey/serial_test.git?branch=remove-ignore-ignore#fc0497c8e8f08c2fc5c50ffab40a8f51d7c1effe"
+source = "git+https://github.com/palfrey/serial_test.git?branch=main#21b7a7fa6f94d8f132a9344c5e530a60c8aead41"
 dependencies = [
  "proc-macro2",
  "quote",
