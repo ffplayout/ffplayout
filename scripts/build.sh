@@ -9,13 +9,9 @@ echo
 yes | rm -rf public
 cd ffplayout-frontend
 
-# for node version 17+
-export NODE_OPTIONS=--openssl-legacy-provider
 npm install
-npm run build
-mv dist ../public
-
-unset NODE_OPTIONS
+npm run generate
+cp -r .output/public ../public
 
 cd ..
 
@@ -30,9 +26,9 @@ while read -r name value; do
     if [[ $name == "version" ]]; then
         version=${value//\"/}
     fi
-done < ffplayout-engine/Cargo.toml
+done < Cargo.toml
 
-echo "Compile ffplayout version is: \"$version\""
+echo "Compile ffplayout \"$version\""
 echo ""
 
 for target in "${targets[@]}"; do
@@ -66,7 +62,7 @@ for target in "${targets[@]}"; do
 
         cp ./target/${target}/release/ffpapi .
         cp ./target/${target}/release/ffplayout .
-        tar -czvf "ffplayout-v${version}_${target}.tar.gz" --exclude='*.db' assets docs public LICENSE README.md CHANGELOG.md ffplayout ffpapi
+        tar -czvf "ffplayout-v${version}_${target}.tar.gz" --exclude='*.db' --exclude='*.db-shm' --exclude='*.db-wal' assets docs public LICENSE README.md CHANGELOG.md ffplayout ffpapi
         rm -f ffplayout ffpapi
     else
         if [[ -f "ffplayout-v${version}_${target}.tar.gz" ]]; then
@@ -77,7 +73,7 @@ for target in "${targets[@]}"; do
 
         cp ./target/${target}/release/ffpapi .
         cp ./target/${target}/release/ffplayout .
-        tar -czvf "ffplayout-v${version}_${target}.tar.gz" --exclude='*.db' assets docs public LICENSE README.md CHANGELOG.md ffplayout ffpapi
+        tar -czvf "ffplayout-v${version}_${target}.tar.gz" --exclude='*.db' --exclude='*.db-shm' --exclude='*.db-wal' assets docs public LICENSE README.md CHANGELOG.md ffplayout ffpapi
         rm -f ffplayout ffpapi
     fi
 
@@ -86,8 +82,7 @@ done
 
 if [[ "${#targets[@]}" == "5" ]] || [[ $targets == "x86_64-unknown-linux-musl" ]]; then
     cargo deb --target=x86_64-unknown-linux-musl -p ffplayout --manifest-path=ffplayout-engine/Cargo.toml -o ffplayout_${version}_amd64.deb
-    cd ffplayout-engine
-    cargo generate-rpm --target=x86_64-unknown-linux-musl -o ../ffplayout-${version}-1.x86_64.rpm
+    cargo generate-rpm --payload-compress none  --target=x86_64-unknown-linux-musl -p ffplayout-engine -o ffplayout-${version}-1.x86_64.rpm
 
     cd ..
 fi

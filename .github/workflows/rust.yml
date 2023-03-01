@@ -16,7 +16,7 @@ jobs:
 
       - name: Use ffmpeg on Linux
         if: ${{ matrix.os == 'ubuntu-latest' }}
-        uses: FedericoCarboni/setup-ffmpeg@v1
+        uses: FedericoCarboni/setup-ffmpeg@v2
 
       - name: Tests on Linux
         if: ${{ matrix.os == 'ubuntu-latest' }}

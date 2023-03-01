@@ -36,7 +36,7 @@ pub fn player(
     config: &PlayoutConfig,
     play_control: PlayerControl,
     playout_stat: PlayoutStatus,
-    mut proc_control: ProcessControl,
+    proc_control: ProcessControl,
 ) {
     let config_clone = config.clone();
     let ff_log_format = format!("level+{}", config.logging.ffmpeg_level.to_lowercase());
@@ -125,8 +125,8 @@ pub fn player(
         {
             Ok(proc) => proc,
             Err(e) => {
-                error!("couldn't spawn decoder process: {}", e);
-                panic!("couldn't spawn decoder process: {}", e)
+                error!("couldn't spawn decoder process: {e}");
+                panic!("couldn't spawn decoder process: {e}")
             }
         };
 
@@ -149,7 +149,7 @@ pub fn player(
                         error!("Encoder error: {e}")
                     }
 
-                    if let Err(e) = proc_control.kill(Decoder) {
+                    if let Err(e) = proc_control.stop(Decoder) {
                         error!("{e}")
                     }
 
@@ -208,7 +208,7 @@ pub fn player(
 
     sleep(Duration::from_secs(1));
 
-    proc_control.kill_all();
+    proc_control.stop_all();
 
     if let Err(e) = error_encoder_thread.join() {
         error!("{e:?}");

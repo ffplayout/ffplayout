@@ -1,16 +1,17 @@
 [package]
 name = "ffplayout-api"
 description = "Rest API for ffplayout"
-license = "GPL-3.0"
-authors = ["Jonathan Baecker jonbae77@gmail.com"]
 readme = "README.md"
-version = "0.8.3"
-edition = "2021"
+version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+edition.workspace = true
 
 [dependencies]
 ffplayout-lib = { path = "../lib" }
 actix-files = "0.6"
-actix-multipart = "0.4"
+actix-multipart = "0.5"
 actix-web = "4"
 actix-web-grants = "3"
 actix-web-httpauth = "0.6"
@@ -31,12 +32,10 @@ rpassword = "6.0"
 sanitize-filename = "0.3"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-serde_yaml = "0.8"
+serde_yaml = "0.9"
 simplelog = { version = "^0.12", features = ["paris"] }
-sqlx = { version = "0.6", features = [
-    "runtime-actix-native-tls",
-    "sqlite"
-] }
+sqlx = { version = "0.6", features = ["runtime-tokio-rustls", "sqlite"] }
+tokio = { version = "1.25", features = ["full"] }
 
 [[bin]]
 name = "ffpapi"

@@ -5,9 +5,9 @@
 
 ## **ffplayout-engine (ffplayout)**
 
-[ffplayout](/ffplayout-engine/README.md) is a 24/7 broadcasting solution. It can playout a folder with containing video clips, or play for every day a *JSON* playlist, while keeping the current playlist editable.
+[ffplayout](/ffplayout-engine/README.md) is a 24/7 broadcasting solution. It can playout a folder containing audio or video clips, or play a *JSON* playlist for each day, keeping the current playlist editable.
 
-The ffplayout apps are mostly made to run on Linux as system services. But in general they should run on all platforms which are supported by Rust.
+The ffplayout applications are mostly designed to run as system services on Linux. But in general they should run on any platform supported by Rust.
 
 Check the [releases](https://github.com/ffplayout/ffplayout/releases/latest) for pre compiled version.
 
@@ -29,7 +29,7 @@ Check the [releases](https://github.com/ffplayout/ffplayout/releases/latest) for
 - normal system requirements and no special tools
 - no GPU power is needed
 - stream to server or play on desktop
-- logging to files, or colored output to console
+- log to files or color output to console
 - add filters to input, if is necessary to match output stream:
   - **yadif** (deinterlacing)
   - **pad** (letterbox or pillarbox to fit aspect)
@@ -43,17 +43,19 @@ Check the [releases](https://github.com/ffplayout/ffplayout/releases/latest) for
   - **desktop**
   - **HLS**
   - **null** (for debugging)
-- JSON RPC server, for getting infos about current playing and controlling
+- JSON RPC server, to get information about what is playing and to control it
 - [live ingest](/docs/live_ingest.md)
 - image source (will loop until out duration is reached)
-- extra audio source (experimental *) (has priority over audio from video source)
+- extra audio source, has priority over audio from video (experimental *)
 - [multiple audio tracks](/docs/multi_audio.md) (experimental *)
-- [custom filter](/docs/custom_filters.md) globally in config, or in playlist for specific clips
+- [custom filters](/docs/custom_filters.md) globally in config, or in playlist for specific clips
 - import playlist from text or m3u file, with CLI or frontend
+- audio only, for radio mode (experimental *)
+- [Piggyback Mode](/ffplayout-api/README.md#piggyback-mode), mostly for non Linux systems (experimental *)
 
 For preview stream, read: [/docs/preview_stream.md](/docs/preview_stream.md)
 
-**\* Experimental functions do not guarantee the same stability, also they can fail in unusual circumstances. The code and configuration options may change in the future.**
+**\* Experimental features do not guarantee the same stability and may fail under unusual circumstances. Code and configuration options may change in the future.**
 
 ## **ffplayout-api (ffpapi)**
 
@@ -118,7 +120,7 @@ Check [install](docs/install.md) for details about how to install ffplayout.
 
 ## **Warning**
 
-(Endless) streaming over multiple days will only work when config have **day_start** value and the **length** value is **24 hours**. If you need only some hours for every day, use a *cron* job, or something similar.
+(Endless) streaming over multiple days will only work if config has a **day_start** value and the **length** value is **24 hours**. If you only need a few hours for each day, use a *cron* job or something similar.
 
 -----
 
@@ -192,4 +194,4 @@ Output from `{"media":"current"}` show:
 }
 ```
 
-When you are in playlist mode and jumping forward or backwards in time, the time shift will be saved so the playlist is still in sync. But have in mind, that then maybe your playlist gets to short. When you are not resetting the state, it will reset on the next day automatically.
+If you are in playlist mode and move backwards or forwards in time, the time shift is saved so the playlist is still in sync. Bear in mind, however, that this may make your playlist too short. If you do not reset it, it will automatically reset the next day.

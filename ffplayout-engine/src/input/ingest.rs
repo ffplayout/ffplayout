@@ -8,54 +8,38 @@ use std::{
 use crossbeam_channel::Sender;
 use simplelog::*;
 
-use ffplayout_lib::utils::{
-    controller::ProcessUnit::*, test_tcp_port, Media, PlayoutConfig, ProcessControl,
-    FFMPEG_IGNORE_ERRORS,
+use crate::utils::{log_line, valid_stream};
+use ffplayout_lib::{
+    utils::{
+        controller::ProcessUnit::*, test_tcp_port, Media, PlayoutConfig, ProcessControl,
+        FFMPEG_IGNORE_ERRORS, FFMPEG_UNRECOVERABLE_ERRORS,
+    },
+    vec_strings,
 };
-use ffplayout_lib::vec_strings;
-
-pub fn log_line(line: String, level: &str) {
-    if line.contains("[info]") && level.to_lowercase() == "info" {
-        info!("<bright black>[Server]</> {}", line.replace("[info] ", ""))
-    } else if line.contains("[warning]")
-        && (level.to_lowercase() == "warning" || level.to_lowercase() == "info")
-    {
-        warn!(
-            "<bright black>[Server]</> {}",
-            line.replace("[warning] ", "")
-        )
-    } else if line.contains("[error]")
-        && !line.contains("Input/output error")
-        && !line.contains("Broken pipe")
-    {
-        error!("<bright black>[Server]</> {}", line.replace("[error] ", ""));
-    } else if line.contains("[fatal]") {
-        error!("<bright black>[Server]</> {}", line.replace("[fatal] ", ""))
-    }
-}
 
 fn server_monitor(
     level: &str,
     buffer: BufReader<ChildStderr>,
-    mut proc_ctl: ProcessControl,
+    proc_ctl: ProcessControl,
 ) -> Result<(), Error> {
     for line in buffer.lines() {
         let line = line?;
 
-        if line.contains("rtmp") && line.contains("Unexpected stream") {
-            if let Err(e) = proc_ctl.kill(Ingest) {
+        if !FFMPEG_IGNORE_ERRORS.iter().any(|i| line.contains(*i)) {
+            log_line(&line, level);
+        }
+
+        if line.contains("rtmp") && line.contains("Unexpected stream") && !valid_stream(&line) {
+            if let Err(e) = proc_ctl.stop(Ingest) {
                 error!("{e}");
             };
-
-            warn!("<bright black>[Server]</> {}", line.replace("[error] ", ""));
         }
 
-        if line.contains("Address already in use") {
-            proc_ctl.kill_all();
-        }
-
-        if !FFMPEG_IGNORE_ERRORS.iter().any(|i| line.contains(*i)) {
-            log_line(line, level);
+        if FFMPEG_UNRECOVERABLE_ERRORS
+            .iter()
+            .any(|i| line.contains(*i))
+        {
+            proc_ctl.stop_all();
         }
     }
 
@@ -68,7 +52,7 @@ fn server_monitor(
 pub fn ingest_server(
     config: PlayoutConfig,
     ingest_sender: Sender<(usize, [u8; 65088])>,
-    mut proc_control: ProcessControl,
+    proc_control: ProcessControl,
 ) -> Result<(), Error> {
     let mut buffer: [u8; 65088] = [0; 65088];
     let mut server_cmd = vec_strings!["-hide_banner", "-nostats", "-v", "level+info"];
@@ -92,7 +76,7 @@ pub fn ingest_server(
 
     if let Some(url) = stream_input.iter().find(|s| s.contains("://")) {
         if !test_tcp_port(url) {
-            proc_control.kill_all();
+            proc_control.stop_all();
             exit(1);
         }
 

@@ -23,7 +23,7 @@ pub fn output(config: &PlayoutConfig, log_format: &str) -> process::Child {
         "ffplayout"
     ];
 
-    if config.text.add_text && !config.text.text_from_filename {
+    if config.text.add_text && !config.text.text_from_filename && !config.processing.audio_only {
         if let Some(socket) = config.text.zmq_stream_socket.clone() {
             debug!(
                 "Using drawtext filter, listening on address: <yellow>{}</>",

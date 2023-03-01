@@ -563,7 +563,7 @@ fn handle_list_end(
         node.seek + total_delta
     } else {
         if node.duration > total_delta {
-            warn!("Clip length is not in time, new duration is: <yellow>{total_delta:.2}</>");
+            warn!("Adjust clip duration to: <yellow>{total_delta:.2}</>");
         }
 
         total_delta

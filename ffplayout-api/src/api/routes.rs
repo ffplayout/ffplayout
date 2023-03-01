@@ -23,22 +23,25 @@ use serde::{Deserialize, Serialize};
 use simplelog::*;
 use sqlx::{Pool, Sqlite};
 
-use crate::auth::{create_jwt, Claims};
 use crate::db::{
     handles,
     models::{Channel, LoginUser, TextPreset, User},
 };
 use crate::utils::{
     channels::{create_channel, delete_channel},
-    control::{control_service, control_state, media_info, send_message, Process},
+    control::{control_service, control_state, media_info, send_message, ControlParams, Process},
     errors::ServiceError,
     files::{
-        browser, create_directory, remove_file_or_folder, rename_file, upload, MoveObject,
-        PathObject,
+        browser, create_directory, norm_abs_path, remove_file_or_folder, rename_file, upload,
+        MoveObject, PathObject,
     },
     naive_date_time_from_str,
     playlist::{delete_playlist, generate_playlist, read_playlist, write_playlist},
     playout_config, read_log_file, read_playout_config, Role,
+};
+use crate::{
+    auth::{create_jwt, Claims},
+    utils::control::ProcessControl,
 };
 use ffplayout_lib::{
     utils::{
@@ -70,6 +73,12 @@ pub struct DateObj {
 struct FileObj {
     #[serde(default)]
     path: String,
+}
+
+#[derive(Debug, Default, Deserialize, Serialize)]
+pub struct PathsObj {
+    #[serde(default)]
+    paths: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -242,7 +251,7 @@ async fn update_user(
                 .hash_password(data.password.clone().as_bytes(), &salt)
                 .unwrap();
 
-            fields.push_str(format!("password = '{}', salt = '{salt}'", password_hash).as_str());
+            fields.push_str(format!("password = '{password_hash}', salt = '{salt}'").as_str());
         }
 
         if handles::update_user(&pool.into_inner(), user.id, fields)
@@ -333,8 +342,7 @@ async fn get_all_channels(pool: web::Data<Pool<Sqlite>>) -> Result<impl Responde
 ///
 /// ```BASH
 /// curl -X PATCH http://127.0.0.1:8787/api/channel/1 -H "Content-Type: application/json" \
-/// -d '{ "id": 1, "name": "Channel 1", "preview_url": "http://localhost/live/stream.m3u8", \
-/// "config_path": "/etc/ffplayout/ffplayout.yml", "extra_extensions": "jpg,jpeg,png"}' \
+/// -d '{ "id": 1, "name": "Channel 1", "preview_url": "http://localhost/live/stream.m3u8", "config_path": "/etc/ffplayout/ffplayout.yml", "extra_extensions": "jpg,jpeg,png"}' \
 /// -H "Authorization: Bearer <TOKEN>"
 /// ```
 #[patch("/channel/{id}")]
@@ -358,9 +366,7 @@ async fn patch_channel(
 ///
 /// ```BASH
 /// curl -X POST http://127.0.0.1:8787/api/channel/ -H "Content-Type: application/json" \
-/// -d '{ "name": "Channel 2", "preview_url": "http://localhost/live/channel2.m3u8", \
-/// "config_path": "/etc/ffplayout/channel2.yml", "extra_extensions": "jpg,jpeg,png",
-/// "service": "ffplayout@channel2.service" }' \
+/// -d '{ "name": "Channel 2", "preview_url": "http://localhost/live/channel2.m3u8", "config_path": "/etc/ffplayout/channel2.yml", "extra_extensions": "jpg,jpeg,png", "service": "ffplayout@channel2.service" }' \
 /// -H "Authorization: Bearer <TOKEN>"
 /// ```
 #[post("/channel/")]
@@ -475,8 +481,7 @@ async fn get_presets(
 ///
 /// ```BASH
 /// curl -X PUT http://127.0.0.1:8787/api/presets/1 -H 'Content-Type: application/json' \
-/// -d '{ "name": "<PRESET NAME>", "text": "<TEXT>", "x": "<X>", "y": "<Y>", "fontsize": 24, \
-/// "line_spacing": 4, "fontcolor": "#ffffff", "box": 1, "boxcolor": "#000000", "boxborderw": 4, "alpha": 1.0, "channel_id": 1 }' \
+/// -d '{ "name": "<PRESET NAME>", "text": "<TEXT>", "x": "<X>", "y": "<Y>", "fontsize": 24, "line_spacing": 4, "fontcolor": "#ffffff", "box": 1, "boxcolor": "#000000", "boxborderw": 4, "alpha": 1.0, "channel_id": 1 }' \
 /// -H 'Authorization: Bearer <TOKEN>'
 /// ```
 #[put("/presets/{id}")]
@@ -500,8 +505,7 @@ async fn update_preset(
 ///
 /// ```BASH
 /// curl -X POST http://127.0.0.1:8787/api/presets/ -H 'Content-Type: application/json' \
-/// -d '{ "name": "<PRESET NAME>", "text": "TEXT>", "x": "<X>", "y": "<Y>", "fontsize": 24, \
-/// "line_spacing": 4, "fontcolor": "#ffffff", "box": 1, "boxcolor": "#000000", "boxborderw": 4, "alpha": 1.0, "channel_id": 1 }' \
+/// -d '{ "name": "<PRESET NAME>", "text": "TEXT>", "x": "<X>", "y": "<Y>", "fontsize": 24, "line_spacing": 4, "fontcolor": "#ffffff", "box": 1, "boxcolor": "#000000", "boxborderw": 4, "alpha": 1.0, "channel_id": 1 }' \
 /// -H 'Authorization: Bearer <TOKEN>'
 /// ```
 #[post("/presets/")]
@@ -555,9 +559,7 @@ async fn delete_preset(
 /// ```BASH
 /// curl -X POST http://127.0.0.1:8787/api/control/1/text/ \
 /// -H 'Content-Type: application/json' -H 'Authorization: Bearer <TOKEN>' \
-/// -d '{"text": "Hello from ffplayout", "x": "(w-text_w)/2", "y": "(h-text_h)/2", \
-///     "fontsize": "24", "line_spacing": "4", "fontcolor": "#ffffff", "box": "1", \
-///     "boxcolor": "#000000", "boxborderw": "4", "alpha": "1.0"}'
+/// -d '{"text": "Hello from ffplayout", "x": "(w-text_w)/2", "y": "(h-text_h)/2", fontsize": "24", "line_spacing": "4", "fontcolor": "#ffffff", "box": "1", "boxcolor": "#000000", "boxborderw": "4", "alpha": "1.0"}'
 /// ```
 #[post("/control/{id}/text/")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
@@ -587,9 +589,9 @@ pub async fn send_text_message(
 pub async fn control_playout(
     pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
-    control: web::Json<Process>,
+    control: web::Json<ControlParams>,
 ) -> Result<impl Responder, ServiceError> {
-    match control_state(&pool.into_inner(), *id, control.command.clone()).await {
+    match control_state(&pool.into_inner(), *id, &control.control).await {
         Ok(res) => Ok(res.text().await.unwrap_or_else(|_| "Success".into())),
         Err(e) => Err(e),
     }
@@ -691,8 +693,9 @@ pub async fn process_control(
     pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
     proc: web::Json<Process>,
+    engine_process: web::Data<ProcessControl>,
 ) -> Result<impl Responder, ServiceError> {
-    control_service(&pool.into_inner(), *id, &proc.command).await
+    control_service(&pool.into_inner(), *id, &proc.command, Some(engine_process)).await
 }
 
 /// #### ffplayout Playlist Operations
@@ -741,16 +744,33 @@ pub async fn save_playlist(
 /// A new playlist will be generated and response.
 ///
 /// ```BASH
-/// curl -X GET http://127.0.0.1:8787/api/playlist/1/generate/2022-06-20
+/// curl -X POST http://127.0.0.1:8787/api/playlist/1/generate/2022-06-20
 /// -H 'Content-Type: application/json' -H 'Authorization: Bearer <TOKEN>'
+/// /// -- data '{ "paths": [<list of paths>] }' # <- data is optional
 /// ```
-#[get("/playlist/{id}/generate/{date}")]
+#[post("/playlist/{id}/generate/{date}")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 pub async fn gen_playlist(
     pool: web::Data<Pool<Sqlite>>,
     params: web::Path<(i32, String)>,
+    data: Option<web::Json<PathsObj>>,
 ) -> Result<impl Responder, ServiceError> {
-    match generate_playlist(&pool.into_inner(), params.0, params.1.clone()).await {
+    let (mut config, channel) = playout_config(&pool.into_inner(), &params.0).await?;
+    config.general.generate = Some(vec![params.1.clone()]);
+
+    if let Some(obj) = data {
+        let mut path_list = vec![];
+
+        for path in &obj.paths {
+            let (p, _, _) = norm_abs_path(&config.storage.path, path);
+
+            path_list.push(p.to_string_lossy().to_string());
+        }
+
+        config.storage.paths = path_list;
+    }
+
+    match generate_playlist(config, channel.name).await {
         Ok(playlist) => Ok(web::Json(playlist)),
         Err(e) => Err(e),
     }

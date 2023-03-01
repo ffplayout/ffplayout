@@ -20,6 +20,8 @@ pub struct PathObject {
     parent: Option<String>,
     folders: Option<Vec<String>>,
     files: Option<Vec<VideoFile>>,
+    #[serde(default)]
+    pub folders_only: bool,
 }
 
 impl PathObject {
@@ -29,6 +31,7 @@ impl PathObject {
             parent,
             folders: Some(vec![]),
             files: Some(vec![]),
+            folders_only: false,
         }
     }
 }
@@ -49,7 +52,7 @@ pub struct VideoFile {
 ///
 /// This function takes care, that it is not possible to break out from root_path.
 /// It also gives alway a relative path back.
-fn norm_abs_path(root_path: &str, input_path: &str) -> (PathBuf, String, String) {
+pub fn norm_abs_path(root_path: &str, input_path: &str) -> (PathBuf, String, String) {
     let mut path = PathBuf::from(root_path);
     let path_relative = RelativePath::new(root_path)
         .normalize()
@@ -94,10 +97,18 @@ pub async fn browser(
     id: i32,
     path_obj: &PathObject,
 ) -> Result<PathObject, ServiceError> {
-    let (config, _) = playout_config(conn, &id).await?;
-    let extensions = config.storage.extensions;
+    let (config, channel) = playout_config(conn, &id).await?;
+    let mut channel_extensions = channel
+        .extra_extensions
+        .split(',')
+        .map(|e| e.to_string())
+        .collect::<Vec<String>>();
+    let mut extensions = config.storage.extensions;
+    extensions.append(&mut channel_extensions);
+
     let (path, parent, path_component) = norm_abs_path(&config.storage.path, &path_obj.source);
     let mut obj = PathObject::new(path_component, Some(parent));
+    obj.folders_only = path_obj.folders_only;
 
     let mut paths: Vec<PathBuf> = match fs::read_dir(path) {
         Ok(p) => p.filter_map(|r| r.ok()).map(|p| p.path()).collect(),
@@ -119,7 +130,7 @@ pub async fn browser(
 
         if path.is_dir() {
             folders.push(path.file_name().unwrap().to_string_lossy().to_string());
-        } else if path.is_file() {
+        } else if path.is_file() && !path_obj.folders_only {
             if let Some(ext) = file_extension(&path) {
                 if extensions.contains(&ext.to_string().to_lowercase()) {
                     let media = MediaProbe::new(&path.display().to_string());

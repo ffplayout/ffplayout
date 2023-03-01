@@ -39,7 +39,7 @@ pub use config::{
     OutputMode::{self, *},
     PlayoutConfig,
     ProcessMode::{self, *},
-    DUMMY_LEN, FFMPEG_IGNORE_ERRORS, IMAGE_FORMAT,
+    DUMMY_LEN, FFMPEG_IGNORE_ERRORS, FFMPEG_UNRECOVERABLE_ERRORS, IMAGE_FORMAT,
 };
 pub use controller::{
     PlayerControl, PlayoutStatus, ProcessControl,
@@ -253,7 +253,7 @@ impl MediaProbe {
     }
 }
 
-/// Calculate fps from rae/factor string
+/// Calculate fps from rate/factor string
 pub fn fps_calc(r_frame_rate: &str, default: f64) -> f64 {
     let mut fps = default;
 
@@ -635,7 +635,7 @@ pub fn include_file(config: PlayoutConfig, file_path: &Path) -> bool {
 pub fn stderr_reader(
     buffer: BufReader<ChildStderr>,
     suffix: ProcessUnit,
-    mut proc_control: ProcessControl,
+    proc_control: ProcessControl,
 ) -> Result<(), Error> {
     for line in buffer.lines() {
         let line = line?;
@@ -660,13 +660,13 @@ pub fn stderr_reader(
                 line.replace("[error] ", "").replace("[fatal] ", "")
             );
 
-            if line.contains("Invalid argument")
-                || line.contains("Numerical result")
+            if FFMPEG_UNRECOVERABLE_ERRORS
+                .iter()
+                .any(|i| line.contains(*i))
                 || (line.contains("No such file or directory")
                     && !line.contains("failed to delete old segment"))
-                || line.contains("Error initializing complex filters")
             {
-                proc_control.kill_all();
+                proc_control.stop_all();
                 exit(1);
             }
         }

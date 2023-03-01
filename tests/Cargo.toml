@@ -1,7 +1,10 @@
 [package]
 name = "tests"
-version = "0.1.1"
-edition = "2021"
+version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+edition.workspace = true
 publish = false
 
 [dev-dependencies]
@@ -22,7 +25,8 @@ regex = "1"
 reqwest = { version = "0.11", features = ["blocking", "json"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-serde_yaml = "0.8"
+serde_yaml = "0.9"
+serial_test = { git = "https://github.com/palfrey/serial_test.git", branch = "main" }
 shlex = "1.1"
 simplelog = { version = "^0.12", features = ["paris"] }
 time = { version = "0.3", features = ["formatting", "macros"] }
@@ -39,4 +43,3 @@ path = "src/engine_playlist.rs"
 [[test]]
 name = "engine_cmd"
 path = "src/engine_cmd.rs"
-

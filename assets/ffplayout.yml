@@ -57,6 +57,7 @@ processing:
         With 'custom_filter' it is possible, to apply further filters. The filter outputs
         should end with [c_v_out] for video filter, and [c_a_out] for audio filter.
     mode: playlist
+    audio_only: false
     width: 1024
     height: 576
     aspect: 1.778

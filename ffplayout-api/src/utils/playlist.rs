@@ -5,7 +5,7 @@ use sqlx::{Pool, Sqlite};
 
 use crate::utils::{errors::ServiceError, playout_config};
 use ffplayout_lib::utils::{
-    generate_playlist as playlist_generator, json_reader, json_writer, JsonPlaylist,
+    generate_playlist as playlist_generator, json_reader, json_writer, JsonPlaylist, PlayoutConfig,
 };
 
 pub async fn read_playlist(
@@ -78,14 +78,10 @@ pub async fn write_playlist(
 }
 
 pub async fn generate_playlist(
-    conn: &Pool<Sqlite>,
-    id: i32,
-    date: String,
+    config: PlayoutConfig,
+    channel: String,
 ) -> Result<JsonPlaylist, ServiceError> {
-    let (mut config, channel) = playout_config(conn, &id).await?;
-    config.general.generate = Some(vec![date.clone()]);
-
-    match playlist_generator(&config, Some(channel.name)) {
+    match playlist_generator(&config, Some(channel)) {
         Ok(playlists) => {
             if !playlists.is_empty() {
                 Ok(playlists[0].clone())

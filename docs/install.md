@@ -24,10 +24,15 @@ If you want to configure ffplayout over terminal, you can edit **/etc/ffplayout/
 ### Manual Install
 -----
 
-- copy the binary to `/usr/bin/`
+- install ffmpeg/ffprobe, or compile and copy it to **/usr/local/bin/**
+- download the latest archive from [release](https://github.com/ffplayout/ffplayout/releases/latest) page
+- copy the ffplayout and ffpapi binary to `/usr/bin/`
 - copy **assets/ffplayout.yml** to `/etc/ffplayout`
 - create folder `/var/log/ffplayout`
 - create system user **ffpu**
 - give ownership from `/etc/ffplayout` and `/var/log/ffplayout` to **ffpu**
-- copy **assets/ffplayout.service** to `/etc/systemd/system`
-- activate service and run it: `systemctl enable --now ffplayout`
+- copy **assets/ffpapi.service**, **assets/ffplayout.service** and **assets/ffplayout@.service** to `/etc/systemd/system`
+- copy **assets/11-ffplayout** to `/etc/sudoers.d/`
+- copy **assets/ffpapi.1.gz** and **assets/ffplayout.1.gz** to `/usr/share/man/man1/`
+- copy **public** folder to `/usr/share/ffplayout/`
+- activate service and run it: `systemctl enable --now ffpapi ffplayout`

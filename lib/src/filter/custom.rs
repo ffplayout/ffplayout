@@ -3,7 +3,7 @@ use simplelog::*;
 
 /// Apply custom filters
 pub fn filter_node(filter: &str) -> (String, String) {
-    let re = Regex::new(r"^;?(\[[^\[]+\])?|\[[^\[]+\]$").unwrap(); // match start/end link;
+    let re = Regex::new(r"^;?(\[[0-9]:[^\[]+\])?|\[[^\[]+\]$").unwrap(); // match start/end link
     let mut video_filter = String::new();
     let mut audio_filter = String::new();
 

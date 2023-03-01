@@ -6,7 +6,8 @@ use std::{
     str::FromStr,
 };
 
-use serde::{Deserialize, Serialize};
+use log::LevelFilter;
+use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use shlex::split;
 
 use super::vec_strings;
@@ -19,7 +20,7 @@ pub const IMAGE_FORMAT: [&str; 21] = [
 ];
 
 // Some well known errors can be safely ignore
-pub const FFMPEG_IGNORE_ERRORS: [&str; 10] = [
+pub const FFMPEG_IGNORE_ERRORS: [&str; 11] = [
     "ac-tex damaged",
     "codec s302m, is muxed as a private data stream",
     "corrupt decoded frame in stream",
@@ -30,6 +31,15 @@ pub const FFMPEG_IGNORE_ERRORS: [&str; 10] = [
     "skipped MB in I-frame at",
     "Thread message queue blocking",
     "Warning MVs not available",
+    "frame size not set",
+];
+
+pub const FFMPEG_UNRECOVERABLE_ERRORS: [&str; 5] = [
+    "Address already in use",
+    "Invalid argument",
+    "Numerical result",
+    "Error initializing complex filters",
+    "Error while decoding stream #0:0: Invalid data found when processing input",
 ];
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
@@ -80,6 +90,37 @@ impl FromStr for ProcessMode {
             "playlist" => Ok(Self::Playlist),
             _ => Err("Use 'folder' or 'playlist'".to_string()),
         }
+    }
+}
+
+pub fn string_to_log_level<'de, D>(deserializer: D) -> Result<LevelFilter, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s: String = Deserialize::deserialize(deserializer)?;
+
+    match s.to_lowercase().as_str() {
+        "debug" => Ok(LevelFilter::Debug),
+        "error" => Ok(LevelFilter::Error),
+        "info" => Ok(LevelFilter::Info),
+        "trace" => Ok(LevelFilter::Trace),
+        "warning" => Ok(LevelFilter::Warn),
+        "off" => Ok(LevelFilter::Off),
+        _ => Err(de::Error::custom("Error level not exists!")),
+    }
+}
+
+fn log_level_to_string<S>(l: &LevelFilter, s: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    match l {
+        LevelFilter::Debug => s.serialize_str("DEBUG"),
+        LevelFilter::Error => s.serialize_str("ERROR"),
+        LevelFilter::Info => s.serialize_str("INFO"),
+        LevelFilter::Trace => s.serialize_str("TRACE"),
+        LevelFilter::Warn => s.serialize_str("WARNING"),
+        LevelFilter::Off => s.serialize_str("OFF"),
     }
 }
 
@@ -147,7 +188,11 @@ pub struct Logging {
     pub local_time: bool,
     pub timestamp: bool,
     pub log_path: String,
-    pub log_level: String,
+    #[serde(
+        serialize_with = "log_level_to_string",
+        deserialize_with = "string_to_log_level"
+    )]
+    pub log_level: LevelFilter,
     pub ffmpeg_level: String,
     pub ingest_level: Option<String>,
 }
@@ -156,6 +201,8 @@ pub struct Logging {
 pub struct Processing {
     pub help_text: String,
     pub mode: ProcessMode,
+    #[serde(default)]
+    pub audio_only: bool,
     pub width: i64,
     pub height: i64,
     pub aspect: f64,
@@ -213,6 +260,8 @@ pub struct Playlist {
 pub struct Storage {
     pub help_text: String,
     pub path: String,
+    #[serde(skip_serializing, skip_deserializing)]
+    pub paths: Vec<String>,
     pub filler_clip: String,
     pub extensions: Vec<String>,
     pub shuffle: bool,
@@ -326,24 +375,30 @@ impl PlayoutConfig {
             (config.processing.width * config.processing.height / 16) / 2
         );
 
-        let mut process_cmd = vec_strings![
-            "-pix_fmt",
-            "yuv420p",
-            "-r",
-            &config.processing.fps,
-            "-c:v",
-            "mpeg2video",
-            "-g",
-            "1",
-            "-b:v",
-            &bitrate,
-            "-minrate",
-            &bitrate,
-            "-maxrate",
-            &bitrate,
-            "-bufsize",
-            &buff_size
-        ];
+        let mut process_cmd = vec_strings![];
+
+        if config.processing.audio_only {
+            process_cmd.append(&mut vec_strings!["-vn"]);
+        } else {
+            process_cmd.append(&mut vec_strings![
+                "-pix_fmt",
+                "yuv420p",
+                "-r",
+                &config.processing.fps,
+                "-c:v",
+                "mpeg2video",
+                "-g",
+                "1",
+                "-b:v",
+                &bitrate,
+                "-minrate",
+                &bitrate,
+                "-maxrate",
+                &bitrate,
+                "-bufsize",
+                &buff_size
+            ]);
+        }
 
         process_cmd.append(&mut pre_audio_codec(
             config.processing.add_loudnorm,

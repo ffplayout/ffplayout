@@ -25,7 +25,7 @@ use api::{
     },
 };
 use db::{db_pool, models::LoginUser};
-use utils::{args_parse::Args, db_path, init_config, run_args, Role};
+use utils::{args_parse::Args, control::ProcessControl, db_path, init_config, run_args, Role};
 
 use ffplayout_lib::utils::{init_logging, PlayoutConfig};
 
@@ -87,6 +87,7 @@ async fn main() -> std::io::Result<()> {
         let ip_port = conn.split(':').collect::<Vec<&str>>();
         let addr = ip_port[0];
         let port = ip_port[1].parse::<u16>().unwrap();
+        let engine_process = web::Data::new(ProcessControl::new());
 
         info!("running ffplayout API, listen on {conn}");
 
@@ -97,6 +98,7 @@ async fn main() -> std::io::Result<()> {
 
             App::new()
                 .app_data(db_pool)
+                .app_data(engine_process.clone())
                 .wrap(middleware::Logger::default())
                 .service(login)
                 .service(
