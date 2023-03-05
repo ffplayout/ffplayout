@@ -1,0 +1,13 @@
+version: '3'
+
+services:
+  ffplayout:
+    cap_add:
+      - SYS_ADMIN
+    container_name: ffplayout
+    build:
+      dockerfile: ./Dockerfile
+    ports:
+      - '8787'
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup
