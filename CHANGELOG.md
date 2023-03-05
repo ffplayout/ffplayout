@@ -1,6 +1,37 @@
 # Changelog
 
-## [0.16.6](https://github.com/ffplayout/ffplayout/compare/v0.16.6...v0.16.7) (2022-12-20)
+## [0.17.0](https://github.com/ffplayout/ffplayout/compare/v0.16.7...v0.17.0) (2023-03-05)
+
+### ffpapi
+
+- use extensions from config and extra_extension from frontend [e363077](https://github.com/ffplayout/ffplayout/commit/e363077d30c47bb42adf39728f0f961cf1cee903)
+- support folder list for playlist generation [e752a7a](https://github.com/ffplayout/ffplayout/commit/e752a7a95110b35d29538b8b2221e3f79c065b31)
+- add piggyback mode [7e5a391](https://github.com/ffplayout/ffplayout/commit/7e5a391e3d77f67b243026d3c4c1fded583cd2d9) [6c5264e](https://github.com/ffplayout/ffplayout/commit/6c5264ea5fe123b0718a4525605761ee1971ffae)
+
+### ffplayout
+
+- fix v_in in custom filter [537f664](https://github.com/ffplayout/ffplayout/commit/537f664c067a122e31c06c196d354dc4bfd7fed3)
+- add audio only mode [537f664](https://github.com/ffplayout/ffplayout/commit/537f664c067a122e31c06c196d354dc4bfd7fed3)
+- get correct error level from config [c0740fc](https://github.com/ffplayout/ffplayout/commit/c0740fc8303f08cb57fe956de805290a705e5a28)
+
+### frontend
+
+- rewrite frontend to nuxtjs 3
+
+### Development
+
+- update ffmpeg action [b2093dd](https://github.com/ffplayout/ffplayout/commit/b2093ddf352964115c11bc09c2849c8491ee1156)
+- set version and other metadata globally [3b61d09](https://github.com/ffplayout/ffplayout/commit/3b61d09809db4c6e1c02c5b8f0bb22eab9f4568d)
+- another filter test [0ed6add](https://github.com/ffplayout/ffplayout/commit/0ed6add25fe43b6137400fbbda68b641c766f734)
+- fix "error: unpacking of archive failed: cpio: Bad magic" [8a2e1e7](https://github.com/ffplayout/ffplayout/commit/8a2e1e7d3dccf76a078a16e3845bd0b4398d2f3f)
+
+### Documentation
+
+- add infos about ingest errors [c57d497](https://github.com/ffplayout/ffplayout/commit/c57d497dee9afb47a9a388d4c72feeafd55f8867)
+- update install instruction [d9952c8](https://github.com/ffplayout/ffplayout/commit/d9952c88fc5a50fd797161745ad0e95ec79099ef)
+- add docker documentation [505ae23](https://github.com/ffplayout/ffplayout/commit/505ae23a1c2d69837ec1075be33d10f91eb6363f)
+
+## [0.16.7](https://github.com/ffplayout/ffplayout/compare/v0.16.6...v0.16.7) (2022-12-20)
 
 ### ffplayout
 
