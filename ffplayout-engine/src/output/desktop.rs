@@ -23,6 +23,17 @@ pub fn output(config: &PlayoutConfig, log_format: &str) -> process::Child {
         "ffplayout"
     ];
 
+    if let Some(mut cmd) = config.out.output_cmd.clone() {
+        if !cmd
+            .iter()
+            .any(|i| ["-c:v", "-vcodec", "-c:a", "-acodec"].contains(&i.as_str()))
+        {
+            enc_cmd.append(&mut cmd);
+        } else {
+            warn!("Desktop output supports custom parameters, but given ones a not supported by ffplay!");
+        }
+    }
+
     if config.text.add_text && !config.text.text_from_filename && !config.processing.audio_only {
         if let Some(socket) = config.text.zmq_stream_socket.clone() {
             debug!(
