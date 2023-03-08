@@ -159,7 +159,7 @@ pub fn player(
 
                 for rx in ingest_receiver.as_ref().unwrap().try_iter() {
                     if let Err(e) = enc_writer.write(&rx.1[..rx.0]) {
-                        error!("Encoder write error: {:?}", e);
+                        error!("Error from Ingest: {:?}", e);
 
                         break 'source_iter;
                     };
@@ -187,7 +187,7 @@ pub fn player(
 
                 if dec_bytes_len > 0 {
                     if let Err(e) = enc_writer.write(&buffer[..dec_bytes_len]) {
-                        error!("Encoder write error: {e:?}");
+                        error!("Encoder write error: {}", e.kind());
 
                         break 'source_iter;
                     };

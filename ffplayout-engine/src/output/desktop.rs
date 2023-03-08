@@ -24,13 +24,24 @@ pub fn output(config: &PlayoutConfig, log_format: &str) -> process::Child {
     ];
 
     if let Some(mut cmd) = config.out.output_cmd.clone() {
-        if !cmd
-            .iter()
-            .any(|i| ["-c:v", "-vcodec", "-c:a", "-acodec"].contains(&i.as_str()))
-        {
+        if !cmd.iter().any(|i| {
+            [
+                "-c:v",
+                "-c:v:0",
+                "-b:v",
+                "-b:v:0",
+                "-vcodec",
+                "-c:a",
+                "-acodec",
+                "-crf",
+                "-map",
+                "-filter_complex",
+            ]
+            .contains(&i.as_str())
+        }) {
             enc_cmd.append(&mut cmd);
         } else {
-            warn!("Desktop output supports custom parameters, but given ones a not supported by ffplay!");
+            warn!("Given output parameter a skipped, they are not supported by ffplay!");
         }
     }
 
