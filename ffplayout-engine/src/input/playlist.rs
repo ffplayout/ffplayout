@@ -442,8 +442,8 @@ fn timed_source(
         || !config.playlist.length.contains(':')
     {
         // when we are in the 24 hour range, get the clip
-        new_node = gen_source(config, node, &playout_stat.chain);
         new_node.process = Some(true);
+        new_node = gen_source(config, node, &playout_stat.chain);
     } else if total_delta <= 0.0 {
         info!("Begin is over play time, skip: {}", node.source);
     } else if total_delta < node.duration - node.seek || last {
@@ -476,13 +476,10 @@ pub fn gen_source(
             node.cmd = Some(seek_and_length(&node));
         }
     } else {
-        let probe = MediaProbe::new(&config.storage.filler_clip);
+        error!("Source not found: <b><magenta>\"{}\"</></b>", node.source);
+        warn!("Generate filler with <yellow>{duration:.2}</> seconds length!");
 
-        if node.source.is_empty() {
-            warn!("Generate filler with <yellow>{duration:.2}</> seconds length!");
-        } else {
-            error!("Source not found: <b><magenta>{}</></b>", node.source);
-        }
+        let probe = MediaProbe::new(&config.storage.filler_clip);
 
         if config
             .storage
