@@ -14,8 +14,9 @@ use simplelog::*;
 use crate::utils::Media;
 
 /// Defined process units.
-#[derive(Clone, Debug, Copy, Eq, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Default, Copy, Eq, Serialize, Deserialize, PartialEq)]
 pub enum ProcessUnit {
+    #[default]
     Decoder,
     Encoder,
     Ingest,
@@ -28,12 +29,6 @@ impl fmt::Display for ProcessUnit {
             ProcessUnit::Encoder => write!(f, "Encoder"),
             ProcessUnit::Ingest => write!(f, "Ingest"),
         }
-    }
-}
-
-impl Default for ProcessUnit {
-    fn default() -> Self {
-        ProcessUnit::Decoder
     }
 }
 
