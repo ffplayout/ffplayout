@@ -523,6 +523,7 @@
 </template>
 
 <script setup lang="ts">
+import { storeToRefs } from 'pinia'
 import { Splitpanes, Pane } from 'splitpanes'
 import 'splitpanes/dist/splitpanes.css'
 
@@ -551,6 +552,8 @@ useHead({
     title: 'Player | ffplayout',
 })
 
+const { configID } = storeToRefs(useConfig())
+
 const fileImport = ref()
 const browserIsLoading = ref(false)
 const playlistIsLoading = ref(false)
@@ -562,7 +565,6 @@ const previewName = ref('')
 const previewUrl = ref('')
 const previewOpt = ref()
 const isVideo = ref(false)
-const configID = ref(configStore.configID)
 const selectedFolders = ref([] as string[])
 const generateFromAll =ref(false)
 const browserSortOptions = ref({
@@ -595,6 +597,7 @@ onMounted(() => {
 })
 
 watch([listDate, configID], () => {
+    getPath('')
     getPlaylist()
 })
 

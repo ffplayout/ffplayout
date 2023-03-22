@@ -251,6 +251,7 @@
 </template>
 
 <script setup lang="ts">
+import { storeToRefs } from 'pinia'
 import { Splitpanes, Pane } from 'splitpanes'
 import 'splitpanes/dist/splitpanes.css'
 
@@ -266,6 +267,8 @@ const mediaStore = useMedia()
 const { toMin, mediaType } = stringFormatter()
 const contentType = { 'content-type': 'application/json;charset=UTF-8' }
 
+const { configID } = storeToRefs(useConfig())
+
 const browserIsLoading = ref(false)
 const deleteName = ref('')
 const renameOldName = ref('')
@@ -280,6 +283,11 @@ onMounted(() => {
         getPath('')
     }
 })
+
+watch([configID], () => {
+    getPath('')
+})
+
 
 async function getPath(path: string) {
     browserIsLoading.value = true

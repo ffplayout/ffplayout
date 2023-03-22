@@ -13,6 +13,7 @@
 </template>
 
 <script setup lang="ts">
+import { storeToRefs } from 'pinia'
 import { useAuth } from '~/stores/auth'
 import { useConfig } from '~/stores/config'
 
@@ -24,9 +25,7 @@ useHead({
     title: 'Logging | ffplayout'
 })
 
-onMounted(() => {
-    getLog()
-})
+const { configID } = storeToRefs(useConfig())
 
 const { $dayjs } = useNuxtApp()
 const authStore = useAuth()
@@ -35,7 +34,11 @@ const currentLog = ref('')
 const listDate = ref($dayjs().utcOffset(configStore.utcOffset).format('YYYY-MM-DD'))
 const { formatLog } = stringFormatter()
 
-watch([listDate, configStore.configID], () => {
+onMounted(() => {
+    getLog()
+})
+
+watch([listDate, configID], () => {
     getLog()
 })
 
