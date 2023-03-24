@@ -292,6 +292,11 @@ fn overlay(node: &mut Media, chain: &mut Filters, config: &PlayoutConfig) {
     {
         let mut scale = String::new();
         let re = Regex::new(r"[)(\d\w-]+:[)(\d\w-]+").unwrap();
+        let mut logo = config.processing.logo.clone();
+
+        if cfg!(windows) {
+            logo = logo.replace('\\', "/").replace(':', "\\\\:");
+        }
 
         if re.is_match(&config.processing.logo_scale) {
             scale = format!(",scale={}", config.processing.logo_scale);
@@ -299,7 +304,7 @@ fn overlay(node: &mut Media, chain: &mut Filters, config: &PlayoutConfig) {
 
         let mut logo_chain = format!(
             "null[v];movie={}:loop=0,setpts=N/(FRAME_RATE*TB),format=rgba,colorchannelmixer=aa={}{scale}[l];[v][l]{}:shortest=1",
-            config.processing.logo, config.processing.logo_opacity, config.processing.logo_filter
+            logo, config.processing.logo_opacity, config.processing.logo_filter
         );
 
         if node.last_ad.unwrap_or(false) {

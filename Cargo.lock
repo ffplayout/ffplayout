@@ -1003,7 +1003,7 @@ dependencies = [
 
 [[package]]
 name = "ffplayout"
-version = "0.17.0-beta6"
+version = "0.17.0-beta7"
 dependencies = [
  "chrono",
  "clap",
@@ -1023,7 +1023,7 @@ dependencies = [
 
 [[package]]
 name = "ffplayout-api"
-version = "0.17.0-beta6"
+version = "0.17.0-beta7"
 dependencies = [
  "actix-files",
  "actix-multipart",
@@ -1056,7 +1056,7 @@ dependencies = [
 
 [[package]]
 name = "ffplayout-lib"
-version = "0.17.0-beta6"
+version = "0.17.0-beta7"
 dependencies = [
  "chrono",
  "crossbeam-channel",
@@ -2929,7 +2929,7 @@ dependencies = [
 
 [[package]]
 name = "tests"
-version = "0.17.0-beta6"
+version = "0.17.0-beta7"
 dependencies = [
  "chrono",
  "crossbeam-channel",
