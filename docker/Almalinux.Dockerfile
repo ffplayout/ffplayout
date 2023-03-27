@@ -1,8 +1,8 @@
-FROM    almalinux:9.1 AS base
+FROM almalinux:9 AS base
 
 ENV container docker
-RUN     dnf -y install libgomp && \
-        dnf clean all;
+RUN dnf -y install libgomp && \
+    dnf clean all;
 
 RUN (cd /lib/systemd/system/sysinit.target.wants/; for i in *; do [ $i == \
 systemd-tmpfiles-setup.service ] || rm -f $i; done); \
@@ -16,9 +16,9 @@ rm -f /lib/systemd/system/anaconda.target.wants/*;
 
 
 
-FROM        base
+FROM base
 
-ARG FFPLAYOUT_VERSION=0.17.1
+ARG FFPLAYOUT_VERSION=0.17.0-beta7
 
 ENV LD_LIBRARY_PATH=/usr/local/lib64:/usr/local/lib
 
@@ -35,10 +35,10 @@ RUN dnf install -y epel-release && \
 RUN \
     dnf update -y \
     && dnf install -y wget dejavu-sans-fonts sudo \
-    && wget -q -O /tmp/ffplayout_${FFPLAYOUT_VERSION}.x86_64.rpm "https://github.com/ffplayout/ffplayout/releases/download/v${VERSION}/ffplayout-${FFPLAYOUT_VERSION}-1.x86_64.rpm" \
-    && yum install -y /tmp/ffplayout_${FFPLAYOUT_VERSION}.x86_64.rpm \
+    && wget -q -O /tmp/ffplayout-${FFPLAYOUT_VERSION}-1.x86_64.rpm "https://github.com/ffplayout/ffplayout/releases/download/v${FFPLAYOUT_VERSION}/ffplayout-${FFPLAYOUT_VERSION}-1.x86_64.rpm" \
+    && dnf install -y /tmp/ffplayout-${FFPLAYOUT_VERSION}-1.x86_64.rpm \
     && dnf clean all \
-    && rm /tmp/ffplayout-${FFPLAYOUT_VERSION}.x86_64.rpm \
+    && rm /tmp/ffplayout-${FFPLAYOUT_VERSION}-1.x86_64.rpm \
     && mkdir -p /home/ffpu && chown -R ffpu: /home/ffpu \
     && systemctl enable ffplayout \
     && systemctl enable ffpapi \
