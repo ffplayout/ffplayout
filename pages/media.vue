@@ -77,23 +77,27 @@
                                         <div class="col-1" style="min-width: 125px">
                                             Overall ({{ currentNumber }}/{{ inputFiles.length }}):
                                         </div>
-                                        <div class="col-10 progress">
-                                            <div
-                                                class="progress-bar bg-warning"
-                                                role="progressbar"
-                                                :aria-valuenow="overallProgress"
-                                                :style="`width: ${overallProgress}%`"
-                                            />
+                                        <div class="col-10">
+                                            <div class="progress">
+                                                <div
+                                                    class="progress-bar bg-warning"
+                                                    role="progressbar"
+                                                    :aria-valuenow="overallProgress"
+                                                    :style="`width: ${overallProgress}%`"
+                                                />
+                                            </div>
                                         </div>
                                         <div class="w-100" />
                                         <div class="col-1" style="min-width: 125px">Current:</div>
-                                        <div class="col-10 progress">
-                                            <div
-                                                class="progress-bar bg-warning"
-                                                role="progressbar"
-                                                :aria-valuenow="currentProgress"
-                                                :style="`width: ${currentProgress}%`"
-                                            />
+                                        <div class="col-10">
+                                            <div class="progress">
+                                                <div
+                                                    class="progress-bar bg-warning"
+                                                    role="progressbar"
+                                                    :aria-valuenow="currentProgress"
+                                                    :style="`width: ${currentProgress}%`"
+                                                />
+                                            </div>
                                         </div>
                                         <div class="w-100" />
                                         <div class="col-1" style="min-width: 125px">Uploading:</div>
@@ -308,5 +312,9 @@ function onResetUpload(evt: any) {
 
 .progress-row .col-10 {
     margin: auto 0 auto 0;
+}
+
+.progress {
+    padding: 0;
 }
 </style>
