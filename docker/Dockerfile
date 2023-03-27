@@ -244,6 +244,7 @@ ENV LD_LIBRARY_PATH=/usr/local/lib64:/usr/local/lib
 COPY --from=build /usr/local/ /usr/local/
 
 ADD ./overide.conf /etc/systemd/system/ffplayout.service.d/overide.conf
+ADD ./overide.conf /etc/systemd/system/ffpapi.service.d/overide.conf
 
 RUN \
     yum update -y \
