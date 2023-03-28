@@ -19,8 +19,6 @@ FROM base
 ARG FFPLAYOUT_VERSION=0.17.0-beta7
 COPY README.md *.rpm /tmp/
 
-RUN echo $(ls /tmp/)
-
 RUN dnf update -y && \
     dnf install -y epel-release && \
     dnf install -y 'dnf-command(config-manager)' && \
