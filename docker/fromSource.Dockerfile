@@ -433,7 +433,7 @@ RUN \
 
 FROM base
 
-ARG FFPLAYOUT_VERSION=0.17.0-beta7
+ARG FFPLAYOUT_VERSION=0.17.0
 
 ENV LD_LIBRARY_PATH=/usr/local/lib64:/usr/local/lib
 
