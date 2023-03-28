@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.17.0](https://github.com/ffplayout/ffplayout/compare/v0.16.7...v0.17.0) (2023-03-05)
+## [0.17.0](https://github.com/ffplayout/ffplayout/compare/v0.16.7...v0.17.0) (2023-03-28)
 
 ### ffpapi
 
@@ -13,6 +13,7 @@
 - fix v_in in custom filter [537f664](https://github.com/ffplayout/ffplayout/commit/537f664c067a122e31c06c196d354dc4bfd7fed3)
 - add audio only mode [537f664](https://github.com/ffplayout/ffplayout/commit/537f664c067a122e31c06c196d354dc4bfd7fed3)
 - get correct error level from config [c0740fc](https://github.com/ffplayout/ffplayout/commit/c0740fc8303f08cb57fe956de805290a705e5a28)
+- fix logo path on windows system #291 [3328aaa](https://github.com/ffplayout/ffplayout/commit/3328aaac6a6b814ce491ff3c07e580136ea453dd)
 
 ### frontend
 
