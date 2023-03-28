@@ -6,19 +6,17 @@ RUN yum -y install libgomp && \
 
 RUN (cd /lib/systemd/system/sysinit.target.wants/; for i in *; do [ $i == \
     systemd-tmpfiles-setup.service ] || rm -f $i; done); \
-    rm -f /lib/systemd/system/multi-user.target.wants/*;\
-    rm -f /etc/systemd/system/*.wants/*;\
+    rm -f /lib/systemd/system/multi-user.target.wants/*; \
+    rm -f /etc/systemd/system/*.wants/*; \
     rm -f /lib/systemd/system/local-fs.target.wants/*; \
     rm -f /lib/systemd/system/sockets.target.wants/*udev*; \
     rm -f /lib/systemd/system/sockets.target.wants/*initctl*; \
-    rm -f /lib/systemd/system/basic.target.wants/*;\
-    rm -f /lib/systemd/system/anaconda.target.wants/*;
-
+    rm -f /lib/systemd/system/basic.target.wants/*; \
+    rm -f /lib/systemd/system/anaconda.target.wants/*
 
 FROM base AS build
 
 WORKDIR /tmp/workdir
-
 
 ENV FFMPEG_VERSION=5.1.2 \
     AOM_VERSION=v1.0.0 \
@@ -37,7 +35,6 @@ ARG MAKEFLAGS="-j2"
 ARG PKG_CONFIG_PATH="/opt/ffmpeg/share/pkgconfig:/opt/ffmpeg/lib/pkgconfig:/opt/ffmpeg/lib64/pkgconfig"
 ARG PREFIX=/opt/ffmpeg
 ARG LD_LIBRARY_PATH="/opt/ffmpeg/lib:/opt/ffmpeg/lib64"
-
 
 RUN buildDeps="autoconf \
         automake \
@@ -97,7 +94,6 @@ RUN buildDeps="autoconf \
     yum history undo $(yum history info | grep 'Transaction ID' | awk -F: '{print$2}' | tr -d ' ') -y && \
     yum autoremove -y
 
-
 RUN yum -y install \
     lame-libs \
     openjpeg-libs \
@@ -138,6 +134,7 @@ RUN  \
     make -j $(nproc | awk '{print $1 / 2}') && \
     make install && \
     rm -rf ${DIR}
+
 ## fontconfig https://www.freedesktop.org/wiki/Software/fontconfig/
 RUN  \
     DIR=/tmp/fontconfig && \
@@ -149,6 +146,7 @@ RUN  \
     make -j $(nproc | awk '{print $1 / 2}') && \
     make install && \
     rm -rf ${DIR}
+
 ## libass https://github.com/libass/libass
 RUN  \
     DIR=/tmp/libass && \
