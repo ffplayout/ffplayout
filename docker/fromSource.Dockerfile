@@ -448,7 +448,7 @@ RUN \
     && wget -q -O /tmp/ffplayout-${FFPLAYOUT_VERSION}-1.x86_64.rpm "https://github.com/ffplayout/ffplayout/releases/download/v${FFPLAYOUT_VERSION}/ffplayout-${FFPLAYOUT_VERSION}-1.x86_64.rpm" \
     && yum install -y /tmp/ffplayout-${FFPLAYOUT_VERSION}-1.x86_64.rpm \
     && yum clean all \
-    && rm /tmp/ffplayout-${FFPLAYOUT_VERSION}.x86_64.rpm \
+    && rm /tmp/ffplayout-${FFPLAYOUT_VERSION}-1.x86_64.rpm \
     && mkdir -p /home/ffpu && chown -R ffpu: /home/ffpu \
     && systemctl enable ffplayout \
     && systemctl enable ffpapi \
