@@ -2,7 +2,7 @@
 
 sysUser="ffpu"
 
-if [ $(id -u $sysUser 2>/dev/null || echo -1) -ge -1 ]; then
+if [ ! $(id -u $sysUser 2>/dev/null || echo -1) -ge 0 ]; then
     adduser --system $sysUser
 fi
 
