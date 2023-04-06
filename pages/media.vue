@@ -330,6 +330,7 @@
                             <input
                                 class="form-control"
                                 type="file"
+                                ref="fileInputName"
                                 :accept="extensions"
                                 v-on:change="onFileChange"
                                 multiple
@@ -338,6 +339,18 @@
                             <div class="row">
                                 <div class="col-10">
                                     <div class="row progress-row">
+                                        <div class="col-1" style="min-width: 125px">Current:</div>
+                                        <div class="col-10">
+                                            <div class="progress">
+                                                <div
+                                                    class="progress-bar bg-warning"
+                                                    role="progressbar"
+                                                    :aria-valuenow="currentProgress"
+                                                    :style="`width: ${currentProgress}%`"
+                                                />
+                                            </div>
+                                        </div>
+                                        <div class="w-100" />
                                         <div class="col-1" style="min-width: 125px">
                                             Overall ({{ currentNumber }}/{{ inputFiles.length }}):
                                         </div>
@@ -348,18 +361,6 @@
                                                     role="progressbar"
                                                     :aria-valuenow="overallProgress"
                                                     :style="`width: ${overallProgress}%`"
-                                                />
-                                            </div>
-                                        </div>
-                                        <div class="w-100" />
-                                        <div class="col-1" style="min-width: 125px">Current:</div>
-                                        <div class="col-10">
-                                            <div class="progress">
-                                                <div
-                                                    class="progress-bar bg-warning"
-                                                    role="progressbar"
-                                                    :aria-valuenow="currentProgress"
-                                                    :style="`width: ${currentProgress}%`"
                                                 />
                                             </div>
                                         </div>
@@ -427,6 +428,7 @@ const uploadModal = ref()
 const extensions = ref('')
 const folderName = ref('')
 const inputFiles = ref([] as File[])
+const fileInputName = ref()
 const currentNumber = ref(0)
 const uploadTask = ref('')
 const overallProgress = ref(0)
@@ -619,21 +621,11 @@ function onFileChange(evt: any) {
     inputFiles.value = files
 }
 
-async function onSubmitUpload(evt: any) {
-    evt.preventDefault()
-
-    lastPath.value = mediaStore.folderTree.source
-
-    for (let i = 0; i < inputFiles.value.length; i++) {
-        const file = inputFiles.value[i]
-        uploadTask.value = file.name
-        currentNumber.value = i + 1
-
-        const formData = new FormData()
-        formData.append(file.name, file)
-
-        xhr.value = new XMLHttpRequest()
-
+function upload(file: any): Promise<null> {
+    const formData = new FormData()
+    formData.append(file.name, file)
+    xhr.value = new XMLHttpRequest()
+    return new Promise(resolve => {
         xhr.value.open(
             'PUT',
             `/api/file/${configStore.configGui[configStore.configID].id}/upload/?path=${encodeURIComponent(
@@ -651,28 +643,48 @@ async function onSubmitUpload(evt: any) {
             indexStore.alertVariant = 'alert-danger'
             indexStore.alertMsg = `Upload error: ${xhr.value.status}`
             indexStore.showAlert = true
+            resolve(undefined)
         }
 
         // upload completed successfully
         xhr.value.onload = function () {
-            overallProgress.value = (currentNumber.value * 100) / inputFiles.value.length
             currentProgress.value = 100
+            resolve(xhr.response)
         }
 
         xhr.value.send(formData)
+    });
+}
+
+async function onSubmitUpload(evt: any) {
+    evt.preventDefault()
+
+    lastPath.value = mediaStore.folderTree.source
+
+    for (let i = 0; i < inputFiles.value.length; i++) {
+        const file = inputFiles.value[i]
+        uploadTask.value = file.name
+        currentProgress.value = 0
+        currentNumber.value = i + 1
+
+        await upload(file)
+
+        overallProgress.value = (currentNumber.value * 100) / inputFiles.value.length
     }
 
     uploadTask.value = 'Done...'
     getPath(lastPath.value)
 
     setTimeout(() => {
+        fileInputName.value.value = null
         thisUploadModal.value.hide()
         currentNumber.value = 0
         currentProgress.value = 0
         overallProgress.value = 0
         inputFiles.value = []
         indexStore.showAlert = false
-    }, 1000)
+        uploadTask.value = ''
+    }, 1500)
 }
 
 function onResetUpload(evt: any) {
@@ -687,7 +699,6 @@ function onResetUpload(evt: any) {
 </script>
 
 <style lang="scss">
-
 .browser-container .browser-item:hover {
     background-color: $item-hover;
 
@@ -704,6 +715,14 @@ function onResetUpload(evt: any) {
     margin-right: 0.8em;
     display: none;
     min-width: 30px;
+}
+
+#deleteModal strong {
+    display:inline-block;
+    width: 100%;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
 }
 
 .file-delete,
