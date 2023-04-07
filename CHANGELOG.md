@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.17.1]() (2023-04-07)
+
+### frontend
+- fix upload function [5e976f2](https://github.com/ffplayout/ffplayout/pull/310/commits/5e976f212b47d572839e01ee73dfb632fbe1a70c)
+- update bootstrap to 5.3.0 alpha 3 [8024a99](https://github.com/ffplayout/ffplayout/pull/310/commits/8024a990a651920ba2244f6b120ecff9701c79d2)
+
 ## [0.17.0](https://github.com/ffplayout/ffplayout/compare/v0.16.7...v0.17.0) (2023-03-28)
 
 ### ffpapi
