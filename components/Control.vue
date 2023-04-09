@@ -31,11 +31,18 @@
                                 </div>
                                 <div class="col time-col counter-col">
                                     <div class="time-str">
-                                        {{ secToHMS((playlistStore.remainingSec >= 0) ? playlistStore.remainingSec : 0) }}
+                                        {{ secToHMS(playlistStore.remainingSec >= 0 ? playlistStore.remainingSec : 0) }}
                                     </div>
                                 </div>
                                 <div class="col current-clip">
-                                    <div class="current-clip-text" :title="filename(playlistStore.currentClip)">
+                                    <div
+                                        v-if="playlistStore.ingestRuns"
+                                        class="current-clip-text"
+                                        title="Live Ingest"
+                                    >
+                                        Live Ingest
+                                    </div>
+                                    <div v-else class="current-clip-text" :title="filename(playlistStore.currentClip)">
                                         {{ filename(playlistStore.currentClip) }}
                                     </div>
                                     <div class="current-clip-meta">
@@ -157,17 +164,17 @@ const videoOptions = ref({
     suppressNotSupportedError: true,
     autoplay: false,
     preload: 'auto',
-    sources: [] as SourceObject[],
+    sources: [] as SourceObject[]
 })
 const httpFlvSource = ref({
     type: 'flv',
     isLive: true,
-    url: '',
+    url: ''
 })
 const mpegtsOptions = ref({
     enableWorker: true,
     lazyLoadMaxDuration: 3 * 60,
-    liveBufferLatencyChasing: true,
+    liveBufferLatencyChasing: true
 })
 
 onMounted(() => {
@@ -176,8 +183,8 @@ onMounted(() => {
     videoOptions.value.sources = [
         {
             type: 'application/x-mpegURL',
-            src: configStore.configGui[configStore.configID].preview_url,
-        },
+            src: configStore.configGui[configStore.configID].preview_url
+        }
     ]
 
     let player: any
@@ -253,7 +260,7 @@ async function playoutStatus() {
     await $fetch(`/api/control/${channel}/process/`, {
         method: 'POST',
         headers: { ...contentType, ...authStore.authHeader },
-        body: JSON.stringify({ command: 'status' }),
+        body: JSON.stringify({ command: 'status' })
     })
         .then((response: any) => {
             if (response === 'active') {
@@ -277,7 +284,7 @@ async function controlProcess(state: string) {
     await $fetch(`/api/control/${channel}/process/`, {
         method: 'POST',
         headers: { ...contentType, ...authStore.authHeader },
-        body: JSON.stringify({ command: state }),
+        body: JSON.stringify({ command: state })
     })
 
     setTimeout(() => {
@@ -298,7 +305,7 @@ async function controlPlayout(state: string) {
     await $fetch(`/api/control/${channel}/playout/`, {
         method: 'POST',
         headers: { ...contentType, ...authStore.authHeader },
-        body: JSON.stringify({ control: state }),
+        body: JSON.stringify({ control: state })
     })
 
     setTimeout(() => {

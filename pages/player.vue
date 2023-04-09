@@ -138,6 +138,11 @@
                                 <li
                                     :id="`clip_${index}`"
                                     class="draggable list-group-item playlist-item"
+                                    :class="
+                                        index === playlistStore.currentClipIndex && listDate === todayDate
+                                            ? 'active-playlist-clip'
+                                            : ''
+                                    "
                                     :key="element.uid"
                                 >
                                     <div class="row playlist-row">
@@ -478,7 +483,7 @@
                                                             '/'
                                                         ),
                                                         true
-                                                    ),
+                                                    )
                                                 ]
                                             "
                                         >
@@ -545,11 +550,11 @@ const mediaStore = useMedia()
 const playlistStore = usePlaylist()
 
 definePageMeta({
-    middleware: ['auth'],
+    middleware: ['auth']
 })
 
 useHead({
-    title: 'Player | ffplayout',
+    title: 'Player | ffplayout'
 })
 
 const { configID } = storeToRefs(useConfig())
@@ -557,6 +562,7 @@ const { configID } = storeToRefs(useConfig())
 const fileImport = ref()
 const browserIsLoading = ref(false)
 const playlistIsLoading = ref(false)
+const todayDate = ref($dayjs().utcOffset(configStore.utcOffset).format('YYYY-MM-DD'))
 const listDate = ref($dayjs().utcOffset(configStore.utcOffset).format('YYYY-MM-DD'))
 const targetDate = ref($dayjs().utcOffset(configStore.utcOffset).format('YYYY-MM-DD'))
 const editId = ref(-1)
@@ -566,15 +572,15 @@ const previewUrl = ref('')
 const previewOpt = ref()
 const isVideo = ref(false)
 const selectedFolders = ref([] as string[])
-const generateFromAll =ref(false)
+const generateFromAll = ref(false)
 const browserSortOptions = ref({
     group: { name: 'playlist', pull: 'clone', put: false },
-    sort: false,
+    sort: false
 })
 const playlistSortOptions = ref({
     group: 'playlist',
     animation: 100,
-    handle: '.grabbing',
+    handle: '.grabbing'
 })
 const newSource = ref({
     begin: 0,
@@ -585,7 +591,7 @@ const newSource = ref({
     custom_filter: '',
     source: '',
     audio: '',
-    uid: '',
+    uid: ''
 } as PlaylistItem)
 
 onMounted(() => {
@@ -601,6 +607,16 @@ watch([listDate, configID], () => {
     getPlaylist()
 })
 
+function scrollTo(index: number) {
+    const child = document.getElementById(`clip_${index}`)
+
+    if (child) {
+        const parent = document.getElementById('scroll-container')
+        const topPos = child.offsetTop
+        parent.scrollTop = topPos - 50
+    }
+}
+
 async function getPath(path: string) {
     browserIsLoading.value = true
     await mediaStore.getTree(path)
@@ -611,6 +627,12 @@ async function getPlaylist() {
     playlistIsLoading.value = true
     await playlistStore.getPlaylist(listDate.value)
     playlistIsLoading.value = false
+
+    if (listDate.value === todayDate.value) {
+        scrollTo(playlistStore.currentClipIndex)
+    } else {
+        scrollTo(0)
+    }
 }
 
 function closePlayer() {
@@ -652,7 +674,7 @@ function cloneClip(event: any) {
         source: sourcePath,
         in: 0,
         out: mediaStore.folderTree.files[o].duration,
-        duration: mediaStore.folderTree.files[o].duration,
+        duration: mediaStore.folderTree.files[o].duration
     })
 
     playlistStore.playlist = processPlaylist(
@@ -697,9 +719,9 @@ function setPreviewData(path: string) {
             sources: [
                 {
                     type: `video/${ext}`,
-                    src: previewUrl.value,
-                },
-            ],
+                    src: previewUrl.value
+                }
+            ]
         }
     } else {
         isVideo.value = false
@@ -738,7 +760,7 @@ function processSource(evt: any) {
         custom_filter: '',
         source: '',
         audio: '',
-        uid: '',
+        uid: ''
     }
 }
 
@@ -753,7 +775,7 @@ function clearNewSource() {
         custom_filter: '',
         source: '',
         audio: '',
-        uid: genUID(),
+        uid: genUID()
     }
 }
 
@@ -769,7 +791,7 @@ function editPlaylistItem(i: number) {
         custom_filter: playlistStore.playlist[i].custom_filter,
         source: playlistStore.playlist[i].source,
         audio: playlistStore.playlist[i].audio,
-        uid: playlistStore.playlist[i].uid,
+        uid: playlistStore.playlist[i].uid
     }
 }
 
@@ -821,7 +843,7 @@ async function onSubmitImport(evt: any) {
         {
             method: 'PUT',
             headers: authStore.authHeader,
-            body: formData,
+            body: formData
         }
     )
         .then(() => {
@@ -855,7 +877,7 @@ async function generatePlaylist() {
 
     let payload = {
         method: 'POST',
-        headers: { ...contentType, ...authStore.authHeader },
+        headers: { ...contentType, ...authStore.authHeader }
     } as Payload
 
     if (selectedFolders.value.length > 0 && !generateFromAll.value) {
@@ -906,8 +928,8 @@ async function savePlaylist(saveDate: string) {
         body: JSON.stringify({
             channel: configStore.configGui[configStore.configID].name,
             date: saveDate,
-            program: saveList,
-        }),
+            program: saveList
+        })
     })
         .then((response: any) => {
             indexStore.alertVariant = 'alert-success'
@@ -942,7 +964,7 @@ async function savePlaylist(saveDate: string) {
 async function deletePlaylist(playlistDate: string) {
     await $fetch(`/api/playlist/${configStore.configGui[configStore.configID].id}/${playlistDate}`, {
         method: 'DELETE',
-        headers: { ...contentType, ...authStore.authHeader },
+        headers: { ...contentType, ...authStore.authHeader }
     }).then(() => {
         playlistStore.playlist = []
 
@@ -1073,6 +1095,10 @@ function setSelectedFolder(event: any, folder: string) {
 
 .select-all-div {
     margin-right: 20px;
+}
+
+.active-playlist-clip {
+    background-color: #405f51 !important;
 }
 </style>
 <style>

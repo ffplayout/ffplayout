@@ -20,11 +20,12 @@ export const usePlaylist = defineStore('playlist', {
         playlist: [] as PlaylistItem[],
         progressValue: 0,
         currentClip: 'No clip is playing',
-        currentClipIndex: -1,
+        currentClipIndex: 0,
         currentClipStart: 0,
         currentClipDuration: 0,
         currentClipIn: 0,
         currentClipOut: 0,
+        ingestRuns: false,
         remainingSec: 0,
         playoutIsRunning: true,
     }),
@@ -85,6 +86,7 @@ export const usePlaylist = defineStore('playlist', {
                         this.currentClipDuration = obj.current_media.duration
                         this.currentClipIn = obj.current_media.seek
                         this.currentClipOut = obj.current_media.out
+                        this.ingestRuns = obj.ingest_runs
                     }
                 })
                 .catch(() => {
