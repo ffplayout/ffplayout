@@ -7,7 +7,6 @@ use std::{
 use regex::Regex;
 use simplelog::*;
 
-mod a_loudnorm;
 mod custom;
 pub mod v_drawtext;
 
@@ -390,15 +389,6 @@ fn extend_audio(node: &mut Media, chain: &mut Filters, nr: i32) {
     }
 }
 
-/// Add single pass loudnorm filter to audio line.
-fn add_loudnorm(node: &Media, chain: &mut Filters, config: &PlayoutConfig, nr: i32) {
-    if config.processing.add_loudnorm || (node.unit == Ingest && config.processing.loudnorm_ingest)
-    {
-        let loud_filter = a_loudnorm::filter_node(config);
-        chain.add_filter(&loud_filter, nr, Audio);
-    }
-}
-
 fn audio_volume(chain: &mut Filters, config: &PlayoutConfig, nr: i32) {
     if config.processing.volume != 1.0 {
         chain.add_filter(&format!("volume={}", config.processing.volume), nr, Audio)
@@ -568,7 +558,12 @@ pub fn filter_chains(
         realtime(node, &mut filters, config, Video);
     }
 
-    let (proc_vf, proc_af) = custom::filter_node(&config.processing.custom_filter);
+    let (proc_vf, proc_af) = if node.unit == Ingest {
+        custom::filter_node(&config.ingest.custom_filter)
+    } else {
+        custom::filter_node(&config.processing.custom_filter)
+    };
+
     let (list_vf, list_af) = custom::filter_node(&node.custom_filter);
 
     if config.processing.audio_only {
@@ -599,7 +594,6 @@ pub fn filter_chains(
         // is important for split filter in HLS mode
         filters.add_filter("anull", i, Audio);
 
-        add_loudnorm(node, &mut filters, config, i);
         fade(node, &mut filters, i, Audio);
         audio_volume(&mut filters, config, i);
 

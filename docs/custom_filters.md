@@ -12,6 +12,12 @@ It is possible to apply only video or audio filters, or both. For a better under
 custom_filter: "gblur=5[c_v_out];volume=0.5[c_a_out]"
 ```
 
+#### Apply loudnorm filter:
+
+```YAML
+custom_filter: "loudnorm=I=-18:TP=-1.5:LRA=11[c_a_out]"
+```
+
 #### Add lower third:
 
 ```YAML

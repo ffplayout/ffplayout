@@ -20,7 +20,6 @@ Check the [releases](https://github.com/ffplayout/ffplayout/releases/latest) for
 - send emails with error message
 - overlay a logo
 - overlay text, controllable through [ffplayout-frontend](https://github.com/ffplayout/ffplayout-frontend) (needs ffmpeg with libzmq and enabled JSON RPC server)
-- EBU R128 loudness normalization (will be removed in future)
 - loop playlist infinitely
 - [remote source](/docs/remote_source.md)
 - trim and fade the last clip, to get full 24 hours
