@@ -115,7 +115,11 @@ fn get_media_map(media: Media) -> Value {
 }
 
 /// prepare json object for response
-fn get_data_map(config: &PlayoutConfig, media: Media, server_is_running: bool) -> Map<String, Value> {
+fn get_data_map(
+    config: &PlayoutConfig,
+    media: Media,
+    server_is_running: bool,
+) -> Map<String, Value> {
     let mut data_map = Map::new();
     let begin = media.begin.unwrap_or(0.0);
 
@@ -321,7 +325,11 @@ pub fn json_rpc_server(
             // get infos about current clip
             if map.contains_key("media") && &map["media"] == "current" {
                 if let Some(media) = play_control.current_media.lock().unwrap().clone() {
-                    let data_map = get_data_map(&config, media, proc.server_is_running.load(Ordering::SeqCst));
+                    let data_map = get_data_map(
+                        &config,
+                        media,
+                        proc.server_is_running.load(Ordering::SeqCst),
+                    );
 
                     return Ok(Value::Object(data_map));
                 };

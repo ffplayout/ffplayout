@@ -290,20 +290,14 @@ fn overlay(node: &mut Media, chain: &mut Filters, config: &PlayoutConfig) {
         && &node.category != "advertisement"
     {
         let mut scale = String::new();
-        let re = Regex::new(r"[)(\d\w-]+:[)(\d\w-]+").unwrap();
-        let mut logo = config.processing.logo.clone();
 
-        if cfg!(windows) {
-            logo = logo.replace('\\', "/").replace(':', "\\\\:");
-        }
-
-        if re.is_match(&config.processing.logo_scale) {
+        if !config.processing.logo_scale.is_empty() {
             scale = format!(",scale={}", config.processing.logo_scale);
         }
 
         let mut logo_chain = format!(
             "null[v];movie={}:loop=0,setpts=N/(FRAME_RATE*TB),format=rgba,colorchannelmixer=aa={}{scale}[l];[v][l]{}:shortest=1",
-            logo, config.processing.logo_opacity, config.processing.logo_filter
+            config.processing.logo.replace('\\', "/").replace(':', "\\\\:"), config.processing.logo_opacity, config.processing.logo_filter
         );
 
         if node.last_ad.unwrap_or(false) {

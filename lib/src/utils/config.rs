@@ -358,6 +358,12 @@ impl PlayoutConfig {
             config.processing.add_logo = false;
         }
 
+        config.processing.logo_scale = config
+            .processing
+            .logo_scale
+            .trim_end_matches('~')
+            .to_string();
+
         if config.processing.audio_tracks < 1 {
             config.processing.audio_tracks = 1
         }
