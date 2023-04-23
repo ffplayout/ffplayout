@@ -51,11 +51,9 @@ processing:
         scaling. With 'logo_opacity' logo can become transparent. With 'audio_tracks' it
         is possible to configure how many audio tracks should be processed. 'audio_channels'
         can be use, if audio has more channels then only stereo. With 'logo_filter'
-        'overlay=W-w-12:12' you can modify the logo position. With 'use_loudnorm'
-        you can activate single pass EBU R128 loudness normalization, 'loudnorm_ingest'
-        allows normalization only on ingest stream. 'loud_*' can adjust the loudnorm filter.
-        With 'custom_filter' it is possible, to apply further filters. The filter outputs
-        should end with [c_v_out] for video filter, and [c_a_out] for audio filter.
+        'overlay=W-w-12:12' you can modify the logo position. With 'custom_filter'
+        it is possible, to apply further filters. The filter outputs should end with
+        [c_v_out] for video filter, and [c_a_out] for audio filter.
     mode: playlist
     audio_only: false
     width: 1024
@@ -69,20 +67,17 @@ processing:
     logo_filter: overlay=W-w-12:12
     audio_tracks: 1
     audio_channels: 2
-    add_loudnorm: false
-    loudnorm_ingest: false
-    loud_i: -18
-    loud_tp: -1.5
-    loud_lra: 11
     volume: 1
     custom_filter:
 
 ingest:
     help_text: Run a server for a ingest stream. This stream will override the normal streaming
         until is done. There is only a very simple authentication mechanism, which check if the
-        stream name is correct.
+        stream name is correct. 'custom_filter' can be used in the same way then the one in the
+        process section.
     enable: false
     input_param: -f live_flv -listen 1 -i rtmp://127.0.0.1:1936/live/stream
+    custom_filter:
 
 playlist:
     help_text: >

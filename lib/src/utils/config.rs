@@ -216,11 +216,6 @@ pub struct Processing {
     pub audio_tracks: i32,
     #[serde(default = "default_channels")]
     pub audio_channels: u8,
-    pub add_loudnorm: bool,
-    pub loudnorm_ingest: bool,
-    pub loud_i: f32,
-    pub loud_tp: f32,
-    pub loud_lra: f32,
     pub volume: f64,
     #[serde(default)]
     pub custom_filter: String,
@@ -234,6 +229,8 @@ pub struct Ingest {
     pub help_text: String,
     pub enable: bool,
     input_param: String,
+    #[serde(default)]
+    pub custom_filter: String,
 
     #[serde(skip_serializing, skip_deserializing)]
     pub input_cmd: Option<Vec<String>>,
@@ -361,6 +358,12 @@ impl PlayoutConfig {
             config.processing.add_logo = false;
         }
 
+        config.processing.logo_scale = config
+            .processing
+            .logo_scale
+            .trim_end_matches('~')
+            .to_string();
+
         if config.processing.audio_tracks < 1 {
             config.processing.audio_tracks = 1
         }
@@ -401,8 +404,8 @@ impl PlayoutConfig {
         }
 
         process_cmd.append(&mut pre_audio_codec(
-            config.processing.add_loudnorm,
-            config.processing.loudnorm_ingest,
+            &config.processing.custom_filter,
+            &config.ingest.custom_filter,
         ));
         process_cmd.append(&mut vec_strings![
             "-ar",
@@ -468,13 +471,13 @@ impl Default for PlayoutConfig {
     }
 }
 
-/// When add_loudnorm is False we use a different audio encoder,
+/// When custom_filter contains loudnorm filter use a different audio encoder,
 /// s302m has higher quality, but is experimental
 /// and works not well together with the loudnorm filter.
-fn pre_audio_codec(add_loudnorm: bool, loudnorm_ingest: bool) -> Vec<String> {
+fn pre_audio_codec(proc_filter: &str, ingest_filter: &str) -> Vec<String> {
     let mut codec = vec_strings!["-c:a", "s302m", "-strict", "-2", "-sample_fmt", "s16"];
 
-    if add_loudnorm || loudnorm_ingest {
+    if proc_filter.contains("loudnorm") || ingest_filter.contains("loudnorm") {
         codec = vec_strings!["-c:a", "mp2", "-b:a", "384k"];
     }
 
