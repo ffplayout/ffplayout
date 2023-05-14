@@ -1,6 +1,6 @@
 use std::{
     fs::{self, File},
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::exit,
     sync::{Arc, Mutex},
     thread,
@@ -97,6 +97,15 @@ fn main() {
     let proc_ctl1 = proc_control.clone();
     let proc_ctl2 = proc_control.clone();
     let messages = Arc::new(Mutex::new(Vec::new()));
+
+    // try to create logging folder, if not exist
+    if config.logging.log_to_file && !Path::new(&config.logging.log_path).is_dir() {
+        if let Err(e) = fs::create_dir_all(&config.logging.log_path) {
+            println!("Logging path not exists! {e}");
+
+            exit(1);
+        }
+    }
 
     let logging = init_logging(&config, Some(proc_ctl1), Some(messages.clone()));
     CombinedLogger::init(logging).unwrap();

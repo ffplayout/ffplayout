@@ -6,6 +6,7 @@ general:
         on linux. 'stop_threshold' stop ffplayout, if it is async in time above this
         value. A number below 3 can cause unexpected errors.
     stop_threshold: 11
+    stat_file: .ffp_status
 
 rpc_server:
     help_text: Run a JSON RPC server, for getting infos about current playing and

@@ -146,11 +146,11 @@ pub struct General {
     pub help_text: String,
     pub stop_threshold: f64,
 
-    #[serde(skip_serializing, skip_deserializing)]
-    pub generate: Option<Vec<String>>,
+    #[serde(default)]
+    pub stat_file: String,
 
     #[serde(skip_serializing, skip_deserializing)]
-    pub stat_file: String,
+    pub generate: Option<Vec<String>>,
 
     #[serde(skip_serializing, skip_deserializing)]
     pub ffmpeg_filters: Vec<String>,
@@ -336,11 +336,14 @@ impl PlayoutConfig {
         let mut config: PlayoutConfig =
             serde_yaml::from_reader(f).expect("Could not read config file.");
         config.general.generate = None;
-        config.general.stat_file = home_dir()
-            .unwrap_or_else(env::temp_dir)
-            .join(".ffp_status")
-            .display()
-            .to_string();
+
+        if config.general.stat_file.is_empty() {
+            config.general.stat_file = home_dir()
+                .unwrap_or_else(env::temp_dir)
+                .join(".ffp_status")
+                .display()
+                .to_string();
+        }
 
         if config.logging.ingest_level.is_none() {
             config.logging.ingest_level = Some(config.logging.ffmpeg_level.clone())
