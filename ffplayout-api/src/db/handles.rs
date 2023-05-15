@@ -208,6 +208,12 @@ pub async fn delete_channel(
     sqlx::query(query).bind(id).execute(conn).await
 }
 
+pub async fn select_last_channel(conn: &Pool<Sqlite>) -> Result<i32, sqlx::Error> {
+    let query = "SELECT id FROM channels ORDER BY id DESC LIMIT 1;";
+
+    sqlx::query_scalar(query).fetch_one(conn).await
+}
+
 pub async fn select_role(conn: &Pool<Sqlite>, id: &i32) -> Result<String, sqlx::Error> {
     let query = "SELECT name FROM roles WHERE id = $1";
     let result: Role = sqlx::query_as(query).bind(id).fetch_one(conn).await?;

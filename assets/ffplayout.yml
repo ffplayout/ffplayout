@@ -6,6 +6,7 @@ general:
         on linux. 'stop_threshold' stop ffplayout, if it is async in time above this
         value. A number below 3 can cause unexpected errors.
     stop_threshold: 11
+    stat_file: .ffp_status
 
 rpc_server:
     help_text: Run a JSON RPC server, for getting infos about current playing and
@@ -32,14 +33,14 @@ logging:
     help_text: If 'log_to_file' is true, log to file, when is false log to console.
         'backup_count' says how long log files will be saved in days. 'local_time' to
         false will set log timestamps to UTC. Path to /var/log/ only if you run this
-        program as daemon. 'log_level' can be DEBUG, INFO, WARNING, ERROR.
+        program as daemon. 'level' can be DEBUG, INFO, WARNING, ERROR.
         'ffmpeg_level' can be info, warning, error.
     log_to_file: true
     backup_count: 7
     local_time: true
     timestamp: true
-    log_path: /var/log/ffplayout/
-    log_level: DEBUG
+    path: /var/log/ffplayout/
+    level: DEBUG
     ffmpeg_level: error
     ingest_level: warning
 

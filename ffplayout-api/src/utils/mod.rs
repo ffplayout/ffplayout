@@ -223,7 +223,7 @@ pub async fn read_log_file(
         }
 
         if let Ok(config) = read_playout_config(&channel.config_path) {
-            let mut log_path = Path::new(&config.logging.log_path)
+            let mut log_path = Path::new(&config.logging.path)
                 .join("ffplayout.log")
                 .display()
                 .to_string();
