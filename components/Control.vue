@@ -16,7 +16,17 @@
                             v-else-if="videoOptions.sources.length > 0"
                             :key="configStore.configID"
                             reference="httpStream"
-                            :options="videoOptions"
+                            :options="{
+                                liveui: true,
+                                controls: true,
+                                suppressNotSupportedError: true,
+                                autoplay: false,
+                                preload: 'auto',
+                                sources: [{
+                                    type: 'application/x-mpegURL',
+                                    src: configStore.configGui[configStore.configID].preview_url
+                                }]
+                            }"
                         />
                     </div>
                 </div>
@@ -158,14 +168,6 @@ const timeStr = ref('00:00:00')
 const timer = ref()
 const streamExtension = ref(configStore.configGui[configStore.configID].preview_url.split('.').pop())
 const httpStream = ref()
-const videoOptions = ref({
-    liveui: true,
-    controls: true,
-    suppressNotSupportedError: true,
-    autoplay: false,
-    preload: 'auto',
-    sources: [] as SourceObject[]
-})
 const httpFlvSource = ref({
     type: 'flv',
     isLive: true,
@@ -179,14 +181,6 @@ const mpegtsOptions = ref({
 
 onMounted(() => {
     breakStatusCheck.value = false
-
-    videoOptions.value.sources = [
-        {
-            type: 'application/x-mpegURL',
-            src: configStore.configGui[configStore.configID].preview_url
-        }
-    ]
-
     let player: any
 
     if (streamExtension.value === 'flv') {
