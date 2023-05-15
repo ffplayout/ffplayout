@@ -13,7 +13,7 @@
                         />
                         <VideoPlayer
                             class="live-player"
-                            v-else-if="videoOptions.sources.length > 0"
+                            v-else-if="configStore.configGui[configStore.configID]"
                             :key="configStore.configID"
                             reference="httpStream"
                             :options="{
