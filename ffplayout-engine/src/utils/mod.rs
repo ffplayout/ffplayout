@@ -47,7 +47,7 @@ pub fn get_config(args: Args) -> PlayoutConfig {
         if Path::new(&log_path).is_dir() {
             config.logging.log_to_file = true;
         }
-        config.logging.log_path = log_path;
+        config.logging.path = log_path;
     }
 
     if let Some(playlist) = args.playlist {

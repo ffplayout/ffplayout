@@ -187,12 +187,14 @@ pub struct Logging {
     pub backup_count: usize,
     pub local_time: bool,
     pub timestamp: bool,
-    pub log_path: String,
+    #[serde(alias = "log_path")]
+    pub path: String,
     #[serde(
+        alias = "log_level",
         serialize_with = "log_level_to_string",
         deserialize_with = "string_to_log_level"
     )]
-    pub log_level: LevelFilter,
+    pub level: LevelFilter,
     pub ffmpeg_level: String,
     pub ingest_level: Option<String>,
 }
@@ -337,13 +339,15 @@ impl PlayoutConfig {
             serde_yaml::from_reader(f).expect("Could not read config file.");
         config.general.generate = None;
 
-        if config.general.stat_file.is_empty() {
-            config.general.stat_file = home_dir()
-                .unwrap_or_else(env::temp_dir)
-                .join(".ffp_status")
-                .display()
-                .to_string();
-        }
+        config.general.stat_file = home_dir()
+            .unwrap_or_else(env::temp_dir)
+            .join(if config.general.stat_file.is_empty() {
+                ".ffp_status"
+            } else {
+                &config.general.stat_file
+            })
+            .display()
+            .to_string();
 
         if config.logging.ingest_level.is_none() {
             config.logging.ingest_level = Some(config.logging.ffmpeg_level.clone())

@@ -99,8 +99,8 @@ fn main() {
     let messages = Arc::new(Mutex::new(Vec::new()));
 
     // try to create logging folder, if not exist
-    if config.logging.log_to_file && !Path::new(&config.logging.log_path).is_dir() {
-        if let Err(e) = fs::create_dir_all(&config.logging.log_path) {
+    if config.logging.log_to_file && !Path::new(&config.logging.path).is_dir() {
+        if let Err(e) = fs::create_dir_all(&config.logging.path) {
             println!("Logging path not exists! {e}");
 
             exit(1);

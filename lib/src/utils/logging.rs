@@ -200,7 +200,7 @@ pub fn init_logging(
         };
     };
 
-    if app_config.log_to_file && &app_config.log_path != "none" {
+    if app_config.log_to_file && &app_config.path != "none" {
         let file_config = log_config
             .clone()
             .set_time_format_custom(format_description!(
@@ -209,13 +209,13 @@ pub fn init_logging(
             .build();
         let mut log_path = "logs/ffplayout.log".to_string();
 
-        if Path::new(&app_config.log_path).is_dir() {
-            log_path = Path::new(&app_config.log_path)
+        if Path::new(&app_config.path).is_dir() {
+            log_path = Path::new(&app_config.path)
                 .join("ffplayout.log")
                 .display()
                 .to_string();
-        } else if Path::new(&app_config.log_path).is_file() {
-            log_path = app_config.log_path
+        } else if Path::new(&app_config.path).is_file() {
+            log_path = app_config.path
         } else {
             println!("Logging path not exists!")
         }
@@ -233,11 +233,7 @@ pub fn init_logging(
             None,
         );
 
-        app_logger.push(WriteLogger::new(
-            app_config.log_level,
-            file_config,
-            log_file,
-        ));
+        app_logger.push(WriteLogger::new(app_config.level, file_config, log_file));
     } else {
         let term_config = log_config
             .clone()
@@ -251,7 +247,7 @@ pub fn init_logging(
             .build();
 
         app_logger.push(TermLogger::new(
-            app_config.log_level,
+            app_config.level,
             term_config,
             TerminalMode::Mixed,
             ColorChoice::Auto,
