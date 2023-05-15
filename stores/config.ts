@@ -5,8 +5,6 @@ const { timeToSeconds } = stringFormatter()
 
 import { useAuth } from '~/stores/auth'
 import { useIndex } from '~/stores/index'
-const authStore = useAuth()
-const indexStore = useIndex()
 
 interface GuiConfig {
     id: number
@@ -81,6 +79,8 @@ export const useConfig = defineStore('config', {
         },
 
         async nuxtClientInit() {
+            const authStore = useAuth()
+
             authStore.inspectToken()
 
             if (authStore.isLogin) {
@@ -91,6 +91,9 @@ export const useConfig = defineStore('config', {
         },
 
         async getGuiConfig() {
+            const authStore = useAuth()
+            const indexStore = useIndex()
+
             let statusCode = 0
             await fetch('/api/channels', {
                 method: 'GET',
@@ -136,6 +139,7 @@ export const useConfig = defineStore('config', {
         },
 
         async setGuiConfig(obj: GuiConfig): Promise<any> {
+            const authStore = useAuth()
             const stringObj = _.cloneDeep(obj)
             const contentType = { 'content-type': 'application/json;charset=UTF-8' }
             let response
@@ -175,6 +179,8 @@ export const useConfig = defineStore('config', {
         },
 
         async getPlayoutConfig() {
+            const authStore = useAuth()
+            const indexStore = useIndex()
             const channel = this.configGui[this.configID].id
 
             await fetch(`/api/playout/config/${channel}`, {
@@ -203,6 +209,7 @@ export const useConfig = defineStore('config', {
         },
 
         async setPlayoutConfig(obj: any) {
+            const authStore = useAuth()
             const channel = this.configGui[this.configID].id
             const contentType = { 'content-type': 'application/json;charset=UTF-8' }
 
@@ -216,6 +223,8 @@ export const useConfig = defineStore('config', {
         },
 
         async getUserConfig() {
+            const authStore = useAuth()
+
             await fetch('/api/user', {
                 method: 'GET',
                 headers: authStore.authHeader,
@@ -228,6 +237,7 @@ export const useConfig = defineStore('config', {
         },
 
         async setUserConfig(obj: any) {
+            const authStore = useAuth()
             const contentType = { 'content-type': 'application/json;charset=UTF-8' }
 
             const update = await fetch(`/api/user/${obj.id}`, {

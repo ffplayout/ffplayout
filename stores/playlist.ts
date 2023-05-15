@@ -10,8 +10,6 @@ dayjs.extend(timezone)
 import { useAuth } from '~/stores/auth'
 import { useConfig } from '~/stores/config'
 
-const authStore = useAuth()
-const configStore = useConfig()
 const { timeToSeconds } = stringFormatter()
 const { processPlaylist } = playlistOperations()
 
@@ -37,6 +35,8 @@ export const usePlaylist = defineStore('playlist', {
         },
 
         async getPlaylist(date: string) {
+            const authStore = useAuth()
+            const configStore = useConfig()
             const timeInSec = timeToSeconds(dayjs().utcOffset(configStore.utcOffset).format('HH:mm:ss'))
             const channel = configStore.configGui[configStore.configID].id
             let dateToday = dayjs().utcOffset(configStore.utcOffset).format('YYYY-MM-DD')
@@ -63,6 +63,8 @@ export const usePlaylist = defineStore('playlist', {
         },
 
         async playoutStat() {
+            const authStore = useAuth()
+            const configStore = useConfig()
             const channel = configStore.configGui[configStore.configID].id
 
             await fetch(`/api/control/${channel}/media/current`, {

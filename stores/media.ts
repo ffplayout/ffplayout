@@ -2,8 +2,6 @@ import { defineStore } from 'pinia'
 
 import { useAuth } from '~/stores/auth'
 import { useConfig } from '~/stores/config'
-const authStore = useAuth()
-const configStore = useConfig()
 
 export const useMedia = defineStore('media', {
     state: () => ({
@@ -17,6 +15,8 @@ export const useMedia = defineStore('media', {
     getters: {},
     actions: {
         async getTree(path: string, foldersOnly: boolean = false) {
+            const authStore = useAuth()
+            const configStore = useConfig()
             const contentType = { 'content-type': 'application/json;charset=UTF-8' }
             const channel = configStore.configGui[configStore.configID].id
             const crumbs: Crumb[] = []
