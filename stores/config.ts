@@ -213,6 +213,8 @@ export const useConfig = defineStore('config', {
             const channel = this.configGui[this.configID].id
             const contentType = { 'content-type': 'application/json;charset=UTF-8' }
 
+            obj.storage.extensions = obj.storage.extensions.replace(' ', '').split(/,|;/)
+
             const update = await fetch(`/api/playout/config/${channel}`, {
                 method: 'PUT',
                 headers: { ...contentType, ...authStore.authHeader },
