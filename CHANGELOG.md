@@ -1,6 +1,24 @@
 # Changelog
 
-## [0.17.1]() (2023-04-07)
+## [0.18.0](https://github.com/ffplayout/ffplayout/releases/tag/v0.18.0) (2023-05-28)
+
+### frontend
+
+- mark and scroll to current clip, show when ingest is running [676d71e](https://github.com/ffplayout/ffplayout/commit/676d71e9b7ca37b1b40f1007f242023d49eed63b)
+- split extensions to array, fix #318 [5871d09](https://github.com/ffplayout/ffplayout/commit/5871d092af020c278f267a57ef49c592f39ecd79)
+
+### ffplayout
+
+- remove loudnorm filter [535511f](https://github.com/ffplayout/ffplayout/commit/535511f394a98441be15fc62090340e94b2f5018)
+    - quality is to bad
+- no regex match validation for scale filter [d1ce475](https://github.com/ffplayout/ffplayout/commit/d1ce4756924e4cfc969db91adaadfcd88c195dd0)
+- try to create log path, if not exists. expose state file in config (important for multi channels) [6cd092c](https://github.com/ffplayout/ffplayout/commit/6cd092c30fd7c22428c0c0792987ef419a781ff5)
+
+### ffpapi
+- update most importend config values on new channel [6338207](https://github.com/ffplayout/ffplayout/commit/6338207fba9f217f144cb75afc764c16e5e3223e)
+
+
+## [0.17.1](https://github.com/ffplayout/ffplayout/releases/tag/v0.17.1) (2023-04-07)
 
 ### frontend
 - fix upload function [5e976f2](https://github.com/ffplayout/ffplayout/pull/310/commits/5e976f212b47d572839e01ee73dfb632fbe1a70c)
