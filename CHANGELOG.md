@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.18.1](https://github.com/ffplayout/ffplayout/releases/tag/v0.18.1) (2023-06-11)
+
+### frontend
+
+- update bootstrap to stable version [7f10e90](https://github.com/ffplayout/ffplayout/pull/325/commits/7f10e9013aabd44cb5d01193db4b10b0884c0cb3)
+- fix config save [abf3d89](https://github.com/ffplayout/ffplayout/pull/325/commits/abf3d897a1df1fa35f06362f2e26d4ae1217bda4)
+- hide chunk size waring [63d2849](https://github.com/ffplayout/ffplayout/pull/325/commits/63d28494d5ba263cf7e26d2022f990190cb8f6c2)
+
+### ffplayout
+
+- update packages [7f10e90](https://github.com/ffplayout/ffplayout/pull/325/commits/7f10e9013aabd44cb5d01193db4b10b0884c0cb3) [8dd8865](https://github.com/ffplayout/ffplayout/pull/325/commits/8dd886547bad342b8c000a63c025419583d8003f)
+- remove redundant clone [d6baccf](https://github.com/ffplayout/ffplayout/pull/325/commits/d6baccf3a7ff645a8ca2938d782f2eee0ec08eb3)
+
 ## [0.18.0](https://github.com/ffplayout/ffplayout/releases/tag/v0.18.0) (2023-05-28)
 
 ### frontend
