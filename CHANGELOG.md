@@ -11,6 +11,7 @@
 ### ffplayout
 
 - update packages [7f10e90](https://github.com/ffplayout/ffplayout/pull/325/commits/7f10e9013aabd44cb5d01193db4b10b0884c0cb3) [8dd8865](https://github.com/ffplayout/ffplayout/pull/325/commits/8dd886547bad342b8c000a63c025419583d8003f)
+- remove redundant clone [d6baccf](https://github.com/ffplayout/ffplayout/pull/325/commits/d6baccf3a7ff645a8ca2938d782f2eee0ec08eb3)
 
 ## [0.18.0](https://github.com/ffplayout/ffplayout/releases/tag/v0.18.0) (2023-05-28)
 
