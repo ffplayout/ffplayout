@@ -44,7 +44,6 @@ fn ingest_to_hls_server(
     proc_control: ProcessControl,
 ) -> Result<(), Error> {
     let playlist_init = playout_stat.list_init;
-    let level = config.logging.ffmpeg_level.clone();
 
     let mut server_prefix = vec_strings!["-hide_banner", "-nostats", "-v", "level+info"];
     let stream_input = config.ingest.input_cmd.clone().unwrap();
@@ -110,7 +109,7 @@ fn ingest_to_hls_server(
                 }
             }
 
-            log_line(&line, &level);
+            log_line(&line, &config.logging.ffmpeg_level);
         }
 
         if proc_control.server_is_running.load(Ordering::SeqCst) {
