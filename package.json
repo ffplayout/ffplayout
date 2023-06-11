@@ -1,6 +1,6 @@
 {
   "name": "ffplayout-frontend",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "Web GUI for ffplayout",
   "author": "Jonathan Baecker",
   "private": true,
@@ -12,14 +12,14 @@
     "postinstall": "nuxt prepare"
   },
   "dependencies": {
-    "@nuxt/types": "^2.16.3",
+    "@nuxt/types": "^2.17.0",
     "@pinia/nuxt": "^0.4.11",
     "@popperjs/core": "^2.11.8",
     "@vueuse/core": "^10.1.2",
     "bootstrap": "^5.3.0",
     "bootstrap-icons": "^1.10.5",
     "cookie-universal-nuxt": "^2.2.2",
-    "dayjs": "^1.11.7",
+    "dayjs": "^1.11.8",
     "jwt-decode": "^3.1.2",
     "lodash": "^4.17.21",
     "mpegts.js": "^1.7.3",
@@ -36,10 +36,10 @@
     "@types/lodash": "^4.14.195",
     "@types/splitpanes": "^2.2.1",
     "@types/video.js": "^7.3.52",
-    "eslint": "^8.41.0",
+    "eslint": "^8.42.0",
     "eslint-plugin-nuxt": "^4.0.0",
-    "nuxt": "3.5.2",
-    "sass": "^1.62.1",
-    "sass-loader": "^13.3.1"
+    "nuxt": "3.5.3",
+    "sass": "^1.63.3",
+    "sass-loader": "^13.3.2"
   }
 }

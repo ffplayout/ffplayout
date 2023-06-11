@@ -62,10 +62,6 @@ export const useConfig = defineStore('config', {
             this.playlistLength = sec
         },
 
-        updatePlayoutConfig(config: any) {
-            this.configPlayout = config
-        },
-
         setCurrentUser(user: string) {
             this.currentUser = user
         },
@@ -199,7 +195,11 @@ export const useConfig = defineStore('config', {
                         this.updatePlaylistLength(length)
                     }
 
-                    this.updatePlayoutConfig(data)
+                    if (data.storage.extensions) {
+                        data.storage.extensions = data.storage.extensions.join(',')
+                    }
+
+                    this.configPlayout = data
                 })
                 .catch(() => {
                     indexStore.alertMsg = 'No playout config found!'
