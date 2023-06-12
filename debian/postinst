@@ -9,7 +9,7 @@ fi
 if [ ! -d "/usr/share/ffplayout/db" ]; then
     mkdir "/usr/share/ffplayout/db"
     mkdir -p "/var/lib/ffplayout/playlists"
-    mkdir "/var/lib/ffplayout/tv-media"
+    mkdir -p "/var/lib/ffplayout/tv-media"
 
     IP=$(hostname -I | cut -d ' ' -f1)
 

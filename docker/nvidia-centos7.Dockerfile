@@ -91,21 +91,21 @@ rm -f /lib/systemd/system/sockets.target.wants/*initctl*; \
 rm -f /lib/systemd/system/basic.target.wants/*;\
 rm -f /lib/systemd/system/anaconda.target.wants/*;
 RUN yum -y install net-tools openssh-server
-RUN echo "PermitRootLogin yes" >> /etc/ssh/sshd_config  
+RUN echo "PermitRootLogin yes" >> /etc/ssh/sshd_config
 
 RUN    yum update -y \
     && yum install -y dejavu-sans-fonts sudo wget \
-    && wget -q -O /tmp/ffplayout-0.17.0-1.x86_64.rpm "https://github.com/ffplayout/ffplayout/releases/download/v0.17.0/ffplayout-0.17.0-1.x86_64.rpm" \
-    && yum install -y /tmp/ffplayout-0.17.0-1.x86_64.rpm \
+    && wget -q -O /tmp/ffplayout-0.18.1-1.x86_64.rpm "https://github.com/ffplayout/ffplayout/releases/download/v0.18.1/ffplayout-0.18.1-1.x86_64.rpm" \
+    && yum install -y /tmp/ffplayout-0.18.1-1.x86_64.rpm \
     && yum clean all \
     && echo 'Docker!' | passwd --stdin root \
-    && rm /tmp/ffplayout-0.17.0-1.x86_64.rpm \
+    && rm /tmp/ffplayout-0.18.1-1.x86_64.rpm \
     && mkdir -p /home/ffpu && chown -R ffpu: /home/ffpu \
     && systemctl enable ffplayout \
-    && systemctl enable ffpapi 
+    && systemctl enable ffpapi
 
 EXPOSE 8787
-RUN echo "/usr/local/lib" >> /etc/ld.so.conf.d/nvidia.conf 
+RUN echo "/usr/local/lib" >> /etc/ld.so.conf.d/nvidia.conf
 RUN echo "/usr/local/cuda/compat/" >> /etc/ld.so.conf.d/nvidia.conf
 
 VOLUME [ "/sys/fs/cgroup", "/tmp", "/run", "/run/lock", "/etc/ffplayout", "/usr/share/ffplayout" ,"/var/lib/ffplayout" ]
