@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.2](https://github.com/ffplayout/ffplayout/releases/tag/v0.18.2) (2023-06-13)
+
+### ffplayout
+
+- update version, create dir with ignore error [2da9d1a](https://github.com/ffplayout/ffplayout/pull/327/commits/2da9d1a85d7ca3695022a74d79cf362a10e19705)
+- add postrm, fix #326 [97455d5](https://github.com/ffplayout/ffplayout/pull/328/commits/97455d535c6214b04eca14812029ced23c7524e1)
+
 ## [0.18.1](https://github.com/ffplayout/ffplayout/releases/tag/v0.18.1) (2023-06-11)
 
 ### frontend

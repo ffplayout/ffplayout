@@ -1,0 +1,23 @@
+#!/bin/sh
+#DEBHELPER#
+
+sysUser="ffpu"
+
+case "$1" in
+    abort-install|purge)
+        deluser $sysUser
+        rm -rf /usr/share/ffplayout /var/log/ffplayout /etc/ffplayout /var/lib/ffplayout /home/$sysUser
+    ;;
+
+    remove)
+        rm -rf /var/log/ffplayout
+    ;;
+
+    upgrade|failed-upgrade|abort-upgrade|disappear)
+    ;;
+
+    *)
+        echo "postrm called with unknown argument \`$1'" >&2
+        exit 1
+    ;;
+esac
