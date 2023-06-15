@@ -142,11 +142,11 @@ ADD ./overide.conf /etc/systemd/system/ffplayout.service.d/overide.conf
 ADD ./overide.conf /etc/systemd/system/ffpapi.service.d/overide.conf
 
 RUN \
-    yum update -y \
-    && yum install -y wget dejavu-sans-fonts sudo \
+    dnf update -y \
+    && dnf install -y wget dejavu-sans-fonts sudo \
     && wget -q -O /tmp/ffplayout-${FFPLAYOUT_VERSION}-1.x86_64.rpm "https://github.com/ffplayout/ffplayout/releases/download/v${FFPLAYOUT_VERSION}/ffplayout-${FFPLAYOUT_VERSION}-1.x86_64.rpm" \
-    && yum install -y /tmp/ffplayout-${FFPLAYOUT_VERSION}-1.x86_64.rpm \
-    && yum clean all \
+    && dnf install -y /tmp/ffplayout-${FFPLAYOUT_VERSION}-1.x86_64.rpm \
+    && dnf clean all \
     && rm /tmp/ffplayout-${FFPLAYOUT_VERSION}-1.x86_64.rpm \
     && mkdir -p /home/ffpu && chown -R ffpu: /home/ffpu \
     && systemctl enable ffplayout \
