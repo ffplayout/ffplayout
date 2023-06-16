@@ -7,7 +7,7 @@ use std::{
 
 use actix_web::web;
 use reqwest::{
-    header::{HeaderMap, AUTHORIZATION, CONTENT_TYPE},
+    header::{HeaderMap, AUTHORIZATION},
     Client, Response,
 };
 use serde::{Deserialize, Serialize};
@@ -265,10 +265,6 @@ impl SystemD {
 
 fn create_header(auth: &str) -> HeaderMap {
     let mut headers = HeaderMap::new();
-    headers.insert(
-        CONTENT_TYPE,
-        "Content-Type: application/json".parse().unwrap(),
-    );
     headers.insert(AUTHORIZATION, auth.parse().unwrap());
 
     headers
