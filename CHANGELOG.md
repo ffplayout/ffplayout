@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.18.3](https://github.com/ffplayout/ffplayout/releases/tag/v0.18.3) (2023-06-16)
+
+### ffpapi
+
+-  remove extra content type from header, fix [#331](https://github.com/ffplayout/ffplayout/issues/331)
+
 ## [0.18.2](https://github.com/ffplayout/ffplayout/releases/tag/v0.18.2) (2023-06-13)
 
 ### ffplayout
