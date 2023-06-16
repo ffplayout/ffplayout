@@ -77,7 +77,7 @@ ENV PKG_CONFIG_PATH /usr/local/lib/pkgconfig
 RUN curl -fsSLO https://ffmpeg.org/releases/ffmpeg-$FFMPEG_VERSION.tar.bz2 \
   && tar -xjf ffmpeg-$FFMPEG_VERSION.tar.bz2 \
   && cd ffmpeg-$FFMPEG_VERSION \
-  && ./configure --enable-nvenc --enable-libx264 --enable-gpl --enable-libfdk_aac  --enable-libx264  --enable-nonfree  --enable-postproc  --enable-shared  --enable-version3 \
+  && ./configure --enable-nvenc --enable-libx264 --enable-gpl --enable-libfdk_aac --enable-nonfree  --enable-postproc  --enable-shared  --enable-version3 \
   && make -j$(nproc) \
   && make install
 

@@ -3,14 +3,14 @@
 
 ## Base Image
 
-Use of [centos image](https://hub.docker.com/_/centos) as base image as it offer the possibility to use systemd.
+Use of [CentOS image](https://hub.docker.com/_/centos) as base image as it offer the possibility to use systemd.
 In order to run systemd in a container it has to run in privileged mode and bind to the `cgroup` of the host.
 
 ## Image
 
 In addition to the base image, there is the compilation of ffmpeg and all lib from source based on https://github.com/jrottenberg/ffmpeg.
 We can't use directly the image from `jrottenberg/ffmpeg` as it compile ffmpeg with the flag `--enable-small` that remove some part of the json from the ffprobe command.
-There is also a conf file to override the ffplayout.service as the libs for ffmpeg are not in the defauft place which is copied to `/etc/systemd/system/ffplayout.service.d/overide.conf`.
+There is also a conf file to override the ffplayout.service as the libs for ffmpeg are not in the default place which is copied to `/etc/systemd/system/ffplayout.service.d/override.conf`.
 
 The image is build with a default user/pass `admin/admin`.
 
@@ -37,16 +37,13 @@ docker build -t ffplayout-image .
 
 # build ffmpeg from source
 docker build -f fromSource.Dockerfile -t ffplayout-image:from-source .
-
-# build with current almalinux image
-docker build -f Almalinux.Dockerfile -t ffplayout-image:almalinux .
 ```
 
 example of command to start the container:
 
 `docker run -ti -v /sys/fs/cgroup:/sys/fs/cgroup:ro --cap-add SYS_ADMIN -p 8787:8787 ffplayout-image`
 
-Note from centos docker hub page
+Note from CentOS docker hub page
 `
 There have been reports that if you're using an Ubuntu host, you will need to add -v /tmp/$(mktemp -d):/run in addition to the cgroups mount.
 `
