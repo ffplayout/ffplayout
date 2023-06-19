@@ -18,18 +18,45 @@ use ffplayout_lib::utils::{
     PlayoutConfig, PlayoutStatus, ProcessControl,
 };
 
-#[derive(Default, Deserialize, Clone)]
+#[derive(Default, Deserialize, Clone, Debug)]
 struct TextFilter {
     text: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_number_or_string")]
     x: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_number_or_string")]
     y: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_number_or_string")]
     fontsize: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_number_or_string")]
     line_spacing: Option<String>,
     fontcolor: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_number_or_string")]
     alpha: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_number_or_string")]
     r#box: Option<String>,
     boxcolor: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_number_or_string")]
     boxborderw: Option<String>,
+}
+
+fn deserialize_number_or_string<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value: Value = Deserialize::deserialize(deserializer)?;
+    match value {
+        Value::Number(num) => {
+            if let Some(number) = num.as_i64() {
+                Ok(Some(number.to_string()))
+            } else if let Some(number) = num.as_f64() {
+                Ok(Some(number.to_string()))
+            } else {
+                Err(serde::de::Error::custom("Invalid number format"))
+            }
+        }
+        Value::String(string) => Ok(Some(string)),
+        _ => Err(serde::de::Error::custom("Invalid value type")),
+    }
 }
 
 impl fmt::Display for TextFilter {
