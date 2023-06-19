@@ -7,7 +7,6 @@ use std::{
     },
 };
 
-use jsonrpc_http_server::CloseHandle;
 use serde::{Deserialize, Serialize};
 use simplelog::*;
 
@@ -44,7 +43,6 @@ pub struct ProcessControl {
     pub encoder_term: Arc<Mutex<Option<Child>>>,
     pub server_term: Arc<Mutex<Option<Child>>>,
     pub server_is_running: Arc<AtomicBool>,
-    pub rpc_handle: Arc<Mutex<Option<CloseHandle>>>,
     pub is_terminated: Arc<AtomicBool>,
     pub is_alive: Arc<AtomicBool>,
 }
@@ -56,7 +54,6 @@ impl ProcessControl {
             encoder_term: Arc::new(Mutex::new(None)),
             server_term: Arc::new(Mutex::new(None)),
             server_is_running: Arc::new(AtomicBool::new(false)),
-            rpc_handle: Arc::new(Mutex::new(None)),
             is_terminated: Arc::new(AtomicBool::new(false)),
             is_alive: Arc::new(AtomicBool::new(true)),
         }

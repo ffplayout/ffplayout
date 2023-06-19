@@ -13,10 +13,9 @@ default-run = "ffplayout"
 [dependencies]
 ffplayout-lib = { path = "../lib" }
 chrono = "0.4"
-clap = { version = "3.2", features = ["derive"] }
+clap = { version = "4.3", features = ["derive"] }
 crossbeam-channel = "0.5"
 futures = "0.3"
-jsonrpc-http-server = "18.0"
 notify = "6.0"
 notify-debouncer-full = { version = "*", default-features = false }
 regex = "1"
@@ -24,6 +23,7 @@ reqwest = { version = "0.11", features = ["blocking", "json"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 simplelog = { version = "^0.12", features = ["paris"] }
+tiny_http = { version = "0.12", default-features = false }
 zeromq = { git = "https://github.com/zeromq/zmq.rs.git", default-features = false, features = [
     "async-std-runtime",
     "tcp-transport",

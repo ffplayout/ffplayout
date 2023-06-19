@@ -14,7 +14,7 @@ use simplelog::*;
 
 use ffplayout::{
     output::{player, write_hls},
-    rpc::json_rpc_server,
+    rpc::run_server,
     utils::{arg_parse::get_args, get_config},
 };
 
@@ -155,7 +155,7 @@ fn main() {
 
     if config.rpc_server.enable {
         // If RPC server is enable we also fire up a JSON RPC server.
-        thread::spawn(move || json_rpc_server(config_clone, play_ctl, play_stat, proc_ctl2));
+        thread::spawn(move || run_server(config_clone, play_ctl, play_stat, proc_ctl2));
     }
 
     status_file(&config.general.stat_file, &playout_stat);

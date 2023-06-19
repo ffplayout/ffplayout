@@ -146,27 +146,27 @@ out:
 
 ## JSON RPC
 
-The ffplayout engine can run a JSON RPC server. A request looks like:
+The ffplayout engine can run a simple RPC server. A request looks like:
 
 ```Bash
 curl -X POST -H "Content-Type: application/json" -H "Authorization: ---auth-key---" \
-    -d '{"jsonrpc": "2.0", "id":1, "method": "player", "params":{"control":"next"}}' \
+    -d '{"control":"next"}' \
     127.0.0.1:7070
 ```
 
 At the moment this commends are possible:
 
 ```Bash
-'{"jsonrpc": "2.0", "id":1, "method": "player", "params":{"media":"current"}}'  # get infos about current clip
-'{"jsonrpc": "2.0", "id":2, "method": "player", "params":{"media":"next"}}'  # get infos about next clip
-'{"jsonrpc": "2.0", "id":3, "method": "player", "params":{"media":"last"}}'  # get infos about last clip
-'{"jsonrpc": "2.0", "id":4, "method": "player", "params":{"control":"next"}}'   # jump to next clip
-'{"jsonrpc": "2.0", "id":5, "method": "player", "params":{"control":"back"}}'   # jump to last clip
-'{"jsonrpc": "2.0", "id":6, "method": "player", "params":{"control":"reset"}}'  # reset playlist to old state
-'{"jsonrpc": "2.0", "id":7, "method": "player", "params":{"control":"text", \
+'{"media":"current"}'  # get infos about current clip
+'{"media":"next"}'  # get infos about next clip
+'{"media":"last"}'  # get infos about last clip
+'{"control":"next"}'   # jump to next clip
+'{"control":"back"}'   # jump to last clip
+'{"control":"reset"}'  # reset playlist to old state
+'{"control":"text", \
   "message": {"text": "Hello from ffplayout", "x": "(w-text_w)/2", "y": "(h-text_h)/2", \
   "fontsize": 24, "line_spacing": 4, "fontcolor": "#ffffff", "box": 1, \
-  "boxcolor": "#000000", "boxborderw": 4, "alpha": 1.0}}}' # send text to drawtext filter from ffmpeg
+  "boxcolor": "#000000", "boxborderw": 4, "alpha": 1.0}}' # send text to drawtext filter from ffmpeg
 ```
 
 Output from `{"media":"current"}` show:

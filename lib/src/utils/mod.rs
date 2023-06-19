@@ -14,7 +14,6 @@ use std::env;
 
 use chrono::{prelude::*, Duration};
 use ffprobe::{ffprobe, Format, Stream};
-use jsonrpc_http_server::hyper::HeaderMap;
 use rand::prelude::*;
 use regex::Regex;
 use reqwest::header;
@@ -332,7 +331,7 @@ pub fn get_date(seek: bool, start: f64, next_start: f64) -> String {
     local.format("%Y-%m-%d").to_string()
 }
 
-pub fn time_from_header(headers: &HeaderMap) -> Option<DateTime<Local>> {
+pub fn time_from_header(headers: &header::HeaderMap) -> Option<DateTime<Local>> {
     if let Some(time) = headers.get(header::LAST_MODIFIED) {
         if let Ok(t) = time.to_str() {
             let time = DateTime::parse_from_rfc2822(t);
