@@ -16,7 +16,7 @@ actix-web = "4"
 actix-web-grants = "3"
 actix-web-httpauth = "0.6"
 argon2 = "0.4"
-chrono = "0.4"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 clap = { version = "4.3", features = ["derive"] }
 derive_more = "0.99"
 faccess = "0.2"

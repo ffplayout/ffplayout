@@ -410,8 +410,6 @@ fn build_response(
 ) {
     if let Ok(body) = read_request_body(&mut request) {
         if let Ok(data) = serde_json::from_str::<HashMap<String, serde_json::Value>>(&body) {
-            debug!("Received JSON request: {:?}", data);
-
             if let Some(control_value) = data.get("control").and_then(|c| c.as_str()) {
                 match control_value {
                     "back" => {
@@ -513,7 +511,7 @@ pub fn run_server(
 ) {
     let addr = config.rpc_server.address.clone();
 
-    // info!("Server listening on {addr}");
+    info!("RPC server listening on {addr}");
 
     let server = Server::http(addr).expect("Failed to start server");
 

@@ -189,6 +189,7 @@ pub fn init_logging(
         .add_filter_ignore_str("sqlx")
         .add_filter_ignore_str("reqwest")
         .add_filter_ignore_str("rpc")
+        .add_filter_ignore_str("tiny_http")
         .set_level_padding(LevelPadding::Left)
         .set_time_level(time_level)
         .clone();

@@ -12,7 +12,7 @@ default-run = "ffplayout"
 
 [dependencies]
 ffplayout-lib = { path = "../lib" }
-chrono = "0.4"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 clap = { version = "4.3", features = ["derive"] }
 crossbeam-channel = "0.5"
 futures = "0.3"
