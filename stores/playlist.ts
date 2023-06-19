@@ -79,16 +79,15 @@ export const usePlaylist = defineStore('playlist', {
                     return response.json()
                 })
                 .then((data) => {
-                    if (data.result && data.result.played_sec) {
+                    if (data && data.played_sec) {
                         this.playoutIsRunning = true
-                        const obj = data.result
-                        this.currentClip = obj.current_media.source
-                        this.currentClipIndex = obj.index
-                        this.currentClipStart = obj.start_sec
-                        this.currentClipDuration = obj.current_media.duration
-                        this.currentClipIn = obj.current_media.seek
-                        this.currentClipOut = obj.current_media.out
-                        this.ingestRuns = obj.ingest_runs
+                        this.currentClip = data.current_media.source
+                        this.currentClipIndex = data.index
+                        this.currentClipStart = data.start_sec
+                        this.currentClipDuration = data.current_media.duration
+                        this.currentClipIn = data.current_media.seek
+                        this.currentClipOut = data.current_media.out
+                        this.ingestRuns = data.ingest_runs
                     }
                 })
                 .catch(() => {
