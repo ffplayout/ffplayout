@@ -26,7 +26,7 @@ use crate::utils::{PlayoutConfig, ProcessControl};
 
 /// send log messages to mail recipient
 pub fn send_mail(cfg: &PlayoutConfig, msg: String) {
-    let recip = cfg
+    let recipient = cfg
         .mail
         .recipient
         .split_terminator([',', ';', ' '])
@@ -39,7 +39,7 @@ pub fn send_mail(cfg: &PlayoutConfig, msg: String) {
         .subject(&cfg.mail.subject)
         .header(header::ContentType::TEXT_PLAIN);
 
-    for r in recip {
+    for r in recipient {
         message = message.to(r.parse().unwrap());
     }
 
