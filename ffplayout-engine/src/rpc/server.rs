@@ -173,6 +173,7 @@ struct ResponseData {
     message: String,
 }
 
+/// Read the request body and convert it to a string
 fn read_request_body(request: &mut Request) -> Result<String, IoError> {
     let mut buffer = String::new();
     let body = request.as_reader();
@@ -183,6 +184,7 @@ fn read_request_body(request: &mut Request) -> Result<String, IoError> {
     }
 }
 
+/// create client response in JSON format
 fn json_response(data: serde_json::Map<String, serde_json::Value>) -> Response<Cursor<Vec<u8>>> {
     let response_body = serde_json::to_string(&data).unwrap();
 
@@ -192,6 +194,7 @@ fn json_response(data: serde_json::Map<String, serde_json::Value>) -> Response<C
         .with_header(Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..]).unwrap())
 }
 
+/// create client error message
 fn error_response(answer: &str, code: i32) -> Response<Cursor<Vec<u8>>> {
     error!("RPC: {answer}");
 
@@ -200,6 +203,7 @@ fn error_response(answer: &str, code: i32) -> Response<Cursor<Vec<u8>>> {
         .with_header(Header::from_bytes(&b"Content-Type"[..], &b"text/plain"[..]).unwrap())
 }
 
+/// control playout: jump to last clip
 fn control_back(
     config: &PlayoutConfig,
     play_control: &PlayerControl,
@@ -245,6 +249,7 @@ fn control_back(
     error_response("Clip index out of range!", 400)
 }
 
+/// control playout: jump to next clip
 fn control_next(
     config: &PlayoutConfig,
     play_control: &PlayerControl,
@@ -291,6 +296,7 @@ fn control_next(
     error_response("Last clip can not be skipped!", 400)
 }
 
+/// control playout: reset playlist state
 fn control_reset(
     config: &PlayoutConfig,
     playout_stat: &PlayoutStatus,
@@ -325,16 +331,17 @@ fn control_reset(
     error_response("Reset playout state failed!", 400)
 }
 
+/// control playout: stop playlout
 fn control_stop(proc: &ProcessControl) -> Response<Cursor<Vec<u8>>> {
     proc.stop_all();
 
     let mut data_map = Map::new();
     data_map.insert("message".to_string(), json!("Stop playout!"));
 
-    // Ok(Value::String("Stop playout!".to_string()));
     json_response(data_map)
 }
 
+/// control playout: create text filter for ffmpeg
 fn control_text(
     data: HashMap<String, serde_json::Value>,
     config: &PlayoutConfig,
@@ -384,6 +391,7 @@ fn control_text(
     error_response("text message missing!", 400)
 }
 
+/// media info: get infos about current clip
 fn media_current(
     config: &PlayoutConfig,
     play_control: &PlayerControl,
@@ -398,6 +406,7 @@ fn media_current(
     error_response("No current clip...", 204)
 }
 
+/// media info: get infos about next clip
 fn media_next(config: &PlayoutConfig, play_control: &PlayerControl) -> Response<Cursor<Vec<u8>>> {
     let index = play_control.index.load(Ordering::SeqCst);
     let current_list = play_control.current_list.lock().unwrap();
@@ -413,6 +422,7 @@ fn media_next(config: &PlayoutConfig, play_control: &PlayerControl) -> Response<
     error_response("There is no next clip", 500)
 }
 
+/// media info: get infos about last clip
 fn media_last(config: &PlayoutConfig, play_control: &PlayerControl) -> Response<Cursor<Vec<u8>>> {
     let index = play_control.index.load(Ordering::SeqCst);
     let current_list = play_control.current_list.lock().unwrap();
@@ -428,6 +438,8 @@ fn media_last(config: &PlayoutConfig, play_control: &PlayerControl) -> Response<
     error_response("There is no last clip", 500)
 }
 
+/// response builder
+/// convert request body to struct and create response according to the request values
 fn build_response(
     mut request: Request,
     config: &PlayoutConfig,
@@ -493,6 +505,8 @@ fn build_response(
     }
 }
 
+/// request handler
+/// check if authorization header with correct value exists and forward traffic to build_response()
 fn handle_request(
     request: Request,
     config: &PlayoutConfig,
