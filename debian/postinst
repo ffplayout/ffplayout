@@ -3,6 +3,10 @@
 
 sysUser="ffpu"
 
+if [ -f /run/.containerenv ] || [ -f /run/.dockerenv ] || [ -f /.dockerenv ] || [ -f /.dockerinit ]; then
+    sysUser="root"
+fi
+
 if [ ! $(id -u $sysUser 2>/dev/null || echo -1) -ge 0 ]; then
     adduser --system $sysUser
 fi

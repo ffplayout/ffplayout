@@ -34,6 +34,9 @@ How to build the image:\
 # build default
 docker build -t ffplayout-image .
 
+# build from root folder, to copy local *.rpm package
+docker build -f docker/Dockerfile -t ffplayout-image:alma .
+
 # build ffmpeg from source
 docker build -f fromSource.Dockerfile -t ffplayout-image:from-source .
 
@@ -43,7 +46,7 @@ docker build -f Almalinux.Dockerfile -t ffplayout-image:almalinux .
 
 example of command to start the container:
 
-`docker run -ti -v /sys/fs/cgroup:/sys/fs/cgroup:ro --cap-add SYS_ADMIN -p 8787:8787 ffplayout-image`
+`docker run -ti --name ffplayout -v /sys/fs/cgroup:/sys/fs/cgroup:ro --cap-add SYS_ADMIN -p 8787:8787 ffplayout-image`
 
 Note from CentOS docker hub page
 `

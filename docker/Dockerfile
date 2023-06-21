@@ -14,7 +14,7 @@ RUN (cd /lib/systemd/system/sysinit.target.wants/; for i in *; do [ $i == \
 
 FROM base
 
-ARG FFPLAYOUT_VERSION=0.18.3
+ARG FFPLAYOUT_VERSION=0.19.0
 COPY README.md *.rpm /tmp/
 
 RUN dnf update -y && \
@@ -29,7 +29,9 @@ RUN dnf update -y && \
 RUN [[ -f /tmp/ffplayout-${FFPLAYOUT_VERSION}-1.x86_64.rpm ]] || wget -q "https://github.com/ffplayout/ffplayout/releases/download/v${FFPLAYOUT_VERSION}/ffplayout-${FFPLAYOUT_VERSION}-1.x86_64.rpm" -P /tmp/ && \
     dnf install -y /tmp/ffplayout-${FFPLAYOUT_VERSION}-1.x86_64.rpm && \
     rm /tmp/ffplayout-${FFPLAYOUT_VERSION}-1.x86_64.rpm && \
-    mkdir -p /home/ffpu && chown -R ffpu: /home/ffpu && \
+    sed -i "s/User=ffpu/User=root/g" /usr/lib/systemd/system/ffpapi.service && \
+    sed -i "s/User=ffpu/User=root/g" /usr/lib/systemd/system/ffplayout.service && \
+    sed -i "s/User=ffpu/User=root/g" /usr/lib/systemd/system/ffplayout@.service && \
     systemctl enable ffplayout && \
     systemctl enable ffpapi && \
     ffpapi -u admin -p admin -m contact@example.com
