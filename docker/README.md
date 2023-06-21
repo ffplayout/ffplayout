@@ -19,11 +19,11 @@ You can take a look à the [Dockerfile](Dockerfile)
 
 ## Storage
 
-There are some folders/files that are important for ffplayout to work well such as :
- - /usr/share/ffplayout/db => where all the data for the `ffpapi` are stored (user/pass etc)
- - /var/lib/ffplayout/tv-media => where the media are stored by default (configurable)
- - /var/lib/ffplayout/playlists => where playlists are stored (configurable)
- - /etc/ffplayout/ffplayout.yml => the core config file
+There are some folders/files that are important for ffplayout to work well such as:
+ - **/usr/share/ffplayout/db** => where all the data for the `ffpapi` are stored (user/pass etc)
+ - **/var/lib/ffplayout/tv-media** => where the media are stored by default (configurable)
+ - **/var/lib/ffplayout/playlists** => where playlists are stored (configurable)
+ - **/etc/ffplayout/ffplayout.yml** => the core config file
 
 It may be useful to create/link volume for those folders/files.
 
@@ -46,12 +46,12 @@ docker build -f Almalinux.Dockerfile -t ffplayout-image:almalinux .
 
 example of command to start the container:
 
-`docker run -ti --name ffplayout -v /sys/fs/cgroup:/sys/fs/cgroup:ro --cap-add SYS_ADMIN -p 8787:8787 ffplayout-image`
+```
+docker run -ti --name ffplayout -v /sys/fs/cgroup:/sys/fs/cgroup:ro --cap-add SYS_ADMIN -p 8787:8787 ffplayout-image
+```
 
-Note from CentOS docker hub page
-`
-There have been reports that if you're using an Ubuntu host, you will need to add -v /tmp/$(mktemp -d):/run in addition to the cgroups mount.
-`
+#### Note from CentOS docker hub page
+There have been reports that if you're using an Ubuntu host, you will need to add `-v /tmp/$(mktemp -d):/run` in addition to the cgroups mount.
 
 ## Kubernetes
 
