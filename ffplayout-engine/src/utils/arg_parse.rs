@@ -23,11 +23,11 @@ pub struct Args {
         long,
         help = "Generate playlist for dates, like: 2022-01-01 - 2022-01-10",
         name = "YYYY-MM-DD",
-        num_args = 0..=3,
+        num_args = 1..,
     )]
     pub generate: Option<Vec<String>>,
 
-    #[clap(long, help = "Optional path list for playlist generations", num_args = 0..=20)]
+    #[clap(long, help = "Optional path list for playlist generations", num_args = 1..)]
     pub paths: Option<Vec<String>>,
 
     #[clap(short = 'm', long, help = "Playing mode: folder, playlist")]
