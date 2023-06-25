@@ -186,7 +186,7 @@ pub fn write_hls(
             enc_cmd.join(" ")
         );
 
-        let mut enc_proc = match Command::new("ffmpeg")
+        let mut dec_proc = match Command::new("ffmpeg")
             .args(enc_cmd)
             .stderr(Stdio::piped())
             .spawn()
@@ -198,8 +198,8 @@ pub fn write_hls(
             Ok(proc) => proc,
         };
 
-        let enc_err = BufReader::new(enc_proc.stderr.take().unwrap());
-        *proc_control.encoder_term.lock().unwrap() = Some(enc_proc);
+        let enc_err = BufReader::new(dec_proc.stderr.take().unwrap());
+        *proc_control.decoder_term.lock().unwrap() = Some(dec_proc);
 
         if let Err(e) = stderr_reader(enc_err, Encoder, proc_control.clone()) {
             error!("{e:?}")

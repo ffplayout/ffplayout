@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.4](https://github.com/ffplayout/ffplayout/releases/tag/v0.18.4) (2023-06-25)
+
+### ffplayout
+
+- fix player control in HLS Mode [ec33cdb](https://github.com/ffplayout/ffplayout/commit/ec33cdb30944ab19c028a085fcb6d974ec4e81be)
+
+
 ## [0.18.3](https://github.com/ffplayout/ffplayout/releases/tag/v0.18.3) (2023-06-16)
 
 ### ffpapi
