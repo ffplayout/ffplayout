@@ -77,7 +77,7 @@ ENV PKG_CONFIG_PATH /usr/local/lib/pkgconfig
 RUN curl -fsSLO https://ffmpeg.org/releases/ffmpeg-$FFMPEG_VERSION.tar.bz2 \
   && tar -xjf ffmpeg-$FFMPEG_VERSION.tar.bz2 \
   && cd ffmpeg-$FFMPEG_VERSION \
-  && ./configure --enable-nvenc --enable-libx264 --enable-gpl --enable-libfdk_aac  --enable-libx264  --enable-nonfree  --enable-postproc  --enable-shared  --enable-version3 \
+  && ./configure --enable-nvenc --enable-libx264 --enable-gpl --enable-libfdk_aac --enable-nonfree  --enable-postproc  --enable-shared  --enable-version3 \
   && make -j$(nproc) \
   && make install
 
@@ -95,11 +95,11 @@ RUN echo "PermitRootLogin yes" >> /etc/ssh/sshd_config
 
 RUN    yum update -y \
     && yum install -y dejavu-sans-fonts sudo wget \
-    && wget -q -O /tmp/ffplayout-0.18.1-1.x86_64.rpm "https://github.com/ffplayout/ffplayout/releases/download/v0.18.1/ffplayout-0.18.1-1.x86_64.rpm" \
-    && yum install -y /tmp/ffplayout-0.18.1-1.x86_64.rpm \
+    && wget -q -O /tmp/ffplayout-0.18.3-1.x86_64.rpm "https://github.com/ffplayout/ffplayout/releases/download/v0.18.1/ffplayout-0.18.3-1.x86_64.rpm" \
+    && yum install -y /tmp/ffplayout-0.18.3-1.x86_64.rpm \
     && yum clean all \
     && echo 'Docker!' | passwd --stdin root \
-    && rm /tmp/ffplayout-0.18.1-1.x86_64.rpm \
+    && rm /tmp/ffplayout-0.18.3-1.x86_64.rpm \
     && mkdir -p /home/ffpu && chown -R ffpu: /home/ffpu \
     && systemctl enable ffplayout \
     && systemctl enable ffpapi

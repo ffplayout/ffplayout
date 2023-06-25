@@ -6,10 +6,7 @@ use std::{
 };
 
 use actix_web::web;
-use reqwest::{
-    header::{HeaderMap, AUTHORIZATION},
-    Client, Response,
-};
+use reqwest::{header::AUTHORIZATION, Client, Response};
 use serde::{Deserialize, Serialize};
 use sqlx::{Pool, Sqlite};
 use tokio::{
@@ -20,14 +17,6 @@ use tokio::{
 use crate::db::handles::select_channel;
 use crate::utils::{errors::ServiceError, playout_config};
 use ffplayout_lib::vec_strings;
-
-#[derive(Debug, Deserialize, Serialize, Clone)]
-struct RpcObj<T> {
-    jsonrpc: String,
-    id: i32,
-    method: String,
-    params: T,
-}
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 struct TextParams {
@@ -43,17 +32,6 @@ pub struct ControlParams {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 struct MediaParams {
     media: String,
-}
-
-impl<T> RpcObj<T> {
-    fn new(id: i32, method: String, params: T) -> Self {
-        Self {
-            jsonrpc: "2.0".into(),
-            id,
-            method,
-            params,
-        }
-    }
 }
 
 /// ffplayout engine process
@@ -263,18 +241,7 @@ impl SystemD {
     }
 }
 
-fn create_header(auth: &str) -> HeaderMap {
-    let mut headers = HeaderMap::new();
-    headers.insert(AUTHORIZATION, auth.parse().unwrap());
-
-    headers
-}
-
-async fn post_request<T>(
-    conn: &Pool<Sqlite>,
-    id: i32,
-    obj: RpcObj<T>,
-) -> Result<Response, ServiceError>
+async fn post_request<T>(conn: &Pool<Sqlite>, id: i32, obj: T) -> Result<Response, ServiceError>
 where
     T: Serialize,
 {
@@ -284,7 +251,7 @@ where
 
     match client
         .post(&url)
-        .headers(create_header(&config.rpc_server.authorization))
+        .header(AUTHORIZATION, &config.rpc_server.authorization)
         .json(&obj)
         .send()
         .await
@@ -299,14 +266,10 @@ pub async fn send_message(
     id: i32,
     message: HashMap<String, String>,
 ) -> Result<Response, ServiceError> {
-    let json_obj = RpcObj::new(
-        id,
-        "player".into(),
-        TextParams {
-            control: "text".into(),
-            message,
-        },
-    );
+    let json_obj = TextParams {
+        control: "text".into(),
+        message,
+    };
 
     post_request(conn, id, json_obj).await
 }
@@ -316,13 +279,9 @@ pub async fn control_state(
     id: i32,
     command: &str,
 ) -> Result<Response, ServiceError> {
-    let json_obj = RpcObj::new(
-        id,
-        "player".into(),
-        ControlParams {
-            control: command.to_owned(),
-        },
-    );
+    let json_obj = ControlParams {
+        control: command.to_owned(),
+    };
 
     post_request(conn, id, json_obj).await
 }
@@ -332,7 +291,7 @@ pub async fn media_info(
     id: i32,
     command: String,
 ) -> Result<Response, ServiceError> {
-    let json_obj = RpcObj::new(id, "player".into(), MediaParams { media: command });
+    let json_obj = MediaParams { media: command };
 
     post_request(conn, id, json_obj).await
 }

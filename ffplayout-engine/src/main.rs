@@ -14,7 +14,7 @@ use simplelog::*;
 
 use ffplayout::{
     output::{player, write_hls},
-    rpc::json_rpc_server,
+    rpc::run_server,
     utils::{arg_parse::get_args, get_config},
 };
 
@@ -71,6 +71,9 @@ fn status_file(stat_file: &str, playout_stat: &PlayoutStatus) {
     }
 }
 
+/// Set fake time for debugging.
+/// When no time is given, we use the current time.
+/// When a time is given, we use this time instead.
 #[cfg(debug_assertions)]
 fn fake_time(args: &Args) {
     if let Some(fake_time) = &args.fake_time {
@@ -81,6 +84,9 @@ fn fake_time(args: &Args) {
     }
 }
 
+/// Main function.
+/// Here we check the command line arguments and start the player.
+/// We also start a JSON RPC server if enabled.
 fn main() {
     let args = get_args();
 
@@ -155,7 +161,7 @@ fn main() {
 
     if config.rpc_server.enable {
         // If RPC server is enable we also fire up a JSON RPC server.
-        thread::spawn(move || json_rpc_server(config_clone, play_ctl, play_stat, proc_ctl2));
+        thread::spawn(move || run_server(config_clone, play_ctl, play_stat, proc_ctl2));
     }
 
     status_file(&config.general.stat_file, &playout_stat);
