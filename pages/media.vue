@@ -439,7 +439,7 @@ const xhr = ref(new XMLHttpRequest())
 
 onMounted(async () => {
     const exts = [
-        ...configStore.configPlayout.storage.extensions,
+        ...configStore.configPlayout.storage.extensions.split(','),
         ...configStore.configGui[configStore.configID].extra_extensions.split(','),
     ].map((ext) => {
         return `.${ext}`
