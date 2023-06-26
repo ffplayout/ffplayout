@@ -46,7 +46,13 @@ export const stringFormatter = () => {
     function filename(path: string) {
         if (path) {
             const pathArr = path.split('/')
-            return pathArr[pathArr.length - 1]
+            const name = pathArr[pathArr.length - 1]
+
+            if (name) {
+                return name
+            } else {
+                return path
+            }
         } else {
             return ''
         }
