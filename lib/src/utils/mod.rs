@@ -113,7 +113,7 @@ impl Media {
         let mut duration = 0.0;
         let mut probe = None;
 
-        if do_probe && Path::new(src).is_file() {
+        if do_probe && (is_remote(src) || Path::new(src).is_file()) {
             probe = Some(MediaProbe::new(src));
 
             if let Some(dur) = probe
