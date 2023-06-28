@@ -609,9 +609,9 @@ watch([listDate, configID], () => {
 
 function scrollTo(index: number) {
     const child = document.getElementById(`clip_${index}`)
+    const parent = document.getElementById('scroll-container')
 
-    if (child) {
-        const parent = document.getElementById('scroll-container')
+    if (child && parent) {
         const topPos = child.offsetTop
         parent.scrollTop = topPos - 50
     }
@@ -875,16 +875,11 @@ async function onSubmitImport(evt: any) {
 async function generatePlaylist() {
     playlistIsLoading.value = true
 
-    let payload = {
+    await $fetch(`/api/playlist/${configStore.configGui[configStore.configID].id}/generate/${listDate.value}`, {
         method: 'POST',
-        headers: { ...contentType, ...authStore.authHeader }
-    } as Payload
-
-    if (selectedFolders.value.length > 0 && !generateFromAll.value) {
-        payload.body = { paths: selectedFolders.value }
-    }
-
-    await $fetch(`/api/playlist/${configStore.configGui[configStore.configID].id}/generate/${listDate.value}`, payload)
+        headers: { ...contentType, ...authStore.authHeader },
+        body: (selectedFolders.value.length > 0 && !generateFromAll.value) ? { paths: selectedFolders.value } : null
+    })
         .then((response: any) => {
             playlistStore.playlist = processPlaylist(
                 configStore.startInSec,

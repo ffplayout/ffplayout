@@ -446,6 +446,7 @@ onMounted(async () => {
     })
 
     extensions.value = exts.join(', ')
+     // @ts-ignore
     thisUploadModal.value = $bootstrap.Modal.getOrCreateInstance(uploadModal.value)
 
     if (!mediaStore.folderTree.parent) {
@@ -621,10 +622,11 @@ function onFileChange(evt: any) {
     inputFiles.value = files
 }
 
-function upload(file: any): Promise<null> {
+function upload(file: any): Promise<null | undefined> {
     const formData = new FormData()
     formData.append(file.name, file)
     xhr.value = new XMLHttpRequest()
+
     return new Promise(resolve => {
         xhr.value.open(
             'PUT',
@@ -635,11 +637,11 @@ function upload(file: any): Promise<null> {
 
         xhr.value.setRequestHeader('Authorization', `Bearer ${authStore.jwtToken}`)
 
-        xhr.value.upload.onprogress = function (event) {
+        xhr.value.upload.onprogress = (event: any) => {
             currentProgress.value = Math.round((100 * event.loaded) / event.total)
         }
 
-        xhr.value.upload.onerror = function () {
+        xhr.value.upload.onerror = () => {
             indexStore.alertVariant = 'alert-danger'
             indexStore.alertMsg = `Upload error: ${xhr.value.status}`
             indexStore.showAlert = true
@@ -647,9 +649,9 @@ function upload(file: any): Promise<null> {
         }
 
         // upload completed successfully
-        xhr.value.onload = function () {
+        xhr.value.onload = () => {
             currentProgress.value = 100
-            resolve(xhr.response)
+            resolve(xhr.value.response)
         }
 
         xhr.value.send(formData)

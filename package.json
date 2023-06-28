@@ -8,6 +8,7 @@
     "build": "nuxt build",
     "dev": "nuxt dev",
     "generate": "nuxt generate",
+    "reset": "rm -rf .nuxt node_modules .output package-lock.json && npm install",
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare"
   },
@@ -38,7 +39,10 @@
     "@types/video.js": "^7.3.52",
     "eslint": "^8.43.0",
     "eslint-plugin-nuxt": "^4.0.0",
-    "nuxt": "3.6.0",
+    "fibers": "^5.0.3",
+    "nuxt": "3.6.1",
+    "postcss": "^8.4.24",
+    "postcss-loader": "^7.3.3",
     "sass": "^1.63.6",
     "sass-loader": "^13.3.2"
   }
