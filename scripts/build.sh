@@ -8,8 +8,6 @@ echo
 
 if [ ! -f 'ffplayout-frontend/package.json' ]; then
     git submodule update --init
-else
-    git submodule update --remote --merge
 fi
 
 yes | rm -rf public
