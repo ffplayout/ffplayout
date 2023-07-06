@@ -40,7 +40,7 @@
     "eslint": "^8.44.0",
     "eslint-plugin-nuxt": "^4.0.0",
     "fibers": "^5.0.3",
-    "nuxt": "3.6.2",
+    "nuxt": "3.6.1",
     "postcss": "^8.4.24",
     "postcss-loader": "^7.3.3",
     "sass": "^1.63.6",
