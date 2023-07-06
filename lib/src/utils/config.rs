@@ -157,6 +157,9 @@ pub struct General {
 
     #[serde(skip_serializing, skip_deserializing)]
     pub ffmpeg_libs: Vec<String>,
+
+    #[serde(default, skip_serializing, skip_deserializing)]
+    pub validate: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

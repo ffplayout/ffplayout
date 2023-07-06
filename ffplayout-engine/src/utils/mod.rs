@@ -39,6 +39,10 @@ pub fn get_config(args: Args) -> PlayoutConfig {
         config.general.generate = Some(gen);
     }
 
+    if args.validate {
+        config.general.validate = true;
+    }
+
     if let Some(paths) = args.paths {
         config.storage.paths = paths;
     }

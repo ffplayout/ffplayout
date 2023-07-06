@@ -2,7 +2,7 @@ use std::{
     fs::{self, File},
     path::{Path, PathBuf},
     process::exit,
-    sync::{Arc, Mutex},
+    sync::{atomic::AtomicBool, Arc, Mutex},
     thread,
 };
 
@@ -19,8 +19,9 @@ use ffplayout::{
 };
 
 use ffplayout_lib::utils::{
-    generate_playlist, import::import_file, init_logging, send_mail, validate_ffmpeg,
-    OutputMode::*, PlayerControl, PlayoutStatus, ProcessControl,
+    generate_playlist, get_date, import::import_file, init_logging, is_remote, send_mail,
+    validate_ffmpeg, validate_playlist, JsonPlaylist, OutputMode::*, PlayerControl, PlayoutStatus,
+    ProcessControl,
 };
 
 #[cfg(debug_assertions)]
@@ -157,6 +158,39 @@ fn main() {
                 exit(1);
             }
         }
+    }
+
+    if args.validate {
+        let mut playlist_path = Path::new(&config.playlist.path).to_owned();
+        let start_sec = config.playlist.start_sec.unwrap();
+        let date = get_date(false, start_sec, 0.0);
+
+        if playlist_path.is_dir() || is_remote(&config.playlist.path) {
+            let d: Vec<&str> = date.split('-').collect();
+            playlist_path = playlist_path
+                .join(d[0])
+                .join(d[1])
+                .join(date.clone())
+                .with_extension("json");
+        }
+
+        let f = File::options()
+            .read(true)
+            .write(false)
+            .open(&playlist_path)
+            .expect("Could not open json playlist file.");
+
+        let playlist: JsonPlaylist = match serde_json::from_reader(f) {
+            Ok(p) => p,
+            Err(e) => {
+                error!("{e:?}");
+                exit(1)
+            }
+        };
+
+        validate_playlist(playlist, Arc::new(AtomicBool::new(false)), config);
+
+        exit(0);
     }
 
     if config.rpc_server.enable {

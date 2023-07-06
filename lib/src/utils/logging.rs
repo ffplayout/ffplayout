@@ -238,6 +238,7 @@ pub fn init_logging(
     } else {
         let term_config = log_config
             .clone()
+            .set_level_color(Level::Trace, Some(Color::Ansi256(11)))
             .set_level_color(Level::Debug, Some(Color::Ansi256(12)))
             .set_level_color(Level::Info, Some(Color::Ansi256(10)))
             .set_level_color(Level::Warn, Some(Color::Ansi256(208)))

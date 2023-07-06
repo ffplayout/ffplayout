@@ -41,7 +41,7 @@ pub fn output(config: &PlayoutConfig, log_format: &str) -> process::Child {
         }) {
             enc_cmd.append(&mut cmd);
         } else {
-            warn!("Given output parameter a skipped, they are not supported by ffplay!");
+            warn!("Given output parameters are skipped, they are not supported by ffplay!");
         }
     }
 
