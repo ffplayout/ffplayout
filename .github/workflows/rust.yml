@@ -25,5 +25,5 @@ jobs:
           cargo clippy --all-features --all-targets -- --deny warnings
           cargo fmt --all -- --check
 
-      - name: Run build on all Systems
+      - name: Run build on ${{ matrix.os }}
         run: cargo build --all-features
