@@ -50,7 +50,9 @@ pub fn import_file(
         if !line.starts_with('#') {
             let item = Media::new(0, &line, true);
 
-            playlist.program.push(item);
+            if item.duration > 0.0 {
+                playlist.program.push(item);
+            }
         }
     }
 

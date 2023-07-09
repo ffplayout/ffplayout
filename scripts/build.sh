@@ -6,6 +6,10 @@ target=$1
 echo "build frontend"
 echo
 
+if [ ! -f 'ffplayout-frontend/package.json' ]; then
+    git submodule update --init
+fi
+
 yes | rm -rf public
 cd ffplayout-frontend
 

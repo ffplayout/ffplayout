@@ -147,10 +147,16 @@ pub fn validate_playlist(
         if valid_source(&item.source) {
             if let Err(e) = check_media(item.clone(), pos, begin, &config) {
                 error!("{e}");
+            } else if config.general.validate {
+                debug!(
+                    "Source at <yellow>{}</>, seems fine: <b><magenta>{}</></b>",
+                    sec_to_time(begin),
+                    item.source
+                )
             };
         } else {
             error!(
-                "Source on position <yellow>{pos}</> {} not exists: <b><magenta>\"{}\"</></b>",
+                "Source on position <yellow>{pos}</> {} not exists: <b><magenta>{}</></b>",
                 sec_to_time(begin),
                 item.source
             );

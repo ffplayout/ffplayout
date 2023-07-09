@@ -78,6 +78,9 @@ pub struct Args {
     #[cfg(debug_assertions)]
     #[clap(long, help = "fake date time, for debugging")]
     pub fake_time: Option<String>,
+
+    #[clap(long, help = "validate given playlist")]
+    pub validate: bool,
 }
 
 /// Get arguments from command line, and return them.

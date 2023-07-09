@@ -15,7 +15,7 @@ fn video_audio_input() {
     config.processing.logo = logo_path.to_string_lossy().to_string();
 
     let media_obj = Media::new(0, "./assets/with_audio.mp4", true);
-    let media = gen_source(&config, media_obj, &None);
+    let media = gen_source(&config, media_obj, &None, 1);
 
     let test_filter_cmd =
         vec_strings![
@@ -41,7 +41,7 @@ fn video_audio_custom_filter1_input() {
     config.processing.custom_filter = "[0:v]gblur=2[c_v_out];[0:a]volume=0.2[c_a_out]".to_string();
 
     let media_obj = Media::new(0, "./assets/with_audio.mp4", true);
-    let media = gen_source(&config, media_obj, &None);
+    let media = gen_source(&config, media_obj, &None, 1);
 
     let test_filter_cmd = vec_strings![
         "-filter_complex",
@@ -68,7 +68,7 @@ fn video_audio_custom_filter2_input() {
             .to_string();
 
     let media_obj = Media::new(0, "./assets/with_audio.mp4", true);
-    let media = gen_source(&config, media_obj, &None);
+    let media = gen_source(&config, media_obj, &None, 1);
 
     let test_filter_cmd = vec_strings![
         "-filter_complex",
@@ -94,7 +94,7 @@ fn video_audio_custom_filter3_input() {
         "[v_in];movie=logo.png[l];[v_in][l]overlay[c_v_out];[0:a]volume=0.2[c_a_out]".to_string();
 
     let media_obj = Media::new(0, "./assets/with_audio.mp4", true);
-    let media = gen_source(&config, media_obj, &None);
+    let media = gen_source(&config, media_obj, &None, 1);
 
     let test_filter_cmd = vec_strings![
         "-filter_complex",
@@ -119,7 +119,7 @@ fn dual_audio_aevalsrc_input() {
     config.processing.add_logo = false;
 
     let media_obj = Media::new(0, "./assets/with_audio.mp4", true);
-    let media = gen_source(&config, media_obj, &None);
+    let media = gen_source(&config, media_obj, &None, 1);
 
     let test_filter_cmd =
         vec_strings![
@@ -145,7 +145,7 @@ fn dual_audio_input() {
     config.processing.add_logo = false;
 
     let media_obj = Media::new(0, "./assets/dual_audio.mp4", true);
-    let media = gen_source(&config, media_obj, &None);
+    let media = gen_source(&config, media_obj, &None, 1);
 
     let test_filter_cmd = vec_strings![
         "-filter_complex",
@@ -171,7 +171,7 @@ fn video_separate_audio_input() {
 
     let mut media_obj = Media::new(0, "./assets/no_audio.mp4", true);
     media_obj.audio = "./assets/audio.mp3".to_string();
-    let media = gen_source(&config, media_obj, &None);
+    let media = gen_source(&config, media_obj, &None, 1);
 
     let test_filter_cmd = vec_strings![
         "-filter_complex",
@@ -1333,7 +1333,7 @@ fn video_audio_hls() {
     ]);
 
     let media_obj = Media::new(0, "./assets/with_audio.mp4", true);
-    let media = gen_source(&config, media_obj, &None);
+    let media = gen_source(&config, media_obj, &None, 1);
 
     let enc_prefix = vec_strings![
         "-hide_banner",
@@ -1422,7 +1422,7 @@ fn video_audio_sub_meta_hls() {
     ]);
 
     let media_obj = Media::new(0, "./assets/with_audio.mp4", true);
-    let media = gen_source(&config, media_obj, &None);
+    let media = gen_source(&config, media_obj, &None, 1);
 
     let enc_prefix = vec_strings![
         "-hide_banner",
@@ -1512,7 +1512,7 @@ fn video_multi_audio_hls() {
     ]);
 
     let media_obj = Media::new(0, "./assets/dual_audio.mp4", true);
-    let media = gen_source(&config, media_obj, &None);
+    let media = gen_source(&config, media_obj, &None, 1);
 
     let enc_prefix = vec_strings![
         "-hide_banner",
@@ -1617,7 +1617,7 @@ fn multi_video_audio_hls() {
     ]);
 
     let media_obj = Media::new(0, "./assets/with_audio.mp4", true);
-    let media = gen_source(&config, media_obj, &None);
+    let media = gen_source(&config, media_obj, &None, 1);
 
     let enc_prefix = vec_strings![
         "-hide_banner",
@@ -1733,7 +1733,7 @@ fn multi_video_multi_audio_hls() {
     ]);
 
     let media_obj = Media::new(0, "./assets/dual_audio.mp4", true);
-    let media = gen_source(&config, media_obj, &None);
+    let media = gen_source(&config, media_obj, &None, 1);
 
     let enc_prefix = vec_strings![
         "-hide_banner",
