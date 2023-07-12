@@ -5,9 +5,8 @@
                 <div class="col-3 player-col">
                     <div>
                         <video
-                            v-if="configStore.configGui[configStore.configID].preview_url.split('.').pop() === 'flv'"
-                            id="httpStream"
-                            ref="httpStream"
+                            v-if="streamExtension === 'flv'"
+                            ref="httpStreamFlv"
                             width="100%"
                             controls
                         />
@@ -167,36 +166,31 @@ const breakStatusCheck = ref(false)
 const timeStr = ref('00:00:00')
 const timer = ref()
 const streamExtension = ref(configStore.configGui[configStore.configID].preview_url.split('.').pop())
-const httpStream = ref()
+const httpStreamFlv = ref(null)
 const httpFlvSource = ref({
     type: 'flv',
     isLive: true,
-    url: ''
+    url: configStore.configGui[configStore.configID].preview_url
 })
 const mpegtsOptions = ref({
-    enableWorker: true,
     lazyLoadMaxDuration: 3 * 60,
     liveBufferLatencyChasing: true
 })
 
 onMounted(() => {
     breakStatusCheck.value = false
-    let player: any
+    let player: any = null
 
-    if (streamExtension.value === 'flv') {
-        httpFlvSource.value.url = configStore.configGui[configStore.configID].preview_url
-
-        if (typeof player !== 'undefined') {
-            if (player != null) {
-                player.unload()
-                player.detachMediaElement()
-                player.destroy()
-                player = null
-            }
+    if (streamExtension.value === 'flv' && mpegts.getFeatureList().mseLivePlayback) {
+        if (typeof player !== 'undefined' && player != null) {
+            player.unload()
+            player.detachMediaElement()
+            player.destroy()
+            player = null
         }
 
         player = mpegts.createPlayer(httpFlvSource.value, mpegtsOptions.value)
-        player.attachMediaElement(httpStream.value)
+        player.attachMediaElement(httpStreamFlv.value)
         player.load()
     }
 
