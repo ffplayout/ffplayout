@@ -200,6 +200,11 @@ fn main() {
 
     status_file(&config.general.stat_file, &playout_stat);
 
+    debug!(
+        "Use config: <b><magenta>{}</></b>",
+        config.general.config_path
+    );
+
     match config.out.mode {
         // write files/playlist to HLS m3u8 playlist
         HLS => write_hls(&config, play_control, playout_stat, proc_control),

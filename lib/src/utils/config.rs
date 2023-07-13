@@ -146,6 +146,9 @@ pub struct General {
     pub help_text: String,
     pub stop_threshold: f64,
 
+    #[serde(default, skip_serializing, skip_deserializing)]
+    pub config_path: String,
+
     #[serde(default)]
     pub stat_file: String,
 
@@ -341,6 +344,8 @@ impl PlayoutConfig {
         let mut config: PlayoutConfig =
             serde_yaml::from_reader(f).expect("Could not read config file.");
         config.general.generate = None;
+
+        config.general.config_path = config_path.to_string_lossy().to_string();
 
         config.general.stat_file = home_dir()
             .unwrap_or_else(env::temp_dir)

@@ -8,7 +8,7 @@ if [ -f /run/.containerenv ] || [ -f /run/.dockerenv ] || [ -f /.dockerenv ] || 
 fi
 
 if [ ! $(id -u $sysUser 2>/dev/null || echo -1) -ge 0 ]; then
-    adduser --system $sysUser
+    adduser --system --create-home $sysUser > /dev/null || adduser --system --home "/home/$sysUser" $sysUser
 fi
 
 if [ ! -d "/usr/share/ffplayout/db" ]; then
