@@ -25,24 +25,15 @@ The ffplayout engine has no special preview config parameters, but you can add y
     -ar 44100
     -b:a 128k
     -flags +global_header
-    -f flv rtmp://preview.local/live/stream
+    -f flv rtmp://127.0.0.1/live/stream
     ...
 ```
 
-In this documentation we suspect, that you are using [ffplayout-frontend](https://github.com/ffplayout/ffplayout-frontend) and that you using [SRS](https://github.com/ossrs/srs) at least for the preview stream. In the past we used HLS for the preview, but now it is possible to also use [HTTP-FLV](https://github.com/ossrs/srs/wiki/v4_EN_DeliveryHttpStream) for less latency.
+In this documentation we suspect, that you are using [ffplayout-frontend](https://github.com/ffplayout/ffplayout-frontend) and that you using [SRS](https://github.com/ossrs/srs) at least for the preview stream. The most stable solution is previewing over HLS, but it is also possible to use [HTTP-FLV](https://github.com/ossrs/srs/wiki/v4_EN_DeliveryHttpStream) for less latency.
 
-To get this working we have to follow some steps. ffplayout engine needs a direction where it can stream on and SRS need a virtual host for the rtmp input. Because both runs on the same machine, we use for that a redirection in the **/etc/hosts** file:
+To get this working we have to follow some steps.
 
-**If you want to use HLS as preview, replace `rtmp://preview.local/live/stream` with `rtmp://127.0.0.1/live/stream` and you can skip the redirection in the hosts file.**
-
-```
-...
-127.0.0.1   preview.local
-```
-
-Add this line to **/etc/hosts** ans save it.
-
-#### Next step is to compile and install SRS:
+#### First step is to compile and install SRS:
 
 ```BASH
 # install some tool for compiling
@@ -114,13 +105,6 @@ stats {
     disk            sda vda xvda xvdb;
 }
 
-vhost preview.local {
-    http_remux {
-        enabled     on;
-        mount       [vhost]/[app]/[stream].flv;
-    }
-}
-
 # for normal HLS streaming
 vhost __defaultVhost__ {
     enabled             on;
@@ -129,6 +113,13 @@ vhost __defaultVhost__ {
         mix_correct     on;
     }
 
+    # switch enable off, for hls preview
+    http_remux {
+        enabled     on;
+        mount       [vhost]/[app]/[stream].flv;
+    }
+
+     # switch enable off, for http-flv preview
     hls {
         enabled         on;
         hls_path        /var/www/srs;
@@ -150,8 +141,8 @@ Now you can enable and start SRS with: `systemctl enable --now srs` and check if
 We assume that you have already installed nginx and you are using it already for the frontend. So open the frontend config **/etc/nginx/sites-enabled/ffplayout.conf** and add a new location to it:
 
 ```NGINX
-location /preview/stream.flv {
-    proxy_pass http://preview.local:8080/live/stream.flv;
+location /live/stream.flv {
+    proxy_pass http://127.0.0.1:8080/live/stream.flv;
 }
 ```
 
@@ -195,9 +186,8 @@ server {
         alias /var/www/srs/live/;
     }
 
-    location /preview/stream.flv {
-        # HTTP-FLV preview
-        proxy_pass http://preview.local:8080/live/stream.flv;
+    location /live/stream.flv {
+        proxy_pass http://127.0.0.1:8080/live/stream.flv;
     }
 }
 ```
@@ -208,4 +198,4 @@ Restart Nginx.
 
 You can (re)start ffplayout and when you setup everything correct it should run without errors.
 
-You can go now in your frontend configuration and change the `player_url` to: `http://[domain or IP]/preview/stream.flv` or `http://[domain or IP]/live/stream.m3u8`, save and reload the page. When you go now to the player tap you should see the preview video.
+You can go now in your frontend configuration and change the `player_url` to: `http://[domain or IP]/live/stream.flv` or `http://[domain or IP]/live/stream.m3u8`, save and reload the page. When you go now to the player tap you should see the preview video.
