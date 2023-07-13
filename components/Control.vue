@@ -2,14 +2,9 @@
     <div>
         <div class="container-fluid">
             <div class="row control-row">
-                <div class="col-3 player-col">
-                    <div>
-                        <video
-                            v-if="streamExtension === 'flv'"
-                            ref="httpStreamFlv"
-                            width="100%"
-                            controls
-                        />
+                <div class="col-3 player-col d-flex flex-column">
+                    <div class="d-flex flex-grow-1 align-items-center">
+                        <video v-if="streamExtension === 'flv'" ref="httpStreamFlv" class="w-100" controls />
                         <VideoPlayer
                             class="live-player"
                             v-else-if="configStore.configGui[configStore.configID]"
@@ -21,10 +16,12 @@
                                 suppressNotSupportedError: true,
                                 autoplay: false,
                                 preload: 'auto',
-                                sources: [{
-                                    type: 'application/x-mpegURL',
-                                    src: configStore.configGui[configStore.configID].preview_url
-                                }]
+                                sources: [
+                                    {
+                                        type: 'application/x-mpegURL',
+                                        src: configStore.configGui[configStore.configID].preview_url,
+                                    },
+                                ],
                             }"
                         />
                     </div>
@@ -44,11 +41,7 @@
                                     </div>
                                 </div>
                                 <div class="col current-clip">
-                                    <div
-                                        v-if="playlistStore.ingestRuns"
-                                        class="current-clip-text"
-                                        title="Live Ingest"
-                                    >
+                                    <div v-if="playlistStore.ingestRuns" class="current-clip-text" title="Live Ingest">
                                         Live Ingest
                                     </div>
                                     <div v-else class="current-clip-text" :title="filename(playlistStore.currentClip)">
@@ -170,11 +163,11 @@ const httpStreamFlv = ref(null)
 const httpFlvSource = ref({
     type: 'flv',
     isLive: true,
-    url: configStore.configGui[configStore.configID].preview_url
+    url: configStore.configGui[configStore.configID].preview_url,
 })
 const mpegtsOptions = ref({
     lazyLoadMaxDuration: 3 * 60,
-    liveBufferLatencyChasing: true
+    liveBufferLatencyChasing: true,
 })
 
 onMounted(() => {
@@ -248,7 +241,7 @@ async function playoutStatus() {
     await $fetch(`/api/control/${channel}/process/`, {
         method: 'POST',
         headers: { ...contentType, ...authStore.authHeader },
-        body: JSON.stringify({ command: 'status' })
+        body: JSON.stringify({ command: 'status' }),
     })
         .then((response: any) => {
             if (response === 'active') {
@@ -272,7 +265,7 @@ async function controlProcess(state: string) {
     await $fetch(`/api/control/${channel}/process/`, {
         method: 'POST',
         headers: { ...contentType, ...authStore.authHeader },
-        body: JSON.stringify({ command: state })
+        body: JSON.stringify({ command: state }),
     })
 
     setTimeout(() => {
@@ -293,7 +286,7 @@ async function controlPlayout(state: string) {
     await $fetch(`/api/control/${channel}/playout/`, {
         method: 'POST',
         headers: { ...contentType, ...authStore.authHeader },
-        body: JSON.stringify({ control: state })
+        body: JSON.stringify({ control: state }),
     })
 
     setTimeout(() => {
