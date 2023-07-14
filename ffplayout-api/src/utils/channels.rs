@@ -48,6 +48,12 @@ pub async fn create_channel(
         .to_string_lossy()
         .to_string();
 
+    config.out.output_param = config
+        .out
+        .output_param
+        .replace("stream.m3u8", &format!("stream{channel_num}.m3u8"))
+        .replace("stream-%d.ts", &format!("stream{channel_num}-%d.ts"));
+
     let file = fs::File::create(&target_channel.config_path)?;
     serde_yaml::to_writer(file, &config).unwrap();
 
