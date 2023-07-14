@@ -20,8 +20,8 @@ use ffplayout::{
 
 use ffplayout_lib::utils::{
     generate_playlist, get_date, import::import_file, init_logging, is_remote, send_mail,
-    validate_ffmpeg, validate_playlist, JsonPlaylist, OutputMode::*, PlayerControl, PlayoutStatus,
-    ProcessControl,
+    test_tcp_port, validate_ffmpeg, validate_playlist, JsonPlaylist, OutputMode::*, PlayerControl,
+    PlayoutStatus, ProcessControl,
 };
 
 #[cfg(debug_assertions)]
@@ -195,10 +195,20 @@ fn main() {
 
     if config.rpc_server.enable {
         // If RPC server is enable we also fire up a JSON RPC server.
+
+        if !test_tcp_port(&config.rpc_server.address) {
+            exit(1)
+        }
+
         thread::spawn(move || run_server(config_clone, play_ctl, play_stat, proc_ctl2));
     }
 
     status_file(&config.general.stat_file, &playout_stat);
+
+    debug!(
+        "Use config: <b><magenta>{}</></b>",
+        config.general.config_path
+    );
 
     match config.out.mode {
         // write files/playlist to HLS m3u8 playlist

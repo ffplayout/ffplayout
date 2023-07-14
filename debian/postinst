@@ -8,7 +8,7 @@ if [ -f /run/.containerenv ] || [ -f /run/.dockerenv ] || [ -f /.dockerenv ] || 
 fi
 
 if [ ! $(id -u $sysUser 2>/dev/null || echo -1) -ge 0 ]; then
-    adduser --system $sysUser
+    adduser --system --create-home $sysUser > /dev/null || adduser --system --home "/home/$sysUser" $sysUser
 fi
 
 if [ ! -d "/usr/share/ffplayout/db" ]; then
@@ -20,9 +20,9 @@ if [ ! -d "/usr/share/ffplayout/db" ]; then
 
     /usr/bin/ffpapi -i -d "${IP}:8787"
 
-    chown -R ${sysUser}. "/usr/share/ffplayout"
-    chown -R ${sysUser}. "/var/lib/ffplayout"
-    chown -R ${sysUser}. "/etc/ffplayout"
+    chown -R ${sysUser}: "/usr/share/ffplayout"
+    chown -R ${sysUser}: "/var/lib/ffplayout"
+    chown -R ${sysUser}: "/etc/ffplayout"
 
     ln -s "/var/lib/ffplayout/tv-media" "/usr/share/ffplayout/public/"
 fi
@@ -30,5 +30,5 @@ fi
 if [ ! -d "/var/log/ffplayout" ]; then
     mkdir "/var/log/ffplayout"
 
-    chown ${sysUser}. "/var/log/ffplayout"
+    chown ${sysUser}: "/var/log/ffplayout"
 fi

@@ -825,20 +825,23 @@ pub fn free_tcp_socket(exclude_socket: String) -> Option<String> {
 
 /// check if tcp port is free
 pub fn test_tcp_port(url: &str) -> bool {
-    let raw_addr = url.split('/').collect::<Vec<&str>>();
+    let re = Regex::new(r"^[\w]+\://").unwrap();
+    let mut addr = url.to_string();
 
-    if raw_addr.len() > 1 {
-        if let Some(socket) = raw_addr[2].split_once(':') {
-            if TcpListener::bind((
-                socket.0,
-                socket.1.to_string().parse::<u16>().unwrap_or_default(),
-            ))
-            .is_ok()
-            {
-                return true;
-            }
-        };
+    if re.is_match(url) {
+        addr = re.replace(url, "").to_string();
     }
+
+    if let Some(socket) = addr.split_once(':') {
+        if TcpListener::bind((
+            socket.0,
+            socket.1.to_string().parse::<u16>().unwrap_or_default(),
+        ))
+        .is_ok()
+        {
+            return true;
+        }
+    };
 
     error!("Address <b><magenta>{url}</></b> already in use!");
 

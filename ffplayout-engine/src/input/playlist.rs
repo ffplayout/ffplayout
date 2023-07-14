@@ -82,7 +82,7 @@ impl CurrentProgram {
             let json = read_json(&self.config, None, self.is_terminated.clone(), seek, 0.0);
 
             if let Some(file) = &json.current_file {
-                info!("Read Playlist: <b><magenta>{}</></b>", file);
+                info!("Read Playlist: <b><magenta>{file}</></b>");
             }
 
             self.json_path = json.current_file;
