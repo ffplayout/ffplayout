@@ -112,8 +112,8 @@ async function addChannel() {
     newChannel.service = `ffplayout@${confName}.service`
 
     channels.push(newChannel)
-    configStore.updateGuiConfig(channels)
-    configStore.updateConfigID(configStore.configGui.length - 1)
+    configStore.configGui =channels
+    configStore.configID = configStore.configGui.length - 1
 }
 
 async function onSubmitGui() {
@@ -154,8 +154,8 @@ async function deleteChannel() {
     })
 
     config.splice(configStore.configID, 1)
-    configStore.updateGuiConfig(config)
-    configStore.updateConfigID(configStore.configGui.length - 1)
+    configStore.configGui = config
+    configStore.configID = configStore.configGui.length - 1
     await configStore.getPlayoutConfig()
 
     if (response.status === 200) {

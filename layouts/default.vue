@@ -17,6 +17,7 @@
 import { useConfig } from '~/stores/config'
 import { useIndex } from '~/stores/index'
 
+const { $bootstrap } = useNuxtApp()
 const configStore = useConfig()
 const indexStore = useIndex()
 
@@ -27,6 +28,13 @@ useHead({
     }
 })
 
+onMounted(() => {
+    // @ts-ignore
+    new $bootstrap.Tooltip(document.body, {
+        selector: "[data-tooltip=tooltip]",
+        container: "body"
+    })
+})
 await configStore.nuxtClientInit()
 </script>
 

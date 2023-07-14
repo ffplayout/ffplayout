@@ -273,6 +273,7 @@
                 type="button"
                 class="btn btn-primary"
                 title="Create Folder"
+                data-tooltip=tooltip
                 data-bs-toggle="modal"
                 data-bs-target="#folderModal"
             >
@@ -282,6 +283,7 @@
                 type="button"
                 class="btn btn-primary"
                 title="Upload File"
+                data-tooltip=tooltip
                 data-bs-toggle="modal"
                 data-bs-target="#uploadModal"
             >
@@ -438,15 +440,26 @@ const thisUploadModal = ref()
 const xhr = ref(new XMLHttpRequest())
 
 onMounted(async () => {
+    let config_extensions = configStore.configPlayout.storage.extensions
+    let extra_extensions = configStore.configGui[configStore.configID].extra_extensions
+
+    if (typeof config_extensions === 'string') {
+        config_extensions = config_extensions.split(',')
+    }
+
+    if (typeof extra_extensions === 'string') {
+        extra_extensions = extra_extensions.split(',')
+    }
+
     const exts = [
-        ...configStore.configPlayout.storage.extensions.split(','),
-        ...configStore.configGui[configStore.configID].extra_extensions.split(','),
+        ...config_extensions,
+        ...extra_extensions,
     ].map((ext) => {
         return `.${ext}`
     })
 
     extensions.value = exts.join(', ')
-     // @ts-ignore
+    // @ts-ignore
     thisUploadModal.value = $bootstrap.Modal.getOrCreateInstance(uploadModal.value)
 
     if (!mediaStore.folderTree.parent) {

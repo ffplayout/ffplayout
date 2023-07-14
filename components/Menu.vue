@@ -83,7 +83,7 @@ function logout() {
 }
 
 function selectChannel(index: number) {
-    configStore.updateConfigID(index)
+    configStore.configID = index
     configStore.getPlayoutConfig()
 }
 </script>

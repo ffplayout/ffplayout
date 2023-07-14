@@ -200,13 +200,20 @@
         </splitpanes>
 
         <div class="btn-group media-button mb-3">
-            <div class="btn btn-primary" title="Copy Playlist" data-bs-toggle="modal" data-bs-target="#copyModal">
+            <div
+                class="btn btn-primary"
+                title="Copy Playlist"
+                data-bs-toggle="modal"
+                data-tooltip="tooltip"
+                data-bs-target="#copyModal"
+            >
                 <i class="bi-files" />
             </div>
             <div
                 v-if="!configStore.configPlayout.playlist.loop"
                 class="btn btn-primary"
                 title="Loop Clips in Playlist"
+                data-tooltip="tooltip"
                 @click="loopClips()"
             >
                 <i class="bi-view-stacked" />
@@ -214,6 +221,7 @@
             <div
                 class="btn btn-primary"
                 title="Add (remote) Source to Playlist"
+                data-tooltip="tooltip"
                 data-bs-toggle="modal"
                 data-bs-target="#sourceModal"
                 @click="clearNewSource()"
@@ -223,6 +231,7 @@
             <div
                 class="btn btn-primary"
                 title="Import text/m3u file"
+                data-tooltip="tooltip"
                 data-bs-toggle="modal"
                 data-bs-target="#importModal"
             >
@@ -231,19 +240,26 @@
             <div
                 class="btn btn-primary"
                 title="Generate a randomized Playlist"
+                data-tooltip="tooltip"
                 data-bs-toggle="modal"
                 data-bs-target="#generateModal"
                 @click="mediaStore.getTree('', true)"
             >
                 <i class="bi-sort-down-alt" />
             </div>
-            <div class="btn btn-primary" title="Reset Playlist" @click="getPlaylist()">
+            <div class="btn btn-primary" title="Reset Playlist" data-tooltip="tooltip" @click="getPlaylist()">
                 <i class="bi-arrow-counterclockwise" />
             </div>
-            <div class="btn btn-primary" title="Save Playlist" @click="savePlaylist(listDate)">
+            <div class="btn btn-primary" title="Save Playlist" data-tooltip="tooltip" @click="savePlaylist(listDate)">
                 <i class="bi-download" />
             </div>
-            <div class="btn btn-primary" title="Delete Playlist" data-bs-toggle="modal" data-bs-target="#deleteModal">
+            <div
+                class="btn btn-primary"
+                title="Delete Playlist"
+                data-tooltip="tooltip"
+                data-bs-toggle="modal"
+                data-bs-target="#deleteModal"
+            >
                 <i class="bi-trash" />
             </div>
         </div>
@@ -483,7 +499,7 @@
                                                             '/'
                                                         ),
                                                         true
-                                                    )
+                                                    ),
                                                 ]
                                             "
                                         >
@@ -550,11 +566,11 @@ const mediaStore = useMedia()
 const playlistStore = usePlaylist()
 
 definePageMeta({
-    middleware: ['auth']
+    middleware: ['auth'],
 })
 
 useHead({
-    title: 'Player | ffplayout'
+    title: 'Player | ffplayout',
 })
 
 const { configID } = storeToRefs(useConfig())
@@ -575,12 +591,12 @@ const selectedFolders = ref([] as string[])
 const generateFromAll = ref(false)
 const browserSortOptions = ref({
     group: { name: 'playlist', pull: 'clone', put: false },
-    sort: false
+    sort: false,
 })
 const playlistSortOptions = ref({
     group: 'playlist',
     animation: 100,
-    handle: '.grabbing'
+    handle: '.grabbing',
 })
 const newSource = ref({
     begin: 0,
@@ -591,7 +607,7 @@ const newSource = ref({
     custom_filter: '',
     source: '',
     audio: '',
-    uid: ''
+    uid: '',
 } as PlaylistItem)
 
 onMounted(() => {
@@ -674,7 +690,7 @@ function cloneClip(event: any) {
         source: sourcePath,
         in: 0,
         out: mediaStore.folderTree.files[o].duration,
-        duration: mediaStore.folderTree.files[o].duration
+        duration: mediaStore.folderTree.files[o].duration,
     })
 
     playlistStore.playlist = processPlaylist(
@@ -719,9 +735,9 @@ function setPreviewData(path: string) {
             sources: [
                 {
                     type: `video/${ext}`,
-                    src: previewUrl.value
-                }
-            ]
+                    src: previewUrl.value,
+                },
+            ],
         }
     } else {
         isVideo.value = false
@@ -760,7 +776,7 @@ function processSource(evt: any) {
         custom_filter: '',
         source: '',
         audio: '',
-        uid: ''
+        uid: '',
     }
 }
 
@@ -775,7 +791,7 @@ function clearNewSource() {
         custom_filter: '',
         source: '',
         audio: '',
-        uid: genUID()
+        uid: genUID(),
     }
 }
 
@@ -791,7 +807,7 @@ function editPlaylistItem(i: number) {
         custom_filter: playlistStore.playlist[i].custom_filter,
         source: playlistStore.playlist[i].source,
         audio: playlistStore.playlist[i].audio,
-        uid: playlistStore.playlist[i].uid
+        uid: playlistStore.playlist[i].uid,
     }
 }
 
@@ -811,7 +827,7 @@ function loopClips() {
     const tempList = []
     let length = 0
 
-    while (length < configStore.playlistLength) {
+    while (length < configStore.playlistLength && playlistStore.playlist.length > 0) {
         for (const item of playlistStore.playlist) {
             if (length < configStore.playlistLength) {
                 tempList.push($_.cloneDeep(item))
@@ -843,7 +859,7 @@ async function onSubmitImport(evt: any) {
         {
             method: 'PUT',
             headers: authStore.authHeader,
-            body: formData
+            body: formData,
         }
     )
         .then(() => {
@@ -878,7 +894,7 @@ async function generatePlaylist() {
     await $fetch(`/api/playlist/${configStore.configGui[configStore.configID].id}/generate/${listDate.value}`, {
         method: 'POST',
         headers: { ...contentType, ...authStore.authHeader },
-        body: (selectedFolders.value.length > 0 && !generateFromAll.value) ? { paths: selectedFolders.value } : null
+        body: selectedFolders.value.length > 0 && !generateFromAll.value ? { paths: selectedFolders.value } : null,
     })
         .then((response: any) => {
             playlistStore.playlist = processPlaylist(
@@ -909,6 +925,10 @@ async function generatePlaylist() {
 }
 
 async function savePlaylist(saveDate: string) {
+    if (playlistStore.playlist.length === 0) {
+        return
+    }
+
     playlistStore.playlist = processPlaylist(
         configStore.startInSec,
         configStore.playlistLength,
@@ -923,8 +943,8 @@ async function savePlaylist(saveDate: string) {
         body: JSON.stringify({
             channel: configStore.configGui[configStore.configID].name,
             date: saveDate,
-            program: saveList
-        })
+            program: saveList,
+        }),
     })
         .then((response: any) => {
             indexStore.alertVariant = 'alert-success'
@@ -959,7 +979,7 @@ async function savePlaylist(saveDate: string) {
 async function deletePlaylist(playlistDate: string) {
     await $fetch(`/api/playlist/${configStore.configGui[configStore.configID].id}/${playlistDate}`, {
         method: 'DELETE',
-        headers: { ...contentType, ...authStore.authHeader }
+        headers: { ...contentType, ...authStore.authHeader },
     }).then(() => {
         playlistStore.playlist = []
 

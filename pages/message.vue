@@ -11,12 +11,13 @@
                     </div>
                     <div class="col-2">
                         <div class="btn-group" role="group">
-                            <button class="btn btn-primary" title="Save Preset" @click="savePreset()">
+                            <button class="btn btn-primary" title="Save Preset" data-tooltip=tooltip @click="savePreset()">
                                 <i class="bi-cloud-upload" />
                             </button>
                             <button
                                 class="btn btn-primary"
                                 title="New Preset"
+                                data-tooltip=tooltip
                                 data-bs-toggle="modal"
                                 data-bs-target="#createModal"
                             >
@@ -25,6 +26,7 @@
                             <button
                                 class="btn btn-primary"
                                 title="Delete Preset"
+                                data-tooltip=tooltip
                                 data-bs-toggle="modal"
                                 data-bs-target="#deleteModal"
                             >
@@ -45,6 +47,7 @@
                             v-model="form.x"
                             type="text"
                             title="X Axis"
+                            data-tooltip=tooltip
                             placeholder="X"
                             required
                         />
@@ -53,6 +56,7 @@
                             v-model="form.y"
                             type="text"
                             title="Y Axis"
+                            data-tooltip=tooltip
                             placeholder="Y"
                             required
                         />

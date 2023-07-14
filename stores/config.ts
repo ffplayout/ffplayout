@@ -9,7 +9,7 @@ import { useIndex } from '~/stores/index'
 interface GuiConfig {
     id: number
     config_path: string
-    extra_extensions: string
+    extra_extensions: string | string[]
     name: string
     preview_url: string
     service: string
@@ -38,42 +38,6 @@ export const useConfig = defineStore('config', {
 
     getters: {},
     actions: {
-        updateConfigID(id: number) {
-            this.configID = id
-        },
-
-        updateConfigCount(count: number) {
-            this.configCount = count
-        },
-
-        updateGuiConfig(config: GuiConfig[]) {
-            this.configGui = config
-        },
-
-        updateGuiConfigRaw(config: GuiConfig[]) {
-            this.configGuiRaw = config
-        },
-
-        updateStartTime(sec: number) {
-            this.startInSec = sec
-        },
-
-        updatePlaylistLength(sec: number) {
-            this.playlistLength = sec
-        },
-
-        setCurrentUser(user: string) {
-            this.currentUser = user
-        },
-
-        updateUserConfig(config: User) {
-            this.configUser = config
-        },
-
-        updateUtcOffset(offset: number) {
-            this.utcOffset = offset
-        },
-
         async nuxtClientInit() {
             const authStore = useAuth()
 
@@ -102,10 +66,10 @@ export const useConfig = defineStore('config', {
                 })
                 .then((response) => response.json())
                 .then((objs) => {
-                    this.updateUtcOffset(objs[0].utc_offset)
-                    this.updateGuiConfig(objs)
-                    this.updateGuiConfigRaw(_.cloneDeep(objs))
-                    this.updateConfigCount(objs.length)
+                    this.utcOffset = objs[0].utc_offset
+                    this.configGui = objs
+                    this.configGuiRaw = _.cloneDeep(objs)
+                    this.configCount = objs.length
                 })
                 .catch((e) => {
                     if (statusCode === 401) {
@@ -116,7 +80,7 @@ export const useConfig = defineStore('config', {
                         navigateTo('/')
                     }
 
-                    this.updateGuiConfig([
+                    this.configGui = [
                         {
                             id: 1,
                             config_path: '',
@@ -126,7 +90,7 @@ export const useConfig = defineStore('config', {
                             service: '',
                             uts_offset: 0,
                         },
-                    ])
+                    ]
 
                     indexStore.alertMsg = e
                     indexStore.alertVariant = 'alert-danger'
@@ -164,9 +128,9 @@ export const useConfig = defineStore('config', {
                     }
                 }
 
-                this.updateGuiConfig(guiConfigs)
-                this.updateGuiConfigRaw(_.cloneDeep(guiConfigs))
-                this.updateConfigCount(guiConfigs.length)
+                this.configGui = guiConfigs
+                this.configGuiRaw = _.cloneDeep(guiConfigs)
+                this.configCount = guiConfigs.length
 
                 await this.getPlayoutConfig()
             }
@@ -186,13 +150,11 @@ export const useConfig = defineStore('config', {
                 .then((response) => response.json())
                 .then((data) => {
                     if (data.playlist.day_start) {
-                        const start = timeToSeconds(data.playlist.day_start)
-                        this.updateStartTime(start)
+                        this.startInSec = timeToSeconds(data.playlist.day_start)
                     }
 
                     if (data.playlist.length) {
-                        const length = timeToSeconds(data.playlist.length)
-                        this.updatePlaylistLength(length)
+                        this.playlistLength = timeToSeconds(data.playlist.length)
                     }
 
                     if (data.storage.extensions) {
@@ -213,7 +175,12 @@ export const useConfig = defineStore('config', {
             const channel = this.configGui[this.configID].id
             const contentType = { 'content-type': 'application/json;charset=UTF-8' }
 
-            obj.storage.extensions = obj.storage.extensions.replace(' ', '').split(/,|;/)
+            this.startInSec = timeToSeconds(obj.playlist.day_start)
+            this.playlistLength = timeToSeconds(obj.playlist.length)
+
+            if (typeof obj.storage.extensions === 'string') {
+                obj.storage.extensions = obj.storage.extensions.replace(' ', '').split(/,|;/)
+            }
 
             const update = await fetch(`/api/playout/config/${channel}`, {
                 method: 'PUT',
@@ -233,8 +200,8 @@ export const useConfig = defineStore('config', {
             })
                 .then((response) => response.json())
                 .then((data) => {
-                    this.setCurrentUser(data.username)
-                    this.updateUserConfig(data)
+                    this.currentUser = data.username
+                    this.configUser = data
                 })
         },
 

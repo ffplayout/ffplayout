@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 
 import { useAuth } from '~/stores/auth'
 import { useConfig } from '~/stores/config'
+import { useIndex } from '~/stores/index'
 
 export const useMedia = defineStore('media', {
     state: () => ({
@@ -17,6 +18,7 @@ export const useMedia = defineStore('media', {
         async getTree(path: string, foldersOnly: boolean = false) {
             const authStore = useAuth()
             const configStore = useConfig()
+            const indexStore = useIndex()
             const contentType = { 'content-type': 'application/json;charset=UTF-8' }
             const channel = configStore.configGui[configStore.configID].id
             const crumbs: Crumb[] = []
@@ -27,7 +29,23 @@ export const useMedia = defineStore('media', {
                 headers: { ...contentType, ...authStore.authHeader },
                 body: JSON.stringify({ source: path, folders_only: foldersOnly }),
             })
-                .then((response) => response.json())
+                .then((response) => {
+
+                    if (response.status === 200) {
+                        return response.json()
+                    } else {
+                        indexStore.alertVariant = 'alert-danger'
+                        indexStore.alertMsg = `Storage not exist!`
+                        indexStore.showAlert = true
+
+                        return {
+                            source: '',
+                            parent: '',
+                            folders: [],
+                            files: [],
+                        }
+                    }
+                })
                 .then((data) => {
                     const pathStr = 'Home/' + data.source
                     const pathArr = pathStr.split('/')

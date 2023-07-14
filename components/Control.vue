@@ -3,7 +3,7 @@
         <div class="container-fluid">
             <div class="row control-row">
                 <div class="col-3 player-col d-flex flex-column">
-                    <div class="d-flex flex-grow-1 align-items-center">
+                    <div>
                         <video v-if="streamExtension === 'flv'" ref="httpStreamFlv" class="w-100" controls />
                         <VideoPlayer
                             class="live-player"
@@ -68,6 +68,7 @@
                                     <div>
                                         <button
                                             title="Start Playout Service"
+                                            data-tooltip=tooltip
                                             class="btn btn-primary control-button control-button-play"
                                             :class="isPlaying"
                                             @click="controlProcess('start')"
@@ -80,6 +81,7 @@
                                     <div>
                                         <button
                                             title="Stop Playout Service"
+                                            data-tooltip=tooltip
                                             class="btn btn-primary control-button control-button-stop"
                                             @click="controlProcess('stop')"
                                         >
@@ -91,6 +93,7 @@
                                     <div>
                                         <button
                                             title="Restart Playout Service"
+                                            data-tooltip=tooltip
                                             class="btn btn-primary control-button control-button-restart"
                                             @click="controlProcess('restart')"
                                         >
@@ -103,6 +106,7 @@
                                     <div>
                                         <button
                                             title="Jump to last Clip"
+                                            data-tooltip=tooltip
                                             class="btn btn-primary control-button control-button-control"
                                             @click="controlPlayout('back')"
                                         >
@@ -114,6 +118,7 @@
                                     <div>
                                         <button
                                             title="Reset Playout State"
+                                            data-tooltip=tooltip
                                             class="btn btn-primary control-button control-button-control"
                                             @click="controlPlayout('reset')"
                                         >
@@ -125,6 +130,7 @@
                                     <div>
                                         <button
                                             title="Jump to next Clip"
+                                            data-tooltip=tooltip
                                             class="btn btn-primary control-button control-button-control"
                                             @click="controlPlayout('next')"
                                         >
@@ -142,6 +148,7 @@
 </template>
 
 <script setup lang="ts">
+import { storeToRefs } from 'pinia'
 import mpegts from 'mpegts.js'
 import { useAuth } from '~/stores/auth'
 import { useConfig } from '~/stores/config'
@@ -152,6 +159,7 @@ const authStore = useAuth()
 const configStore = useConfig()
 const playlistStore = usePlaylist()
 const { filename, secToHMS, timeToSeconds } = stringFormatter()
+const { configID } = storeToRefs(useConfig())
 const contentType = { 'content-type': 'application/json;charset=UTF-8' }
 
 const isPlaying = ref('')
@@ -187,6 +195,22 @@ onMounted(() => {
         player.load()
     }
 
+    status()
+})
+
+watch([configID], () => {
+    breakStatusCheck.value = false
+    timeStr.value = '00:00:00'
+    playlistStore.remainingSec = -1
+    playlistStore.currentClip = ''
+    playlistStore.ingestRuns = false
+    playlistStore.currentClipDuration = 0
+    playlistStore.currentClipIn = 0
+    playlistStore.currentClipOut = 0
+
+    if (timer.value) {
+        clearTimeout(timer.value)
+    }
     status()
 })
 
