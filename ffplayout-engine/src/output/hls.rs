@@ -192,8 +192,8 @@ pub fn write_hls(
             .spawn()
         {
             Err(e) => {
-                error!("couldn't spawn encoder process: {e}");
-                panic!("couldn't spawn encoder process: {e}")
+                error!("couldn't spawn ffmpeg process: {e}");
+                panic!("couldn't spawn ffmpeg process: {e}")
             }
             Ok(proc) => proc,
         };
@@ -201,11 +201,11 @@ pub fn write_hls(
         let enc_err = BufReader::new(dec_proc.stderr.take().unwrap());
         *proc_control.decoder_term.lock().unwrap() = Some(dec_proc);
 
-        if let Err(e) = stderr_reader(enc_err, Encoder, proc_control.clone()) {
+        if let Err(e) = stderr_reader(enc_err, Decoder, proc_control.clone()) {
             error!("{e:?}")
         };
 
-        if let Err(e) = proc_control.wait(Encoder) {
+        if let Err(e) = proc_control.wait(Decoder) {
             error!("{e}");
         }
 
