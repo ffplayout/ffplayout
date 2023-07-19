@@ -1,5 +1,43 @@
 # Changelog
 
+## [0.19.0](https://github.com/ffplayout/ffplayout/releases/tag/v0.19.0) (2023-07-19)
+
+### ffplayout
+
+- cleanup and update docker files, migrate to notify 6.0 [5502c45](https://github.com/ffplayout/ffplayout/commit/5502c45420a12b63c05493b2c69d4b6cdd0b044e)
+- switch jsonrpc-http-server to tiny_http, update clap to next major version [8eb5c2b](https://github.com/ffplayout/ffplayout/commit/8eb5c2ba0280eeed25231e3379c88a9bfb47334c) [2b4fbff](https://github.com/ffplayout/ffplayout/commit/2b4fbff2dcbb23714b2fd851931df9c0fa15221c)
+    - The jsonrpc-http-server don't get any updates anymore and some libs are already unmaintained. Migration to the new jsonrpsee makes not so much sense, because its features are not needed. For our needs tiny_http is absolut enough.
+- set chrono features, cleanup, less logging [4a578e8](https://github.com/ffplayout/ffplayout/commit/4a578e83ffd4a8897521c45c5d1804eb961fec72)
+- deserialize numbers to string for drawtext filter [c02241f](https://github.com/ffplayout/ffplayout/commit/c02241ffe8126e761ba9440c41e2d2f181ca40ea)
+- add doc strings to rpc server [25e2ed7](https://github.com/ffplayout/ffplayout/commit/25e2ed739091f4de444110cdaf6f639b14397e86) [7c398c5](https://github.com/ffplayout/ffplayout/commit/7c398c5e556ca00140080bbe9fd4f424fe8d867a)
+- run service inside docker as root, fix #329 [c4d5aec](https://github.com/ffplayout/ffplayout/commit/c4d5aec63e81db7706e21e7b4f7198073008538e)
+- add duration from remote source, #336 [a15c8a0](https://github.com/ffplayout/ffplayout/commit/a15c8a01ba05749036048bda26ccb3918e1ce7af)
+- don't log missing source when playlist is to short add validate playlist option [83432e](https://github.com/ffplayout/ffplayout/commit/83432ef6735c5058a2251f76e0cee51d323ec774)
+- debug log config path [40fd1c4](https://github.com/ffplayout/ffplayout/commit/40fd1c4751f46ae3630965095329a7832548d304)
+- check if json rpc port is in use [ac90dcb](https://github.com/ffplayout/ffplayout/commit/ac90dcb157784a3b98990140f5535622a6689e65)
+- fix ffmpeg zombies in HLS mode [972567a](https://github.com/ffplayout/ffplayout/commit/972567afa6e0b868e5114c40b00c7a620014d09a)
+
+### ffpapi
+
+- update sqlx to 0.7 [cd4c872](https://github.com/ffplayout/ffplayout/commit/cd4c8727bd0e908eb3f23e73b35f56ccda5938d1)
+- rename hls output, fix #351 [acfe223](https://github.com/ffplayout/ffplayout/commit/acfe223301fd3d70cc358159dff122fc149bc32e)
+
+### frontend
+
+- fix empty remote names [968de86](https://github.com/ffplayout/ffplayout/commit/968de862f4d4f3348125fc5bd1be60f0cbcb6627)
+- fix type errors [eca9507](https://github.com/ffplayout/ffplayout/commit/eca9507a1fc9c40c4de9c368ec72fd4a90e82c12)
+- fix http-flv player, #349  [bf993a1](https://github.com/ffplayout/ffplayout/commit/bf993a13329204f74d50fd405afbe900859b4a95)
+- watch channel change on player page, #351 [50204ce](https://github.com/ffplayout/ffplayout/commit/50204ce3815d52214a426ed3e93178117ad3be2c)
+
+### Development
+
+- init or update submodules [cd8a039](https://github.com/ffplayout/ffplayout/commit/cd8a039a6d7873eea6456564dff9ea3244005457)
+
+### Documentation
+
+- format text from Readme [26a7ac0](https://github.com/ffplayout/ffplayout/commit/26a7ac02b06cf2094f39c4ed5ce7990f83d69c28)
+- simplify preview streaming example [6ca710d](https://github.com/ffplayout/ffplayout/commit/6ca710ded68e107acdb47f029ba4d0f33460ac2b)
+
 ## [0.18.4](https://github.com/ffplayout/ffplayout/releases/tag/v0.18.4) (2023-06-25)
 
 ### ffplayout
