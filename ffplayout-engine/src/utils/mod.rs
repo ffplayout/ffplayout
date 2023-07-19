@@ -4,14 +4,18 @@ use std::{
 };
 
 use regex::Regex;
+use serde_json::{json, Map, Value};
 use simplelog::*;
 
 pub mod arg_parse;
+pub mod task_runner;
 
 pub use arg_parse::Args;
 use ffplayout_lib::{
     filter::Filters,
-    utils::{time_to_sec, OutputMode::*, PlayoutConfig, ProcessMode::*},
+    utils::{
+        get_sec, sec_to_time, time_to_sec, Media, OutputMode::*, PlayoutConfig, ProcessMode::*,
+    },
     vec_strings,
 };
 
@@ -206,4 +210,43 @@ pub fn prepare_output_cmd(
     cmd.append(&mut output_params);
 
     cmd
+}
+
+/// map media struct to json object
+pub fn get_media_map(media: Media) -> Value {
+    json!({
+        "seek": media.seek,
+        "out": media.out,
+        "duration": media.duration,
+        "category": media.category,
+        "source": media.source,
+    })
+}
+
+/// prepare json object for response
+pub fn get_data_map(
+    config: &PlayoutConfig,
+    media: Media,
+    server_is_running: bool,
+) -> Map<String, Value> {
+    let mut data_map = Map::new();
+    let begin = media.begin.unwrap_or(0.0);
+
+    data_map.insert("play_mode".to_string(), json!(config.processing.mode));
+    data_map.insert("ingest_runs".to_string(), json!(server_is_running));
+    data_map.insert("index".to_string(), json!(media.index));
+    data_map.insert("start_sec".to_string(), json!(begin));
+
+    if begin > 0.0 {
+        let played_time = get_sec() - begin;
+        let remaining_time = media.out - played_time;
+
+        data_map.insert("start_time".to_string(), json!(sec_to_time(begin)));
+        data_map.insert("played_sec".to_string(), json!(played_time));
+        data_map.insert("remaining_sec".to_string(), json!(remaining_time));
+    }
+
+    data_map.insert("current_media".to_string(), get_media_map(media));
+
+    data_map
 }

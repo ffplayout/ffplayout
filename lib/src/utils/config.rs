@@ -138,6 +138,8 @@ pub struct PlayoutConfig {
     pub playlist: Playlist,
     pub storage: Storage,
     pub text: Text,
+    #[serde(default)]
+    pub task: Task,
     pub out: Out,
 }
 
@@ -290,6 +292,12 @@ pub struct Text {
     pub text_from_filename: bool,
     pub style: String,
     pub regex: String,
+}
+
+#[derive(Debug, Default, Serialize, Deserialize, Clone)]
+pub struct Task {
+    pub enable: bool,
+    pub path: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

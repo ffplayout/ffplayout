@@ -117,6 +117,13 @@ text:
     style: "x=(w-tw)/2:y=(h-line_h)*0.9:fontsize=24:fontcolor=#ffffff:box=1:boxcolor=#000000:boxborderw=4"
     regex: ^.+[/\\](.*)(.mp4|.mkv)$
 
+task:
+    help_text: Run an external program with a given media object. The media object is in json format
+        and contains all the information about the current clip. The external program can be a script
+        or a binary, but should only run for a short time.
+    enable: false
+    path:
+
 out:
     help_text: The final playout compression. Set the settings to your needs. 'mode'
         has the options 'desktop', 'hls', 'null', 'stream'. Use 'stream' and adjust

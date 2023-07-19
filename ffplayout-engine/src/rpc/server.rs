@@ -13,9 +13,10 @@ use std::io::{Cursor, Error as IoError};
 use tiny_http::{Header, Method, Request, Response, Server};
 
 use crate::rpc::zmq_send;
+use crate::utils::{get_data_map, get_media_map};
 use ffplayout_lib::utils::{
-    get_delta, get_sec, sec_to_time, write_status, Ingest, Media, OutputMode::*, PlayerControl,
-    PlayoutConfig, PlayoutStatus, ProcessControl,
+    get_delta, write_status, Ingest, OutputMode::*, PlayerControl, PlayoutConfig,
+    PlayoutStatus, ProcessControl,
 };
 
 #[derive(Default, Deserialize, Clone, Debug)]
@@ -127,45 +128,6 @@ fn filter_from_json(raw_text: serde_json::Value) -> String {
     let filter: TextFilter = serde_json::from_value(raw_text).unwrap_or_default();
 
     filter.to_string()
-}
-
-/// map media struct to json object
-fn get_media_map(media: Media) -> Value {
-    json!({
-        "seek": media.seek,
-        "out": media.out,
-        "duration": media.duration,
-        "category": media.category,
-        "source": media.source,
-    })
-}
-
-/// prepare json object for response
-fn get_data_map(
-    config: &PlayoutConfig,
-    media: Media,
-    server_is_running: bool,
-) -> Map<String, Value> {
-    let mut data_map = Map::new();
-    let begin = media.begin.unwrap_or(0.0);
-
-    data_map.insert("play_mode".to_string(), json!(config.processing.mode));
-    data_map.insert("ingest_runs".to_string(), json!(server_is_running));
-    data_map.insert("index".to_string(), json!(media.index));
-    data_map.insert("start_sec".to_string(), json!(begin));
-
-    if begin > 0.0 {
-        let played_time = get_sec() - begin;
-        let remaining_time = media.out - played_time;
-
-        data_map.insert("start_time".to_string(), json!(sec_to_time(begin)));
-        data_map.insert("played_sec".to_string(), json!(played_time));
-        data_map.insert("remaining_sec".to_string(), json!(remaining_time));
-    }
-
-    data_map.insert("current_media".to_string(), get_media_map(media));
-
-    data_map
 }
 
 #[derive(Debug, Serialize, Deserialize)]
