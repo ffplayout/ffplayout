@@ -28,6 +28,7 @@
 - fix type errors [eca9507](https://github.com/ffplayout/ffplayout/commit/eca9507a1fc9c40c4de9c368ec72fd4a90e82c12)
 - fix http-flv player, #349  [bf993a1](https://github.com/ffplayout/ffplayout/commit/bf993a13329204f74d50fd405afbe900859b4a95)
 - watch channel change on player page, #351 [50204ce](https://github.com/ffplayout/ffplayout/commit/50204ce3815d52214a426ed3e93178117ad3be2c)
+- update nuxtjs to 3.6.3 [5dd450e](https://github.com/ffplayout/ffplayout/pull/358/commits/5dd450e90c2151ebc37447c8659251c344da75be)
 
 ### Development
 
