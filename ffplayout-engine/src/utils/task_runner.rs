@@ -9,7 +9,16 @@ pub fn run(config: PlayoutConfig, node: Media, server_running: bool) {
     let obj = serde_json::to_string(&get_data_map(&config, node, server_running)).unwrap();
     trace!("Run task: {obj}");
 
-    if let Err(e) = Command::new(config.task.path).arg(obj).spawn() {
-        error!("Couldn't spawn task runner: {e}");
-    };
+    match Command::new(config.task.path).arg(obj).spawn() {
+        Ok(mut c) => {
+            let status = c.wait().expect("Error in waiting for the task process!");
+
+            if !status.success() {
+                error!("Process stops with error.");
+            }
+        }
+        Err(e) => {
+            error!("Couldn't spawn task runner: {e}")
+        }
+    }
 }
