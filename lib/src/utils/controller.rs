@@ -163,11 +163,13 @@ impl ProcessControl {
 // }
 
 /// Global player control, to get infos about current clip etc.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct PlayerControl {
     pub current_media: Arc<Mutex<Option<Media>>>,
     pub current_list: Arc<Mutex<Vec<Media>>>,
-    pub index: Arc<AtomicUsize>,
+    pub filler_list: Arc<Mutex<Vec<Media>>>,
+    pub current_index: Arc<AtomicUsize>,
+    pub filler_index: Arc<AtomicUsize>,
 }
 
 impl PlayerControl {
@@ -175,7 +177,9 @@ impl PlayerControl {
         Self {
             current_media: Arc::new(Mutex::new(None)),
             current_list: Arc::new(Mutex::new(vec![Media::new(0, "", false)])),
-            index: Arc::new(AtomicUsize::new(0)),
+            filler_list: Arc::new(Mutex::new(vec![Media::new(0, "", false)])),
+            current_index: Arc::new(AtomicUsize::new(0)),
+            filler_index: Arc::new(AtomicUsize::new(0)),
         }
     }
 }

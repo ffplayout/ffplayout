@@ -15,8 +15,8 @@ use tiny_http::{Header, Method, Request, Response, Server};
 use crate::rpc::zmq_send;
 use crate::utils::{get_data_map, get_media_map};
 use ffplayout_lib::utils::{
-    get_delta, write_status, Ingest, OutputMode::*, PlayerControl, PlayoutConfig,
-    PlayoutStatus, ProcessControl,
+    get_delta, write_status, Ingest, OutputMode::*, PlayerControl, PlayoutConfig, PlayoutStatus,
+    ProcessControl,
 };
 
 #[derive(Default, Deserialize, Clone, Debug)]
@@ -175,7 +175,7 @@ fn control_back(
     let current_date = playout_stat.current_date.lock().unwrap().clone();
     let current_list = play_control.current_list.lock().unwrap();
     let mut date = playout_stat.date.lock().unwrap();
-    let index = play_control.index.load(Ordering::SeqCst);
+    let index = play_control.current_index.load(Ordering::SeqCst);
     let mut time_shift = playout_stat.time_shift.lock().unwrap();
 
     if index > 1 && current_list.len() > 1 {
@@ -191,7 +191,7 @@ fn control_back(
             info!("Move to last clip");
             let mut data_map = Map::new();
             let mut media = current_list[index - 2].clone();
-            play_control.index.fetch_sub(2, Ordering::SeqCst);
+            play_control.current_index.fetch_sub(2, Ordering::SeqCst);
             media.add_probe();
 
             let (delta, _) = get_delta(config, &media.begin.unwrap_or(0.0));
@@ -221,7 +221,7 @@ fn control_next(
     let current_date = playout_stat.current_date.lock().unwrap().clone();
     let current_list = play_control.current_list.lock().unwrap();
     let mut date = playout_stat.date.lock().unwrap();
-    let index = play_control.index.load(Ordering::SeqCst);
+    let index = play_control.current_index.load(Ordering::SeqCst);
     let mut time_shift = playout_stat.time_shift.lock().unwrap();
 
     if index < current_list.len() {
@@ -370,7 +370,7 @@ fn media_current(
 
 /// media info: get infos about next clip
 fn media_next(config: &PlayoutConfig, play_control: &PlayerControl) -> Response<Cursor<Vec<u8>>> {
-    let index = play_control.index.load(Ordering::SeqCst);
+    let index = play_control.current_index.load(Ordering::SeqCst);
     let current_list = play_control.current_list.lock().unwrap();
 
     if index < current_list.len() {
@@ -386,7 +386,7 @@ fn media_next(config: &PlayoutConfig, play_control: &PlayerControl) -> Response<
 
 /// media info: get infos about last clip
 fn media_last(config: &PlayoutConfig, play_control: &PlayerControl) -> Response<Cursor<Vec<u8>>> {
-    let index = play_control.index.load(Ordering::SeqCst);
+    let index = play_control.current_index.load(Ordering::SeqCst);
     let current_list = play_control.current_list.lock().unwrap();
 
     if index > 1 && index - 2 < current_list.len() {

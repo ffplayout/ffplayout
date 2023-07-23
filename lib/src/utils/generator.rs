@@ -11,12 +11,11 @@ use std::{
     io::Error,
     path::Path,
     process::exit,
-    sync::{atomic::AtomicUsize, Arc, Mutex},
 };
 
 use simplelog::*;
 
-use super::folder::FolderSource;
+use super::{folder::FolderSource, PlayerControl};
 use crate::utils::{
     get_date_range, json_serializer::JsonPlaylist, time_to_sec, Media, PlayoutConfig,
 };
@@ -36,8 +35,7 @@ pub fn generate_playlist(
             }
         }
     };
-    let current_list = Arc::new(Mutex::new(vec![Media::new(0, "", false)]));
-    let index = Arc::new(AtomicUsize::new(0));
+    let player_control = PlayerControl::new();
     let playlist_root = Path::new(&config.playlist.path);
     let mut playlists = vec![];
     let mut date_range = vec![];
@@ -64,8 +62,8 @@ pub fn generate_playlist(
         date_range = get_date_range(&date_range)
     }
 
-    let media_list = FolderSource::new(config, None, current_list, index);
-    let list_length = media_list.nodes.lock().unwrap().len();
+    let media_list = FolderSource::new(config, None, &player_control);
+    let list_length = media_list.player_control.current_list.lock().unwrap().len();
 
     for date in date_range {
         let d: Vec<&str> = date.split('-').collect();
@@ -90,7 +88,8 @@ pub fn generate_playlist(
             playlist_file.display()
         );
 
-        let mut filler = Media::new(0, &config.storage.filler_clip, true);
+        // TODO: handle filler folder
+        let mut filler = Media::new(0, &config.storage.filler, true);
         let filler_length = filler.duration;
         let mut length = 0.0;
         let mut round = 0;

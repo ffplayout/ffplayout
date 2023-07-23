@@ -95,11 +95,11 @@ playlist:
     infinit: false
 
 storage:
-    help_text: Play ordered or randomly files from path. 'filler_clip' is for fill
-        the end to reach 24 hours, it will loop when is necessary. 'extensions' search
+    help_text: 'filler' is for playing instead of a missing file or fill the end to reach 24
+        hours, can be a file or folder, it will loop when is necessary. 'extensions' search
         only files with this extension. Set 'shuffle' to 'true' to pick files randomly.
     path: "/var/lib/ffplayout/tv-media"
-    filler_clip: "/var/lib/ffplayout/tv-media/filler/filler.mp4"
+    filler: "/var/lib/ffplayout/tv-media/filler/filler.mp4"
     extensions:
         - "mp4"
         - "mkv"

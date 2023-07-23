@@ -37,7 +37,7 @@ use ffplayout_lib::vec_strings;
 /// When ingest stops, it switch back to playlist/folder mode.
 pub fn player(
     config: &PlayoutConfig,
-    play_control: PlayerControl,
+    play_control: &PlayerControl,
     playout_stat: PlayoutStatus,
     proc_control: ProcessControl,
 ) {
@@ -50,8 +50,7 @@ pub fn player(
     // get source iterator
     let get_source = source_generator(
         config.clone(),
-        play_control.current_list.clone(),
-        play_control.index.clone(),
+        play_control,
         playout_stat,
         proc_control.is_terminated.clone(),
     );
@@ -105,7 +104,10 @@ pub fn player(
             if Path::new(&config.task.path).is_file() {
                 thread::spawn(move || task_runner::run(task_config, task_node, server_running));
             } else {
-                error!("<bright-blue>{}</> executable not exists!", config.task.path);
+                error!(
+                    "<bright-blue>{}</> executable not exists!",
+                    config.task.path
+                );
             }
         }
 

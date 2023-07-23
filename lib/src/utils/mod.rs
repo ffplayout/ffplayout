@@ -586,7 +586,7 @@ pub fn valid_source(source: &str) -> bool {
 /// Check if file can include or has to exclude.
 /// For example when a file is on given HLS output path, it should exclude.
 /// Or when the file extension is set under storage config it can be include.
-pub fn include_file(config: PlayoutConfig, file_path: &Path) -> bool {
+pub fn include_file_extension(config: &PlayoutConfig, file_path: &Path) -> bool {
     let mut include = false;
 
     if let Some(ext) = file_extension(file_path) {
@@ -614,6 +614,7 @@ pub fn include_file(config: PlayoutConfig, file_path: &Path) -> bool {
         if let Some(m3u8_path) = config
             .out
             .output_cmd
+            .clone()
             .unwrap_or_else(|| vec![String::new()])
             .iter()
             .find(|s| s.contains(".m3u8") && !s.contains("master.m3u8"))

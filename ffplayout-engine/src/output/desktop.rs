@@ -2,9 +2,7 @@ use std::process::{self, Command, Stdio};
 
 use simplelog::*;
 
-use ffplayout_lib::filter::v_drawtext;
-use ffplayout_lib::utils::PlayoutConfig;
-use ffplayout_lib::vec_strings;
+use ffplayout_lib::{filter::v_drawtext, utils::PlayoutConfig, vec_strings};
 
 /// Desktop Output
 ///

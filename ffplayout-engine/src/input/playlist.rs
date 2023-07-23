@@ -2,7 +2,7 @@ use std::{
     fs,
     path::Path,
     sync::{
-        atomic::{AtomicBool, AtomicUsize, Ordering},
+        atomic::{AtomicBool, Ordering},
         Arc, Mutex,
     },
 };
@@ -11,9 +11,9 @@ use serde_json::json;
 use simplelog::*;
 
 use ffplayout_lib::utils::{
-    check_sync, gen_dummy, get_delta, get_sec, is_close, is_remote, json_serializer::read_json,
-    loop_filler, loop_image, modified_time, seek_and_length, valid_source, Media, MediaProbe,
-    PlayoutConfig, PlayoutStatus, DUMMY_LEN, IMAGE_FORMAT,
+    check_sync, controller::PlayerControl, gen_dummy, get_delta, get_sec, is_close, is_remote,
+    json_serializer::read_json, loop_filler, loop_image, modified_time, seek_and_length,
+    valid_source, Media, MediaProbe, PlayoutConfig, PlayoutStatus, DUMMY_LEN, IMAGE_FORMAT,
 };
 
 /// Struct for current playlist.
@@ -26,9 +26,8 @@ pub struct CurrentProgram {
     json_mod: Option<String>,
     json_path: Option<String>,
     json_date: String,
-    pub nodes: Arc<Mutex<Vec<Media>>>,
+    player_control: PlayerControl,
     current_node: Media,
-    index: Arc<AtomicUsize>,
     is_terminated: Arc<AtomicBool>,
     playout_stat: PlayoutStatus,
 }
@@ -38,8 +37,7 @@ impl CurrentProgram {
         config: &PlayoutConfig,
         playout_stat: PlayoutStatus,
         is_terminated: Arc<AtomicBool>,
-        current_list: Arc<Mutex<Vec<Media>>>,
-        global_index: Arc<AtomicUsize>,
+        player_control: &PlayerControl,
     ) -> Self {
         let json = read_json(config, None, is_terminated.clone(), true, 0.0);
 
@@ -47,7 +45,7 @@ impl CurrentProgram {
             info!("Read Playlist: <b><magenta>{}</></b>", file);
         }
 
-        *current_list.lock().unwrap() = json.program;
+        *player_control.current_list.lock().unwrap() = json.program;
         *playout_stat.current_date.lock().unwrap() = json.date.clone();
 
         if *playout_stat.date.lock().unwrap() != json.date {
@@ -68,9 +66,8 @@ impl CurrentProgram {
             json_mod: json.modified,
             json_path: json.current_file,
             json_date: json.date,
-            nodes: current_list,
+            player_control: player_control.clone(),
             current_node: Media::new(0, "", false),
-            index: global_index,
             is_terminated,
             playout_stat,
         }
@@ -87,7 +84,7 @@ impl CurrentProgram {
 
             self.json_path = json.current_file;
             self.json_mod = json.modified;
-            *self.nodes.lock().unwrap() = json.program;
+            *self.player_control.current_list.lock().unwrap() = json.program;
         } else if Path::new(&self.json_path.clone().unwrap()).is_file()
             || is_remote(&self.json_path.clone().unwrap())
         {
@@ -109,7 +106,7 @@ impl CurrentProgram {
                 );
 
                 self.json_mod = json.modified;
-                *self.nodes.lock().unwrap() = json.program;
+                *self.player_control.current_list.lock().unwrap() = json.program;
 
                 self.playout_stat.list_init.store(true, Ordering::SeqCst);
             }
@@ -120,14 +117,15 @@ impl CurrentProgram {
             );
             let mut media = Media::new(0, "", false);
             media.begin = Some(get_sec());
+            // TODO: Works not well with filler folder
             media.duration = DUMMY_LEN;
             media.out = DUMMY_LEN;
 
             self.json_path = None;
-            *self.nodes.lock().unwrap() = vec![media.clone()];
+            *self.player_control.current_list.lock().unwrap() = vec![media.clone()];
             self.current_node = media;
             self.playout_stat.list_init.store(true, Ordering::SeqCst);
-            self.index.store(0, Ordering::SeqCst);
+            self.player_control.current_index.store(0, Ordering::SeqCst);
         }
     }
 
@@ -145,7 +143,9 @@ impl CurrentProgram {
 
         let mut next_start = self.current_node.begin.unwrap() - start_sec + duration + delta;
 
-        if self.index.load(Ordering::SeqCst) == self.nodes.lock().unwrap().len() - 1 {
+        if self.player_control.current_index.load(Ordering::SeqCst)
+            == self.player_control.current_list.lock().unwrap().len() - 1
+        {
             next_start += self.config.general.stop_threshold;
         }
 
@@ -182,8 +182,8 @@ impl CurrentProgram {
             self.json_path = json.current_file.clone();
             self.json_mod = json.modified;
             self.json_date = json.date;
-            *self.nodes.lock().unwrap() = json.program;
-            self.index.store(0, Ordering::SeqCst);
+            *self.player_control.current_list.lock().unwrap() = json.program;
+            self.player_control.current_index.store(0, Ordering::SeqCst);
 
             if json.current_file.is_none() {
                 self.playout_stat.list_init.store(true, Ordering::SeqCst);
@@ -193,8 +193,8 @@ impl CurrentProgram {
 
     // Check if last and/or next clip is a advertisement.
     fn last_next_ad(&mut self) {
-        let index = self.index.load(Ordering::SeqCst);
-        let current_list = self.nodes.lock().unwrap();
+        let index = self.player_control.current_index.load(Ordering::SeqCst);
+        let current_list = self.player_control.current_list.lock().unwrap();
 
         if index + 1 < current_list.len() && &current_list[index + 1].category == "advertisement" {
             self.current_node.next_ad = Some(true);
@@ -233,10 +233,17 @@ impl CurrentProgram {
             time_sec += *shift;
         }
 
-        for (i, item) in self.nodes.lock().unwrap().iter_mut().enumerate() {
+        for (i, item) in self
+            .player_control
+            .current_list
+            .lock()
+            .unwrap()
+            .iter_mut()
+            .enumerate()
+        {
             if item.begin.unwrap() + item.out - item.seek > time_sec {
                 self.playout_stat.list_init.store(false, Ordering::SeqCst);
-                self.index.store(i, Ordering::SeqCst);
+                self.player_control.current_index.store(i, Ordering::SeqCst);
 
                 break;
             }
@@ -249,8 +256,11 @@ impl CurrentProgram {
 
         if !self.playout_stat.list_init.load(Ordering::SeqCst) {
             let time_sec = self.get_current_time();
-            let index = self.index.fetch_add(1, Ordering::SeqCst);
-            let nodes = self.nodes.lock().unwrap();
+            let index = self
+                .player_control
+                .current_index
+                .fetch_add(1, Ordering::SeqCst);
+            let nodes = self.player_control.current_list.lock().unwrap();
             let last_index = nodes.len() - 1;
 
             // de-instance node to preserve original values in list
@@ -261,6 +271,7 @@ impl CurrentProgram {
                 &self.config,
                 node_clone,
                 &self.playout_stat.chain,
+                &self.player_control,
                 last_index,
             );
         }
@@ -284,9 +295,10 @@ impl Iterator for CurrentProgram {
                 // On init load, playlist could be not long enough,
                 // so we check if we can take the next playlist already,
                 // or we fill the gap with a dummy.
-                let last_index = self.nodes.lock().unwrap().len() - 1;
-                self.current_node = self.nodes.lock().unwrap()[last_index].clone();
-                let new_node = self.nodes.lock().unwrap()[last_index].clone();
+                let last_index = self.player_control.current_list.lock().unwrap().len() - 1;
+                self.current_node =
+                    self.player_control.current_list.lock().unwrap()[last_index].clone();
+                let new_node = self.player_control.current_list.lock().unwrap()[last_index].clone();
                 let new_length = new_node.begin.unwrap() + new_node.duration;
                 trace!("Init playlist after playlist end");
 
@@ -312,7 +324,7 @@ impl Iterator for CurrentProgram {
                         current_time += self.config.playlist.length_sec.unwrap() + 1.0;
                     }
 
-                    let mut nodes = self.nodes.lock().unwrap();
+                    let mut nodes = self.player_control.current_list.lock().unwrap();
                     let index = nodes.len();
 
                     let mut media = Media::new(index, "", false);
@@ -320,11 +332,18 @@ impl Iterator for CurrentProgram {
                     media.duration = duration;
                     media.out = duration;
 
-                    self.current_node =
-                        gen_source(&self.config, media, &self.playout_stat.chain, last_index);
+                    self.current_node = gen_source(
+                        &self.config,
+                        media,
+                        &self.playout_stat.chain,
+                        &self.player_control,
+                        last_index,
+                    );
 
                     nodes.push(self.current_node.clone());
-                    self.index.store(nodes.len(), Ordering::SeqCst);
+                    self.player_control
+                        .current_index
+                        .store(nodes.len(), Ordering::SeqCst);
                 }
             }
 
@@ -333,11 +352,13 @@ impl Iterator for CurrentProgram {
             return Some(self.current_node.clone());
         }
 
-        if self.index.load(Ordering::SeqCst) < self.nodes.lock().unwrap().len() {
+        if self.player_control.current_index.load(Ordering::SeqCst)
+            < self.player_control.current_list.lock().unwrap().len()
+        {
             self.check_for_next_playlist();
             let mut is_last = false;
-            let index = self.index.load(Ordering::SeqCst);
-            let nodes = self.nodes.lock().unwrap();
+            let index = self.player_control.current_index.load(Ordering::SeqCst);
+            let nodes = self.player_control.current_list.lock().unwrap();
             let last_index = nodes.len() - 1;
 
             if index == last_index {
@@ -349,12 +370,15 @@ impl Iterator for CurrentProgram {
                 &self.config,
                 is_last,
                 &self.playout_stat,
+                &self.player_control,
                 last_index,
             );
 
             drop(nodes);
             self.last_next_ad();
-            self.index.fetch_add(1, Ordering::SeqCst);
+            self.player_control
+                .current_index
+                .fetch_add(1, Ordering::SeqCst);
 
             Some(self.current_node.clone())
         } else {
@@ -370,7 +394,7 @@ impl Iterator for CurrentProgram {
             {
                 // Test if playlist is to early finish,
                 // and if we have to fill it with a placeholder.
-                let index = self.index.load(Ordering::SeqCst);
+                let index = self.player_control.current_index.load(Ordering::SeqCst);
                 self.current_node = Media::new(index, "", false);
                 self.current_node.begin = Some(get_sec());
                 let mut duration = total_delta.abs();
@@ -384,33 +408,40 @@ impl Iterator for CurrentProgram {
                     &self.config,
                     self.current_node.clone(),
                     &self.playout_stat.chain,
+                    &self.player_control,
                     0,
                 );
-                self.nodes.lock().unwrap().push(self.current_node.clone());
+                self.player_control
+                    .current_list
+                    .lock()
+                    .unwrap()
+                    .push(self.current_node.clone());
                 self.last_next_ad();
 
                 self.current_node.last_ad = last_ad;
                 self.current_node
                     .add_filter(&self.config, &self.playout_stat.chain);
 
-                self.index.fetch_add(1, Ordering::SeqCst);
+                self.player_control
+                    .current_index
+                    .fetch_add(1, Ordering::SeqCst);
 
                 return Some(self.current_node.clone());
             }
 
             // Get first clip from next playlist.
-            self.index.store(0, Ordering::SeqCst);
-            let last_index = self.nodes.lock().unwrap().len() - 1;
+            self.player_control.current_index.store(0, Ordering::SeqCst);
             self.current_node = gen_source(
                 &self.config,
-                self.nodes.lock().unwrap()[0].clone(),
+                self.player_control.current_list.lock().unwrap()[0].clone(),
                 &self.playout_stat.chain,
-                last_index,
+                &self.player_control,
+                0,
             );
             self.last_next_ad();
             self.current_node.last_ad = last_ad;
 
-            self.index.store(1, Ordering::SeqCst);
+            self.player_control.current_index.store(1, Ordering::SeqCst);
 
             Some(self.current_node.clone())
         }
@@ -426,6 +457,7 @@ fn timed_source(
     config: &PlayoutConfig,
     last: bool,
     playout_stat: &PlayoutStatus,
+    player_control: &PlayerControl,
     last_index: usize,
 ) -> Media {
     let (delta, total_delta) = get_delta(config, &node.begin.unwrap());
@@ -463,11 +495,24 @@ fn timed_source(
     {
         // when we are in the 24 hour range, get the clip
         new_node.process = Some(true);
-        new_node = gen_source(config, node, &playout_stat.chain, last_index);
+        new_node = gen_source(
+            config,
+            node,
+            &playout_stat.chain,
+            player_control,
+            last_index,
+        );
     } else if total_delta <= 0.0 {
         info!("Begin is over play time, skip: {}", node.source);
     } else if total_delta < node.duration - node.seek || last {
-        new_node = handle_list_end(config, node, total_delta, &playout_stat.chain, last_index);
+        new_node = handle_list_end(
+            config,
+            node,
+            total_delta,
+            &playout_stat.chain,
+            player_control,
+            last_index,
+        );
     }
 
     new_node
@@ -478,6 +523,7 @@ pub fn gen_source(
     config: &PlayoutConfig,
     mut node: Media,
     filter_chain: &Option<Arc<Mutex<Vec<String>>>>,
+    player_control: &PlayerControl,
     last_index: usize,
 ) -> Media {
     let duration = node.out - node.seek;
@@ -507,38 +553,63 @@ pub fn gen_source(
             error!("Source not found: <b><magenta>\"{}\"</></b>", node.source);
         }
 
-        warn!("Generate filler with <yellow>{duration:.2}</> seconds length!");
-
-        let probe = MediaProbe::new(&config.storage.filler_clip);
-
-        if config
-            .storage
-            .filler_clip
-            .rsplit_once('.')
-            .map(|(_, e)| e.to_lowercase())
-            .filter(|c| IMAGE_FORMAT.contains(&c.as_str()))
-            .is_some()
+        if Path::new(&config.storage.filler).is_dir()
+            && !player_control.filler_list.lock().unwrap().is_empty()
         {
-            node.source = config.storage.filler_clip.clone();
-            node.cmd = Some(loop_image(&node));
-            node.probe = Some(probe);
-        } else if let Some(length) = probe
-            .clone()
-            .format
-            .and_then(|f| f.duration)
-            .and_then(|d| d.parse::<f64>().ok())
-        {
-            // create placeholder from config filler.
-            node.source = config.storage.filler_clip.clone();
-            node.duration = length;
-            node.out = duration;
+            let filler_index = player_control.filler_index.fetch_add(1, Ordering::SeqCst);
+            let mut filler_media = player_control.filler_list.lock().unwrap()[filler_index].clone();
+
+            if filler_index == player_control.filler_list.lock().unwrap().len() - 1 {
+                player_control.filler_index.store(0, Ordering::SeqCst)
+            }
+
+            filler_media.add_probe();
+
+            if filler_media.duration > duration {
+                filler_media.out = duration;
+            }
+
+            warn!(
+                "Generate filler with <yellow>{:.2}</> seconds length!",
+                filler_media.out
+            );
+
+            node = filler_media;
             node.cmd = Some(loop_filler(&node));
-            node.probe = Some(probe);
         } else {
-            // create colored placeholder.
-            let (source, cmd) = gen_dummy(config, duration);
-            node.source = source;
-            node.cmd = Some(cmd);
+            warn!("Generate filler with <yellow>{duration:.2}</> seconds length!");
+
+            let probe = MediaProbe::new(&config.storage.filler);
+
+            if config
+                .storage
+                .filler
+                .rsplit_once('.')
+                .map(|(_, e)| e.to_lowercase())
+                .filter(|c| IMAGE_FORMAT.contains(&c.as_str()))
+                .is_some()
+            {
+                node.source = config.storage.filler.clone();
+                node.cmd = Some(loop_image(&node));
+                node.probe = Some(probe);
+            } else if let Some(length) = probe
+                .clone()
+                .format
+                .and_then(|f| f.duration)
+                .and_then(|d| d.parse::<f64>().ok())
+            {
+                // Create placeholder from config filler.
+                node.source = config.storage.filler.clone();
+                node.duration = length;
+                node.out = duration;
+                node.cmd = Some(loop_filler(&node));
+                node.probe = Some(probe);
+            } else {
+                // Create colored placeholder.
+                let (source, cmd) = gen_dummy(config, duration);
+                node.source = source;
+                node.cmd = Some(cmd);
+            }
         }
     }
 
@@ -562,6 +633,7 @@ fn handle_list_init(
     config: &PlayoutConfig,
     mut node: Media,
     filter_chain: &Option<Arc<Mutex<Vec<String>>>>,
+    player_control: &PlayerControl,
     last_index: usize,
 ) -> Media {
     debug!("Playlist init");
@@ -574,7 +646,7 @@ fn handle_list_init(
 
     node.out = out;
 
-    gen_source(config, node, filter_chain, last_index)
+    gen_source(config, node, filter_chain, player_control, last_index)
 }
 
 /// when we come to last clip in playlist,
@@ -585,6 +657,7 @@ fn handle_list_end(
     mut node: Media,
     total_delta: f64,
     filter_chain: &Option<Arc<Mutex<Vec<String>>>>,
+    player_control: &PlayerControl,
     last_index: usize,
 ) -> Media {
     debug!("Playlist end");
@@ -613,5 +686,5 @@ fn handle_list_end(
 
     node.process = Some(true);
 
-    gen_source(config, node, filter_chain, last_index)
+    gen_source(config, node, filter_chain, player_control, last_index)
 }

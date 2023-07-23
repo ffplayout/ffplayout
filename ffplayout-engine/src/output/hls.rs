@@ -137,7 +137,7 @@ fn ingest_to_hls_server(
 /// Write with single ffmpeg instance directly to a HLS playlist.
 pub fn write_hls(
     config: &PlayoutConfig,
-    play_control: PlayerControl,
+    player_control: PlayerControl,
     playout_stat: PlayoutStatus,
     proc_control: ProcessControl,
 ) {
@@ -148,8 +148,7 @@ pub fn write_hls(
 
     let get_source = source_generator(
         config.clone(),
-        play_control.current_list.clone(),
-        play_control.index.clone(),
+        &player_control,
         playout_stat,
         proc_control.is_terminated.clone(),
     );
@@ -160,7 +159,7 @@ pub fn write_hls(
     }
 
     for node in get_source {
-        *play_control.current_media.lock().unwrap() = Some(node.clone());
+        *player_control.current_media.lock().unwrap() = Some(node.clone());
 
         let mut cmd = match node.cmd {
             Some(cmd) => cmd,

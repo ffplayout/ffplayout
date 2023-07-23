@@ -19,9 +19,9 @@ use ffplayout::{
 };
 
 use ffplayout_lib::utils::{
-    generate_playlist, get_date, import::import_file, init_logging, is_remote, send_mail,
-    test_tcp_port, validate_ffmpeg, validate_playlist, JsonPlaylist, OutputMode::*, PlayerControl,
-    PlayoutStatus, ProcessControl,
+    folder::fill_filler_list, generate_playlist, get_date, import::import_file, init_logging,
+    is_remote, send_mail, test_tcp_port, validate_ffmpeg, validate_playlist, JsonPlaylist,
+    OutputMode::*, PlayerControl, PlayoutStatus, ProcessControl,
 };
 
 #[cfg(debug_assertions)]
@@ -99,7 +99,8 @@ fn main() {
     let play_control = PlayerControl::new();
     let playout_stat = PlayoutStatus::new();
     let proc_control = ProcessControl::new();
-    let play_ctl = play_control.clone();
+    let play_ctl1 = play_control.clone();
+    let play_ctl2 = play_control.clone();
     let play_stat = playout_stat.clone();
     let proc_ctl1 = proc_control.clone();
     let proc_ctl2 = proc_control.clone();
@@ -122,7 +123,8 @@ fn main() {
         exit(1);
     };
 
-    let config_clone = config.clone();
+    let config_clone1 = config.clone();
+    let config_clone2 = config.clone();
 
     if ![2, 4, 6, 8].contains(&config.processing.audio_channels) {
         error!(
@@ -200,7 +202,7 @@ fn main() {
             exit(1)
         }
 
-        thread::spawn(move || run_server(config_clone, play_ctl, play_stat, proc_ctl2));
+        thread::spawn(move || run_server(config_clone1, play_ctl1, play_stat, proc_ctl2));
     }
 
     status_file(&config.general.stat_file, &playout_stat);
@@ -210,11 +212,20 @@ fn main() {
         config.general.config_path
     );
 
+    if Path::new(&config.storage.filler).is_dir() {
+        debug!(
+            "Fill filler list from: <b><magenta>{}</></b>",
+            config.storage.filler
+        );
+
+        thread::spawn(move || fill_filler_list(config_clone2, play_ctl2));
+    }
+
     match config.out.mode {
         // write files/playlist to HLS m3u8 playlist
         HLS => write_hls(&config, play_control, playout_stat, proc_control),
         // play on desktop or stream to a remote target
-        _ => player(&config, play_control, playout_stat, proc_control),
+        _ => player(&config, &play_control, playout_stat, proc_control),
     }
 
     info!("Playout done...");
