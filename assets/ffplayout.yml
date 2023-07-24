@@ -95,7 +95,8 @@ playlist:
     infinit: false
 
 storage:
-    help_text: 'filler' is for playing instead of a missing file or fill the end to reach 24
+    help_text: >
+        'filler' is for playing instead of a missing file or fill the end to reach 24
         hours, can be a file or folder, it will loop when is necessary. 'extensions' search
         only files with this extension. Set 'shuffle' to 'true' to pick files randomly.
     path: "/var/lib/ffplayout/tv-media"

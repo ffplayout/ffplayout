@@ -883,6 +883,18 @@ pub fn get_date_range(date_range: &[String]) -> Vec<String> {
     range
 }
 
+pub fn parse_log_level_filter(s: &str) -> Result<LevelFilter, &'static str> {
+    match s.to_lowercase().as_str() {
+        "debug" => Ok(LevelFilter::Debug),
+        "error" => Ok(LevelFilter::Error),
+        "info" => Ok(LevelFilter::Info),
+        "trace" => Ok(LevelFilter::Trace),
+        "warning" => Ok(LevelFilter::Warn),
+        "off" => Ok(LevelFilter::Off),
+        _ => Err("Error level not exists!"),
+    }
+}
+
 pub fn home_dir() -> Option<PathBuf> {
     home_dir_inner()
 }

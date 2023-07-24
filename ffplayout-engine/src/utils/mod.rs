@@ -14,7 +14,8 @@ pub use arg_parse::Args;
 use ffplayout_lib::{
     filter::Filters,
     utils::{
-        get_sec, sec_to_time, time_to_sec, Media, OutputMode::*, PlayoutConfig, ProcessMode::*,
+        get_sec, parse_log_level_filter, sec_to_time, time_to_sec, Media, OutputMode::*,
+        PlayoutConfig, ProcessMode::*,
     },
     vec_strings,
 };
@@ -86,10 +87,11 @@ pub fn get_config(args: Args) -> PlayoutConfig {
         }
     }
 
-    // TODO: implement this
-    // if let Some(level) = args.level {
-    //     config.logging.level = LevelFilter::from(level);
-    // }
+    if let Some(level) = args.level {
+        if let Ok(filter) = parse_log_level_filter(&level) {
+            config.logging.level = filter;
+        }
+    }
 
     if args.infinit {
         config.playlist.infinit = args.infinit;
