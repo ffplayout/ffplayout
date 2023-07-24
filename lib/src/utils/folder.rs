@@ -163,21 +163,29 @@ impl Iterator for FolderSource {
 pub fn fill_filler_list(config: PlayoutConfig, player_control: PlayerControl) {
     let mut filler_list = vec![];
 
-    for (index, entry) in WalkDir::new(&config.storage.filler)
-        .into_iter()
-        .flat_map(|e| e.ok())
-        .filter(|f| f.path().is_file())
-        .filter(|f| include_file_extension(&config, f.path()))
-        .enumerate()
-    {
-        let media = Media::new(index, &entry.path().to_string_lossy(), false);
-        filler_list.push(media);
-    }
+    if Path::new(&config.storage.filler).is_dir() {
+        debug!(
+            "Fill filler list from: <b><magenta>{}</></b>",
+            config.storage.filler
+        );
 
-    if config.storage.shuffle {
-        let mut rng = thread_rng();
+        for (index, entry) in WalkDir::new(&config.storage.filler)
+            .into_iter()
+            .flat_map(|e| e.ok())
+            .filter(|f| f.path().is_file())
+            .filter(|f| include_file_extension(&config, f.path()))
+            .enumerate()
+        {
+            filler_list.push(Media::new(index, &entry.path().to_string_lossy(), false));
+        }
 
-        filler_list.shuffle(&mut rng);
+        if config.storage.shuffle {
+            let mut rng = thread_rng();
+
+            filler_list.shuffle(&mut rng);
+        }
+    } else {
+        filler_list.push(Media::new(0, &config.storage.filler, false));
     }
 
     *player_control.filler_list.lock().unwrap() = filler_list;

@@ -111,6 +111,8 @@ pub fn player(
             }
         }
 
+        trace!("Decoder CMD: {:?}", node.cmd);
+
         let mut cmd = match node.cmd {
             Some(cmd) => cmd,
             None => break,
@@ -222,6 +224,8 @@ pub fn player(
             error!("{e:?}");
         };
     }
+
+    trace!("Out of source loop");
 
     sleep(Duration::from_secs(1));
 

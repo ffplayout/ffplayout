@@ -212,14 +212,8 @@ fn main() {
         config.general.config_path
     );
 
-    if Path::new(&config.storage.filler).is_dir() {
-        debug!(
-            "Fill filler list from: <b><magenta>{}</></b>",
-            config.storage.filler
-        );
-
-        thread::spawn(move || fill_filler_list(config_clone2, play_ctl2));
-    }
+    // Fill filler list, can also be a single file.
+    thread::spawn(move || fill_filler_list(config_clone2, play_ctl2));
 
     match config.out.mode {
         // write files/playlist to HLS m3u8 playlist

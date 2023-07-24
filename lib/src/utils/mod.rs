@@ -238,9 +238,13 @@ impl MediaProbe {
                 }
             }
             Err(e) => {
-                error!(
-                    "Can't read source <b><magenta>{input}</></b> with ffprobe, source not exists or damaged! Error in: {e:?}"
-                );
+                if Path::new(input).is_file() {
+                    error!(
+                        "Can't read source <b><magenta>{input}</></b> with ffprobe! Error: {e:?}"
+                    );
+                } else if !input.is_empty() {
+                    error!("File not exists: <b><magenta>{input}</></b>");
+                }
 
                 MediaProbe {
                     format: None,

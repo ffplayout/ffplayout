@@ -577,10 +577,13 @@ pub fn filter_chains(
         {
             extend_audio(node, &mut filters, i);
         } else if node.unit == Decoder {
-            warn!(
-                "Missing audio track (id {i}) from <b><magenta>{}</></b>",
-                node.source
-            );
+            if !node.source.contains("color=c=") {
+                warn!(
+                    "Missing audio track (id {i}) from <b><magenta>{}</></b>",
+                    node.source
+                );
+            }
+
             add_audio(node, &mut filters, i);
         }
 

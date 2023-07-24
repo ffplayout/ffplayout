@@ -66,6 +66,9 @@ pub struct Args {
     )]
     pub length: Option<String>,
 
+    #[clap(long, help = "Override logging level")]
+    pub level: Option<String>,
+
     #[clap(short, long, help = "Loop playlist infinitely")]
     pub infinit: bool,
 

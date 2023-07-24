@@ -141,6 +141,7 @@ impl CurrentProgram {
             duration = self.current_node.duration
         }
 
+        // TODO: add unwrap_or_default()
         let mut next_start = self.current_node.begin.unwrap() - start_sec + duration + delta;
 
         if self.player_control.current_index.load(Ordering::SeqCst)
@@ -313,11 +314,30 @@ impl Iterator for CurrentProgram {
                     // fill missing length from playlist
                     let mut current_time = get_sec();
                     let (_, total_delta) = get_delta(&self.config, &current_time);
-                    let mut duration = DUMMY_LEN;
+                    let mut out = total_delta.abs();
+                    let mut duration = out + 0.001;
+                    self.playout_stat.list_init.store(false, Ordering::SeqCst);
 
-                    if DUMMY_LEN > total_delta {
+                    trace!("Total delta on list init: {total_delta}");
+
+                    let filler_index = self.player_control.filler_index.load(Ordering::SeqCst);
+                    let mut filler =
+                        self.player_control.filler_list.lock().unwrap()[filler_index].clone();
+
+                    filler.add_probe();
+
+                    if filler.duration > 0.0 {
+                        if duration > filler.duration {
+                            out = filler.duration;
+                        }
+
+                        duration = filler.duration;
+                    } else if DUMMY_LEN > total_delta {
                         duration = total_delta;
-                        self.playout_stat.list_init.store(false, Ordering::SeqCst);
+                        out = total_delta;
+                    } else {
+                        duration = DUMMY_LEN;
+                        out = DUMMY_LEN;
                     }
 
                     if self.config.playlist.start_sec.unwrap() > current_time {
@@ -330,7 +350,7 @@ impl Iterator for CurrentProgram {
                     let mut media = Media::new(index, "", false);
                     media.begin = Some(current_time);
                     media.duration = duration;
-                    media.out = duration;
+                    media.out = out;
 
                     self.current_node = gen_source(
                         &self.config,
@@ -392,18 +412,32 @@ impl Iterator for CurrentProgram {
                 && last_playlist == self.json_path
                 && total_delta.abs() > 1.0
             {
-                // Test if playlist is to early finish,
+                trace!("Total delta on list end: {total_delta}");
+
+                // Playlist is to early finish,
                 // and if we have to fill it with a placeholder.
                 let index = self.player_control.current_index.load(Ordering::SeqCst);
                 self.current_node = Media::new(index, "", false);
                 self.current_node.begin = Some(get_sec());
-                let mut duration = total_delta.abs();
+                let mut out = total_delta.abs();
+                let mut duration = out + 0.001;
 
-                if duration > DUMMY_LEN {
-                    duration = DUMMY_LEN;
+                let filler_index = self.player_control.filler_index.load(Ordering::SeqCst);
+                let mut filler =
+                    self.player_control.filler_list.lock().unwrap()[filler_index].clone();
+
+                filler.add_probe();
+
+                if filler.duration > 0.0 {
+                    if duration > filler.duration {
+                        out = filler.duration;
+                    }
+
+                    duration = filler.duration;
                 }
+
                 self.current_node.duration = duration;
-                self.current_node.out = duration;
+                self.current_node.out = out;
                 self.current_node = gen_source(
                     &self.config,
                     self.current_node.clone(),
@@ -526,7 +560,9 @@ pub fn gen_source(
     player_control: &PlayerControl,
     last_index: usize,
 ) -> Media {
-    let duration = node.out - node.seek;
+    let mut duration = node.out - node.seek;
+
+    trace!("Clip out: {duration}, duration: {}", node.duration);
 
     if valid_source(&node.source) {
         node.add_probe();
@@ -553,9 +589,9 @@ pub fn gen_source(
             error!("Source not found: <b><magenta>\"{}\"</></b>", node.source);
         }
 
-        if Path::new(&config.storage.filler).is_dir()
-            && !player_control.filler_list.lock().unwrap().is_empty()
-        {
+        let filler_source = Path::new(&config.storage.filler);
+
+        if filler_source.is_dir() && !player_control.filler_list.lock().unwrap().is_empty() {
             let filler_index = player_control.filler_index.fetch_add(1, Ordering::SeqCst);
             let mut filler_media = player_control.filler_list.lock().unwrap()[filler_index].clone();
 
@@ -563,22 +599,20 @@ pub fn gen_source(
                 player_control.filler_index.store(0, Ordering::SeqCst)
             }
 
-            filler_media.add_probe();
+            if filler_media.probe.is_none() {
+                filler_media.add_probe();
+            }
 
-            if filler_media.duration > duration {
+            if node.duration > duration && filler_media.duration > duration {
                 filler_media.out = duration;
             }
 
-            warn!(
-                "Generate filler with <yellow>{:.2}</> seconds length!",
-                filler_media.out
-            );
-
-            node = filler_media;
+            node.source = filler_media.source;
+            node.duration = filler_media.duration;
+            node.out = filler_media.out;
             node.cmd = Some(loop_filler(&node));
-        } else {
-            warn!("Generate filler with <yellow>{duration:.2}</> seconds length!");
-
+            node.probe = filler_media.probe;
+        } else if filler_source.is_file() {
             let probe = MediaProbe::new(&config.storage.filler);
 
             if config
@@ -592,7 +626,7 @@ pub fn gen_source(
                 node.source = config.storage.filler.clone();
                 node.cmd = Some(loop_image(&node));
                 node.probe = Some(probe);
-            } else if let Some(length) = probe
+            } else if let Some(filler_duration) = probe
                 .clone()
                 .format
                 .and_then(|f| f.duration)
@@ -600,8 +634,14 @@ pub fn gen_source(
             {
                 // Create placeholder from config filler.
                 node.source = config.storage.filler.clone();
-                node.duration = length;
-                node.out = duration;
+
+                node.out = if node.duration > duration && filler_duration > duration {
+                    duration
+                } else {
+                    filler_duration
+                };
+
+                node.duration = filler_duration;
                 node.cmd = Some(loop_filler(&node));
                 node.probe = Some(probe);
             } else {
@@ -610,7 +650,21 @@ pub fn gen_source(
                 node.source = source;
                 node.cmd = Some(cmd);
             }
+        } else {
+            if duration > DUMMY_LEN {
+                duration = DUMMY_LEN;
+                node.duration = duration;
+                node.out = duration;
+            }
+            let (source, cmd) = gen_dummy(config, duration);
+            node.source = source;
+            node.cmd = Some(cmd);
         }
+
+        warn!(
+            "Generate filler with <yellow>{:.2}</> seconds length!",
+            node.out
+        );
     }
 
     node.add_filter(config, filter_chain);

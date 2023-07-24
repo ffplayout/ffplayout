@@ -86,6 +86,11 @@ pub fn get_config(args: Args) -> PlayoutConfig {
         }
     }
 
+    // TODO: implement this
+    // if let Some(level) = args.level {
+    //     config.logging.level = LevelFilter::from(level);
+    // }
+
     if args.infinit {
         config.playlist.infinit = args.infinit;
     }
