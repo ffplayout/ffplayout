@@ -6,6 +6,5 @@ ffplayout supports a stream copy mode since v0.20.0. A separate copy mode for vi
 - All files must use the same codecs and settings.
 - The video and audio lines of a file must be the same length.
 - The codecs and A/V settings must be supported by mpegts and the output destination.
-- If the output mode is HLS, the time delta will increase over time, so the error threshold should be high enough to catch this.
 
 **This mode is experimental and will not have the same stability as the stream mode.**

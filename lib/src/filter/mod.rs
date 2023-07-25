@@ -11,8 +11,7 @@ mod custom;
 pub mod v_drawtext;
 
 use crate::utils::{
-    controller::ProcessUnit::*, fps_calc, get_delta, is_close, Media, MediaProbe, OutputMode::*,
-    PlayoutConfig,
+    controller::ProcessUnit::*, fps_calc, is_close, Media, MediaProbe, OutputMode::*, PlayoutConfig,
 };
 
 use super::vec_strings;
@@ -402,38 +401,6 @@ fn aspect_calc(aspect_string: &Option<String>, config: &PlayoutConfig) -> f64 {
     source_aspect
 }
 
-/// This realtime filter is important for HLS output to stay in sync.
-fn realtime(
-    node: &mut Media,
-    chain: &mut Filters,
-    config: &PlayoutConfig,
-    filter_type: FilterType,
-) {
-    if config.general.generate.is_none() && config.out.mode == HLS {
-        let prefix = match filter_type {
-            Audio => "a",
-            Video => "",
-        };
-
-        let mut speed_filter = format!("{prefix}realtime=speed=1");
-
-        if let Some(begin) = &node.begin {
-            let (delta, _) = get_delta(config, begin);
-
-            if delta < 0.0 && node.seek == 0.0 {
-                let duration = node.out - node.seek;
-                let speed = duration / (duration + delta);
-
-                if speed > 0.0 && speed < 1.1 && delta < config.general.stop_threshold {
-                    speed_filter = format!("{prefix}realtime=speed={speed}");
-                }
-            }
-        }
-
-        chain.add_filter(&speed_filter, 0, filter_type);
-    }
-}
-
 pub fn split_filter(chain: &mut Filters, count: usize, nr: i32, filter_type: FilterType) {
     if count > 1 {
         let out_link = match filter_type {
@@ -549,7 +516,6 @@ pub fn filter_chains(
         add_text(node, &mut filters, config, filter_chain);
         fade(node, &mut filters, 0, Video);
         overlay(node, &mut filters, config);
-        realtime(node, &mut filters, config, Video);
     }
 
     let (proc_vf, proc_af) = if node.unit == Ingest {
@@ -560,9 +526,7 @@ pub fn filter_chains(
 
     let (list_vf, list_af) = custom::filter_node(&node.custom_filter);
 
-    if config.processing.audio_only && !config.processing.copy_audio {
-        realtime(node, &mut filters, config, Audio);
-    } else if !config.processing.copy_video {
+    if !config.processing.copy_video {
         custom(&proc_vf, &mut filters, 0, Video);
         custom(&list_vf, &mut filters, 0, Video);
     }
