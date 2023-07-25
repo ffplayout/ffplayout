@@ -183,6 +183,12 @@ pub fn fill_filler_list(config: PlayoutConfig, player_control: PlayerControl) {
             let mut rng = thread_rng();
 
             filler_list.shuffle(&mut rng);
+        } else {
+            filler_list.sort_by(|d1, d2| d1.source.cmp(&d2.source));
+        }
+
+        for (index, item) in filler_list.iter_mut().enumerate() {
+            item.index = Some(index);
         }
     } else {
         filler_list.push(Media::new(0, &config.storage.filler, false));
