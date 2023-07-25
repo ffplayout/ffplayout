@@ -177,6 +177,12 @@ pub fn write_hls(
         );
 
         let mut enc_prefix = vec_strings!["-hide_banner", "-nostats", "-v", &ff_log_format];
+
+        if config.processing.copy_video
+            || (!config.processing.audio_only && config.processing.copy_audio)
+        {
+            enc_prefix.push("-re".to_string());
+        }
         enc_prefix.append(&mut cmd);
         let enc_cmd = prepare_output_cmd(config, enc_prefix, &node.filter);
 

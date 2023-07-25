@@ -518,7 +518,7 @@ pub fn filter_chains(
         return filters;
     }
 
-    if !config.processing.audio_only {
+    if !config.processing.audio_only && !config.processing.copy_video {
         if let Some(probe) = node.probe.as_ref() {
             if Path::new(&node.audio).is_file() {
                 filters.audio_position = 1;
@@ -560,42 +560,44 @@ pub fn filter_chains(
 
     let (list_vf, list_af) = custom::filter_node(&node.custom_filter);
 
-    if config.processing.audio_only {
+    if config.processing.audio_only && !config.processing.copy_audio {
         realtime(node, &mut filters, config, Audio);
-    } else {
+    } else if !config.processing.copy_video {
         custom(&proc_vf, &mut filters, 0, Video);
         custom(&list_vf, &mut filters, 0, Video);
     }
 
-    for i in 0..config.processing.audio_tracks {
-        if node
-            .probe
-            .as_ref()
-            .and_then(|p| p.audio_streams.get(i as usize))
-            .is_some()
-            || Path::new(&node.audio).is_file()
-        {
-            extend_audio(node, &mut filters, i);
-        } else if node.unit == Decoder {
-            if !node.source.contains("color=c=") {
-                warn!(
-                    "Missing audio track (id {i}) from <b><magenta>{}</></b>",
-                    node.source
-                );
+    if !config.processing.copy_audio {
+        for i in 0..config.processing.audio_tracks {
+            if node
+                .probe
+                .as_ref()
+                .and_then(|p| p.audio_streams.get(i as usize))
+                .is_some()
+                || Path::new(&node.audio).is_file()
+            {
+                extend_audio(node, &mut filters, i);
+            } else if node.unit == Decoder {
+                if !node.source.contains("color=c=") {
+                    warn!(
+                        "Missing audio track (id {i}) from <b><magenta>{}</></b>",
+                        node.source
+                    );
+                }
+
+                add_audio(node, &mut filters, i);
             }
 
-            add_audio(node, &mut filters, i);
+            // add at least anull filter, for correct filter construction,
+            // is important for split filter in HLS mode
+            filters.add_filter("anull", i, Audio);
+
+            fade(node, &mut filters, i, Audio);
+            audio_volume(&mut filters, config, i);
+
+            custom(&proc_af, &mut filters, i, Audio);
+            custom(&list_af, &mut filters, i, Audio);
         }
-
-        // add at least anull filter, for correct filter construction,
-        // is important for split filter in HLS mode
-        filters.add_filter("anull", i, Audio);
-
-        fade(node, &mut filters, i, Audio);
-        audio_volume(&mut filters, config, i);
-
-        custom(&proc_af, &mut filters, i, Audio);
-        custom(&list_af, &mut filters, i, Audio);
     }
 
     if config.out.mode == HLS {
