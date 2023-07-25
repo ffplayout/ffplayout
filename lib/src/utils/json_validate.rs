@@ -156,7 +156,7 @@ pub fn validate_playlist(
             };
         } else {
             error!(
-                "Source on position <yellow>{pos}</> {} not exists: <b><magenta>{}</></b>",
+                "Source on position <yellow>{pos:0>3}</> {} not exists: <b><magenta>{}</></b>",
                 sec_to_time(begin),
                 item.source
             );
