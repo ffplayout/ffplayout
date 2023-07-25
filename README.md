@@ -47,7 +47,7 @@ Check the [releases](https://github.com/ffplayout/ffplayout/releases/latest) for
 - image source (will loop until out duration is reached)
 - extra audio source, has priority over audio from video (experimental *)
 - [multiple audio tracks](/docs/multi_audio.md) (experimental *)
-- stream copy mode (experimental *)
+- [Stream Copy](/docs/stream_copy.md) mode (experimental *)
 - [custom filters](/docs/custom_filters.md) globally in config, or in playlist for specific clips
 - import playlist from text or m3u file, with CLI or frontend
 - audio only, for radio mode (experimental *)
