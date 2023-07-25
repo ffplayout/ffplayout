@@ -23,7 +23,7 @@ Check the [releases](https://github.com/ffplayout/ffplayout/releases/latest) for
 - loop playlist infinitely
 - [remote source](/docs/remote_source.md)
 - trim and fade the last clip, to get full 24 hours
-- when playlist is not 24 hours long, loop fillers clip until time is full
+- when playlist is not 24 hours long, loop fillers until time is full
 - set custom day start, so you can have playlist for example: from 6am to 6am, instate of 0am to 12pm
 - normal system requirements and no special tools
 - no GPU power is needed
