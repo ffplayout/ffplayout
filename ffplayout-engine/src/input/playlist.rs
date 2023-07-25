@@ -32,6 +32,7 @@ pub struct CurrentProgram {
     playout_stat: PlayoutStatus,
 }
 
+/// Prepare a playlist iterator.
 impl CurrentProgram {
     pub fn new(
         config: &PlayoutConfig,
@@ -76,6 +77,7 @@ impl CurrentProgram {
     // Check if playlist file got updated, and when yes we reload it and setup everything in place.
     fn check_update(&mut self, seek: bool) {
         if self.json_path.is_none() {
+            // If the playlist was missing, we check here to see if it came back.
             let json = read_json(&self.config, None, self.is_terminated.clone(), seek, 0.0);
 
             if let Some(file) = &json.current_file {
@@ -88,6 +90,7 @@ impl CurrentProgram {
         } else if Path::new(&self.json_path.clone().unwrap()).is_file()
             || is_remote(&self.json_path.clone().unwrap())
         {
+            // If the playlist exists, we check here if it has been modified.
             let mod_time = modified_time(&self.json_path.clone().unwrap());
 
             if self.json_mod != mod_time {
@@ -111,21 +114,21 @@ impl CurrentProgram {
                 self.playout_stat.list_init.store(true, Ordering::SeqCst);
             }
         } else {
+            // If the playlist disappears after normal run, we end up here.
+            trace!("check_update, missing playlist");
             error!(
-                "Playlist <b><magenta>{}</></b> not exists!",
+                "Playlist <b><magenta>{}</></b> not exist!",
                 self.json_path.clone().unwrap()
             );
-            let mut media = Media::new(0, "", false);
-            media.begin = Some(get_sec());
-            // TODO: Works not well with filler folder
-            media.duration = DUMMY_LEN;
-            media.out = DUMMY_LEN;
 
+            let media = Media::new(0, "", false);
+
+            self.json_mod = None;
             self.json_path = None;
-            *self.player_control.current_list.lock().unwrap() = vec![media.clone()];
-            self.current_node = media;
+            self.current_node = media.clone();
             self.playout_stat.list_init.store(true, Ordering::SeqCst);
             self.player_control.current_index.store(0, Ordering::SeqCst);
+            *self.player_control.current_list.lock().unwrap() = vec![media];
         }
     }
 
@@ -141,8 +144,8 @@ impl CurrentProgram {
             duration = self.current_node.duration
         }
 
-        // TODO: add unwrap_or_default()
-        let mut next_start = self.current_node.begin.unwrap() - start_sec + duration + delta;
+        let mut next_start =
+            self.current_node.begin.unwrap_or_default() - start_sec + duration + delta;
 
         if self.player_control.current_index.load(Ordering::SeqCst)
             == self.player_control.current_list.lock().unwrap().len() - 1
@@ -150,6 +153,7 @@ impl CurrentProgram {
             next_start += self.config.general.stop_threshold;
         }
 
+        // Check if we over the target length or we are close to it, if so we load the next playlist.
         if next_start >= target_length
             || is_close(total_delta, 0.0, 2.0)
             || is_close(total_delta, target_length, 2.0)
@@ -300,7 +304,7 @@ impl Iterator for CurrentProgram {
                 self.current_node =
                     self.player_control.current_list.lock().unwrap()[last_index].clone();
                 let new_node = self.player_control.current_list.lock().unwrap()[last_index].clone();
-                let new_length = new_node.begin.unwrap() + new_node.duration;
+                let new_length = new_node.begin.unwrap_or_default() + new_node.duration;
                 trace!("Init playlist after playlist end");
 
                 self.check_for_next_playlist();
@@ -316,7 +320,6 @@ impl Iterator for CurrentProgram {
                     let (_, total_delta) = get_delta(&self.config, &current_time);
                     let mut out = total_delta.abs();
                     let mut duration = out + 0.001;
-                    self.playout_stat.list_init.store(false, Ordering::SeqCst);
 
                     trace!("Total delta on list init: {total_delta}");
 
@@ -326,6 +329,8 @@ impl Iterator for CurrentProgram {
 
                     filler.add_probe();
 
+                    // If there is no filler, the duration of the dummy clip should not be too long.
+                    // This would take away the ability to restart the playlist when the playout registers a change.
                     if filler.duration > 0.0 {
                         if duration > filler.duration {
                             out = filler.duration;
@@ -338,6 +343,11 @@ impl Iterator for CurrentProgram {
                     } else {
                         duration = DUMMY_LEN;
                         out = DUMMY_LEN;
+                    }
+
+                    if self.json_path.is_some() {
+                        // When playlist is missing, we always need to init the playlist the next iteration.
+                        self.playout_stat.list_init.store(false, Ordering::SeqCst);
                     }
 
                     if self.config.playlist.start_sec.unwrap() > current_time {
@@ -434,6 +444,12 @@ impl Iterator for CurrentProgram {
                     }
 
                     duration = filler.duration;
+                } else if DUMMY_LEN > total_delta {
+                    duration = total_delta;
+                    out = total_delta;
+                } else {
+                    duration = DUMMY_LEN;
+                    out = DUMMY_LEN;
                 }
 
                 self.current_node.duration = duration;
@@ -560,7 +576,7 @@ pub fn gen_source(
     player_control: &PlayerControl,
     last_index: usize,
 ) -> Media {
-    let mut duration = node.out - node.seek;
+    let duration = node.out - node.seek;
 
     trace!("Clip out: {duration}, duration: {}", node.duration);
 
@@ -651,11 +667,7 @@ pub fn gen_source(
                 node.cmd = Some(cmd);
             }
         } else {
-            if duration > DUMMY_LEN {
-                duration = DUMMY_LEN;
-                node.duration = duration;
-                node.out = duration;
-            }
+            // Create colored placeholder.
             let (source, cmd) = gen_dummy(config, duration);
             node.source = source;
             node.cmd = Some(cmd);
