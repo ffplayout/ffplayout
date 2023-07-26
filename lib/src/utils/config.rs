@@ -213,6 +213,8 @@ pub struct Processing {
     pub mode: ProcessMode,
     #[serde(default)]
     pub audio_only: bool,
+    #[serde(default = "default_track_index")]
+    pub audio_track_index: i32,
     #[serde(default)]
     pub copy_audio: bool,
     #[serde(default)]
@@ -317,6 +319,10 @@ pub struct Out {
     pub output_filter: Option<String>,
     #[serde(skip_serializing, skip_deserializing)]
     pub output_cmd: Option<Vec<String>>,
+}
+
+fn default_track_index() -> i32 {
+    -1
 }
 
 fn default_tracks() -> i32 {

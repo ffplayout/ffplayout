@@ -24,6 +24,7 @@ pub fn output(config: &PlayoutConfig, log_format: &str) -> process::Child {
     if let Some(mut cmd) = config.out.output_cmd.clone() {
         if !cmd.iter().any(|i| {
             [
+                "-c",
                 "-c:v",
                 "-c:v:0",
                 "-b:v",

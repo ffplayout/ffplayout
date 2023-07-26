@@ -531,8 +531,18 @@ pub fn filter_chains(
         custom(&list_vf, &mut filters, 0, Video);
     }
 
-    if !config.processing.copy_audio {
+    let mut audio_indexes = vec![];
+
+    if config.processing.audio_track_index == -1 {
         for i in 0..config.processing.audio_tracks {
+            audio_indexes.push(i)
+        }
+    } else {
+        audio_indexes.push(config.processing.audio_track_index)
+    }
+
+    if !config.processing.copy_audio {
+        for i in audio_indexes {
             if node
                 .probe
                 .as_ref()
@@ -562,6 +572,8 @@ pub fn filter_chains(
             custom(&proc_af, &mut filters, i, Audio);
             custom(&list_af, &mut filters, i, Audio);
         }
+    } else if config.processing.audio_track_index > -1 {
+        error!("Setting audio_track_index other than -1 is not allowed in audio copy mode!")
     }
 
     if config.out.mode == HLS {
