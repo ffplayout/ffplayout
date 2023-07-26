@@ -131,9 +131,9 @@ export const useConfig = defineStore('config', {
                 this.configGui = guiConfigs
                 this.configGuiRaw = _.cloneDeep(guiConfigs)
                 this.configCount = guiConfigs.length
-
-                await this.getPlayoutConfig()
             }
+
+            await this.getPlayoutConfig()
 
             return response
         },
