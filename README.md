@@ -64,7 +64,7 @@ ffpapi serves the [frontend](https://github.com/ffplayout/ffplayout-frontend) an
 ### Requirements
 
 - RAM and CPU depends on video resolution, minimum 4 threads and 3GB RAM for 720p are recommend
-- **ffmpeg** v4.2+ and **ffprobe** (**ffplay** if you want to play on desktop)
+- **ffmpeg** v5.0+ and **ffprobe** (**ffplay** if you want to play on desktop)
 - if you want to overlay text, ffmpeg needs to have **libzmq**
 
 ### Install
