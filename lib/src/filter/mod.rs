@@ -573,7 +573,7 @@ pub fn filter_chains(
             custom(&list_af, &mut filters, i, Audio);
         }
     } else if config.processing.audio_track_index > -1 {
-        error!("Setting audio_track_index other than -1 is not allowed in audio copy mode!")
+        error!("Setting 'audio_track_index' other than '-1' is not allowed in audio copy mode!")
     }
 
     if config.out.mode == HLS {
