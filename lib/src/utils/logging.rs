@@ -155,8 +155,6 @@ impl SharedLogger for LogMailer {
 }
 
 /// Workaround to remove color information from log
-///
-/// ToDo: maybe in next version from simplelog this is not necessary anymore.
 fn clean_string(text: &str) -> String {
     let regex = Regex::new(r"\x1b\[[0-9;]*[mGKF]").unwrap();
 

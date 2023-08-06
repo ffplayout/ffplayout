@@ -1,5 +1,6 @@
 use std::{fmt, sync::atomic::Ordering};
 
+use regex::Regex;
 extern crate serde;
 extern crate serde_json;
 extern crate tiny_http;
@@ -55,7 +56,11 @@ where
                 Err(serde::de::Error::custom("Invalid number format"))
             }
         }
-        Value::String(string) => Ok(Some(string)),
+        Value::String(string) => {
+            let re = Regex::new(r"0,([0-9]+)").unwrap();
+            let clean_string = re.replace_all(&string, "0.$1").to_string();
+            Ok(Some(clean_string))
+        }
         _ => Err(serde::de::Error::custom("Invalid value type")),
     }
 }
