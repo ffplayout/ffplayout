@@ -714,9 +714,16 @@ function moveItemInArray(event: any) {
 
 function setPreviewData(path: string) {
     let fullPath = path
+    const storagePath = configStore.configPlayout.storage.path
+    const lastIndex = storagePath.lastIndexOf('/')
+
     if (!path.includes('/')) {
         const parent = mediaStore.folderTree.parent ? mediaStore.folderTree.parent : ''
         fullPath = `/${parent}/${mediaStore.folderTree.source}/${path}`.replace(/\/[/]+/g, '/')
+    } else if (lastIndex !== -1) {
+        let pathPrefix = storagePath.substring(0, lastIndex)
+
+        fullPath = path.replace(pathPrefix, '')
     }
 
     previewName.value = fullPath.split('/').slice(-1)[0]
