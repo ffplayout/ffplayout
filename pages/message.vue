@@ -68,7 +68,7 @@
                                     id="input-size"
                                     class="form-control mt-2"
                                     v-model="form.fontSize"
-                                    type="text"
+                                    type="number"
                                     required
                                 />
                             </div>
@@ -78,7 +78,7 @@
                                     id="input-spacing"
                                     class="form-control mt-2"
                                     v-model="form.fontSpacing"
-                                    type="text"
+                                    type="number"
                                     required
                                 />
                             </div>
