@@ -6,8 +6,11 @@ extern crate serde_json;
 extern crate tiny_http;
 
 use futures::executor::block_on;
-use serde::{Deserialize, Serialize};
-use serde_json::{json, Map, Value};
+use serde::{
+    de::{self, Visitor},
+    Deserialize, Serialize,
+};
+use serde_json::{json, Map};
 use simplelog::*;
 use std::collections::HashMap;
 use std::io::{Cursor, Error as IoError};
@@ -41,28 +44,40 @@ struct TextFilter {
     boxborderw: Option<String>,
 }
 
-fn deserialize_number_or_string<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+/// Deserialize number or string
+pub fn deserialize_number_or_string<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
-    let value: Value = Deserialize::deserialize(deserializer)?;
-    match value {
-        Value::Number(num) => {
-            if let Some(number) = num.as_i64() {
-                Ok(Some(number.to_string()))
-            } else if let Some(number) = num.as_f64() {
-                Ok(Some(number.to_string()))
-            } else {
-                Err(serde::de::Error::custom("Invalid number format"))
-            }
+    struct StringOrNumberVisitor;
+
+    impl<'de> Visitor<'de> for StringOrNumberVisitor {
+        type Value = Option<String>;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            formatter.write_str("a string or a number")
         }
-        Value::String(string) => {
+
+        fn visit_str<E: de::Error>(self, value: &str) -> Result<Self::Value, E> {
             let re = Regex::new(r"0,([0-9]+)").unwrap();
-            let clean_string = re.replace_all(&string, "0.$1").to_string();
+            let clean_string = re.replace_all(value, "0.$1").to_string();
             Ok(Some(clean_string))
         }
-        _ => Err(serde::de::Error::custom("Invalid value type")),
+
+        fn visit_u64<E: de::Error>(self, value: u64) -> Result<Self::Value, E> {
+            Ok(Some(value.to_string()))
+        }
+
+        fn visit_i64<E: de::Error>(self, value: i64) -> Result<Self::Value, E> {
+            Ok(Some(value.to_string()))
+        }
+
+        fn visit_f64<E: de::Error>(self, value: f64) -> Result<Self::Value, E> {
+            Ok(Some(value.to_string()))
+        }
     }
+
+    deserializer.deserialize_any(StringOrNumberVisitor)
 }
 
 impl fmt::Display for TextFilter {
