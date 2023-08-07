@@ -278,7 +278,7 @@ pub async fn update_preset(
 ) -> Result<SqliteQueryResult, sqlx::Error> {
     let query =
         "UPDATE presets SET name = $1, text = $2, x = $3, y = $4, fontsize = $5, line_spacing = $6,
-        fontcolor = $7, alpha = $8, box = $9, boxcolor = $10, boxborderw = 11 WHERE id = $12";
+        fontcolor = $7, alpha = $8, box = $9, boxcolor = $10, boxborderw = $11 WHERE id = $12";
 
     sqlx::query(query)
         .bind(preset.name)
