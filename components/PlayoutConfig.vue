@@ -64,15 +64,48 @@
                 </div>
             </form>
         </div>
+
+        <div
+            id="restartModal"
+            ref="restartModal"
+            class="modal"
+            tabindex="-1"
+            aria-labelledby="restartModalLabel"
+            aria-hidden="true"
+        >
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h1 class="modal-title fs-5" id="restartModalLabel">Restart Playout</h1>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cancel"></button>
+                    </div>
+                    <div class="modal-body">Restart ffplayout to apply changes?</div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-primary" data-bs-dismiss="modal">No</button>
+                        <button type="button" class="btn btn-primary" data-bs-dismiss="modal" @click="restart()">
+                            Yes
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 </template>
 
 <script setup lang="ts">
+import { useAuth } from '~/stores/auth'
 import { useConfig } from '~/stores/config'
 import { useIndex } from '~/stores/index'
 
+const { $bootstrap } = useNuxtApp()
+
+const authStore = useAuth()
 const configStore = useConfig()
 const indexStore = useIndex()
+
+const contentType = { 'content-type': 'application/json;charset=UTF-8' }
+
+const restartModal = ref()
 
 async function onSubmitPlayout() {
     const update = await configStore.setPlayoutConfig(configStore.configPlayout)
@@ -80,6 +113,22 @@ async function onSubmitPlayout() {
     if (update.status === 200) {
         indexStore.alertVariant = 'alert-success'
         indexStore.alertMsg = 'Update playout config success!'
+
+        const channel = configStore.configGui[configStore.configID].id
+
+        await $fetch(`/api/control/${channel}/process/`, {
+            method: 'POST',
+            headers: { ...contentType, ...authStore.authHeader },
+            body: JSON.stringify({ command: 'status' }),
+        }).then((response: any) => {
+            if (response === 'active') {
+                console.log('---restart modal')
+                // @ts-ignore
+                const modal = $bootstrap.Modal.getOrCreateInstance(restartModal.value)
+
+                modal.show()
+            }
+        })
     } else {
         indexStore.alertVariant = 'alert-danger'
         indexStore.alertMsg = 'Update playout config failed!'
@@ -90,5 +139,15 @@ async function onSubmitPlayout() {
     setTimeout(() => {
         indexStore.showAlert = false
     }, 2000)
+}
+
+async function restart() {
+    const channel = configStore.configGui[configStore.configID].id
+
+    await $fetch(`/api/control/${channel}/process/`, {
+        method: 'POST',
+        headers: { ...contentType, ...authStore.authHeader },
+        body: JSON.stringify({ command: 'restart' }),
+    })
 }
 </script>

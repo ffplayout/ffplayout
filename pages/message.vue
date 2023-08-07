@@ -236,23 +236,6 @@ useHead({
     title: 'Messages | ffplayout'
 })
 
-interface Preset {
-    id: number
-    name: string
-    text: string
-    x: string
-    y: string
-    fontSize: number
-    fontSpacing: number
-    fontColor: string
-    fontAlpha: number
-    showBox: boolean
-    boxColor: string
-    boxAlpha: number
-    border: number
-    overallAlpha: number
-}
-
 interface PresetName {
     name: string
     value: number
