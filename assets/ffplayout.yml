@@ -57,7 +57,7 @@ processing:
         [c_v_out] for video filter, and [c_a_out] for audio filter.
     mode: playlist
     audio_only: false
-    copy_audio: true
+    copy_audio: false
     copy_video: false
     width: 1024
     height: 576
