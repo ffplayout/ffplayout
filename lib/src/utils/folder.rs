@@ -1,7 +1,7 @@
 use std::{
     path::Path,
     sync::{
-        atomic::{AtomicUsize, Ordering},
+        atomic::Ordering,
         {Arc, Mutex},
     },
 };
@@ -10,7 +10,9 @@ use rand::{seq::SliceRandom, thread_rng};
 use simplelog::*;
 use walkdir::WalkDir;
 
-use crate::utils::{get_sec, include_file, Media, PlayoutConfig};
+use crate::utils::{
+    controller::PlayerControl, get_sec, include_file_extension, Media, PlayoutConfig,
+};
 
 /// Folder Sources
 ///
@@ -19,17 +21,15 @@ use crate::utils::{get_sec, include_file, Media, PlayoutConfig};
 pub struct FolderSource {
     config: PlayoutConfig,
     filter_chain: Option<Arc<Mutex<Vec<String>>>>,
-    pub nodes: Arc<Mutex<Vec<Media>>>,
+    pub player_control: PlayerControl,
     current_node: Media,
-    index: Arc<AtomicUsize>,
 }
 
 impl FolderSource {
     pub fn new(
         config: &PlayoutConfig,
         filter_chain: Option<Arc<Mutex<Vec<String>>>>,
-        current_list: Arc<Mutex<Vec<Media>>>,
-        global_index: Arc<AtomicUsize>,
+        player_control: &PlayerControl,
     ) -> Self {
         let mut path_list = vec![];
         let mut media_list = vec![];
@@ -52,11 +52,10 @@ impl FolderSource {
                 .into_iter()
                 .flat_map(|e| e.ok())
                 .filter(|f| f.path().is_file())
+                .filter(|f| include_file_extension(config, f.path()))
             {
-                if include_file(config.clone(), entry.path()) {
-                    let media = Media::new(0, &entry.path().to_string_lossy(), false);
-                    media_list.push(media);
-                }
+                let media = Media::new(0, &entry.path().to_string_lossy(), false);
+                media_list.push(media);
             }
         }
 
@@ -81,20 +80,19 @@ impl FolderSource {
             index += 1;
         }
 
-        *current_list.lock().unwrap() = media_list;
+        *player_control.current_list.lock().unwrap() = media_list;
 
         Self {
             config: config.clone(),
             filter_chain,
-            nodes: current_list,
+            player_control: player_control.clone(),
             current_node: Media::new(0, "", false),
-            index: global_index,
         }
     }
 
     fn shuffle(&mut self) {
         let mut rng = thread_rng();
-        let mut nodes = self.nodes.lock().unwrap();
+        let mut nodes = self.player_control.current_list.lock().unwrap();
 
         nodes.shuffle(&mut rng);
 
@@ -104,7 +102,7 @@ impl FolderSource {
     }
 
     fn sort(&mut self) {
-        let mut nodes = self.nodes.lock().unwrap();
+        let mut nodes = self.player_control.current_list.lock().unwrap();
 
         nodes.sort_by(|d1, d2| d1.source.cmp(&d2.source));
 
@@ -119,15 +117,19 @@ impl Iterator for FolderSource {
     type Item = Media;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.index.load(Ordering::SeqCst) < self.nodes.lock().unwrap().len() {
-            let i = self.index.load(Ordering::SeqCst);
-            self.current_node = self.nodes.lock().unwrap()[i].clone();
+        if self.player_control.current_index.load(Ordering::SeqCst)
+            < self.player_control.current_list.lock().unwrap().len()
+        {
+            let i = self.player_control.current_index.load(Ordering::SeqCst);
+            self.current_node = self.player_control.current_list.lock().unwrap()[i].clone();
             self.current_node.add_probe();
             self.current_node
                 .add_filter(&self.config, &self.filter_chain);
             self.current_node.begin = Some(get_sec());
 
-            self.index.fetch_add(1, Ordering::SeqCst);
+            self.player_control
+                .current_index
+                .fetch_add(1, Ordering::SeqCst);
 
             Some(self.current_node.clone())
         } else {
@@ -145,15 +147,52 @@ impl Iterator for FolderSource {
                 self.sort();
             }
 
-            self.current_node = self.nodes.lock().unwrap()[0].clone();
+            self.current_node = self.player_control.current_list.lock().unwrap()[0].clone();
             self.current_node.add_probe();
             self.current_node
                 .add_filter(&self.config, &self.filter_chain);
             self.current_node.begin = Some(get_sec());
 
-            self.index.store(1, Ordering::SeqCst);
+            self.player_control.current_index.store(1, Ordering::SeqCst);
 
             Some(self.current_node.clone())
         }
     }
+}
+
+pub fn fill_filler_list(config: PlayoutConfig, player_control: PlayerControl) {
+    let mut filler_list = vec![];
+
+    if Path::new(&config.storage.filler).is_dir() {
+        debug!(
+            "Fill filler list from: <b><magenta>{}</></b>",
+            config.storage.filler
+        );
+
+        for (index, entry) in WalkDir::new(&config.storage.filler)
+            .into_iter()
+            .flat_map(|e| e.ok())
+            .filter(|f| f.path().is_file())
+            .filter(|f| include_file_extension(&config, f.path()))
+            .enumerate()
+        {
+            filler_list.push(Media::new(index, &entry.path().to_string_lossy(), false));
+        }
+
+        if config.storage.shuffle {
+            let mut rng = thread_rng();
+
+            filler_list.shuffle(&mut rng);
+        } else {
+            filler_list.sort_by(|d1, d2| d1.source.cmp(&d2.source));
+        }
+
+        for (index, item) in filler_list.iter_mut().enumerate() {
+            item.index = Some(index);
+        }
+    } else {
+        filler_list.push(Media::new(0, &config.storage.filler, false));
+    }
+
+    *player_control.filler_list.lock().unwrap() = filler_list;
 }

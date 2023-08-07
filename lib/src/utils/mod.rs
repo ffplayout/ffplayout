@@ -238,9 +238,13 @@ impl MediaProbe {
                 }
             }
             Err(e) => {
-                error!(
-                    "Can't read source <b><magenta>{input}</></b> with ffprobe, source not exists or damaged! Error in: {e:?}"
-                );
+                if Path::new(input).is_file() {
+                    error!(
+                        "Can't read source <b><magenta>{input}</></b> with ffprobe! Error: {e:?}"
+                    );
+                } else if !input.is_empty() {
+                    error!("File not exists: <b><magenta>{input}</></b>");
+                }
 
                 MediaProbe {
                     format: None,
@@ -586,7 +590,7 @@ pub fn valid_source(source: &str) -> bool {
 /// Check if file can include or has to exclude.
 /// For example when a file is on given HLS output path, it should exclude.
 /// Or when the file extension is set under storage config it can be include.
-pub fn include_file(config: PlayoutConfig, file_path: &Path) -> bool {
+pub fn include_file_extension(config: &PlayoutConfig, file_path: &Path) -> bool {
     let mut include = false;
 
     if let Some(ext) = file_extension(file_path) {
@@ -614,6 +618,7 @@ pub fn include_file(config: PlayoutConfig, file_path: &Path) -> bool {
         if let Some(m3u8_path) = config
             .out
             .output_cmd
+            .clone()
             .unwrap_or_else(|| vec![String::new()])
             .iter()
             .find(|s| s.contains(".m3u8") && !s.contains("master.m3u8"))
@@ -876,6 +881,18 @@ pub fn get_date_range(date_range: &[String]) -> Vec<String> {
     }
 
     range
+}
+
+pub fn parse_log_level_filter(s: &str) -> Result<LevelFilter, &'static str> {
+    match s.to_lowercase().as_str() {
+        "debug" => Ok(LevelFilter::Debug),
+        "error" => Ok(LevelFilter::Error),
+        "info" => Ok(LevelFilter::Info),
+        "trace" => Ok(LevelFilter::Trace),
+        "warning" => Ok(LevelFilter::Warn),
+        "off" => Ok(LevelFilter::Off),
+        _ => Err("Error level not exists!"),
+    }
 }
 
 pub fn home_dir() -> Option<PathBuf> {

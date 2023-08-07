@@ -17,7 +17,7 @@ use notify::{
 use notify_debouncer_full::new_debouncer;
 use simplelog::*;
 
-use ffplayout_lib::utils::{include_file, Media, PlayoutConfig};
+use ffplayout_lib::utils::{include_file_extension, Media, PlayoutConfig};
 
 /// Create a watcher, which monitor file changes.
 /// When a change is register, update the current file list.
@@ -52,7 +52,7 @@ pub fn watchman(
                     Create(CreateKind::File) | Modify(ModifyKind::Name(RenameMode::To)) => {
                         let new_path = &event.paths[0];
 
-                        if new_path.is_file() && include_file(config.clone(), new_path) {
+                        if new_path.is_file() && include_file_extension(&config, new_path) {
                             let index = sources.lock().unwrap().len();
                             let media = Media::new(index, &new_path.to_string_lossy(), false);
 
@@ -63,7 +63,7 @@ pub fn watchman(
                     Remove(RemoveKind::File) | Modify(ModifyKind::Name(RenameMode::From)) => {
                         let old_path = &event.paths[0];
 
-                        if !old_path.is_file() && include_file(config.clone(), old_path) {
+                        if !old_path.is_file() && include_file_extension(&config, old_path) {
                             sources
                                 .lock()
                                 .unwrap()
@@ -83,7 +83,7 @@ pub fn watchman(
                             let media = Media::new(index, &new_path.to_string_lossy(), false);
                             media_list[index] = media;
                             info!("Move file: <b><magenta>{old_path:?}</></b> to <b><magenta>{new_path:?}</></b>");
-                        } else if include_file(config.clone(), new_path) {
+                        } else if include_file_extension(&config, new_path) {
                             let index = media_list.len();
                             let media = Media::new(index, &new_path.to_string_lossy(), false);
 

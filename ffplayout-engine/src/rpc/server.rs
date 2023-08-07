@@ -1,21 +1,26 @@
 use std::{fmt, sync::atomic::Ordering};
 
+use regex::Regex;
 extern crate serde;
 extern crate serde_json;
 extern crate tiny_http;
 
 use futures::executor::block_on;
-use serde::{Deserialize, Serialize};
-use serde_json::{json, Map, Value};
+use serde::{
+    de::{self, Visitor},
+    Deserialize, Serialize,
+};
+use serde_json::{json, Map};
 use simplelog::*;
 use std::collections::HashMap;
 use std::io::{Cursor, Error as IoError};
 use tiny_http::{Header, Method, Request, Response, Server};
 
 use crate::rpc::zmq_send;
+use crate::utils::{get_data_map, get_media_map};
 use ffplayout_lib::utils::{
-    get_delta, get_sec, sec_to_time, write_status, Ingest, Media, OutputMode::*, PlayerControl,
-    PlayoutConfig, PlayoutStatus, ProcessControl,
+    get_delta, write_status, Ingest, OutputMode::*, PlayerControl, PlayoutConfig, PlayoutStatus,
+    ProcessControl,
 };
 
 #[derive(Default, Deserialize, Clone, Debug)]
@@ -39,24 +44,40 @@ struct TextFilter {
     boxborderw: Option<String>,
 }
 
-fn deserialize_number_or_string<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+/// Deserialize number or string
+pub fn deserialize_number_or_string<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
-    let value: Value = Deserialize::deserialize(deserializer)?;
-    match value {
-        Value::Number(num) => {
-            if let Some(number) = num.as_i64() {
-                Ok(Some(number.to_string()))
-            } else if let Some(number) = num.as_f64() {
-                Ok(Some(number.to_string()))
-            } else {
-                Err(serde::de::Error::custom("Invalid number format"))
-            }
+    struct StringOrNumberVisitor;
+
+    impl<'de> Visitor<'de> for StringOrNumberVisitor {
+        type Value = Option<String>;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            formatter.write_str("a string or a number")
         }
-        Value::String(string) => Ok(Some(string)),
-        _ => Err(serde::de::Error::custom("Invalid value type")),
+
+        fn visit_str<E: de::Error>(self, value: &str) -> Result<Self::Value, E> {
+            let re = Regex::new(r"0,([0-9]+)").unwrap();
+            let clean_string = re.replace_all(value, "0.$1").to_string();
+            Ok(Some(clean_string))
+        }
+
+        fn visit_u64<E: de::Error>(self, value: u64) -> Result<Self::Value, E> {
+            Ok(Some(value.to_string()))
+        }
+
+        fn visit_i64<E: de::Error>(self, value: i64) -> Result<Self::Value, E> {
+            Ok(Some(value.to_string()))
+        }
+
+        fn visit_f64<E: de::Error>(self, value: f64) -> Result<Self::Value, E> {
+            Ok(Some(value.to_string()))
+        }
     }
+
+    deserializer.deserialize_any(StringOrNumberVisitor)
 }
 
 impl fmt::Display for TextFilter {
@@ -129,45 +150,6 @@ fn filter_from_json(raw_text: serde_json::Value) -> String {
     filter.to_string()
 }
 
-/// map media struct to json object
-fn get_media_map(media: Media) -> Value {
-    json!({
-        "seek": media.seek,
-        "out": media.out,
-        "duration": media.duration,
-        "category": media.category,
-        "source": media.source,
-    })
-}
-
-/// prepare json object for response
-fn get_data_map(
-    config: &PlayoutConfig,
-    media: Media,
-    server_is_running: bool,
-) -> Map<String, Value> {
-    let mut data_map = Map::new();
-    let begin = media.begin.unwrap_or(0.0);
-
-    data_map.insert("play_mode".to_string(), json!(config.processing.mode));
-    data_map.insert("ingest_runs".to_string(), json!(server_is_running));
-    data_map.insert("index".to_string(), json!(media.index));
-    data_map.insert("start_sec".to_string(), json!(begin));
-
-    if begin > 0.0 {
-        let played_time = get_sec() - begin;
-        let remaining_time = media.out - played_time;
-
-        data_map.insert("start_time".to_string(), json!(sec_to_time(begin)));
-        data_map.insert("played_sec".to_string(), json!(played_time));
-        data_map.insert("remaining_sec".to_string(), json!(remaining_time));
-    }
-
-    data_map.insert("current_media".to_string(), get_media_map(media));
-
-    data_map
-}
-
 #[derive(Debug, Serialize, Deserialize)]
 struct ResponseData {
     message: String,
@@ -213,7 +195,7 @@ fn control_back(
     let current_date = playout_stat.current_date.lock().unwrap().clone();
     let current_list = play_control.current_list.lock().unwrap();
     let mut date = playout_stat.date.lock().unwrap();
-    let index = play_control.index.load(Ordering::SeqCst);
+    let index = play_control.current_index.load(Ordering::SeqCst);
     let mut time_shift = playout_stat.time_shift.lock().unwrap();
 
     if index > 1 && current_list.len() > 1 {
@@ -229,7 +211,7 @@ fn control_back(
             info!("Move to last clip");
             let mut data_map = Map::new();
             let mut media = current_list[index - 2].clone();
-            play_control.index.fetch_sub(2, Ordering::SeqCst);
+            play_control.current_index.fetch_sub(2, Ordering::SeqCst);
             media.add_probe();
 
             let (delta, _) = get_delta(config, &media.begin.unwrap_or(0.0));
@@ -259,7 +241,7 @@ fn control_next(
     let current_date = playout_stat.current_date.lock().unwrap().clone();
     let current_list = play_control.current_list.lock().unwrap();
     let mut date = playout_stat.date.lock().unwrap();
-    let index = play_control.index.load(Ordering::SeqCst);
+    let index = play_control.current_index.load(Ordering::SeqCst);
     let mut time_shift = playout_stat.time_shift.lock().unwrap();
 
     if index < current_list.len() {
@@ -408,7 +390,7 @@ fn media_current(
 
 /// media info: get infos about next clip
 fn media_next(config: &PlayoutConfig, play_control: &PlayerControl) -> Response<Cursor<Vec<u8>>> {
-    let index = play_control.index.load(Ordering::SeqCst);
+    let index = play_control.current_index.load(Ordering::SeqCst);
     let current_list = play_control.current_list.lock().unwrap();
 
     if index < current_list.len() {
@@ -424,7 +406,7 @@ fn media_next(config: &PlayoutConfig, play_control: &PlayerControl) -> Response<
 
 /// media info: get infos about last clip
 fn media_last(config: &PlayoutConfig, play_control: &PlayerControl) -> Response<Cursor<Vec<u8>>> {
-    let index = play_control.index.load(Ordering::SeqCst);
+    let index = play_control.current_index.load(Ordering::SeqCst);
     let current_list = play_control.current_list.lock().unwrap();
 
     if index > 1 && index - 2 < current_list.len() {

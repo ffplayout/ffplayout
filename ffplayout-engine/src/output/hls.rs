@@ -31,7 +31,7 @@ use crate::input::source_generator;
 use crate::utils::{log_line, prepare_output_cmd, valid_stream};
 use ffplayout_lib::{
     utils::{
-        controller::ProcessUnit::*, sec_to_time, stderr_reader, test_tcp_port, Media,
+        controller::ProcessUnit::*, get_delta, sec_to_time, stderr_reader, test_tcp_port, Media,
         PlayerControl, PlayoutConfig, PlayoutStatus, ProcessControl,
     },
     vec_strings,
@@ -137,7 +137,7 @@ fn ingest_to_hls_server(
 /// Write with single ffmpeg instance directly to a HLS playlist.
 pub fn write_hls(
     config: &PlayoutConfig,
-    play_control: PlayerControl,
+    player_control: PlayerControl,
     playout_stat: PlayoutStatus,
     proc_control: ProcessControl,
 ) {
@@ -148,8 +148,7 @@ pub fn write_hls(
 
     let get_source = source_generator(
         config.clone(),
-        play_control.current_list.clone(),
-        play_control.index.clone(),
+        &player_control,
         playout_stat,
         proc_control.is_terminated.clone(),
     );
@@ -160,7 +159,7 @@ pub fn write_hls(
     }
 
     for node in get_source {
-        *play_control.current_media.lock().unwrap() = Some(node.clone());
+        *player_control.current_media.lock().unwrap() = Some(node.clone());
 
         let mut cmd = match node.cmd {
             Some(cmd) => cmd,
@@ -178,6 +177,25 @@ pub fn write_hls(
         );
 
         let mut enc_prefix = vec_strings!["-hide_banner", "-nostats", "-v", &ff_log_format];
+
+        let mut read_rate = 1.0;
+
+        if let Some(begin) = &node.begin {
+            let (delta, _) = get_delta(config, begin);
+            let duration = node.out - node.seek;
+            let speed = duration / (duration + delta);
+
+            if node.seek == 0.0
+                && speed > 0.0
+                && speed < 1.3
+                && delta < config.general.stop_threshold
+            {
+                read_rate = speed;
+            }
+        }
+
+        enc_prefix.append(&mut vec_strings!["-readrate", read_rate]);
+
         enc_prefix.append(&mut cmd);
         let enc_cmd = prepare_output_cmd(config, enc_prefix, &node.filter);
 

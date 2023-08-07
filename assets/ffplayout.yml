@@ -57,6 +57,8 @@ processing:
         [c_v_out] for video filter, and [c_a_out] for audio filter.
     mode: playlist
     audio_only: false
+    copy_audio: false
+    copy_video: false
     width: 1024
     height: 576
     aspect: 1.778
@@ -67,6 +69,7 @@ processing:
     logo_opacity: 0.7
     logo_filter: overlay=W-w-12:12
     audio_tracks: 1
+    audio_track_index: -1
     audio_channels: 2
     volume: 1
     custom_filter:
@@ -95,11 +98,12 @@ playlist:
     infinit: false
 
 storage:
-    help_text: Play ordered or randomly files from path. 'filler_clip' is for fill
-        the end to reach 24 hours, it will loop when is necessary. 'extensions' search
+    help_text: >
+        'filler' is for playing instead of a missing file or fill the end to reach 24
+        hours, can be a file or folder, it will loop when is necessary. 'extensions' search
         only files with this extension. Set 'shuffle' to 'true' to pick files randomly.
     path: "/var/lib/ffplayout/tv-media"
-    filler_clip: "/var/lib/ffplayout/tv-media/filler/filler.mp4"
+    filler: "/var/lib/ffplayout/tv-media/filler/filler.mp4"
     extensions:
         - "mp4"
         - "mkv"
@@ -116,6 +120,13 @@ text:
     fontfile: "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
     style: "x=(w-tw)/2:y=(h-line_h)*0.9:fontsize=24:fontcolor=#ffffff:box=1:boxcolor=#000000:boxborderw=4"
     regex: ^.+[/\\](.*)(.mp4|.mkv)$
+
+task:
+    help_text: Run an external program with a given media object. The media object is in json format
+        and contains all the information about the current clip. The external program can be a script
+        or a binary, but should only run for a short time.
+    enable: false
+    path:
 
 out:
     help_text: The final playout compression. Set the settings to your needs. 'mode'

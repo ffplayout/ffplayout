@@ -15,7 +15,7 @@ Check the [releases](https://github.com/ffplayout/ffplayout/releases/latest) for
 
 - have all values in a separate config file
 - dynamic playlist
-- replace missing playlist or clip with a dummy clip
+- replace missing playlist or clip with single filler or multiple fillers from folder, if no filler exists, create dummy clip
 - playing clips in [watched](/docs/folder_mode.md) folder mode
 - send emails with error message
 - overlay a logo
@@ -23,7 +23,7 @@ Check the [releases](https://github.com/ffplayout/ffplayout/releases/latest) for
 - loop playlist infinitely
 - [remote source](/docs/remote_source.md)
 - trim and fade the last clip, to get full 24 hours
-- when playlist is not 24 hours long, loop filler clip until time is full
+- when playlist is not 24 hours long, loop fillers until time is full
 - set custom day start, so you can have playlist for example: from 6am to 6am, instate of 0am to 12pm
 - normal system requirements and no special tools
 - no GPU power is needed
@@ -47,6 +47,7 @@ Check the [releases](https://github.com/ffplayout/ffplayout/releases/latest) for
 - image source (will loop until out duration is reached)
 - extra audio source, has priority over audio from video (experimental *)
 - [multiple audio tracks](/docs/multi_audio.md) (experimental *)
+- [Stream Copy](/docs/stream_copy.md) mode (experimental *)
 - [custom filters](/docs/custom_filters.md) globally in config, or in playlist for specific clips
 - import playlist from text or m3u file, with CLI or frontend
 - audio only, for radio mode (experimental *)
@@ -63,7 +64,7 @@ ffpapi serves the [frontend](https://github.com/ffplayout/ffplayout-frontend) an
 ### Requirements
 
 - RAM and CPU depends on video resolution, minimum 4 threads and 3GB RAM for 720p are recommend
-- **ffmpeg** v4.2+ and **ffprobe** (**ffplay** if you want to play on desktop)
+- **ffmpeg** v5.0+ and **ffprobe** (**ffplay** if you want to play on desktop)
 - if you want to overlay text, ffmpeg needs to have **libzmq**
 
 ### Install

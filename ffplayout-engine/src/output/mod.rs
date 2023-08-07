@@ -1,5 +1,6 @@
 use std::{
     io::{prelude::*, BufReader, BufWriter, Read},
+    path::Path,
     process::{Command, Stdio},
     sync::atomic::Ordering,
     thread::{self, sleep},
@@ -17,6 +18,8 @@ mod stream;
 pub use hls::write_hls;
 
 use crate::input::{ingest_server, source_generator};
+use crate::utils::task_runner;
+
 use ffplayout_lib::utils::{
     sec_to_time, stderr_reader, OutputMode::*, PlayerControl, PlayoutConfig, PlayoutStatus,
     ProcessControl, ProcessUnit::*,
@@ -34,7 +37,7 @@ use ffplayout_lib::vec_strings;
 /// When ingest stops, it switch back to playlist/folder mode.
 pub fn player(
     config: &PlayoutConfig,
-    play_control: PlayerControl,
+    play_control: &PlayerControl,
     playout_stat: PlayoutStatus,
     proc_control: ProcessControl,
 ) {
@@ -47,8 +50,7 @@ pub fn player(
     // get source iterator
     let get_source = source_generator(
         config.clone(),
-        play_control.current_list.clone(),
-        play_control.index.clone(),
+        play_control,
         playout_stat,
         proc_control.is_terminated.clone(),
     );
@@ -83,11 +85,6 @@ pub fn player(
     'source_iter: for node in get_source {
         *play_control.current_media.lock().unwrap() = Some(node.clone());
 
-        let mut cmd = match node.cmd {
-            Some(cmd) => cmd,
-            None => break,
-        };
-
         if !node.process.unwrap() {
             continue;
         }
@@ -98,6 +95,28 @@ pub fn player(
             node.source,
             node.audio
         );
+
+        if config.task.enable {
+            let task_config = config.clone();
+            let task_node = node.clone();
+            let server_running = proc_control.server_is_running.load(Ordering::SeqCst);
+
+            if Path::new(&config.task.path).is_file() {
+                thread::spawn(move || task_runner::run(task_config, task_node, server_running));
+            } else {
+                error!(
+                    "<bright-blue>{}</> executable not exists!",
+                    config.task.path
+                );
+            }
+        }
+
+        trace!("Decoder CMD: {:?}", node.cmd);
+
+        let mut cmd = match node.cmd {
+            Some(cmd) => cmd,
+            None => break,
+        };
 
         let mut dec_cmd = vec_strings!["-hide_banner", "-nostats", "-v", &ff_log_format];
         dec_cmd.append(&mut cmd);
@@ -205,6 +224,8 @@ pub fn player(
             error!("{e:?}");
         };
     }
+
+    trace!("Out of source loop");
 
     sleep(Duration::from_secs(1));
 

@@ -1,4 +1,8 @@
-use serde::{Deserialize, Serialize};
+use regex::Regex;
+use serde::{
+    de::{self, Visitor},
+    Deserialize, Serialize,
+};
 
 #[derive(Debug, Deserialize, Serialize, sqlx::FromRow)]
 pub struct User {
@@ -49,13 +53,53 @@ pub struct TextPreset {
     pub text: String,
     pub x: String,
     pub y: String,
+    #[serde(deserialize_with = "deserialize_number_or_string")]
     pub fontsize: String,
+    #[serde(deserialize_with = "deserialize_number_or_string")]
     pub line_spacing: String,
     pub fontcolor: String,
     pub r#box: String,
     pub boxcolor: String,
+    #[serde(deserialize_with = "deserialize_number_or_string")]
     pub boxborderw: String,
+    #[serde(deserialize_with = "deserialize_number_or_string")]
     pub alpha: String,
+}
+
+/// Deserialize number or string
+pub fn deserialize_number_or_string<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    struct StringOrNumberVisitor;
+
+    impl<'de> Visitor<'de> for StringOrNumberVisitor {
+        type Value = String;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            formatter.write_str("a string or a number")
+        }
+
+        fn visit_str<E: de::Error>(self, value: &str) -> Result<Self::Value, E> {
+            let re = Regex::new(r"0,([0-9]+)").unwrap();
+            let clean_string = re.replace_all(value, "0.$1").to_string();
+            Ok(clean_string)
+        }
+
+        fn visit_u64<E: de::Error>(self, value: u64) -> Result<Self::Value, E> {
+            Ok(value.to_string())
+        }
+
+        fn visit_i64<E: de::Error>(self, value: i64) -> Result<Self::Value, E> {
+            Ok(value.to_string())
+        }
+
+        fn visit_f64<E: de::Error>(self, value: f64) -> Result<Self::Value, E> {
+            Ok(value.to_string())
+        }
+    }
+
+    deserializer.deserialize_any(StringOrNumberVisitor)
 }
 
 #[derive(Debug, Deserialize, Serialize, sqlx::FromRow)]

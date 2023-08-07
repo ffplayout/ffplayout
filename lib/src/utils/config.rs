@@ -138,6 +138,8 @@ pub struct PlayoutConfig {
     pub playlist: Playlist,
     pub storage: Storage,
     pub text: Text,
+    #[serde(default)]
+    pub task: Task,
     pub out: Out,
 }
 
@@ -211,6 +213,12 @@ pub struct Processing {
     pub mode: ProcessMode,
     #[serde(default)]
     pub audio_only: bool,
+    #[serde(default = "default_track_index")]
+    pub audio_track_index: i32,
+    #[serde(default)]
+    pub copy_audio: bool,
+    #[serde(default)]
+    pub copy_video: bool,
     pub width: i64,
     pub height: i64,
     pub aspect: f64,
@@ -267,7 +275,8 @@ pub struct Storage {
     pub path: String,
     #[serde(skip_serializing, skip_deserializing)]
     pub paths: Vec<String>,
-    pub filler_clip: String,
+    #[serde(alias = "filler_clip")]
+    pub filler: String,
     pub extensions: Vec<String>,
     pub shuffle: bool,
 }
@@ -292,6 +301,12 @@ pub struct Text {
     pub regex: String,
 }
 
+#[derive(Debug, Default, Serialize, Deserialize, Clone)]
+pub struct Task {
+    pub enable: bool,
+    pub path: String,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Out {
     pub help_text: String,
@@ -304,6 +319,10 @@ pub struct Out {
     pub output_filter: Option<String>,
     #[serde(skip_serializing, skip_deserializing)]
     pub output_cmd: Option<Vec<String>>,
+}
+
+fn default_track_index() -> i32 {
+    -1
 }
 
 fn default_tracks() -> i32 {
@@ -397,6 +416,8 @@ impl PlayoutConfig {
 
         if config.processing.audio_only {
             process_cmd.append(&mut vec_strings!["-vn"]);
+        } else if config.processing.copy_video {
+            process_cmd.append(&mut vec_strings!["-c:v", "copy"]);
         } else {
             process_cmd.append(&mut vec_strings![
                 "-pix_fmt",
@@ -418,19 +439,17 @@ impl PlayoutConfig {
             ]);
         }
 
-        process_cmd.append(&mut pre_audio_codec(
-            &config.processing.custom_filter,
-            &config.ingest.custom_filter,
-        ));
-        process_cmd.append(&mut vec_strings![
-            "-ar",
-            "48000",
-            "-ac",
-            config.processing.audio_channels,
-            "-f",
-            "mpegts",
-            "-"
-        ]);
+        if config.processing.copy_audio {
+            process_cmd.append(&mut vec_strings!["-c:a", "copy"]);
+        } else {
+            process_cmd.append(&mut pre_audio_codec(
+                &config.processing.custom_filter,
+                &config.ingest.custom_filter,
+                config.processing.audio_channels,
+            ));
+        }
+
+        process_cmd.append(&mut vec_strings!["-f", "mpegts", "-"]);
 
         config.processing.cmd = Some(process_cmd);
 
@@ -489,11 +508,31 @@ impl Default for PlayoutConfig {
 /// When custom_filter contains loudnorm filter use a different audio encoder,
 /// s302m has higher quality, but is experimental
 /// and works not well together with the loudnorm filter.
-fn pre_audio_codec(proc_filter: &str, ingest_filter: &str) -> Vec<String> {
-    let mut codec = vec_strings!["-c:a", "s302m", "-strict", "-2", "-sample_fmt", "s16"];
+fn pre_audio_codec(proc_filter: &str, ingest_filter: &str, channel_count: u8) -> Vec<String> {
+    let mut codec = vec_strings![
+        "-c:a",
+        "s302m",
+        "-strict",
+        "-2",
+        "-sample_fmt",
+        "s16",
+        "-ar",
+        "48000",
+        "-ac",
+        channel_count
+    ];
 
     if proc_filter.contains("loudnorm") || ingest_filter.contains("loudnorm") {
-        codec = vec_strings!["-c:a", "mp2", "-b:a", "384k"];
+        codec = vec_strings![
+            "-c:a",
+            "mp2",
+            "-b:a",
+            "384k",
+            "-ar",
+            "48000",
+            "-ac",
+            channel_count
+        ];
     }
 
     codec

@@ -2,9 +2,7 @@ use std::process::{self, Command, Stdio};
 
 use simplelog::*;
 
-use ffplayout_lib::filter::v_drawtext;
-use ffplayout_lib::utils::PlayoutConfig;
-use ffplayout_lib::vec_strings;
+use ffplayout_lib::{filter::v_drawtext, utils::PlayoutConfig, vec_strings};
 
 /// Desktop Output
 ///
@@ -26,6 +24,7 @@ pub fn output(config: &PlayoutConfig, log_format: &str) -> process::Child {
     if let Some(mut cmd) = config.out.output_cmd.clone() {
         if !cmd.iter().any(|i| {
             [
+                "-c",
                 "-c:v",
                 "-c:v:0",
                 "-b:v",
@@ -41,7 +40,7 @@ pub fn output(config: &PlayoutConfig, log_format: &str) -> process::Child {
         }) {
             enc_cmd.append(&mut cmd);
         } else {
-            warn!("Given output parameters are skipped, they are not supported by ffplay!");
+            warn!("ffplay does not support given output parameters, they are skipped!");
         }
     }
 
