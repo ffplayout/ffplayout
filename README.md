@@ -1,3 +1,5 @@
+### This project is taking a summer break, during this time the Issues and Discussions are closed. In October both will be open again. Until then have a good time!  
+
 **ffplayout**
 ================
 
