@@ -1,11 +1,14 @@
 use std::{
-    fmt,
+    env, fmt,
     process::Child,
     sync::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc, Mutex,
     },
 };
+
+#[cfg(not(windows))]
+use signal_child::Signalable;
 
 use serde::{Deserialize, Serialize};
 use simplelog::*;
@@ -71,9 +74,13 @@ impl ProcessControl {
         match unit {
             Decoder => {
                 if let Some(proc) = self.decoder_term.lock().unwrap().as_mut() {
-                    if let Err(e) = proc.kill() {
+                    if env::consts::OS != "windows" {
+                        if let Err(e) = proc.term() {
+                            return Err(format!("Decoder {e:?}"));
+                        }
+                    } else if let Err(e) = proc.kill() {
                         return Err(format!("Decoder {e:?}"));
-                    };
+                    }
                 }
             }
             Encoder => {

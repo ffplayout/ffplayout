@@ -32,3 +32,6 @@ features = ["shlobj", "std", "winerror"]
 
 [target.x86_64-unknown-linux-musl.dependencies]
 openssl = { version = "0.10", features = ["vendored"] }
+
+[target.'cfg(not(target_arch = "windows"))'.dependencies]
+signal-child = "1"

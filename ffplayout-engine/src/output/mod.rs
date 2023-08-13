@@ -159,14 +159,10 @@ pub fn player(
             thread::spawn(move || stderr_reader(dec_err, Decoder, dec_p_ctl));
 
         loop {
-            // when server is running, read from channel
+            // when server is running, read from it
             if proc_control.server_is_running.load(Ordering::SeqCst) {
                 if !live_on {
                     info!("Switch from {} to live ingest", config.processing.mode);
-
-                    if let Err(e) = enc_writer.flush() {
-                        error!("Encoder error: {e}")
-                    }
 
                     if let Err(e) = proc_control.stop(Decoder) {
                         error!("{e}")
@@ -188,11 +184,8 @@ pub fn player(
                 if live_on {
                     info!("Switch from live ingest to {}", config.processing.mode);
 
-                    if let Err(e) = enc_writer.flush() {
-                        error!("Encoder error: {e}")
-                    }
-
                     live_on = false;
+                    break;
                 }
 
                 let dec_bytes_len = match dec_reader.read(&mut buffer[..]) {

@@ -1191,6 +1191,7 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "shlex",
+ "signal-child",
  "simplelog",
  "time 0.3.23",
  "walkdir",
@@ -2816,6 +2817,12 @@ name = "shlex"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "43b2853a4d09f215c24cc5489c992ce46052d359b5109343cbafbf26bc62f8a3"
+
+[[package]]
+name = "signal-child"
+version = "1.0.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b2a4eed4c5ae38438470ab8e0108bb751012f786f44ff585cfd837c9a5fe426f"
 
 [[package]]
 name = "signal-hook-registry"
