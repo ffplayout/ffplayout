@@ -184,7 +184,7 @@ impl PlayerControl {
         Self {
             current_media: Arc::new(Mutex::new(None)),
             current_list: Arc::new(Mutex::new(vec![Media::new(0, "", false)])),
-            filler_list: Arc::new(Mutex::new(vec![Media::new(0, "", false)])),
+            filler_list: Arc::new(Mutex::new(vec![])),
             current_index: Arc::new(AtomicUsize::new(0)),
             filler_index: Arc::new(AtomicUsize::new(0)),
         }

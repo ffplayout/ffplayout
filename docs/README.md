@@ -21,6 +21,10 @@ Using live ingest to inject a live stream.
 
 The different output modes.
 
+### **[Playlist Generation](/docs/playlist_gen.md)**
+
+Generate playlists based on template.
+
 ### **[Multi Audio Tracks](/docs/multi_audio.md)**
 
 Output multiple audio tracks.

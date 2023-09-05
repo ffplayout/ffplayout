@@ -1,9 +1,6 @@
-use std::{
-    path::Path,
-    sync::{
-        atomic::Ordering,
-        {Arc, Mutex},
-    },
+use std::sync::{
+    atomic::Ordering,
+    {Arc, Mutex},
 };
 
 use rand::{seq::SliceRandom, thread_rng};
@@ -37,18 +34,18 @@ impl FolderSource {
 
         if config.general.generate.is_some() && !config.storage.paths.is_empty() {
             for path in &config.storage.paths {
-                path_list.push(path.clone())
+                path_list.push(path)
             }
         } else {
-            path_list.push(config.storage.path.clone())
+            path_list.push(&config.storage.path)
         }
 
         for path in &path_list {
-            if !Path::new(path).is_dir() {
-                error!("Path not exists: <b><magenta>{path}</></b>");
+            if !path.is_dir() {
+                error!("Path not exists: <b><magenta>{path:?}</></b>");
             }
 
-            for entry in WalkDir::new(path.clone())
+            for entry in WalkDir::new(path)
                 .into_iter()
                 .flat_map(|e| e.ok())
                 .filter(|f| f.path().is_file())
@@ -81,6 +78,22 @@ impl FolderSource {
         }
 
         *player_control.current_list.lock().unwrap() = media_list;
+
+        Self {
+            config: config.clone(),
+            filter_chain,
+            player_control: player_control.clone(),
+            current_node: Media::new(0, "", false),
+        }
+    }
+
+    pub fn from_list(
+        config: &PlayoutConfig,
+        filter_chain: Option<Arc<Mutex<Vec<String>>>>,
+        player_control: &PlayerControl,
+        list: Vec<Media>,
+    ) -> Self {
+        *player_control.current_list.lock().unwrap() = list;
 
         Self {
             config: config.clone(),
@@ -160,23 +173,30 @@ impl Iterator for FolderSource {
     }
 }
 
-pub fn fill_filler_list(config: PlayoutConfig, player_control: PlayerControl) {
+pub fn fill_filler_list(
+    config: &PlayoutConfig,
+    player_control: Option<PlayerControl>,
+) -> Vec<Media> {
     let mut filler_list = vec![];
+    let filler_path = &config.storage.filler;
 
-    if Path::new(&config.storage.filler).is_dir() {
-        debug!(
-            "Fill filler list from: <b><magenta>{}</></b>",
-            config.storage.filler
-        );
-
+    if filler_path.is_dir() {
         for (index, entry) in WalkDir::new(&config.storage.filler)
             .into_iter()
             .flat_map(|e| e.ok())
             .filter(|f| f.path().is_file())
-            .filter(|f| include_file_extension(&config, f.path()))
+            .filter(|f| include_file_extension(config, f.path()))
             .enumerate()
         {
-            filler_list.push(Media::new(index, &entry.path().to_string_lossy(), false));
+            let mut media = Media::new(index, &entry.path().to_string_lossy(), false);
+
+            if let Some(control) = player_control.as_ref() {
+                control.filler_list.lock().unwrap().push(media);
+            } else {
+                media.add_probe();
+
+                filler_list.push(media);
+            }
         }
 
         if config.storage.shuffle {
@@ -190,9 +210,17 @@ pub fn fill_filler_list(config: PlayoutConfig, player_control: PlayerControl) {
         for (index, item) in filler_list.iter_mut().enumerate() {
             item.index = Some(index);
         }
-    } else {
-        filler_list.push(Media::new(0, &config.storage.filler, false));
+    } else if filler_path.is_file() {
+        let mut media = Media::new(0, &config.storage.filler.to_string_lossy(), false);
+
+        if let Some(control) = player_control.as_ref() {
+            control.filler_list.lock().unwrap().push(media);
+        } else {
+            media.add_probe();
+
+            filler_list.push(media);
+        }
     }
 
-    *player_control.filler_list.lock().unwrap() = filler_list;
+    filler_list
 }

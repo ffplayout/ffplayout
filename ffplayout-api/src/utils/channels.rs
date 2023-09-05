@@ -1,4 +1,4 @@
-use std::{fs, path::Path};
+use std::{fs, path::PathBuf};
 
 use rand::prelude::*;
 use simplelog::*;
@@ -31,22 +31,14 @@ pub async fn create_channel(
         Err(_) => rand::thread_rng().gen_range(71..99),
     };
 
-    let mut config =
-        PlayoutConfig::new(Some("/usr/share/ffplayout/ffplayout.yml.orig".to_string()));
+    let mut config = PlayoutConfig::new(Some(PathBuf::from(
+        "/usr/share/ffplayout/ffplayout.yml.orig",
+    )));
 
     config.general.stat_file = format!(".ffp_{channel_name}",);
-
-    config.logging.path = Path::new(&config.logging.path)
-        .join(&channel_name)
-        .to_string_lossy()
-        .to_string();
-
+    config.logging.path = config.logging.path.join(&channel_name);
     config.rpc_server.address = format!("127.0.0.1:70{:7>2}", channel_num);
-
-    config.playlist.path = Path::new(&config.playlist.path)
-        .join(channel_name)
-        .to_string_lossy()
-        .to_string();
+    config.playlist.path = config.playlist.path.join(channel_name);
 
     config.out.output_param = config
         .out

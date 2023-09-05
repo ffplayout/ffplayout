@@ -1,6 +1,6 @@
 use std::{
     fs::{self, File},
-    path::{Path, PathBuf},
+    path::PathBuf,
     process::exit,
     sync::{atomic::AtomicBool, Arc, Mutex},
     thread,
@@ -107,7 +107,7 @@ fn main() {
     let messages = Arc::new(Mutex::new(Vec::new()));
 
     // try to create logging folder, if not exist
-    if config.logging.log_to_file && !Path::new(&config.logging.path).is_dir() {
+    if config.logging.log_to_file && config.logging.path.is_dir() {
         if let Err(e) = fs::create_dir_all(&config.logging.path) {
             println!("Logging path not exists! {e}");
 
@@ -163,11 +163,11 @@ fn main() {
     }
 
     if args.validate {
-        let mut playlist_path = Path::new(&config.playlist.path).to_owned();
+        let mut playlist_path = config.playlist.path.clone();
         let start_sec = config.playlist.start_sec.unwrap();
-        let date = get_date(false, start_sec, 0.0);
+        let date = get_date(false, start_sec, false);
 
-        if playlist_path.is_dir() || is_remote(&config.playlist.path) {
+        if playlist_path.is_dir() || is_remote(&playlist_path.to_string_lossy()) {
             let d: Vec<&str> = date.split('-').collect();
             playlist_path = playlist_path
                 .join(d[0])
@@ -213,7 +213,9 @@ fn main() {
     );
 
     // Fill filler list, can also be a single file.
-    thread::spawn(move || fill_filler_list(config_clone2, play_ctl2));
+    thread::spawn(move || {
+        fill_filler_list(&config_clone2, Some(play_ctl2));
+    });
 
     match config.out.mode {
         // write files/playlist to HLS m3u8 playlist

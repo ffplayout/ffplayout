@@ -28,8 +28,8 @@ pub fn source_generator(
         Folder => {
             info!("Playout in folder mode");
             debug!(
-                "Monitor folder: <b><magenta>{}</></b>",
-                &config.storage.path
+                "Monitor folder: <b><magenta>{:?}</></b>",
+                config.storage.path
             );
 
             let config_clone = config.clone();

@@ -165,7 +165,7 @@ pub fn validate_playlist(
         begin += item.out - item.seek;
     }
 
-    if !config.playlist.infinit && length > begin + 1.0 {
+    if !config.playlist.infinit && length > begin + 1.2 {
         error!(
             "Playlist from <yellow>{date}</> not long enough, <yellow>{}</> needed!",
             sec_to_time(length - begin),

@@ -54,6 +54,7 @@ Check the [releases](https://github.com/ffplayout/ffplayout/releases/latest) for
 - import playlist from text or m3u file, with CLI or frontend
 - audio only, for radio mode (experimental *)
 - [Piggyback Mode](/ffplayout-api/README.md#piggyback-mode), mostly for non Linux systems (experimental *)
+- generate playlist based on [template](/docs/playlist_gen.md) (experimental *)
 
 For preview stream, read: [/docs/preview_stream.md](/docs/preview_stream.md)
 

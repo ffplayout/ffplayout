@@ -142,14 +142,14 @@ pub fn read_json(
     path: Option<String>,
     is_terminated: Arc<AtomicBool>,
     seek: bool,
-    next_start: f64,
+    get_next: bool,
 ) -> JsonPlaylist {
     let config_clone = config.clone();
-    let mut playlist_path = Path::new(&config.playlist.path).to_owned();
+    let mut playlist_path = config.playlist.path.clone();
     let start_sec = config.playlist.start_sec.unwrap();
-    let date = get_date(seek, start_sec, next_start);
+    let date = get_date(seek, start_sec, get_next);
 
-    if playlist_path.is_dir() || is_remote(&config.playlist.path) {
+    if playlist_path.is_dir() || is_remote(&config.playlist.path.to_string_lossy()) {
         let d: Vec<&str> = date.split('-').collect();
         playlist_path = playlist_path
             .join(d[0])

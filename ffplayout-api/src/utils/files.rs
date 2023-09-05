@@ -1,4 +1,8 @@
-use std::{fs, io::Write, path::PathBuf};
+use std::{
+    fs,
+    io::Write,
+    path::{Path, PathBuf},
+};
 
 use actix_multipart::Multipart;
 use actix_web::{web, HttpResponse};
@@ -51,10 +55,9 @@ pub struct VideoFile {
 /// Normalize absolut path
 ///
 /// This function takes care, that it is not possible to break out from root_path.
-/// It also gives alway a relative path back.
-pub fn norm_abs_path(root_path: &str, input_path: &str) -> (PathBuf, String, String) {
-    let mut path = PathBuf::from(root_path);
-    let path_relative = RelativePath::new(root_path)
+/// It also gives always a relative path back.
+pub fn norm_abs_path(root_path: &Path, input_path: &str) -> (PathBuf, String, String) {
+    let path_relative = RelativePath::new(&root_path.to_string_lossy())
         .normalize()
         .to_string()
         .replace("../", "");
@@ -62,13 +65,15 @@ pub fn norm_abs_path(root_path: &str, input_path: &str) -> (PathBuf, String, Str
         .normalize()
         .to_string()
         .replace("../", "");
-    let path_suffix = path
+    let path_suffix = root_path
         .file_name()
         .unwrap_or_default()
         .to_string_lossy()
         .to_string();
 
-    if input_path.starts_with(root_path) || source_relative.starts_with(&path_relative) {
+    if input_path.starts_with(&*root_path.to_string_lossy())
+        || source_relative.starts_with(&path_relative)
+    {
         source_relative = source_relative
             .strip_prefix(&path_relative)
             .and_then(|s| s.strip_prefix('/'))
@@ -82,9 +87,9 @@ pub fn norm_abs_path(root_path: &str, input_path: &str) -> (PathBuf, String, Str
             .to_string();
     }
 
-    path = path.join(&source_relative);
+    let path = &root_path.join(&source_relative);
 
-    (path, path_suffix, source_relative)
+    (path.to_path_buf(), path_suffix, source_relative)
 }
 
 /// File Browser
@@ -300,7 +305,7 @@ pub async fn upload(
     conn: &Pool<Sqlite>,
     id: i32,
     mut payload: Multipart,
-    path: &str,
+    path: &Path,
     abs_path: bool,
 ) -> Result<HttpResponse, ServiceError> {
     while let Some(mut field) = payload.try_next().await? {
@@ -318,9 +323,9 @@ pub async fn upload(
         let filepath;
 
         if abs_path {
-            filepath = PathBuf::from(path);
+            filepath = path.to_path_buf();
         } else {
-            let target_path = valid_path(conn, id, path).await?;
+            let target_path = valid_path(conn, id, &path.to_string_lossy()).await?;
             filepath = target_path.join(filename);
         }
 

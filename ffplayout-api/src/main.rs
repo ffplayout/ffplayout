@@ -83,11 +83,9 @@ async fn main() -> std::io::Result<()> {
     };
 
     if let Some(conn) = args.listen {
-        if let Ok(p) = db_path() {
-            if !Path::new(&p).is_file() {
-                error!("Database is not initialized! Init DB first and add admin user.");
-                exit(1);
-            }
+        if db_path().is_err() {
+            error!("Database is not initialized! Init DB first and add admin user.");
+            exit(1);
         }
         init_config(&pool).await;
         let ip_port = conn.split(':').collect::<Vec<&str>>();

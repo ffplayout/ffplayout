@@ -1,6 +1,5 @@
 use std::{
     io::{prelude::*, BufReader, BufWriter, Read},
-    path::Path,
     process::{Command, Stdio},
     sync::atomic::Ordering,
     thread::{self, sleep},
@@ -101,11 +100,11 @@ pub fn player(
             let task_node = node.clone();
             let server_running = proc_control.server_is_running.load(Ordering::SeqCst);
 
-            if Path::new(&config.task.path).is_file() {
+            if config.task.path.is_file() {
                 thread::spawn(move || task_runner::run(task_config, task_node, server_running));
             } else {
                 error!(
-                    "<bright-blue>{}</> executable not exists!",
+                    "<bright-blue>{:?}</> executable not exists!",
                     config.task.path
                 );
             }

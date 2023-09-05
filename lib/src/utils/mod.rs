@@ -13,7 +13,7 @@ use std::{
 use std::env;
 
 use chrono::{prelude::*, Duration};
-use ffprobe::{ffprobe, Format, Stream};
+use ffprobe::{ffprobe, Format, Stream as FFStream};
 use rand::prelude::*;
 use regex::Regex;
 use reqwest::header;
@@ -38,7 +38,7 @@ pub use config::{
     OutputMode::{self, *},
     PlayoutConfig,
     ProcessMode::{self, *},
-    DUMMY_LEN, FFMPEG_IGNORE_ERRORS, FFMPEG_UNRECOVERABLE_ERRORS, IMAGE_FORMAT,
+    Template, DUMMY_LEN, FFMPEG_IGNORE_ERRORS, FFMPEG_UNRECOVERABLE_ERRORS, IMAGE_FORMAT,
 };
 pub use controller::{
     PlayerControl, PlayoutStatus, ProcessControl,
@@ -205,8 +205,8 @@ fn is_empty_string(st: &String) -> bool {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct MediaProbe {
     pub format: Option<Format>,
-    pub audio_streams: Vec<Stream>,
-    pub video_streams: Vec<Stream>,
+    pub audio_streams: Vec<FFStream>,
+    pub video_streams: Vec<FFStream>,
 }
 
 impl MediaProbe {
@@ -321,14 +321,14 @@ pub fn get_sec() -> f64 {
 ///
 /// - When time is before playlist start, get date from yesterday.
 /// - When given next_start is over target length (normally a full day), get date from tomorrow.
-pub fn get_date(seek: bool, start: f64, next_start: f64) -> String {
+pub fn get_date(seek: bool, start: f64, get_next: bool) -> String {
     let local: DateTime<Local> = time_now();
 
     if seek && start > get_sec() {
         return (local - Duration::days(1)).format("%Y-%m-%d").to_string();
     }
 
-    if start == 0.0 && next_start >= 86400.0 {
+    if start == 0.0 && get_next && get_sec() > 86398.0 {
         return (local + Duration::days(1)).format("%Y-%m-%d").to_string();
     }
 

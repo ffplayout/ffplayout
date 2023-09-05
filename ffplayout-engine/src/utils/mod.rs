@@ -1,7 +1,4 @@
-use std::{
-    path::{Path, PathBuf},
-    process::exit,
-};
+use std::{fs::File, path::PathBuf, process::exit};
 
 use regex::Regex;
 use serde_json::{json, Map, Value};
@@ -14,8 +11,8 @@ pub use arg_parse::Args;
 use ffplayout_lib::{
     filter::Filters,
     utils::{
-        get_sec, parse_log_level_filter, sec_to_time, time_to_sec, Media, OutputMode::*,
-        PlayoutConfig, ProcessMode::*,
+        config::Template, get_sec, parse_log_level_filter, sec_to_time, time_to_sec, Media,
+        OutputMode::*, PlayoutConfig, ProcessMode::*,
     },
     vec_strings,
 };
@@ -33,7 +30,7 @@ pub fn get_config(args: Args) -> PlayoutConfig {
                 exit(1)
             }
 
-            Some(path.display().to_string())
+            Some(path)
         }
         None => args.config,
     };
@@ -48,12 +45,33 @@ pub fn get_config(args: Args) -> PlayoutConfig {
         config.general.validate = true;
     }
 
+    if let Some(template_file) = args.template {
+        let f = File::options()
+            .read(true)
+            .write(false)
+            .open(template_file)
+            .expect("JSON template file");
+
+        let mut template: Template = match serde_json::from_reader(f) {
+            Ok(p) => p,
+            Err(e) => {
+                error!("Template file not readable! {e}");
+
+                exit(1)
+            }
+        };
+
+        template.sources.sort_by(|d1, d2| d1.start.cmp(&d2.start));
+
+        config.general.template = Some(template);
+    }
+
     if let Some(paths) = args.paths {
         config.storage.paths = paths;
     }
 
     if let Some(log_path) = args.log {
-        if Path::new(&log_path).is_dir() {
+        if log_path.is_dir() {
             config.logging.log_to_file = true;
         }
         config.logging.path = log_path;

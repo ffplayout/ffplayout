@@ -12,7 +12,7 @@ pub fn import_file(
     config: &PlayoutConfig,
     date: &str,
     channel_name: Option<String>,
-    path: &str,
+    path: &Path,
 ) -> Result<String, Error> {
     let file = File::open(path)?;
     let reader = BufReader::new(file);
@@ -25,13 +25,13 @@ pub fn import_file(
         program: vec![],
     };
 
-    let playlist_root = Path::new(&config.playlist.path);
+    let playlist_root = &config.playlist.path;
     if !playlist_root.is_dir() {
         return Err(Error::new(
             ErrorKind::Other,
             format!(
-                "Playlist folder <b><magenta>{}</></b> not exists!",
-                &config.playlist.path,
+                "Playlist folder <b><magenta>{:?}</></b> not exists!",
+                config.playlist.path,
             ),
         ));
     }

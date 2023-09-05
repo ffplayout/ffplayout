@@ -8,7 +8,7 @@
 ///
 /// For all endpoints an (Bearer) authentication is required.\
 /// `{id}` represent the channel id, and at default is 1.
-use std::{collections::HashMap, env, fs, path::Path};
+use std::{collections::HashMap, env, fs, path::PathBuf};
 
 use actix_multipart::Multipart;
 use actix_web::{delete, get, http::StatusCode, patch, post, put, web, HttpResponse, Responder};
@@ -46,6 +46,7 @@ use crate::{
 use ffplayout_lib::{
     utils::{
         get_date_range, import::import_file, sec_to_time, time_to_sec, JsonPlaylist, PlayoutConfig,
+        Template,
     },
     vec_strings,
 };
@@ -72,19 +73,20 @@ pub struct DateObj {
 #[derive(Debug, Deserialize, Serialize)]
 struct FileObj {
     #[serde(default)]
-    path: String,
+    path: PathBuf,
 }
 
 #[derive(Debug, Default, Deserialize, Serialize)]
 pub struct PathsObj {
     #[serde(default)]
     paths: Vec<String>,
+    template: Option<Template>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct ImportObj {
     #[serde(default)]
-    file: String,
+    file: PathBuf,
     #[serde(default)]
     date: String,
 }
@@ -724,7 +726,7 @@ pub async fn get_playlist(
 /// ```BASH
 /// curl -X POST http://127.0.0.1:8787/api/playlist/1/
 /// -H 'Content-Type: application/json' -H 'Authorization: Bearer <TOKEN>'
-/// -- data "{<JSON playlist data>}"
+/// --data "{<JSON playlist data>}"
 /// ```
 #[post("/playlist/{id}/")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
@@ -746,7 +748,7 @@ pub async fn save_playlist(
 /// ```BASH
 /// curl -X POST http://127.0.0.1:8787/api/playlist/1/generate/2022-06-20
 /// -H 'Content-Type: application/json' -H 'Authorization: Bearer <TOKEN>'
-/// /// -- data '{ "paths": [<list of paths>] }' # <- data is optional
+/// /// --data '{ "paths": [<list of paths>] }' # <- data is optional
 /// ```
 #[post("/playlist/{id}/generate/{date}")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
@@ -764,10 +766,11 @@ pub async fn gen_playlist(
         for path in &obj.paths {
             let (p, _, _) = norm_abs_path(&config.storage.path, path);
 
-            path_list.push(p.to_string_lossy().to_string());
+            path_list.push(p);
         }
 
         config.storage.paths = path_list;
+        config.general.template = obj.template.clone();
     }
 
     match generate_playlist(config, channel.name).await {
@@ -921,8 +924,8 @@ async fn import_playlist(
     payload: Multipart,
     obj: web::Query<ImportObj>,
 ) -> Result<HttpResponse, ServiceError> {
-    let file = Path::new(&obj.file).file_name().unwrap_or_default();
-    let path = env::temp_dir().join(file).to_string_lossy().to_string();
+    let file = obj.file.file_name().unwrap_or_default();
+    let path = env::temp_dir().join(file);
     let (config, _) = playout_config(&pool.clone().into_inner(), &id).await?;
     let channel = handles::select_channel(&pool.clone().into_inner(), &id).await?;
 
