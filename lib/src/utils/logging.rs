@@ -199,7 +199,7 @@ pub fn init_logging(
         };
     };
 
-    if app_config.log_to_file && !app_config.path.exists() {
+    if app_config.log_to_file && app_config.path.exists() {
         let file_config = log_config
             .clone()
             .set_time_format_custom(format_description!(

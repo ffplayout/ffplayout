@@ -328,7 +328,7 @@ pub fn get_date(seek: bool, start: f64, get_next: bool) -> String {
         return (local - Duration::days(1)).format("%Y-%m-%d").to_string();
     }
 
-    if start == 0.0 && get_next && get_sec() > 86398.0 {
+    if start == 0.0 && get_next && get_sec() > 86397.9 {
         return (local + Duration::days(1)).format("%Y-%m-%d").to_string();
     }
 
