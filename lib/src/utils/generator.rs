@@ -11,7 +11,7 @@ use std::{
 };
 
 use chrono::Timelike;
-use lexical_sort::natural_lexical_cmp;
+use lexical_sort::{natural_lexical_cmp, StringSort};
 use rand::{seq::SliceRandom, thread_rng, Rng};
 use simplelog::*;
 use walkdir::WalkDir;
@@ -154,13 +154,20 @@ pub fn generate_from_template(
         for path in source.paths {
             debug!("Search files in <b><magenta>{path:?}</></b>");
 
-            for entry in WalkDir::new(path)
+            let mut file_list = WalkDir::new(path.clone())
                 .into_iter()
                 .flat_map(|e| e.ok())
                 .filter(|f| f.path().is_file())
                 .filter(|f| include_file_extension(config, f.path()))
-            {
-                let media = Media::new(0, &entry.path().to_string_lossy(), true);
+                .map(|p| p.path().to_string_lossy().to_string())
+                .collect::<Vec<String>>();
+
+            if !source.shuffle {
+                file_list.string_sort_unstable(natural_lexical_cmp);
+            }
+
+            for entry in file_list {
+                let media = Media::new(0, &entry, true);
                 source_list.push(media);
             }
         }
@@ -170,8 +177,6 @@ pub fn generate_from_template(
 
             random_list(source_list, duration)
         } else {
-            source_list.sort_by(|d1, d2| natural_lexical_cmp(&d1.source, &d2.source));
-
             ordered_list(source_list, duration)
         };
 
