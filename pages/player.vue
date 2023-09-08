@@ -475,7 +475,10 @@
                                     role="tab"
                                     aria-controls="v-pills-playout"
                                     aria-selected="false"
-                                    @click="advancedGenerator = true; resetCheckboxes()"
+                                    @click="
+                                        advancedGenerator = true;
+                                        resetCheckboxes()
+                                    "
                                 >
                                     Advanced
                                 </button>
@@ -730,10 +733,26 @@
                     </div>
                     <div class="modal-footer">
                         <div v-if="!advancedGenerator" class="form-check select-all-div">
-                            <input id="checkAll" class="form-check-input" type="checkbox" v-model="generateFromAll" />
+                            <input
+                                id="checkAll"
+                                class="form-check-input"
+                                type="checkbox"
+                                v-model="generateFromAll"
+                                @change="resetCheckboxes()"
+                            />
                             <label class="form-check-label" for="checkAll">All</label>
                         </div>
-                        <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Cancel</button>
+                        <button
+                            type="button"
+                            class="btn btn-primary"
+                            data-bs-dismiss="modal"
+                            @click="
+                                resetCheckboxes();
+                                resetTemplate()
+                            "
+                        >
+                            Cancel
+                        </button>
                         <button
                             type="button"
                             class="btn btn-primary"
@@ -1184,6 +1203,7 @@ async function generatePlaylist() {
 
     // reset selections
     resetCheckboxes()
+    resetTemplate()
 
     playlistIsLoading.value = false
 }
@@ -1279,6 +1299,10 @@ function resetCheckboxes() {
             box.checked = false
         }
     }
+}
+
+function resetTemplate() {
+    template.value.sources = []
 }
 
 function addTemplate() {
