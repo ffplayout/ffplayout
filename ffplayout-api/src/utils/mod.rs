@@ -194,6 +194,7 @@ pub fn read_playout_config(path: &str) -> Result<PlayoutConfig, Box<dyn Error>> 
     let mut config: PlayoutConfig = serde_yaml::from_reader(file)?;
 
     config.playlist.start_sec = Some(time_to_sec(&config.playlist.day_start));
+    config.playlist.length_sec = Some(time_to_sec(&config.playlist.length));
 
     Ok(config)
 }
