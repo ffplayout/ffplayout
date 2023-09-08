@@ -4,6 +4,8 @@ import { useAuth } from '~/stores/auth'
 import { useConfig } from '~/stores/config'
 import { useIndex } from '~/stores/index'
 
+const { genUID } = playlistOperations()
+
 export const useMedia = defineStore('media', {
     state: () => ({
         currentPath: '',
@@ -65,10 +67,12 @@ export const useMedia = defineStore('media', {
 
                     if (foldersOnly) {
                         this.folderCrumbs = crumbs
+                        data.folders = data.folders.map((i: any) => ({uid: genUID(), name: i}))
                         this.folderList = data
                     } else {
                         this.currentPath = path
                         this.crumbs = crumbs
+                        data.folders = data.folders.map((i: any) => ({uid: genUID(), name: i}))
                         this.folderTree = data
                     }
                 })

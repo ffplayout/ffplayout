@@ -49,7 +49,7 @@
                                 <li
                                     class="list-group-item browser-item"
                                     v-for="folder in mediaStore.folderTree.folders"
-                                    :key="folder"
+                                    :key="folder.uid"
                                 >
                                     <div class="row">
                                         <div class="col-1 browser-icons-col">
@@ -59,9 +59,9 @@
                                             <a
                                                 class="link-light"
                                                 href="#"
-                                                @click="getPath(`/${mediaStore.folderTree.source}/${folder}`)"
+                                                @click="getPath(`/${mediaStore.folderTree.source}/${folder.name}`)"
                                             >
-                                                {{ folder }}
+                                                {{ folder.name }}
                                             </a>
                                         </div>
                                         <div class="col-1 folder-delete">
@@ -71,7 +71,7 @@
                                                 data-bs-toggle="modal"
                                                 data-bs-target="#deleteModal"
                                                 @click="
-                                                    deleteName = `/${mediaStore.folderTree.source}/${folder}`.replace(
+                                                    deleteName = `/${mediaStore.folderTree.source}/${folder.name}`.replace(
                                                         /\/[/]+/g,
                                                         '/'
                                                     )
@@ -300,7 +300,7 @@
                     </div>
                     <form @submit.prevent="onSubmitCreateFolder" @reset="onCancelCreateFolder">
                         <div class="modal-body">
-                            <input type="text" class="form-control" v-model="folderName" />
+                            <input type="text" class="form-control" v-model="folderName.name" />
                         </div>
                         <div class="modal-footer">
                             <button type="reset" class="btn btn-primary" data-bs-dismiss="modal" aria-label="Cancel">
@@ -428,7 +428,7 @@ const previewOpt = ref()
 const isVideo = ref(false)
 const uploadModal = ref()
 const extensions = ref('')
-const folderName = ref('')
+const folderName = ref({} as Folder)
 const inputFiles = ref([] as File[])
 const fileInputName = ref()
 const currentNumber = ref(0)
@@ -584,12 +584,12 @@ function closePlayer() {
 
 async function onSubmitCreateFolder(evt: any) {
     evt.preventDefault()
-    const path = `${mediaStore.folderTree.source}/${folderName.value}`.replace(/\/[/]+/g, '/')
+    const path = `${mediaStore.folderTree.source}/${folderName.value.name}`.replace(/\/[/]+/g, '/')
     lastPath.value = mediaStore.folderTree.source
 
     if (mediaStore.folderTree.folders.includes(folderName.value)) {
         indexStore.alertVariant = 'alert-warning'
-        indexStore.alertMsg = `Folder "${folderName.value}" exists already!`
+        indexStore.alertMsg = `Folder "${folderName.value.name}" exists already!`
         indexStore.showAlert = true
 
         return
@@ -610,7 +610,7 @@ async function onSubmitCreateFolder(evt: any) {
         })
 
     indexStore.showAlert = true
-    folderName.value = ''
+    folderName.value = {} as Folder
 
     setTimeout(() => {
         indexStore.alertMsg = ''
@@ -622,7 +622,7 @@ async function onSubmitCreateFolder(evt: any) {
 
 function onCancelCreateFolder(evt: any) {
     evt.preventDefault()
-    folderName.value = ''
+    folderName.value = {} as Folder
 }
 
 function onFileChange(evt: any) {

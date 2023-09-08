@@ -38,7 +38,7 @@
                     <li
                         class="list-group-item browser-item"
                         v-for="folder in mediaStore.folderTree.folders"
-                        :key="folder"
+                        :key="folder.uid"
                     >
                         <div class="row">
                             <div class="col-1 browser-icons-col">
@@ -48,9 +48,9 @@
                                 <a
                                     class="link-light"
                                     href="#"
-                                    @click="getPath(`/${mediaStore.folderTree.source}/${folder}`)"
+                                    @click="getPath(`/${mediaStore.folderTree.source}/${folder.name}`)"
                                 >
-                                    {{ folder }}
+                                    {{ folder.name }}
                                 </a>
                             </div>
                         </div>
@@ -451,79 +451,285 @@
                         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cancel"></button>
                     </div>
                     <div class="modal-body">
-                        <div>
-                            <nav aria-label="breadcrumb">
-                                <ol class="breadcrumb">
-                                    <li
-                                        class="breadcrumb-item"
-                                        v-for="(crumb, index) in mediaStore.folderCrumbs"
-                                        :key="index"
-                                        :active="index === mediaStore.folderCrumbs.length - 1"
-                                        @click="mediaStore.getTree(crumb.path, true)"
-                                    >
-                                        <a
-                                            v-if="
-                                                mediaStore.folderCrumbs.length > 1 &&
-                                                mediaStore.folderCrumbs.length - 1 > index
-                                            "
-                                            class="link-secondary"
-                                            href="#"
-                                        >
-                                            {{ crumb.text }}
-                                        </a>
-                                        <span v-else>{{ crumb.text }}</span>
-                                    </li>
-                                </ol>
-                            </nav>
-                        </div>
-                        <ul class="list-group media-browser-scroll browser-div">
-                            <li
-                                class="list-group-item browser-item"
-                                v-for="folder in mediaStore.folderList.folders"
-                                :key="folder"
-                            >
-                                <div class="row">
-                                    <div class="col-1 browser-icons-col">
-                                        <i class="bi-folder-fill browser-icons" />
-                                    </div>
-                                    <div class="col browser-item-text">
-                                        <a
-                                            class="link-light"
-                                            href="#"
-                                            @click="
-                                                ;[
-                                                    (selectedFolders = []),
-                                                    mediaStore.getTree(
-                                                        `/${mediaStore.folderList.source}/${folder}`.replace(
-                                                            /\/[/]+/g,
-                                                            '/'
-                                                        ),
-                                                        true
-                                                    ),
-                                                ]
-                                            "
-                                        >
-                                            {{ folder }}
-                                        </a>
-                                    </div>
-                                    <div v-if="!generateFromAll" class="col-1 text-center playlist-input">
-                                        <input
-                                            class="form-check-input"
-                                            type="checkbox"
-                                            @change="
-                                                setSelectedFolder(
-                                                    $event,
-                                                    `/${mediaStore.folderList.source}/${folder}`.replace(/\/[/]+/g, '/')
-                                                )
-                                            "
-                                        />
+                        <div class="browser-col">
+                            <div class="nav nav-tabs" id="v-pills-tab" role="tablist" aria-orientation="vertical">
+                                <button
+                                    class="nav-link active"
+                                    id="v-pills-gui-tab"
+                                    data-bs-toggle="pill"
+                                    data-bs-target="#v-pills-gui"
+                                    type="button"
+                                    role="tab"
+                                    aria-controls="v-pills-gui"
+                                    aria-selected="true"
+                                    @click="advancedGenerator = false"
+                                >
+                                    Simple
+                                </button>
+                                <button
+                                    class="nav-link"
+                                    id="v-pills-playout-tab"
+                                    data-bs-toggle="pill"
+                                    data-bs-target="#v-pills-playout"
+                                    type="button"
+                                    role="tab"
+                                    aria-controls="v-pills-playout"
+                                    aria-selected="false"
+                                    @click="advancedGenerator = true; resetCheckboxes()"
+                                >
+                                    Advanced
+                                </button>
+                            </div>
+                            <div class="tab-content h-100" id="v-pills-tabContent">
+                                <div
+                                    class="tab-pane h-100 show active"
+                                    id="v-pills-gui"
+                                    role="tabpanel"
+                                    aria-labelledby="v-pills-gui-tab"
+                                >
+                                    <div class="h-100">
+                                        <nav aria-label="breadcrumb">
+                                            <ol class="breadcrumb border-0">
+                                                <li
+                                                    class="breadcrumb-item"
+                                                    v-for="(crumb, index) in mediaStore.folderCrumbs"
+                                                    :key="index"
+                                                    :active="index === mediaStore.folderCrumbs.length - 1"
+                                                    @click="mediaStore.getTree(crumb.path, true)"
+                                                >
+                                                    <a
+                                                        v-if="
+                                                            mediaStore.folderCrumbs.length > 1 &&
+                                                            mediaStore.folderCrumbs.length - 1 > index
+                                                        "
+                                                        class="link-secondary"
+                                                        href="#"
+                                                    >
+                                                        {{ crumb.text }}
+                                                    </a>
+                                                    <span v-else>{{ crumb.text }}</span>
+                                                </li>
+                                            </ol>
+                                        </nav>
+                                        <ul class="list-group media-browser-scroll browser-div">
+                                            <li
+                                                class="list-group-item browser-item"
+                                                v-for="folder in mediaStore.folderList.folders"
+                                                :key="folder.uid"
+                                            >
+                                                <div class="row">
+                                                    <div class="col-1 browser-icons-col">
+                                                        <i class="bi-folder-fill browser-icons" />
+                                                    </div>
+                                                    <div class="col browser-item-text">
+                                                        <a
+                                                            class="link-light"
+                                                            href="#"
+                                                            @click="
+                                                                ;[
+                                                                    (selectedFolders = []),
+                                                                    mediaStore.getTree(
+                                                                        `/${mediaStore.folderList.source}/${folder.name}`.replace(
+                                                                            /\/[/]+/g,
+                                                                            '/'
+                                                                        ),
+                                                                        true
+                                                                    ),
+                                                                ]
+                                                            "
+                                                        >
+                                                            {{ folder.name }}
+                                                        </a>
+                                                    </div>
+                                                    <div
+                                                        v-if="!generateFromAll"
+                                                        class="col-1 text-center playlist-input"
+                                                    >
+                                                        <input
+                                                            class="form-check-input folder-check"
+                                                            type="checkbox"
+                                                            @change="
+                                                                setSelectedFolder(
+                                                                    $event,
+                                                                    `/${mediaStore.folderList.source}/${folder.name}`.replace(
+                                                                        /\/[/]+/g,
+                                                                        '/'
+                                                                    )
+                                                                )
+                                                            "
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </li>
+                                        </ul>
                                     </div>
                                 </div>
-                            </li>
-                        </ul>
+                                <div
+                                    class="tab-pane"
+                                    id="v-pills-playout"
+                                    role="tabpanel"
+                                    aria-labelledby="v-pills-playout-tab"
+                                >
+                                    <div>
+                                        <div class="row">
+                                            <div class="col col-10">
+                                                <nav aria-label="breadcrumb">
+                                                    <ol class="breadcrumb border-0">
+                                                        <li
+                                                            class="breadcrumb-item"
+                                                            v-for="(crumb, index) in mediaStore.folderCrumbs"
+                                                            :key="index"
+                                                            :active="index === mediaStore.folderCrumbs.length - 1"
+                                                            @click.prevent="mediaStore.getTree(crumb.path, true)"
+                                                        >
+                                                            <a
+                                                                v-if="
+                                                                    mediaStore.folderCrumbs.length > 1 &&
+                                                                    mediaStore.folderCrumbs.length - 1 > index
+                                                                "
+                                                                class="link-secondary"
+                                                                href="#"
+                                                            >
+                                                                {{ crumb.text }}
+                                                            </a>
+                                                            <span v-else>{{ crumb.text }}</span>
+                                                        </li>
+                                                    </ol>
+                                                </nav>
+                                            </div>
+                                            <div class="col d-flex justify-content-end">
+                                                <button
+                                                    type="button"
+                                                    class="btn btn-primary p-2 py-0 m-1"
+                                                    @click="addTemplate()"
+                                                >
+                                                    <i class="bi bi-folder-plus"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div class="row">
+                                            <div class="col col-5 browser-col">
+                                                <Sortable
+                                                    :list="mediaStore.folderList.folders"
+                                                    :options="templateBrowserSortOptions"
+                                                    item-key="uid"
+                                                    class="list-group media-browser-scroll browser-div"
+                                                    tag="ul"
+                                                >
+                                                    <template #item="{ element, index }">
+                                                        <li
+                                                            :id="`adv_folder_${index}`"
+                                                            class="draggable list-group-item browser-item"
+                                                            :key="element.uid"
+                                                        >
+                                                            <div class="row">
+                                                                <div class="col-1 browser-icons-col">
+                                                                    <i class="bi-folder-fill browser-icons" />
+                                                                </div>
+                                                                <div class="col browser-item-text">
+                                                                    <a
+                                                                        class="link-light"
+                                                                        href="#"
+                                                                        @click="
+                                                                            ;[
+                                                                                (selectedFolders = []),
+                                                                                mediaStore.getTree(
+                                                                                    `/${mediaStore.folderList.source}/${element.name}`.replace(
+                                                                                        /\/[/]+/g,
+                                                                                        '/'
+                                                                                    ),
+                                                                                    true
+                                                                                ),
+                                                                            ]
+                                                                        "
+                                                                    >
+                                                                        {{ element.name }}
+                                                                    </a>
+                                                                </div>
+                                                            </div>
+                                                        </li>
+                                                    </template>
+                                                </Sortable>
+                                            </div>
+                                            <div class="col template-col">
+                                                <ul class="list-group media-browser-scroll">
+                                                    <li
+                                                        v-for="item in template.sources"
+                                                        :key="item.start"
+                                                        class="list-group-item"
+                                                    >
+                                                        <div class="input-group mb-3">
+                                                            <span class="input-group-text">Start</span>
+                                                            <input
+                                                                type="test"
+                                                                class="form-control"
+                                                                aria-label="Start"
+                                                                v-model="item.start"
+                                                            />
+                                                            <span class="input-group-text">Duration</span>
+                                                            <input
+                                                                type="test"
+                                                                class="form-control"
+                                                                aria-label="Duration"
+                                                                v-model="item.duration"
+                                                            />
+                                                            <input
+                                                                type="checkbox"
+                                                                class="btn-check"
+                                                                :id="`shuffle-${item.start}`"
+                                                                autocomplete="off"
+                                                                v-model="item.shuffle"
+                                                            />
+                                                            <label
+                                                                class="btn btn-outline-primary"
+                                                                :for="`shuffle-${item.start}`"
+                                                            >
+                                                                Shuffle
+                                                            </label>
+                                                        </div>
+
+                                                        <Sortable
+                                                            :list="item.paths"
+                                                            item-key="index"
+                                                            class="list-group w-100 border"
+                                                            :style="`height: ${
+                                                                item.paths ? item.paths.length * 23 + 31 : 300
+                                                            }px`"
+                                                            tag="ul"
+                                                            :options="templateTargetSortOptions"
+                                                            @add="addFolderToTemplate($event, item)"
+                                                        >
+                                                            <template #item="{ element, index }">
+                                                                <li
+                                                                    :id="`path_${index}`"
+                                                                    class="draggable grabbing list-group-item py-0"
+                                                                    :key="index"
+                                                                >
+                                                                    {{ element.split(/[\\/]+/).pop() }}
+                                                                </li>
+                                                            </template>
+                                                        </Sortable>
+
+                                                        <div class="col d-flex justify-content-end">
+                                                            <button
+                                                                type="button"
+                                                                class="btn btn-primary p-2 py-0 m-1"
+                                                                @click="removeTemplate(item)"
+                                                            >
+                                                                <i class="bi-trash" />
+                                                            </button>
+                                                        </div>
+                                                    </li>
+                                                </ul>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                     <div class="modal-footer">
-                        <div class="form-check select-all-div">
+                        <div v-if="!advancedGenerator" class="form-check select-all-div">
                             <input id="checkAll" class="form-check-input" type="checkbox" v-model="generateFromAll" />
                             <label class="form-check-label" for="checkAll">All</label>
                         </div>
@@ -575,6 +781,7 @@ useHead({
 
 const { configID } = storeToRefs(useConfig())
 
+const advancedGenerator = ref(false)
 const fileImport = ref()
 const browserIsLoading = ref(false)
 const playlistIsLoading = ref(false)
@@ -589,15 +796,24 @@ const previewOpt = ref()
 const isVideo = ref(false)
 const selectedFolders = ref([] as string[])
 const generateFromAll = ref(false)
-const browserSortOptions = ref({
+const browserSortOptions = {
     group: { name: 'playlist', pull: 'clone', put: false },
     sort: false,
-})
-const playlistSortOptions = ref({
+}
+const playlistSortOptions = {
     group: 'playlist',
     animation: 100,
     handle: '.grabbing',
-})
+}
+const templateBrowserSortOptions = {
+    group: { name: 'folder', pull: 'clone', put: false },
+    sort: false,
+}
+const templateTargetSortOptions = {
+    group: 'folder',
+    animation: 100,
+    handle: '.grabbing',
+}
 const newSource = ref({
     begin: 0,
     in: 0,
@@ -609,6 +825,10 @@ const newSource = ref({
     audio: '',
     uid: '',
 } as PlaylistItem)
+
+const template = ref({
+    sources: [],
+} as Template)
 
 onMounted(() => {
     if (!mediaStore.folderTree.parent) {
@@ -699,6 +919,27 @@ function cloneClip(event: any) {
         playlistStore.playlist,
         false
     )
+}
+
+function addFolderToTemplate(event: any, item: TemplateItem) {
+    const o = event.oldIndex
+    const n = event.newIndex
+
+    event.item.remove()
+
+    const storagePath = configStore.configPlayout.storage.path
+    const navPath = mediaStore.folderCrumbs[mediaStore.folderCrumbs.length - 1].path
+    const sourcePath = `${storagePath}/${navPath}/${mediaStore.folderList.folders[o].name}`.replace(/\/[/]+/g, '/')
+
+    if (!item.paths.includes(sourcePath)) {
+        item.paths.splice(n, 0, sourcePath)
+    }
+}
+
+function removeTemplate(item: TemplateItem) {
+    const index = template.value.sources.indexOf(item)
+
+    template.value.sources.splice(index, 1)
 }
 
 function moveItemInArray(event: any) {
@@ -897,11 +1138,24 @@ async function onSubmitImport(evt: any) {
 
 async function generatePlaylist() {
     playlistIsLoading.value = true
+    let body = null as BodyObject | null
+
+    if (selectedFolders.value.length > 0 && !generateFromAll.value) {
+        body = { paths: selectedFolders.value }
+    }
+
+    if (advancedGenerator.value) {
+        if (body) {
+            body.template = template.value
+        } else {
+            body = { template: template.value }
+        }
+    }
 
     await $fetch(`/api/playlist/${configStore.configGui[configStore.configID].id}/generate/${listDate.value}`, {
         method: 'POST',
         headers: { ...contentType, ...authStore.authHeader },
-        body: selectedFolders.value.length > 0 && !generateFromAll.value ? { paths: selectedFolders.value } : null,
+        body,
     })
         .then((response: any) => {
             playlistStore.playlist = processPlaylist(
@@ -927,6 +1181,9 @@ async function generatePlaylist() {
                 indexStore.showAlert = false
             }, 4000)
         })
+
+    // reset selections
+    resetCheckboxes()
 
     playlistIsLoading.value = false
 }
@@ -1010,6 +1267,38 @@ function setSelectedFolder(event: any, folder: string) {
             selectedFolders.value.splice(index, 1)
         }
     }
+}
+
+function resetCheckboxes() {
+    selectedFolders.value = []
+    const checkboxes = document.getElementsByClassName('folder-check')
+
+    if (checkboxes) {
+        for (const box of checkboxes) {
+            // @ts-ignore
+            box.checked = false
+        }
+    }
+}
+
+function addTemplate() {
+    const last = template.value.sources[template.value.sources.length - 1]
+    // @ts-ignore
+    let start = $dayjs('00:00:00', 'HH:mm:ss')
+
+    if (last) {
+        // @ts-ignore
+        const t = $dayjs(last.duration, 'HH:mm:ss')
+        // @ts-ignore
+        start = $dayjs(last.start, 'HH:mm:ss').add(t.hour(), 'hour').add(t.minute(), 'minute').add(t.second(), 'second')
+    }
+
+    template.value.sources.push({
+        start: start.format('HH:mm:ss'),
+        duration: '02:00:00',
+        shuffle: false,
+        paths: [],
+    })
 }
 </script>
 
@@ -1100,11 +1389,16 @@ function setSelectedFolder(event: any, folder: string) {
 }
 
 #generateModal .modal-body {
-    height: 500px;
+    height: 600px;
+}
+
+.browser-col,
+.template-col {
+    height: 532px;
 }
 
 #generateModal {
-    --bs-modal-width: 600px;
+    --bs-modal-width: 800px;
 }
 
 #generateModal .media-browser-scroll {
