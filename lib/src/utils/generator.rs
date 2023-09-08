@@ -11,6 +11,7 @@ use std::{
 };
 
 use chrono::Timelike;
+use lexical_sort::natural_lexical_cmp;
 use rand::{seq::SliceRandom, thread_rng, Rng};
 use simplelog::*;
 use walkdir::WalkDir;
@@ -143,7 +144,7 @@ pub fn generate_from_template(
     let mut index: usize = 0;
 
     for source in template.sources {
-        let mut full_list = vec![];
+        let mut source_list = vec![];
         let duration = (source.duration.hour() as f64 * 3600.0)
             + (source.duration.minute() as f64 * 60.0)
             + source.duration.second() as f64;
@@ -160,18 +161,18 @@ pub fn generate_from_template(
                 .filter(|f| include_file_extension(config, f.path()))
             {
                 let media = Media::new(0, &entry.path().to_string_lossy(), true);
-                full_list.push(media);
+                source_list.push(media);
             }
         }
 
         let mut timed_list = if source.shuffle {
-            full_list.shuffle(&mut rng);
+            source_list.shuffle(&mut rng);
 
-            random_list(full_list, duration)
+            random_list(source_list, duration)
         } else {
-            full_list.sort_by(|d1, d2| d1.source.cmp(&d2.source));
+            source_list.sort_by(|d1, d2| natural_lexical_cmp(&d1.source, &d2.source));
 
-            ordered_list(full_list, duration)
+            ordered_list(source_list, duration)
         };
 
         let total_length = sum_durations(&timed_list);

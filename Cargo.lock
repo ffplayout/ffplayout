@@ -1182,6 +1182,7 @@ dependencies = [
  "ffprobe",
  "file-rotate",
  "lettre",
+ "lexical-sort",
  "log",
  "openssl",
  "rand",
