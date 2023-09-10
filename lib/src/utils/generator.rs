@@ -19,20 +19,10 @@ use walkdir::WalkDir;
 use super::{folder::FolderSource, PlayerControl};
 use crate::utils::{
     folder::fill_filler_list, gen_dummy, get_date_range, include_file_extension,
-    json_serializer::JsonPlaylist, time_to_sec, Media, PlayoutConfig, Template,
+    json_serializer::JsonPlaylist, sum_durations, time_to_sec, Media, PlayoutConfig, Template,
 };
 
-fn sum_durations(clip_list: &Vec<Media>) -> f64 {
-    let mut list_duration = 0.0;
-
-    for item in clip_list {
-        list_duration += item.out
-    }
-
-    list_duration
-}
-
-fn random_list(clip_list: Vec<Media>, total_length: f64) -> Vec<Media> {
+pub fn random_list(clip_list: Vec<Media>, total_length: f64) -> Vec<Media> {
     let mut max_attempts = 10000;
     let mut randomized_clip_list: Vec<Media> = vec![];
     let mut target_duration = 0.0;
@@ -65,7 +55,7 @@ fn random_list(clip_list: Vec<Media>, total_length: f64) -> Vec<Media> {
     randomized_clip_list
 }
 
-fn ordered_list(clip_list: Vec<Media>, total_length: f64) -> Vec<Media> {
+pub fn ordered_list(clip_list: Vec<Media>, total_length: f64) -> Vec<Media> {
     let mut index = 0;
     let mut skip_count = 0;
     let mut ordered_clip_list: Vec<Media> = vec![];
@@ -96,7 +86,7 @@ fn ordered_list(clip_list: Vec<Media>, total_length: f64) -> Vec<Media> {
     ordered_clip_list
 }
 
-fn filler_list(config: &PlayoutConfig, total_length: f64) -> Vec<Media> {
+pub fn filler_list(config: &PlayoutConfig, total_length: f64) -> Vec<Media> {
     let filler_list = fill_filler_list(config, None);
     let mut index = 0;
     let mut filler_clip_list: Vec<Media> = vec![];

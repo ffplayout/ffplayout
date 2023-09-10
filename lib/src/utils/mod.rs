@@ -24,7 +24,7 @@ use simplelog::*;
 pub mod config;
 pub mod controller;
 pub mod folder;
-mod generator;
+pub mod generator;
 pub mod import;
 pub mod json_serializer;
 mod json_validate;
@@ -148,14 +148,15 @@ impl Media {
     pub fn add_probe(&mut self) {
         if self.probe.is_none() {
             let probe = MediaProbe::new(&self.source);
-            self.probe = Some(probe.clone());
 
             if let Some(dur) = probe
                 .format
+                .clone()
                 .and_then(|f| f.duration)
                 .map(|d| d.parse().unwrap())
                 .filter(|d| !is_close(*d, self.duration, 0.5))
             {
+                self.probe = Some(probe);
                 self.duration = dur;
 
                 if self.out == 0.0 {
@@ -407,6 +408,17 @@ pub fn is_close(a: f64, b: f64, to: f64) -> bool {
     }
 
     false
+}
+
+/// add duration from all media clips
+pub fn sum_durations(clip_list: &Vec<Media>) -> f64 {
+    let mut list_duration = 0.0;
+
+    for item in clip_list {
+        list_duration += item.out
+    }
+
+    list_duration
 }
 
 /// Get delta between clip start and current time. This value we need to check,
