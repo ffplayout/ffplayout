@@ -31,7 +31,7 @@ fn get_date_yesterday() {
 
 #[test]
 fn get_date_tomorrow() {
-    mock_time::set_mock_time("2022-05-20T23:59:30");
+    mock_time::set_mock_time("2022-05-20T23:59:58");
 
     let date = get_date(false, 0.0, true);
 
