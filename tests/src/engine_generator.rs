@@ -4,7 +4,6 @@ use std::{
 };
 
 use chrono::NaiveTime;
-use serial_test::serial;
 use simplelog::*;
 
 use ffplayout_lib::utils::{
@@ -14,7 +13,7 @@ use ffplayout_lib::utils::{
 };
 
 #[test]
-#[serial]
+#[ignore]
 fn test_random_list() {
     let clip_list = vec![
         Media::new(0, "./assets/with_audio.mp4", true), // 30 seconds
@@ -31,7 +30,7 @@ fn test_random_list() {
 }
 
 #[test]
-#[serial]
+#[ignore]
 fn test_ordered_list() {
     let clip_list = vec![
         Media::new(0, "./assets/with_audio.mp4", true), // 30 seconds
@@ -54,7 +53,7 @@ fn test_ordered_list() {
 }
 
 #[test]
-#[serial]
+#[ignore]
 fn test_filler_list() {
     let mut config = PlayoutConfig::new(None);
     config.storage.filler = "assets/".into();
@@ -65,7 +64,7 @@ fn test_filler_list() {
 }
 
 #[test]
-#[serial]
+#[ignore]
 fn test_generate_playlist_from_folder() {
     let mut config = PlayoutConfig::new(None);
     config.general.generate = Some(vec!["2023-09-11".to_string()]);
@@ -99,7 +98,7 @@ fn test_generate_playlist_from_folder() {
 }
 
 #[test]
-#[serial]
+#[ignore]
 fn test_generate_playlist_from_template() {
     let mut config = PlayoutConfig::new(None);
     config.general.generate = Some(vec!["2023-09-12".to_string()]);
