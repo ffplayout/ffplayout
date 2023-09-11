@@ -1,5 +1,5 @@
 use std::{
-    env, fmt,
+    fmt,
     process::Child,
     sync::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
@@ -74,11 +74,13 @@ impl ProcessControl {
         match unit {
             Decoder => {
                 if let Some(proc) = self.decoder_term.lock().unwrap().as_mut() {
-                    if env::consts::OS != "windows" {
-                        if let Err(e) = proc.term() {
-                            return Err(format!("Decoder {e:?}"));
-                        }
-                    } else if let Err(e) = proc.kill() {
+                    #[cfg(not(windows))]
+                    if let Err(e) = proc.term() {
+                        return Err(format!("Decoder {e:?}"));
+                    }
+
+                    #[cfg(windows)]
+                    if let Err(e) = proc.kill() {
                         return Err(format!("Decoder {e:?}"));
                     }
                 }
