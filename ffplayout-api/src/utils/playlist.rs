@@ -3,7 +3,7 @@ use std::{fs, path::PathBuf};
 use simplelog::*;
 use sqlx::{Pool, Sqlite};
 
-use crate::utils::{errors::ServiceError, playout_config};
+use crate::utils::{errors::ServiceError, files::norm_abs_path, playout_config};
 use ffplayout_lib::utils::{
     generate_playlist as playlist_generator, json_reader, json_writer, JsonPlaylist, PlayoutConfig,
 };
@@ -78,16 +78,32 @@ pub async fn write_playlist(
 }
 
 pub async fn generate_playlist(
-    config: PlayoutConfig,
+    mut config: PlayoutConfig,
     channel: String,
 ) -> Result<JsonPlaylist, ServiceError> {
+    if let Some(mut template) = config.general.template.take() {
+        for source in template.sources.iter_mut() {
+            let mut paths = vec![];
+
+            for path in &source.paths {
+                let (safe_path, _, _) =
+                    norm_abs_path(&config.storage.path, &path.to_string_lossy());
+                paths.push(safe_path);
+            }
+
+            source.paths = paths;
+        }
+
+        config.general.template = Some(template);
+    }
+
     match playlist_generator(&config, Some(channel)) {
         Ok(playlists) => {
             if !playlists.is_empty() {
                 Ok(playlists[0].clone())
             } else {
                 Err(ServiceError::Conflict(
-                    "Playlist could not be written, possible already exists!".into(),
+                    "The playlist could not be written, maybe it already exists!".into(),
                 ))
             }
         }

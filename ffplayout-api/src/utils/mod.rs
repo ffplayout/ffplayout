@@ -74,21 +74,25 @@ pub async fn init_config(conn: &Pool<Sqlite>) {
     INSTANCE.set(config).unwrap();
 }
 
-pub fn db_path() -> Result<String, Box<dyn std::error::Error>> {
+pub fn db_path() -> Result<&'static str, Box<dyn std::error::Error>> {
     let sys_path = Path::new("/usr/share/ffplayout/db");
-    let mut db_path = "./ffplayout.db".to_string();
+    let mut db_path = "./ffplayout.db";
 
     if sys_path.is_dir() && !sys_path.writable() {
         error!("Path {} is not writable!", sys_path.display());
     }
 
     if sys_path.is_dir() && sys_path.writable() {
-        db_path = "/usr/share/ffplayout/db/ffplayout.db".to_string();
+        db_path = "/usr/share/ffplayout/db/ffplayout.db";
     } else if Path::new("./assets").is_dir() {
-        db_path = "./assets/ffplayout.db".to_string();
+        db_path = "./assets/ffplayout.db";
     }
 
-    Ok(db_path)
+    if Path::new(db_path).is_file() {
+        return Ok(db_path);
+    }
+
+    Err(format!("DB path {db_path} not exists!").into())
 }
 
 pub async fn run_args(mut args: Args) -> Result<(), i32> {
@@ -190,6 +194,7 @@ pub fn read_playout_config(path: &str) -> Result<PlayoutConfig, Box<dyn Error>> 
     let mut config: PlayoutConfig = serde_yaml::from_reader(file)?;
 
     config.playlist.start_sec = Some(time_to_sec(&config.playlist.day_start));
+    config.playlist.length_sec = Some(time_to_sec(&config.playlist.length));
 
     Ok(config)
 }

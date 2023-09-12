@@ -1,6 +1,7 @@
 [workspace]
 members = ["ffplayout-api", "ffplayout-engine", "lib", "tests"]
 default-members = ["ffplayout-api", "ffplayout-engine", "tests"]
+resolver = "2"
 
 [workspace.package]
 version = "0.20.0"

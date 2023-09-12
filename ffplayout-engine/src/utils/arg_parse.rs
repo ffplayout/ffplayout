@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use clap::Parser;
 
 use ffplayout_lib::utils::{OutputMode, ProcessMode};
@@ -13,10 +15,24 @@ pub struct Args {
     pub channel: Option<String>,
 
     #[clap(short, long, help = "File path to ffplayout.yml")]
-    pub config: Option<String>,
+    pub config: Option<PathBuf>,
 
     #[clap(short, long, help = "File path for logging")]
-    pub log: Option<String>,
+    pub log: Option<PathBuf>,
+
+    #[clap(
+        short,
+        long,
+        help = "Target date (YYYY-MM-DD) for text/m3u to playlist import"
+    )]
+    pub date: Option<String>,
+
+    #[cfg(debug_assertions)]
+    #[clap(long, help = "fake date time, for debugging")]
+    pub fake_time: Option<String>,
+
+    #[clap(short, long, help = "Play folder content")]
+    pub folder: Option<PathBuf>,
 
     #[clap(
         short,
@@ -27,37 +43,14 @@ pub struct Args {
     )]
     pub generate: Option<Vec<String>>,
 
-    #[clap(long, help = "Optional path list for playlist generations", num_args = 1..)]
-    pub paths: Option<Vec<String>>,
-
-    #[clap(short = 'm', long, help = "Playing mode: folder, playlist")]
-    pub play_mode: Option<ProcessMode>,
-
-    #[clap(short, long, help = "Play folder content")]
-    pub folder: Option<String>,
-
-    #[clap(
-        short,
-        long,
-        help = "Target date (YYYY-MM-DD) for text/m3u to playlist import"
-    )]
-    pub date: Option<String>,
-
     #[clap(
         long,
         help = "Import a given text/m3u file and create a playlist from it"
     )]
-    pub import: Option<String>,
+    pub import: Option<PathBuf>,
 
-    #[clap(short, long, help = "Path to playlist, or playlist root folder.")]
-    pub playlist: Option<String>,
-
-    #[clap(
-        short,
-        long,
-        help = "Start time in 'hh:mm:ss', 'now' for start with first"
-    )]
-    pub start: Option<String>,
+    #[clap(short, long, help = "Loop playlist infinitely")]
+    pub infinit: bool,
 
     #[clap(
         short = 't',
@@ -69,18 +62,30 @@ pub struct Args {
     #[clap(long, help = "Override logging level")]
     pub level: Option<String>,
 
-    #[clap(short, long, help = "Loop playlist infinitely")]
-    pub infinit: bool,
+    #[clap(long, help = "Optional path list for playlist generations", num_args = 1..)]
+    pub paths: Option<Vec<PathBuf>>,
+
+    #[clap(short = 'm', long, help = "Playing mode: folder, playlist")]
+    pub play_mode: Option<ProcessMode>,
+
+    #[clap(short, long, help = "Path to playlist, or playlist root folder.")]
+    pub playlist: Option<PathBuf>,
+
+    #[clap(
+        short,
+        long,
+        help = "Start time in 'hh:mm:ss', 'now' for start with first"
+    )]
+    pub start: Option<String>,
+
+    #[clap(short = 'T', long, help = "JSON Template file for generating playlist")]
+    pub template: Option<PathBuf>,
 
     #[clap(short, long, help = "Set output mode: desktop, hls, null, stream")]
     pub output: Option<OutputMode>,
 
     #[clap(short, long, help = "Set audio volume")]
     pub volume: Option<f64>,
-
-    #[cfg(debug_assertions)]
-    #[clap(long, help = "fake date time, for debugging")]
-    pub fake_time: Option<String>,
 
     #[clap(long, help = "validate given playlist")]
     pub validate: bool,

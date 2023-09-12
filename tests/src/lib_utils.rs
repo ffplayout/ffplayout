@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 #[cfg(test)]
 use chrono::prelude::*;
 
@@ -22,23 +24,23 @@ fn mock_date_time() {
 fn get_date_yesterday() {
     mock_time::set_mock_time("2022-05-20T05:59:24");
 
-    let date = get_date(true, 21600.0, 86400.0);
+    let date = get_date(true, 21600.0, false);
 
     assert_eq!("2022-05-19".to_string(), date);
 }
 
 #[test]
 fn get_date_tomorrow() {
-    mock_time::set_mock_time("2022-05-20T23:59:30");
+    mock_time::set_mock_time("2022-05-20T23:59:58");
 
-    let date = get_date(false, 0.0, 86400.01);
+    let date = get_date(false, 0.0, true);
 
     assert_eq!("2022-05-21".to_string(), date);
 }
 
 #[test]
 fn test_delta() {
-    let mut config = PlayoutConfig::new(Some("../assets/ffplayout.yml".to_string()));
+    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.yml")));
     config.mail.recipient = "".into();
     config.processing.mode = Playlist;
     config.playlist.day_start = "00:00:00".into();

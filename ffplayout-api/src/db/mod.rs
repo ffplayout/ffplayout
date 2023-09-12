@@ -7,7 +7,7 @@ use crate::utils::db_path;
 
 pub async fn db_pool() -> Result<Pool<Sqlite>, sqlx::Error> {
     let db_path = db_path().unwrap();
-    let conn = SqlitePool::connect(&db_path).await?;
+    let conn = SqlitePool::connect(db_path).await?;
 
     Ok(conn)
 }

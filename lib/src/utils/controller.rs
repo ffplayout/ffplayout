@@ -7,6 +7,9 @@ use std::{
     },
 };
 
+#[cfg(not(windows))]
+use signal_child::Signalable;
+
 use serde::{Deserialize, Serialize};
 use simplelog::*;
 
@@ -71,9 +74,15 @@ impl ProcessControl {
         match unit {
             Decoder => {
                 if let Some(proc) = self.decoder_term.lock().unwrap().as_mut() {
+                    #[cfg(not(windows))]
+                    if let Err(e) = proc.term() {
+                        return Err(format!("Decoder {e:?}"));
+                    }
+
+                    #[cfg(windows)]
                     if let Err(e) = proc.kill() {
                         return Err(format!("Decoder {e:?}"));
-                    };
+                    }
                 }
             }
             Encoder => {
@@ -177,7 +186,7 @@ impl PlayerControl {
         Self {
             current_media: Arc::new(Mutex::new(None)),
             current_list: Arc::new(Mutex::new(vec![Media::new(0, "", false)])),
-            filler_list: Arc::new(Mutex::new(vec![Media::new(0, "", false)])),
+            filler_list: Arc::new(Mutex::new(vec![])),
             current_index: Arc::new(AtomicUsize::new(0)),
             filler_index: Arc::new(AtomicUsize::new(0)),
         }

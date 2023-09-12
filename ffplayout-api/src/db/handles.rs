@@ -82,8 +82,8 @@ async fn create_schema(conn: &Pool<Sqlite>) -> Result<SqliteQueryResult, sqlx::E
 pub async fn db_init(domain: Option<String>) -> Result<&'static str, Box<dyn std::error::Error>> {
     let db_path = db_path()?;
 
-    if !Sqlite::database_exists(&db_path).await.unwrap_or(false) {
-        Sqlite::create_database(&db_path).await.unwrap();
+    if !Sqlite::database_exists(db_path).await.unwrap_or(false) {
+        Sqlite::create_database(db_path).await.unwrap();
 
         let pool = db_pool().await?;
 

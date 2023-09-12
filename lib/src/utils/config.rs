@@ -6,6 +6,7 @@ use std::{
     str::FromStr,
 };
 
+use chrono::NaiveTime;
 use log::LevelFilter;
 use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use shlex::split;
@@ -124,6 +125,19 @@ where
     }
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Template {
+    pub sources: Vec<Source>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Source {
+    pub start: NaiveTime,
+    pub duration: NaiveTime,
+    pub shuffle: bool,
+    pub paths: Vec<PathBuf>,
+}
+
 /// Global Config
 ///
 /// This we init ones, when ffplayout is starting and use them globally in the hole program.
@@ -163,6 +177,9 @@ pub struct General {
     #[serde(skip_serializing, skip_deserializing)]
     pub ffmpeg_libs: Vec<String>,
 
+    #[serde(skip_serializing, skip_deserializing)]
+    pub template: Option<Template>,
+
     #[serde(default, skip_serializing, skip_deserializing)]
     pub validate: bool,
 }
@@ -196,7 +213,7 @@ pub struct Logging {
     pub local_time: bool,
     pub timestamp: bool,
     #[serde(alias = "log_path")]
-    pub path: String,
+    pub path: PathBuf,
     #[serde(
         alias = "log_level",
         serialize_with = "log_level_to_string",
@@ -255,7 +272,7 @@ pub struct Ingest {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Playlist {
     pub help_text: String,
-    pub path: String,
+    pub path: PathBuf,
     pub day_start: String,
 
     #[serde(skip_serializing, skip_deserializing)]
@@ -272,11 +289,11 @@ pub struct Playlist {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Storage {
     pub help_text: String,
-    pub path: String,
+    pub path: PathBuf,
     #[serde(skip_serializing, skip_deserializing)]
-    pub paths: Vec<String>,
+    pub paths: Vec<PathBuf>,
     #[serde(alias = "filler_clip")]
-    pub filler: String,
+    pub filler: PathBuf,
     pub extensions: Vec<String>,
     pub shuffle: bool,
 }
@@ -304,7 +321,7 @@ pub struct Text {
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
 pub struct Task {
     pub enable: bool,
-    pub path: String,
+    pub path: PathBuf,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -335,11 +352,11 @@ fn default_channels() -> u8 {
 
 impl PlayoutConfig {
     /// Read config from YAML file, and set some extra config values.
-    pub fn new(cfg_path: Option<String>) -> Self {
+    pub fn new(cfg_path: Option<PathBuf>) -> Self {
         let mut config_path = PathBuf::from("/etc/ffplayout/ffplayout.yml");
 
         if let Some(cfg) = cfg_path {
-            config_path = PathBuf::from(cfg);
+            config_path = cfg;
         }
 
         if !config_path.is_file() {

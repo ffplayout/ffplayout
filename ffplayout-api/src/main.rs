@@ -3,8 +3,7 @@ use std::{path::Path, process::exit};
 use actix_files::Files;
 use actix_web::{dev::ServiceRequest, middleware, web, App, Error, HttpMessage, HttpServer};
 use actix_web_grants::permissions::AttachPermissions;
-use actix_web_httpauth::extractors::bearer::BearerAuth;
-use actix_web_httpauth::middleware::HttpAuthentication;
+use actix_web_httpauth::{extractors::bearer::BearerAuth, middleware::HttpAuthentication};
 
 use clap::Parser;
 use simplelog::*;
@@ -29,15 +28,22 @@ use utils::{args_parse::Args, control::ProcessControl, db_path, init_config, run
 
 use ffplayout_lib::utils::{init_logging, PlayoutConfig};
 
-async fn validator(req: ServiceRequest, credentials: BearerAuth) -> Result<ServiceRequest, Error> {
+async fn validator(
+    req: ServiceRequest,
+    credentials: BearerAuth,
+) -> Result<ServiceRequest, (Error, ServiceRequest)> {
     // We just get permissions from JWT
-    let claims = auth::decode_jwt(credentials.token()).await?;
-    req.attach(vec![Role::set_role(&claims.role)]);
+    match auth::decode_jwt(credentials.token()).await {
+        Ok(claims) => {
+            req.attach(vec![Role::set_role(&claims.role)]);
 
-    req.extensions_mut()
-        .insert(LoginUser::new(claims.id, claims.username));
+            req.extensions_mut()
+                .insert(LoginUser::new(claims.id, claims.username));
 
-    Ok(req)
+            Ok(req)
+        }
+        Err(e) => Err((e, req)),
+    }
 }
 
 fn public_path() -> &'static str {
@@ -49,7 +55,7 @@ fn public_path() -> &'static str {
         return "./public/";
     }
 
-    "./ffplayout-frontend/dist"
+    "./ffplayout-frontend/.output/public/"
 }
 
 #[actix_web::main]
@@ -77,11 +83,9 @@ async fn main() -> std::io::Result<()> {
     };
 
     if let Some(conn) = args.listen {
-        if let Ok(p) = db_path() {
-            if !Path::new(&p).is_file() {
-                error!("Database is not initialized! Init DB first and add admin user.");
-                exit(1);
-            }
+        if db_path().is_err() {
+            error!("Database is not initialized! Init DB first and add admin user.");
+            exit(1);
         }
         init_config(&pool).await;
         let ip_port = conn.split(':').collect::<Vec<&str>>();

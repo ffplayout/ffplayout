@@ -2,7 +2,7 @@ extern crate log;
 extern crate simplelog;
 
 use std::{
-    path::Path,
+    path::PathBuf,
     sync::{atomic::Ordering, Arc, Mutex},
     thread::{self, sleep},
     time::Duration,
@@ -199,21 +199,18 @@ pub fn init_logging(
         };
     };
 
-    if app_config.log_to_file && &app_config.path != "none" {
+    if app_config.log_to_file && app_config.path.exists() {
         let file_config = log_config
             .clone()
             .set_time_format_custom(format_description!(
                 "[[[year]-[month]-[day] [hour]:[minute]:[second].[subsecond digits:5]]"
             ))
             .build();
-        let mut log_path = "logs/ffplayout.log".to_string();
+        let mut log_path = PathBuf::from("logs/ffplayout.log");
 
-        if Path::new(&app_config.path).is_dir() {
-            log_path = Path::new(&app_config.path)
-                .join("ffplayout.log")
-                .display()
-                .to_string();
-        } else if Path::new(&app_config.path).is_file() {
+        if app_config.path.is_dir() {
+            log_path = app_config.path.join("ffplayout.log");
+        } else if app_config.path.is_file() {
             log_path = app_config.path
         } else {
             println!("Logging path not exists!")

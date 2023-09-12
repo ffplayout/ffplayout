@@ -1,4 +1,4 @@
-### This project is taking a summer break, during this time the Issues and Discussions are closed. In October both will be open again. Until then have a good time!  
+### This project is taking a summer break, during this time the Issues and Discussions are closed. In October both will be open again. Until then have a good time!
 
 **ffplayout**
 ================
@@ -54,6 +54,7 @@ Check the [releases](https://github.com/ffplayout/ffplayout/releases/latest) for
 - import playlist from text or m3u file, with CLI or frontend
 - audio only, for radio mode (experimental *)
 - [Piggyback Mode](/ffplayout-api/README.md#piggyback-mode), mostly for non Linux systems (experimental *)
+- generate playlist based on [template](/docs/playlist_gen.md) (experimental *)
 
 For preview stream, read: [/docs/preview_stream.md](/docs/preview_stream.md)
 
@@ -176,14 +177,12 @@ Output from `{"media":"current"}` show:
 
 ```JSON
 {
-  "jsonrpc": "2.0",
-  "result": {
     "current_media": {
-      "category": "",
-      "duration": 154.2,
-      "out": 154.2,
-      "seek": 0.0,
-      "source": "/opt/tv-media/clip.mp4"
+        "category": "",
+        "duration": 154.2,
+        "out": 154.2,
+        "seek": 0.0,
+        "source": "/opt/tv-media/clip.mp4"
     },
     "index": 39,
     "play_mode": "playlist",
@@ -191,8 +190,6 @@ Output from `{"media":"current"}` show:
     "remaining_sec": 86.39228000699876,
     "start_sec": 24713.631999999998,
     "start_time": "06:51:53.631"
-  },
-  "id": 1
 }
 ```
 
