@@ -79,7 +79,7 @@ struct FileObj {
 #[derive(Debug, Default, Deserialize, Serialize)]
 pub struct PathsObj {
     #[serde(default)]
-    paths: Vec<String>,
+    paths: Option<Vec<String>>,
     template: Option<Template>,
 }
 
@@ -750,6 +750,15 @@ pub async fn save_playlist(
 /// -H 'Content-Type: application/json' -H 'Authorization: Bearer <TOKEN>'
 /// /// --data '{ "paths": [<list of paths>] }' # <- data is optional
 /// ```
+///
+/// Or with template:
+/// ```BASH
+/// curl -X POST http://127.0.0.1:8787/api/playlist/1/generate/2023-00-05
+/// -H 'Content-Type: application/json' -H 'Authorization: Bearer <TOKEN>'
+/// --data '{"template": {"sources": [\
+///            {"start": "00:00:00", "duration": "10:00:00", "shuffle": true, "paths": ["path/1", "path/2"]}, \
+///            {"start": "10:00:00", "duration": "14:00:00", "shuffle": false, "paths": ["path/3", "path/4"]}]}}'
+/// ```
 #[post("/playlist/{id}/generate/{date}")]
 #[has_any_role("Role::Admin", "Role::User", type = "Role")]
 pub async fn gen_playlist(
@@ -761,15 +770,18 @@ pub async fn gen_playlist(
     config.general.generate = Some(vec![params.1.clone()]);
 
     if let Some(obj) = data {
-        let mut path_list = vec![];
+        if let Some(paths) = &obj.paths {
+            let mut path_list = vec![];
 
-        for path in &obj.paths {
-            let (p, _, _) = norm_abs_path(&config.storage.path, path);
+            for path in paths {
+                let (p, _, _) = norm_abs_path(&config.storage.path, path);
 
-            path_list.push(p);
+                path_list.push(p);
+            }
+
+            config.storage.paths = path_list;
         }
 
-        config.storage.paths = path_list;
         config.general.template = obj.template.clone();
     }
 
