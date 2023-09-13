@@ -253,7 +253,7 @@ curl -X GET http://127.0.0.1:8787/api/playlist/1?date=2022-06-20
 ```BASH
 curl -X POST http://127.0.0.1:8787/api/playlist/1/
 -H 'Content-Type: application/json' -H 'Authorization: Bearer <TOKEN>'
--- data "{<JSON playlist data>}"
+--data "{<JSON playlist data>}"
 ```
 
 **Generate Playlist**
@@ -261,8 +261,18 @@ curl -X POST http://127.0.0.1:8787/api/playlist/1/
 A new playlist will be generated and response.
 
 ```BASH
-curl -X GET http://127.0.0.1:8787/api/playlist/1/generate/2022-06-20
+curl -X POST http://127.0.0.1:8787/api/playlist/1/generate/2022-06-20
 -H 'Content-Type: application/json' -H 'Authorization: Bearer <TOKEN>'
+/// --data '{ "paths": [<list of paths>] }' # <- data is optional
+```
+
+Or with template:
+```BASH
+curl -X POST http://127.0.0.1:8787/api/playlist/1/generate/2023-00-05
+-H 'Content-Type: application/json' -H 'Authorization: Bearer <TOKEN>'
+--data '{"template": {"sources": [\
+           {"start": "00:00:00", "duration": "10:00:00", "shuffle": true, "paths": ["path/1", "path/2"]}, \
+           {"start": "10:00:00", "duration": "14:00:00", "shuffle": false, "paths": ["path/3", "path/4"]}]}}'
 ```
 
 **Delete Playlist**
