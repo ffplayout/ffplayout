@@ -6,26 +6,11 @@ const { timeToSeconds } = stringFormatter()
 import { useAuth } from '~/stores/auth'
 import { useIndex } from '~/stores/index'
 
-interface GuiConfig {
-    id: number
-    config_path: string
-    extra_extensions: string | string[]
-    name: string
-    preview_url: string
-    service: string
-    uts_offset?: number
-}
-
-interface User {
-    username: string
-    mail: string
-    password?: string
-}
-
 export const useConfig = defineStore('config', {
     state: () => ({
         configID: 0,
         configCount: 0,
+        contentType: { 'content-type': 'application/json;charset=UTF-8' },
         configGui: [] as GuiConfig[],
         configGuiRaw: [] as GuiConfig[],
         startInSec: 0,
@@ -101,19 +86,18 @@ export const useConfig = defineStore('config', {
         async setGuiConfig(obj: GuiConfig): Promise<any> {
             const authStore = useAuth()
             const stringObj = _.cloneDeep(obj)
-            const contentType = { 'content-type': 'application/json;charset=UTF-8' }
             let response
 
             if (this.configGuiRaw.some((e) => e.id === stringObj.id)) {
                 response = await fetch(`/api/channel/${obj.id}`, {
                     method: 'PATCH',
-                    headers: { ...contentType, ...authStore.authHeader },
+                    headers: { ...this.contentType, ...authStore.authHeader },
                     body: JSON.stringify(stringObj),
                 })
             } else {
                 response = await fetch('/api/channel/', {
                     method: 'POST',
-                    headers: { ...contentType, ...authStore.authHeader },
+                    headers: { ...this.contentType, ...authStore.authHeader },
                     body: JSON.stringify(stringObj),
                 })
 
@@ -173,7 +157,6 @@ export const useConfig = defineStore('config', {
         async setPlayoutConfig(obj: any) {
             const authStore = useAuth()
             const channel = this.configGui[this.configID].id
-            const contentType = { 'content-type': 'application/json;charset=UTF-8' }
 
             this.startInSec = timeToSeconds(obj.playlist.day_start)
             this.playlistLength = timeToSeconds(obj.playlist.length)
@@ -184,7 +167,7 @@ export const useConfig = defineStore('config', {
 
             const update = await fetch(`/api/playout/config/${channel}`, {
                 method: 'PUT',
-                headers: { ...contentType, ...authStore.authHeader },
+                headers: { ...this.contentType, ...authStore.authHeader },
                 body: JSON.stringify(obj),
             })
 
@@ -207,12 +190,24 @@ export const useConfig = defineStore('config', {
 
         async setUserConfig(obj: any) {
             const authStore = useAuth()
-            const contentType = { 'content-type': 'application/json;charset=UTF-8' }
 
             const update = await fetch(`/api/user/${obj.id}`, {
                 method: 'PUT',
-                headers: { ...contentType, ...authStore.authHeader },
+                headers: { ...this.contentType, ...authStore.authHeader },
                 body: JSON.stringify(obj),
+            })
+
+            return update
+        },
+
+        async addNewUser(user: User) {
+            const authStore = useAuth()
+            delete user.confirm
+
+            const update = await fetch('/api/user/', {
+                method: 'Post',
+                headers: { ...this.contentType, ...authStore.authHeader },
+                body: JSON.stringify(user),
             })
 
             return update

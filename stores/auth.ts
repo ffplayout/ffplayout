@@ -1,11 +1,16 @@
 import { defineStore } from 'pinia'
 import jwtDecode, { JwtPayload } from 'jwt-decode'
 
+interface JwtPayloadExt extends JwtPayload {
+    role: string
+}
+
 export const useAuth = defineStore('auth', {
     state: () => ({
         isLogin: false,
         jwtToken: '',
         authHeader: {},
+        role: '',
     }),
 
     getters: {},
@@ -20,10 +25,6 @@ export const useAuth = defineStore('auth', {
             cookie.value = token
             this.jwtToken = token
             this.authHeader = { Authorization: `Bearer ${token}` }
-        },
-
-        updateIsLogin(bool: boolean) {
-            this.isLogin = bool
         },
 
         removeToken() {
@@ -52,7 +53,9 @@ export const useAuth = defineStore('auth', {
                 .then((response) => response.json())
                 .then((response) => {
                     this.updateToken(response.user.token)
-                    this.updateIsLogin(true)
+                    const decodedToken = jwtDecode<JwtPayloadExt>(response.user.token)
+                    this.isLogin = true
+                    this.role = decodedToken.role
                 })
                 .catch((error) => {
                     if (error.status) {
@@ -72,18 +75,19 @@ export const useAuth = defineStore('auth', {
 
             if (token) {
                 this.updateToken(token)
-                const decodedToken = jwtDecode<JwtPayload>(token)
+                const decodedToken = jwtDecode<JwtPayloadExt>(token)
                 const timestamp = Date.now() / 1000
                 const expireToken = decodedToken.exp
+                this.role = decodedToken.role
 
                 if (expireToken && this.jwtToken && expireToken - timestamp > 15) {
-                    this.updateIsLogin(true)
+                    this.isLogin = true
                 } else {
                     // Prompt user to re login.
-                    this.updateIsLogin(false)
+                    this.isLogin = false
                 }
             } else {
-                this.updateIsLogin(false)
+                this.isLogin = false
             }
         },
     },

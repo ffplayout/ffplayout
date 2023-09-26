@@ -2,7 +2,7 @@
     <div>
         <div class="container">
             <h2 class="pb-4 pt-3">Channel Configuration</h2>
-            <div style="width: 100%; height: 43px">
+            <div class="w-100" style="height: 43px">
                 <div class="float-end">
                     <button class="btn btn-primary" @click="addChannel()">Add new Channel</button>
                 </div>

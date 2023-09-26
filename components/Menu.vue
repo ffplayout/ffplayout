@@ -78,7 +78,7 @@ const router = useRouter()
 
 function logout() {
     authStore.removeToken()
-    authStore.updateIsLogin(false)
+    authStore.isLogin = false
     router.push({ path: '/' })
 }
 

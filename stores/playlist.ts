@@ -30,10 +30,6 @@ export const usePlaylist = defineStore('playlist', {
 
     getters: {},
     actions: {
-        updatePlaylist(list: any) {
-            this.playlist = list
-        },
-
         async getPlaylist(date: string) {
             const authStore = useAuth()
             const configStore = useConfig()
@@ -52,13 +48,11 @@ export const usePlaylist = defineStore('playlist', {
                 .then((response) => response.json())
                 .then((data) => {
                     if (data.program) {
-                        this.updatePlaylist(
-                            processPlaylist(configStore.startInSec, configStore.playlistLength, data.program, false)
-                        )
+                        this.playlist = processPlaylist(configStore.startInSec, configStore.playlistLength, data.program, false)
                     }
                 })
                 .catch(() => {
-                    this.updatePlaylist([])
+                    this.playlist = []
                 })
         },
 
