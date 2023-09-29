@@ -27,8 +27,7 @@ pub struct Args {
     )]
     pub date: Option<String>,
 
-    #[cfg(debug_assertions)]
-    #[clap(long, help = "fake date time, for debugging")]
+    #[clap(long, help = "fake date time, only for debugging")]
     pub fake_time: Option<String>,
 
     #[clap(short, long, help = "Play folder content")]
