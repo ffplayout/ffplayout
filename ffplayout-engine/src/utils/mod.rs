@@ -1,4 +1,8 @@
-use std::{fs::File, path::PathBuf, process::exit};
+use std::{
+    fs::File,
+    path::{Path, PathBuf},
+    process::exit,
+};
 
 use regex::Regex;
 use serde_json::{json, Map, Value};
@@ -71,10 +75,12 @@ pub fn get_config(args: Args) -> PlayoutConfig {
     }
 
     if let Some(log_path) = args.log {
-        if log_path.is_dir() {
+        if &log_path != Path::new("none") && log_path.is_dir() {
             config.logging.log_to_file = true;
+            config.logging.path = log_path;
+        } else {
+            config.logging.log_to_file = false;
         }
-        config.logging.path = log_path;
     }
 
     if let Some(playlist) = args.playlist {
