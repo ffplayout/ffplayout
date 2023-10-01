@@ -145,9 +145,7 @@ impl ProcessControl {
         if self.is_alive.load(Ordering::SeqCst) {
             self.is_alive.store(false, Ordering::SeqCst);
 
-            // if let Some(rpc) = &*self.rpc_handle.lock().unwrap() {
-            //     rpc.clone().close()
-            // };
+            trace!("Playout is alive and processes are terminated");
 
             for unit in [Decoder, Encoder, Ingest] {
                 if let Err(e) = self.stop(unit) {

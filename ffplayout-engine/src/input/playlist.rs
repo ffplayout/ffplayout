@@ -509,7 +509,8 @@ fn timed_source(
     let mut new_node = node.clone();
     new_node.process = Some(false);
 
-    trace!("timed source ist last: {last}");
+    trace!("Node begin: {}", node.begin.unwrap());
+    trace!("timed source is last: {last}");
 
     if config.playlist.length.contains(':') {
         let time_shift = playout_stat.time_shift.lock().unwrap();
@@ -524,9 +525,7 @@ fn timed_source(
             debug!("Delta: <yellow>{shifted_delta:.3}</>");
         }
 
-        let sync = check_sync(config, shifted_delta);
-
-        if !sync {
+        if !check_sync(config, shifted_delta) {
             new_node.cmd = None;
 
             return new_node;
