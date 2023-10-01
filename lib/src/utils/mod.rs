@@ -148,15 +148,14 @@ impl Media {
     pub fn add_probe(&mut self) {
         if self.probe.is_none() {
             let probe = MediaProbe::new(&self.source);
+            self.probe = Some(probe.clone());
 
             if let Some(dur) = probe
                 .format
-                .clone()
                 .and_then(|f| f.duration)
                 .map(|d| d.parse().unwrap())
                 .filter(|d| !is_close(*d, self.duration, 0.5))
             {
-                self.probe = Some(probe);
                 self.duration = dur;
 
                 if self.out == 0.0 {
