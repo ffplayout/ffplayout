@@ -84,6 +84,11 @@ pub fn player(
     'source_iter: for node in get_source {
         *play_control.current_media.lock().unwrap() = Some(node.clone());
 
+        if proc_control.is_terminated.load(Ordering::SeqCst) {
+            debug!("Playout is terminated, break out from source loop");
+            break;
+        }
+
         if !node.process.unwrap() {
             continue;
         }
@@ -112,10 +117,7 @@ pub fn player(
 
         trace!("Decoder CMD: {:?}", node.cmd);
 
-        let mut cmd = match node.cmd {
-            Some(cmd) => cmd,
-            None => break,
-        };
+        let mut cmd = if let Some(cmd) = node.cmd { cmd } else { break };
 
         let mut dec_cmd = vec_strings!["-hide_banner", "-nostats", "-v", &ff_log_format];
         dec_cmd.append(&mut cmd);
@@ -217,7 +219,7 @@ pub fn player(
         };
     }
 
-    trace!("Out of source loop");
+    debug!("Out of source loop");
 
     sleep(Duration::from_secs(1));
 
