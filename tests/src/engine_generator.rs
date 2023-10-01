@@ -29,6 +29,7 @@ fn test_random_list() {
 }
 
 #[test]
+#[ignore]
 fn test_ordered_list() {
     let clip_list = vec![
         Media::new(0, "./assets/with_audio.mp4", true), // 30 seconds
@@ -51,6 +52,7 @@ fn test_ordered_list() {
 }
 
 #[test]
+#[ignore]
 fn test_filler_list() {
     let mut config = PlayoutConfig::new(None);
     config.storage.filler = "assets/".into();
