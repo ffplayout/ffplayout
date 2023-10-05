@@ -2,7 +2,7 @@
 
 ffplayout provides ***.deb** amd ***.rpm** packages, which makes it more easy to install and use, but there is still some steps to do.
 
-1. download the latest ffplayout from [release](https://github.com/ffplayout/ffplayout/releases/latest) page.
+1. download the latest ffplayout from [release](https://github.com/ffplayout/ffplayout/releases/latest) page and place the package in the **/tmp** folder.
 2. install it with `apt install /tmp/ffplayout_<VERSION>_amd64.deb`
 3. install ffmpeg/ffprobe, or compile and copy it to **/usr/local/bin/**
 4. activate systemd services:
