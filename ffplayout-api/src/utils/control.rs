@@ -302,39 +302,50 @@ pub async fn control_service(
     command: &ServiceCmd,
     engine: Option<web::Data<ProcessControl>>,
 ) -> Result<String, ServiceError> {
-    if engine.is_some() && engine.as_ref().unwrap().piggyback.load(Ordering::SeqCst) {
-        match command {
-            ServiceCmd::Start => engine.unwrap().start().await,
-            ServiceCmd::Stop => {
-                if control_state(conn, id, "stop_all").await.is_ok() {
-                    engine.unwrap().stop().await
-                } else {
-                    Err(ServiceError::NoContent("Nothing to stop".to_string()))
+    if let Some(en) = engine {
+        if en.piggyback.load(Ordering::SeqCst) {
+            match command {
+                ServiceCmd::Start => en.start().await,
+                ServiceCmd::Stop => {
+                    if control_state(conn, id, "stop_all").await.is_ok() {
+                        en.stop().await
+                    } else {
+                        Err(ServiceError::NoContent("Nothing to stop".to_string()))
+                    }
                 }
-            }
-            ServiceCmd::Restart => {
-                if control_state(conn, id, "stop_all").await.is_ok() {
-                    engine.unwrap().restart().await
-                } else {
-                    Err(ServiceError::NoContent("Nothing to stop".to_string()))
+                ServiceCmd::Restart => {
+                    if control_state(conn, id, "stop_all").await.is_ok() {
+                        en.restart().await
+                    } else {
+                        Err(ServiceError::NoContent("Nothing to restart".to_string()))
+                    }
                 }
+                ServiceCmd::Status => en.status(),
+                _ => Err(ServiceError::Conflict(
+                    "Engine runs in piggyback mode, in this mode this command is not allowed."
+                        .to_string(),
+                )),
             }
-            ServiceCmd::Status => engine.unwrap().status(),
-            _ => Err(ServiceError::Conflict(
-                "Engine runs in piggyback mode, in this mode this command is not allowed."
-                    .to_string(),
-            )),
+        } else {
+            execute_systemd(conn, id, command).await
         }
     } else {
-        let system_d = SystemD::new(conn, id).await?;
+        execute_systemd(conn, id, command).await
+    }
+}
 
-        match command {
-            ServiceCmd::Enable => system_d.enable(),
-            ServiceCmd::Disable => system_d.disable(),
-            ServiceCmd::Start => system_d.start(),
-            ServiceCmd::Stop => system_d.stop(),
-            ServiceCmd::Restart => system_d.restart(),
-            ServiceCmd::Status => system_d.status().await,
-        }
+async fn execute_systemd(
+    conn: &Pool<Sqlite>,
+    id: i32,
+    command: &ServiceCmd,
+) -> Result<String, ServiceError> {
+    let system_d = SystemD::new(conn, id).await?;
+    match command {
+        ServiceCmd::Enable => system_d.enable(),
+        ServiceCmd::Disable => system_d.disable(),
+        ServiceCmd::Start => system_d.start(),
+        ServiceCmd::Stop => system_d.stop(),
+        ServiceCmd::Restart => system_d.restart(),
+        ServiceCmd::Status => system_d.status().await,
     }
 }
