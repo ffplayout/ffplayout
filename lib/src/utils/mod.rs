@@ -13,7 +13,7 @@ use std::{
 use std::env;
 
 use chrono::{prelude::*, Duration};
-use ffprobe::{ffprobe, Format, Stream};
+use ffprobe::{ffprobe, Format, Stream as FFStream};
 use rand::prelude::*;
 use regex::Regex;
 use reqwest::header;
@@ -205,8 +205,8 @@ fn is_empty_string(st: &String) -> bool {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct MediaProbe {
     pub format: Option<Format>,
-    pub audio_streams: Vec<Stream>,
-    pub video_streams: Vec<Stream>,
+    pub audio_streams: Vec<FFStream>,
+    pub video_streams: Vec<FFStream>,
 }
 
 impl MediaProbe {
