@@ -509,17 +509,17 @@ pub fn gen_source(
 
         warn!("Generate filler with <yellow>{duration:.2}</> seconds length!");
 
-        let probe = MediaProbe::new(&config.storage.filler_clip);
+        let probe = MediaProbe::new(&config.storage.filler);
 
         if config
             .storage
-            .filler_clip
+            .filler
             .rsplit_once('.')
             .map(|(_, e)| e.to_lowercase())
             .filter(|c| IMAGE_FORMAT.contains(&c.as_str()))
             .is_some()
         {
-            node.source = config.storage.filler_clip.clone();
+            node.source = config.storage.filler.clone();
             node.cmd = Some(loop_image(&node));
             node.probe = Some(probe);
         } else if let Some(length) = probe
@@ -529,7 +529,7 @@ pub fn gen_source(
             .and_then(|d| d.parse::<f64>().ok())
         {
             // create placeholder from config filler.
-            node.source = config.storage.filler_clip.clone();
+            node.source = config.storage.filler.clone();
             node.duration = length;
             node.out = duration;
             node.cmd = Some(loop_filler(&node));

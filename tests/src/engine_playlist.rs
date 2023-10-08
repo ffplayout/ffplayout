@@ -31,7 +31,7 @@ fn playlist_change_at_midnight() {
     config.playlist.length = "24:00:00".into();
     config.playlist.length_sec = Some(86400.0);
     config.playlist.path = "assets/playlists".into();
-    config.storage.filler_clip = "assets/with_audio.mp4".into();
+    config.storage.filler = "assets/with_audio.mp4".into();
     config.logging.log_to_file = false;
     config.logging.timestamp = false;
     config.out.mode = Null;
@@ -72,7 +72,7 @@ fn playlist_change_at_six() {
     config.playlist.length = "24:00:00".into();
     config.playlist.length_sec = Some(86400.0);
     config.playlist.path = "assets/playlists".into();
-    config.storage.filler_clip = "assets/with_audio.mp4".into();
+    config.storage.filler = "assets/with_audio.mp4".into();
     config.logging.log_to_file = false;
     config.logging.timestamp = false;
     config.out.mode = Null;

@@ -90,7 +90,7 @@ pub fn generate_playlist(
             playlist_file.display()
         );
 
-        let mut filler = Media::new(0, &config.storage.filler_clip, true);
+        let mut filler = Media::new(0, &config.storage.filler, true);
         let filler_length = filler.duration;
         let mut length = 0.0;
         let mut round = 0;
