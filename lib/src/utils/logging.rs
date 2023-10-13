@@ -73,11 +73,12 @@ fn mail_queue(
     messages: Arc<Mutex<Vec<String>>>,
     interval: u64,
 ) {
-    while !(*proc_ctl.is_terminated).load(Ordering::SeqCst) {
+    while !proc_ctl.is_terminated.load(Ordering::SeqCst) {
         let mut msg = messages.lock().unwrap();
 
         if msg.len() > 0 {
             send_mail(&cfg, msg.join("\n"));
+
             msg.clear();
         }
 
@@ -122,7 +123,8 @@ impl Log for LogMailer {
 
             // put message only to mail queue when it differs from last message
             // this we do to prevent spamming the mail box
-            if !last_msgs.contains(&rec) {
+            // also ignore errors from lettre mail module, because it prevents program from closing
+            if !last_msgs.contains(&rec) && !rec.contains("lettre") {
                 if last_msgs.len() > 2 {
                     last_msgs.clear()
                 }
@@ -184,6 +186,7 @@ pub fn init_logging(
         .set_thread_level(LevelFilter::Off)
         .set_target_level(LevelFilter::Off)
         .add_filter_ignore_str("hyper")
+        .add_filter_ignore_str("rustls")
         .add_filter_ignore_str("sqlx")
         .add_filter_ignore_str("reqwest")
         .add_filter_ignore_str("rpc")
