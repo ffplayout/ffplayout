@@ -21,7 +21,7 @@ notify = "6.0"
 notify-debouncer-full = { version = "*", default-features = false }
 rand = "0.8"
 regex = "1"
-reqwest = { version = "0.11", features = ["blocking", "json"] }
+reqwest = { version = "0.11", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 simplelog = { version = "0.12", features = ["paris"] }
@@ -30,9 +30,6 @@ zeromq = { git = "https://github.com/zeromq/zmq.rs.git", default-features = fals
     "async-std-runtime",
     "tcp-transport",
 ] }
-
-[target.x86_64-unknown-linux-musl.dependencies]
-openssl = { version = "0.10", features = ["vendored"] }
 
 [[bin]]
 name = "ffplayout"
