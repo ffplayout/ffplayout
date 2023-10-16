@@ -89,7 +89,17 @@ pub fn player(
             break;
         }
 
+        trace!("Decoder CMD: {:?}", node.cmd);
+
+        let mut cmd = match &node.cmd {
+            Some(cmd) => cmd.clone(),
+            None => break,
+        };
+
         if !node.process.unwrap() {
+            // process true/false differs from node.cmd = None in that way,
+            // that source is valid but to show for playing,
+            // so better skip it and jump to the next one.
             continue;
         }
 
@@ -114,10 +124,6 @@ pub fn player(
                 );
             }
         }
-
-        trace!("Decoder CMD: {:?}", node.cmd);
-
-        let mut cmd = if let Some(cmd) = node.cmd { cmd } else { break };
 
         let mut dec_cmd = vec_strings!["-hide_banner", "-nostats", "-v", &ff_log_format];
         dec_cmd.append(&mut cmd);

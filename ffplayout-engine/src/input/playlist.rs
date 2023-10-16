@@ -612,13 +612,9 @@ pub fn gen_source(
                 filler_media.add_probe();
             }
 
-            if node.duration > duration && filler_media.duration > duration {
-                filler_media.out = duration;
-            }
-
             node.source = filler_media.source;
+            node.out = duration;
             node.duration = filler_media.duration;
-            node.out = filler_media.out;
             node.cmd = Some(loop_filler(&node));
             node.probe = filler_media.probe;
         } else if filler_source.is_file() {
@@ -645,13 +641,7 @@ pub fn gen_source(
             {
                 // Create placeholder from config filler.
                 node.source = config.storage.filler.clone().to_string_lossy().to_string();
-
-                node.out = if node.duration > duration && filler_duration > duration {
-                    duration
-                } else {
-                    filler_duration
-                };
-
+                node.out = duration;
                 node.duration = filler_duration;
                 node.cmd = Some(loop_filler(&node));
                 node.probe = Some(probe);
