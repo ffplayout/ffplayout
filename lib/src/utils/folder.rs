@@ -3,6 +3,7 @@ use std::sync::{
     {Arc, Mutex},
 };
 
+use lexical_sort::natural_lexical_cmp;
 use rand::{seq::SliceRandom, thread_rng};
 use simplelog::*;
 use walkdir::WalkDir;
@@ -190,13 +191,11 @@ pub fn fill_filler_list(
         {
             let mut media = Media::new(index, &entry.path().to_string_lossy(), false);
 
-            if let Some(control) = player_control.as_ref() {
-                control.filler_list.lock().unwrap().push(media);
-            } else {
+            if player_control.is_none() {
                 media.add_probe();
-
-                filler_list.push(media);
             }
+
+            filler_list.push(media);
         }
 
         if config.storage.shuffle {
@@ -204,21 +203,27 @@ pub fn fill_filler_list(
 
             filler_list.shuffle(&mut rng);
         } else {
-            filler_list.sort_by(|d1, d2| d1.source.cmp(&d2.source));
+            filler_list.sort_by(|d1, d2| natural_lexical_cmp(&d1.source, &d2.source));
         }
 
         for (index, item) in filler_list.iter_mut().enumerate() {
             item.index = Some(index);
         }
+
+        if let Some(control) = player_control.as_ref() {
+            *control.filler_list.lock().unwrap() = filler_list.clone();
+        }
     } else if filler_path.is_file() {
         let mut media = Media::new(0, &config.storage.filler.to_string_lossy(), false);
 
-        if let Some(control) = player_control.as_ref() {
-            control.filler_list.lock().unwrap().push(media);
-        } else {
+        if player_control.is_none() {
             media.add_probe();
+        }
 
-            filler_list.push(media);
+        filler_list.push(media);
+
+        if let Some(control) = player_control.as_ref() {
+            *control.filler_list.lock().unwrap() = filler_list.clone();
         }
     }
 
