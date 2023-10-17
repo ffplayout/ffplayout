@@ -11,7 +11,7 @@ use serde_json::json;
 use simplelog::*;
 
 use ffplayout_lib::utils::{
-    check_sync, controller::PlayerControl, gen_dummy, get_delta, get_sec, is_close, is_remote,
+    controller::PlayerControl, gen_dummy, get_delta, get_sec, is_close, is_remote,
     json_serializer::read_json, loop_filler, loop_image, modified_time, seek_and_length,
     valid_source, Media, MediaProbe, PlayoutConfig, PlayoutStatus, DUMMY_LEN, IMAGE_FORMAT,
 };
@@ -396,15 +396,17 @@ impl Iterator for CurrentProgram {
             self.check_for_next_playlist();
             let mut is_last = false;
             let index = self.player_control.current_index.load(Ordering::SeqCst);
-            let nodes = self.player_control.current_list.lock().unwrap();
-            let last_index = nodes.len() - 1;
+            let node_list = self.player_control.current_list.lock().unwrap();
+            let node = node_list[index].clone();
+            let last_index = node_list.len() - 1;
+            drop(node_list);
 
             if index == last_index {
                 is_last = true
             }
 
             self.current_node = timed_source(
-                nodes[index].clone(),
+                node,
                 &self.config,
                 is_last,
                 &self.playout_stat,
@@ -412,7 +414,6 @@ impl Iterator for CurrentProgram {
                 last_index,
             );
 
-            drop(nodes);
             self.last_next_ad();
             self.player_control
                 .current_index
@@ -525,7 +526,11 @@ fn timed_source(
             debug!("Delta: <yellow>{shifted_delta:.3}</>");
         }
 
-        if !check_sync(config, shifted_delta) {
+        if config.general.stop_threshold > 0.0
+            && shifted_delta.abs() > config.general.stop_threshold
+        {
+            error!("Clip begin out of sync for <yellow>{delta:.3}</> seconds.");
+
             new_node.cmd = None;
 
             return new_node;
@@ -594,6 +599,7 @@ pub fn gen_source(
             last_index
         );
 
+        // last index is the index from the last item from the node list.
         if node.index.unwrap_or_default() < last_index {
             error!("Source not found: <b><magenta>\"{}\"</></b>", node.source);
         }
@@ -612,11 +618,42 @@ pub fn gen_source(
                 filler_media.add_probe();
             }
 
+            if node.duration > duration && filler_media.duration > duration {
+                filler_media.out = duration;
+            }
+
+            // If necessary filler clip will be injected to the current list,
+            // original clip get new begin and seek value, to keep everything in sync.
+
+            if node.index.unwrap_or_default() < last_index {
+                player_control.current_list.lock().unwrap()[node.index.unwrap_or_default()].begin =
+                    Some(node.begin.unwrap_or_default() + filler_media.out);
+
+                player_control.current_list.lock().unwrap()[node.index.unwrap_or_default()].seek =
+                    node.seek + filler_media.out;
+            }
+
             node.source = filler_media.source;
-            node.out = duration;
+            node.seek = 0.0;
+            node.out = filler_media.out;
             node.duration = filler_media.duration;
             node.cmd = Some(loop_filler(&node));
             node.probe = filler_media.probe;
+
+            if node.out < duration - 1.0 && node.index.unwrap_or_default() < last_index {
+                player_control
+                    .current_list
+                    .lock()
+                    .unwrap()
+                    .insert(node.index.unwrap_or_default(), node.clone());
+
+                for (i, item) in (*player_control.current_list.lock().unwrap())
+                    .iter_mut()
+                    .enumerate()
+                {
+                    item.index = Some(i);
+                }
+            }
         } else if filler_source.is_file() {
             let probe = MediaProbe::new(&config.storage.filler.to_string_lossy());
 
