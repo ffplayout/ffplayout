@@ -228,8 +228,9 @@ async function status() {
         - animate timers
         - when clip end is reached call API again and set new values
     */
+
+    await playlistStore.playoutStat()
     playoutStatus()
-    playlistStore.playoutStat()
 
     async function setStatus(resolve: any) {
         /*
@@ -245,8 +246,8 @@ async function status() {
             return
         } else if ((playlistStore.playoutIsRunning && playlistStore.remainingSec < 0) || timeInSec % 30 === 0) {
             // When 30 seconds a passed, get new status.
+            await playlistStore.playoutStat()
             playoutStatus()
-            playlistStore.playoutStat()
         } else if (!playlistStore.playoutIsRunning) {
             playlistStore.remainingSec = 0
         }
@@ -256,28 +257,15 @@ async function status() {
     return new Promise((resolve) => setStatus(resolve))
 }
 
-async function playoutStatus() {
+function playoutStatus() {
     /*
-        Check if playout is running, when yes set css class.
+        When playout is running, set css class.
     */
-    const channel = configStore.configGui[configStore.configID].id
-
-    await $fetch(`/api/control/${channel}/process/`, {
-        method: 'POST',
-        headers: { ...contentType, ...authStore.authHeader },
-        body: JSON.stringify({ command: 'status' }),
-    })
-        .then((response: any) => {
-            if (response === 'active') {
-                isPlaying.value = 'is-playing'
-            } else {
-                playlistStore.playoutIsRunning = false
-                isPlaying.value = ''
-            }
-        })
-        .catch(() => {
-            isPlaying.value = ''
-        })
+    if (playlistStore.playoutIsRunning) {
+        isPlaying.value = 'is-playing'
+    } else {
+        isPlaying.value = ''
+    }
 }
 
 async function controlProcess(state: string) {
@@ -292,9 +280,9 @@ async function controlProcess(state: string) {
         body: JSON.stringify({ command: state }),
     })
 
-    setTimeout(() => {
+    setTimeout(async () => {
+        await playlistStore.playoutStat()
         playoutStatus()
-        playlistStore.playoutStat()
     }, 1000)
 }
 
@@ -313,9 +301,9 @@ async function controlPlayout(state: string) {
         body: JSON.stringify({ control: state }),
     })
 
-    setTimeout(() => {
+    setTimeout(async () => {
+        await playlistStore.playoutStat()
         playoutStatus()
-        playlistStore.playoutStat()
     }, 1000)
 }
 </script>

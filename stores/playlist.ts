@@ -25,7 +25,7 @@ export const usePlaylist = defineStore('playlist', {
         currentClipOut: 0,
         ingestRuns: false,
         remainingSec: 0,
-        playoutIsRunning: true,
+        playoutIsRunning: false,
     }),
 
     getters: {},
@@ -81,6 +81,7 @@ export const usePlaylist = defineStore('playlist', {
                         this.currentClipDuration = data.current_media.duration
                         this.currentClipIn = data.current_media.seek
                         this.currentClipOut = data.current_media.out
+                        this.remainingSec = data.remaining_sec
                         this.ingestRuns = data.ingest_runs
                     }
                 })
