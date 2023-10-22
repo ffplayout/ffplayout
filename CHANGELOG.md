@@ -1,5 +1,41 @@
 # Changelog
 
+## [0.20.0](https://github.com/ffplayout/ffplayout/releases/tag/v0.19.1) (2023-10-22)
+
+### ffplayout
+
+- run task on clip change, #276 [5bd1b2](https://github.com/ffplayout/ffplayout/commit/5bd1b23513d3cb0a9f6574626032acdd6627e790)
+- support filler folder [98d1d5](https://github.com/ffplayout/ffplayout/commit/98d1d5d606b3f90ebeb1f0cd54156ee820272dd2) [04353a](https://github.com/ffplayout/ffplayout/commit/04353a984d43e1059ee9808ee08700e8c5e1cb8b)
+- support log level as cmd argument [334f84](https://github.com/ffplayout/ffplayout/commit/334f842d1923e7150f0ed504fa85f4936c0213d7)
+-  add stream copy mode, fix #324 [b44efd](https://github.com/ffplayout/ffplayout/commit/b44efde8f1a771122c10f79e1a5da8ba724acd56)
+- replace realtime filter with readrate parameter for hls mode [4b18d41](https://github.com/ffplayout/ffplayout/commit/4b18d414b7437f48a3663e9e9b547e83ab605cda) (**!WARNING:** older ffmpeg versions will not work anymore! Now 5.0+ is needed.)
+- choice audio track index, fix #348 [1bfff2](https://github.com/ffplayout/ffplayout/commit/1bfff27b4b46405b52a428b38bd00fe4e9c3f78d)
+- fix boxborderw value [fef7d0](https://github.com/ffplayout/ffplayout/commit/fef7d04e65b6275b6bb6c5b813c83b8641051882)
+- stop decoder with SIGTERM signal, instead of kill on non windows systems [d2c72d](https://github.com/ffplayout/ffplayout/commit/d2c72d56fe0cc1cced14f8d1d1746f5224011499)
+- generate playlists based on template [0c51f8](https://github.com/ffplayout/ffplayout/commit/0c51f8303cd3eacdec8a0ac3abe9edd69e2271c2)
+- update chrono and fix audit warning [83cff6](https://github.com/ffplayout/ffplayout/commit/83cff609b3709f4621af506de2f8546099b8848c)
+- jump out from source loop when playout is terminated [cf6e56](https://github.com/ffplayout/ffplayout/commit/cf6e5663e98eb52bc84c0e9e5856943ddefc24d9)
+- fix program hang when mail sending not work [38e73a](https://github.com/ffplayout/ffplayout/commit/38e73a0138430fc600ae809356127941e1f08eb2)
+
+### frontend
+
+- option to add user [debb75](https://github.com/ffplayout/ffplayout/commit/debb751428239f2d0ac446a0b9a805cd1ec4a965)
+- fix adit alert, get status from playout stat [50bee9](https://github.com/ffplayout/ffplayout-frontend/commit/50bee93c8555b14181864a654239f7e68c50cafb)
+- restart modal for config save [2f3234](https://github.com/ffplayout/ffplayout-frontend/commit/2f3234221a0aef8e70d9e2b5e9bbfb1fe51921fc)
+- add advanced playlist generator, update packages [806d53](https://github.com/ffplayout/ffplayout-frontend/commit/806d533bc2a84fc994897371071c4399172fa639)
+
+
+## [0.19.1](https://github.com/ffplayout/ffplayout/releases/tag/v0.19.1) (2023-10-08)
+
+### ffplayout
+
+- remove openssl dependencies [813e48f](https://github.com/ffplayout/ffplayout/commit/813e48fd54a6482eb09ec418e507733d689663d9)
+- update packages [0808fb](https://github.com/ffplayout/ffplayout/commit/0808fb29ab8db17cf1d251336cc90c1db7aa92e0)
+
+### frontend
+
+-  fix preview in player #397 [943cf9](https://github.com/ffplayout/ffplayout/commit/943cf90e15edc0efdb9abf0703cc6addbd3dfecc)
+
 ## [0.19.0](https://github.com/ffplayout/ffplayout/releases/tag/v0.19.0) (2023-07-19)
 
 ### ffplayout
