@@ -20,7 +20,7 @@
 ### frontend
 
 - option to add user [debb75](https://github.com/ffplayout/ffplayout/commit/debb751428239f2d0ac446a0b9a805cd1ec4a965)
-- fix adit alert, get status from playout stat [50bee9](https://github.com/ffplayout/ffplayout-frontend/commit/50bee93c8555b14181864a654239f7e68c50cafb)
+- fix audit alert, get status from playout stat [50bee9](https://github.com/ffplayout/ffplayout-frontend/commit/50bee93c8555b14181864a654239f7e68c50cafb)
 - restart modal for config save [2f3234](https://github.com/ffplayout/ffplayout-frontend/commit/2f3234221a0aef8e70d9e2b5e9bbfb1fe51921fc)
 - add advanced playlist generator, update packages [806d53](https://github.com/ffplayout/ffplayout-frontend/commit/806d533bc2a84fc994897371071c4399172fa639)
 
