@@ -88,11 +88,7 @@ pub fn db_path() -> Result<&'static str, Box<dyn std::error::Error>> {
         db_path = "./assets/ffplayout.db";
     }
 
-    if Path::new(db_path).is_file() {
-        return Ok(db_path);
-    }
-
-    Err(format!("DB path {db_path} not exists!").into())
+    Ok(db_path)
 }
 
 pub async fn run_args(mut args: Args) -> Result<(), i32> {
