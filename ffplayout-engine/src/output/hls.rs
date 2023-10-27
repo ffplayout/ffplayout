@@ -28,7 +28,7 @@ use std::{
 use simplelog::*;
 
 use crate::input::source_generator;
-use crate::utils::{log_line, prepare_output_cmd, valid_stream};
+use crate::utils::{log_line, prepare_output_cmd, task_runner, valid_stream};
 use ffplayout_lib::{
     utils::{
         controller::ProcessUnit::*, get_delta, sec_to_time, stderr_reader, test_tcp_port, Media,
@@ -161,8 +161,8 @@ pub fn write_hls(
     for node in get_source {
         *player_control.current_media.lock().unwrap() = Some(node.clone());
 
-        let mut cmd = match node.cmd {
-            Some(cmd) => cmd,
+        let mut cmd = match &node.cmd {
+            Some(cmd) => cmd.clone(),
             None => break,
         };
 
@@ -175,6 +175,21 @@ pub fn write_hls(
             sec_to_time(node.out - node.seek),
             node.source
         );
+
+        if config.task.enable {
+            let task_config = config.clone();
+            let task_node = node.clone();
+            let server_running = proc_control.server_is_running.load(Ordering::SeqCst);
+
+            if config.task.path.is_file() {
+                thread::spawn(move || task_runner::run(task_config, task_node, server_running));
+            } else {
+                error!(
+                    "<bright-blue>{:?}</> executable not exists!",
+                    config.task.path
+                );
+            }
+        }
 
         let mut enc_prefix = vec_strings!["-hide_banner", "-nostats", "-v", &ff_log_format];
 
