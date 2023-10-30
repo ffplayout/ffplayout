@@ -987,7 +987,7 @@ function setPreviewData(path: string) {
     }
 
     previewName.value = fullPath.split('/').slice(-1)[0]
-    previewUrl.value = encodeURIComponent(`${fullPath}`).replace(/%2F/g, '/')
+    previewUrl.value = encodeURIComponent(`/file/${configStore.configGui[configStore.configID].id}${fullPath}`).replace(/%2F/g, '/')
 
     const ext = previewName.value.split('.').slice(-1)[0].toLowerCase()
 
