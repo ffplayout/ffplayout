@@ -1,4 +1,4 @@
-use std::{path::Path, process::exit, sync::{Arc, Mutex}};
+use std::{path::Path, process::exit};
 
 use actix_files::Files;
 use actix_web::{dev::ServiceRequest, middleware, web, App, Error, HttpMessage, HttpServer};
@@ -12,10 +12,7 @@ pub mod api;
 pub mod db;
 pub mod utils;
 
-use api::{
-    auth,
-    routes::*,
-};
+use api::{auth, routes::*};
 use db::{db_pool, models::LoginUser};
 use utils::{args_parse::Args, control::ProcessControl, db_path, init_config, run_args, Role};
 
@@ -85,7 +82,6 @@ async fn main() -> std::io::Result<()> {
         let addr = ip_port[0];
         let port = ip_port[1].parse::<u16>().unwrap();
         let engine_process = web::Data::new(ProcessControl::new());
-        let global_config = Arc::new(Mutex::new(config));
 
         info!("running ffplayout API, listen on {conn}");
 
@@ -93,11 +89,9 @@ async fn main() -> std::io::Result<()> {
         HttpServer::new(move || {
             let auth = HttpAuthentication::bearer(validator);
             let db_pool = web::Data::new(pool.clone());
-            let global = web::Data::new(global_config.clone());
 
             App::new()
                 .app_data(db_pool)
-                .app_data(global)
                 .app_data(engine_process.clone())
                 .wrap(middleware::Logger::default())
                 .service(login)
@@ -134,10 +128,10 @@ async fn main() -> std::io::Result<()> {
                         .service(move_rename)
                         .service(remove)
                         .service(save_file)
-                        .service(get_file)
                         .service(import_playlist)
                         .service(get_program),
                 )
+                .service(get_file)
                 .service(Files::new("/", public_path()).index_file("index.html"))
         })
         .bind((addr, port))?

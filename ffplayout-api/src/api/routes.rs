@@ -8,7 +8,7 @@
 ///
 /// For all endpoints an (Bearer) authentication is required.\
 /// `{id}` represent the channel id, and at default is 1.
-use std::{collections::HashMap, env, fs, path::PathBuf, sync::{Arc, Mutex}};
+use std::{collections::HashMap, env, fs, path::PathBuf};
 
 use actix_files;
 use actix_multipart::Multipart;
@@ -18,7 +18,7 @@ use actix_web::{
         header::{ContentDisposition, DispositionType},
         StatusCode,
     },
-    patch, post, put, web,  Error, HttpRequest, HttpResponse, Responder,
+    patch, post, put, web, HttpRequest, HttpResponse, Responder,
 };
 use actix_web_grants::{permissions::AuthDetails, proc_macro::has_any_role};
 
@@ -46,7 +46,7 @@ use crate::utils::{
     },
     naive_date_time_from_str,
     playlist::{delete_playlist, generate_playlist, read_playlist, write_playlist},
-    read_log_file, read_playout_config, Role,
+    playout_config, read_log_file, read_playout_config, Role,
 };
 use crate::{
     auth::{create_jwt, Claims},
@@ -447,7 +447,6 @@ async fn update_playout_config(
     pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
     data: web::Json<PlayoutConfig>,
-    config: web::Data<Arc<Mutex<PlayoutConfig>>>,
 ) -> Result<impl Responder, ServiceError> {
     if let Ok(channel) = handles::select_channel(&pool.into_inner(), &id).await {
         if let Ok(f) = std::fs::OpenOptions::new()
@@ -456,7 +455,6 @@ async fn update_playout_config(
             .open(channel.config_path)
         {
             serde_yaml::to_writer(f, &data).unwrap();
-            *config.lock().unwrap() = data.into_inner();
 
             return Ok("Update playout config success.");
         } else {
@@ -776,10 +774,8 @@ pub async fn gen_playlist(
     pool: web::Data<Pool<Sqlite>>,
     params: web::Path<(i32, String)>,
     data: Option<web::Json<PathsObj>>,
-    global_config: web::Data<Arc<Mutex<PlayoutConfig>>>,
 ) -> Result<impl Responder, ServiceError> {
-    let channel = handles::select_channel(&pool.into_inner(), &params.0).await?;
-    let mut config = global_config.lock().unwrap();
+    let (mut config, channel) = playout_config(&pool.into_inner(), &params.0).await?;
     config.general.generate = Some(vec![params.1.clone()]);
 
     if let Some(obj) = data {
@@ -932,15 +928,25 @@ async fn save_file(
     upload(&pool.into_inner(), *id, payload, &obj.path, false).await
 }
 
+/// **Get File**
+///
+/// Can be used for preview video files
+///
+/// ```BASH
+/// curl -X GET http://127.0.0.1:8787/file/1/path/to/file.mp4
+/// ```
 #[get("/file/{id}/{filename:.*}")]
-#[has_any_role("Role::Admin", "Role::User", type = "Role")]
-async fn get_file(req: HttpRequest, config: web::Data<Arc<Mutex<PlayoutConfig>>>,) -> Result<actix_files::NamedFile, Error> {
-    let storage_path = &config.lock().unwrap().storage.path;
+async fn get_file(
+    pool: web::Data<Pool<Sqlite>>,
+    req: HttpRequest,
+) -> Result<actix_files::NamedFile, ServiceError> {
+    let id: i32 = req.match_info().query("id").parse()?;
+    let (config, _) = playout_config(&pool.into_inner(), &id).await?;
+    let storage_path = config.storage.path;
     let file_path = req.match_info().query("filename");
-    let (path, _, _) = norm_abs_path(storage_path, file_path);
-    println!("{path:?}");
-
+    let (path, _, _) = norm_abs_path(&storage_path, file_path);
     let file = actix_files::NamedFile::open(path)?;
+
     Ok(file
         .use_last_modified(true)
         .set_content_disposition(ContentDisposition {
@@ -965,12 +971,11 @@ async fn import_playlist(
     id: web::Path<i32>,
     payload: Multipart,
     obj: web::Query<ImportObj>,
-    global_config: web::Data<Arc<Mutex<PlayoutConfig>>>,
 ) -> Result<HttpResponse, ServiceError> {
     let file = obj.file.file_name().unwrap_or_default();
     let path = env::temp_dir().join(file);
+    let (config, _) = playout_config(&pool.clone().into_inner(), &id).await?;
     let channel = handles::select_channel(&pool.clone().into_inner(), &id).await?;
-    let config = global_config.lock().unwrap();
 
     upload(&pool.into_inner(), *id, payload, &path, true).await?;
     import_file(&config, &obj.date, Some(channel.name), &path)?;
@@ -1008,9 +1013,8 @@ async fn get_program(
     pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
     obj: web::Query<ProgramObj>,
-    global_config: web::Data<Arc<Mutex<PlayoutConfig>>>,
 ) -> Result<impl Responder, ServiceError> {
-    let config = global_config.lock().unwrap();
+    let (config, _) = playout_config(&pool.clone().into_inner(), &id).await?;
     let start_sec = config.playlist.start_sec.unwrap();
     let mut days = 0;
     let mut program = vec![];

@@ -328,6 +328,14 @@ curl -X PUT http://127.0.0.1:8787/api/file/1/upload/ -H 'Authorization: Bearer <
 -F "file=@file.mp4"
 ```
 
+**Get File**
+
+Can be used for preview video files
+
+```BASH
+curl -X GET http://127.0.0.1:8787/file/1/path/to/file.mp4
+```
+
 **Import playlist**
 
 Import text/m3u file and convert it to a playlist
