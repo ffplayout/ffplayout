@@ -64,6 +64,12 @@ impl From<std::io::Error> for ServiceError {
     }
 }
 
+impl From<std::num::ParseIntError> for ServiceError {
+    fn from(err: std::num::ParseIntError) -> ServiceError {
+        ServiceError::BadRequest(err.to_string())
+    }
+}
+
 impl From<actix_web::error::BlockingError> for ServiceError {
     fn from(err: actix_web::error::BlockingError) -> ServiceError {
         ServiceError::BadRequest(err.to_string())

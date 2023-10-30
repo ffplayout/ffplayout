@@ -12,17 +12,7 @@ pub mod api;
 pub mod db;
 pub mod utils;
 
-use api::{
-    auth,
-    routes::{
-        add_channel, add_dir, add_preset, add_user, control_playout, del_playlist, delete_preset,
-        file_browser, gen_playlist, get_all_channels, get_channel, get_log, get_playlist,
-        get_playout_config, get_presets, get_program, get_user, import_playlist, login,
-        media_current, media_last, media_next, move_rename, patch_channel, process_control, remove,
-        remove_channel, save_file, save_playlist, send_text_message, update_playout_config,
-        update_preset, update_user,
-    },
-};
+use api::{auth, routes::*};
 use db::{db_pool, models::LoginUser};
 use utils::{args_parse::Args, control::ProcessControl, db_path, init_config, run_args, Role};
 
@@ -141,6 +131,7 @@ async fn main() -> std::io::Result<()> {
                         .service(import_playlist)
                         .service(get_program),
                 )
+                .service(get_file)
                 .service(Files::new("/", public_path()).index_file("index.html"))
         })
         .bind((addr, port))?

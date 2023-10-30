@@ -10,9 +10,18 @@
 /// `{id}` represent the channel id, and at default is 1.
 use std::{collections::HashMap, env, fs, path::PathBuf};
 
+use actix_files;
 use actix_multipart::Multipart;
-use actix_web::{delete, get, http::StatusCode, patch, post, put, web, HttpResponse, Responder};
+use actix_web::{
+    delete, get,
+    http::{
+        header::{ContentDisposition, DispositionType},
+        StatusCode,
+    },
+    patch, post, put, web, HttpRequest, HttpResponse, Responder,
+};
 use actix_web_grants::{permissions::AuthDetails, proc_macro::has_any_role};
+
 use argon2::{
     password_hash::{rand_core::OsRng, PasswordHash, SaltString},
     Argon2, PasswordHasher, PasswordVerifier,
@@ -785,7 +794,7 @@ pub async fn gen_playlist(
         config.general.template = obj.template.clone();
     }
 
-    match generate_playlist(config, channel.name).await {
+    match generate_playlist(config.to_owned(), channel.name).await {
         Ok(playlist) => Ok(web::Json(playlist)),
         Err(e) => Err(e),
     }
@@ -917,6 +926,33 @@ async fn save_file(
     obj: web::Query<FileObj>,
 ) -> Result<HttpResponse, ServiceError> {
     upload(&pool.into_inner(), *id, payload, &obj.path, false).await
+}
+
+/// **Get File**
+///
+/// Can be used for preview video files
+///
+/// ```BASH
+/// curl -X GET http://127.0.0.1:8787/file/1/path/to/file.mp4
+/// ```
+#[get("/file/{id}/{filename:.*}")]
+async fn get_file(
+    pool: web::Data<Pool<Sqlite>>,
+    req: HttpRequest,
+) -> Result<actix_files::NamedFile, ServiceError> {
+    let id: i32 = req.match_info().query("id").parse()?;
+    let (config, _) = playout_config(&pool.into_inner(), &id).await?;
+    let storage_path = config.storage.path;
+    let file_path = req.match_info().query("filename");
+    let (path, _, _) = norm_abs_path(&storage_path, file_path);
+    let file = actix_files::NamedFile::open(path)?;
+
+    Ok(file
+        .use_last_modified(true)
+        .set_content_disposition(ContentDisposition {
+            disposition: DispositionType::Attachment,
+            parameters: vec![],
+        }))
 }
 
 /// **Import playlist**
