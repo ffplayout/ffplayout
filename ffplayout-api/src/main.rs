@@ -1,4 +1,4 @@
-use std::{path::Path, process::exit};
+use std::{path::Path, process::exit, sync::{Arc, Mutex}};
 
 use actix_files::Files;
 use actix_web::{dev::ServiceRequest, middleware, web, App, Error, HttpMessage, HttpServer};
@@ -14,14 +14,7 @@ pub mod utils;
 
 use api::{
     auth,
-    routes::{
-        add_channel, add_dir, add_preset, add_user, control_playout, del_playlist, delete_preset,
-        file_browser, gen_playlist, get_all_channels, get_channel, get_log, get_playlist,
-        get_playout_config, get_presets, get_program, get_user, import_playlist, login,
-        media_current, media_last, media_next, move_rename, patch_channel, process_control, remove,
-        remove_channel, save_file, save_playlist, send_text_message, update_playout_config,
-        update_preset, update_user,
-    },
+    routes::*,
 };
 use db::{db_pool, models::LoginUser};
 use utils::{args_parse::Args, control::ProcessControl, db_path, init_config, run_args, Role};
@@ -92,6 +85,7 @@ async fn main() -> std::io::Result<()> {
         let addr = ip_port[0];
         let port = ip_port[1].parse::<u16>().unwrap();
         let engine_process = web::Data::new(ProcessControl::new());
+        let global_config = Arc::new(Mutex::new(config));
 
         info!("running ffplayout API, listen on {conn}");
 
@@ -99,9 +93,11 @@ async fn main() -> std::io::Result<()> {
         HttpServer::new(move || {
             let auth = HttpAuthentication::bearer(validator);
             let db_pool = web::Data::new(pool.clone());
+            let global = web::Data::new(global_config.clone());
 
             App::new()
                 .app_data(db_pool)
+                .app_data(global)
                 .app_data(engine_process.clone())
                 .wrap(middleware::Logger::default())
                 .service(login)
@@ -138,6 +134,7 @@ async fn main() -> std::io::Result<()> {
                         .service(move_rename)
                         .service(remove)
                         .service(save_file)
+                        .service(get_file)
                         .service(import_playlist)
                         .service(get_program),
                 )
