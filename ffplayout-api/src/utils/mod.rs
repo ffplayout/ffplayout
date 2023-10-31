@@ -1,4 +1,5 @@
 use std::{
+    env,
     error::Error,
     fs::{self, File},
     io::{stdin, stdout, Write},
@@ -8,6 +9,7 @@ use std::{
 use chrono::{format::ParseErrorKind, prelude::*};
 use faccess::PathExt;
 use once_cell::sync::OnceCell;
+use path_clean::PathClean;
 use rpassword::read_password;
 use serde::{de, Deserialize, Deserializer};
 use simplelog::*;
@@ -74,7 +76,27 @@ pub async fn init_config(conn: &Pool<Sqlite>) {
     INSTANCE.set(config).unwrap();
 }
 
-pub fn db_path() -> Result<&'static str, Box<dyn std::error::Error>> {
+pub fn db_path(db: Option<String>) -> Result<&'static str, Box<dyn std::error::Error>> {
+    if let Some(path) = db {
+        let path_buf = Path::new(&path);
+        let absolute_path = if path_buf.is_absolute() {
+            path_buf.to_path_buf()
+        } else {
+            env::current_dir()?.join(path_buf)
+        }
+        .clean();
+
+        if let Some(abs_path) = absolute_path.parent() {
+            if abs_path.writable() {
+                return Ok(Box::leak(
+                    absolute_path.to_string_lossy().to_string().into_boxed_str(),
+                ));
+            } else {
+                error!("Given database path is not writable!");
+            }
+        }
+    }
+
     let sys_path = Path::new("/usr/share/ffplayout/db");
     let mut db_path = "./ffplayout.db";
 
@@ -99,7 +121,7 @@ pub async fn run_args(mut args: Args) -> Result<(), i32> {
     }
 
     if args.init {
-        if let Err(e) = db_init(args.domain).await {
+        if let Err(e) = db_init(args.domain, &args.db).await {
             panic!("{e}");
         };
 
@@ -163,7 +185,7 @@ pub async fn run_args(mut args: Args) -> Result<(), i32> {
             token: None,
         };
 
-        match db_pool().await {
+        match db_pool(&args.db).await {
             Ok(conn) => {
                 if let Err(e) = insert_user(&conn, user).await {
                     error!("{e}");

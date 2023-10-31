@@ -79,15 +79,16 @@ async fn create_schema(conn: &Pool<Sqlite>) -> Result<SqliteQueryResult, sqlx::E
     sqlx::query(query).execute(conn).await
 }
 
-pub async fn db_init(domain: Option<String>) -> Result<&'static str, Box<dyn std::error::Error>> {
-    let db_path = db_path()?;
-
-    println!("--- db_path: {db_path:?}");
+pub async fn db_init(
+    domain: Option<String>,
+    db: &Option<String>,
+) -> Result<&'static str, Box<dyn std::error::Error>> {
+    let db_path = db_path(db.clone())?;
 
     if !Sqlite::database_exists(db_path).await.unwrap_or(false) {
         Sqlite::create_database(db_path).await.unwrap();
 
-        let pool = db_pool().await?;
+        let pool = db_pool(db).await?;
 
         match create_schema(&pool).await {
             Ok(_) => info!("Database created Successfully"),
@@ -129,7 +130,7 @@ pub async fn db_init(domain: Option<String>) -> Result<&'static str, Box<dyn std
         ('Scrolling Text', 'We have a very important announcement to make.', 'ifnot(ld(1),st(1,t));if(lt(t,ld(1)+1),w+4,w-w/12*mod(t-ld(1),12*(w+tw)/w))', '(h-line_h)*0.9',
             '24', '4', '#ffffff', '1', '#000000@0x80', '4', '1.0', '1');";
 
-    let pool = db_pool().await?;
+    let pool = db_pool(db).await?;
 
     sqlx::query(query)
         .bind(secret)

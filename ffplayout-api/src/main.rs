@@ -1,9 +1,11 @@
-use std::{path::Path, process::exit};
+use std::process::exit;
 
-use actix_files::Files;
-use actix_web::{dev::ServiceRequest, middleware, web, App, Error, HttpMessage, HttpServer};
+use actix_web::{
+    dev::ServiceRequest, middleware::Logger, web, App, Error, HttpMessage, HttpServer,
+};
 use actix_web_grants::permissions::AttachPermissions;
 use actix_web_httpauth::{extractors::bearer::BearerAuth, middleware::HttpAuthentication};
+use actix_web_static_files::ResourceFiles;
 
 use clap::Parser;
 use simplelog::*;
@@ -17,6 +19,8 @@ use db::{db_pool, models::LoginUser};
 use utils::{args_parse::Args, control::ProcessControl, db_path, init_config, run_args, Role};
 
 use ffplayout_lib::utils::{init_logging, PlayoutConfig};
+
+include!(concat!(env!("OUT_DIR"), "/generated.rs"));
 
 async fn validator(
     req: ServiceRequest,
@@ -36,18 +40,6 @@ async fn validator(
     }
 }
 
-fn public_path() -> &'static str {
-    if Path::new("/usr/share/ffplayout/public/").is_dir() {
-        return "/usr/share/ffplayout/public/";
-    }
-
-    if Path::new("./public/").is_dir() {
-        return "./public/";
-    }
-
-    "./ffplayout-frontend/.output/public/"
-}
-
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     let args = Args::parse();
@@ -64,7 +56,7 @@ async fn main() -> std::io::Result<()> {
         exit(c);
     }
 
-    let pool = match db_pool().await {
+    let pool = match db_pool(&args.db).await {
         Ok(p) => p,
         Err(e) => {
             error!("{e}");
@@ -73,7 +65,7 @@ async fn main() -> std::io::Result<()> {
     };
 
     if let Some(conn) = args.listen {
-        if db_path().is_err() {
+        if db_path(args.db).is_err() {
             error!("Database is not initialized! Init DB first and add admin user.");
             exit(1);
         }
@@ -89,11 +81,15 @@ async fn main() -> std::io::Result<()> {
         HttpServer::new(move || {
             let auth = HttpAuthentication::bearer(validator);
             let db_pool = web::Data::new(pool.clone());
+            let generated = generate();
+
+            let logger = Logger::new("%{r}a \"%r\" %s %b \"%{Referer}i\" \"%{User-Agent}i\" %T")
+                .exclude_regex(r"/_nuxt/*");
 
             App::new()
                 .app_data(db_pool)
                 .app_data(engine_process.clone())
-                .wrap(middleware::Logger::default())
+                .wrap(logger)
                 .service(login)
                 .service(
                     web::scope("/api")
@@ -132,7 +128,7 @@ async fn main() -> std::io::Result<()> {
                         .service(get_program),
                 )
                 .service(get_file)
-                .service(Files::new("/", public_path()).index_file("index.html"))
+                .service(ResourceFiles::new("/", generated))
         })
         .bind((addr, port))?
         .run()
