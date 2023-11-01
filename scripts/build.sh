@@ -3,21 +3,9 @@
 source $(dirname "$0")/man_create.sh
 target=$1
 
-echo "build frontend"
-echo
-
 if [ ! -f 'ffplayout-frontend/package.json' ]; then
     git submodule update --init
 fi
-
-yes | rm -rf public
-cd ffplayout-frontend
-
-npm install
-npm run generate
-cp -r .output/public ../public
-
-cd ..
 
 if [[ -n $target ]]; then
     targets=($target)

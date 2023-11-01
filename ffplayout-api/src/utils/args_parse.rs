@@ -8,6 +8,9 @@ pub struct Args {
     #[clap(short, long, help = "ask for user credentials")]
     pub ask: bool,
 
+    #[clap(long, help = "path to database file")]
+    pub db: Option<String>,
+
     #[clap(short, long, help = "Listen on IP:PORT, like: 127.0.0.1:8787")]
     pub listen: Option<String>,
 

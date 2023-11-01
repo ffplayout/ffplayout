@@ -112,11 +112,6 @@ assets = [
         "/usr/share/man/man1/",
         "644",
     ],
-    [
-        "../public/**/*",
-        "/usr/share/ffplayout/public/",
-        "644",
-    ],
 ]
 maintainer-scripts = "../debian/"
 systemd-units = { enable = false, unit-scripts = "../assets" }
@@ -188,11 +183,6 @@ assets = [
         "/usr/share/man/man1/",
         "644",
     ],
-    [
-        "../public/**/*",
-        "/usr/share/ffplayout/public/",
-        "644",
-    ],
 ]
 
 # REHL RPM PACKAGE
@@ -214,7 +204,6 @@ assets = [
     { source = "../assets/logo.png", dest = "/usr/share/ffplayout/logo.png", mode = "644" },
     { source = "../assets/ffplayout.yml", dest = "/usr/share/ffplayout/ffplayout.yml.orig", mode = "644" },
     { source = "../assets/ffplayout.conf", dest = "/usr/share/ffplayout/ffplayout.conf.example", mode = "644" },
-    { source = "../public/**/*", dest = "/usr/share/ffplayout/public/", mode = "644" },
     { source = "../debian/postinst", dest = "/usr/share/ffplayout/postinst", mode = "755" },
 ]
 auto-req = "no"

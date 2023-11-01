@@ -13,7 +13,7 @@ ffplayout provides ***.deb** and ***.rpm** packages, which makes it more easy to
 6. use a revers proxy for SSL, Port is **8787**.
 7. login with your browser, address without proxy would be: **http://[IP ADDRESS]:8787**
 
-Default location for playlists and media files are: **/var/lib/ffplayout/**. If you need to change them, the media storage folder needs a symlink to **/usr/share/ffplayout/public/**.
+Default location for playlists and media files are: **/var/lib/ffplayout/**.
 
 When you don't need the frontend and API, skip enable the systemd service **ffpapi**.
 
