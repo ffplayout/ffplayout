@@ -18,7 +18,7 @@ jobs:
           rustup component add clippy
 
       - name: Init Submodules
-        if: ${{ hashFiles('ffplayout-frontend/') != '' }}
+        if: ${{ hashFiles('ffplayout-frontend/package.json') == '' }}
         run: |
           git submodule update --init
           
