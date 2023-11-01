@@ -8,12 +8,20 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
+        with:
+          node-version: 18
       - name: On all Systems
         run: |
           rustup update stable
           rustup component add rustfmt
           rustup component add clippy
 
+      - name: Init Submodules
+        if: ${{ hashFiles('ffplayout-frontend/') != '' }}
+        run: |
+          git submodule update --init
+          
       - name: Use ffmpeg on Linux
         if: ${{ matrix.os == 'ubuntu-latest' }}
         uses: FedericoCarboni/setup-ffmpeg@v2
