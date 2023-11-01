@@ -18,9 +18,8 @@ jobs:
           rustup component add clippy
 
       - name: Init Submodules
-        if: ${{ hashFiles('ffplayout-frontend/package.json') == '' }}
         run: |
-          git submodule update --init
+          git submodule update --init --recursive
           
       - name: Use ffmpeg on Linux
         if: ${{ matrix.os == 'ubuntu-latest' }}
