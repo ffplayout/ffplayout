@@ -11,7 +11,7 @@ jobs:
       - uses: actions/setup-node@v3
         with:
           node-version: 18
-      - name: On all Systems
+      - name: Set Build Tools and update Rust
         run: |
           rustup update stable
           rustup component add rustfmt
