@@ -26,7 +26,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 simplelog = { version = "0.12", features = ["paris"] }
 tiny_http = { version = "0.12", default-features = false }
-zeromq = { git = "https://github.com/zeromq/zmq.rs.git", default-features = false, features = [
+zeromq = { version = "0.3", default-features = false, features = [
     "async-std-runtime",
     "tcp-transport",
 ] }

@@ -13,12 +13,7 @@ use crate::db::{
     db_pool,
     models::{Channel, TextPreset, User},
 };
-use crate::utils::{db_path, local_utc_offset, GlobalSettings};
-
-#[derive(Debug, sqlx::FromRow)]
-struct Role {
-    name: String,
-}
+use crate::utils::{db_path, local_utc_offset, GlobalSettings, Role};
 
 async fn create_schema(conn: &Pool<Sqlite>) -> Result<SqliteQueryResult, sqlx::Error> {
     let query = "PRAGMA foreign_keys = ON;
@@ -217,11 +212,11 @@ pub async fn select_last_channel(conn: &Pool<Sqlite>) -> Result<i32, sqlx::Error
     sqlx::query_scalar(query).fetch_one(conn).await
 }
 
-pub async fn select_role(conn: &Pool<Sqlite>, id: &i32) -> Result<String, sqlx::Error> {
+pub async fn select_role(conn: &Pool<Sqlite>, id: &i32) -> Result<Role, sqlx::Error> {
     let query = "SELECT name FROM roles WHERE id = $1";
     let result: Role = sqlx::query_as(query).bind(id).fetch_one(conn).await?;
 
-    Ok(result.name)
+    Ok(result)
 }
 
 pub async fn select_login(conn: &Pool<Sqlite>, user: &str) -> Result<User, sqlx::Error> {

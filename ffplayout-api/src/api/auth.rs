@@ -4,7 +4,7 @@ use chrono::{Duration, Utc};
 use jsonwebtoken::{self, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
 
-use crate::utils::GlobalSettings;
+use crate::utils::{GlobalSettings, Role};
 
 // Token lifetime
 const JWT_EXPIRATION_DAYS: i64 = 7;
@@ -13,12 +13,12 @@ const JWT_EXPIRATION_DAYS: i64 = 7;
 pub struct Claims {
     pub id: i32,
     pub username: String,
-    pub role: String,
+    pub role: Role,
     exp: i64,
 }
 
 impl Claims {
-    pub fn new(id: i32, username: String, role: String) -> Self {
+    pub fn new(id: i32, username: String, role: Role) -> Self {
         Self {
             id,
             username,

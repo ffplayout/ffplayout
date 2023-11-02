@@ -565,9 +565,9 @@ dependencies = [
 
 [[package]]
 name = "asynchronous-codec"
-version = "0.6.2"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4057f2c32adbb2fc158e22fb38433c8e9bbf76b75a4732c7c0cbaf695fb65568"
+checksum = "a860072022177f903e59730004fb5dc13db9275b79bb2aef7ba8ce831956c233"
 dependencies = [
  "bytes",
  "futures-sink",
@@ -1134,7 +1134,7 @@ checksum = "25cbce373ec4653f1a01a31e8a5e5ec0c622dc27ff9c4e6606eefef5cbbed4a5"
 
 [[package]]
 name = "ffplayout"
-version = "0.20.0-beta4"
+version = "0.20.0-beta5"
 dependencies = [
  "chrono",
  "clap",
@@ -1156,7 +1156,7 @@ dependencies = [
 
 [[package]]
 name = "ffplayout-api"
-version = "0.20.0-beta4"
+version = "0.20.0-beta5"
 dependencies = [
  "actix-files",
  "actix-multipart",
@@ -1192,7 +1192,7 @@ dependencies = [
 
 [[package]]
 name = "ffplayout-lib"
-version = "0.20.0-beta4"
+version = "0.20.0-beta5"
 dependencies = [
  "chrono",
  "crossbeam-channel",
@@ -3189,7 +3189,7 @@ dependencies = [
 
 [[package]]
 name = "tests"
-version = "0.20.0-beta4"
+version = "0.20.0-beta5"
 dependencies = [
  "chrono",
  "crossbeam-channel",
@@ -3755,8 +3755,9 @@ checksum = "2a0956f1ba7c7909bfb66c2e9e4124ab6f6482560f6628b5aaeba39207c9aad9"
 
 [[package]]
 name = "zeromq"
-version = "0.3.3"
-source = "git+https://github.com/zeromq/zmq.rs.git#7baeeffde9e4cb9741d1841cfdee5f00f354b578"
+version = "0.3.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2db35fbc7d9082d39a85c9831ec5dc7b7b135038d2f00bb5ff2a4c0275893da1"
 dependencies = [
  "async-std",
  "async-trait",

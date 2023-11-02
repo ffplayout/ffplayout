@@ -376,11 +376,17 @@ fn control_text(
 /// media info: get infos about current clip
 fn media_current(
     config: &PlayoutConfig,
+    playout_stat: &PlayoutStatus,
     play_control: &PlayerControl,
     proc: &ProcessControl,
 ) -> Response<Cursor<Vec<u8>>> {
     if let Some(media) = play_control.current_media.lock().unwrap().clone() {
-        let data_map = get_data_map(config, media, proc.server_is_running.load(Ordering::SeqCst));
+        let data_map = get_data_map(
+            config,
+            media,
+            playout_stat,
+            proc.server_is_running.load(Ordering::SeqCst),
+        );
 
         return json_response(data_map);
     };
@@ -389,14 +395,18 @@ fn media_current(
 }
 
 /// media info: get infos about next clip
-fn media_next(config: &PlayoutConfig, play_control: &PlayerControl) -> Response<Cursor<Vec<u8>>> {
+fn media_next(
+    config: &PlayoutConfig,
+    playout_stat: &PlayoutStatus,
+    play_control: &PlayerControl,
+) -> Response<Cursor<Vec<u8>>> {
     let index = play_control.current_index.load(Ordering::SeqCst);
     let current_list = play_control.current_list.lock().unwrap();
 
     if index < current_list.len() {
         let media = current_list[index].clone();
 
-        let data_map = get_data_map(config, media, false);
+        let data_map = get_data_map(config, media, playout_stat, false);
 
         return json_response(data_map);
     }
@@ -405,14 +415,18 @@ fn media_next(config: &PlayoutConfig, play_control: &PlayerControl) -> Response<
 }
 
 /// media info: get infos about last clip
-fn media_last(config: &PlayoutConfig, play_control: &PlayerControl) -> Response<Cursor<Vec<u8>>> {
+fn media_last(
+    config: &PlayoutConfig,
+    playout_stat: &PlayoutStatus,
+    play_control: &PlayerControl,
+) -> Response<Cursor<Vec<u8>>> {
     let index = play_control.current_index.load(Ordering::SeqCst);
     let current_list = play_control.current_list.lock().unwrap();
 
     if index > 1 && index - 2 < current_list.len() {
         let media = current_list[index - 2].clone();
 
-        let data_map = get_data_map(config, media, false);
+        let data_map = get_data_map(config, media, playout_stat, false);
 
         return json_response(data_map);
     }
@@ -464,13 +478,18 @@ fn build_response(
             } else if let Some(media_value) = data.get("media").and_then(|m| m.as_str()) {
                 match media_value {
                     "current" => {
-                        let _ = request.respond(media_current(config, play_control, proc_control));
+                        let _ = request.respond(media_current(
+                            config,
+                            playout_stat,
+                            play_control,
+                            proc_control,
+                        ));
                     }
                     "next" => {
-                        let _ = request.respond(media_next(config, play_control));
+                        let _ = request.respond(media_next(config, playout_stat, play_control));
                     }
                     "last" => {
-                        let _ = request.respond(media_last(config, play_control));
+                        let _ = request.respond(media_last(config, playout_stat, play_control));
                     }
                     _ => (),
                 }

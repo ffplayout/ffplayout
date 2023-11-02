@@ -170,7 +170,7 @@ pub async fn login(pool: web::Data<Pool<Sqlite>>, credentials: web::Json<User>) 
             {
                 let role = handles::select_role(&conn, &user.role_id.unwrap_or_default())
                     .await
-                    .unwrap_or_else(|_| "guest".to_string());
+                    .unwrap_or(Role::Guest);
                 let claims = Claims::new(user.id, user.username.clone(), role.clone());
 
                 if let Ok(token) = create_jwt(claims) {
@@ -340,7 +340,7 @@ async fn get_channel(
 /// curl -X GET http://127.0.0.1:8787/api/channels -H "Authorization: Bearer <TOKEN>"
 /// ```
 #[get("/channels")]
-#[has_any_role("Role::Admin", type = "Role")]
+#[has_any_role("Role::Admin", "Role::User", type = "Role")]
 async fn get_all_channels(pool: web::Data<Pool<Sqlite>>) -> Result<impl Responder, ServiceError> {
     if let Ok(channel) = handles::select_all_channels(&pool.into_inner()).await {
         return Ok(web::Json(channel));

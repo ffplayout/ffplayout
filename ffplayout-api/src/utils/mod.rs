@@ -1,9 +1,11 @@
 use std::{
     env,
     error::Error,
+    fmt,
     fs::{self, File},
     io::{stdin, stdout, Write},
     path::Path,
+    str::FromStr,
 };
 
 use chrono::{format::ParseErrorKind, prelude::*};
@@ -11,9 +13,9 @@ use faccess::PathExt;
 use once_cell::sync::OnceCell;
 use path_clean::PathClean;
 use rpassword::read_password;
-use serde::{de, Deserialize, Deserializer};
+use serde::{de, Deserialize, Deserializer, Serialize};
 use simplelog::*;
-use sqlx::{Pool, Sqlite};
+use sqlx::{sqlite::SqliteRow, FromRow, Pool, Row, Sqlite};
 
 pub mod args_parse;
 pub mod channels;
@@ -30,7 +32,7 @@ use crate::db::{
 use crate::utils::{args_parse::Args, errors::ServiceError};
 use ffplayout_lib::utils::{time_to_sec, PlayoutConfig};
 
-#[derive(Clone, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum Role {
     Admin,
     User,
@@ -43,6 +45,51 @@ impl Role {
             "admin" => Role::Admin,
             "user" => Role::User,
             _ => Role::Guest,
+        }
+    }
+}
+
+impl FromStr for Role {
+    type Err = String;
+
+    fn from_str(input: &str) -> Result<Self, Self::Err> {
+        match input {
+            "admin" => Ok(Self::Admin),
+            "user" => Ok(Self::User),
+            _ => Ok(Self::Guest),
+        }
+    }
+}
+
+impl fmt::Display for Role {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            Self::Admin => write!(f, "admin"),
+            Self::User => write!(f, "user"),
+            Self::Guest => write!(f, "guest"),
+        }
+    }
+}
+
+impl<'r> sqlx::decode::Decode<'r, ::sqlx::Sqlite> for Role
+where
+    &'r str: sqlx::decode::Decode<'r, sqlx::Sqlite>,
+{
+    fn decode(
+        value: <sqlx::Sqlite as sqlx::database::HasValueRef<'r>>::ValueRef,
+    ) -> Result<Role, Box<dyn Error + 'static + Send + Sync>> {
+        let value = <&str as sqlx::decode::Decode<sqlx::Sqlite>>::decode(value)?;
+
+        Ok(value.parse()?)
+    }
+}
+
+impl FromRow<'_, SqliteRow> for Role {
+    fn from_row(row: &SqliteRow) -> sqlx::Result<Self> {
+        match row.get("name") {
+            "admin" => Ok(Self::Admin),
+            "user" => Ok(Self::User),
+            _ => Ok(Self::Guest),
         }
     }
 }
