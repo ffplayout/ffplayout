@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import jwtDecode, { JwtPayload } from 'jwt-decode'
+import jwtDecode,  { type JwtPayload } from 'jwt-decode'
 
 interface JwtPayloadExt extends JwtPayload {
     role: string

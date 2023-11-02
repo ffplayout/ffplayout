@@ -54,7 +54,14 @@
             </form>
         </div>
 
-        <div id="userModal" ref="userModal" class="modal" tabindex="-1" aria-labelledby="userModalLabel" aria-hidden="true">
+        <div
+            id="userModal"
+            ref="userModal"
+            class="modal"
+            tabindex="-1"
+            aria-labelledby="userModalLabel"
+            aria-hidden="true"
+        >
             <div class="modal-dialog modal-dialog-centered">
                 <div class="modal-content">
                     <div class="modal-header">
@@ -87,7 +94,7 @@
                                 class="form-control"
                                 id="pass-input"
                                 aria-describedby="Password"
-                                v-model.number="user.password"
+                                v-model.string="user.password"
                                 required
                             />
                             <label for="confirm-input" class="form-label mt-2">Confirm Password</label>
@@ -96,9 +103,18 @@
                                 class="form-control"
                                 id="confirm-input"
                                 aria-describedby="Confirm Password"
-                                v-model.number="user.confirm"
+                                v-model.string="user.confirm"
                                 required
                             />
+                            <div class="form-check mt-3">
+                                <input
+                                    class="form-check-input"
+                                    type="checkbox"
+                                    id="isAdmin"
+                                    v-model.number="user.admin"
+                                />
+                                <label class="form-check-label" for="isAdmin">Admin</label>
+                            </div>
                         </div>
                         <div class="modal-footer">
                             <button type="reset" class="btn btn-primary" data-bs-dismiss="modal" aria-label="Cancel">
@@ -133,18 +149,28 @@ const user = ref({
     mail: '',
     password: '',
     confirm: '',
-    role_id: 1,
-})
+    admin: false,
+    role_id: 2,
+} as User)
 
 async function clearUser() {
     user.value.username = ''
     user.value.mail = ''
     user.value.password = ''
     user.value.confirm = ''
-    user.value.role_id = 1
+    user.value.admin = false,
+    user.value.role_id = 2
 }
 
 async function addUser() {
+    if (user.value.admin) {
+        user.value.role_id = 1
+    } else {
+        user.value.role_id = 2
+    }
+
+    delete user.value.admin
+
     if (user.value.password === user.value.confirm) {
         // @ts-ignore
         const modal = $bootstrap.Modal.getOrCreateInstance(userModal.value)
@@ -162,7 +188,6 @@ async function addUser() {
         }
 
         clearUser()
-
     } else {
         indexStore.alertVariant = 'alert-danger'
         indexStore.alertMsg = 'Password mismatch!'

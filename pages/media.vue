@@ -477,7 +477,6 @@ async function getPath(path: string) {
     browserIsLoading.value = false
 }
 
-
 function setPreviewData(path: string) {
     /*
         Set path and player options for video preview.

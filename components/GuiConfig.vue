@@ -112,7 +112,7 @@ async function addChannel() {
     newChannel.service = `ffplayout@${confName}.service`
 
     channels.push(newChannel)
-    configStore.configGui =channels
+    configStore.configGui = channels
     configStore.configID = configStore.configGui.length - 1
 }
 

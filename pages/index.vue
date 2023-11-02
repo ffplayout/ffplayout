@@ -18,7 +18,7 @@
                             <NuxtLink to="/media" class="btn btn-primary">Media</NuxtLink>
                             <NuxtLink to="/message" class="btn btn-primary">Message</NuxtLink>
                             <NuxtLink to="logging" class="btn btn-primary">Logging</NuxtLink>
-                            <NuxtLink to="/configure" class="btn btn-primary"> Configure </NuxtLink>
+                            <NuxtLink v-if="authStore.role.toLowerCase() == 'admin'" to="/configure" class="btn btn-primary"> Configure </NuxtLink>
                             <button class="btn btn-primary" @click="logout()">Logout</button>
                         </div>
                     </div>

@@ -36,7 +36,7 @@
                             <li class="nav-item">
                                 <NuxtLink class="btn btn-primary btn-sm" to="/logging">Logging</NuxtLink>
                             </li>
-                            <li class="nav-item">
+                            <li v-if="authStore.role.toLowerCase() == 'admin'" class="nav-item">
                                 <NuxtLink class="btn btn-primary btn-sm" to="/configure">Configure</NuxtLink>
                             </li>
                             <li v-if="configStore.configGui.length > 1" class="nav-item dropdown">

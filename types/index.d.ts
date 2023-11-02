@@ -16,6 +16,7 @@ declare global {
         mail: String
         password?: String
         confirm?: String
+        admin?: Boolean
         role_id?: Number
     }
 
