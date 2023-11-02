@@ -5,6 +5,11 @@ use actix_web::{
 };
 use actix_web_grants::permissions::AttachPermissions;
 use actix_web_httpauth::{extractors::bearer::BearerAuth, middleware::HttpAuthentication};
+
+#[cfg(debug_assertions)]
+use actix_files::Files;
+
+#[cfg(not(debug_assertions))]
 use actix_web_static_files::ResourceFiles;
 
 use clap::Parser;
@@ -20,6 +25,7 @@ use utils::{args_parse::Args, control::ProcessControl, db_path, init_config, run
 
 use ffplayout_lib::utils::{init_logging, PlayoutConfig};
 
+#[cfg(not(debug_assertions))]
 include!(concat!(env!("OUT_DIR"), "/generated.rs"));
 
 async fn validator(
@@ -81,12 +87,10 @@ async fn main() -> std::io::Result<()> {
         HttpServer::new(move || {
             let auth = HttpAuthentication::bearer(validator);
             let db_pool = web::Data::new(pool.clone());
-            let generated = generate();
-
             let logger = Logger::new("%{r}a \"%r\" %s %b \"%{Referer}i\" \"%{User-Agent}i\" %T")
                 .exclude_regex(r"/_nuxt/*");
 
-            App::new()
+            let mut web_app = App::new()
                 .app_data(db_pool)
                 .app_data(engine_process.clone())
                 .wrap(logger)
@@ -127,8 +131,25 @@ async fn main() -> std::io::Result<()> {
                         .service(import_playlist)
                         .service(get_program),
                 )
-                .service(get_file)
-                .service(ResourceFiles::new("/", generated))
+                .service(get_file);
+
+            #[cfg(not(debug_assertions))]
+            {
+                // in release mode embed frontend
+                let generated = generate();
+                web_app = web_app.service(ResourceFiles::new("/", generated));
+            }
+
+            #[cfg(debug_assertions)]
+            {
+                // in debug mode get frontend from path
+                web_app = web_app.service(
+                    Files::new("/", "./ffplayout-frontend/.output/public/")
+                        .index_file("index.html"),
+                );
+            }
+
+            web_app
         })
         .bind((addr, port))?
         .run()
