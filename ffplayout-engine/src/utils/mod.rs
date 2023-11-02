@@ -16,7 +16,7 @@ use ffplayout_lib::{
     filter::Filters,
     utils::{
         config::Template, get_sec, parse_log_level_filter, sec_to_time, time_to_sec, Media,
-        OutputMode::*, PlayoutConfig, ProcessMode::*,
+        OutputMode::*, PlayoutConfig, PlayoutStatus, ProcessMode::*,
     },
     vec_strings,
 };
@@ -258,10 +258,13 @@ pub fn get_media_map(media: Media) -> Value {
 pub fn get_data_map(
     config: &PlayoutConfig,
     media: Media,
+    playout_stat: &PlayoutStatus,
     server_is_running: bool,
 ) -> Map<String, Value> {
     let mut data_map = Map::new();
-    let begin = media.begin.unwrap_or(0.0);
+    let current_time = get_sec();
+    let shift = *playout_stat.time_shift.lock().unwrap();
+    let begin = media.begin.unwrap_or(0.0) - shift;
 
     data_map.insert("play_mode".to_string(), json!(config.processing.mode));
     data_map.insert("ingest_runs".to_string(), json!(server_is_running));
@@ -269,7 +272,7 @@ pub fn get_data_map(
     data_map.insert("start_sec".to_string(), json!(begin));
 
     if begin > 0.0 {
-        let played_time = get_sec() - begin;
+        let played_time = current_time - begin;
         let remaining_time = media.out - played_time;
 
         data_map.insert("start_time".to_string(), json!(sec_to_time(begin)));

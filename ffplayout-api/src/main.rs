@@ -16,7 +16,7 @@ pub mod utils;
 
 use api::{auth, routes::*};
 use db::{db_pool, models::LoginUser};
-use utils::{args_parse::Args, control::ProcessControl, db_path, init_config, run_args, Role};
+use utils::{args_parse::Args, control::ProcessControl, db_path, init_config, run_args};
 
 use ffplayout_lib::utils::{init_logging, PlayoutConfig};
 
@@ -29,7 +29,7 @@ async fn validator(
     // We just get permissions from JWT
     match auth::decode_jwt(credentials.token()).await {
         Ok(claims) => {
-            req.attach(vec![Role::set_role(&claims.role)]);
+            req.attach(vec![claims.role]);
 
             req.extensions_mut()
                 .insert(LoginUser::new(claims.id, claims.username));

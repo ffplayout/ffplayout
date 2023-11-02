@@ -277,8 +277,9 @@ impl CurrentProgram {
 
             // de-instance node to preserve original values in list
             let mut node_clone = nodes[index].clone();
+            node_clone.seek = time_sec
+                - (node_clone.begin.unwrap() - *self.playout_stat.time_shift.lock().unwrap());
 
-            node_clone.seek = time_sec - node_clone.begin.unwrap();
             self.current_node = handle_list_init(
                 &self.config,
                 node_clone,

@@ -144,6 +144,7 @@ pub fn write_hls(
     let config_clone = config.clone();
     let ff_log_format = format!("level+{}", config.logging.ffmpeg_level.to_lowercase());
     let play_stat = playout_stat.clone();
+    let play_stat2 = playout_stat.clone();
     let proc_control_c = proc_control.clone();
 
     let get_source = source_generator(
@@ -177,12 +178,15 @@ pub fn write_hls(
         );
 
         if config.task.enable {
-            let task_config = config.clone();
-            let task_node = node.clone();
-            let server_running = proc_control.server_is_running.load(Ordering::SeqCst);
-
             if config.task.path.is_file() {
-                thread::spawn(move || task_runner::run(task_config, task_node, server_running));
+                let task_config = config.clone();
+                let task_node = node.clone();
+                let server_running = proc_control.server_is_running.load(Ordering::SeqCst);
+                let stat = play_stat2.clone();
+
+                thread::spawn(move || {
+                    task_runner::run(task_config, task_node, stat, server_running)
+                });
             } else {
                 error!(
                     "<bright-blue>{:?}</> executable not exists!",

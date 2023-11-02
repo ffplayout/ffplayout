@@ -45,6 +45,7 @@ pub fn player(
     let mut buffer = [0; 65088];
     let mut live_on = false;
     let playlist_init = playout_stat.list_init.clone();
+    let play_stat = playout_stat.clone();
 
     // get source iterator
     let get_source = source_generator(
@@ -111,12 +112,15 @@ pub fn player(
         );
 
         if config.task.enable {
-            let task_config = config.clone();
-            let task_node = node.clone();
-            let server_running = proc_control.server_is_running.load(Ordering::SeqCst);
-
             if config.task.path.is_file() {
-                thread::spawn(move || task_runner::run(task_config, task_node, server_running));
+                let task_config = config.clone();
+                let task_node = node.clone();
+                let server_running = proc_control.server_is_running.load(Ordering::SeqCst);
+                let stat = play_stat.clone();
+
+                thread::spawn(move || {
+                    task_runner::run(task_config, task_node, stat, server_running)
+                });
             } else {
                 error!(
                     "<bright-blue>{:?}</> executable not exists!",
