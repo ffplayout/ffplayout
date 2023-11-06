@@ -137,7 +137,8 @@ async fn main() -> std::io::Result<()> {
             {
                 // in release mode embed frontend
                 let generated = generate();
-                web_app = web_app.service(ResourceFiles::new("/", generated));
+                web_app =
+                    web_app.service(ResourceFiles::new("/", generated).resolve_not_found_to_root());
             }
 
             #[cfg(debug_assertions)]
