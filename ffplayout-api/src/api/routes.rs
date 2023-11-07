@@ -27,6 +27,7 @@ use argon2::{
     Argon2, PasswordHasher, PasswordVerifier,
 };
 use chrono::{DateTime, Datelike, Duration, Local, NaiveDateTime, TimeZone, Utc};
+use path_clean::PathClean;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use simplelog::*;
@@ -46,7 +47,7 @@ use crate::utils::{
     },
     naive_date_time_from_str,
     playlist::{delete_playlist, generate_playlist, read_playlist, write_playlist},
-    playout_config, read_log_file, read_playout_config, Role,
+    playout_config, public_path, read_log_file, read_playout_config, system, Role,
 };
 use crate::{
     auth::{create_jwt, Claims},
@@ -955,6 +956,35 @@ async fn get_file(
         }))
 }
 
+/// **Get Public**
+///
+/// Can be used for HLS Playlist and other static files in public folder
+///
+/// ```BASH
+/// curl -X GET http://127.0.0.1:8787/live/stream.m3u8
+/// ```
+#[get("/{public:((live|preview|public).*|.*(ts|m3u8))}")]
+async fn get_public(public: web::Path<String>) -> Result<actix_files::NamedFile, ServiceError> {
+    let public_path = public_path();
+
+    let absolute_path = if public_path.is_absolute() {
+        public_path.to_path_buf()
+    } else {
+        env::current_dir()?.join(public_path)
+    }
+    .clean();
+
+    let path = absolute_path.join(public.as_str());
+    let file = actix_files::NamedFile::open(path)?;
+
+    Ok(file
+        .use_last_modified(true)
+        .set_content_disposition(ContentDisposition {
+            disposition: DispositionType::Attachment,
+            parameters: vec![],
+        }))
+}
+
 /// **Import playlist**
 ///
 /// Import text/m3u file and convert it to a playlist
@@ -1083,4 +1113,25 @@ async fn get_program(
     }
 
     Ok(web::Json(program))
+}
+
+/// ### System Statistics
+///
+/// Get statistics about CPU, Ram, Disk, etc. usage.
+///
+/// ```BASH
+/// curl -X GET http://127.0.0.1:8787/api/system
+/// -H 'Content-Type: application/json' -H 'Authorization: Bearer <TOKEN>'
+/// ```
+#[get("/system/{id}")]
+#[has_any_role("Role::Admin", "Role::User", type = "Role")]
+pub async fn get_system_stat(
+    pool: web::Data<Pool<Sqlite>>,
+    id: web::Path<i32>,
+) -> Result<impl Responder, ServiceError> {
+    let (config, _) = playout_config(&pool.clone().into_inner(), &id).await?;
+
+    let stat = web::block(move || system::stat(config)).await?;
+
+    Ok(web::Json(stat))
 }

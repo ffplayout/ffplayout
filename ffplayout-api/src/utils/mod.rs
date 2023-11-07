@@ -4,7 +4,7 @@ use std::{
     fmt,
     fs::{self, File},
     io::{stdin, stdout, Write},
-    path::Path,
+    path::{Path, PathBuf},
     str::FromStr,
 };
 
@@ -17,19 +17,22 @@ use serde::{de, Deserialize, Deserializer, Serialize};
 use simplelog::*;
 use sqlx::{sqlite::SqliteRow, FromRow, Pool, Row, Sqlite};
 
+use crate::ARGS;
+
 pub mod args_parse;
 pub mod channels;
 pub mod control;
 pub mod errors;
 pub mod files;
 pub mod playlist;
+pub mod system;
 
 use crate::db::{
     db_pool,
     handles::{db_init, insert_user, select_channel, select_global},
     models::{Channel, User},
 };
-use crate::utils::{args_parse::Args, errors::ServiceError};
+use crate::utils::errors::ServiceError;
 use ffplayout_lib::utils::{time_to_sec, PlayoutConfig};
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -123,13 +126,12 @@ pub async fn init_config(conn: &Pool<Sqlite>) {
     INSTANCE.set(config).unwrap();
 }
 
-pub fn db_path(db: Option<String>) -> Result<&'static str, Box<dyn std::error::Error>> {
-    if let Some(path) = db {
-        let path_buf = Path::new(&path);
-        let absolute_path = if path_buf.is_absolute() {
-            path_buf.to_path_buf()
+pub fn db_path() -> Result<&'static str, Box<dyn std::error::Error>> {
+    if let Some(path) = ARGS.db.clone() {
+        let absolute_path = if path.is_absolute() {
+            path
         } else {
-            env::current_dir()?.join(path_buf)
+            env::current_dir()?.join(path)
         }
         .clean();
 
@@ -160,7 +162,19 @@ pub fn db_path(db: Option<String>) -> Result<&'static str, Box<dyn std::error::E
     Ok(db_path)
 }
 
-pub async fn run_args(mut args: Args) -> Result<(), i32> {
+pub fn public_path() -> PathBuf {
+    let path = PathBuf::from("/usr/share/ffplayout/public/");
+
+    if path.is_dir() {
+        return path;
+    }
+
+    PathBuf::from("./public/")
+}
+
+pub async fn run_args() -> Result<(), i32> {
+    let mut args = ARGS.clone();
+
     if !args.init && args.listen.is_none() && !args.ask && args.username.is_none() {
         error!("Wrong number of arguments! Run ffpapi --help for more information.");
 
@@ -168,7 +182,7 @@ pub async fn run_args(mut args: Args) -> Result<(), i32> {
     }
 
     if args.init {
-        if let Err(e) = db_init(args.domain, &args.db).await {
+        if let Err(e) = db_init(args.domain).await {
             panic!("{e}");
         };
 
@@ -232,7 +246,7 @@ pub async fn run_args(mut args: Args) -> Result<(), i32> {
             token: None,
         };
 
-        match db_pool(&args.db).await {
+        match db_pool().await {
             Ok(conn) => {
                 if let Err(e) = insert_user(&conn, user).await {
                     error!("{e}");

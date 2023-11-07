@@ -3,6 +3,7 @@ use std::path::Path;
 use std::thread::sleep;
 use std::time::Duration;
 
+use local_ip_address::list_afinet_netifas;
 use sysinfo::{CpuExt, DiskExt, NetworkExt, System, SystemExt};
 
 pub fn byte_convert(num: f64) -> String {
@@ -87,7 +88,23 @@ struct SystemStat {
 }
 
 fn main() {
+    let network_interfaces = list_afinet_netifas().unwrap();
     let mut sys = System::new_all();
+
+    let mut interfaces = vec![];
+
+    for (name, ip) in network_interfaces.iter() {
+        if !ip.is_loopback() {
+            interfaces.push((name, ip))
+        }
+    }
+
+    if interfaces.len() > 1 {
+        interfaces = interfaces
+            .into_iter()
+            .filter(|i| i.1.is_ipv4())
+            .collect::<_>();
+    }
 
     loop {
         sys.refresh_all();
@@ -132,7 +149,7 @@ fn main() {
         let mut my_network = Network::default();
 
         for (interface_name, data) in sys.networks() {
-            if interface_name == "wlp5s0" {
+            if !interfaces.is_empty() && interface_name == interfaces[0].0 {
                 my_network.name = interface_name.clone();
                 my_network.current_in = byte_convert(data.received() as f64);
                 my_network.total_in = byte_convert(data.total_received() as f64);

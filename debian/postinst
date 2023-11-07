@@ -13,6 +13,7 @@ fi
 
 if [ ! -d "/usr/share/ffplayout/db" ]; then
     mkdir "/usr/share/ffplayout/db"
+    mkdir -p "/usr/share/ffplayout/public/live"
     mkdir -p "/var/lib/ffplayout/playlists"
     mkdir -p "/var/lib/ffplayout/tv-media"
 
