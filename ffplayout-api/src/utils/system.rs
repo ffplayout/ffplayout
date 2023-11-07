@@ -1,30 +1,31 @@
-use std::cmp;
+// use std::cmp;
 
 use local_ip_address::list_afinet_netifas;
 use serde::Serialize;
-use sysinfo::{CpuExt, DiskExt, NetworkExt, System, SystemExt};
+use sysinfo::{CpuExt, DiskExt, NetworkExt, SystemExt};
 
+use crate::SYS;
 use ffplayout_lib::utils::PlayoutConfig;
 
-pub fn byte_convert(num: f64) -> String {
-    let negative = if num.is_sign_positive() { "" } else { "-" };
-    let num = num.abs();
-    let units = ["B", "kiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB"];
-    if num < 1_f64 {
-        return format!("{negative}{num} B");
-    }
-    let delimiter = 1024_f64;
-    let exponent = cmp::min(
-        (num.ln() / delimiter.ln()).floor() as i32,
-        (units.len() - 1) as i32,
-    );
-    let pretty_bytes = format!("{:.3}", num / delimiter.powi(exponent))
-        .parse::<f64>()
-        .unwrap()
-        * 1_f64;
-    let unit = units[exponent as usize];
-    format!("{negative}{pretty_bytes} {unit}")
-}
+// pub fn byte_convert(num: f64) -> String {
+//     let negative = if num.is_sign_positive() { "" } else { "-" };
+//     let num = num.abs();
+//     let units = ["B", "kiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB"];
+//     if num < 1_f64 {
+//         return format!("{negative}{num} B");
+//     }
+//     let delimiter = 1024_f64;
+//     let exponent = cmp::min(
+//         (num.ln() / delimiter.ln()).floor() as i32,
+//         (units.len() - 1) as i32,
+//     );
+//     let pretty_bytes = format!("{:.3}", num / delimiter.powi(exponent))
+//         .parse::<f64>()
+//         .unwrap()
+//         * 1_f64;
+//     let unit = units[exponent as usize];
+//     format!("{negative}{pretty_bytes} {unit}")
+// }
 
 #[derive(Debug, Serialize)]
 pub struct Cpu {
@@ -35,8 +36,8 @@ pub struct Cpu {
 #[derive(Debug, Default, Serialize)]
 pub struct Storage {
     pub path: String,
-    pub total: String,
-    pub used: String,
+    pub total: u64,
+    pub used: u64,
 }
 
 #[derive(Debug, Serialize)]
@@ -48,18 +49,18 @@ pub struct Load {
 
 #[derive(Debug, Serialize)]
 pub struct Memory {
-    pub total: String,
-    pub used: String,
-    pub free: String,
+    pub total: u64,
+    pub used: u64,
+    pub free: u64,
 }
 
 #[derive(Debug, Default, Serialize)]
 pub struct Network {
     pub name: String,
-    pub current_in: String,
-    pub total_in: String,
-    pub current_out: String,
-    pub total_out: String,
+    pub current_in: u64,
+    pub total_in: u64,
+    pub current_out: u64,
+    pub total_out: u64,
 }
 
 #[derive(Debug, Serialize)]
@@ -71,9 +72,9 @@ pub struct MySystem {
 
 #[derive(Debug, Serialize)]
 pub struct Swap {
-    pub total: String,
-    pub used: String,
-    pub free: String,
+    pub total: u64,
+    pub used: u64,
+    pub free: u64,
 }
 
 #[derive(Debug, Serialize)]
@@ -88,8 +89,8 @@ pub struct SystemStat {
 }
 
 pub fn stat(config: PlayoutConfig) -> SystemStat {
+    let mut sys = SYS.lock().unwrap();
     let network_interfaces = list_afinet_netifas().unwrap();
-    let mut sys = System::new_all();
     let mut usage = 0.0;
     let mut interfaces = vec![];
 
@@ -121,8 +122,8 @@ pub fn stat(config: PlayoutConfig) -> SystemStat {
             && config.storage.path.starts_with(disk.mount_point())
         {
             storage.path = disk.name().to_string_lossy().to_string();
-            storage.total = byte_convert(disk.total_space() as f64);
-            storage.used = byte_convert(disk.available_space() as f64);
+            storage.total = disk.total_space();
+            storage.used = disk.available_space();
         }
     }
 
@@ -134,9 +135,9 @@ pub fn stat(config: PlayoutConfig) -> SystemStat {
     };
 
     let memory = Memory {
-        total: byte_convert(sys.total_memory() as f64),
-        used: byte_convert(sys.used_memory() as f64),
-        free: byte_convert((sys.total_memory() - sys.used_memory()) as f64),
+        total: sys.total_memory(),
+        used: sys.used_memory(),
+        free: sys.total_memory() - sys.used_memory(),
     };
 
     let mut network = Network::default();
@@ -144,17 +145,17 @@ pub fn stat(config: PlayoutConfig) -> SystemStat {
     for (interface_name, data) in sys.networks() {
         if !interfaces.is_empty() && interface_name == interfaces[0].0 {
             network.name = interface_name.clone();
-            network.current_in = byte_convert(data.received() as f64);
-            network.total_in = byte_convert(data.total_received() as f64);
-            network.current_out = byte_convert(data.transmitted() as f64);
-            network.total_out = byte_convert(data.total_transmitted() as f64);
+            network.current_in = data.received();
+            network.total_in = data.total_received();
+            network.current_out = data.transmitted();
+            network.total_out = data.total_transmitted();
         }
     }
 
     let swap = Swap {
-        total: byte_convert(sys.total_swap() as f64),
-        used: byte_convert(sys.used_swap() as f64),
-        free: byte_convert((sys.total_swap() - sys.used_swap()) as f64),
+        total: sys.total_swap(),
+        used: sys.used_swap(),
+        free: sys.total_swap() - sys.used_swap(),
     };
 
     let system = MySystem {

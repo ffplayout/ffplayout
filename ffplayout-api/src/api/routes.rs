@@ -50,7 +50,7 @@ use crate::utils::{
     playout_config, public_path, read_log_file, read_playout_config, system, Role,
 };
 use crate::{
-    auth::{create_jwt, Claims},
+    api::auth::{create_jwt, Claims},
     utils::control::ProcessControl,
 };
 use ffplayout_lib::{

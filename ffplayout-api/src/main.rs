@@ -12,8 +12,6 @@ use actix_files::Files;
 #[cfg(not(debug_assertions))]
 use actix_web_static_files::ResourceFiles;
 
-use clap::Parser;
-use lazy_static::lazy_static;
 use path_clean::PathClean;
 use simplelog::*;
 
@@ -23,8 +21,9 @@ pub mod utils;
 
 use api::{auth, routes::*};
 use db::{db_pool, models::LoginUser};
-use utils::{args_parse::Args, control::ProcessControl, db_path, init_config, run_args};
+use utils::{control::ProcessControl, db_path, init_config, run_args};
 
+use ffplayout_api::{ARGS, SYS};
 use ffplayout_lib::utils::{init_logging, PlayoutConfig};
 
 #[cfg(not(debug_assertions))]
@@ -46,10 +45,6 @@ async fn validator(
         }
         Err(e) => Err((e, req)),
     }
-}
-
-lazy_static! {
-    static ref ARGS: Args = Args::parse();
 }
 
 #[actix_web::main]
