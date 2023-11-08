@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use clap::Parser;
 
 #[derive(Parser, Debug, Clone)]
@@ -9,7 +11,10 @@ pub struct Args {
     pub ask: bool,
 
     #[clap(long, help = "path to database file")]
-    pub db: Option<String>,
+    pub db: Option<PathBuf>,
+
+    #[clap(long, help = "path to public files")]
+    pub public: Option<PathBuf>,
 
     #[clap(short, long, help = "Listen on IP:PORT, like: 127.0.0.1:8787")]
     pub listen: Option<String>,

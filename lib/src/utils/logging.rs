@@ -186,6 +186,8 @@ pub fn init_logging(
         .set_thread_level(LevelFilter::Off)
         .set_target_level(LevelFilter::Off)
         .add_filter_ignore_str("hyper")
+        .add_filter_ignore_str("libc")
+        .add_filter_ignore_str("neli")
         .add_filter_ignore_str("reqwest")
         .add_filter_ignore_str("rpc")
         .add_filter_ignore_str("rustls")

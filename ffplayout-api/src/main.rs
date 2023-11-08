@@ -1,4 +1,8 @@
-use std::process::exit;
+use std::{
+    env,
+    process::exit,
+    sync::{Arc, Mutex},
+};
 
 use actix_web::{
     dev::ServiceRequest, middleware::Logger, web, App, Error, HttpMessage, HttpServer,
@@ -13,7 +17,10 @@ use actix_files::Files;
 use actix_web_static_files::ResourceFiles;
 
 use clap::Parser;
+use lazy_static::lazy_static;
+use path_clean::PathClean;
 use simplelog::*;
+use sysinfo::{System, SystemExt};
 
 pub mod api;
 pub mod db;
@@ -27,6 +34,11 @@ use ffplayout_lib::utils::{init_logging, PlayoutConfig};
 
 #[cfg(not(debug_assertions))]
 include!(concat!(env!("OUT_DIR"), "/generated.rs"));
+
+lazy_static! {
+    pub static ref ARGS: Args = Args::parse();
+    pub static ref SYS: Arc<Mutex<System>> = Arc::new(Mutex::new(System::new_all()));
+}
 
 async fn validator(
     req: ServiceRequest,
@@ -48,8 +60,6 @@ async fn validator(
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    let args = Args::parse();
-
     let mut config = PlayoutConfig::new(None);
     config.mail.recipient = String::new();
     config.logging.log_to_file = false;
@@ -58,11 +68,11 @@ async fn main() -> std::io::Result<()> {
     let logging = init_logging(&config, None, None);
     CombinedLogger::init(logging).unwrap();
 
-    if let Err(c) = run_args(args.clone()).await {
+    if let Err(c) = run_args().await {
         exit(c);
     }
 
-    let pool = match db_pool(&args.db).await {
+    let pool = match db_pool().await {
         Ok(p) => p,
         Err(e) => {
             error!("{e}");
@@ -70,8 +80,8 @@ async fn main() -> std::io::Result<()> {
         }
     };
 
-    if let Some(conn) = args.listen {
-        if db_path(args.db).is_err() {
+    if let Some(conn) = &ARGS.listen {
+        if db_path().is_err() {
             error!("Database is not initialized! Init DB first and add admin user.");
             exit(1);
         }
@@ -129,15 +139,30 @@ async fn main() -> std::io::Result<()> {
                         .service(remove)
                         .service(save_file)
                         .service(import_playlist)
-                        .service(get_program),
+                        .service(get_program)
+                        .service(get_system_stat),
                 )
                 .service(get_file);
+
+            if let Some(public) = &ARGS.public {
+                let absolute_path = if public.is_absolute() {
+                    public.to_path_buf()
+                } else {
+                    env::current_dir().unwrap_or_default().join(public)
+                }
+                .clean();
+
+                web_app = web_app.service(Files::new("/", absolute_path));
+            } else {
+                web_app = web_app.service(get_public);
+            }
 
             #[cfg(not(debug_assertions))]
             {
                 // in release mode embed frontend
                 let generated = generate();
-                web_app = web_app.service(ResourceFiles::new("/", generated));
+                web_app =
+                    web_app.service(ResourceFiles::new("/", generated).resolve_not_found_to_root());
             }
 
             #[cfg(debug_assertions)]
