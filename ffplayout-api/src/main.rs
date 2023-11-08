@@ -4,14 +4,12 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use actix_files::Files;
 use actix_web::{
     dev::ServiceRequest, middleware::Logger, web, App, Error, HttpMessage, HttpServer,
 };
 use actix_web_grants::permissions::AttachPermissions;
 use actix_web_httpauth::{extractors::bearer::BearerAuth, middleware::HttpAuthentication};
-
-#[cfg(debug_assertions)]
-use actix_files::Files;
 
 #[cfg(not(debug_assertions))]
 use actix_web_static_files::ResourceFiles;
