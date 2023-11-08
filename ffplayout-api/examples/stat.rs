@@ -1,11 +1,18 @@
-// use std::cmp;
+use std::{
+    path::Path,
+    sync::{Arc, Mutex},
+    thread::sleep,
+    time::Duration,
+};
 
+use lazy_static::lazy_static;
 use local_ip_address::list_afinet_netifas;
 use serde::Serialize;
-use sysinfo::{CpuExt, DiskExt, NetworkExt, SystemExt};
+use sysinfo::{CpuExt, DiskExt, NetworkExt, System, SystemExt};
 
-use crate::SYS;
-use ffplayout_lib::utils::PlayoutConfig;
+lazy_static! {
+    pub static ref SYS: Arc<Mutex<System>> = Arc::new(Mutex::new(System::new_all()));
+}
 
 #[derive(Debug, Serialize)]
 pub struct Cpu {
@@ -68,9 +75,9 @@ pub struct SystemStat {
     pub system: MySystem,
 }
 
-pub fn stat(config: PlayoutConfig) -> SystemStat {
+pub fn stat() -> SystemStat {
     let mut sys = SYS.lock().unwrap();
-    let network_interfaces = list_afinet_netifas().unwrap_or_default();
+    let network_interfaces = list_afinet_netifas().unwrap();
     let mut usage = 0.0;
     let mut interfaces = vec![];
 
@@ -102,7 +109,7 @@ pub fn stat(config: PlayoutConfig) -> SystemStat {
 
     for disk in sys.disks() {
         if disk.mount_point().to_string_lossy().len() > 1
-            && config.storage.path.starts_with(disk.mount_point())
+            && Path::new("/home").starts_with(disk.mount_point())
         {
             storage.path = disk.name().to_string_lossy().to_string();
             storage.total = disk.total_space();
@@ -155,5 +162,15 @@ pub fn stat(config: PlayoutConfig) -> SystemStat {
         network,
         system,
         swap,
+    }
+}
+
+fn main() {
+    loop {
+        let system_stat = stat();
+        print!("{esc}[2J{esc}[1;1H", esc = 27 as char);
+        println!("{system_stat:#?}");
+
+        sleep(Duration::from_secs(1))
     }
 }
