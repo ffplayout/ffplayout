@@ -16,7 +16,7 @@ chrono = "0.4"
 crossbeam-channel = "0.5"
 ffprobe = "0.3"
 file-rotate = "0.7.0"
-lettre = { version = "0.10", features = ["builder", "rustls-tls", "smtp-transport"], default-features = false }
+lettre = { version = "0.11", features = ["builder", "rustls-tls", "smtp-transport"], default-features = false }
 log = "0.4"
 rand = "0.8"
 regex = "1"
