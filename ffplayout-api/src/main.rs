@@ -1,4 +1,8 @@
-use std::{env, process::exit};
+use std::{
+    env,
+    process::exit,
+    sync::{Arc, Mutex},
+};
 
 use actix_web::{
     dev::ServiceRequest, middleware::Logger, web, App, Error, HttpMessage, HttpServer,
@@ -12,8 +16,11 @@ use actix_files::Files;
 #[cfg(not(debug_assertions))]
 use actix_web_static_files::ResourceFiles;
 
+use clap::Parser;
+use lazy_static::lazy_static;
 use path_clean::PathClean;
 use simplelog::*;
+use sysinfo::{System, SystemExt};
 
 pub mod api;
 pub mod db;
@@ -21,13 +28,17 @@ pub mod utils;
 
 use api::{auth, routes::*};
 use db::{db_pool, models::LoginUser};
-use utils::{control::ProcessControl, db_path, init_config, run_args};
+use utils::{args_parse::Args, control::ProcessControl, db_path, init_config, run_args};
 
-use ffplayout_api::{ARGS, SYS};
 use ffplayout_lib::utils::{init_logging, PlayoutConfig};
 
 #[cfg(not(debug_assertions))]
 include!(concat!(env!("OUT_DIR"), "/generated.rs"));
+
+lazy_static! {
+    pub static ref ARGS: Args = Args::parse();
+    pub static ref SYS: Arc<Mutex<System>> = Arc::new(Mutex::new(System::new_all()));
+}
 
 async fn validator(
     req: ServiceRequest,

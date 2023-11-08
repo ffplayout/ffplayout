@@ -1,96 +1,73 @@
-use std::cmp;
-use std::path::Path;
-use std::thread::sleep;
-use std::time::Duration;
+use std::{path::Path, thread::sleep, time::Duration};
 
 use local_ip_address::list_afinet_netifas;
+use serde::Serialize;
 use sysinfo::{CpuExt, DiskExt, NetworkExt, System, SystemExt};
 
-pub fn byte_convert(num: f64) -> String {
-    let negative = if num.is_sign_positive() { "" } else { "-" };
-    let num = num.abs();
-    let units = ["B", "kiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB"];
-    if num < 1_f64 {
-        return format!("{negative}{num} B");
-    }
-    let delimiter = 1024_f64;
-    let exponent = cmp::min(
-        (num.ln() / delimiter.ln()).floor() as i32,
-        (units.len() - 1) as i32,
-    );
-    let pretty_bytes = format!("{:.3}", num / delimiter.powi(exponent))
-        .parse::<f64>()
-        .unwrap()
-        * 1_f64;
-    let unit = units[exponent as usize];
-    format!("{negative}{pretty_bytes} {unit}")
+#[derive(Debug, Serialize)]
+pub struct Cpu {
+    pub cores: f32,
+    pub usage: f32,
 }
 
-#[derive(Debug)]
-struct Cpu {
-    cores: f32,
-    usage: f32,
+#[derive(Debug, Default, Serialize)]
+pub struct Storage {
+    pub path: String,
+    pub total: u64,
+    pub used: u64,
 }
 
-#[derive(Debug, Default)]
-struct Disk {
-    name: String,
-    total: String,
-    used: String,
+#[derive(Debug, Serialize)]
+pub struct Load {
+    pub one: f64,
+    pub five: f64,
+    pub fifteen: f64,
 }
 
-#[derive(Debug)]
-struct Load {
-    one: f64,
-    five: f64,
-    fifteen: f64,
+#[derive(Debug, Serialize)]
+pub struct Memory {
+    pub total: u64,
+    pub used: u64,
+    pub free: u64,
 }
 
-#[derive(Debug)]
-struct Memory {
-    total: String,
-    used: String,
-    free: String,
+#[derive(Debug, Default, Serialize)]
+pub struct Network {
+    pub name: String,
+    pub current_in: u64,
+    pub total_in: u64,
+    pub current_out: u64,
+    pub total_out: u64,
 }
 
-#[derive(Debug, Default)]
-struct Network {
-    name: String,
-    current_in: String,
-    total_in: String,
-    current_out: String,
-    total_out: String,
+#[derive(Debug, Serialize)]
+pub struct MySystem {
+    pub name: Option<String>,
+    pub kernel: Option<String>,
+    pub version: Option<String>,
 }
 
-#[derive(Debug)]
-struct MySystem {
-    name: Option<String>,
-    kernel: Option<String>,
-    version: Option<String>,
+#[derive(Debug, Serialize)]
+pub struct Swap {
+    pub total: u64,
+    pub used: u64,
+    pub free: u64,
 }
 
-#[derive(Debug)]
-struct Swap {
-    total: String,
-    used: String,
-    free: String,
+#[derive(Debug, Serialize)]
+pub struct SystemStat {
+    pub cpu: Cpu,
+    pub load: Load,
+    pub memory: Memory,
+    pub network: Network,
+    pub storage: Storage,
+    pub swap: Swap,
+    pub system: MySystem,
 }
 
-#[derive(Debug)]
-struct SystemStat {
-    cpu: Cpu,
-    disk: Disk,
-    load: Load,
-    memory: Memory,
-    network: Network,
-    swap: Swap,
-    system: MySystem,
-}
-
-fn main() {
+pub fn stat(sys: &mut System) -> SystemStat {
     let network_interfaces = list_afinet_netifas().unwrap();
-    let mut sys = System::new_all();
-
+    let mut usage = 0.0;
     let mut interfaces = vec![];
 
     for (name, ip) in network_interfaces.iter() {
@@ -99,87 +76,89 @@ fn main() {
         }
     }
 
-    if interfaces.len() > 1 {
-        interfaces = interfaces
-            .into_iter()
-            .filter(|i| i.1.is_ipv4())
-            .collect::<_>();
+    interfaces.dedup_by(|a, b| a.0 == b.0);
+
+    sys.refresh_cpu();
+    sys.refresh_disks();
+    sys.refresh_memory();
+    sys.refresh_networks();
+
+    let cores = sys.cpus().len() as f32;
+
+    for cpu in sys.cpus() {
+        usage += cpu.cpu_usage();
     }
 
+    let cpu = Cpu {
+        cores,
+        usage: usage * cores / 100.0,
+    };
+
+    let mut storage = Storage::default();
+
+    for disk in sys.disks() {
+        if disk.mount_point().to_string_lossy().len() > 1
+            && Path::new("/home").starts_with(disk.mount_point())
+        {
+            storage.path = disk.name().to_string_lossy().to_string();
+            storage.total = disk.total_space();
+            storage.used = disk.available_space();
+        }
+    }
+
+    let load_avg = sys.load_average();
+    let load = Load {
+        one: load_avg.one,
+        five: load_avg.five,
+        fifteen: load_avg.fifteen,
+    };
+
+    let memory = Memory {
+        total: sys.total_memory(),
+        used: sys.used_memory(),
+        free: sys.free_memory(),
+    };
+
+    let mut network = Network::default();
+
+    for (interface_name, data) in sys.networks() {
+        if !interfaces.is_empty() && interface_name == interfaces[0].0 {
+            network.name = interface_name.clone();
+            network.current_in = data.received();
+            network.total_in = data.total_received();
+            network.current_out = data.transmitted();
+            network.total_out = data.total_transmitted();
+        }
+    }
+
+    let swap = Swap {
+        total: sys.total_swap(),
+        used: sys.used_swap(),
+        free: sys.free_swap(),
+    };
+
+    let system = MySystem {
+        name: sys.name(),
+        kernel: sys.kernel_version(),
+        version: sys.os_version(),
+    };
+
+    SystemStat {
+        cpu,
+        storage,
+        load,
+        memory,
+        network,
+        system,
+        swap,
+    }
+}
+
+fn main() {
+    let mut sys = System::new_all();
+
     loop {
-        sys.refresh_all();
-
-        let mut usage = 0.0;
-        let cores = sys.cpus().len() as f32;
-
-        for cpu in sys.cpus() {
-            usage += cpu.cpu_usage();
-        }
-
-        let my_cpu = Cpu {
-            cores,
-            usage: usage * cores / 100.0,
-        };
-
-        let mut my_disk = Disk::default();
-
-        for disk in sys.disks() {
-            if disk.mount_point().to_string_lossy().len() > 1
-                && Path::new("/home/jb/Videos").starts_with(disk.mount_point())
-            {
-                my_disk.name = disk.name().to_string_lossy().to_string();
-                my_disk.total = byte_convert(disk.total_space() as f64);
-                my_disk.used = byte_convert(disk.available_space() as f64);
-            }
-        }
-
-        let load_avg = sys.load_average();
-        let my_load = Load {
-            one: load_avg.one,
-            five: load_avg.five,
-            fifteen: load_avg.fifteen,
-        };
-
-        let my_memory = Memory {
-            total: byte_convert(sys.total_memory() as f64),
-            used: byte_convert(sys.used_memory() as f64),
-            free: byte_convert((sys.total_memory() - sys.used_memory()) as f64),
-        };
-
-        let mut my_network = Network::default();
-
-        for (interface_name, data) in sys.networks() {
-            if !interfaces.is_empty() && interface_name == interfaces[0].0 {
-                my_network.name = interface_name.clone();
-                my_network.current_in = byte_convert(data.received() as f64);
-                my_network.total_in = byte_convert(data.total_received() as f64);
-                my_network.current_out = byte_convert(data.transmitted() as f64);
-                my_network.total_out = byte_convert(data.total_transmitted() as f64);
-            }
-        }
-
-        let my_swap = Swap {
-            total: byte_convert(sys.total_swap() as f64),
-            used: byte_convert(sys.used_swap() as f64),
-            free: byte_convert((sys.total_swap() - sys.used_swap()) as f64),
-        };
-
-        let my_system = MySystem {
-            name: sys.name(),
-            kernel: sys.kernel_version(),
-            version: sys.os_version(),
-        };
-
-        let system_stat = SystemStat {
-            system: my_system,
-            memory: my_memory,
-            swap: my_swap,
-            disk: my_disk,
-            cpu: my_cpu,
-            load: my_load,
-            network: my_network,
-        };
-
+        let system_stat = stat(&mut sys);
         print!("{esc}[2J{esc}[1;1H", esc = 27 as char);
         println!("{system_stat:#?}");
 

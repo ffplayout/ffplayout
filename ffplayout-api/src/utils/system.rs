@@ -7,26 +7,6 @@ use sysinfo::{CpuExt, DiskExt, NetworkExt, SystemExt};
 use crate::SYS;
 use ffplayout_lib::utils::PlayoutConfig;
 
-// pub fn byte_convert(num: f64) -> String {
-//     let negative = if num.is_sign_positive() { "" } else { "-" };
-//     let num = num.abs();
-//     let units = ["B", "kiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB"];
-//     if num < 1_f64 {
-//         return format!("{negative}{num} B");
-//     }
-//     let delimiter = 1024_f64;
-//     let exponent = cmp::min(
-//         (num.ln() / delimiter.ln()).floor() as i32,
-//         (units.len() - 1) as i32,
-//     );
-//     let pretty_bytes = format!("{:.3}", num / delimiter.powi(exponent))
-//         .parse::<f64>()
-//         .unwrap()
-//         * 1_f64;
-//     let unit = units[exponent as usize];
-//     format!("{negative}{pretty_bytes} {unit}")
-// }
-
 #[derive(Debug, Serialize)]
 pub struct Cpu {
     pub cores: f32,
@@ -90,7 +70,7 @@ pub struct SystemStat {
 
 pub fn stat(config: PlayoutConfig) -> SystemStat {
     let mut sys = SYS.lock().unwrap();
-    let network_interfaces = list_afinet_netifas().unwrap();
+    let network_interfaces = list_afinet_netifas().unwrap_or_default();
     let mut usage = 0.0;
     let mut interfaces = vec![];
 
@@ -102,7 +82,10 @@ pub fn stat(config: PlayoutConfig) -> SystemStat {
 
     interfaces.dedup_by(|a, b| a.0 == b.0);
 
-    sys.refresh_all();
+    sys.refresh_cpu();
+    sys.refresh_disks();
+    sys.refresh_memory();
+    sys.refresh_networks();
 
     let cores = sys.cpus().len() as f32;
 
@@ -137,7 +120,7 @@ pub fn stat(config: PlayoutConfig) -> SystemStat {
     let memory = Memory {
         total: sys.total_memory(),
         used: sys.used_memory(),
-        free: sys.total_memory() - sys.used_memory(),
+        free: sys.free_memory(),
     };
 
     let mut network = Network::default();
@@ -155,7 +138,7 @@ pub fn stat(config: PlayoutConfig) -> SystemStat {
     let swap = Swap {
         total: sys.total_swap(),
         used: sys.used_swap(),
-        free: sys.total_swap() - sys.used_swap(),
+        free: sys.free_swap(),
     };
 
     let system = MySystem {
