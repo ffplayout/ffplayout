@@ -91,10 +91,11 @@ async fn main() -> std::io::Result<()> {
 
         info!("running ffplayout API, listen on {conn}");
 
-        // no allow origin here, give it to the reverse proxy
+        // no 'allow origin' here, give it to the reverse proxy
         HttpServer::new(move || {
             let auth = HttpAuthentication::bearer(validator);
             let db_pool = web::Data::new(pool.clone());
+            // Customize logging format to get IP though proxies.
             let logger = Logger::new("%{r}a \"%r\" %s %b \"%{Referer}i\" \"%{User-Agent}i\" %T")
                 .exclude_regex(r"/_nuxt/*");
 
@@ -143,6 +144,8 @@ async fn main() -> std::io::Result<()> {
                 .service(get_file);
 
             if let Some(public) = &ARGS.public {
+                // When public path is set as argument use this path for serving extra static files,
+                // is useful for HLS stream etc.
                 let absolute_path = if public.is_absolute() {
                     public.to_path_buf()
                 } else {
@@ -152,6 +155,8 @@ async fn main() -> std::io::Result<()> {
 
                 web_app = web_app.service(Files::new("/", absolute_path));
             } else {
+                // When no public path is given as argument, use predefine keywords in path,
+                // like /live; /preview; /public, or HLS extensions to recognize file should get from public folder
                 web_app = web_app.service(get_public);
             }
 
