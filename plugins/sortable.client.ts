@@ -1,4 +1,4 @@
-import { defineNuxtPlugin } from '#app'
+import { defineNuxtPlugin } from '#imports'
 import { Sortable } from 'sortablejs-vue3'
 
 export default defineNuxtPlugin((nuxtApp) => {
