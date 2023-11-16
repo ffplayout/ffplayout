@@ -4,13 +4,7 @@
             <div class="container login-container">
                 <div>
                     <div class="logo-div">
-                        <img
-                            src="~/assets/images/ffplayout.png"
-                            class="img-fluid"
-                            alt="Logo"
-                            width="256"
-                            height="256"
-                        />
+                        <SystemStats />
                     </div>
                     <div class="actions">
                         <div class="btn-group actions-grp btn-group-lg" role="group">

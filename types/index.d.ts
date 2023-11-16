@@ -1,4 +1,4 @@
-export { }
+export {}
 
 declare global {
     interface GuiConfig {
@@ -20,15 +20,15 @@ declare global {
         role_id?: Number
     }
 
-   interface Crumb {
+    interface Crumb {
         text: string
         path: string
     }
 
     interface Payload {
-        method: string,
-        headers: any,
-        body?: any,
+        method: string
+        headers: any
+        body?: any
     }
 
     interface PlaylistItem {
@@ -86,5 +86,15 @@ declare global {
     interface BodyObject {
         paths?: string[]
         template?: Template
+    }
+
+    interface SystemStatistics {
+        cpu: { cores: number; usage: number }
+        load: { one: number; five: number; fifteen: number }
+        memory: { total: number; used: number; free: number }
+        network?: { name: String; current_in: number; current_out: number; total_in: number; total_out: number }
+        storage?: { path: String; total: number; used: number }
+        swap: { total: number; used: number; free: number }
+        system: { name?: String; kernel?: String; version?: String }
     }
 }

@@ -1,4 +1,30 @@
 export const stringFormatter = () => {
+    function fileSize(bytes: number | undefined, si=false, dp=1) {
+        if (!bytes) {
+            return 0.0
+        }
+
+        const thresh = si ? 1000 : 1024;
+
+        if (Math.abs(bytes) < thresh) {
+          return bytes + ' B';
+        }
+
+        const units = si
+          ? ['kB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB']
+          : ['KiB', 'MiB', 'GiB', 'TiB', 'PiB', 'EiB', 'ZiB', 'YiB'];
+        let u = -1;
+        const r = 10**dp;
+
+        do {
+          bytes /= thresh;
+          ++u;
+        } while (Math.round(Math.abs(bytes) * r) / r >= thresh && u < units.length - 1);
+
+
+        return bytes.toFixed(dp) + ' ' + units[u];
+    }
+
     function formatLog(text: string) {
         return (
             text
@@ -91,7 +117,7 @@ export const stringFormatter = () => {
         return null
     }
 
-    return { formatLog, timeToSeconds, secToHMS, numberToHex, hexToNumber, filename, toMin, secondsToTime, mediaType }
+    return { fileSize, formatLog, timeToSeconds, secToHMS, numberToHex, hexToNumber, filename, toMin, secondsToTime, mediaType }
 }
 
 export const playlistOperations = () => {
