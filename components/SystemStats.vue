@@ -1,6 +1,6 @@
 <template>
     <div class="row sys-container text-start bg-secondary border border-3 rounded">
-        <div class="col-6 bg-primary p-2 border-top border-start border-end fs-1">
+        <div class="col-6 bg-primary p-2 border-top border-start border-end fs-2">
             {{ sysStat.system.name }} {{ sysStat.system.version }}
         </div>
         <div class="col-6 p-2 border">
