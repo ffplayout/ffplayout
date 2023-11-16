@@ -25,7 +25,7 @@ A clear and concise description of what you expected to happen.
 
 **Desktop/Server/Software (please complete the following information):**
 
- - OS: [e.g. debian 11]
+ - OS: [e.g. debian 12]
 - ffplayout version
 - ffmpeg version
 - are you using the current master of ffplayout?
