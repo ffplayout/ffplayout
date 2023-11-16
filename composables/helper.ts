@@ -1,47 +1,42 @@
 export const stringFormatter = () => {
-    function fileSize(bytes: number | undefined, si=false, dp=1) {
+    function fileSize(bytes: number | undefined, dp = 2) {
         if (!bytes) {
             return 0.0
         }
 
-        const thresh = si ? 1000 : 1024;
+        const thresh = 1024
 
         if (Math.abs(bytes) < thresh) {
-          return bytes + ' B';
+            return bytes + ' B'
         }
 
-        const units = si
-          ? ['kB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB']
-          : ['KiB', 'MiB', 'GiB', 'TiB', 'PiB', 'EiB', 'ZiB', 'YiB'];
-        let u = -1;
-        const r = 10**dp;
+        const units = ['KiB', 'MiB', 'GiB', 'TiB', 'PiB', 'EiB', 'ZiB', 'YiB']
+        let u = -1
+        const r = 10 ** dp
 
         do {
-          bytes /= thresh;
-          ++u;
-        } while (Math.round(Math.abs(bytes) * r) / r >= thresh && u < units.length - 1);
+            bytes /= thresh
+            ++u
+        } while (Math.round(Math.abs(bytes) * r) / r >= thresh && u < units.length - 1)
 
-
-        return bytes.toFixed(dp) + ' ' + units[u];
+        return bytes.toFixed(dp) + ' ' + units[u]
     }
 
     function formatLog(text: string) {
-        return (
-            text
-                .replace(/\x1B\[33m(.*?)\x1B\[0m/g, '<span class="log-number">$1</span>')
-                .replace(/\x1B\[1m\x1B\[35m(.*?)\x1B\[0m\x1B\[22m/g, '<span class="log-addr">$1</span>')
-                .replace(/\x1B\[94m(.*?)\x1B\[0m/g, '<span class="log-cmd">$1</span>')
-                .replace(/\x1B\[90m(.*?)\x1B\[0m/g, '<span class="log-debug">$1</span>')
-                .replace(/(\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}.[\d]+\])/g, '<span class="log-time">$1</span>')
-                .replace(/\[ INFO\]/g, '<span class="log-info">[ INFO]</span>')
-                .replace(/\[ WARN\]/g, '<span class="log-warning">[ WARN]</span>')
-                .replace(/\[ERROR\]/g, '<span class="log-error">[ERROR]</span>')
-                .replace(/\[DEBUG\]/g, '<span class="log-debug">[DEBUG]</span>')
-                .replace(/\[Decoder\]/g, '<span class="log-decoder">[Decoder]</span>')
-                .replace(/\[Encoder\]/g, '<span class="log-encoder">[Encoder]</span>')
-                .replace(/\[Server\]/g, '<span class="log-server">[Server]</span>')
-                .replace(/\[Validator\]/g, '<span class="log-server">[Validator]</span>')
-        )
+        return text
+            .replace(/\x1B\[33m(.*?)\x1B\[0m/g, '<span class="log-number">$1</span>')
+            .replace(/\x1B\[1m\x1B\[35m(.*?)\x1B\[0m\x1B\[22m/g, '<span class="log-addr">$1</span>')
+            .replace(/\x1B\[94m(.*?)\x1B\[0m/g, '<span class="log-cmd">$1</span>')
+            .replace(/\x1B\[90m(.*?)\x1B\[0m/g, '<span class="log-debug">$1</span>')
+            .replace(/(\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}.[\d]+\])/g, '<span class="log-time">$1</span>')
+            .replace(/\[ INFO\]/g, '<span class="log-info">[ INFO]</span>')
+            .replace(/\[ WARN\]/g, '<span class="log-warning">[ WARN]</span>')
+            .replace(/\[ERROR\]/g, '<span class="log-error">[ERROR]</span>')
+            .replace(/\[DEBUG\]/g, '<span class="log-debug">[DEBUG]</span>')
+            .replace(/\[Decoder\]/g, '<span class="log-decoder">[Decoder]</span>')
+            .replace(/\[Encoder\]/g, '<span class="log-encoder">[Encoder]</span>')
+            .replace(/\[Server\]/g, '<span class="log-server">[Server]</span>')
+            .replace(/\[Validator\]/g, '<span class="log-server">[Validator]</span>')
     }
 
     function timeToSeconds(time: string) {
@@ -99,9 +94,40 @@ export const stringFormatter = () => {
     }
 
     function mediaType(path: string) {
-        const videoType = ['avi', 'flv', 'm2v', 'm4v', 'mkv', 'mov', 'mp4', 'mpeg', 'mpg', 'mts', 'mxf', 'ts', 'vob','ogv', 'webm', 'wmv']
+        const videoType = [
+            'avi',
+            'flv',
+            'm2v',
+            'm4v',
+            'mkv',
+            'mov',
+            'mp4',
+            'mpeg',
+            'mpg',
+            'mts',
+            'mxf',
+            'ts',
+            'vob',
+            'ogv',
+            'webm',
+            'wmv',
+        ]
         const audioType = ['aac', 'aiff', 'flac', 'm4a', 'mp2', 'mp3', 'ogg', 'opus', 'wav', 'wma']
-        const imageType = ['apng', 'avif', 'bmp', 'exr', 'gif', 'jpeg', 'jpg', 'png', 'psd', 'tga', 'tif', 'tiff', 'webp']
+        const imageType = [
+            'apng',
+            'avif',
+            'bmp',
+            'exr',
+            'gif',
+            'jpeg',
+            'jpg',
+            'png',
+            'psd',
+            'tga',
+            'tif',
+            'tiff',
+            'webp',
+        ]
         const ext = path.split('.').pop()
 
         if (ext) {
@@ -117,15 +143,23 @@ export const stringFormatter = () => {
         return null
     }
 
-    return { fileSize, formatLog, timeToSeconds, secToHMS, numberToHex, hexToNumber, filename, toMin, secondsToTime, mediaType }
+    return {
+        fileSize,
+        formatLog,
+        timeToSeconds,
+        secToHMS,
+        numberToHex,
+        hexToNumber,
+        filename,
+        toMin,
+        secondsToTime,
+        mediaType,
+    }
 }
 
 export const playlistOperations = () => {
     function genUID() {
-        return String(
-            Date.now().toString(32) +
-            Math.random().toString(16)
-        ).replace(/\./g, '')
+        return String(Date.now().toString(32) + Math.random().toString(16)).replace(/\./g, '')
     }
 
     function processPlaylist(dayStart: number, length: number, list: PlaylistItem[], forSave: boolean) {

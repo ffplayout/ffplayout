@@ -12,6 +12,9 @@ Read the [install.md](docs/INSTALL.md) for manual installation.
 ### Login
 ![login](/docs/images/login.png)
 
+### Login
+![login](/docs/images/dasboard.png)
+
 ### Landing Page
 ![landing](/docs/images/landing.png)
 

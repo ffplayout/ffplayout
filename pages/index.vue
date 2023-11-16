@@ -3,10 +3,8 @@
         <div v-if="authStore.isLogin">
             <div class="container login-container">
                 <div>
-                    <div class="logo-div">
-                        <SystemStats />
-                    </div>
-                    <div class="actions">
+                    <SystemStats class="mx-auto" />
+                    <div class="text-center mt-5">
                         <div class="btn-group actions-grp btn-group-lg" role="group">
                             <NuxtLink to="/player" class="btn btn-primary">Player</NuxtLink>
                             <NuxtLink to="/media" class="btn btn-primary">Media</NuxtLink>
@@ -23,7 +21,7 @@
             <div class="logout-div" />
             <div class="container login-container">
                 <div>
-                    <div class="header">
+                    <div class="text-center mb-5">
                         <h1>ffplayout</h1>
                     </div>
 
@@ -127,17 +125,6 @@ async function logout() {
     height: 100vh;
 }
 
-.header {
-    text-align: center;
-    margin-bottom: 3em;
-}
-
-.logo-div {
-    width: 100%;
-    text-align: center;
-    margin-bottom: 5em;
-}
-
 .login-form {
     min-width: 300px;
 }
@@ -149,11 +136,6 @@ async function logout() {
     .btn-close {
         padding: 0.65rem 0.5rem;
     }
-}
-
-.actions {
-    text-align: center;
-    margin-top: 1em;
 }
 
 @media (max-width: 380px) {

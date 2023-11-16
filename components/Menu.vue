@@ -25,6 +25,9 @@
                     <div class="collapse navbar-collapse justify-content-end" id="navbarNavDropdown">
                         <ul class="navbar-nav">
                             <li class="nav-item">
+                                <NuxtLink class="btn btn-primary btn-sm" to="/">Home</NuxtLink>
+                            </li>
+                            <li class="nav-item">
                                 <NuxtLink class="btn btn-primary btn-sm" to="/player">Player</NuxtLink>
                             </li>
                             <li class="nav-item">
