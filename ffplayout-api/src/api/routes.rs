@@ -1120,7 +1120,7 @@ async fn get_program(
 /// Get statistics about CPU, Ram, Disk, etc. usage.
 ///
 /// ```BASH
-/// curl -X GET http://127.0.0.1:8787/api/system
+/// curl -X GET http://127.0.0.1:8787/api/system/1
 /// -H 'Content-Type: application/json' -H 'Authorization: Bearer <TOKEN>'
 /// ```
 #[get("/system/{id}")]
