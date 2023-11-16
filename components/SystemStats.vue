@@ -46,7 +46,7 @@
                 <div class="col-6">{{ fileSize(sysStat.network?.total_out) }}</div>
             </div>
         </div>
-        <div class="col-6 p-2 border">
+        <div v-if="sysStat.storage?.path" class="col-6 p-2 border">
             <div class="fs-4">Storage</div>
             <div v-if="sysStat.storage"><strong>Device:</strong> {{ sysStat.storage?.path }}</div>
 
@@ -55,6 +55,7 @@
                 <div class="col"><strong>Used:</strong> {{ fileSize(sysStat.storage?.used) }}</div>
             </div>
         </div>
+        <div v-else class="col-6 bg-primary p-2 border" />
     </div>
 </template>
 <script setup lang="ts">
