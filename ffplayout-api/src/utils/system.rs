@@ -120,7 +120,7 @@ pub fn stat(config: PlayoutConfig) -> SystemStat {
     let memory = Memory {
         total: sys.total_memory(),
         used: sys.used_memory(),
-        free: sys.free_memory(),
+        free: sys.total_memory() - sys.used_memory(),
     };
 
     let mut network = Network::default();
