@@ -15,9 +15,6 @@ Read the [install.md](docs/INSTALL.md) for manual installation.
 ### System Dashboard
 ![login](/docs/images/dasboard.png)
 
-### Landing Page
-![landing](/docs/images/landing.png)
-
 ### Control Page
 ![player](/docs/images/player.png)
 
