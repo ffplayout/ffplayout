@@ -12,7 +12,7 @@ Read the [install.md](docs/INSTALL.md) for manual installation.
 ### Login
 ![login](/docs/images/login.png)
 
-### Login
+### System Dashboard
 ![login](/docs/images/dasboard.png)
 
 ### Landing Page
