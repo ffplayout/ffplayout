@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.20.0](https://github.com/ffplayout/ffplayout/releases/tag/v0.20.0-beta1) (2023-10-22)
+## [0.20.0](https://github.com/ffplayout/ffplayout/releases/tag/v0.20.0-beta1) (2023-11-16)
 
 ### ffplayout
 
@@ -17,12 +17,22 @@
 - jump out from source loop when playout is terminated [cf6e56](https://github.com/ffplayout/ffplayout/commit/cf6e5663e98eb52bc84c0e9e5856943ddefc24d9)
 - fix program hang when mail sending not work [38e73a](https://github.com/ffplayout/ffplayout/commit/38e73a0138430fc600ae809356127941e1f08eb2)
 
+### ffpapi
+
+- embed static files from frontend in ffpapi, add db path argument [b4cde6e](https://github.com/ffplayout/ffplayout/commit/b4cde6e12ce70af20f52f308d7cb4288f97d31fe)
+- Use enum for Role everywhere [7d31735](https://github.com/ffplayout/ffplayout/commit/7d3173533fd8b2a9d6e718ada0c81f017aedc777)
+- get config also as normal user [7d31735](https://github.com/ffplayout/ffplayout/commit/7d3173533fd8b2a9d6e718ada0c81f017aedc777)
+- fix time shift [7d31735](https://github.com/ffplayout/ffplayout/commit/7d3173533fd8b2a9d6e718ada0c81f017aedc777)
+- add option for public path [c304386](https://github.com/ffplayout/ffplayout/commit/c30438697d33fe360e92146c03ad8ce212e138a6)
+- add system stat route [c304386](https://github.com/ffplayout/ffplayout/commit/c30438697d33fe360e92146c03ad8ce212e138a6)
+
 ### frontend
 
 - option to add user [debb75](https://github.com/ffplayout/ffplayout/commit/debb751428239f2d0ac446a0b9a805cd1ec4a965)
 - fix audit alert, get status from playout stat [50bee9](https://github.com/ffplayout/ffplayout-frontend/commit/50bee93c8555b14181864a654239f7e68c50cafb)
 - restart modal for config save [2f3234](https://github.com/ffplayout/ffplayout-frontend/commit/2f3234221a0aef8e70d9e2b5e9bbfb1fe51921fc)
 - add advanced playlist generator, update packages [806d53](https://github.com/ffplayout/ffplayout-frontend/commit/806d533bc2a84fc994897371071c4399172fa639)
+- add dashboard [ba0c0fa](https://github.com/ffplayout/ffplayout/pull/446/commits/ba0c0faaac9c44fbf4f87752c89aaa8859be9bf1)
 
 
 ## [0.19.1](https://github.com/ffplayout/ffplayout/releases/tag/v0.19.1) (2023-10-08)
