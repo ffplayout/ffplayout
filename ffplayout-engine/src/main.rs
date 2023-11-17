@@ -126,7 +126,7 @@ fn main() {
     let config_clone1 = config.clone();
     let config_clone2 = config.clone();
 
-    if ![2, 4, 6, 8].contains(&config.processing.audio_channels) {
+    if !matches!(config.processing.audio_channels, 2 | 4 | 6 | 8) {
         error!(
             "Encoding {} channel(s) is not allowed. Only 2, 4, 6 and 8 channels are supported!",
             config.processing.audio_channels
