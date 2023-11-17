@@ -105,12 +105,14 @@ async function status() {
 async function systemStatus() {
     const channel = configStore.configGui[configStore.configID].id
 
-    await $fetch<SystemStatistics>(`/api/system/${channel}`, {
-        method: 'GET',
-        headers: { ...contentType, ...authStore.authHeader },
-    }).then((stat: SystemStatistics) => {
-        sysStat.value = stat
-    })
+    if (!document?.hidden) {
+        await $fetch<SystemStatistics>(`/api/system/${channel}`, {
+            method: 'GET',
+            headers: { ...contentType, ...authStore.authHeader },
+        }).then((stat: SystemStatistics) => {
+            sysStat.value = stat
+        })
+    }
 }
 </script>
 <style>
