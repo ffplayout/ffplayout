@@ -89,7 +89,7 @@ onBeforeUnmount(() => {
 })
 
 async function status() {
-    systemStatus()
+systemStatus()
 
     async function setStatus(resolve: any) {
         /*

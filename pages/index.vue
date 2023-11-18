@@ -3,7 +3,7 @@
         <div v-if="authStore.isLogin">
             <div class="container login-container">
                 <div>
-                    <SystemStats class="mx-auto" />
+                    <SystemStats v-if="configStore.configGui.length > 0" class="mx-auto" />
                     <div class="text-center mt-5">
                         <div class="btn-group actions-grp btn-group-lg" role="group">
                             <NuxtLink to="/player" class="btn btn-primary">Player</NuxtLink>
