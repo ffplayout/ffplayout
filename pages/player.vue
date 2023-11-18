@@ -24,7 +24,6 @@
                             >
                                 <a
                                     v-if="mediaStore.crumbs.length > 1 && mediaStore.crumbs.length - 1 > index"
-                                    class="link-secondary"
                                     href="#"
                                 >
                                     {{ crumb.text }}
@@ -505,7 +504,6 @@
                                                             mediaStore.folderCrumbs.length > 1 &&
                                                             mediaStore.folderCrumbs.length - 1 > index
                                                         "
-                                                        class="link-secondary"
                                                         href="#"
                                                     >
                                                         {{ crumb.text }}
@@ -590,7 +588,6 @@
                                                                     mediaStore.folderCrumbs.length > 1 &&
                                                                     mediaStore.folderCrumbs.length - 1 > index
                                                                 "
-                                                                class="link-secondary"
                                                                 href="#"
                                                             >
                                                                 {{ crumb.text }}
