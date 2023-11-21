@@ -5,6 +5,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
         Arc,
     },
+    time::Instant,
 };
 
 use regex::Regex;
@@ -16,7 +17,12 @@ use crate::utils::{
     JsonPlaylist, Media, OutputMode::Null, PlayoutConfig, FFMPEG_IGNORE_ERRORS, IMAGE_FORMAT,
 };
 
-/// check if ffmpeg can read the file and apply filter to it.
+/// Validate a single media file.
+///
+/// - Check if file exists
+/// - Check if ffmpeg can read the file
+/// - Check if Metadata exists
+/// - Check if the file is not silent
 fn check_media(
     mut node: Media,
     pos: usize,
@@ -32,6 +38,10 @@ fn check_media(
 
     if config.logging.detect_silence {
         process_length = 15.0;
+        let seek = node.duration / 4.0;
+
+        // Seek in file, to prevent false silence detection on intros without sound.
+        enc_cmd.append(&mut vec_strings!["-ss", seek]);
     }
 
     node.add_probe();
@@ -44,7 +54,7 @@ fn check_media(
         )));
     }
 
-    // take care, that no seek and length command is added.
+    // Take care, that no seek and length command is added.
     node.seek = 0.0;
     node.out = node.duration;
 
@@ -161,6 +171,7 @@ pub fn validate_playlist(
     length += begin;
 
     debug!("Validate playlist from: <yellow>{date}</>");
+    let timer = Instant::now();
 
     for (index, item) in playlist.program.iter().enumerate() {
         if is_terminated.load(Ordering::SeqCst) {
@@ -197,5 +208,5 @@ pub fn validate_playlist(
         );
     }
 
-    debug!("Validation done...");
+    debug!("Validation done, in {:.3?} ...", timer.elapsed(),);
 }
