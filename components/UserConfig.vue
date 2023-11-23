@@ -2,17 +2,26 @@
     <div>
         <div class="container">
             <h2 class="pb-4 pt-3">User Configuration</h2>
-            <div class="w-100" style="height: 43px">
-                <div class="float-end">
-                    <button
-                        class="btn btn-primary"
-                        title="Add new User"
-                        data-tooltip="tooltip"
-                        data-bs-toggle="modal"
-                        data-bs-target="#userModal"
-                    >
-                        Add User
-                    </button>
+            <div class="row w-100" style="height: 43px">
+                <div class="col-sm-2"></div>
+                <div class="col-sm-4">
+                    <select class="form-select" v-model="selected" @change="onChange($event)">
+                        <option v-for="item in users">{{ item.username }}</option>
+                    </select>
+                </div>
+                <div class="col px-0">
+                    <div class="float-end">
+                        <button
+                            class="btn btn-primary me-2"
+                            title="Add new User"
+                            data-tooltip="tooltip"
+                            data-bs-toggle="modal"
+                            data-bs-target="#userModal"
+                        >
+                            Add User
+                        </button>
+                        <button class="btn btn-primary" @click="deleteUser()">Delete</button>
+                    </div>
                 </div>
             </div>
             <form v-if="configStore.configUser" @submit.prevent="onSubmitUser">
@@ -24,7 +33,6 @@
                             class="form-control"
                             id="userName"
                             v-model="configStore.configUser.username"
-                            disabled
                         />
                     </div>
                 </div>
@@ -140,6 +148,8 @@ const indexStore = useIndex()
 
 const { $bootstrap } = useNuxtApp()
 
+const selected = ref(null)
+const users = ref([] as User[])
 const userModal = ref()
 const newPass = ref('')
 const confirmPass = ref('')
@@ -153,12 +163,74 @@ const user = ref({
     role_id: 2,
 } as User)
 
+onMounted(() => {
+    getUsers()
+})
+
+async function getUsers() {
+    fetch('/api/users', {
+        method: 'GET',
+        headers: authStore.authHeader,
+    })
+        .then((response) => response.json())
+        .then((data) => {
+            users.value = data
+        })
+}
+
+function onChange(event: any) {
+    selected.value = event.target.value
+
+    getUserConfig()
+}
+
+async function getUserConfig() {
+    await fetch(`/api/user/${selected.value}`, {
+        method: 'GET',
+        headers: authStore.authHeader,
+    })
+        .then((response) => response.json())
+        .then((data) => {
+            configStore.configUser = data
+        })
+}
+
+async function deleteUser() {
+    if (configStore.configUser.username === configStore.currentUser) {
+        indexStore.alertVariant = 'alert-danger'
+        indexStore.alertMsg = 'Delete current user not possible!'
+
+
+    } else {
+        await fetch(`/api/user/${configStore.configUser.username}`, {
+            method: 'DELETE',
+            headers: authStore.authHeader,
+        }).then(async () => {
+            indexStore.alertVariant = 'alert-success'
+            indexStore.alertMsg = 'Delete user done!'
+
+            await configStore.getUserConfig()
+            await getUsers()
+        })
+        .catch((e) => {
+            indexStore.alertVariant = 'alert-danger'
+            indexStore.alertMsg = `Delete user error: ${e}`
+        })
+    }
+
+    indexStore.showAlert = true
+
+    setTimeout(() => {
+            indexStore.showAlert = false
+        }, 3000)
+}
+
 async function clearUser() {
     user.value.username = ''
     user.value.mail = ''
     user.value.password = ''
     user.value.confirm = ''
-    user.value.admin = false,
+    user.value.admin = false
     user.value.role_id = 2
 }
 
@@ -182,6 +254,9 @@ async function addUser() {
         if (update.status === 200) {
             indexStore.alertVariant = 'alert-success'
             indexStore.alertMsg = 'Add user success!'
+
+            await getUsers()
+            await getUserConfig()
         } else {
             indexStore.alertVariant = 'alert-danger'
             indexStore.alertMsg = 'Add user failed!'

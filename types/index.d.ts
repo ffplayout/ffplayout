@@ -13,7 +13,7 @@ declare global {
 
     interface User {
         username: String
-        mail: String
+        mail?: String
         password?: String
         confirm?: String
         admin?: Boolean
