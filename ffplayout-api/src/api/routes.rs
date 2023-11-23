@@ -232,6 +232,45 @@ async fn get_user(
     }
 }
 
+/// **Get User by ID**
+///
+/// ```BASH
+/// curl -X GET 'http://127.0.0.1:8787/api/user/2' -H 'Content-Type: application/json' \
+/// -H 'Authorization: Bearer <TOKEN>'
+/// ```
+#[get("/user/{name}")]
+#[has_any_role("Role::Admin", type = "Role")]
+async fn get_user_by_name(
+    pool: web::Data<Pool<Sqlite>>,
+    name: web::Path<String>,
+) -> Result<impl Responder, ServiceError> {
+    match handles::select_user(&pool.into_inner(), &name).await {
+        Ok(user) => Ok(web::Json(user)),
+        Err(e) => {
+            error!("{e}");
+            Err(ServiceError::InternalServerError)
+        }
+    }
+}
+
+// **Get all User**
+///
+/// ```BASH
+/// curl -X GET 'http://127.0.0.1:8787/api/users' -H 'Content-Type: application/json' \
+/// -H 'Authorization: Bearer <TOKEN>'
+/// ```
+#[get("/users")]
+#[has_any_role("Role::Admin", type = "Role")]
+async fn get_users(pool: web::Data<Pool<Sqlite>>) -> Result<impl Responder, ServiceError> {
+    match handles::select_users(&pool.into_inner()).await {
+        Ok(users) => Ok(web::Json(users)),
+        Err(e) => {
+            error!("{e}");
+            Err(ServiceError::InternalServerError)
+        }
+    }
+}
+
 /// **Update current User**
 ///
 /// ```BASH
@@ -245,11 +284,20 @@ async fn update_user(
     id: web::Path<i32>,
     user: web::ReqData<LoginUser>,
     data: web::Json<User>,
+    role: AuthDetails<Role>,
 ) -> Result<impl Responder, ServiceError> {
-    if id.into_inner() == user.id {
+    if id.into_inner() == user.id || role.has_role(&Role::Admin) {
         let mut fields = String::new();
 
+        if !data.username.is_empty() {
+            fields.push_str(format!("username = '{}'", data.username).as_str());
+        }
+
         if let Some(mail) = data.mail.clone() {
+            if !fields.is_empty() {
+                fields.push_str(", ");
+            }
+
             fields.push_str(format!("mail = '{mail}'").as_str());
         }
 
@@ -294,6 +342,27 @@ async fn add_user(
 ) -> Result<impl Responder, ServiceError> {
     match handles::insert_user(&pool.into_inner(), data.into_inner()).await {
         Ok(_) => Ok("Add User Success"),
+        Err(e) => {
+            error!("{e}");
+            Err(ServiceError::InternalServerError)
+        }
+    }
+}
+
+// **Delete User**
+///
+/// ```BASH
+/// curl -X GET 'http://127.0.0.1:8787/api/user/2' -H 'Content-Type: application/json' \
+/// -H 'Authorization: Bearer <TOKEN>'
+/// ```
+#[delete("/user/{name}")]
+#[has_any_role("Role::Admin", type = "Role")]
+async fn remove_user(
+    pool: web::Data<Pool<Sqlite>>,
+    name: web::Path<String>,
+) -> Result<impl Responder, ServiceError> {
+    match handles::delete_user(&pool.into_inner(), &name).await {
+        Ok(_) => return Ok("Delete user success"),
         Err(e) => {
             error!("{e}");
             Err(ServiceError::InternalServerError)

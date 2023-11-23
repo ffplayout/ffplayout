@@ -228,6 +228,18 @@ pub async fn select_user(conn: &Pool<Sqlite>, user: &str) -> Result<User, sqlx::
     sqlx::query_as(query).bind(user).fetch_one(conn).await
 }
 
+pub async fn select_user_by_id(conn: &Pool<Sqlite>, id: i32) -> Result<User, sqlx::Error> {
+    let query = "SELECT id, mail, username, role_id FROM user WHERE id = $1";
+
+    sqlx::query_as(query).bind(id).fetch_one(conn).await
+}
+
+pub async fn select_users(conn: &Pool<Sqlite>) -> Result<Vec<User>, sqlx::Error> {
+    let query = "SELECT id, username FROM user";
+
+    sqlx::query_as(query).fetch_all(conn).await
+}
+
 pub async fn insert_user(
     conn: &Pool<Sqlite>,
     user: User,
@@ -258,6 +270,15 @@ pub async fn update_user(
     let query = format!("UPDATE user SET {fields} WHERE id = $1");
 
     sqlx::query(&query).bind(id).execute(conn).await
+}
+
+pub async fn delete_user(
+    conn: &Pool<Sqlite>,
+    name: &str,
+) -> Result<SqliteQueryResult, sqlx::Error> {
+    let query = "DELETE FROM user WHERE username = $1;";
+
+    sqlx::query(query).bind(name).execute(conn).await
 }
 
 pub async fn select_presets(conn: &Pool<Sqlite>, id: i32) -> Result<Vec<TextPreset>, sqlx::Error> {
