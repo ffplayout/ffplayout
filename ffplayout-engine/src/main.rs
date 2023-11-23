@@ -19,9 +19,9 @@ use ffplayout::{
 };
 
 use ffplayout_lib::utils::{
-    folder::fill_filler_list, generate_playlist, get_date, import::import_file, init_logging,
-    is_remote, send_mail, test_tcp_port, validate_ffmpeg, validate_playlist, JsonPlaylist,
-    OutputMode::*, PlayerControl, PlayoutStatus, ProcessControl,
+    errors::ProcError, folder::fill_filler_list, generate_playlist, get_date, import::import_file,
+    init_logging, is_remote, send_mail, test_tcp_port, validate_ffmpeg, validate_playlist,
+    JsonPlaylist, OutputMode::*, PlayerControl, PlayoutStatus, ProcessControl,
 };
 
 #[cfg(debug_assertions)]
@@ -44,7 +44,7 @@ struct StatusData {
 /// we save the time difference, so we stay in sync.
 ///
 /// When file not exists we create it, and when it exists we get its values.
-fn status_file(stat_file: &str, playout_stat: &PlayoutStatus) {
+fn status_file(stat_file: &str, playout_stat: &PlayoutStatus) -> Result<(), ProcError> {
     debug!("Start ffplayout v{VERSION}, status file path: <b><magenta>{stat_file}</></b>");
 
     if !PathBuf::from(stat_file).exists() {
@@ -53,23 +53,19 @@ fn status_file(stat_file: &str, playout_stat: &PlayoutStatus) {
             "date": String::new(),
         });
 
-        let json: String = serde_json::to_string(&data).expect("Serialize status data failed");
+        let json: String = serde_json::to_string(&data)?;
         if let Err(e) = fs::write(stat_file, json) {
             error!("Unable to write to status file <b><magenta>{stat_file}</></b>: {e}");
         };
     } else {
-        let stat_file = File::options()
-            .read(true)
-            .write(false)
-            .open(stat_file)
-            .expect("Could not open status file");
-
-        let data: StatusData =
-            serde_json::from_reader(stat_file).expect("Could not read status file.");
+        let stat_file = File::options().read(true).write(false).open(stat_file)?;
+        let data: StatusData = serde_json::from_reader(stat_file)?;
 
         *playout_stat.time_shift.lock().unwrap() = data.time_shift;
         *playout_stat.date.lock().unwrap() = data.date;
     }
+
+    Ok(())
 }
 
 /// Set fake time for debugging.
@@ -88,14 +84,14 @@ fn fake_time(args: &Args) {
 /// Main function.
 /// Here we check the command line arguments and start the player.
 /// We also start a JSON RPC server if enabled.
-fn main() {
+fn main() -> Result<(), ProcError> {
     let args = get_args();
 
     // use fake time function only in debugging mode
     #[cfg(debug_assertions)]
     fake_time(&args);
 
-    let mut config = get_config(args.clone());
+    let mut config = get_config(args.clone())?;
     let play_control = PlayerControl::new();
     let playout_stat = PlayoutStatus::new();
     let proc_control = ProcessControl::new();
@@ -116,7 +112,7 @@ fn main() {
     }
 
     let logging = init_logging(&config, Some(proc_ctl1), Some(messages.clone()));
-    CombinedLogger::init(logging).unwrap();
+    CombinedLogger::init(logging)?;
 
     if let Err(e) = validate_ffmpeg(&mut config) {
         error!("{e}");
@@ -179,16 +175,9 @@ fn main() {
         let f = File::options()
             .read(true)
             .write(false)
-            .open(&playlist_path)
-            .expect("Could not open json playlist file.");
+            .open(&playlist_path)?;
 
-        let playlist: JsonPlaylist = match serde_json::from_reader(f) {
-            Ok(p) => p,
-            Err(e) => {
-                error!("{e:?}");
-                exit(1)
-            }
-        };
+        let playlist: JsonPlaylist = serde_json::from_reader(f)?;
 
         validate_playlist(playlist, Arc::new(AtomicBool::new(false)), config);
 
@@ -205,7 +194,7 @@ fn main() {
         thread::spawn(move || run_server(config_clone1, play_ctl1, play_stat, proc_ctl2));
     }
 
-    status_file(&config.general.stat_file, &playout_stat);
+    status_file(&config.general.stat_file, &playout_stat)?;
 
     debug!(
         "Use config: <b><magenta>{}</></b>",
@@ -233,4 +222,6 @@ fn main() {
     }
 
     drop(msg);
+
+    Ok(())
 }

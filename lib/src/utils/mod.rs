@@ -23,6 +23,7 @@ use simplelog::*;
 
 pub mod config;
 pub mod controller;
+pub mod errors;
 pub mod folder;
 pub mod generator;
 pub mod import;

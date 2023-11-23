@@ -1,7 +1,6 @@
 use std::{
     fs::File,
     path::{Path, PathBuf},
-    process::exit,
 };
 
 use regex::Regex;
@@ -15,23 +14,22 @@ pub use arg_parse::Args;
 use ffplayout_lib::{
     filter::Filters,
     utils::{
-        config::Template, get_sec, parse_log_level_filter, sec_to_time, time_to_sec, Media,
-        OutputMode::*, PlayoutConfig, PlayoutStatus, ProcessMode::*,
+        config::Template, errors::ProcError, get_sec, parse_log_level_filter, sec_to_time,
+        time_to_sec, Media, OutputMode::*, PlayoutConfig, PlayoutStatus, ProcessMode::*,
     },
     vec_strings,
 };
 
 /// Read command line arguments, and override the config with them.
-pub fn get_config(args: Args) -> PlayoutConfig {
+pub fn get_config(args: Args) -> Result<PlayoutConfig, ProcError> {
     let cfg_path = match args.channel {
         Some(c) => {
             let path = PathBuf::from(format!("/etc/ffplayout/{c}.yml"));
 
             if !path.is_file() {
-                println!(
+                return Err(ProcError::Custom(format!(
                     "Config file \"{c}\" under \"/etc/ffplayout/\" not found.\n\nCheck arguments!"
-                );
-                exit(1)
+                )));
             }
 
             Some(path)
@@ -53,17 +51,9 @@ pub fn get_config(args: Args) -> PlayoutConfig {
         let f = File::options()
             .read(true)
             .write(false)
-            .open(template_file)
-            .expect("JSON template file");
+            .open(template_file)?;
 
-        let mut template: Template = match serde_json::from_reader(f) {
-            Ok(p) => p,
-            Err(e) => {
-                error!("Template file not readable! {e}");
-
-                exit(1)
-            }
-        };
+        let mut template: Template = serde_json::from_reader(f)?;
 
         template.sources.sort_by(|d1, d2| d1.start.cmp(&d2.start));
 
@@ -135,7 +125,7 @@ pub fn get_config(args: Args) -> PlayoutConfig {
         config.processing.volume = volume;
     }
 
-    config
+    Ok(config)
 }
 
 /// Format ingest and HLS logging output
