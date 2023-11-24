@@ -286,12 +286,8 @@ async fn update_user(
     data: web::Json<User>,
     role: AuthDetails<Role>,
 ) -> Result<impl Responder, ServiceError> {
-    if id.into_inner() == user.id || role.has_role(&Role::Admin) {
+    if *id == user.id || role.has_role(&Role::Admin) {
         let mut fields = String::new();
-
-        if !data.username.is_empty() {
-            fields.push_str(format!("username = '{}'", data.username).as_str());
-        }
 
         if let Some(mail) = data.mail.clone() {
             if !fields.is_empty() {
@@ -314,7 +310,7 @@ async fn update_user(
             fields.push_str(format!("password = '{password_hash}', salt = '{salt}'").as_str());
         }
 
-        if handles::update_user(&pool.into_inner(), user.id, fields)
+        if handles::update_user(&pool.into_inner(), *id, fields)
             .await
             .is_ok()
         {
