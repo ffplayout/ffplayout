@@ -4,7 +4,7 @@
             <h2 class="pb-4 pt-3">User Configuration</h2>
             <div class="row w-100" style="height: 43px">
                 <div class="col-sm-2"></div>
-                <div class="col-sm-4">
+                <div class="col-sm-4 ms-1">
                     <select class="form-select" v-model="selected" @change="onChange($event)">
                         <option v-for="item in users">{{ item.username }}</option>
                     </select>
@@ -33,6 +33,7 @@
                             class="form-control"
                             id="userName"
                             v-model="configStore.configUser.username"
+                            disabled
                         />
                     </div>
                 </div>
@@ -185,7 +186,14 @@ function onChange(event: any) {
 }
 
 async function getUserConfig() {
-    await fetch(`/api/user/${selected.value}`, {
+    let selectUser = configStore.currentUser
+
+    if (user.value.username) {
+        selectUser = user.value.username.toString()
+    } else if (selected.value) {
+        selectUser = selected.value
+    }
+    await fetch(`/api/user/${selectUser}`, {
         method: 'GET',
         headers: authStore.authHeader,
     })
@@ -279,6 +287,8 @@ async function onSubmitUser() {
     if (newPass && newPass.value === confirmPass.value) {
         configStore.configUser.password = newPass.value
     }
+
+    console.log('--configStore.configUser', configStore.configUser)
 
     authStore.inspectToken()
     const update = await configStore.setUserConfig(configStore.configUser)
