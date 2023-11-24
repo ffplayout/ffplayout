@@ -222,6 +222,8 @@ pub struct Logging {
     pub level: LevelFilter,
     pub ffmpeg_level: String,
     pub ingest_level: Option<String>,
+    #[serde(default)]
+    pub detect_silence: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

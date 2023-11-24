@@ -23,6 +23,7 @@ use simplelog::*;
 
 pub mod config;
 pub mod controller;
+pub mod errors;
 pub mod folder;
 pub mod generator;
 pub mod import;
@@ -373,7 +374,7 @@ pub fn modified_time(path: &str) -> Option<String> {
 
 /// Convert a formatted time string to seconds.
 pub fn time_to_sec(time_str: &str) -> f64 {
-    if ["now", "", "none"].contains(&time_str) || !time_str.contains(':') {
+    if matches!(time_str, "now" | "" | "none") || !time_str.contains(':') {
         return get_sec();
     }
 

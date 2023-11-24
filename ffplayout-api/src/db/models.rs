@@ -10,6 +10,7 @@ pub struct User {
     #[serde(skip_deserializing)]
     pub id: i32,
     #[sqlx(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub mail: Option<String>,
     pub username: String,
     #[sqlx(default)]

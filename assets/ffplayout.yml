@@ -35,6 +35,8 @@ logging:
         false will set log timestamps to UTC. Path to /var/log/ only if you run this
         program as daemon. 'level' can be DEBUG, INFO, WARNING, ERROR.
         'ffmpeg_level' can be info, warning, error.
+        'detect_silence' logs an error message if the audio line is silent for 15
+        seconds during the validation process.
     log_to_file: true
     backup_count: 7
     local_time: true
@@ -43,6 +45,7 @@ logging:
     level: DEBUG
     ffmpeg_level: error
     ingest_level: warning
+    detect_silence: false
 
 processing:
     help_text: Default processing for all clips, to have them unique. Mode can be playlist
