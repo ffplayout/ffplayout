@@ -38,6 +38,19 @@ curl -X GET 'http://127.0.0.1:8787/api/user' -H 'Content-Type: application/json'
 -H 'Authorization: Bearer <TOKEN>'
 ```
 
+**Get User by ID**
+
+```BASH
+curl -X GET 'http://127.0.0.1:8787/api/user/2' -H 'Content-Type: application/json' \
+-H 'Authorization: Bearer <TOKEN>'
+```
+
+
+```BASH
+curl -X GET 'http://127.0.0.1:8787/api/users' -H 'Content-Type: application/json' \
+-H 'Authorization: Bearer <TOKEN>'
+```
+
 **Update current User**
 
 ```BASH
@@ -50,6 +63,12 @@ curl -X PUT http://127.0.0.1:8787/api/user/1 -H 'Content-Type: application/json'
 ```BASH
 curl -X POST 'http://127.0.0.1:8787/api/user/' -H 'Content-Type: application/json' \
 -d '{"mail": "<MAIL>", "username": "<USER>", "password": "<PASS>", "role_id": 1, "channel_id": 1}' \
+-H 'Authorization: Bearer <TOKEN>'
+```
+
+
+```BASH
+curl -X GET 'http://127.0.0.1:8787/api/user/2' -H 'Content-Type: application/json' \
 -H 'Authorization: Bearer <TOKEN>'
 ```
 
