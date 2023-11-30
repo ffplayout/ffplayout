@@ -212,7 +212,7 @@ fn control_back(
             let mut data_map = Map::new();
             let mut media = current_list[index - 2].clone();
             play_control.current_index.fetch_sub(2, Ordering::SeqCst);
-            media.add_probe();
+            media.add_probe(false);
 
             let (delta, _) = get_delta(config, &media.begin.unwrap_or(0.0));
             *time_shift = delta;
@@ -258,7 +258,7 @@ fn control_next(
 
             let mut data_map = Map::new();
             let mut media = current_list[index].clone();
-            media.add_probe();
+            media.add_probe(false);
 
             let (delta, _) = get_delta(config, &media.begin.unwrap_or(0.0));
             *time_shift = delta;

@@ -68,6 +68,9 @@ pub struct Media {
     pub out: f64,
     pub duration: f64,
 
+    #[serde(skip_serializing, skip_deserializing)]
+    pub duration_audio: f64,
+
     #[serde(
         default,
         deserialize_with = "null_string",
@@ -95,6 +98,9 @@ pub struct Media {
 
     #[serde(skip_serializing, skip_deserializing)]
     pub probe: Option<MediaProbe>,
+
+    #[serde(skip_serializing, skip_deserializing)]
+    pub probe_audio: Option<MediaProbe>,
 
     #[serde(skip_serializing, skip_deserializing)]
     pub last_ad: Option<bool>,
@@ -132,6 +138,7 @@ impl Media {
             seek: 0.0,
             out: duration,
             duration,
+            duration_audio: 0.0,
             category: String::new(),
             source: src.to_string(),
             audio: String::new(),
@@ -139,6 +146,7 @@ impl Media {
             filter: None,
             custom_filter: String::new(),
             probe,
+            probe_audio: None,
             last_ad: Some(false),
             next_ad: Some(false),
             process: Some(true),
@@ -146,7 +154,7 @@ impl Media {
         }
     }
 
-    pub fn add_probe(&mut self) {
+    pub fn add_probe(&mut self, check_audio: bool) {
         if self.probe.is_none() {
             let probe = MediaProbe::new(&self.source);
             self.probe = Some(probe.clone());
@@ -161,6 +169,19 @@ impl Media {
 
                 if self.out == 0.0 {
                     self.out = dur;
+                }
+            }
+
+            if check_audio && Path::new(&self.audio).is_file() {
+                let probe_audio = MediaProbe::new(&self.audio);
+                self.probe_audio = Some(probe_audio.clone());
+
+                if !probe_audio.audio_streams.is_empty() {
+                    self.duration_audio = probe_audio.audio_streams[0]
+                        .duration
+                        .clone()
+                        .and_then(|d| d.parse::<f64>().ok())
+                        .unwrap_or_default()
                 }
             }
         }
@@ -498,6 +519,7 @@ pub fn loop_filler(node: &Media) -> Vec<String> {
 pub fn seek_and_length(node: &Media) -> Vec<String> {
     let mut source_cmd = vec![];
     let mut cut_audio = false;
+    let mut loop_audio = false;
 
     if node.seek > 0.5 {
         source_cmd.append(&mut vec_strings!["-ss", node.seek])
@@ -505,28 +527,27 @@ pub fn seek_and_length(node: &Media) -> Vec<String> {
 
     source_cmd.append(&mut vec_strings!["-i", node.source.clone()]);
 
-    if Path::new(&node.audio).is_file() {
-        let audio_probe = MediaProbe::new(&node.audio);
+    if node.duration > node.out {
+        source_cmd.append(&mut vec_strings!["-t", node.out - node.seek]);
+    }
 
+    if !node.audio.is_empty() {
         if node.seek > 0.5 {
-            source_cmd.append(&mut vec_strings!["-ss", node.seek])
+            source_cmd.append(&mut vec_strings!["-ss", node.seek]);
+        }
+
+        if node.duration_audio > node.duration {
+            cut_audio = true;
+        } else if node.duration_audio < node.duration {
+            source_cmd.append(&mut vec_strings!["-stream_loop", -1]);
+            loop_audio = true;
         }
 
         source_cmd.append(&mut vec_strings!["-i", node.audio.clone()]);
 
-        if !audio_probe.audio_streams.is_empty()
-            && audio_probe.audio_streams[0]
-                .duration
-                .clone()
-                .and_then(|d| d.parse::<f64>().ok())
-                > Some(node.out - node.seek)
-        {
-            cut_audio = true;
+        if cut_audio || loop_audio {
+            source_cmd.append(&mut vec_strings!["-t", node.out - node.seek]);
         }
-    }
-
-    if node.duration > node.out || cut_audio {
-        source_cmd.append(&mut vec_strings!["-t", node.out - node.seek]);
     }
 
     source_cmd

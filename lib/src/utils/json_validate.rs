@@ -44,7 +44,7 @@ fn check_media(
         enc_cmd.append(&mut vec_strings!["-ss", seek]);
     }
 
-    node.add_probe();
+    node.add_probe(false);
 
     if node.probe.clone().and_then(|p| p.format).is_none() {
         return Err(ProcError::Custom(format!(

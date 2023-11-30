@@ -11,7 +11,7 @@ mod custom;
 pub mod v_drawtext;
 
 use crate::utils::{
-    controller::ProcessUnit::*, fps_calc, is_close, Media, MediaProbe, OutputMode::*, PlayoutConfig,
+    controller::ProcessUnit::*, fps_calc, is_close, Media, OutputMode::*, PlayoutConfig,
 };
 
 use super::vec_strings;
@@ -265,16 +265,21 @@ fn scale(
 
 fn fade(node: &mut Media, chain: &mut Filters, nr: i32, filter_type: FilterType) {
     let mut t = "";
+    let mut fade_audio = false;
 
     if filter_type == Audio {
-        t = "a"
+        t = "a";
+
+        if node.duration_audio > 0.0 && node.duration_audio != node.duration {
+            fade_audio = true;
+        }
     }
 
     if node.seek > 0.0 || node.unit == Ingest {
         chain.add_filter(&format!("{t}fade=in:st=0:d=0.5"), nr, filter_type)
     }
 
-    if node.out != node.duration && node.out - node.seek > 1.0 {
+    if (node.out != node.duration && node.out - node.seek > 1.0) || fade_audio {
         chain.add_filter(
             &format!("{t}fade=out:st={}:d=1.0", (node.out - node.seek - 1.0)),
             nr,
@@ -360,24 +365,22 @@ fn add_audio(node: &Media, chain: &mut Filters, nr: i32) {
 }
 
 fn extend_audio(node: &mut Media, chain: &mut Filters, nr: i32) {
-    let probe = if Path::new(&node.audio).is_file() {
-        Some(MediaProbe::new(&node.audio))
-    } else {
-        node.probe.clone()
-    };
-
-    if let Some(audio_duration) = probe
-        .as_ref()
-        .and_then(|p| p.audio_streams.get(0))
-        .and_then(|a| a.duration.clone())
-        .and_then(|a| a.parse::<f64>().ok())
-    {
-        if node.out - node.seek > audio_duration - node.seek + 0.1 && node.duration >= node.out {
-            chain.add_filter(
-                &format!("apad=whole_dur={}", node.out - node.seek),
-                nr,
-                Audio,
-            )
+    if !Path::new(&node.audio).is_file() {
+        if let Some(audio_duration) = node
+            .probe
+            .as_ref()
+            .and_then(|p| p.audio_streams.get(0))
+            .and_then(|a| a.duration.clone())
+            .and_then(|a| a.parse::<f64>().ok())
+        {
+            if node.out - node.seek > audio_duration - node.seek + 0.1 && node.duration >= node.out
+            {
+                chain.add_filter(
+                    &format!("apad=whole_dur={}", node.out - node.seek),
+                    nr,
+                    Audio,
+                )
+            }
         }
     }
 }

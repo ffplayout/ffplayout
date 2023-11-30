@@ -580,7 +580,7 @@ pub fn gen_source(
     trace!("Clip out: {duration}, duration: {}", node.duration);
 
     if valid_source(&node.source) {
-        node.add_probe();
+        node.add_probe(true);
 
         if node
             .source
@@ -616,7 +616,7 @@ pub fn gen_source(
             }
 
             if filler_media.probe.is_none() {
-                filler_media.add_probe();
+                filler_media.add_probe(false);
             }
 
             if node.duration > duration && filler_media.duration > duration {

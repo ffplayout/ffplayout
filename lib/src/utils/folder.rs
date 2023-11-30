@@ -136,7 +136,7 @@ impl Iterator for FolderSource {
         {
             let i = self.player_control.current_index.load(Ordering::SeqCst);
             self.current_node = self.player_control.current_list.lock().unwrap()[i].clone();
-            self.current_node.add_probe();
+            self.current_node.add_probe(false);
             self.current_node
                 .add_filter(&self.config, &self.filter_chain);
             self.current_node.begin = Some(get_sec());
@@ -162,7 +162,7 @@ impl Iterator for FolderSource {
             }
 
             self.current_node = self.player_control.current_list.lock().unwrap()[0].clone();
-            self.current_node.add_probe();
+            self.current_node.add_probe(false);
             self.current_node
                 .add_filter(&self.config, &self.filter_chain);
             self.current_node.begin = Some(get_sec());
@@ -192,7 +192,7 @@ pub fn fill_filler_list(
             let mut media = Media::new(index, &entry.path().to_string_lossy(), false);
 
             if player_control.is_none() {
-                media.add_probe();
+                media.add_probe(false);
             }
 
             filler_list.push(media);
@@ -217,7 +217,7 @@ pub fn fill_filler_list(
         let mut media = Media::new(0, &config.storage.filler.to_string_lossy(), false);
 
         if player_control.is_none() {
-            media.add_probe();
+            media.add_probe(false);
         }
 
         filler_list.push(media);
