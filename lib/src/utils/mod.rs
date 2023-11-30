@@ -13,7 +13,7 @@ use std::{
 use std::env;
 
 use chrono::{prelude::*, Duration};
-use ffprobe::{ffprobe, Format, Stream as FFStream};
+use ffprobe::{ffprobe, Stream as FFStream};
 use rand::prelude::*;
 use regex::Regex;
 use reqwest::header;
@@ -45,6 +45,7 @@ pub use controller::{
     PlayerControl, PlayoutStatus, ProcessControl,
     ProcessUnit::{self, *},
 };
+use errors::ProcError;
 pub use generator::generate_playlist;
 pub use json_serializer::{read_json, JsonPlaylist};
 pub use json_validate::validate_playlist;
@@ -121,14 +122,18 @@ impl Media {
         let mut probe = None;
 
         if do_probe && (is_remote(src) || Path::new(src).is_file()) {
-            probe = Some(MediaProbe::new(src));
+            match MediaProbe::new(src) {
+                Ok(p) => {
+                    probe = Some(p.clone());
 
-            if let Some(dur) = probe
-                .as_ref()
-                .and_then(|p| p.format.as_ref())
-                .and_then(|f| f.duration.as_ref())
-            {
-                duration = dur.parse().unwrap()
+                    duration = p
+                        .format
+                        .duration
+                        .unwrap_or_default()
+                        .parse()
+                        .unwrap_or_default();
+                }
+                Err(e) => error!("{e:?}"),
             }
         }
 
@@ -156,32 +161,40 @@ impl Media {
 
     pub fn add_probe(&mut self, check_audio: bool) {
         if self.probe.is_none() {
-            let probe = MediaProbe::new(&self.source);
-            self.probe = Some(probe.clone());
+            match MediaProbe::new(&self.source) {
+                Ok(probe) => {
+                    self.probe = Some(probe.clone());
 
-            if let Some(dur) = probe
-                .format
-                .and_then(|f| f.duration)
-                .map(|d| d.parse().unwrap())
-                .filter(|d| !is_close(*d, self.duration, 0.5))
-            {
-                self.duration = dur;
+                    if let Some(dur) = probe
+                        .format
+                        .duration
+                        .map(|d| d.parse().unwrap_or_default())
+                        .filter(|d| !is_close(*d, self.duration, 0.5))
+                    {
+                        self.duration = dur;
 
-                if self.out == 0.0 {
-                    self.out = dur;
+                        if self.out == 0.0 {
+                            self.out = dur;
+                        }
+                    }
                 }
-            }
+                Err(e) => error!("{e:?}"),
+            };
 
             if check_audio && Path::new(&self.audio).is_file() {
-                let probe_audio = MediaProbe::new(&self.audio);
-                self.probe_audio = Some(probe_audio.clone());
+                match MediaProbe::new(&self.audio) {
+                    Ok(probe) => {
+                        self.probe_audio = Some(probe.clone());
 
-                if !probe_audio.audio_streams.is_empty() {
-                    self.duration_audio = probe_audio.audio_streams[0]
-                        .duration
-                        .clone()
-                        .and_then(|d| d.parse::<f64>().ok())
-                        .unwrap_or_default()
+                        if !probe.audio_streams.is_empty() {
+                            self.duration_audio = probe.audio_streams[0]
+                                .duration
+                                .clone()
+                                .and_then(|d| d.parse::<f64>().ok())
+                                .unwrap_or_default()
+                        }
+                    }
+                    Err(e) => error!("{e:?}"),
                 }
             }
         }
@@ -226,13 +239,13 @@ fn is_empty_string(st: &String) -> bool {
 /// We use the ffprobe crate, but we map the metadata to our needs.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct MediaProbe {
-    pub format: Option<Format>,
+    pub format: ffprobe::Format,
     pub audio_streams: Vec<FFStream>,
     pub video_streams: Vec<FFStream>,
 }
 
 impl MediaProbe {
-    pub fn new(input: &str) -> Self {
+    pub fn new(input: &str) -> Result<Self, ProcError> {
         let probe = ffprobe(input);
         let mut a_stream = vec![];
         let mut v_stream = vec![];
@@ -253,27 +266,13 @@ impl MediaProbe {
                     }
                 }
 
-                MediaProbe {
-                    format: Some(obj.format),
+                Ok(MediaProbe {
+                    format: obj.format,
                     audio_streams: a_stream,
                     video_streams: v_stream,
-                }
+                })
             }
-            Err(e) => {
-                if Path::new(input).is_file() {
-                    error!(
-                        "Can't read source <b><magenta>{input}</></b> with ffprobe! Error: {e:?}"
-                    );
-                } else if !input.is_empty() {
-                    error!("File not exists: <b><magenta>{input}</></b>");
-                }
-
-                MediaProbe {
-                    format: None,
-                    audio_streams: vec![],
-                    video_streams: vec![],
-                }
-            }
+            Err(e) => Err(ProcError::Ffprobe(e)),
         }
     }
 }
@@ -599,15 +598,16 @@ pub fn is_remote(path: &str) -> bool {
     Regex::new(r"^https?://.*").unwrap().is_match(path)
 }
 
-/// Validate input
+/// Validate next input
 ///
-/// Check if input is a remote source, or from storage and see if it exists.
-pub fn valid_source(source: &str) -> bool {
-    if is_remote(source) && !MediaProbe::new(source).video_streams.is_empty() {
-        return true;
+/// Check if next input is valid, and probe it.
+pub fn validate_next(player_control: PlayerControl, node_begin: Option<f64>) {
+    let mut list = player_control.current_list.lock().unwrap();
+    if let Some(index) = list.iter().position(|r| r.begin == node_begin) {
+        if let Some(next_item) = list.get_mut(index + 1) {
+            next_item.add_probe(true)
+        }
     }
-
-    Path::new(&source).is_file()
 }
 
 /// Check if file can include or has to exclude.

@@ -138,18 +138,22 @@ pub async fn browser(
         } else if path.is_file() && !path_obj.folders_only {
             if let Some(ext) = file_extension(&path) {
                 if extensions.contains(&ext.to_string().to_lowercase()) {
-                    let media = MediaProbe::new(&path.display().to_string());
-                    let mut duration = 0.0;
+                    match MediaProbe::new(&path.display().to_string()) {
+                        Ok(probe) => {
+                            let mut duration = 0.0;
 
-                    if let Some(dur) = media.format.and_then(|f| f.duration) {
-                        duration = dur.parse().unwrap_or(0.0)
-                    }
+                            if let Some(dur) = probe.format.duration {
+                                duration = dur.parse().unwrap_or_default()
+                            }
 
-                    let video = VideoFile {
-                        name: path.file_name().unwrap().to_string_lossy().to_string(),
-                        duration,
+                            let video = VideoFile {
+                                name: path.file_name().unwrap().to_string_lossy().to_string(),
+                                duration,
+                            };
+                            files.push(video);
+                        }
+                        Err(e) => error!("{e:?}"),
                     };
-                    files.push(video);
                 }
             }
         }

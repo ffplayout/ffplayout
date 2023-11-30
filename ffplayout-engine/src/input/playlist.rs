@@ -5,6 +5,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
         Arc, Mutex,
     },
+    thread,
 };
 
 use serde_json::json;
@@ -13,7 +14,7 @@ use simplelog::*;
 use ffplayout_lib::utils::{
     controller::PlayerControl, gen_dummy, get_delta, get_sec, is_close, is_remote,
     json_serializer::read_json, loop_filler, loop_image, modified_time, seek_and_length,
-    valid_source, Media, MediaProbe, PlayoutConfig, PlayoutStatus, DUMMY_LEN, IMAGE_FORMAT,
+    validate_next, Media, MediaProbe, PlayoutConfig, PlayoutStatus, DUMMY_LEN, IMAGE_FORMAT,
 };
 
 /// Struct for current playlist.
@@ -579,9 +580,17 @@ pub fn gen_source(
 
     trace!("Clip out: {duration}, duration: {}", node.duration);
 
-    if valid_source(&node.source) {
-        node.add_probe(true);
+    let node_begin = node.begin;
+    let player_ctl = player_control.clone();
 
+    thread::spawn(move || validate_next(player_ctl, node_begin));
+
+    if node.probe.is_none() {
+        node.add_probe(true);
+    }
+
+    // separate if condition, because of node.add_probe() in last condition
+    if node.probe.is_some() {
         if node
             .source
             .rsplit_once('.')
@@ -655,45 +664,50 @@ pub fn gen_source(
                     item.index = Some(i);
                 }
             }
-        } else if filler_source.is_file() {
-            let probe = MediaProbe::new(&config.storage.filler.to_string_lossy());
-
-            if config
-                .storage
-                .filler
-                .to_string_lossy()
-                .to_string()
-                .rsplit_once('.')
-                .map(|(_, e)| e.to_lowercase())
-                .filter(|c| IMAGE_FORMAT.contains(&c.as_str()))
-                .is_some()
-            {
-                node.source = config.storage.filler.clone().to_string_lossy().to_string();
-                node.cmd = Some(loop_image(&node));
-                node.probe = Some(probe);
-            } else if let Some(filler_duration) = probe
-                .clone()
-                .format
-                .and_then(|f| f.duration)
-                .and_then(|d| d.parse::<f64>().ok())
-            {
-                // Create placeholder from config filler.
-                node.source = config.storage.filler.clone().to_string_lossy().to_string();
-                node.out = duration;
-                node.duration = filler_duration;
-                node.cmd = Some(loop_filler(&node));
-                node.probe = Some(probe);
-            } else {
-                // Create colored placeholder.
-                let (source, cmd) = gen_dummy(config, duration);
-                node.source = source;
-                node.cmd = Some(cmd);
-            }
         } else {
-            // Create colored placeholder.
-            let (source, cmd) = gen_dummy(config, duration);
-            node.source = source;
-            node.cmd = Some(cmd);
+            match MediaProbe::new(&config.storage.filler.to_string_lossy()) {
+                Ok(probe) => {
+                    if config
+                        .storage
+                        .filler
+                        .to_string_lossy()
+                        .to_string()
+                        .rsplit_once('.')
+                        .map(|(_, e)| e.to_lowercase())
+                        .filter(|c| IMAGE_FORMAT.contains(&c.as_str()))
+                        .is_some()
+                    {
+                        node.source = config.storage.filler.clone().to_string_lossy().to_string();
+                        node.cmd = Some(loop_image(&node));
+                        node.probe = Some(probe);
+                    } else if let Some(filler_duration) = probe
+                        .clone()
+                        .format
+                        .duration
+                        .and_then(|d| d.parse::<f64>().ok())
+                    {
+                        // Create placeholder from config filler.
+                        node.source = config.storage.filler.clone().to_string_lossy().to_string();
+                        node.out = duration;
+                        node.duration = filler_duration;
+                        node.cmd = Some(loop_filler(&node));
+                        node.probe = Some(probe);
+                    } else {
+                        // Create colored placeholder.
+                        let (source, cmd) = gen_dummy(config, duration);
+                        node.source = source;
+                        node.cmd = Some(cmd);
+                    }
+                }
+                Err(e) => {
+                    error!("{e:?}");
+
+                    // Create colored placeholder.
+                    let (source, cmd) = gen_dummy(config, duration);
+                    node.source = source;
+                    node.cmd = Some(cmd);
+                }
+            }
         }
 
         warn!(
