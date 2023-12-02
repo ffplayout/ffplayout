@@ -13,8 +13,8 @@ use simplelog::*;
 
 use crate::filter::FilterType::Audio;
 use crate::utils::{
-    errors::ProcError, loop_image, sec_to_time, seek_and_length, valid_source, vec_strings,
-    JsonPlaylist, Media, OutputMode::Null, PlayoutConfig, FFMPEG_IGNORE_ERRORS, IMAGE_FORMAT,
+    errors::ProcError, loop_image, sec_to_time, seek_and_length, vec_strings, JsonPlaylist, Media,
+    OutputMode::Null, PlayerControl, PlayoutConfig, FFMPEG_IGNORE_ERRORS, IMAGE_FORMAT,
 };
 
 /// Validate a single media file.
@@ -42,16 +42,6 @@ fn check_media(
 
         // Seek in file, to prevent false silence detection on intros without sound.
         enc_cmd.append(&mut vec_strings!["-ss", seek]);
-    }
-
-    node.add_probe();
-
-    if node.probe.clone().and_then(|p| p.format).is_none() {
-        return Err(ProcError::Custom(format!(
-            "No Metadata at position <yellow>{pos}</> {}, from file <b><magenta>\"{}\"</></b>",
-            sec_to_time(begin),
-            node.source
-        )));
     }
 
     // Take care, that no seek and length command is added.
@@ -154,9 +144,10 @@ fn check_media(
 ///
 /// This function we run in a thread, to don't block the main function.
 pub fn validate_playlist(
-    playlist: JsonPlaylist,
-    is_terminated: Arc<AtomicBool>,
     mut config: PlayoutConfig,
+    player_control: PlayerControl,
+    mut playlist: JsonPlaylist,
+    is_terminated: Arc<AtomicBool>,
 ) {
     let date = playlist.date;
 
@@ -173,14 +164,20 @@ pub fn validate_playlist(
     debug!("Validate playlist from: <yellow>{date}</>");
     let timer = Instant::now();
 
-    for (index, item) in playlist.program.iter().enumerate() {
+    for (index, item) in playlist.program.iter_mut().enumerate() {
         if is_terminated.load(Ordering::SeqCst) {
             return;
         }
 
         let pos = index + 1;
 
-        if valid_source(&item.source) {
+        if item.audio.is_empty() {
+            item.add_probe(false);
+        } else {
+            item.add_probe(true);
+        }
+
+        if item.probe.is_some() {
             if let Err(e) = check_media(item.clone(), pos, begin, &config) {
                 error!("{e}");
             } else if config.general.validate {
@@ -189,10 +186,20 @@ pub fn validate_playlist(
                     sec_to_time(begin),
                     item.source
                 )
-            };
+            } else if let Ok(mut list) = player_control.current_list.lock() {
+                list.iter_mut().for_each(|o| {
+                    if o.source == item.source {
+                        o.probe = item.probe.clone();
+                    }
+                    if o.audio == item.audio && item.probe_audio.is_some() {
+                        o.probe_audio = item.probe_audio.clone();
+                        o.duration_audio = item.duration_audio;
+                    }
+                });
+            }
         } else {
             error!(
-                "Source on position <yellow>{pos:0>3}</> {} not exists: <b><magenta>{}</></b>",
+                "Error on position <yellow>{pos:0>3}</> <b><magenta>{}</></b>, file: {}",
                 sec_to_time(begin),
                 item.source
             );

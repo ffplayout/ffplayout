@@ -1,15 +1,18 @@
 use std::io;
 
 use derive_more::Display;
+use ffprobe::FfProbeError;
 
 #[derive(Debug, Display)]
 pub enum ProcError {
     #[display(fmt = "Failed to spawn ffmpeg/ffprobe. {}", _0)]
     CommandSpawn(io::Error),
-    #[display(fmt = "Failed to read data from ffmpeg/ffprobe. {}", _0)]
+    #[display(fmt = "IO Error {}", _0)]
     IO(io::Error),
     #[display(fmt = "{}", _0)]
     Custom(String),
+    #[display(fmt = "{}", _0)]
+    Ffprobe(FfProbeError),
     #[display(fmt = "Regex compile error {}", _0)]
     Regex(String),
     #[display(fmt = "Thread error {}", _0)]
@@ -19,6 +22,12 @@ pub enum ProcError {
 impl From<std::io::Error> for ProcError {
     fn from(err: std::io::Error) -> Self {
         Self::CommandSpawn(err)
+    }
+}
+
+impl From<FfProbeError> for ProcError {
+    fn from(err: FfProbeError) -> Self {
+        Self::Ffprobe(err)
     }
 }
 

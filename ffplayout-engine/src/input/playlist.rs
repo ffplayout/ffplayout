@@ -12,8 +12,8 @@ use simplelog::*;
 
 use ffplayout_lib::utils::{
     controller::PlayerControl, gen_dummy, get_delta, get_sec, is_close, is_remote,
-    json_serializer::read_json, loop_filler, loop_image, modified_time, seek_and_length,
-    valid_source, Media, MediaProbe, PlayoutConfig, PlayoutStatus, DUMMY_LEN, IMAGE_FORMAT,
+    json_serializer::read_json, loop_filler, loop_image, modified_time, seek_and_length, Media,
+    MediaProbe, PlayoutConfig, PlayoutStatus, DUMMY_LEN, IMAGE_FORMAT,
 };
 
 /// Struct for current playlist.
@@ -40,7 +40,14 @@ impl CurrentProgram {
         is_terminated: Arc<AtomicBool>,
         player_control: &PlayerControl,
     ) -> Self {
-        let json = read_json(config, None, is_terminated.clone(), true, false);
+        let json = read_json(
+            config,
+            player_control,
+            None,
+            is_terminated.clone(),
+            true,
+            false,
+        );
 
         if let Some(file) = &json.current_file {
             info!("Read Playlist: <b><magenta>{}</></b>", file);
@@ -78,7 +85,14 @@ impl CurrentProgram {
     fn check_update(&mut self, seek: bool) {
         if self.json_path.is_none() {
             // If the playlist was missing, we check here to see if it came back.
-            let json = read_json(&self.config, None, self.is_terminated.clone(), seek, false);
+            let json = read_json(
+                &self.config,
+                &self.player_control,
+                None,
+                self.is_terminated.clone(),
+                seek,
+                false,
+            );
 
             if let Some(file) = &json.current_file {
                 info!("Read Playlist: <b><magenta>{file}</></b>");
@@ -102,6 +116,7 @@ impl CurrentProgram {
 
                 let json = read_json(
                     &self.config,
+                    &self.player_control,
                     self.json_path.clone(),
                     self.is_terminated.clone(),
                     false,
@@ -166,7 +181,14 @@ impl CurrentProgram {
             trace!("get next day");
             next = true;
 
-            let json = read_json(&self.config, None, self.is_terminated.clone(), false, true);
+            let json = read_json(
+                &self.config,
+                &self.player_control,
+                None,
+                self.is_terminated.clone(),
+                false,
+                true,
+            );
 
             if let Some(file) = &json.current_file {
                 info!("Read next Playlist: <b><magenta>{}</></b>", file);
@@ -579,9 +601,14 @@ pub fn gen_source(
 
     trace!("Clip out: {duration}, duration: {}", node.duration);
 
-    if valid_source(&node.source) {
-        node.add_probe();
+    if node.probe.is_none() {
+        node.add_probe(true);
+    } else {
+        trace!("Node has a probe...")
+    }
 
+    // separate if condition, because of node.add_probe() in last condition
+    if node.probe.is_some() {
         if node
             .source
             .rsplit_once('.')
@@ -616,7 +643,7 @@ pub fn gen_source(
             }
 
             if filler_media.probe.is_none() {
-                filler_media.add_probe();
+                filler_media.add_probe(false);
             }
 
             if node.duration > duration && filler_media.duration > duration {
@@ -655,45 +682,50 @@ pub fn gen_source(
                     item.index = Some(i);
                 }
             }
-        } else if filler_source.is_file() {
-            let probe = MediaProbe::new(&config.storage.filler.to_string_lossy());
-
-            if config
-                .storage
-                .filler
-                .to_string_lossy()
-                .to_string()
-                .rsplit_once('.')
-                .map(|(_, e)| e.to_lowercase())
-                .filter(|c| IMAGE_FORMAT.contains(&c.as_str()))
-                .is_some()
-            {
-                node.source = config.storage.filler.clone().to_string_lossy().to_string();
-                node.cmd = Some(loop_image(&node));
-                node.probe = Some(probe);
-            } else if let Some(filler_duration) = probe
-                .clone()
-                .format
-                .and_then(|f| f.duration)
-                .and_then(|d| d.parse::<f64>().ok())
-            {
-                // Create placeholder from config filler.
-                node.source = config.storage.filler.clone().to_string_lossy().to_string();
-                node.out = duration;
-                node.duration = filler_duration;
-                node.cmd = Some(loop_filler(&node));
-                node.probe = Some(probe);
-            } else {
-                // Create colored placeholder.
-                let (source, cmd) = gen_dummy(config, duration);
-                node.source = source;
-                node.cmd = Some(cmd);
-            }
         } else {
-            // Create colored placeholder.
-            let (source, cmd) = gen_dummy(config, duration);
-            node.source = source;
-            node.cmd = Some(cmd);
+            match MediaProbe::new(&config.storage.filler.to_string_lossy()) {
+                Ok(probe) => {
+                    if config
+                        .storage
+                        .filler
+                        .to_string_lossy()
+                        .to_string()
+                        .rsplit_once('.')
+                        .map(|(_, e)| e.to_lowercase())
+                        .filter(|c| IMAGE_FORMAT.contains(&c.as_str()))
+                        .is_some()
+                    {
+                        node.source = config.storage.filler.clone().to_string_lossy().to_string();
+                        node.cmd = Some(loop_image(&node));
+                        node.probe = Some(probe);
+                    } else if let Some(filler_duration) = probe
+                        .clone()
+                        .format
+                        .duration
+                        .and_then(|d| d.parse::<f64>().ok())
+                    {
+                        // Create placeholder from config filler.
+                        node.source = config.storage.filler.clone().to_string_lossy().to_string();
+                        node.out = duration;
+                        node.duration = filler_duration;
+                        node.cmd = Some(loop_filler(&node));
+                        node.probe = Some(probe);
+                    } else {
+                        // Create colored placeholder.
+                        let (source, cmd) = gen_dummy(config, duration);
+                        node.source = source;
+                        node.cmd = Some(cmd);
+                    }
+                }
+                Err(e) => {
+                    error!("{e:?}");
+
+                    // Create colored placeholder.
+                    let (source, cmd) = gen_dummy(config, duration);
+                    node.source = source;
+                    node.cmd = Some(cmd);
+                }
+            }
         }
 
         warn!(

@@ -192,6 +192,8 @@ fn video_separate_audio_input() {
         Some(vec_strings![
             "-i",
             "./assets/no_audio.mp4",
+            "-stream_loop",
+            "-1",
             "-i",
             "./assets/audio.mp3",
             "-t",
