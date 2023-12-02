@@ -409,10 +409,6 @@ const contentType = { 'content-type': 'application/json;charset=UTF-8' }
 
 const { configID } = storeToRefs(useConfig())
 
-definePageMeta({
-    middleware: ['auth'],
-})
-
 useHead({
     title: 'Media | ffplayout',
 })

@@ -228,10 +228,6 @@ const indexStore = useIndex()
 const { numberToHex, hexToNumber } = stringFormatter()
 const contentType = { 'content-type': 'application/json;charset=UTF-8' }
 
-definePageMeta({
-    middleware: ['auth'],
-})
-
 useHead({
     title: 'Messages | ffplayout'
 })

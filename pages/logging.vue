@@ -17,10 +17,6 @@ import { storeToRefs } from 'pinia'
 import { useAuth } from '~/stores/auth'
 import { useConfig } from '~/stores/config'
 
-definePageMeta({
-    middleware: ['auth'],
-})
-
 useHead({
     title: 'Logging | ffplayout'
 })

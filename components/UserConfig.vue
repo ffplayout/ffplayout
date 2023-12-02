@@ -288,8 +288,6 @@ async function onSubmitUser() {
         configStore.configUser.password = newPass.value
     }
 
-    console.log('--configStore.configUser', configStore.configUser)
-
     authStore.inspectToken()
     const update = await configStore.setUserConfig(configStore.configUser)
 

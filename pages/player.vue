@@ -787,10 +787,6 @@ const indexStore = useIndex()
 const mediaStore = useMedia()
 const playlistStore = usePlaylist()
 
-definePageMeta({
-    middleware: ['auth'],
-})
-
 useHead({
     title: 'Player | ffplayout',
 })

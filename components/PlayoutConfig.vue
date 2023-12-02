@@ -122,7 +122,6 @@ async function onSubmitPlayout() {
             body: JSON.stringify({ command: 'status' }),
         }).then((response: any) => {
             if (response === 'active') {
-                console.log('---restart modal')
                 // @ts-ignore
                 const modal = $bootstrap.Modal.getOrCreateInstance(restartModal.value)
 

@@ -73,11 +73,6 @@
 
 <script setup lang="ts">
 import { useIndex } from '~/stores/index'
-
-definePageMeta({
-    middleware: ['auth'],
-})
-
 useHead({
     title: 'Configuration | ffplayout'
 })
