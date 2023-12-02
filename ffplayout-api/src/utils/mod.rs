@@ -35,7 +35,7 @@ use crate::db::{
 use crate::utils::errors::ServiceError;
 use ffplayout_lib::utils::{time_to_sec, PlayoutConfig};
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
 pub enum Role {
     Admin,
     User,

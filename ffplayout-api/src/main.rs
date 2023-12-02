@@ -8,7 +8,7 @@ use actix_files::Files;
 use actix_web::{
     dev::ServiceRequest, middleware::Logger, web, App, Error, HttpMessage, HttpServer,
 };
-use actix_web_grants::permissions::AttachPermissions;
+use actix_web_grants::authorities::AttachAuthorities;
 use actix_web_httpauth::{extractors::bearer::BearerAuth, middleware::HttpAuthentication};
 
 #[cfg(not(debug_assertions))]
