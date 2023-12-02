@@ -218,7 +218,7 @@ pub async fn login(pool: web::Data<Pool<Sqlite>>, credentials: web::Json<User>) 
 /// -H 'Authorization: Bearer <TOKEN>'
 /// ```
 #[get("/user")]
-#[protect("Role::Admin", "Role::User", ty = "Role")]
+#[protect(any("Role::Admin", "Role::User"), ty = "Role")]
 async fn get_user(
     pool: web::Data<Pool<Sqlite>>,
     user: web::ReqData<LoginUser>,
@@ -278,7 +278,7 @@ async fn get_users(pool: web::Data<Pool<Sqlite>>) -> Result<impl Responder, Serv
 /// -d '{"mail": "<MAIL>", "password": "<PASS>"}' -H 'Authorization: Bearer <TOKEN>'
 /// ```
 #[put("/user/{id}")]
-#[protect("Role::Admin", "Role::User", ty = "Role")]
+#[protect(any("Role::Admin", "Role::User"), ty = "Role")]
 async fn update_user(
     pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
@@ -388,7 +388,7 @@ async fn remove_user(
 /// }
 /// ```
 #[get("/channel/{id}")]
-#[protect("Role::Admin", "Role::User", ty = "Role")]
+#[protect(any("Role::Admin", "Role::User"), ty = "Role")]
 async fn get_channel(
     pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
@@ -406,7 +406,7 @@ async fn get_channel(
 /// curl -X GET http://127.0.0.1:8787/api/channels -H "Authorization: Bearer <TOKEN>"
 /// ```
 #[get("/channels")]
-#[protect("Role::Admin", "Role::User", ty = "Role")]
+#[protect(any("Role::Admin", "Role::User"), ty = "Role")]
 async fn get_all_channels(pool: web::Data<Pool<Sqlite>>) -> Result<impl Responder, ServiceError> {
     if let Ok(channel) = handles::select_all_channels(&pool.into_inner()).await {
         return Ok(web::Json(channel));
@@ -486,7 +486,7 @@ async fn remove_channel(
 ///
 /// Response is a JSON object from the ffplayout.yml
 #[get("/playout/config/{id}")]
-#[protect("Role::Admin", "Role::User", ty = "Role")]
+#[protect(any("Role::Admin", "Role::User"), ty = "Role")]
 async fn get_playout_config(
     pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
@@ -542,7 +542,7 @@ async fn update_playout_config(
 /// -H 'Authorization: Bearer <TOKEN>'
 /// ```
 #[get("/presets/{id}")]
-#[protect("Role::Admin", "Role::User", ty = "Role")]
+#[protect(any("Role::Admin", "Role::User"), ty = "Role")]
 async fn get_presets(
     pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
@@ -562,7 +562,7 @@ async fn get_presets(
 /// -H 'Authorization: Bearer <TOKEN>'
 /// ```
 #[put("/presets/{id}")]
-#[protect("Role::Admin", "Role::User", ty = "Role")]
+#[protect(any("Role::Admin", "Role::User"), ty = "Role")]
 async fn update_preset(
     pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
@@ -586,7 +586,7 @@ async fn update_preset(
 /// -H 'Authorization: Bearer <TOKEN>'
 /// ```
 #[post("/presets/")]
-#[protect("Role::Admin", "Role::User", ty = "Role")]
+#[protect(any("Role::Admin", "Role::User"), ty = "Role")]
 async fn add_preset(
     pool: web::Data<Pool<Sqlite>>,
     data: web::Json<TextPreset>,
@@ -608,7 +608,7 @@ async fn add_preset(
 /// -H 'Authorization: Bearer <TOKEN>'
 /// ```
 #[delete("/presets/{id}")]
-#[protect("Role::Admin", "Role::User", ty = "Role")]
+#[protect(any("Role::Admin", "Role::User"), ty = "Role")]
 async fn delete_preset(
     pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
@@ -639,7 +639,7 @@ async fn delete_preset(
 /// -d '{"text": "Hello from ffplayout", "x": "(w-text_w)/2", "y": "(h-text_h)/2", fontsize": "24", "line_spacing": "4", "fontcolor": "#ffffff", "box": "1", "boxcolor": "#000000", "boxborderw": "4", "alpha": "1.0"}'
 /// ```
 #[post("/control/{id}/text/")]
-#[protect("Role::Admin", "Role::User", ty = "Role")]
+#[protect(any("Role::Admin", "Role::User"), ty = "Role")]
 pub async fn send_text_message(
     pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
@@ -662,7 +662,7 @@ pub async fn send_text_message(
 /// -d '{ "command": "reset" }' -H 'Authorization: Bearer <TOKEN>'
 /// ```
 #[post("/control/{id}/playout/")]
-#[protect("Role::Admin", "Role::User", ty = "Role")]
+#[protect(any("Role::Admin", "Role::User"), ty = "Role")]
 pub async fn control_playout(
     pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
@@ -705,7 +705,7 @@ pub async fn control_playout(
 /// }
 /// ```
 #[get("/control/{id}/media/current")]
-#[protect("Role::Admin", "Role::User", ty = "Role")]
+#[protect(any("Role::Admin", "Role::User"), ty = "Role")]
 pub async fn media_current(
     pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
@@ -722,7 +722,7 @@ pub async fn media_current(
 /// curl -X GET http://127.0.0.1:8787/api/control/1/media/next/ -H 'Authorization: Bearer <TOKEN>'
 /// ```
 #[get("/control/{id}/media/next")]
-#[protect("Role::Admin", "Role::User", ty = "Role")]
+#[protect(any("Role::Admin", "Role::User"), ty = "Role")]
 pub async fn media_next(
     pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
@@ -740,7 +740,7 @@ pub async fn media_next(
 /// -H 'Content-Type: application/json' -H 'Authorization: Bearer <TOKEN>'
 /// ```
 #[get("/control/{id}/media/last")]
-#[protect("Role::Admin", "Role::User", ty = "Role")]
+#[protect(any("Role::Admin", "Role::User"), ty = "Role")]
 pub async fn media_last(
     pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
@@ -765,7 +765,7 @@ pub async fn media_last(
 /// -d '{"command": "start"}'
 /// ```
 #[post("/control/{id}/process/")]
-#[protect("Role::Admin", "Role::User", ty = "Role")]
+#[protect(any("Role::Admin", "Role::User"), ty = "Role")]
 pub async fn process_control(
     pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
@@ -784,7 +784,7 @@ pub async fn process_control(
 /// -H 'Content-Type: application/json' -H 'Authorization: Bearer <TOKEN>'
 /// ```
 #[get("/playlist/{id}")]
-#[protect("Role::Admin", "Role::User", ty = "Role")]
+#[protect(any("Role::Admin", "Role::User"), ty = "Role")]
 pub async fn get_playlist(
     pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
@@ -804,7 +804,7 @@ pub async fn get_playlist(
 /// --data "{<JSON playlist data>}"
 /// ```
 #[post("/playlist/{id}/")]
-#[protect("Role::Admin", "Role::User", ty = "Role")]
+#[protect(any("Role::Admin", "Role::User"), ty = "Role")]
 pub async fn save_playlist(
     pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
@@ -835,7 +835,7 @@ pub async fn save_playlist(
 ///            {"start": "10:00:00", "duration": "14:00:00", "shuffle": false, "paths": ["path/3", "path/4"]}]}}'
 /// ```
 #[post("/playlist/{id}/generate/{date}")]
-#[protect("Role::Admin", "Role::User", ty = "Role")]
+#[protect(any("Role::Admin", "Role::User"), ty = "Role")]
 pub async fn gen_playlist(
     pool: web::Data<Pool<Sqlite>>,
     params: web::Path<(i32, String)>,
@@ -873,7 +873,7 @@ pub async fn gen_playlist(
 /// -H 'Content-Type: application/json' -H 'Authorization: Bearer <TOKEN>'
 /// ```
 #[delete("/playlist/{id}/{date}")]
-#[protect("Role::Admin", "Role::User", ty = "Role")]
+#[protect(any("Role::Admin", "Role::User"), ty = "Role")]
 pub async fn del_playlist(
     pool: web::Data<Pool<Sqlite>>,
     params: web::Path<(i32, String)>,
@@ -893,7 +893,7 @@ pub async fn del_playlist(
 /// -H 'Content-Type: application/json' -H 'Authorization: Bearer <TOKEN>'
 /// ```
 #[get("/log/{id}")]
-#[protect("Role::Admin", "Role::User", ty = "Role")]
+#[protect(any("Role::Admin", "Role::User"), ty = "Role")]
 pub async fn get_log(
     pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
@@ -911,7 +911,7 @@ pub async fn get_log(
 /// -d '{ "source": "/" }' -H 'Authorization: Bearer <TOKEN>'
 /// ```
 #[post("/file/{id}/browse/")]
-#[protect("Role::Admin", "Role::User", ty = "Role")]
+#[protect(any("Role::Admin", "Role::User"), ty = "Role")]
 pub async fn file_browser(
     pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
@@ -930,7 +930,7 @@ pub async fn file_browser(
 /// -d '{"source": "<FOLDER PATH>"}' -H 'Authorization: Bearer <TOKEN>'
 /// ```
 #[post("/file/{id}/create-folder/")]
-#[protect("Role::Admin", "Role::User", ty = "Role")]
+#[protect(any("Role::Admin", "Role::User"), ty = "Role")]
 pub async fn add_dir(
     pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
@@ -946,7 +946,7 @@ pub async fn add_dir(
 /// -d '{"source": "<SOURCE>", "target": "<TARGET>"}' -H 'Authorization: Bearer <TOKEN>'
 /// ```
 #[post("/file/{id}/rename/")]
-#[protect("Role::Admin", "Role::User", ty = "Role")]
+#[protect(any("Role::Admin", "Role::User"), ty = "Role")]
 pub async fn move_rename(
     pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
@@ -965,7 +965,7 @@ pub async fn move_rename(
 /// -d '{"source": "<SOURCE>"}' -H 'Authorization: Bearer <TOKEN>'
 /// ```
 #[post("/file/{id}/remove/")]
-#[protect("Role::Admin", "Role::User", ty = "Role")]
+#[protect(any("Role::Admin", "Role::User"), ty = "Role")]
 pub async fn remove(
     pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
@@ -984,7 +984,7 @@ pub async fn remove(
 /// -F "file=@file.mp4"
 /// ```
 #[put("/file/{id}/upload/")]
-#[protect("Role::Admin", "Role::User", ty = "Role")]
+#[protect(any("Role::Admin", "Role::User"), ty = "Role")]
 async fn save_file(
     pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
@@ -1060,7 +1060,7 @@ async fn get_public(public: web::Path<String>) -> Result<actix_files::NamedFile,
 /// -F "file=@list.m3u"
 /// ```
 #[put("/file/{id}/import/")]
-#[protect("Role::Admin", "Role::User", ty = "Role")]
+#[protect(any("Role::Admin", "Role::User"), ty = "Role")]
 async fn import_playlist(
     pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
@@ -1103,7 +1103,7 @@ async fn import_playlist(
 /// -H 'Authorization: Bearer <TOKEN>'
 /// ```
 #[get("/program/{id}/")]
-#[protect("Role::Admin", "Role::User", ty = "Role")]
+#[protect(any("Role::Admin", "Role::User"), ty = "Role")]
 async fn get_program(
     pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
@@ -1189,7 +1189,7 @@ async fn get_program(
 /// -H 'Content-Type: application/json' -H 'Authorization: Bearer <TOKEN>'
 /// ```
 #[get("/system/{id}")]
-#[protect("Role::Admin", "Role::User", ty = "Role")]
+#[protect(any("Role::Admin", "Role::User"), ty = "Role")]
 pub async fn get_system_stat(
     pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
