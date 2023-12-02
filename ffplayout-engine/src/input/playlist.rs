@@ -5,7 +5,6 @@ use std::{
         atomic::{AtomicBool, Ordering},
         Arc, Mutex,
     },
-    thread,
 };
 
 use serde_json::json;
@@ -13,8 +12,8 @@ use simplelog::*;
 
 use ffplayout_lib::utils::{
     controller::PlayerControl, gen_dummy, get_delta, get_sec, is_close, is_remote,
-    json_serializer::read_json, loop_filler, loop_image, modified_time, seek_and_length,
-    validate_next, Media, MediaProbe, PlayoutConfig, PlayoutStatus, DUMMY_LEN, IMAGE_FORMAT,
+    json_serializer::read_json, loop_filler, loop_image, modified_time, seek_and_length, Media,
+    MediaProbe, PlayoutConfig, PlayoutStatus, DUMMY_LEN, IMAGE_FORMAT,
 };
 
 /// Struct for current playlist.
@@ -41,7 +40,14 @@ impl CurrentProgram {
         is_terminated: Arc<AtomicBool>,
         player_control: &PlayerControl,
     ) -> Self {
-        let json = read_json(config, None, is_terminated.clone(), true, false);
+        let json = read_json(
+            config,
+            player_control,
+            None,
+            is_terminated.clone(),
+            true,
+            false,
+        );
 
         if let Some(file) = &json.current_file {
             info!("Read Playlist: <b><magenta>{}</></b>", file);
@@ -79,7 +85,14 @@ impl CurrentProgram {
     fn check_update(&mut self, seek: bool) {
         if self.json_path.is_none() {
             // If the playlist was missing, we check here to see if it came back.
-            let json = read_json(&self.config, None, self.is_terminated.clone(), seek, false);
+            let json = read_json(
+                &self.config,
+                &self.player_control,
+                None,
+                self.is_terminated.clone(),
+                seek,
+                false,
+            );
 
             if let Some(file) = &json.current_file {
                 info!("Read Playlist: <b><magenta>{file}</></b>");
@@ -103,6 +116,7 @@ impl CurrentProgram {
 
                 let json = read_json(
                     &self.config,
+                    &self.player_control,
                     self.json_path.clone(),
                     self.is_terminated.clone(),
                     false,
@@ -167,7 +181,14 @@ impl CurrentProgram {
             trace!("get next day");
             next = true;
 
-            let json = read_json(&self.config, None, self.is_terminated.clone(), false, true);
+            let json = read_json(
+                &self.config,
+                &self.player_control,
+                None,
+                self.is_terminated.clone(),
+                false,
+                true,
+            );
 
             if let Some(file) = &json.current_file {
                 info!("Read next Playlist: <b><magenta>{}</></b>", file);
@@ -580,13 +601,10 @@ pub fn gen_source(
 
     trace!("Clip out: {duration}, duration: {}", node.duration);
 
-    let node_begin = node.begin;
-    let player_ctl = player_control.clone();
-
-    thread::spawn(move || validate_next(player_ctl, node_begin));
-
     if node.probe.is_none() {
         node.add_probe(true);
+    } else {
+        trace!("Node has a probe...")
     }
 
     // separate if condition, because of node.add_probe() in last condition

@@ -159,6 +159,7 @@ fn main() -> Result<(), ProcError> {
     }
 
     if args.validate {
+        let play_ctl3 = play_control.clone();
         let mut playlist_path = config.playlist.path.clone();
         let start_sec = config.playlist.start_sec.unwrap();
         let date = get_date(false, start_sec, false);
@@ -179,7 +180,12 @@ fn main() -> Result<(), ProcError> {
 
         let playlist: JsonPlaylist = serde_json::from_reader(f)?;
 
-        validate_playlist(playlist, Arc::new(AtomicBool::new(false)), config);
+        validate_playlist(
+            config,
+            play_ctl3,
+            playlist,
+            Arc::new(AtomicBool::new(false)),
+        );
 
         exit(0);
     }

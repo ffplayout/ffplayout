@@ -10,7 +10,7 @@ use simplelog::*;
 
 use crate::utils::{
     controller::ProcessUnit::*, get_date, is_remote, modified_time, time_from_header,
-    validate_playlist, Media, PlayoutConfig, DUMMY_LEN,
+    validate_playlist, Media, PlayerControl, PlayoutConfig, DUMMY_LEN,
 };
 
 /// This is our main playlist object, it holds all necessary information for the current day.
@@ -141,12 +141,14 @@ fn loop_playlist(
 /// which we need to process.
 pub fn read_json(
     config: &PlayoutConfig,
+    player_control: &PlayerControl,
     path: Option<String>,
     is_terminated: Arc<AtomicBool>,
     seek: bool,
     get_next: bool,
 ) -> JsonPlaylist {
     let config_clone = config.clone();
+    let control_clone = player_control.clone();
     let mut playlist_path = config.playlist.path.clone();
     let start_sec = config.playlist.start_sec.unwrap();
     let date = get_date(seek, start_sec, get_next);
@@ -185,7 +187,7 @@ pub fn read_json(
                     let list_clone = playlist.clone();
 
                     thread::spawn(move || {
-                        validate_playlist(list_clone, is_terminated, config_clone)
+                        validate_playlist(config_clone, control_clone, list_clone, is_terminated)
                     });
 
                     match config.playlist.infinit {
@@ -218,7 +220,9 @@ pub fn read_json(
 
         let list_clone = playlist.clone();
 
-        thread::spawn(move || validate_playlist(list_clone, is_terminated, config_clone));
+        thread::spawn(move || {
+            validate_playlist(config_clone, control_clone, list_clone, is_terminated)
+        });
 
         match config.playlist.infinit {
             true => return loop_playlist(config, current_file, playlist),

@@ -598,18 +598,6 @@ pub fn is_remote(path: &str) -> bool {
     Regex::new(r"^https?://.*").unwrap().is_match(path)
 }
 
-/// Validate next input
-///
-/// Check if next input is valid, and probe it.
-pub fn validate_next(player_control: PlayerControl, node_begin: Option<f64>) {
-    let mut list = player_control.current_list.lock().unwrap();
-    if let Some(index) = list.iter().position(|r| r.begin == node_begin) {
-        if let Some(next_item) = list.get_mut(index + 1) {
-            next_item.add_probe(true)
-        }
-    }
-}
-
 /// Check if file can include or has to exclude.
 /// For example when a file is on given HLS output path, it should exclude.
 /// Or when the file extension is set under storage config it can be include.

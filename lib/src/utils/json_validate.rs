@@ -14,7 +14,7 @@ use simplelog::*;
 use crate::filter::FilterType::Audio;
 use crate::utils::{
     errors::ProcError, loop_image, sec_to_time, seek_and_length, vec_strings, JsonPlaylist, Media,
-    OutputMode::Null, PlayoutConfig, FFMPEG_IGNORE_ERRORS, IMAGE_FORMAT,
+    OutputMode::Null, PlayerControl, PlayoutConfig, FFMPEG_IGNORE_ERRORS, IMAGE_FORMAT,
 };
 
 /// Validate a single media file.
@@ -144,9 +144,10 @@ fn check_media(
 ///
 /// This function we run in a thread, to don't block the main function.
 pub fn validate_playlist(
+    mut config: PlayoutConfig,
+    player_control: PlayerControl,
     mut playlist: JsonPlaylist,
     is_terminated: Arc<AtomicBool>,
-    mut config: PlayoutConfig,
 ) {
     let date = playlist.date;
 
@@ -170,7 +171,11 @@ pub fn validate_playlist(
 
         let pos = index + 1;
 
-        item.add_probe(false);
+        if item.audio.is_empty() {
+            item.add_probe(false);
+        } else {
+            item.add_probe(true);
+        }
 
         if item.probe.is_some() {
             if let Err(e) = check_media(item.clone(), pos, begin, &config) {
@@ -181,6 +186,16 @@ pub fn validate_playlist(
                     sec_to_time(begin),
                     item.source
                 )
+            } else if let Ok(mut list) = player_control.current_list.lock() {
+                list.iter_mut().for_each(|o| {
+                    if o.source == item.source {
+                        o.probe = item.probe.clone();
+                    }
+                    if o.audio == item.audio && item.probe_audio.is_some() {
+                        o.probe_audio = item.probe_audio.clone();
+                        o.duration_audio = item.duration_audio;
+                    }
+                });
             }
         } else {
             error!(
