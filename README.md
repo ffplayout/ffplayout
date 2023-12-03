@@ -53,6 +53,7 @@ Check the [releases](https://github.com/ffplayout/ffplayout/releases/latest) for
 - audio only, for radio mode (experimental *)
 - [Piggyback Mode](/ffplayout-api/README.md#piggyback-mode), mostly for non Linux systems (experimental *)
 - generate playlist based on [template](/docs/playlist_gen.md) (experimental *)
+- During playlist import, all video clips are validated and, if desired, checked to ensure that the audio track is not completely muted.
 
 For preview stream, read: [/docs/preview_stream.md](/docs/preview_stream.md)
 

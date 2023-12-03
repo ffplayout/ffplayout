@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.20.1](https://github.com/ffplayout/ffplayout/releases/tag/v0.20.1) (2023-12-03)
+
+### ffplayout
+
+- add silence detection for validation [ea83160](https://github.com/ffplayout/ffplayout/commit/ea83160ba63bb8723de1f004f6449b37a1ea2593)
+- loop separate audio when is to short [94e02ac](https://github.com/ffplayout/ffplayout/commit/94e02ac3678c0f8cdec97002f30e08beb45e748b)
+- add probe object in validation thread, to hopefully reduce latency and reduce unneeded file access [0330ad6](https://github.com/ffplayout/ffplayout/commit/0330ad61681a4cb576d4a46365c8cdffdfc96379)
+
+### ffpapi
+
+- update actix-web-grants to v4 [f1e87975](https://github.com/ffplayout/ffplayout/commit/f1e8797528e649aac6de85d897b7c03b8007a2b3)
+
+### frontend
+
+- call system status only when app is not hidden [3f22297](https://github.com/ffplayout/ffplayout/commit/3f222975c16580deeeedaa2e0721e4a312e7c8fb)
+- select, edit and delete user [f86a6c3](https://github.com/ffplayout/ffplayout/commit/f86a6c3f1dfb8ec5f3c8e74714b8eecda2b443c3)
+- global middleware [c60d60d](https://github.com/ffplayout/ffplayout/commit/c60d60d9b3f74095034760f22876aed877e0464f)
+
 ## [0.20.0](https://github.com/ffplayout/ffplayout/releases/tag/v0.20.0) (2023-11-16)
 
 ### ffplayout
