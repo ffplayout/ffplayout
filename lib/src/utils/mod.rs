@@ -272,7 +272,13 @@ impl MediaProbe {
                     video_streams: v_stream,
                 })
             }
-            Err(e) => Err(ProcError::Ffprobe(e)),
+            Err(e) => {
+                if !Path::new(input).is_file() {
+                    Err(ProcError::Custom(format!("File '{input}' not exist!")))
+                } else {
+                    Err(ProcError::Ffprobe(e))
+                }
+            }
         }
     }
 }

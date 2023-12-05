@@ -1226,7 +1226,7 @@ checksum = "25cbce373ec4653f1a01a31e8a5e5ec0c622dc27ff9c4e6606eefef5cbbed4a5"
 
 [[package]]
 name = "ffplayout"
-version = "0.20.1"
+version = "0.20.2"
 dependencies = [
  "chrono",
  "clap",
@@ -1248,7 +1248,7 @@ dependencies = [
 
 [[package]]
 name = "ffplayout-api"
-version = "0.20.1"
+version = "0.20.2"
 dependencies = [
  "actix-files",
  "actix-multipart",
@@ -1287,7 +1287,7 @@ dependencies = [
 
 [[package]]
 name = "ffplayout-lib"
-version = "0.20.1"
+version = "0.20.2"
 dependencies = [
  "chrono",
  "crossbeam-channel",
@@ -3425,7 +3425,7 @@ dependencies = [
 
 [[package]]
 name = "tests"
-version = "0.20.1"
+version = "0.20.2"
 dependencies = [
  "chrono",
  "crossbeam-channel",
