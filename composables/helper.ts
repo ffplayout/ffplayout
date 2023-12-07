@@ -94,6 +94,7 @@ export const stringFormatter = () => {
     }
 
     function mediaType(path: string) {
+        const liveType = ['m3u8']
         const videoType = [
             'avi',
             'flv',
@@ -131,7 +132,9 @@ export const stringFormatter = () => {
         const ext = path.split('.').pop()
 
         if (ext) {
-            if (videoType.includes(ext)) {
+            if (liveType.includes(ext)) {
+                return 'live'
+            } else if (videoType.includes(ext)) {
                 return 'video'
             } else if (audioType.includes(ext)) {
                 return 'audio'

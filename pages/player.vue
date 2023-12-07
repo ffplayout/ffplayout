@@ -980,9 +980,21 @@ function setPreviewData(path: string) {
     }
 
     previewName.value = fullPath.split('/').slice(-1)[0]
-    previewUrl.value = encodeURIComponent(`/file/${configStore.configGui[configStore.configID].id}${fullPath}`).replace(/%2F/g, '/')
+
+    if (path.match(/^http/)) {
+        previewUrl.value = path
+    } else {
+        previewUrl.value = encodeURIComponent(`/file/${configStore.configGui[configStore.configID].id}${fullPath}`).replace(/%2F/g, '/')
+    }
 
     const ext = previewName.value.split('.').slice(-1)[0].toLowerCase()
+
+    const fileType =
+        mediaType(previewName.value) === 'audio'
+            ? `audio/${ext}`
+            : mediaType(previewName.value) === 'live'
+            ? 'application/x-mpegURL'
+            : `video/${ext}`
 
     if (configStore.configPlayout.storage.extensions.includes(`${ext}`)) {
         isVideo.value = true
@@ -994,7 +1006,7 @@ function setPreviewData(path: string) {
             preload: 'auto',
             sources: [
                 {
-                    type: `video/${ext}`,
+                    type: fileType,
                     src: previewUrl.value,
                 },
             ],

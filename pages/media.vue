@@ -13,10 +13,7 @@
                                 :active="index === mediaStore.crumbs.length - 1"
                                 @click="getPath(crumb.path)"
                             >
-                                <a
-                                    v-if="mediaStore.crumbs.length > 1 && mediaStore.crumbs.length - 1 > index"
-                                    href="#"
-                                >
+                                <a v-if="mediaStore.crumbs.length > 1 && mediaStore.crumbs.length - 1 > index" href="#">
                                     {{ crumb.text }}
                                 </a>
                                 <span v-else>{{ crumb.text }}</span>
@@ -70,10 +67,11 @@
                                                 data-bs-toggle="modal"
                                                 data-bs-target="#deleteModal"
                                                 @click="
-                                                    deleteName = `/${mediaStore.folderTree.source}/${folder.name}`.replace(
-                                                        /\/[/]+/g,
-                                                        '/'
-                                                    )
+                                                    deleteName =
+                                                        `/${mediaStore.folderTree.source}/${folder.name}`.replace(
+                                                            /\/[/]+/g,
+                                                            '/'
+                                                        )
                                                 "
                                             >
                                                 <i class="bi-x-circle-fill" />
@@ -272,7 +270,7 @@
                 type="button"
                 class="btn btn-primary"
                 title="Create Folder"
-                data-tooltip=tooltip
+                data-tooltip="tooltip"
                 data-bs-toggle="modal"
                 data-bs-target="#folderModal"
             >
@@ -282,7 +280,7 @@
                 type="button"
                 class="btn btn-primary"
                 title="Upload File"
-                data-tooltip=tooltip
+                data-tooltip="tooltip"
                 data-bs-toggle="modal"
                 data-bs-target="#uploadModal"
             >
@@ -446,10 +444,7 @@ onMounted(async () => {
         extra_extensions = extra_extensions.split(',')
     }
 
-    const exts = [
-        ...config_extensions,
-        ...extra_extensions,
-    ].map((ext) => {
+    const exts = [...config_extensions, ...extra_extensions].map((ext) => {
         return `.${ext}`
     })
 
@@ -482,10 +477,18 @@ function setPreviewData(path: string) {
     }
 
     previewName.value = fullPath.split('/').slice(-1)[0]
-    previewUrl.value = encodeURIComponent(`/file/${configStore.configGui[configStore.configID].id}${fullPath}`).replace(/%2F/g, '/')
+    previewUrl.value = encodeURIComponent(`/file/${configStore.configGui[configStore.configID].id}${fullPath}`).replace(
+        /%2F/g,
+        '/'
+    )
 
     const ext = previewName.value.split('.').slice(-1)[0].toLowerCase()
-    const fileType = (mediaType(previewName.value) === 'audio') ? `audio/${ext}` : `video/${ext}`
+    const fileType =
+        mediaType(previewName.value) === 'audio'
+            ? `audio/${ext}`
+            : mediaType(previewName.value) === 'live'
+            ? 'application/x-mpegURL'
+            : `video/${ext}`
 
     if (configStore.configPlayout.storage.extensions.includes(`${ext}`)) {
         isVideo.value = true
@@ -634,7 +637,7 @@ function upload(file: any): Promise<null | undefined> {
     formData.append(file.name, file)
     xhr.value = new XMLHttpRequest()
 
-    return new Promise(resolve => {
+    return new Promise((resolve) => {
         xhr.value.open(
             'PUT',
             `/api/file/${configStore.configGui[configStore.configID].id}/upload/?path=${encodeURIComponent(
@@ -662,7 +665,7 @@ function upload(file: any): Promise<null | undefined> {
         }
 
         xhr.value.send(formData)
-    });
+    })
 }
 
 async function onSubmitUpload(evt: any) {
@@ -727,7 +730,7 @@ function onResetUpload(evt: any) {
 }
 
 #deleteModal strong {
-    display:inline-block;
+    display: inline-block;
     width: 100%;
     overflow: hidden;
     white-space: nowrap;
