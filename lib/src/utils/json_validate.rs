@@ -196,20 +196,13 @@ pub fn validate_playlist(
                         {
                             let probe_duration = dur.parse().unwrap_or_default();
 
-                            if o.duration < probe_duration {
+                            if o.duration != probe_duration {
                                 warn!(
-                                    "File duration differs from playlist. Playlist value: <b><magenta>{}</></b>, file duration: <b><magenta>{}</></b>, source <yellow>{}</>",
+                                    "File duration differs from playlist value. Playlist value: <b><magenta>{}</></b>, file duration: <b><magenta>{}</></b>, source <yellow>{}</>",
                                     sec_to_time(o.duration), sec_to_time(probe_duration), o.source
                                 );
 
                                 o.duration = probe_duration;
-                            } else if o.duration > probe_duration && o.out > probe_duration {
-                                warn!(
-                                    "File duration differs from playlist. Playlist value: <b><magenta>{}</></b>, file duration: <b><magenta>{}</></b>, source <yellow>{}</>",
-                                    sec_to_time(o.duration), sec_to_time(probe_duration), o.source
-                                );
-
-                                o.out = probe_duration;
                             }
                         }
                     }
