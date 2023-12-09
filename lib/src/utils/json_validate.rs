@@ -190,6 +190,28 @@ pub fn validate_playlist(
                 list.iter_mut().for_each(|o| {
                     if o.source == item.source {
                         o.probe = item.probe.clone();
+
+                        if let Some(dur) =
+                            item.probe.as_ref().and_then(|f| f.format.duration.clone())
+                        {
+                            let probe_duration = dur.parse().unwrap_or_default();
+
+                            if o.duration < probe_duration {
+                                warn!(
+                                    "File duration differs from playlist. Playlist value: <b><magenta>{}</></b>, file duration: <b><magenta>{}</></b>, source <yellow>{}</>",
+                                    sec_to_time(o.duration), sec_to_time(probe_duration), o.source
+                                );
+
+                                o.duration = probe_duration;
+                            } else if o.duration > probe_duration && o.out > probe_duration {
+                                warn!(
+                                    "File duration differs from playlist. Playlist value: <b><magenta>{}</></b>, file duration: <b><magenta>{}</></b>, source <yellow>{}</>",
+                                    sec_to_time(o.duration), sec_to_time(probe_duration), o.source
+                                );
+
+                                o.out = probe_duration;
+                            }
+                        }
                     }
                     if o.audio == item.audio && item.probe_audio.is_some() {
                         o.probe_audio = item.probe_audio.clone();
