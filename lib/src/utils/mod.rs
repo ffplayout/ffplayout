@@ -133,7 +133,7 @@ impl Media {
                         .parse()
                         .unwrap_or_default();
                 }
-                Err(e) => error!("{e:?}"),
+                Err(e) => error!("{e}"),
             }
         }
 
@@ -178,7 +178,7 @@ impl Media {
                         }
                     }
                 }
-                Err(e) => error!("{e:?}"),
+                Err(e) => error!("{e}"),
             };
 
             if check_audio && Path::new(&self.audio).is_file() {
@@ -194,7 +194,7 @@ impl Media {
                                 .unwrap_or_default()
                         }
                     }
-                    Err(e) => error!("{e:?}"),
+                    Err(e) => error!("{e}"),
                 }
             }
         }
@@ -774,7 +774,7 @@ fn ffmpeg_filter_and_libs(config: &mut PlayoutConfig) -> Result<(), String> {
     }
 
     if let Err(e) = ff_proc.wait() {
-        error!("{:?}", e)
+        error!("{e}")
     };
 
     Ok(())

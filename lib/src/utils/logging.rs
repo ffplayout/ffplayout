@@ -57,7 +57,7 @@ pub fn send_mail(cfg: &PlayoutConfig, msg: String) {
 
         // Send the mail
         if let Err(e) = mailer.send(&mail) {
-            error!("Could not send mail: {:?}", e);
+            error!("Could not send mail: {e}");
         }
     } else {
         error!("Mail Message failed!");
