@@ -163,7 +163,6 @@ pub async fn login(pool: web::Data<Pool<Sqlite>>, credentials: web::Json<User>) 
             let pass = user.password.clone();
             let hash = PasswordHash::new(&pass).unwrap();
             user.password = "".into();
-            user.salt = None;
 
             if Argon2::default()
                 .verify_password(credentials.password.as_bytes(), &hash)
@@ -307,7 +306,7 @@ async fn update_user(
                 .hash_password(data.password.clone().as_bytes(), &salt)
                 .unwrap();
 
-            fields.push_str(format!("password = '{password_hash}', salt = '{salt}'").as_str());
+            fields.push_str(format!("password = '{password_hash}'").as_str());
         }
 
         if handles::update_user(&pool.into_inner(), *id, fields)

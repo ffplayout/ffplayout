@@ -63,7 +63,6 @@ async fn create_schema(conn: &Pool<Sqlite>) -> Result<SqliteQueryResult, sqlx::E
             mail                     TEXT NOT NULL,
             username                 TEXT NOT NULL,
             password                 TEXT NOT NULL,
-            salt                     TEXT NOT NULL,
             role_id                  INTEGER NOT NULL DEFAULT 2,
             channel_id               INTEGER NOT NULL DEFAULT 1,
             FOREIGN KEY (role_id)    REFERENCES roles (id) ON UPDATE SET NULL ON DELETE SET NULL,
@@ -217,7 +216,7 @@ pub async fn select_role(conn: &Pool<Sqlite>, id: &i32) -> Result<Role, sqlx::Er
 }
 
 pub async fn select_login(conn: &Pool<Sqlite>, user: &str) -> Result<User, sqlx::Error> {
-    let query = "SELECT id, mail, username, password, salt, role_id FROM user WHERE username = $1";
+    let query = "SELECT id, mail, username, password, role_id FROM user WHERE username = $1";
 
     sqlx::query_as(query).bind(user).fetch_one(conn).await
 }
@@ -249,14 +248,12 @@ pub async fn insert_user(
         .hash_password(user.password.clone().as_bytes(), &salt)
         .unwrap();
 
-    let query =
-        "INSERT INTO user (mail, username, password, salt, role_id) VALUES($1, $2, $3, $4, $5)";
+    let query = "INSERT INTO user (mail, username, password, role_id) VALUES($1, $2, $3, $4)";
 
     sqlx::query(query)
         .bind(user.mail)
         .bind(user.username)
         .bind(password_hash.to_string())
-        .bind(salt.to_string())
         .bind(user.role_id)
         .execute(conn)
         .await
