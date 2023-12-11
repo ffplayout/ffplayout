@@ -165,7 +165,7 @@ pub async fn login(pool: web::Data<Pool<Sqlite>>, credentials: web::Json<User>) 
                 .await
                 .unwrap_or(Role::Guest);
 
-            let res = task::spawn_blocking(move || {
+            task::spawn_blocking(move || {
                 let pass = user.password.clone();
                 let hash = PasswordHash::new(&pass).unwrap();
                 user.password = "".into();
@@ -200,9 +200,7 @@ pub async fn login(pool: web::Data<Pool<Sqlite>>, credentials: web::Json<User>) 
                 }
             })
             .await
-            .unwrap();
-
-            res
+            .unwrap()
         }
         Err(e) => {
             error!("Login {} failed! {e}", credentials.username);
