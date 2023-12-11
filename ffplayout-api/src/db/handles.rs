@@ -8,6 +8,7 @@ use argon2::{
 use rand::{distributions::Alphanumeric, Rng};
 use simplelog::*;
 use sqlx::{migrate::MigrateDatabase, sqlite::SqliteQueryResult, Pool, Sqlite};
+use tokio::task;
 
 use crate::db::{
     db_pool,
@@ -243,17 +244,23 @@ pub async fn insert_user(
     conn: &Pool<Sqlite>,
     user: User,
 ) -> Result<SqliteQueryResult, sqlx::Error> {
-    let salt = SaltString::generate(&mut OsRng);
-    let password_hash = Argon2::default()
-        .hash_password(user.password.clone().as_bytes(), &salt)
-        .unwrap();
+    let password_hash = task::spawn_blocking(move || {
+        let salt = SaltString::generate(&mut OsRng);
+        let hash = Argon2::default()
+            .hash_password(user.password.clone().as_bytes(), &salt)
+            .unwrap();
+
+        hash.to_string()
+    })
+    .await
+    .unwrap();
 
     let query = "INSERT INTO user (mail, username, password, role_id) VALUES($1, $2, $3, $4)";
 
     sqlx::query(query)
         .bind(user.mail)
         .bind(user.username)
-        .bind(password_hash.to_string())
+        .bind(password_hash)
         .bind(user.role_id)
         .execute(conn)
         .await

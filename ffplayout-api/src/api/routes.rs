@@ -32,6 +32,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use simplelog::*;
 use sqlx::{Pool, Sqlite};
+use tokio::task;
 
 use crate::db::{
     handles,
@@ -160,40 +161,48 @@ pub async fn login(pool: web::Data<Pool<Sqlite>>, credentials: web::Json<User>) 
     let conn = pool.into_inner();
     match handles::select_login(&conn, &credentials.username).await {
         Ok(mut user) => {
-            let pass = user.password.clone();
-            let hash = PasswordHash::new(&pass).unwrap();
-            user.password = "".into();
+            let role = handles::select_role(&conn, &user.role_id.unwrap_or_default())
+                .await
+                .unwrap_or(Role::Guest);
 
-            if Argon2::default()
-                .verify_password(credentials.password.as_bytes(), &hash)
-                .is_ok()
-            {
-                let role = handles::select_role(&conn, &user.role_id.unwrap_or_default())
-                    .await
-                    .unwrap_or(Role::Guest);
-                let claims = Claims::new(user.id, user.username.clone(), role.clone());
+            let res = task::spawn_blocking(move || {
+                let pass = user.password.clone();
+                let hash = PasswordHash::new(&pass).unwrap();
+                user.password = "".into();
 
-                if let Ok(token) = create_jwt(claims) {
-                    user.token = Some(token);
-                };
+                if Argon2::default()
+                    .verify_password(credentials.password.as_bytes(), &hash)
+                    .is_ok()
+                {
+                    let claims = Claims::new(user.id, user.username.clone(), role.clone());
 
-                info!("user {} login, with role: {role}", credentials.username);
+                    if let Ok(token) = create_jwt(claims) {
+                        user.token = Some(token);
+                    };
 
-                web::Json(UserObj {
-                    message: "login correct!".into(),
-                    user: Some(user),
-                })
-                .customize()
-                .with_status(StatusCode::OK)
-            } else {
-                error!("Wrong password for {}!", credentials.username);
-                web::Json(UserObj {
-                    message: "Wrong password!".into(),
-                    user: None,
-                })
-                .customize()
-                .with_status(StatusCode::FORBIDDEN)
-            }
+                    info!("user {} login, with role: {role}", credentials.username);
+
+                    web::Json(UserObj {
+                        message: "login correct!".into(),
+                        user: Some(user),
+                    })
+                    .customize()
+                    .with_status(StatusCode::OK)
+                } else {
+                    error!("Wrong password for {}!", credentials.username);
+
+                    web::Json(UserObj {
+                        message: "Wrong password!".into(),
+                        user: None,
+                    })
+                    .customize()
+                    .with_status(StatusCode::FORBIDDEN)
+                }
+            })
+            .await
+            .unwrap();
+
+            res
         }
         Err(e) => {
             error!("Login {} failed! {e}", credentials.username);
