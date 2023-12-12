@@ -240,7 +240,6 @@ pub async fn run_args() -> Result<(), i32> {
             mail: Some(args.mail.unwrap()),
             username: username.clone(),
             password: args.password.unwrap(),
-            salt: None,
             role_id: Some(1),
             channel_id: Some(1),
             token: None,

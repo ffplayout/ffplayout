@@ -18,9 +18,6 @@ pub struct User {
     pub password: String,
     #[sqlx(default)]
     #[serde(skip_serializing)]
-    pub salt: Option<String>,
-    #[sqlx(default)]
-    #[serde(skip_serializing)]
     pub role_id: Option<i32>,
     #[sqlx(default)]
     #[serde(skip_serializing)]

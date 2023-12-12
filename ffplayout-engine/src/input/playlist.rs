@@ -601,7 +601,7 @@ pub fn gen_source(
 
     trace!("Clip out: {duration}, duration: {}", node.duration);
 
-    if node.probe.is_none() {
+    if node.probe.is_none() && !node.source.is_empty() {
         node.add_probe(true);
     } else {
         trace!("Node has a probe...")
@@ -622,7 +622,7 @@ pub fn gen_source(
         }
     } else {
         trace!(
-            "clip index: {:?} | last index: {:?}",
+            "clip index: {} | last index: {}",
             node.index.unwrap_or_default(),
             last_index
         );
@@ -718,7 +718,7 @@ pub fn gen_source(
                     }
                 }
                 Err(e) => {
-                    error!("{e:?}");
+                    error!("{e}");
 
                     // Create colored placeholder.
                     let (source, cmd) = gen_dummy(config, duration);

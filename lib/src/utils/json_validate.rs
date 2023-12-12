@@ -13,8 +13,9 @@ use simplelog::*;
 
 use crate::filter::FilterType::Audio;
 use crate::utils::{
-    errors::ProcError, loop_image, sec_to_time, seek_and_length, vec_strings, JsonPlaylist, Media,
-    OutputMode::Null, PlayerControl, PlayoutConfig, FFMPEG_IGNORE_ERRORS, IMAGE_FORMAT,
+    errors::ProcError, is_close, loop_image, sec_to_time, seek_and_length, vec_strings,
+    JsonPlaylist, Media, OutputMode::Null, PlayerControl, PlayoutConfig, FFMPEG_IGNORE_ERRORS,
+    IMAGE_FORMAT,
 };
 
 /// Validate a single media file.
@@ -190,6 +191,21 @@ pub fn validate_playlist(
                 list.iter_mut().for_each(|o| {
                     if o.source == item.source {
                         o.probe = item.probe.clone();
+
+                        if let Some(dur) =
+                            item.probe.as_ref().and_then(|f| f.format.duration.clone())
+                        {
+                            let probe_duration = dur.parse().unwrap_or_default();
+
+                            if !is_close(o.duration, probe_duration, 1.2) {
+                                error!(
+                                    "File duration differs from playlist value. File duration: <b><magenta>{}</></b>, playlist value: <b><magenta>{}</></b>, source <yellow>{}</>",
+                                    sec_to_time(o.duration), sec_to_time(probe_duration), o.source
+                                );
+
+                                o.duration = probe_duration;
+                            }
+                        }
                     }
                     if o.audio == item.audio && item.probe_audio.is_some() {
                         o.probe_audio = item.probe_audio.clone();
