@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.20.1](https://github.com/ffplayout/ffplayout/releases/tag/v0.20.1) (2023-12-16)
+## [0.20.2](https://github.com/ffplayout/ffplayout/releases/tag/v0.20.1) (2023-12-16)
 
 ### ffplayout
 
