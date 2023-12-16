@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.20.2](https://github.com/ffplayout/ffplayout/releases/tag/v0.20.1) (2023-12-16)
+
+### ffplayout
+
+- better error message [5c14b89](https://github.com/ffplayout/ffplayout/commit/5c14b895f2c8e34990097354fea860a5030a5732)
+- warn and adjust duration on validation [a30f21b](https://github.com/ffplayout/ffplayout/commit/a30f21b86688fbf4de477279217ca3a739409719)
+
+### ffpapi
+
+- thread block on hashing [4c4199cb](https://github.com/ffplayout/ffplayout/commit/4c4199cbdb0836d69d67fd6dee1869fb08eeffbf)
+- remove salt from table [15f41148](https://github.com/ffplayout/ffplayout/commit/15f41148dfb26ccaea159f5c5305a966cf81b1c4)
+
+### frontend
+
+- possibility to preview live/html sources [5881527](https://github.com/ffplayout/ffplayout/pull/472/commits/5881527fc571feccaee7f7f1877750ccc44516f5)
+
 ## [0.20.1](https://github.com/ffplayout/ffplayout/releases/tag/v0.20.1) (2023-12-03)
 
 ### ffplayout

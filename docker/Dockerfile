@@ -14,7 +14,7 @@ RUN (cd /lib/systemd/system/sysinit.target.wants/; for i in *; do [ $i == \
 
 FROM base
 
-ARG FFPLAYOUT_VERSION=0.19.0
+ARG FFPLAYOUT_VERSION=0.20.2
 COPY README.md *.rpm /tmp/
 
 RUN dnf update -y && \
