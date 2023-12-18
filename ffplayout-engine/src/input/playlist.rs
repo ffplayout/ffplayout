@@ -618,7 +618,7 @@ pub fn gen_source(
         {
             node.cmd = Some(loop_image(&node));
         } else {
-            node.cmd = Some(seek_and_length(&node));
+            node.cmd = Some(seek_and_length(&mut node));
         }
     } else {
         trace!(

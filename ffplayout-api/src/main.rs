@@ -89,7 +89,7 @@ async fn main() -> std::io::Result<()> {
         let port = ip_port[1].parse::<u16>().unwrap();
         let engine_process = web::Data::new(ProcessControl::new());
 
-        info!("running ffplayout API, listen on {conn}");
+        info!("running ffplayout API, listen on http://{conn}");
 
         // no 'allow origin' here, give it to the reverse proxy
         HttpServer::new(move || {
