@@ -632,7 +632,7 @@ function onFileChange(evt: any) {
     inputFiles.value = files
 }
 
-function upload(file: any): Promise<null | undefined> {
+async function upload(file: any): Promise<null | undefined> {
     const formData = new FormData()
     formData.append(file.name, file)
     xhr.value = new XMLHttpRequest()
