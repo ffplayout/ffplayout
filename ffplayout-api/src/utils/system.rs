@@ -2,9 +2,9 @@
 
 use local_ip_address::list_afinet_netifas;
 use serde::Serialize;
-use sysinfo::{CpuExt, DiskExt, NetworkExt, SystemExt};
+use sysinfo::System;
 
-use crate::SYS;
+use crate::{DISKS, NETWORKS, SYS};
 use ffplayout_lib::utils::PlayoutConfig;
 
 #[derive(Debug, Serialize)]
@@ -69,7 +69,10 @@ pub struct SystemStat {
 }
 
 pub fn stat(config: PlayoutConfig) -> SystemStat {
+    let mut disks = DISKS.lock().unwrap();
+    let mut networks = NETWORKS.lock().unwrap();
     let mut sys = SYS.lock().unwrap();
+
     let network_interfaces = list_afinet_netifas().unwrap_or_default();
     let mut usage = 0.0;
     let mut interfaces = vec![];
@@ -82,10 +85,10 @@ pub fn stat(config: PlayoutConfig) -> SystemStat {
 
     interfaces.dedup_by(|a, b| a.0 == b.0);
 
-    sys.refresh_cpu();
-    sys.refresh_disks();
+    disks.refresh();
+    networks.refresh();
+    sys.refresh_cpu_usage();
     sys.refresh_memory();
-    sys.refresh_networks();
 
     let cores = sys.cpus().len() as f32;
 
@@ -100,7 +103,7 @@ pub fn stat(config: PlayoutConfig) -> SystemStat {
 
     let mut storage = Storage::default();
 
-    for disk in sys.disks() {
+    for disk in &*disks {
         if disk.mount_point().to_string_lossy().len() > 1
             && config.storage.path.starts_with(disk.mount_point())
         {
@@ -110,7 +113,7 @@ pub fn stat(config: PlayoutConfig) -> SystemStat {
         }
     }
 
-    let load_avg = sys.load_average();
+    let load_avg = System::load_average();
     let load = Load {
         one: load_avg.one,
         five: load_avg.five,
@@ -125,7 +128,7 @@ pub fn stat(config: PlayoutConfig) -> SystemStat {
 
     let mut network = Network::default();
 
-    for (interface_name, data) in sys.networks() {
+    for (interface_name, data) in &*networks {
         if !interfaces.is_empty() && interface_name == interfaces[0].0 {
             network.name = interface_name.clone();
             network.current_in = data.received();
@@ -142,9 +145,9 @@ pub fn stat(config: PlayoutConfig) -> SystemStat {
     };
 
     let system = MySystem {
-        name: sys.name(),
-        kernel: sys.kernel_version(),
-        version: sys.os_version(),
+        name: System::name(),
+        kernel: System::kernel_version(),
+        version: System::os_version(),
     };
 
     SystemStat {
