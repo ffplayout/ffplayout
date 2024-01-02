@@ -323,7 +323,7 @@ fn extend_video(node: &mut Media, chain: &mut Filters) {
     if let Some(video_duration) = node
         .probe
         .as_ref()
-        .and_then(|p| p.video_streams.get(0))
+        .and_then(|p| p.video_streams.first())
         .and_then(|v| v.duration.as_ref())
         .and_then(|v| v.parse::<f64>().ok())
     {
@@ -369,7 +369,7 @@ fn extend_audio(node: &mut Media, chain: &mut Filters, nr: i32) {
         if let Some(audio_duration) = node
             .probe
             .as_ref()
-            .and_then(|p| p.audio_streams.get(0))
+            .and_then(|p| p.audio_streams.first())
             .and_then(|a| a.duration.clone())
             .and_then(|a| a.parse::<f64>().ok())
         {
@@ -494,7 +494,7 @@ pub fn filter_chains(
                 filters.audio_position = 1;
             }
 
-            if let Some(v_stream) = &probe.video_streams.get(0) {
+            if let Some(v_stream) = &probe.video_streams.first() {
                 let aspect = aspect_calc(&v_stream.display_aspect_ratio, config);
                 let frame_per_sec = fps_calc(&v_stream.r_frame_rate, 1.0);
 
