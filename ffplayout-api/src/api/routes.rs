@@ -725,7 +725,7 @@ pub async fn media_current(
 /// **Get next Clip**
 ///
 /// ```BASH
-/// curl -X GET http://127.0.0.1:8787/api/control/1/media/next/ -H 'Authorization: Bearer <TOKEN>'
+/// curl -X GET http://127.0.0.1:8787/api/control/1/media/next -H 'Authorization: Bearer <TOKEN>'
 /// ```
 #[get("/control/{id}/media/next")]
 #[protect(any("Role::Admin", "Role::User"), ty = "Role")]
@@ -742,7 +742,7 @@ pub async fn media_next(
 /// **Get last Clip**
 ///
 /// ```BASH
-/// curl -X GET http://127.0.0.1:8787/api/control/1/media/last/
+/// curl -X GET http://127.0.0.1:8787/api/control/1/media/last
 /// -H 'Content-Type: application/json' -H 'Authorization: Bearer <TOKEN>'
 /// ```
 #[get("/control/{id}/media/last")]

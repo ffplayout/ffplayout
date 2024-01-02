@@ -18,7 +18,7 @@ use clap::Parser;
 use lazy_static::lazy_static;
 use path_clean::PathClean;
 use simplelog::*;
-use sysinfo::{System, SystemExt};
+use sysinfo::{Disks, Networks, System};
 
 pub mod api;
 pub mod db;
@@ -35,6 +35,10 @@ include!(concat!(env!("OUT_DIR"), "/generated.rs"));
 
 lazy_static! {
     pub static ref ARGS: Args = Args::parse();
+    pub static ref DISKS: Arc<Mutex<Disks>> =
+        Arc::new(Mutex::new(Disks::new_with_refreshed_list()));
+    pub static ref NETWORKS: Arc<Mutex<Networks>> =
+        Arc::new(Mutex::new(Networks::new_with_refreshed_list()));
     pub static ref SYS: Arc<Mutex<System>> = Arc::new(Mutex::new(System::new_all()));
 }
 
@@ -89,7 +93,7 @@ async fn main() -> std::io::Result<()> {
         let port = ip_port[1].parse::<u16>().unwrap();
         let engine_process = web::Data::new(ProcessControl::new());
 
-        info!("running ffplayout API, listen on {conn}");
+        info!("running ffplayout API, listen on http://{conn}");
 
         // no 'allow origin' here, give it to the reverse proxy
         HttpServer::new(move || {

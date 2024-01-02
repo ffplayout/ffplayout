@@ -234,13 +234,13 @@ curl -X GET http://127.0.0.1:8787/api/control/1/media/current
 **Get next Clip**
 
 ```BASH
-curl -X GET http://127.0.0.1:8787/api/control/1/media/next/ -H 'Authorization: Bearer <TOKEN>'
+curl -X GET http://127.0.0.1:8787/api/control/1/media/next -H 'Authorization: Bearer <TOKEN>'
 ```
 
 **Get last Clip**
 
 ```BASH
-curl -X GET http://127.0.0.1:8787/api/control/1/media/last/
+curl -X GET http://127.0.0.1:8787/api/control/1/media/last
 -H 'Content-Type: application/json' -H 'Authorization: Bearer <TOKEN>'
 ```
 

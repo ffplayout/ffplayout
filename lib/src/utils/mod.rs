@@ -273,7 +273,8 @@ impl MediaProbe {
                 })
             }
             Err(e) => {
-                if !Path::new(input).is_file() {
+                println!("{e}");
+                if !Path::new(input).is_file() && !is_remote(input) {
                     Err(ProcError::Custom(format!("File '{input}' not exist!")))
                 } else {
                     Err(ProcError::Ffprobe(e))
@@ -521,18 +522,22 @@ pub fn loop_filler(node: &Media) -> Vec<String> {
 }
 
 /// Set clip seek in and length value.
-pub fn seek_and_length(node: &Media) -> Vec<String> {
+pub fn seek_and_length(node: &mut Media) -> Vec<String> {
     let mut source_cmd = vec![];
     let mut cut_audio = false;
     let mut loop_audio = false;
+    let remote_source = is_remote(&node.source);
 
-    if node.seek > 0.5 {
+    if remote_source && node.probe.clone().and_then(|f| f.format.duration).is_none() {
+        node.out -= node.seek;
+        node.seek = 0.0;
+    } else if node.seek > 0.5 {
         source_cmd.append(&mut vec_strings!["-ss", node.seek])
     }
 
     source_cmd.append(&mut vec_strings!["-i", node.source.clone()]);
 
-    if node.duration > node.out {
+    if node.duration > node.out || remote_source {
         source_cmd.append(&mut vec_strings!["-t", node.out - node.seek]);
     }
 
@@ -550,7 +555,7 @@ pub fn seek_and_length(node: &Media) -> Vec<String> {
 
         source_cmd.append(&mut vec_strings!["-i", node.audio.clone()]);
 
-        if cut_audio || loop_audio {
+        if cut_audio || loop_audio || remote_source {
             source_cmd.append(&mut vec_strings!["-t", node.out - node.seek]);
         }
     }
@@ -601,7 +606,9 @@ pub fn gen_dummy(config: &PlayoutConfig, duration: f64) -> (String, Vec<String>)
 // }
 
 pub fn is_remote(path: &str) -> bool {
-    Regex::new(r"^https?://.*").unwrap().is_match(path)
+    Regex::new(r"^(https?|rtmps?|rtp|rtsp|udp|tcp|srt)://.*")
+        .unwrap()
+        .is_match(&path.to_lowercase())
 }
 
 /// Check if file can include or has to exclude.

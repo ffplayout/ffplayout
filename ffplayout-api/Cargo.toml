@@ -39,7 +39,7 @@ serde_json = "1.0"
 serde_yaml = "0.9"
 simplelog = { version = "0.12", features = ["paris"] }
 static-files = "0.2"
-sysinfo = "0.29"
+sysinfo ={ version = "0.30", features = ["linux-netdevs"] }
 sqlx = { version = "0.7", features = ["runtime-tokio", "sqlite"] }
 tokio = { version = "1.29", features = ["full"] }
 
