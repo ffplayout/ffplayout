@@ -1,6 +1,17 @@
 # Changelog
 
-## [0.20.2](https://github.com/ffplayout/ffplayout/releases/tag/v0.20.1) (2023-12-16)
+## [0.20.3](https://github.com/ffplayout/ffplayout/releases/tag/v0.20.3) (2024-01-03)
+
+### ffplayout
+
+- improve live sources [9912405](https://github.com/ffplayout/ffplayout/commit/9912405e4e976b99be9d174fa9cc54700984d5a9)
+- update sysinfo to support stats on network storage [8737769](https://github.com/ffplayout/ffplayout/commit/873776908e10b2eb9d92fb743a578a848e95c49c)
+
+### Documentation
+
+- fix API examples [c8ca4588d](https://github.com/ffplayout/ffplayout/commit/c8ca4588d178b1f94f5c7dce40fd4a07a10a695b)
+
+## [0.20.2](https://github.com/ffplayout/ffplayout/releases/tag/v0.20.2) (2023-12-16)
 
 ### ffplayout
 
