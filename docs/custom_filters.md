@@ -24,6 +24,12 @@ custom_filter: "loudnorm=I=-18:TP=-1.5:LRA=11[c_a_out]"
 custom_filter: "[v_in];movie=/path/to/lower_third.png:loop=0,scale=1024:576,setpts=N/(25*TB)[lower];[v_in][lower]overlay=0:0:shortest=1[c_v_out]"
 ```
 
+#### Overlay current time:
+
+```YAML
+custom_filter: " drawtext=text='%{localtime\:%H\\\:%M\\\:%S}':fontcolor=white:fontsize=40:x=w-tw-20:y=20:box=1:boxcolor=red@0.7:boxborderw=10[c_v_out]"
+```
+
 Pay attention to the filter prefix `[v_in];`, this is necessary to get the output from the regular filters.
 
 #### Paint effect
