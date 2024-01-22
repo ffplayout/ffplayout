@@ -27,7 +27,13 @@ custom_filter: "[v_in];movie=/path/to/lower_third.png:loop=0,scale=1024:576,setp
 #### Overlay current time:
 
 ```YAML
-custom_filter: " drawtext=text='%{localtime\:%H\\\:%M\\\:%S}':fontcolor=white:fontsize=40:x=w-tw-20:y=20:box=1:boxcolor=red@0.7:boxborderw=10[c_v_out]"
+custom_filter: "drawtext=text='%{localtime\:%H\\\:%M\\\:%S}':fontcolor=white:fontsize=40:x=w-tw-20:y=20:box=1:boxcolor=red@0.7:boxborderw=10[c_v_out]"
+```
+
+#### Scrolling text with static background:
+
+```YAML
+custom_filter: "drawbox=x=0:y=in_h-(in_h/6):w=in_w:h=60:t=fill:color=#000000@0x73,drawtext=text='Hello World':x='ifnot(ld(1),st(1,t));if(lt(t,ld(1)+1),w+4,w-w/12*mod(t-ld(1),12*(w+tw)/w))':y='main_h-(main_h/6)+20':fontsize=24:fontcolor=#f2f2f2"
 ```
 
 Pay attention to the filter prefix `[v_in];`, this is necessary to get the output from the regular filters.
