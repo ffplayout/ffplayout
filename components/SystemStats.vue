@@ -11,7 +11,8 @@
             </div>
         </div>
         <div v-if="sysStat.system.kernel" class="col-6 bg-primary border-start border-end border-bottom">
-            {{ sysStat.system.kernel }}
+            {{ sysStat.system.kernel }} <br />
+            <span v-if="sysStat.system.ffp_version">ffplayout version: {{ sysStat.system.ffp_version }}</span>
         </div>
         <div class="col-6 p-2 border">
             <div class="fs-4">Load</div>
@@ -75,7 +76,7 @@ const sysStat = ref({
     network: { name: '', current_in: 0.0, current_out: 0.0, total_in: 0.0, total_out: 0.0 },
     storage: { path: '', total: 0.0, used: 0.0 },
     swap: { total: 0.0, used: 0.0, free: 0.0 },
-    system: { name: '', kernel: '', version: '' },
+    system: { name: '', kernel: '', version: '', ffp_version: '' },
 } as SystemStatistics)
 
 onMounted(() => {
@@ -106,7 +107,7 @@ async function systemStatus() {
     const channel = configStore.configGui[configStore.configID].id
 
     if (!document?.hidden) {
-        await $fetch<SystemStatistics>(`/api/system/${channel}`, {
+        await $fetch(`/api/system/${channel}`, {
             method: 'GET',
             headers: { ...contentType, ...authStore.authHeader },
         }).then((stat: SystemStatistics) => {

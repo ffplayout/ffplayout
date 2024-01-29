@@ -95,6 +95,6 @@ declare global {
         network?: { name: String; current_in: number; current_out: number; total_in: number; total_out: number }
         storage?: { path: String; total: number; used: number }
         swap: { total: number; used: number; free: number }
-        system: { name?: String; kernel?: String; version?: String }
+        system: { name?: String; kernel?: String; version?: String, ffp_version?: string }
     }
 }
