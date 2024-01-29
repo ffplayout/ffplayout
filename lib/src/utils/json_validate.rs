@@ -199,7 +199,7 @@ pub fn validate_playlist(
 
                             if !is_close(o.duration, probe_duration, 1.2) {
                                 error!(
-                                    "File duration differs from playlist value. File duration: <b><yellow>{}</></b>, playlist value: <b><yellow>{}</></b>, source <magenta>{}</>",
+                                    "File duration differs from playlist value. File duration: <yellow>{}</>, playlist value: <yellow>{}</>, source <b><magenta>{}</></b>",
                                     sec_to_time(o.duration), sec_to_time(probe_duration), o.source
                                 );
 
