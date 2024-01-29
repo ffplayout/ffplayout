@@ -12,7 +12,7 @@
         </div>
         <div v-if="sysStat.system.kernel" class="col-6 bg-primary border-start border-end border-bottom">
             {{ sysStat.system.kernel }} <br />
-            <span v-if="sysStat.system.ffp_version">ffplayout version: {{ sysStat.system.ffp_version }}</span>
+            <span v-if="sysStat.system.ffp_version"><strong>ffplayout version:</strong> {{ sysStat.system.ffp_version }}</span>
         </div>
         <div class="col-6 p-2 border">
             <div class="fs-4">Load</div>
