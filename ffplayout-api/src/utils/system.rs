@@ -48,6 +48,7 @@ pub struct MySystem {
     pub name: Option<String>,
     pub kernel: Option<String>,
     pub version: Option<String>,
+    pub ffp_version: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -148,6 +149,7 @@ pub fn stat(config: PlayoutConfig) -> SystemStat {
         name: System::name(),
         kernel: System::kernel_version(),
         version: System::os_version(),
+        ffp_version: Some(env!("CARGO_PKG_VERSION").to_string()),
     };
 
     SystemStat {
