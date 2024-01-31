@@ -48,7 +48,7 @@ pub fn player(
     let play_stat = playout_stat.clone();
 
     // get source iterator
-    let get_source = source_generator(
+    let node_sources = source_generator(
         config.clone(),
         play_control,
         playout_stat,
@@ -82,7 +82,7 @@ pub fn player(
         thread::spawn(move || ingest_server(config_clone, ingest_sender, proc_control_c));
     }
 
-    'source_iter: for node in get_source {
+    'source_iter: for node in node_sources {
         *play_control.current_media.lock().unwrap() = Some(node.clone());
 
         if proc_control.is_terminated.load(Ordering::SeqCst) {

@@ -181,6 +181,9 @@ pub struct General {
     pub template: Option<Template>,
 
     #[serde(default, skip_serializing, skip_deserializing)]
+    pub skip_validation: bool,
+
+    #[serde(default, skip_serializing, skip_deserializing)]
     pub validate: bool,
 }
 

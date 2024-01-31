@@ -87,6 +87,9 @@ pub struct Args {
     #[clap(short, long, help = "Set audio volume")]
     pub volume: Option<f64>,
 
+    #[clap(long, help = "Skip validation process")]
+    pub skip_validation: bool,
+
     #[clap(long, help = "validate given playlist")]
     pub validate: bool,
 }

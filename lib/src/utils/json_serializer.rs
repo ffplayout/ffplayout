@@ -186,9 +186,16 @@ pub fn read_json(
 
                     let list_clone = playlist.clone();
 
-                    thread::spawn(move || {
-                        validate_playlist(config_clone, control_clone, list_clone, is_terminated)
-                    });
+                    if !config.general.skip_validation {
+                        thread::spawn(move || {
+                            validate_playlist(
+                                config_clone,
+                                control_clone,
+                                list_clone,
+                                is_terminated,
+                            )
+                        });
+                    }
 
                     match config.playlist.infinit {
                         true => return loop_playlist(config, current_file, playlist),
@@ -198,6 +205,8 @@ pub fn read_json(
             }
         }
     } else if playlist_path.is_file() {
+        let modified = modified_time(&current_file);
+
         let f = File::options()
             .read(true)
             .write(false)
@@ -216,13 +225,15 @@ pub fn read_json(
             playlist = JsonPlaylist::new(date, start_sec)
         }
 
-        playlist.modified = modified_time(&current_file);
+        playlist.modified = modified;
 
         let list_clone = playlist.clone();
 
-        thread::spawn(move || {
-            validate_playlist(config_clone, control_clone, list_clone, is_terminated)
-        });
+        if !config.general.skip_validation {
+            thread::spawn(move || {
+                validate_playlist(config_clone, control_clone, list_clone, is_terminated)
+            });
+        }
 
         match config.playlist.infinit {
             true => return loop_playlist(config, current_file, playlist),

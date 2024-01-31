@@ -2,7 +2,7 @@ use std::{fs, path::PathBuf};
 
 use ffplayout::{input::playlist::gen_source, utils::prepare_output_cmd};
 use ffplayout_lib::{
-    utils::{Media, OutputMode::*, PlayerControl, PlayoutConfig, ProcessUnit::*},
+    utils::{Media, OutputMode::*, PlayerControl, PlayoutConfig, PlayoutStatus, ProcessUnit::*},
     vec_strings,
 };
 
@@ -10,13 +10,14 @@ use ffplayout_lib::{
 fn video_audio_input() {
     let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.yml")));
     let player_control = PlayerControl::new();
+    let playout_stat = PlayoutStatus::new();
     config.out.mode = Stream;
     config.processing.add_logo = true;
     let logo_path = fs::canonicalize("./assets/logo.png").unwrap();
     config.processing.logo = logo_path.to_string_lossy().to_string();
 
     let media_obj = Media::new(0, "./assets/with_audio.mp4", true);
-    let media = gen_source(&config, media_obj, &None, &player_control, 1);
+    let media = gen_source(&config, media_obj, &playout_stat, &player_control, 1);
 
     let test_filter_cmd =
         vec_strings![
@@ -38,12 +39,13 @@ fn video_audio_input() {
 fn video_audio_custom_filter1_input() {
     let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.yml")));
     let player_control = PlayerControl::new();
+    let playout_stat = PlayoutStatus::new();
     config.out.mode = Stream;
     config.processing.add_logo = false;
     config.processing.custom_filter = "[0:v]gblur=2[c_v_out];[0:a]volume=0.2[c_a_out]".to_string();
 
     let media_obj = Media::new(0, "./assets/with_audio.mp4", true);
-    let media = gen_source(&config, media_obj, &None, &player_control, 1);
+    let media = gen_source(&config, media_obj, &playout_stat, &player_control, 1);
 
     let test_filter_cmd = vec_strings![
         "-filter_complex",
@@ -64,6 +66,7 @@ fn video_audio_custom_filter1_input() {
 fn video_audio_custom_filter2_input() {
     let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.yml")));
     let player_control = PlayerControl::new();
+    let playout_stat = PlayoutStatus::new();
     config.out.mode = Stream;
     config.processing.add_logo = false;
     config.processing.custom_filter =
@@ -71,7 +74,7 @@ fn video_audio_custom_filter2_input() {
             .to_string();
 
     let media_obj = Media::new(0, "./assets/with_audio.mp4", true);
-    let media = gen_source(&config, media_obj, &None, &player_control, 1);
+    let media = gen_source(&config, media_obj, &playout_stat, &player_control, 1);
 
     let test_filter_cmd = vec_strings![
         "-filter_complex",
@@ -92,13 +95,14 @@ fn video_audio_custom_filter2_input() {
 fn video_audio_custom_filter3_input() {
     let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.yml")));
     let player_control = PlayerControl::new();
+    let playout_stat = PlayoutStatus::new();
     config.out.mode = Stream;
     config.processing.add_logo = false;
     config.processing.custom_filter =
         "[v_in];movie=logo.png[l];[v_in][l]overlay[c_v_out];[0:a]volume=0.2[c_a_out]".to_string();
 
     let media_obj = Media::new(0, "./assets/with_audio.mp4", true);
-    let media = gen_source(&config, media_obj, &None, &player_control, 1);
+    let media = gen_source(&config, media_obj, &playout_stat, &player_control, 1);
 
     let test_filter_cmd = vec_strings![
         "-filter_complex",
@@ -119,12 +123,13 @@ fn video_audio_custom_filter3_input() {
 fn dual_audio_aevalsrc_input() {
     let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.yml")));
     let player_control = PlayerControl::new();
+    let playout_stat = PlayoutStatus::new();
     config.out.mode = Stream;
     config.processing.audio_tracks = 2;
     config.processing.add_logo = false;
 
     let media_obj = Media::new(0, "./assets/with_audio.mp4", true);
-    let media = gen_source(&config, media_obj, &None, &player_control, 1);
+    let media = gen_source(&config, media_obj, &playout_stat, &player_control, 1);
 
     let test_filter_cmd =
         vec_strings![
@@ -146,12 +151,13 @@ fn dual_audio_aevalsrc_input() {
 fn dual_audio_input() {
     let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.yml")));
     let player_control = PlayerControl::new();
+    let playout_stat = PlayoutStatus::new();
     config.out.mode = Stream;
     config.processing.audio_tracks = 2;
     config.processing.add_logo = false;
 
     let media_obj = Media::new(0, "./assets/dual_audio.mp4", true);
-    let media = gen_source(&config, media_obj, &None, &player_control, 1);
+    let media = gen_source(&config, media_obj, &playout_stat, &player_control, 1);
 
     let test_filter_cmd = vec_strings![
         "-filter_complex",
@@ -172,13 +178,14 @@ fn dual_audio_input() {
 fn video_separate_audio_input() {
     let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.yml")));
     let player_control = PlayerControl::new();
+    let playout_stat = PlayoutStatus::new();
     config.out.mode = Stream;
     config.processing.audio_tracks = 1;
     config.processing.add_logo = false;
 
     let mut media_obj = Media::new(0, "./assets/no_audio.mp4", true);
     media_obj.audio = "./assets/audio.mp3".to_string();
-    let media = gen_source(&config, media_obj, &None, &player_control, 1);
+    let media = gen_source(&config, media_obj, &playout_stat, &player_control, 1);
 
     let test_filter_cmd = vec_strings![
         "-filter_complex",
@@ -1315,6 +1322,7 @@ fn video_audio_text_filter_stream() {
 fn video_audio_hls() {
     let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.yml")));
     let player_control = PlayerControl::new();
+    let playout_stat = PlayoutStatus::new();
     config.out.mode = HLS;
     config.processing.add_logo = false;
     config.text.add_text = false;
@@ -1343,7 +1351,7 @@ fn video_audio_hls() {
     ]);
 
     let media_obj = Media::new(0, "./assets/with_audio.mp4", true);
-    let media = gen_source(&config, media_obj, &None, &player_control, 1);
+    let media = gen_source(&config, media_obj, &playout_stat, &player_control, 1);
 
     let enc_prefix = vec_strings![
         "-hide_banner",
@@ -1401,6 +1409,7 @@ fn video_audio_hls() {
 fn video_audio_sub_meta_hls() {
     let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.yml")));
     let player_control = PlayerControl::new();
+    let playout_stat = PlayoutStatus::new();
     config.out.mode = HLS;
     config.processing.add_logo = false;
     config.text.add_text = false;
@@ -1433,7 +1442,7 @@ fn video_audio_sub_meta_hls() {
     ]);
 
     let media_obj = Media::new(0, "./assets/with_audio.mp4", true);
-    let media = gen_source(&config, media_obj, &None, &player_control, 1);
+    let media = gen_source(&config, media_obj, &playout_stat, &player_control, 1);
 
     let enc_prefix = vec_strings![
         "-hide_banner",
@@ -1495,6 +1504,7 @@ fn video_audio_sub_meta_hls() {
 fn video_multi_audio_hls() {
     let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.yml")));
     let player_control = PlayerControl::new();
+    let playout_stat = PlayoutStatus::new();
     config.out.mode = HLS;
     config.processing.add_logo = false;
     config.processing.audio_tracks = 2;
@@ -1524,7 +1534,7 @@ fn video_multi_audio_hls() {
     ]);
 
     let media_obj = Media::new(0, "./assets/dual_audio.mp4", true);
-    let media = gen_source(&config, media_obj, &None, &player_control, 1);
+    let media = gen_source(&config, media_obj, &playout_stat, &player_control, 1);
 
     let enc_prefix = vec_strings![
         "-hide_banner",
@@ -1584,6 +1594,7 @@ fn video_multi_audio_hls() {
 fn multi_video_audio_hls() {
     let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.yml")));
     let player_control = PlayerControl::new();
+    let playout_stat = PlayoutStatus::new();
     config.out.mode = HLS;
     config.processing.add_logo = false;
     config.text.add_text = false;
@@ -1630,7 +1641,7 @@ fn multi_video_audio_hls() {
     ]);
 
     let media_obj = Media::new(0, "./assets/with_audio.mp4", true);
-    let media = gen_source(&config, media_obj, &None, &player_control, 1);
+    let media = gen_source(&config, media_obj, &playout_stat, &player_control, 1);
 
     let enc_prefix = vec_strings![
         "-hide_banner",
@@ -1698,6 +1709,7 @@ fn multi_video_audio_hls() {
 fn multi_video_multi_audio_hls() {
     let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.yml")));
     let player_control = PlayerControl::new();
+    let playout_stat = PlayoutStatus::new();
     config.out.mode = HLS;
     config.processing.add_logo = false;
     config.processing.audio_tracks = 2;
@@ -1747,7 +1759,7 @@ fn multi_video_multi_audio_hls() {
     ]);
 
     let media_obj = Media::new(0, "./assets/dual_audio.mp4", true);
-    let media = gen_source(&config, media_obj, &None, &player_control, 1);
+    let media = gen_source(&config, media_obj, &playout_stat, &player_control, 1);
 
     let enc_prefix = vec_strings![
         "-hide_banner",

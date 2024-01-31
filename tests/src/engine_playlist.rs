@@ -22,6 +22,7 @@ fn timed_stop(sec: u64, proc_ctl: ProcessControl) {
 #[ignore]
 fn playlist_missing() {
     let mut config = PlayoutConfig::new(None);
+    config.general.skip_validation = true;
     config.mail.recipient = "".into();
     config.processing.mode = Playlist;
     config.ingest.enable = false;
@@ -62,8 +63,138 @@ fn playlist_missing() {
 #[test]
 #[serial]
 #[ignore]
+fn playlist_next_missing() {
+    let mut config = PlayoutConfig::new(None);
+    config.general.skip_validation = true;
+    config.mail.recipient = "".into();
+    config.processing.mode = Playlist;
+    config.ingest.enable = false;
+    config.text.add_text = false;
+    config.playlist.day_start = "00:00:00".into();
+    config.playlist.start_sec = Some(0.0);
+    config.playlist.length = "24:00:00".into();
+    config.playlist.length_sec = Some(86400.0);
+    config.playlist.path = "assets/playlists".into();
+    config.storage.filler = "assets/with_audio.mp4".into();
+    config.logging.log_to_file = false;
+    config.logging.timestamp = false;
+    config.logging.level = LevelFilter::Trace;
+    config.out.mode = Null;
+    config.out.output_count = 1;
+    config.out.output_filter = None;
+    config.out.output_cmd = Some(vec_strings!["-f", "null", "-"]);
+
+    let play_control = PlayerControl::new();
+    let playout_stat = PlayoutStatus::new();
+    let proc_control = ProcessControl::new();
+    let proc_ctl = proc_control.clone();
+
+    let logging = init_logging(&config, None, None);
+    CombinedLogger::init(logging).unwrap_or_default();
+
+    mock_time::set_mock_time("2023-02-09T23:59:45");
+
+    thread::spawn(move || timed_stop(28, proc_ctl));
+
+    player(&config, &play_control, playout_stat.clone(), proc_control);
+
+    let playlist_date = &*playout_stat.current_date.lock().unwrap();
+
+    assert_eq!(playlist_date, "2023-02-10");
+}
+
+#[test]
+#[serial]
+#[ignore]
+fn playlist_to_short() {
+    let mut config = PlayoutConfig::new(None);
+    config.general.skip_validation = true;
+    config.mail.recipient = "".into();
+    config.processing.mode = Playlist;
+    config.ingest.enable = false;
+    config.text.add_text = false;
+    config.playlist.day_start = "06:00:00".into();
+    config.playlist.start_sec = Some(21600.0);
+    config.playlist.length = "24:00:00".into();
+    config.playlist.length_sec = Some(86400.0);
+    config.playlist.path = "assets/playlists".into();
+    config.storage.filler = "assets/with_audio.mp4".into();
+    config.logging.log_to_file = false;
+    config.logging.timestamp = false;
+    config.logging.level = log::LevelFilter::Trace;
+    config.out.mode = Null;
+    config.out.output_count = 1;
+    config.out.output_filter = None;
+    config.out.output_cmd = Some(vec_strings!["-f", "null", "-"]);
+
+    let play_control = PlayerControl::new();
+    let playout_stat = PlayoutStatus::new();
+    let proc_control = ProcessControl::new();
+    let proc_ctl = proc_control.clone();
+
+    let logging = init_logging(&config, None, None);
+    CombinedLogger::init(logging).unwrap_or_default();
+
+    mock_time::set_mock_time("2024-01-31T05:59:40");
+
+    thread::spawn(move || timed_stop(28, proc_ctl));
+
+    player(&config, &play_control, playout_stat.clone(), proc_control);
+
+    let playlist_date = &*playout_stat.current_date.lock().unwrap();
+
+    assert_eq!(playlist_date, "2024-01-31");
+}
+
+#[test]
+#[serial]
+#[ignore]
+fn playlist_init_after_list_end() {
+    let mut config = PlayoutConfig::new(None);
+    config.general.skip_validation = true;
+    config.mail.recipient = "".into();
+    config.processing.mode = Playlist;
+    config.ingest.enable = false;
+    config.text.add_text = false;
+    config.playlist.day_start = "06:00:00".into();
+    config.playlist.start_sec = Some(21600.0);
+    config.playlist.length = "24:00:00".into();
+    config.playlist.length_sec = Some(86400.0);
+    config.playlist.path = "assets/playlists".into();
+    config.storage.filler = "assets/with_audio.mp4".into();
+    config.logging.log_to_file = false;
+    config.logging.timestamp = false;
+    config.logging.level = log::LevelFilter::Trace;
+    config.out.mode = Null;
+    config.out.output_count = 1;
+    config.out.output_filter = None;
+    config.out.output_cmd = Some(vec_strings!["-f", "null", "-"]);
+
+    let play_control = PlayerControl::new();
+    let playout_stat = PlayoutStatus::new();
+    let proc_control = ProcessControl::new();
+    let proc_ctl = proc_control.clone();
+
+    let logging = init_logging(&config, None, None);
+    CombinedLogger::init(logging).unwrap_or_default();
+
+    mock_time::set_mock_time("2024-01-31T05:59:47");
+
+    thread::spawn(move || timed_stop(28, proc_ctl));
+
+    player(&config, &play_control, playout_stat.clone(), proc_control);
+
+    let playlist_date = &*playout_stat.current_date.lock().unwrap();
+
+    assert_eq!(playlist_date, "2024-01-31");
+}
+
+#[test]
+#[serial]
+#[ignore]
 fn playlist_change_at_midnight() {
     let mut config = PlayoutConfig::new(None);
+    config.general.skip_validation = true;
     config.mail.recipient = "".into();
     config.processing.mode = Playlist;
     config.ingest.enable = false;
@@ -106,6 +237,7 @@ fn playlist_change_at_midnight() {
 #[ignore]
 fn playlist_change_before_midnight() {
     let mut config = PlayoutConfig::new(None);
+    config.general.skip_validation = true;
     config.mail.recipient = "".into();
     config.processing.mode = Playlist;
     config.ingest.enable = false;
@@ -148,6 +280,7 @@ fn playlist_change_before_midnight() {
 #[ignore]
 fn playlist_change_at_six() {
     let mut config = PlayoutConfig::new(None);
+    config.general.skip_validation = true;
     config.mail.recipient = "".into();
     config.processing.mode = Playlist;
     config.ingest.enable = false;
