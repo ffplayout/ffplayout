@@ -307,9 +307,8 @@ impl CurrentProgram {
             // Important! When no manual drop is happen here, lock is still active in handle_list_init
             drop(nodes);
 
-            node_clone.seek = time_sec
-                - (node_clone.begin.unwrap() - *self.playout_stat.time_shift.lock().unwrap())
-                + node_clone.seek;
+            node_clone.seek += time_sec
+                - (node_clone.begin.unwrap() - *self.playout_stat.time_shift.lock().unwrap());
 
             self.current_node = handle_list_init(
                 &self.config,
@@ -619,7 +618,7 @@ fn timed_source(
     {
         // when we are in the 24 hour range, get the clip
         new_node.process = Some(true);
-        new_node = gen_source(config, node, &playout_stat, player_control, last_index);
+        new_node = gen_source(config, node, playout_stat, player_control, last_index);
     } else if total_delta <= 0.0 {
         info!("Begin is over play time, skip: {}", node.source);
     } else if total_delta < node.duration - node.seek || last {
@@ -627,7 +626,7 @@ fn timed_source(
             config,
             node,
             total_delta,
-            &playout_stat,
+            playout_stat,
             player_control,
             last_index,
         );
@@ -665,9 +664,9 @@ pub fn gen_source(
     if node.probe.is_some() {
         if node.out - node.seek < 1.0 {
             if node.seek > 1.0 {
-                node.seek = node.seek - 1.0;
+                node.seek -= 1.0;
             } else {
-                node.out = node.out + 1.0;
+                node.out += 1.0;
             }
         }
 
