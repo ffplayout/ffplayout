@@ -92,8 +92,6 @@ pub fn stat(config: PlayoutConfig) -> SystemStat {
 
     interfaces.dedup_by(|a, b| a.0 == b.0);
 
-    println!("---interfaces: {:?}", interfaces);
-
     disks.refresh();
     networks.refresh();
     sys.refresh_cpu_usage();
