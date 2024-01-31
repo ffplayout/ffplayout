@@ -308,7 +308,8 @@ impl CurrentProgram {
             drop(nodes);
 
             node_clone.seek = time_sec
-                - (node_clone.begin.unwrap() - *self.playout_stat.time_shift.lock().unwrap());
+                - (node_clone.begin.unwrap() - *self.playout_stat.time_shift.lock().unwrap())
+                + node_clone.seek;
 
             self.current_node = handle_list_init(
                 &self.config,
@@ -662,11 +663,14 @@ pub fn gen_source(
 
     // separate if condition, because of node.add_probe() in last condition
     if node.probe.is_some() {
-        if node.seek > 0.0 {
-            node.seek = node.seek - 1.0;
-        } else {
-            node.out = node.out + 1.0;
+        if node.out - node.seek < 1.0 {
+            if node.seek > 1.0 {
+                node.seek = node.seek - 1.0;
+            } else {
+                node.out = node.out + 1.0;
+            }
         }
+
         if node
             .source
             .rsplit_once('.')
@@ -769,7 +773,12 @@ pub fn gen_source(
 
     node.add_filter(config, &playout_stat.chain);
 
-    trace!("return gen_source: {}", node.source);
+    trace!(
+        "return gen_source: {}, seek: {}, out: {}",
+        node.source,
+        node.seek,
+        node.out
+    );
 
     node
 }
