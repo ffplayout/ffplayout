@@ -121,6 +121,8 @@ pub fn get_config(args: Args) -> Result<PlayoutConfig, ProcError> {
         }
     }
 
+    config.general.skip_validation = args.skip_validation;
+
     if let Some(volume) = args.volume {
         config.processing.volume = volume;
     }

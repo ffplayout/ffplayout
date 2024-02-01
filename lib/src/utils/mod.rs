@@ -273,7 +273,6 @@ impl MediaProbe {
                 })
             }
             Err(e) => {
-                println!("{e}");
                 if !Path::new(input).is_file() && !is_remote(input) {
                     Err(ProcError::Custom(format!("File '{input}' not exist!")))
                 } else {
