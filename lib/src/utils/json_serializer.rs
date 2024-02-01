@@ -73,8 +73,8 @@ fn set_defaults(
     for (i, item) in playlist.program.iter_mut().enumerate() {
         item.begin = Some(start_sec);
         item.index = Some(i);
-        item.last_ad = Some(false);
-        item.next_ad = Some(false);
+        item.last_ad = false;
+        item.next_ad = false;
         item.process = Some(true);
         item.filter = None;
 
@@ -115,8 +115,8 @@ fn loop_playlist(
                 probe_audio: item.probe_audio.clone(),
                 process: Some(true),
                 unit: Decoder,
-                last_ad: Some(false),
-                next_ad: Some(false),
+                last_ad: false,
+                next_ad: false,
                 filter: None,
                 custom_filter: String::new(),
             };

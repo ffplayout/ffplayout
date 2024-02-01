@@ -104,10 +104,10 @@ pub struct Media {
     pub probe_audio: Option<MediaProbe>,
 
     #[serde(skip_serializing, skip_deserializing)]
-    pub last_ad: Option<bool>,
+    pub last_ad: bool,
 
     #[serde(skip_serializing, skip_deserializing)]
-    pub next_ad: Option<bool>,
+    pub next_ad: bool,
 
     #[serde(skip_serializing, skip_deserializing)]
     pub process: Option<bool>,
@@ -122,18 +122,15 @@ impl Media {
         let mut probe = None;
 
         if do_probe && (is_remote(src) || Path::new(src).is_file()) {
-            match MediaProbe::new(src) {
-                Ok(p) => {
-                    probe = Some(p.clone());
+            if let Ok(p) = MediaProbe::new(src) {
+                probe = Some(p.clone());
 
-                    duration = p
-                        .format
-                        .duration
-                        .unwrap_or_default()
-                        .parse()
-                        .unwrap_or_default();
-                }
-                Err(e) => error!("{e}"),
+                duration = p
+                    .format
+                    .duration
+                    .unwrap_or_default()
+                    .parse()
+                    .unwrap_or_default();
             }
         }
 
@@ -152,14 +149,16 @@ impl Media {
             custom_filter: String::new(),
             probe,
             probe_audio: None,
-            last_ad: Some(false),
-            next_ad: Some(false),
+            last_ad: false,
+            next_ad: false,
             process: Some(true),
             unit: Decoder,
         }
     }
 
-    pub fn add_probe(&mut self, check_audio: bool) {
+    pub fn add_probe(&mut self, check_audio: bool) -> Result<(), String> {
+        let mut errors = vec![];
+
         if self.probe.is_none() {
             match MediaProbe::new(&self.source) {
                 Ok(probe) => {
@@ -178,7 +177,7 @@ impl Media {
                         }
                     }
                 }
-                Err(e) => error!("{e}"),
+                Err(e) => errors.push(e.to_string()),
             };
 
             if check_audio && Path::new(&self.audio).is_file() {
@@ -194,10 +193,16 @@ impl Media {
                                 .unwrap_or_default()
                         }
                     }
-                    Err(e) => error!("{e}"),
+                    Err(e) => errors.push(e.to_string()),
                 }
             }
         }
+
+        if !errors.is_empty() {
+            return Err(errors.join(", "));
+        }
+
+        Ok(())
     }
 
     pub fn add_filter(
@@ -274,7 +279,9 @@ impl MediaProbe {
             }
             Err(e) => {
                 if !Path::new(input).is_file() && !is_remote(input) {
-                    Err(ProcError::Custom(format!("File '{input}' not exist!")))
+                    Err(ProcError::Custom(format!(
+                        "File '<b><magenta>{input}</></b>' not exist!"
+                    )))
                 } else {
                     Err(ProcError::Ffprobe(e))
                 }
@@ -337,7 +344,7 @@ pub fn write_status(config: &PlayoutConfig, date: &str, shift: f64) {
 // }
 
 /// Get current time in seconds.
-pub fn get_sec() -> f64 {
+pub fn time_in_seconds() -> f64 {
     let local: DateTime<Local> = time_now();
 
     (local.hour() * 3600 + local.minute() * 60 + local.second()) as f64
@@ -351,11 +358,11 @@ pub fn get_sec() -> f64 {
 pub fn get_date(seek: bool, start: f64, get_next: bool) -> String {
     let local: DateTime<Local> = time_now();
 
-    if seek && start > get_sec() {
+    if seek && start > time_in_seconds() {
         return (local - Duration::days(1)).format("%Y-%m-%d").to_string();
     }
 
-    if start == 0.0 && get_next && get_sec() > 86397.9 {
+    if start == 0.0 && get_next && time_in_seconds() > 86397.9 {
         return (local + Duration::days(1)).format("%Y-%m-%d").to_string();
     }
 
@@ -401,7 +408,7 @@ pub fn modified_time(path: &str) -> Option<String> {
 /// Convert a formatted time string to seconds.
 pub fn time_to_sec(time_str: &str) -> f64 {
     if matches!(time_str, "now" | "" | "none") || !time_str.contains(':') {
-        return get_sec();
+        return time_in_seconds();
     }
 
     let t: Vec<&str> = time_str.split(':').collect();
@@ -452,7 +459,7 @@ pub fn sum_durations(clip_list: &Vec<Media>) -> f64 {
 ///
 /// We also get here the global delta between clip start and time when a new playlist should start.
 pub fn get_delta(config: &PlayoutConfig, begin: &f64) -> (f64, f64) {
-    let mut current_time = get_sec();
+    let mut current_time = time_in_seconds();
     let start = config.playlist.start_sec.unwrap();
     let length = time_to_sec(&config.playlist.length);
     let mut target_length = 86400.0;

@@ -9,7 +9,7 @@ use simplelog::*;
 use walkdir::WalkDir;
 
 use crate::utils::{
-    controller::PlayerControl, get_sec, include_file_extension, Media, PlayoutConfig,
+    controller::PlayerControl, include_file_extension, time_in_seconds, Media, PlayoutConfig,
 };
 
 /// Folder Sources
@@ -136,10 +136,10 @@ impl Iterator for FolderSource {
         {
             let i = self.player_control.current_index.load(Ordering::SeqCst);
             self.current_node = self.player_control.current_list.lock().unwrap()[i].clone();
-            self.current_node.add_probe(false);
+            let _ = self.current_node.add_probe(false).ok();
             self.current_node
                 .add_filter(&self.config, &self.filter_chain);
-            self.current_node.begin = Some(get_sec());
+            self.current_node.begin = Some(time_in_seconds());
 
             self.player_control
                 .current_index
@@ -162,10 +162,10 @@ impl Iterator for FolderSource {
             }
 
             self.current_node = self.player_control.current_list.lock().unwrap()[0].clone();
-            self.current_node.add_probe(false);
+            let _ = self.current_node.add_probe(false).ok();
             self.current_node
                 .add_filter(&self.config, &self.filter_chain);
-            self.current_node.begin = Some(get_sec());
+            self.current_node.begin = Some(time_in_seconds());
 
             self.player_control.current_index.store(1, Ordering::SeqCst);
 
@@ -192,7 +192,9 @@ pub fn fill_filler_list(
             let mut media = Media::new(index, &entry.path().to_string_lossy(), false);
 
             if player_control.is_none() {
-                media.add_probe(false);
+                if let Err(e) = media.add_probe(false) {
+                    error!("{e:?}");
+                };
             }
 
             filler_list.push(media);
@@ -217,7 +219,9 @@ pub fn fill_filler_list(
         let mut media = Media::new(0, &config.storage.filler.to_string_lossy(), false);
 
         if player_control.is_none() {
-            media.add_probe(false);
+            if let Err(e) = media.add_probe(false) {
+                error!("{e:?}");
+            };
         }
 
         filler_list.push(media);
