@@ -60,9 +60,8 @@ impl CurrentProgram {
     }
 
     // Check if playlist file got updated, and when yes we reload it and setup everything in place.
-    fn get_or_update_playlist(&mut self, seek: bool) {
+    fn load_or_update_playlist(&mut self, seek: bool) {
         let mut get_current = false;
-        // let mut get_next = false;
         let mut reload = false;
 
         if let Some(path) = self.json_path.clone() {
@@ -90,7 +89,7 @@ impl CurrentProgram {
 
             if !reload {
                 if let Some(file) = &json.current_file {
-                    info!("Read Playlist: <b><magenta>{file}</></b>");
+                    info!("Read playlist: <b><magenta>{file}</></b>");
                 }
             }
 
@@ -108,28 +107,12 @@ impl CurrentProgram {
         }
     }
 
-    fn set_status(&mut self, date: String) {
-        *self.playout_stat.current_date.lock().unwrap() = date.clone();
-        *self.playout_stat.time_shift.lock().unwrap() = 0.0;
-
-        if let Err(e) = fs::write(
-            &self.config.general.stat_file,
-            serde_json::to_string(&json!({
-                "time_shift": 0.0,
-                "date": date,
-            }))
-            .unwrap(),
-        ) {
-            error!("Unable to write status file: {e}");
-        };
-    }
-
     // Check if day is past and it is time for a new playlist.
-    fn check_for_next_playlist(&mut self) -> bool {
+    fn check_for_playlist(&mut self, seek: bool) -> bool {
         let (delta, total_delta) = get_delta(&self.config, &time_in_seconds());
         let mut next = false;
 
-        let duration = if self.current_node.duration > self.current_node.out {
+        let duration = if self.current_node.duration >= self.current_node.out {
             self.current_node.duration
         } else {
             // maybe out is longer to be able to loop
@@ -170,13 +153,10 @@ impl CurrentProgram {
             );
 
             if let Some(file) = &json.current_file {
-                info!("Read next Playlist: <b><magenta>{file}</></b>");
-
-                self.playout_stat.list_init.store(false, Ordering::SeqCst);
-            } else {
-                self.playout_stat.list_init.store(true, Ordering::SeqCst);
+                info!("Read next playlist: <b><magenta>{file}</></b>");
             }
 
+            self.playout_stat.list_init.store(false, Ordering::SeqCst);
             self.set_status(json.date.clone());
 
             self.json_path = json.current_file.clone();
@@ -185,9 +165,27 @@ impl CurrentProgram {
 
             *self.player_control.current_list.lock().unwrap() = json.program;
             self.player_control.current_index.store(0, Ordering::SeqCst);
+        } else {
+            self.load_or_update_playlist(seek)
         }
 
         next
+    }
+
+    fn set_status(&mut self, date: String) {
+        *self.playout_stat.current_date.lock().unwrap() = date.clone();
+        *self.playout_stat.time_shift.lock().unwrap() = 0.0;
+
+        if let Err(e) = fs::write(
+            &self.config.general.stat_file,
+            serde_json::to_string(&json!({
+                "time_shift": 0.0,
+                "date": date,
+            }))
+            .unwrap(),
+        ) {
+            error!("Unable to write status file: {e}");
+        };
     }
 
     // Check if last and/or next clip is a advertisement.
@@ -299,10 +297,11 @@ impl Iterator for CurrentProgram {
     type Item = Media;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let list_init_seek = self.playout_stat.list_init.load(Ordering::SeqCst);
-        self.get_or_update_playlist(list_init_seek);
+        self.last_json_path = self.json_path.clone();
+        self.last_node_ad = self.current_node.last_ad;
+        self.check_for_playlist(self.playout_stat.list_init.load(Ordering::SeqCst));
 
-        if list_init_seek {
+        if self.playout_stat.list_init.load(Ordering::SeqCst) {
             trace!("Init playlist, from next iterator");
             let mut init_clip_is_filler = false;
 
@@ -346,35 +345,11 @@ impl Iterator for CurrentProgram {
                     self.current_node.index.unwrap_or_default()
                 );
 
-                let next_playlist = self.check_for_next_playlist();
-
                 if new_length
                     >= self.config.playlist.length_sec.unwrap()
                         + self.config.playlist.start_sec.unwrap()
                 {
                     self.init_clip();
-                } else if next_playlist
-                    && self.player_control.current_list.lock().unwrap().len() > 1
-                {
-                    let index = self
-                        .player_control
-                        .current_index
-                        .fetch_add(1, Ordering::SeqCst);
-
-                    let nodes = self.player_control.current_list.lock().unwrap();
-                    let node_clone = nodes[index].clone();
-
-                    drop(nodes);
-
-                    self.current_node = gen_source(
-                        &self.config,
-                        node_clone,
-                        &self.playout_stat,
-                        &self.player_control,
-                        0,
-                    );
-
-                    return Some(self.current_node.clone());
                 } else if !init_clip_is_filler {
                     // fill missing length from playlist
                     let mut current_time = time_in_seconds();
@@ -411,10 +386,6 @@ impl Iterator for CurrentProgram {
 
             return Some(self.current_node.clone());
         }
-
-        self.last_json_path = self.json_path.clone();
-        self.last_node_ad = self.current_node.last_ad;
-        self.check_for_next_playlist();
 
         if self.player_control.current_index.load(Ordering::SeqCst)
             < self.player_control.current_list.lock().unwrap().len()
