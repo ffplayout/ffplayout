@@ -277,6 +277,18 @@
             "out": 15.0,
             "duration": 15.0,
             "source": "tests/assets/media_sorted/LightSeaGreen_00-00-15.mp4"
+        },
+        {
+            "in": 0,
+            "out": 30.0,
+            "duration": 30.0,
+            "source": "tests/assets/media_sorted/Yellow_00-00-30.mp4"
+        },
+        {
+            "in": 0,
+            "out": 30.0,
+            "duration": 30.0,
+            "source": "tests/assets/media_sorted/Aqua_00-00-30.mp4"
         }
     ]
 }
