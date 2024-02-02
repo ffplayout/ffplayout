@@ -59,7 +59,8 @@ impl CurrentProgram {
         }
     }
 
-    // Check if playlist file got updated, and when yes we reload it and setup everything in place.
+    // Check if there is no current playlist or file got updated,
+    // and when is so load/reload it.
     fn load_or_update_playlist(&mut self, seek: bool) {
         let mut get_current = false;
         let mut reload = false;
