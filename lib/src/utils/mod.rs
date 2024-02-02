@@ -280,7 +280,7 @@ impl MediaProbe {
             Err(e) => {
                 if !Path::new(input).is_file() && !is_remote(input) {
                     Err(ProcError::Custom(format!(
-                        "File '<b><magenta>{input}</></b>' not exist!"
+                        "File <b><magenta>{input}</></b> not exist!"
                     )))
                 } else {
                     Err(ProcError::Ffprobe(e))

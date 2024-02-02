@@ -29,8 +29,8 @@ fn test_gen_source() {
     config.playlist.start_sec = Some(0.0);
     config.playlist.length = "24:00:00".into();
     config.playlist.length_sec = Some(86400.0);
-    config.playlist.path = "assets/playlists".into();
-    config.storage.filler = "assets/filler.mp4".into();
+    config.playlist.path = "assets/media_mix/playlists".into();
+    config.storage.filler = "assets/media_mix/filler.mp4".into();
     config.logging.log_to_file = false;
     config.logging.timestamp = false;
     config.logging.level = LevelFilter::Trace;
@@ -40,7 +40,7 @@ fn test_gen_source() {
     let logging = init_logging(&config, None, None);
     CombinedLogger::init(logging).unwrap_or_default();
 
-    let mut valid_source_with_probe = Media::new(0, "assets/av_sync.mp4", true);
+    let mut valid_source_with_probe = Media::new(0, "assets/media_mix/av_sync.mp4", true);
     let valid_media = gen_source(
         &config,
         valid_source_with_probe.clone(),
@@ -51,7 +51,7 @@ fn test_gen_source() {
 
     assert_eq!(valid_source_with_probe.source, valid_media.source);
 
-    let mut valid_source_without_probe = Media::new(0, "assets/av_sync.mp4", false);
+    let mut valid_source_without_probe = Media::new(0, "assets/media_mix/av_sync.mp4", false);
     valid_source_without_probe.duration = 30.0;
     valid_source_without_probe.out = 20.0;
     let valid_media = gen_source(
@@ -77,7 +77,7 @@ fn test_gen_source() {
 
     assert_eq!(valid_media.out, 1.9);
 
-    let mut no_valid_source_with_probe = Media::new(0, "assets/av_snc.mp4", true);
+    let mut no_valid_source_with_probe = Media::new(0, "assets/media_mix/av_snc.mp4", true);
     no_valid_source_with_probe.duration = 30.0;
     no_valid_source_with_probe.out = 30.0;
 
@@ -89,7 +89,7 @@ fn test_gen_source() {
         100,
     );
 
-    assert_eq!(valid_media.source, "assets/filler.mp4");
+    assert_eq!(valid_media.source, "assets/media_mix/filler.mp4");
 }
 
 #[test]
@@ -106,8 +106,8 @@ fn playlist_missing() {
     config.playlist.start_sec = Some(0.0);
     config.playlist.length = "24:00:00".into();
     config.playlist.length_sec = Some(86400.0);
-    config.playlist.path = "assets/playlists".into();
-    config.storage.filler = "assets/filler.mp4".into();
+    config.playlist.path = "assets/media_mix/playlists".into();
+    config.storage.filler = "assets/media_mix/filler.mp4".into();
     config.logging.log_to_file = false;
     config.logging.timestamp = false;
     config.logging.level = LevelFilter::Trace;
@@ -149,8 +149,8 @@ fn playlist_next_missing() {
     config.playlist.start_sec = Some(0.0);
     config.playlist.length = "24:00:00".into();
     config.playlist.length_sec = Some(86400.0);
-    config.playlist.path = "assets/playlists".into();
-    config.storage.filler = "assets/filler.mp4".into();
+    config.playlist.path = "assets/media_mix/playlists".into();
+    config.storage.filler = "assets/media_mix/filler.mp4".into();
     config.logging.log_to_file = false;
     config.logging.timestamp = false;
     config.logging.level = LevelFilter::Trace;
@@ -192,8 +192,8 @@ fn playlist_to_short() {
     config.playlist.start_sec = Some(21600.0);
     config.playlist.length = "24:00:00".into();
     config.playlist.length_sec = Some(86400.0);
-    config.playlist.path = "assets/playlists".into();
-    config.storage.filler = "assets/filler.mp4".into();
+    config.playlist.path = "assets/media_mix/playlists".into();
+    config.storage.filler = "assets/media_mix/filler.mp4".into();
     config.logging.log_to_file = false;
     config.logging.timestamp = false;
     config.logging.level = log::LevelFilter::Trace;
@@ -235,8 +235,8 @@ fn playlist_init_after_list_end() {
     config.playlist.start_sec = Some(21600.0);
     config.playlist.length = "24:00:00".into();
     config.playlist.length_sec = Some(86400.0);
-    config.playlist.path = "assets/playlists".into();
-    config.storage.filler = "assets/filler.mp4".into();
+    config.playlist.path = "assets/media_mix/playlists".into();
+    config.storage.filler = "assets/media_mix/filler.mp4".into();
     config.logging.log_to_file = false;
     config.logging.timestamp = false;
     config.logging.level = log::LevelFilter::Trace;
@@ -278,8 +278,8 @@ fn playlist_change_at_midnight() {
     config.playlist.start_sec = Some(0.0);
     config.playlist.length = "24:00:00".into();
     config.playlist.length_sec = Some(86400.0);
-    config.playlist.path = "assets/playlists".into();
-    config.storage.filler = "assets/filler.mp4".into();
+    config.playlist.path = "assets/media_mix/playlists".into();
+    config.storage.filler = "assets/media_mix/filler.mp4".into();
     config.logging.log_to_file = false;
     config.logging.timestamp = false;
     config.logging.level = LevelFilter::Trace;
@@ -321,8 +321,8 @@ fn playlist_change_before_midnight() {
     config.playlist.start_sec = Some(0.0);
     config.playlist.length = "24:00:00".into();
     config.playlist.length_sec = Some(86400.0);
-    config.playlist.path = "assets/playlists".into();
-    config.storage.filler = "assets/filler.mp4".into();
+    config.playlist.path = "assets/media_mix/playlists".into();
+    config.storage.filler = "assets/media_mix/filler.mp4".into();
     config.logging.log_to_file = false;
     config.logging.timestamp = false;
     config.logging.level = LevelFilter::Trace;
@@ -364,8 +364,8 @@ fn playlist_change_at_six() {
     config.playlist.start_sec = Some(21600.0);
     config.playlist.length = "24:00:00".into();
     config.playlist.length_sec = Some(86400.0);
-    config.playlist.path = "assets/playlists".into();
-    config.storage.filler = "assets/filler.mp4".into();
+    config.playlist.path = "assets/media_mix/playlists".into();
+    config.storage.filler = "assets/media_mix/filler.mp4".into();
     config.logging.log_to_file = false;
     config.logging.timestamp = false;
     config.out.mode = Null;
