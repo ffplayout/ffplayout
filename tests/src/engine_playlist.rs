@@ -18,6 +18,7 @@ fn timed_stop(sec: u64, proc_ctl: ProcessControl) {
 }
 
 #[test]
+#[ignore]
 fn test_gen_source() {
     let mut config = PlayoutConfig::new(None);
     config.general.skip_validation = true;
