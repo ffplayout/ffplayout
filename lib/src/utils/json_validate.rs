@@ -173,9 +173,17 @@ pub fn validate_playlist(
         let pos = index + 1;
 
         if item.audio.is_empty() {
-            item.add_probe(false);
-        } else {
-            item.add_probe(true);
+            if let Err(e) = item.add_probe(false) {
+                error!(
+                    "[Validation] Error on position <yellow>{pos:0>3}</> <yellow>{}</>: {e}",
+                    sec_to_time(begin)
+                );
+            }
+        } else if let Err(e) = item.add_probe(true) {
+            error!(
+                "[Validation] Error on position <yellow>{pos:0>3}</> <yellow>{}</>: {e}",
+                sec_to_time(begin)
+            );
         }
 
         if item.probe.is_some() {
@@ -183,7 +191,7 @@ pub fn validate_playlist(
                 error!("{e}");
             } else if config.general.validate {
                 debug!(
-                    "Source at <yellow>{}</>, seems fine: <b><magenta>{}</></b>",
+                    "[Validation] Source at <yellow>{}</>, seems fine: <b><magenta>{}</></b>",
                     sec_to_time(begin),
                     item.source
                 )
@@ -200,7 +208,7 @@ pub fn validate_playlist(
 
                         if !is_close(o.duration, probe_duration, 1.2) {
                             error!(
-                                "File duration (at: <yellow>{}</>) differs from playlist value. File duration: <yellow>{}</>, playlist value: <yellow>{}</>, source <b><magenta>{}</></b>",
+                                "[Validation] File duration (at: <yellow>{}</>) differs from playlist value. File duration: <yellow>{}</>, playlist value: <yellow>{}</>, source <b><magenta>{}</></b>",
                                 sec_to_time(o.begin.unwrap_or_default()), sec_to_time(probe_duration), sec_to_time(o.duration), o.source
                             );
 
@@ -214,12 +222,6 @@ pub fn validate_playlist(
                     }
                 });
             }
-        } else {
-            error!(
-                "Error on position <yellow>{pos:0>3}</> <yellow>{}</>, file: <b><magenta>{}</></b>",
-                sec_to_time(begin),
-                item.source
-            );
         }
 
         begin += item.out - item.seek;
@@ -227,7 +229,7 @@ pub fn validate_playlist(
 
     if !config.playlist.infinit && length > begin + 1.2 {
         error!(
-            "Playlist from <yellow>{date}</> not long enough, <yellow>{}</> needed!",
+            "[Validation] Playlist from <yellow>{date}</> not long enough, <yellow>{}</> needed!",
             sec_to_time(length - begin),
         );
     }

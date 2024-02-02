@@ -6,7 +6,7 @@ use std::{
 use serial_test::serial;
 use simplelog::*;
 
-use ffplayout::output::player;
+use ffplayout::{input::playlist::gen_source, output::player};
 use ffplayout_lib::{utils::*, vec_strings};
 
 fn timed_stop(sec: u64, proc_ctl: ProcessControl) {
@@ -15,6 +15,82 @@ fn timed_stop(sec: u64, proc_ctl: ProcessControl) {
     info!("Timed stop of process");
 
     proc_ctl.stop_all();
+}
+
+#[test]
+#[ignore]
+fn test_gen_source() {
+    let mut config = PlayoutConfig::new(None);
+    config.general.skip_validation = true;
+    config.mail.recipient = "".into();
+    config.processing.mode = Playlist;
+    config.ingest.enable = false;
+    config.text.add_text = false;
+    config.playlist.day_start = "00:00:00".into();
+    config.playlist.start_sec = Some(0.0);
+    config.playlist.length = "24:00:00".into();
+    config.playlist.length_sec = Some(86400.0);
+    config.playlist.path = "assets/playlists".into();
+    config.storage.filler = "assets/media_filler/filler_0.mp4".into();
+    config.logging.log_to_file = false;
+    config.logging.timestamp = false;
+    config.logging.level = LevelFilter::Trace;
+    let play_control = PlayerControl::new();
+    let playout_stat = PlayoutStatus::new();
+
+    let logging = init_logging(&config, None, None);
+    CombinedLogger::init(logging).unwrap_or_default();
+
+    let mut valid_source_with_probe = Media::new(0, "assets/media_mix/av_sync.mp4", true);
+    let valid_media = gen_source(
+        &config,
+        valid_source_with_probe.clone(),
+        &playout_stat,
+        &play_control,
+        100,
+    );
+
+    assert_eq!(valid_source_with_probe.source, valid_media.source);
+
+    let mut valid_source_without_probe = Media::new(0, "assets/media_mix/av_sync.mp4", false);
+    valid_source_without_probe.duration = 30.0;
+    valid_source_without_probe.out = 20.0;
+    let valid_media = gen_source(
+        &config,
+        valid_source_without_probe.clone(),
+        &playout_stat,
+        &play_control,
+        100,
+    );
+
+    assert_eq!(valid_source_without_probe.source, valid_media.source);
+    assert_eq!(valid_media.out, 20.0);
+
+    valid_source_with_probe.out = 0.9;
+
+    let valid_media = gen_source(
+        &config,
+        valid_source_with_probe.clone(),
+        &playout_stat,
+        &play_control,
+        100,
+    );
+
+    assert_eq!(valid_media.out, 1.9);
+
+    let mut no_valid_source_with_probe = Media::new(0, "assets/media_mix/av_snc.mp4", true);
+    no_valid_source_with_probe.duration = 30.0;
+    no_valid_source_with_probe.out = 30.0;
+
+    let valid_media = gen_source(
+        &config,
+        no_valid_source_with_probe.clone(),
+        &playout_stat,
+        &play_control,
+        100,
+    );
+
+    assert_eq!(valid_media.source, "assets/media_filler/filler_0.mp4");
 }
 
 #[test]
@@ -32,7 +108,7 @@ fn playlist_missing() {
     config.playlist.length = "24:00:00".into();
     config.playlist.length_sec = Some(86400.0);
     config.playlist.path = "assets/playlists".into();
-    config.storage.filler = "assets/with_audio.mp4".into();
+    config.storage.filler = "assets/media_filler/filler_0.mp4".into();
     config.logging.log_to_file = false;
     config.logging.timestamp = false;
     config.logging.level = LevelFilter::Trace;
@@ -75,7 +151,7 @@ fn playlist_next_missing() {
     config.playlist.length = "24:00:00".into();
     config.playlist.length_sec = Some(86400.0);
     config.playlist.path = "assets/playlists".into();
-    config.storage.filler = "assets/with_audio.mp4".into();
+    config.storage.filler = "assets/media_filler/filler_0.mp4".into();
     config.logging.log_to_file = false;
     config.logging.timestamp = false;
     config.logging.level = LevelFilter::Trace;
@@ -118,7 +194,7 @@ fn playlist_to_short() {
     config.playlist.length = "24:00:00".into();
     config.playlist.length_sec = Some(86400.0);
     config.playlist.path = "assets/playlists".into();
-    config.storage.filler = "assets/with_audio.mp4".into();
+    config.storage.filler = "assets/media_filler/filler_0.mp4".into();
     config.logging.log_to_file = false;
     config.logging.timestamp = false;
     config.logging.level = log::LevelFilter::Trace;
@@ -161,7 +237,7 @@ fn playlist_init_after_list_end() {
     config.playlist.length = "24:00:00".into();
     config.playlist.length_sec = Some(86400.0);
     config.playlist.path = "assets/playlists".into();
-    config.storage.filler = "assets/with_audio.mp4".into();
+    config.storage.filler = "assets/media_filler/filler_0.mp4".into();
     config.logging.log_to_file = false;
     config.logging.timestamp = false;
     config.logging.level = log::LevelFilter::Trace;
@@ -204,7 +280,7 @@ fn playlist_change_at_midnight() {
     config.playlist.length = "24:00:00".into();
     config.playlist.length_sec = Some(86400.0);
     config.playlist.path = "assets/playlists".into();
-    config.storage.filler = "assets/with_audio.mp4".into();
+    config.storage.filler = "assets/media_filler/filler_0.mp4".into();
     config.logging.log_to_file = false;
     config.logging.timestamp = false;
     config.logging.level = LevelFilter::Trace;
@@ -247,7 +323,7 @@ fn playlist_change_before_midnight() {
     config.playlist.length = "24:00:00".into();
     config.playlist.length_sec = Some(86400.0);
     config.playlist.path = "assets/playlists".into();
-    config.storage.filler = "assets/with_audio.mp4".into();
+    config.storage.filler = "assets/media_filler/filler_0.mp4".into();
     config.logging.log_to_file = false;
     config.logging.timestamp = false;
     config.logging.level = LevelFilter::Trace;
@@ -290,7 +366,7 @@ fn playlist_change_at_six() {
     config.playlist.length = "24:00:00".into();
     config.playlist.length_sec = Some(86400.0);
     config.playlist.path = "assets/playlists".into();
-    config.storage.filler = "assets/with_audio.mp4".into();
+    config.storage.filler = "assets/media_filler/filler_0.mp4".into();
     config.logging.log_to_file = false;
     config.logging.timestamp = false;
     config.out.mode = Null;

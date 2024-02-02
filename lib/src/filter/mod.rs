@@ -304,11 +304,11 @@ fn overlay(node: &mut Media, chain: &mut Filters, config: &PlayoutConfig) {
             config.processing.logo.replace('\\', "/").replace(':', "\\\\:"), config.processing.logo_opacity, config.processing.logo_filter
         );
 
-        if node.last_ad.unwrap_or(false) {
+        if node.last_ad {
             logo_chain.push_str(",fade=in:st=0:d=1.0:alpha=1")
         }
 
-        if node.next_ad.unwrap_or(false) {
+        if node.next_ad {
             logo_chain.push_str(&format!(
                 ",fade=out:st={}:d=1.0:alpha=1",
                 node.out - node.seek - 1.0
