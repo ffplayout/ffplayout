@@ -268,11 +268,11 @@ impl CurrentProgram {
 
             trace!("Clip from init: {}", node_clone.source);
 
-            // Important! When no manual drop is happen here, lock is still active in handle_list_init
-            drop(nodes);
-
             node_clone.seek += time_sec
                 - (node_clone.begin.unwrap() - *self.playout_stat.time_shift.lock().unwrap());
+
+            // Important! When no manual drop is happen here, lock is still active in handle_list_init
+            drop(nodes);
 
             self.current_node = handle_list_init(
                 &self.config,
@@ -703,13 +703,10 @@ fn handle_list_init(
 ) -> Media {
     debug!("Playlist init");
     let (_, total_delta) = get_delta(config, &node.begin.unwrap());
-    let mut out = node.out;
 
     if node.out - node.seek > total_delta {
-        out = total_delta + node.seek;
+        node.out = total_delta + node.seek;
     }
-
-    node.out = out;
 
     gen_source(config, node, playout_stat, player_control, last_index)
 }
