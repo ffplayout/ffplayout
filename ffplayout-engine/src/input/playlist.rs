@@ -286,6 +286,7 @@ impl CurrentProgram {
                 .current_node
                 .source
                 .contains(&self.config.storage.path.to_string_lossy().to_string())
+                || self.current_node.source.contains("color=c=#121212")
             {
                 is_filler = true;
             }
@@ -581,16 +582,17 @@ pub fn gen_source(
             Err(e) => error!("Lock filler list error: {e}"),
         }
 
+        // Set list_init to true, to stay in sync.
+        playout_stat.list_init.store(true, Ordering::SeqCst);
+
         if config.storage.filler.is_dir() && !filler_list.is_empty() {
             let filler_index = player_control.filler_index.fetch_add(1, Ordering::SeqCst);
             let mut filler_media = filler_list[filler_index].clone();
 
             trace!("take filler: {}", filler_media.source);
 
-            // Set list_init to true, to stay in sync.
-            playout_stat.list_init.store(true, Ordering::SeqCst);
-
             if filler_index == filler_list.len() - 1 {
+                // reset index for next round
                 player_control.filler_index.store(0, Ordering::SeqCst)
             }
 
