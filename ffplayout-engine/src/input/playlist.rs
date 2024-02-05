@@ -236,7 +236,7 @@ impl CurrentProgram {
             .current_list
             .lock()
             .unwrap()
-            .iter_mut()
+            .iter()
             .enumerate()
         {
             if item.begin.unwrap() + item.out - item.seek > time_sec {
@@ -260,7 +260,7 @@ impl CurrentProgram {
                 .player_control
                 .current_index
                 .fetch_add(1, Ordering::SeqCst);
-            let nodes = self.player_control.current_list.lock().unwrap();
+            let mut nodes = self.player_control.current_list.lock().unwrap();
             let last_index = nodes.len() - 1;
 
             // de-instance node to preserve original values in list
@@ -270,6 +270,32 @@ impl CurrentProgram {
 
             node_clone.seek += time_sec
                 - (node_clone.begin.unwrap() - *self.playout_stat.time_shift.lock().unwrap());
+
+            if node_clone.out > node_clone.duration {
+                let mut node_duplicate = node_clone.clone();
+                node_duplicate.begin =
+                    Some(node_duplicate.begin.unwrap_or_default() + node_duplicate.duration);
+                node_duplicate.seek = 0.0;
+                node_duplicate.out -= node_duplicate.duration;
+
+                println!(
+                    "seek: {}; out: {}; duration: {}; begin: {:?}",
+                    node_duplicate.seek,
+                    node_duplicate.out,
+                    node_duplicate.duration,
+                    node_duplicate.begin
+                );
+
+                nodes.insert(index + 1, node_duplicate);
+
+                for (i, item) in nodes.iter_mut().enumerate() {
+                    item.index = Some(i);
+                }
+
+                node_clone.out = node_clone.duration;
+            }
+
+            println!("{:?}", nodes);
 
             // Important! When no manual drop is happen here, lock is still active in handle_list_init
             drop(nodes);
@@ -394,6 +420,7 @@ impl Iterator for CurrentProgram {
             let node_list = self.player_control.current_list.lock().unwrap();
             let node = node_list[index].clone();
             let last_index = node_list.len() - 1;
+
             drop(node_list);
 
             if index == last_index {
