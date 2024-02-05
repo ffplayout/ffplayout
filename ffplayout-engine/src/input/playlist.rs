@@ -272,18 +272,39 @@ impl CurrentProgram {
                 - (node_clone.begin.unwrap() - *self.playout_stat.time_shift.lock().unwrap());
 
             if node_clone.out > node_clone.duration {
+                warn!("Initial clip loops and got seek value: duplicate clip to separate loop and seek.");
                 let mut node_duplicate = node_clone.clone();
-                node_duplicate.begin =
-                    Some(node_duplicate.begin.unwrap_or_default() + node_duplicate.duration);
                 node_duplicate.seek = 0.0;
-                node_duplicate.out -= node_duplicate.duration;
+                let orig_seek = node_clone.seek;
+                let orig_out = node_clone.out;
+                node_clone.out = node_clone.duration;
+
+                if node_clone.seek > node_clone.duration {
+                    node_clone.seek = node_clone.seek - node_clone.duration;
+
+                    node_duplicate.out =
+                        node_duplicate.out - orig_seek - (node_clone.out - node_clone.seek);
+                } else {
+                    node_duplicate.out -= node_duplicate.duration;
+                }
+
+                // nodes[index].seek = node_clone.seek;
+                // nodes[index].out = node_clone.out;
+
+                node_duplicate.begin = Some(
+                    node_duplicate.begin.unwrap_or_default() + (orig_out - node_duplicate.out),
+                );
 
                 println!(
-                    "seek: {}; out: {}; duration: {}; begin: {:?}",
-                    node_duplicate.seek,
-                    node_duplicate.out,
+                    "begin: {:?}, duration: {}, seek: {}, out: {}",
+                    node_clone.begin, node_clone.duration, node_clone.seek, node_clone.out
+                );
+                println!(
+                    "begin: {:?}, duration: {}, seek: {}, out: {}",
+                    node_duplicate.begin,
                     node_duplicate.duration,
-                    node_duplicate.begin
+                    node_duplicate.seek,
+                    node_duplicate.out
                 );
 
                 nodes.insert(index + 1, node_duplicate);
@@ -291,11 +312,7 @@ impl CurrentProgram {
                 for (i, item) in nodes.iter_mut().enumerate() {
                     item.index = Some(i);
                 }
-
-                node_clone.out = node_clone.duration;
             }
-
-            println!("{:?}", nodes);
 
             // Important! When no manual drop is happen here, lock is still active in handle_list_init
             drop(nodes);
@@ -565,9 +582,9 @@ pub fn gen_source(
         duration = 1.2;
 
         if node.seek > 1.0 {
-            node.seek -= 1.0;
+            node.seek -= 1.2;
         } else {
-            node.out += 1.0;
+            node.out = 1.2;
         }
     }
 
