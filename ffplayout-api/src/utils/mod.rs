@@ -2,7 +2,7 @@ use std::{
     env,
     error::Error,
     fmt,
-    fs::{self, File},
+    fs::{self, metadata, File},
     io::{stdin, stdout, Write},
     path::{Path, PathBuf},
     str::FromStr,
@@ -312,15 +312,36 @@ pub async fn read_log_file(
                 .to_string();
             log_path.push_str(&date_str);
 
-            let file = fs::read_to_string(log_path)?;
+            let file_size = metadata(&log_path)?.len() as f64;
 
-            return Ok(file);
+            let file_content = if file_size > 5000000.0 {
+                error!("Log file to big: {}", sizeof_fmt(file_size));
+                format!("The log file is larger ({}) than the hard limit of 5MB, the probability is very high that something is wrong with the playout. Check this on the server with `less {log_path}`.", sizeof_fmt(file_size))
+            } else {
+                fs::read_to_string(log_path)?
+            };
+
+            return Ok(file_content);
         }
     }
 
     Err(ServiceError::NoContent(
         "Requested log file not exists, or not readable.".to_string(),
     ))
+}
+
+/// get human readable file size
+pub fn sizeof_fmt(mut num: f64) -> String {
+    let suffix = 'B';
+
+    for unit in ["", "Ki", "Mi", "Gi", "Ti", "Pi", "Ei", "Zi"] {
+        if num.abs() < 1024.0 {
+            return format!("{num:.1}{unit}{suffix}");
+        }
+        num /= 1024.0;
+    }
+
+    format!("{num:.1}Yi{suffix}")
 }
 
 pub fn local_utc_offset() -> i32 {
