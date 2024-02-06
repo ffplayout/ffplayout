@@ -260,7 +260,7 @@ impl CurrentProgram {
                 .player_control
                 .current_index
                 .fetch_add(1, Ordering::SeqCst);
-            let mut nodes = self.player_control.current_list.lock().unwrap();
+            let nodes = self.player_control.current_list.lock().unwrap();
             let last_index = nodes.len() - 1;
 
             // de-instance node to preserve original values in list
@@ -270,49 +270,6 @@ impl CurrentProgram {
 
             node_clone.seek += time_sec
                 - (node_clone.begin.unwrap() - *self.playout_stat.time_shift.lock().unwrap());
-
-            if node_clone.out > node_clone.duration {
-                warn!("Initial clip loops and got seek value: duplicate clip to separate loop and seek.");
-                let mut node_duplicate = node_clone.clone();
-                node_duplicate.seek = 0.0;
-                let orig_seek = node_clone.seek;
-                let orig_out = node_clone.out;
-                node_clone.out = node_clone.duration;
-
-                if node_clone.seek > node_clone.duration {
-                    node_clone.seek = node_clone.seek - node_clone.duration;
-
-                    node_duplicate.out =
-                        node_duplicate.out - orig_seek - (node_clone.out - node_clone.seek);
-                } else {
-                    node_duplicate.out -= node_duplicate.duration;
-                }
-
-                // nodes[index].seek = node_clone.seek;
-                // nodes[index].out = node_clone.out;
-
-                node_duplicate.begin = Some(
-                    node_duplicate.begin.unwrap_or_default() + (orig_out - node_duplicate.out),
-                );
-
-                println!(
-                    "begin: {:?}, duration: {}, seek: {}, out: {}",
-                    node_clone.begin, node_clone.duration, node_clone.seek, node_clone.out
-                );
-                println!(
-                    "begin: {:?}, duration: {}, seek: {}, out: {}",
-                    node_duplicate.begin,
-                    node_duplicate.duration,
-                    node_duplicate.seek,
-                    node_duplicate.out
-                );
-
-                nodes.insert(index + 1, node_duplicate);
-
-                for (i, item) in nodes.iter_mut().enumerate() {
-                    item.index = Some(i);
-                }
-            }
 
             // Important! When no manual drop is happen here, lock is still active in handle_list_init
             drop(nodes);
@@ -565,6 +522,39 @@ fn timed_source(
     new_node
 }
 
+fn duplicate_for_seek_and_loop(node: &mut Media, player_control: &PlayerControl) {
+    warn!("Clip loops and has seek value: duplicate clip to separate loop and seek.");
+    let mut nodes = player_control.current_list.lock().unwrap();
+    let index = node.index.unwrap_or_default();
+
+    let mut node_duplicate = node.clone();
+    node_duplicate.seek = 0.0;
+    let orig_seek = node.seek;
+    node.out = node.duration;
+
+    if node.seek > node.duration {
+        node.seek %= node.duration;
+
+        node_duplicate.out = node_duplicate.out - orig_seek - (node.out - node.seek);
+    } else {
+        node_duplicate.out -= node_duplicate.duration;
+    }
+
+    if node.seek == node.out {
+        node.seek = node_duplicate.seek;
+        node.out = node_duplicate.out;
+    } else if node_duplicate.out - node_duplicate.seek > 1.2 {
+        node_duplicate.begin =
+            Some(node_duplicate.begin.unwrap_or_default() + (node.out - node.seek));
+
+        nodes.insert(index + 1, node_duplicate);
+
+        for (i, item) in nodes.iter_mut().enumerate() {
+            item.index = Some(i);
+        }
+    }
+}
+
 /// Generate the source CMD, or when clip not exist, get a dummy.
 pub fn gen_source(
     config: &PlayoutConfig,
@@ -609,6 +599,10 @@ pub fn gen_source(
         {
             node.cmd = Some(loop_image(&node));
         } else {
+            if node.seek > 0.0 && node.out > node.duration {
+                duplicate_for_seek_and_loop(&mut node, player_control);
+            }
+
             node.cmd = Some(seek_and_length(&mut node));
         }
     } else {
