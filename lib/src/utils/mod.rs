@@ -529,6 +529,7 @@ pub fn loop_filler(node: &Media) -> Vec<String> {
 
 /// Set clip seek in and length value.
 pub fn seek_and_length(node: &mut Media) -> Vec<String> {
+    let loop_count = (node.out / node.duration).ceil() as i32;
     let mut source_cmd = vec![];
     let mut cut_audio = false;
     let mut loop_audio = false;
@@ -541,9 +542,15 @@ pub fn seek_and_length(node: &mut Media) -> Vec<String> {
         source_cmd.append(&mut vec_strings!["-ss", node.seek])
     }
 
+    if loop_count > 1 {
+        info!("Loop <b><magenta>{}</></b> <yellow>{loop_count}</> times, total duration: <yellow>{:.2}</>", node.source, node.out);
+
+        source_cmd.append(&mut vec_strings!["-stream_loop", loop_count]);
+    }
+
     source_cmd.append(&mut vec_strings!["-i", node.source.clone()]);
 
-    if node.duration > node.out || remote_source {
+    if node.duration > node.out || remote_source || loop_count > 1 {
         source_cmd.append(&mut vec_strings!["-t", node.out - node.seek]);
     }
 
@@ -552,9 +559,9 @@ pub fn seek_and_length(node: &mut Media) -> Vec<String> {
             source_cmd.append(&mut vec_strings!["-ss", node.seek]);
         }
 
-        if node.duration_audio > node.duration {
+        if node.duration_audio > node.out {
             cut_audio = true;
-        } else if node.duration_audio < node.duration {
+        } else if node.duration_audio < node.out {
             source_cmd.append(&mut vec_strings!["-stream_loop", -1]);
             loop_audio = true;
         }

@@ -59,7 +59,8 @@ impl CurrentProgram {
         }
     }
 
-    // Check if playlist file got updated, and when yes we reload it and setup everything in place.
+    // Check if there is no current playlist or file got updated,
+    // and when is so load/reload it.
     fn load_or_update_playlist(&mut self, seek: bool) {
         let mut get_current = false;
         let mut reload = false;
@@ -235,7 +236,7 @@ impl CurrentProgram {
             .current_list
             .lock()
             .unwrap()
-            .iter_mut()
+            .iter()
             .enumerate()
         {
             if item.begin.unwrap() + item.out - item.seek > time_sec {
@@ -267,11 +268,11 @@ impl CurrentProgram {
 
             trace!("Clip from init: {}", node_clone.source);
 
-            // Important! When no manual drop is happen here, lock is still active in handle_list_init
-            drop(nodes);
-
             node_clone.seek += time_sec
                 - (node_clone.begin.unwrap() - *self.playout_stat.time_shift.lock().unwrap());
+
+            // Important! When no manual drop is happen here, lock is still active in handle_list_init
+            drop(nodes);
 
             self.current_node = handle_list_init(
                 &self.config,
@@ -285,6 +286,7 @@ impl CurrentProgram {
                 .current_node
                 .source
                 .contains(&self.config.storage.path.to_string_lossy().to_string())
+                || self.current_node.source.contains("color=c=#121212")
             {
                 is_filler = true;
             }
@@ -392,6 +394,7 @@ impl Iterator for CurrentProgram {
             let node_list = self.player_control.current_list.lock().unwrap();
             let node = node_list[index].clone();
             let last_index = node_list.len() - 1;
+
             drop(node_list);
 
             if index == last_index {
@@ -519,6 +522,39 @@ fn timed_source(
     new_node
 }
 
+fn duplicate_for_seek_and_loop(node: &mut Media, player_control: &PlayerControl) {
+    warn!("Clip loops and has seek value: duplicate clip to separate loop and seek.");
+    let mut nodes = player_control.current_list.lock().unwrap();
+    let index = node.index.unwrap_or_default();
+
+    let mut node_duplicate = node.clone();
+    node_duplicate.seek = 0.0;
+    let orig_seek = node.seek;
+    node.out = node.duration;
+
+    if node.seek > node.duration {
+        node.seek %= node.duration;
+
+        node_duplicate.out = node_duplicate.out - orig_seek - (node.out - node.seek);
+    } else {
+        node_duplicate.out -= node_duplicate.duration;
+    }
+
+    if node.seek == node.out {
+        node.seek = node_duplicate.seek;
+        node.out = node_duplicate.out;
+    } else if node_duplicate.out - node_duplicate.seek > 1.2 {
+        node_duplicate.begin =
+            Some(node_duplicate.begin.unwrap_or_default() + (node.out - node.seek));
+
+        nodes.insert(index + 1, node_duplicate);
+
+        for (i, item) in nodes.iter_mut().enumerate() {
+            item.index = Some(i);
+        }
+    }
+}
+
 /// Generate the source CMD, or when clip not exist, get a dummy.
 pub fn gen_source(
     config: &PlayoutConfig,
@@ -536,9 +572,9 @@ pub fn gen_source(
         duration = 1.2;
 
         if node.seek > 1.0 {
-            node.seek -= 1.0;
+            node.seek -= 1.2;
         } else {
-            node.out += 1.0;
+            node.out = 1.2;
         }
     }
 
@@ -563,6 +599,10 @@ pub fn gen_source(
         {
             node.cmd = Some(loop_image(&node));
         } else {
+            if node.seek > 0.0 && node.out > node.duration {
+                duplicate_for_seek_and_loop(&mut node, player_control);
+            }
+
             node.cmd = Some(seek_and_length(&mut node));
         }
     } else {
@@ -580,16 +620,17 @@ pub fn gen_source(
             Err(e) => error!("Lock filler list error: {e}"),
         }
 
+        // Set list_init to true, to stay in sync.
+        playout_stat.list_init.store(true, Ordering::SeqCst);
+
         if config.storage.filler.is_dir() && !filler_list.is_empty() {
             let filler_index = player_control.filler_index.fetch_add(1, Ordering::SeqCst);
             let mut filler_media = filler_list[filler_index].clone();
 
             trace!("take filler: {}", filler_media.source);
 
-            // Set list_init to true, to stay in sync.
-            playout_stat.list_init.store(true, Ordering::SeqCst);
-
             if filler_index == filler_list.len() - 1 {
+                // reset index for next round
                 player_control.filler_index.store(0, Ordering::SeqCst)
             }
 
@@ -700,13 +741,10 @@ fn handle_list_init(
 ) -> Media {
     debug!("Playlist init");
     let (_, total_delta) = get_delta(config, &node.begin.unwrap());
-    let mut out = node.out;
 
     if node.out - node.seek > total_delta {
-        out = total_delta + node.seek;
+        node.out = total_delta + node.seek;
     }
-
-    node.out = out;
 
     gen_source(config, node, playout_stat, player_control, last_index)
 }
