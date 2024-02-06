@@ -70,6 +70,7 @@ pub fn get_config(args: Args) -> Result<PlayoutConfig, ProcError> {
             config.logging.path = log_path;
         } else {
             config.logging.log_to_file = false;
+            config.logging.timestamp = false;
         }
     }
 
