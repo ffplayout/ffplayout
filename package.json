@@ -40,10 +40,10 @@
     "eslint": "^8.56.0",
     "eslint-plugin-nuxt": "^4.0.0",
     "fibers": "^5.0.3",
-    "nuxt": "3.9.3",
-    "postcss": "^8.4.33",
-    "postcss-loader": "^8.0.0",
+    "nuxt": "3.10.1",
+    "postcss": "^8.4.35",
+    "postcss-loader": "^8.1.0",
     "sass": "^1.70.0",
-    "sass-loader": "^14.0.0"
+    "sass-loader": "^14.1.0"
   }
 }
