@@ -619,7 +619,7 @@ pub fn gen_dummy(config: &PlayoutConfig, duration: f64) -> (String, Vec<String>)
 // }
 
 pub fn is_remote(path: &str) -> bool {
-    Regex::new(r"^(https?|rtmps?|rtp|rtsp|udp|tcp|srt)://.*")
+    Regex::new(r"^(https?|rtmps?|rts?p|udp|tcp|srt)://.*")
         .unwrap()
         .is_match(&path.to_lowercase())
 }
