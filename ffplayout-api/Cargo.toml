@@ -8,6 +8,10 @@ authors.workspace = true
 repository.workspace = true
 edition.workspace = true
 
+[features]
+default = ["embed_frontend"]
+embed_frontend = []
+
 [dependencies]
 ffplayout-lib = { path = "../lib" }
 actix-files = "0.6"
