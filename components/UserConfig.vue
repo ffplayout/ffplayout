@@ -14,7 +14,6 @@
                         <button
                             class="btn btn-primary me-2"
                             title="Add new User"
-                            data-tooltip="tooltip"
                             data-bs-toggle="modal"
                             data-bs-target="#userModal"
                         >

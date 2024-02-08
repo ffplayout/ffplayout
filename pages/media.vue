@@ -270,7 +270,6 @@
                 type="button"
                 class="btn btn-primary"
                 title="Create Folder"
-                data-tooltip="tooltip"
                 data-bs-toggle="modal"
                 data-bs-target="#folderModal"
             >
@@ -280,7 +279,6 @@
                 type="button"
                 class="btn btn-primary"
                 title="Upload File"
-                data-tooltip="tooltip"
                 data-bs-toggle="modal"
                 data-bs-target="#uploadModal"
             >

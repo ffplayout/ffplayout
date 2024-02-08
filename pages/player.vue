@@ -203,7 +203,6 @@
                 class="btn btn-primary"
                 title="Copy Playlist"
                 data-bs-toggle="modal"
-                data-tooltip="tooltip"
                 data-bs-target="#copyModal"
             >
                 <i class="bi-files" />
@@ -212,7 +211,6 @@
                 v-if="!configStore.configPlayout.playlist.loop"
                 class="btn btn-primary"
                 title="Loop Clips in Playlist"
-                data-tooltip="tooltip"
                 @click="loopClips()"
             >
                 <i class="bi-view-stacked" />
@@ -220,7 +218,6 @@
             <div
                 class="btn btn-primary"
                 title="Add (remote) Source to Playlist"
-                data-tooltip="tooltip"
                 data-bs-toggle="modal"
                 data-bs-target="#sourceModal"
                 @click="clearNewSource()"
@@ -230,7 +227,6 @@
             <div
                 class="btn btn-primary"
                 title="Import text/m3u file"
-                data-tooltip="tooltip"
                 data-bs-toggle="modal"
                 data-bs-target="#importModal"
             >
@@ -239,23 +235,21 @@
             <div
                 class="btn btn-primary"
                 title="Generate a randomized Playlist"
-                data-tooltip="tooltip"
                 data-bs-toggle="modal"
                 data-bs-target="#generateModal"
                 @click="mediaStore.getTree('', true)"
             >
                 <i class="bi-sort-down-alt" />
             </div>
-            <div class="btn btn-primary" title="Reset Playlist" data-tooltip="tooltip" @click="getPlaylist()">
+            <div class="btn btn-primary" title="Reset Playlist" @click="getPlaylist()">
                 <i class="bi-arrow-counterclockwise" />
             </div>
-            <div class="btn btn-primary" title="Save Playlist" data-tooltip="tooltip" @click="savePlaylist(listDate)">
+            <div class="btn btn-primary" title="Save Playlist" @click="savePlaylist(listDate)">
                 <i class="bi-download" />
             </div>
             <div
                 class="btn btn-primary"
                 title="Delete Playlist"
-                data-tooltip="tooltip"
                 data-bs-toggle="modal"
                 data-bs-target="#deleteModal"
             >
@@ -1373,7 +1367,7 @@ function addTemplate() {
 }
 
 .list-row {
-    height: calc(100% - 487px);
+    height: calc(100% - 400px);
     min-height: 300px;
 }
 

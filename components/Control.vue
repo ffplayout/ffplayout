@@ -68,7 +68,6 @@
                                     <div>
                                         <button
                                             title="Start Playout Service"
-                                            data-tooltip="tooltip"
                                             class="btn btn-primary control-button control-button-play"
                                             :class="isPlaying"
                                             @click="controlProcess('start')"
@@ -81,7 +80,6 @@
                                     <div>
                                         <button
                                             title="Stop Playout Service"
-                                            data-tooltip="tooltip"
                                             class="btn btn-primary control-button control-button-stop"
                                             @click="controlProcess('stop')"
                                         >
@@ -93,7 +91,6 @@
                                     <div>
                                         <button
                                             title="Restart Playout Service"
-                                            data-tooltip="tooltip"
                                             class="btn btn-primary control-button control-button-restart"
                                             @click="controlProcess('restart')"
                                         >
@@ -106,7 +103,6 @@
                                     <div>
                                         <button
                                             title="Jump to last Clip"
-                                            data-tooltip="tooltip"
                                             class="btn btn-primary control-button control-button-control"
                                             @click="controlPlayout('back')"
                                         >
@@ -118,7 +114,6 @@
                                     <div>
                                         <button
                                             title="Reset Playout State"
-                                            data-tooltip="tooltip"
                                             class="btn btn-primary control-button control-button-control"
                                             @click="controlPlayout('reset')"
                                         >
@@ -130,7 +125,6 @@
                                     <div>
                                         <button
                                             title="Jump to next Clip"
-                                            data-tooltip="tooltip"
                                             class="btn btn-primary control-button control-button-control"
                                             @click="controlPlayout('next')"
                                         >
