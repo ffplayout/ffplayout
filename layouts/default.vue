@@ -3,7 +3,7 @@
         <NuxtPage />
         <div
             v-if="indexStore.showAlert"
-            class="alert show alert-dismissible fade media-alert"
+            class="alert show alert-dismissible fade media-alert position-fixed"
             :class="indexStore.alertVariant"
             role="alert"
         >

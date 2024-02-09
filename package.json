@@ -16,7 +16,7 @@
     "@nuxt/types": "^2.17.3",
     "@pinia/nuxt": "^0.5.1",
     "@popperjs/core": "^2.11.8",
-    "@vueuse/core": "^10.7.2",
+    "@vueuse/nuxt": "^10.7.2",
     "bootstrap": "^5.3.2",
     "bootstrap-icons": "^1.11.3",
     "cookie-universal-nuxt": "^2.2.2",
@@ -24,12 +24,13 @@
     "jwt-decode": "^4.0.0",
     "lodash": "^4.17.21",
     "mpegts.js": "^1.7.3",
+    "nuxt": "3.10.1",
     "pinia": "^2.1.7",
-    "sortablejs": "^1.15.2",
     "sortablejs-vue3": "^1.2.11",
     "splitpanes": "^3.1.5",
     "video.js": "^8.10.0",
-    "vuedraggable": "^4.1.0"
+    "vue": "^3.4.18",
+    "vue-router": "^4.2.5"
   },
   "devDependencies": {
     "@nuxtjs/eslint-config": "^12.0.0",
@@ -39,8 +40,6 @@
     "@types/video.js": "^7.3.56",
     "eslint": "^8.56.0",
     "eslint-plugin-nuxt": "^4.0.0",
-    "fibers": "^5.0.3",
-    "nuxt": "3.10.1",
     "postcss": "^8.4.35",
     "postcss-loader": "^8.1.0",
     "sass": "^1.70.0",

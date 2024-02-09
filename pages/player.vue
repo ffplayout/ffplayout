@@ -22,10 +22,7 @@
                                 :active="index === mediaStore.crumbs.length - 1"
                                 @click="getPath(crumb.path)"
                             >
-                                <a
-                                    v-if="mediaStore.crumbs.length > 1 && mediaStore.crumbs.length - 1 > index"
-                                    href="#"
-                                >
+                                <a v-if="mediaStore.crumbs.length > 1 && mediaStore.crumbs.length - 1 > index" href="#">
                                     {{ crumb.text }}
                                 </a>
                                 <span v-else>{{ crumb.text }}</span>
@@ -199,12 +196,7 @@
         </splitpanes>
 
         <div class="btn-group media-button mb-3">
-            <div
-                class="btn btn-primary"
-                title="Copy Playlist"
-                data-bs-toggle="modal"
-                data-bs-target="#copyModal"
-            >
+            <div class="btn btn-primary" title="Copy Playlist" data-bs-toggle="modal" data-bs-target="#copyModal">
                 <i class="bi-files" />
             </div>
             <div
@@ -247,12 +239,7 @@
             <div class="btn btn-primary" title="Save Playlist" @click="savePlaylist(listDate)">
                 <i class="bi-download" />
             </div>
-            <div
-                class="btn btn-primary"
-                title="Delete Playlist"
-                data-bs-toggle="modal"
-                data-bs-target="#deleteModal"
-            >
+            <div class="btn btn-primary" title="Delete Playlist" data-bs-toggle="modal" data-bs-target="#deleteModal">
                 <i class="bi-trash" />
             </div>
         </div>
@@ -469,7 +456,7 @@
                                     aria-controls="v-pills-playout"
                                     aria-selected="false"
                                     @click="
-                                        advancedGenerator = true;
+                                        advancedGenerator = true,
                                         resetCheckboxes()
                                     "
                                 >
@@ -738,7 +725,7 @@
                             class="btn btn-primary"
                             data-bs-dismiss="modal"
                             @click="
-                                resetCheckboxes();
+                                resetCheckboxes(),
                                 resetTemplate()
                             "
                         >
@@ -978,7 +965,9 @@ function setPreviewData(path: string) {
     if (path.match(/^http/)) {
         previewUrl.value = path
     } else {
-        previewUrl.value = encodeURIComponent(`/file/${configStore.configGui[configStore.configID].id}${fullPath}`).replace(/%2F/g, '/')
+        previewUrl.value = encodeURIComponent(
+            `/file/${configStore.configGui[configStore.configID].id}${fullPath}`
+        ).replace(/%2F/g, '/')
     }
 
     const ext = previewName.value.split('.').slice(-1)[0].toLowerCase()
@@ -1367,7 +1356,7 @@ function addTemplate() {
 }
 
 .list-row {
-    height: calc(100% - 400px);
+    height: calc(100% - 480px);
     min-height: 300px;
 }
 
