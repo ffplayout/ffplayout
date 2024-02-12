@@ -762,7 +762,7 @@ fn ffmpeg_filter_and_libs(config: &mut PlayoutConfig) -> Result<(), String> {
 
     // stderr shows only the ffmpeg configuration
     // get codec library's
-    for line in err_buffer.lines().flatten() {
+    for line in err_buffer.lines().map_while(Result::ok) {
         if line.contains("configuration:") {
             let configs = line.split_whitespace();
 
@@ -780,7 +780,7 @@ fn ffmpeg_filter_and_libs(config: &mut PlayoutConfig) -> Result<(), String> {
 
     // stdout shows filter from ffmpeg
     // get filters
-    for line in out_buffer.lines().flatten() {
+    for line in out_buffer.lines().map_while(Result::ok) {
         if line.contains('>') {
             let filter_line = line.split_whitespace().collect::<Vec<_>>();
 
