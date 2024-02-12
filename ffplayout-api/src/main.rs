@@ -12,6 +12,7 @@ use actix_web_grants::authorities::AttachAuthorities;
 use actix_web_httpauth::{extractors::bearer::BearerAuth, middleware::HttpAuthentication};
 
 #[cfg(not(debug_assertions))]
+#[cfg(feature = "embed_frontend")]
 use actix_web_static_files::ResourceFiles;
 
 use clap::Parser;
@@ -31,6 +32,7 @@ use utils::{args_parse::Args, control::ProcessControl, db_path, init_config, run
 use ffplayout_lib::utils::{init_logging, PlayoutConfig};
 
 #[cfg(not(debug_assertions))]
+#[cfg(feature = "embed_frontend")]
 include!(concat!(env!("OUT_DIR"), "/generated.rs"));
 
 lazy_static! {
@@ -168,6 +170,7 @@ async fn main() -> std::io::Result<()> {
             }
 
             #[cfg(not(debug_assertions))]
+            #[cfg(feature = "embed_frontend")]
             {
                 // in release mode embed frontend
                 let generated = generate();

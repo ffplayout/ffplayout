@@ -13,7 +13,7 @@ use simplelog::*;
 
 use crate::filter::FilterType::Audio;
 use crate::utils::{
-    errors::ProcError, is_close, loop_image, sec_to_time, seek_and_length, vec_strings,
+    errors::ProcError, is_close, is_remote, loop_image, sec_to_time, seek_and_length, vec_strings,
     JsonPlaylist, Media, OutputMode::Null, PlayerControl, PlayoutConfig, FFMPEG_IGNORE_ERRORS,
     IMAGE_FORMAT,
 };
@@ -172,18 +172,20 @@ pub fn validate_playlist(
 
         let pos = index + 1;
 
-        if item.audio.is_empty() {
-            if let Err(e) = item.add_probe(false) {
+        if !is_remote(&item.source) {
+            if item.audio.is_empty() {
+                if let Err(e) = item.add_probe(false) {
+                    error!(
+                        "[Validation] Error on position <yellow>{pos:0>3}</> <yellow>{}</>: {e}",
+                        sec_to_time(begin)
+                    );
+                }
+            } else if let Err(e) = item.add_probe(true) {
                 error!(
                     "[Validation] Error on position <yellow>{pos:0>3}</> <yellow>{}</>: {e}",
                     sec_to_time(begin)
                 );
             }
-        } else if let Err(e) = item.add_probe(true) {
-            error!(
-                "[Validation] Error on position <yellow>{pos:0>3}</> <yellow>{}</>: {e}",
-                sec_to_time(begin)
-            );
         }
 
         if item.probe.is_some() {
