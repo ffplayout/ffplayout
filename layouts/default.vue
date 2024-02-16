@@ -1,6 +1,6 @@
 <template>
     <main>
-        <NuxtPage />
+        <slot />
         <div
             v-if="indexStore.showAlert"
             class="alert show alert-dismissible fade media-alert position-fixed"
@@ -8,7 +8,7 @@
             role="alert"
         >
             {{ indexStore.alertMsg }}
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close" @click="indexStore.showAlert=false"></button>
         </div>
     </main>
 </template>
