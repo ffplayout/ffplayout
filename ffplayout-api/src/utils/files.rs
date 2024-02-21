@@ -308,6 +308,7 @@ async fn valid_path(conn: &Pool<Sqlite>, id: i32, path: &str) -> Result<PathBuf,
 pub async fn upload(
     conn: &Pool<Sqlite>,
     id: i32,
+    _size: u64,
     mut payload: Multipart,
     path: &Path,
     abs_path: bool,
@@ -324,23 +325,47 @@ pub async fn upload(
             .get_filename()
             .map_or_else(|| rand_string.to_string(), sanitize_filename::sanitize);
 
-        let filepath;
-
-        if abs_path {
-            filepath = path.to_path_buf();
+        let filepath = if abs_path {
+            path.to_path_buf()
         } else {
-            let target_path = valid_path(conn, id, &path.to_string_lossy()).await?;
-            filepath = target_path.join(filename);
-        }
+            valid_path(conn, id, &path.to_string_lossy())
+                .await?
+                .join(filename)
+        };
+        let filepath_clone = filepath.clone();
 
+        let _file_size = match filepath.metadata() {
+            Ok(metadata) => metadata.len(),
+            Err(_) => 0,
+        };
+
+        // INFO: File exist check should be enough because file size and content length are different.
+        // The error catching in the loop should normally prevent unfinished files from existing on disk.
+        // If this is not enough, a second check can be implemented: is_close(file_size as i64, size as i64, 1000)
         if filepath.is_file() {
-            return Err(ServiceError::BadRequest("Target already exists!".into()));
+            return Err(ServiceError::Conflict("Target already exists!".into()));
         }
 
-        let mut f = web::block(|| std::fs::File::create(filepath)).await??;
+        let mut f = web::block(|| std::fs::File::create(filepath_clone)).await??;
 
-        while let Some(chunk) = field.try_next().await? {
-            f = web::block(move || f.write_all(&chunk).map(|_| f)).await??;
+        loop {
+            match field.try_next().await {
+                Ok(Some(chunk)) => {
+                    f = web::block(move || f.write_all(&chunk).map(|_| f)).await??;
+                }
+
+                Ok(None) => break,
+
+                Err(e) => {
+                    if e.to_string().contains("stream is incomplete") {
+                        info!("Delete non finished file: {filepath:?}");
+
+                        tokio::fs::remove_file(filepath).await?
+                    }
+
+                    return Err(e.into());
+                }
+            }
         }
     }
 

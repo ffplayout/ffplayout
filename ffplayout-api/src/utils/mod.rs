@@ -140,9 +140,9 @@ pub fn db_path() -> Result<&'static str, Box<dyn std::error::Error>> {
                 return Ok(Box::leak(
                     absolute_path.to_string_lossy().to_string().into_boxed_str(),
                 ));
-            } else {
-                error!("Given database path is not writable!");
             }
+
+            error!("Given database path is not writable!");
         }
     }
 
@@ -169,12 +169,10 @@ pub fn public_path() -> PathBuf {
         return path;
     }
 
-    #[cfg(debug_assertions)]
-    {
-        let path = PathBuf::from("./ffplayout-frontend/.output/public/");
-        if path.is_dir() {
-            return path;
-        }
+    let path = PathBuf::from("./ffplayout-frontend/.output/public/");
+
+    if cfg!(debug_assertions) && path.is_dir() {
+        return path;
     }
 
     PathBuf::from("./public/")

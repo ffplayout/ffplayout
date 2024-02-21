@@ -435,12 +435,8 @@ pub fn file_extension(filename: &Path) -> Option<&str> {
 
 /// Test if given numbers are close to each other,
 /// with a third number for setting the maximum range.
-pub fn is_close(a: f64, b: f64, to: f64) -> bool {
-    if (a - b).abs() < to {
-        return true;
-    }
-
-    false
+pub fn is_close<T: num_traits::Signed + std::cmp::PartialOrd>(a: T, b: T, to: T) -> bool {
+    (a - b).abs() < to
 }
 
 /// add duration from all media clips
