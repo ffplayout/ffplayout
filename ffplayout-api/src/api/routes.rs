@@ -994,10 +994,18 @@ pub async fn remove(
 async fn save_file(
     pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
+    req: HttpRequest,
     payload: Multipart,
     obj: web::Query<FileObj>,
 ) -> Result<HttpResponse, ServiceError> {
-    upload(&pool.into_inner(), *id, payload, &obj.path, false).await
+    let size: u64 = req
+        .headers()
+        .get("content-length")
+        .and_then(|cl| cl.to_str().ok())
+        .and_then(|cls| cls.parse().ok())
+        .unwrap_or(0);
+
+    upload(&pool.into_inner(), *id, size, payload, &obj.path, false).await
 }
 
 /// **Get File**
@@ -1070,6 +1078,7 @@ async fn get_public(public: web::Path<String>) -> Result<actix_files::NamedFile,
 async fn import_playlist(
     pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
+    req: HttpRequest,
     payload: Multipart,
     obj: web::Query<ImportObj>,
 ) -> Result<HttpResponse, ServiceError> {
@@ -1077,8 +1086,14 @@ async fn import_playlist(
     let path = env::temp_dir().join(file);
     let (config, _) = playout_config(&pool.clone().into_inner(), &id).await?;
     let channel = handles::select_channel(&pool.clone().into_inner(), &id).await?;
+    let size: u64 = req
+        .headers()
+        .get("content-length")
+        .and_then(|cl| cl.to_str().ok())
+        .and_then(|cls| cls.parse().ok())
+        .unwrap_or(0);
 
-    upload(&pool.into_inner(), *id, payload, &path, true).await?;
+    upload(&pool.into_inner(), *id, size, payload, &path, true).await?;
     import_file(&config, &obj.date, Some(channel.name), &path)?;
 
     fs::remove_file(path)?;
