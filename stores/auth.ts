@@ -39,7 +39,6 @@ export const useAuth = defineStore('auth', {
 
             await $fetch<LoginObj>('/auth/login/', {
                 method: 'POST',
-                headers: new Headers([['content-type', 'application/json;charset=UTF-8']]),
                 body: JSON.stringify(payload),
                 async onResponse({ response }) {
                     code = response.status
