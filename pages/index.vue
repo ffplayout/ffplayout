@@ -107,7 +107,6 @@ async function login() {
 async function logout() {
     try {
         authStore.removeToken()
-        authStore.isLogin = false
     } catch (e) {
         formError.value = e as string
     }

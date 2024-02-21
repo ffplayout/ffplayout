@@ -26,6 +26,7 @@ export const useAuth = defineStore('auth', {
         removeToken() {
             const cookie = useCookie('token')
             cookie.value = null
+            this.isLogin = false
             this.jwtToken = ''
             this.authHeader = {}
         },
