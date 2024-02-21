@@ -1,9 +1,5 @@
 import { defineStore } from 'pinia'
 
-import { useAuth } from '~/stores/auth'
-import { useConfig } from '~/stores/config'
-import { useIndex } from '~/stores/index'
-
 const { genUID } = playlistOperations()
 
 export const useMedia = defineStore('media', {
@@ -36,9 +32,7 @@ export const useMedia = defineStore('media', {
                     if (response.status === 200) {
                         return response.json()
                     } else {
-                        indexStore.alertVariant = 'alert-danger'
-                        indexStore.alertMsg = `Storage not exist!`
-                        indexStore.showAlert = true
+                        indexStore.msgAlert('alert-danger', 'Storage not exist!', 3)
 
                         return {
                             source: '',

@@ -93,10 +93,6 @@
 </template>
 
 <script setup lang="ts">
-import { useAuth } from '~/stores/auth'
-import { useConfig } from '~/stores/config'
-import { useIndex } from '~/stores/index'
-
 const { $bootstrap } = useNuxtApp()
 
 const authStore = useAuth()
@@ -111,8 +107,7 @@ async function onSubmitPlayout() {
     const update = await configStore.setPlayoutConfig(configStore.configPlayout)
 
     if (update.status === 200) {
-        indexStore.alertVariant = 'alert-success'
-        indexStore.alertMsg = 'Update playout config success!'
+        indexStore.msgAlert('alert-success', 'Update playout config success!', 2)
 
         const channel = configStore.configGui[configStore.configID].id
 
@@ -129,15 +124,8 @@ async function onSubmitPlayout() {
             }
         })
     } else {
-        indexStore.alertVariant = 'alert-danger'
-        indexStore.alertMsg = 'Update playout config failed!'
+        indexStore.msgAlert('alert-danger', 'Update playout config failed!', 2)
     }
-
-    indexStore.showAlert = true
-
-    setTimeout(() => {
-        indexStore.showAlert = false
-    }, 2000)
 }
 
 async function restart() {

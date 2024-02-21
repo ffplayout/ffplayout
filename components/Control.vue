@@ -144,9 +144,6 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
 import mpegts from 'mpegts.js'
-import { useAuth } from '~/stores/auth'
-import { useConfig } from '~/stores/config'
-import { usePlaylist } from '~/stores/playlist'
 
 const { $dayjs } = useNuxtApp()
 const authStore = useAuth()

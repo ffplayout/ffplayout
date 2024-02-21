@@ -3,9 +3,6 @@ import { defineStore } from 'pinia'
 
 const { timeToSeconds } = stringFormatter()
 
-import { useAuth } from '~/stores/auth'
-import { useIndex } from '~/stores/index'
-
 export const useConfig = defineStore('config', {
     state: () => ({
         configID: 0,
@@ -77,9 +74,7 @@ export const useConfig = defineStore('config', {
                         },
                     ]
 
-                    indexStore.alertMsg = e
-                    indexStore.alertVariant = 'alert-danger'
-                    indexStore.showAlert = true
+                    indexStore.msgAlert('alert-danger', e, 3)
                 })
         },
 
@@ -148,9 +143,7 @@ export const useConfig = defineStore('config', {
                     this.configPlayout = data
                 })
                 .catch(() => {
-                    indexStore.alertMsg = 'No playout config found!'
-                    indexStore.alertVariant = 'alert-danger'
-                    indexStore.showAlert = true
+                    indexStore.msgAlert('alert-danger', 'No playout config found!', 3)
                 })
         },
 

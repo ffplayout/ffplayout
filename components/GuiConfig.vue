@@ -90,10 +90,6 @@
 </template>
 
 <script setup lang="ts">
-import { useAuth } from '~/stores/auth'
-import { useConfig } from '~/stores/config'
-import { useIndex } from '~~/stores'
-
 const { $_ } = useNuxtApp()
 const authStore = useAuth()
 const configStore = useConfig()
@@ -123,18 +119,10 @@ async function onSubmitGui() {
     const update = await configStore.setGuiConfig(configStore.configGui[configStore.configID])
 
     if (update.status) {
-        indexStore.alertVariant = 'alert-success'
-        indexStore.alertMsg = 'Update GUI config success!'
+        indexStore.msgAlert('alert-success', 'Update GUI config success!', 2)
     } else {
-        indexStore.alertVariant = 'alert-danger'
-        indexStore.alertMsg = 'Update GUI config failed!'
+        indexStore.msgAlert('alert-danger', 'Update GUI config failed!', 2)
     }
-
-    indexStore.showAlert = true
-
-    setTimeout(() => {
-        indexStore.showAlert = false
-    }, 2000)
 }
 
 async function deleteChannel() {
@@ -142,9 +130,7 @@ async function deleteChannel() {
     const id = config[configStore.configID].id
 
     if (id === 1) {
-        indexStore.alertVariant = 'alert-warning'
-        indexStore.alertMsg = 'First channel can not be deleted!'
-        indexStore.showAlert = true
+        indexStore.msgAlert('alert-warning', 'First channel can not be deleted!', 2)
         return
     }
 
@@ -159,17 +145,9 @@ async function deleteChannel() {
     await configStore.getPlayoutConfig()
 
     if (response.status === 200) {
-        indexStore.alertVariant = 'alert-success'
-        indexStore.alertMsg = 'Delete GUI config success!'
+        indexStore.msgAlert('alert-success', 'Delete GUI config success!', 2)
     } else {
-        indexStore.alertVariant = 'alert-danger'
-        indexStore.alertMsg = 'Delete GUI config failed!'
+        indexStore.msgAlert('alert-danger', 'Delete GUI config failed!', 2)
     }
-
-    indexStore.showAlert = true
-
-    setTimeout(() => {
-        indexStore.showAlert = false
-    }, 2000)
 }
 </script>

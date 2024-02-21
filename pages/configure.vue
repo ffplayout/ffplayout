@@ -13,7 +13,6 @@
                         role="tab"
                         aria-controls="v-pills-gui"
                         aria-selected="true"
-                        @click="indexStore.resetAlert()"
                     >
                         GUI
                     </button>
@@ -26,7 +25,6 @@
                         role="tab"
                         aria-controls="v-pills-playout"
                         aria-selected="false"
-                        @click="indexStore.resetAlert()"
                     >
                         Playout
                     </button>
@@ -39,7 +37,6 @@
                         role="tab"
                         aria-controls="v-pills-user"
                         aria-selected="false"
-                        @click="indexStore.resetAlert()"
                     >
                         User
                     </button>
@@ -72,16 +69,11 @@
 </template>
 
 <script setup lang="ts">
-import { useIndex } from '~/stores/index'
 useHead({
     title: 'Configuration | ffplayout'
 })
 
 const indexStore = useIndex()
-
-onBeforeUnmount(() => {
-    indexStore.resetAlert()
-})
 </script>
 
 <style lang="scss">

@@ -75,9 +75,6 @@
 </template>
 
 <script setup lang="ts">
-import { useAuth } from '~/stores/auth'
-import { useConfig } from '~/stores/config'
-
 const authStore = useAuth()
 const configStore = useConfig()
 

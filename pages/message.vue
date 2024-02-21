@@ -218,10 +218,6 @@
 </template>
 
 <script setup lang="ts">
-import { useAuth } from '~/stores/auth'
-import { useConfig } from '~/stores/config'
-import { useIndex } from '~/stores/index'
-
 const authStore = useAuth()
 const configStore = useConfig()
 const indexStore = useIndex()
@@ -260,10 +256,6 @@ const presets = ref([] as PresetName[])
 
 onMounted(() => {
     getPreset(-1)
-})
-
-onBeforeUnmount(() => {
-    indexStore.resetAlert()
 })
 
 async function getPreset(index: number) {
@@ -358,18 +350,10 @@ async function savePreset() {
         })
 
         if (response.status === 200) {
-            indexStore.alertVariant = 'alert-success'
-            indexStore.alertMsg = 'Save Preset done!'
+            indexStore.msgAlert('alert-success', 'Save Preset done!', 2)
         } else {
-            indexStore.alertVariant = 'alert-danger'
-            indexStore.alertMsg = 'Save Preset failed!'
+            indexStore.msgAlert('alert-danger', 'Save Preset failed!', 2)
         }
-
-        indexStore.showAlert = true
-
-        setTimeout(() => {
-            indexStore.showAlert = false
-        }, 3000)
     }
 }
 
@@ -402,19 +386,11 @@ async function createNewPreset() {
     })
 
     if (response.status === 200) {
-        indexStore.alertVariant = 'alert-success'
-        indexStore.alertMsg = 'Save Preset done!'
+        indexStore.msgAlert('alert-success', 'Save Preset done!', 2)
         getPreset(-1)
     } else {
-        indexStore.alertVariant = 'alert-danger'
-        indexStore.alertMsg = 'Save Preset failed!'
+        indexStore.msgAlert('alert-danger', 'Save Preset failed!', 2)
     }
-
-    indexStore.showAlert = true
-
-    setTimeout(() => {
-        indexStore.showAlert = false
-    }, 3000)
 }
 
 async function deletePreset() {
@@ -449,18 +425,10 @@ async function submitMessage() {
     })
 
     if (response.status === 200) {
-        indexStore.alertVariant = 'alert-success'
-        indexStore.alertMsg = 'Sending success...'
+        indexStore.msgAlert('alert-success', 'Sending success...', 2)
     } else {
-        indexStore.alertVariant = 'alert-danger'
-        indexStore.alertMsg = 'Sending failed...'
+        indexStore.msgAlert('alert-danger', 'Sending failed...', 2)
     }
-
-    indexStore.showAlert = true
-
-    setTimeout(() => {
-        indexStore.showAlert = false
-    }, 3000)
 }
 </script>
 

@@ -138,10 +138,6 @@
 </template>
 
 <script setup lang="ts">
-import { useAuth } from '~/stores/auth'
-import { useConfig } from '~/stores/config'
-import { useIndex } from '~/stores/index'
-
 const authStore = useAuth()
 const configStore = useConfig()
 const indexStore = useIndex()
@@ -204,32 +200,21 @@ async function getUserConfig() {
 
 async function deleteUser() {
     if (configStore.configUser.username === configStore.currentUser) {
-        indexStore.alertVariant = 'alert-danger'
-        indexStore.alertMsg = 'Delete current user not possible!'
-
-
+        indexStore.msgAlert('alert-danger', 'Delete current user not possible!', 2)
     } else {
         await fetch(`/api/user/${configStore.configUser.username}`, {
             method: 'DELETE',
             headers: authStore.authHeader,
         }).then(async () => {
-            indexStore.alertVariant = 'alert-success'
-            indexStore.alertMsg = 'Delete user done!'
+            indexStore.msgAlert('alert-success', 'Delete user done!', 2)
 
             await configStore.getUserConfig()
             await getUsers()
         })
         .catch((e) => {
-            indexStore.alertVariant = 'alert-danger'
-            indexStore.alertMsg = `Delete user error: ${e}`
+            indexStore.msgAlert('alert-danger', `Delete user error: ${e}`, 2)
         })
     }
-
-    indexStore.showAlert = true
-
-    setTimeout(() => {
-            indexStore.showAlert = false
-        }, 3000)
 }
 
 async function clearUser() {
@@ -259,27 +244,18 @@ async function addUser() {
         const update = await configStore.addNewUser(user.value)
 
         if (update.status === 200) {
-            indexStore.alertVariant = 'alert-success'
-            indexStore.alertMsg = 'Add user success!'
+            indexStore.msgAlert('alert-success', 'Add user success!', 2)
 
             await getUsers()
             await getUserConfig()
         } else {
-            indexStore.alertVariant = 'alert-danger'
-            indexStore.alertMsg = 'Add user failed!'
+            indexStore.msgAlert('alert-danger', 'Add user failed!', 2)
         }
 
         clearUser()
     } else {
-        indexStore.alertVariant = 'alert-danger'
-        indexStore.alertMsg = 'Password mismatch!'
+        indexStore.msgAlert('alert-danger', 'Password mismatch!', 2)
     }
-
-    indexStore.showAlert = true
-
-    setTimeout(() => {
-        indexStore.showAlert = false
-    }, 2000)
 }
 
 async function onSubmitUser() {
@@ -291,20 +267,12 @@ async function onSubmitUser() {
     const update = await configStore.setUserConfig(configStore.configUser)
 
     if (update.status === 200) {
-        indexStore.alertVariant = 'alert-success'
-        indexStore.alertMsg = 'Update user profile success!'
+        indexStore.msgAlert('alert-success', 'Update user profile success!', 2)
     } else {
-        indexStore.alertVariant = 'alert-danger'
-        indexStore.alertMsg = 'Update user profile failed!'
+        indexStore.msgAlert('alert-danger', 'Update user profile failed!', 2)
     }
-
-    indexStore.showAlert = true
 
     newPass.value = ''
     confirmPass.value = ''
-
-    setTimeout(() => {
-        indexStore.showAlert = false
-    }, 2000)
 }
 </script>

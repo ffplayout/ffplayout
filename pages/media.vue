@@ -320,9 +320,9 @@
                 <div class="modal-content">
                     <div class="modal-header">
                         <h1 class="modal-title fs-5" id="uploadModalLabel">Upload Files</h1>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cancel"></button>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cancel" @click.prevent="onResetUpload()"></button>
                     </div>
-                    <form @submit.prevent="onSubmitUpload" @reset="onResetUpload">
+                    <form @submit.prevent="onSubmitUpload" @reset.prevent="onResetUpload">
                         <div class="modal-body">
                             <input
                                 class="form-control"
@@ -389,11 +389,6 @@
 import { storeToRefs } from 'pinia'
 import { Splitpanes, Pane } from 'splitpanes'
 import 'splitpanes/dist/splitpanes.css'
-
-import { useAuth } from '~/stores/auth'
-import { useConfig } from '~/stores/config'
-import { useIndex } from '~/stores/index'
-import { useMedia } from '~/stores/media'
 
 const { $bootstrap } = useNuxtApp()
 const authStore = useAuth()
@@ -519,22 +514,13 @@ async function deleteFileOrFolder() {
     })
         .then(async (response) => {
             if (response.status !== 200) {
-                indexStore.alertVariant = 'alert-danger'
-                indexStore.alertMsg = `${await response.text()}`
-                indexStore.showAlert = true
+                indexStore.msgAlert('alert-danger', `${await response.text()}`, 5)
             }
             getPath(mediaStore.folderTree.source)
         })
         .catch((e) => {
-            indexStore.alertVariant = 'alert-danger'
-            indexStore.alertMsg = `Delete error: ${e}`
-            indexStore.showAlert = true
+            indexStore.msgAlert('alert-danger', `Delete error: ${e}`, 5)
         })
-
-    setTimeout(() => {
-        indexStore.alertMsg = ''
-        indexStore.showAlert = false
-    }, 5000)
 }
 
 function setRenameValues(path: string) {
@@ -557,9 +543,7 @@ async function onSubmitRenameFile(evt: any) {
             getPath(mediaStore.folderTree.source)
         })
         .catch((e) => {
-            indexStore.alertVariant = 'alert-danger'
-            indexStore.alertMsg = `Delete error: ${e}`
-            indexStore.showAlert = true
+            indexStore.msgAlert('alert-danger', `Delete error: ${e}`, 3)
         })
 
     renameOldName.value = ''
@@ -583,9 +567,7 @@ async function onSubmitCreateFolder(evt: any) {
     lastPath.value = mediaStore.folderTree.source
 
     if (mediaStore.folderTree.folders.includes(folderName.value)) {
-        indexStore.alertVariant = 'alert-warning'
-        indexStore.alertMsg = `Folder "${folderName.value.name}" exists already!`
-        indexStore.showAlert = true
+        indexStore.msgAlert('alert-warning', `Folder "${folderName.value.name}" exists already!`, 2)
 
         return
     }
@@ -596,22 +578,14 @@ async function onSubmitCreateFolder(evt: any) {
         body: JSON.stringify({ source: path }),
     })
         .then(() => {
-            indexStore.alertVariant = 'alert-success'
-            indexStore.alertMsg = 'Folder create done...'
+            indexStore.msgAlert('alert-success', 'Folder create done...', 2)
         })
         .catch((e: string) => {
+            indexStore.msgAlert('alert-danger', `Folder create error: ${e}`, 3)
             indexStore.alertVariant = 'alert-danger'
-            indexStore.alertMsg = `Folder create error: ${e}`
         })
 
-    indexStore.showAlert = true
     folderName.value = {} as Folder
-
-    setTimeout(() => {
-        indexStore.alertMsg = ''
-        indexStore.showAlert = false
-    }, 2000)
-
     getPath(lastPath.value)
 }
 
@@ -650,9 +624,8 @@ async function upload(file: any): Promise<null | undefined> {
         }
 
         xhr.value.upload.onerror = () => {
-            indexStore.alertVariant = 'alert-danger'
-            indexStore.alertMsg = `Upload error: ${xhr.value.status}`
-            indexStore.showAlert = true
+            indexStore.msgAlert('alert-danger', `Upload error: ${xhr.value.status}`, 3)
+
             resolve(undefined)
         }
 
@@ -677,7 +650,11 @@ async function onSubmitUpload(evt: any) {
         currentProgress.value = 0
         currentNumber.value = i + 1
 
-        await upload(file)
+        if (mediaStore.folderTree.files.find((f) => f.name === file.name)) {
+            indexStore.msgAlert('alert-warning', 'File exists already!', 3)
+        } else {
+            await upload(file)
+        }
 
         overallProgress.value = (currentNumber.value * 100) / inputFiles.value.length
     }
@@ -692,18 +669,16 @@ async function onSubmitUpload(evt: any) {
         currentProgress.value = 0
         overallProgress.value = 0
         inputFiles.value = []
-        indexStore.showAlert = false
         uploadTask.value = ''
     }, 1500)
 }
 
-function onResetUpload(evt: any) {
-    evt.preventDefault()
+function onResetUpload() {
+    fileInputName.value.value = null
     inputFiles.value = []
     overallProgress.value = 0
     currentProgress.value = 0
     uploadTask.value = ''
-
     xhr.value.abort()
 }
 </script>

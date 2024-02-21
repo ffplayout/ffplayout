@@ -751,12 +751,6 @@ import { storeToRefs } from 'pinia'
 import { Splitpanes, Pane } from 'splitpanes'
 import 'splitpanes/dist/splitpanes.css'
 
-import { useAuth } from '~/stores/auth'
-import { useConfig } from '~/stores/config'
-import { useIndex } from '~/stores/index'
-import { useMedia } from '~/stores/media'
-import { usePlaylist } from '~/stores/playlist'
-
 const { $_, $dayjs } = useNuxtApp()
 const { secToHMS, filename, secondsToTime, toMin, mediaType } = stringFormatter()
 const { processPlaylist, genUID } = playlistOperations()
@@ -1118,27 +1112,14 @@ async function onSubmitImport(evt: any) {
         }
     )
         .then(() => {
-            indexStore.alertVariant = 'alert-success'
-            indexStore.alertMsg = 'Import success!'
-            indexStore.showAlert = true
-
+            indexStore.msgAlert('alert-success', 'Import success!', 2)
             playlistStore.getPlaylist(listDate.value)
-
-            setTimeout(() => {
-                indexStore.showAlert = false
-            }, 2000)
         })
         .catch((e: string) => {
-            indexStore.alertVariant = 'alert-danger'
-            indexStore.alertMsg = e
-            indexStore.showAlert = true
-
-            setTimeout(() => {
-                indexStore.showAlert = false
-            }, 4000)
+            indexStore.msgAlert('alert-danger', e, 4)
         })
-    playlistIsLoading.value = false
 
+    playlistIsLoading.value = false
     textFile.value = null
     fileImport.value.value = null
 }
@@ -1171,22 +1152,10 @@ async function generatePlaylist() {
                 response.program,
                 false
             )
-            indexStore.alertVariant = 'alert-success'
-            indexStore.alertMsg = 'Generate Playlist done...'
-            indexStore.showAlert = true
-
-            setTimeout(() => {
-                indexStore.showAlert = false
-            }, 2000)
+            indexStore.msgAlert('alert-success', 'Generate Playlist done...', 2)
         })
         .catch((e: any) => {
-            indexStore.alertVariant = 'alert-danger'
-            indexStore.alertMsg = e.data ? e.data : e
-            indexStore.showAlert = true
-
-            setTimeout(() => {
-                indexStore.showAlert = false
-            }, 4000)
+            indexStore.msgAlert('alert-danger', e.data ? e.data : e, 4)
         })
 
     // reset selections
@@ -1219,31 +1188,13 @@ async function savePlaylist(saveDate: string) {
         }),
     })
         .then((response: any) => {
-            indexStore.alertVariant = 'alert-success'
-            indexStore.alertMsg = response
-            indexStore.showAlert = true
-
-            setTimeout(() => {
-                indexStore.showAlert = false
-            }, 2000)
+            indexStore.msgAlert('alert-success', response, 2)
         })
         .catch((e: any) => {
             if (e.status === 409) {
-                indexStore.alertVariant = 'alert-warning'
-                indexStore.alertMsg = e.data
-                indexStore.showAlert = true
-
-                setTimeout(() => {
-                    indexStore.showAlert = false
-                }, 2000)
+                indexStore.msgAlert('alert-warning', e.data, 2)
             } else {
-                indexStore.alertVariant = 'alert-danger'
-                indexStore.alertMsg = e
-                indexStore.showAlert = true
-
-                setTimeout(() => {
-                    indexStore.showAlert = false
-                }, 4000)
+                indexStore.msgAlert('alert-danger', e, 4)
             }
         })
 }
@@ -1255,13 +1206,7 @@ async function deletePlaylist(playlistDate: string) {
     }).then(() => {
         playlistStore.playlist = []
 
-        indexStore.alertVariant = 'alert-warning'
-        indexStore.alertMsg = 'Playlist deleted...'
-        indexStore.showAlert = true
-
-        setTimeout(() => {
-            indexStore.showAlert = false
-        }, 2000)
+        indexStore.msgAlert('alert-warning', 'Playlist deleted...', 2)
     })
 }
 

@@ -60,9 +60,6 @@
     </div>
 </template>
 <script setup lang="ts">
-import { useAuth } from '~/stores/auth'
-import { useConfig } from '~/stores/config'
-
 const { fileSize } = stringFormatter()
 
 const authStore = useAuth()
@@ -107,10 +104,10 @@ async function systemStatus() {
     const channel = configStore.configGui[configStore.configID].id
 
     if (!document?.hidden) {
-        await $fetch(`/api/system/${channel}`, {
+        await $fetch<SystemStatistics>(`/api/system/${channel}`, {
             method: 'GET',
             headers: { ...contentType, ...authStore.authHeader },
-        }).then((stat: SystemStatistics) => {
+        }).then((stat) => {
             sysStat.value = stat
         })
     }

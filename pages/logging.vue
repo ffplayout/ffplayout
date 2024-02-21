@@ -14,8 +14,6 @@
 
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
-import { useAuth } from '~/stores/auth'
-import { useConfig } from '~/stores/config'
 
 useHead({
     title: 'Logging | ffplayout'

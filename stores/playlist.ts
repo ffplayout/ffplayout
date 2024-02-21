@@ -7,9 +7,6 @@ import { defineStore } from 'pinia'
 dayjs.extend(utc)
 dayjs.extend(timezone)
 
-import { useAuth } from '~/stores/auth'
-import { useConfig } from '~/stores/config'
-
 const { timeToSeconds } = stringFormatter()
 const { processPlaylist } = playlistOperations()
 

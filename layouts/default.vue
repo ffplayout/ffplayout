@@ -14,9 +14,6 @@
 </template>
 
 <script setup lang="ts">
-import { useConfig } from '~/stores/config'
-import { useIndex } from '~/stores/index'
-
 const { $bootstrap } = useNuxtApp()
 const configStore = useConfig()
 const indexStore = useIndex()
