@@ -169,6 +169,14 @@ pub fn public_path() -> PathBuf {
         return path;
     }
 
+    #[cfg(debug_assertions)]
+    {
+        let path = PathBuf::from("./ffplayout-frontend/.output/public/");
+        if path.is_dir() {
+            return path;
+        }
+    }
+
     PathBuf::from("./public/")
 }
 
