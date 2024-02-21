@@ -163,15 +163,15 @@ pub fn db_path() -> Result<&'static str, Box<dyn std::error::Error>> {
 }
 
 pub fn public_path() -> PathBuf {
-    let path = PathBuf::from("/usr/share/ffplayout/public/");
-
-    if path.is_dir() {
-        return path;
-    }
-
     let path = PathBuf::from("./ffplayout-frontend/.output/public/");
 
     if cfg!(debug_assertions) && path.is_dir() {
+        return path;
+    }
+
+    let path = PathBuf::from("/usr/share/ffplayout/public/");
+
+    if path.is_dir() {
         return path;
     }
 
