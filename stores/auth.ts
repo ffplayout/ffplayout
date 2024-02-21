@@ -1,10 +1,5 @@
 import { defineStore } from 'pinia'
 import { jwtDecode } from 'jwt-decode'
-import { type JwtPayload } from 'jwt-decode'
-
-interface JwtPayloadExt extends JwtPayload {
-    role: string
-}
 
 export const useAuth = defineStore('auth', {
     state: () => ({
@@ -42,37 +37,27 @@ export const useAuth = defineStore('auth', {
                 password,
             }
 
-            await fetch('/auth/login/', {
+            await $fetch<LoginObj>('/auth/login/', {
                 method: 'POST',
                 headers: new Headers([['content-type', 'application/json;charset=UTF-8']]),
                 body: JSON.stringify(payload),
+                async onResponse({ response }) {
+                    code = response.status
+                },
             })
                 .then((response) => {
-                    code = response.status
-                    return response
-                })
-                .then((response) => response.json())
-                .then((response) => {
-                    this.updateToken(response.user.token)
-                    const decodedToken = jwtDecode<JwtPayloadExt>(response.user.token)
+                    this.updateToken(response.user?.token)
+                    const decodedToken = jwtDecode<JwtPayloadExt>(response.user?.token)
                     this.isLogin = true
                     this.role = decodedToken.role
                 })
-                .catch((error) => {
-                    if (error.status) {
-                        code = error.status
-                    }
-                })
+                .catch(() => {})
 
             return code
         },
 
         inspectToken() {
             let token = useCookie('token').value
-
-            if (token === null) {
-                token = ''
-            }
 
             if (token) {
                 this.updateToken(token)
@@ -84,7 +69,7 @@ export const useAuth = defineStore('auth', {
                 if (expireToken && this.jwtToken && expireToken - timestamp > 15) {
                     this.isLogin = true
                 } else {
-                    // Prompt user to re login.
+                    // Prompt user to re-login.
                     this.isLogin = false
                 }
             } else {

@@ -1,6 +1,22 @@
+import { type JwtPayload } from 'jwt-decode'
+
 export {}
 
 declare global {
+    interface JwtPayloadExt extends JwtPayload {
+        role: string
+    }
+
+    interface LoginObj {
+        message: string
+        user?: {
+            id: number
+            mail: string
+            username: string
+            token
+        }
+    }
+
     interface GuiConfig {
         id: number
         config_path: string
