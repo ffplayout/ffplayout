@@ -2017,9 +2017,9 @@ dependencies = [
 
 [[package]]
 name = "local-ip-address"
-version = "0.5.7"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "612ed4ea9ce5acfb5d26339302528a5e1e59dfed95e9e11af3c083236ff1d15d"
+checksum = "f63e1499d2495be571af92e9ca9dca4e7bf26c47b87cb8d0c6100825e521dd6b"
 dependencies = [
  "libc",
  "neli",
