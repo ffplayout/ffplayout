@@ -49,17 +49,17 @@
                         aria-labelledby="v-pills-gui-tab"
                     >
                         <div class="config-container">
-                            <GuiConfig />
+                            <ConfigGui />
                         </div>
                     </div>
                     <div class="tab-pane h-100 overflow-y-auto" id="v-pills-playout" role="tabpanel" aria-labelledby="v-pills-playout-tab">
                         <div class="config-container">
-                            <PlayoutConfig />
+                            <ConfigPlayout />
                         </div>
                     </div>
                     <div class="tab-pane h-100 overflow-y-auto" id="v-pills-user" role="tabpanel" aria-labelledby="v-pills-user-tab">
                         <div class="config-container">
-                            <UserConfig />
+                            <ConfigUser />
                         </div>
                     </div>
                 </div>
