@@ -12,7 +12,7 @@ pub fn output(config: &PlayoutConfig, log_format: &str) -> process::Child {
 
     let mut enc_cmd = vec_strings!["-hide_banner", "-nostats", "-v", log_format];
 
-    if let Some(encoder_input_cmd) = &ADVANCED_CONFIG.lock().unwrap().encoder.input_cmd {
+    if let Some(encoder_input_cmd) = &ADVANCED_CONFIG.encoder.input_cmd {
         enc_cmd.append(&mut encoder_input_cmd.clone());
     }
 

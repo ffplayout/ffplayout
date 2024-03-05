@@ -61,7 +61,7 @@ pub fn ingest_server(
     dummy_media.unit = Ingest;
     dummy_media.add_filter(&config, &None);
 
-    if let Some(ingest_input_cmd) = &ADVANCED_CONFIG.lock().unwrap().ingest.input_cmd {
+    if let Some(ingest_input_cmd) = &ADVANCED_CONFIG.ingest.input_cmd {
         server_cmd.append(&mut ingest_input_cmd.clone());
     }
 

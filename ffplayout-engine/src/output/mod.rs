@@ -134,7 +134,7 @@ pub fn player(
 
         let mut dec_cmd = vec_strings!["-hide_banner", "-nostats", "-v", &ff_log_format];
 
-        if let Some(decoder_input_cmd) = &ADVANCED_CONFIG.lock().unwrap().decoder.input_cmd {
+        if let Some(decoder_input_cmd) = &ADVANCED_CONFIG.decoder.input_cmd {
             dec_cmd.append(&mut decoder_input_cmd.clone());
         }
 

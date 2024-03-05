@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 extern crate log;
 extern crate simplelog;
@@ -12,6 +12,5 @@ pub mod utils;
 use utils::advanced_config::AdvancedConfig;
 
 lazy_static! {
-    pub static ref ADVANCED_CONFIG: Arc<Mutex<AdvancedConfig>> =
-        Arc::new(Mutex::new(AdvancedConfig::new()));
+    pub static ref ADVANCED_CONFIG: Arc<AdvancedConfig> = Arc::new(AdvancedConfig::new());
 }

@@ -184,7 +184,7 @@ impl Default for Filters {
 }
 
 fn deinterlace(field_order: &Option<String>, chain: &mut Filters) {
-    if let Some(deinterlace) = &ADVANCED_CONFIG.lock().unwrap().decoder.filters.deinterlace {
+    if let Some(deinterlace) = &ADVANCED_CONFIG.decoder.filters.deinterlace {
         chain.add_filter(&deinterlace, 0, Video)
     } else if let Some(order) = field_order {
         if order != "progressive" {
@@ -197,18 +197,16 @@ fn pad(aspect: f64, chain: &mut Filters, v_stream: &ffprobe::Stream, config: &Pl
     if !is_close(aspect, config.processing.aspect, 0.03) {
         let mut scale = String::new();
 
-        let advanced = ADVANCED_CONFIG.lock().unwrap();
-
         if let (Some(w), Some(h)) = (v_stream.width, v_stream.height) {
             if w > config.processing.width && aspect > config.processing.aspect {
-                match &advanced.decoder.filters.pad_scale_w {
+                match &ADVANCED_CONFIG.decoder.filters.pad_scale_w {
                     Some(pad_scale_w) => {
                         scale = custom_format(pad_scale_w, &[&config.processing.width])
                     }
                     None => scale = format!("scale={}:-1,", config.processing.width),
                 };
             } else if h > config.processing.height && aspect < config.processing.aspect {
-                match &advanced.decoder.filters.pad_scale_h {
+                match &ADVANCED_CONFIG.decoder.filters.pad_scale_h {
                     Some(pad_scale_h) => {
                         scale = custom_format(pad_scale_h, &[&config.processing.width])
                     }
@@ -217,7 +215,7 @@ fn pad(aspect: f64, chain: &mut Filters, v_stream: &ffprobe::Stream, config: &Pl
             }
         }
 
-        if let Some(pad_video) = &advanced.decoder.filters.pad_video {
+        if let Some(pad_video) = &ADVANCED_CONFIG.decoder.filters.pad_video {
             chain.add_filter(
                 &custom_format(
                     pad_video,
@@ -245,9 +243,7 @@ fn pad(aspect: f64, chain: &mut Filters, v_stream: &ffprobe::Stream, config: &Pl
 
 fn fps(fps: f64, chain: &mut Filters, config: &PlayoutConfig) {
     if fps != config.processing.fps {
-        let advanced = ADVANCED_CONFIG.lock().unwrap();
-
-        match &advanced.decoder.filters.fps {
+        match &ADVANCED_CONFIG.decoder.filters.fps {
             Some(fps) => chain.add_filter(&custom_format(fps, &[&config.processing.fps]), 0, Video),
             None => chain.add_filter(&format!("fps={}", config.processing.fps), 0, Video),
         }

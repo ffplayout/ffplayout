@@ -50,7 +50,7 @@ fn ingest_to_hls_server(
     let mut dummy_media = Media::new(0, "Live Stream", false);
     dummy_media.unit = Ingest;
 
-    if let Some(ingest_input_cmd) = &ADVANCED_CONFIG.lock().unwrap().ingest.input_cmd {
+    if let Some(ingest_input_cmd) = &ADVANCED_CONFIG.ingest.input_cmd {
         server_prefix.append(&mut ingest_input_cmd.clone());
     }
 
@@ -202,7 +202,7 @@ pub fn write_hls(
 
         let mut enc_prefix = vec_strings!["-hide_banner", "-nostats", "-v", &ff_log_format];
 
-        if let Some(encoder_input_cmd) = &ADVANCED_CONFIG.lock().unwrap().encoder.input_cmd {
+        if let Some(encoder_input_cmd) = &ADVANCED_CONFIG.encoder.input_cmd {
             enc_prefix.append(&mut encoder_input_cmd.clone());
         }
 

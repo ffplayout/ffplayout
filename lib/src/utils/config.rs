@@ -432,7 +432,7 @@ impl PlayoutConfig {
             process_cmd.append(&mut vec_strings!["-vn"]);
         } else if config.processing.copy_video {
             process_cmd.append(&mut vec_strings!["-c:v", "copy"]);
-        } else if let Some(decoder_cmd) = &ADVANCED_CONFIG.lock().unwrap().decoder.output_cmd {
+        } else if let Some(decoder_cmd) = &ADVANCED_CONFIG.decoder.output_cmd {
             if !decoder_cmd.contains(&"-r".to_string()) {
                 process_cmd.append(&mut vec_strings!["-r", &config.processing.fps]);
             }
@@ -471,7 +471,7 @@ impl PlayoutConfig {
 
         if config.processing.copy_audio {
             process_cmd.append(&mut vec_strings!["-c:a", "copy"]);
-        } else if ADVANCED_CONFIG.lock().unwrap().decoder.output_cmd.is_none() {
+        } else if ADVANCED_CONFIG.decoder.output_cmd.is_none() {
             process_cmd.append(&mut pre_audio_codec(
                 &config.processing.custom_filter,
                 &config.ingest.custom_filter,
