@@ -260,39 +260,77 @@ fn scale(
     // width: i64, height: i64
     if let (Some(w), Some(h)) = (width, height) {
         if w != config.processing.width || h != config.processing.height {
-            chain.add_filter(
-                &format!(
-                    "scale={}:{}",
-                    config.processing.width, config.processing.height
+            match &ADVANCED_CONFIG.decoder.filters.scale {
+                Some(scale) => chain.add_filter(
+                    &custom_format(
+                        scale,
+                        &[&config.processing.width, &config.processing.height],
+                    ),
+                    0,
+                    Video,
                 ),
-                0,
-                Video,
-            );
+                None => {
+                    chain.add_filter(
+                        &format!(
+                            "scale={}:{}",
+                            config.processing.width, config.processing.height
+                        ),
+                        0,
+                        Video,
+                    );
+                }
+            }
         } else {
             chain.add_filter("null", 0, Video);
         }
 
         if !is_close(aspect, config.processing.aspect, 0.03) {
-            chain.add_filter(
+            match &ADVANCED_CONFIG.decoder.filters.set_dar {
+                Some(set_dar) => chain.add_filter(
+                    &custom_format(set_dar, &[&config.processing.aspect]),
+                    0,
+                    Video,
+                ),
+                None => chain.add_filter(
+                    &format!("setdar=dar={}", config.processing.aspect),
+                    0,
+                    Video,
+                ),
+            }
+        }
+    } else {
+        match &ADVANCED_CONFIG.decoder.filters.scale {
+            Some(scale) => chain.add_filter(
+                &custom_format(
+                    scale,
+                    &[&config.processing.width, &config.processing.height],
+                ),
+                0,
+                Video,
+            ),
+            None => {
+                chain.add_filter(
+                    &format!(
+                        "scale={}:{}",
+                        config.processing.width, config.processing.height
+                    ),
+                    0,
+                    Video,
+                );
+            }
+        };
+        match &ADVANCED_CONFIG.decoder.filters.set_dar {
+            Some(set_dar) => chain.add_filter(
+                &custom_format(set_dar, &[&config.processing.aspect]),
+                0,
+                Video,
+            ),
+            None => chain.add_filter(
                 &format!("setdar=dar={}", config.processing.aspect),
                 0,
                 Video,
-            )
-        }
-    } else {
-        chain.add_filter(
-            &format!(
-                "scale={}:{}",
-                config.processing.width, config.processing.height
             ),
-            0,
-            Video,
-        );
-        chain.add_filter(
-            &format!("setdar=dar={}", config.processing.aspect),
-            0,
-            Video,
-        )
+        }
     }
 }
 
@@ -309,15 +347,25 @@ fn fade(node: &mut Media, chain: &mut Filters, nr: i32, filter_type: FilterType)
     }
 
     if node.seek > 0.0 || node.unit == Ingest {
-        chain.add_filter(&format!("{t}fade=in:st=0:d=0.5"), nr, filter_type)
+        match &ADVANCED_CONFIG.decoder.filters.fade_in {
+            Some(fade_in) => chain.add_filter(&custom_format(fade_in, &[t]), 0, Video),
+            None => chain.add_filter(&format!("{t}fade=in:st=0:d=0.5"), nr, filter_type),
+        }
     }
 
     if (node.out != node.duration && node.out - node.seek > 1.0) || fade_audio {
-        chain.add_filter(
-            &format!("{t}fade=out:st={}:d=1.0", (node.out - node.seek - 1.0)),
-            nr,
-            filter_type,
-        )
+        match &ADVANCED_CONFIG.decoder.filters.fade_out {
+            Some(fade_out) => chain.add_filter(
+                &custom_format(fade_out, &[t, &(node.out - node.seek - 1.0).to_string()]),
+                0,
+                Video,
+            ),
+            None => chain.add_filter(
+                &format!("{t}fade=out:st={}:d=1.0", (node.out - node.seek - 1.0)),
+                nr,
+                filter_type,
+            ),
+        }
     }
 }
 
@@ -329,23 +377,41 @@ fn overlay(node: &mut Media, chain: &mut Filters, config: &PlayoutConfig) {
         let mut scale = String::new();
 
         if !config.processing.logo_scale.is_empty() {
-            scale = format!(",scale={}", config.processing.logo_scale);
+            match &ADVANCED_CONFIG.decoder.filters.overlay_logo_scale {
+                Some(logo_scale) => {
+                    scale = custom_format(logo_scale, &[&config.processing.logo_scale])
+                }
+                None => scale = format!(",scale={}", config.processing.logo_scale),
+            }
         }
 
-        let mut logo_chain = format!(
-            "null[v];movie={}:loop=0,setpts=N/(FRAME_RATE*TB),format=rgba,colorchannelmixer=aa={}{scale}[l];[v][l]{}:shortest=1",
-            config.processing.logo.replace('\\', "/").replace(':', "\\\\:"), config.processing.logo_opacity, config.processing.logo_filter
-        );
+        let mut logo_chain = match &ADVANCED_CONFIG.decoder.filters.overlay_logo {
+            Some(overlay) => custom_format(overlay, &[
+                &config.processing.logo.replace('\\', "/").replace(':', "\\\\:"),
+                &config.processing.logo_opacity.to_string(),
+                &scale.to_string(),
+                &config.processing.logo_filter,
+            ]),
+            None => format!(
+                "null[v];movie={}:loop=0,setpts=N/(FRAME_RATE*TB),format=rgba,colorchannelmixer=aa={}{scale}[l];[v][l]{}:shortest=1",
+                config.processing.logo.replace('\\', "/").replace(':', "\\\\:"), config.processing.logo_opacity, config.processing.logo_filter
+            )
+        };
 
         if node.last_ad {
-            logo_chain.push_str(",fade=in:st=0:d=1.0:alpha=1")
+            match &ADVANCED_CONFIG.decoder.filters.overlay_logo_fade_in {
+                Some(fade_in) => logo_chain.push_str(fade_in),
+                None => logo_chain.push_str(",fade=in:st=0:d=1.0:alpha=1"),
+            }
         }
 
         if node.next_ad {
-            logo_chain.push_str(&format!(
-                ",fade=out:st={}:d=1.0:alpha=1",
-                node.out - node.seek - 1.0
-            ))
+            let length = node.out - node.seek - 1.0;
+
+            match &ADVANCED_CONFIG.decoder.filters.overlay_logo_fade_out {
+                Some(fade_out) => logo_chain.push_str(&custom_format(fade_out, &[length])),
+                None => logo_chain.push_str(&format!(",fade=out:st={length}:d=1.0:alpha=1")),
+            }
         }
 
         chain.add_filter(&logo_chain, 0, Video);
@@ -361,14 +427,14 @@ fn extend_video(node: &mut Media, chain: &mut Filters) {
         .and_then(|v| v.parse::<f64>().ok())
     {
         if node.out - node.seek > video_duration - node.seek + 0.1 && node.duration >= node.out {
-            chain.add_filter(
-                &format!(
-                    "tpad=stop_mode=add:stop_duration={}",
-                    (node.out - node.seek) - (video_duration - node.seek)
-                ),
-                0,
-                Video,
-            )
+            let duration = (node.out - node.seek) - (video_duration - node.seek);
+
+            let tpad = match &ADVANCED_CONFIG.decoder.filters.tpad {
+                Some(pad) => custom_format(pad, &[duration]),
+                None => format!("tpad=stop_mode=add:stop_duration={duration}"),
+            };
+
+            chain.add_filter(&tpad, 0, Video)
         }
     }
 }
