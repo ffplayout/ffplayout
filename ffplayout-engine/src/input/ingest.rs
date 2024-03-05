@@ -14,7 +14,7 @@ use ffplayout_lib::{
         controller::ProcessUnit::*, test_tcp_port, Media, PlayoutConfig, ProcessControl,
         FFMPEG_IGNORE_ERRORS, FFMPEG_UNRECOVERABLE_ERRORS,
     },
-    vec_strings,
+    vec_strings, ADVANCED_CONFIG,
 };
 
 fn server_monitor(
@@ -60,6 +60,10 @@ pub fn ingest_server(
     let mut dummy_media = Media::new(0, "Live Stream", false);
     dummy_media.unit = Ingest;
     dummy_media.add_filter(&config, &None);
+
+    if let Some(ingest_input_cmd) = &ADVANCED_CONFIG.lock().unwrap().ingest.input_cmd {
+        server_cmd.append(&mut ingest_input_cmd.clone());
+    }
 
     server_cmd.append(&mut stream_input.clone());
 

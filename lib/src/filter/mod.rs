@@ -11,8 +11,10 @@ mod custom;
 pub mod v_drawtext;
 
 use crate::utils::{
-    controller::ProcessUnit::*, fps_calc, is_close, Media, OutputMode::*, PlayoutConfig,
+    controller::ProcessUnit::*, custom_format, fps_calc, is_close, Media, OutputMode::*,
+    PlayoutConfig,
 };
+use crate::ADVANCED_CONFIG;
 
 use super::vec_strings;
 
@@ -182,7 +184,9 @@ impl Default for Filters {
 }
 
 fn deinterlace(field_order: &Option<String>, chain: &mut Filters) {
-    if let Some(order) = field_order {
+    if let Some(deinterlace) = &ADVANCED_CONFIG.lock().unwrap().decoder.filters.deinterlace {
+        chain.add_filter(&deinterlace, 0, Video)
+    } else if let Some(order) = field_order {
         if order != "progressive" {
             chain.add_filter("yadif=0:-1:0", 0, Video)
         }
@@ -193,27 +197,60 @@ fn pad(aspect: f64, chain: &mut Filters, v_stream: &ffprobe::Stream, config: &Pl
     if !is_close(aspect, config.processing.aspect, 0.03) {
         let mut scale = String::new();
 
+        let advanced = ADVANCED_CONFIG.lock().unwrap();
+
         if let (Some(w), Some(h)) = (v_stream.width, v_stream.height) {
             if w > config.processing.width && aspect > config.processing.aspect {
-                scale = format!("scale={}:-1,", config.processing.width);
+                match &advanced.decoder.filters.pad_scale_w {
+                    Some(pad_scale_w) => {
+                        scale = custom_format(pad_scale_w, &[&config.processing.width])
+                    }
+                    None => scale = format!("scale={}:-1,", config.processing.width),
+                };
             } else if h > config.processing.height && aspect < config.processing.aspect {
-                scale = format!("scale=-1:{},", config.processing.height);
+                match &advanced.decoder.filters.pad_scale_h {
+                    Some(pad_scale_h) => {
+                        scale = custom_format(pad_scale_h, &[&config.processing.width])
+                    }
+                    None => scale = format!("scale=-1:{},", config.processing.height),
+                };
             }
         }
-        chain.add_filter(
-            &format!(
-                "{scale}pad=max(iw\\,ih*({0}/{1})):ow/({0}/{1}):(ow-iw)/2:(oh-ih)/2",
-                config.processing.width, config.processing.height
-            ),
-            0,
-            Video,
-        )
+
+        if let Some(pad_video) = &advanced.decoder.filters.pad_video {
+            chain.add_filter(
+                &custom_format(
+                    pad_video,
+                    &[
+                        &scale,
+                        &config.processing.width.to_string(),
+                        &config.processing.height.to_string(),
+                    ],
+                ),
+                0,
+                Video,
+            )
+        } else {
+            chain.add_filter(
+                &format!(
+                    "{}pad=max(iw\\,ih*({1}/{2})):ow/({1}/{2}):(ow-iw)/2:(oh-ih)/2",
+                    scale, config.processing.width, config.processing.height
+                ),
+                0,
+                Video,
+            )
+        }
     }
 }
 
 fn fps(fps: f64, chain: &mut Filters, config: &PlayoutConfig) {
     if fps != config.processing.fps {
-        chain.add_filter(&format!("fps={}", config.processing.fps), 0, Video)
+        let advanced = ADVANCED_CONFIG.lock().unwrap();
+
+        match &advanced.decoder.filters.fps {
+            Some(fps) => chain.add_filter(&custom_format(fps, &[&config.processing.fps]), 0, Video),
+            None => chain.add_filter(&format!("fps={}", config.processing.fps), 0, Video),
+        }
     }
 }
 

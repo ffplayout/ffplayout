@@ -1,5 +1,6 @@
 use std::{
     ffi::OsStr,
+    fmt,
     fs::{self, metadata, File},
     io::{BufRead, BufReader, Error},
     net::TcpListener,
@@ -21,6 +22,7 @@ use serde::{de::Deserializer, Deserialize, Serialize};
 use serde_json::json;
 use simplelog::*;
 
+pub mod advanced_config;
 pub mod config;
 pub mod controller;
 pub mod errors;
@@ -926,6 +928,46 @@ pub fn parse_log_level_filter(s: &str) -> Result<LevelFilter, &'static str> {
         "off" => Ok(LevelFilter::Off),
         _ => Err("Error level not exists!"),
     }
+}
+
+pub fn custom_format<T: fmt::Display>(template: &str, args: &[T]) -> String {
+    let mut filled_template = String::new();
+    let mut arg_iter = args.iter().map(|x| format!("{}", x));
+    let mut template_iter = template.chars();
+
+    while let Some(c) = template_iter.next() {
+        if c == '{' {
+            if let Some(nc) = template_iter.next() {
+                if nc == '{' {
+                    filled_template.push('{');
+                } else if nc == '}' {
+                    if let Some(arg) = arg_iter.next() {
+                        filled_template.push_str(&arg);
+                    } else {
+                        filled_template.push(c);
+                        filled_template.push(nc);
+                    }
+                } else if let Some(n) = nc.to_digit(10) {
+                    filled_template.push_str(&args[n as usize].to_string());
+                } else {
+                    filled_template.push(nc);
+                }
+            }
+        } else if c == '}' {
+            if let Some(nc) = template_iter.next() {
+                if nc == '}' {
+                    filled_template.push('}');
+                    continue;
+                } else {
+                    filled_template.push(nc);
+                }
+            }
+        } else {
+            filled_template.push(c);
+        }
+    }
+
+    filled_template
 }
 
 pub fn home_dir() -> Option<PathBuf> {
