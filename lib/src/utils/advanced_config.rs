@@ -58,6 +58,7 @@ pub struct Filters {
     pub tpad: Option<String>,
     pub drawtext_from_file: Option<String>,
     pub drawtext_from_zmq: Option<String>,
+    pub aevalsrc: Option<String>,
     pub apad: Option<String>,
     pub volume: Option<String>,
     pub split: Option<String>,
@@ -80,19 +81,19 @@ impl AdvancedConfig {
             config = serde_yaml::from_reader(f).expect("Could not read advanced config file");
 
             if let Some(input_parm) = &config.decoder.input_param {
-                config.decoder.input_cmd = split(&input_parm);
+                config.decoder.input_cmd = split(input_parm);
             }
 
             if let Some(output_param) = &config.decoder.output_param {
-                config.decoder.output_cmd = split(&output_param);
+                config.decoder.output_cmd = split(output_param);
             }
 
             if let Some(input_param) = &config.encoder.input_param {
-                config.encoder.input_cmd = split(&input_param);
+                config.encoder.input_cmd = split(input_param);
             }
 
             if let Some(input_param) = &config.ingest.input_param {
-                config.ingest.input_cmd = split(&input_param);
+                config.ingest.input_cmd = split(input_param);
             }
         };
 

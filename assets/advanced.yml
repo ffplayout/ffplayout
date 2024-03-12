@@ -20,6 +20,7 @@ decoder:
         tpad: # tpad=stop_mode=add:stop_duration={}
         drawtext_from_file: # drawtext=text='{}':{}{}
         drawtext_from_zmq: # zmq=b=tcp\\\\://'{}',drawtext@dyntext={}
+        aevalsrc: # aevalsrc=0:channel_layout=stereo:duration={}:sample_rate=48000
         apad: # apad=whole_dur={}
         volume: # volume={}
         split: # split={}{}
