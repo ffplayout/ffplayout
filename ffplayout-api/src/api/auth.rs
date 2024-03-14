@@ -1,6 +1,6 @@
 use actix_web::error::ErrorUnauthorized;
 use actix_web::Error;
-use chrono::{Duration, Utc};
+use chrono::{TimeDelta, Utc};
 use jsonwebtoken::{self, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
 
@@ -23,7 +23,7 @@ impl Claims {
             id,
             username,
             role,
-            exp: (Utc::now() + Duration::days(JWT_EXPIRATION_DAYS)).timestamp(),
+            exp: (Utc::now() + TimeDelta::try_days(JWT_EXPIRATION_DAYS).unwrap()).timestamp(),
         }
     }
 }

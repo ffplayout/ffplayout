@@ -13,7 +13,7 @@ use std::{
 #[cfg(not(windows))]
 use std::env;
 
-use chrono::{prelude::*, Duration};
+use chrono::{prelude::*, TimeDelta};
 use ffprobe::{ffprobe, Stream as FFStream};
 use rand::prelude::*;
 use regex::Regex;
@@ -361,11 +361,15 @@ pub fn get_date(seek: bool, start: f64, get_next: bool) -> String {
     let local: DateTime<Local> = time_now();
 
     if seek && start > time_in_seconds() {
-        return (local - Duration::days(1)).format("%Y-%m-%d").to_string();
+        return (local - TimeDelta::try_days(1).unwrap())
+            .format("%Y-%m-%d")
+            .to_string();
     }
 
     if start == 0.0 && get_next && time_in_seconds() > 86397.9 {
-        return (local + Duration::days(1)).format("%Y-%m-%d").to_string();
+        return (local + TimeDelta::try_days(1).unwrap())
+            .format("%Y-%m-%d")
+            .to_string();
     }
 
     local.format("%Y-%m-%d").to_string()
@@ -912,7 +916,11 @@ pub fn get_date_range(date_range: &[String]) -> Vec<String> {
     let days = duration.num_days() + 1;
 
     for day in 0..days {
-        range.push((start + Duration::days(day)).format("%Y-%m-%d").to_string());
+        range.push(
+            (start + TimeDelta::try_days(day).unwrap())
+                .format("%Y-%m-%d")
+                .to_string(),
+        );
     }
 
     range
@@ -996,7 +1004,7 @@ pub mod mock_time {
     use std::cell::RefCell;
 
     thread_local! {
-        static DATE_TIME_DIFF: RefCell<Option<Duration>> = RefCell::new(None);
+        static DATE_TIME_DIFF: RefCell<Option<TimeDelta>> = RefCell::new(None);
     }
 
     pub fn time_now() -> DateTime<Local> {

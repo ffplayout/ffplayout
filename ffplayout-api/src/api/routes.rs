@@ -26,7 +26,7 @@ use argon2::{
     password_hash::{rand_core::OsRng, PasswordHash, SaltString},
     Argon2, PasswordHasher, PasswordVerifier,
 };
-use chrono::{DateTime, Datelike, Duration, Local, NaiveDateTime, TimeZone, Utc};
+use chrono::{DateTime, Datelike, Local, NaiveDateTime, TimeDelta, TimeZone, Utc};
 use path_clean::PathClean;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -1149,7 +1149,7 @@ async fn get_program(
     }
 
     let date_range = get_date_range(&vec_strings![
-        (after - Duration::days(days)).format("%Y-%m-%d"),
+        (after - TimeDelta::try_days(days).unwrap_or_default()).format("%Y-%m-%d"),
         "-",
         before.format("%Y-%m-%d")
     ]);
@@ -1194,7 +1194,8 @@ async fn get_program(
                 program.push(p_item);
             }
 
-            naive += Duration::milliseconds(((item.out - item.seek) * 1000.0) as i64);
+            naive += TimeDelta::try_milliseconds(((item.out - item.seek) * 1000.0) as i64)
+                .unwrap_or_default();
         }
     }
 
