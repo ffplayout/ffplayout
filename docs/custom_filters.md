@@ -48,14 +48,24 @@ custom_filter: "edgedetect=mode=colormix:high=0[c_v_out]"
 
 The **custom filter** from **config -> processing** and from **playlist** got applied in the _decoder_ instance on every file:
 
-```
- +-------------------------------------------------- +
- |                    file loop                      |
- |          +-------------------------------------+  |  PIPE    +------------------------+
- | input -> | decoder / filtering / custom filter |-------------| encoder / text overlay | -> output
- |          +-------------------------------------+  |          +------------------------+
- |            start new on file change               |               constant output
- +---------------------------------------------------+
+
+```mermaid
+flowchart LR
+   
+    subgraph fileloop["file loop"]
+        direction LR
+        Input --> dec
+        subgraph filter["start new on file change"]
+            direction LR
+            dec["decoder / filtering / custom filter"]
+            end
+        end
+    subgraph fileout["constant output"]
+        direction LR
+        enc["encoder / text overlay"]
+    end
+    dec -- PIPE --> enc
+    enc --> output
 ```
 
 #### When take which
