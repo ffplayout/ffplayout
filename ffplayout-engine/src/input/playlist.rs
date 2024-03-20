@@ -80,7 +80,7 @@ impl CurrentProgram {
 
         if get_current {
             let json = read_json(
-                &self.config,
+                &mut self.config,
                 &self.player_control,
                 self.json_path.clone(),
                 self.is_terminated.clone(),
@@ -137,15 +137,16 @@ impl CurrentProgram {
         trace!("next_start: {next_start}, end_sec: {}", self.end_sec);
 
         // Check if we over the target length or we are close to it, if so we load the next playlist.
-        if next_start >= self.end_sec
-            || is_close(total_delta, 0.0, 2.0)
-            || is_close(total_delta, self.end_sec, 2.0)
+        if !self.config.playlist.infinit
+            && (next_start >= self.end_sec
+                || is_close(total_delta, 0.0, 2.0)
+                || is_close(total_delta, self.end_sec, 2.0))
         {
             trace!("get next day");
             next = true;
 
             let json = read_json(
-                &self.config,
+                &mut self.config,
                 &self.player_control,
                 None,
                 self.is_terminated.clone(),
@@ -212,7 +213,7 @@ impl CurrentProgram {
         let mut time_sec = time_in_seconds();
 
         if time_sec < self.start_sec {
-            time_sec += self.config.playlist.length_sec.unwrap()
+            time_sec += 86400.0 // self.config.playlist.length_sec.unwrap();
         }
 
         time_sec
@@ -222,6 +223,7 @@ impl CurrentProgram {
     fn get_current_clip(&mut self) {
         let mut time_sec = self.get_current_time();
         let shift = self.playout_stat.time_shift.lock().unwrap();
+        let p_length = self.config.playlist.length_sec.unwrap();
 
         if *self.playout_stat.current_date.lock().unwrap()
             == *self.playout_stat.date.lock().unwrap()
@@ -229,6 +231,10 @@ impl CurrentProgram {
         {
             info!("Shift playlist start for <yellow>{}</> seconds", *shift);
             time_sec += *shift;
+        }
+
+        if self.config.playlist.infinit && p_length < 86400.0 {
+            time_sec -= p_length;
         }
 
         for (i, item) in self
@@ -255,7 +261,8 @@ impl CurrentProgram {
         let mut is_filler = false;
 
         if !self.playout_stat.list_init.load(Ordering::SeqCst) {
-            let time_sec = self.get_current_time();
+            let mut time_sec = self.get_current_time();
+            let p_length = self.config.playlist.length_sec.unwrap();
             let index = self
                 .player_control
                 .current_index
@@ -267,6 +274,10 @@ impl CurrentProgram {
             let mut node_clone = nodes[index].clone();
 
             trace!("Clip from init: {}", node_clone.source);
+
+            if self.config.playlist.infinit && p_length < 86400.0 {
+                time_sec -= p_length;
+            }
 
             node_clone.seek += time_sec
                 - (node_clone.begin.unwrap() - *self.playout_stat.time_shift.lock().unwrap());
@@ -488,7 +499,8 @@ fn timed_source(
             debug!("Delta: <yellow>{shifted_delta:.3}</>");
         }
 
-        if config.general.stop_threshold > 0.0
+        if !config.playlist.infinit
+            && config.general.stop_threshold > 0.0
             && shifted_delta.abs() > config.general.stop_threshold
         {
             error!("Clip begin out of sync for <yellow>{delta:.3}</> seconds.");
@@ -502,6 +514,7 @@ fn timed_source(
     if (total_delta > node.out - node.seek && !last)
         || node.index.unwrap() < 2
         || !config.playlist.length.contains(':')
+        || config.playlist.infinit
     {
         // when we are in the 24 hour range, get the clip
         new_node.process = Some(true);
@@ -742,7 +755,7 @@ fn handle_list_init(
     debug!("Playlist init");
     let (_, total_delta) = get_delta(config, &node.begin.unwrap());
 
-    if node.out - node.seek > total_delta {
+    if !config.playlist.infinit && node.out - node.seek > total_delta {
         node.out = total_delta + node.seek;
     }
 

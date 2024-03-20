@@ -9,8 +9,8 @@ use std::{
 use simplelog::*;
 
 use crate::utils::{
-    controller::ProcessUnit::*, get_date, is_remote, modified_time, time_from_header,
-    validate_playlist, Media, PlayerControl, PlayoutConfig, DUMMY_LEN,
+    get_date, is_remote, modified_time, sec_to_time, time_from_header, validate_playlist, Media,
+    PlayerControl, PlayoutConfig, DUMMY_LEN,
 };
 
 /// This is our main playlist object, it holds all necessary information for the current day.
@@ -65,9 +65,10 @@ fn set_defaults(
     mut playlist: JsonPlaylist,
     current_file: String,
     mut start_sec: f64,
-) -> JsonPlaylist {
+) -> (JsonPlaylist, f64) {
     playlist.current_file = Some(current_file);
     playlist.start_sec = Some(start_sec);
+    let mut length = 0.0;
 
     // Add extra values to every media clip
     for (i, item) in playlist.program.iter_mut().enumerate() {
@@ -78,69 +79,18 @@ fn set_defaults(
         item.process = Some(true);
         item.filter = None;
 
-        start_sec += item.out - item.seek;
+        let dur = item.out - item.seek;
+        start_sec += dur;
+        length += dur;
     }
 
-    playlist
-}
-
-fn loop_playlist(
-    config: &PlayoutConfig,
-    current_file: String,
-    mut playlist: JsonPlaylist,
-) -> JsonPlaylist {
-    let start_sec = config.playlist.start_sec.unwrap();
-    let mut begin = start_sec;
-    let length = config.playlist.length_sec.unwrap();
-    let mut program_list = vec![];
-    let mut index = 0;
-
-    playlist.current_file = Some(current_file);
-    playlist.start_sec = Some(start_sec);
-
-    'program_looper: loop {
-        for item in playlist.program.iter() {
-            let media = Media {
-                index: Some(index),
-                begin: Some(begin),
-                seek: item.seek,
-                out: item.out,
-                duration: item.duration,
-                duration_audio: item.duration_audio,
-                category: item.category.clone(),
-                source: item.source.clone(),
-                audio: item.audio.clone(),
-                cmd: item.cmd.clone(),
-                probe: item.probe.clone(),
-                probe_audio: item.probe_audio.clone(),
-                process: Some(true),
-                unit: Decoder,
-                last_ad: false,
-                next_ad: false,
-                filter: None,
-                custom_filter: String::new(),
-            };
-
-            if begin < start_sec + length {
-                program_list.push(media);
-            } else {
-                break 'program_looper;
-            }
-
-            begin += item.out - item.seek;
-            index += 1;
-        }
-    }
-
-    playlist.program = program_list;
-
-    playlist
+    (playlist, length)
 }
 
 /// Read json playlist file, fills JsonPlaylist struct and set some extra values,
 /// which we need to process.
 pub fn read_json(
-    config: &PlayoutConfig,
+    config: &mut PlayoutConfig,
     player_control: &PlayerControl,
     path: Option<String>,
     is_terminated: Arc<AtomicBool>,
@@ -197,10 +147,14 @@ pub fn read_json(
                         });
                     }
 
-                    match config.playlist.infinit {
-                        true => return loop_playlist(config, current_file, playlist),
-                        false => return set_defaults(playlist, current_file, start_sec),
+                    let (playlist, duration) = set_defaults(playlist, current_file, start_sec);
+
+                    if config.playlist.infinit || config.playlist.length.is_empty() {
+                        config.playlist.length = sec_to_time(duration);
+                        config.playlist.length_sec = Some(duration);
                     }
+
+                    return playlist;
                 }
             }
         }
@@ -235,10 +189,14 @@ pub fn read_json(
             });
         }
 
-        match config.playlist.infinit {
-            true => return loop_playlist(config, current_file, playlist),
-            false => return set_defaults(playlist, current_file, start_sec),
+        let (playlist, duration) = set_defaults(playlist, current_file, start_sec);
+
+        if config.playlist.infinit || config.playlist.length.is_empty() {
+            config.playlist.length = sec_to_time(duration);
+            config.playlist.length_sec = Some(duration);
         }
+
+        return playlist;
     }
 
     error!("Playlist <b><magenta>{current_file}</></b> not exist!");
