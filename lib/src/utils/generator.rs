@@ -272,8 +272,9 @@ pub fn generate_playlist(
         let mut playlist = JsonPlaylist {
             channel: channel.clone(),
             date,
-            current_file: None,
+            path: None,
             start_sec: None,
+            length: None,
             modified: None,
             program: vec![],
         };

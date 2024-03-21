@@ -11,9 +11,11 @@ use serde_json::json;
 use simplelog::*;
 
 use ffplayout_lib::utils::{
-    controller::PlayerControl, gen_dummy, get_delta, is_close, is_remote,
-    json_serializer::read_json, loop_filler, loop_image, modified_time, seek_and_length,
-    time_in_seconds, Media, MediaProbe, PlayoutConfig, PlayoutStatus, IMAGE_FORMAT,
+    controller::PlayerControl,
+    gen_dummy, get_delta, is_close, is_remote,
+    json_serializer::{read_json, set_defaults},
+    loop_filler, loop_image, modified_time, sec_to_time, seek_and_length, time_in_seconds,
+    JsonPlaylist, Media, MediaProbe, PlayoutConfig, PlayoutStatus, IMAGE_FORMAT,
 };
 
 /// Struct for current playlist.
@@ -24,9 +26,7 @@ pub struct CurrentProgram {
     config: PlayoutConfig,
     start_sec: f64,
     end_sec: f64,
-    json_mod: Option<String>,
-    json_path: Option<String>,
-    json_date: String,
+    json_playlist: JsonPlaylist,
     player_control: PlayerControl,
     current_node: Media,
     is_terminated: Arc<AtomicBool>,
@@ -47,9 +47,10 @@ impl CurrentProgram {
             config: config.clone(),
             start_sec: config.playlist.start_sec.unwrap(),
             end_sec: config.playlist.length_sec.unwrap(),
-            json_mod: None,
-            json_path: None,
-            json_date: String::new(),
+            json_playlist: JsonPlaylist::new(
+                "1970-01-01".to_string(),
+                config.playlist.start_sec.unwrap(),
+            ),
             player_control: player_control.clone(),
             current_node: Media::new(0, "", false),
             is_terminated,
@@ -65,9 +66,9 @@ impl CurrentProgram {
         let mut get_current = false;
         let mut reload = false;
 
-        if let Some(path) = self.json_path.clone() {
+        if let Some(path) = self.json_playlist.path.clone() {
             if (Path::new(&path).is_file() || is_remote(&path))
-                && self.json_mod != modified_time(&path)
+                && self.json_playlist.modified != modified_time(&path)
             {
                 info!("Reload playlist <b><magenta>{path}</></b>");
                 self.playout_stat.list_init.store(true, Ordering::SeqCst);
@@ -79,26 +80,24 @@ impl CurrentProgram {
         }
 
         if get_current {
-            let json = read_json(
+            self.json_playlist = read_json(
                 &mut self.config,
                 &self.player_control,
-                self.json_path.clone(),
+                self.json_playlist.path.clone(),
                 self.is_terminated.clone(),
                 seek,
                 false,
             );
 
             if !reload {
-                if let Some(file) = &json.current_file {
+                if let Some(file) = &self.json_playlist.path {
                     info!("Read playlist: <b><magenta>{file}</></b>");
                 }
             }
 
-            self.json_path = json.current_file;
-            self.json_mod = json.modified;
-            *self.player_control.current_list.lock().unwrap() = json.program;
+            *self.player_control.current_list.lock().unwrap() = self.json_playlist.program.clone();
 
-            if self.json_path.is_none() {
+            if self.json_playlist.path.is_none() {
                 trace!("missing playlist");
 
                 self.current_node = Media::new(0, "", false);
@@ -145,7 +144,7 @@ impl CurrentProgram {
             trace!("get next day");
             next = true;
 
-            let json = read_json(
+            self.json_playlist = read_json(
                 &mut self.config,
                 &self.player_control,
                 None,
@@ -154,18 +153,14 @@ impl CurrentProgram {
                 true,
             );
 
-            if let Some(file) = &json.current_file {
+            if let Some(file) = &self.json_playlist.path {
                 info!("Read next playlist: <b><magenta>{file}</></b>");
             }
 
             self.playout_stat.list_init.store(false, Ordering::SeqCst);
-            self.set_status(json.date.clone());
+            self.set_status(self.json_playlist.date.clone());
 
-            self.json_path = json.current_file.clone();
-            self.json_mod = json.modified;
-            self.json_date = json.date;
-
-            *self.player_control.current_list.lock().unwrap() = json.program;
+            *self.player_control.current_list.lock().unwrap() = self.json_playlist.program.clone();
             self.player_control.current_index.store(0, Ordering::SeqCst);
         } else {
             self.load_or_update_playlist(seek)
@@ -223,7 +218,6 @@ impl CurrentProgram {
     fn get_current_clip(&mut self) {
         let mut time_sec = self.get_current_time();
         let shift = self.playout_stat.time_shift.lock().unwrap();
-        let p_length = self.config.playlist.length_sec.unwrap();
 
         if *self.playout_stat.current_date.lock().unwrap()
             == *self.playout_stat.date.lock().unwrap()
@@ -233,8 +227,10 @@ impl CurrentProgram {
             time_sec += *shift;
         }
 
-        if self.config.playlist.infinit && p_length < 86400.0 {
-            time_sec -= p_length;
+        drop(shift);
+
+        if self.config.playlist.infinit && self.json_playlist.length.unwrap() < 86400.0 {
+            self.recalculate_begin(true)
         }
 
         for (i, item) in self
@@ -245,6 +241,14 @@ impl CurrentProgram {
             .iter()
             .enumerate()
         {
+            if i == 0 {
+                println!(
+                    "first start {}, current time {}",
+                    sec_to_time(item.begin.unwrap()),
+                    sec_to_time(time_sec)
+                );
+            }
+
             if item.begin.unwrap() + item.out - item.seek > time_sec {
                 self.playout_stat.list_init.store(false, Ordering::SeqCst);
                 self.player_control.current_index.store(i, Ordering::SeqCst);
@@ -261,8 +265,7 @@ impl CurrentProgram {
         let mut is_filler = false;
 
         if !self.playout_stat.list_init.load(Ordering::SeqCst) {
-            let mut time_sec = self.get_current_time();
-            let p_length = self.config.playlist.length_sec.unwrap();
+            let time_sec = self.get_current_time();
             let index = self
                 .player_control
                 .current_index
@@ -273,17 +276,13 @@ impl CurrentProgram {
             // de-instance node to preserve original values in list
             let mut node_clone = nodes[index].clone();
 
-            trace!("Clip from init: {}", node_clone.source);
+            // Important! When no manual drop is happen here, lock is still active in handle_list_init
+            drop(nodes);
 
-            if self.config.playlist.infinit && p_length < 86400.0 {
-                time_sec -= p_length;
-            }
+            trace!("Clip from init: {}", node_clone.source);
 
             node_clone.seek += time_sec
                 - (node_clone.begin.unwrap() - *self.playout_stat.time_shift.lock().unwrap());
-
-            // Important! When no manual drop is happen here, lock is still active in handle_list_init
-            drop(nodes);
 
             self.current_node = handle_list_init(
                 &self.config,
@@ -338,6 +337,24 @@ impl CurrentProgram {
             .current_index
             .fetch_add(1, Ordering::SeqCst);
     }
+
+    fn recalculate_begin(&mut self, extend: bool) {
+        debug!("Infinit playlist reaches end, recalculate clip begins.");
+
+        let mut time_sec = time_in_seconds();
+
+        if extend {
+            // TODO: fix this when playlist length is under 24 hours
+            let time_elapsed = time_sec - self.start_sec;
+            let extra_time = time_elapsed % self.json_playlist.length.unwrap();
+
+            time_sec = self.start_sec + extra_time + 86400.0;
+        }
+
+        self.json_playlist.start_sec = Some(time_sec);
+        set_defaults(&mut self.json_playlist);
+        *self.player_control.current_list.lock().unwrap() = self.json_playlist.program.clone();
+    }
 }
 
 /// Build the playlist iterator
@@ -345,7 +362,7 @@ impl Iterator for CurrentProgram {
     type Item = Media;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.last_json_path = self.json_path.clone();
+        self.last_json_path = self.json_playlist.path.clone();
         self.last_node_ad = self.current_node.last_ad;
         self.check_for_playlist(self.playout_stat.list_init.load(Ordering::SeqCst));
 
@@ -353,7 +370,7 @@ impl Iterator for CurrentProgram {
             trace!("Init playlist, from next iterator");
             let mut init_clip_is_filler = false;
 
-            if self.json_path.is_some() {
+            if self.json_playlist.path.is_some() {
                 init_clip_is_filler = self.init_clip();
             }
 
@@ -431,7 +448,7 @@ impl Iterator for CurrentProgram {
             let (_, total_delta) = get_delta(&self.config, &self.start_sec);
 
             if !self.config.playlist.infinit
-                && self.last_json_path == self.json_path
+                && self.last_json_path == self.json_playlist.path
                 && total_delta.abs() > 1.0
             {
                 // Playlist is to early finish,
@@ -448,6 +465,10 @@ impl Iterator for CurrentProgram {
             let first_node = c_list[0].clone();
 
             drop(c_list);
+
+            if self.config.playlist.infinit {
+                self.recalculate_begin(false)
+            }
 
             self.player_control.current_index.store(0, Ordering::SeqCst);
             self.current_node = gen_source(
@@ -499,8 +520,7 @@ fn timed_source(
             debug!("Delta: <yellow>{shifted_delta:.3}</>");
         }
 
-        if !config.playlist.infinit
-            && config.general.stop_threshold > 0.0
+        if config.general.stop_threshold > 0.0
             && shifted_delta.abs() > config.general.stop_threshold
         {
             error!("Clip begin out of sync for <yellow>{delta:.3}</> seconds.");

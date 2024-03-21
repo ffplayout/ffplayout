@@ -461,7 +461,6 @@ pub fn sum_durations(clip_list: &Vec<Media>) -> f64 {
 ///
 /// We also get here the global delta between clip start and time when a new playlist should start.
 pub fn get_delta(config: &PlayoutConfig, begin: &f64) -> (f64, f64) {
-    let time_sec = time_in_seconds();
     let mut current_time = time_in_seconds();
     let start = config.playlist.start_sec.unwrap();
     let length = config.playlist.length_sec.unwrap_or(86400.0);
@@ -472,15 +471,19 @@ pub fn get_delta(config: &PlayoutConfig, begin: &f64) -> (f64, f64) {
     }
 
     if begin == &start && start == 0.0 && 86400.0 - current_time < 4.0 {
-        current_time -= target_length
+        current_time -= 86400.0
     } else if start >= current_time && begin != &start {
         current_time += 86400.0
     }
 
     let mut current_delta = begin - current_time;
 
-    if is_close(current_delta, 86400.0, config.general.stop_threshold) {
-        current_delta -= 86400.0
+    if is_close(
+        current_delta.abs(),
+        86400.0,
+        config.general.stop_threshold + 2.0,
+    ) {
+        current_delta = current_delta.abs() - 86400.0
     }
 
     let total_delta = if current_time < start {
@@ -488,14 +491,6 @@ pub fn get_delta(config: &PlayoutConfig, begin: &f64) -> (f64, f64) {
     } else {
         target_length + start - current_time
     };
-
-    if config.playlist.infinit && length < 86400.0 {
-        current_delta += length;
-
-        if time_sec > start {
-            current_delta -= 86400.0;
-        }
-    }
 
     (current_delta, total_delta)
 }

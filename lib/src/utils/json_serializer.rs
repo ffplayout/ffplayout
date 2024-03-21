@@ -9,8 +9,8 @@ use std::{
 use simplelog::*;
 
 use crate::utils::{
-    get_date, is_remote, modified_time, sec_to_time, time_from_header, validate_playlist, Media,
-    PlayerControl, PlayoutConfig, DUMMY_LEN,
+    get_date, is_remote, modified_time, time_from_header, validate_playlist, Media, PlayerControl,
+    PlayoutConfig, DUMMY_LEN,
 };
 
 /// This is our main playlist object, it holds all necessary information for the current day.
@@ -24,7 +24,10 @@ pub struct JsonPlaylist {
     pub start_sec: Option<f64>,
 
     #[serde(skip_serializing, skip_deserializing)]
-    pub current_file: Option<String>,
+    pub length: Option<f64>,
+
+    #[serde(skip_serializing, skip_deserializing)]
+    pub path: Option<String>,
 
     #[serde(skip_serializing, skip_deserializing)]
     pub modified: Option<String>,
@@ -33,7 +36,7 @@ pub struct JsonPlaylist {
 }
 
 impl JsonPlaylist {
-    fn new(date: String, start: f64) -> Self {
+    pub fn new(date: String, start: f64) -> Self {
         let mut media = Media::new(0, "", false);
         media.begin = Some(start);
         media.duration = DUMMY_LEN;
@@ -42,7 +45,8 @@ impl JsonPlaylist {
             channel: "Channel 1".into(),
             date,
             start_sec: Some(start),
-            current_file: None,
+            length: Some(86400.0),
+            path: None,
             modified: None,
             program: vec![media],
         }
@@ -61,13 +65,8 @@ fn default_channel() -> String {
     "Channel 1".to_string()
 }
 
-fn set_defaults(
-    mut playlist: JsonPlaylist,
-    current_file: String,
-    mut start_sec: f64,
-) -> (JsonPlaylist, f64) {
-    playlist.current_file = Some(current_file);
-    playlist.start_sec = Some(start_sec);
+pub fn set_defaults(playlist: &mut JsonPlaylist) {
+    let mut start_sec = playlist.start_sec.unwrap();
     let mut length = 0.0;
 
     // Add extra values to every media clip
@@ -84,7 +83,7 @@ fn set_defaults(
         length += dur;
     }
 
-    (playlist, length)
+    playlist.length = Some(length)
 }
 
 /// Read json playlist file, fills JsonPlaylist struct and set some extra values,
@@ -129,6 +128,8 @@ pub fn read_json(
                 if let Ok(body) = resp.text() {
                     let mut playlist: JsonPlaylist =
                         serde_json::from_str(&body).expect("Could't read remote json playlist.");
+                    playlist.path = Some(current_file);
+                    playlist.start_sec = Some(start_sec);
 
                     if let Some(time) = time_from_header(&headers) {
                         playlist.modified = Some(time.to_string());
@@ -147,12 +148,7 @@ pub fn read_json(
                         });
                     }
 
-                    let (playlist, duration) = set_defaults(playlist, current_file, start_sec);
-
-                    if config.playlist.infinit || config.playlist.length.is_empty() {
-                        config.playlist.length = sec_to_time(duration);
-                        config.playlist.length_sec = Some(duration);
-                    }
+                    set_defaults(&mut playlist);
 
                     return playlist;
                 }
@@ -179,6 +175,8 @@ pub fn read_json(
             playlist = JsonPlaylist::new(date, start_sec)
         }
 
+        playlist.path = Some(current_file);
+        playlist.start_sec = Some(start_sec);
         playlist.modified = modified;
 
         let list_clone = playlist.clone();
@@ -189,12 +187,7 @@ pub fn read_json(
             });
         }
 
-        let (playlist, duration) = set_defaults(playlist, current_file, start_sec);
-
-        if config.playlist.infinit || config.playlist.length.is_empty() {
-            config.playlist.length = sec_to_time(duration);
-            config.playlist.length_sec = Some(duration);
-        }
+        set_defaults(&mut playlist);
 
         return playlist;
     }

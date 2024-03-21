@@ -19,8 +19,9 @@ pub fn import_file(
     let mut playlist = JsonPlaylist {
         channel: channel_name.unwrap_or_else(|| "Channel 1".to_string()),
         date: date.to_string(),
-        current_file: None,
+        path: None,
         start_sec: None,
+        length: None,
         modified: None,
         program: vec![],
     };
