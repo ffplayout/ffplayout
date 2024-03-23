@@ -65,7 +65,7 @@ pub fn get_config(args: Args) -> Result<PlayoutConfig, ProcError> {
     }
 
     if let Some(log_path) = args.log {
-        if log_path != Path::new("none") && log_path.is_dir() {
+        if log_path != Path::new("none") {
             config.logging.log_to_file = true;
             config.logging.path = log_path;
         } else {

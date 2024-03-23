@@ -377,7 +377,7 @@ impl PlayoutConfig {
         let f = match File::open(&config_path) {
             Ok(file) => file,
             Err(_) => {
-                println!(
+                eprintln!(
                     "{config_path:?} doesn't exists!\nPut \"ffplayout.yml\" in \"/etc/playout/\" or beside the executable!"
                 );
                 process::exit(1);
