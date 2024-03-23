@@ -236,5 +236,16 @@ pub fn validate_playlist(
         );
     }
 
-    debug!("Validation done, in {:.3?} ...", timer.elapsed(),);
+    if config.general.validate {
+        info!(
+            "[Validation] Playlist length: <yellow>{}</>",
+            sec_to_time(begin - config.playlist.start_sec.unwrap())
+        );
+    }
+
+    debug!(
+        "Validation done, in <yellow>{:.3?}</>, playlist length: <yellow>{}</> ...",
+        timer.elapsed(),
+        sec_to_time(begin - config.playlist.start_sec.unwrap())
+    );
 }

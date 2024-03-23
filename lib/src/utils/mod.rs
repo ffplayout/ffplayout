@@ -7,7 +7,6 @@ use std::{
     path::{Path, PathBuf},
     process::{exit, ChildStderr, Command, Stdio},
     sync::{Arc, Mutex},
-    time::{self, UNIX_EPOCH},
 };
 
 #[cfg(not(windows))]
@@ -427,11 +426,12 @@ pub fn time_to_sec(time_str: &str) -> f64 {
 
 /// Convert floating number (seconds) to a formatted time string.
 pub fn sec_to_time(sec: f64) -> String {
-    let d = UNIX_EPOCH + time::Duration::from_millis((sec * 1000.0) as u64);
-    // Create DateTime from SystemTime
-    let date_time = DateTime::<Utc>::from(d);
-
-    date_time.format("%H:%M:%S%.3f").to_string()
+    format!(
+        "{:0>2}:{:0>2}:{:06.3}",
+        (sec / 60.0 / 60.0) as i32,
+        (sec / 60.0 % 60.0) as i32,
+        (sec % 60.0),
+    )
 }
 
 /// get file extension
@@ -463,22 +463,27 @@ pub fn sum_durations(clip_list: &Vec<Media>) -> f64 {
 pub fn get_delta(config: &PlayoutConfig, begin: &f64) -> (f64, f64) {
     let mut current_time = time_in_seconds();
     let start = config.playlist.start_sec.unwrap();
-    let length = time_to_sec(&config.playlist.length);
+    let length = config.playlist.length_sec.unwrap_or(86400.0);
     let mut target_length = 86400.0;
 
     if length > 0.0 && length != target_length {
         target_length = length
     }
+
     if begin == &start && start == 0.0 && 86400.0 - current_time < 4.0 {
-        current_time -= target_length
+        current_time -= 86400.0
     } else if start >= current_time && begin != &start {
-        current_time += target_length
+        current_time += 86400.0
     }
 
     let mut current_delta = begin - current_time;
 
-    if is_close(current_delta, 86400.0, config.general.stop_threshold) {
-        current_delta -= 86400.0
+    if is_close(
+        current_delta.abs(),
+        86400.0,
+        config.general.stop_threshold + 2.0,
+    ) {
+        current_delta = current_delta.abs() - 86400.0
     }
 
     let total_delta = if current_time < start {

@@ -107,8 +107,18 @@ pub fn player(
             continue;
         }
 
+        let c_index = if cfg!(debug_assertions) {
+            format!(
+                " ({}/{})",
+                node.index.unwrap() + 1,
+                play_control.current_list.lock().unwrap().len()
+            )
+        } else {
+            String::new()
+        };
+
         info!(
-            "Play for <yellow>{}</>: <b><magenta>{}  {}</></b>",
+            "Play for <yellow>{}</>{c_index}: <b><magenta>{}  {}</></b>",
             sec_to_time(node.out - node.seek),
             node.source,
             node.audio
