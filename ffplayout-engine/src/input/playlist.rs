@@ -14,8 +14,8 @@ use ffplayout_lib::utils::{
     controller::PlayerControl,
     gen_dummy, get_delta, is_close, is_remote,
     json_serializer::{read_json, set_defaults},
-    loop_filler, loop_image, modified_time, sec_to_time, seek_and_length, time_in_seconds,
-    JsonPlaylist, Media, MediaProbe, PlayoutConfig, PlayoutStatus, IMAGE_FORMAT,
+    loop_filler, loop_image, modified_time, seek_and_length, time_in_seconds, JsonPlaylist, Media,
+    MediaProbe, PlayoutConfig, PlayoutStatus, IMAGE_FORMAT,
 };
 
 /// Struct for current playlist.
@@ -229,7 +229,10 @@ impl CurrentProgram {
 
         drop(shift);
 
-        if self.config.playlist.infinit && self.json_playlist.length.unwrap() < 86400.0 {
+        if self.config.playlist.infinit
+            && self.json_playlist.length.unwrap() < 86400.0
+            && time_sec > self.json_playlist.length.unwrap() + self.start_sec
+        {
             self.recalculate_begin(true)
         }
 
@@ -241,14 +244,6 @@ impl CurrentProgram {
             .iter()
             .enumerate()
         {
-            if i == 0 {
-                println!(
-                    "first start {}, current time {}",
-                    sec_to_time(item.begin.unwrap()),
-                    sec_to_time(time_sec)
-                );
-            }
-
             if item.begin.unwrap() + item.out - item.seek > time_sec {
                 self.playout_stat.list_init.store(false, Ordering::SeqCst);
                 self.player_control.current_index.store(i, Ordering::SeqCst);
@@ -307,7 +302,6 @@ impl CurrentProgram {
 
     fn fill_end(&mut self, total_delta: f64) {
         // Fill end from playlist
-
         let index = self.player_control.current_index.load(Ordering::SeqCst);
         let mut media = Media::new(index, "", false);
         media.begin = Some(time_in_seconds());
@@ -344,11 +338,7 @@ impl CurrentProgram {
         let mut time_sec = time_in_seconds();
 
         if extend {
-            // TODO: fix this when playlist length is under 24 hours
-            let time_elapsed = time_sec - self.start_sec;
-            let extra_time = time_elapsed % self.json_playlist.length.unwrap();
-
-            time_sec = self.start_sec + extra_time + 86400.0;
+            time_sec = self.start_sec + self.json_playlist.length.unwrap();
         }
 
         self.json_playlist.start_sec = Some(time_sec);
