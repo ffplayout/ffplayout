@@ -2,6 +2,7 @@ extern crate log;
 extern crate simplelog;
 
 use std::{
+    fs,
     path::PathBuf,
     sync::{atomic::Ordering, Arc, Mutex},
     thread::{self, sleep},
@@ -203,6 +204,12 @@ pub fn init_logging(
             Err(_) => log_config,
         };
     };
+
+    if app_config.log_to_file && !app_config.path.exists() && !app_config.path.ends_with(".log") {
+        if let Err(e) = fs::create_dir_all(&app_config.path) {
+            eprintln!("Log folder creating failed: {e}");
+        }
+    }
 
     if app_config.log_to_file && app_config.path.exists() {
         let file_config = log_config
