@@ -35,7 +35,7 @@ path-clean = "1.0"
 rand = "0.8"
 regex = "1"
 relative-path = "1.8"
-reqwest = { version = "0.11", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 rpassword = "7.2"
 sanitize-filename = "0.5"
 serde = { version = "1.0", features = ["derive"] }
