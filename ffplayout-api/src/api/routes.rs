@@ -817,7 +817,7 @@ pub async fn save_playlist(
     data: web::Json<JsonPlaylist>,
 ) -> Result<impl Responder, ServiceError> {
     match write_playlist(&pool.into_inner(), *id, data.into_inner()).await {
-        Ok(res) => Ok(res),
+        Ok(res) => Ok(web::Json(res)),
         Err(e) => Err(e),
     }
 }
@@ -885,7 +885,7 @@ pub async fn del_playlist(
     params: web::Path<(i32, String)>,
 ) -> Result<impl Responder, ServiceError> {
     match delete_playlist(&pool.into_inner(), params.0, &params.1).await {
-        Ok(_) => Ok(format!("Delete playlist from {} success!", params.1)),
+        Ok(m) => Ok(web::Json(m)),
         Err(e) => Err(e),
     }
 }
