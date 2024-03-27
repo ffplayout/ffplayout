@@ -9,8 +9,8 @@ use std::{
 use simplelog::*;
 
 use crate::utils::{
-    controller::ProcessUnit::*, get_date, is_remote, modified_time, time_from_header,
-    validate_playlist, Media, PlayerControl, PlayoutConfig, DUMMY_LEN,
+    get_date, is_remote, modified_time, time_from_header, validate_playlist, Media, PlayerControl,
+    PlayoutConfig, DUMMY_LEN,
 };
 
 /// This is our main playlist object, it holds all necessary information for the current day.
@@ -24,7 +24,10 @@ pub struct JsonPlaylist {
     pub start_sec: Option<f64>,
 
     #[serde(skip_serializing, skip_deserializing)]
-    pub current_file: Option<String>,
+    pub length: Option<f64>,
+
+    #[serde(skip_serializing, skip_deserializing)]
+    pub path: Option<String>,
 
     #[serde(skip_serializing, skip_deserializing)]
     pub modified: Option<String>,
@@ -33,7 +36,7 @@ pub struct JsonPlaylist {
 }
 
 impl JsonPlaylist {
-    fn new(date: String, start: f64) -> Self {
+    pub fn new(date: String, start: f64) -> Self {
         let mut media = Media::new(0, "", false);
         media.begin = Some(start);
         media.duration = DUMMY_LEN;
@@ -42,7 +45,8 @@ impl JsonPlaylist {
             channel: "Channel 1".into(),
             date,
             start_sec: Some(start),
-            current_file: None,
+            length: Some(86400.0),
+            path: None,
             modified: None,
             program: vec![media],
         }
@@ -61,13 +65,9 @@ fn default_channel() -> String {
     "Channel 1".to_string()
 }
 
-fn set_defaults(
-    mut playlist: JsonPlaylist,
-    current_file: String,
-    mut start_sec: f64,
-) -> JsonPlaylist {
-    playlist.current_file = Some(current_file);
-    playlist.start_sec = Some(start_sec);
+pub fn set_defaults(playlist: &mut JsonPlaylist) {
+    let mut start_sec = playlist.start_sec.unwrap();
+    let mut length = 0.0;
 
     // Add extra values to every media clip
     for (i, item) in playlist.program.iter_mut().enumerate() {
@@ -78,69 +78,18 @@ fn set_defaults(
         item.process = Some(true);
         item.filter = None;
 
-        start_sec += item.out - item.seek;
+        let dur = item.out - item.seek;
+        start_sec += dur;
+        length += dur;
     }
 
-    playlist
-}
-
-fn loop_playlist(
-    config: &PlayoutConfig,
-    current_file: String,
-    mut playlist: JsonPlaylist,
-) -> JsonPlaylist {
-    let start_sec = config.playlist.start_sec.unwrap();
-    let mut begin = start_sec;
-    let length = config.playlist.length_sec.unwrap();
-    let mut program_list = vec![];
-    let mut index = 0;
-
-    playlist.current_file = Some(current_file);
-    playlist.start_sec = Some(start_sec);
-
-    'program_looper: loop {
-        for item in playlist.program.iter() {
-            let media = Media {
-                index: Some(index),
-                begin: Some(begin),
-                seek: item.seek,
-                out: item.out,
-                duration: item.duration,
-                duration_audio: item.duration_audio,
-                category: item.category.clone(),
-                source: item.source.clone(),
-                audio: item.audio.clone(),
-                cmd: item.cmd.clone(),
-                probe: item.probe.clone(),
-                probe_audio: item.probe_audio.clone(),
-                process: Some(true),
-                unit: Decoder,
-                last_ad: false,
-                next_ad: false,
-                filter: None,
-                custom_filter: String::new(),
-            };
-
-            if begin < start_sec + length {
-                program_list.push(media);
-            } else {
-                break 'program_looper;
-            }
-
-            begin += item.out - item.seek;
-            index += 1;
-        }
-    }
-
-    playlist.program = program_list;
-
-    playlist
+    playlist.length = Some(length)
 }
 
 /// Read json playlist file, fills JsonPlaylist struct and set some extra values,
 /// which we need to process.
 pub fn read_json(
-    config: &PlayoutConfig,
+    config: &mut PlayoutConfig,
     player_control: &PlayerControl,
     path: Option<String>,
     is_terminated: Arc<AtomicBool>,
@@ -179,6 +128,8 @@ pub fn read_json(
                 if let Ok(body) = resp.text() {
                     let mut playlist: JsonPlaylist =
                         serde_json::from_str(&body).expect("Could't read remote json playlist.");
+                    playlist.path = Some(current_file);
+                    playlist.start_sec = Some(start_sec);
 
                     if let Some(time) = time_from_header(&headers) {
                         playlist.modified = Some(time.to_string());
@@ -197,10 +148,9 @@ pub fn read_json(
                         });
                     }
 
-                    match config.playlist.infinit {
-                        true => return loop_playlist(config, current_file, playlist),
-                        false => return set_defaults(playlist, current_file, start_sec),
-                    }
+                    set_defaults(&mut playlist);
+
+                    return playlist;
                 }
             }
         }
@@ -225,6 +175,8 @@ pub fn read_json(
             playlist = JsonPlaylist::new(date, start_sec)
         }
 
+        playlist.path = Some(current_file);
+        playlist.start_sec = Some(start_sec);
         playlist.modified = modified;
 
         let list_clone = playlist.clone();
@@ -235,10 +187,9 @@ pub fn read_json(
             });
         }
 
-        match config.playlist.infinit {
-            true => return loop_playlist(config, current_file, playlist),
-            false => return set_defaults(playlist, current_file, start_sec),
-        }
+        set_defaults(&mut playlist);
+
+        return playlist;
     }
 
     error!("Playlist <b><magenta>{current_file}</></b> not exist!");

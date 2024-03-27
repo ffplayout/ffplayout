@@ -11,8 +11,10 @@ mod custom;
 pub mod v_drawtext;
 
 use crate::utils::{
-    controller::ProcessUnit::*, fps_calc, is_close, Media, OutputMode::*, PlayoutConfig,
+    controller::ProcessUnit::*, custom_format, fps_calc, is_close, Media, OutputMode::*,
+    PlayoutConfig,
 };
+use crate::ADVANCED_CONFIG;
 
 use super::vec_strings;
 
@@ -184,7 +186,12 @@ impl Default for Filters {
 fn deinterlace(field_order: &Option<String>, chain: &mut Filters) {
     if let Some(order) = field_order {
         if order != "progressive" {
-            chain.add_filter("yadif=0:-1:0", 0, Video)
+            let deinterlace = match &ADVANCED_CONFIG.decoder.filters.deinterlace {
+                Some(deinterlace) => deinterlace.clone(),
+                None => "yadif=0:-1:0".to_string(),
+            };
+
+            chain.add_filter(&deinterlace, 0, Video);
         }
     }
 }
@@ -195,25 +202,45 @@ fn pad(aspect: f64, chain: &mut Filters, v_stream: &ffprobe::Stream, config: &Pl
 
         if let (Some(w), Some(h)) = (v_stream.width, v_stream.height) {
             if w > config.processing.width && aspect > config.processing.aspect {
-                scale = format!("scale={}:-1,", config.processing.width);
+                scale = match &ADVANCED_CONFIG.decoder.filters.pad_scale_w {
+                    Some(pad_scale_w) => custom_format(pad_scale_w, &[&config.processing.width]),
+                    None => format!("scale={}:-1,", config.processing.width),
+                };
             } else if h > config.processing.height && aspect < config.processing.aspect {
-                scale = format!("scale=-1:{},", config.processing.height);
+                scale = match &ADVANCED_CONFIG.decoder.filters.pad_scale_h {
+                    Some(pad_scale_h) => custom_format(pad_scale_h, &[&config.processing.width]),
+                    None => format!("scale=-1:{},", config.processing.height),
+                };
             }
         }
-        chain.add_filter(
-            &format!(
-                "{scale}pad=max(iw\\,ih*({0}/{1})):ow/({0}/{1}):(ow-iw)/2:(oh-ih)/2",
-                config.processing.width, config.processing.height
+
+        let pad = match &ADVANCED_CONFIG.decoder.filters.pad_video {
+            Some(pad_video) => custom_format(
+                pad_video,
+                &[
+                    &scale,
+                    &config.processing.width.to_string(),
+                    &config.processing.height.to_string(),
+                ],
             ),
-            0,
-            Video,
-        )
+            None => format!(
+                "{}pad=max(iw\\,ih*({1}/{2})):ow/({1}/{2}):(ow-iw)/2:(oh-ih)/2",
+                scale, config.processing.width, config.processing.height
+            ),
+        };
+
+        chain.add_filter(&pad, 0, Video)
     }
 }
 
 fn fps(fps: f64, chain: &mut Filters, config: &PlayoutConfig) {
     if fps != config.processing.fps {
-        chain.add_filter(&format!("fps={}", config.processing.fps), 0, Video)
+        let fps_filter = match &ADVANCED_CONFIG.decoder.filters.fps {
+            Some(fps) => custom_format(fps, &[&config.processing.fps]),
+            None => format!("fps={}", config.processing.fps),
+        };
+
+        chain.add_filter(&fps_filter, 0, Video)
     }
 }
 
@@ -227,39 +254,49 @@ fn scale(
     // width: i64, height: i64
     if let (Some(w), Some(h)) = (width, height) {
         if w != config.processing.width || h != config.processing.height {
-            chain.add_filter(
-                &format!(
+            let scale = match &ADVANCED_CONFIG.decoder.filters.scale {
+                Some(scale) => custom_format(
+                    scale,
+                    &[&config.processing.width, &config.processing.height],
+                ),
+                None => format!(
                     "scale={}:{}",
                     config.processing.width, config.processing.height
                 ),
-                0,
-                Video,
-            );
+            };
+
+            chain.add_filter(&scale, 0, Video);
         } else {
             chain.add_filter("null", 0, Video);
         }
 
         if !is_close(aspect, config.processing.aspect, 0.03) {
-            chain.add_filter(
-                &format!("setdar=dar={}", config.processing.aspect),
-                0,
-                Video,
-            )
+            let dar = match &ADVANCED_CONFIG.decoder.filters.set_dar {
+                Some(set_dar) => custom_format(set_dar, &[&config.processing.aspect]),
+                None => format!("setdar=dar={}", config.processing.aspect),
+            };
+
+            chain.add_filter(&dar, 0, Video);
         }
     } else {
-        chain.add_filter(
-            &format!(
+        let scale = match &ADVANCED_CONFIG.decoder.filters.scale {
+            Some(scale) => custom_format(
+                scale,
+                &[&config.processing.width, &config.processing.height],
+            ),
+            None => format!(
                 "scale={}:{}",
                 config.processing.width, config.processing.height
             ),
-            0,
-            Video,
-        );
-        chain.add_filter(
-            &format!("setdar=dar={}", config.processing.aspect),
-            0,
-            Video,
-        )
+        };
+        chain.add_filter(&scale, 0, Video);
+
+        let dar = match &ADVANCED_CONFIG.decoder.filters.set_dar {
+            Some(set_dar) => custom_format(set_dar, &[&config.processing.aspect]),
+            None => format!("setdar=dar={}", config.processing.aspect),
+        };
+
+        chain.add_filter(&dar, 0, Video);
     }
 }
 
@@ -276,15 +313,21 @@ fn fade(node: &mut Media, chain: &mut Filters, nr: i32, filter_type: FilterType)
     }
 
     if node.seek > 0.0 || node.unit == Ingest {
-        chain.add_filter(&format!("{t}fade=in:st=0:d=0.5"), nr, filter_type)
+        let fade_in = match &ADVANCED_CONFIG.decoder.filters.fade_in {
+            Some(fade) => custom_format(fade, &[t]),
+            None => format!("{t}fade=in:st=0:d=0.5"),
+        };
+
+        chain.add_filter(&fade_in, nr, filter_type);
     }
 
     if (node.out != node.duration && node.out - node.seek > 1.0) || fade_audio {
-        chain.add_filter(
-            &format!("{t}fade=out:st={}:d=1.0", (node.out - node.seek - 1.0)),
-            nr,
-            filter_type,
-        )
+        let fade_out = match &ADVANCED_CONFIG.decoder.filters.fade_out {
+            Some(fade) => custom_format(fade, &[t, &(node.out - node.seek - 1.0).to_string()]),
+            None => format!("{t}fade=out:st={}:d=1.0", (node.out - node.seek - 1.0)),
+        };
+
+        chain.add_filter(&fade_out, nr, filter_type);
     }
 }
 
@@ -296,23 +339,39 @@ fn overlay(node: &mut Media, chain: &mut Filters, config: &PlayoutConfig) {
         let mut scale = String::new();
 
         if !config.processing.logo_scale.is_empty() {
-            scale = format!(",scale={}", config.processing.logo_scale);
+            scale = match &ADVANCED_CONFIG.decoder.filters.overlay_logo_scale {
+                Some(logo_scale) => custom_format(logo_scale, &[&config.processing.logo_scale]),
+                None => format!(",scale={}", config.processing.logo_scale),
+            }
         }
 
-        let mut logo_chain = format!(
-            "null[v];movie={}:loop=0,setpts=N/(FRAME_RATE*TB),format=rgba,colorchannelmixer=aa={}{scale}[l];[v][l]{}:shortest=1",
-            config.processing.logo.replace('\\', "/").replace(':', "\\\\:"), config.processing.logo_opacity, config.processing.logo_filter
-        );
+        let mut logo_chain = match &ADVANCED_CONFIG.decoder.filters.overlay_logo {
+            Some(overlay) => custom_format(overlay, &[
+                &config.processing.logo.replace('\\', "/").replace(':', "\\\\:"),
+                &config.processing.logo_opacity.to_string(),
+                &scale.to_string(),
+                &config.processing.logo_filter,
+            ]),
+            None => format!(
+                "null[v];movie={}:loop=0,setpts=N/(FRAME_RATE*TB),format=rgba,colorchannelmixer=aa={}{scale}[l];[v][l]{}:shortest=1",
+                config.processing.logo.replace('\\', "/").replace(':', "\\\\:"), config.processing.logo_opacity, config.processing.logo_filter
+            )
+        };
 
         if node.last_ad {
-            logo_chain.push_str(",fade=in:st=0:d=1.0:alpha=1")
+            match &ADVANCED_CONFIG.decoder.filters.overlay_logo_fade_in {
+                Some(fade_in) => logo_chain.push_str(fade_in),
+                None => logo_chain.push_str(",fade=in:st=0:d=1.0:alpha=1"),
+            }
         }
 
         if node.next_ad {
-            logo_chain.push_str(&format!(
-                ",fade=out:st={}:d=1.0:alpha=1",
-                node.out - node.seek - 1.0
-            ))
+            let length = node.out - node.seek - 1.0;
+
+            match &ADVANCED_CONFIG.decoder.filters.overlay_logo_fade_out {
+                Some(fade_out) => logo_chain.push_str(&custom_format(fade_out, &[length])),
+                None => logo_chain.push_str(&format!(",fade=out:st={length}:d=1.0:alpha=1")),
+            }
         }
 
         chain.add_filter(&logo_chain, 0, Video);
@@ -328,14 +387,14 @@ fn extend_video(node: &mut Media, chain: &mut Filters) {
         .and_then(|v| v.parse::<f64>().ok())
     {
         if node.out - node.seek > video_duration - node.seek + 0.1 && node.duration >= node.out {
-            chain.add_filter(
-                &format!(
-                    "tpad=stop_mode=add:stop_duration={}",
-                    (node.out - node.seek) - (video_duration - node.seek)
-                ),
-                0,
-                Video,
-            )
+            let duration = (node.out - node.seek) - (video_duration - node.seek);
+
+            let tpad = match &ADVANCED_CONFIG.decoder.filters.tpad {
+                Some(pad) => custom_format(pad, &[duration]),
+                None => format!("tpad=stop_mode=add:stop_duration={duration}"),
+            };
+
+            chain.add_filter(&tpad, 0, Video)
         }
     }
 }
@@ -357,10 +416,14 @@ fn add_text(
 }
 
 fn add_audio(node: &Media, chain: &mut Filters, nr: i32) {
-    let audio = format!(
-        "aevalsrc=0:channel_layout=stereo:duration={}:sample_rate=48000",
-        node.out - node.seek
-    );
+    let audio = match &ADVANCED_CONFIG.decoder.filters.aevalsrc {
+        Some(aevalsrc) => custom_format(aevalsrc, &[node.out - node.seek]),
+        None => format!(
+            "aevalsrc=0:channel_layout=stereo:duration={}:sample_rate=48000",
+            node.out - node.seek
+        ),
+    };
+
     chain.add_filter(&audio, nr, Audio);
 }
 
@@ -375,11 +438,12 @@ fn extend_audio(node: &mut Media, chain: &mut Filters, nr: i32) {
         {
             if node.out - node.seek > audio_duration - node.seek + 0.1 && node.duration >= node.out
             {
-                chain.add_filter(
-                    &format!("apad=whole_dur={}", node.out - node.seek),
-                    nr,
-                    Audio,
-                )
+                let apad = match &ADVANCED_CONFIG.decoder.filters.apad {
+                    Some(apad) => custom_format(apad, &[node.out - node.seek]),
+                    None => format!("apad=whole_dur={}", node.out - node.seek),
+                };
+
+                chain.add_filter(&apad, nr, Audio)
             }
         }
     }
@@ -387,7 +451,12 @@ fn extend_audio(node: &mut Media, chain: &mut Filters, nr: i32) {
 
 fn audio_volume(chain: &mut Filters, config: &PlayoutConfig, nr: i32) {
     if config.processing.volume != 1.0 {
-        chain.add_filter(&format!("volume={}", config.processing.volume), nr, Audio)
+        let volume = match &ADVANCED_CONFIG.decoder.filters.volume {
+            Some(volume) => custom_format(volume, &[config.processing.volume]),
+            None => format!("volume={}", config.processing.volume),
+        };
+
+        chain.add_filter(&volume, nr, Audio)
     }
 }
 
@@ -418,8 +487,12 @@ pub fn split_filter(chain: &mut Filters, count: usize, nr: i32, filter_type: Fil
             }
         }
 
-        let split_filter = format!("split={count}{}", out_link.join(""));
-        chain.add_filter(&split_filter, nr, filter_type);
+        let split = match &ADVANCED_CONFIG.decoder.filters.split {
+            Some(split) => custom_format(split, &[count.to_string(), out_link.join("")]),
+            None => format!("split={count}{}", out_link.join("")),
+        };
+
+        chain.add_filter(&split, nr, filter_type);
     }
 }
 

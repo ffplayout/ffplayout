@@ -1,18 +1,18 @@
 use std::{
     ffi::OsStr,
+    fmt,
     fs::{self, metadata, File},
     io::{BufRead, BufReader, Error},
     net::TcpListener,
     path::{Path, PathBuf},
     process::{exit, ChildStderr, Command, Stdio},
     sync::{Arc, Mutex},
-    time::{self, UNIX_EPOCH},
 };
 
 #[cfg(not(windows))]
 use std::env;
 
-use chrono::{prelude::*, Duration};
+use chrono::{prelude::*, TimeDelta};
 use ffprobe::{ffprobe, Stream as FFStream};
 use rand::prelude::*;
 use regex::Regex;
@@ -21,6 +21,7 @@ use serde::{de::Deserializer, Deserialize, Serialize};
 use serde_json::json;
 use simplelog::*;
 
+pub mod advanced_config;
 pub mod config;
 pub mod controller;
 pub mod errors;
@@ -359,11 +360,15 @@ pub fn get_date(seek: bool, start: f64, get_next: bool) -> String {
     let local: DateTime<Local> = time_now();
 
     if seek && start > time_in_seconds() {
-        return (local - Duration::days(1)).format("%Y-%m-%d").to_string();
+        return (local - TimeDelta::try_days(1).unwrap())
+            .format("%Y-%m-%d")
+            .to_string();
     }
 
     if start == 0.0 && get_next && time_in_seconds() > 86397.9 {
-        return (local + Duration::days(1)).format("%Y-%m-%d").to_string();
+        return (local + TimeDelta::try_days(1).unwrap())
+            .format("%Y-%m-%d")
+            .to_string();
     }
 
     local.format("%Y-%m-%d").to_string()
@@ -421,11 +426,12 @@ pub fn time_to_sec(time_str: &str) -> f64 {
 
 /// Convert floating number (seconds) to a formatted time string.
 pub fn sec_to_time(sec: f64) -> String {
-    let d = UNIX_EPOCH + time::Duration::from_millis((sec * 1000.0) as u64);
-    // Create DateTime from SystemTime
-    let date_time = DateTime::<Utc>::from(d);
-
-    date_time.format("%H:%M:%S%.3f").to_string()
+    format!(
+        "{:0>2}:{:0>2}:{:06.3}",
+        (sec / 60.0 / 60.0) as i32,
+        (sec / 60.0 % 60.0) as i32,
+        (sec % 60.0),
+    )
 }
 
 /// get file extension
@@ -457,22 +463,27 @@ pub fn sum_durations(clip_list: &Vec<Media>) -> f64 {
 pub fn get_delta(config: &PlayoutConfig, begin: &f64) -> (f64, f64) {
     let mut current_time = time_in_seconds();
     let start = config.playlist.start_sec.unwrap();
-    let length = time_to_sec(&config.playlist.length);
+    let length = config.playlist.length_sec.unwrap_or(86400.0);
     let mut target_length = 86400.0;
 
     if length > 0.0 && length != target_length {
         target_length = length
     }
+
     if begin == &start && start == 0.0 && 86400.0 - current_time < 4.0 {
-        current_time -= target_length
+        current_time -= 86400.0
     } else if start >= current_time && begin != &start {
-        current_time += target_length
+        current_time += 86400.0
     }
 
     let mut current_delta = begin - current_time;
 
-    if is_close(current_delta, 86400.0, config.general.stop_threshold) {
-        current_delta -= 86400.0
+    if is_close(
+        current_delta.abs(),
+        86400.0,
+        config.general.stop_threshold + 2.0,
+    ) {
+        current_delta = current_delta.abs() - 86400.0
     }
 
     let total_delta = if current_time < start {
@@ -910,7 +921,11 @@ pub fn get_date_range(date_range: &[String]) -> Vec<String> {
     let days = duration.num_days() + 1;
 
     for day in 0..days {
-        range.push((start + Duration::days(day)).format("%Y-%m-%d").to_string());
+        range.push(
+            (start + TimeDelta::try_days(day).unwrap())
+                .format("%Y-%m-%d")
+                .to_string(),
+        );
     }
 
     range
@@ -926,6 +941,46 @@ pub fn parse_log_level_filter(s: &str) -> Result<LevelFilter, &'static str> {
         "off" => Ok(LevelFilter::Off),
         _ => Err("Error level not exists!"),
     }
+}
+
+pub fn custom_format<T: fmt::Display>(template: &str, args: &[T]) -> String {
+    let mut filled_template = String::new();
+    let mut arg_iter = args.iter().map(|x| format!("{}", x));
+    let mut template_iter = template.chars();
+
+    while let Some(c) = template_iter.next() {
+        if c == '{' {
+            if let Some(nc) = template_iter.next() {
+                if nc == '{' {
+                    filled_template.push('{');
+                } else if nc == '}' {
+                    if let Some(arg) = arg_iter.next() {
+                        filled_template.push_str(&arg);
+                    } else {
+                        filled_template.push(c);
+                        filled_template.push(nc);
+                    }
+                } else if let Some(n) = nc.to_digit(10) {
+                    filled_template.push_str(&args[n as usize].to_string());
+                } else {
+                    filled_template.push(nc);
+                }
+            }
+        } else if c == '}' {
+            if let Some(nc) = template_iter.next() {
+                if nc == '}' {
+                    filled_template.push('}');
+                    continue;
+                } else {
+                    filled_template.push(nc);
+                }
+            }
+        } else {
+            filled_template.push(c);
+        }
+    }
+
+    filled_template
 }
 
 pub fn home_dir() -> Option<PathBuf> {
@@ -954,7 +1009,7 @@ pub mod mock_time {
     use std::cell::RefCell;
 
     thread_local! {
-        static DATE_TIME_DIFF: RefCell<Option<Duration>> = RefCell::new(None);
+        static DATE_TIME_DIFF: RefCell<Option<TimeDelta>> = const { RefCell::new(None) };
     }
 
     pub fn time_now() -> DateTime<Local> {

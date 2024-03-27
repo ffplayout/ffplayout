@@ -114,7 +114,11 @@ pub async fn generate_playlist(
     }
 }
 
-pub async fn delete_playlist(conn: &Pool<Sqlite>, id: i32, date: &str) -> Result<(), ServiceError> {
+pub async fn delete_playlist(
+    conn: &Pool<Sqlite>,
+    id: i32,
+    date: &str,
+) -> Result<String, ServiceError> {
     let (config, _) = playout_config(conn, &id).await?;
     let mut playlist_path = PathBuf::from(&config.playlist.path);
     let d: Vec<&str> = date.split('-').collect();
@@ -125,11 +129,14 @@ pub async fn delete_playlist(conn: &Pool<Sqlite>, id: i32, date: &str) -> Result
         .with_extension("json");
 
     if playlist_path.is_file() {
-        if let Err(e) = fs::remove_file(playlist_path) {
-            error!("{e}");
-            return Err(ServiceError::InternalServerError);
-        };
+        match fs::remove_file(playlist_path) {
+            Ok(_) => Ok(format!("Delete playlist from {date} success!")),
+            Err(e) => {
+                error!("{e}");
+                Err(ServiceError::InternalServerError)
+            }
+        }
+    } else {
+        Ok(format!("No playlist to delete on: {date}"))
     }
-
-    Ok(())
 }

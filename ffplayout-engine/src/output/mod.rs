@@ -19,11 +19,14 @@ pub use hls::write_hls;
 use crate::input::{ingest_server, source_generator};
 use crate::utils::task_runner;
 
-use ffplayout_lib::utils::{
-    sec_to_time, stderr_reader, OutputMode::*, PlayerControl, PlayoutConfig, PlayoutStatus,
-    ProcessControl, ProcessUnit::*,
-};
 use ffplayout_lib::vec_strings;
+use ffplayout_lib::{
+    utils::{
+        sec_to_time, stderr_reader, OutputMode::*, PlayerControl, PlayoutConfig, PlayoutStatus,
+        ProcessControl, ProcessUnit::*,
+    },
+    ADVANCED_CONFIG,
+};
 
 /// Player
 ///
@@ -104,8 +107,18 @@ pub fn player(
             continue;
         }
 
+        let c_index = if cfg!(debug_assertions) {
+            format!(
+                " ({}/{})",
+                node.index.unwrap() + 1,
+                play_control.current_list.lock().unwrap().len()
+            )
+        } else {
+            String::new()
+        };
+
         info!(
-            "Play for <yellow>{}</>: <b><magenta>{}  {}</></b>",
+            "Play for <yellow>{}</>{c_index}: <b><magenta>{}  {}</></b>",
             sec_to_time(node.out - node.seek),
             node.source,
             node.audio
@@ -130,6 +143,11 @@ pub fn player(
         }
 
         let mut dec_cmd = vec_strings!["-hide_banner", "-nostats", "-v", &ff_log_format];
+
+        if let Some(decoder_input_cmd) = &ADVANCED_CONFIG.decoder.input_cmd {
+            dec_cmd.append(&mut decoder_input_cmd.clone());
+        }
+
         dec_cmd.append(&mut cmd);
 
         if let Some(mut filter) = node.filter {

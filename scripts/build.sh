@@ -36,7 +36,7 @@ for target in "${targets[@]}"; do
 
         cp ./target/${target}/release/ffpapi.exe .
         cp ./target/${target}/release/ffplayout.exe .
-        zip -r "ffplayout-v${version}_${target}.zip" assets docker docs LICENSE README.md CHANGELOG.md ffplayout.exe ffpapi.exe -x *.db
+        zip -r "ffplayout-v${version}_${target}.zip" assets docker docs LICENSE README.md CHANGELOG.md ffplayout.exe ffpapi.exe -x *.db -x *.db-shm -x *.db-wal -x '11-ffplayout' -x *.service
         rm -f ffplayout.exe ffpapi.exe
     elif [[ $target == "x86_64-apple-darwin" ]] || [[ $target == "aarch64-apple-darwin" ]]; then
         if [[ -f "ffplayout-v${version}_${target}.tar.gz" ]]; then
@@ -54,7 +54,7 @@ for target in "${targets[@]}"; do
 
         cp ./target/${target}/release/ffpapi .
         cp ./target/${target}/release/ffplayout .
-        tar -czvf "ffplayout-v${version}_${target}.tar.gz" --exclude='*.db' --exclude='*.db-shm' --exclude='*.db-wal' assets docker docs LICENSE README.md CHANGELOG.md ffplayout ffpapi
+        tar -czvf "ffplayout-v${version}_${target}.tar.gz" --exclude='*.db' --exclude='*.db-shm' --exclude='*.db-wal' --exclude='11-ffplayout' --exclude='*.service' assets docker docs LICENSE README.md CHANGELOG.md ffplayout ffpapi
         rm -f ffplayout ffpapi
     else
         if [[ -f "ffplayout-v${version}_${target}.tar.gz" ]]; then
@@ -72,11 +72,11 @@ for target in "${targets[@]}"; do
     echo ""
 done
 
-if [[ "${#targets[@]}" == "3" ]] || [[ $targets == "x86_64-unknown-linux-musl" ]]; then
+if [[ "${#targets[@]}" == "5" ]] || [[ $targets == "x86_64-unknown-linux-musl" ]]; then
     cargo deb --target=x86_64-unknown-linux-musl -p ffplayout --manifest-path=ffplayout-engine/Cargo.toml -o ffplayout_${version}-1_amd64.deb
     cargo generate-rpm --payload-compress none  --target=x86_64-unknown-linux-musl -p ffplayout-engine -o ffplayout-${version}-1.x86_64.rpm
 fi
 
-if [[ "${#targets[@]}" == "3" ]] || [[ $targets == "aarch64-unknown-linux-gnu" ]]; then
+if [[ "${#targets[@]}" == "5" ]] || [[ $targets == "aarch64-unknown-linux-gnu" ]]; then
     cargo deb --target=aarch64-unknown-linux-gnu --variant=arm64 -p ffplayout --manifest-path=ffplayout-engine/Cargo.toml -o ffplayout_${version}-1_arm64.deb
 fi

@@ -11,6 +11,8 @@ use log::LevelFilter;
 use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use shlex::split;
 
+use crate::ADVANCED_CONFIG;
+
 use super::vec_strings;
 use crate::utils::{free_tcp_socket, home_dir, time_to_sec, OutputMode::*};
 
@@ -375,7 +377,7 @@ impl PlayoutConfig {
         let f = match File::open(&config_path) {
             Ok(file) => file,
             Err(_) => {
-                println!(
+                eprintln!(
                     "{config_path:?} doesn't exists!\nPut \"ffplayout.yml\" in \"/etc/playout/\" or beside the executable!"
                 );
                 process::exit(1);
@@ -424,23 +426,29 @@ impl PlayoutConfig {
             config.processing.audio_tracks = 1
         }
 
-        let bitrate = format!(
-            "{}k",
-            config.processing.width * config.processing.height / 16
-        );
-
-        let buff_size = format!(
-            "{}k",
-            (config.processing.width * config.processing.height / 16) / 2
-        );
-
         let mut process_cmd = vec_strings![];
 
         if config.processing.audio_only {
             process_cmd.append(&mut vec_strings!["-vn"]);
         } else if config.processing.copy_video {
             process_cmd.append(&mut vec_strings!["-c:v", "copy"]);
+        } else if let Some(decoder_cmd) = &ADVANCED_CONFIG.decoder.output_cmd {
+            if !decoder_cmd.contains(&"-r".to_string()) {
+                process_cmd.append(&mut vec_strings!["-r", &config.processing.fps]);
+            }
+
+            process_cmd.append(&mut decoder_cmd.clone());
         } else {
+            let bitrate = format!(
+                "{}k",
+                config.processing.width * config.processing.height / 16
+            );
+
+            let buff_size = format!(
+                "{}k",
+                (config.processing.width * config.processing.height / 16) / 2
+            );
+
             process_cmd.append(&mut vec_strings![
                 "-pix_fmt",
                 "yuv420p",
@@ -463,7 +471,7 @@ impl PlayoutConfig {
 
         if config.processing.copy_audio {
             process_cmd.append(&mut vec_strings!["-c:a", "copy"]);
-        } else {
+        } else if ADVANCED_CONFIG.decoder.output_cmd.is_none() {
             process_cmd.append(&mut pre_audio_codec(
                 &config.processing.custom_filter,
                 &config.ingest.custom_filter,

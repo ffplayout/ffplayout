@@ -218,7 +218,7 @@ pub fn init_logging(
         } else if app_config.path.is_file() {
             log_path = app_config.path
         } else {
-            println!("Logging path not exists!")
+            eprintln!("Logging path not exists!")
         }
 
         let log_file = FileRotate::new(

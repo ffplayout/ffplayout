@@ -14,13 +14,14 @@ crossbeam-channel = "0.5"
 derive_more = "0.99"
 ffprobe = "0.3"
 file-rotate = "0.7"
+lazy_static = "1.4"
 lettre = { version = "0.11", features = ["builder", "rustls-tls", "smtp-transport"], default-features = false }
 lexical-sort = "0.3"
 log = "0.4"
 num-traits = "0.2"
 rand = "0.8"
 regex = "1"
-reqwest = { version = "0.11", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_yaml = "0.9"

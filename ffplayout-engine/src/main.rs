@@ -103,9 +103,12 @@ fn main() -> Result<(), ProcError> {
     let messages = Arc::new(Mutex::new(Vec::new()));
 
     // try to create logging folder, if not exist
-    if config.logging.log_to_file && config.logging.path.is_dir() {
+    if config.logging.log_to_file
+        && !config.logging.path.is_dir()
+        && !config.logging.path.ends_with(".log")
+    {
         if let Err(e) = fs::create_dir_all(&config.logging.path) {
-            println!("Logging path not exists! {e}");
+            eprintln!("Logging path not exists! {e}");
 
             exit(1);
         }
