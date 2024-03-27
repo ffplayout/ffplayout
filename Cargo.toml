@@ -4,7 +4,7 @@ default-members = ["ffplayout-api", "ffplayout-engine", "tests"]
 resolver = "2"
 
 [workspace.package]
-version = "0.21.0"
+version = "0.21.0-beta1"
 license = "GPL-3.0"
 repository = "https://github.com/ffplayout/ffplayout"
 authors = ["Jonathan Baecker <jonbae77@gmail.com>"]
