@@ -1009,7 +1009,7 @@ pub mod mock_time {
     use std::cell::RefCell;
 
     thread_local! {
-        static DATE_TIME_DIFF: RefCell<Option<TimeDelta>> = RefCell::new(None);
+        static DATE_TIME_DIFF: RefCell<Option<TimeDelta>> = const { RefCell::new(None) };
     }
 
     pub fn time_now() -> DateTime<Local> {

@@ -130,12 +130,12 @@ pub async fn delete_playlist(
 
     if playlist_path.is_file() {
         match fs::remove_file(playlist_path) {
-            Ok(_) => return Ok(format!("Delete playlist from {date} success!")),
+            Ok(_) => Ok(format!("Delete playlist from {date} success!")),
             Err(e) => {
                 error!("{e}");
-                return Err(ServiceError::InternalServerError);
+                Err(ServiceError::InternalServerError)
             }
-        };
+        }
     } else {
         Ok(format!("No playlist to delete on: {date}"))
     }
