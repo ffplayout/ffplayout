@@ -37,6 +37,8 @@ logging:
         'ffmpeg_level/ingest_level' can be info, warning, error.
         'detect_silence' logs an error message if the audio line is silent for 15
         seconds during the validation process.
+        'ignore_lines' makes logging to ignore strings that contains matched lines,
+        in frontend is a semicolon separated list.
     log_to_file: true
     backup_count: 7
     local_time: true
@@ -46,6 +48,12 @@ logging:
     ffmpeg_level: error
     ingest_level: warning
     detect_silence: false
+    ignore_lines:
+        - P sub_mb_type 4 out of range at
+        - error while decoding MB
+        - negative number of zero coeffs at
+        - out of range intra chroma pred mode
+        - non-existing SPS 0 referenced in buffering period
 
 processing:
     help_text: Default processing for all clips, to have them unique. Mode can be playlist

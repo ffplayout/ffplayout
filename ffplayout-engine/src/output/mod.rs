@@ -45,6 +45,7 @@ pub fn player(
 ) {
     let config_clone = config.clone();
     let ff_log_format = format!("level+{}", config.logging.ffmpeg_level.to_lowercase());
+    let ignore_enc = config.logging.ignore_lines.clone();
     let mut buffer = [0; 65088];
     let mut live_on = false;
     let playlist_init = playout_stat.list_init.clone();
@@ -73,7 +74,8 @@ pub fn player(
     let enc_p_ctl = proc_control.clone();
 
     // spawn a thread to log ffmpeg output error messages
-    let error_encoder_thread = thread::spawn(move || stderr_reader(enc_err, Encoder, enc_p_ctl));
+    let error_encoder_thread =
+        thread::spawn(move || stderr_reader(enc_err, ignore_enc, Encoder, enc_p_ctl));
 
     let proc_control_c = proc_control.clone();
     let mut ingest_receiver = None;
@@ -87,6 +89,7 @@ pub fn player(
 
     'source_iter: for node in node_sources {
         *play_control.current_media.lock().unwrap() = Some(node.clone());
+        let ignore_dec = config.logging.ignore_lines.clone();
 
         if proc_control.is_terminated.load(Ordering::SeqCst) {
             debug!("Playout is terminated, break out from source loop");
@@ -185,7 +188,7 @@ pub fn player(
         let dec_p_ctl = proc_control.clone();
 
         let error_decoder_thread =
-            thread::spawn(move || stderr_reader(dec_err, Decoder, dec_p_ctl));
+            thread::spawn(move || stderr_reader(dec_err, ignore_dec, Decoder, dec_p_ctl));
 
         loop {
             // when server is running, read from it

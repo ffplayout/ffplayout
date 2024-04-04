@@ -229,6 +229,7 @@ pub struct Logging {
     pub ingest_level: Option<String>,
     #[serde(default)]
     pub detect_silence: bool,
+    pub ignore_lines: Vec<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

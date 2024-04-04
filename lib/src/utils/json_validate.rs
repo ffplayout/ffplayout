@@ -95,6 +95,11 @@ fn check_media(
         let line = line?;
 
         if !FFMPEG_IGNORE_ERRORS.iter().any(|i| line.contains(*i))
+            && !config
+                .logging
+                .ignore_lines
+                .iter()
+                .any(|i| line.contains(&*i))
             && (line.contains("[error]") || line.contains("[fatal]"))
         {
             let log_line = line.replace("[error] ", "").replace("[fatal] ", "");
