@@ -52,6 +52,13 @@
                                     :id="name"
                                     v-model="item[name]"
                                 />
+                                <input
+                                    v-else-if="name === 'ignore_lines'"
+                                    type="text"
+                                    class="form-control"
+                                    :id="name"
+                                    v-model="formatIgnoreLines"
+                                />
                                 <input v-else type="text" class="form-control" :id="name" v-model="item[name]" />
                             </div>
                         </div>
@@ -102,6 +109,16 @@ const indexStore = useIndex()
 const contentType = { 'content-type': 'application/json;charset=UTF-8' }
 
 const restartModal = ref()
+
+const formatIgnoreLines = computed({
+    get() {
+        return configStore.configPlayout.logging.ignore_lines.join(';')
+    },
+
+    set(value) {
+        configStore.configPlayout.logging.ignore_lines = value.split(';')
+    }
+})
 
 async function onSubmitPlayout() {
     const update = await configStore.setPlayoutConfig(configStore.configPlayout)
