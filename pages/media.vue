@@ -514,12 +514,12 @@ async function deleteFileOrFolder() {
     })
         .then(async (response) => {
             if (response.status !== 200) {
-                indexStore.msgAlert('alert-danger', `${await response.text()}`, 5)
+                indexStore.msgAlert('alert-error', `${await response.text()}`, 5)
             }
             getPath(mediaStore.folderTree.source)
         })
         .catch((e) => {
-            indexStore.msgAlert('alert-danger', `Delete error: ${e}`, 5)
+            indexStore.msgAlert('alert-error', `Delete error: ${e}`, 5)
         })
 }
 
@@ -543,7 +543,7 @@ async function onSubmitRenameFile(evt: any) {
             getPath(mediaStore.folderTree.source)
         })
         .catch((e) => {
-            indexStore.msgAlert('alert-danger', `Delete error: ${e}`, 3)
+            indexStore.msgAlert('alert-error', `Delete error: ${e}`, 3)
         })
 
     renameOldName.value = ''
@@ -581,8 +581,8 @@ async function onSubmitCreateFolder(evt: any) {
             indexStore.msgAlert('alert-success', 'Folder create done...', 2)
         })
         .catch((e: string) => {
-            indexStore.msgAlert('alert-danger', `Folder create error: ${e}`, 3)
-            indexStore.alertVariant = 'alert-danger'
+            indexStore.msgAlert('alert-error', `Folder create error: ${e}`, 3)
+            indexStore.alertVariant = 'alert-error'
         })
 
     folderName.value = {} as Folder
@@ -624,7 +624,7 @@ async function upload(file: any): Promise<null | undefined> {
         }
 
         xhr.value.upload.onerror = () => {
-            indexStore.msgAlert('alert-danger', `Upload error: ${xhr.value.status}`, 3)
+            indexStore.msgAlert('alert-error', `Upload error: ${xhr.value.status}`, 3)
 
             resolve(undefined)
         }

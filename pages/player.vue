@@ -1116,7 +1116,7 @@ async function onSubmitImport(evt: any) {
             playlistStore.getPlaylist(listDate.value)
         })
         .catch((e: string) => {
-            indexStore.msgAlert('alert-danger', e, 4)
+            indexStore.msgAlert('alert-error', e, 4)
         })
 
     playlistIsLoading.value = false
@@ -1155,7 +1155,7 @@ async function generatePlaylist() {
             indexStore.msgAlert('alert-success', 'Generate Playlist done...', 2)
         })
         .catch((e: any) => {
-            indexStore.msgAlert('alert-danger', e.data ? e.data : e, 4)
+            indexStore.msgAlert('alert-error', e.data ? e.data : e, 4)
         })
 
     // reset selections
@@ -1194,7 +1194,7 @@ async function savePlaylist(saveDate: string) {
             if (e.status === 409) {
                 indexStore.msgAlert('alert-warning', e.data, 2)
             } else {
-                indexStore.msgAlert('alert-danger', e, 4)
+                indexStore.msgAlert('alert-error', e, 4)
             }
         })
 }

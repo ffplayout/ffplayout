@@ -1,37 +1,31 @@
 <template>
-    <main>
-        <slot />
-        <div
-            v-if="indexStore.showAlert"
-            class="alert show alert-dismissible fade media-alert position-fixed"
-            :class="indexStore.alertVariant"
-            role="alert"
-        >
-            {{ indexStore.alertMsg }}
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close" @click="indexStore.showAlert=false"></button>
+    <div class="min-h-screen bg-base-200">
+        <div v-if="authStore.isLogin && route.name !== 'index'">
+            <Menu />
         </div>
-    </main>
+
+        <main class="h-[calc(100%-52px)]">
+            <slot />
+        </main>
+
+        <Alert />
+    </div>
 </template>
 
 <script setup lang="ts">
-const { $bootstrap } = useNuxtApp()
 const configStore = useConfig()
-const indexStore = useIndex()
+const authStore = useAuth()
 
-useHead({
-    htmlAttrs: {
-        lang: 'en',
-        "data-bs-theme": "dark"
-    }
-})
+const route = useRoute()
+
+console.log(route.name)
 
 onMounted(() => {
     // @ts-ignore
-    new $bootstrap.Tooltip(document.body, {
-        selector: "[data-tooltip=tooltip]",
-        container: "body"
-    })
+    // new $bootstrap.Tooltip(document.body, {
+    //     selector: "[data-tooltip=tooltip]",
+    //     container: "body"
+    // })
 })
 await configStore.nuxtClientInit()
 </script>
-

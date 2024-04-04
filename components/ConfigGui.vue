@@ -1,91 +1,86 @@
 <template>
-    <div>
-        <div class="container">
-            <h2 class="pb-4 pt-3">Channel Configuration</h2>
-            <div class="w-100" style="height: 43px">
-                <div class="float-end">
-                    <button class="btn btn-primary" @click="addChannel()">Add new Channel</button>
-                </div>
-            </div>
-            <form
-                v-if="configStore.configGui && configStore.configGui[configStore.configID]"
-                @submit.prevent="onSubmitGui"
-            >
-                <div class="mb-3 row">
-                    <label for="configName" class="col-sm-2 col-form-label">Name</label>
-                    <div class="col-sm-10">
-                        <input
-                            type="text"
-                            class="form-control"
-                            id="configName"
-                            v-model="configStore.configGui[configStore.configID].name"
-                        />
-                    </div>
-                </div>
-                <div class="mb-3 row">
-                    <label for="configUrl" class="col-sm-2 col-form-label">Preview URL</label>
-                    <div class="col-sm-10">
-                        <input
-                            type="text"
-                            class="form-control"
-                            id="configUrl"
-                            v-model="configStore.configGui[configStore.configID].preview_url"
-                        />
-                    </div>
-                </div>
-                <div class="mb-3 row">
-                    <label for="configPath" class="col-sm-2 col-form-label">Config Path</label>
-                    <div class="col-sm-10">
-                        <input
-                            type="text"
-                            class="form-control"
-                            id="configPath"
-                            v-model="configStore.configGui[configStore.configID].config_path"
-                        />
-                    </div>
-                </div>
-                <div class="mb-3 row">
-                    <label for="configExtensions" class="col-sm-2 col-form-label">Extra Extensions</label>
-                    <div class="col-sm-10">
-                        <input
-                            type="text"
-                            class="form-control"
-                            id="configExtensions"
-                            v-model="configStore.configGui[configStore.configID].extra_extensions"
-                        />
-                    </div>
-                </div>
-                <div class="mb-3 row">
-                    <label for="configService" class="col-sm-2 col-form-label">Service</label>
-                    <div class="col-sm-10">
-                        <input
-                            type="text"
-                            class="form-control"
-                            id="configService"
-                            v-model="configStore.configGui[configStore.configID].service"
-                            disabled
-                        />
-                    </div>
-                </div>
-                <div class="row">
-                    <div class="col-1" style="min-width: 158px">
-                        <div class="btn-group">
-                            <button class="btn btn-primary" type="submit">Save</button>
-                            <button
-                                class="btn btn-danger"
-                                v-if="
-                                    configStore.configGui.length > 1 &&
-                                    configStore.configGui[configStore.configID].id > 1
-                                "
-                                @click="deleteChannel()"
-                            >
-                                Delete
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </form>
+    <div class="w-full max-w-[800px]">
+        <h2 class="pt-3 text-3xl">Channel Configuration</h2>
+        <div class="w-full flex justify-end my-4">
+            <button class="btn btn-sm btn-primary" @click="addChannel()">Add new Channel</button>
         </div>
+        <form
+            v-if="configStore.configGui && configStore.configGui[configStore.configID]"
+            @submit.prevent="onSubmitGui"
+            class="w-full"
+        >
+            <label class="form-control w-full">
+                <div class="label">
+                    <span class="label-text">Name</span>
+                </div>
+                <input
+                    type="text"
+                    placeholder="Type here"
+                    class="input input-bordered w-full"
+                    v-model="configStore.configGui[configStore.configID].name"
+                />
+            </label>
+
+            <label class="form-control w-full mt-5">
+                <div class="label">
+                    <span class="label-text">Preview URL</span>
+                </div>
+                <input
+                    type="text"
+                    placeholder="Type here"
+                    class="input input-bordered w-full"
+                    v-model="configStore.configGui[configStore.configID].preview_url"
+                />
+            </label>
+
+            <label class="form-control w-full mt-5">
+                <div class="label">
+                    <span class="label-text">Config Path</span>
+                </div>
+                <input
+                    type="text"
+                    placeholder="Type here"
+                    class="input input-bordered w-full"
+                    v-model="configStore.configGui[configStore.configID].config_path"
+                />
+            </label>
+
+            <label class="form-control w-full mt-5">
+                <div class="label">
+                    <span class="label-text">Extra Extensions</span>
+                </div>
+                <input
+                    type="text"
+                    placeholder="Type here"
+                    class="input input-bordered w-full"
+                    v-model="configStore.configGui[configStore.configID].extra_extensions"
+                />
+            </label>
+
+            <label class="form-control w-full mt-5">
+                <div class="label">
+                    <span class="label-text">Service</span>
+                </div>
+                <input
+                    type="text"
+                    placeholder="Type here"
+                    class="input input-bordered w-full"
+                    v-model="configStore.configGui[configStore.configID].service"
+                    disabled
+                />
+            </label>
+
+            <div class="join mt-4">
+                <button class="join-item btn btn-primary" type="submit">Save</button>
+                <button
+                    class="join-item btn btn-primary"
+                    v-if="configStore.configGui.length > 1 && configStore.configGui[configStore.configID].id > 1"
+                    @click="deleteChannel()"
+                >
+                    Delete
+                </button>
+            </div>
+        </form>
     </div>
 </template>
 
@@ -121,7 +116,7 @@ async function onSubmitGui() {
     if (update.status) {
         indexStore.msgAlert('alert-success', 'Update GUI config success!', 2)
     } else {
-        indexStore.msgAlert('alert-danger', 'Update GUI config failed!', 2)
+        indexStore.msgAlert('alert-error', 'Update GUI config failed!', 2)
     }
 }
 
@@ -147,7 +142,7 @@ async function deleteChannel() {
     if (response.status === 200) {
         indexStore.msgAlert('alert-success', 'Delete GUI config success!', 2)
     } else {
-        indexStore.msgAlert('alert-danger', 'Delete GUI config failed!', 2)
+        indexStore.msgAlert('alert-error', 'Delete GUI config failed!', 2)
     }
 }
 </script>

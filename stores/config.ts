@@ -74,7 +74,7 @@ export const useConfig = defineStore('config', {
                         },
                     ]
 
-                    indexStore.msgAlert('alert-danger', e, 3)
+                    indexStore.msgAlert('alert-error', e, 3)
                 })
         },
 
@@ -143,7 +143,7 @@ export const useConfig = defineStore('config', {
                     this.configPlayout = data
                 })
                 .catch(() => {
-                    indexStore.msgAlert('alert-danger', 'No playout config found!', 3)
+                    indexStore.msgAlert('alert-error', 'No playout config found!', 3)
                 })
         },
 

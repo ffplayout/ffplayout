@@ -352,7 +352,7 @@ async function savePreset() {
         if (response.status === 200) {
             indexStore.msgAlert('alert-success', 'Save Preset done!', 2)
         } else {
-            indexStore.msgAlert('alert-danger', 'Save Preset failed!', 2)
+            indexStore.msgAlert('alert-error', 'Save Preset failed!', 2)
         }
     }
 }
@@ -389,7 +389,7 @@ async function createNewPreset() {
         indexStore.msgAlert('alert-success', 'Save Preset done!', 2)
         getPreset(-1)
     } else {
-        indexStore.msgAlert('alert-danger', 'Save Preset failed!', 2)
+        indexStore.msgAlert('alert-error', 'Save Preset failed!', 2)
     }
 }
 
@@ -427,7 +427,7 @@ async function submitMessage() {
     if (response.status === 200) {
         indexStore.msgAlert('alert-success', 'Sending success...', 2)
     } else {
-        indexStore.msgAlert('alert-danger', 'Sending failed...', 2)
+        indexStore.msgAlert('alert-error', 'Sending failed...', 2)
     }
 }
 </script>

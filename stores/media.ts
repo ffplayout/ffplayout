@@ -32,7 +32,7 @@ export const useMedia = defineStore('media', {
                     if (response.status === 200) {
                         return response.json()
                     } else {
-                        indexStore.msgAlert('alert-danger', 'Storage not exist!', 3)
+                        indexStore.msgAlert('alert-error', 'Storage not exist!', 3)
 
                         return {
                             source: '',

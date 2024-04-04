@@ -45,8 +45,20 @@ export default defineNuxtConfig({
         },
     },
 
-    modules: ['@pinia/nuxt', '@vueuse/nuxt'],
+    modules: ['@nuxtjs/color-mode', '@pinia/nuxt', '@vueuse/nuxt', '@nuxtjs/tailwindcss'],
     css: ['@/assets/scss/main.scss'],
+
+    colorMode: {
+        preference: 'dark', // default value of $colorMode.preference
+        fallback: 'system', // fallback value if not system preference found
+        hid: 'nuxt-color-mode-script',
+        globalName: '__NUXT_COLOR_MODE__',
+        componentName: 'ColorScheme',
+        classPrefix: '',
+        classSuffix: '',
+        dataValue: 'theme',
+        storageKey: 'theme',
+    },
 
     vite: {
         css: {

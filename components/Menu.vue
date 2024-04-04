@@ -1,72 +1,87 @@
 <template>
-    <div>
-        <div class="menu">
-            <nav class="navbar navbar-expand-sm fixed-top custom-nav">
-                <div class="container-fluid">
-                    <NuxtLink class="navbar-brand p-2" href="/"
-                        ><img
-                            src="~/assets/images/ffplayout-small.png"
-                            class="img-fluid"
-                            alt="Logo"
-                            width="30"
-                            height="30"
-                    /></NuxtLink>
-                    <button
-                        class="navbar-toggler"
-                        type="button"
-                        data-bs-toggle="collapse"
-                        data-bs-target="#navbarNavDropdown"
-                        aria-controls="navbarNavDropdown"
-                        aria-expanded="false"
-                        aria-label="Toggle navigation"
+    <div class="navbar bg-base-100 min-h-[52px] p-0">
+        <NuxtLink class="navbar-brand p-2" href="/">
+            <img src="~/assets/images/ffplayout-small.png" class="img-fluid" alt="Logo" width="30" height="30" />
+        </NuxtLink>
+        <div class="navbar-end w-1/5 grow">
+            <div class="dropdown dropdown-end z-50">
+                <div tabindex="0" role="button" class="btn btn-ghost md:hidden">
+                    <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        class="h-5 w-5"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
                     >
-                        <span class="navbar-toggler-icon"> </span>
-                    </button>
-                    <div class="collapse navbar-collapse justify-content-end" id="navbarNavDropdown">
-                        <ul class="navbar-nav">
-                            <li class="nav-item">
-                                <NuxtLink class="btn btn-primary btn-sm" to="/">Home</NuxtLink>
-                            </li>
-                            <li class="nav-item">
-                                <NuxtLink class="btn btn-primary btn-sm" to="/player">Player</NuxtLink>
-                            </li>
-                            <li class="nav-item">
-                                <NuxtLink class="btn btn-primary btn-sm" to="/media">Media</NuxtLink>
-                            </li>
-                            <li class="nav-item">
-                                <NuxtLink class="btn btn-primary btn-sm" to="/message">Message</NuxtLink>
-                            </li>
-                            <li class="nav-item">
-                                <NuxtLink class="btn btn-primary btn-sm" to="/logging">Logging</NuxtLink>
-                            </li>
-                            <li v-if="authStore.role.toLowerCase() == 'admin'" class="nav-item">
-                                <NuxtLink class="btn btn-primary btn-sm" to="/configure">Configure</NuxtLink>
-                            </li>
-                            <li v-if="configStore.configGui.length > 1" class="nav-item dropdown">
-                                &nbsp;
-                                <a
-                                    class="btn btn-primary btn-sm dropdown-toggle"
-                                    href="#"
-                                    role="button"
-                                    data-bs-toggle="dropdown"
-                                    aria-expanded="false"
-                                >
-                                    {{ configStore.configGui[configStore.configID].name }}
-                                </a>
-                                <ul class="dropdown-menu dropdown-menu-dark dropdown-menu-end">
-                                    <li v-for="(channel, index) in configStore.configGui" :key="index">
+                        <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M4 6h16M4 12h8m-8 6h16"
+                        />
+                    </svg>
+                </div>
+                <ul class="menu menu-sm dropdown-content mt-1 z-[1] p-2 shadow bg-base-100 rounded-box w-52">
+                    <li v-for="item in menuItems" :key="item.name" class="bg-base-100 rounded-md">
+                        <details v-if="item.name === 'channel' && configStore.configGui.length > 1">
+                            <summary>
+                                <NuxtLink :to="item.link" class="h-[19px] text-base">
+                                    <span>
+                                        {{ item.name }}
+                                    </span>
+                                </NuxtLink>
+                            </summary>
+                            <ul class="p-2">
+                                <li v-for="(channel, index) in configStore.configGui" :key="index">
+                                    <span>
                                         <a class="dropdown-item" @click="selectChannel(index)">{{ channel.name }}</a>
-                                    </li>
-                                </ul>
-                                &nbsp;
-                            </li>
-                            <li class="nav-item">
-                                <a class="btn btn-primary btn-sm" @click="logout()">Logout</a>
+                                    </span>
+                                </li>
+                            </ul>
+                        </details>
+                        <NuxtLink v-else :to="item.link" class="h-[27px] text-base" exactActiveClass="is-active">
+                            <span>
+                                {{ item.name }}
+                            </span>
+                        </NuxtLink>
+                    </li>
+                    <li class="bg-base-100 rounded-md">
+                        <button class="h-[27px]" exactActiveClass="is-active" @click="logout()">Logout</button>
+                    </li>
+                </ul>
+            </div>
+        </div>
+        <div class="navbar-end hidden md:flex w-4/5 min-w-[600px]">
+            <ul class="menu menu-sm menu-horizontal px-1">
+                <li v-for="item in menuItems" :key="item.name" class="bg-base-100 rounded-md p-0">
+                    <details
+                        v-if="item.name === 'channel' && configStore.configGui.length > 1"
+                        tabindex="0"
+                        @focusout="closeDropdown"
+                    >
+                        <summary>
+                            <div class="h-[19px] text-base" activeClass="is-active">
+                                <span>
+                                    {{ item.name }}
+                                </span>
+                            </div>
+                        </summary>
+                        <ul class="p-2 bg-base-100 rounded-md !mt-1 w-36" tabindex="0">
+                            <li v-for="(channel, index) in configStore.configGui" :key="index">
+                                <a class="dropdown-item" @click="selectChannel(index)">{{ channel.name }}</a>
                             </li>
                         </ul>
-                    </div>
-                </div>
-            </nav>
+                    </details>
+                    <NuxtLink v-else :to="item.link" class="px-2 h-[27px] relative text-base" activeClass="is-active">
+                        <span>
+                            {{ item.name }}
+                        </span>
+                    </NuxtLink>
+                </li>
+                <li class="bg-base-100 rounded-md p-0">
+                    <button class="h-[27px] pt-[6px]" @click="logout()">Logout</button>
+                </li>
+            </ul>
         </div>
     </div>
 </template>
@@ -75,6 +90,22 @@
 const authStore = useAuth()
 const configStore = useConfig()
 const router = useRouter()
+
+const menuItems = ref([
+    { name: 'Home', link: '/' },
+    { name: 'Player', link: '/player' },
+    { name: 'Media', link: '/media' },
+    { name: 'Message', link: '/message' },
+    { name: 'Logging', link: '/logging' },
+    { name: 'channel', link: '#' },
+    { name: 'Configure', link: '/configure' },
+])
+
+function closeDropdown($event: any) {
+    setTimeout(() => {
+        $event.target.parentNode.removeAttribute('open')
+    }, 200)
+}
 
 function logout() {
     authStore.removeToken()
@@ -86,43 +117,16 @@ function selectChannel(index: number) {
     configStore.getPlayoutConfig()
 }
 </script>
-
-<style lang="scss">
-.menu {
-    width: 100%;
-    height: 60px;
-    margin: 0;
-
-    div {
-        padding: 0.3em;
-    }
-}
-
-.custom-nav {
-    background-color: $bg-primary;
-}
-
-.nav-item .btn {
+<style lang="scss" scoped>
+.is-active > span::after {
+    background: var(--my-accent);
     position: relative;
-}
-
-.router-link-exact-active::after {
-    background: $accent;
+    left: 0px;
     content: ' ';
-    width: 100%;
+    width: inherit;
     height: 2px;
-    position: absolute;
+    color: red;
     display: block;
-    left: 0;
-    right: 0;
-    border-radius: 1px;
-}
-
-@media (max-width: 575px) {
-    .nav-item .btn {
-        width: 100%;
-        text-align: left;
-        margin-bottom: .3em;
-    }
+    border-radius: 0.15em;
 }
 </style>

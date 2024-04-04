@@ -1,59 +1,61 @@
 <template>
-    <div class="row sys-container text-start bg-secondary border border-3 rounded">
-        <div class="col-6 bg-primary p-2 border-top border-start border-end fs-2">
+    <div class="grid grid-cols-1 xs:grid-cols-2 border-4 rounded-md border-primary text-left">
+        <div class="text-3xl flex items-center p-4 bg-base-100">
             {{ sysStat.system.name }} {{ sysStat.system.version }}
         </div>
-        <div class="col-6 p-2 border">
-            <div class="fs-4">CPU</div>
-            <div class="row">
-                <div class="col"><strong>Cores:</strong> {{ sysStat.cpu.cores }}</div>
-                <div class="col"><strong>Usage:</strong> {{ sysStat.cpu.usage.toFixed(2) }}%</div>
+        <div class="p-4 border border-primary">
+            <div class="text-xl">CPU</div>
+            <div class="grid grid-cols-2">
+                <div><strong>Cores:</strong> {{ sysStat.cpu.cores }}</div>
+                <div><strong>Usage:</strong> {{ sysStat.cpu.usage.toFixed(2) }}%</div>
             </div>
         </div>
-        <div v-if="sysStat.system.kernel" class="col-6 bg-primary border-start border-end border-bottom">
+        <div v-if="sysStat.system.kernel" class="p-4 bg-base-100">
             {{ sysStat.system.kernel }} <br />
-            <span v-if="sysStat.system.ffp_version"><strong>ffplayout version:</strong> {{ sysStat.system.ffp_version }}</span>
+            <span v-if="sysStat.system.ffp_version"
+                ><strong>ffplayout version:</strong> {{ sysStat.system.ffp_version }}</span
+            >
         </div>
-        <div class="col-6 p-2 border">
-            <div class="fs-4">Load</div>
-            <div class="row">
-                <div class="col">{{ sysStat.load.one }}</div>
-                <div class="col">{{ sysStat.load.five }}</div>
-                <div class="col">{{ sysStat.load.fifteen }}</div>
+        <div class="p-4 border border-primary">
+            <div class="text-xl">Load</div>
+            <div class="grid grid-cols-3">
+                <div>{{ sysStat.load.one }}</div>
+                <div>{{ sysStat.load.five }}</div>
+                <div>{{ sysStat.load.fifteen }}</div>
             </div>
         </div>
-        <div class="col-6 border">
-            <div class="fs-4">Memory</div>
-            <div class="row">
-                <div class="col"><strong>Total:</strong> {{ fileSize(sysStat.memory.total) }}</div>
-                <div class="col"><strong>Usage:</strong> {{ fileSize(sysStat.memory.used) }}</div>
+        <div class="p-4 border border-primary">
+            <div class="text-xl">Memory</div>
+            <div class="grid grid-cols-2">
+                <div><strong>Total:</strong> {{ fileSize(sysStat.memory.total) }}</div>
+                <div><strong>Usage:</strong> {{ fileSize(sysStat.memory.used) }}</div>
             </div>
         </div>
-        <div class="col-6 p-2 border">
-            <div class="fs-4">Swap</div>
-            <div class="row">
-                <div class="col"><strong>Total:</strong> {{ fileSize(sysStat.swap.total) }}</div>
-                <div class="col"><strong>Usage:</strong> {{ fileSize(sysStat.swap.used) }}</div>
+        <div class="p-4 border border-primary">
+            <div class="text-xl">Swap</div>
+            <div class="grid grid-cols-2">
+                <div><strong>Total:</strong> {{ fileSize(sysStat.swap.total) }}</div>
+                <div><strong>Usage:</strong> {{ fileSize(sysStat.swap.used) }}</div>
             </div>
         </div>
-        <div class="col-6 p-2 border">
-            <div class="fs-4">
+        <div class="p-4 border border-primary">
+            <div class="text-xl">
                 Network <span v-if="sysStat.network" class="fs-6">{{ sysStat.network?.name }}</span>
             </div>
-            <div class="row">
-                <div class="col-6"><strong>In:</strong> {{ fileSize(sysStat.network?.current_in) }}</div>
-                <div class="col-6"><strong>Out:</strong> {{ fileSize(sysStat.network?.current_out) }}</div>
-                <div class="col-6">{{ fileSize(sysStat.network?.total_in) }}</div>
-                <div class="col-6">{{ fileSize(sysStat.network?.total_out) }}</div>
+            <div class="grid grid-cols-2">
+                <div><strong>In:</strong> {{ fileSize(sysStat.network?.current_in) }}</div>
+                <div><strong>Out:</strong> {{ fileSize(sysStat.network?.current_out) }}</div>
+                <div>{{ fileSize(sysStat.network?.total_in) }}</div>
+                <div>{{ fileSize(sysStat.network?.total_out) }}</div>
             </div>
         </div>
-        <div v-if="sysStat.storage?.path" class="col-6 p-2 border">
-            <div class="fs-4">Storage</div>
+        <div v-if="sysStat.storage?.path" class="p-4 border border-primary">
+            <div class="text-xl">Storage</div>
             <div v-if="sysStat.storage"><strong>Device:</strong> {{ sysStat.storage?.path }}</div>
 
-            <div class="row" v-if="sysStat.storage">
-                <div class="col"><strong>Size:</strong> {{ fileSize(sysStat.storage?.total) }}</div>
-                <div class="col"><strong>Used:</strong> {{ fileSize(sysStat.storage?.used) }}</div>
+            <div class="grid grid-cols-2" v-if="sysStat.storage">
+                <div><strong>Size:</strong> {{ fileSize(sysStat.storage?.total) }}</div>
+                <div><strong>Used:</strong> {{ fileSize(sysStat.storage?.used) }}</div>
             </div>
         </div>
         <div v-else class="col-6 bg-primary p-2 border" />
@@ -87,7 +89,7 @@ onBeforeUnmount(() => {
 })
 
 async function status() {
-systemStatus()
+    systemStatus()
 
     async function setStatus(resolve: any) {
         /*
@@ -104,18 +106,12 @@ async function systemStatus() {
     const channel = configStore.configGui[configStore.configID].id
 
     if (!document?.hidden) {
-        await $fetch<SystemStatistics>(`/api/system/${channel}`, {
+        await $fetch(`/api/system/${channel}`, {
             method: 'GET',
             headers: { ...contentType, ...authStore.authHeader },
-        }).then((stat) => {
+        }).then((stat: SystemStatistics) => {
             sysStat.value = stat
         })
     }
 }
 </script>
-<style>
-.sys-container {
-    max-width: 640px;
-    min-height: 300px;
-}
-</style>

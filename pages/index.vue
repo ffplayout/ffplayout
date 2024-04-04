@@ -1,75 +1,67 @@
 <template>
-    <div>
-        <div v-if="authStore.isLogin">
-            <div class="container login-container">
-                <div>
-                    <SystemStats v-if="configStore.configGui.length > 0" class="mx-auto" />
-                    <div class="text-center mt-5">
-                        <div class="btn-group actions-grp btn-group-lg" role="group">
-                            <NuxtLink to="/player" class="btn btn-primary">Player</NuxtLink>
-                            <NuxtLink to="/media" class="btn btn-primary">Media</NuxtLink>
-                            <NuxtLink to="/message" class="btn btn-primary">Message</NuxtLink>
-                            <NuxtLink to="logging" class="btn btn-primary">Logging</NuxtLink>
-                            <NuxtLink v-if="authStore.role.toLowerCase() == 'admin'" to="/configure" class="btn btn-primary"> Configure </NuxtLink>
-                            <button class="btn btn-primary" @click="logout()">Logout</button>
-                        </div>
-                    </div>
-                </div>
+    <div class="w-full h-screen flex justify-center items-center">
+        <div v-if="authStore.isLogin" class="text-center w-full max-w-[700px] p-5">
+            <SystemStats v-if="configStore.configGui.length > 0" />
+            <div class="flex flex-wrap justify-center gap-1 xs:gap-0 xs:join mt-5">
+                <NuxtLink to="/player" class="btn join-item btn-primary">Player</NuxtLink>
+                <NuxtLink to="/media" class="btn join-item btn-primary">Media</NuxtLink>
+                <NuxtLink to="/message" class="btn join-item btn-primary">Message</NuxtLink>
+                <NuxtLink to="logging" class="btn join-item btn-primary">Logging</NuxtLink>
+                <NuxtLink v-if="authStore.role.toLowerCase() == 'admin'" to="/configure" class="btn join-item btn-primary">
+                    Configure
+                </NuxtLink>
+                <button class="btn join-item btn-primary" @click="logout()">Logout</button>
             </div>
         </div>
-        <div v-else>
-            <div class="logout-div" />
-            <div class="container login-container">
-                <div>
-                    <div class="text-center mb-5">
-                        <h1>ffplayout</h1>
-                    </div>
+        <div v-else class="w-96 flex flex-col justify-center items-center">
+            <h1 class="text-8xl">ffplayout</h1>
 
-                    <form class="login-form" @submit.prevent="login">
-                        <div id="input-group-1" class="mb-3">
-                            <label for="input-user" class="form-label">User:</label>
-                            <input
-                                type="text"
-                                id="input-user"
-                                class="form-control"
-                                v-model="formUsername"
-                                aria-describedby="Username"
-                                required
-                            />
+
+            <form class="mt-10" @submit.prevent="login">
+                <input
+                    type="text"
+                    v-model="formUsername"
+                    placeholder="Username"
+                    class="input input-bordered w-full"
+                    required
+                />
+
+                <input
+                    type="password"
+                    v-model="formPassword"
+                    placeholder="Password"
+                    class="input input-bordered w-full mt-5"
+                    required
+                />
+
+                <div class="w-full mt-4 grid grid-flow-row-dense grid-cols-12 grid-rows-1 gap-2">
+                    <div class="col-span-3">
+                        <button type="submit" class="btn btn-primary">Login</button>
+                    </div>
+                    <div class="col-span-12 sm:col-span-9">
+                        <div
+                            v-if="showLoginError"
+                            role="alert"
+                            class="alert alert-error w-auto rounded z-2 h-12 p-[0.7rem]"
+                        >
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                class="stroke-current shrink-0 h-6 w-6"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                            >
+                                <path
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    stroke-width="2"
+                                    d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"
+                                />
+                            </svg>
+                            <span>{{ formError }}</span>
                         </div>
-                        <div class="mb-3">
-                            <label for="input-pass" class="form-label">Password:</label>
-                            <input
-                                type="password"
-                                id="input-pass"
-                                class="form-control"
-                                v-model="formPassword"
-                                required
-                            />
-                        </div>
-                        <div class="row">
-                            <div class="col-3">
-                                <button class="btn btn-primary" type="submit">Login</button>
-                            </div>
-                            <div class="col-9">
-                                <div
-                                    class="alert alert-danger alert-dismissible fade login-alert"
-                                    :class="{ show: showError }"
-                                    role="alert"
-                                >
-                                    {{ formError }}
-                                    <button
-                                        type="button"
-                                        class="btn-close"
-                                        data-bs-dismiss="alert"
-                                        aria-label="Close"
-                                    ></button>
-                                </div>
-                            </div>
-                        </div>
-                    </form>
+                    </div>
                 </div>
-            </div>
+            </form>
         </div>
     </div>
 </template>
@@ -79,7 +71,7 @@ const authStore = useAuth()
 const configStore = useConfig()
 
 const formError = ref('')
-const showError = ref(false)
+const showLoginError = ref(false)
 const formUsername = ref('')
 const formPassword = ref('')
 
@@ -95,7 +87,11 @@ async function login() {
 
         if (status === 401 || status === 400 || status === 403) {
             formError.value = 'Wrong User/Password!'
-            showError.value = true
+            showLoginError.value = true
+
+            setTimeout(() => {
+                showLoginError.value = false
+            }, 3000)
         }
 
         await configStore.nuxtClientInit()
@@ -112,33 +108,3 @@ async function logout() {
     }
 }
 </script>
-
-<style lang="scss">
-.login-container {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    height: 100vh;
-}
-
-.login-form {
-    min-width: 300px;
-}
-
-.login-alert {
-    padding: 0.4em;
-    --bs-alert-margin-bottom: 0;
-
-    .btn-close {
-        padding: 0.65rem 0.5rem;
-    }
-}
-
-@media (max-width: 380px) {
-    .actions-grp {
-        display: flex;
-        flex-direction: column;
-        margin: 0 2em 0 2em;
-    }
-}
-</style>
