@@ -1,124 +1,137 @@
 <template>
-    <div class="max-w-[1200px] pe-8">
+    <div class="w-full max-w-[800px] pe-8">
         <h2 class="pt-3 text-3xl">User Configuration</h2>
-        <div class="flex w-full mt-5">
-            <div class="col-sm-2"></div>
-            <div class="col-sm-4 ms-1">
-                <select class="form-select" v-model="selected" @change="onChange($event)">
+        <div class="flex w-full mb-5 mt-10">
+            <div class="grow">
+                <select class="select select-bordered w-full max-w-xs" v-model="selected" @change="onChange($event)">
                     <option v-for="item in users">{{ item.username }}</option>
                 </select>
             </div>
-            <div class="col px-0">
-                <div class="float-end">
-                    <button
-                        class="btn btn-primary me-2"
-                        title="Add new User"
-                        data-bs-toggle="modal"
-                        data-bs-target="#userModal"
-                    >
-                        Add User
-                    </button>
-                    <button class="btn btn-primary" @click="deleteUser()">Delete</button>
-                </div>
+            <div class="flex-none join">
+                <button class="join-item btn btn-primary" title="Add new User" @click="showUserModal = true">
+                    Add User
+                </button>
+                <button class="join-item btn btn-primary" title="Delete selected user" @click="deleteUser()">
+                    Delete
+                </button>
             </div>
         </div>
         <form v-if="configStore.configUser" @submit.prevent="onSubmitUser">
-            <div class="mb-3 row">
-                <label for="userName" class="col-sm-2 col-form-label">Username</label>
-                <div class="col-sm-10">
-                    <input
-                        type="text"
-                        class="form-control"
-                        id="userName"
-                        v-model="configStore.configUser.username"
-                        disabled
-                    />
+            <label class="form-control w-full max-w-md">
+                <div class="label">
+                    <span class="label-text">Username</span>
                 </div>
-            </div>
-            <div class="mb-3 row">
-                <label for="userMail" class="col-sm-2 col-form-label">mail</label>
-                <div class="col-sm-10">
-                    <input type="email" class="form-control" id="userMail" v-model="configStore.configUser.mail" />
+                <input
+                    type="text"
+                    placeholder="Name"
+                    class="input input-bordered w-full !bg-base-100"
+                    v-model="configStore.configUser.username"
+                    disabled
+                />
+            </label>
+
+            <label class="form-control w-full max-w-md mt-3">
+                <div class="label">
+                    <span class="label-text">Mail</span>
                 </div>
-            </div>
-            <div class="mb-3 row">
-                <label for="userPass1" class="col-sm-2 col-form-label">New Password</label>
-                <div class="col-sm-10">
-                    <input type="password" class="form-control" id="userPass1" v-model="newPass" />
+                <input
+                    type="email"
+                    placeholder="mail"
+                    class="input input-bordered w-full"
+                    v-model="configStore.configUser.mail"
+                />
+            </label>
+
+            <label class="form-control w-full max-w-md mt-3">
+                <div class="label">
+                    <span class="label-text">New Password</span>
                 </div>
-            </div>
-            <div class="mb-3 row">
-                <label for="userPass2" class="col-sm-2 col-form-label">Confirm Password</label>
-                <div class="col-sm-10">
-                    <input type="password" class="form-control" id="userPass2" v-model="confirmPass" />
+                <input
+                    type="password"
+                    placeholder="New password"
+                    class="input input-bordered w-full"
+                    v-model="newPass"
+                />
+            </label>
+
+            <label class="form-control w-full max-w-md mt-3">
+                <div class="label">
+                    <span class="label-text">Confirm Password</span>
                 </div>
-            </div>
-            <div class="row">
-                <div class="col-1" style="min-width: 85px">
-                    <button class="btn btn-primary" type="submit">Save</button>
-                </div>
+                <input
+                    type="password"
+                    placeholder="Confirm password"
+                    class="input input-bordered w-full"
+                    v-model="confirmPass"
+                />
+            </label>
+
+            <div>
+                <button class="btn btn-primary mt-5" type="submit">Save</button>
             </div>
         </form>
     </div>
 
-    <div id="userModal" ref="userModal" class="modal" tabindex="-1" aria-labelledby="userModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h1 class="modal-title fs-5" id="userModalLabel">Add User</h1>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cancel"></button>
+    <div
+        v-if="showUserModal"
+        class="z-50 fixed top-0 bottom-0 left-0 right-0 flex justify-center items-center bg-black/30"
+    >
+        <div class="flex flex-col bg-base-100 w-full max-w-[500px] h-[576px] rounded-md p-5 shadow-xl">
+            <div class="font-bold text-lg">Add user</div>
+
+            <form @reset="clearUser" @submit.prevent="addUser">
+                <label class="form-control w-full mt-7">
+                    <div class="label">
+                        <span class="label-text">Username</span>
+                    </div>
+                    <input type="text" placeholder="Name" class="input input-bordered w-full" v-model="user.username" />
+                </label>
+
+                <label class="form-control w-full mt-3">
+                    <div class="label">
+                        <span class="label-text">Mail</span>
+                    </div>
+                    <input type="email" placeholder="Mail" class="input input-bordered w-full" v-model="user.mail" />
+                </label>
+
+                <label class="form-control w-full mt-3">
+                    <div class="label">
+                        <span class="label-text">Password</span>
+                    </div>
+                    <input
+                        type="password"
+                        placeholder="Password"
+                        class="input input-bordered w-full"
+                        v-model="user.password"
+                    />
+                </label>
+
+                <label class="form-control w-full mt-3">
+                    <div class="label">
+                        <span class="label-text">Confirm Password</span>
+                    </div>
+                    <input
+                        type="password"
+                        placeholder="Password"
+                        class="input input-bordered w-full"
+                        v-model="user.confirm"
+                    />
+                </label>
+
+                <div class="form-control mt-3">
+                    <label class="label cursor-pointer w-20">
+                        <span class="label-text">Admin</span>
+                        <input type="checkbox" class="checkbox" v-model.number="user.admin" />
+                    </label>
                 </div>
-                <form @reset="clearUser" @submit.prevent="addUser">
-                    <div class="modal-body">
-                        <label for="name-input" class="form-label">Username</label>
-                        <input
-                            type="text"
-                            class="form-control"
-                            id="name-input"
-                            aria-describedby="Username"
-                            v-model.number="user.username"
-                            required
-                        />
-                        <label for="mail-input" class="form-label mt-2">Mail</label>
-                        <input
-                            type="email"
-                            class="form-control"
-                            id="mail-input"
-                            aria-describedby="Mail Address"
-                            v-model.number="user.mail"
-                            required
-                        />
-                        <label for="pass-input" class="form-label mt-2">Password</label>
-                        <input
-                            type="password"
-                            class="form-control"
-                            id="pass-input"
-                            aria-describedby="Password"
-                            v-model.string="user.password"
-                            required
-                        />
-                        <label for="confirm-input" class="form-label mt-2">Confirm Password</label>
-                        <input
-                            type="password"
-                            class="form-control"
-                            id="confirm-input"
-                            aria-describedby="Confirm Password"
-                            v-model.string="user.confirm"
-                            required
-                        />
-                        <div class="form-check mt-3">
-                            <input class="form-check-input" type="checkbox" id="isAdmin" v-model.number="user.admin" />
-                            <label class="form-check-label" for="isAdmin">Admin</label>
-                        </div>
+
+                <div class="flex justify-end mt-2">
+                    <div class="join">
+                        <button class="btn join-item" type="reset">Cancel</button>
+                        <button class="btn join-item" type="submit">Ok</button>
                     </div>
-                    <div class="modal-footer">
-                        <button type="reset" class="btn btn-primary" data-bs-dismiss="modal" aria-label="Cancel">
-                            Cancel
-                        </button>
-                        <button type="submit" class="btn btn-primary">Ok</button>
-                    </div>
-                </form>
-            </div>
+                </div>
+            </form>
         </div>
     </div>
 </template>
@@ -128,11 +141,9 @@ const authStore = useAuth()
 const configStore = useConfig()
 const indexStore = useIndex()
 
-const { $bootstrap } = useNuxtApp()
-
 const selected = ref(null)
 const users = ref([] as User[])
-const userModal = ref()
+const showUserModal = ref(false)
 const newPass = ref('')
 const confirmPass = ref('')
 
@@ -211,6 +222,8 @@ async function clearUser() {
     user.value.confirm = ''
     user.value.admin = false
     user.value.role_id = 2
+
+    showUserModal.value = false
 }
 
 async function addUser() {
@@ -223,9 +236,7 @@ async function addUser() {
     delete user.value.admin
 
     if (user.value.password === user.value.confirm) {
-        // @ts-ignore
-        const modal = $bootstrap.Modal.getOrCreateInstance(userModal.value)
-        modal.hide()
+        showUserModal.value = false
 
         authStore.inspectToken()
         const update = await configStore.addNewUser(user.value)

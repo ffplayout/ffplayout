@@ -23,13 +23,20 @@
                 </div>
                 <ul class="menu menu-sm dropdown-content mt-1 z-[1] p-2 shadow bg-base-100 rounded-box w-52">
                     <li v-for="item in menuItems" :key="item.name" class="bg-base-100 rounded-md">
-                        <details v-if="item.name === 'channel' && configStore.configGui.length > 1">
+                        <NuxtLink :to="item.link" class="h-[27px] text-base" exactActiveClass="is-active">
+                            <span>
+                                {{ item.name }}
+                            </span>
+                        </NuxtLink>
+                    </li>
+                    <li v-if="configStore.configGui.length > 1">
+                        <details>
                             <summary>
-                                <NuxtLink :to="item.link" class="h-[19px] text-base">
+                                <div class="h-[19px] text-base">
                                     <span>
-                                        {{ item.name }}
+                                        Channels
                                     </span>
-                                </NuxtLink>
+                                </div>
                             </summary>
                             <ul class="p-2">
                                 <li v-for="(channel, index) in configStore.configGui" :key="index">
@@ -39,11 +46,6 @@
                                 </li>
                             </ul>
                         </details>
-                        <NuxtLink v-else :to="item.link" class="h-[27px] text-base" exactActiveClass="is-active">
-                            <span>
-                                {{ item.name }}
-                            </span>
-                        </NuxtLink>
                     </li>
                     <li class="bg-base-100 rounded-md">
                         <button class="h-[27px]" exactActiveClass="is-active" @click="logout()">Logout</button>
@@ -54,15 +56,21 @@
         <div class="navbar-end hidden md:flex w-4/5 min-w-[600px]">
             <ul class="menu menu-sm menu-horizontal px-1">
                 <li v-for="item in menuItems" :key="item.name" class="bg-base-100 rounded-md p-0">
+                    <NuxtLink :to="item.link" class="px-2 h-[27px] relative text-base" activeClass="is-active">
+                        <span>
+                            {{ item.name }}
+                        </span>
+                    </NuxtLink>
+                </li>
+                <li v-if="configStore.configGui.length > 1">
                     <details
-                        v-if="item.name === 'channel' && configStore.configGui.length > 1"
                         tabindex="0"
                         @focusout="closeDropdown"
                     >
                         <summary>
-                            <div class="h-[19px] text-base" activeClass="is-active">
+                            <div class="h-[19px] text-base">
                                 <span>
-                                    {{ item.name }}
+                                    Channels
                                 </span>
                             </div>
                         </summary>
@@ -72,11 +80,6 @@
                             </li>
                         </ul>
                     </details>
-                    <NuxtLink v-else :to="item.link" class="px-2 h-[27px] relative text-base" activeClass="is-active">
-                        <span>
-                            {{ item.name }}
-                        </span>
-                    </NuxtLink>
                 </li>
                 <li class="bg-base-100 rounded-md p-0">
                     <button class="h-[27px] pt-[6px]" @click="logout()">Logout</button>
@@ -97,7 +100,6 @@ const menuItems = ref([
     { name: 'Media', link: '/media' },
     { name: 'Message', link: '/message' },
     { name: 'Logging', link: '/logging' },
-    { name: 'channel', link: '#' },
     { name: 'Configure', link: '/configure' },
 ])
 

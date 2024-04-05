@@ -1,14 +1,11 @@
 <template>
-    <div>
-        <Menu />
-        <div class="date-container">
-            <div class="date-div">
-                <input type="date" class="form-control" v-model="listDate" />
-            </div>
+    <div class="date-container">
+        <div class="date-div">
+            <input type="date" class="form-control" v-model="listDate" />
         </div>
-        <div class="log-container mt-2">
-            <div class="log-content" v-html="formatLog(currentLog)" />
-        </div>
+    </div>
+    <div class="log-container mt-2">
+        <div class="log-content" v-html="formatLog(currentLog)" />
     </div>
 </template>
 

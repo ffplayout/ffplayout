@@ -1,22 +1,22 @@
 <template>
     <div class="flex w-full h-full">
-        <div class="flex-none w-[70px] me-3 px-1 pt-7">
+        <div class="flex-none w-[70px] join join-vertical me-3 px-1 pt-7">
             <button
-                class="w-full btn btn-sm btn-primary duration-500"
+                class="join-item w-full btn btn-sm btn-primary duration-500"
                 :class="activeConf === 1 && 'btn-secondary'"
                 @click="activeConf = 1"
             >
                 GUI
             </button>
             <button
-                class="w-full btn btn-sm btn-primary mt-1 duration-500"
+                class="join-item w-full btn btn-sm btn-primary mt-1 duration-500"
                 :class="activeConf === 2 && 'btn-secondary'"
                 @click="activeConf = 2"
             >
                 Playout
             </button>
             <button
-                class="w-full btn btn-sm btn-primary mt-1 duration-500"
+                class="join-item w-full btn btn-sm btn-primary mt-1 duration-500"
                 :class="activeConf === 3 && 'btn-secondary'"
                 @click="activeConf = 3"
             >
