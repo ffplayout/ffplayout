@@ -64,7 +64,7 @@
                 <input
                     type="text"
                     placeholder="Type here"
-                    class="input input-bordered w-full"
+                    class="input input-bordered w-full !bg-base-100"
                     v-model="configStore.configGui[configStore.configID].service"
                     disabled
                 />
