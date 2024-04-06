@@ -18,8 +18,6 @@ const authStore = useAuth()
 
 const route = useRoute()
 
-console.log(route.name)
-
 onMounted(() => {
     // @ts-ignore
     // new $bootstrap.Tooltip(document.body, {

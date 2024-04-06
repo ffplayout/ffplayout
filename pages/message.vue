@@ -1,220 +1,220 @@
 <template>
-    <div>
-        <Menu />
-        <div class="container mt-5">
-            <div class="preset-div">
-                <div class="row">
-                    <div class="col">
-                        <select class="form-select" v-model="selected" @change="onChange($event)">
-                            <option v-for="item in presets">{{ item.name }}</option>
-                        </select>
-                    </div>
-                    <div class="col-2">
-                        <div class="btn-group" role="group">
-                            <button class="btn btn-primary" title="Save Preset" data-tooltip=tooltip @click="savePreset()">
-                                <i class="bi-cloud-upload" />
-                            </button>
-                            <button
-                                class="btn btn-primary"
-                                title="New Preset"
-                                data-tooltip=tooltip
-                                data-bs-toggle="modal"
-                                data-bs-target="#createModal"
-                            >
-                                <i class="bi-file-plus" />
-                            </button>
-                            <button
-                                class="btn btn-primary"
-                                title="Delete Preset"
-                                data-tooltip=tooltip
-                                data-bs-toggle="modal"
-                                data-bs-target="#deleteModal"
-                            >
-                                <i class="bi-file-minus" />
-                            </button>
-                        </div>
-                    </div>
+    <div class="flex flex-col items-center mt-10 px-8">
+        <div class="mt-2 w-full max-w-4xl">
+            <div class="flex max-w-md gap-4">
+                <div>
+                    <select
+                        class="select select-sm select-bordered w-full max-w-md"
+                        v-model="selected"
+                        @change="onChange($event)"
+                    >
+                        <option v-for="item in presets">{{ item.name }}</option>
+                    </select>
+                </div>
+                <div class="join">
+                    <button class="btn btn-sm join-item btn-primary" title="Save Preset" @click="savePreset()">
+                        <i class="bi-cloud-upload" />
+                    </button>
+                    <button class="btn btn-sm join-item btn-primary" title="New Preset" @click="showCreateModal = true">
+                        <i class="bi-file-plus" />
+                    </button>
+                    <button
+                        class="btn btn-sm join-item btn-primary"
+                        title="Delete Preset"
+                        @click="showDeleteModal = true"
+                    >
+                        <i class="bi-file-minus" />
+                    </button>
                 </div>
             </div>
 
-            <form @submit.prevent="submitMessage">
-                <textarea class="form-control message" v-model="form.text" rows="7" placeholder="Message" />
+            <form @submit.prevent="submitMessage" class="mt-6 w-full">
+                <textarea
+                    class="textarea textarea-bordered w-full"
+                    v-model="form.text"
+                    rows="4"
+                    placeholder="Message"
+                />
 
-                <div class="row mt-3">
-                    <div class="col">
+                <div class="mt-5 grid grid-cols-[auto_150px_150px] gap-4">
+                    <div class="grow">
                         <input
-                            class="form-control mt-1"
+                            class="input input-sm input-bordered w-full"
                             v-model="form.x"
                             type="text"
                             title="X Axis"
-                            data-tooltip=tooltip
                             placeholder="X"
                             required
                         />
                         <input
-                            class="form-control mt-2"
+                            class="input input-sm input-bordered w-full mt-6"
                             v-model="form.y"
                             type="text"
                             title="Y Axis"
-                            data-tooltip=tooltip
+                            data-tooltip="tooltip"
                             placeholder="Y"
                             required
                         />
-
-                        <div class="row mt-2">
-                            <div class="col">
-                                <label for="input-size">Size</label>
-                                <input
-                                    id="input-size"
-                                    class="form-control mt-2"
-                                    v-model="form.fontSize"
-                                    type="number"
-                                    required
-                                />
-                            </div>
-                            <div class="col">
-                                <label for="input-spacing">Spacing</label>
-                                <input
-                                    id="input-spacing"
-                                    class="form-control mt-2"
-                                    v-model="form.fontSpacing"
-                                    type="number"
-                                    required
-                                />
-                            </div>
-                        </div>
-
-                        <div class="row mt-2">
-                            <div class="col">
-                                <label for="input-color">Font Color</label>
-                                <input
-                                    id="input-color"
-                                    class="form-control mt-2"
-                                    v-model="form.fontColor"
-                                    type="color"
-                                    required
-                                />
-                            </div>
-                            <div class="col">
-                                <label for="input-alpha">Font Alpha</label>
-                                <input
-                                    id="input-alpha"
-                                    class="form-control mt-2"
-                                    v-model="form.fontAlpha"
-                                    type="number"
-                                    min="0"
-                                    max="1"
-                                    step="0.01"
-                                />
-                            </div>
-                        </div>
                     </div>
 
-                    <div class="col">
-                        <div class="form-check">
-                            <input id="input-box" type="checkbox" class="form-check-input" v-model="form.showBox" />
-                            <label for="input-box" class="form-check-label">Show Box</label>
+                    <div>
+                        <div class="form-control">
+                            <label class="label cursor-pointer p-0">
+                                <span class="label-text">Show Box</span>
+                                <input type="checkbox" v-model="form.showBox" class="checkbox checkbox-xs rounded-sm" />
+                            </label>
                         </div>
 
-                        <div class="row">
-                            <div class="col">
-                                <label for="input-box-color">Box Color</label>
-                                <input
-                                    id="input-box-color"
-                                    class="form-control mt-2"
-                                    v-model="form.boxColor"
-                                    type="color"
-                                    required
-                                />
+                        <label class="form-control w-full">
+                            <div class="label">
+                                <span class="label-text">Box Color</span>
                             </div>
-                            <div class="col">
-                                <label for="input-box-alpha" class="form-check-label">Box Alpha</label>
-                                <input
-                                    id="input-box-alpha"
-                                    class="form-control mt-2"
-                                    v-model="form.boxAlpha"
-                                    type="number"
-                                    min="0"
-                                    max="1"
-                                    step="0.01"
-                                />
-                            </div>
-                            <label for="input-border-w" class="form-check-label">Border Width</label>
                             <input
-                                id="input-border-w"
-                                class="form-control mt-2"
-                                v-model="form.border"
-                                type="number"
+                                type="color"
+                                class="input input-sm input-bordered w-full p-1"
+                                v-model="form.boxColor"
                                 required
                             />
-                            <label for="input-overall-alpha" class="form-check-label mt-2">Overall Alpha</label>
-                            <input
-                                id="input-overall-alpha"
-                                class="form-control mt-2"
-                                v-model="form.overallAlpha"
-                                type="text"
-                                required
-                            />
+                        </label>
+                    </div>
+                    <label class="form-control w-full mt-5">
+                        <div class="label">
+                            <span class="label-text">Box Alpha</span>
                         </div>
+                        <input
+                            type="number"
+                            min="0"
+                            max="1"
+                            step="0.01"
+                            class="input input-sm input-bordered w-full"
+                            v-model="form.boxAlpha"
+                            required
+                        />
+                    </label>
+                </div>
+                <div class="grid grid-cols-[150px_150px_auto] gap-4">
+                    <div>
+                        <label class="form-control w-full">
+                            <div class="label">
+                                <span class="label-text">Size</span>
+                            </div>
+                            <input
+                                type="number"
+                                class="input input-sm input-bordered w-full"
+                                v-model="form.fontSize"
+                                required
+                            />
+                        </label>
+
+                        <label class="form-control w-full mt-2">
+                            <div class="label">
+                                <span class="label-text">Font Color</span>
+                            </div>
+                            <input
+                                type="color"
+                                class="input input-sm input-bordered w-full p-1"
+                                v-model="form.fontColor"
+                                required
+                            />
+                        </label>
+                    </div>
+                    <div>
+                        <label class="form-control w-full">
+                            <div class="label">
+                                <span class="label-text">Spacing</span>
+                            </div>
+                            <input
+                                type="number"
+                                class="input input-sm input-bordered w-full"
+                                v-model="form.fontSpacing"
+                                required
+                            />
+                        </label>
+                        <label class="form-control w-full mt-2">
+                            <div class="label">
+                                <span class="label-text">Font Alpha</span>
+                            </div>
+                            <input
+                                type="number"
+                                class="input input-sm input-bordered w-full"
+                                v-model="form.fontAlpha"
+                                min="0"
+                                max="1"
+                                step="0.01"
+                                required
+                            />
+                        </label>
+                    </div>
+
+                    <div class="grow">
+                        <label class="form-control w-full">
+                            <div class="label">
+                                <span class="label-text">Overall Alpha</span>
+                            </div>
+                            <input
+                                type="text"
+                                class="input input-sm input-bordered w-full"
+                                v-model="form.overallAlpha"
+                                required
+                            />
+                        </label>
+                        <label class="form-control w-full max-w-[150px] mt-2">
+                            <div class="label">
+                                <span class="label-text">Border Width</span>
+                            </div>
+                            <input
+                                type="number"
+                                class="input input-sm input-bordered w-full"
+                                v-model="form.border"
+                                required
+                            />
+                        </label>
                     </div>
                 </div>
 
-                <div class="row mt-4">
-                    <div class="col sub-btn">
-                        <button class="btn btn-primary send-btn" type="submit">Send</button>
-                    </div>
+                <div class="mt-5">
+                    <button class="btn btn-primary send-btn" type="submit">Send</button>
                 </div>
             </form>
         </div>
+    </div>
 
-        <div class="modal fade" id="createModal" tabindex="-1" aria-labelledby="createModalLabel" aria-hidden="true">
-            <div class="modal-dialog modal-dialog-centered">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h1 class="modal-title fs-5" id="createModalLabel">New Preset</h1>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cancel"></button>
-                    </div>
-                    <div class="modal-body">
-                        <form>
-                            <div class="mb-3">
-                                <label for="preset-name" class="col-form-label">Name:</label>
-                                <input type="text" class="form-control" id="preset-name" v-model="newPresetName" />
-                            </div>
-                        </form>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Cancel</button>
-                        <button
-                            type="button"
-                            class="btn btn-primary"
-                            @click="createNewPreset()"
-                            data-bs-dismiss="modal"
-                        >
-                            Save
-                        </button>
-                    </div>
+    <div
+        v-if="showCreateModal"
+        class="z-50 fixed top-0 bottom-0 left-0 right-0 flex justify-center items-center bg-black/30"
+    >
+        <div class="flex flex-col bg-base-100 w-[400px] h-[200px] mt-[10%] rounded-md p-5 shadow-xl">
+            <div class="font-bold text-lg">New Preset</div>
+
+            <label class="form-control w-full">
+                <div class="label">
+                    <span class="label-text">Name</span>
                 </div>
-            </div>
-        </div>
+                <input type="text" class="input input-bordered w-full" v-model="newPresetName" />
+            </label>
 
-        <div class="modal fade" id="deleteModal" tabindex="-1" aria-labelledby="deleteModalLabel" aria-hidden="true">
-            <div class="modal-dialog modal-dialog-centered">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h1 class="modal-title fs-5" id="deleteModalLabel">Delete Preset</h1>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cancel"></button>
-                    </div>
-                    <div class="modal-body">Are you sure that you want to delete preset: "{{ selected }}"?</div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Cancel</button>
-                        <button type="button" class="btn btn-primary" @click="deletePreset()" data-bs-dismiss="modal">
-                            Ok
-                        </button>
-                    </div>
+            <div class="mt-4 flex justify-end">
+                <div class="join">
+                    <button
+                        class="btn btn-sm bg-base-300 hover:bg-base-300/50 join-item"
+                        @click=";(newPresetName = ''), (showCreateModal = false)"
+                    >
+                        Cancel
+                    </button>
+                    <button class="btn btn-sm bg-base-300 hover:bg-base-300/50 join-item" @click="createNewPreset()">
+                        Ok
+                    </button>
                 </div>
             </div>
         </div>
     </div>
+
+    <Modal
+        :show="showDeleteModal"
+        title="Delete Preset"
+        :text="`Are you sure that you want to delete preset: <strong> ${selected}</strong>?`"
+        :modalAction="deletePreset"
+    />
 </template>
 
 <script setup lang="ts">
@@ -225,7 +225,7 @@ const { numberToHex, hexToNumber } = stringFormatter()
 const contentType = { 'content-type': 'application/json;charset=UTF-8' }
 
 useHead({
-    title: 'Messages | ffplayout'
+    title: 'Messages | ffplayout',
 })
 
 interface PresetName {
@@ -250,6 +250,8 @@ const form = ref({
     overallAlpha: '1',
 })
 
+const showCreateModal = ref(false)
+const showDeleteModal = ref(false)
 const selected = ref(null)
 const newPresetName = ref('')
 const presets = ref([] as PresetName[])
@@ -358,6 +360,8 @@ async function savePreset() {
 }
 
 async function createNewPreset() {
+    showCreateModal.value = false
+
     const preset = {
         name: newPresetName.value,
         text: form.value.text,
@@ -393,8 +397,10 @@ async function createNewPreset() {
     }
 }
 
-async function deletePreset() {
-    if (selected.value && selected.value !== '') {
+async function deletePreset(del: boolean) {
+    showDeleteModal.value = false
+
+    if (del && selected.value && selected.value !== '') {
         await fetch(`/api/presets/${form.value.id}`, {
             method: 'DELETE',
             headers: authStore.authHeader,
@@ -431,15 +437,3 @@ async function submitMessage() {
     }
 }
 </script>
-
-<style scoped>
-.preset-div {
-    width: 50%;
-    margin-bottom: 2em;
-}
-
-.sub-btn {
-    min-width: 90px;
-    max-width: 100px;
-}
-</style>

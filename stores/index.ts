@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 
 export const useIndex = defineStore('index', {
     state: () => ({
+        darkMode: false,
         showAlert: false,
         alertVariant: 'alert-success',
         alertMsg: '',

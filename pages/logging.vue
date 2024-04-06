@@ -1,11 +1,11 @@
 <template>
-    <div class="date-container">
-        <div class="date-div">
-            <input type="date" class="form-control" v-model="listDate" />
+    <div class="flex justify-end my-3 pe-3">
+        <div>
+            <input type="date" class="input input-sm input-bordered w-full max-w-xs" v-model="listDate" />
         </div>
     </div>
-    <div class="log-container mt-2">
-        <div class="log-content" v-html="formatLog(currentLog)" />
+    <div class="px-3 inline-block h-[calc(100vh-130px)] text-[13px]">
+        <div class="bg-base-300 whitespace-pre h-full font-mono overflow-auto p-3" v-html="formatLog(currentLog)" />
     </div>
 </template>
 
@@ -13,7 +13,7 @@
 import { storeToRefs } from 'pinia'
 
 useHead({
-    title: 'Logging | ffplayout'
+    title: 'Logging | ffplayout',
 })
 
 const { configID } = storeToRefs(useConfig())
@@ -55,18 +55,6 @@ async function getLog() {
 </script>
 
 <style lang="scss">
-.date-container {
-    width: 100%;
-    height: 37px;
-}
-.log-container {
-    background: $bg-secondary;
-    height: calc(100% - 120px);
-    margin: 1em;
-    padding: .5em;
-    overflow: hidden;
-}
-
 .log-time {
     color: $log-time;
 }
@@ -76,23 +64,12 @@ async function getLog() {
 }
 
 .log-addr {
-    color: $log-addr ;
+    color: $log-addr;
     font-weight: 500;
 }
 
 .log-cmd {
     color: $log-cmd;
-}
-
-.log-content {
-    color: $log-content;
-    width: 100%;
-    height: 100%;
-    font-family: monospace;
-    font-size: 13px;
-    white-space: pre;
-    overflow: scroll;
-    scrollbar-width: medium;
 }
 
 .log-info {
