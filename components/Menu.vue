@@ -1,5 +1,5 @@
 <template>
-    <div class="navbar bg-base-100 min-h-[52px] p-0 text-base">
+    <div class="navbar bg-base-100 min-h-[52px] p-0">
         <NuxtLink class="navbar-brand p-2" href="/">
             <img src="~/assets/images/ffplayout-small.png" class="img-fluid" alt="Logo" width="30" height="30" />
         </NuxtLink>
@@ -69,7 +69,7 @@
         <div class="navbar-end hidden md:flex w-4/5 min-w-[600px]">
             <ul class="menu menu-sm menu-horizontal px-1">
                 <li v-for="item in menuItems" :key="item.name" class="bg-base-100 rounded-md p-0">
-                    <NuxtLink :to="item.link" class="px-2 h-[27px] relative text-base" activeClass="is-active">
+                    <NuxtLink :to="item.link" class="px-2 h-[27px] relative text-base text-base-content" activeClass="is-active">
                         <span>
                             {{ item.name }}
                         </span>

@@ -1,301 +1,237 @@
 <template>
-    <div>
-        <Menu />
-        <div class="container-fluid browser-container">
-            <div class="h-100">
-                <div>
-                    <nav aria-label="breadcrumb">
-                        <ol class="breadcrumb">
-                            <li
-                                class="breadcrumb-item"
-                                v-for="(crumb, index) in mediaStore.crumbs"
-                                :key="index"
-                                :active="index === mediaStore.crumbs.length - 1"
-                                @click="getPath(crumb.path)"
-                            >
-                                <a v-if="mediaStore.crumbs.length > 1 && mediaStore.crumbs.length - 1 > index" href="#">
-                                    {{ crumb.text }}
-                                </a>
-                                <span v-else>{{ crumb.text }}</span>
-                            </li>
-                        </ol>
-                    </nav>
-                </div>
+    <div class="container-fluid browser-container">
+        <div class="h-100">
+            <div>
+                <nav aria-label="breadcrumb">
+                    <ol class="breadcrumb">
+                        <li
+                            class="breadcrumb-item"
+                            v-for="(crumb, index) in mediaStore.crumbs"
+                            :key="index"
+                            :active="index === mediaStore.crumbs.length - 1"
+                            @click="getPath(crumb.path)"
+                        >
+                            <a v-if="mediaStore.crumbs.length > 1 && mediaStore.crumbs.length - 1 > index" href="#">
+                                {{ crumb.text }}
+                            </a>
+                            <span v-else>{{ crumb.text }}</span>
+                        </li>
+                    </ol>
+                </nav>
+            </div>
 
-                <div class="browser-div">
-                    <div v-if="browserIsLoading" class="d-flex justify-content-center loading-overlay">
-                        <div class="spinner-border" role="status" />
-                    </div>
-                    <splitpanes
-                        class="pane-row"
-                        :class="$route.path === '/player' ? 'browser-splitter' : ''"
-                        :horizontal="$route.path === '/player'"
+            <div class="browser-div">
+                <div v-if="browserIsLoading" class="d-flex justify-content-center loading-overlay">
+                    <div class="spinner-border" role="status" />
+                </div>
+                <splitpanes
+                    class="pane-row"
+                    :class="$route.path === '/player' ? 'browser-splitter' : ''"
+                    :horizontal="$route.path === '/player'"
+                >
+                    <pane
+                        min-size="14"
+                        max-size="80"
+                        size="24"
+                        :style="
+                            $route.path === '/player'
+                                ? `height: ${mediaStore.folderTree.folders.length * 47 + 2}px`
+                                : ''
+                        "
                     >
-                        <pane
-                            min-size="14"
-                            max-size="80"
-                            size="24"
-                            :style="
-                                $route.path === '/player'
-                                    ? `height: ${mediaStore.folderTree.folders.length * 47 + 2}px`
-                                    : ''
-                            "
-                        >
-                            <ul v-if="mediaStore.folderTree.parent" class="list-group media-browser-scroll m-1">
-                                <li
-                                    class="list-group-item browser-item"
-                                    v-for="folder in mediaStore.folderTree.folders"
-                                    :key="folder.uid"
-                                >
-                                    <div class="row">
-                                        <div class="col-1 browser-icons-col">
-                                            <i class="bi-folder-fill browser-icons" />
-                                        </div>
-                                        <div class="col browser-item-text">
-                                            <a
-                                                class="link-light"
-                                                href="#"
-                                                @click="getPath(`/${mediaStore.folderTree.source}/${folder.name}`)"
-                                            >
-                                                {{ folder.name }}
-                                            </a>
-                                        </div>
-                                        <div class="col-1 folder-delete">
-                                            <a
-                                                href="#"
-                                                class="btn-link"
-                                                data-bs-toggle="modal"
-                                                data-bs-target="#deleteModal"
-                                                @click="
-                                                    deleteName =
-                                                        `/${mediaStore.folderTree.source}/${folder.name}`.replace(
-                                                            /\/[/]+/g,
-                                                            '/'
-                                                        )
-                                                "
-                                            >
-                                                <i class="bi-x-circle-fill" />
-                                            </a>
-                                        </div>
+                        <ul v-if="mediaStore.folderTree.parent" class="list-group media-browser-scroll m-1">
+                            <li
+                                class="list-group-item browser-item"
+                                v-for="folder in mediaStore.folderTree.folders"
+                                :key="folder.uid"
+                            >
+                                <div class="row">
+                                    <div class="col-1 browser-icons-col">
+                                        <i class="bi-folder-fill browser-icons" />
                                     </div>
-                                </li>
-                            </ul>
-                        </pane>
-                        <pane
-                            :style="
-                                $route.path === '/player'
-                                    ? `height: ${mediaStore.folderTree.files.length * 26 + 2}px`
-                                    : ''
-                            "
-                        >
-                            <ul v-if="mediaStore.folderTree.parent" class="list-group media-browser-scroll m-1">
-                                <li
-                                    v-for="(element, index) in mediaStore.folderTree.files"
-                                    :id="`file_${index}`"
-                                    class="draggable list-group-item browser-item"
-                                    :key="element.name"
-                                >
-                                    <div class="row">
-                                        <div class="col-1 browser-icons-col">
-                                            <i
-                                                v-if="mediaType(element.name) === 'audio'"
-                                                class="bi-music-note-beamed browser-icons"
-                                            />
-                                            <i
-                                                v-else-if="mediaType(element.name) === 'video'"
-                                                class="bi-film browser-icons"
-                                            />
-                                            <i
-                                                v-else-if="mediaType(element.name) === 'image'"
-                                                class="bi-file-earmark-image browser-icons"
-                                            />
-                                            <i v-else class="bi-file-binary browser-icons" />
-                                        </div>
-                                        <div class="col browser-item-text grabbing">
-                                            {{ element.name }}
-                                        </div>
-                                        <div class="col-1 browser-play-col">
-                                            <a
-                                                href="#"
-                                                class="btn-link"
-                                                data-bs-toggle="modal"
-                                                data-bs-target="#previewModal"
-                                                @click="setPreviewData(element.name)"
-                                            >
-                                                <i class="bi-play-fill" />
-                                            </a>
-                                        </div>
-                                        <div class="col-1 browser-dur-col">
-                                            <span class="duration">{{ toMin(element.duration) }}</span>
-                                        </div>
-                                        <div class="col-1 file-rename">
-                                            <a
-                                                href="#"
-                                                class="btn-link"
-                                                data-bs-toggle="modal"
-                                                data-bs-target="#renameModal"
-                                                @click="
-                                                    setRenameValues(
-                                                        `/${mediaStore.folderTree.source}/${element.name}`.replace(
-                                                            /\/[/]+/g,
-                                                            '/'
-                                                        )
+                                    <div class="col browser-item-text">
+                                        <a
+                                            class="link-light"
+                                            href="#"
+                                            @click="getPath(`/${mediaStore.folderTree.source}/${folder.name}`)"
+                                        >
+                                            {{ folder.name }}
+                                        </a>
+                                    </div>
+                                    <div class="col-1 folder-delete">
+                                        <a
+                                            href="#"
+                                            class="btn-link"
+                                            data-bs-toggle="modal"
+                                            data-bs-target="#deleteModal"
+                                            @click="
+                                                deleteName = `/${mediaStore.folderTree.source}/${folder.name}`.replace(
+                                                    /\/[/]+/g,
+                                                    '/'
+                                                )
+                                            "
+                                        >
+                                            <i class="bi-x-circle-fill" />
+                                        </a>
+                                    </div>
+                                </div>
+                            </li>
+                        </ul>
+                    </pane>
+                    <pane
+                        :style="
+                            $route.path === '/player' ? `height: ${mediaStore.folderTree.files.length * 26 + 2}px` : ''
+                        "
+                    >
+                        <ul v-if="mediaStore.folderTree.parent" class="list-group media-browser-scroll m-1">
+                            <li
+                                v-for="(element, index) in mediaStore.folderTree.files"
+                                :id="`file_${index}`"
+                                class="draggable list-group-item browser-item"
+                                :key="element.name"
+                            >
+                                <div class="row">
+                                    <div class="col-1 browser-icons-col">
+                                        <i
+                                            v-if="mediaType(element.name) === 'audio'"
+                                            class="bi-music-note-beamed browser-icons"
+                                        />
+                                        <i
+                                            v-else-if="mediaType(element.name) === 'video'"
+                                            class="bi-film browser-icons"
+                                        />
+                                        <i
+                                            v-else-if="mediaType(element.name) === 'image'"
+                                            class="bi-file-earmark-image browser-icons"
+                                        />
+                                        <i v-else class="bi-file-binary browser-icons" />
+                                    </div>
+                                    <div class="col browser-item-text grabbing">
+                                        {{ element.name }}
+                                    </div>
+                                    <div class="col-1 browser-play-col">
+                                        <a
+                                            href="#"
+                                            class="btn-link"
+                                            data-bs-toggle="modal"
+                                            data-bs-target="#previewModal"
+                                            @click="setPreviewData(element.name)"
+                                        >
+                                            <i class="bi-play-fill" />
+                                        </a>
+                                    </div>
+                                    <div class="col-1 browser-dur-col">
+                                        <span class="duration">{{ toMin(element.duration) }}</span>
+                                    </div>
+                                    <div class="col-1 file-rename">
+                                        <a
+                                            href="#"
+                                            class="btn-link"
+                                            data-bs-toggle="modal"
+                                            data-bs-target="#renameModal"
+                                            @click="
+                                                setRenameValues(
+                                                    `/${mediaStore.folderTree.source}/${element.name}`.replace(
+                                                        /\/[/]+/g,
+                                                        '/'
                                                     )
-                                                "
-                                            >
-                                                <i class="bi-pencil-square" />
-                                            </a>
-                                        </div>
-                                        <div class="col-1 file-delete">
-                                            <a
-                                                href="#"
-                                                class="btn-link"
-                                                data-bs-toggle="modal"
-                                                data-bs-target="#deleteModal"
-                                                @click="
-                                                    deleteName =
-                                                        `/${mediaStore.folderTree.source}/${element.name}`.replace(
-                                                            /\/[/]+/g,
-                                                            '/'
-                                                        )
-                                                "
-                                            >
-                                                <i class="bi-x-circle-fill" />
-                                            </a>
-                                        </div>
+                                                )
+                                            "
+                                        >
+                                            <i class="bi-pencil-square" />
+                                        </a>
                                     </div>
-                                </li>
-                            </ul>
-                        </pane>
-                    </splitpanes>
-                </div>
+                                    <div class="col-1 file-delete">
+                                        <a
+                                            href="#"
+                                            class="btn-link"
+                                            data-bs-toggle="modal"
+                                            data-bs-target="#deleteModal"
+                                            @click="
+                                                deleteName = `/${mediaStore.folderTree.source}/${element.name}`.replace(
+                                                    /\/[/]+/g,
+                                                    '/'
+                                                )
+                                            "
+                                        >
+                                            <i class="bi-x-circle-fill" />
+                                        </a>
+                                    </div>
+                                </div>
+                            </li>
+                        </ul>
+                    </pane>
+                </splitpanes>
             </div>
+        </div>
 
-            <div id="previewModal" class="modal" tabindex="-1" aria-labelledby="previewModalLabel" aria-hidden="true">
-                <div class="modal-dialog modal-dialog-centered modal-xl">
-                    <div class="modal-content">
-                        <div class="modal-header">
-                            <h1 class="modal-title fs-5" id="previewModalLabel">Preview: {{ previewName }}</h1>
-                            <button
-                                type="button"
-                                class="btn-close"
-                                data-bs-dismiss="modal"
-                                aria-label="Cancel"
-                                @click="closePlayer()"
-                            ></button>
-                        </div>
-                        <div class="modal-body">
-                            <VideoPlayer v-if="isVideo && previewOpt" reference="previewPlayer" :options="previewOpt" />
-                            <img v-else :src="previewUrl" class="img-fluid" :alt="previewName" />
-                        </div>
+        <div id="previewModal" class="modal" tabindex="-1" aria-labelledby="previewModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered modal-xl">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h1 class="modal-title fs-5" id="previewModalLabel">Preview: {{ previewName }}</h1>
+                        <button
+                            type="button"
+                            class="btn-close"
+                            data-bs-dismiss="modal"
+                            aria-label="Cancel"
+                            @click="closePlayer()"
+                        ></button>
                     </div>
-                </div>
-            </div>
-
-            <div id="deleteModal" class="modal" tabindex="-1" aria-labelledby="deleteModalLabel" aria-hidden="true">
-                <div class="modal-dialog modal-dialog-centered">
-                    <div class="modal-content">
-                        <div class="modal-header">
-                            <h1 class="modal-title fs-5" id="deleteModalLabel">Delete File/Folder</h1>
-                            <button
-                                type="button"
-                                class="btn-close"
-                                data-bs-dismiss="modal"
-                                aria-label="Cancel"
-                            ></button>
-                        </div>
-                        <div class="modal-body">
-                            <p>
-                                Are you sure that you want to delete:<br />
-                                <strong>{{ deleteName }}</strong>
-                            </p>
-                        </div>
-                        <div class="modal-footer">
-                            <button
-                                type="reset"
-                                class="btn btn-primary"
-                                data-bs-dismiss="modal"
-                                aria-label="Cancel"
-                                @click="deleteName = ''"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                type="submit"
-                                class="btn btn-primary"
-                                data-bs-dismiss="modal"
-                                @click="deleteFileOrFolder"
-                            >
-                                Ok
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div id="renameModal" class="modal" tabindex="-1" aria-labelledby="renameModalLabel" aria-hidden="true">
-                <div class="modal-dialog modal-dialog-centered">
-                    <div class="modal-content">
-                        <div class="modal-header">
-                            <h1 class="modal-title fs-5" id="renameModalLabel">Rename File</h1>
-                            <button
-                                type="button"
-                                class="btn-close"
-                                data-bs-dismiss="modal"
-                                aria-label="Cancel"
-                            ></button>
-                        </div>
-                        <form @submit.prevent="onSubmitRenameFile" @reset="onCancelRenameFile">
-                            <div class="modal-body">
-                                <input type="text" class="form-control" v-model="renameNewName" />
-                            </div>
-                            <div class="modal-footer">
-                                <button
-                                    type="reset"
-                                    class="btn btn-primary"
-                                    data-bs-dismiss="modal"
-                                    aria-label="Cancel"
-                                >
-                                    Cancel
-                                </button>
-                                <button type="submit" class="btn btn-primary" data-bs-dismiss="modal">Ok</button>
-                            </div>
-                        </form>
+                    <div class="modal-body">
+                        <VideoPlayer v-if="isVideo && previewOpt" reference="previewPlayer" :options="previewOpt" />
+                        <img v-else :src="previewUrl" class="img-fluid" :alt="previewName" />
                     </div>
                 </div>
             </div>
         </div>
-        <div class="btn-group media-button">
-            <button
-                type="button"
-                class="btn btn-primary"
-                title="Create Folder"
-                data-bs-toggle="modal"
-                data-bs-target="#folderModal"
-            >
-                <i class="bi-folder-plus" />
-            </button>
-            <button
-                type="button"
-                class="btn btn-primary"
-                title="Upload File"
-                data-bs-toggle="modal"
-                data-bs-target="#uploadModal"
-            >
-                <i class="bi-upload" />
-            </button>
-        </div>
 
-        <div id="folderModal" class="modal" tabindex="-1" aria-labelledby="folderModalLabel" aria-hidden="true">
+        <div id="deleteModal" class="modal" tabindex="-1" aria-labelledby="deleteModalLabel" aria-hidden="true">
             <div class="modal-dialog modal-dialog-centered">
                 <div class="modal-content">
                     <div class="modal-header">
-                        <h1 class="modal-title fs-5" id="folderModalLabel">Create Folder</h1>
+                        <h1 class="modal-title fs-5" id="deleteModalLabel">Delete File/Folder</h1>
                         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cancel"></button>
                     </div>
-                    <form @submit.prevent="onSubmitCreateFolder" @reset="onCancelCreateFolder">
+                    <div class="modal-body">
+                        <p>
+                            Are you sure that you want to delete:<br />
+                            <strong>{{ deleteName }}</strong>
+                        </p>
+                    </div>
+                    <div class="modal-footer">
+                        <button
+                            type="reset"
+                            class="btn btn-primary"
+                            data-bs-dismiss="modal"
+                            aria-label="Cancel"
+                            @click="deleteName = ''"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="submit"
+                            class="btn btn-primary"
+                            data-bs-dismiss="modal"
+                            @click="deleteFileOrFolder"
+                        >
+                            Ok
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="renameModal" class="modal" tabindex="-1" aria-labelledby="renameModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h1 class="modal-title fs-5" id="renameModalLabel">Rename File</h1>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cancel"></button>
+                    </div>
+                    <form @submit.prevent="onSubmitRenameFile" @reset="onCancelRenameFile">
                         <div class="modal-body">
-                            <input type="text" class="form-control" v-model="folderName.name" />
+                            <input type="text" class="form-control" v-model="renameNewName" />
                         </div>
                         <div class="modal-footer">
                             <button type="reset" class="btn btn-primary" data-bs-dismiss="modal" aria-label="Cancel">
@@ -307,79 +243,127 @@
                 </div>
             </div>
         </div>
-
-        <div
-            id="uploadModal"
-            ref="uploadModal"
-            class="modal"
-            tabindex="-1"
-            aria-labelledby="uploadModalLabel"
-            data-bs-backdrop="static"
+    </div>
+    <div class="btn-group media-button">
+        <button
+            type="button"
+            class="btn btn-primary"
+            title="Create Folder"
+            data-bs-toggle="modal"
+            data-bs-target="#folderModal"
         >
-            <div class="modal-dialog modal-dialog-centered modal-xl">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h1 class="modal-title fs-5" id="uploadModalLabel">Upload Files</h1>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cancel" @click.prevent="onResetUpload()"></button>
-                    </div>
-                    <form @submit.prevent="onSubmitUpload" @reset.prevent="onResetUpload">
-                        <div class="modal-body">
-                            <input
-                                class="form-control"
-                                type="file"
-                                ref="fileInputName"
-                                :accept="extensions"
-                                v-on:change="onFileChange"
-                                multiple
-                            />
+            <i class="bi-folder-plus" />
+        </button>
+        <button
+            type="button"
+            class="btn btn-primary"
+            title="Upload File"
+            data-bs-toggle="modal"
+            data-bs-target="#uploadModal"
+        >
+            <i class="bi-upload" />
+        </button>
+    </div>
 
-                            <div class="row">
-                                <div class="col-10">
-                                    <div class="row progress-row">
-                                        <div class="col-1" style="min-width: 125px">Current:</div>
-                                        <div class="col-10">
-                                            <div class="progress">
-                                                <div
-                                                    class="progress-bar bg-warning"
-                                                    role="progressbar"
-                                                    :aria-valuenow="currentProgress"
-                                                    :style="`width: ${currentProgress}%`"
-                                                />
-                                            </div>
-                                        </div>
-                                        <div class="w-100" />
-                                        <div class="col-1" style="min-width: 125px">
-                                            Overall ({{ currentNumber }}/{{ inputFiles.length }}):
-                                        </div>
-                                        <div class="col-10">
-                                            <div class="progress">
-                                                <div
-                                                    class="progress-bar bg-warning"
-                                                    role="progressbar"
-                                                    :aria-valuenow="overallProgress"
-                                                    :style="`width: ${overallProgress}%`"
-                                                />
-                                            </div>
-                                        </div>
-                                        <div class="w-100" />
-                                        <div class="col-1" style="min-width: 125px">Uploading:</div>
-                                        <div class="col-10">
-                                            <strong>{{ uploadTask }}</strong>
+    <div id="folderModal" class="modal" tabindex="-1" aria-labelledby="folderModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h1 class="modal-title fs-5" id="folderModalLabel">Create Folder</h1>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cancel"></button>
+                </div>
+                <form @submit.prevent="onSubmitCreateFolder" @reset="onCancelCreateFolder">
+                    <div class="modal-body">
+                        <input type="text" class="form-control" v-model="folderName.name" />
+                    </div>
+                    <div class="modal-footer">
+                        <button type="reset" class="btn btn-primary" data-bs-dismiss="modal" aria-label="Cancel">
+                            Cancel
+                        </button>
+                        <button type="submit" class="btn btn-primary" data-bs-dismiss="modal">Ok</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div
+        id="uploadModal"
+        ref="uploadModal"
+        class="modal"
+        tabindex="-1"
+        aria-labelledby="uploadModalLabel"
+        data-bs-backdrop="static"
+    >
+        <div class="modal-dialog modal-dialog-centered modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h1 class="modal-title fs-5" id="uploadModalLabel">Upload Files</h1>
+                    <button
+                        type="button"
+                        class="btn-close"
+                        data-bs-dismiss="modal"
+                        aria-label="Cancel"
+                        @click.prevent="onResetUpload()"
+                    ></button>
+                </div>
+                <form @submit.prevent="onSubmitUpload" @reset.prevent="onResetUpload">
+                    <div class="modal-body">
+                        <input
+                            class="form-control"
+                            type="file"
+                            ref="fileInputName"
+                            :accept="extensions"
+                            v-on:change="onFileChange"
+                            multiple
+                        />
+
+                        <div class="row">
+                            <div class="col-10">
+                                <div class="row progress-row">
+                                    <div class="col-1" style="min-width: 125px">Current:</div>
+                                    <div class="col-10">
+                                        <div class="progress">
+                                            <div
+                                                class="progress-bar bg-warning"
+                                                role="progressbar"
+                                                :aria-valuenow="currentProgress"
+                                                :style="`width: ${currentProgress}%`"
+                                            />
                                         </div>
                                     </div>
-                                </div>
-                                <div class="col-2">
-                                    <div class="media-button">
-                                        <button type="reset" class="btn btn-primary me-2" data-bs-dismiss="modal">
-                                            Cancel
-                                        </button>
-                                        <button type="submit" class="btn btn-primary">Upload</button>
+                                    <div class="w-100" />
+                                    <div class="col-1" style="min-width: 125px">
+                                        Overall ({{ currentNumber }}/{{ inputFiles.length }}):
+                                    </div>
+                                    <div class="col-10">
+                                        <div class="progress">
+                                            <div
+                                                class="progress-bar bg-warning"
+                                                role="progressbar"
+                                                :aria-valuenow="overallProgress"
+                                                :style="`width: ${overallProgress}%`"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div class="w-100" />
+                                    <div class="col-1" style="min-width: 125px">Uploading:</div>
+                                    <div class="col-10">
+                                        <strong>{{ uploadTask }}</strong>
                                     </div>
                                 </div>
                             </div>
+                            <div class="col-2">
+                                <div class="media-button">
+                                    <button type="reset" class="btn btn-primary me-2" data-bs-dismiss="modal">
+                                        Cancel
+                                    </button>
+                                    <button type="submit" class="btn btn-primary">Upload</button>
+                                </div>
+                            </div>
                         </div>
-                    </form>
-                </div>
+                    </div>
+                </form>
             </div>
         </div>
     </div>

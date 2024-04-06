@@ -1,6 +1,5 @@
 <template>
     <div>
-        <Menu />
         <Control />
         <div class="date-row">
             <div class="col">
