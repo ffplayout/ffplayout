@@ -24,7 +24,7 @@
     "jwt-decode": "^4.0.0",
     "lodash": "^4.17.21",
     "mpegts.js": "^1.7.3",
-    "nuxt": "3.10.3",
+    "nuxt": "3.11.2",
     "pinia": "^2.1.7",
     "sortablejs-vue3": "^1.2.11",
     "splitpanes": "^3.1.5",
@@ -35,15 +35,14 @@
   "devDependencies": {
     "@nuxtjs/eslint-config": "^12.0.0",
     "@nuxtjs/tailwindcss": "^6.11.4",
-    "@types/lodash": "^4.14.202",
-    "@types/splitpanes": "^2.2.6",
-    "@types/video.js": "^7.3.56",
-    "daisyui": "^4.9.0",
+    "@types/lodash": "^4.17.0",
+    "@types/video.js": "^7.3.57",
+    "daisyui": "^4.10.1",
     "eslint": "^8.57.0",
     "eslint-plugin-nuxt": "^4.0.0",
-    "postcss": "^8.4.35",
+    "postcss": "^8.4.38",
     "postcss-loader": "^8.1.1",
-    "sass": "^1.71.1",
+    "sass": "^1.74.1",
     "sass-loader": "^14.1.1"
   }
 }

@@ -72,68 +72,54 @@
         </form>
     </div>
 
-    <div
-        v-if="showUserModal"
-        class="z-50 fixed top-0 bottom-0 left-0 right-0 flex justify-center items-center bg-black/30"
-    >
-        <div class="flex flex-col bg-base-100 w-full max-w-[500px] h-[576px] rounded-md p-5 shadow-xl">
-            <div class="font-bold text-lg">Add user</div>
-
-            <form @reset="clearUser" @submit.prevent="addUser">
-                <label class="form-control w-full mt-7">
-                    <div class="label">
-                        <span class="label-text">Username</span>
-                    </div>
-                    <input type="text" placeholder="Name" class="input input-bordered w-full" v-model="user.username" />
-                </label>
-
-                <label class="form-control w-full mt-3">
-                    <div class="label">
-                        <span class="label-text">Mail</span>
-                    </div>
-                    <input type="email" placeholder="Mail" class="input input-bordered w-full" v-model="user.mail" />
-                </label>
-
-                <label class="form-control w-full mt-3">
-                    <div class="label">
-                        <span class="label-text">Password</span>
-                    </div>
-                    <input
-                        type="password"
-                        placeholder="Password"
-                        class="input input-bordered w-full"
-                        v-model="user.password"
-                    />
-                </label>
-
-                <label class="form-control w-full mt-3">
-                    <div class="label">
-                        <span class="label-text">Confirm Password</span>
-                    </div>
-                    <input
-                        type="password"
-                        placeholder="Password"
-                        class="input input-bordered w-full"
-                        v-model="user.confirm"
-                    />
-                </label>
-
-                <div class="form-control mt-3">
-                    <label class="label cursor-pointer w-20">
-                        <span class="label-text">Admin</span>
-                        <input type="checkbox" class="checkbox" v-model.number="user.admin" />
-                    </label>
+    <Modal :show="showUserModal" title="Add user" :modal-action="addUser">
+        <div class="w-full max-w-[500px] h-[420px]">
+            <label class="form-control w-full">
+                <div class="label">
+                    <span class="label-text">Username</span>
                 </div>
+                <input type="text" placeholder="Name" class="input input-bordered w-full" v-model="user.username" />
+            </label>
 
-                <div class="flex justify-end mt-2">
-                    <div class="join">
-                        <button class="btn join-item" type="reset">Cancel</button>
-                        <button class="btn join-item" type="submit">Ok</button>
-                    </div>
+            <label class="form-control w-full mt-3">
+                <div class="label">
+                    <span class="label-text">Mail</span>
                 </div>
-            </form>
+                <input type="email" placeholder="Mail" class="input input-bordered w-full" v-model="user.mail" />
+            </label>
+
+            <label class="form-control w-full mt-3">
+                <div class="label">
+                    <span class="label-text">Password</span>
+                </div>
+                <input
+                    type="password"
+                    placeholder="Password"
+                    class="input input-bordered w-full"
+                    v-model="user.password"
+                />
+            </label>
+
+            <label class="form-control w-full mt-3">
+                <div class="label">
+                    <span class="label-text">Confirm Password</span>
+                </div>
+                <input
+                    type="password"
+                    placeholder="Password"
+                    class="input input-bordered w-full"
+                    v-model="user.confirm"
+                />
+            </label>
+
+            <div class="form-control mt-3">
+                <label class="label cursor-pointer w-20">
+                    <span class="label-text">Admin</span>
+                    <input type="checkbox" class="checkbox" v-model.number="user.admin" />
+                </label>
+            </div>
         </div>
-    </div>
+    </Modal>
 </template>
 
 <script setup lang="ts">
@@ -215,44 +201,46 @@ async function deleteUser() {
     }
 }
 
-async function clearUser() {
+function clearUser() {
     user.value.username = ''
     user.value.mail = ''
     user.value.password = ''
     user.value.confirm = ''
     user.value.admin = false
     user.value.role_id = 2
-
-    showUserModal.value = false
 }
 
-async function addUser() {
-    if (user.value.admin) {
-        user.value.role_id = 1
-    } else {
-        user.value.role_id = 2
-    }
-
-    delete user.value.admin
-
-    if (user.value.password === user.value.confirm) {
-        showUserModal.value = false
-
-        authStore.inspectToken()
-        const update = await configStore.addNewUser(user.value)
-
-        if (update.status === 200) {
-            indexStore.msgAlert('alert-success', 'Add user success!', 2)
-
-            await getUsers()
-            await getUserConfig()
+async function addUser(add: boolean) {
+    if (add) {
+        if (user.value.admin) {
+            user.value.role_id = 1
         } else {
-            indexStore.msgAlert('alert-error', 'Add user failed!', 2)
+            user.value.role_id = 2
         }
 
-        clearUser()
+        delete user.value.admin
+
+        if (user.value.password === user.value.confirm) {
+            authStore.inspectToken()
+            const update = await configStore.addNewUser(user.value)
+            showUserModal.value = false
+
+            if (update.status === 200) {
+                indexStore.msgAlert('alert-success', 'Add user success!', 2)
+
+                await getUsers()
+                await getUserConfig()
+            } else {
+                indexStore.msgAlert('alert-error', 'Add user failed!', 2)
+            }
+
+            clearUser()
+        } else {
+            indexStore.msgAlert('alert-error', 'Password mismatch!', 2)
+        }
     } else {
-        indexStore.msgAlert('alert-error', 'Password mismatch!', 2)
+        showUserModal.value = false
+        clearUser()
     }
 }
 

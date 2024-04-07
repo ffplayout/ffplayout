@@ -70,7 +70,7 @@
                 />
             </label>
 
-            <div class="join mt-4">
+            <div class="join my-4">
                 <button class="join-item btn btn-primary" type="submit">Save</button>
                 <button
                     class="join-item btn btn-primary"

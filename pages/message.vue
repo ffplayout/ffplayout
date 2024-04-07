@@ -92,7 +92,7 @@
                         />
                     </label>
                 </div>
-                <div class="grid grid-cols-[150px_150px_auto] gap-4">
+                <div class="grid grid-cols-[150px_150px_auto] gap-4 mt-2">
                     <div>
                         <label class="form-control w-full">
                             <div class="label">
