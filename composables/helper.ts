@@ -79,6 +79,21 @@ export const stringFormatter = () => {
         }
     }
 
+    function parent(path: string) {
+        if (path) {
+            const pathArr = path.split('/')
+            pathArr.pop()
+
+            if (pathArr.length > 0) {
+                return pathArr.join('/')
+            } else {
+                return '/'
+            }
+        } else {
+            return ''
+        }
+    }
+
     function toMin(sec: number) {
         if (sec) {
             const minutes = Math.floor(sec / 60)
@@ -154,6 +169,7 @@ export const stringFormatter = () => {
         numberToHex,
         hexToNumber,
         filename,
+        parent,
         toMin,
         secondsToTime,
         mediaType,

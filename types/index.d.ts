@@ -73,6 +73,7 @@ declare global {
     interface FileFolderObject {
         source: string
         parent: string
+        parent_folders: Folder[]
         folders: Folder[]
         files: FileObject[]
     }

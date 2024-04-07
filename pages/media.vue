@@ -1,18 +1,21 @@
 <template>
     <div class="h-[calc(100vh-140px)]">
         <nav class="text-sm breadcrumbs px-4">
-            <ul>
+            <ul v-on:dragover.prevent>
                 <li
                     v-for="(crumb, index) in mediaStore.crumbs"
                     :key="index"
                     :active="index === mediaStore.crumbs.length - 1"
                     @click="getPath(crumb.path)"
+                    v-on:drop="handleDrop($event, crumb.path, null)"
+                    v-on:dragover="handleDragOver"
+                    v-on:dragleave="handleDragLeave"
                 >
                     <a v-if="mediaStore.crumbs.length > 1 && mediaStore.crumbs.length - 1 > index" href="#">
-                        <i class="bi-folder me-1" />
+                        <i class="bi-folder-fill me-1" />
                         {{ crumb.text }}
                     </a>
-                    <span v-else><i class="bi-folder me-1" /> {{ crumb.text }}</span>
+                    <span v-else><i class="bi-folder-fill me-1" /> {{ crumb.text }}</span>
                 </li>
             </ul>
         </nav>
@@ -25,12 +28,55 @@
                 <span class="loading loading-spinner loading-lg"></span>
             </div>
             <splitpanes>
-                <pane min-size="14" max-size="80" size="24" class="h-full px-2">
-                    <ul v-if="mediaStore.folderTree.parent" class="overflow-auto h-full m-1">
+                <pane min-size="14" max-size="80" size="24" class="h-full">
+                    <ul v-if="mediaStore.folderTree.parent" class="overflow-auto h-full m-1" v-on:dragover.prevent>
                         <li
-                            class="grid grid-cols-[auto_18px] gap-1"
+                            v-if="mediaStore.folderTree.parent_folders.length > 0"
+                            v-for="folder in mediaStore.folderTree.parent_folders"
+                            class="grid grid-cols-[auto_18px] gap-1 px-2"
+                            :class="filename(mediaStore.folderTree.source) === folder.name && 'bg-base-100'"
+                            :key="folder.uid"
+                            v-on:drop="handleDrop($event, folder, true)"
+                            v-on:dragover="handleDragOver"
+                            v-on:dragleave="handleDragLeave"
+                        >
+                            <button
+                                class="truncate text-left"
+                                @click="getPath(`/${parent(mediaStore.folderTree.source)}/${folder.name}`)"
+                            >
+                                <i class="bi-folder-fill" />
+                                {{ folder.name }}
+                            </button>
+                            <button
+                                class="opacity-30 hover:opacity-100"
+                                @click="
+                                    ;(showDeleteModal = true),
+                                        (deleteName = `/${parent(mediaStore.folderTree.source)}/${folder.name}`.replace(
+                                            /\/[/]+/g,
+                                            '/'
+                                        ))
+                                "
+                            >
+                                <i class="bi-x-circle-fill" />
+                            </button>
+                        </li>
+                        <li v-else class="px-2">
+                            <div class="truncate text-left">
+                                <i class="bi-folder-fill" />
+                                {{ mediaStore.folderTree.parent }}
+                            </div>
+                        </li>
+                    </ul>
+                </pane>
+                <pane class="h-full px-2">
+                    <ul v-if="mediaStore.folderTree.parent" class="h-full overflow-auto m-1" v-on:dragover.prevent>
+                        <li
+                            class="grid grid-cols-[auto_49px] gap-1"
                             v-for="folder in mediaStore.folderTree.folders"
                             :key="folder.uid"
+                            v-on:drop="handleDrop($event, folder, false)"
+                            v-on:dragover="handleDragOver"
+                            v-on:dragleave="handleDragLeave"
                         >
                             <button
                                 class="truncate text-left"
@@ -52,17 +98,15 @@
                                 <i class="bi-x-circle-fill" />
                             </button>
                         </li>
-                    </ul>
-                </pane>
-                <pane class="h-full px-2">
-                    <ul v-if="mediaStore.folderTree.parent" class="h-full overflow-auto m-1">
                         <li
                             v-for="(element, index) in mediaStore.folderTree.files"
                             :id="`file_${index}`"
                             class="grid grid-cols-[auto_176px]"
                             :key="element.name"
+                            draggable="true"
+                            v-on:dragstart="handleDragStart($event, element)"
                         >
-                            <div class="truncate">
+                            <div class="truncate cursor-grab">
                                 <i v-if="mediaType(element.name) === 'audio'" class="bi-music-note-beamed" />
                                 <i v-else-if="mediaType(element.name) === 'video'" class="bi-film" />
                                 <i v-else-if="mediaType(element.name) === 'image'" class="bi-file-earmark-image" />
@@ -197,7 +241,7 @@ const authStore = useAuth()
 const configStore = useConfig()
 const indexStore = useIndex()
 const mediaStore = useMedia()
-const { toMin, mediaType } = stringFormatter()
+const { toMin, mediaType, filename, parent } = stringFormatter()
 const contentType = { 'content-type': 'application/json;charset=UTF-8' }
 
 const { configID } = storeToRefs(useConfig())
@@ -230,6 +274,8 @@ const currentProgress = ref(0)
 const lastPath = ref('')
 const xhr = ref(new XMLHttpRequest())
 
+const fileRefs = ref([] as any[])
+
 onMounted(async () => {
     let config_extensions = configStore.configPlayout.storage.extensions
     let extra_extensions = configStore.configGui[configStore.configID].extra_extensions
@@ -249,13 +295,84 @@ onMounted(async () => {
     extensions.value = exts.join(', ')
 
     if (!mediaStore.folderTree.parent) {
-        getPath('')
+        await getPath('')
     }
 })
 
 watch([configID], () => {
     getPath('')
 })
+
+function handleDragStart(event: any, itemData: any) {
+    event.dataTransfer.setData('application/json', JSON.stringify(itemData))
+}
+
+function handleDragOver(event: any) {
+    event.target.style.color = 'white'
+    event.target.style.fontWeight = 'bold'
+
+    if (event.target.firstChild && event.target.firstChild.classList.contains('bi-folder-fill')) {
+        event.target.firstChild.classList.remove('bi-folder-fill')
+        event.target.firstChild.classList.add('bi-folder2-open')
+    }
+}
+
+function handleDragLeave(event: any) {
+    if (event.target && event.target.style) {
+        event.target.style.color = null
+        event.target.style.fontWeight = null
+    }
+
+    if (event.target.firstChild && event.target.firstChild.classList.contains('bi-folder2-open')) {
+        event.target.firstChild.classList.remove('bi-folder2-open')
+        event.target.firstChild.classList.add('bi-folder-fill')
+    }
+}
+
+async function handleDrop(event: any, targetFolder: any, isParent: boolean | null) {
+    const itemData = JSON.parse(event.dataTransfer.getData('application/json'))
+    const source = `/${mediaStore.folderTree.source}/${itemData.name}`.replace(
+        /\/[/]+/g,
+        '/'
+    )
+    let target
+
+    if (isParent === null) {
+        target = `${targetFolder}/${itemData.name}`.replace(/\/[/]+/g, '/')
+    } else if (isParent) {
+        target = `/${parent(mediaStore.folderTree.source)}/${targetFolder.name}/${
+            itemData.name
+        }`.replace(/\/[/]+/g, '/')
+    } else {
+        target =
+            `/${mediaStore.folderTree.source}/${targetFolder.name}/${itemData.name}`.replace(
+                /\/[/]+/g,
+                '/'
+            )
+    }
+
+    event.target.style.color = null
+    event.target.style.fontWeight = null
+
+    if (event.target.firstChild.classList.contains('bi-folder2-open')) {
+        event.target.firstChild.classList.remove('bi-folder2-open')
+        event.target.firstChild.classList.add('bi-folder-fill')
+    }
+
+    if (source !== target) {
+        await fetch(`/api/file/${configStore.configGui[configStore.configID].id}/rename/`, {
+            method: 'POST',
+            headers: { ...contentType, ...authStore.authHeader },
+            body: JSON.stringify({ source, target }),
+        })
+            .then(() => {
+                getPath(mediaStore.folderTree.source)
+            })
+            .catch((e) => {
+                indexStore.msgAlert('alert-error', `Delete error: ${e}`, 3)
+            })
+    }
+}
 
 async function getPath(path: string) {
     browserIsLoading.value = true
