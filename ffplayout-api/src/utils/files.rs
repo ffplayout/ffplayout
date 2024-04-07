@@ -1,5 +1,4 @@
 use std::{
-    fs,
     io::Write,
     path::{Path, PathBuf},
 };
@@ -12,6 +11,7 @@ use rand::{distributions::Alphanumeric, Rng};
 use relative_path::RelativePath;
 use serde::{Deserialize, Serialize};
 use sqlx::{Pool, Sqlite};
+use tokio::fs;
 
 use simplelog::*;
 
@@ -22,6 +22,7 @@ use ffplayout_lib::utils::{file_extension, MediaProbe};
 pub struct PathObject {
     pub source: String,
     parent: Option<String>,
+    parent_folders: Option<Vec<String>>,
     folders: Option<Vec<String>>,
     files: Option<Vec<VideoFile>>,
     #[serde(default)]
@@ -33,6 +34,7 @@ impl PathObject {
         Self {
             source,
             parent,
+            parent_folders: Some(vec![]),
             folders: Some(vec![]),
             files: Some(vec![]),
             folders_only: false,
@@ -108,59 +110,98 @@ pub async fn browser(
         .split(',')
         .map(|e| e.to_string())
         .collect::<Vec<String>>();
+    let mut parent_folders = vec![];
     let mut extensions = config.storage.extensions;
     extensions.append(&mut channel_extensions);
 
     let (path, parent, path_component) = norm_abs_path(&config.storage.path, &path_obj.source);
+
+    let parent_path = if !path_component.is_empty() {
+        path.parent().unwrap()
+    } else {
+        &config.storage.path
+    };
+
     let mut obj = PathObject::new(path_component, Some(parent));
     obj.folders_only = path_obj.folders_only;
 
-    let mut paths: Vec<PathBuf> = match fs::read_dir(path) {
-        Ok(p) => p.filter_map(|r| r.ok()).map(|p| p.path()).collect(),
-        Err(e) => {
-            error!("{e} in {}", path_obj.source);
-            return Err(ServiceError::NoContent(e.to_string()));
-        }
-    };
+    if path != parent_path && !path_obj.folders_only {
+        let mut parents = fs::read_dir(&parent_path).await?;
 
-    paths.path_sort(natural_lexical_cmp);
+        while let Some(child) = parents.next_entry().await? {
+            if child.metadata().await?.is_dir() {
+                parent_folders.push(
+                    child
+                        .path()
+                        .file_name()
+                        .unwrap()
+                        .to_string_lossy()
+                        .to_string(),
+                );
+            }
+        }
+
+        parent_folders.path_sort(natural_lexical_cmp);
+
+        obj.parent_folders = Some(parent_folders);
+    }
+
+    let mut paths_obj = fs::read_dir(path).await?;
+
     let mut files = vec![];
     let mut folders = vec![];
 
-    for path in paths {
+    while let Some(child) = paths_obj.next_entry().await? {
+        let f_meta = child.metadata().await?;
+
         // ignore hidden files/folders on unix
-        if path.display().to_string().contains("/.") {
+        if child.path().to_string_lossy().to_string().contains("/.") {
             continue;
         }
 
-        if path.is_dir() {
-            folders.push(path.file_name().unwrap().to_string_lossy().to_string());
-        } else if path.is_file() && !path_obj.folders_only {
-            if let Some(ext) = file_extension(&path) {
+        if f_meta.is_dir() {
+            folders.push(
+                child
+                    .path()
+                    .file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .to_string(),
+            );
+        } else if f_meta.is_file() && !path_obj.folders_only {
+            if let Some(ext) = file_extension(&child.path()) {
                 if extensions.contains(&ext.to_string().to_lowercase()) {
-                    match MediaProbe::new(&path.display().to_string()) {
-                        Ok(probe) => {
-                            let mut duration = 0.0;
-
-                            if let Some(dur) = probe.format.duration {
-                                duration = dur.parse().unwrap_or_default()
-                            }
-
-                            let video = VideoFile {
-                                name: path.file_name().unwrap().to_string_lossy().to_string(),
-                                duration,
-                            };
-                            files.push(video);
-                        }
-                        Err(e) => error!("{e:?}"),
-                    };
+                    files.push(child.path())
                 }
             }
         }
     }
 
+    folders.path_sort(natural_lexical_cmp);
+    files.path_sort(natural_lexical_cmp);
+    let mut media_files = vec![];
+
+    for file in files {
+        match MediaProbe::new(&file.to_string_lossy().to_string()) {
+            Ok(probe) => {
+                let mut duration = 0.0;
+
+                if let Some(dur) = probe.format.duration {
+                    duration = dur.parse().unwrap_or_default()
+                }
+
+                let video = VideoFile {
+                    name: file.file_name().unwrap().to_string_lossy().to_string(),
+                    duration,
+                };
+                media_files.push(video);
+            }
+            Err(e) => error!("{e:?}"),
+        };
+    }
+
     obj.folders = Some(folders);
-    obj.files = Some(files);
+    obj.files = Some(media_files);
 
     Ok(obj)
 }
@@ -173,36 +214,50 @@ pub async fn create_directory(
     let (config, _) = playout_config(conn, &id).await?;
     let (path, _, _) = norm_abs_path(&config.storage.path, &path_obj.source);
 
-    if let Err(e) = fs::create_dir_all(&path) {
+    if let Err(e) = fs::create_dir_all(&path).await {
         return Err(ServiceError::BadRequest(e.to_string()));
     }
 
-    info!("create folder: <b><magenta>{}</></b>", path.display());
+    info!(
+        "create folder: <b><magenta>{}</></b>",
+        path.to_string_lossy()
+    );
 
     Ok(HttpResponse::Ok().into())
 }
 
-// fn copy_and_delete(source: &PathBuf, target: &PathBuf) -> Result<PathObject, ServiceError> {
-//     match fs::copy(&source, &target) {
-//         Ok(_) => {
-//             if let Err(e) = fs::remove_file(source) {
-//                 error!("{e}");
-//                 return Err(ServiceError::BadRequest(
-//                     "Removing File not possible!".into(),
-//                 ));
-//             };
+async fn copy_and_delete(source: &PathBuf, target: &PathBuf) -> Result<MoveObject, ServiceError> {
+    match fs::copy(&source, &target).await {
+        Ok(_) => {
+            if let Err(e) = fs::remove_file(source).await {
+                error!("{e}");
+                return Err(ServiceError::BadRequest(
+                    "Removing File not possible!".into(),
+                ));
+            };
 
-//             return Ok(PathObject::new(target.display().to_string()));
-//         }
-//         Err(e) => {
-//             error!("{e}");
-//             Err(ServiceError::BadRequest("Error in file copy!".into()))
-//         }
-//     }
-// }
+            return Ok(MoveObject {
+                source: source
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string(),
+                target: target
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string(),
+            });
+        }
+        Err(e) => {
+            error!("{e}");
+            Err(ServiceError::BadRequest("Error in file copy!".into()))
+        }
+    }
+}
 
-fn rename(source: &PathBuf, target: &PathBuf) -> Result<MoveObject, ServiceError> {
-    match fs::rename(source, target) {
+async fn rename(source: &PathBuf, target: &PathBuf) -> Result<MoveObject, ServiceError> {
+    match fs::rename(source, target).await {
         Ok(_) => Ok(MoveObject {
             source: source
                 .file_name()
@@ -217,7 +272,7 @@ fn rename(source: &PathBuf, target: &PathBuf) -> Result<MoveObject, ServiceError
         }),
         Err(e) => {
             error!("{e}");
-            Err(ServiceError::BadRequest("Rename failed!".into()))
+            copy_and_delete(source, target).await
         }
     }
 }
@@ -237,7 +292,7 @@ pub async fn rename_file(
 
     if (source_path.is_dir() || source_path.is_file()) && source_path.parent() == Some(&target_path)
     {
-        return rename(&source_path, &target_path);
+        return rename(&source_path, &target_path).await;
     }
 
     if target_path.is_dir() {
@@ -251,7 +306,7 @@ pub async fn rename_file(
     }
 
     if source_path.is_file() && target_path.parent().is_some() {
-        return rename(&source_path, &target_path);
+        return rename(&source_path, &target_path).await;
     }
 
     Err(ServiceError::InternalServerError)
@@ -270,7 +325,7 @@ pub async fn remove_file_or_folder(
     }
 
     if source.is_dir() {
-        match fs::remove_dir(source) {
+        match fs::remove_dir(source).await {
             Ok(_) => return Ok(()),
             Err(e) => {
                 error!("{e}");
@@ -282,7 +337,7 @@ pub async fn remove_file_or_folder(
     }
 
     if source.is_file() {
-        match fs::remove_file(source) {
+        match fs::remove_file(source).await {
             Ok(_) => return Ok(()),
             Err(e) => {
                 error!("{e}");
