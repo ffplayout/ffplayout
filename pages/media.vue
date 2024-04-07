@@ -17,7 +17,7 @@
             </ul>
         </nav>
 
-        <div class="h-[calc(100%-34px)]">
+        <div class="h-[calc(100%-34px)] bg-base-300">
             <div
                 v-if="browserIsLoading"
                 class="w-full h-[calc(100%-174px)] absolute z-10 flex justify-center bg-base-100/70"
