@@ -445,6 +445,7 @@ async function upload(file: any): Promise<null | undefined> {
 
 async function uploadFiles(upl: boolean) {
     if (upl) {
+        authStore.inspectToken()
         lastPath.value = mediaStore.folderTree.source
 
         for (let i = 0; i < inputFiles.value.length; i++) {
