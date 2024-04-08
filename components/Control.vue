@@ -1,6 +1,6 @@
 <template>
     <div class="w-full">
-        <div class="grid grid-cols-2 md:grid-cols-[512px_auto] xl:grid-cols-[512px_auto_450px]">
+        <div class="grid grid-cols-1 md:grid-cols-[auto_512px] xl:grid-cols-[512px_auto_450px]">
             <div class="order-1 p-1 flex">
                 <div class="aspect-video w-full">
                     <video v-if="streamExtension === 'flv'" ref="httpStreamFlv" controls />
@@ -26,7 +26,9 @@
                 </div>
             </div>
 
-            <div class="order-3 xl:order-2 col-span-2 xl:col-span-1 bg-base-200 h-full grid grid-cols-1 xs:grid-cols-2">
+            <div
+                class="order-3 xl:order-2 col-span-1 md:col-span-2 xl:col-span-1 bg-base-200 h-full grid grid-cols-1 xs:grid-cols-2"
+            >
                 <div class="col-span-1 p-1">
                     <div
                         class="w-full h-full bg-base-100 rounded font-['DigitalNumbers-Regular'] p-6 text-3xl 2xl:text-5xl 4xl:text-7xl tracking-tighter flex justify-center items-center"
@@ -43,7 +45,7 @@
                     </div>
                 </div>
 
-                <div class="col-span-1 md:col-span-2 p-1">
+                <div class="col-span-1 xs:col-span-2 p-1">
                     <div class="w-full h-full bg-base-100 flex items-center p-3">
                         <div class="w-full h-full flex flex-col">
                             <div v-if="playlistStore.ingestRuns" class="h-1/3 font-bold truncate" title="Live Ingest">
@@ -62,7 +64,11 @@
                                 {{ secToHMS(playlistStore.currentClipOut) }}
                             </div>
                             <div class="h-1/3">
-                                <progress class="progress progress-accent w-full" :value="playlistStore.progressValue" max="100"></progress>
+                                <progress
+                                    class="progress progress-accent w-full"
+                                    :value="playlistStore.progressValue"
+                                    max="100"
+                                ></progress>
                             </div>
                         </div>
                     </div>
@@ -70,52 +76,73 @@
             </div>
 
             <div class="order-2 xl:order-3 p-1">
-                <div class="bg-base-100 flex justify-center">
-                    <div class="grid grid-cols-3 gap-3 p-4">
-                        <button
-                            title="Start Playout Service"
-                            class="btn btn-primary w-32 h-32 text-8xl text-lime-600"
-                            :class="playlistStore.playoutIsRunning && 'shadow-glow shadow-lime-600'"
-                            @click="controlProcess('start')"
-                        >
-                            <i class="bi-play" />
-                        </button>
-                        <button
-                            title="Stop Playout Service"
-                            class="btn btn-primary w-32 h-32 text-8xl text-red-600"
-                            @click="controlProcess('stop')"
-                        >
-                            <i class="bi-stop" />
-                        </button>
-                        <button
-                            title="Restart Playout Service"
-                            class="btn btn-primary w-32 h-32 text-8xl text-yellow-500"
-                            @click="controlProcess('restart')"
-                        >
-                            <i class="bi-arrow-clockwise" />
-                        </button>
+                <div class="bg-base-100 h-full flex justify-center">
+                    <div class="w-full h-full grid grid-cols-3">
+                        <div class="text-center">
+                            <div class="w-full h-1/2 aspect-square p-2">
+                                <button
+                                    title="Start Playout Service"
+                                    class="btn btn-primary h-full w-full text-7xl text-lime-600"
+                                    :class="playlistStore.playoutIsRunning && 'shadow-glow shadow-lime-600'"
+                                    @click="controlProcess('start')"
+                                >
+                                    <i class="bi-play" />
+                                </button>
+                            </div>
+                            <div class="w-full h-1/2 aspect-square p-2">
+                                <button
+                                    title="Jump to last Clip"
+                                    class="btn btn-primary h-full w-full text-7xl text-cyan-600"
+                                    @click="controlPlayout('back')"
+                                >
+                                    <i class="bi-skip-start" />
+                                </button>
+                            </div>
+                        </div>
 
-                        <button
-                            title="Jump to last Clip"
-                            class="btn btn-primary w-32 h-32 text-8xl text-cyan-600"
-                            @click="controlPlayout('back')"
-                        >
-                            <i class="bi-skip-start" />
-                        </button>
-                        <button
-                            title="Reset Playout State"
-                            class="btn btn-primary w-32 h-32 text-8xl text-cyan-600"
-                            @click="controlPlayout('reset')"
-                        >
-                            <i class="bi-arrow-repeat" />
-                        </button>
-                        <button
-                            title="Jump to next Clip"
-                            class="btn btn-primary w-32 h-32 text-8xl text-cyan-600"
-                            @click="controlPlayout('next')"
-                        >
-                            <i class="bi-skip-end" />
-                        </button>
+                        <div class="text-center">
+                            <div class="w-full h-1/2 aspect-square p-2">
+                                <button
+                                    title="Stop Playout Service"
+                                    class="btn btn-primary h-full w-full text-7xl text-red-600"
+                                    @click="controlProcess('stop')"
+                                >
+                                    <i class="bi-stop" />
+                                </button>
+                            </div>
+
+                            <div class="w-full h-1/2 aspect-square p-2">
+                                <button
+                                    title="Reset Playout State"
+                                    class="btn btn-primary h-full w-full text-7xl text-cyan-600"
+                                    @click="controlPlayout('reset')"
+                                >
+                                    <i class="bi-arrow-repeat" />
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="text-center">
+                            <div class="w-full h-1/2 aspect-square p-2">
+                                <button
+                                    title="Restart Playout Service"
+                                    class="btn btn-primary h-full w-full text-7xl text-yellow-500"
+                                    @click="controlProcess('restart')"
+                                >
+                                    <i class="bi-arrow-clockwise" />
+                                </button>
+                            </div>
+
+                            <div class="w-full h-1/2 aspect-square p-2">
+                                <button
+                                    title="Jump to next Clip"
+                                    class="btn btn-primary h-full w-full text-7xl text-cyan-600"
+                                    @click="controlPlayout('next')"
+                                >
+                                    <i class="bi-skip-end" />
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
