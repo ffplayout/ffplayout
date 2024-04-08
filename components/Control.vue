@@ -1,139 +1,121 @@
 <template>
-    <div>
-        <div class="container-fluid">
-            <div class="row control-row">
-                <div class="col-3 player-col d-flex flex-column">
-                    <div>
-                        <video v-if="streamExtension === 'flv'" ref="httpStreamFlv" class="w-100" controls />
-                        <VideoPlayer
-                            class="live-player"
-                            v-else-if="configStore.configGui[configStore.configID]"
-                            :key="configStore.configID"
-                            reference="httpStream"
-                            :options="{
-                                liveui: true,
-                                controls: true,
-                                suppressNotSupportedError: true,
-                                autoplay: false,
-                                preload: 'auto',
-                                sources: [
-                                    {
-                                        type: 'application/x-mpegURL',
-                                        src: configStore.configGui[configStore.configID].preview_url,
-                                    },
-                                ],
-                            }"
-                        />
+    <div class="w-full">
+        <div class="grid grid-cols-2 md:grid-cols-[512px_auto] xl:grid-cols-[512px_auto_450px]">
+            <div class="order-1 p-1 flex">
+                <div class="aspect-video w-full">
+                    <video v-if="streamExtension === 'flv'" ref="httpStreamFlv" controls />
+                    <VideoPlayer
+                        class="live-player"
+                        v-else-if="configStore.configGui[configStore.configID]"
+                        :key="configStore.configID"
+                        reference="httpStream"
+                        :options="{
+                            liveui: true,
+                            controls: true,
+                            suppressNotSupportedError: true,
+                            autoplay: false,
+                            preload: 'auto',
+                            sources: [
+                                {
+                                    type: 'application/x-mpegURL',
+                                    src: configStore.configGui[configStore.configID].preview_url,
+                                },
+                            ],
+                        }"
+                    />
+                </div>
+            </div>
+
+            <div class="order-3 xl:order-2 col-span-2 xl:col-span-1 bg-base-200 h-full grid grid-cols-1 xs:grid-cols-2">
+                <div class="col-span-1 p-1">
+                    <div
+                        class="w-full h-full bg-base-100 rounded font-['DigitalNumbers-Regular'] p-6 text-3xl 2xl:text-5xl 4xl:text-7xl tracking-tighter flex justify-center items-center"
+                    >
+                        {{ timeStr }}
                     </div>
                 </div>
-                <div class="col">
-                    <div class="row control-col">
-                        <div class="col-8 status-col">
-                            <div class="row status-row">
-                                <div class="col time-col clock-col">
-                                    <div class="time-str">
-                                        {{ timeStr }}
-                                    </div>
-                                </div>
-                                <div class="col time-col counter-col">
-                                    <div class="time-str">
-                                        {{ secToHMS(playlistStore.remainingSec >= 0 ? playlistStore.remainingSec : 0) }}
-                                    </div>
-                                </div>
-                                <div class="col current-clip">
-                                    <div v-if="playlistStore.ingestRuns" class="current-clip-text" title="Live Ingest">
-                                        Live Ingest
-                                    </div>
-                                    <div v-else class="current-clip-text" :title="filename(playlistStore.currentClip)">
-                                        {{ filename(playlistStore.currentClip) }}
-                                    </div>
-                                    <div class="current-clip-meta">
-                                        <strong>Duration:</strong> {{ secToHMS(playlistStore.currentClipDuration) }} |
-                                        <strong>In:</strong> {{ secToHMS(playlistStore.currentClipIn) }} |
-                                        <strong>Out:</strong> {{ secToHMS(playlistStore.currentClipOut) }}
-                                    </div>
-                                    <div class="current-clip-progress progress">
-                                        <div
-                                            class="progress-bar bg-warning"
-                                            :aria-valuenow="playlistStore.progressValue"
-                                            :style="`width: ${playlistStore.progressValue}%;`"
-                                        />
-                                    </div>
-                                </div>
+
+                <div class="col-span-1 p-1 min-h-[50%]">
+                    <div
+                        class="w-full h-full bg-base-100 rounded font-['DigitalNumbers-Regular'] p-6 text-3xl 2xl:text-5xl 4xl:text-7xl tracking-tighter flex justify-center items-center"
+                    >
+                        {{ secToHMS(playlistStore.remainingSec >= 0 ? playlistStore.remainingSec : 0) }}
+                    </div>
+                </div>
+
+                <div class="col-span-1 md:col-span-2 p-1">
+                    <div class="w-full h-full bg-base-100 flex items-center p-3">
+                        <div class="w-full h-full flex flex-col">
+                            <div v-if="playlistStore.ingestRuns" class="h-1/3 font-bold truncate" title="Live Ingest">
+                                Live Ingest
+                            </div>
+                            <div
+                                v-else
+                                class="h-1/3 font-bold text truncate"
+                                :title="filename(playlistStore.currentClip)"
+                            >
+                                {{ filename(playlistStore.currentClip) }}
+                            </div>
+                            <div class="grow">
+                                <strong>Duration:</strong> {{ secToHMS(playlistStore.currentClipDuration) }} |
+                                <strong>In:</strong> {{ secToHMS(playlistStore.currentClipIn) }} | <strong>Out:</strong>
+                                {{ secToHMS(playlistStore.currentClipOut) }}
+                            </div>
+                            <div class="h-1/3">
+                                <progress class="progress progress-accent w-full" :value="playlistStore.progressValue" max="100"></progress>
                             </div>
                         </div>
-                        <div class="col-4 control-unit-col">
-                            <div class="row control-unit-row">
-                                <div class="col">
-                                    <div>
-                                        <button
-                                            title="Start Playout Service"
-                                            class="btn btn-primary control-button control-button-play"
-                                            :class="isPlaying"
-                                            @click="controlProcess('start')"
-                                        >
-                                            <i class="bi-play" />
-                                        </button>
-                                    </div>
-                                </div>
-                                <div class="col">
-                                    <div>
-                                        <button
-                                            title="Stop Playout Service"
-                                            class="btn btn-primary control-button control-button-stop"
-                                            @click="controlProcess('stop')"
-                                        >
-                                            <i class="bi-stop" />
-                                        </button>
-                                    </div>
-                                </div>
-                                <div class="col">
-                                    <div>
-                                        <button
-                                            title="Restart Playout Service"
-                                            class="btn btn-primary control-button control-button-restart"
-                                            @click="controlProcess('restart')"
-                                        >
-                                            <i class="bi-arrow-clockwise" />
-                                        </button>
-                                    </div>
-                                </div>
-                                <div class="w-100" />
-                                <div class="col">
-                                    <div>
-                                        <button
-                                            title="Jump to last Clip"
-                                            class="btn btn-primary control-button control-button-control"
-                                            @click="controlPlayout('back')"
-                                        >
-                                            <i class="bi-skip-start" />
-                                        </button>
-                                    </div>
-                                </div>
-                                <div class="col">
-                                    <div>
-                                        <button
-                                            title="Reset Playout State"
-                                            class="btn btn-primary control-button control-button-control"
-                                            @click="controlPlayout('reset')"
-                                        >
-                                            <i class="bi-arrow-repeat" />
-                                        </button>
-                                    </div>
-                                </div>
-                                <div class="col">
-                                    <div>
-                                        <button
-                                            title="Jump to next Clip"
-                                            class="btn btn-primary control-button control-button-control"
-                                            @click="controlPlayout('next')"
-                                        >
-                                            <i class="bi-skip-end" />
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="order-2 xl:order-3 p-1">
+                <div class="bg-base-100 flex justify-center">
+                    <div class="grid grid-cols-3 gap-3 p-4">
+                        <button
+                            title="Start Playout Service"
+                            class="btn btn-primary w-32 h-32 text-8xl text-lime-600"
+                            :class="playlistStore.playoutIsRunning && 'shadow-glow shadow-lime-600'"
+                            @click="controlProcess('start')"
+                        >
+                            <i class="bi-play" />
+                        </button>
+                        <button
+                            title="Stop Playout Service"
+                            class="btn btn-primary w-32 h-32 text-8xl text-red-600"
+                            @click="controlProcess('stop')"
+                        >
+                            <i class="bi-stop" />
+                        </button>
+                        <button
+                            title="Restart Playout Service"
+                            class="btn btn-primary w-32 h-32 text-8xl text-yellow-500"
+                            @click="controlProcess('restart')"
+                        >
+                            <i class="bi-arrow-clockwise" />
+                        </button>
+
+                        <button
+                            title="Jump to last Clip"
+                            class="btn btn-primary w-32 h-32 text-8xl text-cyan-600"
+                            @click="controlPlayout('back')"
+                        >
+                            <i class="bi-skip-start" />
+                        </button>
+                        <button
+                            title="Reset Playout State"
+                            class="btn btn-primary w-32 h-32 text-8xl text-cyan-600"
+                            @click="controlPlayout('reset')"
+                        >
+                            <i class="bi-arrow-repeat" />
+                        </button>
+                        <button
+                            title="Jump to next Clip"
+                            class="btn btn-primary w-32 h-32 text-8xl text-cyan-600"
+                            @click="controlPlayout('next')"
+                        >
+                            <i class="bi-skip-end" />
+                        </button>
                     </div>
                 </div>
             </div>
@@ -153,7 +135,6 @@ const { filename, secToHMS, timeToSeconds } = stringFormatter()
 const { configID } = storeToRefs(useConfig())
 const contentType = { 'content-type': 'application/json;charset=UTF-8' }
 
-const isPlaying = ref('')
 const breakStatusCheck = ref(false)
 const timeStr = ref('00:00:00')
 const timer = ref()
@@ -219,9 +200,7 @@ async function status() {
         - animate timers
         - when clip end is reached call API again and set new values
     */
-
     await playlistStore.playoutStat()
-    playoutStatus()
 
     async function setStatus(resolve: any) {
         /*
@@ -238,7 +217,6 @@ async function status() {
         } else if ((playlistStore.playoutIsRunning && playlistStore.remainingSec < 0) || timeInSec % 30 === 0) {
             // When 30 seconds a passed, get new status.
             await playlistStore.playoutStat()
-            playoutStatus()
         } else if (!playlistStore.playoutIsRunning) {
             playlistStore.remainingSec = 0
         }
@@ -246,17 +224,6 @@ async function status() {
         timer.value = setTimeout(() => setStatus(resolve), 1000)
     }
     return new Promise((resolve) => setStatus(resolve))
-}
-
-function playoutStatus() {
-    /*
-        When playout is running, set css class.
-    */
-    if (playlistStore.playoutIsRunning) {
-        isPlaying.value = 'is-playing'
-    } else {
-        isPlaying.value = ''
-    }
 }
 
 async function controlProcess(state: string) {
@@ -273,7 +240,6 @@ async function controlProcess(state: string) {
 
     setTimeout(async () => {
         await playlistStore.playoutStat()
-        playoutStatus()
     }, 1000)
 }
 
@@ -294,7 +260,6 @@ async function controlPlayout(state: string) {
 
     setTimeout(async () => {
         await playlistStore.playoutStat()
-        playoutStatus()
     }, 1000)
 }
 </script>

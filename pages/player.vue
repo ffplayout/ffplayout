@@ -6,7 +6,7 @@
                 <input type="date" class="form-control date-div mt-2 mb-2" v-model="listDate" />
             </div>
         </div>
-        <splitpanes class="container list-row pane-row player-container">
+        <!-- <splitpanes class="container list-row pane-row player-container">
             <pane class="mobile-hidden" min-size="14" max-size="80" size="20">
                 <div v-if="browserIsLoading" class="d-flex justify-content-center loading-overlay">
                     <div class="spinner-border" role="status" />
@@ -241,7 +241,7 @@
             <div class="btn btn-primary" title="Delete Playlist" data-bs-toggle="modal" data-bs-target="#deleteModal">
                 <i class="bi-trash" />
             </div>
-        </div>
+        </div>-->
 
         <div id="previewModal" class="modal" tabindex="-1" aria-labelledby="previewModalLabel" aria-hidden="true">
             <div class="modal-dialog modal-dialog-centered modal-xl">

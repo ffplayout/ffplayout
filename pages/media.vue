@@ -33,7 +33,7 @@
                         <li
                             v-if="mediaStore.folderTree.parent_folders.length > 0"
                             v-for="folder in mediaStore.folderTree.parent_folders"
-                            class="grid grid-cols-[auto_38px] gap-1 px-1"
+                            class="grid grid-cols-[auto_28px] gap-1 px-1"
                             :class="filename(mediaStore.folderTree.source) === folder.name && 'bg-base-300 rounded'"
                             :key="folder.uid"
                             v-on:drop="handleDrop($event, folder, true)"
@@ -71,7 +71,7 @@
                 <pane class="h-full px-2 pb-1">
                     <ul v-if="mediaStore.folderTree.parent" class="h-full overflow-auto m-1" v-on:dragover.prevent>
                         <li
-                            class="grid grid-cols-[auto_49px] gap-1"
+                            class="grid grid-cols-[auto_28px] gap-1"
                             v-for="folder in mediaStore.folderTree.folders"
                             :key="folder.uid"
                             v-on:drop="handleDrop($event, folder, false)"
@@ -86,7 +86,7 @@
                                 {{ folder.name }}
                             </button>
                             <button
-                                class="opacity-30 hover:opacity-100"
+                                class="w-7 opacity-30 hover:opacity-100"
                                 @click="
                                     ;(showDeleteModal = true),
                                         (deleteName = `/${mediaStore.folderTree.source}/${folder.name}`.replace(
@@ -101,7 +101,7 @@
                         <li
                             v-for="(element, index) in mediaStore.folderTree.files"
                             :id="`file_${index}`"
-                            class="grid grid-cols-[auto_176px]"
+                            class="grid grid-cols-[auto_166px]"
                             :key="element.name"
                             draggable="true"
                             v-on:dragstart="handleDragStart($event, element)"

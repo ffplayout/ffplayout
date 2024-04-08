@@ -6,6 +6,7 @@ module.exports = {
             },
             boxShadow: {
                 '3xl': '0 1em 5em rgba(0, 0, 0, 0.3)',
+                'glow': '0 0 20px rgba(0, 0, 0, 0.3)',
             },
             colors: {
                 'my-gray': 'var(--my-gray)',
