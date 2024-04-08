@@ -244,7 +244,7 @@
                         type="button"
                         class="btn btn-sm btn-primary join-item"
                         data-bs-dismiss="modal"
-                        @click="resetCheckboxes(), resetTemplate()"
+                        @click="resetCheckboxes(), resetTemplate(), close()"
                     >
                         Cancel
                     </button>
@@ -252,7 +252,7 @@
                         type="button"
                         class="btn btn-sm btn-primary join-item"
                         data-bs-dismiss="modal"
-                        @click="generatePlaylist()"
+                        @click="generatePlaylist(), close()"
                     >
                         Ok
                     </button>
@@ -270,6 +270,15 @@ const playlistStore = usePlaylist()
 
 const { processPlaylist } = playlistOperations()
 const contentType = { 'content-type': 'application/json;charset=UTF-8' }
+
+defineProps({
+    close: {
+        type: Function,
+        default() {
+            return ''
+        },
+    },
+})
 
 const advancedGenerator = ref(false)
 const playlistIsLoading = ref(false)

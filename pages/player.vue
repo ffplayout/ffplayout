@@ -293,7 +293,7 @@
             </span>
         </Modal>
 
-        <PlaylistGenerator v-if="showPlaylistGenerator" />
+        <PlaylistGenerator v-if="showPlaylistGenerator" :close="closeGenerator" />
     </div>
 </template>
 
@@ -392,6 +392,10 @@ async function getPlaylist() {
     } else {
         scrollTo(0)
     }
+}
+
+function closeGenerator() {
+    showPlaylistGenerator.value = false
 }
 
 function closePlayer() {
