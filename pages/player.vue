@@ -163,12 +163,7 @@
         </div>
 
         <div class="join flex justify-end m-3">
-            <button
-                class="btn btn-sm btn-primary join-item"
-                title="Copy Playlist"
-                data-bs-toggle="modal"
-                data-bs-target="#copyModal"
-            >
+            <button class="btn btn-sm btn-primary join-item" title="Copy Playlist" @click="showCopyModal = true">
                 <i class="bi-files" />
             </button>
             <button
@@ -189,32 +184,27 @@
             <button
                 class="btn btn-sm btn-primary join-item"
                 title="Import text/m3u file"
-                data-bs-toggle="modal"
-                data-bs-target="#importModal"
+                @click="showImportModal = true"
             >
                 <i class="bi-file-text" />
             </button>
             <button
                 class="btn btn-sm btn-primary join-item"
-                title="Generate a randomized Playlist"
-                data-bs-toggle="modal"
-                data-bs-target="#generateModal"
-                @click="mediaStore.getTree('', true)"
+                @click="mediaStore.getTree('', true), (showPlaylistGenerator = true)"
             >
                 <i class="bi-sort-down-alt" />
             </button>
             <button class="btn btn-sm btn-primary join-item" title="Reset Playlist" @click="getPlaylist()">
                 <i class="bi-arrow-counterclockwise" />
             </button>
-            <button class="btn btn-sm btn-primary join-item" title="Save Playlist" @click="savePlaylist(listDate)">
-                <i class="bi-download" />
-            </button>
             <button
                 class="btn btn-sm btn-primary join-item"
-                title="Delete Playlist"
-                data-bs-toggle="modal"
-                data-bs-target="#deleteModal"
+                title="Save Playlist"
+                @click=";(targetDate = listDate), savePlaylist(true)"
             >
+                <i class="bi-download" />
+            </button>
+            <button class="btn btn-sm btn-primary join-item" title="Delete Playlist" @click="showDeleteModal = true">
                 <i class="bi-trash" />
             </button>
         </div>
@@ -283,398 +273,27 @@
             </div>
         </Modal>
 
-        <div id="importModal" class="modal" tabindex="-1" aria-labelledby="importModalLabel" aria-hidden="true">
-            <div class="modal-dialog modal-dialog-centered">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h1 class="modal-title fs-5" id="importModalLabel">Import Playlist</h1>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cancel"></button>
-                    </div>
-                    <form @submit.prevent="onSubmitImport">
-                        <div class="modal-body">
-                            <input class="form-control" ref="fileImport" type="file" v-on:change="onFileChange" />
-                        </div>
-                        <div class="modal-footer">
-                            <button type="reset" class="btn btn-primary" data-bs-dismiss="modal" aria-label="Cancel">
-                                Cancel
-                            </button>
-                            <button type="submit" class="btn btn-primary" data-bs-dismiss="modal">Import</button>
-                        </div>
-                    </form>
-                </div>
-            </div>
-        </div>
+        <Modal :show="showImportModal" title="Import Playlist" :modal-action="importPlaylist">
+            <input
+                ref="fileImport"
+                type="file"
+                class="file-input file-input-sm file-input-bordered w-full"
+                v-on:change="onFileChange"
+                multiple
+            />
+        </Modal>
 
-        <div id="copyModal" class="modal" tabindex="-1" aria-labelledby="copyModalLabel" aria-hidden="true">
-            <div class="modal-dialog modal-dialog-centered">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h1 class="modal-title fs-5" id="copyModalLabel">Copy Program {{ listDate }} to:</h1>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cancel"></button>
-                    </div>
-                    <div class="modal-body">
-                        <input type="date" class="form-control centered" v-model="targetDate" />
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Cancel</button>
-                        <button
-                            type="button"
-                            class="btn btn-primary"
-                            data-bs-dismiss="modal"
-                            @click="savePlaylist(targetDate)"
-                        >
-                            Ok
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
+        <Modal :show="showCopyModal" :title="`Copy Program ${listDate}`" :modal-action="savePlaylist">
+            <input type="date" class="input input-sm input-bordered w-full" v-model="targetDate" />
+        </Modal>
 
-        <div id="deleteModal" class="modal" tabindex="-1" aria-labelledby="deleteModalLabel" aria-hidden="true">
-            <div class="modal-dialog modal-dialog-centered">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h1 class="modal-title fs-5" id="deleteModalLabel">Delete Program</h1>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cancel"></button>
-                    </div>
-                    <div class="modal-body">
-                        Delete program from <strong>{{ listDate }}</strong>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Cancel</button>
-                        <button
-                            type="button"
-                            class="btn btn-primary"
-                            data-bs-dismiss="modal"
-                            @click="deletePlaylist(listDate)"
-                        >
-                            Ok
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
+        <Modal :show="showDeleteModal" title="Delete Program" :modal-action="deletePlaylist">
+            <span>
+                Delete program from <strong>{{ listDate }}</strong>
+            </span>
+        </Modal>
 
-        <div
-            id="generateModal"
-            class="modal modal-xl"
-            tabindex="-1"
-            aria-labelledby="generateModalLabel"
-            aria-hidden="true"
-        >
-            <div class="modal-dialog modal-dialog-centered">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h1 class="modal-title fs-5" id="generateModalLabel">Generate Program</h1>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cancel"></button>
-                    </div>
-                    <div class="modal-body">
-                        <div class="browser-col">
-                            <div class="nav nav-tabs" id="v-pills-tab" role="tablist" aria-orientation="vertical">
-                                <button
-                                    class="nav-link active"
-                                    id="v-pills-gui-tab"
-                                    data-bs-toggle="pill"
-                                    data-bs-target="#v-pills-gui"
-                                    type="button"
-                                    role="tab"
-                                    aria-controls="v-pills-gui"
-                                    aria-selected="true"
-                                    @click="advancedGenerator = false"
-                                >
-                                    Simple
-                                </button>
-                                <button
-                                    class="nav-link"
-                                    id="v-pills-playout-tab"
-                                    data-bs-toggle="pill"
-                                    data-bs-target="#v-pills-playout"
-                                    type="button"
-                                    role="tab"
-                                    aria-controls="v-pills-playout"
-                                    aria-selected="false"
-                                    @click=";(advancedGenerator = true), resetCheckboxes()"
-                                >
-                                    Advanced
-                                </button>
-                            </div>
-                            <div class="tab-content h-100" id="v-pills-tabContent">
-                                <div
-                                    class="tab-pane h-100 show active"
-                                    id="v-pills-gui"
-                                    role="tabpanel"
-                                    aria-labelledby="v-pills-gui-tab"
-                                >
-                                    <div class="h-100">
-                                        <nav aria-label="breadcrumb">
-                                            <ol class="breadcrumb border-0">
-                                                <li
-                                                    class="breadcrumb-item"
-                                                    v-for="(crumb, index) in mediaStore.folderCrumbs"
-                                                    :key="index"
-                                                    :active="index === mediaStore.folderCrumbs.length - 1"
-                                                    @click="mediaStore.getTree(crumb.path, true)"
-                                                >
-                                                    <a
-                                                        v-if="
-                                                            mediaStore.folderCrumbs.length > 1 &&
-                                                            mediaStore.folderCrumbs.length - 1 > index
-                                                        "
-                                                        href="#"
-                                                    >
-                                                        {{ crumb.text }}
-                                                    </a>
-                                                    <span v-else>{{ crumb.text }}</span>
-                                                </li>
-                                            </ol>
-                                        </nav>
-                                        <ul class="list-group media-browser-scroll browser-div">
-                                            <li
-                                                class="list-group-item browser-item"
-                                                v-for="folder in mediaStore.folderList.folders"
-                                                :key="folder.uid"
-                                            >
-                                                <div class="row">
-                                                    <div class="col-1 browser-icons-col">
-                                                        <i class="bi-folder-fill browser-icons" />
-                                                    </div>
-                                                    <div class="col browser-item-text">
-                                                        <a
-                                                            class="link-light"
-                                                            href="#"
-                                                            @click="
-                                                                ;[
-                                                                    (selectedFolders = []),
-                                                                    mediaStore.getTree(
-                                                                        `/${mediaStore.folderList.source}/${folder.name}`.replace(
-                                                                            /\/[/]+/g,
-                                                                            '/'
-                                                                        ),
-                                                                        true
-                                                                    ),
-                                                                ]
-                                                            "
-                                                        >
-                                                            {{ folder.name }}
-                                                        </a>
-                                                    </div>
-                                                    <div
-                                                        v-if="!generateFromAll"
-                                                        class="col-1 text-center playlist-input"
-                                                    >
-                                                        <input
-                                                            class="form-check-input folder-check"
-                                                            type="checkbox"
-                                                            @change="
-                                                                setSelectedFolder(
-                                                                    $event,
-                                                                    `/${mediaStore.folderList.source}/${folder.name}`.replace(
-                                                                        /\/[/]+/g,
-                                                                        '/'
-                                                                    )
-                                                                )
-                                                            "
-                                                        />
-                                                    </div>
-                                                </div>
-                                            </li>
-                                        </ul>
-                                    </div>
-                                </div>
-                                <div
-                                    class="tab-pane"
-                                    id="v-pills-playout"
-                                    role="tabpanel"
-                                    aria-labelledby="v-pills-playout-tab"
-                                >
-                                    <div>
-                                        <div class="row">
-                                            <div class="col col-10">
-                                                <nav aria-label="breadcrumb">
-                                                    <ol class="breadcrumb border-0">
-                                                        <li
-                                                            class="breadcrumb-item"
-                                                            v-for="(crumb, index) in mediaStore.folderCrumbs"
-                                                            :key="index"
-                                                            :active="index === mediaStore.folderCrumbs.length - 1"
-                                                            @click.prevent="mediaStore.getTree(crumb.path, true)"
-                                                        >
-                                                            <a
-                                                                v-if="
-                                                                    mediaStore.folderCrumbs.length > 1 &&
-                                                                    mediaStore.folderCrumbs.length - 1 > index
-                                                                "
-                                                                href="#"
-                                                            >
-                                                                {{ crumb.text }}
-                                                            </a>
-                                                            <span v-else>{{ crumb.text }}</span>
-                                                        </li>
-                                                    </ol>
-                                                </nav>
-                                            </div>
-                                            <div class="col d-flex justify-content-end">
-                                                <button
-                                                    type="button"
-                                                    class="btn btn-primary p-2 py-0 m-1"
-                                                    @click="addTemplate()"
-                                                >
-                                                    <i class="bi bi-folder-plus"></i>
-                                                </button>
-                                            </div>
-                                        </div>
-                                        <div class="row">
-                                            <div class="col col-5 browser-col">
-                                                <Sortable
-                                                    :list="mediaStore.folderList.folders"
-                                                    :options="templateBrowserSortOptions"
-                                                    item-key="uid"
-                                                    class="list-group media-browser-scroll browser-div"
-                                                    tag="ul"
-                                                >
-                                                    <template #item="{ element, index }">
-                                                        <li
-                                                            :id="`adv_folder_${index}`"
-                                                            class="draggable list-group-item browser-item"
-                                                            :key="element.uid"
-                                                        >
-                                                            <div class="row">
-                                                                <div class="col-1 browser-icons-col">
-                                                                    <i class="bi-folder-fill browser-icons" />
-                                                                </div>
-                                                                <div class="col browser-item-text">
-                                                                    <a
-                                                                        class="link-light"
-                                                                        href="#"
-                                                                        @click="
-                                                                            ;[
-                                                                                (selectedFolders = []),
-                                                                                mediaStore.getTree(
-                                                                                    `/${mediaStore.folderList.source}/${element.name}`.replace(
-                                                                                        /\/[/]+/g,
-                                                                                        '/'
-                                                                                    ),
-                                                                                    true
-                                                                                ),
-                                                                            ]
-                                                                        "
-                                                                    >
-                                                                        {{ element.name }}
-                                                                    </a>
-                                                                </div>
-                                                            </div>
-                                                        </li>
-                                                    </template>
-                                                </Sortable>
-                                            </div>
-                                            <div class="col template-col">
-                                                <ul class="list-group media-browser-scroll">
-                                                    <li
-                                                        v-for="item in template.sources"
-                                                        :key="item.start"
-                                                        class="list-group-item"
-                                                    >
-                                                        <div class="input-group mb-3">
-                                                            <span class="input-group-text">Start</span>
-                                                            <input
-                                                                type="test"
-                                                                class="form-control"
-                                                                aria-label="Start"
-                                                                v-model="item.start"
-                                                            />
-                                                            <span class="input-group-text">Duration</span>
-                                                            <input
-                                                                type="test"
-                                                                class="form-control"
-                                                                aria-label="Duration"
-                                                                v-model="item.duration"
-                                                            />
-                                                            <input
-                                                                type="checkbox"
-                                                                class="btn-check"
-                                                                :id="`shuffle-${item.start}`"
-                                                                autocomplete="off"
-                                                                v-model="item.shuffle"
-                                                            />
-                                                            <label
-                                                                class="btn btn-outline-primary"
-                                                                :for="`shuffle-${item.start}`"
-                                                            >
-                                                                Shuffle
-                                                            </label>
-                                                        </div>
-
-                                                        <Sortable
-                                                            :list="item.paths"
-                                                            item-key="index"
-                                                            class="list-group w-100 border"
-                                                            :style="`height: ${
-                                                                item.paths ? item.paths.length * 23 + 31 : 300
-                                                            }px`"
-                                                            tag="ul"
-                                                            :options="templateTargetSortOptions"
-                                                            @add="addFolderToTemplate($event, item)"
-                                                        >
-                                                            <template #item="{ element, index }">
-                                                                <li
-                                                                    :id="`path_${index}`"
-                                                                    class="draggable grabbing list-group-item py-0"
-                                                                    :key="index"
-                                                                >
-                                                                    {{ element.split(/[\\/]+/).pop() }}
-                                                                </li>
-                                                            </template>
-                                                        </Sortable>
-
-                                                        <div class="col d-flex justify-content-end">
-                                                            <button
-                                                                type="button"
-                                                                class="btn btn-primary p-2 py-0 m-1"
-                                                                @click="removeTemplate(item)"
-                                                            >
-                                                                <i class="bi-trash" />
-                                                            </button>
-                                                        </div>
-                                                    </li>
-                                                </ul>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="modal-footer">
-                        <div v-if="!advancedGenerator" class="form-check select-all-div">
-                            <input
-                                id="checkAll"
-                                class="form-check-input"
-                                type="checkbox"
-                                v-model="generateFromAll"
-                                @change="resetCheckboxes()"
-                            />
-                            <label class="form-check-label" for="checkAll">All</label>
-                        </div>
-                        <button
-                            type="button"
-                            class="btn btn-primary"
-                            data-bs-dismiss="modal"
-                            @click="resetCheckboxes(), resetTemplate()"
-                        >
-                            Cancel
-                        </button>
-                        <button
-                            type="button"
-                            class="btn btn-primary"
-                            data-bs-dismiss="modal"
-                            @click="generatePlaylist()"
-                        >
-                            Ok
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
+        <PlaylistGenerator v-if="showPlaylistGenerator" />
     </div>
 </template>
 
@@ -697,25 +316,27 @@ useHead({
 })
 
 const { configID } = storeToRefs(useConfig())
+const { listDate } = storeToRefs(usePlaylist())
 
-const advancedGenerator = ref(false)
 const fileImport = ref()
 const playlistIsLoading = ref(false)
 const todayDate = ref($dayjs().utcOffset(configStore.utcOffset).format('YYYY-MM-DD'))
-const listDate = ref($dayjs().utcOffset(configStore.utcOffset).format('YYYY-MM-DD'))
 const targetDate = ref($dayjs().utcOffset(configStore.utcOffset).format('YYYY-MM-DD'))
 const editId = ref(-1)
 const textFile = ref()
 
 const showPreviewModal = ref(false)
 const showSourceModal = ref(false)
+const showImportModal = ref(false)
+const showCopyModal = ref(false)
+const showDeleteModal = ref(false)
+const showPlaylistGenerator = ref(false)
 
 const previewName = ref('')
 const previewUrl = ref('')
 const previewOpt = ref()
 const isVideo = ref(false)
-const selectedFolders = ref([] as string[])
-const generateFromAll = ref(false)
+
 const browserSortOptions = {
     group: { name: 'playlist', pull: 'clone', put: false },
     sort: false,
@@ -725,15 +346,7 @@ const playlistSortOptions = {
     animation: 100,
     handle: '.grabbing',
 }
-const templateBrowserSortOptions = {
-    group: { name: 'folder', pull: 'clone', put: false },
-    sort: false,
-}
-const templateTargetSortOptions = {
-    group: 'folder',
-    animation: 100,
-    handle: '.grabbing',
-}
+
 const newSource = ref({
     begin: 0,
     in: 0,
@@ -745,10 +358,6 @@ const newSource = ref({
     audio: '',
     uid: '',
 } as PlaylistItem)
-
-const template = ref({
-    sources: [],
-} as Template)
 
 onMounted(async () => {
     if (!mediaStore.folderTree.parent) {
@@ -766,10 +375,6 @@ watch([listDate, configID], async () => {
 function scrollTo(index: number) {
     const child = document.getElementById(`clip_${index}`)
     const parent = document.getElementById('scroll-container')
-
-    console.log('scroll')
-    console.log('child', child)
-    console.log('parent', parent)
 
     if (child && parent) {
         const topPos = child.offsetTop
@@ -838,27 +443,6 @@ function cloneClip(event: any) {
         playlistStore.playlist,
         false
     )
-}
-
-function addFolderToTemplate(event: any, item: TemplateItem) {
-    const o = event.oldIndex
-    const n = event.newIndex
-
-    event.item.remove()
-
-    const storagePath = configStore.configPlayout.storage.path
-    const navPath = mediaStore.folderCrumbs[mediaStore.folderCrumbs.length - 1].path
-    const sourcePath = `${storagePath}/${navPath}/${mediaStore.folderList.folders[o].name}`.replace(/\/[/]+/g, '/')
-
-    if (!item.paths.includes(sourcePath)) {
-        item.paths.splice(n, 0, sourcePath)
-    }
-}
-
-function removeTemplate(item: TemplateItem) {
-    const index = template.value.sources.indexOf(item)
-
-    template.value.sources.splice(index, 1)
 }
 
 function moveItemInArray(event: any) {
@@ -1008,172 +592,93 @@ function loopClips() {
     playlistStore.playlist = processPlaylist(configStore.startInSec, configStore.playlistLength, tempList, false)
 }
 
-async function onSubmitImport(evt: any) {
-    evt.preventDefault()
+async function importPlaylist(imp: boolean) {
+    showImportModal.value = false
 
-    if (!textFile.value || !textFile.value[0]) {
-        return
-    }
-
-    const formData = new FormData()
-    formData.append(textFile.value[0].name, textFile.value[0])
-
-    playlistIsLoading.value = true
-    await $fetch(
-        `/api/file/${configStore.configGui[configStore.configID].id}/import/?file=${textFile.value[0].name}&date=${
-            listDate.value
-        }`,
-        {
-            method: 'PUT',
-            headers: authStore.authHeader,
-            body: formData,
+    if (imp) {
+        if (!textFile.value || !textFile.value[0]) {
+            return
         }
-    )
-        .then(() => {
-            indexStore.msgAlert('alert-success', 'Import success!', 2)
-            playlistStore.getPlaylist(listDate.value)
-        })
-        .catch((e: string) => {
-            indexStore.msgAlert('alert-error', e, 4)
-        })
+
+        const formData = new FormData()
+        formData.append(textFile.value[0].name, textFile.value[0])
+
+        playlistIsLoading.value = true
+        await $fetch(
+            `/api/file/${configStore.configGui[configStore.configID].id}/import/?file=${
+                textFile.value[0].name
+            }&date=${listDate}`,
+            {
+                method: 'PUT',
+                headers: authStore.authHeader,
+                body: formData,
+            }
+        )
+            .then(() => {
+                indexStore.msgAlert('alert-success', 'Import success!', 2)
+                playlistStore.getPlaylist(listDate.value)
+            })
+            .catch((e: string) => {
+                indexStore.msgAlert('alert-error', e, 4)
+            })
+    }
 
     playlistIsLoading.value = false
     textFile.value = null
     fileImport.value.value = null
 }
 
-async function generatePlaylist() {
-    playlistIsLoading.value = true
-    let body = null as BodyObject | null
+async function savePlaylist(save: boolean) {
+    showCopyModal.value = false
 
-    if (selectedFolders.value.length > 0 && !generateFromAll.value) {
-        body = { paths: selectedFolders.value }
-    }
-
-    if (advancedGenerator.value) {
-        if (body) {
-            body.template = template.value
-        } else {
-            body = { template: template.value }
+    if (save) {
+        if (playlistStore.playlist.length === 0) {
+            return
         }
-    }
 
-    await $fetch(`/api/playlist/${configStore.configGui[configStore.configID].id}/generate/${listDate.value}`, {
-        method: 'POST',
-        headers: { ...contentType, ...authStore.authHeader },
-        body,
-    })
-        .then((response: any) => {
-            playlistStore.playlist = processPlaylist(
-                configStore.startInSec,
-                configStore.playlistLength,
-                response.program,
-                false
-            )
-            indexStore.msgAlert('alert-success', 'Generate Playlist done...', 2)
+        playlistStore.playlist = processPlaylist(
+            configStore.startInSec,
+            configStore.playlistLength,
+            playlistStore.playlist,
+            true
+        )
+        const saveList = playlistStore.playlist.map(({ begin, ...item }) => item)
+
+        await $fetch(`/api/playlist/${configStore.configGui[configStore.configID].id}/`, {
+            method: 'POST',
+            headers: { ...contentType, ...authStore.authHeader },
+            body: JSON.stringify({
+                channel: configStore.configGui[configStore.configID].name,
+                date: targetDate.value,
+                program: saveList,
+            }),
         })
-        .catch((e: any) => {
-            indexStore.msgAlert('alert-error', e.data ? e.data : e, 4)
+            .then((response: any) => {
+                indexStore.msgAlert('alert-success', response, 2)
+            })
+            .catch((e: any) => {
+                if (e.status === 409) {
+                    indexStore.msgAlert('alert-warning', e.data, 2)
+                } else {
+                    indexStore.msgAlert('alert-error', e, 4)
+                }
+            })
+    }
+}
+
+async function deletePlaylist(del: boolean) {
+    showDeleteModal.value = false
+
+    if (del) {
+        await $fetch(`/api/playlist/${configStore.configGui[configStore.configID].id}/${listDate}`, {
+            method: 'DELETE',
+            headers: { ...contentType, ...authStore.authHeader },
+        }).then(() => {
+            playlistStore.playlist = []
+
+            indexStore.msgAlert('alert-warning', 'Playlist deleted...', 2)
         })
-
-    // reset selections
-    resetCheckboxes()
-    resetTemplate()
-
-    playlistIsLoading.value = false
-}
-
-async function savePlaylist(saveDate: string) {
-    if (playlistStore.playlist.length === 0) {
-        return
     }
-
-    playlistStore.playlist = processPlaylist(
-        configStore.startInSec,
-        configStore.playlistLength,
-        playlistStore.playlist,
-        true
-    )
-    const saveList = playlistStore.playlist.map(({ begin, ...item }) => item)
-
-    await $fetch(`/api/playlist/${configStore.configGui[configStore.configID].id}/`, {
-        method: 'POST',
-        headers: { ...contentType, ...authStore.authHeader },
-        body: JSON.stringify({
-            channel: configStore.configGui[configStore.configID].name,
-            date: saveDate,
-            program: saveList,
-        }),
-    })
-        .then((response: any) => {
-            indexStore.msgAlert('alert-success', response, 2)
-        })
-        .catch((e: any) => {
-            if (e.status === 409) {
-                indexStore.msgAlert('alert-warning', e.data, 2)
-            } else {
-                indexStore.msgAlert('alert-error', e, 4)
-            }
-        })
-}
-
-async function deletePlaylist(playlistDate: string) {
-    await $fetch(`/api/playlist/${configStore.configGui[configStore.configID].id}/${playlistDate}`, {
-        method: 'DELETE',
-        headers: { ...contentType, ...authStore.authHeader },
-    }).then(() => {
-        playlistStore.playlist = []
-
-        indexStore.msgAlert('alert-warning', 'Playlist deleted...', 2)
-    })
-}
-
-function setSelectedFolder(event: any, folder: string) {
-    if (event.target.checked) {
-        selectedFolders.value.push(folder)
-    } else {
-        const index = selectedFolders.value.indexOf(folder)
-
-        if (index > -1) {
-            selectedFolders.value.splice(index, 1)
-        }
-    }
-}
-
-function resetCheckboxes() {
-    selectedFolders.value = []
-    const checkboxes = document.getElementsByClassName('folder-check')
-
-    if (checkboxes) {
-        for (const box of checkboxes) {
-            // @ts-ignore
-            box.checked = false
-        }
-    }
-}
-
-function resetTemplate() {
-    template.value.sources = []
-}
-
-function addTemplate() {
-    const last = template.value.sources[template.value.sources.length - 1]
-    // @ts-ignore
-    let start = $dayjs('00:00:00', 'HH:mm:ss')
-
-    if (last) {
-        // @ts-ignore
-        const t = $dayjs(last.duration, 'HH:mm:ss')
-        // @ts-ignore
-        start = $dayjs(last.start, 'HH:mm:ss').add(t.hour(), 'hour').add(t.minute(), 'minute').add(t.second(), 'second')
-    }
-
-    template.value.sources.push({
-        start: start.format('HH:mm:ss'),
-        duration: '02:00:00',
-        shuffle: false,
-        paths: [],
-    })
 }
 </script>
 
