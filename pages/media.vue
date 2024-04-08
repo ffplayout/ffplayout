@@ -29,12 +29,12 @@
                 <span class="loading loading-spinner loading-lg"></span>
             </div>
             <splitpanes :horizontal="horizontal" class="border border-my-gray rounded">
-                <pane min-size="14" max-size="80" size="24" class="h-full px-1 pb-1">
+                <pane min-size="14" max-size="80" size="24" class="h-full pb-1">
                     <ul v-if="mediaStore.folderTree.parent" class="overflow-auto h-full m-1" v-on:dragover.prevent>
                         <li
                             v-if="mediaStore.folderTree.parent_folders.length > 0"
                             v-for="folder in mediaStore.folderTree.parent_folders"
-                            class="grid grid-cols-[auto_28px] gap-1 px-1"
+                            class="grid grid-cols-[auto_28px] gap-1 px-2"
                             :class="filename(mediaStore.folderTree.source) === folder.name && 'bg-base-300 rounded'"
                             :key="folder.uid"
                             v-on:drop="handleDrop($event, folder, true)"
@@ -69,10 +69,10 @@
                         </li>
                     </ul>
                 </pane>
-                <pane class="h-full px-2 pb-1">
+                <pane class="h-full pb-1">
                     <ul v-if="mediaStore.folderTree.parent" class="h-full overflow-auto m-1" v-on:dragover.prevent>
                         <li
-                            class="grid grid-cols-[auto_28px] gap-1"
+                            class="grid grid-cols-[auto_28px] px-2 gap-1"
                             v-for="folder in mediaStore.folderTree.folders"
                             :key="folder.uid"
                             v-on:drop="handleDrop($event, folder, false)"
@@ -102,7 +102,7 @@
                         <li
                             v-for="(element, index) in mediaStore.folderTree.files"
                             :id="`file_${index}`"
-                            class="grid grid-cols-[auto_166px]"
+                            class="grid grid-cols-[auto_166px] px-2"
                             :key="element.name"
                             draggable="true"
                             v-on:dragstart="handleDragStart($event, element)"
@@ -259,7 +259,6 @@ watch([width], () => {
 })
 
 const horizontal = ref(false)
-const browserIsLoading = ref(false)
 const deleteName = ref('')
 const renameOldName = ref('')
 const renameNewName = ref('')
