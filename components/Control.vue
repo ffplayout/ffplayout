@@ -1,28 +1,30 @@
 <template>
     <div class="w-full">
         <div class="grid grid-cols-1 md:grid-cols-[auto_512px] xl:grid-cols-[512px_auto_450px]">
-            <div class="order-1 p-1 flex">
-                <div class="aspect-video w-full">
-                    <video v-if="streamExtension === 'flv'" ref="httpStreamFlv" controls />
-                    <VideoPlayer
-                        class="live-player"
-                        v-else-if="configStore.configGui[configStore.configID]"
-                        :key="configStore.configID"
-                        reference="httpStream"
-                        :options="{
-                            liveui: true,
-                            controls: true,
-                            suppressNotSupportedError: true,
-                            autoplay: false,
-                            preload: 'auto',
-                            sources: [
-                                {
-                                    type: 'application/x-mpegURL',
-                                    src: configStore.configGui[configStore.configID].preview_url,
-                                },
-                            ],
-                        }"
-                    />
+            <div class="order-1 p-1">
+                <div class="bg-base-100 w-full h-full rounded">
+                    <div class="w-full h-full p-2">
+                        <video v-if="streamExtension === 'flv'" ref="httpStreamFlv" controls />
+                        <VideoPlayer
+                            class="live-player"
+                            v-else-if="configStore.configGui[configStore.configID]"
+                            :key="configStore.configID"
+                            reference="httpStream"
+                            :options="{
+                                liveui: true,
+                                controls: true,
+                                suppressNotSupportedError: true,
+                                autoplay: false,
+                                preload: 'auto',
+                                sources: [
+                                    {
+                                        type: 'application/x-mpegURL',
+                                        src: configStore.configGui[configStore.configID].preview_url,
+                                    },
+                                ],
+                            }"
+                        />
+                    </div>
                 </div>
             </div>
 
@@ -31,7 +33,7 @@
             >
                 <div class="col-span-1 p-1">
                     <div
-                        class="w-full h-full bg-base-100 rounded font-['DigitalNumbers-Regular'] p-6 text-3xl 2xl:text-5xl 4xl:text-7xl tracking-tighter flex justify-center items-center"
+                        class="w-full h-full bg-base-100 rounded font-['DigitalNumbers-Regular'] p-6 text-3xl md:text-2xl 2xl:text-5xl 4xl:text-7xl tracking-tighter flex justify-center items-center"
                     >
                         {{ timeStr }}
                     </div>
@@ -39,14 +41,14 @@
 
                 <div class="col-span-1 p-1 min-h-[50%]">
                     <div
-                        class="w-full h-full bg-base-100 rounded font-['DigitalNumbers-Regular'] p-6 text-3xl 2xl:text-5xl 4xl:text-7xl tracking-tighter flex justify-center items-center"
+                        class="w-full h-full bg-base-100 rounded font-['DigitalNumbers-Regular'] p-6 text-3xl md:text-2xl 2xl:text-5xl 4xl:text-7xl tracking-tighter flex justify-center items-center"
                     >
                         {{ secToHMS(playlistStore.remainingSec >= 0 ? playlistStore.remainingSec : 0) }}
                     </div>
                 </div>
 
                 <div class="col-span-1 xs:col-span-2 p-1">
-                    <div class="w-full h-full bg-base-100 flex items-center p-3">
+                    <div class="w-full h-full bg-base-100 rounded flex items-center p-3">
                         <div class="w-full h-full flex flex-col">
                             <div v-if="playlistStore.ingestRuns" class="h-1/3 font-bold truncate" title="Live Ingest">
                                 Live Ingest
@@ -76,7 +78,7 @@
             </div>
 
             <div class="order-2 xl:order-3 p-1">
-                <div class="bg-base-100 h-full flex justify-center">
+                <div class="bg-base-100 h-full flex justify-center rounded">
                     <div class="w-full h-full grid grid-cols-3">
                         <div class="text-center">
                             <div class="w-full h-1/2 aspect-square p-2">

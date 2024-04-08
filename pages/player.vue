@@ -1,165 +1,139 @@
 <template>
-    <div>
+    <div class="h-full">
         <Control />
-        <div class="date-row">
-            <div class="col">
-                <input type="date" class="form-control date-div mt-2 mb-2" v-model="listDate" />
+        <div class="flex justify-end p-1">
+            <div>
+                <input type="date" class="input input-sm input-bordered w-full max-w-xs" v-model="listDate" />
             </div>
         </div>
-        <!-- <splitpanes class="container list-row pane-row player-container">
-            <pane class="mobile-hidden" min-size="14" max-size="80" size="20">
-                <div v-if="browserIsLoading" class="d-flex justify-content-center loading-overlay">
-                    <div class="spinner-border" role="status" />
-                </div>
-                <div v-if="mediaStore.folderTree.parent && mediaStore.crumbs">
-                    <nav aria-label="breadcrumb">
-                        <ol class="breadcrumb">
-                            <li
-                                class="breadcrumb-item"
-                                v-for="(crumb, index) in mediaStore.crumbs"
-                                :key="index"
-                                :active="index === mediaStore.crumbs.length - 1"
-                                @click="getPath(crumb.path)"
-                            >
-                                <a v-if="mediaStore.crumbs.length > 1 && mediaStore.crumbs.length - 1 > index" href="#">
-                                    {{ crumb.text }}
-                                </a>
-                                <span v-else>{{ crumb.text }}</span>
-                            </li>
-                        </ol>
-                    </nav>
-                </div>
-                <ul class="list-group media-browser-scroll browser-div">
-                    <li
-                        class="list-group-item browser-item"
-                        v-for="folder in mediaStore.folderTree.folders"
-                        :key="folder.uid"
+        <div class="p-1 min-h-[500px] h-[calc(100vh-800px)] xl:h-[calc(100vh-480px)]">
+            <splitpanes class="border border-my-gray rounded">
+                <pane class="h-full" min-size="0" max-size="80" size="20">
+                    <div
+                        v-if="mediaStore.isLoading"
+                        class="w-full h-full absolute z-10 flex justify-center bg-base-100/70"
                     >
-                        <div class="row">
-                            <div class="col-1 browser-icons-col">
-                                <i class="bi-folder-fill browser-icons" />
-                            </div>
-                            <div class="col browser-item-text">
-                                <a
-                                    class="link-light"
-                                    href="#"
-                                    @click="getPath(`/${mediaStore.folderTree.source}/${folder.name}`)"
-                                >
-                                    {{ folder.name }}
-                                </a>
-                            </div>
-                        </div>
-                    </li>
-                    <Sortable :list="mediaStore.folderTree.files" :options="browserSortOptions" item-key="name">
-                        <template #item="{ element, index }">
-                            <li
-                                :id="`file_${index}`"
-                                class="draggable list-group-item browser-item"
-                                :key="element.name"
-                            >
-                                <div class="row">
-                                    <div class="col-1 browser-icons-col">
-                                        <i
-                                            v-if="mediaType(element.name) === 'audio'"
-                                            class="bi-music-note-beamed browser-icons"
-                                        />
-                                        <i
-                                            v-else-if="mediaType(element.name) === 'video'"
-                                            class="bi-film browser-icons"
-                                        />
-                                        <i
-                                            v-else-if="mediaType(element.name) === 'image'"
-                                            class="bi-file-earmark-image browser-icons"
-                                        />
-                                        <i v-else class="bi-file-binary browser-icons" />
-                                    </div>
-                                    <div class="col browser-item-text grabbing">
-                                        {{ element.name }}
-                                    </div>
-                                    <div class="col-1 browser-play-col">
-                                        <a
-                                            href="#"
-                                            class="btn-link"
-                                            data-bs-toggle="modal"
-                                            data-bs-target="#previewModal"
-                                            @click="setPreviewData(element.name)"
-                                        >
-                                            <i class="bi-play-fill" />
-                                        </a>
-                                    </div>
-                                    <div class="col-1 browser-dur-col">
-                                        <span class="duration">{{ toMin(element.duration) }}</span>
-                                    </div>
-                                </div>
-                            </li>
-                        </template>
-                    </Sortable>
-                </ul>
-            </pane>
-            <pane class="playlist-pane">
-                <div class="playlist-container">
-                    <ul class="list-group list-group-header">
-                        <li class="list-group-item">
-                            <div class="row playlist-row">
-                                <div class="col-1 timecode">Start</div>
-                                <div class="col">File</div>
-                                <div class="col-1 text-center playlist-input">Play</div>
-                                <div class="col-1 timecode">Duration</div>
-                                <div class="col-1 timecode mobile-hidden">In</div>
-                                <div class="col-1 timecode mobile-hidden">Out</div>
-                                <div class="col-1 text-center playlist-input mobile-hidden">Ad</div>
-                                <div class="col-1 text-center playlist-input">Edit</div>
-                                <div class="col-1 text-center playlist-input mobile-hidden">Delete</div>
-                            </div>
-                        </li>
-                    </ul>
-                    <div v-if="playlistIsLoading" class="d-flex justify-content-center loading-overlay">
-                        <div class="spinner-border" role="status" />
+                        <span class="loading loading-spinner loading-lg" />
                     </div>
-                    <div id="scroll-container">
-                        <Sortable
-                            :list="playlistStore.playlist"
-                            item-key="uid"
-                            class="list-group playlist-list-group"
-                            :style="`height: ${
-                                playlistStore.playlist ? playlistStore.playlist.length * 38 + 76 : 300
-                            }px`"
-                            tag="ul"
-                            :options="playlistSortOptions"
-                            @add="cloneClip"
-                            @end="moveItemInArray"
-                        >
+                    <div class="bg-base-100 border-b border-my-gray">
+                        <div v-if="mediaStore.folderTree.parent && mediaStore.crumbs">
+                            <nav class="breadcrumbs px-3">
+                                <ul>
+                                    <li v-for="(crumb, index) in mediaStore.crumbs" :key="index">
+                                        <button
+                                            v-if="mediaStore.crumbs.length > 1 && mediaStore.crumbs.length - 1 > index"
+                                            @click="mediaStore.getTree(crumb.path)"
+                                        >
+                                            <i class="bi-folder-fill me-1" />
+                                            {{ crumb.text }}
+                                        </button>
+                                        <span v-else><i class="bi-folder-fill me-1" />{{ crumb.text }}</span>
+                                    </li>
+                                </ul>
+                            </nav>
+                        </div>
+                    </div>
+
+                    <ul class="h-[calc(100%-40px)] overflow-auto m-1">
+                        <li class="flex px-1" v-for="folder in mediaStore.folderTree.folders" :key="folder.uid">
+                            <button
+                                class="truncate"
+                                @click="mediaStore.getTree(`/${mediaStore.folderTree.source}/${folder.name}`)"
+                            >
+                                <i class="bi-folder-fill" />
+                                {{ folder.name }}
+                            </button>
+                        </li>
+                        <Sortable :list="mediaStore.folderTree.files" :options="browserSortOptions" item-key="name">
                             <template #item="{ element, index }">
                                 <li
-                                    :id="`clip_${index}`"
-                                    class="draggable list-group-item playlist-item"
-                                    :class="
-                                        index === playlistStore.currentClipIndex && listDate === todayDate
-                                            ? 'active-playlist-clip'
-                                            : ''
-                                    "
-                                    :key="element.uid"
+                                    :id="`file_${index}`"
+                                    class="draggable px-1 grid grid-cols-[auto_110px]"
+                                    :key="element.name"
                                 >
-                                    <div class="row playlist-row">
-                                        <div class="col-1 timecode">{{ secondsToTime(element.begin) }}</div>
-                                        <div class="col grabbing filename">{{ filename(element.source) }}</div>
-                                        <div class="col-1 text-center playlist-input">
-                                            <a
-                                                href="#"
-                                                class="btn-link"
-                                                data-bs-toggle="modal"
-                                                data-bs-target="#previewModal"
-                                                @click="setPreviewData(element.source)"
-                                            >
+                                    <div class="truncate cursor-grab">
+                                        <i v-if="mediaType(element.name) === 'audio'" class="bi-music-note-beamed" />
+                                        <i v-else-if="mediaType(element.name) === 'video'" class="bi-film" />
+                                        <i
+                                            v-else-if="mediaType(element.name) === 'image'"
+                                            class="bi-file-earmark-image"
+                                        />
+                                        <i v-else class="bi-file-binary" />
+
+                                        {{ element.name }}
+                                    </div>
+                                    <div>
+                                        <button
+                                            class="w-7"
+                                            @click=";(showPreviewModal = true), setPreviewData(element.name)"
+                                        >
+                                            <i class="bi-play-fill" />
+                                        </button>
+                                        <div class="inline-block w-[82px]">{{ toMin(element.duration) }}</div>
+                                    </div>
+                                </li>
+                            </template>
+                        </Sortable>
+                    </ul>
+                </pane>
+                <pane>
+                    <div class="w-full h-full">
+                        <div
+                            class="grid grid-cols-[70px_auto_50px_70px_70px_70px_30px_60px_80px] bg-base-100 py-2 px-3 border-b border-my-gray"
+                        >
+                            <div>Start</div>
+                            <div>File</div>
+                            <div class="text-center">Play</div>
+                            <div class="">Duration</div>
+                            <div class="hidden md:flex">In</div>
+                            <div class="hidden md:flex">Out</div>
+                            <div class="hidden md:flex justify-center">Ad</div>
+                            <div class="text-center">Edit</div>
+                            <div class="hidden md:flex justify-center">Delete</div>
+                        </div>
+                        <div
+                            v-if="playlistIsLoading"
+                            class="w-full h-full absolute z-10 flex justify-center bg-base-100/70"
+                        >
+                            <span class="loading loading-spinner loading-lg" />
+                        </div>
+                        <div class="h-full overflow-auto">
+                            <Sortable
+                                :list="playlistStore.playlist"
+                                item-key="uid"
+                                class=""
+                                :style="`height: ${
+                                    playlistStore.playlist ? playlistStore.playlist.length * 38 + 76 : 300
+                                }px`"
+                                tag="ul"
+                                :options="playlistSortOptions"
+                                @add="cloneClip"
+                                @end="moveItemInArray"
+                            >
+                                <template #item="{ element, index }">
+                                    <li
+                                        :id="`clip_${index}`"
+                                        class="draggable bg-base-300 even:bg-base-100 grid grid-cols-[70px_auto_50px_70px_70px_70px_30px_60px_80px] h-[38px] px-3 py-[8px]"
+                                        :class="
+                                            index === playlistStore.currentClipIndex && listDate === todayDate
+                                                ? 'active-playlist-clip'
+                                                : ''
+                                        "
+                                        :key="element.uid"
+                                    >
+                                        <div>{{ secondsToTime(element.begin) }}</div>
+                                        <div class="grabbing truncate cursor-grab">{{ filename(element.source) }}</div>
+                                        <div class="text-center">
+                                            <button @click=";(showPreviewModal = true), setPreviewData(element.source)">
                                                 <i class="bi-play-fill" />
-                                            </a>
+                                            </button>
                                         </div>
-                                        <div class="col-1 timecode">{{ secToHMS(element.duration) }}</div>
-                                        <div class="col-1 timecode mobile-hidden">{{ secToHMS(element.in) }}</div>
-                                        <div class="col-1 timecode mobile-hidden">{{ secToHMS(element.out) }}</div>
-                                        <div class="col-1 text-center playlist-input mobile-hidden">
+                                        <div>{{ secToHMS(element.duration) }}</div>
+                                        <div class="hidden md:flex">{{ secToHMS(element.in) }}</div>
+                                        <div class="hidden md:flex">{{ secToHMS(element.out) }}</div>
+                                        <div class="hidden md:flex justify-center pt-[3px]">
                                             <input
-                                                class="form-check-input"
+                                                class="checkbox checkbox-xs rounded"
                                                 type="checkbox"
                                                 :checked="
                                                     element.category && element.category === 'advertisement'
@@ -169,180 +143,145 @@
                                                 @change="setCategory($event, element)"
                                             />
                                         </div>
-                                        <div class="col-1 text-center playlist-input">
-                                            <a
-                                                href="#"
-                                                class="btn-link"
-                                                data-bs-toggle="modal"
-                                                data-bs-target="#sourceModal"
-                                                @click="editPlaylistItem(index)"
-                                            >
+                                        <div class="text-center">
+                                            <button @click=";(showSourceModal = true), editPlaylistItem(index)">
                                                 <i class="bi-pencil-square" />
-                                            </a>
+                                            </button>
                                         </div>
-                                        <div class="col-1 text-center playlist-input mobile-hidden">
-                                            <a href="#" class="btn-link" @click="deletePlaylistItem(index)">
+                                        <div class="text-center hidden md:flex justify-center">
+                                            <button @click="deletePlaylistItem(index)">
                                                 <i class="bi-x-circle-fill" />
-                                            </a>
+                                            </button>
                                         </div>
-                                    </div>
-                                </li>
-                            </template>
-                        </Sortable>
+                                    </li>
+                                </template>
+                            </Sortable>
+                        </div>
                     </div>
-                </div>
-            </pane>
-        </splitpanes>
+                </pane>
+            </splitpanes>
+        </div>
 
-        <div class="btn-group media-button mb-3">
-            <div class="btn btn-primary" title="Copy Playlist" data-bs-toggle="modal" data-bs-target="#copyModal">
+        <div class="join flex justify-end m-3">
+            <button
+                class="btn btn-sm btn-primary join-item"
+                title="Copy Playlist"
+                data-bs-toggle="modal"
+                data-bs-target="#copyModal"
+            >
                 <i class="bi-files" />
-            </div>
-            <div
+            </button>
+            <button
                 v-if="!configStore.configPlayout.playlist.loop"
-                class="btn btn-primary"
+                class="btn btn-sm btn-primary join-item"
                 title="Loop Clips in Playlist"
                 @click="loopClips()"
             >
                 <i class="bi-view-stacked" />
-            </div>
-            <div
-                class="btn btn-primary"
+            </button>
+            <button
+                class="btn btn-sm btn-primary join-item"
                 title="Add (remote) Source to Playlist"
-                data-bs-toggle="modal"
-                data-bs-target="#sourceModal"
-                @click="clearNewSource()"
+                @click="showSourceModal = true"
             >
                 <i class="bi-file-earmark-plus" />
-            </div>
-            <div
-                class="btn btn-primary"
+            </button>
+            <button
+                class="btn btn-sm btn-primary join-item"
                 title="Import text/m3u file"
                 data-bs-toggle="modal"
                 data-bs-target="#importModal"
             >
                 <i class="bi-file-text" />
-            </div>
-            <div
-                class="btn btn-primary"
+            </button>
+            <button
+                class="btn btn-sm btn-primary join-item"
                 title="Generate a randomized Playlist"
                 data-bs-toggle="modal"
                 data-bs-target="#generateModal"
                 @click="mediaStore.getTree('', true)"
             >
                 <i class="bi-sort-down-alt" />
-            </div>
-            <div class="btn btn-primary" title="Reset Playlist" @click="getPlaylist()">
+            </button>
+            <button class="btn btn-sm btn-primary join-item" title="Reset Playlist" @click="getPlaylist()">
                 <i class="bi-arrow-counterclockwise" />
-            </div>
-            <div class="btn btn-primary" title="Save Playlist" @click="savePlaylist(listDate)">
+            </button>
+            <button class="btn btn-sm btn-primary join-item" title="Save Playlist" @click="savePlaylist(listDate)">
                 <i class="bi-download" />
-            </div>
-            <div class="btn btn-primary" title="Delete Playlist" data-bs-toggle="modal" data-bs-target="#deleteModal">
+            </button>
+            <button
+                class="btn btn-sm btn-primary join-item"
+                title="Delete Playlist"
+                data-bs-toggle="modal"
+                data-bs-target="#deleteModal"
+            >
                 <i class="bi-trash" />
-            </div>
-        </div>-->
-
-        <div id="previewModal" class="modal" tabindex="-1" aria-labelledby="previewModalLabel" aria-hidden="true">
-            <div class="modal-dialog modal-dialog-centered modal-xl">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h1 class="modal-title fs-5" id="previewModalLabel">Preview: {{ previewName }}</h1>
-                        <button
-                            type="button"
-                            class="btn-close"
-                            data-bs-dismiss="modal"
-                            aria-label="Cancel"
-                            @click="closePlayer()"
-                        ></button>
-                    </div>
-                    <div class="modal-body">
-                        <VideoPlayer v-if="isVideo && previewOpt" reference="previewPlayer" :options="previewOpt" />
-                        <img v-else :src="previewUrl" class="img-fluid" :alt="previewName" />
-                    </div>
-                </div>
-            </div>
+            </button>
         </div>
 
-        <div id="sourceModal" class="modal" tabindex="-1" aria-labelledby="sourceModalLabel" aria-hidden="true">
-            <div class="modal-dialog modal-dialog-centered">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h1 class="modal-title fs-5" id="sourceModalLabel">Add/Edit Source</h1>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cancel"></button>
+        <Modal :show="showPreviewModal" :title="`Preview: ${previewName}`" :modal-action="closePlayer">
+            <div class="w-[1024px] max-w-full aspect-video">
+                <VideoPlayer v-if="isVideo && previewOpt" reference="previewPlayer" :options="previewOpt" />
+                <img v-else :src="previewUrl" class="img-fluid" :alt="previewName" />
+            </div>
+        </Modal>
+
+        <Modal :show="showSourceModal" title="Add/Edit Source" :modal-action="processSource">
+            <div>
+                <label class="form-control w-full mt-3">
+                    <div class="label">
+                        <span class="label-text">In</span>
                     </div>
-                    <form @reset="clearNewSource">
-                        <div class="modal-body">
-                            <label for="in-input" class="form-label">In</label>
-                            <input
-                                type="number"
-                                class="form-control"
-                                id="in-input"
-                                aria-describedby="in"
-                                v-model.number="newSource.in"
-                            />
-                            <label for="out-input" class="form-label mt-2">Out</label>
-                            <input
-                                type="number"
-                                class="form-control"
-                                id="out-input"
-                                aria-describedby="out"
-                                v-model.number="newSource.out"
-                            />
-                            <label for="duration-input" class="form-label mt-2">Duration</label>
-                            <input
-                                type="number"
-                                class="form-control"
-                                id="duration-input"
-                                aria-describedby="out"
-                                v-model.number="newSource.duration"
-                            />
-                            <label for="source-input" class="form-label mt-2">Source</label>
-                            <input
-                                type="text"
-                                class="form-control"
-                                id="source-input"
-                                aria-describedby="out"
-                                v-model="newSource.source"
-                            />
-                            <label for="audio-input" class="form-label mt-2">Audio</label>
-                            <input
-                                type="text"
-                                class="form-control"
-                                id="audio-input"
-                                aria-describedby="out"
-                                v-model="newSource.audio"
-                            />
-                            <label for="filter-input" class="form-label mt-2">Custom Filter</label>
-                            <input
-                                type="text"
-                                class="form-control"
-                                id="filter-input"
-                                aria-describedby="out"
-                                v-model="newSource.custom_filter"
-                            />
-                            <div class="form-check">
-                                <label class="form-check-label" for="ad-input"> Advertisement </label>
-                                <input class="form-check-input" type="checkbox" value="" id="ad-input" @click="isAd" />
-                            </div>
-                        </div>
-                        <div class="modal-footer">
-                            <button type="reset" class="btn btn-primary" data-bs-dismiss="modal" aria-label="Cancel">
-                                Cancel
-                            </button>
-                            <button
-                                type="submit"
-                                class="btn btn-primary"
-                                data-bs-dismiss="modal"
-                                @click="processSource"
-                            >
-                                Ok
-                            </button>
-                        </div>
-                    </form>
+                    <input type="number" class="input input-sm input-bordered w-full" v-model.number="newSource.in" />
+                </label>
+
+                <label class="form-control w-full mt-3">
+                    <div class="label">
+                        <span class="label-text">Out</span>
+                    </div>
+                    <input type="number" class="input input-sm input-bordered w-full" v-model.number="newSource.out" />
+                </label>
+
+                <label class="form-control w-full mt-3">
+                    <div class="label">
+                        <span class="label-text">Duration</span>
+                    </div>
+                    <input
+                        type="number"
+                        class="input input-sm input-bordered w-full"
+                        v-model.number="newSource.duration"
+                    />
+                </label>
+
+                <label class="form-control w-full mt-3">
+                    <div class="label">
+                        <span class="label-text">Source</span>
+                    </div>
+                    <input type="text" class="input input-sm input-bordered w-full" v-model="newSource.source" />
+                </label>
+
+                <label class="form-control w-full mt-3">
+                    <div class="label">
+                        <span class="label-text">Audio</span>
+                    </div>
+                    <input type="text" class="input input-sm input-bordered w-full" v-model="newSource.audio" />
+                </label>
+
+                <label class="form-control w-full mt-3">
+                    <div class="label">
+                        <span class="label-text">Custom Filter</span>
+                    </div>
+                    <input type="text" class="input input-sm input-bordered w-full" v-model="newSource.custom_filter" />
+                </label>
+
+                <div class="form-control">
+                    <label class="cursor-pointer label">
+                        <span class="label-text">Advertisement</span>
+                        <input type="checkbox" class="checkbox checkbox-sm" @click="isAd" />
+                    </label>
                 </div>
             </div>
-        </div>
+        </Modal>
 
         <div id="importModal" class="modal" tabindex="-1" aria-labelledby="importModalLabel" aria-hidden="true">
             <div class="modal-dialog modal-dialog-centered">
@@ -454,10 +393,7 @@
                                     role="tab"
                                     aria-controls="v-pills-playout"
                                     aria-selected="false"
-                                    @click="
-                                        advancedGenerator = true,
-                                        resetCheckboxes()
-                                    "
+                                    @click=";(advancedGenerator = true), resetCheckboxes()"
                                 >
                                     Advanced
                                 </button>
@@ -723,10 +659,7 @@
                             type="button"
                             class="btn btn-primary"
                             data-bs-dismiss="modal"
-                            @click="
-                                resetCheckboxes(),
-                                resetTemplate()
-                            "
+                            @click="resetCheckboxes(), resetTemplate()"
                         >
                             Cancel
                         </button>
@@ -747,8 +680,6 @@
 
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
-import { Splitpanes, Pane } from 'splitpanes'
-import 'splitpanes/dist/splitpanes.css'
 
 const { $_, $dayjs } = useNuxtApp()
 const { secToHMS, filename, secondsToTime, toMin, mediaType } = stringFormatter()
@@ -769,13 +700,16 @@ const { configID } = storeToRefs(useConfig())
 
 const advancedGenerator = ref(false)
 const fileImport = ref()
-const browserIsLoading = ref(false)
 const playlistIsLoading = ref(false)
 const todayDate = ref($dayjs().utcOffset(configStore.utcOffset).format('YYYY-MM-DD'))
 const listDate = ref($dayjs().utcOffset(configStore.utcOffset).format('YYYY-MM-DD'))
 const targetDate = ref($dayjs().utcOffset(configStore.utcOffset).format('YYYY-MM-DD'))
 const editId = ref(-1)
 const textFile = ref()
+
+const showPreviewModal = ref(false)
+const showSourceModal = ref(false)
+
 const previewName = ref('')
 const previewUrl = ref('')
 const previewOpt = ref()
@@ -818,14 +752,14 @@ const template = ref({
 
 onMounted(() => {
     if (!mediaStore.folderTree.parent) {
-        getPath('')
+        mediaStore.getTree('')
     }
 
     getPlaylist()
 })
 
 watch([listDate, configID], () => {
-    getPath('')
+    mediaStore.getTree('')
     getPlaylist()
 })
 
@@ -837,12 +771,6 @@ function scrollTo(index: number) {
         const topPos = child.offsetTop
         parent.scrollTop = topPos - 50
     }
-}
-
-async function getPath(path: string) {
-    browserIsLoading.value = true
-    await mediaStore.getTree(path)
-    browserIsLoading.value = false
 }
 
 async function getPlaylist() {
@@ -858,6 +786,7 @@ async function getPlaylist() {
 }
 
 function closePlayer() {
+    showPreviewModal.value = false
     isVideo.value = false
 }
 
@@ -992,43 +921,29 @@ function setPreviewData(path: string) {
     }
 }
 
-function processSource(evt: any) {
-    evt.preventDefault()
+function processSource(process: boolean) {
+    showSourceModal.value = false
 
-    if (editId.value === -1) {
-        playlistStore.playlist.push(newSource.value)
-        playlistStore.playlist = processPlaylist(
-            configStore.startInSec,
-            configStore.playlistLength,
-            playlistStore.playlist,
-            false
-        )
-    } else {
-        playlistStore.playlist[editId.value] = newSource.value
-        playlistStore.playlist = processPlaylist(
-            configStore.startInSec,
-            configStore.playlistLength,
-            playlistStore.playlist,
-            false
-        )
-
-        editId.value = -1
+    if (process) {
+        if (editId.value === -1) {
+            playlistStore.playlist.push(newSource.value)
+            playlistStore.playlist = processPlaylist(
+                configStore.startInSec,
+                configStore.playlistLength,
+                playlistStore.playlist,
+                false
+            )
+        } else {
+            playlistStore.playlist[editId.value] = newSource.value
+            playlistStore.playlist = processPlaylist(
+                configStore.startInSec,
+                configStore.playlistLength,
+                playlistStore.playlist,
+                false
+            )
+        }
     }
 
-    newSource.value = {
-        begin: 0,
-        in: 0,
-        out: 0,
-        duration: 0,
-        category: '',
-        custom_filter: '',
-        source: '',
-        audio: '',
-        uid: '',
-    }
-}
-
-function clearNewSource() {
     editId.value = -1
     newSource.value = {
         begin: 0,

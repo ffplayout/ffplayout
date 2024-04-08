@@ -5,13 +5,14 @@
                 <li
                     v-for="(crumb, index) in mediaStore.crumbs"
                     :key="index"
-                    :active="index === mediaStore.crumbs.length - 1"
-                    @click="getPath(crumb.path)"
                     v-on:drop="handleDrop($event, crumb.path, null)"
                     v-on:dragover="handleDragOver"
                     v-on:dragleave="handleDragLeave"
                 >
-                    <button v-if="mediaStore.crumbs.length > 1 && mediaStore.crumbs.length - 1 > index">
+                    <button
+                        v-if="mediaStore.crumbs.length > 1 && mediaStore.crumbs.length - 1 > index"
+                        @click="mediaStore.getTree(crumb.path)"
+                    >
                         <i class="bi-folder-fill me-1" />
                         {{ crumb.text }}
                     </button>
@@ -20,9 +21,9 @@
             </ul>
         </nav>
 
-        <div class=" h-[calc(100%-34px)] bg-base-100">
+        <div class="h-[calc(100%-34px)] bg-base-100">
             <div
-                v-if="browserIsLoading"
+                v-if="mediaStore.isLoading"
                 class="w-[calc(100%-16px)] h-[calc(100%-174px)] absolute z-10 flex justify-center bg-base-100/70"
             >
                 <span class="loading loading-spinner loading-lg"></span>
@@ -42,7 +43,7 @@
                         >
                             <button
                                 class="truncate text-left"
-                                @click="getPath(`/${parent(mediaStore.folderTree.source)}/${folder.name}`)"
+                                @click="mediaStore.getTree(`/${parent(mediaStore.folderTree.source)}/${folder.name}`)"
                             >
                                 <i class="bi-folder-fill" />
                                 {{ folder.name }}
@@ -80,7 +81,7 @@
                         >
                             <button
                                 class="truncate text-left"
-                                @click="getPath(`/${mediaStore.folderTree.source}/${folder.name}`)"
+                                @click="mediaStore.getTree(`/${mediaStore.folderTree.source}/${folder.name}`)"
                             >
                                 <i class="bi-folder-fill" />
                                 {{ folder.name }}
@@ -138,8 +139,6 @@
 
                                 <button
                                     class="w-7 opacity-30 hover:opacity-100"
-                                    data-bs-toggle="modal"
-                                    data-bs-target="#deleteModal"
                                     @click="
                                         ;(showDeleteModal = true),
                                             (deleteName = `/${mediaStore.folderTree.source}/${element.name}`.replace(
@@ -284,8 +283,6 @@ const currentProgress = ref(0)
 const lastPath = ref('')
 const xhr = ref(new XMLHttpRequest())
 
-const fileRefs = ref([] as any[])
-
 onMounted(async () => {
     let config_extensions = configStore.configPlayout.storage.extensions
     let extra_extensions = configStore.configGui[configStore.configID].extra_extensions
@@ -305,12 +302,12 @@ onMounted(async () => {
     extensions.value = exts.join(', ')
 
     if (!mediaStore.folderTree.parent) {
-        await getPath('')
+        await mediaStore.getTree('')
     }
 })
 
 watch([configID], () => {
-    getPath('')
+    mediaStore.getTree('')
 })
 
 function handleDragStart(event: any, itemData: any) {
@@ -339,24 +336,18 @@ function handleDragLeave(event: any) {
 
 async function handleDrop(event: any, targetFolder: any, isParent: boolean | null) {
     const itemData = JSON.parse(event.dataTransfer.getData('application/json'))
-    const source = `/${mediaStore.folderTree.source}/${itemData.name}`.replace(
-        /\/[/]+/g,
-        '/'
-    )
+    const source = `/${mediaStore.folderTree.source}/${itemData.name}`.replace(/\/[/]+/g, '/')
     let target
 
     if (isParent === null) {
         target = `${targetFolder}/${itemData.name}`.replace(/\/[/]+/g, '/')
     } else if (isParent) {
-        target = `/${parent(mediaStore.folderTree.source)}/${targetFolder.name}/${
-            itemData.name
-        }`.replace(/\/[/]+/g, '/')
+        target = `/${parent(mediaStore.folderTree.source)}/${targetFolder.name}/${itemData.name}`.replace(
+            /\/[/]+/g,
+            '/'
+        )
     } else {
-        target =
-            `/${mediaStore.folderTree.source}/${targetFolder.name}/${itemData.name}`.replace(
-                /\/[/]+/g,
-                '/'
-            )
+        target = `/${mediaStore.folderTree.source}/${targetFolder.name}/${itemData.name}`.replace(/\/[/]+/g, '/')
     }
 
     event.target.style.fontWeight = null
@@ -373,18 +364,12 @@ async function handleDrop(event: any, targetFolder: any, isParent: boolean | nul
             body: JSON.stringify({ source, target }),
         })
             .then(() => {
-                getPath(mediaStore.folderTree.source)
+                mediaStore.getTree(mediaStore.folderTree.source)
             })
             .catch((e) => {
                 indexStore.msgAlert('alert-error', `Delete error: ${e}`, 3)
             })
     }
-}
-
-async function getPath(path: string) {
-    browserIsLoading.value = true
-    await mediaStore.getTree(path)
-    browserIsLoading.value = false
 }
 
 function setPreviewData(path: string) {
@@ -446,7 +431,7 @@ async function deleteFileOrFolder(del: boolean) {
                 if (response.status !== 200) {
                     indexStore.msgAlert('alert-error', `${await response.text()}`, 5)
                 }
-                getPath(mediaStore.folderTree.source)
+                mediaStore.getTree(mediaStore.folderTree.source)
             })
             .catch((e) => {
                 indexStore.msgAlert('alert-error', `Delete error: ${e}`, 5)
@@ -474,7 +459,7 @@ async function renameFile(ren: boolean) {
             body: JSON.stringify({ source: renameOldName.value, target: renameNewName.value }),
         })
             .then(() => {
-                getPath(mediaStore.folderTree.source)
+                mediaStore.getTree(mediaStore.folderTree.source)
             })
             .catch((e) => {
                 indexStore.msgAlert('alert-error', `Delete error: ${e}`, 3)
@@ -516,7 +501,7 @@ async function createFolder(create: boolean) {
                 indexStore.alertVariant = 'alert-error'
             })
 
-        getPath(lastPath.value)
+        mediaStore.getTree(lastPath.value)
     }
 
     folderName.value = {} as Folder
@@ -588,7 +573,7 @@ async function uploadFiles(upl: boolean) {
         }
 
         uploadTask.value = 'Done...'
-        getPath(lastPath.value)
+        mediaStore.getTree(lastPath.value)
 
         setTimeout(() => {
             fileInputName.value = null

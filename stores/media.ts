@@ -9,11 +9,13 @@ export const useMedia = defineStore('media', {
         folderTree: {} as FileFolderObject,
         folderList: {} as FolderObject,
         folderCrumbs: [] as Crumb[],
+        isLoading: false,
     }),
 
     getters: {},
     actions: {
         async getTree(path: string, foldersOnly: boolean = false) {
+            this.isLoading = true
             const authStore = useAuth()
             const configStore = useConfig()
             const indexStore = useIndex()
@@ -72,6 +74,8 @@ export const useMedia = defineStore('media', {
                         this.folderTree = data
                     }
                 })
-        }
+
+                this.isLoading = false
+        },
     },
 })
