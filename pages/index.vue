@@ -1,5 +1,5 @@
 <template>
-    <div class="w-full h-screen flex justify-center items-center">
+    <div class="w-full min-h-screen xs:h-full flex justify-center items-center">
         <div v-if="authStore.isLogin" class="text-center w-full max-w-[700px] p-5">
             <SystemStats v-if="configStore.configGui.length > 0" />
             <div class="flex flex-wrap justify-center gap-1 xs:gap-0 xs:join mt-5">
@@ -7,15 +7,18 @@
                 <NuxtLink to="/media" class="btn join-item btn-primary">Media</NuxtLink>
                 <NuxtLink to="/message" class="btn join-item btn-primary">Message</NuxtLink>
                 <NuxtLink to="logging" class="btn join-item btn-primary">Logging</NuxtLink>
-                <NuxtLink v-if="authStore.role.toLowerCase() == 'admin'" to="/configure" class="btn join-item btn-primary">
+                <NuxtLink
+                    v-if="authStore.role.toLowerCase() == 'admin'"
+                    to="/configure"
+                    class="btn join-item btn-primary"
+                >
                     Configure
                 </NuxtLink>
                 <button class="btn join-item btn-primary" @click="logout()">Logout</button>
             </div>
         </div>
-        <div v-else class="w-96 flex flex-col justify-center items-center">
-            <h1 class="text-8xl">ffplayout</h1>
-
+        <div v-else class="w-96 min-w-full flex flex-col justify-center items-center px-4">
+            <h1 class="text-6xl xs:text-8xl">ffplayout</h1>
 
             <form class="mt-10" @submit.prevent="login">
                 <input

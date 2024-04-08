@@ -1,10 +1,10 @@
 <template>
-    <div class="flex justify-end my-3 pe-3">
+    <div class="flex justify-end p-3 h-14">
         <div>
             <input type="date" class="input input-sm input-bordered w-full max-w-xs" v-model="listDate" />
         </div>
     </div>
-    <div class="px-3 inline-block h-[calc(100vh-130px)] text-[13px]">
+    <div class="px-3 inline-block h-[calc(100vh-140px)] text-[13px]">
         <div class="bg-base-300 whitespace-pre h-full font-mono overflow-auto p-3" v-html="formatLog(currentLog)" />
     </div>
 </template>

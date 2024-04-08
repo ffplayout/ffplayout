@@ -16,46 +16,6 @@ main > div {
     font-style: normal;
 }
 
-// html,
-// body {
-//     font-family: 'Source Sans Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
-//         sans-serif;
-//     background-color: $bg-primary;
-//     background: $bg-primary;
-//     font-size: 15px;
-//     word-spacing: 1px;
-//     -ms-text-size-adjust: 100%;
-//     -webkit-text-size-adjust: 100%;
-//     -moz-osx-font-smoothing: grayscale;
-//     -webkit-font-smoothing: antialiased;
-//     box-sizing: border-box;
-//     width: 100%;
-//     height: 100%;
-//     padding: 0;
-//     margin: 0;
-// }
-
-a {
-    color: $link-color;
-    text-decoration: none;
-}
-
-a:hover {
-    color: $link-color-hover;
-}
-
-.navbar {
-    --bs-navbar-padding-y: 0 !important;
-}
-
-.list-group-item {
-    border-color: $border-color;
-}
-
-.list-group {
-    --bs-list-group-border-radius: $b-radius;
-}
-
 .media-alert {
     position: absolute;
     top: 80px;
@@ -67,16 +27,6 @@ a:hover {
 
 .bg-warning {
     background-color: $warning;
-}
-
-.breadcrumb {
-    background-color: $gray-900;
-    --bs-breadcrumb-margin-bottom: 0;
-    height: 39px;
-    padding: .5em;
-    border: 1px solid $border-color;
-    border-bottom: 0;
-    border-radius: $b-radius;
 }
 
 .date-div {
@@ -155,17 +105,37 @@ a:hover {
     position: relative;
 }
 
+.splitpanes--horizontal > .splitpanes__splitter {
+    position: relative;
+    border-top: 1px solid var(--my-gray);
+    border-bottom: 1px solid var(--my-gray);
+    height: 6px !important;
+}
+
 .splitpanes--vertical > .splitpanes__splitter {
     position: relative;
-    border-left: 1px solid $border-color;
-    border-right: 1px solid $border-color;
+    border-left: 1px solid var(--my-gray);
+    border-right: 1px solid var(--my-gray);
     width: 6px !important;
+}
+
+.splitpanes--horizontal > .splitpanes__splitter::before {
+    content: '';
+    position: absolute;
+    background-color: var(--my-gray);
+    transform: translateY(-50%);
+    top: 50%;
+    left: 50%;
+    height: 2px;
+    width: 30px;
+    transition: background-color 0.3s;
+    margin-left: -1px;
 }
 
 .splitpanes--vertical > .splitpanes__splitter::before {
     content: '';
     position: absolute;
-    background-color: $border-color;
+    background-color: var(--my-gray);
     transform: translateY(-50%);
     top: 50%;
     left: 50%;

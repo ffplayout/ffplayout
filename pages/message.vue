@@ -1,10 +1,10 @@
 <template>
-    <div class="flex flex-col items-center mt-10 px-8">
+    <div class="flex flex-col items-center pt-10 px-8">
         <div class="mt-2 w-full max-w-4xl">
-            <div class="flex max-w-md gap-4">
-                <div>
+            <div class="flex flex-col xs:flex-row w-full gap-4">
+                <div class="grow xs:max-w-72">
                     <select
-                        class="select select-sm select-bordered w-full max-w-md"
+                        class="select select-sm select-bordered w-full"
                         v-model="selected"
                         @change="onChange($event)"
                     >
@@ -28,7 +28,7 @@
                 </div>
             </div>
 
-            <form @submit.prevent="submitMessage" class="mt-6 w-full">
+            <form @submit.prevent="submitMessage" class="my-6 w-full">
                 <textarea
                     class="textarea textarea-bordered w-full"
                     v-model="form.text"
@@ -36,7 +36,7 @@
                     placeholder="Message"
                 />
 
-                <div class="mt-5 grid grid-cols-[auto_150px_150px] gap-4">
+                <div class="mt-5 grid xs:grid-cols-[auto_150px_150px] gap-4">
                     <div class="grow">
                         <input
                             class="input input-sm input-bordered w-full"
@@ -92,7 +92,7 @@
                         />
                     </label>
                 </div>
-                <div class="grid grid-cols-[150px_150px_auto] gap-4 mt-2">
+                <div class="grid xs:grid-cols-[150px_150px_auto] gap-4 mt-2">
                     <div>
                         <label class="form-control w-full">
                             <div class="label">
@@ -158,7 +158,7 @@
                                 required
                             />
                         </label>
-                        <label class="form-control w-full max-w-[150px] mt-2">
+                        <label class="form-control w-full xs:max-w-[150px] mt-2">
                             <div class="label">
                                 <span class="label-text">Border Width</span>
                             </div>

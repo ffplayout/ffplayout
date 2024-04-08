@@ -6,13 +6,13 @@
             @submit.prevent="onSubmitPlayout"
             class="mt-10 grid md:grid-cols-[140px_auto] gap-4"
         >
-            <template v-for="(item, key) in configStore.configPlayout" class="" :key="key">
-                <div class="text-xl">{{ key }}:</div>
-                <div class="md:pt-10">
+            <template v-for="(item, key) in configStore.configPlayout" :key="key">
+                <div class="text-xl pt-3">{{ key }}:</div>
+                <div class="md:pt-4">
                     <label
                         v-for="(prop, name) in (item as Record<string, any>)"
-                        class="form-control w-full mt-4"
-                        :class="typeof prop === 'boolean' && 'flex-row'"
+                        class="form-control w-full"
+                        :class="[typeof prop === 'boolean' && 'flex-row', name.toString() !== 'help_text' && 'mt-2']"
                     >
                         <div class="label">
                             <span class="label-text !text-md font-bold">{{ name }}</span>

@@ -4,7 +4,7 @@
             <Menu />
         </div>
 
-        <main class="h-[calc(100%-52px)]">
+        <main :class="authStore.isLogin && route.name !== 'index' ? 'h-[calc(100%-52px)]': 'h-full'">
             <slot />
         </main>
 

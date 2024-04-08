@@ -1379,9 +1379,9 @@ function addTemplate() {
         display: none;
     }
 
-    .splitpanes__splitter {
+    /*.splitpanes__splitter {
         display: none !important;
-    }
+    }*/
 
     .playlist-pane {
         width: 100% !important;

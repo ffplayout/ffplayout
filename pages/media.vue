@@ -1,6 +1,6 @@
 <template>
-    <div class="h-[calc(100vh-140px)]">
-        <nav class="text-sm breadcrumbs px-4">
+    <div class="h-[calc(100vh-140px)] px-2">
+        <nav class="text-sm breadcrumbs px-3">
             <ul v-on:dragover.prevent>
                 <li
                     v-for="(crumb, index) in mediaStore.crumbs"
@@ -11,30 +11,30 @@
                     v-on:dragover="handleDragOver"
                     v-on:dragleave="handleDragLeave"
                 >
-                    <a v-if="mediaStore.crumbs.length > 1 && mediaStore.crumbs.length - 1 > index" href="#">
+                    <button v-if="mediaStore.crumbs.length > 1 && mediaStore.crumbs.length - 1 > index">
                         <i class="bi-folder-fill me-1" />
                         {{ crumb.text }}
-                    </a>
+                    </button>
                     <span v-else><i class="bi-folder-fill me-1" /> {{ crumb.text }}</span>
                 </li>
             </ul>
         </nav>
 
-        <div class="h-[calc(100%-34px)] bg-base-300">
+        <div class=" h-[calc(100%-34px)] bg-base-100">
             <div
                 v-if="browserIsLoading"
-                class="w-full h-[calc(100%-174px)] absolute z-10 flex justify-center bg-base-100/70"
+                class="w-[calc(100%-16px)] h-[calc(100%-174px)] absolute z-10 flex justify-center bg-base-100/70"
             >
                 <span class="loading loading-spinner loading-lg"></span>
             </div>
-            <splitpanes>
-                <pane min-size="14" max-size="80" size="24" class="h-full">
+            <splitpanes :horizontal="horizontal" class="border border-my-gray rounded">
+                <pane min-size="14" max-size="80" size="24" class="h-full px-1 pb-1">
                     <ul v-if="mediaStore.folderTree.parent" class="overflow-auto h-full m-1" v-on:dragover.prevent>
                         <li
                             v-if="mediaStore.folderTree.parent_folders.length > 0"
                             v-for="folder in mediaStore.folderTree.parent_folders"
-                            class="grid grid-cols-[auto_18px] gap-1 px-2"
-                            :class="filename(mediaStore.folderTree.source) === folder.name && 'bg-base-100'"
+                            class="grid grid-cols-[auto_38px] gap-1 px-1"
+                            :class="filename(mediaStore.folderTree.source) === folder.name && 'bg-base-300 rounded'"
                             :key="folder.uid"
                             v-on:drop="handleDrop($event, folder, true)"
                             v-on:dragover="handleDragOver"
@@ -48,7 +48,7 @@
                                 {{ folder.name }}
                             </button>
                             <button
-                                class="opacity-30 hover:opacity-100"
+                                class="w-7 opacity-30 hover:opacity-100"
                                 @click="
                                     ;(showDeleteModal = true),
                                         (deleteName = `/${parent(mediaStore.folderTree.source)}/${folder.name}`.replace(
@@ -68,7 +68,7 @@
                         </li>
                     </ul>
                 </pane>
-                <pane class="h-full px-2">
+                <pane class="h-full px-2 pb-1">
                     <ul v-if="mediaStore.folderTree.parent" class="h-full overflow-auto m-1" v-on:dragover.prevent>
                         <li
                             class="grid grid-cols-[auto_49px] gap-1"
@@ -237,6 +237,7 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
 
+const { width } = useWindowSize({ initialWidth: 800 })
 const authStore = useAuth()
 const configStore = useConfig()
 const indexStore = useIndex()
@@ -250,6 +251,15 @@ useHead({
     title: 'Media | ffplayout',
 })
 
+watch([width], () => {
+    if (width.value < 640) {
+        horizontal.value = true
+    } else {
+        horizontal.value = false
+    }
+})
+
+const horizontal = ref(false)
 const browserIsLoading = ref(false)
 const deleteName = ref('')
 const renameOldName = ref('')
@@ -308,7 +318,6 @@ function handleDragStart(event: any, itemData: any) {
 }
 
 function handleDragOver(event: any) {
-    event.target.style.color = 'white'
     event.target.style.fontWeight = 'bold'
 
     if (event.target.firstChild && event.target.firstChild.classList.contains('bi-folder-fill')) {
@@ -319,7 +328,6 @@ function handleDragOver(event: any) {
 
 function handleDragLeave(event: any) {
     if (event.target && event.target.style) {
-        event.target.style.color = null
         event.target.style.fontWeight = null
     }
 
@@ -351,7 +359,6 @@ async function handleDrop(event: any, targetFolder: any, isParent: boolean | nul
             )
     }
 
-    event.target.style.color = null
     event.target.style.fontWeight = null
 
     if (event.target.firstChild.classList.contains('bi-folder2-open')) {

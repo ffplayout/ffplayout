@@ -1,7 +1,7 @@
 <template>
     <div class="w-full max-w-[800px] pe-8">
         <h2 class="pt-3 text-3xl">User Configuration</h2>
-        <div class="flex w-full mb-5 mt-10">
+        <div class="flex flex-col xs:flex-row gap-2 w-full mb-5 mt-10">
             <div class="grow">
                 <select class="select select-bordered w-full max-w-xs" v-model="selected" @change="onChange($event)">
                     <option v-for="item in users">{{ item.username }}</option>

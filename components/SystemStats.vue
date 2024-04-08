@@ -1,7 +1,17 @@
 <template>
     <div class="grid grid-cols-1 xs:grid-cols-2 border-4 rounded-md border-primary text-left">
-        <div class="text-3xl flex items-center p-4 bg-base-100">
-            {{ sysStat.system.name }} {{ sysStat.system.version }}
+        <div class="p-4 bg-base-100">
+            <span class="text-3xl">{{ sysStat.system.name }} {{ sysStat.system.version }}</span>
+            <span v-if="sysStat.system.kernel">
+                <br />
+                {{ sysStat.system.kernel }}
+            </span>
+        </div>
+        <div class="p-4 bg-base-100 flex items-center">
+            <span v-if="sysStat.system.ffp_version">
+                <strong>ffplayout version:</strong>
+                {{ sysStat.system.ffp_version }}
+            </span>
         </div>
         <div class="p-4 border border-primary">
             <div class="text-xl">CPU</div>
@@ -9,12 +19,6 @@
                 <div><strong>Cores:</strong> {{ sysStat.cpu.cores }}</div>
                 <div><strong>Usage:</strong> {{ sysStat.cpu.usage.toFixed(2) }}%</div>
             </div>
-        </div>
-        <div v-if="sysStat.system.kernel" class="p-4 bg-base-100">
-            {{ sysStat.system.kernel }} <br />
-            <span v-if="sysStat.system.ffp_version"
-                ><strong>ffplayout version:</strong> {{ sysStat.system.ffp_version }}</span
-            >
         </div>
         <div class="p-4 border border-primary">
             <div class="text-xl">Load</div>
@@ -106,10 +110,10 @@ async function systemStatus() {
     const channel = configStore.configGui[configStore.configID].id
 
     if (!document?.hidden) {
-        await $fetch(`/api/system/${channel}`, {
+        await $fetch<SystemStatistics>(`/api/system/${channel}`, {
             method: 'GET',
             headers: { ...contentType, ...authStore.authHeader },
-        }).then((stat: SystemStatistics) => {
+        }).then((stat) => {
             sysStat.value = stat
         })
     }
