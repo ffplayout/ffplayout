@@ -97,7 +97,7 @@
                         >
                             <span class="loading loading-spinner loading-lg" />
                         </div>
-                        <div class="h-full overflow-auto">
+                        <div id="scroll-container" class="h-full overflow-auto">
                             <Sortable
                                 :list="playlistStore.playlist"
                                 item-key="uid"
@@ -750,22 +750,26 @@ const template = ref({
     sources: [],
 } as Template)
 
-onMounted(() => {
+onMounted(async () => {
     if (!mediaStore.folderTree.parent) {
-        mediaStore.getTree('')
+        await mediaStore.getTree('')
     }
 
     getPlaylist()
 })
 
-watch([listDate, configID], () => {
+watch([listDate, configID], async () => {
     mediaStore.getTree('')
-    getPlaylist()
+    await getPlaylist()
 })
 
 function scrollTo(index: number) {
     const child = document.getElementById(`clip_${index}`)
     const parent = document.getElementById('scroll-container')
+
+    console.log('scroll')
+    console.log('child', child)
+    console.log('parent', parent)
 
     if (child && parent) {
         const topPos = child.offsetTop
@@ -1205,11 +1209,6 @@ function addTemplate() {
     height: calc(100% - 39px);
 }
 
-#scroll-container {
-    height: calc(100% - 40px);
-    overflow: auto;
-    scrollbar-width: medium;
-}
 .active-playlist-clip {
     background-color: #565e6a !important;
 }
