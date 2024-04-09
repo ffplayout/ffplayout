@@ -21,15 +21,15 @@
             </ul>
         </nav>
 
-        <div class="h-[calc(100%-34px)] bg-base-100">
+        <div class="relative h-[calc(100%-34px)] min-h-[300px] bg-base-100">
             <div
                 v-if="mediaStore.isLoading"
-                class="w-[calc(100%-16px)] h-[calc(100%-174px)] absolute z-10 flex justify-center bg-base-100/70"
+                class="w-full h-full absolute z-10 flex justify-center bg-base-100/70"
             >
                 <span class="loading loading-spinner loading-lg"></span>
             </div>
-            <splitpanes :horizontal="horizontal" class="border border-my-gray rounded">
-                <pane min-size="14" max-size="80" size="24" class="h-full pb-1">
+            <splitpanes :horizontal="horizontal" class="border border-my-gray rounded shadow">
+                <pane min-size="14" max-size="80" size="20" class="h-full pb-1 !bg-base-300" :class="horizontal ? 'rounded-t' : 'rounded-s'">
                     <ul v-if="mediaStore.folderTree.parent" class="overflow-auto h-full m-1" v-on:dragover.prevent>
                         <li
                             v-if="mediaStore.folderTree.parent_folders.length > 0"
@@ -69,7 +69,7 @@
                         </li>
                     </ul>
                 </pane>
-                <pane class="h-full pb-1">
+                <pane class="h-full pb-1 !bg-base-300" :class="horizontal ? 'rounded-b' : 'rounded-e'">
                     <ul v-if="mediaStore.folderTree.parent" class="h-full overflow-auto m-1" v-on:dragover.prevent>
                         <li
                             class="grid grid-cols-[auto_28px] px-2 gap-1"
@@ -155,15 +155,16 @@
                 </pane>
             </splitpanes>
         </div>
-    </div>
-    <div class="flex justify-end pe-10 mt-7">
-        <div class="join">
-            <button class="btn btn-sm btn-primary join-item" title="Create Folder" @click="showCreateModal = true">
-                <i class="bi-folder-plus" />
-            </button>
-            <button class="btn btn-sm btn-primary join-item" title="Upload File" @click="showUploadModal = true">
-                <i class="bi-upload" />
-            </button>
+
+        <div class="flex justify-end py-4 pe-2">
+            <div class="join">
+                <button class="btn btn-sm btn-primary join-item" title="Create Folder" @click="showCreateModal = true">
+                    <i class="bi-folder-plus" />
+                </button>
+                <button class="btn btn-sm btn-primary join-item" title="Upload File" @click="showUploadModal = true">
+                    <i class="bi-upload" />
+                </button>
+            </div>
         </div>
     </div>
 
@@ -366,7 +367,7 @@ async function handleDrop(event: any, targetFolder: any, isParent: boolean | nul
                 mediaStore.getTree(mediaStore.folderTree.source)
             })
             .catch((e) => {
-                indexStore.msgAlert('alert-error', `Delete error: ${e}`, 3)
+                indexStore.msgAlert('error', `Delete error: ${e}`, 3)
             })
     }
 }
@@ -428,12 +429,12 @@ async function deleteFileOrFolder(del: boolean) {
         })
             .then(async (response) => {
                 if (response.status !== 200) {
-                    indexStore.msgAlert('alert-error', `${await response.text()}`, 5)
+                    indexStore.msgAlert('error', `${await response.text()}`, 5)
                 }
                 mediaStore.getTree(mediaStore.folderTree.source)
             })
             .catch((e) => {
-                indexStore.msgAlert('alert-error', `Delete error: ${e}`, 5)
+                indexStore.msgAlert('error', `Delete error: ${e}`, 5)
             })
     }
 
@@ -461,7 +462,7 @@ async function renameFile(ren: boolean) {
                 mediaStore.getTree(mediaStore.folderTree.source)
             })
             .catch((e) => {
-                indexStore.msgAlert('alert-error', `Delete error: ${e}`, 3)
+                indexStore.msgAlert('error', `Delete error: ${e}`, 3)
             })
     }
 
@@ -482,7 +483,7 @@ async function createFolder(create: boolean) {
         lastPath.value = mediaStore.folderTree.source
 
         if (mediaStore.folderTree.folders.includes(folderName.value)) {
-            indexStore.msgAlert('alert-warning', `Folder "${folderName.value.name}" exists already!`, 2)
+            indexStore.msgAlert('warning', `Folder "${folderName.value.name}" exists already!`, 2)
 
             return
         }
@@ -493,11 +494,11 @@ async function createFolder(create: boolean) {
             body: JSON.stringify({ source: path }),
         })
             .then(() => {
-                indexStore.msgAlert('alert-success', 'Folder create done...', 2)
+                indexStore.msgAlert('success', 'Folder create done...', 2)
             })
             .catch((e: string) => {
-                indexStore.msgAlert('alert-error', `Folder create error: ${e}`, 3)
-                indexStore.alertVariant = 'alert-error'
+                indexStore.msgAlert('error', `Folder create error: ${e}`, 3)
+                indexStore.alertVariant = 'error'
             })
 
         mediaStore.getTree(lastPath.value)
@@ -536,7 +537,7 @@ async function upload(file: any): Promise<null | undefined> {
         }
 
         xhr.value.upload.onerror = () => {
-            indexStore.msgAlert('alert-error', `Upload error: ${xhr.value.status}`, 3)
+            indexStore.msgAlert('error', `Upload error: ${xhr.value.status}`, 3)
 
             resolve(undefined)
         }
@@ -563,7 +564,7 @@ async function uploadFiles(upl: boolean) {
             currentNumber.value = i + 1
 
             if (mediaStore.folderTree.files.find((f) => f.name === file.name)) {
-                indexStore.msgAlert('alert-warning', 'File exists already!', 3)
+                indexStore.msgAlert('warning', 'File exists already!', 3)
             } else {
                 await upload(file)
             }

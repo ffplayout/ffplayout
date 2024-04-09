@@ -4,7 +4,7 @@ export const useIndex = defineStore('index', {
     state: () => ({
         darkMode: false,
         showAlert: false,
-        alertVariant: 'alert-success',
+        alertVariant: 'success',
         alertMsg: '',
     }),
 
@@ -17,9 +17,9 @@ export const useIndex = defineStore('index', {
 
             setTimeout(() => {
                 this.showAlert = false
-                this.alertVariant = 'alert-success'
+                this.alertVariant = 'success'
                 this.alertMsg = ''
-            }, seconds * 1000);
+            }, seconds * 1000)
         },
     },
 })

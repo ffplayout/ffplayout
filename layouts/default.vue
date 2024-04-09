@@ -1,6 +1,6 @@
 <template>
     <div class="min-h-screen bg-base-200">
-        <div v-if="authStore.isLogin && route.name !== 'index'">
+        <div v-if="authStore.isLogin && route.name !== 'index'" class="sticky top-0 z-10">
             <Menu />
         </div>
 
@@ -18,12 +18,5 @@ const authStore = useAuth()
 
 const route = useRoute()
 
-onMounted(() => {
-    // @ts-ignore
-    // new $bootstrap.Tooltip(document.body, {
-    //     selector: "[data-tooltip=tooltip]",
-    //     container: "body"
-    // })
-})
 await configStore.nuxtClientInit()
 </script>

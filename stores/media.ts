@@ -15,7 +15,10 @@ export const useMedia = defineStore('media', {
     getters: {},
     actions: {
         async getTree(path: string, foldersOnly: boolean = false) {
-            this.isLoading = true
+            if (!foldersOnly) {
+                this.isLoading = true
+            }
+
             const authStore = useAuth()
             const configStore = useConfig()
             const indexStore = useIndex()
@@ -30,11 +33,10 @@ export const useMedia = defineStore('media', {
                 body: JSON.stringify({ source: path, folders_only: foldersOnly }),
             })
                 .then((response) => {
-
                     if (response.status === 200) {
                         return response.json()
                     } else {
-                        indexStore.msgAlert('alert-error', 'Storage not exist!', 3)
+                        indexStore.msgAlert('error', 'Storage not exist!', 3)
 
                         return {
                             source: '',
@@ -63,19 +65,19 @@ export const useMedia = defineStore('media', {
 
                     if (foldersOnly) {
                         this.folderCrumbs = crumbs
-                        data.parent_folders = data.parent_folders.map((i: any) => ({uid: genUID(), name: i}))
-                        data.folders = data.folders.map((i: any) => ({uid: genUID(), name: i}))
+                        data.parent_folders = data.parent_folders.map((i: any) => ({ uid: genUID(), name: i }))
+                        data.folders = data.folders.map((i: any) => ({ uid: genUID(), name: i }))
                         this.folderList = data
                     } else {
                         this.currentPath = path
                         this.crumbs = crumbs
-                        data.parent_folders = data.parent_folders.map((i: any) => ({uid: genUID(), name: i}))
-                        data.folders = data.folders.map((i: any) => ({uid: genUID(), name: i}))
+                        data.parent_folders = data.parent_folders.map((i: any) => ({ uid: genUID(), name: i }))
+                        data.folders = data.folders.map((i: any) => ({ uid: genUID(), name: i }))
                         this.folderTree = data
                     }
                 })
 
-                this.isLoading = false
+            this.isLoading = false
         },
     },
 })

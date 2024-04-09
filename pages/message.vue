@@ -352,9 +352,9 @@ async function savePreset() {
         })
 
         if (response.status === 200) {
-            indexStore.msgAlert('alert-success', 'Save Preset done!', 2)
+            indexStore.msgAlert('success', 'Save Preset done!', 2)
         } else {
-            indexStore.msgAlert('alert-error', 'Save Preset failed!', 2)
+            indexStore.msgAlert('error', 'Save Preset failed!', 2)
         }
     }
 }
@@ -390,10 +390,10 @@ async function createNewPreset() {
     })
 
     if (response.status === 200) {
-        indexStore.msgAlert('alert-success', 'Save Preset done!', 2)
+        indexStore.msgAlert('success', 'Save Preset done!', 2)
         getPreset(-1)
     } else {
-        indexStore.msgAlert('alert-error', 'Save Preset failed!', 2)
+        indexStore.msgAlert('error', 'Save Preset failed!', 2)
     }
 }
 
@@ -431,9 +431,9 @@ async function submitMessage() {
     })
 
     if (response.status === 200) {
-        indexStore.msgAlert('alert-success', 'Sending success...', 2)
+        indexStore.msgAlert('success', 'Sending success...', 2)
     } else {
-        indexStore.msgAlert('alert-error', 'Sending failed...', 2)
+        indexStore.msgAlert('error', 'Sending failed...', 2)
     }
 }
 </script>

@@ -99,7 +99,7 @@ async function onSubmitPlayout() {
     const update = await configStore.setPlayoutConfig(configStore.configPlayout)
 
     if (update.status === 200) {
-        indexStore.msgAlert('alert-success', 'Update playout config success!', 2)
+        indexStore.msgAlert('success', 'Update playout config success!', 2)
 
         const channel = configStore.configGui[configStore.configID].id
 
@@ -113,7 +113,7 @@ async function onSubmitPlayout() {
             }
         })
     } else {
-        indexStore.msgAlert('alert-error', 'Update playout config failed!', 2)
+        indexStore.msgAlert('error', 'Update playout config failed!', 2)
     }
 }
 

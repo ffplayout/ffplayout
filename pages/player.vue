@@ -3,15 +3,31 @@
         <Control />
         <div class="flex justify-end p-1">
             <div>
-                <input type="date" class="input input-sm input-bordered w-full max-w-xs" v-model="listDate" />
+                <VueDatePicker
+                    v-model="listDate"
+                    :clearable="false"
+                    :hide-navigation="['time']"
+                    :action-row="{ showCancel: false, showSelect: false, showPreview: false }"
+                    :format="calendarFormat"
+                    model-type="yyyy-MM-dd"
+                    auto-apply
+                    :dark="colorMode.value === 'dark'"
+                    input-class-name="input input-sm !input-bordered !w-[230px] text-right !pe-3"
+                    required
+                />
             </div>
         </div>
-        <div class="p-1 min-h-[500px] h-[calc(100vh-800px)] xl:h-[calc(100vh-480px)]">
-            <splitpanes class="border border-my-gray rounded">
-                <pane class="h-full" min-size="0" max-size="80" size="20">
+        <div class="p-1 min-h-[260px] h-[calc(100vh-800px)] xl:h-[calc(100vh-480px)]">
+            <splitpanes class="border border-my-gray rounded shadow">
+                <pane
+                    class="relative h-full !bg-base-300 rounded-s"
+                    min-size="0"
+                    max-size="80"
+                    :size="width > 768 ? '20' : '0'"
+                >
                     <div
                         v-if="mediaStore.isLoading"
-                        class="w-full h-full absolute z-10 flex justify-center bg-base-100/70"
+                        class="h-full w-full absolute z-10 flex justify-center bg-base-100/70"
                     >
                         <span class="loading loading-spinner loading-lg" />
                     </div>
@@ -34,7 +50,7 @@
                         </div>
                     </div>
 
-                    <ul class="h-[calc(100%-40px)] overflow-auto m-1">
+                    <ul class="h-[calc(100%-48px)] overflow-auto m-1">
                         <li class="flex px-1" v-for="folder in mediaStore.folderTree.folders" :key="folder.uid">
                             <button
                                 class="truncate"
@@ -48,10 +64,11 @@
                             <template #item="{ element, index }">
                                 <li
                                     :id="`file_${index}`"
-                                    class="draggable px-1 grid grid-cols-[auto_110px]"
+                                    class="px-1 grid grid-cols-[auto_110px]"
+                                    :class="{ 'grabbing cursor-grab': width > 768 }"
                                     :key="element.name"
                                 >
-                                    <div class="truncate cursor-grab">
+                                    <div class="truncate">
                                         <i v-if="mediaType(element.name) === 'audio'" class="bi-music-note-beamed" />
                                         <i v-else-if="mediaType(element.name) === 'video'" class="bi-film" />
                                         <i
@@ -77,9 +94,15 @@
                     </ul>
                 </pane>
                 <pane>
-                    <div class="w-full h-full">
+                    <div class="relative w-full h-full !bg-base-300 rounded-e">
                         <div
-                            class="grid grid-cols-[70px_auto_50px_70px_70px_70px_30px_60px_80px] bg-base-100 py-2 px-3 border-b border-my-gray"
+                            v-if="playlistStore.isLoading"
+                            class="w-full h-full absolute z-10 flex justify-center bg-base-100/70"
+                        >
+                            <span class="loading loading-spinner loading-lg" />
+                        </div>
+                        <div
+                            class="grid grid-cols-[70px_auto_50px_70px_45px] md:grid-cols-[70px_auto_50px_70px_70px_70px_30px_45px_50px] bg-base-100 rounded-tr-lg py-2 px-3 border-b border-my-gray"
                         >
                             <div>Start</div>
                             <div>File</div>
@@ -91,19 +114,12 @@
                             <div class="text-center">Edit</div>
                             <div class="hidden md:flex justify-center">Delete</div>
                         </div>
-                        <div
-                            v-if="playlistIsLoading"
-                            class="w-full h-full absolute z-10 flex justify-center bg-base-100/70"
-                        >
-                            <span class="loading loading-spinner loading-lg" />
-                        </div>
-                        <div id="scroll-container" class="h-full overflow-auto">
+                        <div id="scroll-container" class="h-[calc(100%-44px)] overflow-auto">
                             <Sortable
                                 :list="playlistStore.playlist"
                                 item-key="uid"
-                                class=""
                                 :style="`height: ${
-                                    playlistStore.playlist ? playlistStore.playlist.length * 38 + 76 : 300
+                                    playlistStore.playlist ? playlistStore.playlist.length * 38 + 38 : 300
                                 }px`"
                                 tag="ul"
                                 :options="playlistSortOptions"
@@ -113,16 +129,18 @@
                                 <template #item="{ element, index }">
                                     <li
                                         :id="`clip_${index}`"
-                                        class="draggable bg-base-300 even:bg-base-100 grid grid-cols-[70px_auto_50px_70px_70px_70px_30px_60px_80px] h-[38px] px-3 py-[8px]"
+                                        class="draggable grid grid-cols-[70px_auto_50px_70px_45px] md:grid-cols-[70px_auto_50px_70px_70px_70px_30px_45px_50px] h-[38px] px-3 py-[8px]"
                                         :class="
                                             index === playlistStore.currentClipIndex && listDate === todayDate
-                                                ? 'active-playlist-clip'
-                                                : ''
+                                                ? 'bg-lime-500/30'
+                                                : 'bg-base-300 even:bg-base-100'
                                         "
                                         :key="element.uid"
                                     >
                                         <div>{{ secondsToTime(element.begin) }}</div>
-                                        <div class="grabbing truncate cursor-grab">{{ filename(element.source) }}</div>
+                                        <div class="truncate" :class="{ 'grabbing cursor-grab': width > 768 }">
+                                            {{ filename(element.source) }}
+                                        </div>
                                         <div class="text-center">
                                             <button @click=";(showPreviewModal = true), setPreviewData(element.source)">
                                                 <i class="bi-play-fill" />
@@ -148,7 +166,9 @@
                                                 <i class="bi-pencil-square" />
                                             </button>
                                         </div>
-                                        <div class="text-center hidden md:flex justify-center">
+                                        <div
+                                            class="text-center hidden md:flex justify-center hover:text-base-content/70"
+                                        >
                                             <button @click="deletePlaylistItem(index)">
                                                 <i class="bi-x-circle-fill" />
                                             </button>
@@ -162,7 +182,7 @@
             </splitpanes>
         </div>
 
-        <div class="join flex justify-end m-3">
+        <div class="h-16 join flex justify-end p-3">
             <button class="btn btn-sm btn-primary join-item" title="Copy Playlist" @click="showCopyModal = true">
                 <i class="bi-files" />
             </button>
@@ -209,7 +229,12 @@
             </button>
         </div>
 
-        <Modal :show="showPreviewModal" :title="`Preview: ${previewName}`" :modal-action="closePlayer">
+        <Modal
+            :show="showPreviewModal"
+            :title="`Preview: ${previewName}`"
+            :hide-buttons="true"
+            :modal-action="closePlayer"
+        >
             <div class="w-[1024px] max-w-full aspect-video">
                 <VideoPlayer v-if="isVideo && previewOpt" reference="previewPlayer" :options="previewOpt" />
                 <img v-else :src="previewUrl" class="img-fluid" :alt="previewName" />
@@ -300,7 +325,9 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
 
+const colorMode = useColorMode()
 const { $_, $dayjs } = useNuxtApp()
+const { width } = useWindowSize({ initialWidth: 800 })
 const { secToHMS, filename, secondsToTime, toMin, mediaType } = stringFormatter()
 const { processPlaylist, genUID } = playlistOperations()
 const contentType = { 'content-type': 'application/json;charset=UTF-8' }
@@ -319,7 +346,6 @@ const { configID } = storeToRefs(useConfig())
 const { listDate } = storeToRefs(usePlaylist())
 
 const fileImport = ref()
-const playlistIsLoading = ref(false)
 const todayDate = ref($dayjs().utcOffset(configStore.utcOffset).format('YYYY-MM-DD'))
 const targetDate = ref($dayjs().utcOffset(configStore.utcOffset).format('YYYY-MM-DD'))
 const editId = ref(-1)
@@ -339,6 +365,7 @@ const isVideo = ref(false)
 
 const browserSortOptions = {
     group: { name: 'playlist', pull: 'clone', put: false },
+    handle: '.grabbing',
     sort: false,
 }
 const playlistSortOptions = {
@@ -382,10 +409,14 @@ function scrollTo(index: number) {
     }
 }
 
+const calendarFormat = (date: Date) => {
+    return $dayjs(date).format('dddd DD. MMM YYYY')
+}
+
 async function getPlaylist() {
-    playlistIsLoading.value = true
+    playlistStore.isLoading = true
     await playlistStore.getPlaylist(listDate.value)
-    playlistIsLoading.value = false
+    playlistStore.isLoading = false
 
     if (listDate.value === todayDate.value) {
         scrollTo(playlistStore.currentClipIndex)
@@ -607,11 +638,11 @@ async function importPlaylist(imp: boolean) {
         const formData = new FormData()
         formData.append(textFile.value[0].name, textFile.value[0])
 
-        playlistIsLoading.value = true
+        playlistStore.isLoading = true
         await $fetch(
             `/api/file/${configStore.configGui[configStore.configID].id}/import/?file=${
                 textFile.value[0].name
-            }&date=${listDate}`,
+            }&date=${listDate.value}`,
             {
                 method: 'PUT',
                 headers: authStore.authHeader,
@@ -619,15 +650,15 @@ async function importPlaylist(imp: boolean) {
             }
         )
             .then(() => {
-                indexStore.msgAlert('alert-success', 'Import success!', 2)
+                indexStore.msgAlert('success', 'Import success!', 2)
                 playlistStore.getPlaylist(listDate.value)
             })
             .catch((e: string) => {
-                indexStore.msgAlert('alert-error', e, 4)
+                indexStore.msgAlert('error', e, 4)
             })
     }
 
-    playlistIsLoading.value = false
+    playlistStore.isLoading = false
     textFile.value = null
     fileImport.value.value = null
 }
@@ -658,13 +689,13 @@ async function savePlaylist(save: boolean) {
             }),
         })
             .then((response: any) => {
-                indexStore.msgAlert('alert-success', response, 2)
+                indexStore.msgAlert('success', response, 2)
             })
             .catch((e: any) => {
                 if (e.status === 409) {
-                    indexStore.msgAlert('alert-warning', e.data, 2)
+                    indexStore.msgAlert('warning', e.data, 2)
                 } else {
-                    indexStore.msgAlert('alert-error', e, 4)
+                    indexStore.msgAlert('error', e, 4)
                 }
             })
     }
@@ -674,140 +705,14 @@ async function deletePlaylist(del: boolean) {
     showDeleteModal.value = false
 
     if (del) {
-        await $fetch(`/api/playlist/${configStore.configGui[configStore.configID].id}/${listDate}`, {
+        await $fetch(`/api/playlist/${configStore.configGui[configStore.configID].id}/${listDate.value}`, {
             method: 'DELETE',
             headers: { ...contentType, ...authStore.authHeader },
         }).then(() => {
             playlistStore.playlist = []
 
-            indexStore.msgAlert('alert-warning', 'Playlist deleted...', 2)
+            indexStore.msgAlert('warning', 'Playlist deleted...', 2)
         })
     }
 }
 </script>
-
-<style lang="scss" scoped>
-.filename,
-.browser-item {
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-}
-
-.loading-overlay {
-    width: 100%;
-    height: 100%;
-}
-
-.player-container {
-    position: relative;
-    width: 100%;
-    max-width: 100%;
-    height: calc(100% - 140px);
-}
-
-.playlist-container {
-    height: 100%;
-    border: 1px solid $border-color;
-    border-top: none;
-    border-left: none;
-    border-radius: $b-radius;
-}
-
-.player-container .media-browser-scroll {
-    height: calc(100% - 39px);
-}
-
-.active-playlist-clip {
-    background-color: #565e6a !important;
-}
-
-.list-row {
-    height: calc(100% - 480px);
-    min-height: 300px;
-}
-
-.pane-row {
-    margin: 0;
-}
-
-.playlist-container {
-    width: 100%;
-    height: 100%;
-}
-
-.timecode {
-    min-width: 65px;
-    max-width: 90px;
-}
-
-.playlist-input {
-    min-width: 42px;
-    max-width: 60px;
-}
-
-.playlist-list-group,
-#playlist-group {
-    height: 100%;
-}
-
-.playlist-item {
-    height: 38px;
-}
-
-.playlist-item:nth-of-type(odd) {
-    background-color: #3b424a;
-}
-
-.playlist-item:hover {
-    background-color: #1c1e22;
-}
-
-.overLength {
-    background-color: #ed890641 !important;
-}
-
-#generateModal .modal-body {
-    height: 600px;
-}
-
-.browser-col,
-.template-col {
-    height: 532px;
-}
-
-#generateModal {
-    --bs-modal-width: 800px;
-}
-
-#generateModal .media-browser-scroll {
-    height: calc(100% - 35px);
-}
-
-#generateModal .browser-div li:nth-of-type(odd) {
-    background-color: #3b424a;
-}
-
-.select-all-div {
-    margin-right: 20px;
-}
-
-.active-playlist-clip {
-    background-color: #405f51 !important;
-}
-</style>
-<style>
-@media (max-width: 575px) {
-    .mobile-hidden {
-        display: none;
-    }
-
-    /*.splitpanes__splitter {
-        display: none !important;
-    }*/
-
-    .playlist-pane {
-        width: 100% !important;
-    }
-}
-</style>

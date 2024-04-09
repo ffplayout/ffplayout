@@ -1,5 +1,5 @@
 <template>
-    <div class="navbar bg-base-100 min-h-[52px] p-0">
+    <div class="navbar bg-base-100 min-h-[52px] p-0 shadow">
         <NuxtLink class="navbar-brand p-2" href="/">
             <img src="~/assets/images/ffplayout-small.png" class="img-fluid" alt="Logo" width="30" height="30" />
         </NuxtLink>

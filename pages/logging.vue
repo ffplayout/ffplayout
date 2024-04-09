@@ -1,7 +1,18 @@
 <template>
     <div class="flex justify-end p-3 h-14">
         <div>
-            <input type="date" class="input input-sm input-bordered w-full max-w-xs" v-model="listDate" />
+            <VueDatePicker
+                    v-model="listDate"
+                    :clearable="false"
+                    :hide-navigation="['time']"
+                    :action-row="{ showCancel: false, showSelect: false, showPreview: false }"
+                    :format="calendarFormat"
+                    model-type="yyyy-MM-dd"
+                    auto-apply
+                    :dark="colorMode.value === 'dark'"
+                    input-class-name="input input-sm !input-bordered !w-[230px] text-right !pe-3"
+                    required
+                />
         </div>
     </div>
     <div class="px-3 inline-block h-[calc(100vh-140px)] text-[13px]">
@@ -11,6 +22,8 @@
 
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
+
+const colorMode = useColorMode()
 
 useHead({
     title: 'Logging | ffplayout',
@@ -33,6 +46,10 @@ watch([listDate, configID], () => {
     getLog()
 })
 
+const calendarFormat = (date: Date) => {
+    return $dayjs(date).format('dddd DD. MMM YYYY')
+}
+
 async function getLog() {
     let date = listDate.value
 
@@ -54,49 +71,49 @@ async function getLog() {
 }
 </script>
 
-<style lang="scss">
+<style>
 .log-time {
-    color: $log-time;
+    color: #666864;
 }
 
 .log-number {
-    color: $log-number;
+    color: #e2c317;
 }
 
 .log-addr {
-    color: $log-addr;
+    color: #ad7fa8;
     font-weight: 500;
 }
 
 .log-cmd {
-    color: $log-cmd;
+    color: #6c95c2;
 }
 
 .log-info {
-    color: $log-info;
+    color: #8ae234;
 }
 
 .log-warning {
-    color: $log-warning;
+    color: #ff8700;
 }
 
 .log-error {
-    color: $log-error;
+    color: #d32828;
 }
 
 .log-debug {
-    color: $log-debug;
+    color: #6e99c7;
 }
 
 .log-decoder {
-    color: $log-decoder;
+    color: #56efff;
 }
 
 .log-encoder {
-    color: $log-encoder;
+    color: #45ccee;
 }
 
 .log-server {
-    color: $log-server;
+    color: #23cbdd;
 }
 </style>

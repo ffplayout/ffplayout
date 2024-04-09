@@ -114,9 +114,9 @@ async function onSubmitGui() {
     const update = await configStore.setGuiConfig(configStore.configGui[configStore.configID])
 
     if (update.status) {
-        indexStore.msgAlert('alert-success', 'Update GUI config success!', 2)
+        indexStore.msgAlert('success', 'Update GUI config success!', 2)
     } else {
-        indexStore.msgAlert('alert-error', 'Update GUI config failed!', 2)
+        indexStore.msgAlert('error', 'Update GUI config failed!', 2)
     }
 }
 
@@ -125,7 +125,7 @@ async function deleteChannel() {
     const id = config[configStore.configID].id
 
     if (id === 1) {
-        indexStore.msgAlert('alert-warning', 'First channel can not be deleted!', 2)
+        indexStore.msgAlert('warning', 'First channel can not be deleted!', 2)
         return
     }
 
@@ -140,9 +140,9 @@ async function deleteChannel() {
     await configStore.getPlayoutConfig()
 
     if (response.status === 200) {
-        indexStore.msgAlert('alert-success', 'Delete GUI config success!', 2)
+        indexStore.msgAlert('success', 'Delete GUI config success!', 2)
     } else {
-        indexStore.msgAlert('alert-error', 'Delete GUI config failed!', 2)
+        indexStore.msgAlert('error', 'Delete GUI config failed!', 2)
     }
 }
 </script>

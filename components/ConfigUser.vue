@@ -183,20 +183,20 @@ async function getUserConfig() {
 
 async function deleteUser() {
     if (configStore.configUser.username === configStore.currentUser) {
-        indexStore.msgAlert('alert-error', 'Delete current user not possible!', 2)
+        indexStore.msgAlert('error', 'Delete current user not possible!', 2)
     } else {
         await fetch(`/api/user/${configStore.configUser.username}`, {
             method: 'DELETE',
             headers: authStore.authHeader,
         })
             .then(async () => {
-                indexStore.msgAlert('alert-success', 'Delete user done!', 2)
+                indexStore.msgAlert('success', 'Delete user done!', 2)
 
                 await configStore.getUserConfig()
                 await getUsers()
             })
             .catch((e) => {
-                indexStore.msgAlert('alert-error', `Delete user error: ${e}`, 2)
+                indexStore.msgAlert('error', `Delete user error: ${e}`, 2)
             })
     }
 }
@@ -226,17 +226,17 @@ async function addUser(add: boolean) {
             showUserModal.value = false
 
             if (update.status === 200) {
-                indexStore.msgAlert('alert-success', 'Add user success!', 2)
+                indexStore.msgAlert('success', 'Add user success!', 2)
 
                 await getUsers()
                 await getUserConfig()
             } else {
-                indexStore.msgAlert('alert-error', 'Add user failed!', 2)
+                indexStore.msgAlert('error', 'Add user failed!', 2)
             }
 
             clearUser()
         } else {
-            indexStore.msgAlert('alert-error', 'Password mismatch!', 2)
+            indexStore.msgAlert('error', 'Password mismatch!', 2)
         }
     } else {
         showUserModal.value = false
@@ -253,9 +253,9 @@ async function onSubmitUser() {
     const update = await configStore.setUserConfig(configStore.configUser)
 
     if (update.status === 200) {
-        indexStore.msgAlert('alert-success', 'Update user profile success!', 2)
+        indexStore.msgAlert('success', 'Update user profile success!', 2)
     } else {
-        indexStore.msgAlert('alert-error', 'Update user profile failed!', 2)
+        indexStore.msgAlert('error', 'Update user profile failed!', 2)
     }
 
     newPass.value = ''
