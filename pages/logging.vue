@@ -9,7 +9,7 @@
                     :format="calendarFormat"
                     model-type="yyyy-MM-dd"
                     auto-apply
-                    :dark="colorMode.value === 'dark'"
+                    :dark="colorMode === 'dark'"
                     input-class-name="input input-sm !input-bordered !w-[230px] text-right !pe-3"
                     required
                 />
