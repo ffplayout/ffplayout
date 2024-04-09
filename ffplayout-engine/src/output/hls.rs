@@ -166,6 +166,7 @@ pub fn write_hls(
 
     for node in get_source {
         *player_control.current_media.lock().unwrap() = Some(node.clone());
+        let ignore = config.logging.ignore_lines.clone();
 
         let mut cmd = match &node.cmd {
             Some(cmd) => cmd.clone(),
@@ -247,7 +248,7 @@ pub fn write_hls(
         let enc_err = BufReader::new(dec_proc.stderr.take().unwrap());
         *proc_control.decoder_term.lock().unwrap() = Some(dec_proc);
 
-        if let Err(e) = stderr_reader(enc_err, Decoder, proc_control.clone()) {
+        if let Err(e) = stderr_reader(enc_err, ignore, Decoder, proc_control.clone()) {
             error!("{e:?}")
         };
 

@@ -19,13 +19,16 @@ use ffplayout_lib::{
 
 fn server_monitor(
     level: &str,
+    ignore: Vec<String>,
     buffer: BufReader<ChildStderr>,
     proc_ctl: ProcessControl,
 ) -> Result<(), Error> {
     for line in buffer.lines() {
         let line = line?;
 
-        if !FFMPEG_IGNORE_ERRORS.iter().any(|i| line.contains(*i)) {
+        if !FFMPEG_IGNORE_ERRORS.iter().any(|i| line.contains(*i))
+            && !ignore.iter().any(|i| line.contains(i))
+        {
             log_line(&line, level);
         }
 
@@ -95,6 +98,7 @@ pub fn ingest_server(
     while !proc_control.is_terminated.load(Ordering::SeqCst) {
         let proc_ctl = proc_control.clone();
         let level = config.logging.ingest_level.clone().unwrap();
+        let ignore = config.logging.ignore_lines.clone();
         let mut server_proc = match Command::new("ffmpeg")
             .args(server_cmd.clone())
             .stdout(Stdio::piped())
@@ -110,7 +114,7 @@ pub fn ingest_server(
         let mut ingest_reader = BufReader::new(server_proc.stdout.take().unwrap());
         let server_err = BufReader::new(server_proc.stderr.take().unwrap());
         let error_reader_thread =
-            thread::spawn(move || server_monitor(&level, server_err, proc_ctl));
+            thread::spawn(move || server_monitor(&level, ignore, server_err, proc_ctl));
 
         *proc_control.server_term.lock().unwrap() = Some(server_proc);
         is_running = false;

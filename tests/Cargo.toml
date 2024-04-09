@@ -14,7 +14,7 @@ ffplayout-lib = { path = "../lib" }
 
 chrono = "0.4"
 crossbeam-channel = "0.5"
-ffprobe = "0.3"
+ffprobe = "0.4"
 file-rotate = "0.7.0"
 lettre = { version = "0.11", features = ["builder", "rustls-tls", "smtp-transport"], default-features = false }
 log = "0.4"

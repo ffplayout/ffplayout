@@ -682,13 +682,16 @@ pub fn include_file_extension(config: &PlayoutConfig, file_path: &Path) -> bool 
 /// and log the output.
 pub fn stderr_reader(
     buffer: BufReader<ChildStderr>,
+    ignore: Vec<String>,
     suffix: ProcessUnit,
     proc_control: ProcessControl,
 ) -> Result<(), Error> {
     for line in buffer.lines() {
         let line = line?;
 
-        if FFMPEG_IGNORE_ERRORS.iter().any(|i| line.contains(*i)) {
+        if FFMPEG_IGNORE_ERRORS.iter().any(|i| line.contains(*i))
+            || ignore.iter().any(|i| line.contains(i))
+        {
             continue;
         }
 
