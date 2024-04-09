@@ -182,7 +182,7 @@ pub async fn browser(
     let mut media_files = vec![];
 
     for file in files {
-        match MediaProbe::new(&file.to_string_lossy().to_string()) {
+        match MediaProbe::new(file.to_string_lossy().as_ref()) {
             Ok(probe) => {
                 let mut duration = 0.0;
 
