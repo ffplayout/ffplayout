@@ -4,7 +4,7 @@
             <Menu />
         </div>
 
-        <main :class="authStore.isLogin && route.name !== 'index' ? 'h-[calc(100%-52px)]': 'h-full'">
+        <main :class="authStore.isLogin && route.name !== 'index' ? 'h-[calc(100%-52px)]' : 'h-full'">
             <slot />
         </main>
 
@@ -13,10 +13,18 @@
 </template>
 
 <script setup lang="ts">
+const colorMode = useColorMode()
 const configStore = useConfig()
 const authStore = useAuth()
+const indexStore = useIndex()
 
 const route = useRoute()
 
 await configStore.nuxtClientInit()
+
+if (colorMode.value === 'dark') {
+    indexStore.darkMode = true
+} else {
+    indexStore.darkMode = false
+}
 </script>

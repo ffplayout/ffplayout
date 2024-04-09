@@ -1,6 +1,10 @@
 <template>
-    <div class="z-50 fixed top-0 bottom-0 left-0 right-0 flex justify-center items-center bg-black/30 overflow-y-auto">
-        <div class="flex flex-col bg-base-100 w-[800px] min-w-[300px] max-w-[90%] h-[680px] rounded-md p-5 shadow-xl">
+    <div
+        class="z-50 fixed top-0 bottom-0 w-full h-full left-0 right-0 flex justify-center items-center bg-black/30 overflow-y-auto"
+    >
+        <div
+            class="relative flex flex-col bg-base-100 w-[800px] min-w-[300px] max-w-[90vw] h-[680px] rounded-md p-5 shadow-xl"
+        >
             <div class="font-bold text-lg">Generate Program</div>
 
             <div class="h-[calc(100%-95px)] mt-3">
@@ -14,25 +18,28 @@
                         @change="advancedGenerator = false"
                         checked
                     />
-                    <div role="tabpanel" class="tab-content pt-3">
+                    <div role="tabpanel" class="tab-content w-full pt-3">
                         <div class="w-full">
-                            <nav class="breadcrumbs px-3 pt-0">
-                                <ul>
-                                    <li v-for="(crumb, index) in mediaStore.folderCrumbs" :key="index">
-                                        <button
-                                            v-if="
-                                                mediaStore.folderCrumbs.length > 1 &&
-                                                mediaStore.folderCrumbs.length - 1 > index
-                                            "
-                                            @click="mediaStore.getTree(crumb.path, true)"
-                                        >
-                                            <i class="bi-folder-fill me-1" />
-                                            {{ crumb.text }}
-                                        </button>
-                                        <span v-else><i class="bi-folder-fill me-1" />{{ crumb.text }}</span>
-                                    </li>
-                                </ul>
-                            </nav>
+                            <div class="grid">
+                                <nav class="breadcrumbs px-3 pt-0">
+                                    <ul>
+                                        <li v-for="(crumb, index) in mediaStore.folderCrumbs" :key="index">
+                                            <button
+                                                v-if="
+                                                    mediaStore.folderCrumbs.length > 1 &&
+                                                    mediaStore.folderCrumbs.length - 1 > index
+                                                "
+                                                @click="mediaStore.getTree(crumb.path, true)"
+                                            >
+                                                <i class="bi-folder-fill me-1" />
+                                                {{ crumb.text }}
+                                            </button>
+                                            <span v-else><i class="bi-folder-fill me-1" />{{ crumb.text }}</span>
+                                        </li>
+                                    </ul>
+                                </nav>
+                            </div>
+
                             <ul class="h-[475px] border border-my-gray rounded overflow-auto bg-base-300 m-1 py-1">
                                 <li
                                     class="even:bg-base-200 px-2 w-full"
@@ -89,7 +96,7 @@
                     />
                     <div role="tabpanel" class="tab-content pt-3">
                         <div class="w-full">
-                            <div class="grid grid-cols-2 px-3 pt-0">
+                            <div class="grid grid-cols-[auto_48px] px-3 pt-0">
                                 <nav class="breadcrumbs pt-0">
                                     <ul>
                                         <li v-for="(crumb, index) in mediaStore.folderCrumbs" :key="index">
@@ -119,13 +126,15 @@
                                 </div>
                             </div>
                             <div
-                                class="h-[475px] border border-my-gray rounded grid grid-cols-[300px_auto] bg-base-300 m-1"
+                                class="h-[475px] border border-my-gray rounded grid bg-base-300 m-1"
+                                :class="width < 740 ? 'grid-cols-1' : 'grid-cols-[300px_auto]'"
                             >
                                 <Sortable
                                     :list="mediaStore.folderList.folders"
                                     :options="templateBrowserSortOptions"
                                     item-key="uid"
-                                    class="overflow-auto border-e border-my-gray py-1"
+                                    class="overflow-auto py-1 border-my-gray"
+                                    :class="width < 740 ? 'h-[240px] border-b' : 'border-e'"
                                     tag="ul"
                                 >
                                     <template #item="{ element, index }">
@@ -155,11 +164,11 @@
                                         </li>
                                     </template>
                                 </Sortable>
-                                <ul class="overflow-auto p-2">
+                                <ul class="overflow-auto px-1 pb-1">
                                     <li
                                         v-for="item in template.sources"
                                         :key="item.start"
-                                        class="flex flex-col gap-1 justify-center items-center border border-my-gray rounded p-1"
+                                        class="flex flex-col gap-1 justify-center items-center border border-my-gray rounded mt-1 p-1"
                                     >
                                         <div class="grid grid-cols-[50px_67px_70px_67px_50px] join">
                                             <div
@@ -201,7 +210,11 @@
                                             @add="addFolderToTemplate($event, item)"
                                         >
                                             <template #item="{ element, index }">
-                                                <li :id="`path_${index}`" class="draggable grabbing py-0 even:bg-base-200 px-2" :key="index">
+                                                <li
+                                                    :id="`path_${index}`"
+                                                    class="draggable grabbing py-0 even:bg-base-200 px-2"
+                                                    :key="index"
+                                                >
                                                     <i class="bi-folder-fill" />
                                                     {{ element.split(/[\\/]+/).pop() }}
                                                 </li>
@@ -245,11 +258,7 @@
                     >
                         Cancel
                     </button>
-                    <button
-                        type="button"
-                        class="btn btn-sm btn-primary join-item"
-                        @click="generatePlaylist(), close()"
-                    >
+                    <button type="button" class="btn btn-sm btn-primary join-item" @click="generatePlaylist(), close()">
                         Ok
                     </button>
                 </div>
@@ -260,6 +269,7 @@
 <script setup lang="ts">
 const { $dayjs } = useNuxtApp()
 
+const { width } = useWindowSize({ initialWidth: 800 })
 const authStore = useAuth()
 const configStore = useConfig()
 const indexStore = useIndex()
@@ -282,7 +292,12 @@ const advancedGenerator = ref(false)
 const selectedFolders = ref([] as string[])
 const generateFromAll = ref(false)
 const template = ref({
-    sources: [],
+    sources: [{
+        start: configStore.configPlayout.playlist.day_start,
+        duration: '02:00:00',
+        shuffle: false,
+        paths: [],
+    }],
 } as Template)
 
 const templateBrowserSortOptions = {
