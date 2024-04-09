@@ -7,8 +7,6 @@ The interface is mostly designed for 24/7 streaming. Other scenarios like stream
 
 For a better understanding of the functionality, take a look at the screenshots below.
 
-Read the [install.md](docs/INSTALL.md) for manual installation.
-
 ### Login
 ![login](/docs/images/login.png)
 
