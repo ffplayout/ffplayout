@@ -109,7 +109,7 @@ fn ingest_to_hls_server(
 
                 info!("Switch from {} to live ingest", config.processing.mode);
 
-                if let Err(e) = proc_control.stop(Encoder) {
+                if let Err(e) = proc_control.stop(Decoder) {
                     error!("{e}");
                 }
             }
@@ -238,11 +238,11 @@ pub fn write_hls(
             .stderr(Stdio::piped())
             .spawn()
         {
+            Ok(proc) => proc,
             Err(e) => {
                 error!("couldn't spawn ffmpeg process: {e}");
                 panic!("couldn't spawn ffmpeg process: {e}")
             }
-            Ok(proc) => proc,
         };
 
         let enc_err = BufReader::new(dec_proc.stderr.take().unwrap());
