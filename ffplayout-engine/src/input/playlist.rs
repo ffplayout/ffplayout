@@ -217,17 +217,15 @@ impl CurrentProgram {
     // On init or reload we need to seek for the current clip.
     fn get_current_clip(&mut self) {
         let mut time_sec = self.get_current_time();
-        let shift = self.playout_stat.time_shift.lock().unwrap();
+        let shift = *self.playout_stat.time_shift.lock().unwrap();
 
         if *self.playout_stat.current_date.lock().unwrap()
             == *self.playout_stat.date.lock().unwrap()
-            && *shift != 0.0
+            && shift != 0.0
         {
-            info!("Shift playlist start for <yellow>{}</> seconds", *shift);
-            time_sec += *shift;
+            info!("Shift playlist start for <yellow>{shift:.3}</> seconds");
+            time_sec += shift;
         }
-
-        drop(shift);
 
         if self.config.playlist.infinit
             && self.json_playlist.length.unwrap() < 86400.0
