@@ -314,7 +314,7 @@ fn fade(node: &mut Media, chain: &mut Filters, nr: i32, filter_type: FilterType)
 
     if node.seek > 0.0 || node.unit == Ingest {
         let fade_in = match &ADVANCED_CONFIG.decoder.filters.fade_in {
-            Some(fade) => custom_format(fade, &[t]),
+            Some(fade) => custom_format(&format!("{t}{fade}"), &[t]),
             None => format!("{t}fade=in:st=0:d=0.5"),
         };
 
@@ -323,7 +323,10 @@ fn fade(node: &mut Media, chain: &mut Filters, nr: i32, filter_type: FilterType)
 
     if (node.out != node.duration && node.out - node.seek > 1.0) || fade_audio {
         let fade_out = match &ADVANCED_CONFIG.decoder.filters.fade_out {
-            Some(fade) => custom_format(fade, &[t, &(node.out - node.seek - 1.0).to_string()]),
+            Some(fade) => custom_format(
+                &format!("{t}{fade}"),
+                &[t, &(node.out - node.seek - 1.0).to_string()],
+            ),
             None => format!("{t}fade=out:st={}:d=1.0", (node.out - node.seek - 1.0)),
         };
 
@@ -350,11 +353,11 @@ fn overlay(node: &mut Media, chain: &mut Filters, config: &PlayoutConfig) {
                 &config.processing.logo.replace('\\', "/").replace(':', "\\\\:"),
                 &config.processing.logo_opacity.to_string(),
                 &scale.to_string(),
-                &config.processing.logo_filter,
+                &config.processing.logo_position,
             ]),
             None => format!(
-                "null[v];movie={}:loop=0,setpts=N/(FRAME_RATE*TB),format=rgba,colorchannelmixer=aa={}{scale}[l];[v][l]{}:shortest=1",
-                config.processing.logo.replace('\\', "/").replace(':', "\\\\:"), config.processing.logo_opacity, config.processing.logo_filter
+                "null[v];movie={}:loop=0,setpts=N/(FRAME_RATE*TB),format=rgba,colorchannelmixer=aa={}{scale}[l];[v][l]overlay={}:shortest=1",
+                config.processing.logo.replace('\\', "/").replace(':', "\\\\:"), config.processing.logo_opacity, config.processing.logo_position
             )
         };
 
