@@ -5,9 +5,9 @@ services:
     cap_add:
       - SYS_ADMIN
     container_name: ffplayout
+    privileged: true
     build:
+      context: .
       dockerfile: ./Dockerfile
     ports:
-      - '8787'
-    volumes:
-      - /sys/fs/cgroup:/sys/fs/cgroup
+      - '8787:8787'

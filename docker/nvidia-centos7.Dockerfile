@@ -108,5 +108,5 @@ EXPOSE 8787
 RUN echo "/usr/local/lib" >> /etc/ld.so.conf.d/nvidia.conf
 RUN echo "/usr/local/cuda/compat/" >> /etc/ld.so.conf.d/nvidia.conf
 
-VOLUME [ "/sys/fs/cgroup", "/tmp", "/run", "/run/lock", "/etc/ffplayout", "/usr/share/ffplayout" ,"/var/lib/ffplayout" ]
+VOLUME [ "/tmp", "/run", "/run/lock", "/etc/ffplayout", "/usr/share/ffplayout" ,"/var/lib/ffplayout" ]
 CMD ["/usr/sbin/init"]
