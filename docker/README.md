@@ -6,6 +6,12 @@
 Use of [CentOS image](https://hub.docker.com/_/centos) as base image as it offer the possibility to use systemd.
 In order to run systemd in a container it has to run in privileged mode and bind to the `cgroup` of the host.
 
+> **_NOTE:_**  A system with CGroup V2 is need!
+> Currently tested host systems are:
+> - debian 12 with official docker ce from docker.com
+> - Manjaro from 2024 Kernel 6.6+
+> - fedora 39 with podman
+
 ## Image
 
 In addition to the base image, there is the compilation of ffmpeg and all lib from source based on https://github.com/jrottenberg/ffmpeg.
@@ -13,7 +19,7 @@ We can't use directly the image from `jrottenberg/ffmpeg` as it compile ffmpeg w
 
 The image is build with a default user/pass `admin/admin`.
 
-You can take a look à the [Dockerfile](Dockerfile)
+You can take a look at the [Dockerfile](Dockerfile)
 
 ### /!\ as ffmpeg is compiled with `--enable-nonfree` don't push it to a public registry nor distribute the image /!\
 
@@ -40,18 +46,24 @@ docker build -f docker/Dockerfile -t ffplayout-image:alma .
 # build ffmpeg from source
 docker build -f fromSource.Dockerfile -t ffplayout-image:from-source .
 
-# build with current almalinux image
-docker build -f Almalinux.Dockerfile -t ffplayout-image:almalinux .
+# build with nvidia image for hardware support
+docker build -f nvidia-centos7.Dockerfile -t ffplayout-image:nvidia .
 ```
 
 example of command to start the container:
 
-```
-docker run -ti --name ffplayout -v /sys/fs/cgroup:/sys/fs/cgroup:ro --cap-add SYS_ADMIN -p 8787:8787 ffplayout-image
+```BASH
+docker run -it --name ffplayout --privileged -p 8787:8787 ffplayout-image
+
+# run in daemon mode
+docker run -d --name ffplayout --privileged -p 8787:8787 ffplayout-image
+
+# run with docker-compose
+docker-compose up -d
 ```
 
 #### Note from CentOS docker hub page
-There have been reports that if you're using an Ubuntu host, you will need to add `-v /tmp/$(mktemp -d):/run` in addition to the cgroups mount.
+There have been reports that if you're using an Ubuntu host, you will need to add `-v /tmp/$(mktemp -d):/run` to the mount.
 
 ## Kubernetes
 

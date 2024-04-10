@@ -160,6 +160,4 @@ RUN \
 
 EXPOSE 8787
 
-VOLUME [ "/sys/fs/cgroup" ]
-
 CMD ["/usr/sbin/init"]

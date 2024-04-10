@@ -23,7 +23,7 @@ RUN dnf update -y && \
     dnf config-manager --set-enabled crb && \
     dnf install -y --nogpgcheck https://mirrors.rpmfusion.org/free/el/rpmfusion-free-release-$(rpm -E %rhel).noarch.rpm && \
     dnf install -y --nogpgcheck https://mirrors.rpmfusion.org/nonfree/el/rpmfusion-nonfree-release-$(rpm -E %rhel).noarch.rpm && \
-    dnf install -y ffmpeg ffmpeg-devel wget dejavu-sans-fonts sudo && \
+    dnf install -y ffmpeg wget dejavu-sans-fonts sudo && \
     dnf clean all
 
 RUN [[ -f /tmp/ffplayout-${FFPLAYOUT_VERSION}-1.x86_64.rpm ]] || wget -q "https://github.com/ffplayout/ffplayout/releases/download/v${FFPLAYOUT_VERSION}/ffplayout-${FFPLAYOUT_VERSION}-1.x86_64.rpm" -P /tmp/ && \
@@ -38,6 +38,8 @@ RUN [[ -f /tmp/ffplayout-${FFPLAYOUT_VERSION}-1.x86_64.rpm ]] || wget -q "https:
 
 EXPOSE 8787
 
-VOLUME [ "/sys/fs/cgroup" ]
+# Maybe on some systems is needed, combined with run parameters: --tmpfs /tmp --tmpfs /run --tmpfs /run/lock
+# More infos: https://serverfault.com/a/1087467/387878
+#VOLUME [ "/tmp", "/run", "/run/lock" ]
 
 CMD ["/usr/sbin/init"]
