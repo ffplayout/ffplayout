@@ -17,6 +17,7 @@ pub fn output(config: &PlayoutConfig, log_format: &str) -> process::Child {
     }
 
     enc_cmd.append(&mut vec_strings![
+        "-autoexit",
         "-i",
         "pipe:0",
         "-window_title",
