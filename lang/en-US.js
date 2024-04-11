@@ -1,0 +1,40 @@
+export default {
+    alert: {
+        wrongLogin: 'Incorrect login data!',
+    },
+    button: {
+        login: 'Login',
+        home: 'Home',
+        player: 'Player',
+        media: 'Media',
+        message: 'Message',
+        logging: 'Logging',
+        channels: 'Channels',
+        configure: 'Configure',
+        logout: 'Logout',
+    },
+    error: {
+        notFound: 'Page not found',
+        serverError: 'Internal server error',
+    },
+    input: {
+        username: 'Username',
+        password: 'Password',
+    },
+    system: {
+        cpu: 'CPU',
+        cores: 'Cores',
+        load: 'Load',
+        memory: 'Memory',
+        swap: 'Swap',
+        total: 'Total',
+        usage: 'Usage',
+        network: 'Network',
+        in: 'In',
+        out: 'Out',
+        storage: 'Storage',
+        device: 'Device',
+        size: 'Size',
+        used: 'Used',
+    },
+}

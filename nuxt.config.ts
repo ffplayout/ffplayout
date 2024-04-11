@@ -45,7 +45,7 @@ export default defineNuxtConfig({
         },
     },
 
-    modules: ['@nuxtjs/color-mode', '@pinia/nuxt', '@vueuse/nuxt', '@nuxtjs/tailwindcss'],
+    modules: ['@nuxtjs/color-mode', '@nuxtjs/i18n', '@pinia/nuxt', '@vueuse/nuxt', '@nuxtjs/tailwindcss'],
     css: ['@/assets/scss/main.scss'],
 
     colorMode: {
@@ -58,6 +58,55 @@ export default defineNuxtConfig({
         classSuffix: '',
         dataValue: 'theme',
         storageKey: 'theme',
+    },
+
+    i18n: {
+        locales: [
+            {
+                code: 'de',
+                name: 'Deutsch',
+                file: 'de-DE.js',
+            },
+            {
+                code: 'en',
+                name: 'English',
+                file: 'en-US.js',
+            },
+        ],
+        customRoutes: 'config',
+        pages: {
+            'player': {
+                de: '/wiedergabe',
+                en: '/player',
+            },
+            'media': {
+                de: '/medien',
+                en: '/media',
+            },
+            'message': {
+                de: '/nachrichten',
+                en: '/message',
+            },
+            'logging': {
+                de: '/protokollierung',
+                en: '/logging',
+            },
+            'configure': {
+                de: '/einstellungen',
+                en: '/configure',
+            },
+        },
+        detectBrowserLanguage: {
+            useCookie: true,
+            alwaysRedirect: true,
+        },
+        // debug: true,
+        langDir: 'lang',
+        defaultLocale: 'en',
+
+        compilation: {
+            strictMessage: false,
+        },
     },
 
     vite: {

@@ -1,20 +1,42 @@
 <template>
     <div class="w-full min-h-screen xs:h-full flex justify-center items-center">
-        <div v-if="authStore.isLogin" class="text-center w-full max-w-[700px] p-5">
+        <div v-if="authStore.isLogin" class="text-center w-full max-w-[800px] p-5">
             <SystemStats v-if="configStore.configGui.length > 0" />
-            <div class="flex flex-wrap justify-center gap-1 xs:gap-0 xs:join mt-5">
-                <NuxtLink to="/player" class="btn join-item btn-primary">Player</NuxtLink>
-                <NuxtLink to="/media" class="btn join-item btn-primary">Media</NuxtLink>
-                <NuxtLink to="/message" class="btn join-item btn-primary">Message</NuxtLink>
-                <NuxtLink to="/logging" class="btn join-item btn-primary">Logging</NuxtLink>
+            <div class="flex flex-wrap justify-center gap-1 md:gap-0 md:join mt-5">
+                <NuxtLink :to="localePath({ name: 'player' })" class="btn join-item btn-primary px-2">
+                    {{ $t('button.player') }}
+                </NuxtLink>
+                <NuxtLink :to="localePath({ name: 'media' })"  class="btn join-item btn-primary px-2">
+                    {{ $t('button.media') }}
+                </NuxtLink>
+                <NuxtLink :to="localePath({ name: 'message' })"  class="btn join-item btn-primary px-2">
+                    {{ $t('button.message') }}
+                </NuxtLink>
+                <NuxtLink :to="localePath({ name: 'logging' })"  class="btn join-item btn-primary px-2">
+                    {{ $t('button.logging') }}
+                </NuxtLink>
                 <NuxtLink
                     v-if="authStore.role.toLowerCase() == 'admin'"
-                    to="/configure"
-                    class="btn join-item btn-primary"
+                    :to="localePath({ name: 'configure' })"
+                    class="btn join-item btn-primary px-2"
                 >
-                    Configure
+                    {{ $t('button.configure') }}
                 </NuxtLink>
-                <button class="btn join-item btn-primary" @click="logout()">Logout</button>
+                <button class="btn join-item btn-primary px-2" @click="logout()">
+                    {{ $t('button.logout') }}
+                </button>
+                <select
+                    class="select select-primary select-bordered join-item max-w-xs ps-2"
+                    v-model="selectedLang"
+                    @change="changeLang(selectedLang)"
+                >
+                    <option v-for="(loc, index) in locales" :key="index" :value="/* @ts-ignore */ loc.code">
+                        {{
+                            /* @ts-ignore */
+                            loc.name
+                        }}
+                    </option>
+                </select>
                 <label class="join-item btn btn-primary swap swap-rotate me-2">
                     <input type="checkbox" @change="toggleDarkTheme" :checked="indexStore.darkMode" />
                     <SvgIcon name="swap-on" classes="w-5 h-5" />
@@ -29,7 +51,7 @@
                 <input
                     type="text"
                     v-model="formUsername"
-                    placeholder="Username"
+                    :placeholder="$t('input.username')"
                     class="input input-bordered w-full"
                     required
                 />
@@ -37,14 +59,16 @@
                 <input
                     type="password"
                     v-model="formPassword"
-                    placeholder="Password"
+                    :placeholder="$t('input.password')"
                     class="input input-bordered w-full mt-5"
                     required
                 />
 
                 <div class="w-full mt-4 grid grid-flow-row-dense grid-cols-12 grid-rows-1 gap-2">
                     <div class="col-span-3">
-                        <button type="submit" class="btn btn-primary">Login</button>
+                        <button type="submit" class="btn btn-primary">
+                            {{ $t('button.login') }}
+                        </button>
                     </div>
                     <div class="col-span-12 sm:col-span-9">
                         <div
@@ -64,10 +88,16 @@
 
 <script setup lang="ts">
 const colorMode = useColorMode()
+const { locale, locales, t } = useI18n()
+const localePath = useLocalePath()
+const switchLocalePath = useSwitchLocalePath()
+const router = useRouter()
+
 const authStore = useAuth()
 const configStore = useConfig()
 const indexStore = useIndex()
 
+const selectedLang = ref(locale)
 const formError = ref('')
 const showLoginError = ref(false)
 const formUsername = ref('')
@@ -84,7 +114,7 @@ async function login() {
         formError.value = ''
 
         if (status === 401 || status === 400 || status === 403) {
-            formError.value = 'Wrong User/Password!'
+            formError.value = t('alert.wrongLogin')
             showLoginError.value = true
 
             setTimeout(() => {
@@ -114,5 +144,13 @@ async function logout() {
     } catch (e) {
         formError.value = e as string
     }
+}
+
+async function changeLang(code: string) {
+    const path = switchLocalePath(code)
+    const cookie = useCookie('i18n_redirected')
+    cookie.value = code
+
+    router.push(path)
 }
 </script>

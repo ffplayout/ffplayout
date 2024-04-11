@@ -1,0 +1,40 @@
+export default {
+    alert: {
+        wrongLogin: 'Falsche Anmeldedaten!',
+    },
+    button: {
+        login: 'Anmelden',
+        home: 'Start',
+        player: 'Wiedergabe',
+        media: 'Medien',
+        message: 'Nachrichten',
+        logging: 'Protokollierung',
+        channels: 'Kanäle',
+        configure: 'Einstellungen',
+        logout: 'Abmelden',
+    },
+    error: {
+        notFound: 'Seite nicht gefunden',
+        serverError: 'Interner Server Fehler',
+    },
+    input: {
+        username: 'Benutzername',
+        password: 'Passwort',
+    },
+    system: {
+        cpu: 'CPU',
+        cores: 'Kerne',
+        load: 'Auslastung',
+        memory: 'Arbeitsspeicher',
+        swap: 'Auslagerungsspeicher',
+        total: 'Gesamt',
+        usage: 'Verwendung',
+        network: 'Netzwerk',
+        in: 'Eingehend',
+        out: 'Ausgehend',
+        storage: 'Speicher',
+        device: 'Gerät',
+        size: 'Größe',
+        used: 'Genutzt',
+    },
+}

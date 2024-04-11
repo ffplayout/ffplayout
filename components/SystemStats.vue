@@ -9,19 +9,19 @@
         </div>
         <div class="p-4 bg-base-100 flex items-center">
             <span v-if="sysStat.system.ffp_version">
-                <strong>ffplayout version:</strong>
-                {{ sysStat.system.ffp_version }}
+                <strong>ffplayout:</strong>
+                v{{ sysStat.system.ffp_version }}
             </span>
         </div>
         <div class="p-4 border border-primary">
-            <div class="text-xl">CPU</div>
+            <div class="text-xl">{{ $t('system.cpu') }}</div>
             <div class="grid grid-cols-2">
-                <div><strong>Cores:</strong> {{ sysStat.cpu.cores }}</div>
-                <div><strong>Usage:</strong> {{ sysStat.cpu.usage.toFixed(2) }}%</div>
+                <div><strong>{{ $t('system.cores') }}:</strong> {{ sysStat.cpu.cores }}</div>
+                <div><strong>{{ $t('system.usage') }}:</strong> {{ sysStat.cpu.usage.toFixed(2) }}%</div>
             </div>
         </div>
         <div class="p-4 border border-primary">
-            <div class="text-xl">Load</div>
+            <div class="text-xl">{{ $t('system.load') }}</div>
             <div class="grid grid-cols-3">
                 <div>{{ sysStat.load.one }}</div>
                 <div>{{ sysStat.load.five }}</div>
@@ -29,37 +29,37 @@
             </div>
         </div>
         <div class="p-4 border border-primary">
-            <div class="text-xl">Memory</div>
+            <div class="text-xl">{{ $t('system.memory') }}</div>
             <div class="grid grid-cols-2">
-                <div><strong>Total:</strong> {{ fileSize(sysStat.memory.total) }}</div>
-                <div><strong>Usage:</strong> {{ fileSize(sysStat.memory.used) }}</div>
+                <div><strong>{{ $t('system.total') }}:</strong> {{ fileSize(sysStat.memory.total) }}</div>
+                <div><strong>{{ $t('system.usage') }}:</strong> {{ fileSize(sysStat.memory.used) }}</div>
             </div>
         </div>
         <div class="p-4 border border-primary">
-            <div class="text-xl">Swap</div>
+            <div class="text-xl">{{ $t('system.swap') }}</div>
             <div class="grid grid-cols-2">
-                <div><strong>Total:</strong> {{ fileSize(sysStat.swap.total) }}</div>
-                <div><strong>Usage:</strong> {{ fileSize(sysStat.swap.used) }}</div>
+                <div><strong>{{ $t('system.total') }}:</strong> {{ fileSize(sysStat.swap.total) }}</div>
+                <div><strong>{{ $t('system.usage') }}:</strong> {{ fileSize(sysStat.swap.used) }}</div>
             </div>
         </div>
         <div class="p-4 border border-primary">
             <div class="text-xl">
-                Network <span v-if="sysStat.network" class="fs-6">{{ sysStat.network?.name }}</span>
+                {{ $t('system.network') }} <span v-if="sysStat.network" class="fs-6">{{ sysStat.network?.name }}</span>
             </div>
             <div class="grid grid-cols-2">
-                <div><strong>In:</strong> {{ fileSize(sysStat.network?.current_in) }}</div>
-                <div><strong>Out:</strong> {{ fileSize(sysStat.network?.current_out) }}</div>
+                <div><strong>{{ $t('system.in') }}:</strong> {{ fileSize(sysStat.network?.current_in) }}</div>
+                <div><strong>{{ $t('system.out') }}:</strong> {{ fileSize(sysStat.network?.current_out) }}</div>
                 <div>{{ fileSize(sysStat.network?.total_in) }}</div>
                 <div>{{ fileSize(sysStat.network?.total_out) }}</div>
             </div>
         </div>
         <div v-if="sysStat.storage?.path" class="p-4 border border-primary">
-            <div class="text-xl">Storage</div>
+            <div class="text-xl">{{ $t('system.storage') }}</div>
             <div v-if="sysStat.storage"><strong>Device:</strong> {{ sysStat.storage?.path }}</div>
 
             <div class="grid grid-cols-2" v-if="sysStat.storage">
-                <div><strong>Size:</strong> {{ fileSize(sysStat.storage?.total) }}</div>
-                <div><strong>Used:</strong> {{ fileSize(sysStat.storage?.used) }}</div>
+                <div><strong>{{ $t('system.size') }}:</strong> {{ fileSize(sysStat.storage?.total) }}</div>
+                <div><strong>{{ $t('system.used') }}:</strong> {{ fileSize(sysStat.storage?.used) }}</div>
             </div>
         </div>
         <div v-else class="col-6 bg-primary p-2 border" />
