@@ -59,6 +59,8 @@ pub struct Filters {
     pub drawtext_from_file: Option<String>,
     pub drawtext_from_zmq: Option<String>,
     pub aevalsrc: Option<String>,
+    pub afade_in: Option<String>,
+    pub afade_out: Option<String>,
     pub apad: Option<String>,
     pub volume: Option<String>,
     pub split: Option<String>,
