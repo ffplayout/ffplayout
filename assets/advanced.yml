@@ -21,6 +21,8 @@ decoder:
         drawtext_from_file: # drawtext=text='{}':{}{}
         drawtext_from_zmq: # zmq=b=tcp\\\\://'{}',drawtext@dyntext={}
         aevalsrc: # aevalsrc=0:channel_layout=stereo:duration={}:sample_rate=48000
+        afade_in: # afade=in:st=0:d=0.5
+        afade_out: # afade=out:st={}:d=1.0
         apad: # apad=whole_dur={}
         volume: # volume={}
         split: # split={}{}
