@@ -62,10 +62,10 @@ processing:
         is needed, format is 'width:height', for example '100:-1' for proportional
         scaling. With 'logo_opacity' logo can become transparent. With 'audio_tracks' it
         is possible to configure how many audio tracks should be processed. 'audio_channels'
-        can be use, if audio has more channels then only stereo. With 'logo_filter'
-        'overlay=W-w-12:12' you can modify the logo position. With 'custom_filter'
-        it is possible, to apply further filters. The filter outputs should end with
-        [c_v_out] for video filter, and [c_a_out] for audio filter.
+        can be use, if audio has more channels then only stereo. With 'logo_position' in format
+        'x:y' you set the logo position. With 'custom_filter' it is possible, to apply further
+        filters. The filter outputs should end with [c_v_out] for video filter, and
+        [c_a_out] for audio filter.
     mode: playlist
     audio_only: false
     copy_audio: false
@@ -78,7 +78,7 @@ processing:
     logo: /usr/share/ffplayout/logo.png
     logo_scale:
     logo_opacity: 0.7
-    logo_filter: overlay=W-w-12:12
+    logo_position: W-w-12:12
     audio_tracks: 1
     audio_track_index: -1
     audio_channels: 2

@@ -1,4 +1,4 @@
-### Possible endpoints
+## Possible endpoints
 
 Run the API thru the systemd service, or like:
 

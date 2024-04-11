@@ -48,3 +48,5 @@ Control the engine, playlist and config with a ~REST API
 ### **[Stream Copy](/docs/stream_copy.md)**
 
 Copy audio and or video stream
+
+### **[Advanced Settings](/docs/advanced_settings.md)**

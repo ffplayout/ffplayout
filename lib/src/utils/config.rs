@@ -253,7 +253,7 @@ pub struct Processing {
     pub logo: String,
     pub logo_scale: String,
     pub logo_opacity: f32,
-    pub logo_filter: String,
+    pub logo_position: String,
     #[serde(default = "default_tracks")]
     pub audio_tracks: i32,
     #[serde(default = "default_channels")]
@@ -435,10 +435,6 @@ impl PlayoutConfig {
         } else if config.processing.copy_video {
             process_cmd.append(&mut vec_strings!["-c:v", "copy"]);
         } else if let Some(decoder_cmd) = &ADVANCED_CONFIG.decoder.output_cmd {
-            if !decoder_cmd.contains(&"-r".to_string()) {
-                process_cmd.append(&mut vec_strings!["-r", &config.processing.fps]);
-            }
-
             process_cmd.append(&mut decoder_cmd.clone());
         } else {
             let bitrate = format!(
