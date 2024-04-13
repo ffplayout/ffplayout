@@ -11,8 +11,9 @@
                     :format="calendarFormat"
                     model-type="yyyy-MM-dd"
                     auto-apply
+                    :locale="locale"
                     :dark="colorMode.value === 'dark'"
-                    input-class-name="input input-sm !input-bordered !w-[230px] text-right !pe-3"
+                    input-class-name="input input-sm !input-bordered !w-[250px] text-right !pe-3"
                     required
                 />
             </div>
@@ -102,17 +103,17 @@
                             <span class="loading loading-spinner loading-lg" />
                         </div>
                         <div
-                            class="grid grid-cols-[70px_auto_50px_70px_45px] md:grid-cols-[70px_auto_50px_70px_70px_70px_30px_45px_50px] bg-base-100 rounded-tr-lg py-2 px-3 border-b border-my-gray"
+                            class="grid grid-cols-[70px_auto_75px_70px_70px] md:grid-cols-[70px_auto_75px_70px_70px_70px_70px_80px_60px] bg-base-100 rounded-tr-lg py-2 px-3 border-b border-my-gray"
                         >
-                            <div>Start</div>
-                            <div>File</div>
-                            <div class="text-center">Play</div>
-                            <div class="">Duration</div>
-                            <div class="hidden md:flex">In</div>
-                            <div class="hidden md:flex">Out</div>
-                            <div class="hidden md:flex justify-center">Ad</div>
-                            <div class="text-center">Edit</div>
-                            <div class="hidden md:flex justify-center">Delete</div>
+                            <div>{{ $t('player.start') }}</div>
+                            <div>{{ $t('player.file') }}</div>
+                            <div class="text-center">{{ $t('player.play') }}</div>
+                            <div class="">{{ $t('player.duration') }}</div>
+                            <div class="hidden md:flex">{{ $t('player.in') }}</div>
+                            <div class="hidden md:flex">{{ $t('player.out') }}</div>
+                            <div class="hidden md:flex justify-center">{{ $t('player.ad') }}</div>
+                            <div class="text-center">{{ $t('player.edit') }}</div>
+                            <div class="hidden md:flex justify-center">{{ $t('player.delete') }}</div>
                         </div>
                         <div id="scroll-container" class="h-[calc(100%-44px)] overflow-auto">
                             <Sortable
@@ -129,7 +130,7 @@
                                 <template #item="{ element, index }">
                                     <li
                                         :id="`clip_${index}`"
-                                        class="draggable grid grid-cols-[70px_auto_50px_70px_45px] md:grid-cols-[70px_auto_50px_70px_70px_70px_30px_45px_50px] h-[38px] px-3 py-[8px]"
+                                        class="draggable grid grid-cols-[70px_auto_75px_70px_70px] md:grid-cols-[70px_auto_75px_70px_70px_70px_70px_80px_60px] h-[38px] px-3 py-[8px]"
                                         :class="
                                             index === playlistStore.currentClipIndex && listDate === todayDate
                                                 ? 'bg-lime-500/30'
@@ -183,48 +184,49 @@
         </div>
 
         <div class="h-16 join flex justify-end p-3">
-            <button class="btn btn-sm btn-primary join-item" title="Copy Playlist" @click="showCopyModal = true">
+            <button class="btn btn-sm btn-primary join-item" :title="$t('player.copy')" @click="showCopyModal = true">
                 <i class="bi-files" />
             </button>
             <button
                 v-if="!configStore.configPlayout.playlist.loop"
                 class="btn btn-sm btn-primary join-item"
-                title="Loop Clips in Playlist"
+                :title="$t('player.loop')"
                 @click="loopClips()"
             >
                 <i class="bi-view-stacked" />
             </button>
             <button
                 class="btn btn-sm btn-primary join-item"
-                title="Add (remote) Source to Playlist"
+                :title="$t('player.remote')"
                 @click="showSourceModal = true"
             >
                 <i class="bi-file-earmark-plus" />
             </button>
             <button
                 class="btn btn-sm btn-primary join-item"
-                title="Import text/m3u file"
+                :title="$t('player.import')"
                 @click="showImportModal = true"
             >
                 <i class="bi-file-text" />
             </button>
             <button
                 class="btn btn-sm btn-primary join-item"
+                :title="$t('player.generate')"
                 @click="mediaStore.getTree('', true), (showPlaylistGenerator = true)"
             >
                 <i class="bi-sort-down-alt" />
             </button>
-            <button class="btn btn-sm btn-primary join-item" title="Reset Playlist" @click="getPlaylist()">
+            <button class="btn btn-sm btn-primary join-item" :title="$t('player.reset')" @click="getPlaylist()">
                 <i class="bi-arrow-counterclockwise" />
             </button>
             <button
                 class="btn btn-sm btn-primary join-item"
-                title="Save Playlist"
+                :title="$t('player.save')"
                 @click=";(targetDate = listDate), savePlaylist(true)"
             >
                 <i class="bi-download" />
             </button>
-            <button class="btn btn-sm btn-primary join-item" title="Delete Playlist" @click="showDeleteModal = true">
+            <button class="btn btn-sm btn-primary join-item" :title="$t('player.deletePlaylist')" @click="showDeleteModal = true">
                 <i class="bi-trash" />
             </button>
         </div>
@@ -326,6 +328,7 @@
 import { storeToRefs } from 'pinia'
 
 const colorMode = useColorMode()
+const { locale } = useI18n()
 const { $_, $dayjs } = useNuxtApp()
 const { width } = useWindowSize({ initialWidth: 800 })
 const { secToHMS, filename, secondsToTime, toMin, mediaType } = stringFormatter()
@@ -410,7 +413,7 @@ function scrollTo(index: number) {
 }
 
 const calendarFormat = (date: Date) => {
-    return $dayjs(date).format('dddd DD. MMM YYYY')
+    return $dayjs(date).locale(locale.value).format('dddd LL')
 }
 
 async function getPlaylist() {
@@ -640,9 +643,9 @@ async function importPlaylist(imp: boolean) {
 
         playlistStore.isLoading = true
         await $fetch(
-            `/api/file/${configStore.configGui[configStore.configID].id}/import/?file=${
-                textFile.value[0].name
-            }&date=${listDate.value}`,
+            `/api/file/${configStore.configGui[configStore.configID].id}/import/?file=${textFile.value[0].name}&date=${
+                listDate.value
+            }`,
             {
                 method: 'PUT',
                 headers: authStore.authHeader,

@@ -16,7 +16,7 @@ export const usePlaylist = defineStore('playlist', {
         isLoading: false,
         listDate: dayjs().format('YYYY-MM-DD'),
         progressValue: 0,
-        currentClip: 'No clip is playing',
+        currentClip: '',
         currentClipIndex: 0,
         currentClipStart: 0,
         currentClipDuration: 0,

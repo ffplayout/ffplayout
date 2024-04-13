@@ -9,8 +9,9 @@
                     :format="calendarFormat"
                     model-type="yyyy-MM-dd"
                     auto-apply
+                    :locale="locale"
                     :dark="colorMode.value === 'dark'"
-                    input-class-name="input input-sm !input-bordered !w-[230px] text-right !pe-3"
+                    input-class-name="input input-sm !input-bordered !w-[250px] text-right !pe-3"
                     required
                 />
         </div>
@@ -24,6 +25,7 @@
 import { storeToRefs } from 'pinia'
 
 const colorMode = useColorMode()
+const { locale } = useI18n()
 
 useHead({
     title: 'Logging | ffplayout',
@@ -47,7 +49,7 @@ watch([listDate, configID], () => {
 })
 
 const calendarFormat = (date: Date) => {
-    return $dayjs(date).format('dddd DD. MMM YYYY')
+    return $dayjs(date).locale(locale.value).format('dddd LL')
 }
 
 async function getLog() {

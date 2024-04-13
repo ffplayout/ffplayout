@@ -158,10 +158,10 @@
 
         <div class="flex justify-end py-4 pe-2">
             <div class="join">
-                <button class="btn btn-sm btn-primary join-item" title="Create Folder" @click="showCreateModal = true">
+                <button class="btn btn-sm btn-primary join-item" :title="$t('media.create')" @click="showCreateModal = true">
                     <i class="bi-folder-plus" />
                 </button>
-                <button class="btn btn-sm btn-primary join-item" title="Upload File" @click="showUploadModal = true">
+                <button class="btn btn-sm btn-primary join-item" :title="$t('media.upload')" @click="showUploadModal = true">
                     <i class="bi-upload" />
                 </button>
             </div>
@@ -170,37 +170,37 @@
 
     <Modal
         :show="showDeleteModal"
-        title="Delete File/Folder"
-        :text="`Are you sure that you want to delete:<br /><strong>${deleteName}</strong>`"
+        :title="$t('media.deleteTitle')"
+        :text="`${$t('media.deleteQuestion')}:<br /><strong>${deleteName}</strong>`"
         :modal-action="deleteFileOrFolder"
     />
 
-    <Modal :show="showPreviewModal" :title="`Preview: ${previewName}`" :modal-action="closePlayer">
+    <Modal :show="showPreviewModal" :title="`${$t('media.preview')}: ${previewName}`" :modal-action="closePlayer">
         <div class="w-[1024px] max-w-full aspect-video">
             <VideoPlayer v-if="isVideo && previewOpt" reference="previewPlayer" :options="previewOpt" />
             <img v-else :src="previewUrl" class="img-fluid" :alt="previewName" />
         </div>
     </Modal>
 
-    <Modal :show="showRenameModal" title="Rename File" :modal-action="renameFile">
+    <Modal :show="showRenameModal" :title="$t('media.rename')" :modal-action="renameFile">
         <label class="form-control w-full max-w-md">
             <div class="label">
-                <span class="label-text">New filename</span>
+                <span class="label-text">{{ $t('media.newFile') }}</span>
             </div>
             <input type="text" class="input input-bordered w-full" v-model="renameNewName" />
         </label>
     </Modal>
 
-    <Modal :show="showCreateModal" title="Create Folder" :modal-action="createFolder">
+    <Modal :show="showCreateModal" :title="$t('media.createFolder')" :modal-action="createFolder">
         <label class="form-control w-full max-w-md">
             <div class="label">
-                <span class="label-text">Foldername</span>
+                <span class="label-text">{{ $t('media.foldername') }}</span>
             </div>
             <input type="text" class="input input-bordered w-full" v-model="folderName.name" />
         </label>
     </Modal>
 
-    <Modal :show="showUploadModal" title="Upload Files" :modal-action="uploadFiles">
+    <Modal :show="showUploadModal" :title="$t('media.upload')" :modal-action="uploadFiles">
         <div class="w-[700px] max-w-full">
             <input
                 type="file"
@@ -213,20 +213,20 @@
 
             <label class="form-control w-full mt-3">
                 <div class="label">
-                    <span class="label-text">Current:</span>
+                    <span class="label-text">{{ $t('media.current') }}:</span>
                 </div>
                 <progress class="progress progress-accent" :value="currentProgress" max="100" />
             </label>
 
             <label class="form-control w-full mt-1">
                 <div class="label">
-                    <span class="label-text">Overall ({{ currentNumber }}/{{ inputFiles.length }}):</span>
+                    <span class="label-text">{{ $t('media.overall') }} ({{ currentNumber }}/{{ inputFiles.length }}):</span>
                 </div>
                 <progress class="progress progress-accent" :value="overallProgress" max="100" />
             </label>
             <label class="form-control w-full mt-1">
                 <div class="label">
-                    <span class="label-text">Uploading:</span>
+                    <span class="label-text">{{ $t('media.uploading') }}:</span>
                 </div>
                 <input type="text" class="input input-sm input-bordered w-full" v-model="uploadTask" disabled />
             </label>
@@ -237,6 +237,7 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
 
+const { t } = useI18n()
 const { width } = useWindowSize({ initialWidth: 800 })
 const authStore = useAuth()
 const configStore = useConfig()
@@ -367,7 +368,7 @@ async function handleDrop(event: any, targetFolder: any, isParent: boolean | nul
                 mediaStore.getTree(mediaStore.folderTree.source)
             })
             .catch((e) => {
-                indexStore.msgAlert('error', `Delete error: ${e}`, 3)
+                indexStore.msgAlert('error', `${t('media.moveError')}: ${e}`, 3)
             })
     }
 }
@@ -434,7 +435,7 @@ async function deleteFileOrFolder(del: boolean) {
                 mediaStore.getTree(mediaStore.folderTree.source)
             })
             .catch((e) => {
-                indexStore.msgAlert('error', `Delete error: ${e}`, 5)
+                indexStore.msgAlert('error', `${t('media.deleteError')}: ${e}`, 5)
             })
     }
 
@@ -462,7 +463,7 @@ async function renameFile(ren: boolean) {
                 mediaStore.getTree(mediaStore.folderTree.source)
             })
             .catch((e) => {
-                indexStore.msgAlert('error', `Delete error: ${e}`, 3)
+                indexStore.msgAlert('error', `${t('media.moveError')}: ${e}`, 3)
             })
     }
 
@@ -483,7 +484,7 @@ async function createFolder(create: boolean) {
         lastPath.value = mediaStore.folderTree.source
 
         if (mediaStore.folderTree.folders.includes(folderName.value)) {
-            indexStore.msgAlert('warning', `Folder "${folderName.value.name}" exists already!`, 2)
+            indexStore.msgAlert('warning', `${t('media.folderExists')}! "${folderName.value.name}"`, 2)
 
             return
         }
@@ -494,10 +495,10 @@ async function createFolder(create: boolean) {
             body: JSON.stringify({ source: path }),
         })
             .then(() => {
-                indexStore.msgAlert('success', 'Folder create done...', 2)
+                indexStore.msgAlert('success', t('media.folderCreate'), 2)
             })
             .catch((e: string) => {
-                indexStore.msgAlert('error', `Folder create error: ${e}`, 3)
+                indexStore.msgAlert('error', `${t('media.folderError')}: ${e}`, 3)
                 indexStore.alertVariant = 'error'
             })
 
@@ -537,7 +538,7 @@ async function upload(file: any): Promise<null | undefined> {
         }
 
         xhr.value.upload.onerror = () => {
-            indexStore.msgAlert('error', `Upload error: ${xhr.value.status}`, 3)
+            indexStore.msgAlert('error', `${t('media.folderError')}: ${xhr.value.status}`, 3)
 
             resolve(undefined)
         }
@@ -564,7 +565,7 @@ async function uploadFiles(upl: boolean) {
             currentNumber.value = i + 1
 
             if (mediaStore.folderTree.files.find((f) => f.name === file.name)) {
-                indexStore.msgAlert('warning', 'File exists already!', 3)
+                indexStore.msgAlert('warning', t('media.fileExists'), 3)
             } else {
                 await upload(file)
             }

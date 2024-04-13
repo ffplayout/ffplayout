@@ -50,8 +50,8 @@
                 <div class="col-span-1 xs:col-span-2 p-1">
                     <div class="w-full h-full bg-base-100 rounded flex items-center p-3 shadow">
                         <div class="w-full h-full flex flex-col">
-                            <div v-if="playlistStore.ingestRuns" class="h-1/3 font-bold truncate" title="Live Ingest">
-                                Live Ingest
+                            <div v-if="playlistStore.ingestRuns" class="h-1/3 font-bold truncate">
+                                {{ $t('control.ingest') }}
                             </div>
                             <div
                                 v-else
@@ -61,8 +61,8 @@
                                 {{ filename(playlistStore.currentClip) }}
                             </div>
                             <div class="grow">
-                                <strong>Duration:</strong> {{ secToHMS(playlistStore.currentClipDuration) }} |
-                                <strong>In:</strong> {{ secToHMS(playlistStore.currentClipIn) }} | <strong>Out:</strong>
+                                <strong>{{ $t('player.duration') }}:</strong> {{ secToHMS(playlistStore.currentClipDuration) }} |
+                                <strong>{{ $t('player.in') }}:</strong> {{ secToHMS(playlistStore.currentClipIn) }} | <strong>{{ $t('player.out') }}:</strong>
                                 {{ secToHMS(playlistStore.currentClipOut) }}
                             </div>
                             <div class="h-1/3">
@@ -83,7 +83,7 @@
                         <div class="text-center">
                             <div class="w-full h-1/2 aspect-square p-2">
                                 <button
-                                    title="Start Playout Service"
+                                    :title="$t('control.start')"
                                     class="btn btn-primary h-full w-full text-7xl text-lime-600"
                                     :class="playlistStore.playoutIsRunning && 'shadow-glow shadow-lime-600'"
                                     @click="controlProcess('start')"
@@ -93,7 +93,7 @@
                             </div>
                             <div class="w-full h-1/2 aspect-square p-2">
                                 <button
-                                    title="Jump to last Clip"
+                                    :title="$t('control.last')"
                                     class="btn btn-primary h-full w-full text-7xl text-cyan-600"
                                     @click="controlPlayout('back')"
                                 >
@@ -105,7 +105,7 @@
                         <div class="text-center">
                             <div class="w-full h-1/2 aspect-square p-2">
                                 <button
-                                    title="Stop Playout Service"
+                                    :title="$t('control.stop')"
                                     class="btn btn-primary h-full w-full text-7xl text-red-600"
                                     @click="controlProcess('stop')"
                                 >
@@ -115,7 +115,7 @@
 
                             <div class="w-full h-1/2 aspect-square p-2">
                                 <button
-                                    title="Reset Playout State"
+                                    :title="$t('control.reset')"
                                     class="btn btn-primary h-full w-full text-6xl text-cyan-600"
                                     @click="controlPlayout('reset')"
                                 >
@@ -127,7 +127,7 @@
                         <div class="text-center">
                             <div class="w-full h-1/2 aspect-square p-2">
                                 <button
-                                    title="Restart Playout Service"
+                                    :title="$t('control.restart')"
                                     class="btn btn-primary h-full w-full text-6xl text-yellow-500"
                                     @click="controlProcess('restart')"
                                 >
@@ -137,7 +137,7 @@
 
                             <div class="w-full h-1/2 aspect-square p-2">
                                 <button
-                                    title="Jump to next Clip"
+                                    :title="$t('control.next')"
                                     class="btn btn-primary h-full w-full text-7xl text-cyan-600"
                                     @click="controlPlayout('next')"
                                 >
@@ -164,6 +164,7 @@ const { filename, secToHMS, timeToSeconds } = stringFormatter()
 const { configID } = storeToRefs(useConfig())
 const contentType = { 'content-type': 'application/json;charset=UTF-8' }
 
+playlistStore.currentClip = 'Es wird kein Clip abgespielt'
 const breakStatusCheck = ref(false)
 const timeStr = ref('00:00:00')
 const timer = ref()

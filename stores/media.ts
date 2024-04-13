@@ -19,6 +19,7 @@ export const useMedia = defineStore('media', {
                 this.isLoading = true
             }
 
+            const { t } = useI18n()
             const authStore = useAuth()
             const configStore = useConfig()
             const indexStore = useIndex()
@@ -36,7 +37,7 @@ export const useMedia = defineStore('media', {
                     if (response.status === 200) {
                         return response.json()
                     } else {
-                        indexStore.msgAlert('error', 'Storage not exist!', 3)
+                        indexStore.msgAlert('error', t('media.notExists'), 3)
 
                         return {
                             source: '',
@@ -47,12 +48,12 @@ export const useMedia = defineStore('media', {
                     }
                 })
                 .then((data) => {
-                    const pathStr = 'Home/' + data.source
+                    const pathStr = `${data.parent}/` + data.source
                     const pathArr = pathStr.split('/')
 
                     if (path && path !== '/') {
                         for (const crumb of pathArr) {
-                            if (crumb === 'Home') {
+                            if (crumb === data.parent) {
                                 crumbs.push({ text: crumb, path: root })
                             } else if (crumb) {
                                 root += crumb + '/'
@@ -60,7 +61,7 @@ export const useMedia = defineStore('media', {
                             }
                         }
                     } else {
-                        crumbs.push({ text: 'Home', path: '' })
+                        crumbs.push({ text: data.parent, path: '' })
                     }
 
                     if (foldersOnly) {
