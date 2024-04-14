@@ -95,42 +95,40 @@
                     </ul>
                 </pane>
                 <pane>
-                    <div class="relative w-full h-full !bg-base-300 rounded-e">
+                    <div class="relative w-full h-full !bg-base-300 rounded-e overflow-auto">
                         <div
                             v-if="playlistStore.isLoading"
                             class="w-full h-full absolute z-10 flex justify-center bg-base-100/70"
                         >
                             <span class="loading loading-spinner loading-lg" />
                         </div>
-                        <div
-                            class="grid grid-cols-[70px_auto_75px_70px_70px] md:grid-cols-[70px_auto_75px_70px_70px_70px_70px_80px_60px] bg-base-100 rounded-tr-lg py-2 px-3 border-b border-my-gray"
-                        >
-                            <div>{{ $t('player.start') }}</div>
-                            <div>{{ $t('player.file') }}</div>
-                            <div class="text-center">{{ $t('player.play') }}</div>
-                            <div class="">{{ $t('player.duration') }}</div>
-                            <div class="hidden md:flex">{{ $t('player.in') }}</div>
-                            <div class="hidden md:flex">{{ $t('player.out') }}</div>
-                            <div class="hidden md:flex justify-center">{{ $t('player.ad') }}</div>
-                            <div class="text-center">{{ $t('player.edit') }}</div>
-                            <div class="hidden md:flex justify-center">{{ $t('player.delete') }}</div>
-                        </div>
-                        <div id="scroll-container" class="h-[calc(100%-44px)] overflow-auto">
+                        <table class="table table-zebra">
+                            <thead>
+                                <tr class="bg-base-100 rounded-tr-lg border-b border-my-gray">
+                                    <th class="text-left">{{ $t('player.start') }}</th>
+                                    <th class="text-left w-full">{{ $t('player.file') }}</th>
+                                    <th class="text-center">{{ $t('player.play') }}</th>
+                                    <th class="text-left">{{ $t('player.duration') }}</th>
+                                    <th class="text-left hidden md:table-cell">{{ $t('player.in') }}</th>
+                                    <th class="text-left hidden md:table-cell">{{ $t('player.out') }}</th>
+                                    <th class="text-left hidden md:table-cell justify-center">{{ $t('player.ad') }}</th>
+                                    <th class="text-center">{{ $t('player.edit') }}</th>
+                                    <th class="text-center hidden md:table-cell justify-center">{{ $t('player.delete') }}</th>
+                                </tr>
+                            </thead>
                             <Sortable
                                 :list="playlistStore.playlist"
                                 item-key="uid"
-                                :style="`height: ${
-                                    playlistStore.playlist ? playlistStore.playlist.length * 38 + 38 : 300
-                                }px`"
-                                tag="ul"
+                                id="scroll-container"
+                                tag="tbody"
                                 :options="playlistSortOptions"
                                 @add="cloneClip"
                                 @end="moveItemInArray"
                             >
                                 <template #item="{ element, index }">
-                                    <li
+                                    <tr
                                         :id="`clip_${index}`"
-                                        class="draggable grid grid-cols-[70px_auto_75px_70px_70px] md:grid-cols-[70px_auto_75px_70px_70px_70px_70px_80px_60px] h-[38px] px-3 py-[8px]"
+                                        class="draggable"
                                         :class="
                                             index === playlistStore.currentClipIndex && listDate === todayDate
                                                 ? 'bg-lime-500/30'
@@ -138,19 +136,19 @@
                                         "
                                         :key="element.uid"
                                     >
-                                        <div>{{ secondsToTime(element.begin) }}</div>
-                                        <div class="truncate" :class="{ 'grabbing cursor-grab': width > 768 }">
+                                        <td class="text-left ps-4">{{ secondsToTime(element.begin) }}</td>
+                                        <td class="text-left truncate w-full" :class="{ 'grabbing cursor-grab': width > 768 }">
                                             {{ filename(element.source) }}
-                                        </div>
-                                        <div class="text-center">
+                                        </td>
+                                        <td class="text-center">
                                             <button @click=";(showPreviewModal = true), setPreviewData(element.source)">
                                                 <i class="bi-play-fill" />
                                             </button>
-                                        </div>
-                                        <div>{{ secToHMS(element.duration) }}</div>
-                                        <div class="hidden md:flex">{{ secToHMS(element.in) }}</div>
-                                        <div class="hidden md:flex">{{ secToHMS(element.out) }}</div>
-                                        <div class="hidden md:flex justify-center pt-[3px]">
+                                        </td>
+                                        <td class="text-center">{{ secToHMS(element.duration) }}</td>
+                                        <td class="text-left hidden md:table-cell">{{ secToHMS(element.in) }}</td>
+                                        <td class="text-left hidden md:table-cell">{{ secToHMS(element.out) }}</td>
+                                        <td class="text-center hidden md:table-cell leading-3">
                                             <input
                                                 class="checkbox checkbox-xs rounded"
                                                 type="checkbox"
@@ -161,23 +159,23 @@
                                                 "
                                                 @change="setCategory($event, element)"
                                             />
-                                        </div>
-                                        <div class="text-center">
+                                        </td>
+                                        <td class="text-center">
                                             <button @click=";(showSourceModal = true), editPlaylistItem(index)">
                                                 <i class="bi-pencil-square" />
                                             </button>
-                                        </div>
-                                        <div
-                                            class="text-center hidden md:flex justify-center hover:text-base-content/70"
+                                        </td>
+                                        <td
+                                            class="text-center hidden md:table-cell justify-center hover:text-base-content/70"
                                         >
                                             <button @click="deletePlaylistItem(index)">
                                                 <i class="bi-x-circle-fill" />
                                             </button>
-                                        </div>
-                                    </li>
+                                        </td>
+                                    </tr>
                                 </template>
                             </Sortable>
-                        </div>
+                        </table>
                     </div>
                 </pane>
             </splitpanes>
@@ -226,7 +224,11 @@
             >
                 <i class="bi-download" />
             </button>
-            <button class="btn btn-sm btn-primary join-item" :title="$t('player.deletePlaylist')" @click="showDeleteModal = true">
+            <button
+                class="btn btn-sm btn-primary join-item"
+                :title="$t('player.deletePlaylist')"
+                @click="showDeleteModal = true"
+            >
                 <i class="bi-trash" />
             </button>
         </div>
