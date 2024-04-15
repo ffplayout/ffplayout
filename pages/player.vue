@@ -103,17 +103,17 @@
                             <span class="loading loading-spinner loading-lg" />
                         </div>
                         <div
-                            class="grid grid-cols-[70px_auto_75px_70px_70px] md:grid-cols-[70px_auto_75px_70px_70px_70px_70px_80px_60px] bg-base-100 rounded-tr-lg py-2 px-3 border-b border-my-gray"
+                            class="grid grid-cols-[80px_auto_90px_80px_80px] md:grid-cols-[80px_auto_90px_80px_80px_80px_85px_100px_80px] bg-base-100 rounded-tr-lg border-b border-my-gray"
                         >
-                            <div>{{ $t('player.start') }}</div>
-                            <div>{{ $t('player.file') }}</div>
-                            <div class="text-center">{{ $t('player.play') }}</div>
-                            <div class="">{{ $t('player.duration') }}</div>
-                            <div class="hidden md:flex">{{ $t('player.in') }}</div>
-                            <div class="hidden md:flex">{{ $t('player.out') }}</div>
-                            <div class="hidden md:flex justify-center">{{ $t('player.ad') }}</div>
-                            <div class="text-center">{{ $t('player.edit') }}</div>
-                            <div class="hidden md:flex justify-center">{{ $t('player.delete') }}</div>
+                            <div class="px-3 py-2">{{ $t('player.start') }}</div>
+                            <div class="px-3 py-2">{{ $t('player.file') }}</div>
+                            <div class="px-3 py-2 text-center">{{ $t('player.play') }}</div>
+                            <div class="px-3 py-2">{{ $t('player.duration') }}</div>
+                            <div class="px-3 py-2 hidden md:flex">{{ $t('player.in') }}</div>
+                            <div class="px-3 py-2 hidden md:flex">{{ $t('player.out') }}</div>
+                            <div class="px-3 py-2 hidden md:flex justify-center">{{ $t('player.ad') }}</div>
+                            <div class="px-3 py-2 text-center">{{ $t('player.edit') }}</div>
+                            <div class="px-3 py-2 hidden md:flex justify-center">{{ $t('player.delete') }}</div>
                         </div>
                         <div id="scroll-container" class="h-[calc(100%-44px)] overflow-auto">
                             <Sortable
@@ -130,7 +130,7 @@
                                 <template #item="{ element, index }">
                                     <li
                                         :id="`clip_${index}`"
-                                        class="draggable grid grid-cols-[70px_auto_75px_70px_70px] md:grid-cols-[70px_auto_75px_70px_70px_70px_70px_80px_60px] h-[38px] px-3 py-[8px]"
+                                        class="draggable grid grid-cols-[80px_auto_90px_80px_80px] md:grid-cols-[80px_auto_90px_80px_80px_80px_85px_100px_80px] h-[38px]"
                                         :class="
                                             index === playlistStore.currentClipIndex && listDate === todayDate
                                                 ? 'bg-lime-500/30'
@@ -138,19 +138,22 @@
                                         "
                                         :key="element.uid"
                                     >
-                                        <div>{{ secondsToTime(element.begin) }}</div>
-                                        <div class="truncate" :class="{ 'grabbing cursor-grab': width > 768 }">
+                                        <div class="px-3 py-2">{{ secondsToTime(element.begin) }}</div>
+                                        <div
+                                            class="px-3 py-2 truncate"
+                                            :class="{ 'grabbing cursor-grab': width > 768 }"
+                                        >
                                             {{ filename(element.source) }}
                                         </div>
-                                        <div class="text-center">
+                                        <div class="px-3 py-2 text-center">
                                             <button @click=";(showPreviewModal = true), setPreviewData(element.source)">
                                                 <i class="bi-play-fill" />
                                             </button>
                                         </div>
-                                        <div>{{ secToHMS(element.duration) }}</div>
-                                        <div class="hidden md:flex">{{ secToHMS(element.in) }}</div>
-                                        <div class="hidden md:flex">{{ secToHMS(element.out) }}</div>
-                                        <div class="hidden md:flex justify-center pt-[3px]">
+                                        <div class="px-3 py-2">{{ secToHMS(element.duration) }}</div>
+                                        <div class="px-3 py-2 hidden md:flex">{{ secToHMS(element.in) }}</div>
+                                        <div class="px-3 py-2 hidden md:flex">{{ secToHMS(element.out) }}</div>
+                                        <div class="px-3 py-[11px] hidden md:flex justify-center">
                                             <input
                                                 class="checkbox checkbox-xs rounded"
                                                 type="checkbox"
@@ -162,13 +165,13 @@
                                                 @change="setCategory($event, element)"
                                             />
                                         </div>
-                                        <div class="text-center">
+                                        <div class="px-3 py-2 text-center">
                                             <button @click=";(showSourceModal = true), editPlaylistItem(index)">
                                                 <i class="bi-pencil-square" />
                                             </button>
                                         </div>
                                         <div
-                                            class="text-center hidden md:flex justify-center hover:text-base-content/70"
+                                            class="px-3 py-2 text-center hidden md:flex justify-center hover:text-base-content/70"
                                         >
                                             <button @click="deletePlaylistItem(index)">
                                                 <i class="bi-x-circle-fill" />
@@ -226,7 +229,11 @@
             >
                 <i class="bi-download" />
             </button>
-            <button class="btn btn-sm btn-primary join-item" :title="$t('player.deletePlaylist')" @click="showDeleteModal = true">
+            <button
+                class="btn btn-sm btn-primary join-item"
+                :title="$t('player.deletePlaylist')"
+                @click="showDeleteModal = true"
+            >
                 <i class="bi-trash" />
             </button>
         </div>
