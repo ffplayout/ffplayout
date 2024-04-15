@@ -81,3 +81,9 @@ impl From<sqlx::Error> for ServiceError {
         ServiceError::BadRequest(err.to_string())
     }
 }
+
+impl From<tokio::task::JoinError> for ServiceError {
+    fn from(err: tokio::task::JoinError) -> ServiceError {
+        ServiceError::BadRequest(err.to_string())
+    }
+}
