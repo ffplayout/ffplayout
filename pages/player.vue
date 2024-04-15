@@ -176,7 +176,7 @@
                                 <template #item="{ element, index }">
                                     <tr
                                         :id="`clip-${index}`"
-                                        class="draggable border-t border-base-content/20 duration-500 transition-all"
+                                        class="draggable border-t border-b border-base-content/20 duration-1000 transition-all"
                                         :class="{
                                             '!bg-lime-500/30':
                                                 playlistStore.playoutIsRunning &&
@@ -526,7 +526,7 @@ function addBG(obj: any) {
 function removeBG(item: any) {
     setTimeout(() => {
         item.classList.remove('!bg-fuchsia-900/30')
-    }, 300)
+    }, 100)
 }
 
 function addClip(event: any) {
@@ -703,6 +703,7 @@ function loopClips() {
     while (length < configStore.playlistLength && playlistStore.playlist.length > 0) {
         for (const item of playlistStore.playlist) {
             if (length < configStore.playlistLength) {
+                item.uid = genUID()
                 tempList.push($_.cloneDeep(item))
                 length += item.out - item.in
             } else {

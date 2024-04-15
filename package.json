@@ -13,14 +13,11 @@
     "postinstall": "nuxt prepare"
   },
   "dependencies": {
-    "@nuxt/types": "^2.17.3",
     "@nuxtjs/color-mode": "^3.4.0",
     "@pinia/nuxt": "^0.5.1",
-    "@popperjs/core": "^2.11.8",
     "@vuepic/vue-datepicker": "^8.4.0",
     "@vueuse/nuxt": "^10.9.0",
     "bootstrap-icons": "^1.11.3",
-    "cookie-universal-nuxt": "^2.2.2",
     "dayjs": "^1.11.10",
     "jwt-decode": "^4.0.0",
     "lodash": "^4.17.21",
@@ -29,9 +26,7 @@
     "pinia": "^2.1.7",
     "sortablejs-vue3": "^1.2.11",
     "splitpanes": "^3.1.5",
-    "video.js": "^8.10.0",
-    "vue": "^3.4.21",
-    "vue-router": "^4.3.0"
+    "video.js": "^8.10.0"
   },
   "devDependencies": {
     "@nuxt/eslint": "^0.3.6",
@@ -40,11 +35,13 @@
     "@types/lodash": "^4.17.0",
     "@types/video.js": "^7.3.58",
     "daisyui": "^4.10.1",
-    "eslint": "^9.0.0",
+    "eslint": "^8.57.0",
     "eslint-plugin-nuxt": "^4.0.0",
     "postcss": "^8.4.38",
     "postcss-loader": "^8.1.1",
     "sass": "^1.75.0",
-    "sass-loader": "^14.2.0"
+    "sass-loader": "^14.2.0",
+    "vue": "^3.4.21",
+    "vue-router": "^4.3.0"
   }
 }
