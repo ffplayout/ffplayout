@@ -13,7 +13,7 @@ const { processPlaylist } = playlistOperations()
 export const usePlaylist = defineStore('playlist', {
     state: () => ({
         playlist: [] as PlaylistItem[],
-        isLoading: false,
+        isLoading: true,
         listDate: dayjs().format('YYYY-MM-DD'),
         progressValue: 0,
         currentClip: '',

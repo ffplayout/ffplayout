@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "@nuxt/types": "^2.17.3",
-    "@nuxtjs/color-mode": "^3.3.3",
+    "@nuxtjs/color-mode": "^3.4.0",
     "@pinia/nuxt": "^0.5.1",
     "@popperjs/core": "^2.11.8",
     "@vuepic/vue-datepicker": "^8.4.0",
@@ -34,17 +34,17 @@
     "vue-router": "^4.3.0"
   },
   "devDependencies": {
-    "@nuxtjs/eslint-config": "^12.0.0",
+    "@nuxt/eslint": "^0.3.6",
     "@nuxtjs/i18n": "^8.3.0",
     "@nuxtjs/tailwindcss": "^6.11.4",
     "@types/lodash": "^4.17.0",
-    "@types/video.js": "^7.3.57",
+    "@types/video.js": "^7.3.58",
     "daisyui": "^4.10.1",
-    "eslint": "^8.57.0",
+    "eslint": "^9.0.0",
     "eslint-plugin-nuxt": "^4.0.0",
     "postcss": "^8.4.38",
     "postcss-loader": "^8.1.1",
-    "sass": "^1.74.1",
-    "sass-loader": "^14.1.1"
+    "sass": "^1.75.0",
+    "sass-loader": "^14.2.0"
   }
 }

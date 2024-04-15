@@ -21,10 +21,11 @@
         <div class="p-1 min-h-[260px] h-[calc(100vh-800px)] xl:h-[calc(100vh-480px)]">
             <splitpanes class="border border-my-gray rounded shadow">
                 <pane
+                    v-if="width > 768"
                     class="relative h-full !bg-base-300 rounded-s"
                     min-size="0"
                     max-size="80"
-                    :size="width > 768 ? '20' : '0'"
+                    size="20"
                 >
                     <div
                         v-if="mediaStore.isLoading"
@@ -51,8 +52,8 @@
                         </div>
                     </div>
 
-                    <ul class="h-[calc(100%-48px)] overflow-auto m-1">
-                        <li class="flex px-1" v-for="folder in mediaStore.folderTree.folders" :key="folder.uid">
+                    <div class="w-full h-[calc(100%-48px)] overflow-auto m-1">
+                        <div class="flex px-1" v-for="folder in mediaStore.folderTree.folders" :key="folder.uid">
                             <button
                                 class="truncate"
                                 @click="mediaStore.getTree(`/${mediaStore.folderTree.source}/${folder.name}`)"
@@ -60,16 +61,22 @@
                                 <i class="bi-folder-fill" />
                                 {{ folder.name }}
                             </button>
-                        </li>
-                        <Sortable :list="mediaStore.folderTree.files" :options="browserSortOptions" item-key="name">
+                        </div>
+                        <Sortable
+                            :list="mediaStore.folderTree.files"
+                            :options="browserSortOptions"
+                            item-key="name"
+                            tag="table"
+                            class="w-full table table-fixed"
+                        >
                             <template #item="{ element, index }">
-                                <li
-                                    :id="`file_${index}`"
-                                    class="px-1 grid grid-cols-[auto_110px]"
+                                <tr
+                                    :id="`file-${index}`"
+                                    class="w-full"
                                     :class="{ 'grabbing cursor-grab': width > 768 }"
                                     :key="element.name"
                                 >
-                                    <div class="truncate">
+                                    <td class="ps-1 py-1 w-[20px]">
                                         <i v-if="mediaType(element.name) === 'audio'" class="bi-music-note-beamed" />
                                         <i v-else-if="mediaType(element.name) === 'video'" class="bi-film" />
                                         <i
@@ -77,78 +84,127 @@
                                             class="bi-file-earmark-image"
                                         />
                                         <i v-else class="bi-file-binary" />
-
+                                    </td>
+                                    <td class="px-[1px] py-1 truncate">
                                         {{ element.name }}
-                                    </div>
-                                    <div>
-                                        <button
-                                            class="w-7"
-                                            @click=";(showPreviewModal = true), setPreviewData(element.name)"
-                                        >
+                                    </td>
+                                    <td class="px-1 py-1 w-[30px] text-center leading-3">
+                                        <button @click=";(showPreviewModal = true), setPreviewData(element.name)">
                                             <i class="bi-play-fill" />
                                         </button>
-                                        <div class="inline-block w-[82px]">{{ toMin(element.duration) }}</div>
-                                    </div>
-                                </li>
+                                    </td>
+                                    <td class="px-0 py-1 w-[65px] text-nowrap">
+                                        {{ secToHMS(element.duration) }}
+                                    </td>
+                                    <td class="py-1 hidden">00:00:00</td>
+                                    <td class="py-1 hidden">{{ secToHMS(element.duration) }}</td>
+                                    <td class="py-1 hidden">&nbsp;</td>
+                                    <td class="py-1 hidden">&nbsp;</td>
+                                    <td class="py-1 hidden">&nbsp;</td>
+                                </tr>
                             </template>
                         </Sortable>
-                    </ul>
+                    </div>
                 </pane>
                 <pane>
-                    <div class="relative w-full h-full !bg-base-300 rounded-e overflow-auto">
+                    <div id="playlist-container" class="relative w-full h-full !bg-base-300 rounded-e overflow-auto">
                         <div
                             v-if="playlistStore.isLoading"
                             class="w-full h-full absolute z-10 flex justify-center bg-base-100/70"
                         >
                             <span class="loading loading-spinner loading-lg" />
                         </div>
-                        <table class="table table-zebra">
-                            <thead>
-                                <tr class="bg-base-100 rounded-tr-lg border-b border-my-gray">
-                                    <th class="text-left">{{ $t('player.start') }}</th>
-                                    <th class="text-left w-full">{{ $t('player.file') }}</th>
-                                    <th class="text-center">{{ $t('player.play') }}</th>
-                                    <th class="text-left">{{ $t('player.duration') }}</th>
-                                    <th class="text-left hidden md:table-cell">{{ $t('player.in') }}</th>
-                                    <th class="text-left hidden md:table-cell">{{ $t('player.out') }}</th>
-                                    <th class="text-left hidden md:table-cell justify-center">{{ $t('player.ad') }}</th>
-                                    <th class="text-center">{{ $t('player.edit') }}</th>
-                                    <th class="text-center hidden md:table-cell justify-center">{{ $t('player.delete') }}</th>
+                        <table class="table table-zebra table-fixed">
+                            <thead class="top-0 sticky z-10">
+                                <tr class="bg-base-100 rounded-tr-lg">
+                                    <th class="w-[85px] p-0 text-left">
+                                        <div class="border-b border-my-gray px-4 py-3 -mb-[2px]">
+                                            {{ $t('player.start') }}
+                                        </div>
+                                    </th>
+                                    <th class="w-auto p-0 text-left">
+                                        <div class="border-b border-my-gray px-4 py-3 -mb-[2px]">
+                                            {{ $t('player.file') }}
+                                        </div>
+                                    </th>
+                                    <th class="w-[90px] p-0 text-center">
+                                        <div class="border-b border-my-gray px-4 py-3 -mb-[2px]">
+                                            {{ $t('player.play') }}
+                                        </div>
+                                    </th>
+                                    <th class="w-[85px] p-0 text-center">
+                                        <div class="border-b border-my-gray px-4 py-3 -mb-[2px]">
+                                            {{ $t('player.duration') }}
+                                        </div>
+                                    </th>
+                                    <th class="w-[85px] p-0 text-center hidden xl:table-cell">
+                                        <div class="border-b border-my-gray px-4 py-3 -mb-[2px]">
+                                            {{ $t('player.in') }}
+                                        </div>
+                                    </th>
+                                    <th class="w-[85px] p-0 text-center hidden xl:table-cell">
+                                        <div class="border-b border-my-gray px-4 py-3 -mb-[2px]">
+                                            {{ $t('player.out') }}
+                                        </div>
+                                    </th>
+                                    <th class="w-[85px] p-0 text-center hidden xl:table-cell justify-center">
+                                        <div class="border-b border-my-gray px-4 py-3 -mb-[2px]">
+                                            {{ $t('player.ad') }}
+                                        </div>
+                                    </th>
+                                    <th class="w-[95px] p-0 text-center">
+                                        <div class="border-b border-my-gray px-4 py-3 -mb-[2px]">
+                                            {{ $t('player.edit') }}
+                                        </div>
+                                    </th>
+                                    <th class="w-[85px] p-0 text-center hidden xl:table-cell justify-center">
+                                        <div class="border-b border-my-gray px-4 py-3 -mb-[2px]">
+                                            {{ $t('player.delete') }}
+                                        </div>
+                                    </th>
                                 </tr>
                             </thead>
                             <Sortable
                                 :list="playlistStore.playlist"
                                 item-key="uid"
-                                id="scroll-container"
                                 tag="tbody"
                                 :options="playlistSortOptions"
-                                @add="cloneClip"
+                                @add="addClip"
+                                @start="addBG"
                                 @end="moveItemInArray"
                             >
                                 <template #item="{ element, index }">
                                     <tr
-                                        :id="`clip_${index}`"
-                                        class="draggable"
-                                        :class="
-                                            index === playlistStore.currentClipIndex && listDate === todayDate
-                                                ? 'bg-lime-500/30'
-                                                : 'bg-base-300 even:bg-base-100'
-                                        "
+                                        :id="`clip-${index}`"
+                                        class="draggable border-t border-base-content/20 duration-500 transition-all"
+                                        :class="{
+                                            '!bg-lime-500/30':
+                                                playlistStore.playoutIsRunning &&
+                                                listDate === todayDate &&
+                                                index === playlistStore.currentClipIndex,
+                                        }"
                                         :key="element.uid"
                                     >
-                                        <td class="text-left ps-4">{{ secondsToTime(element.begin) }}</td>
-                                        <td class="text-left truncate w-full" :class="{ 'grabbing cursor-grab': width > 768 }">
+                                        <td class="ps-4 py-2 text-left">{{ secondsToTime(element.begin) }}</td>
+                                        <td
+                                            class="py-2 text-left truncate"
+                                            :class="{ 'grabbing cursor-grab': width > 768 }"
+                                        >
                                             {{ filename(element.source) }}
                                         </td>
-                                        <td class="text-center">
+                                        <td class="py-2 text-center hover:text-base-content/70">
                                             <button @click=";(showPreviewModal = true), setPreviewData(element.source)">
                                                 <i class="bi-play-fill" />
                                             </button>
                                         </td>
-                                        <td class="text-center">{{ secToHMS(element.duration) }}</td>
-                                        <td class="text-left hidden md:table-cell">{{ secToHMS(element.in) }}</td>
-                                        <td class="text-left hidden md:table-cell">{{ secToHMS(element.out) }}</td>
-                                        <td class="text-center hidden md:table-cell leading-3">
+                                        <td class="py-2 text-center">{{ secToHMS(element.duration) }}</td>
+                                        <td class="py-2 text-center hidden xl:table-cell">
+                                            {{ secToHMS(element.in) }}
+                                        </td>
+                                        <td class="py-2 text-center hidden xl:table-cell">
+                                            {{ secToHMS(element.out) }}
+                                        </td>
+                                        <td class="py-2 text-center hidden xl:table-cell leading-3">
                                             <input
                                                 class="checkbox checkbox-xs rounded"
                                                 type="checkbox"
@@ -160,13 +216,13 @@
                                                 @change="setCategory($event, element)"
                                             />
                                         </td>
-                                        <td class="text-center">
+                                        <td class="py-2 text-center hover:text-base-content/70">
                                             <button @click=";(showSourceModal = true), editPlaylistItem(index)">
                                                 <i class="bi-pencil-square" />
                                             </button>
                                         </td>
                                         <td
-                                            class="text-center hidden md:table-cell justify-center hover:text-base-content/70"
+                                            class="py-2 text-center hidden xl:table-cell justify-center hover:text-base-content/70"
                                         >
                                             <button @click="deletePlaylistItem(index)">
                                                 <i class="bi-x-circle-fill" />
@@ -399,14 +455,17 @@ onMounted(async () => {
     getPlaylist()
 })
 
-watch([listDate, configID], async () => {
+watch([configID], () => {
     mediaStore.getTree('')
+})
+
+watch([listDate], async () => {
     await getPlaylist()
 })
 
 function scrollTo(index: number) {
-    const child = document.getElementById(`clip_${index}`)
-    const parent = document.getElementById('scroll-container')
+    const child = document.getElementById(`clip-${index}`)
+    const parent = document.getElementById('playlist-container')
 
     if (child && parent) {
         const topPos = child.offsetTop
@@ -456,9 +515,26 @@ function onFileChange(evt: any) {
     textFile.value = files
 }
 
-function cloneClip(event: any) {
+function addBG(obj: any) {
+    if (obj.item) {
+        obj.item.classList.add('!bg-fuchsia-900/30')
+    } else {
+        obj.classList.add('!bg-fuchsia-900/30')
+    }
+}
+
+function removeBG(item: any) {
+    setTimeout(() => {
+        item.classList.remove('!bg-fuchsia-900/30')
+    }, 300)
+}
+
+function addClip(event: any) {
     const o = event.oldIndex
     const n = event.newIndex
+    const uid = genUID()
+
+    console.log('---add')
 
     event.item.remove()
 
@@ -469,7 +545,7 @@ function cloneClip(event: any) {
     )
 
     playlistStore.playlist.splice(n, 0, {
-        uid: genUID(),
+        uid,
         begin: 0,
         source: sourcePath,
         in: 0,
@@ -483,6 +559,12 @@ function cloneClip(event: any) {
         playlistStore.playlist,
         false
     )
+
+    nextTick(() => {
+        const newNode = document.getElementById(`clip-${n}`)
+        addBG(newNode)
+        removeBG(newNode)
+    })
 }
 
 function moveItemInArray(event: any) {
@@ -494,6 +576,8 @@ function moveItemInArray(event: any) {
         playlistStore.playlist,
         false
     )
+
+    removeBG(event.item)
 }
 
 function setPreviewData(path: string) {
@@ -721,3 +805,24 @@ async function deletePlaylist(del: boolean) {
     }
 }
 </script>
+<style>
+/*
+    format dragging element
+*/
+#playlist-container .sortable-ghost {
+    background-color: #701a754b !important;
+    min-height: 37px !important;
+    height: 37px !important;
+}
+
+#playlist-container .sortable-ghost td {
+    padding-left: 1rem;
+    padding-right: 1rem;
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+}
+
+#playlist-container .sortable-ghost td:nth-last-child(-n+5) {
+    display: table-cell !important;
+}
+</style>
