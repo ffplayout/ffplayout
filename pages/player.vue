@@ -360,7 +360,6 @@
 
         <Modal :show="showImportModal" title="Import Playlist" :modal-action="importPlaylist">
             <input
-                ref="fileImport"
                 type="file"
                 class="file-input file-input-sm file-input-bordered w-full"
                 v-on:change="onFileChange"
@@ -406,7 +405,6 @@ useHead({
 const { configID } = storeToRefs(useConfig())
 const { listDate } = storeToRefs(usePlaylist())
 
-const fileImport = ref()
 const todayDate = ref($dayjs().utcOffset(configStore.utcOffset).format('YYYY-MM-DD'))
 const targetDate = ref($dayjs().utcOffset(configStore.utcOffset).format('YYYY-MM-DD'))
 const editId = ref(-1)
@@ -504,15 +502,6 @@ function setCategory(event: any, item: PlaylistItem) {
     } else {
         item.category = ''
     }
-}
-function onFileChange(evt: any) {
-    const files = evt.target.files || evt.dataTransfer.files
-
-    if (!files.length) {
-        return
-    }
-
-    textFile.value = files
 }
 
 function addBG(obj: any) {
@@ -715,6 +704,16 @@ function loopClips() {
     playlistStore.playlist = processPlaylist(configStore.startInSec, configStore.playlistLength, tempList, false)
 }
 
+function onFileChange(evt: any) {
+    const files = evt.target.files || evt.dataTransfer.files
+
+    if (!files.length) {
+        return
+    }
+
+    textFile.value = files
+}
+
 async function importPlaylist(imp: boolean) {
     showImportModal.value = false
 
@@ -737,8 +736,8 @@ async function importPlaylist(imp: boolean) {
                 body: formData,
             }
         )
-            .then(() => {
-                indexStore.msgAlert('success', 'Import success!', 2)
+            .then((response) => {
+                indexStore.msgAlert('success', response, 2)
                 playlistStore.getPlaylist(listDate.value)
             })
             .catch((e: string) => {
@@ -748,7 +747,6 @@ async function importPlaylist(imp: boolean) {
 
     playlistStore.isLoading = false
     textFile.value = null
-    fileImport.value.value = null
 }
 
 async function savePlaylist(save: boolean) {
