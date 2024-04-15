@@ -45,7 +45,14 @@ export default defineNuxtConfig({
         },
     },
 
-    modules: ['@nuxtjs/color-mode', '@nuxtjs/i18n', '@pinia/nuxt', '@vueuse/nuxt', '@nuxtjs/tailwindcss'],
+    modules: [
+        '@nuxt/eslint',
+        '@nuxtjs/color-mode',
+        '@nuxtjs/i18n',
+        '@pinia/nuxt',
+        '@vueuse/nuxt',
+        '@nuxtjs/tailwindcss',
+    ],
     css: ['@/assets/scss/main.scss'],
 
     colorMode: {
@@ -75,23 +82,23 @@ export default defineNuxtConfig({
         ],
         customRoutes: 'config',
         pages: {
-            'player': {
+            player: {
                 de: '/wiedergabe',
                 en: '/player',
             },
-            'media': {
+            media: {
                 de: '/medien',
                 en: '/media',
             },
-            'message': {
+            message: {
                 de: '/nachrichten',
                 en: '/message',
             },
-            'logging': {
+            logging: {
                 de: '/protokollierung',
                 en: '/logging',
             },
-            'configure': {
+            configure: {
                 de: '/einstellungen',
                 en: '/configure',
             },

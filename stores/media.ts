@@ -10,7 +10,6 @@ export const useMedia = defineStore('media', {
         folderList: {} as FolderObject,
         folderCrumbs: [] as Crumb[],
         isLoading: false,
-        notExist: useNuxtApp().$i18n.t('media.notExists'),
     }),
 
     getters: {},
@@ -37,7 +36,7 @@ export const useMedia = defineStore('media', {
                     if (response.status === 200) {
                         return response.json()
                     } else {
-                        indexStore.msgAlert('error', this.notExist, 3)
+                        indexStore.msgAlert('error', useNuxtApp().$i18n.t('media.notExists'), 3)
 
                         return {
                             source: '',
