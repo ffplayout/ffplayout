@@ -447,9 +447,9 @@ const newSource = ref({
     uid: '',
 } as PlaylistItem)
 
-onMounted(async () => {
+onMounted(() => {
     if (!mediaStore.folderTree.parent) {
-        await mediaStore.getTree('')
+        mediaStore.getTree('')
     }
 
     getPlaylist()
@@ -474,7 +474,7 @@ function scrollTo(index: number) {
 }
 
 const calendarFormat = (date: Date) => {
-    return $dayjs(date).locale(locale.value).format('dddd LL')
+    return $dayjs(date).locale(locale.value).format('dddd - LL')
 }
 
 async function getPlaylist() {
@@ -533,8 +533,6 @@ function addClip(event: any) {
     const o = event.oldIndex
     const n = event.newIndex
     const uid = genUID()
-
-    console.log('---add')
 
     event.item.remove()
 

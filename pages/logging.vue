@@ -49,7 +49,7 @@ watch([listDate, configID], () => {
 })
 
 const calendarFormat = (date: Date) => {
-    return $dayjs(date).locale(locale.value).format('dddd LL')
+    return $dayjs(date).locale(locale.value).format('dddd - LL')
 }
 
 async function getLog() {
@@ -79,20 +79,20 @@ async function getLog() {
 }
 
 .log-number {
-    color: #e2c317;
+    color: var(--my-yellow);
 }
 
 .log-addr {
-    color: #ad7fa8;
+    color: var(--my-purple);
     font-weight: 500;
 }
 
 .log-cmd {
-    color: #6c95c2;
+    color: var(--my-blue);
 }
 
 .log-info {
-    color: #8ae234;
+    color: var(--my-green);
 }
 
 .log-warning {
