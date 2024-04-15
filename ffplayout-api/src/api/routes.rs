@@ -1096,12 +1096,14 @@ async fn import_playlist(
 
     upload(&pool.into_inner(), *id, size, payload, &path, true).await?;
 
-    task::spawn_blocking(move || import_file(&config, &obj.date, Some(channel.name), &path_clone))
-        .await??;
+    let response = task::spawn_blocking(move || {
+        import_file(&config, &obj.date, Some(channel.name), &path_clone)
+    })
+    .await??;
 
     fs::remove_file(path).await?;
 
-    Ok(HttpResponse::Ok().into())
+    Ok(HttpResponse::Ok().body(response).into())
 }
 
 /// **Program info**
