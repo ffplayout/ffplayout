@@ -65,6 +65,7 @@ export default {
         reset: 'Wiedergabeliste zurücksetzen',
         save: 'Wiedergabeliste speichern',
         deletePlaylist: 'Wiedergabeliste löschen',
+        unsavedProgram: 'Es existiert Programm das nicht gespeichert ist!',
     },
     media: {
         notExists: 'Speicher existiert nicht!',

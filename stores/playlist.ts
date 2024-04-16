@@ -30,8 +30,12 @@ export const usePlaylist = defineStore('playlist', {
     getters: {},
     actions: {
         async getPlaylist(date: string) {
+            const { $_, $i18n } = useNuxtApp()
             const authStore = useAuth()
             const configStore = useConfig()
+            const indexStore = useIndex()
+            let statusCode = 0
+
             const timeInSec = timeToSeconds(dayjs().utcOffset(configStore.utcOffset).format('HH:mm:ss'))
             const channel = configStore.configGui[configStore.configID].id
             let dateToday = dayjs().utcOffset(configStore.utcOffset).format('YYYY-MM-DD')
@@ -44,14 +48,40 @@ export const usePlaylist = defineStore('playlist', {
                 method: 'GET',
                 headers: authStore.authHeader,
             })
-                .then((response) => response.json())
+                .then((response) => {
+                    statusCode = response.status
+
+                    return response.json()
+                })
                 .then((data) => {
                     if (data.program) {
-                        this.playlist = processPlaylist(configStore.startInSec, configStore.playlistLength, data.program, false)
+                        const programData = processPlaylist(
+                            configStore.startInSec,
+                            configStore.playlistLength,
+                            data.program,
+                            false
+                        )
+
+                        if (
+                            this.playlist.length > 0 &&
+                            $_.differenceWith(this.playlist, programData, (a, b) => {
+                                return $_.isEqual($_.omit(a, ['uid']), $_.omit(b, ['uid']))
+                            }).length > 0
+                        ) {
+                            indexStore.msgAlert('warning', $i18n.t('player.unsavedProgram'), 3)
+                        } else if (this.playlist.length === 0) {
+                            this.playlist = programData
+                        }
                     }
                 })
-                .catch(() => {
-                    this.playlist = []
+                .catch((e) => {
+                    if (statusCode > 0 && statusCode !== 204) {
+                        indexStore.msgAlert('error', e, 3)
+                    }
+
+                    if (this.playlist.length > 0) {
+                        indexStore.msgAlert('warning', $i18n.t('player.unsavedProgram'), 3)
+                    }
                 })
         },
 

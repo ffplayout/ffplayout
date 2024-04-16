@@ -65,6 +65,7 @@ export default {
         reset: 'Reset Playlist',
         save: 'Save Playlist',
         deletePlaylist: 'Delete Playlist',
+        unsavedProgram: 'There is a program that is not saved!',
     },
     media: {
         notExists: 'Storage not exist!',
