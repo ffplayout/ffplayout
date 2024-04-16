@@ -329,6 +329,7 @@ pub struct Text {
 
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
 pub struct Task {
+    pub help_text: String,
     pub enable: bool,
     pub path: PathBuf,
 }

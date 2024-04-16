@@ -8,7 +8,7 @@
 ///
 /// For all endpoints an (Bearer) authentication is required.\
 /// `{id}` represent the channel id, and at default is 1.
-use std::{collections::HashMap, env, fs, path::PathBuf};
+use std::{collections::HashMap, env, path::PathBuf};
 
 use actix_files;
 use actix_multipart::Multipart;
@@ -32,7 +32,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use simplelog::*;
 use sqlx::{Pool, Sqlite};
-use tokio::task;
+use tokio::{fs, task};
 
 use crate::db::{
     handles,
@@ -1084,6 +1084,7 @@ async fn import_playlist(
 ) -> Result<HttpResponse, ServiceError> {
     let file = obj.file.file_name().unwrap_or_default();
     let path = env::temp_dir().join(file);
+    let path_clone = path.clone();
     let (config, _) = playout_config(&pool.clone().into_inner(), &id).await?;
     let channel = handles::select_channel(&pool.clone().into_inner(), &id).await?;
     let size: u64 = req
@@ -1094,11 +1095,15 @@ async fn import_playlist(
         .unwrap_or(0);
 
     upload(&pool.into_inner(), *id, size, payload, &path, true).await?;
-    import_file(&config, &obj.date, Some(channel.name), &path)?;
 
-    fs::remove_file(path)?;
+    let response = task::spawn_blocking(move || {
+        import_file(&config, &obj.date, Some(channel.name), &path_clone)
+    })
+    .await??;
 
-    Ok(HttpResponse::Ok().into())
+    fs::remove_file(path).await?;
+
+    Ok(HttpResponse::Ok().body(response))
 }
 
 /// **Program info**
