@@ -1,11 +1,11 @@
 <template>
     <div class="navbar bg-base-100 min-h-[52px] p-0 shadow">
         <NuxtLink class="navbar-brand min-w-[46px] p-2" href="/">
-            <img src="~/assets/images/ffplayout-small.png" class="img-fluid" alt="Logo" width="30" height="30" />
+            <img src="~/assets/images/ffplayout-small.png" class="img-fluid" alt="Logo" width="30" height="30" >
         </NuxtLink>
         <div class="navbar-end w-1/5 grow">
             <label class="swap swap-rotate me-2 md:hidden">
-                <input type="checkbox" @change="toggleDarkTheme" :checked="indexStore.darkMode" />
+                <input type="checkbox" :checked="indexStore.darkMode" @change="toggleDarkTheme" >
                 <SvgIcon name="swap-on" classes="w-5 h-5" />
                 <SvgIcon name="swap-off" classes="w-5 h-5" />
             </label>
@@ -15,7 +15,7 @@
                 </div>
                 <ul class="menu menu-sm dropdown-content mt-1 z-[1] p-2 shadow bg-base-100 rounded-box w-52">
                     <li v-for="item in menuItems" :key="item.name" class="bg-base-100 rounded-md">
-                        <NuxtLink :to="item.link" class="h-[27px] text-base" exactActiveClass="is-active">
+                        <NuxtLink :to="item.link" class="h-[27px] text-base" exact-active-class="is-active">
                             <span>
                                 {{ item.name }}
                             </span>
@@ -51,7 +51,7 @@
                     <NuxtLink
                         :to="item.link"
                         class="px-2 h-[27px] relative text-base text-base-content"
-                        activeClass="is-active"
+                        active-class="is-active"
                     >
                         <span>
                             {{ item.name }}
@@ -81,7 +81,7 @@
                 </li>
                 <li class="p-0">
                     <label class="swap swap-rotate">
-                        <input type="checkbox" @change="toggleDarkTheme" :checked="indexStore.darkMode" />
+                        <input type="checkbox" :checked="indexStore.darkMode" @change="toggleDarkTheme" >
                         <SvgIcon name="swap-on" classes="w-5 h-5" />
                         <SvgIcon name="swap-off" classes="w-5 h-5" />
                     </label>

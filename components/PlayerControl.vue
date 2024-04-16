@@ -6,9 +6,9 @@
                     <div class="w-full h-full p-2">
                         <video v-if="streamExtension === 'flv'" ref="httpStreamFlv" controls />
                         <VideoPlayer
-                            class="live-player"
                             v-else-if="configStore.configGui[configStore.configID]"
                             :key="configStore.configID"
+                            class="live-player"
                             reference="httpStream"
                             :options="{
                                 liveui: true,
@@ -70,7 +70,7 @@
                                     class="progress progress-accent w-full"
                                     :value="playlistStore.progressValue"
                                     max="100"
-                                ></progress>
+                                />
                             </div>
                         </div>
                     </div>

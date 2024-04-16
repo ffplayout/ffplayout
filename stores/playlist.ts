@@ -7,7 +7,7 @@ import { defineStore } from 'pinia'
 dayjs.extend(utc)
 dayjs.extend(timezone)
 
-const { timeToSeconds } = stringFormatter()
+// const { timeToSeconds } = stringFormatter()
 const { processPlaylist } = playlistOperations()
 
 export const usePlaylist = defineStore('playlist', {
@@ -36,13 +36,13 @@ export const usePlaylist = defineStore('playlist', {
             const indexStore = useIndex()
             let statusCode = 0
 
-            const timeInSec = timeToSeconds(dayjs().utcOffset(configStore.utcOffset).format('HH:mm:ss'))
+            // const timeInSec = timeToSeconds(dayjs().utcOffset(configStore.utcOffset).format('HH:mm:ss'))
             const channel = configStore.configGui[configStore.configID].id
-            let dateToday = dayjs().utcOffset(configStore.utcOffset).format('YYYY-MM-DD')
+            // let dateToday = dayjs().utcOffset(configStore.utcOffset).format('YYYY-MM-DD')
 
-            if (configStore.startInSec > timeInSec) {
-                dateToday = dayjs(dateToday).utcOffset(configStore.utcOffset).subtract(1, 'day').format('YYYY-MM-DD')
-            }
+            // if (configStore.startInSec > timeInSec) {
+            //     dateToday = dayjs(dateToday).utcOffset(configStore.utcOffset).subtract(1, 'day').format('YYYY-MM-DD')
+            // }
 
             await fetch(`/api/playlist/${channel}?date=${date}`, {
                 method: 'GET',

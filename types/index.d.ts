@@ -28,12 +28,12 @@ declare global {
     }
 
     interface User {
-        username: String
-        mail?: String
-        password?: String
-        confirm?: String
-        admin?: Boolean
-        role_id?: Number
+        username: string
+        mail?: string
+        password?: string
+        confirm?: string
+        admin?: boolean
+        role_id?: number
     }
 
     interface Crumb {
@@ -109,9 +109,9 @@ declare global {
         cpu: { cores: number; usage: number }
         load: { one: number; five: number; fifteen: number }
         memory: { total: number; used: number; free: number }
-        network?: { name: String; current_in: number; current_out: number; total_in: number; total_out: number }
-        storage?: { path: String; total: number; used: number }
+        network?: { name: string; current_in: number; current_out: number; total_in: number; total_out: number }
+        storage?: { path: string; total: number; used: number }
         swap: { total: number; used: number; free: number }
-        system: { name?: String; kernel?: String; version?: String, ffp_version?: string }
+        system: { name?: string; kernel?: string; version?: string, ffp_version?: string }
     }
 }

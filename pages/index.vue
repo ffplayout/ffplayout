@@ -26,8 +26,8 @@
                     {{ $t('button.logout') }}
                 </button>
                 <select
-                    class="select select-primary select-bordered join-item max-w-xs ps-2"
                     v-model="selectedLang"
+                    class="select select-primary select-bordered join-item max-w-xs ps-2"
                     @change="changeLang(selectedLang)"
                 >
                     <option v-for="(loc, index) in locales" :key="index" :value="/* @ts-ignore */ loc.code">
@@ -38,7 +38,7 @@
                     </option>
                 </select>
                 <label class="join-item btn btn-primary swap swap-rotate me-2">
-                    <input type="checkbox" @change="toggleDarkTheme" :checked="indexStore.darkMode" />
+                    <input type="checkbox" :checked="indexStore.darkMode" @change="toggleDarkTheme" >
                     <SvgIcon name="swap-on" classes="w-5 h-5" />
                     <SvgIcon name="swap-off" classes="w-5 h-5" />
                 </label>
@@ -49,20 +49,20 @@
 
             <form class="mt-10" @submit.prevent="login">
                 <input
-                    type="text"
                     v-model="formUsername"
+                    type="text"
                     :placeholder="$t('input.username')"
                     class="input input-bordered w-full"
                     required
-                />
+                >
 
                 <input
-                    type="password"
                     v-model="formPassword"
+                    type="password"
                     :placeholder="$t('input.password')"
                     class="input input-bordered w-full mt-5"
                     required
-                />
+                >
 
                 <div class="w-full mt-4 grid grid-flow-row-dense grid-cols-12 grid-rows-1 gap-2">
                     <div class="col-span-3">

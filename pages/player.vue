@@ -1,6 +1,6 @@
 <template>
     <div class="h-full">
-        <Control />
+        <PlayerControl />
         <div class="flex justify-end p-1">
             <div>
                 <VueDatePicker
@@ -91,7 +91,7 @@
             </button>
         </div>
 
-        <Modal
+        <GenericModal
             :show="showPreviewModal"
             :title="`Preview: ${previewName}`"
             :hide-buttons="true"
@@ -99,24 +99,24 @@
         >
             <div class="w-[1024px] max-w-full aspect-video">
                 <VideoPlayer v-if="isVideo && previewOpt" reference="previewPlayer" :options="previewOpt" />
-                <img v-else :src="previewUrl" class="img-fluid" :alt="previewName" />
+                <img v-else :src="previewUrl" class="img-fluid" :alt="previewName" >
             </div>
-        </Modal>
+        </GenericModal>
 
-        <Modal :show="showSourceModal" title="Add/Edit Source" :modal-action="processSource">
+        <GenericModal :show="showSourceModal" title="Add/Edit Source" :modal-action="processSource">
             <div>
                 <label class="form-control w-full mt-3">
                     <div class="label">
                         <span class="label-text">In</span>
                     </div>
-                    <input type="number" class="input input-sm input-bordered w-full" v-model.number="newSource.in" />
+                    <input v-model.number="newSource.in" type="number" class="input input-sm input-bordered w-full" >
                 </label>
 
                 <label class="form-control w-full mt-3">
                     <div class="label">
                         <span class="label-text">Out</span>
                     </div>
-                    <input type="number" class="input input-sm input-bordered w-full" v-model.number="newSource.out" />
+                    <input v-model.number="newSource.out" type="number" class="input input-sm input-bordered w-full" >
                 </label>
 
                 <label class="form-control w-full mt-3">
@@ -124,60 +124,60 @@
                         <span class="label-text">Duration</span>
                     </div>
                     <input
+                        v-model.number="newSource.duration"
                         type="number"
                         class="input input-sm input-bordered w-full"
-                        v-model.number="newSource.duration"
-                    />
+                    >
                 </label>
 
                 <label class="form-control w-full mt-3">
                     <div class="label">
                         <span class="label-text">Source</span>
                     </div>
-                    <input type="text" class="input input-sm input-bordered w-full" v-model="newSource.source" />
+                    <input v-model="newSource.source" type="text" class="input input-sm input-bordered w-full" >
                 </label>
 
                 <label class="form-control w-full mt-3">
                     <div class="label">
                         <span class="label-text">Audio</span>
                     </div>
-                    <input type="text" class="input input-sm input-bordered w-full" v-model="newSource.audio" />
+                    <input v-model="newSource.audio" type="text" class="input input-sm input-bordered w-full" >
                 </label>
 
                 <label class="form-control w-full mt-3">
                     <div class="label">
                         <span class="label-text">Custom Filter</span>
                     </div>
-                    <input type="text" class="input input-sm input-bordered w-full" v-model="newSource.custom_filter" />
+                    <input v-model="newSource.custom_filter" type="text" class="input input-sm input-bordered w-full" >
                 </label>
 
                 <div class="form-control">
                     <label class="cursor-pointer label">
                         <span class="label-text">Advertisement</span>
-                        <input type="checkbox" class="checkbox checkbox-sm" @click="isAd" />
+                        <input type="checkbox" class="checkbox checkbox-sm" @click="isAd" >
                     </label>
                 </div>
             </div>
-        </Modal>
+        </GenericModal>
 
-        <Modal :show="showImportModal" title="Import Playlist" :modal-action="importPlaylist">
+        <GenericModal :show="showImportModal" title="Import Playlist" :modal-action="importPlaylist">
             <input
                 type="file"
                 class="file-input file-input-sm file-input-bordered w-full"
-                v-on:change="onFileChange"
                 multiple
-            />
-        </Modal>
+                @change="onFileChange"
+            >
+        </GenericModal>
 
-        <Modal :show="showCopyModal" :title="`Copy Program ${listDate}`" :modal-action="savePlaylist">
-            <input type="date" class="input input-sm input-bordered w-full" v-model="targetDate" />
-        </Modal>
+        <GenericModal :show="showCopyModal" :title="`Copy Program ${listDate}`" :modal-action="savePlaylist">
+            <input v-model="targetDate" type="date" class="input input-sm input-bordered w-full" >
+        </GenericModal>
 
-        <Modal :show="showDeleteModal" title="Delete Program" :modal-action="deletePlaylist">
+        <GenericModal :show="showDeleteModal" title="Delete Program" :modal-action="deletePlaylist">
             <span>
                 Delete program from <strong>{{ listDate }}</strong>
             </span>
-        </Modal>
+        </GenericModal>
 
         <PlaylistGenerator v-if="showPlaylistGenerator" :close="closeGenerator" />
     </div>

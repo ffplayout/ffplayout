@@ -1,219 +1,225 @@
 <template>
-    <div class="flex flex-col items-center pt-10 px-8">
-        <div class="mt-2 w-full max-w-4xl">
-            <div class="flex flex-col xs:flex-row w-full gap-4">
-                <div class="grow xs:max-w-72">
-                    <select
-                        class="select select-sm select-bordered w-full"
-                        v-model="selected"
-                        @change="onChange($event)"
-                    >
-                        <option v-for="item in presets">{{ item.name }}</option>
-                    </select>
+    <div>
+        <div class="flex flex-col items-center pt-10 px-8">
+            <div class="mt-2 w-full max-w-4xl">
+                <div class="flex flex-col xs:flex-row w-full gap-4">
+                    <div class="grow xs:max-w-72">
+                        <select
+                            v-model="selected"
+                            class="select select-sm select-bordered w-full"
+                            @change="onChange($event)"
+                        >
+                            <option v-for="item in presets" :key="item.name">{{ item.name }}</option>
+                        </select>
+                    </div>
+                    <div class="join">
+                        <button
+                            class="btn btn-sm join-item btn-primary"
+                            :title="$t('message.savePreset')"
+                            @click="savePreset()"
+                        >
+                            <i class="bi-cloud-upload" />
+                        </button>
+                        <button
+                            class="btn btn-sm join-item btn-primary"
+                            :title="$t('message.newPreset')"
+                            @click="showCreateModal = true"
+                        >
+                            <i class="bi-file-plus" />
+                        </button>
+                        <button
+                            class="btn btn-sm join-item btn-primary"
+                            :title="$t('message.delPreset')"
+                            @click="showDeleteModal = true"
+                        >
+                            <i class="bi-file-minus" />
+                        </button>
+                    </div>
                 </div>
-                <div class="join">
-                    <button
-                        class="btn btn-sm join-item btn-primary"
-                        :title="$t('message.savePreset')"
-                        @click="savePreset()"
-                    >
-                        <i class="bi-cloud-upload" />
-                    </button>
-                    <button
-                        class="btn btn-sm join-item btn-primary"
-                        :title="$t('message.newPreset')"
-                        @click="showCreateModal = true"
-                    >
-                        <i class="bi-file-plus" />
-                    </button>
-                    <button
-                        class="btn btn-sm join-item btn-primary"
-                        :title="$t('message.delPreset')"
-                        @click="showDeleteModal = true"
-                    >
-                        <i class="bi-file-minus" />
-                    </button>
-                </div>
-            </div>
 
-            <form @submit.prevent="submitMessage" class="my-6 w-full">
-                <textarea
-                    class="textarea textarea-bordered w-full"
-                    v-model="form.text"
-                    rows="4"
-                    :placeholder="$t('message.placeholder')"
-                />
+                <form class="my-6 w-full" @submit.prevent="submitMessage">
+                    <textarea
+                        v-model="form.text"
+                        class="textarea textarea-bordered w-full"
+                        rows="4"
+                        :placeholder="$t('message.placeholder')"
+                    />
 
-                <div class="mt-2 grid xs:grid-cols-[auto_150px_150px] gap-4">
-                    <div class="grow">
-                        <div class="form-control">
-                            <label class="cursor-pointer p-0">
+                    <div class="mt-2 grid xs:grid-cols-[auto_150px_150px] gap-4">
+                        <div class="grow">
+                            <div class="form-control">
+                                <label class="cursor-pointer p-0">
+                                    <div class="label">
+                                        <span class="label-text">{{ $t('message.xAxis') }}</span>
+                                    </div>
+                                    <input
+                                        v-model="form.x"
+                                        class="input input-sm input-bordered w-full"
+                                        type="text"
+                                        placeholder="X"
+                                        required
+                                    >
+                                </label>
+                            </div>
+
+                            <div class="form-control">
+                                <label class="cursor-pointer p-0">
+                                    <div class="label">
+                                        <span class="label-text">{{ $t('message.yAxis') }}</span>
+                                    </div>
+                                    <input
+                                        v-model="form.y"
+                                        class="input input-sm input-bordered w-full"
+                                        type="text"
+                                        placeholder="Y"
+                                        required
+                                    >
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="xs:mt-10">
+                            <div class="form-control">
+                                <label class="label cursor-pointer p-0">
+                                    <span class="label-text">{{ $t('message.showBox') }}</span>
+                                    <input
+                                        v-model="form.showBox"
+                                        type="checkbox"
+                                        class="checkbox checkbox-xs rounded-sm"
+                                    >
+                                </label>
+                            </div>
+
+                            <label class="mt-2 form-control w-full">
                                 <div class="label">
-                                    <span class="label-text">{{ $t('message.xAxis') }}</span>
+                                    <span class="label-text">{{ $t('message.boxColor') }}</span>
                                 </div>
                                 <input
-                                    class="input input-sm input-bordered w-full"
-                                    v-model="form.x"
-                                    type="text"
-                                    placeholder="X"
+                                    v-model="form.boxColor"
+                                    type="color"
+                                    class="input input-sm input-bordered w-full p-1"
                                     required
-                                />
+                                >
                             </label>
                         </div>
-
-                        <div class="form-control">
-                            <label class="cursor-pointer p-0">
-                                <div class="label">
-                                    <span class="label-text">{{ $t('message.yAxis') }}</span>
-                                </div>
-                                <input
-                                    class="input input-sm input-bordered w-full"
-                                    v-model="form.y"
-                                    type="text"
-                                    placeholder="Y"
-                                    required
-                                />
-                            </label>
-                        </div>
-                    </div>
-
-                    <div class="xs:mt-10">
-                        <div class="form-control">
-                            <label class="label cursor-pointer p-0">
-                                <span class="label-text">{{ $t('message.showBox') }}</span>
-                                <input type="checkbox" v-model="form.showBox" class="checkbox checkbox-xs rounded-sm" />
-                            </label>
-                        </div>
-
-                        <label class="mt-2 form-control w-full">
+                        <label class="form-control w-full xs:mt-[68px]">
                             <div class="label">
-                                <span class="label-text">{{ $t('message.boxColor') }}</span>
+                                <span class="label-text">{{ $t('message.boxAlpha') }}</span>
                             </div>
                             <input
-                                type="color"
-                                class="input input-sm input-bordered w-full p-1"
-                                v-model="form.boxColor"
-                                required
-                            />
-                        </label>
-                    </div>
-                    <label class="form-control w-full xs:mt-[68px]">
-                        <div class="label">
-                            <span class="label-text">{{ $t('message.boxAlpha') }}</span>
-                        </div>
-                        <input
-                            type="number"
-                            min="0"
-                            max="1"
-                            step="0.01"
-                            class="input input-sm input-bordered w-full"
-                            v-model="form.boxAlpha"
-                            required
-                        />
-                    </label>
-                </div>
-                <div class="grid xs:grid-cols-[150px_150px_auto] gap-4 mt-2">
-                    <div>
-                        <label class="form-control w-full">
-                            <div class="label">
-                                <span class="label-text">{{ $t('message.size') }}</span>
-                            </div>
-                            <input
+                                v-model="form.boxAlpha"
                                 type="number"
-                                class="input input-sm input-bordered w-full"
-                                v-model="form.fontSize"
-                                required
-                            />
-                        </label>
-
-                        <label class="form-control w-full mt-2">
-                            <div class="label">
-                                <span class="label-text">{{ $t('message.fontColor') }}</span>
-                            </div>
-                            <input
-                                type="color"
-                                class="input input-sm input-bordered w-full p-1"
-                                v-model="form.fontColor"
-                                required
-                            />
-                        </label>
-                    </div>
-                    <div>
-                        <label class="form-control w-full">
-                            <div class="label">
-                                <span class="label-text">{{ $t('message.spacing') }}</span>
-                            </div>
-                            <input
-                                type="number"
-                                class="input input-sm input-bordered w-full"
-                                v-model="form.fontSpacing"
-                                required
-                            />
-                        </label>
-                        <label class="form-control w-full mt-2">
-                            <div class="label">
-                                <span class="label-text">{{ $t('message.fontAlpha') }}</span>
-                            </div>
-                            <input
-                                type="number"
-                                class="input input-sm input-bordered w-full"
-                                v-model="form.fontAlpha"
                                 min="0"
                                 max="1"
                                 step="0.01"
+                                class="input input-sm input-bordered w-full"
                                 required
-                            />
+                            >
                         </label>
                     </div>
+                    <div class="grid xs:grid-cols-[150px_150px_auto] gap-4 mt-2">
+                        <div>
+                            <label class="form-control w-full">
+                                <div class="label">
+                                    <span class="label-text">{{ $t('message.size') }}</span>
+                                </div>
+                                <input
+                                    v-model="form.fontSize"
+                                    type="number"
+                                    class="input input-sm input-bordered w-full"
+                                    required
+                                >
+                            </label>
 
-                    <div class="grow">
-                        <label class="form-control w-full">
-                            <div class="label">
-                                <span class="label-text">{{ $t('message.overallAlpha') }}</span>
-                            </div>
-                            <input
-                                type="text"
-                                class="input input-sm input-bordered w-full"
-                                v-model="form.overallAlpha"
-                                required
-                            />
-                        </label>
-                        <label class="form-control w-full xs:max-w-[150px] mt-2">
-                            <div class="label">
-                                <span class="label-text">{{ $t('message.borderWidth') }}</span>
-                            </div>
-                            <input
-                                type="number"
-                                class="input input-sm input-bordered w-full"
-                                v-model="form.border"
-                                required
-                            />
-                        </label>
+                            <label class="form-control w-full mt-2">
+                                <div class="label">
+                                    <span class="label-text">{{ $t('message.fontColor') }}</span>
+                                </div>
+                                <input
+                                    v-model="form.fontColor"
+                                    type="color"
+                                    class="input input-sm input-bordered w-full p-1"
+                                    required
+                                >
+                            </label>
+                        </div>
+                        <div>
+                            <label class="form-control w-full">
+                                <div class="label">
+                                    <span class="label-text">{{ $t('message.spacing') }}</span>
+                                </div>
+                                <input
+                                    v-model="form.fontSpacing"
+                                    type="number"
+                                    class="input input-sm input-bordered w-full"
+                                    required
+                                >
+                            </label>
+                            <label class="form-control w-full mt-2">
+                                <div class="label">
+                                    <span class="label-text">{{ $t('message.fontAlpha') }}</span>
+                                </div>
+                                <input
+                                    v-model="form.fontAlpha"
+                                    type="number"
+                                    class="input input-sm input-bordered w-full"
+                                    min="0"
+                                    max="1"
+                                    step="0.01"
+                                    required
+                                >
+                            </label>
+                        </div>
+
+                        <div class="grow">
+                            <label class="form-control w-full">
+                                <div class="label">
+                                    <span class="label-text">{{ $t('message.overallAlpha') }}</span>
+                                </div>
+                                <input
+                                    v-model="form.overallAlpha"
+                                    type="text"
+                                    class="input input-sm input-bordered w-full"
+                                    required
+                                >
+                            </label>
+                            <label class="form-control w-full xs:max-w-[150px] mt-2">
+                                <div class="label">
+                                    <span class="label-text">{{ $t('message.borderWidth') }}</span>
+                                </div>
+                                <input
+                                    v-model="form.border"
+                                    type="number"
+                                    class="input input-sm input-bordered w-full"
+                                    required
+                                >
+                            </label>
+                        </div>
                     </div>
-                </div>
 
-                <div class="mt-5">
-                    <button class="btn btn-primary send-btn" type="submit">{{ $t('message.send') }}</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <Modal :show="showCreateModal" :title="$t('message.newPreset')" :modalAction="createNewPreset">
-        <label class="form-control w-full">
-            <div class="label">
-                <span class="label-text">{{ $t('message.name') }}</span>
+                    <div class="mt-5">
+                        <button class="btn btn-primary send-btn" type="submit">{{ $t('message.send') }}</button>
+                    </div>
+                </form>
             </div>
-            <input type="text" class="input input-bordered w-full" v-model="newPresetName" />
-        </label>
-    </Modal>
+        </div>
 
-    <Modal
-        :show="showDeleteModal"
-        :title="$t('message.delPreset')"
-        :text="`${$t('message.delText')}: <strong> ${selected}</strong>?`"
-        :modalAction="deletePreset"
-    />
+        <GenericModal :show="showCreateModal" :title="$t('message.newPreset')" :modal-action="createNewPreset">
+            <label class="form-control w-full">
+                <div class="label">
+                    <span class="label-text">{{ $t('message.name') }}</span>
+                </div>
+                <input v-model="newPresetName" type="text" class="input input-bordered w-full" >
+            </label>
+        </GenericModal>
+
+        <GenericModal
+            :show="showDeleteModal"
+            :title="$t('message.delPreset')"
+            :text="`${$t('message.delText')}: <strong> ${selected}</strong>?`"
+            :modal-action="deletePreset"
+        />
+    </div>
 </template>
 
 <script setup lang="ts">

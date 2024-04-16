@@ -3,7 +3,7 @@
         <div class="p-4 bg-base-100">
             <span class="text-3xl">{{ sysStat.system.name }} {{ sysStat.system.version }}</span>
             <span v-if="sysStat.system.kernel">
-                <br />
+                <br >
                 {{ sysStat.system.kernel }}
             </span>
         </div>
@@ -57,7 +57,7 @@
             <div class="text-xl">{{ $t('system.storage') }}</div>
             <div v-if="sysStat.storage"><strong>{{ $t('system.device') }}:</strong> {{ sysStat.storage?.path }}</div>
 
-            <div class="grid grid-cols-2" v-if="sysStat.storage">
+            <div v-if="sysStat.storage" class="grid grid-cols-2">
                 <div><strong>{{ $t('system.size') }}:</strong> {{ fileSize(sysStat.storage?.total) }}</div>
                 <div><strong>{{ $t('system.used') }}:</strong> {{ fileSize(sysStat.storage?.used) }}</div>
             </div>

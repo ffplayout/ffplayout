@@ -68,7 +68,7 @@
         </form>
     </div>
 
-    <Modal :show="showUserModal" title="Add user" :modal-action="addUser">
+    <GenericModal :show="showUserModal" title="Add user" :modal-action="addUser">
         <div class="w-full max-w-[500px] h-[420px]">
             <label class="form-control w-full">
                 <div class="label">
@@ -113,7 +113,7 @@
                 </label>
             </div>
         </div>
-    </Modal>
+    </GenericModal>
 </template>
 
 <script setup lang="ts">

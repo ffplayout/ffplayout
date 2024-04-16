@@ -1,5 +1,5 @@
 import lodash from 'lodash'
-import { LoDashStatic } from 'lodash'
+import type { LoDashStatic } from 'lodash'
 
 declare module '#app' {
 	interface NuxtApp {

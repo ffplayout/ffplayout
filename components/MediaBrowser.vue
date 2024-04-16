@@ -22,7 +22,7 @@
     </div>
 
     <div class="w-full h-[calc(100%-48px)] overflow-auto m-1">
-        <div class="flex px-1" v-for="folder in mediaStore.folderTree.folders" :key="folder.uid">
+        <div v-for="folder in mediaStore.folderTree.folders" :key="folder.uid" class="flex px-1">
             <button class="truncate" @click="mediaStore.getTree(`/${mediaStore.folderTree.source}/${folder.name}`)">
                 <i class="bi-folder-fill" />
                 {{ folder.name }}
@@ -38,9 +38,9 @@
             <template #item="{ element, index }">
                 <tr
                     :id="`file-${index}`"
+                    :key="element.name"
                     class="w-full"
                     :class="{ 'grabbing cursor-grab': width > 768 }"
-                    :key="element.name"
                 >
                     <td class="ps-1 py-1 w-[20px]">
                         <i v-if="mediaType(element.name) === 'audio'" class="bi-music-note-beamed" />

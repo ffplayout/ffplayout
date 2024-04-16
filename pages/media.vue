@@ -1,150 +1,107 @@
 <template>
-    <div class="h-[calc(100vh-140px)] px-2">
-        <nav class="text-sm breadcrumbs px-3">
-            <ul v-on:dragover.prevent>
-                <li
-                    v-for="(crumb, index) in mediaStore.crumbs"
-                    :key="index"
-                    v-on:drop="handleDrop($event, crumb.path, null)"
-                    v-on:dragover="handleDragOver"
-                    v-on:dragleave="handleDragLeave"
-                >
-                    <button
-                        v-if="mediaStore.crumbs.length > 1 && mediaStore.crumbs.length - 1 > index"
-                        @click="mediaStore.getTree(crumb.path)"
+    <div>
+        <div class="h-[calc(100vh-140px)] px-2">
+            <nav class="text-sm breadcrumbs px-3">
+                <ul @dragover.prevent>
+                    <li
+                        v-for="(crumb, index) in mediaStore.crumbs"
+                        :key="index"
+                        @drop="handleDrop($event, crumb.path, null)"
+                        @dragover="handleDragOver"
+                        @dragleave="handleDragLeave"
                     >
-                        <i class="bi-folder-fill me-1" />
-                        {{ crumb.text }}
-                    </button>
-                    <span v-else><i class="bi-folder-fill me-1" /> {{ crumb.text }}</span>
-                </li>
-            </ul>
-        </nav>
-
-        <div class="relative h-[calc(100%-34px)] min-h-[300px] bg-base-100">
-            <div v-if="mediaStore.isLoading" class="w-full h-full absolute z-10 flex justify-center bg-base-100/70">
-                <span class="loading loading-spinner loading-lg"></span>
-            </div>
-            <splitpanes :horizontal="horizontal" class="border border-my-gray rounded shadow">
-                <pane
-                    min-size="14"
-                    max-size="80"
-                    size="20"
-                    class="h-full pb-1 !bg-base-300"
-                    :class="horizontal ? 'rounded-t' : 'rounded-s'"
-                >
-                    <ul v-if="mediaStore.folderTree.parent" class="overflow-auto h-full m-1" v-on:dragover.prevent>
-                        <li
-                            v-if="mediaStore.folderTree.parent_folders.length > 0"
-                            v-for="folder in mediaStore.folderTree.parent_folders"
-                            class="grid grid-cols-[auto_28px] gap-1 px-2"
-                            :class="filename(mediaStore.folderTree.source) === folder.name && 'bg-base-300 rounded'"
-                            :key="folder.uid"
-                            v-on:drop="handleDrop($event, folder, true)"
-                            v-on:dragover="handleDragOver"
-                            v-on:dragleave="handleDragLeave"
+                        <button
+                            v-if="mediaStore.crumbs.length > 1 && mediaStore.crumbs.length - 1 > index"
+                            @click="mediaStore.getTree(crumb.path)"
                         >
-                            <button
-                                class="truncate text-left"
-                                @click="mediaStore.getTree(`/${parent(mediaStore.folderTree.source)}/${folder.name}`)"
-                            >
-                                <i class="bi-folder-fill" />
-                                {{ folder.name }}
-                            </button>
-                            <button
-                                class="w-7 opacity-30 hover:opacity-100"
-                                @click="
-                                    ;(showDeleteModal = true),
-                                        (deleteName = `/${parent(mediaStore.folderTree.source)}/${folder.name}`.replace(
-                                            /\/[/]+/g,
-                                            '/'
-                                        ))
-                                "
-                            >
-                                <i class="bi-x-circle-fill" />
-                            </button>
-                        </li>
-                        <li v-else class="px-2">
-                            <div class="truncate text-left">
-                                <i class="bi-folder-fill" />
-                                {{ mediaStore.folderTree.parent }}
-                            </div>
-                        </li>
-                    </ul>
-                </pane>
-                <pane class="h-full pb-1 !bg-base-300" :class="horizontal ? 'rounded-b' : 'rounded-e'">
-                    <ul v-if="mediaStore.folderTree.parent" class="h-full overflow-auto m-1" v-on:dragover.prevent>
-                        <li
-                            class="grid grid-cols-[auto_28px] px-2 gap-1"
-                            v-for="folder in mediaStore.folderTree.folders"
-                            :key="folder.uid"
-                            v-on:drop="handleDrop($event, folder, false)"
-                            v-on:dragover="handleDragOver"
-                            v-on:dragleave="handleDragLeave"
-                        >
-                            <button
-                                class="truncate text-left"
-                                @click="mediaStore.getTree(`/${mediaStore.folderTree.source}/${folder.name}`)"
-                            >
-                                <i class="bi-folder-fill" />
-                                {{ folder.name }}
-                            </button>
-                            <button
-                                class="w-7 opacity-30 hover:opacity-100"
-                                @click="
-                                    ;(showDeleteModal = true),
-                                        (deleteName = `/${mediaStore.folderTree.source}/${folder.name}`.replace(
-                                            /\/[/]+/g,
-                                            '/'
-                                        ))
-                                "
-                            >
-                                <i class="bi-x-circle-fill" />
-                            </button>
-                        </li>
-                        <li
-                            v-for="(element, index) in mediaStore.folderTree.files"
-                            :id="`file_${index}`"
-                            class="grid grid-cols-[auto_166px] px-2"
-                            :key="element.name"
-                            draggable="true"
-                            v-on:dragstart="handleDragStart($event, element)"
-                        >
-                            <div class="truncate cursor-grab">
-                                <i v-if="mediaType(element.name) === 'audio'" class="bi-music-note-beamed" />
-                                <i v-else-if="mediaType(element.name) === 'video'" class="bi-film" />
-                                <i v-else-if="mediaType(element.name) === 'image'" class="bi-file-earmark-image" />
-                                <i v-else class="bi-file-binary" />
+                            <i class="bi-folder-fill me-1" />
+                            {{ crumb.text }}
+                        </button>
+                        <span v-else><i class="bi-folder-fill me-1" /> {{ crumb.text }}</span>
+                    </li>
+                </ul>
+            </nav>
 
-                                {{ element.name }}
-                            </div>
-                            <div>
-                                <button class="w-7" @click=";(showPreviewModal = true), setPreviewData(element.name)">
-                                    <i class="bi-play-fill" />
-                                </button>
-
-                                <div class="inline-block w-[82px]">{{ toMin(element.duration) }}</div>
-
-                                <button
-                                    class="w-7"
-                                    @click="
-                                        ;(showRenameModal = true),
-                                            setRenameValues(
-                                                `/${mediaStore.folderTree.source}/${element.name}`.replace(
-                                                    /\/[/]+/g,
-                                                    '/'
-                                                )
-                                            )
+            <div class="relative h-[calc(100%-34px)] min-h-[300px] bg-base-100">
+                <div v-if="mediaStore.isLoading" class="w-full h-full absolute z-10 flex justify-center bg-base-100/70">
+                    <span class="loading loading-spinner loading-lg" />
+                </div>
+                <splitpanes :horizontal="horizontal" class="border border-my-gray rounded shadow">
+                    <pane
+                        min-size="14"
+                        max-size="80"
+                        size="20"
+                        class="h-full pb-1 !bg-base-300"
+                        :class="horizontal ? 'rounded-t' : 'rounded-s'"
+                    >
+                        <ul v-if="mediaStore.folderTree.parent" class="overflow-auto h-full m-1" @dragover.prevent>
+                            <template v-if="mediaStore.folderTree.parent_folders.length > 0">
+                                <li
+                                    v-for="folder in mediaStore.folderTree.parent_folders"
+                                    :key="folder.uid"
+                                    class="grid grid-cols-[auto_28px] gap-1 px-2"
+                                    :class="
+                                        filename(mediaStore.folderTree.source) === folder.name && 'bg-base-300 rounded'
                                     "
+                                    @drop="handleDrop($event, folder, true)"
+                                    @dragover="handleDragOver"
+                                    @dragleave="handleDragLeave"
                                 >
-                                    <i class="bi-pencil-square" />
-                                </button>
+                                    <button
+                                        class="truncate text-left"
+                                        @click="
+                                            mediaStore.getTree(
+                                                `/${parent(mediaStore.folderTree.source)}/${folder.name}`
+                                            )
+                                        "
+                                    >
+                                        <i class="bi-folder-fill" />
+                                        {{ folder.name }}
+                                    </button>
+                                    <button
+                                        class="w-7 opacity-30 hover:opacity-100"
+                                        @click="
+                                            ;(showDeleteModal = true),
+                                                (deleteName = `/${parent(mediaStore.folderTree.source)}/${
+                                                    folder.name
+                                                }`.replace(/\/[/]+/g, '/'))
+                                        "
+                                    >
+                                        <i class="bi-x-circle-fill" />
+                                    </button>
+                                </li>
+                            </template>
 
+                            <li v-else class="px-2">
+                                <div class="truncate text-left">
+                                    <i class="bi-folder-fill" />
+                                    {{ mediaStore.folderTree.parent }}
+                                </div>
+                            </li>
+                        </ul>
+                    </pane>
+                    <pane class="h-full pb-1 !bg-base-300" :class="horizontal ? 'rounded-b' : 'rounded-e'">
+                        <ul v-if="mediaStore.folderTree.parent" class="h-full overflow-auto m-1" @dragover.prevent>
+                            <li
+                                v-for="folder in mediaStore.folderTree.folders"
+                                :key="folder.uid"
+                                class="grid grid-cols-[auto_28px] px-2 gap-1"
+                                @drop="handleDrop($event, folder, false)"
+                                @dragover="handleDragOver"
+                                @dragleave="handleDragLeave"
+                            >
+                                <button
+                                    class="truncate text-left"
+                                    @click="mediaStore.getTree(`/${mediaStore.folderTree.source}/${folder.name}`)"
+                                >
+                                    <i class="bi-folder-fill" />
+                                    {{ folder.name }}
+                                </button>
                                 <button
                                     class="w-7 opacity-30 hover:opacity-100"
                                     @click="
                                         ;(showDeleteModal = true),
-                                            (deleteName = `/${mediaStore.folderTree.source}/${element.name}`.replace(
+                                            (deleteName = `/${mediaStore.folderTree.source}/${folder.name}`.replace(
                                                 /\/[/]+/g,
                                                 '/'
                                             ))
@@ -152,99 +109,159 @@
                                 >
                                     <i class="bi-x-circle-fill" />
                                 </button>
-                            </div>
-                        </li>
-                    </ul>
-                </pane>
-            </splitpanes>
-        </div>
+                            </li>
+                            <li
+                                v-for="(element, index) in mediaStore.folderTree.files"
+                                :id="`file_${index}`"
+                                :key="element.name"
+                                class="grid grid-cols-[auto_166px] px-2"
+                                draggable="true"
+                                @dragstart="handleDragStart($event, element)"
+                            >
+                                <div class="truncate cursor-grab">
+                                    <i v-if="mediaType(element.name) === 'audio'" class="bi-music-note-beamed" />
+                                    <i v-else-if="mediaType(element.name) === 'video'" class="bi-film" />
+                                    <i v-else-if="mediaType(element.name) === 'image'" class="bi-file-earmark-image" />
+                                    <i v-else class="bi-file-binary" />
 
-        <div class="flex justify-end py-4 pe-2">
-            <div class="join">
-                <button
-                    class="btn btn-sm btn-primary join-item"
-                    :title="$t('media.create')"
-                    @click="showCreateModal = true"
-                >
-                    <i class="bi-folder-plus" />
-                </button>
-                <button
-                    class="btn btn-sm btn-primary join-item"
-                    :title="$t('media.upload')"
-                    @click="showUploadModal = true"
-                >
-                    <i class="bi-upload" />
-                </button>
+                                    {{ element.name }}
+                                </div>
+                                <div>
+                                    <button
+                                        class="w-7"
+                                        @click=";(showPreviewModal = true), setPreviewData(element.name)"
+                                    >
+                                        <i class="bi-play-fill" />
+                                    </button>
+
+                                    <div class="inline-block w-[82px]">{{ toMin(element.duration) }}</div>
+
+                                    <button
+                                        class="w-7"
+                                        @click="
+                                            ;(showRenameModal = true),
+                                                setRenameValues(
+                                                    `/${mediaStore.folderTree.source}/${element.name}`.replace(
+                                                        /\/[/]+/g,
+                                                        '/'
+                                                    )
+                                                )
+                                        "
+                                    >
+                                        <i class="bi-pencil-square" />
+                                    </button>
+
+                                    <button
+                                        class="w-7 opacity-30 hover:opacity-100"
+                                        @click="
+                                            ;(showDeleteModal = true),
+                                                (deleteName =
+                                                    `/${mediaStore.folderTree.source}/${element.name}`.replace(
+                                                        /\/[/]+/g,
+                                                        '/'
+                                                    ))
+                                        "
+                                    >
+                                        <i class="bi-x-circle-fill" />
+                                    </button>
+                                </div>
+                            </li>
+                        </ul>
+                    </pane>
+                </splitpanes>
             </div>
-        </div>
-    </div>
 
-    <Modal
-        :show="showDeleteModal"
-        :title="$t('media.deleteTitle')"
-        :text="`${$t('media.deleteQuestion')}:<br /><strong>${deleteName}</strong>`"
-        :modal-action="deleteFileOrFolder"
-    />
-
-    <Modal :show="showPreviewModal" :title="`${$t('media.preview')}: ${previewName}`" :modal-action="closePlayer">
-        <div class="w-[1024px] max-w-full aspect-video">
-            <VideoPlayer v-if="isVideo && previewOpt" reference="previewPlayer" :options="previewOpt" />
-            <img v-else :src="previewUrl" class="img-fluid" :alt="previewName" />
-        </div>
-    </Modal>
-
-    <Modal :show="showRenameModal" :title="$t('media.rename')" :modal-action="renameFile">
-        <label class="form-control w-full max-w-md">
-            <div class="label">
-                <span class="label-text">{{ $t('media.newFile') }}</span>
-            </div>
-            <input type="text" class="input input-bordered w-full" v-model="renameNewName" />
-        </label>
-    </Modal>
-
-    <Modal :show="showCreateModal" :title="$t('media.createFolder')" :modal-action="createFolder">
-        <label class="form-control w-full max-w-md">
-            <div class="label">
-                <span class="label-text">{{ $t('media.foldername') }}</span>
-            </div>
-            <input type="text" class="input input-bordered w-full" v-model="folderName.name" />
-        </label>
-    </Modal>
-
-    <Modal :show="showUploadModal" :title="$t('media.upload')" :modal-action="uploadFiles">
-        <div class="w-[700px] max-w-full">
-            <input
-                type="file"
-                class="file-input file-input-bordered w-full"
-                ref="fileInputName"
-                :accept="extensions"
-                v-on:change="onFileChange"
-                multiple
-            />
-
-            <label class="form-control w-full mt-3">
-                <div class="label">
-                    <span class="label-text">{{ $t('media.current') }}:</span>
-                </div>
-                <progress class="progress progress-accent" :value="currentProgress" max="100" />
-            </label>
-
-            <label class="form-control w-full mt-1">
-                <div class="label">
-                    <span class="label-text"
-                        >{{ $t('media.overall') }} ({{ currentNumber }}/{{ inputFiles.length }}):</span
+            <div class="flex justify-end py-4 pe-2">
+                <div class="join">
+                    <button
+                        class="btn btn-sm btn-primary join-item"
+                        :title="$t('media.create')"
+                        @click="showCreateModal = true"
                     >
+                        <i class="bi-folder-plus" />
+                    </button>
+                    <button
+                        class="btn btn-sm btn-primary join-item"
+                        :title="$t('media.upload')"
+                        @click="showUploadModal = true"
+                    >
+                        <i class="bi-upload" />
+                    </button>
                 </div>
-                <progress class="progress progress-accent" :value="overallProgress" max="100" />
-            </label>
-            <label class="form-control w-full mt-1">
-                <div class="label">
-                    <span class="label-text">{{ $t('media.uploading') }}:</span>
-                </div>
-                <input type="text" class="input input-sm input-bordered w-full" v-model="uploadTask" disabled />
-            </label>
+            </div>
         </div>
-    </Modal>
+
+        <GenericModal
+            :show="showDeleteModal"
+            :title="$t('media.deleteTitle')"
+            :text="`${$t('media.deleteQuestion')}:<br /><strong>${deleteName}</strong>`"
+            :modal-action="deleteFileOrFolder"
+        />
+
+        <GenericModal
+            :show="showPreviewModal"
+            :title="`${$t('media.preview')}: ${previewName}`"
+            :modal-action="closePlayer"
+        >
+            <div class="w-[1024px] max-w-full aspect-video">
+                <VideoPlayer v-if="isVideo && previewOpt" reference="previewPlayer" :options="previewOpt" />
+                <img v-else :src="previewUrl" class="img-fluid" :alt="previewName" >
+            </div>
+        </GenericModal>
+
+        <GenericModal :show="showRenameModal" :title="$t('media.rename')" :modal-action="renameFile">
+            <label class="form-control w-full max-w-md">
+                <div class="label">
+                    <span class="label-text">{{ $t('media.newFile') }}</span>
+                </div>
+                <input v-model="renameNewName" type="text" class="input input-bordered w-full" >
+            </label>
+        </GenericModal>
+
+        <GenericModal :show="showCreateModal" :title="$t('media.createFolder')" :modal-action="createFolder">
+            <label class="form-control w-full max-w-md">
+                <div class="label">
+                    <span class="label-text">{{ $t('media.foldername') }}</span>
+                </div>
+                <input v-model="folderName.name" type="text" class="input input-bordered w-full" >
+            </label>
+        </GenericModal>
+
+        <GenericModal :show="showUploadModal" :title="$t('media.upload')" :modal-action="uploadFiles">
+            <div class="w-[700px] max-w-full">
+                <input
+                    ref="fileInputName"
+                    type="file"
+                    class="file-input file-input-bordered w-full"
+                    :accept="extensions"
+                    multiple
+                    @change="onFileChange"
+                >
+
+                <label class="form-control w-full mt-3">
+                    <div class="label">
+                        <span class="label-text">{{ $t('media.current') }}:</span>
+                    </div>
+                    <progress class="progress progress-accent" :value="currentProgress" max="100" />
+                </label>
+
+                <label class="form-control w-full mt-1">
+                    <div class="label">
+                        <span class="label-text"
+                            >{{ $t('media.overall') }} ({{ currentNumber }}/{{ inputFiles.length }}):</span
+                        >
+                    </div>
+                    <progress class="progress progress-accent" :value="overallProgress" max="100" />
+                </label>
+                <label class="form-control w-full mt-1">
+                    <div class="label">
+                        <span class="label-text">{{ $t('media.uploading') }}:</span>
+                    </div>
+                    <input v-model="uploadTask" type="text" class="input input-sm input-bordered w-full" disabled >
+                </label>
+            </div>
+        </GenericModal>
+    </div>
 </template>
 
 <script setup lang="ts">

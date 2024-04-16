@@ -22,7 +22,10 @@ import type { NuxtError } from '#app'
 const localePath = useLocalePath()
 
 const props = defineProps({
-    error: Object as () => NuxtError,
+    error: {
+        type: Object,
+        default: {} as NuxtError,
+    },
 })
 
 onMounted(() => {

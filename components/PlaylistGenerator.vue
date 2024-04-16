@@ -15,9 +15,9 @@
                         role="tab"
                         class="tab"
                         aria-label="Simple"
-                        @change="advancedGenerator = false"
                         checked
-                    />
+                        @change="advancedGenerator = false"
+                    >
                     <div role="tabpanel" class="tab-content w-full pt-3">
                         <div class="w-full">
                             <div class="grid">
@@ -42,9 +42,9 @@
 
                             <ul class="h-[475px] border border-my-gray rounded overflow-auto bg-base-300 m-1 py-1">
                                 <li
-                                    class="even:bg-base-200 px-2 w-full"
                                     v-for="folder in mediaStore.folderList.folders"
                                     :key="folder.uid"
+                                    class="even:bg-base-200 px-2 w-full"
                                 >
                                     <div class="grid grid-cols-[auto_24px]">
                                         <button
@@ -78,7 +78,7 @@
                                                         )
                                                     )
                                                 "
-                                            />
+                                            >
                                         </div>
                                     </div>
                                 </li>
@@ -93,7 +93,7 @@
                         class="tab"
                         aria-label="Advanced"
                         @change=";(advancedGenerator = true), resetCheckboxes()"
-                    />
+                    >
                     <div role="tabpanel" class="tab-content pt-3">
                         <div class="w-full">
                             <div class="grid grid-cols-[auto_48px] px-3 pt-0">
@@ -121,7 +121,7 @@
                                         title="Add time block"
                                         @click="addTemplate()"
                                     >
-                                        <i class="bi bi-folder-plus"></i>
+                                        <i class="bi bi-folder-plus"/>
                                     </button>
                                 </div>
                             </div>
@@ -140,8 +140,8 @@
                                     <template #item="{ element, index }">
                                         <li
                                             :id="`adv_folder_${index}`"
-                                            class="even:bg-base-200 draggable px-2 w-full"
                                             :key="element.uid"
+                                            class="even:bg-base-200 draggable px-2 w-full"
                                         >
                                             <button
                                                 class="w-full truncate text-left"
@@ -177,20 +177,20 @@
                                                 Start:
                                             </div>
                                             <input
+                                                v-model="item.start"
                                                 type="text"
                                                 class="input input-sm input-bordered join-item px-2 text-center"
-                                                v-model="item.start"
-                                            />
+                                            >
                                             <div
                                                 class="input input-sm input-bordered join-item px-2 text-center bg-base-200"
                                             >
                                                 Duration:
                                             </div>
                                             <input
+                                                v-model="item.duration"
                                                 type="text"
                                                 class="input input-sm input-bordered join-item px-2 text-center"
-                                                v-model="item.duration"
-                                            />
+                                            >
                                             <button
                                                 class="btn btn-sm input-bordered join-item"
                                                 :class="item.shuffle ? 'bg-base-100' : 'bg-base-300'"
@@ -212,8 +212,8 @@
                                             <template #item="{ element, index }">
                                                 <li
                                                     :id="`path_${index}`"
-                                                    class="draggable grabbing py-0 even:bg-base-200 px-2"
                                                     :key="index"
+                                                    class="draggable grabbing py-0 even:bg-base-200 px-2"
                                                 >
                                                     <i class="bi-folder-fill" />
                                                     {{ element.split(/[\\/]+/).pop() }}
@@ -243,11 +243,11 @@
                     <label class="label cursor-pointer w-12">
                         <span class="label-text">All</span>
                         <input
-                            type="checkbox"
                             v-model="generateFromAll"
+                            type="checkbox"
                             class="checkbox checkbox-xs rounded"
                             @change="resetCheckboxes()"
-                        />
+                        >
                     </label>
                 </div>
                 <div class="join ms-2">
@@ -364,11 +364,10 @@ function setSelectedFolder(event: any, folder: string) {
 
 function resetCheckboxes() {
     selectedFolders.value = []
-    const checkboxes = document.getElementsByClassName('folder-check')
+    const checkboxes = document.getElementsByClassName('folder-check') as HTMLCollectionOf<HTMLInputElement>
 
     if (checkboxes) {
         for (const box of checkboxes) {
-            // @ts-ignore
             box.checked = false
         }
     }
@@ -401,14 +400,11 @@ function removeTemplate(item: TemplateItem) {
 
 function addTemplate() {
     const last = template.value.sources[template.value.sources.length - 1]
-    // @ts-ignore
-    let start = $dayjs('00:00:00', 'HH:mm:ss')
+    let start = $dayjs('2000-01-01T00:00:00')
 
     if (last) {
-        // @ts-ignore
-        const t = $dayjs(last.duration, 'HH:mm:ss')
-        // @ts-ignore
-        start = $dayjs(last.start, 'HH:mm:ss').add(t.hour(), 'hour').add(t.minute(), 'minute').add(t.second(), 'second')
+        const t = $dayjs(`2000-01-01T${last.duration}`)
+        start = $dayjs(`2000-01-01T${last.start}`).add(t.hour(), 'hour').add(t.minute(), 'minute').add(t.second(), 'second')
     }
 
     template.value.sources.push({

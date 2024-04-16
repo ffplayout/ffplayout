@@ -1,7 +1,8 @@
 <template>
-    <div class="flex justify-end p-3 h-14">
-        <div>
-            <VueDatePicker
+    <div>
+        <div class="flex justify-end p-3 h-14">
+            <div>
+                <VueDatePicker
                     v-model="listDate"
                     :clearable="false"
                     :hide-navigation="['time']"
@@ -14,10 +15,11 @@
                     input-class-name="input input-sm !input-bordered !w-[250px] text-right !pe-3"
                     required
                 />
+            </div>
         </div>
-    </div>
-    <div class="px-3 inline-block h-[calc(100vh-140px)] text-[13px]">
-        <div class="bg-base-300 whitespace-pre h-full font-mono overflow-auto p-3" v-html="formatLog(currentLog)" />
+        <div class="px-3 inline-block h-[calc(100vh-140px)] text-[13px]">
+            <div class="bg-base-300 whitespace-pre h-full font-mono overflow-auto p-3" v-html="formatLog(currentLog)" />
+        </div>
     </div>
 </template>
 

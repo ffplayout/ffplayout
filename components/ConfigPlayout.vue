@@ -3,14 +3,15 @@
         <h2 class="pt-3 text-3xl">{{ $t('config.playoutConf') }}</h2>
         <form
             v-if="configStore.configPlayout"
-            @submit.prevent="onSubmitPlayout"
             class="mt-10 grid md:grid-cols-[180px_auto] gap-5"
+            @submit.prevent="onSubmitPlayout"
         >
-            <template v-for="(item, key, _) in configStore.configPlayout" :key="key">
+            <template v-for="(item, key) in configStore.configPlayout" :key="key">
                 <div class="text-xl pt-3 text-right">{{ setTitle(key.toString()) }}:</div>
                 <div class="md:pt-4">
                     <label
                         v-for="(prop, name) in (item as Record<string, any>)"
+                        :key="name"
                         class="form-control w-full"
                         :class="[typeof prop === 'boolean' && 'flex-row', name.toString() !== 'help_text' && 'mt-2']"
                     >
@@ -22,50 +23,50 @@
                         </div>
                         <input
                             v-else-if="name.toString() === 'sender_pass'"
+                            v-model="item[name]"
                             type="password"
                             :placeholder="$t('config.placeholderPass')"
                             class="input input-sm input-bordered w-full"
-                            v-model="item[name]"
-                        />
+                        >
                         <textarea
                             v-else-if="name.toString() === 'output_param' || name.toString() === 'custom_filter'"
-                            class="textarea textarea-bordered"
                             v-model="item[name]"
+                            class="textarea textarea-bordered"
                             rows="3"
                         />
                         <input
                             v-else-if="typeof prop === 'number' && prop % 1 === 0"
+                            v-model="item[name]"
                             type="number"
                             class="input input-sm input-bordered w-full"
-                            v-model="item[name]"
-                        />
+                        >
                         <input
                             v-else-if="typeof prop === 'number'"
+                            v-model="item[name]"
                             type="number"
                             class="input input-sm input-bordered w-full"
-                            v-model="item[name]"
                             step="0.0001"
                             style="max-width: 250px"
-                        />
+                        >
                         <input
                             v-else-if="typeof prop === 'boolean'"
+                            v-model="item[name]"
                             type="checkbox"
                             class="checkbox checkbox-sm ms-2 mt-2"
-                            v-model="item[name]"
-                        />
+                        >
                         <input
                             v-else-if="name === 'ignore_lines'"
+                            v-model="formatIgnoreLines"
                             type="text"
                             class="input input-sm input-bordered w-full"
-                            v-model="formatIgnoreLines"
-                        />
+                        >
                         <input
                             v-else
-                            type="text"
-                            class="input input-sm input-bordered w-full"
                             :id="name"
                             v-model="item[name]"
-                        />
+                            type="text"
+                            class="input input-sm input-bordered w-full"
+                        >
                     </label>
                 </div>
             </template>
@@ -75,11 +76,11 @@
         </form>
     </div>
 
-    <Modal
+    <GenericModal
         :title="$t('config.restartTile')"
         :text="$t('config.restartText')"
         :show="showModal"
-        :modalAction="restart"
+        :modal-action="restart"
     />
 </template>
 
@@ -102,7 +103,7 @@ const formatIgnoreLines = computed({
     },
 })
 
-function setTitle(input: string): String {
+function setTitle(input: string): string {
     switch (input) {
         case 'general':
             return t('config.general')
@@ -131,7 +132,7 @@ function setTitle(input: string): String {
     }
 }
 
-function setHelp(key: string, text: string): String {
+function setHelp(key: string, text: string): string {
     switch (key) {
         case 'general':
             return t('config.generalText')

@@ -65,6 +65,7 @@
                 <template #item="{ element, index }">
                     <tr
                         :id="`clip-${index}`"
+                        :key="element.uid"
                         class="draggable border-t border-b border-base-content/20 duration-1000 transition-all"
                         :class="{
                             '!bg-lime-500/30':
@@ -72,7 +73,6 @@
                                 listDate === todayDate &&
                                 index === playlistStore.currentClipIndex,
                         }"
-                        :key="element.uid"
                     >
                         <td class="ps-4 py-2 text-left">{{ secondsToTime(element.begin) }}</td>
                         <td class="py-2 text-left truncate" :class="{ 'grabbing cursor-grab': width > 768 }">
@@ -96,7 +96,7 @@
                                 type="checkbox"
                                 :checked="element.category && element.category === 'advertisement' ? true : false"
                                 @change="setCategory($event, element)"
-                            />
+                            >
                         </td>
                         <td class="py-2 text-center hover:text-base-content/70">
                             <button @click="editItem(index)">

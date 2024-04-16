@@ -6,19 +6,19 @@
         </div>
         <form
             v-if="configStore.configGui && configStore.configGui[configStore.configID]"
-            @submit.prevent="onSubmitGui"
             class="w-full"
+            @submit.prevent="onSubmitGui"
         >
             <label class="form-control w-full">
                 <div class="label">
                     <span class="label-text">{{ $t('config.name') }}</span>
                 </div>
                 <input
+                    v-model="configStore.configGui[configStore.configID].name"
                     type="text"
                     placeholder="Type here"
                     class="input input-bordered w-full"
-                    v-model="configStore.configGui[configStore.configID].name"
-                />
+                >
             </label>
 
             <label class="form-control w-full mt-5">
@@ -26,10 +26,10 @@
                     <span class="label-text">{{ $t('config.previewUrl') }}</span>
                 </div>
                 <input
+                    v-model="configStore.configGui[configStore.configID].preview_url"
                     type="text"
                     class="input input-bordered w-full"
-                    v-model="configStore.configGui[configStore.configID].preview_url"
-                />
+                >
             </label>
 
             <label class="form-control w-full mt-5">
@@ -37,10 +37,10 @@
                     <span class="label-text">{{ $t('config.configPath') }}</span>
                 </div>
                 <input
+                    v-model="configStore.configGui[configStore.configID].config_path"
                     type="text"
                     class="input input-bordered w-full"
-                    v-model="configStore.configGui[configStore.configID].config_path"
-                />
+                >
             </label>
 
             <label class="form-control w-full mt-5">
@@ -48,10 +48,10 @@
                     <span class="label-text">{{ $t('config.extensions') }}</span>
                 </div>
                 <input
+                    v-model="configStore.configGui[configStore.configID].extra_extensions"
                     type="text"
                     class="input input-bordered w-full"
-                    v-model="configStore.configGui[configStore.configID].extra_extensions"
-                />
+                >
             </label>
 
             <label class="form-control w-full mt-5">
@@ -59,18 +59,18 @@
                     <span class="label-text">{{ $t('config.service') }}</span>
                 </div>
                 <input
+                    v-model="configStore.configGui[configStore.configID].service"
                     type="text"
                     class="input input-bordered w-full !bg-base-100"
-                    v-model="configStore.configGui[configStore.configID].service"
                     disabled
-                />
+                >
             </label>
 
             <div class="join my-4">
                 <button class="join-item btn btn-primary" type="submit">{{ $t('config.save') }}</button>
                 <button
-                    class="join-item btn btn-primary"
                     v-if="configStore.configGui.length > 1 && configStore.configGui[configStore.configID].id > 1"
+                    class="join-item btn btn-primary"
                     @click="deleteChannel()"
                 >
                     {{ $t('config.delete') }}
