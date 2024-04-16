@@ -98,7 +98,7 @@ playlist:
     help_text: >
         'path' can be a path to a single file, or a directory. For directory put
         only the root folder, for example '/playlists', subdirectories are read by the
-        script. Subdirectories needs this structure '/playlists/2018/01'. 'day_start'
+        program. Subdirectories needs this structure '/playlists/2018/01'. 'day_start'
         means at which time the playlist should start, leave day_start blank when playlist
         should always start at the begin. 'length' represent the target length from
         playlist, when is blank real length will not consider. 'infinit: true' works with
