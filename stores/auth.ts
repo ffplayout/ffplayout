@@ -57,7 +57,7 @@ export const useAuth = defineStore('auth', {
         },
 
         inspectToken() {
-            let token = useCookie('token').value
+            const token = useCookie('token').value
 
             if (token) {
                 this.updateToken(token)

@@ -1,6 +1,6 @@
 <template>
     <div class="w-full max-w-[800px] pe-8">
-        <h2 class="pt-3 text-3xl">User Configuration</h2>
+        <h2 class="pt-3 text-3xl">{{ $t('user.title') }}</h2>
         <div class="flex flex-col xs:flex-row gap-2 w-full mb-5 mt-10">
             <div class="grow">
                 <select class="select select-bordered w-full max-w-xs" v-model="selected" @change="onChange($event)">
@@ -9,21 +9,20 @@
             </div>
             <div class="flex-none join">
                 <button class="join-item btn btn-primary" title="Add new User" @click="showUserModal = true">
-                    Add User
+                    {{ $t('user.add') }}
                 </button>
                 <button class="join-item btn btn-primary" title="Delete selected user" @click="deleteUser()">
-                    Delete
+                    {{ $t('user.delete') }}
                 </button>
             </div>
         </div>
         <form v-if="configStore.configUser" @submit.prevent="onSubmitUser">
             <label class="form-control w-full max-w-md">
                 <div class="label">
-                    <span class="label-text">Username</span>
+                    <span class="label-text">{{ $t('user.name') }}</span>
                 </div>
                 <input
                     type="text"
-                    placeholder="Name"
                     class="input input-bordered w-full !bg-base-100"
                     v-model="configStore.configUser.username"
                     disabled
@@ -32,11 +31,10 @@
 
             <label class="form-control w-full max-w-md mt-3">
                 <div class="label">
-                    <span class="label-text">Mail</span>
+                    <span class="label-text">{{ $t('user.mail') }}</span>
                 </div>
                 <input
                     type="email"
-                    placeholder="mail"
                     class="input input-bordered w-full"
                     v-model="configStore.configUser.mail"
                 />
@@ -44,11 +42,10 @@
 
             <label class="form-control w-full max-w-md mt-3">
                 <div class="label">
-                    <span class="label-text">New Password</span>
+                    <span class="label-text">{{ $t('user.newPass') }}</span>
                 </div>
                 <input
                     type="password"
-                    placeholder="New password"
                     class="input input-bordered w-full"
                     v-model="newPass"
                 />
@@ -56,18 +53,17 @@
 
             <label class="form-control w-full max-w-md mt-3">
                 <div class="label">
-                    <span class="label-text">Confirm Password</span>
+                    <span class="label-text">{{ $t('user.confirmPass') }}</span>
                 </div>
                 <input
                     type="password"
-                    placeholder="Confirm password"
                     class="input input-bordered w-full"
                     v-model="confirmPass"
                 />
             </label>
 
             <div>
-                <button class="btn btn-primary mt-5" type="submit">Save</button>
+                <button class="btn btn-primary mt-5" type="submit">{{ $t('user.save') }}</button>
             </div>
         </form>
     </div>
@@ -76,25 +72,24 @@
         <div class="w-full max-w-[500px] h-[420px]">
             <label class="form-control w-full">
                 <div class="label">
-                    <span class="label-text">Username</span>
+                    <span class="label-text">{{ $t('user.name') }}</span>
                 </div>
-                <input type="text" placeholder="Name" class="input input-bordered w-full" v-model="user.username" />
+                <input type="text" class="input input-bordered w-full" v-model="user.username" />
             </label>
 
             <label class="form-control w-full mt-3">
                 <div class="label">
-                    <span class="label-text">Mail</span>
+                    <span class="label-text">{{ $t('user.mail') }}</span>
                 </div>
-                <input type="email" placeholder="Mail" class="input input-bordered w-full" v-model="user.mail" />
+                <input type="email" class="input input-bordered w-full" v-model="user.mail" />
             </label>
 
             <label class="form-control w-full mt-3">
                 <div class="label">
-                    <span class="label-text">Password</span>
+                    <span class="label-text">{{ $t('user.password') }}</span>
                 </div>
                 <input
                     type="password"
-                    placeholder="Password"
                     class="input input-bordered w-full"
                     v-model="user.password"
                 />
@@ -102,19 +97,18 @@
 
             <label class="form-control w-full mt-3">
                 <div class="label">
-                    <span class="label-text">Confirm Password</span>
+                    <span class="label-text">{{ $t('user.confirmPass') }}</span>
                 </div>
                 <input
                     type="password"
-                    placeholder="Password"
                     class="input input-bordered w-full"
                     v-model="user.confirm"
                 />
             </label>
 
             <div class="form-control mt-3">
-                <label class="label cursor-pointer w-20">
-                    <span class="label-text">Admin</span>
+                <label class="label cursor-pointer w-1/2">
+                    <span class="label-text">{{ $t('user.admin') }}</span>
                     <input type="checkbox" class="checkbox" v-model.number="user.admin" />
                 </label>
             </div>
@@ -123,11 +117,13 @@
 </template>
 
 <script setup lang="ts">
+const { t } = useI18n()
+
 const authStore = useAuth()
 const configStore = useConfig()
 const indexStore = useIndex()
 
-const selected = ref(null)
+const selected = ref(null as null | string)
 const users = ref([] as User[])
 const showUserModal = ref(false)
 const newPass = ref('')
@@ -154,6 +150,8 @@ async function getUsers() {
         .then((response) => response.json())
         .then((data) => {
             users.value = data
+
+            selected.value = configStore.currentUser
         })
 }
 
@@ -183,20 +181,20 @@ async function getUserConfig() {
 
 async function deleteUser() {
     if (configStore.configUser.username === configStore.currentUser) {
-        indexStore.msgAlert('error', 'Delete current user not possible!', 2)
+        indexStore.msgAlert('error', t('user.deleteNotPossible'), 2)
     } else {
         await fetch(`/api/user/${configStore.configUser.username}`, {
             method: 'DELETE',
             headers: authStore.authHeader,
         })
             .then(async () => {
-                indexStore.msgAlert('success', 'Delete user done!', 2)
+                indexStore.msgAlert('success', t('user.deleteSuccess'), 2)
 
                 await configStore.getUserConfig()
                 await getUsers()
             })
             .catch((e) => {
-                indexStore.msgAlert('error', `Delete user error: ${e}`, 2)
+                indexStore.msgAlert('error', `${t('user.deleteError')}: ${e}`, 2)
             })
     }
 }
@@ -226,17 +224,17 @@ async function addUser(add: boolean) {
             showUserModal.value = false
 
             if (update.status === 200) {
-                indexStore.msgAlert('success', 'Add user success!', 2)
+                indexStore.msgAlert('success', t('user.addSuccess'), 2)
 
                 await getUsers()
                 await getUserConfig()
             } else {
-                indexStore.msgAlert('error', 'Add user failed!', 2)
+                indexStore.msgAlert('error', t('user.addFailed'), 2)
             }
 
             clearUser()
         } else {
-            indexStore.msgAlert('error', 'Password mismatch!', 2)
+            indexStore.msgAlert('error', t('user.mismatch'), 2)
         }
     } else {
         showUserModal.value = false
@@ -253,9 +251,9 @@ async function onSubmitUser() {
     const update = await configStore.setUserConfig(configStore.configUser)
 
     if (update.status === 200) {
-        indexStore.msgAlert('success', 'Update user profile success!', 2)
+        indexStore.msgAlert('success', t('user.updateSuccess'), 2)
     } else {
-        indexStore.msgAlert('error', 'Update user profile failed!', 2)
+        indexStore.msgAlert('error', t('user.updateFailed'), 2)
     }
 
     newPass.value = ''

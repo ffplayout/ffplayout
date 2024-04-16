@@ -22,14 +22,13 @@ export const useMedia = defineStore('media', {
             const authStore = useAuth()
             const configStore = useConfig()
             const indexStore = useIndex()
-            const contentType = { 'content-type': 'application/json;charset=UTF-8' }
             const channel = configStore.configGui[configStore.configID].id
             const crumbs: Crumb[] = []
             let root = '/'
 
             await fetch(`/api/file/${channel}/browse/`, {
                 method: 'POST',
-                headers: { ...contentType, ...authStore.authHeader },
+                headers: { ...configStore.contentType, ...authStore.authHeader },
                 body: JSON.stringify({ source: path, folders_only: foldersOnly }),
             })
                 .then((response) => {

@@ -45,10 +45,10 @@ export const stringFormatter = () => {
     }
 
     function secToHMS(sec: number) {
-        let hours = Math.floor(sec / 3600)
+        const hours = Math.floor(sec / 3600)
         sec %= 3600
-        let minutes = Math.floor(sec / 60)
-        let seconds = Math.round(sec % 60)
+        const minutes = Math.floor(sec / 60)
+        const seconds = Math.round(sec % 60)
 
         const m = String(minutes).padStart(2, '0')
         const h = String(hours).padStart(2, '0')

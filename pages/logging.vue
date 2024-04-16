@@ -25,10 +25,10 @@
 import { storeToRefs } from 'pinia'
 
 const colorMode = useColorMode()
-const { locale } = useI18n()
+const { locale, t } = useI18n()
 
 useHead({
-    title: 'Logging | ffplayout',
+    title: `${t('button.logging')} | ffplayout`,
 })
 
 const { configID } = storeToRefs(useConfig())

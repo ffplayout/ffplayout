@@ -6,7 +6,7 @@
                 :class="activeConf === 1 && 'btn-secondary'"
                 @click="activeConf = 1"
             >
-                GUI
+                {{ $t('config.channel') }}
             </button>
             <button
                 class="join-item w-full btn btn-sm btn-primary mt-1 duration-500"
@@ -20,7 +20,7 @@
                 :class="activeConf === 3 && 'btn-secondary'"
                 @click="activeConf = 3"
             >
-                User
+                {{ $t('config.user') }}
             </button>
         </div>
         <div class="w-[calc(100%-70px)] mt-10 px-6">
@@ -40,10 +40,11 @@
 </template>
 
 <script setup lang="ts">
+const { t } = useI18n()
+
 useHead({
-    title: 'Configuration | ffplayout',
+    title: `${t('button.configure')} | ffplayout`,
 })
 
 const activeConf = ref(1)
 </script>
-

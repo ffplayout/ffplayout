@@ -1,5 +1,5 @@
 <template>
-    <div class="grid grid-cols-1 xs:grid-cols-2 border-4 rounded-md border-primary text-left shadow">
+    <div class="grid grid-cols-1 xs:grid-cols-2 border-4 rounded-md border-primary text-left shadow max-w-[756px]">
         <div class="p-4 bg-base-100">
             <span class="text-3xl">{{ sysStat.system.name }} {{ sysStat.system.version }}</span>
             <span v-if="sysStat.system.kernel">
@@ -55,7 +55,7 @@
         </div>
         <div v-if="sysStat.storage?.path" class="p-4 border border-primary">
             <div class="text-xl">{{ $t('system.storage') }}</div>
-            <div v-if="sysStat.storage"><strong>Device:</strong> {{ sysStat.storage?.path }}</div>
+            <div v-if="sysStat.storage"><strong>{{ $t('system.device') }}:</strong> {{ sysStat.storage?.path }}</div>
 
             <div class="grid grid-cols-2" v-if="sysStat.storage">
                 <div><strong>{{ $t('system.size') }}:</strong> {{ fileSize(sysStat.storage?.total) }}</div>
@@ -70,7 +70,6 @@ const { fileSize } = stringFormatter()
 
 const authStore = useAuth()
 const configStore = useConfig()
-const contentType = { 'content-type': 'application/json,charset=UTF-8' }
 const timer = ref()
 const sysStat = ref({
     cpu: { cores: 0.0, usage: 0.0 },
@@ -112,7 +111,7 @@ async function systemStatus() {
     if (!document?.hidden) {
         await $fetch<SystemStatistics>(`/api/system/${channel}`, {
             method: 'GET',
-            headers: { ...contentType, ...authStore.authHeader },
+            headers: { ...configStore.contentType, ...authStore.authHeader },
         }).then((stat) => {
             sysStat.value = stat
         })

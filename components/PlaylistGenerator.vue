@@ -277,7 +277,6 @@ const mediaStore = useMedia()
 const playlistStore = usePlaylist()
 
 const { processPlaylist } = playlistOperations()
-const contentType = { 'content-type': 'application/json;charset=UTF-8' }
 
 defineProps({
     close: {
@@ -328,7 +327,7 @@ async function generatePlaylist() {
 
     await $fetch(`/api/playlist/${configStore.configGui[configStore.configID].id}/generate/${playlistStore.listDate}`, {
         method: 'POST',
-        headers: { ...contentType, ...authStore.authHeader },
+        headers: { ...configStore.contentType, ...authStore.authHeader },
         body,
     })
         .then((response: any) => {

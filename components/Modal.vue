@@ -4,7 +4,9 @@
             <div class="inline-block">
                 <div class="flex gap-2">
                     <div class="font-bold text-lg truncate flex-1 w-0">{{ title }}</div>
-                    <button v-if="hideButtons" class="btn btn-sm w-8 h-8 rounded-full" @click="modalAction(false)"><i class="bi bi-x-lg"></i></button>
+                    <button v-if="hideButtons" class="btn btn-sm w-8 h-8 rounded-full" @click="modalAction(false)">
+                        <i class="bi bi-x-lg"></i>
+                    </button>
                 </div>
 
                 <div class="grow mt-3">
@@ -17,10 +19,10 @@
             <div v-if="!hideButtons" class="flex justify-end mt-3">
                 <div class="join">
                     <button class="btn btn-sm bg-base-300 hover:bg-base-300/50 join-item" @click="modalAction(false)">
-                        Cancel
+                        {{ $t('cancel') }}
                     </button>
                     <button class="btn btn-sm bg-base-300 hover:bg-base-300/50 join-item" @click="modalAction(true)">
-                        Ok
+                        {{ $t('ok') }}
                     </button>
                 </div>
             </div>

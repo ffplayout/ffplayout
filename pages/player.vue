@@ -187,12 +187,11 @@
 import { storeToRefs } from 'pinia'
 
 const colorMode = useColorMode()
-const { locale } = useI18n()
+const { locale, t } = useI18n()
 const { $_, $dayjs } = useNuxtApp()
 const { width } = useWindowSize({ initialWidth: 800 })
 const { mediaType } = stringFormatter()
 const { processPlaylist, genUID } = playlistOperations()
-const contentType = { 'content-type': 'application/json;charset=UTF-8' }
 
 const authStore = useAuth()
 const configStore = useConfig()
@@ -201,7 +200,7 @@ const mediaStore = useMedia()
 const playlistStore = usePlaylist()
 
 useHead({
-    title: 'Player | ffplayout',
+    title: `${t('button.player')} | ffplayout`,
 })
 
 const { listDate } = storeToRefs(usePlaylist())
@@ -279,9 +278,7 @@ function setPreviewData(path: string) {
         const parent = mediaStore.folderTree.parent ? mediaStore.folderTree.parent : ''
         fullPath = `/${parent}/${mediaStore.folderTree.source}/${path}`.replace(/\/[/]+/g, '/')
     } else if (lastIndex !== -1) {
-        let pathPrefix = storagePath.substring(0, lastIndex)
-
-        fullPath = path.replace(pathPrefix, '')
+        fullPath = path.replace(storagePath.substring(0, lastIndex), '')
     }
 
     previewName.value = fullPath.split('/').slice(-1)[0]
@@ -468,7 +465,7 @@ async function savePlaylist(save: boolean) {
 
         await $fetch(`/api/playlist/${configStore.configGui[configStore.configID].id}/`, {
             method: 'POST',
-            headers: { ...contentType, ...authStore.authHeader },
+            headers: { ...configStore.contentType, ...authStore.authHeader },
             body: JSON.stringify({
                 channel: configStore.configGui[configStore.configID].name,
                 date: targetDate.value,
@@ -494,7 +491,7 @@ async function deletePlaylist(del: boolean) {
     if (del) {
         await $fetch(`/api/playlist/${configStore.configGui[configStore.configID].id}/${listDate.value}`, {
             method: 'DELETE',
-            headers: { ...contentType, ...authStore.authHeader },
+            headers: { ...configStore.contentType, ...authStore.authHeader },
         }).then(() => {
             playlistStore.playlist = []
 

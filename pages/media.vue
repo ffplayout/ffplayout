@@ -22,14 +22,17 @@
         </nav>
 
         <div class="relative h-[calc(100%-34px)] min-h-[300px] bg-base-100">
-            <div
-                v-if="mediaStore.isLoading"
-                class="w-full h-full absolute z-10 flex justify-center bg-base-100/70"
-            >
+            <div v-if="mediaStore.isLoading" class="w-full h-full absolute z-10 flex justify-center bg-base-100/70">
                 <span class="loading loading-spinner loading-lg"></span>
             </div>
             <splitpanes :horizontal="horizontal" class="border border-my-gray rounded shadow">
-                <pane min-size="14" max-size="80" size="20" class="h-full pb-1 !bg-base-300" :class="horizontal ? 'rounded-t' : 'rounded-s'">
+                <pane
+                    min-size="14"
+                    max-size="80"
+                    size="20"
+                    class="h-full pb-1 !bg-base-300"
+                    :class="horizontal ? 'rounded-t' : 'rounded-s'"
+                >
                     <ul v-if="mediaStore.folderTree.parent" class="overflow-auto h-full m-1" v-on:dragover.prevent>
                         <li
                             v-if="mediaStore.folderTree.parent_folders.length > 0"
@@ -158,10 +161,18 @@
 
         <div class="flex justify-end py-4 pe-2">
             <div class="join">
-                <button class="btn btn-sm btn-primary join-item" :title="$t('media.create')" @click="showCreateModal = true">
+                <button
+                    class="btn btn-sm btn-primary join-item"
+                    :title="$t('media.create')"
+                    @click="showCreateModal = true"
+                >
                     <i class="bi-folder-plus" />
                 </button>
-                <button class="btn btn-sm btn-primary join-item" :title="$t('media.upload')" @click="showUploadModal = true">
+                <button
+                    class="btn btn-sm btn-primary join-item"
+                    :title="$t('media.upload')"
+                    @click="showUploadModal = true"
+                >
                     <i class="bi-upload" />
                 </button>
             </div>
@@ -220,7 +231,9 @@
 
             <label class="form-control w-full mt-1">
                 <div class="label">
-                    <span class="label-text">{{ $t('media.overall') }} ({{ currentNumber }}/{{ inputFiles.length }}):</span>
+                    <span class="label-text"
+                        >{{ $t('media.overall') }} ({{ currentNumber }}/{{ inputFiles.length }}):</span
+                    >
                 </div>
                 <progress class="progress progress-accent" :value="overallProgress" max="100" />
             </label>
@@ -244,12 +257,10 @@ const configStore = useConfig()
 const indexStore = useIndex()
 const mediaStore = useMedia()
 const { toMin, mediaType, filename, parent } = stringFormatter()
-const contentType = { 'content-type': 'application/json;charset=UTF-8' }
-
 const { configID } = storeToRefs(useConfig())
 
 useHead({
-    title: 'Media | ffplayout',
+    title: `${t('button.media')} | ffplayout`,
 })
 
 watch([width], () => {
@@ -361,11 +372,15 @@ async function handleDrop(event: any, targetFolder: any, isParent: boolean | nul
     if (source !== target) {
         await fetch(`/api/file/${configStore.configGui[configStore.configID].id}/rename/`, {
             method: 'POST',
-            headers: { ...contentType, ...authStore.authHeader },
+            headers: { ...configStore.contentType, ...authStore.authHeader },
             body: JSON.stringify({ source, target }),
         })
-            .then(() => {
-                mediaStore.getTree(mediaStore.folderTree.source)
+            .then(async (res) => {
+                if (res.status >= 400) {
+                    indexStore.msgAlert('error', await res.json(), 3)
+                } else {
+                    mediaStore.getTree(mediaStore.folderTree.source)
+                }
             })
             .catch((e) => {
                 indexStore.msgAlert('error', `${t('media.moveError')}: ${e}`, 3)
@@ -425,7 +440,7 @@ async function deleteFileOrFolder(del: boolean) {
     if (del) {
         await fetch(`/api/file/${configStore.configGui[configStore.configID].id}/remove/`, {
             method: 'POST',
-            headers: { ...contentType, ...authStore.authHeader },
+            headers: { ...configStore.contentType, ...authStore.authHeader },
             body: JSON.stringify({ source: deleteName.value }),
         })
             .then(async (response) => {
@@ -453,14 +468,18 @@ async function renameFile(ren: boolean) {
     */
     showRenameModal.value = false
 
-    if (ren) {
+    if (ren && renameOldName.value !== renameNewName.value) {
         await fetch(`/api/file/${configStore.configGui[configStore.configID].id}/rename/`, {
             method: 'POST',
-            headers: { ...contentType, ...authStore.authHeader },
+            headers: { ...configStore.contentType, ...authStore.authHeader },
             body: JSON.stringify({ source: renameOldName.value, target: renameNewName.value }),
         })
-            .then(() => {
-                mediaStore.getTree(mediaStore.folderTree.source)
+            .then(async (res) => {
+                if (res.status >= 400) {
+                    indexStore.msgAlert('error', await res.text(), 3)
+                } else {
+                    mediaStore.getTree(mediaStore.folderTree.source)
+                }
             })
             .catch((e) => {
                 indexStore.msgAlert('error', `${t('media.moveError')}: ${e}`, 3)
@@ -491,7 +510,7 @@ async function createFolder(create: boolean) {
 
         await $fetch(`/api/file/${configStore.configGui[configStore.configID].id}/create-folder/`, {
             method: 'POST',
-            headers: { ...contentType, ...authStore.authHeader },
+            headers: { ...configStore.contentType, ...authStore.authHeader },
             body: JSON.stringify({ source: path }),
         })
             .then(() => {

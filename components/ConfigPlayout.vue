@@ -1,27 +1,29 @@
 <template>
     <div class="max-w-[1200px] pe-8">
-        <h2 class="pt-3 text-3xl">Playout Configuration</h2>
+        <h2 class="pt-3 text-3xl">{{ $t('config.playoutConf') }}</h2>
         <form
             v-if="configStore.configPlayout"
             @submit.prevent="onSubmitPlayout"
-            class="mt-10 grid md:grid-cols-[140px_auto] gap-4"
+            class="mt-10 grid md:grid-cols-[180px_auto] gap-5"
         >
-            <template v-for="(item, key) in configStore.configPlayout" :key="key">
-                <div class="text-xl pt-3">{{ key }}:</div>
+            <template v-for="(item, key, _) in configStore.configPlayout" :key="key">
+                <div class="text-xl pt-3 text-right">{{ setTitle(key.toString()) }}:</div>
                 <div class="md:pt-4">
                     <label
                         v-for="(prop, name) in (item as Record<string, any>)"
                         class="form-control w-full"
                         :class="[typeof prop === 'boolean' && 'flex-row', name.toString() !== 'help_text' && 'mt-2']"
                     >
-                        <div class="label">
+                        <div v-if="name.toString() !== 'help_text'" class="label">
                             <span class="label-text !text-md font-bold">{{ name }}</span>
                         </div>
-                        <div v-if="name.toString() === 'help_text'">{{ prop }}</div>
+                        <div v-if="name.toString() === 'help_text'" class="whitespace-pre-line">
+                            {{ setHelp(key.toString(), prop) }}
+                        </div>
                         <input
                             v-else-if="name.toString() === 'sender_pass'"
                             type="password"
-                            placeholder="Password"
+                            :placeholder="$t('config.placeholderPass')"
                             class="input input-sm input-bordered w-full"
                             v-model="item[name]"
                         />
@@ -73,15 +75,20 @@
         </form>
     </div>
 
-    <Modal title="Restart Playout" text="Restart ffplayout to apply changes?" :show="showModal" :modalAction="restart" />
+    <Modal
+        :title="$t('config.restartTile')"
+        :text="$t('config.restartText')"
+        :show="showModal"
+        :modalAction="restart"
+    />
 </template>
 
 <script setup lang="ts">
+const { t } = useI18n()
+
 const authStore = useAuth()
 const configStore = useConfig()
 const indexStore = useIndex()
-
-const contentType = { 'content-type': 'application/json;charset=UTF-8' }
 
 const showModal = ref(false)
 
@@ -95,6 +102,64 @@ const formatIgnoreLines = computed({
     },
 })
 
+function setTitle(input: string): String {
+    switch (input) {
+        case 'general':
+            return t('config.general')
+        case 'rpc_server':
+            return t('config.rpcServer')
+        case 'mail':
+            return t('config.mail')
+        case 'logging':
+            return t('config.logging')
+        case 'processing':
+            return t('config.processing')
+        case 'ingest':
+            return t('config.ingest')
+        case 'playlist':
+            return t('config.playlist')
+        case 'storage':
+            return t('config.storage')
+        case 'text':
+            return t('config.text')
+        case 'task':
+            return t('config.task')
+        case 'out':
+            return t('config.out')
+        default:
+            return input
+    }
+}
+
+function setHelp(key: string, text: string): String {
+    switch (key) {
+        case 'general':
+            return t('config.generalText')
+        case 'rpc_server':
+            return t('config.rpcText')
+        case 'mail':
+            return t('config.mailText')
+        case 'logging':
+            return t('config.logText')
+        case 'processing':
+            return t('config.processingText')
+        case 'ingest':
+            return t('config.ingestText')
+        case 'playlist':
+            return t('config.playlistText')
+        case 'storage':
+            return t('config.storageText')
+        case 'text':
+            return t('config.textText')
+        case 'task':
+            return t('config.taskText')
+        case 'out':
+            return t('config.outText')
+        default:
+            return text
+    }
+}
+
 async function onSubmitPlayout() {
     const update = await configStore.setPlayoutConfig(configStore.configPlayout)
 
@@ -105,7 +170,7 @@ async function onSubmitPlayout() {
 
         await $fetch(`/api/control/${channel}/process/`, {
             method: 'POST',
-            headers: { ...contentType, ...authStore.authHeader },
+            headers: { ...configStore.contentType, ...authStore.authHeader },
             body: JSON.stringify({ command: 'status' }),
         }).then((response: any) => {
             if (response === 'active') {
@@ -123,7 +188,7 @@ async function restart(res: boolean) {
 
         await $fetch(`/api/control/${channel}/process/`, {
             method: 'POST',
-            headers: { ...contentType, ...authStore.authHeader },
+            headers: { ...configStore.contentType, ...authStore.authHeader },
             body: JSON.stringify({ command: 'restart' }),
         })
     }

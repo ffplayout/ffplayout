@@ -162,7 +162,6 @@ const configStore = useConfig()
 const playlistStore = usePlaylist()
 const { filename, secToHMS, timeToSeconds } = stringFormatter()
 const { configID } = storeToRefs(useConfig())
-const contentType = { 'content-type': 'application/json;charset=UTF-8' }
 
 playlistStore.currentClip = 'Es wird kein Clip abgespielt'
 const breakStatusCheck = ref(false)
@@ -269,7 +268,7 @@ async function controlProcess(state: string) {
 
     await $fetch(`/api/control/${channel}/process/`, {
         method: 'POST',
-        headers: { ...contentType, ...authStore.authHeader },
+        headers: { ...configStore.contentType, ...authStore.authHeader },
         body: JSON.stringify({ command: state }),
     })
 
@@ -289,7 +288,7 @@ async function controlPlayout(state: string) {
 
     await $fetch(`/api/control/${channel}/playout/`, {
         method: 'POST',
-        headers: { ...contentType, ...authStore.authHeader },
+        headers: { ...configStore.contentType, ...authStore.authHeader },
         body: JSON.stringify({ control: state }),
     })
 
