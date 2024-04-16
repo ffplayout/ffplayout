@@ -1103,7 +1103,7 @@ async fn import_playlist(
 
     fs::remove_file(path).await?;
 
-    Ok(HttpResponse::Ok().body(response).into())
+    Ok(HttpResponse::Ok().body(response))
 }
 
 /// **Program info**
