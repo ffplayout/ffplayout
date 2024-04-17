@@ -1,8 +1,6 @@
 import _ from 'lodash'
 import { defineStore } from 'pinia'
 
-const { timeToSeconds } = stringFormatter()
-
 export const useConfig = defineStore('config', {
     state: () => ({
         configID: 0,
@@ -117,6 +115,7 @@ export const useConfig = defineStore('config', {
         },
 
         async getPlayoutConfig() {
+            const { timeToSeconds } = stringFormatter()
             const authStore = useAuth()
             const indexStore = useIndex()
             const channel = this.configGui[this.configID].id
@@ -142,6 +141,7 @@ export const useConfig = defineStore('config', {
         },
 
         async setPlayoutConfig(obj: any) {
+            const { timeToSeconds } = stringFormatter()
             const authStore = useAuth()
             const channel = this.configGui[this.configID].id
 

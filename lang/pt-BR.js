@@ -6,7 +6,7 @@ export default {
     },
     button: {
         login: 'Login',
-        home: 'Página inicial',
+        home: 'Início',
         player: 'Playout',
         media: 'Media',
         message: 'Mensagem',

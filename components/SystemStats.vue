@@ -1,5 +1,5 @@
 <template>
-    <div class="grid grid-cols-1 xs:grid-cols-2 border-4 rounded-md border-primary text-left shadow max-w-[756px]">
+    <div class="grid grid-cols-1 xs:grid-cols-2 border-4 rounded-md border-primary text-left shadow max-w-[960px]">
         <div class="p-4 bg-base-100">
             <span class="text-3xl">{{ sysStat.system.name }} {{ sysStat.system.version }}</span>
             <span v-if="sysStat.system.kernel">
@@ -15,7 +15,7 @@
         </div>
         <div class="p-4 border border-primary">
             <div class="text-xl">{{ $t('system.cpu') }}</div>
-            <div class="grid grid-cols-2">
+            <div class="grid grid-cols-2 gap-2">
                 <div>
                     <strong>{{ $t('system.cores') }}:</strong> {{ sysStat.cpu.cores }}
                 </div>
@@ -26,7 +26,7 @@
         </div>
         <div class="p-4 border border-primary">
             <div class="text-xl">{{ $t('system.load') }}</div>
-            <div class="grid grid-cols-3">
+            <div class="grid grid-cols-3 gap-2">
                 <div>{{ sysStat.load.one }}</div>
                 <div>{{ sysStat.load.five }}</div>
                 <div>{{ sysStat.load.fifteen }}</div>
@@ -34,7 +34,7 @@
         </div>
         <div class="p-4 border border-primary">
             <div class="text-xl">{{ $t('system.memory') }}</div>
-            <div class="grid grid-cols-2">
+            <div class="grid grid-cols-2 gap-2">
                 <div>
                     <strong>{{ $t('system.total') }}:</strong> {{ fileSize(sysStat.memory.total) }}
                 </div>
@@ -45,7 +45,7 @@
         </div>
         <div class="p-4 border border-primary">
             <div class="text-xl">{{ $t('system.swap') }}</div>
-            <div class="grid grid-cols-2">
+            <div class="grid grid-cols-2 gap-2">
                 <div>
                     <strong>{{ $t('system.total') }}:</strong> {{ fileSize(sysStat.swap.total) }}
                 </div>
@@ -58,7 +58,7 @@
             <div class="text-xl">
                 {{ $t('system.network') }} <span v-if="sysStat.network" class="fs-6">{{ sysStat.network?.name }}</span>
             </div>
-            <div class="grid grid-cols-2">
+            <div class="grid grid-cols-2 gap-2">
                 <div>
                     <strong>{{ $t('system.in') }}:</strong> {{ fileSize(sysStat.network?.current_in) }}
                 </div>
@@ -71,11 +71,11 @@
         </div>
         <div v-if="sysStat.storage?.path" class="p-4 border border-primary">
             <div class="text-xl">{{ $t('system.storage') }}</div>
-            <div v-if="sysStat.storage">
-                <strong>{{ $t('system.device') }}:</strong> {{ sysStat.storage?.path }}
-            </div>
 
-            <div v-if="sysStat.storage" class="grid grid-cols-2">
+            <div v-if="sysStat.storage" class="grid grid-cols-2 gap-2">
+                <div v-if="sysStat.storage" class="col-span-2">
+                    <strong>{{ $t('system.device') }}:</strong> {{ sysStat.storage?.path }}
+                </div>
                 <div>
                     <strong>{{ $t('system.size') }}:</strong> {{ fileSize(sysStat.storage?.total) }}
                 </div>
