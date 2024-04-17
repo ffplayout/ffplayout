@@ -79,28 +79,38 @@ export default defineNuxtConfig({
                 name: 'English',
                 file: 'en-US.js',
             },
+            {
+                code: 'pt',
+                name: 'Português',
+                file: 'pt-BR.js',
+            },
         ],
         customRoutes: 'config',
         pages: {
             player: {
                 de: '/wiedergabe',
                 en: '/player',
+                pt: '/playout',
             },
             media: {
                 de: '/medien',
                 en: '/media',
+                pt: '/media',
             },
             message: {
                 de: '/nachrichten',
                 en: '/message',
+                pt: '/mensagem',
             },
             logging: {
                 de: '/protokollierung',
                 en: '/logging',
+                pt: '/logging',
             },
             configure: {
                 de: '/einstellungen',
                 en: '/configure',
+                pt: '/configuração',
             },
         },
         detectBrowserLanguage: {
