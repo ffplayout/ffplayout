@@ -13,8 +13,10 @@ export default withNuxt(
     // }
     {
         rules: {
-            "@typescript-eslint/no-explicit-any": "off",
-            "vue/no-v-html": "off",
+            '@typescript-eslint/no-explicit-any': 'off',
+            'no-control-regex': 'off',
+            'vue/html-self-closing': 'off',
+            'vue/no-v-html': 'off',
         },
     }
 )

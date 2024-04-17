@@ -10,9 +10,8 @@ export const useConfig = defineStore('config', {
         contentType: { 'content-type': 'application/json;charset=UTF-8' },
         configGui: [] as GuiConfig[],
         configGuiRaw: [] as GuiConfig[],
-        startInSec: 0,
         playlistLength: 86400.0,
-        configPlayout: {} as any,
+        playout: {} as any,
         currentUser: '',
         configUser: {} as User,
         utcOffset: 0,
@@ -41,7 +40,7 @@ export const useConfig = defineStore('config', {
                 method: 'GET',
                 headers: authStore.authHeader,
             })
-                .then(response => {
+                .then((response) => {
                     statusCode = response.status
 
                     return response
@@ -128,19 +127,14 @@ export const useConfig = defineStore('config', {
             })
                 .then((response) => response.json())
                 .then((data) => {
-                    if (data.playlist.day_start) {
-                        this.startInSec = timeToSeconds(data.playlist.day_start)
-                    }
-
-                    if (data.playlist.length) {
-                        this.playlistLength = timeToSeconds(data.playlist.length)
-                    }
+                    data.playlist.startInSec = timeToSeconds(data.playlist.day_start ?? 0)
+                    data.playlist.lengthInSec = timeToSeconds(data.playlist.length ?? this.playlistLength)
 
                     if (data.storage.extensions) {
                         data.storage.extensions = data.storage.extensions.join(',')
                     }
 
-                    this.configPlayout = data
+                    this.playout = data
                 })
                 .catch(() => {
                     indexStore.msgAlert('error', 'No playout config found!', 3)
@@ -151,8 +145,9 @@ export const useConfig = defineStore('config', {
             const authStore = useAuth()
             const channel = this.configGui[this.configID].id
 
-            this.startInSec = timeToSeconds(obj.playlist.day_start)
             this.playlistLength = timeToSeconds(obj.playlist.length)
+            this.playout.playlist.startInSec = timeToSeconds(obj.playlist.day_start)
+            this.playout.playlist.lengthInSec = timeToSeconds(obj.playlist.length)
 
             if (typeof obj.storage.extensions === 'string') {
                 obj.storage.extensions = obj.storage.extensions.replace(' ', '').split(/,|;/)

@@ -17,7 +17,7 @@
                         aria-label="Simple"
                         checked
                         @change="advancedGenerator = false"
-                    >
+                    />
                     <div role="tabpanel" class="tab-content w-full pt-3">
                         <div class="w-full">
                             <div class="grid">
@@ -78,7 +78,7 @@
                                                         )
                                                     )
                                                 "
-                                            >
+                                            />
                                         </div>
                                     </div>
                                 </li>
@@ -93,7 +93,7 @@
                         class="tab"
                         aria-label="Advanced"
                         @change=";(advancedGenerator = true), resetCheckboxes()"
-                    >
+                    />
                     <div role="tabpanel" class="tab-content pt-3">
                         <div class="w-full">
                             <div class="grid grid-cols-[auto_48px] px-3 pt-0">
@@ -121,7 +121,7 @@
                                         title="Add time block"
                                         @click="addTemplate()"
                                     >
-                                        <i class="bi bi-folder-plus"/>
+                                        <i class="bi bi-folder-plus" />
                                     </button>
                                 </div>
                             </div>
@@ -180,7 +180,7 @@
                                                 v-model="item.start"
                                                 type="text"
                                                 class="input input-sm input-bordered join-item px-2 text-center"
-                                            >
+                                            />
                                             <div
                                                 class="input input-sm input-bordered join-item px-2 text-center bg-base-200"
                                             >
@@ -190,7 +190,7 @@
                                                 v-model="item.duration"
                                                 type="text"
                                                 class="input input-sm input-bordered join-item px-2 text-center"
-                                            >
+                                            />
                                             <button
                                                 class="btn btn-sm input-bordered join-item"
                                                 :class="item.shuffle ? 'bg-base-100' : 'bg-base-300'"
@@ -247,7 +247,7 @@
                             type="checkbox"
                             class="checkbox checkbox-xs rounded"
                             @change="resetCheckboxes()"
-                        >
+                        />
                     </label>
                 </div>
                 <div class="join ms-2">
@@ -291,12 +291,14 @@ const advancedGenerator = ref(false)
 const selectedFolders = ref([] as string[])
 const generateFromAll = ref(false)
 const template = ref({
-    sources: [{
-        start: configStore.configPlayout.playlist.day_start,
-        duration: '02:00:00',
-        shuffle: false,
-        paths: [],
-    }],
+    sources: [
+        {
+            start: configStore.playout.playlist.day_start,
+            duration: '02:00:00',
+            shuffle: false,
+            paths: [],
+        },
+    ],
 } as Template)
 
 const templateBrowserSortOptions = {
@@ -331,12 +333,7 @@ async function generatePlaylist() {
         body,
     })
         .then((response: any) => {
-            playlistStore.playlist = processPlaylist(
-                configStore.startInSec,
-                configStore.playlistLength,
-                response.program,
-                false
-            )
+            playlistStore.playlist = processPlaylist(playlistStore.listDate, response.program, false)
             indexStore.msgAlert('success', 'Generate Playlist done...', 2)
         })
         .catch((e: any) => {
@@ -379,7 +376,7 @@ function addFolderToTemplate(event: any, item: TemplateItem) {
 
     event.item.remove()
 
-    const storagePath = configStore.configPlayout.storage.path
+    const storagePath = configStore.playout.storage.path
     const navPath = mediaStore.folderCrumbs[mediaStore.folderCrumbs.length - 1].path
     const sourcePath = `${storagePath}/${navPath}/${mediaStore.folderList.folders[o].name}`.replace(/\/[/]+/g, '/')
 
@@ -404,7 +401,10 @@ function addTemplate() {
 
     if (last) {
         const t = $dayjs(`2000-01-01T${last.duration}`)
-        start = $dayjs(`2000-01-01T${last.start}`).add(t.hour(), 'hour').add(t.minute(), 'minute').add(t.second(), 'second')
+        start = $dayjs(`2000-01-01T${last.start}`)
+            .add(t.hour(), 'hour')
+            .add(t.minute(), 'minute')
+            .add(t.second(), 'second')
     }
 
     template.value.sources.push({

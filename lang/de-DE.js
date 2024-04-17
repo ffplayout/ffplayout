@@ -144,7 +144,8 @@ export default {
         help: 'Hilfe',
         generalText: `Manchmal kann es vorkommen, dass eine Datei beschädigt, aber noch abspielbar ist, was einen Streaming-Fehler bei allen folgenden Dateien verursachen kann. Die einzige Möglichkeit, dies zu beheben, besteht darin, ffplayout anzuhalten und neu zu starten. Wir sagen hier nur, wann es gestoppt werden muss, der Startvorgang ist Ihnen überlassen. Der beste Weg ist ein systemd-Dienst unter Linux.
         'stop_threshold' wird ffplayout stoppen, wenn es zeitlich über diesem Wert liegt. Eine Zahl kleiner als 3 kann zu unerwarteten Fehlern führen.`,
-        rpcText: 'Führe einen JSON-RPC-Server aus, um Informationen über die Wiedergabe und einige Kontrollfunktionen zu erhalten.',
+        rpcText:
+            'Führe einen JSON-RPC-Server aus, um Informationen über die Wiedergabe und einige Kontrollfunktionen zu erhalten.',
         mailText: `Senden Sie Fehlermeldungen an die E-Mail-Adresse, z. B. fehlende Playlist, ungültiges json-Format, fehlender Clip-Pfad. Lassen Sie den Empfänger leer, wenn Sie keine Benachrichtigung benötigen. 'mail_level' kann INFO, WARNING oder ERROR sein. 'interval' bedeutet Sekunden, bis eine neue E-Mail gesendet wird.`,
         logText: `Wenn 'log_to_file' true ist, wird in eine Datei protokolliert, wenn false, in die Konsole. 'backup_count' gibt an, wie lange die Log-Dateien in Tagen gespeichert werden. 'local_time' auf false setzt die Log-Zeitstempel auf UTC. Pfad zu /var/log/ nur, wenn Sie dies als Daemon ausführen.
         'level' kann DEBUG, INFO, WARNING, ERROR sein. 'ffmpeg_level' kann INFO, WARNING, ERROR sein. 'detect_silence' protokolliert eine Fehlermeldung, wenn die Audiospur während des Validierungsprozesses 15 Sekunden lang still ist.`,
@@ -180,5 +181,5 @@ export default {
         mismatch: 'Passwort stimmt nicht überein!',
         updateSuccess: 'Benutzerprofil erfolgreich aktualisiert!',
         updateFailed: 'Fehler beim Aktualisieren des Benutzerprofils!',
-        },
+    },
 }

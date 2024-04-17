@@ -18,7 +18,7 @@
                     type="text"
                     placeholder="Type here"
                     class="input input-bordered w-full"
-                >
+                />
             </label>
 
             <label class="form-control w-full mt-5">
@@ -29,7 +29,7 @@
                     v-model="configStore.configGui[configStore.configID].preview_url"
                     type="text"
                     class="input input-bordered w-full"
-                >
+                />
             </label>
 
             <label class="form-control w-full mt-5">
@@ -40,7 +40,7 @@
                     v-model="configStore.configGui[configStore.configID].config_path"
                     type="text"
                     class="input input-bordered w-full"
-                >
+                />
             </label>
 
             <label class="form-control w-full mt-5">
@@ -51,7 +51,7 @@
                     v-model="configStore.configGui[configStore.configID].extra_extensions"
                     type="text"
                     class="input input-bordered w-full"
-                >
+                />
             </label>
 
             <label class="form-control w-full mt-5">
@@ -63,7 +63,7 @@
                     type="text"
                     class="input input-bordered w-full !bg-base-100"
                     disabled
-                >
+                />
             </label>
 
             <div class="join my-4">

@@ -48,6 +48,7 @@ declare global {
     }
 
     interface PlaylistItem {
+        date?: string
         uid: string
         begin: number
         source: string
@@ -57,7 +58,7 @@ declare global {
         audio?: string
         category?: string
         custom_filter?: string
-        class?: string
+        overtime?: boolean
     }
 
     interface FileObject {
@@ -112,6 +113,6 @@ declare global {
         network?: { name: string; current_in: number; current_out: number; total_in: number; total_out: number }
         storage?: { path: string; total: number; used: number }
         swap: { total: number; used: number; free: number }
-        system: { name?: string; kernel?: string; version?: string, ffp_version?: string }
+        system: { name?: string; kernel?: string; version?: string; ffp_version?: string }
     }
 }

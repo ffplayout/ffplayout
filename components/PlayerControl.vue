@@ -61,8 +61,10 @@
                                 {{ filename(playlistStore.currentClip) }}
                             </div>
                             <div class="grow">
-                                <strong>{{ $t('player.duration') }}:</strong> {{ secToHMS(playlistStore.currentClipDuration) }} |
-                                <strong>{{ $t('player.in') }}:</strong> {{ secToHMS(playlistStore.currentClipIn) }} | <strong>{{ $t('player.out') }}:</strong>
+                                <strong>{{ $t('player.duration') }}:</strong>
+                                {{ secToHMS(playlistStore.currentClipDuration) }} |
+                                <strong>{{ $t('player.in') }}:</strong> {{ secToHMS(playlistStore.currentClipIn) }} |
+                                <strong>{{ $t('player.out') }}:</strong>
                                 {{ secToHMS(playlistStore.currentClipOut) }}
                             </div>
                             <div class="h-1/3">

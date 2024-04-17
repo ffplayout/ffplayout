@@ -72,6 +72,7 @@
                                 playlistStore.playoutIsRunning &&
                                 listDate === todayDate &&
                                 index === playlistStore.currentClipIndex,
+                            '!bg-amber-600/40': element.overtime,
                         }"
                     >
                         <td class="ps-4 py-2 text-left">{{ secondsToTime(element.begin) }}</td>
@@ -96,7 +97,7 @@
                                 type="checkbox"
                                 :checked="element.category && element.category === 'advertisement' ? true : false"
                                 @change="setCategory($event, element)"
-                            >
+                            />
                         </td>
                         <td class="py-2 text-center hover:text-base-content/70">
                             <button @click="editItem(index)">
@@ -193,7 +194,7 @@ function addClip(event: any) {
 
     event.item.remove()
 
-    const storagePath = configStore.configPlayout.storage.path
+    const storagePath = configStore.playout.storage.path
     const sourcePath = `${storagePath}/${mediaStore.folderTree.source}/${mediaStore.folderTree.files[o].name}`.replace(
         /\/[/]+/g,
         '/'
@@ -208,12 +209,7 @@ function addClip(event: any) {
         duration: mediaStore.folderTree.files[o].duration,
     })
 
-    playlistStore.playlist = processPlaylist(
-        configStore.startInSec,
-        configStore.playlistLength,
-        playlistStore.playlist,
-        false
-    )
+    playlistStore.playlist = processPlaylist(listDate.value, playlistStore.playlist, false)
 
     nextTick(() => {
         const newNode = document.getElementById(`clip-${n}`)
@@ -225,12 +221,7 @@ function addClip(event: any) {
 function moveItemInArray(event: any) {
     playlistStore.playlist.splice(event.newIndex, 0, playlistStore.playlist.splice(event.oldIndex, 1)[0])
 
-    playlistStore.playlist = processPlaylist(
-        configStore.startInSec,
-        configStore.playlistLength,
-        playlistStore.playlist,
-        false
-    )
+    playlistStore.playlist = processPlaylist(listDate.value, playlistStore.playlist, false)
 
     removeBG(event.item)
 }

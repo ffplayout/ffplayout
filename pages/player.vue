@@ -44,7 +44,7 @@
                 <i class="bi-files" />
             </button>
             <button
-                v-if="!configStore.configPlayout.playlist.loop"
+                v-if="!configStore.playout.playlist.loop"
                 class="btn btn-sm btn-primary join-item"
                 :title="$t('player.loop')"
                 @click="loopClips()"
@@ -72,7 +72,11 @@
             >
                 <i class="bi-sort-down-alt" />
             </button>
-            <button class="btn btn-sm btn-primary join-item" :title="$t('player.reset')" @click=";(playlistStore.playlist.length = 0), getPlaylist()">
+            <button
+                class="btn btn-sm btn-primary join-item"
+                :title="$t('player.reset')"
+                @click=";(playlistStore.playlist.length = 0), getPlaylist()"
+            >
                 <i class="bi-arrow-counterclockwise" />
             </button>
             <button
@@ -99,7 +103,7 @@
         >
             <div class="w-[1024px] max-w-full aspect-video">
                 <VideoPlayer v-if="isVideo && previewOpt" reference="previewPlayer" :options="previewOpt" />
-                <img v-else :src="previewUrl" class="img-fluid" :alt="previewName" >
+                <img v-else :src="previewUrl" class="img-fluid" :alt="previewName" />
             </div>
         </GenericModal>
 
@@ -109,14 +113,14 @@
                     <div class="label">
                         <span class="label-text">In</span>
                     </div>
-                    <input v-model.number="newSource.in" type="number" class="input input-sm input-bordered w-full" >
+                    <input v-model.number="newSource.in" type="number" class="input input-sm input-bordered w-full" />
                 </label>
 
                 <label class="form-control w-full mt-3">
                     <div class="label">
                         <span class="label-text">Out</span>
                     </div>
-                    <input v-model.number="newSource.out" type="number" class="input input-sm input-bordered w-full" >
+                    <input v-model.number="newSource.out" type="number" class="input input-sm input-bordered w-full" />
                 </label>
 
                 <label class="form-control w-full mt-3">
@@ -127,34 +131,34 @@
                         v-model.number="newSource.duration"
                         type="number"
                         class="input input-sm input-bordered w-full"
-                    >
+                    />
                 </label>
 
                 <label class="form-control w-full mt-3">
                     <div class="label">
                         <span class="label-text">Source</span>
                     </div>
-                    <input v-model="newSource.source" type="text" class="input input-sm input-bordered w-full" >
+                    <input v-model="newSource.source" type="text" class="input input-sm input-bordered w-full" />
                 </label>
 
                 <label class="form-control w-full mt-3">
                     <div class="label">
                         <span class="label-text">Audio</span>
                     </div>
-                    <input v-model="newSource.audio" type="text" class="input input-sm input-bordered w-full" >
+                    <input v-model="newSource.audio" type="text" class="input input-sm input-bordered w-full" />
                 </label>
 
                 <label class="form-control w-full mt-3">
                     <div class="label">
                         <span class="label-text">Custom Filter</span>
                     </div>
-                    <input v-model="newSource.custom_filter" type="text" class="input input-sm input-bordered w-full" >
+                    <input v-model="newSource.custom_filter" type="text" class="input input-sm input-bordered w-full" />
                 </label>
 
                 <div class="form-control">
                     <label class="cursor-pointer label">
                         <span class="label-text">Advertisement</span>
-                        <input type="checkbox" class="checkbox checkbox-sm" @click="isAd" >
+                        <input type="checkbox" class="checkbox checkbox-sm" @click="isAd" />
                     </label>
                 </div>
             </div>
@@ -166,11 +170,11 @@
                 class="file-input file-input-sm file-input-bordered w-full"
                 multiple
                 @change="onFileChange"
-            >
+            />
         </GenericModal>
 
         <GenericModal :show="showCopyModal" :title="`Copy Program ${listDate}`" :modal-action="savePlaylist">
-            <input v-model="targetDate" type="date" class="input input-sm input-bordered w-full" >
+            <input v-model="targetDate" type="date" class="input input-sm input-bordered w-full" />
         </GenericModal>
 
         <GenericModal :show="showDeleteModal" title="Delete Program" :modal-action="deletePlaylist">
@@ -271,7 +275,7 @@ function closePlayer() {
 
 function setPreviewData(path: string) {
     let fullPath = path
-    const storagePath = configStore.configPlayout.storage.path
+    const storagePath = configStore.playout.storage.path
     const lastIndex = storagePath.lastIndexOf('/')
 
     if (!path.includes('/')) {
@@ -301,7 +305,7 @@ function setPreviewData(path: string) {
             ? 'application/x-mpegURL'
             : `video/${ext}`
 
-    if (configStore.configPlayout.storage.extensions.includes(`${ext}`)) {
+    if (configStore.playout.storage.extensions.includes(`${ext}`)) {
         isVideo.value = true
         previewOpt.value = {
             liveui: false,
@@ -327,20 +331,10 @@ function processSource(process: boolean) {
     if (process) {
         if (editId.value === -1) {
             playlistStore.playlist.push(newSource.value)
-            playlistStore.playlist = processPlaylist(
-                configStore.startInSec,
-                configStore.playlistLength,
-                playlistStore.playlist,
-                false
-            )
+            playlistStore.playlist = processPlaylist(listDate.value, playlistStore.playlist, false)
         } else {
             playlistStore.playlist[editId.value] = newSource.value
-            playlistStore.playlist = processPlaylist(
-                configStore.startInSec,
-                configStore.playlistLength,
-                playlistStore.playlist,
-                false
-            )
+            playlistStore.playlist = processPlaylist(listDate.value, playlistStore.playlist, false)
         }
     }
 
@@ -399,7 +393,7 @@ function loopClips() {
         }
     }
 
-    playlistStore.playlist = processPlaylist(configStore.startInSec, configStore.playlistLength, tempList, false)
+    playlistStore.playlist = processPlaylist(listDate.value, tempList, false)
 }
 
 function onFileChange(evt: any) {
@@ -455,12 +449,7 @@ async function savePlaylist(save: boolean) {
             return
         }
 
-        playlistStore.playlist = processPlaylist(
-            configStore.startInSec,
-            configStore.playlistLength,
-            playlistStore.playlist,
-            true
-        )
+        playlistStore.playlist = processPlaylist(listDate.value, playlistStore.playlist, true)
         const saveList = playlistStore.playlist.map(({ begin, ...item }) => item)
 
         await $fetch(`/api/playlist/${configStore.configGui[configStore.configID].id}/`, {

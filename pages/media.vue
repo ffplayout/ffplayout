@@ -205,7 +205,7 @@
         >
             <div class="w-[1024px] max-w-full aspect-video">
                 <VideoPlayer v-if="isVideo && previewOpt" reference="previewPlayer" :options="previewOpt" />
-                <img v-else :src="previewUrl" class="img-fluid" :alt="previewName" >
+                <img v-else :src="previewUrl" class="img-fluid" :alt="previewName" />
             </div>
         </GenericModal>
 
@@ -214,7 +214,7 @@
                 <div class="label">
                     <span class="label-text">{{ $t('media.newFile') }}</span>
                 </div>
-                <input v-model="renameNewName" type="text" class="input input-bordered w-full" >
+                <input v-model="renameNewName" type="text" class="input input-bordered w-full" />
             </label>
         </GenericModal>
 
@@ -223,7 +223,7 @@
                 <div class="label">
                     <span class="label-text">{{ $t('media.foldername') }}</span>
                 </div>
-                <input v-model="folderName.name" type="text" class="input input-bordered w-full" >
+                <input v-model="folderName.name" type="text" class="input input-bordered w-full" />
             </label>
         </GenericModal>
 
@@ -236,7 +236,7 @@
                     :accept="extensions"
                     multiple
                     @change="onFileChange"
-                >
+                />
 
                 <label class="form-control w-full mt-3">
                     <div class="label">
@@ -257,7 +257,7 @@
                     <div class="label">
                         <span class="label-text">{{ $t('media.uploading') }}:</span>
                     </div>
-                    <input v-model="uploadTask" type="text" class="input input-sm input-bordered w-full" disabled >
+                    <input v-model="uploadTask" type="text" class="input input-sm input-bordered w-full" disabled />
                 </label>
             </div>
         </GenericModal>
@@ -313,7 +313,7 @@ const lastPath = ref('')
 const xhr = ref(new XMLHttpRequest())
 
 onMounted(async () => {
-    let config_extensions = configStore.configPlayout.storage.extensions
+    let config_extensions = configStore.playout.storage.extensions
     let extra_extensions = configStore.configGui[configStore.configID].extra_extensions
 
     if (typeof config_extensions === 'string') {
@@ -428,7 +428,7 @@ function setPreviewData(path: string) {
             ? 'application/x-mpegURL'
             : `video/${ext}`
 
-    if (configStore.configPlayout.storage.extensions.includes(`${ext}`)) {
+    if (configStore.playout.storage.extensions.includes(`${ext}`)) {
         isVideo.value = true
         previewOpt.value = {
             liveui: false,

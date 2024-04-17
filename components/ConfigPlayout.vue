@@ -2,11 +2,11 @@
     <div class="max-w-[1200px] pe-8">
         <h2 class="pt-3 text-3xl">{{ $t('config.playoutConf') }}</h2>
         <form
-            v-if="configStore.configPlayout"
+            v-if="configStore.playout"
             class="mt-10 grid md:grid-cols-[180px_auto] gap-5"
             @submit.prevent="onSubmitPlayout"
         >
-            <template v-for="(item, key) in configStore.configPlayout" :key="key">
+            <template v-for="(item, key) in configStore.playout" :key="key">
                 <div class="text-xl pt-3 text-right">{{ setTitle(key.toString()) }}:</div>
                 <div class="md:pt-4">
                     <label
@@ -15,63 +15,65 @@
                         class="form-control w-full"
                         :class="[typeof prop === 'boolean' && 'flex-row', name.toString() !== 'help_text' && 'mt-2']"
                     >
-                        <div v-if="name.toString() !== 'help_text'" class="label">
-                            <span class="label-text !text-md font-bold">{{ name }}</span>
-                        </div>
-                        <div v-if="name.toString() === 'help_text'" class="whitespace-pre-line">
-                            {{ setHelp(key.toString(), prop) }}
-                        </div>
-                        <input
-                            v-else-if="name.toString() === 'sender_pass'"
-                            v-model="item[name]"
-                            type="password"
-                            :placeholder="$t('config.placeholderPass')"
-                            class="input input-sm input-bordered w-full"
-                        >
-                        <textarea
-                            v-else-if="name.toString() === 'output_param' || name.toString() === 'custom_filter'"
-                            v-model="item[name]"
-                            class="textarea textarea-bordered"
-                            rows="3"
-                        />
-                        <input
-                            v-else-if="typeof prop === 'number' && prop % 1 === 0"
-                            v-model="item[name]"
-                            type="number"
-                            class="input input-sm input-bordered w-full"
-                        >
-                        <input
-                            v-else-if="typeof prop === 'number'"
-                            v-model="item[name]"
-                            type="number"
-                            class="input input-sm input-bordered w-full"
-                            step="0.0001"
-                            style="max-width: 250px"
-                        >
-                        <input
-                            v-else-if="typeof prop === 'boolean'"
-                            v-model="item[name]"
-                            type="checkbox"
-                            class="checkbox checkbox-sm ms-2 mt-2"
-                        >
-                        <input
-                            v-else-if="name === 'ignore_lines'"
-                            v-model="formatIgnoreLines"
-                            type="text"
-                            class="input input-sm input-bordered w-full"
-                        >
-                        <input
-                            v-else
-                            :id="name"
-                            v-model="item[name]"
-                            type="text"
-                            class="input input-sm input-bordered w-full"
-                        >
+                        <template v-if="name.toString() !== 'startInSec' && name.toString() !== 'lengthInSec'">
+                            <div v-if="name.toString() !== 'help_text'" class="label">
+                                <span class="label-text !text-md font-bold">{{ name }}</span>
+                            </div>
+                            <div v-if="name.toString() === 'help_text'" class="whitespace-pre-line">
+                                {{ setHelp(key.toString(), prop) }}
+                            </div>
+                            <input
+                                v-else-if="name.toString() === 'sender_pass'"
+                                v-model="item[name]"
+                                type="password"
+                                :placeholder="$t('config.placeholderPass')"
+                                class="input input-sm input-bordered w-full"
+                            />
+                            <textarea
+                                v-else-if="name.toString() === 'output_param' || name.toString() === 'custom_filter'"
+                                v-model="item[name]"
+                                class="textarea textarea-bordered"
+                                rows="3"
+                            />
+                            <input
+                                v-else-if="typeof prop === 'number' && prop % 1 === 0"
+                                v-model="item[name]"
+                                type="number"
+                                class="input input-sm input-bordered w-full"
+                            />
+                            <input
+                                v-else-if="typeof prop === 'number'"
+                                v-model="item[name]"
+                                type="number"
+                                class="input input-sm input-bordered w-full"
+                                step="0.0001"
+                                style="max-width: 250px"
+                            />
+                            <input
+                                v-else-if="typeof prop === 'boolean'"
+                                v-model="item[name]"
+                                type="checkbox"
+                                class="checkbox checkbox-sm ms-2 mt-2"
+                            />
+                            <input
+                                v-else-if="name === 'ignore_lines'"
+                                v-model="formatIgnoreLines"
+                                type="text"
+                                class="input input-sm input-bordered w-full"
+                            />
+                            <input
+                                v-else
+                                :id="name"
+                                v-model="item[name]"
+                                type="text"
+                                class="input input-sm input-bordered w-full"
+                            />
+                        </template>
                     </label>
                 </div>
             </template>
             <div class="mt-5 mb-10">
-                <button class="btn btn-primary" type="submit">Save</button>
+                <button class="btn btn-primary" type="submit">{{ $t('config.save') }}</button>
             </div>
         </form>
     </div>
@@ -95,11 +97,11 @@ const showModal = ref(false)
 
 const formatIgnoreLines = computed({
     get() {
-        return configStore.configPlayout.logging.ignore_lines.join(';')
+        return configStore.playout.logging.ignore_lines.join(';')
     },
 
     set(value) {
-        configStore.configPlayout.logging.ignore_lines = value.split(';')
+        configStore.playout.logging.ignore_lines = value.split(';')
     },
 })
 
@@ -162,7 +164,7 @@ function setHelp(key: string, text: string): string {
 }
 
 async function onSubmitPlayout() {
-    const update = await configStore.setPlayoutConfig(configStore.configPlayout)
+    const update = await configStore.setPlayoutConfig(configStore.playout)
 
     if (update.status === 200) {
         indexStore.msgAlert('success', 'Update playout config success!', 2)

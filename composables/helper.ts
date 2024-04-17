@@ -181,15 +181,22 @@ export const playlistOperations = () => {
         return String(Date.now().toString(32) + Math.random().toString(16)).replace(/\./g, '')
     }
 
-    function processPlaylist(dayStart: number, length: number, list: PlaylistItem[], forSave: boolean) {
-        if (!dayStart) {
-            dayStart = 0
-        }
+    function processPlaylist(date: string, list: PlaylistItem[], forSave: boolean) {
+        const configStore = useConfig()
 
-        let begin = dayStart
+        let begin = configStore.playout.playlist.startInSec
+
         const newList = []
 
         for (const item of list) {
+            if (configStore.playout.playlist.startInSec === begin) {
+                if (!forSave) {
+                    item.date = date
+                } else {
+                    delete item.date
+                }
+            }
+
             if (!item.uid) {
                 item.uid = genUID()
             }
@@ -208,16 +215,15 @@ export const playlistOperations = () => {
                 delete item.custom_filter
             }
 
-            if (begin + (item.out - item.in) > length + dayStart) {
-                item.class = 'overLength'
-
+            if (
+                begin >= configStore.playout.playlist.startInSec + configStore.playout.playlist.lengthInSec &&
+                !configStore.playout.playlist.infinit
+            ) {
                 if (forSave) {
-                    item.out = length + dayStart - begin
+                    break
+                } else {
+                    item.overtime = true
                 }
-            }
-
-            if (forSave && begin >= length + dayStart) {
-                break
             }
 
             newList.push(item)

@@ -58,7 +58,7 @@
                                         type="text"
                                         placeholder="X"
                                         required
-                                    >
+                                    />
                                 </label>
                             </div>
 
@@ -73,7 +73,7 @@
                                         type="text"
                                         placeholder="Y"
                                         required
-                                    >
+                                    />
                                 </label>
                             </div>
                         </div>
@@ -86,7 +86,7 @@
                                         v-model="form.showBox"
                                         type="checkbox"
                                         class="checkbox checkbox-xs rounded-sm"
-                                    >
+                                    />
                                 </label>
                             </div>
 
@@ -99,7 +99,7 @@
                                     type="color"
                                     class="input input-sm input-bordered w-full p-1"
                                     required
-                                >
+                                />
                             </label>
                         </div>
                         <label class="form-control w-full xs:mt-[68px]">
@@ -114,7 +114,7 @@
                                 step="0.01"
                                 class="input input-sm input-bordered w-full"
                                 required
-                            >
+                            />
                         </label>
                     </div>
                     <div class="grid xs:grid-cols-[150px_150px_auto] gap-4 mt-2">
@@ -128,7 +128,7 @@
                                     type="number"
                                     class="input input-sm input-bordered w-full"
                                     required
-                                >
+                                />
                             </label>
 
                             <label class="form-control w-full mt-2">
@@ -140,7 +140,7 @@
                                     type="color"
                                     class="input input-sm input-bordered w-full p-1"
                                     required
-                                >
+                                />
                             </label>
                         </div>
                         <div>
@@ -153,7 +153,7 @@
                                     type="number"
                                     class="input input-sm input-bordered w-full"
                                     required
-                                >
+                                />
                             </label>
                             <label class="form-control w-full mt-2">
                                 <div class="label">
@@ -167,7 +167,7 @@
                                     max="1"
                                     step="0.01"
                                     required
-                                >
+                                />
                             </label>
                         </div>
 
@@ -181,7 +181,7 @@
                                     type="text"
                                     class="input input-sm input-bordered w-full"
                                     required
-                                >
+                                />
                             </label>
                             <label class="form-control w-full xs:max-w-[150px] mt-2">
                                 <div class="label">
@@ -192,7 +192,7 @@
                                     type="number"
                                     class="input input-sm input-bordered w-full"
                                     required
-                                >
+                                />
                             </label>
                         </div>
                     </div>
@@ -209,7 +209,7 @@
                 <div class="label">
                     <span class="label-text">{{ $t('message.name') }}</span>
                 </div>
-                <input v-model="newPresetName" type="text" class="input input-bordered w-full" >
+                <input v-model="newPresetName" type="text" class="input input-bordered w-full" />
             </label>
         </GenericModal>
 

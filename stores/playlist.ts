@@ -7,7 +7,6 @@ import { defineStore } from 'pinia'
 dayjs.extend(utc)
 dayjs.extend(timezone)
 
-// const { timeToSeconds } = stringFormatter()
 const { processPlaylist } = playlistOperations()
 
 export const usePlaylist = defineStore('playlist', {
@@ -34,15 +33,8 @@ export const usePlaylist = defineStore('playlist', {
             const authStore = useAuth()
             const configStore = useConfig()
             const indexStore = useIndex()
-            let statusCode = 0
-
-            // const timeInSec = timeToSeconds(dayjs().utcOffset(configStore.utcOffset).format('HH:mm:ss'))
             const channel = configStore.configGui[configStore.configID].id
-            // let dateToday = dayjs().utcOffset(configStore.utcOffset).format('YYYY-MM-DD')
-
-            // if (configStore.startInSec > timeInSec) {
-            //     dateToday = dayjs(dateToday).utcOffset(configStore.utcOffset).subtract(1, 'day').format('YYYY-MM-DD')
-            // }
+            let statusCode = 0
 
             await fetch(`/api/playlist/${channel}?date=${date}`, {
                 method: 'GET',
@@ -55,32 +47,29 @@ export const usePlaylist = defineStore('playlist', {
                 })
                 .then((data) => {
                     if (data.program) {
-                        const programData = processPlaylist(
-                            configStore.startInSec,
-                            configStore.playlistLength,
-                            data.program,
-                            false
-                        )
+                        const programData = processPlaylist(date, data.program, false)
 
                         if (
                             this.playlist.length > 0 &&
+                            programData.length > 0 &&
+                            this.playlist[0].date === date &&
                             $_.differenceWith(this.playlist, programData, (a, b) => {
                                 return $_.isEqual($_.omit(a, ['uid']), $_.omit(b, ['uid']))
                             }).length > 0
                         ) {
                             indexStore.msgAlert('warning', $i18n.t('player.unsavedProgram'), 3)
-                        } else if (this.playlist.length === 0) {
-                            this.playlist = programData
+                        } else {
+                            this.playlist = programData ?? []
                         }
                     }
                 })
                 .catch((e) => {
-                    if (statusCode > 0 && statusCode !== 204) {
+                    if (statusCode >= 400) {
                         indexStore.msgAlert('error', e, 3)
-                    }
-
-                    if (this.playlist.length > 0) {
+                    } else if (this.playlist.length > 0 && this.playlist[0].date === date) {
                         indexStore.msgAlert('warning', $i18n.t('player.unsavedProgram'), 3)
+                    } else {
+                        this.playlist = []
                     }
                 })
         },

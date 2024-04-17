@@ -3,7 +3,7 @@
         <div class="p-4 bg-base-100">
             <span class="text-3xl">{{ sysStat.system.name }} {{ sysStat.system.version }}</span>
             <span v-if="sysStat.system.kernel">
-                <br >
+                <br />
                 {{ sysStat.system.kernel }}
             </span>
         </div>
@@ -16,8 +16,12 @@
         <div class="p-4 border border-primary">
             <div class="text-xl">{{ $t('system.cpu') }}</div>
             <div class="grid grid-cols-2">
-                <div><strong>{{ $t('system.cores') }}:</strong> {{ sysStat.cpu.cores }}</div>
-                <div><strong>{{ $t('system.usage') }}:</strong> {{ sysStat.cpu.usage.toFixed(2) }}%</div>
+                <div>
+                    <strong>{{ $t('system.cores') }}:</strong> {{ sysStat.cpu.cores }}
+                </div>
+                <div>
+                    <strong>{{ $t('system.usage') }}:</strong> {{ sysStat.cpu.usage.toFixed(2) }}%
+                </div>
             </div>
         </div>
         <div class="p-4 border border-primary">
@@ -31,15 +35,23 @@
         <div class="p-4 border border-primary">
             <div class="text-xl">{{ $t('system.memory') }}</div>
             <div class="grid grid-cols-2">
-                <div><strong>{{ $t('system.total') }}:</strong> {{ fileSize(sysStat.memory.total) }}</div>
-                <div><strong>{{ $t('system.usage') }}:</strong> {{ fileSize(sysStat.memory.used) }}</div>
+                <div>
+                    <strong>{{ $t('system.total') }}:</strong> {{ fileSize(sysStat.memory.total) }}
+                </div>
+                <div>
+                    <strong>{{ $t('system.usage') }}:</strong> {{ fileSize(sysStat.memory.used) }}
+                </div>
             </div>
         </div>
         <div class="p-4 border border-primary">
             <div class="text-xl">{{ $t('system.swap') }}</div>
             <div class="grid grid-cols-2">
-                <div><strong>{{ $t('system.total') }}:</strong> {{ fileSize(sysStat.swap.total) }}</div>
-                <div><strong>{{ $t('system.usage') }}:</strong> {{ fileSize(sysStat.swap.used) }}</div>
+                <div>
+                    <strong>{{ $t('system.total') }}:</strong> {{ fileSize(sysStat.swap.total) }}
+                </div>
+                <div>
+                    <strong>{{ $t('system.usage') }}:</strong> {{ fileSize(sysStat.swap.used) }}
+                </div>
             </div>
         </div>
         <div class="p-4 border border-primary">
@@ -47,19 +59,29 @@
                 {{ $t('system.network') }} <span v-if="sysStat.network" class="fs-6">{{ sysStat.network?.name }}</span>
             </div>
             <div class="grid grid-cols-2">
-                <div><strong>{{ $t('system.in') }}:</strong> {{ fileSize(sysStat.network?.current_in) }}</div>
-                <div><strong>{{ $t('system.out') }}:</strong> {{ fileSize(sysStat.network?.current_out) }}</div>
+                <div>
+                    <strong>{{ $t('system.in') }}:</strong> {{ fileSize(sysStat.network?.current_in) }}
+                </div>
+                <div>
+                    <strong>{{ $t('system.out') }}:</strong> {{ fileSize(sysStat.network?.current_out) }}
+                </div>
                 <div>{{ fileSize(sysStat.network?.total_in) }}</div>
                 <div>{{ fileSize(sysStat.network?.total_out) }}</div>
             </div>
         </div>
         <div v-if="sysStat.storage?.path" class="p-4 border border-primary">
             <div class="text-xl">{{ $t('system.storage') }}</div>
-            <div v-if="sysStat.storage"><strong>{{ $t('system.device') }}:</strong> {{ sysStat.storage?.path }}</div>
+            <div v-if="sysStat.storage">
+                <strong>{{ $t('system.device') }}:</strong> {{ sysStat.storage?.path }}
+            </div>
 
             <div v-if="sysStat.storage" class="grid grid-cols-2">
-                <div><strong>{{ $t('system.size') }}:</strong> {{ fileSize(sysStat.storage?.total) }}</div>
-                <div><strong>{{ $t('system.used') }}:</strong> {{ fileSize(sysStat.storage?.used) }}</div>
+                <div>
+                    <strong>{{ $t('system.size') }}:</strong> {{ fileSize(sysStat.storage?.total) }}
+                </div>
+                <div>
+                    <strong>{{ $t('system.used') }}:</strong> {{ fileSize(sysStat.storage?.used) }}
+                </div>
             </div>
         </div>
         <div v-else class="col-6 bg-primary p-2 border" />
