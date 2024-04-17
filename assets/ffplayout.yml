@@ -104,7 +104,7 @@ playlist:
         playlist, when is blank real length will not consider. 'infinit: true' works with
         single playlist file and loops it infinitely.
     path: /var/lib/ffplayout/playlists
-    day_start: "5:59:25"
+    day_start: "05:59:25"
     length: "24:00:00"
     infinit: false
 

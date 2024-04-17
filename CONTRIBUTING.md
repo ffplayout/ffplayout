@@ -19,7 +19,14 @@ When something is not working, you can feel free to ask your question under [dis
 - relevant logging output
 - current configuration (ffplayout.yml)
 
+#### Sharing Screenshots
+
+All kinds of logging and terminal outputs please share in a code block that is surrounded by **```**.
+
+When something is wrong in the frontend you can also share as a screenshot/screen record, but please share them with English language selected.
+
 #### Sample files
+
 If playout works normally on your system with the [provided test clips](https://github.com/ffplayout/ffplayout/tree/master/tests/assets/media_sorted), but your files produce errors and you are sure that the problem is related to ffplayout, you can provide a test file under these conditions:
 - ffmpeg can process the file normally.
 - The file is not too large, a few seconds should be enough.
