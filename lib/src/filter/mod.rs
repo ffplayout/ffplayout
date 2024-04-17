@@ -203,12 +203,16 @@ fn pad(aspect: f64, chain: &mut Filters, v_stream: &ffprobe::Stream, config: &Pl
         if let (Some(w), Some(h)) = (v_stream.width, v_stream.height) {
             if w > config.processing.width && aspect > config.processing.aspect {
                 scale = match &ADVANCED_CONFIG.decoder.filters.pad_scale_w {
-                    Some(pad_scale_w) => custom_format(pad_scale_w, &[&config.processing.width]),
+                    Some(pad_scale_w) => {
+                        custom_format(&format!("{pad_scale_w},"), &[&config.processing.width])
+                    }
                     None => format!("scale={}:-1,", config.processing.width),
                 };
             } else if h > config.processing.height && aspect < config.processing.aspect {
                 scale = match &ADVANCED_CONFIG.decoder.filters.pad_scale_h {
-                    Some(pad_scale_h) => custom_format(pad_scale_h, &[&config.processing.width]),
+                    Some(pad_scale_h) => {
+                        custom_format(&format!("{pad_scale_h},"), &[&config.processing.width])
+                    }
                     None => format!("scale=-1:{},", config.processing.height),
                 };
             }
@@ -360,7 +364,7 @@ fn overlay(node: &mut Media, chain: &mut Filters, config: &PlayoutConfig) {
             Some(overlay) => custom_format(overlay, &[
                 &config.processing.logo.replace('\\', "/").replace(':', "\\\\:"),
                 &config.processing.logo_opacity.to_string(),
-                &scale.to_string(),
+                &scale,
                 &config.processing.logo_position,
             ]),
             None => format!(
@@ -371,7 +375,7 @@ fn overlay(node: &mut Media, chain: &mut Filters, config: &PlayoutConfig) {
 
         if node.last_ad {
             match &ADVANCED_CONFIG.decoder.filters.overlay_logo_fade_in {
-                Some(fade_in) => logo_chain.push_str(fade_in),
+                Some(fade_in) => logo_chain.push_str(&format!(",{fade_in}")),
                 None => logo_chain.push_str(",fade=in:st=0:d=1.0:alpha=1"),
             }
         }
@@ -380,7 +384,9 @@ fn overlay(node: &mut Media, chain: &mut Filters, config: &PlayoutConfig) {
             let length = node.out - node.seek - 1.0;
 
             match &ADVANCED_CONFIG.decoder.filters.overlay_logo_fade_out {
-                Some(fade_out) => logo_chain.push_str(&custom_format(fade_out, &[length])),
+                Some(fade_out) => {
+                    logo_chain.push_str(&custom_format(&format!(",{fade_out}"), &[length]))
+                }
                 None => logo_chain.push_str(&format!(",fade=out:st={length}:d=1.0:alpha=1")),
             }
         }
