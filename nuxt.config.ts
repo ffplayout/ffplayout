@@ -80,8 +80,8 @@ export default defineNuxtConfig({
                 file: 'en-US.js',
             },
             {
-                code: 'pt',
-                name: 'Português',
+                code: 'pt-br',
+                name: 'Português BR',
                 file: 'pt-BR.js',
             },
         ],
@@ -95,17 +95,17 @@ export default defineNuxtConfig({
             media: {
                 de: '/medien',
                 en: '/media',
-                pt: '/media',
+                pt: '/mídias',
             },
             message: {
                 de: '/nachrichten',
                 en: '/message',
-                pt: '/mensagem',
+                pt: '/mensagens',
             },
             logging: {
                 de: '/protokollierung',
                 en: '/logging',
-                pt: '/logging',
+                pt: '/registros',
             },
             configure: {
                 de: '/einstellungen',
