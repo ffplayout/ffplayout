@@ -242,7 +242,7 @@ async function status() {
         playlistStore.remainingSec = playlistStore.currentClipStart + playlistStore.currentClipOut - timeInSec
         const playedSec = playlistStore.currentClipOut - playlistStore.remainingSec
 
-        if (playlistStore.currentClipOut === 0) {
+        if (playlistStore.currentClipOut === 0 || !playlistStore.playoutIsRunning) {
             playlistStore.progressValue = 0
         } else {
             playlistStore.progressValue = (playedSec * 100) / playlistStore.currentClipOut
