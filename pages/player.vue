@@ -449,7 +449,7 @@ async function savePlaylist(save: boolean) {
             return
         }
 
-        playlistStore.playlist = processPlaylist(listDate.value, playlistStore.playlist, true)
+        playlistStore.playlist = processPlaylist(listDate.value, $_.cloneDeep(playlistStore.playlist), true)
         const saveList = playlistStore.playlist.map(({ begin, ...item }) => item)
 
         await $fetch(`/api/playlist/${configStore.configGui[configStore.configID].id}/`, {
