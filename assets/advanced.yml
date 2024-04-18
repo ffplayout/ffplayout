@@ -14,7 +14,7 @@ decoder:
         fade_in: # fade=in:st=0:d=0.5
         fade_out: # fade=out:st={}:d=1.0
         overlay_logo_scale: # scale={}
-        overlay_logo: # null[v];movie={}:loop=0,setpts=N/(FRAME_RATE*TB),format=rgba,colorchannelmixer=aa={}{}[l];[v][l]overlay={}:shortest=1
+        overlay_logo: # null[l];[v][l]overlay={}:shortest=1
         overlay_logo_fade_in: # fade=in:st=0:d=1.0:alpha=1
         overlay_logo_fade_out: # fade=out:st={}:d=1.0:alpha=1
         tpad: # tpad=stop_mode=add:stop_duration={}

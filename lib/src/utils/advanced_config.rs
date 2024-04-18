@@ -80,7 +80,10 @@ impl AdvancedConfig {
         }
 
         if let Ok(f) = File::open(&config_path) {
-            config = serde_yaml::from_reader(f).expect("Could not read advanced config file");
+            config = match serde_yaml::from_reader(f) {
+                Ok(yaml) => yaml,
+                Err(_) => AdvancedConfig::default(),
+            };
 
             if let Some(input_parm) = &config.decoder.input_param {
                 config.decoder.input_cmd = split(input_parm);
