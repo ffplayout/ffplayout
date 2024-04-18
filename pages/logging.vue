@@ -1,5 +1,5 @@
 <template>
-    <div>
+    <div class="w-full flex flex-col">
         <div class="flex justify-end p-3 h-14">
             <div>
                 <VueDatePicker

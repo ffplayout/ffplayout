@@ -230,3 +230,24 @@ function deletePlaylistItem(index: number) {
     playlistStore.playlist.splice(index, 1)
 }
 </script>
+<style>
+/*
+    format dragging element
+*/
+#playlist-container .sortable-ghost {
+    background-color: #701a754b !important;
+    min-height: 37px !important;
+    height: 37px !important;
+}
+
+#playlist-container .sortable-ghost td {
+    padding-left: 1rem;
+    padding-right: 1rem;
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+}
+
+#playlist-container .sortable-ghost td:nth-last-child(-n + 5) {
+    display: table-cell !important;
+}
+</style>

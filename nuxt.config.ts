@@ -81,7 +81,7 @@ export default defineNuxtConfig({
             },
             {
                 code: 'pt-br',
-                name: 'Português BR',
+                name: 'Português (BR)',
                 file: 'pt-BR.js',
             },
         ],
@@ -90,27 +90,27 @@ export default defineNuxtConfig({
             player: {
                 de: '/wiedergabe',
                 en: '/player',
-                pt: '/playout',
+                'pt-br': '/playout',
             },
             media: {
                 de: '/medien',
                 en: '/media',
-                pt: '/mídias',
+                'pt-br': '/mídias',
             },
             message: {
                 de: '/nachrichten',
                 en: '/message',
-                pt: '/mensagens',
+                'pt-br': '/mensagens',
             },
             logging: {
                 de: '/protokollierung',
                 en: '/logging',
-                pt: '/registros',
+                'pt-br': '/registros',
             },
             configure: {
                 de: '/einstellungen',
                 en: '/configure',
-                pt: '/configuração',
+                'pt-br': '/configuração',
             },
         },
         detectBrowserLanguage: {

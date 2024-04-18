@@ -26,147 +26,184 @@
                 <div v-if="mediaStore.isLoading" class="w-full h-full absolute z-10 flex justify-center bg-base-100/70">
                     <span class="loading loading-spinner loading-lg" />
                 </div>
-                <splitpanes :horizontal="horizontal" class="border border-my-gray rounded shadow">
+                <splitpanes :horizontal="horizontal" class="h-full border border-my-gray rounded shadow">
                     <pane
                         min-size="14"
                         max-size="80"
                         size="20"
-                        class="h-full pb-1 !bg-base-300"
+                        class="h-full bg-base-300"
                         :class="horizontal ? 'rounded-t' : 'rounded-s'"
                     >
-                        <ul v-if="mediaStore.folderTree.parent" class="overflow-auto h-full m-1" @dragover.prevent>
-                            <template v-if="mediaStore.folderTree.parent_folders.length > 0">
-                                <li
-                                    v-for="folder in mediaStore.folderTree.parent_folders"
-                                    :key="folder.uid"
-                                    class="grid grid-cols-[auto_28px] gap-1 px-2"
-                                    :class="
-                                        filename(mediaStore.folderTree.source) === folder.name && 'bg-base-300 rounded'
-                                    "
-                                    @drop="handleDrop($event, folder, true)"
-                                    @dragover="handleDragOver"
-                                    @dragleave="handleDragLeave"
-                                >
-                                    <button
-                                        class="truncate text-left"
-                                        @click="
-                                            mediaStore.getTree(
-                                                `/${parent(mediaStore.folderTree.source)}/${folder.name}`
-                                            )
-                                        "
-                                    >
-                                        <i class="bi-folder-fill" />
-                                        {{ folder.name }}
-                                    </button>
-                                    <button
-                                        class="w-7 opacity-30 hover:opacity-100"
-                                        @click="
-                                            ;(showDeleteModal = true),
-                                                (deleteName = `/${parent(mediaStore.folderTree.source)}/${
-                                                    folder.name
-                                                }`.replace(/\/[/]+/g, '/'))
-                                        "
-                                    >
-                                        <i class="bi-x-circle-fill" />
-                                    </button>
-                                </li>
-                            </template>
+                        <div class="relative h-full overflow-y-auto">
+                            <table
+                                v-if="mediaStore.folderTree.parent"
+                                class="table table-zebra table-fixed"
+                                @dragover.prevent
+                            >
+                                <tbody>
+                                    <template v-if="mediaStore.folderTree.parent_folders.length > 0">
+                                        <tr
+                                            v-for="folder in mediaStore.folderTree.parent_folders"
+                                            :key="folder.uid"
+                                            class="grid grid-cols-[auto_30px] border-b border-base-content/20"
+                                            :class="
+                                                filename(mediaStore.folderTree.source) === folder.name &&
+                                                'bg-base-300 rounded'
+                                            "
+                                            @drop="handleDrop($event, folder, true)"
+                                            @dragover="handleDragOver"
+                                            @dragleave="handleDragLeave"
+                                        >
+                                            <td class="px-2 py-1.5 truncate">
+                                                <span
+                                                    class="cursor-pointer"
+                                                    @click="
+                                                        mediaStore.getTree(
+                                                            `/${parent(mediaStore.folderTree.source)}/${folder.name}`
+                                                        )
+                                                    "
+                                                >
+                                                    <i class="bi-folder-fill" />
+                                                    {{ folder.name }}
+                                                </span>
+                                            </td>
 
-                            <li v-else class="px-2">
-                                <div class="truncate text-left">
-                                    <i class="bi-folder-fill" />
-                                    {{ mediaStore.folderTree.parent }}
-                                </div>
-                            </li>
-                        </ul>
+                                            <td class="px-2 py-1.5 text-center">
+                                                <button
+                                                    class="opacity-30 hover:opacity-100"
+                                                    @click="
+                                                        ;(showDeleteModal = true),
+                                                            (deleteName = `/${parent(mediaStore.folderTree.source)}/${
+                                                                folder.name
+                                                            }`.replace(/\/[/]+/g, '/'))
+                                                    "
+                                                >
+                                                    <i class="bi-x-circle-fill" />
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    </template>
+
+                                    <tr v-else>
+                                        <td class="px-2 py-1.5 border-b border-base-content/20">
+                                            <i class="bi-folder-fill" />
+                                            {{ mediaStore.folderTree.parent }}
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
                     </pane>
-                    <pane class="h-full pb-1 !bg-base-300" :class="horizontal ? 'rounded-b' : 'rounded-e'">
-                        <ul v-if="mediaStore.folderTree.parent" class="h-full overflow-auto m-1" @dragover.prevent>
-                            <li
-                                v-for="folder in mediaStore.folderTree.folders"
-                                :key="folder.uid"
-                                class="grid grid-cols-[auto_28px] px-2 gap-1"
-                                @drop="handleDrop($event, folder, false)"
-                                @dragover="handleDragOver"
-                                @dragleave="handleDragLeave"
+                    <pane class="h-full !bg-base-300" :class="horizontal ? 'rounded-b' : 'rounded-e'">
+                        <div class="relative h-full overflow-y-auto">
+                            <table
+                                v-if="mediaStore.folderTree.parent"
+                                class="table table-zebra table-fixed"
+                                @dragover.prevent
                             >
-                                <button
-                                    class="truncate text-left"
-                                    @click="mediaStore.getTree(`/${mediaStore.folderTree.source}/${folder.name}`)"
-                                >
-                                    <i class="bi-folder-fill" />
-                                    {{ folder.name }}
-                                </button>
-                                <button
-                                    class="w-7 opacity-30 hover:opacity-100"
-                                    @click="
-                                        ;(showDeleteModal = true),
-                                            (deleteName = `/${mediaStore.folderTree.source}/${folder.name}`.replace(
-                                                /\/[/]+/g,
-                                                '/'
-                                            ))
-                                    "
-                                >
-                                    <i class="bi-x-circle-fill" />
-                                </button>
-                            </li>
-                            <li
-                                v-for="(element, index) in mediaStore.folderTree.files"
-                                :id="`file_${index}`"
-                                :key="element.name"
-                                class="grid grid-cols-[auto_166px] px-2"
-                                draggable="true"
-                                @dragstart="handleDragStart($event, element)"
-                            >
-                                <div class="truncate cursor-grab">
-                                    <i v-if="mediaType(element.name) === 'audio'" class="bi-music-note-beamed" />
-                                    <i v-else-if="mediaType(element.name) === 'video'" class="bi-film" />
-                                    <i v-else-if="mediaType(element.name) === 'image'" class="bi-file-earmark-image" />
-                                    <i v-else class="bi-file-binary" />
-
-                                    {{ element.name }}
-                                </div>
-                                <div>
-                                    <button
-                                        class="w-7"
-                                        @click=";(showPreviewModal = true), setPreviewData(element.name)"
+                                <tbody>
+                                    <tr
+                                        v-for="folder in mediaStore.folderTree.folders"
+                                        :key="folder.uid"
+                                        class="grid grid-cols-[auto_170px] border-b border-base-content/20"
+                                        @drop="handleDrop($event, folder, false)"
+                                        @dragover="handleDragOver"
+                                        @dragleave="handleDragLeave"
                                     >
-                                        <i class="bi-play-fill" />
-                                    </button>
-
-                                    <div class="inline-block w-[82px]">{{ toMin(element.duration) }}</div>
-
-                                    <button
-                                        class="w-7"
-                                        @click="
-                                            ;(showRenameModal = true),
-                                                setRenameValues(
-                                                    `/${mediaStore.folderTree.source}/${element.name}`.replace(
-                                                        /\/[/]+/g,
-                                                        '/'
+                                        <td class="px-2 py-1.5">
+                                            <button
+                                                class="truncate"
+                                                @click="
+                                                    mediaStore.getTree(
+                                                        `/${mediaStore.folderTree.source}/${folder.name}`
                                                     )
-                                                )
-                                        "
+                                                "
+                                            >
+                                                <i class="bi-folder-fill" />
+                                                {{ folder.name }}
+                                            </button>
+                                        </td>
+                                        <td class="ps-2 pe-[14px] py-1.5 text-right">
+                                            <button
+                                                class="opacity-30 hover:opacity-100"
+                                                @click="
+                                                    ;(showDeleteModal = true),
+                                                        (deleteName =
+                                                            `/${mediaStore.folderTree.source}/${folder.name}`.replace(
+                                                                /\/[/]+/g,
+                                                                '/'
+                                                            ))
+                                                "
+                                            >
+                                                <i class="bi-x-circle-fill" />
+                                            </button>
+                                        </td>
+                                    </tr>
+                                    <tr
+                                        v-for="(element, index) in mediaStore.folderTree.files"
+                                        :id="`file_${index}`"
+                                        :key="element.name"
+                                        class="grid grid-cols-[auto_170px] border-b border-base-content/20"
+                                        draggable="true"
+                                        @dragstart="handleDragStart($event, element)"
                                     >
-                                        <i class="bi-pencil-square" />
-                                    </button>
+                                        <td class="px-2 py-1.5 truncate cursor-grab">
+                                            <i
+                                                v-if="mediaType(element.name) === 'audio'"
+                                                class="bi-music-note-beamed"
+                                            />
+                                            <i v-else-if="mediaType(element.name) === 'video'" class="bi-film" />
+                                            <i
+                                                v-else-if="mediaType(element.name) === 'image'"
+                                                class="bi-file-earmark-image"
+                                            />
+                                            <i v-else class="bi-file-binary" />
 
-                                    <button
-                                        class="w-7 opacity-30 hover:opacity-100"
-                                        @click="
-                                            ;(showDeleteModal = true),
-                                                (deleteName =
-                                                    `/${mediaStore.folderTree.source}/${element.name}`.replace(
-                                                        /\/[/]+/g,
-                                                        '/'
-                                                    ))
-                                        "
-                                    >
-                                        <i class="bi-x-circle-fill" />
-                                    </button>
-                                </div>
-                            </li>
-                        </ul>
+                                            {{ element.name }}
+                                        </td>
+                                        <td class="px-2 py-1.5 flex">
+                                            <button
+                                                class="w-7"
+                                                @click=";(showPreviewModal = true), setPreviewData(element.name)"
+                                            >
+                                                <i class="bi-play-fill" />
+                                            </button>
+
+                                            <div class="inline-block w-[82px]">{{ toMin(element.duration) }}</div>
+
+                                            <button
+                                                class="w-7"
+                                                @click="
+                                                    ;(showRenameModal = true),
+                                                        setRenameValues(
+                                                            `/${mediaStore.folderTree.source}/${element.name}`.replace(
+                                                                /\/[/]+/g,
+                                                                '/'
+                                                            )
+                                                        )
+                                                "
+                                            >
+                                                <i class="bi-pencil-square" />
+                                            </button>
+
+                                            <button
+                                                class="w-7 opacity-30 hover:opacity-100"
+                                                @click="
+                                                    ;(showDeleteModal = true),
+                                                        (deleteName =
+                                                            `/${mediaStore.folderTree.source}/${element.name}`.replace(
+                                                                /\/[/]+/g,
+                                                                '/'
+                                                            ))
+                                                "
+                                            >
+                                                <i class="bi-x-circle-fill" />
+                                            </button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
                     </pane>
                 </splitpanes>
             </div>
@@ -202,6 +239,7 @@
             :show="showPreviewModal"
             :title="`${$t('media.preview')}: ${previewName}`"
             :modal-action="closePlayer"
+            :hide-buttons="true"
         >
             <div class="w-[1024px] max-w-full aspect-video">
                 <VideoPlayer v-if="isVideo && previewOpt" reference="previewPlayer" :options="previewOpt" />
