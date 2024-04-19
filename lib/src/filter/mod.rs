@@ -203,12 +203,16 @@ fn pad(aspect: f64, chain: &mut Filters, v_stream: &ffprobe::Stream, config: &Pl
         if let (Some(w), Some(h)) = (v_stream.width, v_stream.height) {
             if w > config.processing.width && aspect > config.processing.aspect {
                 scale = match &ADVANCED_CONFIG.decoder.filters.pad_scale_w {
-                    Some(pad_scale_w) => custom_format(pad_scale_w, &[&config.processing.width]),
+                    Some(pad_scale_w) => {
+                        custom_format(&format!("{pad_scale_w},"), &[&config.processing.width])
+                    }
                     None => format!("scale={}:-1,", config.processing.width),
                 };
             } else if h > config.processing.height && aspect < config.processing.aspect {
                 scale = match &ADVANCED_CONFIG.decoder.filters.pad_scale_h {
-                    Some(pad_scale_h) => custom_format(pad_scale_h, &[&config.processing.width]),
+                    Some(pad_scale_h) => {
+                        custom_format(&format!("{pad_scale_h},"), &[&config.processing.width])
+                    }
                     None => format!("scale=-1:{},", config.processing.height),
                 };
             }
@@ -345,45 +349,57 @@ fn overlay(node: &mut Media, chain: &mut Filters, config: &PlayoutConfig) {
         && Path::new(&config.processing.logo).is_file()
         && &node.category != "advertisement"
     {
-        let mut scale = String::new();
-
-        if !config.processing.logo_scale.is_empty() {
-            scale = match &ADVANCED_CONFIG.decoder.filters.overlay_logo_scale {
-                Some(logo_scale) => {
-                    custom_format(&format!(",{logo_scale}"), &[&config.processing.logo_scale])
-                }
-                None => format!(",scale={}", config.processing.logo_scale),
-            }
-        }
-
-        let mut logo_chain = match &ADVANCED_CONFIG.decoder.filters.overlay_logo {
-            Some(overlay) => custom_format(overlay, &[
-                &config.processing.logo.replace('\\', "/").replace(':', "\\\\:"),
-                &config.processing.logo_opacity.to_string(),
-                &scale.to_string(),
-                &config.processing.logo_position,
-            ]),
-            None => format!(
-                "null[v];movie={}:loop=0,setpts=N/(FRAME_RATE*TB),format=rgba,colorchannelmixer=aa={}{scale}[l];[v][l]overlay={}:shortest=1",
-                config.processing.logo.replace('\\', "/").replace(':', "\\\\:"), config.processing.logo_opacity, config.processing.logo_position
-            )
-        };
+        let mut logo_chain = format!(
+            "null[v];movie={}:loop=0,setpts=N/(FRAME_RATE*TB),format=rgba,colorchannelmixer=aa={}",
+            config
+                .processing
+                .logo
+                .replace('\\', "/")
+                .replace(':', "\\\\:"),
+            config.processing.logo_opacity,
+        );
 
         if node.last_ad {
             match &ADVANCED_CONFIG.decoder.filters.overlay_logo_fade_in {
-                Some(fade_in) => logo_chain.push_str(fade_in),
+                Some(fade_in) => logo_chain.push_str(&format!(",{fade_in}")),
                 None => logo_chain.push_str(",fade=in:st=0:d=1.0:alpha=1"),
-            }
+            };
         }
 
         if node.next_ad {
             let length = node.out - node.seek - 1.0;
 
             match &ADVANCED_CONFIG.decoder.filters.overlay_logo_fade_out {
-                Some(fade_out) => logo_chain.push_str(&custom_format(fade_out, &[length])),
+                Some(fade_out) => {
+                    logo_chain.push_str(&custom_format(&format!(",{fade_out}"), &[length]))
+                }
                 None => logo_chain.push_str(&format!(",fade=out:st={length}:d=1.0:alpha=1")),
             }
         }
+
+        if !config.processing.logo_scale.is_empty() {
+            match &ADVANCED_CONFIG.decoder.filters.overlay_logo_scale {
+                Some(logo_scale) => logo_chain.push_str(&custom_format(
+                    &format!(",{logo_scale}"),
+                    &[&config.processing.logo_scale],
+                )),
+                None => logo_chain.push_str(&format!(",scale={}", config.processing.logo_scale)),
+            }
+        }
+
+        match &ADVANCED_CONFIG.decoder.filters.overlay_logo {
+            Some(overlay) => {
+                if !overlay.starts_with(',') {
+                    logo_chain.push(',');
+                }
+
+                logo_chain.push_str(&custom_format(overlay, &[&config.processing.logo_position]))
+            }
+            None => logo_chain.push_str(&format!(
+                "[l];[v][l]overlay={}:shortest=1",
+                config.processing.logo_position
+            )),
+        };
 
         chain.add_filter(&logo_chain, 0, Video);
     }

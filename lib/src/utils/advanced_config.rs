@@ -52,9 +52,9 @@ pub struct Filters {
     pub fade_in: Option<String>,
     pub fade_out: Option<String>,
     pub overlay_logo_scale: Option<String>,
-    pub overlay_logo: Option<String>,
     pub overlay_logo_fade_in: Option<String>,
     pub overlay_logo_fade_out: Option<String>,
+    pub overlay_logo: Option<String>,
     pub tpad: Option<String>,
     pub drawtext_from_file: Option<String>,
     pub drawtext_from_zmq: Option<String>,
@@ -80,7 +80,10 @@ impl AdvancedConfig {
         }
 
         if let Ok(f) = File::open(&config_path) {
-            config = serde_yaml::from_reader(f).expect("Could not read advanced config file");
+            config = match serde_yaml::from_reader(f) {
+                Ok(yaml) => yaml,
+                Err(_) => AdvancedConfig::default(),
+            };
 
             if let Some(input_parm) = &config.decoder.input_param {
                 config.decoder.input_cmd = split(input_parm);

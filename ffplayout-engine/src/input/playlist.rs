@@ -186,19 +186,19 @@ impl CurrentProgram {
     }
 
     // Check if last and/or next clip is a advertisement.
-    fn last_next_ad(&mut self) {
+    fn last_next_ad(&mut self, node: &mut Media) {
         let index = self.player_control.current_index.load(Ordering::SeqCst);
         let current_list = self.player_control.current_list.lock().unwrap();
 
         if index + 1 < current_list.len() && &current_list[index + 1].category == "advertisement" {
-            self.current_node.next_ad = true;
+            node.next_ad = true;
         }
 
         if index > 0
             && index < current_list.len()
             && &current_list[index - 1].category == "advertisement"
         {
-            self.current_node.last_ad = true;
+            node.last_ad = true;
         }
     }
 
@@ -259,10 +259,7 @@ impl CurrentProgram {
 
         if !self.playout_stat.list_init.load(Ordering::SeqCst) {
             let time_sec = self.get_current_time();
-            let index = self
-                .player_control
-                .current_index
-                .fetch_add(1, Ordering::SeqCst);
+            let index = self.player_control.current_index.load(Ordering::SeqCst);
             let nodes = self.player_control.current_list.lock().unwrap();
             let last_index = nodes.len() - 1;
 
@@ -276,6 +273,12 @@ impl CurrentProgram {
 
             node_clone.seek += time_sec
                 - (node_clone.begin.unwrap() - *self.playout_stat.time_shift.lock().unwrap());
+
+            self.last_next_ad(&mut node_clone);
+
+            self.player_control
+                .current_index
+                .fetch_add(1, Ordering::SeqCst);
 
             self.current_node = handle_list_init(
                 &self.config,
@@ -306,6 +309,8 @@ impl CurrentProgram {
         media.duration = total_delta;
         media.out = total_delta;
 
+        self.last_next_ad(&mut media);
+
         self.current_node = gen_source(
             &self.config,
             media,
@@ -319,7 +324,6 @@ impl CurrentProgram {
             .lock()
             .unwrap()
             .push(self.current_node.clone());
-        self.last_next_ad();
 
         self.current_node.last_ad = self.last_node_ad;
         self.current_node
@@ -386,6 +390,8 @@ impl Iterator for CurrentProgram {
                 media.duration = total_delta;
                 media.out = total_delta;
 
+                self.last_next_ad(&mut media);
+
                 self.current_node = gen_source(
                     &self.config,
                     media,
@@ -394,8 +400,6 @@ impl Iterator for CurrentProgram {
                     last_index,
                 );
             }
-
-            self.last_next_ad();
 
             return Some(self.current_node.clone());
         }
@@ -408,7 +412,7 @@ impl Iterator for CurrentProgram {
             let mut is_last = false;
             let index = self.player_control.current_index.load(Ordering::SeqCst);
             let node_list = self.player_control.current_list.lock().unwrap();
-            let node = node_list[index].clone();
+            let mut node = node_list[index].clone();
             let last_index = node_list.len() - 1;
 
             drop(node_list);
@@ -416,6 +420,8 @@ impl Iterator for CurrentProgram {
             if index == last_index {
                 is_last = true
             }
+
+            self.last_next_ad(&mut node);
 
             self.current_node = timed_source(
                 node,
@@ -426,7 +432,6 @@ impl Iterator for CurrentProgram {
                 last_index,
             );
 
-            self.last_next_ad();
             self.player_control
                 .current_index
                 .fetch_add(1, Ordering::SeqCst);
@@ -450,7 +455,7 @@ impl Iterator for CurrentProgram {
             // Get first clip from next playlist.
 
             let c_list = self.player_control.current_list.lock().unwrap();
-            let first_node = c_list[0].clone();
+            let mut first_node = c_list[0].clone();
 
             drop(c_list);
 
@@ -459,6 +464,9 @@ impl Iterator for CurrentProgram {
             }
 
             self.player_control.current_index.store(0, Ordering::SeqCst);
+            self.last_next_ad(&mut first_node);
+            first_node.last_ad = self.last_node_ad;
+
             self.current_node = gen_source(
                 &self.config,
                 first_node,
@@ -466,8 +474,7 @@ impl Iterator for CurrentProgram {
                 &self.player_control,
                 0,
             );
-            self.last_next_ad();
-            self.current_node.last_ad = self.last_node_ad;
+
             self.player_control.current_index.store(1, Ordering::SeqCst);
 
             Some(self.current_node.clone())
