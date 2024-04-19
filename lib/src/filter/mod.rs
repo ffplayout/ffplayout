@@ -390,7 +390,7 @@ fn overlay(node: &mut Media, chain: &mut Filters, config: &PlayoutConfig) {
         match &ADVANCED_CONFIG.decoder.filters.overlay_logo {
             Some(overlay) => {
                 if !overlay.starts_with(',') {
-                    logo_chain.push_str(",");
+                    logo_chain.push(',');
                 }
 
                 logo_chain.push_str(&custom_format(overlay, &[&config.processing.logo_position]))
