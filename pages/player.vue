@@ -31,6 +31,7 @@
                 </pane>
                 <pane>
                     <PlaylistTable
+                        ref="playlistTable"
                         :get-playlist="getPlaylist"
                         :edit-item="editPlaylistItem"
                         :preview="setPreviewData"
@@ -97,7 +98,7 @@
 
         <GenericModal
             :show="showPreviewModal"
-            :title="`Preview: ${previewName}`"
+            :title="`${$t('media.preview')}: ${previewName}`"
             :hide-buttons="true"
             :modal-action="closePlayer"
         >
@@ -107,25 +108,41 @@
             </div>
         </GenericModal>
 
-        <GenericModal :show="showSourceModal" title="Add/Edit Source" :modal-action="processSource">
+        <GenericModal :show="showCopyModal" :title="$t('player.copyTo')" :modal-action="savePlaylist">
+            <VueDatePicker
+                v-model="targetDate"
+                :clearable="false"
+                :hide-navigation="['time']"
+                :action-row="{ showCancel: false, showSelect: false, showPreview: false }"
+                :format="calendarFormat"
+                model-type="yyyy-MM-dd"
+                auto-apply
+                :locale="locale"
+                :dark="colorMode.value === 'dark'"
+                input-class-name="input input-sm !input-bordered !w-[full text-right !pe-3"
+                required
+            />
+        </GenericModal>
+
+        <GenericModal :show="showSourceModal" :title="$t('player.addEdit')" :modal-action="processSource">
             <div>
                 <label class="form-control w-full mt-3">
                     <div class="label">
-                        <span class="label-text">In</span>
+                        <span class="label-text">{{ $t('player.in') }}</span>
                     </div>
                     <input v-model.number="newSource.in" type="number" class="input input-sm input-bordered w-full" />
                 </label>
 
                 <label class="form-control w-full mt-3">
                     <div class="label">
-                        <span class="label-text">Out</span>
+                        <span class="label-text">{{ $t('player.Out') }}</span>
                     </div>
                     <input v-model.number="newSource.out" type="number" class="input input-sm input-bordered w-full" />
                 </label>
 
                 <label class="form-control w-full mt-3">
                     <div class="label">
-                        <span class="label-text">Duration</span>
+                        <span class="label-text">{{ $t('player.duration') }}</span>
                     </div>
                     <input
                         v-model.number="newSource.duration"
@@ -136,35 +153,35 @@
 
                 <label class="form-control w-full mt-3">
                     <div class="label">
-                        <span class="label-text">Source</span>
+                        <span class="label-text">{{ $t('player.file') }}</span>
                     </div>
                     <input v-model="newSource.source" type="text" class="input input-sm input-bordered w-full" />
                 </label>
 
                 <label class="form-control w-full mt-3">
                     <div class="label">
-                        <span class="label-text">Audio</span>
+                        <span class="label-text">{{ $t('player.audio') }}</span>
                     </div>
                     <input v-model="newSource.audio" type="text" class="input input-sm input-bordered w-full" />
                 </label>
 
                 <label class="form-control w-full mt-3">
                     <div class="label">
-                        <span class="label-text">Custom Filter</span>
+                        <span class="label-text">{{ $t('player.customFilter') }}</span>
                     </div>
                     <input v-model="newSource.custom_filter" type="text" class="input input-sm input-bordered w-full" />
                 </label>
 
                 <div class="form-control">
                     <label class="cursor-pointer label">
-                        <span class="label-text">Advertisement</span>
+                        <span class="label-text">{{ $t('player.ad') }}</span>
                         <input type="checkbox" class="checkbox checkbox-sm" @click="isAd" />
                     </label>
                 </div>
             </div>
         </GenericModal>
 
-        <GenericModal :show="showImportModal" title="Import Playlist" :modal-action="importPlaylist">
+        <GenericModal :show="showImportModal" :title="$t('player.import')" :modal-action="importPlaylist">
             <input
                 type="file"
                 class="file-input file-input-sm file-input-bordered w-full"
@@ -173,17 +190,17 @@
             />
         </GenericModal>
 
-        <GenericModal :show="showCopyModal" :title="`Copy Program ${listDate}`" :modal-action="savePlaylist">
-            <input v-model="targetDate" type="date" class="input input-sm input-bordered w-full" />
-        </GenericModal>
-
         <GenericModal :show="showDeleteModal" title="Delete Program" :modal-action="deletePlaylist">
             <span>
-                Delete program from <strong>{{ listDate }}</strong>
+                {{ $t('player.deleteFrom') }} <strong>{{ listDate }}</strong>
             </span>
         </GenericModal>
 
-        <PlaylistGenerator v-if="showPlaylistGenerator" :close="closeGenerator" />
+        <PlaylistGenerator
+            v-if="showPlaylistGenerator"
+            :close="closeGenerator"
+            :switch-class="playlistTable.classSwitcher"
+        />
     </div>
 </template>
 
@@ -211,6 +228,7 @@ const { listDate } = storeToRefs(usePlaylist())
 
 const todayDate = ref($dayjs().utcOffset(configStore.utcOffset).format('YYYY-MM-DD'))
 const targetDate = ref($dayjs().utcOffset(configStore.utcOffset).format('YYYY-MM-DD'))
+const playlistTable = ref()
 const editId = ref(-1)
 const textFile = ref()
 
@@ -262,6 +280,8 @@ async function getPlaylist() {
     } else {
         scrollTo(0)
     }
+
+    playlistTable.value.classSwitcher()
 }
 
 function closeGenerator() {
@@ -331,11 +351,12 @@ function processSource(process: boolean) {
     if (process) {
         if (editId.value === -1) {
             playlistStore.playlist.push(newSource.value)
-            playlistStore.playlist = processPlaylist(listDate.value, playlistStore.playlist, false)
         } else {
             playlistStore.playlist[editId.value] = newSource.value
-            playlistStore.playlist = processPlaylist(listDate.value, playlistStore.playlist, false)
         }
+
+        processPlaylist(listDate.value, playlistStore.playlist, false)
+        playlistTable.value.classSwitcher()
     }
 
     editId.value = -1
@@ -428,9 +449,10 @@ async function importPlaylist(imp: boolean) {
                 body: formData,
             }
         )
-            .then((response) => {
+            .then(async (response) => {
                 indexStore.msgAlert('success', String(response), 2)
-                playlistStore.getPlaylist(listDate.value)
+                await playlistStore.getPlaylist(listDate.value)
+                playlistTable.value.classSwitcher()
             })
             .catch((e: string) => {
                 indexStore.msgAlert('error', e, 4)
@@ -449,8 +471,7 @@ async function savePlaylist(save: boolean) {
             return
         }
 
-        playlistStore.playlist = processPlaylist(listDate.value, $_.cloneDeep(playlistStore.playlist), true)
-        const saveList = playlistStore.playlist.map(({ begin, ...item }) => item)
+        const saveList = processPlaylist(listDate.value, $_.cloneDeep(playlistStore.playlist), true)
 
         await $fetch(`/api/playlist/${configStore.configGui[configStore.configID].id}/`, {
             method: 'POST',
@@ -462,6 +483,7 @@ async function savePlaylist(save: boolean) {
             }),
         })
             .then((response: any) => {
+                playlistTable.value.classSwitcher()
                 indexStore.msgAlert('success', response, 2)
             })
             .catch((e: any) => {
@@ -483,10 +505,9 @@ async function deletePlaylist(del: boolean) {
             headers: { ...configStore.contentType, ...authStore.authHeader },
         }).then(() => {
             playlistStore.playlist = []
-
-            indexStore.msgAlert('warning', 'Playlist deleted...', 2)
+            playlistTable.value.classSwitcher()
+            indexStore.msgAlert('warning', t('player.deleteSuccess'), 2)
         })
     }
 }
 </script>
-

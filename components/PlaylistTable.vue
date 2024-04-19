@@ -11,7 +11,7 @@
                             {{ $t('player.start') }}
                         </div>
                     </th>
-                    <th class="w-auto p-0 text-left">
+                    <th class="w-full p-0 text-left">
                         <div class="border-b border-my-gray px-4 py-3 -mb-[2px]">
                             {{ $t('player.file') }}
                         </div>
@@ -53,7 +53,10 @@
                     </th>
                 </tr>
             </thead>
+
             <Sortable
+                id="sort-container"
+                ref="sortContainer"
                 :list="playlistStore.playlist"
                 item-key="uid"
                 tag="tbody"
@@ -127,6 +130,7 @@ const playlistStore = usePlaylist()
 const { secToHMS, filename, secondsToTime } = stringFormatter()
 const { processPlaylist, genUID } = playlistOperations()
 
+const sortContainer = ref()
 const todayDate = ref($dayjs().utcOffset(configStore.utcOffset).format('YYYY-MM-DD'))
 const { listDate } = storeToRefs(usePlaylist())
 
@@ -161,9 +165,21 @@ onMounted(() => {
     props.getPlaylist()
 })
 
-watch([listDate], async () => {
-    await props.getPlaylist()
+watch([listDate], () => {
+    props.getPlaylist()
 })
+
+defineExpose({
+    classSwitcher,
+})
+
+function classSwitcher() {
+    if (playlistStore.playlist.length === 0 && sortContainer.value) {
+        sortContainer.value.sortable.el.classList.add('is-empty')
+    } else {
+        sortContainer.value.sortable.el.classList.remove('is-empty')
+    }
+}
 
 function setCategory(event: any, item: PlaylistItem) {
     if (event.target.checked) {
@@ -209,7 +225,8 @@ function addClip(event: any) {
         duration: mediaStore.folderTree.files[o].duration,
     })
 
-    playlistStore.playlist = processPlaylist(listDate.value, playlistStore.playlist, false)
+    classSwitcher()
+    processPlaylist(listDate.value, playlistStore.playlist, false)
 
     nextTick(() => {
         const newNode = document.getElementById(`clip-${n}`)
@@ -221,16 +238,30 @@ function addClip(event: any) {
 function moveItemInArray(event: any) {
     playlistStore.playlist.splice(event.newIndex, 0, playlistStore.playlist.splice(event.oldIndex, 1)[0])
 
-    playlistStore.playlist = processPlaylist(listDate.value, playlistStore.playlist, false)
+    processPlaylist(listDate.value, playlistStore.playlist, false)
 
     removeBG(event.item)
 }
 
 function deletePlaylistItem(index: number) {
     playlistStore.playlist.splice(index, 1)
+    classSwitcher()
 }
 </script>
 <style>
+#sort-container.is-empty:not(:has(.sortable-ghost)):after {
+    content: '\f1bc';
+    font-family: 'bootstrap-icons';
+    opacity: 0.3;
+    font-size: 50px;
+    width: 100%;
+    height: 210px;
+    display: flex;
+    position: absolute;
+    justify-content: center;
+    align-items: center;
+}
+
 /*
     format dragging element
 */

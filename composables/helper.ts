@@ -190,40 +190,44 @@ export const playlistOperations = () => {
 
         for (const item of list) {
             if (configStore.playout.playlist.startInSec === begin) {
-                if (!forSave) {
-                    item.date = date
-                } else {
-                    delete item.date
+                item.date = date
+            }
+
+            if (forSave) {
+                delete item.date
+
+                if (!item.audio) {
+                    delete item.audio
                 }
-            }
 
-            if (!item.uid) {
-                item.uid = genUID()
-            }
+                if (!item.category) {
+                    delete item.category
+                }
 
-            item.begin = begin
+                if (!item.custom_filter) {
+                    delete item.custom_filter
+                }
 
-            if (!item.audio) {
-                delete item.audio
-            }
+                if (
+                    begin + (item.out - item.in) >
+                    configStore.playout.playlist.startInSec + configStore.playout.playlist.lengthInSec
+                ) {
+                    item.out =
+                        configStore.playout.playlist.startInSec + configStore.playout.playlist.lengthInSec - begin
+                }
+            } else {
+                if (!item.uid) {
+                    item.uid = genUID()
+                }
 
-            if (!item.category) {
-                delete item.category
-            }
-
-            if (!item.custom_filter) {
-                delete item.custom_filter
-            }
-
-            if (
-                begin >= configStore.playout.playlist.startInSec + configStore.playout.playlist.lengthInSec &&
-                !configStore.playout.playlist.infinit
-            ) {
-                if (forSave) {
-                    break
-                } else {
+                if (
+                    begin >= configStore.playout.playlist.startInSec + configStore.playout.playlist.lengthInSec &&
+                    !configStore.playout.playlist.infinit
+                ) {
                     item.overtime = true
                 }
+
+                item.begin = begin
             }
 
             newList.push(item)
