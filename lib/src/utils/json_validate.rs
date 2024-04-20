@@ -17,6 +17,7 @@ use crate::utils::{
     JsonPlaylist, Media, OutputMode::Null, PlayerControl, PlayoutConfig, FFMPEG_IGNORE_ERRORS,
     IMAGE_FORMAT,
 };
+use crate::ADVANCED_CONFIG;
 
 /// Validate a single media file.
 ///
@@ -30,19 +31,23 @@ fn check_media(
     begin: f64,
     config: &PlayoutConfig,
 ) -> Result<(), ProcError> {
-    let mut enc_cmd = vec_strings!["-hide_banner", "-nostats", "-v", "level+info"];
+    let mut dec_cmd = vec_strings!["-hide_banner", "-nostats", "-v", "level+info"];
     let mut error_list = vec![];
     let mut config = config.clone();
     config.out.mode = Null;
 
     let mut process_length = 0.1;
 
+    if let Some(decoder_input_cmd) = &ADVANCED_CONFIG.decoder.input_cmd {
+        dec_cmd.append(&mut decoder_input_cmd.clone());
+    }
+
     if config.logging.detect_silence {
         process_length = 15.0;
         let seek = node.duration / 4.0;
 
         // Seek in file, to prevent false silence detection on intros without sound.
-        enc_cmd.append(&mut vec_strings!["-ss", seek]);
+        dec_cmd.append(&mut vec_strings!["-ss", seek]);
     }
 
     // Take care, that no seek and length command is added.
@@ -75,13 +80,13 @@ fn check_media(
 
     filter.add_filter("silencedetect=n=-30dB", 0, Audio);
 
-    enc_cmd.append(&mut node.cmd.unwrap_or_default());
-    enc_cmd.append(&mut filter.cmd());
-    enc_cmd.append(&mut filter.map());
-    enc_cmd.append(&mut vec_strings!["-t", process_length, "-f", "null", "-"]);
+    dec_cmd.append(&mut node.cmd.unwrap_or_default());
+    dec_cmd.append(&mut filter.cmd());
+    dec_cmd.append(&mut filter.map());
+    dec_cmd.append(&mut vec_strings!["-t", process_length, "-f", "null", "-"]);
 
     let mut enc_proc = Command::new("ffmpeg")
-        .args(enc_cmd)
+        .args(dec_cmd)
         .stderr(Stdio::piped())
         .spawn()?;
 

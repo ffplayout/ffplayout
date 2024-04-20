@@ -381,7 +381,7 @@ impl PlayoutConfig {
             Ok(file) => file,
             Err(_) => {
                 eprintln!(
-                    "{config_path:?} doesn't exists!\nPut \"ffplayout.yml\" in \"/etc/playout/\" or beside the executable!"
+                    "ffplayout.yml not found!\nPut \"ffplayout.yml\" in \"/etc/playout/\" or beside the executable!"
                 );
                 process::exit(1);
             }
