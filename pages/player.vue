@@ -135,7 +135,7 @@
 
                 <label class="form-control w-full mt-3">
                     <div class="label">
-                        <span class="label-text">{{ $t('player.Out') }}</span>
+                        <span class="label-text">{{ $t('player.out') }}</span>
                     </div>
                     <input v-model.number="newSource.out" type="number" class="input input-sm input-bordered w-full" />
                 </label>
