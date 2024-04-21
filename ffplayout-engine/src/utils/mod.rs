@@ -239,6 +239,7 @@ pub fn prepare_output_cmd(
 /// map media struct to json object
 pub fn get_media_map(media: Media) -> Value {
     json!({
+        "title": media.title,
         "seek": media.seek,
         "out": media.out,
         "duration": media.duration,
