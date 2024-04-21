@@ -1,0 +1,20 @@
+{
+    "rust-analyzer.cargo.target": null,
+    "rust-analyzer.checkOnSave": true,
+    "rust-analyzer.cargo.buildScripts.overrideCommand": null,
+    "rust-analyzer.rustfmt.overrideCommand": null,
+    "rust-analyzer.inlayHints.chainingHints.enable": false,
+    "rust-analyzer.inlayHints.parameterHints.enable": false,
+    "rust-analyzer.inlayHints.typeHints.enable": false,
+    "rust-analyzer.diagnostics.disabled": ["unresolved-proc-macro"],
+    "[dockercompose]": {
+        "editor.defaultFormatter": "esbenp.prettier-vscode"
+    },
+    "[rust]": {
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "statiolake.vscode-rustfmt"
+    },
+    "[yaml]": {
+        "editor.defaultFormatter": "esbenp.prettier-vscode"
+    }
+}
