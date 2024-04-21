@@ -1,3 +1,31 @@
 {
     "eslint.experimental.useFlatConfig": true,
+    "prettier.tabWidth": 4,
+    "prettier.printWidth": 120,
+    "vue3snippets.semi": false,
+    "vue3snippets.singleQuote": true,
+    "vue3snippets.jsxSingleQuote": true,
+    "vue3snippets.printWidth": 120,
+    "vue3snippets.tabWidth": 4,
+    "prettier.jsxSingleQuote": true,
+    "prettier.semi": false,
+    "prettier.singleQuote": true,
+    "[css]": {
+        "editor.defaultFormatter": "esbenp.prettier-vscode"
+    },
+    "[html]": {
+        "editor.defaultFormatter": "esbenp.prettier-vscode"
+    },
+    "[javascript]": {
+        "editor.defaultFormatter": "esbenp.prettier-vscode"
+    },
+    "[scss]": {
+        "editor.defaultFormatter": "esbenp.prettier-vscode"
+    },
+    "[vue]": {
+        "editor.defaultFormatter": "esbenp.prettier-vscode"
+    },
+    "[typescript]": {
+        "editor.defaultFormatter": "esbenp.prettier-vscode"
+    },
 }
