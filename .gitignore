@@ -25,5 +25,4 @@ ffpapi.1.gz
 /dist/
 /public/
 tmp/
-.vscode/
 assets/playlist_template.json
