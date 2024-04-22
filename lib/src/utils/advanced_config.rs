@@ -66,7 +66,7 @@ impl AdvancedConfig {
     pub fn new(cfg_path: PathBuf) -> Self {
         let mut config: AdvancedConfig = Default::default();
 
-        if let Ok(f) = File::open(&cfg_path) {
+        if let Ok(f) = File::open(cfg_path) {
             config = match serde_yaml::from_reader(f) {
                 Ok(yaml) => yaml,
                 Err(_) => AdvancedConfig::default(),
