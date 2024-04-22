@@ -5,7 +5,7 @@ use simplelog::*;
 use crate::utils::prepare_output_cmd;
 use ffplayout_lib::{
     utils::{Media, PlayoutConfig, ProcessUnit::*},
-    vec_strings, ADVANCED_CONFIG,
+    vec_strings,
 };
 
 /// Streaming Output
@@ -18,7 +18,11 @@ pub fn output(config: &PlayoutConfig, log_format: &str) -> process::Child {
 
     let mut enc_prefix = vec_strings!["-hide_banner", "-nostats", "-v", log_format];
 
-    if let Some(input_cmd) = &ADVANCED_CONFIG.encoder.input_cmd {
+    if let Some(input_cmd) = config
+        .advanced
+        .as_ref()
+        .and_then(|a| a.encoder.input_cmd.clone())
+    {
         enc_prefix.append(&mut input_cmd.clone());
     }
 

@@ -11,6 +11,9 @@ use ffplayout_lib::utils::{OutputMode, ProcessMode};
                       \n    ffplayout (ARGS) [OPTIONS]\n\n    Pass channel name only in multi channel environment!",
     long_about = None)]
 pub struct Args {
+    #[clap(long, help = "File path to advanced.yml")]
+    pub advanced_config: Option<PathBuf>,
+
     #[clap(index = 1, value_parser, help = "Channel name")]
     pub channel: Option<String>,
 

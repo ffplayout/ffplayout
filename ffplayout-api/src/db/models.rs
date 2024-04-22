@@ -42,6 +42,7 @@ impl LoginUser {
         Self { id, username }
     }
 }
+
 #[derive(Debug, Deserialize, Serialize, Clone, sqlx::FromRow)]
 pub struct TextPreset {
     #[sqlx(default)]

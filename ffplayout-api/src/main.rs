@@ -65,7 +65,7 @@ async fn validator(
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    let mut config = PlayoutConfig::new(None);
+    let mut config = PlayoutConfig::new(None, None);
     config.mail.recipient = String::new();
     config.logging.log_to_file = false;
     config.logging.timestamp = false;

@@ -53,7 +53,7 @@ fn test_ordered_list() {
 #[test]
 #[ignore]
 fn test_filler_list() {
-    let mut config = PlayoutConfig::new(None);
+    let mut config = PlayoutConfig::new(None, None);
     config.storage.filler = "assets/".into();
 
     let f_list = filler_list(&config, 2440.0);
@@ -64,7 +64,7 @@ fn test_filler_list() {
 #[test]
 #[ignore]
 fn test_generate_playlist_from_folder() {
-    let mut config = PlayoutConfig::new(None);
+    let mut config = PlayoutConfig::new(None, None);
     config.general.generate = Some(vec!["2023-09-11".to_string()]);
     config.processing.mode = Playlist;
     config.logging.log_to_file = false;
@@ -98,7 +98,7 @@ fn test_generate_playlist_from_folder() {
 #[test]
 #[ignore]
 fn test_generate_playlist_from_template() {
-    let mut config = PlayoutConfig::new(None);
+    let mut config = PlayoutConfig::new(None, None);
     config.general.generate = Some(vec!["2023-09-12".to_string()]);
     config.general.template = Some(Template {
         sources: vec![

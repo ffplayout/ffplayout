@@ -31,9 +31,10 @@ pub async fn create_channel(
         Err(_) => rand::thread_rng().gen_range(71..99),
     };
 
-    let mut config = PlayoutConfig::new(Some(PathBuf::from(
-        "/usr/share/ffplayout/ffplayout.yml.orig",
-    )));
+    let mut config = PlayoutConfig::new(
+        Some(PathBuf::from("/usr/share/ffplayout/ffplayout.yml.orig")),
+        None,
+    );
 
     config.general.stat_file = format!(".ffp_{channel_name}",);
     config.logging.path = config.logging.path.join(&channel_name);
