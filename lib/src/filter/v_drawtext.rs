@@ -7,7 +7,6 @@ use std::{
 use regex::Regex;
 
 use crate::utils::{controller::ProcessUnit::*, custom_format, Media, PlayoutConfig};
-use crate::ADVANCED_CONFIG;
 
 pub fn filter_node(
     config: &PlayoutConfig,
@@ -45,7 +44,11 @@ pub fn filter_node(
             .replace('%', "\\\\\\%")
             .replace(':', "\\:");
 
-        filter = match &ADVANCED_CONFIG.decoder.filters.drawtext_from_file {
+        filter = match &config
+            .advanced
+            .clone()
+            .and_then(|a| a.decoder.filters.drawtext_from_file)
+        {
             Some(drawtext) => custom_format(drawtext, &[&escaped_text, &config.text.style, &font]),
             None => format!("drawtext=text='{escaped_text}':{}{font}", config.text.style),
         };
@@ -58,8 +61,12 @@ pub fn filter_node(
             }
         }
 
-        filter = match &ADVANCED_CONFIG.decoder.filters.drawtext_from_zmq {
-            Some(drawtext) => custom_format(drawtext, &[&socket.replace(':', "\\:"), &filter_cmd]),
+        filter = match config
+            .advanced
+            .as_ref()
+            .and_then(|a| a.decoder.filters.drawtext_from_zmq.clone())
+        {
+            Some(drawtext) => custom_format(&drawtext, &[&socket.replace(':', "\\:"), &filter_cmd]),
             None => format!(
                 "zmq=b=tcp\\\\://'{}',drawtext@dyntext={filter_cmd}",
                 socket.replace(':', "\\:")

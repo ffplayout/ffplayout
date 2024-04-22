@@ -34,7 +34,7 @@ use ffplayout_lib::{
         controller::ProcessUnit::*, get_delta, sec_to_time, stderr_reader, test_tcp_port, Media,
         PlayerControl, PlayoutConfig, PlayoutStatus, ProcessControl,
     },
-    vec_strings, ADVANCED_CONFIG,
+    vec_strings,
 };
 
 /// Ingest Server for HLS
@@ -50,7 +50,11 @@ fn ingest_to_hls_server(
     let mut dummy_media = Media::new(0, "Live Stream", false);
     dummy_media.unit = Ingest;
 
-    if let Some(ingest_input_cmd) = &ADVANCED_CONFIG.ingest.input_cmd {
+    if let Some(ingest_input_cmd) = config
+        .advanced
+        .as_ref()
+        .and_then(|a| a.ingest.input_cmd.clone())
+    {
         server_prefix.append(&mut ingest_input_cmd.clone());
     }
 
@@ -203,7 +207,11 @@ pub fn write_hls(
 
         let mut enc_prefix = vec_strings!["-hide_banner", "-nostats", "-v", &ff_log_format];
 
-        if let Some(encoder_input_cmd) = &ADVANCED_CONFIG.encoder.input_cmd {
+        if let Some(encoder_input_cmd) = config
+            .advanced
+            .as_ref()
+            .and_then(|a| a.encoder.input_cmd.clone())
+        {
             enc_prefix.append(&mut encoder_input_cmd.clone());
         }
 

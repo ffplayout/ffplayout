@@ -1,4 +1,5 @@
 use std::{
+    env,
     fs::File,
     path::{Path, PathBuf},
 };
@@ -37,7 +38,19 @@ pub fn get_config(args: Args) -> Result<PlayoutConfig, ProcError> {
         None => args.config,
     };
 
-    let mut config = PlayoutConfig::new(cfg_path);
+    let mut adv_config_path = PathBuf::from("/etc/ffplayout/advanced.yml");
+
+    if let Some(adv_path) = args.advanced_config {
+        adv_config_path = adv_path;
+    } else if !adv_config_path.is_file() {
+        if Path::new("./assets/advanced.yml").is_file() {
+            adv_config_path = PathBuf::from("./assets/advanced.yml")
+        } else if let Some(p) = env::current_exe().ok().as_ref().and_then(|op| op.parent()) {
+            adv_config_path = p.join("advanced.yml")
+        };
+    }
+
+    let mut config = PlayoutConfig::new(cfg_path, Some(adv_config_path));
 
     if let Some(gen) = args.generate {
         config.general.generate = Some(gen);

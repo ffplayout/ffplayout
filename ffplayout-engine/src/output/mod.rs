@@ -19,14 +19,11 @@ pub use hls::write_hls;
 use crate::input::{ingest_server, source_generator};
 use crate::utils::task_runner;
 
-use ffplayout_lib::vec_strings;
-use ffplayout_lib::{
-    utils::{
-        sec_to_time, stderr_reader, OutputMode::*, PlayerControl, PlayoutConfig, PlayoutStatus,
-        ProcessControl, ProcessUnit::*,
-    },
-    ADVANCED_CONFIG,
+use ffplayout_lib::utils::{
+    sec_to_time, stderr_reader, OutputMode::*, PlayerControl, PlayoutConfig, PlayoutStatus,
+    ProcessControl, ProcessUnit::*,
 };
+use ffplayout_lib::vec_strings;
 
 /// Player
 ///
@@ -147,7 +144,11 @@ pub fn player(
 
         let mut dec_cmd = vec_strings!["-hide_banner", "-nostats", "-v", &ff_log_format];
 
-        if let Some(decoder_input_cmd) = &ADVANCED_CONFIG.decoder.input_cmd {
+        if let Some(decoder_input_cmd) = config
+            .advanced
+            .as_ref()
+            .and_then(|a| a.decoder.input_cmd.clone())
+        {
             dec_cmd.append(&mut decoder_input_cmd.clone());
         }
 
