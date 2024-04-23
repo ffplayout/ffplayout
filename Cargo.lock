@@ -1274,6 +1274,7 @@ dependencies = [
  "static-files",
  "sysinfo",
  "tokio",
+ "uuid",
 ]
 
 [[package]]

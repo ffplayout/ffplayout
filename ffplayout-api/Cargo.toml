@@ -46,6 +46,7 @@ static-files = "0.2"
 sysinfo ={ version = "0.30", features = ["linux-netdevs"] }
 sqlx = { version = "0.7", features = ["runtime-tokio", "sqlite"] }
 tokio = { version = "1.29", features = ["full"] }
+uuid = "1.8"
 
 [build-dependencies]
 static-files = "0.2"
