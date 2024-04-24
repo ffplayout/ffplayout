@@ -1,8 +1,4 @@
-use std::{
-    env,
-    process::exit,
-    sync::{Arc, Mutex},
-};
+use std::{collections::HashSet, env, process::exit, sync::Mutex};
 
 use actix_files::Files;
 use actix_web::{
@@ -14,36 +10,24 @@ use actix_web_httpauth::{extractors::bearer::BearerAuth, middleware::HttpAuthent
 #[cfg(all(not(debug_assertions), feature = "embed_frontend"))]
 use actix_web_static_files::ResourceFiles;
 
-use clap::Parser;
-use lazy_static::lazy_static;
 use path_clean::PathClean;
 use simplelog::*;
-use sysinfo::{Disks, Networks, System};
 
-pub mod api;
-pub mod db;
-pub mod utils;
-
-use api::{auth, routes::*};
-use db::{db_pool, models::LoginUser};
-use utils::{args_parse::Args, control::ProcessControl, db_path, init_config, run_args};
+use ffplayout_api::{
+    api::{auth, routes::*},
+    db::{db_pool, models::LoginUser},
+    sse::{routes::*, AuthState},
+    utils::{control::ProcessControl, db_path, init_config, run_args},
+    ARGS,
+};
 
 #[cfg(any(debug_assertions, not(feature = "embed_frontend")))]
-use utils::public_path;
+use ffplayout_api::utils::public_path;
 
 use ffplayout_lib::utils::{init_logging, PlayoutConfig};
 
 #[cfg(all(not(debug_assertions), feature = "embed_frontend"))]
 include!(concat!(env!("OUT_DIR"), "/generated.rs"));
-
-lazy_static! {
-    pub static ref ARGS: Args = Args::parse();
-    pub static ref DISKS: Arc<Mutex<Disks>> =
-        Arc::new(Mutex::new(Disks::new_with_refreshed_list()));
-    pub static ref NETWORKS: Arc<Mutex<Networks>> =
-        Arc::new(Mutex::new(Networks::new_with_refreshed_list()));
-    pub static ref SYS: Arc<Mutex<System>> = Arc::new(Mutex::new(System::new_all()));
-}
 
 async fn validator(
     req: ServiceRequest,
@@ -95,6 +79,9 @@ async fn main() -> std::io::Result<()> {
         let addr = ip_port[0];
         let port = ip_port[1].parse::<u16>().unwrap();
         let engine_process = web::Data::new(ProcessControl::new());
+        let auth_state = web::Data::new(AuthState {
+            uuids: Mutex::new(HashSet::new()),
+        });
 
         info!("running ffplayout API, listen on http://{conn}");
 
@@ -109,14 +96,15 @@ async fn main() -> std::io::Result<()> {
             let mut web_app = App::new()
                 .app_data(db_pool)
                 .app_data(engine_process.clone())
+                .app_data(auth_state.clone())
                 .wrap(logger)
                 .service(login)
                 .service(
                     web::scope("/api")
-                        .wrap(auth)
+                        .wrap(auth.clone())
                         .service(add_user)
                         .service(get_user)
-                        .service(get_user_by_name)
+                        .service(get_by_name)
                         .service(get_users)
                         .service(remove_user)
                         .service(get_playout_config)
@@ -149,8 +137,10 @@ async fn main() -> std::io::Result<()> {
                         .service(save_file)
                         .service(import_playlist)
                         .service(get_program)
-                        .service(get_system_stat),
+                        .service(get_system_stat)
+                        .service(generate_uuid),
                 )
+                .service(web::scope("/data").service(validate_uuid))
                 .service(get_file);
 
             if let Some(public) = &ARGS.public {

@@ -12,8 +12,8 @@ pub enum ServiceError {
     #[display(fmt = "Conflict: {_0}")]
     Conflict(String),
 
-    #[display(fmt = "Unauthorized")]
-    Unauthorized,
+    #[display(fmt = "Unauthorized: {_0}")]
+    Unauthorized(String),
 
     #[display(fmt = "NoContent: {_0}")]
     NoContent(String),
@@ -31,7 +31,7 @@ impl ResponseError for ServiceError {
             }
             ServiceError::BadRequest(ref message) => HttpResponse::BadRequest().json(message),
             ServiceError::Conflict(ref message) => HttpResponse::Conflict().json(message),
-            ServiceError::Unauthorized => HttpResponse::Unauthorized().json("No Permission!"),
+            ServiceError::Unauthorized(ref message) => HttpResponse::Unauthorized().json(message),
             ServiceError::NoContent(ref message) => HttpResponse::NoContent().json(message),
             ServiceError::ServiceUnavailable(ref message) => {
                 HttpResponse::ServiceUnavailable().json(message)
@@ -84,6 +84,12 @@ impl From<sqlx::Error> for ServiceError {
 
 impl From<tokio::task::JoinError> for ServiceError {
     fn from(err: tokio::task::JoinError) -> ServiceError {
+        ServiceError::BadRequest(err.to_string())
+    }
+}
+
+impl From<uuid::Error> for ServiceError {
+    fn from(err: uuid::Error) -> ServiceError {
         ServiceError::BadRequest(err.to_string())
     }
 }

@@ -246,7 +246,7 @@ async fn get_user(
 /// ```
 #[get("/user/{name}")]
 #[protect("Role::Admin", ty = "Role")]
-async fn get_user_by_name(
+async fn get_by_name(
     pool: web::Data<Pool<Sqlite>>,
     name: web::Path<String>,
 ) -> Result<impl Responder, ServiceError> {
@@ -326,7 +326,7 @@ async fn update_user(
         return Err(ServiceError::InternalServerError);
     }
 
-    Err(ServiceError::Unauthorized)
+    Err(ServiceError::Unauthorized("No Permission".to_string()))
 }
 
 /// **Add User**
