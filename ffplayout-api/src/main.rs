@@ -1,9 +1,4 @@
-use std::{
-    collections::HashSet,
-    env,
-    process::exit,
-    sync::{Arc, Mutex},
-};
+use std::{collections::HashSet, env, process::exit, sync::Arc};
 
 use actix_files::Files;
 use actix_web::{
@@ -17,6 +12,7 @@ use actix_web_static_files::ResourceFiles;
 
 use path_clean::PathClean;
 use simplelog::*;
+use tokio::sync::Mutex;
 
 use ffplayout_api::{
     api::{auth, routes::*},

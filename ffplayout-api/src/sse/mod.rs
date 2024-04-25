@@ -1,9 +1,9 @@
 use std::{
     collections::HashSet,
-    sync::Mutex,
     time::{Duration, SystemTime},
 };
 
+use tokio::sync::Mutex;
 use uuid::Uuid;
 
 use crate::utils::errors::ServiceError;
@@ -23,6 +23,12 @@ impl UuidData {
             uuid: Uuid::new_v4(),
             expiration: SystemTime::now() + Duration::from_secs(2 * 3600), // 2 hours
         }
+    }
+}
+
+impl Default for UuidData {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

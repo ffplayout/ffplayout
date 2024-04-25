@@ -28,7 +28,7 @@ impl User {
 #[post("/generate-uuid")]
 #[protect(any("Role::Admin", "Role::User"), ty = "Role")]
 async fn generate_uuid(data: web::Data<AuthState>) -> Result<impl Responder, ServiceError> {
-    let mut uuids = data.uuids.lock().map_err(|e| e.to_string())?;
+    let mut uuids = data.uuids.lock().await;
     let new_uuid = UuidData::new();
     let user_auth = User::new(String::new(), new_uuid.uuid.to_string());
 
@@ -49,7 +49,7 @@ async fn validate_uuid(
     data: web::Data<AuthState>,
     user: web::Query<User>,
 ) -> Result<impl Responder, ServiceError> {
-    let mut uuids = data.uuids.lock().map_err(|e| e.to_string())?;
+    let mut uuids = data.uuids.lock().await;
 
     match check_uuid(&mut uuids, user.uuid.as_str()) {
         Ok(s) => Ok(web::Json(s)),
@@ -70,11 +70,9 @@ async fn event_stream(
     id: web::Path<i32>,
     user: web::Query<User>,
 ) -> Result<impl Responder, ServiceError> {
-    let mut uuids = data.uuids.lock().map_err(|e| e.to_string())?;
+    let mut uuids = data.uuids.lock().await;
 
-    if let Err(e) = check_uuid(&mut uuids, user.uuid.as_str()) {
-        return Err(e);
-    }
+    check_uuid(&mut uuids, user.uuid.as_str())?;
 
     let (config, _) = playout_config(&pool.clone().into_inner(), &id).await?;
 
