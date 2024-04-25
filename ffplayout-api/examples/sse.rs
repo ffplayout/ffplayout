@@ -44,7 +44,9 @@ async fn index() -> impl Responder {
 
 #[get("/events")]
 async fn event_stream(broadcaster: web::Data<Broadcaster>) -> impl Responder {
-    broadcaster.new_client().await
+    broadcaster
+        .new_client(1, PlayoutConfig::default(), "ping".to_string())
+        .await
 }
 
 #[post("/broadcast/{msg}")]

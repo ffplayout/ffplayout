@@ -21,7 +21,7 @@ impl UuidData {
     pub fn new() -> Self {
         Self {
             uuid: Uuid::new_v4(),
-            expiration: SystemTime::now() + Duration::from_secs(12 * 3600), // 12 hours
+            expiration: SystemTime::now() + Duration::from_secs(2 * 3600), // 2 hours
         }
     }
 }
@@ -30,6 +30,7 @@ pub struct AuthState {
     pub uuids: Mutex<HashSet<UuidData>>,
 }
 
+/// Remove all UUIDs from HashSet which are older the expiration time.
 pub fn prune_uuids(uuids: &mut HashSet<UuidData>) {
     uuids.retain(|entry| entry.expiration > SystemTime::now());
 }

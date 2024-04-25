@@ -71,6 +71,12 @@ pub struct SystemStat {
     pub system: MySystem,
 }
 
+impl SystemStat {
+    pub fn to_string(&self) -> String {
+        serde_json::to_string(&self).unwrap()
+    }
+}
+
 pub fn stat(config: PlayoutConfig) -> SystemStat {
     let mut disks = DISKS.lock().unwrap();
     let mut networks = NETWORKS.lock().unwrap();

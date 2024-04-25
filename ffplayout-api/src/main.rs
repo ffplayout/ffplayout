@@ -1,4 +1,9 @@
-use std::{collections::HashSet, env, process::exit, sync::Mutex};
+use std::{
+    collections::HashSet,
+    env,
+    process::exit,
+    sync::{Arc, Mutex},
+};
 
 use actix_files::Files;
 use actix_web::{
@@ -16,7 +21,7 @@ use simplelog::*;
 use ffplayout_api::{
     api::{auth, routes::*},
     db::{db_pool, models::LoginUser},
-    sse::{routes::*, AuthState},
+    sse::{broadcast::Broadcaster, routes::*, AuthState},
     utils::{control::ProcessControl, db_path, init_config, run_args},
     ARGS,
 };
@@ -82,6 +87,7 @@ async fn main() -> std::io::Result<()> {
         let auth_state = web::Data::new(AuthState {
             uuids: Mutex::new(HashSet::new()),
         });
+        let broadcast_data = Broadcaster::create();
 
         info!("running ffplayout API, listen on http://{conn}");
 
@@ -97,6 +103,7 @@ async fn main() -> std::io::Result<()> {
                 .app_data(db_pool)
                 .app_data(engine_process.clone())
                 .app_data(auth_state.clone())
+                .app_data(web::Data::from(Arc::clone(&broadcast_data)))
                 .wrap(logger)
                 .service(login)
                 .service(
@@ -140,7 +147,11 @@ async fn main() -> std::io::Result<()> {
                         .service(get_system_stat)
                         .service(generate_uuid),
                 )
-                .service(web::scope("/data").service(validate_uuid))
+                .service(
+                    web::scope("/data")
+                        .service(validate_uuid)
+                        .service(event_stream),
+                )
                 .service(get_file);
 
             if let Some(public) = &ARGS.public {

@@ -1,14 +1,42 @@
 use std::{sync::Arc, time::Duration};
 
-use actix_web::rt::time::interval;
+use actix_web::{rt::time::interval, web};
 use actix_web_lab::{
     sse::{self, Sse},
     util::InfallibleStream,
 };
+
+use ffplayout_lib::utils::PlayoutConfig;
 use futures_util::future;
 use parking_lot::Mutex;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
+
+use crate::utils::system;
+
+#[derive(Debug, Clone)]
+struct Client {
+    _channel: i32,
+    config: PlayoutConfig,
+    endpoint: String,
+    sender: mpsc::Sender<sse::Event>,
+}
+
+impl Client {
+    fn new(
+        _channel: i32,
+        config: PlayoutConfig,
+        endpoint: String,
+        sender: mpsc::Sender<sse::Event>,
+    ) -> Self {
+        Self {
+            _channel,
+            config,
+            endpoint,
+            sender,
+        }
+    }
+}
 
 pub struct Broadcaster {
     inner: Mutex<BroadcasterInner>,
@@ -16,7 +44,7 @@ pub struct Broadcaster {
 
 #[derive(Debug, Clone, Default)]
 struct BroadcasterInner {
-    clients: Vec<mpsc::Sender<sse::Event>>,
+    clients: Vec<Client>,
 }
 
 impl Broadcaster {
@@ -35,11 +63,24 @@ impl Broadcaster {
     /// list if not.
     fn spawn_ping(this: Arc<Self>) {
         actix_web::rt::spawn(async move {
-            let mut interval = interval(Duration::from_secs(10));
+            let mut interval = interval(Duration::from_secs(1));
+            let mut counter = 0;
 
             loop {
                 interval.tick().await;
-                this.remove_stale_clients().await;
+
+                if counter % 10 == 0 {
+                    this.remove_stale_clients().await;
+                }
+
+                if counter % 30 == 0 {
+                    // TODO: implement playout status
+                    this.broadcast("ping").await;
+                }
+
+                this.broadcast_system().await;
+
+                counter = (counter + 1) % 61;
             }
         });
     }
@@ -52,6 +93,7 @@ impl Broadcaster {
 
         for client in clients {
             if client
+                .sender
                 .send(sse::Event::Comment("ping".into()))
                 .await
                 .is_ok()
@@ -64,12 +106,20 @@ impl Broadcaster {
     }
 
     /// Registers client with broadcaster, returning an SSE response body.
-    pub async fn new_client(&self) -> Sse<InfallibleStream<ReceiverStream<sse::Event>>> {
+    pub async fn new_client(
+        &self,
+        channel: i32,
+        config: PlayoutConfig,
+        endpoint: String,
+    ) -> Sse<InfallibleStream<ReceiverStream<sse::Event>>> {
         let (tx, rx) = mpsc::channel(10);
 
         tx.send(sse::Data::new("connected").into()).await.unwrap();
 
-        self.inner.lock().clients.push(tx);
+        self.inner
+            .lock()
+            .clients
+            .push(Client::new(channel, config, endpoint, tx));
 
         Sse::from_infallible_receiver(rx)
     }
@@ -80,10 +130,24 @@ impl Broadcaster {
 
         let send_futures = clients
             .iter()
-            .map(|client| client.send(sse::Data::new(msg).into()));
+            .map(|client| client.sender.send(sse::Data::new(msg).into()));
 
         // try to send to all clients, ignoring failures
         // disconnected clients will get swept up by `remove_stale_clients`
         let _ = future::join_all(send_futures).await;
+    }
+
+    /// Broadcasts `msg` to all clients.
+    pub async fn broadcast_system(&self) {
+        let clients = self.inner.lock().clients.clone();
+
+        for client in clients {
+            if &client.endpoint == "system" {
+                if let Ok(stat) = web::block(move || system::stat(client.config.clone())).await {
+                    let stat_string = stat.to_string();
+                    let _ = client.sender.send(sse::Data::new(stat_string).into()).await;
+                };
+            }
+        }
     }
 }

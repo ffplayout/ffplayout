@@ -16,5 +16,10 @@
     },
     "[yaml]": {
         "editor.defaultFormatter": "esbenp.prettier-vscode"
-    }
+    },
+    "cSpell.words": [
+        "actix",
+        "tokio",
+        "uuids"
+    ]
 }
