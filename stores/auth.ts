@@ -7,6 +7,7 @@ export const useAuth = defineStore('auth', {
         jwtToken: '',
         authHeader: {},
         role: '',
+        uuid: null as null | string,
     }),
 
     getters: {},
@@ -54,6 +55,19 @@ export const useAuth = defineStore('auth', {
                 .catch(() => {})
 
             return code
+        },
+
+        async obtainUuid() {
+            await $fetch<DataAuth>('/api/generate-uuid', {
+                method: 'POST',
+                headers: this.authHeader,
+            })
+                .then((response) => {
+                    this.uuid = response.uuid
+                })
+                .catch(() => {
+                    this.uuid = null
+                })
         },
 
         inspectToken() {

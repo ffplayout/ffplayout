@@ -23,6 +23,7 @@ export const useConfig = defineStore('config', {
             authStore.inspectToken()
 
             if (authStore.isLogin) {
+                await authStore.obtainUuid()
                 await this.getGuiConfig()
                 await this.getPlayoutConfig()
                 await this.getUserConfig()

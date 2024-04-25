@@ -3,6 +3,7 @@
         <NuxtLink class="navbar-brand min-w-[46px] p-2" href="/">
             <img src="~/assets/images/ffplayout-small.png" class="img-fluid" alt="Logo" width="30" height="30" />
         </NuxtLink>
+        <EventStatus class="z-10"/>
         <div class="navbar-end w-1/5 grow">
             <label class="swap swap-rotate me-2 md:hidden">
                 <input type="checkbox" :checked="indexStore.darkMode" @change="toggleDarkTheme" />

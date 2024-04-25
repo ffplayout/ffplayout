@@ -17,6 +17,10 @@ declare global {
         }
     }
 
+    interface DataAuth {
+        uuid: string
+    }
+
     interface GuiConfig {
         id: number
         config_path: string

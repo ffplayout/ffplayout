@@ -9,6 +9,7 @@ export default defineNuxtConfig({
         devProxy: {
             '/api': { target: 'http://127.0.0.1:8787/api' },
             '/auth': { target: 'http://127.0.0.1:8787/auth' },
+            '/data': { target: 'http://127.0.0.1:8787/data' },
             '/live': { target: 'http://127.0.0.1:8787/live' },
             '/file': { target: 'http://127.0.0.1:8787/file' },
         },

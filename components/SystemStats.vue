@@ -1,5 +1,6 @@
 <template>
-    <div class="grid grid-cols-1 xs:grid-cols-2 border-4 rounded-md border-primary text-left shadow max-w-[960px]">
+    <!-- <div v-if="data">{{ systemStatus(data) }}</div> -->
+    <div class="grid grid-cols-1 xs:grid-cols-2 border-4 rounded-md border-primary text-left shadow min-w-[728px] max-w-[960px]">
         <div class="p-4 bg-base-100">
             <span class="text-3xl">{{ sysStat.system.name }} {{ sysStat.system.version }}</span>
             <span v-if="sysStat.system.kernel">
@@ -92,51 +93,67 @@ const { fileSize } = stringFormatter()
 
 const authStore = useAuth()
 const configStore = useConfig()
-const timer = ref()
-const sysStat = ref({
-    cpu: { cores: 0.0, usage: 0.0 },
+const indexStore = useIndex()
+
+const streamUrl = ref(
+    `/data/event/${configStore.configGui[configStore.configID].id}?endpoint=system&uuid=${authStore.uuid}`
+)
+
+// 'http://127.0.0.1:8787/data/event/1?endpoint=system&uuid=f2f8c29b-712a-48c5-8919-b535d3a05a3a'
+const { status, data, error, close } = useEventSource(streamUrl, [], {
+    autoReconnect: {
+        retries: -1,
+        delay: 1000,
+        onFailed() {
+            indexStore.sseConnected = false
+        },
+    },
+})
+
+const errorCounter = ref(0)
+const defaultStat = {
+    cpu: { cores: 1, usage: 0.0 },
     load: { one: 0.0, five: 0.0, fifteen: 0.0 },
     memory: { total: 0.0, used: 0.0, free: 0.0 },
-    network: { name: '', current_in: 0.0, current_out: 0.0, total_in: 0.0, total_out: 0.0 },
+    network: { name: '...', current_in: 0.0, current_out: 0.0, total_in: 0.0, total_out: 0.0 },
     storage: { path: '', total: 0.0, used: 0.0 },
     swap: { total: 0.0, used: 0.0, free: 0.0 },
-    system: { name: '', kernel: '', version: '', ffp_version: '' },
-} as SystemStatistics)
+    system: { name: '...', kernel: '...', version: '...', ffp_version: '...' },
+} as SystemStatistics
 
-onMounted(() => {
-    status()
-})
+const sysStat = ref(defaultStat)
 
 onBeforeUnmount(() => {
-    if (timer.value) {
-        clearTimeout(timer.value)
+    close()
+    indexStore.sseConnected = false
+})
+
+watch([status, error], async () => {
+    if (status.value === 'OPEN') {
+        indexStore.sseConnected = true
+        errorCounter.value = 0
+    } else {
+        indexStore.sseConnected = false
+        errorCounter.value += 1
+        sysStat.value = defaultStat
+
+        if (errorCounter.value > 15) {
+            await authStore.obtainUuid()
+            streamUrl.value = `/data/event/${configStore.configGui[configStore.configID].id}?endpoint=system&uuid=${
+                authStore.uuid
+            }`
+            errorCounter.value = 0
+        }
     }
 })
 
-async function status() {
-    systemStatus()
-
-    async function setStatus(resolve: any) {
-        /*
-            recursive function as a endless loop
-        */
-        systemStatus()
-
-        timer.value = setTimeout(() => setStatus(resolve), 1000)
+watch([data], () => {
+    if (data.value) {
+        try {
+            sysStat.value = JSON.parse(data.value)
+        } catch (_) {
+            indexStore.sseConnected = true
+        }
     }
-    return new Promise((resolve) => setStatus(resolve))
-}
-
-async function systemStatus() {
-    const channel = configStore.configGui[configStore.configID].id
-
-    if (!document?.hidden) {
-        await $fetch<SystemStatistics>(`/api/system/${channel}`, {
-            method: 'GET',
-            headers: { ...configStore.contentType, ...authStore.authHeader },
-        }).then((stat) => {
-            sysStat.value = stat
-        })
-    }
-}
+})
 </script>

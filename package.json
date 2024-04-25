@@ -1,6 +1,6 @@
 {
   "name": "ffplayout-frontend",
-  "version": "0.8.1",
+  "version": "0.9.0",
   "description": "Web GUI for ffplayout",
   "author": "Jonathan Baecker",
   "private": true,

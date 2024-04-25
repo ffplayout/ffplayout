@@ -28,16 +28,16 @@ const props = defineProps({
     },
 })
 
-onMounted(() => {
-    const statusCode = props.error?.statusCode || 400
+// onMounted(() => {
+//     const statusCode = props.error?.statusCode || 400
 
-    if (statusCode >= 400) {
-        setTimeout(() => {
-            reloadNuxtApp({
-                path: localePath({ name: 'index' }),
-                ttl: 1000,
-            })
-        }, 3000)
-    }
-})
+//     if (statusCode >= 400) {
+//         setTimeout(() => {
+//             reloadNuxtApp({
+//                 path: localePath({ name: 'index' }),
+//                 ttl: 1000,
+//             })
+//         }, 3000)
+//     }
+// })
 </script>

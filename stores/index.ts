@@ -6,6 +6,7 @@ export const useIndex = defineStore('index', {
         showAlert: false,
         alertVariant: 'success',
         alertMsg: '',
+        sseConnected: false,
     }),
 
     getters: {},

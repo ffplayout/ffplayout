@@ -1,6 +1,9 @@
 <template>
     <div class="w-full min-h-screen xs:h-full flex justify-center items-center">
         <div v-if="authStore.isLogin" class="flex flex-wrap justify-center text-center w-full max-w-[1024px] p-5">
+            <div class="absolute top-4 left-1">
+                <EventStatus />
+            </div>
             <SystemStats v-if="configStore.configGui.length > 0" />
             <div class="flex flex-wrap justify-center gap-1 md:gap-0 md:join mt-5">
                 <NuxtLink :to="localePath({ name: 'player' })" class="btn join-item btn-primary px-2">
