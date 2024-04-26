@@ -121,8 +121,6 @@ impl CurrentProgram {
 
         let node_index = self.current_node.index.unwrap_or_default();
 
-        trace!("delta: {delta}, total_delta: {total_delta}, current index: {node_index}",);
-
         let mut next_start =
             self.current_node.begin.unwrap_or_default() - self.start_sec + duration + delta;
 
@@ -133,7 +131,7 @@ impl CurrentProgram {
         }
 
         trace!(
-            "next_start: {next_start} | end_sec: {} | source {}",
+            "delta: {delta} | total_delta: {total_delta}, index: {node_index} \nnext_start: {next_start} | end_sec: {} | source {}",
             self.end_sec,
             self.current_node.source
         );
