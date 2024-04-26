@@ -112,24 +112,36 @@ impl CurrentProgram {
         let (delta, total_delta) = get_delta(&self.config, &time_in_seconds());
         let mut next = false;
 
-        trace!(
-            "delta: {delta}, total_delta: {total_delta}, current index: {}",
-            self.current_node.index.unwrap_or_default()
-        );
+        let duration = if self.current_node.duration >= self.current_node.out {
+            self.current_node.duration
+        } else {
+            // maybe out is longer to be able to loop
+            self.current_node.out
+        };
 
-        let mut clip_start = self.current_node.begin.unwrap_or_default() - self.start_sec;
+        let node_index = self.current_node.index.unwrap_or_default();
 
-        if self.player_control.current_index.load(Ordering::SeqCst)
-            == self.player_control.current_list.lock().unwrap().len() - 1
+        trace!("delta: {delta}, total_delta: {total_delta}, current index: {node_index}",);
+
+        let mut next_start =
+            self.current_node.begin.unwrap_or_default() - self.start_sec + duration + delta;
+
+        if node_index > 0
+            && node_index == self.player_control.current_list.lock().unwrap().len() - 1
         {
-            clip_start += self.config.general.stop_threshold;
+            println!("add threshold!");
+            next_start += self.config.general.stop_threshold;
         }
 
-        trace!("clip_start: {clip_start}, end_sec: {}", self.end_sec);
+        trace!(
+            "next_start: {next_start} | end_sec: {} | source {}",
+            self.end_sec,
+            self.current_node.source
+        );
 
         // Check if we over the target length or we are close to it, if so we load the next playlist.
         if !self.config.playlist.infinit
-            && (clip_start >= self.end_sec
+            && (next_start >= self.end_sec
                 || is_close(total_delta, 0.0, 2.0)
                 || is_close(total_delta, self.end_sec, 2.0))
         {
