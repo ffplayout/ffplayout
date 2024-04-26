@@ -129,7 +129,6 @@ impl CurrentProgram {
         if node_index > 0
             && node_index == self.player_control.current_list.lock().unwrap().len() - 1
         {
-            println!("add threshold!");
             next_start += self.config.general.stop_threshold;
         }
 
