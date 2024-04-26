@@ -191,6 +191,7 @@ pub fn init_logging(
         .add_filter_ignore_str("reqwest")
         .add_filter_ignore_str("rpc")
         .add_filter_ignore_str("rustls")
+        .add_filter_ignore_str("serial_test")
         .add_filter_ignore_str("sqlx")
         .add_filter_ignore_str("tiny_http")
         .set_level_padding(LevelPadding::Left)
