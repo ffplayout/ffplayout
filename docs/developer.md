@@ -2,24 +2,6 @@
 
 For compiling use always the news Rust version, the best is to install it from [rustup](https://rustup.rs/).
 
-### Cross Compile
-
-For cross compiling on fedora linux, you need to install some extra packages:
-
-- mingw compiler:
-```
-dnf install mingw64-filesystem mingw64-binutils mingw64-gcc{,-c++} mingw64-crt mingw64-headers mingw64-pkg-config mingw64-hamlib mingw64-libpng mingw64-libusbx mingw64-portaudio mingw64-fltk mingw64-libgnurx mingw64-gettext mingw64-winpthreads-static intltool
-```
-
-- rust tools:
-```
-rustup target add x86_64-pc-windows-gnu
-```
-
-[Cross](https://github.com/cross-rs/cross#dependencies) could be an option to.
-
-To build, run: `cargo build --release --target=x86_64-pc-windows-gnu`
-
 ### Static Linking
 
 Running `cargo build` ends up in a binary which depend on **libc.so**. But you can compile also the binary totally static:
@@ -32,6 +14,20 @@ Running `cargo build` ends up in a binary which depend on **libc.so**. But you c
 Compile with: `cargo build --release --target=x86_64-unknown-linux-musl`.
 
 This release should run on any Linux distro.
+
+**Note: You can also create a static version with Cross Toolchain. For this, follow the next steps.**
+
+### Cross Compile
+
+For cross compiling install docker or podman and latest [cross-rs](https://github.com/cross-rs/cross):
+
+```
+cargo install cross --git https://github.com/cross-rs/cross
+```
+
+To build for windows, run: `cross build --release --target x86_64-pc-windows-gnu`\
+To build for linux aarch64: `cross build --release --target aarch64-unknown-linux-gnu`
+Etc.
 
 ### Compile from Linux for macOS
 
@@ -70,72 +66,23 @@ CC="aarch64-apple-darwin20.4-clang -arch arm64e" cargo build --release --target=
 # for x86_64
 CC="o64-clang" cargo build --release --target=x86_64-apple-darwin
 ```
-
-### Compile for armv7 Linux
-
-Add toolchain:
-
-```Bash
-rustup target add armv7-unknown-linux-gnueabihf
-```
-
-Add cross compiler:
-
-```Bash
-dnf copr enable lantw44/arm-linux-gnueabihf-toolchain
-
-dnf install arm-linux-gnueabihf-{binutils,gcc,glibc}
-```
-
-Add target to `~/.cargo/config`:
-
-```Bash
-[target.armv7-unknown-linux-gnueabihf]
-linker = "arm-linux-gnueabihf-gcc"
-rustflags = [ "-C", "target-feature=+crt-static", "-C", "link-arg=-lgcc" ]
-```
-
-### Compile for aarch64 Linux
-
-Add toolchain:
-
-```Bash
-rustup target add aarch64-unknown-linux-gnu
-```
-
-Add cross compiler:
-
-```Bash
-dnf copr enable lantw44/aarch64-linux-gnu-toolchain
-
-dnf install aarch64-linux-gnu-{binutils,gcc,glibc}
-```
-
-Add target to `~/.cargo/config`:
-
-```Bash
-[target.aarch64-unknown-linux-gnu]
-linker = "aarch64-linux-gnu-gcc"
-rustflags = [ "-C", "target-feature=+crt-static", "-C", "link-arg=-lgcc" ]
-```
-
 ### Create debian DEB and RHEL RPM packages
 
 install:
 - `cargo install cargo-deb`
 - `cargo install cargo-generate-rpm`
 
-And run with:
+Compile to your target system with cargo or cross, and run:
 
 ```Bash
 # for debian based systems:
-cargo deb --target=x86_64-unknown-linux-musl
+cargo deb --no-build --target=x86_64-unknown-linux-musl
 
 # for armhf
-cargo deb --target=armv7-unknown-linux-gnueabihf --variant=armhf -p ffplayout --manifest-path=ffplayout-engine/Cargo.toml
+cargo deb --no-build --target=armv7-unknown-linux-gnueabihf --variant=armhf -p ffplayout --manifest-path=ffplayout-engine/Cargo.toml
 
 # for arm64
-cargo deb --target=aarch64-unknown-linux-gnu --variant=arm64 -p ffplayout --manifest-path=ffplayout-engine/Cargo.toml
+cargo deb --no-build --target=aarch64-unknown-linux-gnu --variant=arm64 -p ffplayout --manifest-path=ffplayout-engine/Cargo.toml
 
 # for rhel based systems:
 cargo generate-rpm --target=x86_64-unknown-linux-musl
