@@ -31,40 +31,21 @@ Etc.
 
 ### Compile from Linux for macOS
 
-Add toolchain:
+Follow [cross-toolchains](https://github.com/cross-rs/cross-toolchains) instruction to add macOS support to cross.
 
-```Bash
-# for arm64
-rustup target add aarch64-apple-darwin
+I created my image with:
 
-# for x86_64
-rustup target add x86_64-apple-darwin
+```
+cargo build-docker-image x86_64-apple-darwin-cross \
+    --build-arg 'MACOS_SDK_URL=https://github.com/joseluisq/macosx-sdks/releases/download/12.3/MacOSX12.3.sdk.tar.xz'
 ```
 
-Add linker and ar settings to `~/.cargo/config`:
+Build then with:
 
-```Bash
-[target.x86_64-apple-darwin]
-linker = "x86_64-apple-darwin20.4-clang"
-ar = "x86_64-apple-darwin20.4-ar"
-
-[target.aarch64-apple-darwin]
-linker = "aarch64-apple-darwin20.4-clang"
-ar = "aarch64-apple-darwin20.4-ar"
+```
+cross build --release --target aarch64-apple-darwin
 ```
 
-Follow this guide: [rust-cross-compile-linux-to-macos](https://wapl.es/rust/2019/02/17/rust-cross-compile-linux-to-macos.html)
-
-Or setup [osxcross](https://github.com/tpoechtrager/osxcross) correctly.
-
-Add **osxcross/target/bin** to your **PATH** and run cargo with:
-
-```Bash
-# for arm64
-CC="aarch64-apple-darwin20.4-clang -arch arm64e" cargo build --release --target=aarch64-apple-darwin
-
-# for x86_64
-CC="o64-clang" cargo build --release --target=x86_64-apple-darwin
 ```
 ### Create debian DEB and RHEL RPM packages
 

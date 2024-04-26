@@ -38,24 +38,6 @@ for target in "${targets[@]}"; do
         cp ./target/${target}/release/ffplayout.exe .
         zip -r "ffplayout-v${version}_${target}.zip" assets docker docs LICENSE README.md CHANGELOG.md ffplayout.exe ffpapi.exe -x *.db -x *.db-shm -x *.db-wal -x '11-ffplayout' -x *.service
         rm -f ffplayout.exe ffpapi.exe
-    elif [[ $target == "x86_64-apple-darwin" ]] || [[ $target == "aarch64-apple-darwin" ]]; then
-        if [[ -f "ffplayout-v${version}_${target}.tar.gz" ]]; then
-            rm -f "ffplayout-v${version}_${target}.tar.gz"
-        fi
-        c_cc="x86_64-apple-darwin20.4-clang"
-        c_cxx="x86_64-apple-darwin20.4-clang++"
-
-        if [[ $target == "aarch64-apple-darwin" ]]; then
-            c_cc="aarch64-apple-darwin20.4-clang"
-            c_cxx="aarch64-apple-darwin20.4-clang++"
-        fi
-
-        CC="$c_cc" CXX="$c_cxx" cargo build --release --target=$target
-
-        cp ./target/${target}/release/ffpapi .
-        cp ./target/${target}/release/ffplayout .
-        tar -czvf "ffplayout-v${version}_${target}.tar.gz" --exclude='*.db' --exclude='*.db-shm' --exclude='*.db-wal' --exclude='11-ffplayout' --exclude='*.service' assets docker docs LICENSE README.md CHANGELOG.md ffplayout ffpapi
-        rm -f ffplayout ffpapi
     else
         if [[ -f "ffplayout-v${version}_${target}.tar.gz" ]]; then
             rm -f "ffplayout-v${version}_${target}.tar.gz"
