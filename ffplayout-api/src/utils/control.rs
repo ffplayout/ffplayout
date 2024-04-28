@@ -15,8 +15,8 @@ use tokio::{
 };
 
 use crate::db::handles::select_channel;
-use crate::utils::{errors::ServiceError, playout_config};
-use ffplayout_lib::vec_strings;
+use crate::utils::errors::ServiceError;
+use ffplayout_lib::{utils::PlayoutConfig, vec_strings};
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 struct TextParams {
@@ -241,11 +241,10 @@ impl SystemD {
     }
 }
 
-async fn post_request<T>(conn: &Pool<Sqlite>, id: i32, obj: T) -> Result<Response, ServiceError>
+async fn post_request<T>(config: &PlayoutConfig, obj: T) -> Result<Response, ServiceError>
 where
     T: Serialize,
 {
-    let (config, _) = playout_config(conn, &id).await?;
     let url = format!("http://{}", config.rpc_server.address);
     let client = Client::new();
 
@@ -262,8 +261,7 @@ where
 }
 
 pub async fn send_message(
-    conn: &Pool<Sqlite>,
-    id: i32,
+    config: &PlayoutConfig,
     message: HashMap<String, String>,
 ) -> Result<Response, ServiceError> {
     let json_obj = TextParams {
@@ -271,33 +269,29 @@ pub async fn send_message(
         message,
     };
 
-    post_request(conn, id, json_obj).await
+    post_request(config, json_obj).await
 }
 
 pub async fn control_state(
-    conn: &Pool<Sqlite>,
-    id: i32,
+    config: &PlayoutConfig,
     command: &str,
 ) -> Result<Response, ServiceError> {
     let json_obj = ControlParams {
         control: command.to_owned(),
     };
 
-    post_request(conn, id, json_obj).await
+    post_request(config, json_obj).await
 }
 
-pub async fn media_info(
-    conn: &Pool<Sqlite>,
-    id: i32,
-    command: String,
-) -> Result<Response, ServiceError> {
+pub async fn media_info(config: &PlayoutConfig, command: String) -> Result<Response, ServiceError> {
     let json_obj = MediaParams { media: command };
 
-    post_request(conn, id, json_obj).await
+    post_request(config, json_obj).await
 }
 
 pub async fn control_service(
     conn: &Pool<Sqlite>,
+    config: &PlayoutConfig,
     id: i32,
     command: &ServiceCmd,
     engine: Option<web::Data<ProcessControl>>,
@@ -307,14 +301,14 @@ pub async fn control_service(
             match command {
                 ServiceCmd::Start => en.start().await,
                 ServiceCmd::Stop => {
-                    if control_state(conn, id, "stop_all").await.is_ok() {
+                    if control_state(config, "stop_all").await.is_ok() {
                         en.stop().await
                     } else {
                         Err(ServiceError::NoContent("Nothing to stop".to_string()))
                     }
                 }
                 ServiceCmd::Restart => {
-                    if control_state(conn, id, "stop_all").await.is_ok() {
+                    if control_state(config, "stop_all").await.is_ok() {
                         en.restart().await
                     } else {
                         Err(ServiceError::NoContent("Nothing to restart".to_string()))

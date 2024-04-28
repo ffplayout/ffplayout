@@ -7,12 +7,11 @@ use actix_web_lab::{
 };
 
 use ffplayout_lib::utils::PlayoutConfig;
-use futures_util::future;
 use parking_lot::Mutex;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 
-use crate::utils::system;
+use crate::utils::{control::media_info, system};
 
 #[derive(Debug, Clone)]
 struct Client {
@@ -73,9 +72,8 @@ impl Broadcaster {
                     this.remove_stale_clients().await;
                 }
 
-                if counter % 30 == 0 {
-                    // TODO: implement playout status
-                    this.broadcast("ping").await;
+                if counter % 5 == 0 {
+                    this.broadcast_playout().await;
                 }
 
                 this.broadcast_system().await;
@@ -124,20 +122,32 @@ impl Broadcaster {
         Sse::from_infallible_receiver(rx)
     }
 
-    /// Broadcasts `msg` to all clients.
-    pub async fn broadcast(&self, msg: &str) {
+    /// Broadcasts playout status to clients.
+    pub async fn broadcast_playout(&self) {
         let clients = self.inner.lock().clients.clone();
 
-        let send_futures = clients
-            .iter()
-            .map(|client| client.sender.send(sse::Data::new(msg).into()));
-
-        // try to send to all clients, ignoring failures
-        // disconnected clients will get swept up by `remove_stale_clients`
-        let _ = future::join_all(send_futures).await;
+        for client in clients.iter().filter(|client| client.endpoint == "playout") {
+            match media_info(&client.config, "current".into()).await {
+                Ok(res) => {
+                    let _ = client
+                        .sender
+                        .send(
+                            sse::Data::new(res.text().await.unwrap_or_else(|_| "Success".into()))
+                                .into(),
+                        )
+                        .await;
+                }
+                Err(_) => {
+                    let _ = client
+                        .sender
+                        .send(sse::Data::new("not running").into())
+                        .await;
+                }
+            };
+        }
     }
 
-    /// Broadcasts `msg` to all clients.
+    /// Broadcasts system status to clients.
     pub async fn broadcast_system(&self) {
         let clients = self.inner.lock().clients.clone();
 
