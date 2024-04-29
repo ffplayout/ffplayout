@@ -43,7 +43,7 @@
                     <div
                         class="w-full h-full bg-base-100 rounded font-['DigitalNumbers'] p-6 text-3xl md:text-2xl 2xl:text-5xl 4xl:text-7xl tracking-tighter flex justify-center items-center shadow"
                     >
-                        {{ secToHMS(playlistStore.remainingSec >= 0 ? playlistStore.remainingSec : 0) }}
+                        {{ secToHMS(timeRemaining()) }}
                     </div>
                 </div>
 
@@ -58,7 +58,7 @@
                                 class="h-1/3 font-bold text truncate"
                                 :title="filename(playlistStore.currentClip)"
                             >
-                                {{ filename(playlistStore.currentClip) }}
+                                {{ filename(playlistStore.currentClip) || $t('control.noClip') }}
                             </div>
                             <div class="grow">
                                 <strong>{{ $t('player.duration') }}:</strong>
@@ -161,14 +161,15 @@ import mpegts from 'mpegts.js'
 const { $dayjs } = useNuxtApp()
 const authStore = useAuth()
 const configStore = useConfig()
+const indexStore = useIndex()
 const playlistStore = usePlaylist()
-const { filename, secToHMS, timeToSeconds } = stringFormatter()
+const { filename, secToHMS } = stringFormatter()
 const { configID } = storeToRefs(useConfig())
 
 playlistStore.currentClip = 'Es wird kein Clip abgespielt'
-const breakStatusCheck = ref(false)
 const timeStr = ref('00:00:00')
 const timer = ref()
+const errorCounter = ref(0)
 const streamExtension = ref(configStore.configGui[configStore.configID].preview_url.split('.').pop())
 const httpStreamFlv = ref(null)
 const httpFlvSource = ref({
@@ -181,8 +182,22 @@ const mpegtsOptions = ref({
     liveBufferLatencyChasing: true,
 })
 
+const streamUrl = ref(
+    `/data/event/${configStore.configGui[configStore.configID].id}?endpoint=playout&uuid=${authStore.uuid}`
+)
+
+// 'http://127.0.0.1:8787/data/event/1?endpoint=system&uuid=f2f8c29b-712a-48c5-8919-b535d3a05a3a'
+const { status, data, error, close } = useEventSource(streamUrl, [], {
+    autoReconnect: {
+        retries: -1,
+        delay: 1000,
+        onFailed() {
+            indexStore.sseConnected = false
+        },
+    },
+})
+
 onMounted(() => {
-    breakStatusCheck.value = false
     let player: any = null
 
     if (streamExtension.value === 'flv' && mpegts.getFeatureList().mseLivePlayback) {
@@ -198,68 +213,87 @@ onMounted(() => {
         player.load()
     }
 
-    status()
+    clock()
+})
+
+onBeforeUnmount(() => {
+    indexStore.sseConnected = false
+    close()
+
+    if (timer.value) {
+        clearTimeout(timer.value)
+    }
+})
+
+watch([status, error], async () => {
+    if (status.value === 'OPEN') {
+        indexStore.sseConnected = true
+        errorCounter.value = 0
+    } else {
+        indexStore.sseConnected = false
+        errorCounter.value += 1
+
+        if (errorCounter.value > 15) {
+            await authStore.obtainUuid()
+            streamUrl.value = `/data/event/${configStore.configGui[configStore.configID].id}?endpoint=playout&uuid=${
+                authStore.uuid
+            }`
+            errorCounter.value = 0
+        }
+    }
+})
+
+watch([data], () => {
+    if (data.value) {
+        try {
+            const playout_status = JSON.parse(data.value)
+            playlistStore.setStatus(playout_status)
+        } catch (_) {
+            indexStore.sseConnected = true
+            resetStatus()
+        }
+    }
 })
 
 watch([configID], () => {
-    breakStatusCheck.value = false
-    timeStr.value = '00:00:00'
-    playlistStore.remainingSec = -1
+    resetStatus()
+
+    streamUrl.value = `/data/event/${configStore.configGui[configStore.configID].id}?endpoint=playout&uuid=${
+        authStore.uuid
+    }`
+
+    if (timer.value) {
+        clearTimeout(timer.value)
+    }
+})
+
+function timeRemaining() {
+    let remaining = playlistStore.currentClipOut - playlistStore.currentClipIn - playlistStore.playedSec
+
+    if (remaining < 0) {
+        remaining = 0
+    }
+
+    return remaining
+}
+
+async function clock() {
+    async function setTime(resolve: any) {
+        timeStr.value = $dayjs().utcOffset(configStore.utcOffset).format('HH:mm:ss')
+        timer.value = setTimeout(() => setTime(resolve), 1000)
+    }
+    return new Promise((resolve) => setTime(resolve))
+}
+
+function resetStatus() {
+    playlistStore.playedSec = 0
     playlistStore.currentClip = ''
     playlistStore.ingestRuns = false
     playlistStore.currentClipDuration = 0
     playlistStore.currentClipIn = 0
     playlistStore.currentClipOut = 0
-
-    if (timer.value) {
-        clearTimeout(timer.value)
-    }
-    status()
-})
-
-onBeforeUnmount(() => {
-    breakStatusCheck.value = true
-
-    if (timer.value) {
-        clearTimeout(timer.value)
-    }
-})
-
-async function status() {
-    /*
-        Get playout state and information's from current clip.
-        - animate timers
-        - when clip end is reached call API again and set new values
-    */
-    await playlistStore.playoutStat()
-
-    async function setStatus(resolve: any) {
-        /*
-            recursive function as a endless loop
-        */
-        timeStr.value = $dayjs().utcOffset(configStore.utcOffset).format('HH:mm:ss')
-        const timeInSec = timeToSeconds(timeStr.value)
-        playlistStore.remainingSec = playlistStore.currentClipStart + playlistStore.currentClipOut - timeInSec
-        const playedSec = playlistStore.currentClipOut - playlistStore.remainingSec
-
-        if (playlistStore.currentClipOut === 0 || !playlistStore.playoutIsRunning) {
-            playlistStore.progressValue = 0
-        } else {
-            playlistStore.progressValue = (playedSec * 100) / playlistStore.currentClipOut
-        }
-
-        if (breakStatusCheck.value) {
-            return
-        } else if ((playlistStore.playoutIsRunning && playlistStore.remainingSec < 0) || timeInSec % 30 === 0) {
-            // When 30 seconds a passed, get new status.
-            await playlistStore.playoutStat()
-        } else if (!playlistStore.playoutIsRunning) {
-            playlistStore.remainingSec = 0
-        }
-
-        timer.value = setTimeout(() => setStatus(resolve), 1000)
-    }
-    return new Promise((resolve) => setStatus(resolve))
+    playlistStore.playoutIsRunning = false
+    playlistStore.progressValue = 0
 }
 
 async function controlProcess(state: string) {
@@ -273,10 +307,6 @@ async function controlProcess(state: string) {
         headers: { ...configStore.contentType, ...authStore.authHeader },
         body: JSON.stringify({ command: state }),
     })
-
-    setTimeout(async () => {
-        await playlistStore.playoutStat()
-    }, 1000)
 }
 
 async function controlPlayout(state: string) {
@@ -293,9 +323,5 @@ async function controlPlayout(state: string) {
         headers: { ...configStore.contentType, ...authStore.authHeader },
         body: JSON.stringify({ control: state }),
     })
-
-    setTimeout(async () => {
-        await playlistStore.playoutStat()
-    }, 1000)
 }
 </script>

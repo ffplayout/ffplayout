@@ -22,7 +22,7 @@ export const usePlaylist = defineStore('playlist', {
         currentClipIn: 0,
         currentClipOut: 0,
         ingestRuns: false,
-        remainingSec: 0,
+        playedSec: 0,
         playoutIsRunning: false,
     }),
 
@@ -74,38 +74,17 @@ export const usePlaylist = defineStore('playlist', {
                 })
         },
 
-        async playoutStat() {
-            const authStore = useAuth()
-            const configStore = useConfig()
-            const channel = configStore.configGui[configStore.configID].id
+        setStatus(item: PlayoutStatus) {
+            this.playoutIsRunning = true
+            this.currentClip = item.media.source
+            this.currentClipIn = item.media.in
+            this.currentClipOut = item.media.out
+            this.currentClipDuration = item.media.duration
+            this.currentClipIndex = item.index
+            this.playedSec = item.played
+            this.ingestRuns = item.ingest
 
-            await fetch(`/api/control/${channel}/media/current`, {
-                method: 'GET',
-                headers: authStore.authHeader,
-            })
-                .then((response) => {
-                    if (response.status === 503) {
-                        this.playoutIsRunning = false
-                    }
-
-                    return response.json()
-                })
-                .then((data) => {
-                    if (data && data.played_sec) {
-                        this.playoutIsRunning = true
-                        this.currentClip = data.current_media.source
-                        this.currentClipIndex = data.index
-                        this.currentClipStart = data.start_sec
-                        this.currentClipDuration = data.current_media.duration
-                        this.currentClipIn = data.current_media.seek
-                        this.currentClipOut = data.current_media.out
-                        this.remainingSec = data.remaining_sec
-                        this.ingestRuns = data.ingest_runs
-                    }
-                })
-                .catch(() => {
-                    this.playoutIsRunning = false
-                })
+            this.progressValue = (this.playedSec * 100) / this.currentClipOut- this.currentClipIn
         },
     },
 })
