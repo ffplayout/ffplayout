@@ -72,10 +72,7 @@ impl Broadcaster {
                     this.remove_stale_clients().await;
                 }
 
-                if counter % 5 == 0 {
-                    this.broadcast_playout().await;
-                }
-
+                this.broadcast_playout().await;
                 this.broadcast_system().await;
 
                 counter = (counter + 1) % 61;
