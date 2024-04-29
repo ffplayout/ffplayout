@@ -268,7 +268,7 @@ watch([configID], () => {
 })
 
 function timeRemaining() {
-    let remaining = playlistStore.currentClipOut - playlistStore.currentClipIn - playlistStore.playedSec
+    let remaining = playlistStore.currentClipOut - playlistStore.playedSec
 
     if (remaining < 0) {
         remaining = 0

@@ -84,7 +84,7 @@ export const usePlaylist = defineStore('playlist', {
             this.playedSec = item.played
             this.ingestRuns = item.ingest
 
-            this.progressValue = (this.playedSec * 100) / this.currentClipOut- this.currentClipIn
+            this.progressValue = (this.playedSec * 100) / this.currentClipOut
         },
     },
 })
