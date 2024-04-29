@@ -126,6 +126,9 @@ export default {
         send: 'Send',
         name: 'Name',
     },
+    log: {
+        download: 'Download log file',
+    },
     config: {
         channel: 'Channel',
         user: 'User',

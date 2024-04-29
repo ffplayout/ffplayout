@@ -1,7 +1,7 @@
 <template>
     <div class="w-full flex flex-col">
         <div class="flex justify-end p-3 h-14">
-            <div>
+            <div class="join">
                 <VueDatePicker
                     v-model="listDate"
                     :clearable="false"
@@ -12,9 +12,16 @@
                     auto-apply
                     :locale="locale"
                     :dark="colorMode.value === 'dark'"
-                    input-class-name="input input-sm !input-bordered !w-[300px] text-right !pe-3"
+                    input-class-name="join-item input input-sm !input-bordered !w-[300px] text-right !pe-3"
                     required
                 />
+                <button
+                    class="btn btn-sm btn-primary join-item"
+                    :title="$t('log.download')"
+                    @click="downloadLog"
+                >
+                    <i class="bi-download" />
+                </button>
             </div>
         </div>
         <div class="px-3 inline-block h-[calc(100vh-140px)] text-[13px]">
@@ -72,6 +79,27 @@ async function getLog() {
         .catch(() => {
             currentLog.value = ''
         })
+}
+
+function downloadLog() {
+    const file = new File(
+        [formatLog(currentLog.value).replace(/<\/?[^>]+(>|$)/g, '')],
+        `playout_${listDate.value}.log`,
+        {
+            type: 'text/plain',
+        }
+    )
+
+    const link = document.createElement('a')
+    const url = URL.createObjectURL(file)
+
+    link.href = url
+    link.download = file.name
+    document.body.appendChild(link)
+    link.click()
+
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
 }
 </script>
 
