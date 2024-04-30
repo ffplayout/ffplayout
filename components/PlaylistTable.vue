@@ -78,7 +78,7 @@
                             '!bg-lime-500/30':
                                 playlistStore.playoutIsRunning &&
                                 listDate === todayDate &&
-                                index === playlistStore.currentClipIndex,
+                                index === currentClipIndex,
                             '!bg-amber-600/40': element.overtime,
                         }"
                     >
@@ -137,7 +137,7 @@ const { processPlaylist, genUID } = playlistOperations()
 const playlistContainer = ref()
 const sortContainer = ref()
 const todayDate = ref($dayjs().utcOffset(configStore.utcOffset).format('YYYY-MM-DD'))
-const { listDate } = storeToRefs(usePlaylist())
+const { currentClipIndex, listDate } = storeToRefs(usePlaylist())
 
 const playlistSortOptions = {
     group: 'playlist',
@@ -206,15 +206,14 @@ async function getPlaylist() {
     await playlistStore.getPlaylist(listDate.value)
     playlistStore.isLoading = false
 
-    setTimeout(() => {
-        if (listDate.value === todayDate.value) {
-            scrollTo(playlistStore.currentClipIndex)
-        } else {
-            scrollTo(0)
-        }
+    if (listDate.value === todayDate.value) {
+        await until(currentClipIndex).toMatch(v => v > 0, { timeout: 1500 })
+        scrollTo(currentClipIndex.value)
+    } else {
+        scrollTo(0)
+    }
 
-        classSwitcher()
-    }, 200)
+    classSwitcher()
 }
 
 function setCategory(event: any, item: PlaylistItem) {
