@@ -145,13 +145,7 @@ const playlistSortOptions = {
     handle: '.grabbing',
 }
 
-const props = defineProps({
-    getPlaylist: {
-        type: Function,
-        default() {
-            return ''
-        },
-    },
+defineProps({
     editItem: {
         type: Function,
         default() {
@@ -167,16 +161,27 @@ const props = defineProps({
 })
 
 onMounted(() => {
-    props.getPlaylist()
+    getPlaylist()
 })
 
 watch([listDate], () => {
-    props.getPlaylist()
+    getPlaylist()
 })
 
 defineExpose({
     classSwitcher,
+    getPlaylist,
 })
+
+function scrollTo(index: number) {
+    const child = document.getElementById(`clip-${index}`)
+    const parent = document.getElementById('playlist-container')
+
+    if (child && parent) {
+        const topPos = child.offsetTop
+        parent.scrollTop = topPos - 50
+    }
+}
 
 function classSwitcher() {
     if (playlistStore.playlist.length === 0) {
@@ -194,6 +199,22 @@ function classSwitcher() {
         }
         sortContainer.value.sortable.el.classList.remove('is-empty')
     }
+}
+
+async function getPlaylist() {
+    playlistStore.isLoading = true
+    await playlistStore.getPlaylist(listDate.value)
+    playlistStore.isLoading = false
+
+    setTimeout(() => {
+        if (listDate.value === todayDate.value) {
+            scrollTo(playlistStore.currentClipIndex)
+        } else {
+            scrollTo(0)
+        }
+
+        classSwitcher()
+    }, 200)
 }
 
 function setCategory(event: any, item: PlaylistItem) {

@@ -45,6 +45,9 @@ export const stringFormatter = () => {
     }
 
     function secToHMS(sec: number) {
+        const sign = Math.sign(sec)
+        sec = Math.abs(sec)
+
         const hours = Math.floor(sec / 3600)
         sec %= 3600
         const minutes = Math.floor(sec / 60)
@@ -53,7 +56,10 @@ export const stringFormatter = () => {
         const m = String(minutes).padStart(2, '0')
         const h = String(hours).padStart(2, '0')
         const s = String(seconds).padStart(2, '0')
-        return `${h}:${m}:${s}`
+
+        const hString = (sign === -1 ? '-' : '') + h
+
+        return `${hString}:${m}:${s}`
     }
 
     function numberToHex(num: number) {

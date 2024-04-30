@@ -81,6 +81,7 @@ export default {
         advanced: 'Advanced',
         sorted: 'Sorted',
         shuffle: 'Shuffle',
+        shift: 'Shift',
         all: 'All',
         addBlock: 'Add time block',
     },

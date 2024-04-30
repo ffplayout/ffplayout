@@ -81,6 +81,7 @@ export default {
         advanced: 'Avançado',
         sorted: 'Ordenado',
         shuffle: 'Aleatório',
+        shift: 'Diferença horária',
         all: 'Todos',
         addBlock: 'Adicionar bloco de tempo',
     },

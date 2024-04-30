@@ -66,6 +66,11 @@
                                 <strong>{{ $t('player.in') }}:</strong> {{ secToHMS(playlistStore.currentClipIn) }} |
                                 <strong>{{ $t('player.out') }}:</strong>
                                 {{ secToHMS(playlistStore.currentClipOut) }}
+
+                                <template v-if="playlistStore.shift !== 0">
+                                    | <strong>{{ $t('player.shift') }}:</strong>
+                                    {{ secToHMS(playlistStore.shift) }}
+                                </template>
                             </div>
                             <div class="h-1/3">
                                 <progress
@@ -268,7 +273,7 @@ watch([configID], () => {
 })
 
 function timeRemaining() {
-    let remaining = playlistStore.currentClipOut - playlistStore.playedSec
+    let remaining = playlistStore.currentClipOut - playlistStore.elapsedSec
 
     if (remaining < 0) {
         remaining = 0
@@ -286,7 +291,8 @@ async function clock() {
 }
 
 function resetStatus() {
-    playlistStore.playedSec = 0
+    playlistStore.elapsedSec = 0
+    playlistStore.shift = 0
     playlistStore.currentClip = ''
     playlistStore.ingestRuns = false
     playlistStore.currentClipDuration = 0

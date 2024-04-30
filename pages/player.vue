@@ -30,12 +30,7 @@
                     <MediaBrowser :preview="setPreviewData" />
                 </pane>
                 <pane>
-                    <PlaylistTable
-                        ref="playlistTable"
-                        :get-playlist="getPlaylist"
-                        :edit-item="editPlaylistItem"
-                        :preview="setPreviewData"
-                    />
+                    <PlaylistTable ref="playlistTable" :edit-item="editPlaylistItem" :preview="setPreviewData" />
                 </pane>
             </splitpanes>
         </div>
@@ -76,7 +71,7 @@
             <button
                 class="btn btn-sm btn-primary join-item"
                 :title="$t('player.reset')"
-                @click=";(playlistStore.playlist.length = 0), getPlaylist()"
+                @click=";(playlistStore.playlist.length = 0), playlistTable.getPlaylist()"
             >
                 <i class="bi-arrow-counterclockwise" />
             </button>
@@ -226,7 +221,6 @@ useHead({
 
 const { listDate } = storeToRefs(usePlaylist())
 
-const todayDate = ref($dayjs().utcOffset(configStore.utcOffset).format('YYYY-MM-DD'))
 const targetDate = ref($dayjs().utcOffset(configStore.utcOffset).format('YYYY-MM-DD'))
 const playlistTable = ref()
 const editId = ref(-1)
@@ -256,32 +250,8 @@ const newSource = ref({
     uid: '',
 } as PlaylistItem)
 
-function scrollTo(index: number) {
-    const child = document.getElementById(`clip-${index}`)
-    const parent = document.getElementById('playlist-container')
-
-    if (child && parent) {
-        const topPos = child.offsetTop
-        parent.scrollTop = topPos - 50
-    }
-}
-
 const calendarFormat = (date: Date) => {
     return $dayjs(date).locale(locale.value).format('dddd - LL')
-}
-
-async function getPlaylist() {
-    playlistStore.isLoading = true
-    await playlistStore.getPlaylist(listDate.value)
-    playlistStore.isLoading = false
-
-    if (listDate.value === todayDate.value) {
-        scrollTo(playlistStore.currentClipIndex)
-    } else {
-        scrollTo(0)
-    }
-
-    playlistTable.value.classSwitcher()
 }
 
 function closeGenerator() {

@@ -125,6 +125,7 @@ declare global {
         index: number
         ingest: boolean
         mode: string
-        played: number
+        elapsed: number
+        shift: number
     }
 }
