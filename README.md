@@ -176,19 +176,17 @@ Output from `{"media":"current"}` show:
 
 ```JSON
 {
-    "current_media": {
+    "media": {
         "category": "",
         "duration": 154.2,
         "out": 154.2,
-        "seek": 0.0,
+        "in": 0.0,
         "source": "/opt/tv-media/clip.mp4"
     },
     "index": 39,
-    "play_mode": "playlist",
-    "played_sec": 67.80771999300123,
-    "remaining_sec": 86.39228000699876,
-    "start_sec": 24713.631999999998,
-    "start_time": "06:51:53.631"
+    "mode": "playlist",
+    "ingest": false,
+    "played": 67.80771999300123,
 }
 ```
 

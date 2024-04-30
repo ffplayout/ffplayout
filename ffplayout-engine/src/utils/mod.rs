@@ -15,8 +15,8 @@ pub use arg_parse::Args;
 use ffplayout_lib::{
     filter::Filters,
     utils::{
-        config::Template, errors::ProcError, parse_log_level_filter, sec_to_time, time_in_seconds,
-        time_to_sec, Media, OutputMode::*, PlayoutConfig, PlayoutStatus, ProcessMode::*,
+        config::Template, errors::ProcError, parse_log_level_filter, time_in_seconds, time_to_sec,
+        Media, OutputMode::*, PlayoutConfig, PlayoutStatus, ProcessMode::*,
     },
     vec_strings,
 };
@@ -252,7 +252,7 @@ pub fn prepare_output_cmd(
 /// map media struct to json object
 pub fn get_media_map(media: Media) -> Value {
     json!({
-        "seek": media.seek,
+        "in": media.seek,
         "out": media.out,
         "duration": media.duration,
         "category": media.category,
@@ -271,22 +271,20 @@ pub fn get_data_map(
     let current_time = time_in_seconds();
     let shift = *playout_stat.time_shift.lock().unwrap();
     let begin = media.begin.unwrap_or(0.0) - shift;
+    let played_time = current_time - begin;
 
-    data_map.insert("play_mode".to_string(), json!(config.processing.mode));
-    data_map.insert("ingest_runs".to_string(), json!(server_is_running));
     data_map.insert("index".to_string(), json!(media.index));
-    data_map.insert("start_sec".to_string(), json!(begin));
-
-    if begin > 0.0 {
-        let played_time = current_time - begin;
-        let remaining_time = media.out - played_time;
-
-        data_map.insert("start_time".to_string(), json!(sec_to_time(begin)));
-        data_map.insert("played_sec".to_string(), json!(played_time));
-        data_map.insert("remaining_sec".to_string(), json!(remaining_time));
-    }
-
-    data_map.insert("current_media".to_string(), get_media_map(media));
+    data_map.insert("ingest".to_string(), json!(server_is_running));
+    data_map.insert("mode".to_string(), json!(config.processing.mode));
+    data_map.insert(
+        "shift".to_string(),
+        json!((shift * 1000.0).round() / 1000.0),
+    );
+    data_map.insert(
+        "elapsed".to_string(),
+        json!((played_time * 1000.0).round() / 1000.0),
+    );
+    data_map.insert("media".to_string(), get_media_map(media));
 
     data_map
 }

@@ -246,7 +246,7 @@ async fn get_user(
 /// ```
 #[get("/user/{name}")]
 #[protect("Role::Admin", ty = "Role")]
-async fn get_user_by_name(
+async fn get_by_name(
     pool: web::Data<Pool<Sqlite>>,
     name: web::Path<String>,
 ) -> Result<impl Responder, ServiceError> {
@@ -326,7 +326,7 @@ async fn update_user(
         return Err(ServiceError::InternalServerError);
     }
 
-    Err(ServiceError::Unauthorized)
+    Err(ServiceError::Unauthorized("No Permission".to_string()))
 }
 
 /// **Add User**
@@ -651,7 +651,9 @@ pub async fn send_text_message(
     id: web::Path<i32>,
     data: web::Json<HashMap<String, String>>,
 ) -> Result<impl Responder, ServiceError> {
-    match send_message(&pool.into_inner(), *id, data.into_inner()).await {
+    let (config, _) = playout_config(&pool.clone().into_inner(), &id).await?;
+
+    match send_message(&config, data.into_inner()).await {
         Ok(res) => Ok(res.text().await.unwrap_or_else(|_| "Success".into())),
         Err(e) => Err(e),
     }
@@ -674,7 +676,9 @@ pub async fn control_playout(
     id: web::Path<i32>,
     control: web::Json<ControlParams>,
 ) -> Result<impl Responder, ServiceError> {
-    match control_state(&pool.into_inner(), *id, &control.control).await {
+    let (config, _) = playout_config(&pool.clone().into_inner(), &id).await?;
+
+    match control_state(&config, &control.control).await {
         Ok(res) => Ok(res.text().await.unwrap_or_else(|_| "Success".into())),
         Err(e) => Err(e),
     }
@@ -690,25 +694,19 @@ pub async fn control_playout(
 /// **Response:**
 ///
 /// ```JSON
-/// {
-///     "jsonrpc": "2.0",
-///     "result": {
-///       "current_media": {
+///     {
+///       "media": {
 ///         "category": "",
 ///         "duration": 154.2,
 ///         "out": 154.2,
-///         "seek": 0.0,
+///         "in": 0.0,
 ///         "source": "/opt/tv-media/clip.mp4"
 ///       },
 ///       "index": 39,
-///       "play_mode": "playlist",
-///       "played_sec": 67.80771999300123,
-///       "remaining_sec": 86.39228000699876,
-///       "start_sec": 24713.631999999998,
-///       "start_time": "06:51:53.631"
-///     },
-///     "id": 1
-/// }
+///       "ingest": false,
+///       "mode": "playlist",
+///       "played": 67.808
+///     }
 /// ```
 #[get("/control/{id}/media/current")]
 #[protect(any("Role::Admin", "Role::User"), ty = "Role")]
@@ -716,7 +714,9 @@ pub async fn media_current(
     pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
 ) -> Result<impl Responder, ServiceError> {
-    match media_info(&pool.into_inner(), *id, "current".into()).await {
+    let (config, _) = playout_config(&pool.clone().into_inner(), &id).await?;
+
+    match media_info(&config, "current".into()).await {
         Ok(res) => Ok(res.text().await.unwrap_or_else(|_| "Success".into())),
         Err(e) => Err(e),
     }
@@ -733,7 +733,9 @@ pub async fn media_next(
     pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
 ) -> Result<impl Responder, ServiceError> {
-    match media_info(&pool.into_inner(), *id, "next".into()).await {
+    let (config, _) = playout_config(&pool.clone().into_inner(), &id).await?;
+
+    match media_info(&config, "next".into()).await {
         Ok(res) => Ok(res.text().await.unwrap_or_else(|_| "Success".into())),
         Err(e) => Err(e),
     }
@@ -751,7 +753,9 @@ pub async fn media_last(
     pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
 ) -> Result<impl Responder, ServiceError> {
-    match media_info(&pool.into_inner(), *id, "last".into()).await {
+    let (config, _) = playout_config(&pool.clone().into_inner(), &id).await?;
+
+    match media_info(&config, "last".into()).await {
         Ok(res) => Ok(res.text().await.unwrap_or_else(|_| "Success".into())),
         Err(e) => Err(e),
     }
@@ -778,7 +782,16 @@ pub async fn process_control(
     proc: web::Json<Process>,
     engine_process: web::Data<ProcessControl>,
 ) -> Result<impl Responder, ServiceError> {
-    control_service(&pool.into_inner(), *id, &proc.command, Some(engine_process)).await
+    let (config, _) = playout_config(&pool.clone().into_inner(), &id).await?;
+
+    control_service(
+        &pool.into_inner(),
+        &config,
+        *id,
+        &proc.command,
+        Some(engine_process),
+    )
+    .await
 }
 
 /// #### ffplayout Playlist Operations
