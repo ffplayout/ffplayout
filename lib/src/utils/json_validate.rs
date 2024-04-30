@@ -17,7 +17,6 @@ use crate::utils::{
     JsonPlaylist, Media, OutputMode::Null, PlayerControl, PlayoutConfig, FFMPEG_IGNORE_ERRORS,
     IMAGE_FORMAT,
 };
-use crate::ADVANCED_CONFIG;
 
 /// Validate a single media file.
 ///
@@ -38,7 +37,11 @@ fn check_media(
 
     let mut process_length = 0.1;
 
-    if let Some(decoder_input_cmd) = &ADVANCED_CONFIG.decoder.input_cmd {
+    if let Some(decoder_input_cmd) = config
+        .advanced
+        .as_ref()
+        .and_then(|a| a.decoder.input_cmd.clone())
+    {
         dec_cmd.append(&mut decoder_input_cmd.clone());
     }
 

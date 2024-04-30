@@ -14,7 +14,7 @@ use ffplayout_lib::{
         controller::ProcessUnit::*, test_tcp_port, Media, PlayoutConfig, ProcessControl,
         FFMPEG_IGNORE_ERRORS, FFMPEG_UNRECOVERABLE_ERRORS,
     },
-    vec_strings, ADVANCED_CONFIG,
+    vec_strings,
 };
 
 fn server_monitor(
@@ -64,7 +64,11 @@ pub fn ingest_server(
     dummy_media.unit = Ingest;
     dummy_media.add_filter(&config, &None);
 
-    if let Some(ingest_input_cmd) = &ADVANCED_CONFIG.ingest.input_cmd {
+    if let Some(ingest_input_cmd) = config
+        .advanced
+        .as_ref()
+        .and_then(|a| a.ingest.input_cmd.clone())
+    {
         server_cmd.append(&mut ingest_input_cmd.clone());
     }
 

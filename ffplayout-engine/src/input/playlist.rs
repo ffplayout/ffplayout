@@ -119,21 +119,22 @@ impl CurrentProgram {
             self.current_node.out
         };
 
-        trace!(
-            "delta: {delta}, total_delta: {total_delta}, current index: {}",
-            self.current_node.index.unwrap_or_default()
-        );
+        let node_index = self.current_node.index.unwrap_or_default();
 
         let mut next_start =
             self.current_node.begin.unwrap_or_default() - self.start_sec + duration + delta;
 
-        if self.player_control.current_index.load(Ordering::SeqCst)
-            == self.player_control.current_list.lock().unwrap().len() - 1
+        if node_index > 0
+            && node_index == self.player_control.current_list.lock().unwrap().len() - 1
         {
             next_start += self.config.general.stop_threshold;
         }
 
-        trace!("next_start: {next_start}, end_sec: {}", self.end_sec);
+        trace!(
+            "delta: {delta} | total_delta: {total_delta}, index: {node_index} \nnext_start: {next_start} | end_sec: {} | source {}",
+            self.end_sec,
+            self.current_node.source
+        );
 
         // Check if we over the target length or we are close to it, if so we load the next playlist.
         if !self.config.playlist.infinit
@@ -788,7 +789,7 @@ fn handle_list_end(
     player_control: &PlayerControl,
     last_index: usize,
 ) -> Media {
-    debug!("Playlist end");
+    debug!("Last clip from day");
 
     let mut out = if node.seek > 0.0 {
         node.seek + total_delta

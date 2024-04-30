@@ -2,7 +2,7 @@ use std::process::{self, Command, Stdio};
 
 use simplelog::*;
 
-use ffplayout_lib::{filter::v_drawtext, utils::PlayoutConfig, vec_strings, ADVANCED_CONFIG};
+use ffplayout_lib::{filter::v_drawtext, utils::PlayoutConfig, vec_strings};
 
 /// Desktop Output
 ///
@@ -12,7 +12,11 @@ pub fn output(config: &PlayoutConfig, log_format: &str) -> process::Child {
 
     let mut enc_cmd = vec_strings!["-hide_banner", "-nostats", "-v", log_format];
 
-    if let Some(encoder_input_cmd) = &ADVANCED_CONFIG.encoder.input_cmd {
+    if let Some(encoder_input_cmd) = config
+        .advanced
+        .as_ref()
+        .and_then(|a| a.encoder.input_cmd.clone())
+    {
         enc_cmd.append(&mut encoder_input_cmd.clone());
     }
 

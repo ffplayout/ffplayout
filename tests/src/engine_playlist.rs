@@ -20,7 +20,7 @@ fn timed_stop(sec: u64, proc_ctl: ProcessControl) {
 #[test]
 #[ignore]
 fn test_gen_source() {
-    let mut config = PlayoutConfig::new(None);
+    let mut config = PlayoutConfig::new(None, None);
     config.general.skip_validation = true;
     config.mail.recipient = "".into();
     config.processing.mode = Playlist;
@@ -76,7 +76,7 @@ fn test_gen_source() {
         100,
     );
 
-    assert_eq!(valid_media.out, 1.9);
+    assert_eq!(valid_media.out, 1.2);
 
     let mut no_valid_source_with_probe = Media::new(0, "assets/media_mix/av_snc.mp4", true);
     no_valid_source_with_probe.duration = 30.0;
@@ -97,7 +97,7 @@ fn test_gen_source() {
 #[serial]
 #[ignore]
 fn playlist_missing() {
-    let mut config = PlayoutConfig::new(None);
+    let mut config = PlayoutConfig::new(None, None);
     config.general.skip_validation = true;
     config.mail.recipient = "".into();
     config.processing.mode = Playlist;
@@ -140,7 +140,7 @@ fn playlist_missing() {
 #[serial]
 #[ignore]
 fn playlist_next_missing() {
-    let mut config = PlayoutConfig::new(None);
+    let mut config = PlayoutConfig::new(None, None);
     config.general.skip_validation = true;
     config.mail.recipient = "".into();
     config.processing.mode = Playlist;
@@ -183,7 +183,7 @@ fn playlist_next_missing() {
 #[serial]
 #[ignore]
 fn playlist_to_short() {
-    let mut config = PlayoutConfig::new(None);
+    let mut config = PlayoutConfig::new(None, None);
     config.general.skip_validation = true;
     config.mail.recipient = "".into();
     config.processing.mode = Playlist;
@@ -226,7 +226,7 @@ fn playlist_to_short() {
 #[serial]
 #[ignore]
 fn playlist_init_after_list_end() {
-    let mut config = PlayoutConfig::new(None);
+    let mut config = PlayoutConfig::new(None, None);
     config.general.skip_validation = true;
     config.mail.recipient = "".into();
     config.processing.mode = Playlist;
@@ -269,7 +269,7 @@ fn playlist_init_after_list_end() {
 #[serial]
 #[ignore]
 fn playlist_change_at_midnight() {
-    let mut config = PlayoutConfig::new(None);
+    let mut config = PlayoutConfig::new(None, None);
     config.general.skip_validation = true;
     config.mail.recipient = "".into();
     config.processing.mode = Playlist;
@@ -312,7 +312,7 @@ fn playlist_change_at_midnight() {
 #[serial]
 #[ignore]
 fn playlist_change_before_midnight() {
-    let mut config = PlayoutConfig::new(None);
+    let mut config = PlayoutConfig::new(None, None);
     config.general.skip_validation = true;
     config.mail.recipient = "".into();
     config.processing.mode = Playlist;
@@ -355,7 +355,7 @@ fn playlist_change_before_midnight() {
 #[serial]
 #[ignore]
 fn playlist_change_at_six() {
-    let mut config = PlayoutConfig::new(None);
+    let mut config = PlayoutConfig::new(None, None);
     config.general.skip_validation = true;
     config.mail.recipient = "".into();
     config.processing.mode = Playlist;

@@ -1,8 +1,4 @@
-use std::{
-    env,
-    fs::File,
-    path::{Path, PathBuf},
-};
+use std::{fs::File, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
 use shlex::split;
@@ -67,19 +63,10 @@ pub struct Filters {
 }
 
 impl AdvancedConfig {
-    pub fn new() -> Self {
+    pub fn new(cfg_path: PathBuf) -> Self {
         let mut config: AdvancedConfig = Default::default();
-        let mut config_path = PathBuf::from("/etc/ffplayout/advanced.yml");
 
-        if !config_path.is_file() {
-            if Path::new("./assets/advanced.yml").is_file() {
-                config_path = PathBuf::from("./assets/advanced.yml")
-            } else if let Some(p) = env::current_exe().ok().as_ref().and_then(|op| op.parent()) {
-                config_path = p.join("advanced.yml")
-            };
-        }
-
-        if let Ok(f) = File::open(&config_path) {
+        if let Ok(f) = File::open(cfg_path) {
             config = match serde_yaml::from_reader(f) {
                 Ok(yaml) => yaml,
                 Err(_) => AdvancedConfig::default(),

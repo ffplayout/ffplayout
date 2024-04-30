@@ -127,8 +127,14 @@ pub fn read_json(
                 let headers = resp.headers().clone();
 
                 if let Ok(body) = resp.text() {
-                    let mut playlist: JsonPlaylist =
-                        serde_json::from_str(&body).expect("Could't read remote json playlist.");
+                    let mut playlist: JsonPlaylist = match serde_json::from_str(&body) {
+                        Ok(p) => p,
+                        Err(e) => {
+                            error!("Could't read remote json playlist. {e:?}");
+                            JsonPlaylist::new(date.clone(), start_sec)
+                        }
+                    };
+
                     playlist.path = Some(current_file);
                     playlist.start_sec = Some(start_sec);
 

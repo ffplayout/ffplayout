@@ -1,4 +1,4 @@
-// use std::cmp;
+use std::fmt;
 
 use local_ip_address::list_afinet_netifas;
 use serde::Serialize;
@@ -69,6 +69,12 @@ pub struct SystemStat {
     pub storage: Storage,
     pub swap: Swap,
     pub system: MySystem,
+}
+
+impl fmt::Display for SystemStat {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", serde_json::to_string(self).unwrap())
+    }
 }
 
 pub fn stat(config: PlayoutConfig) -> SystemStat {
