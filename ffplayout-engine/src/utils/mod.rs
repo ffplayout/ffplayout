@@ -271,19 +271,19 @@ pub fn get_data_map(
     let current_time = time_in_seconds();
     let shift = *playout_stat.time_shift.lock().unwrap();
     let begin = media.begin.unwrap_or(0.0) - shift;
+    let played_time = current_time - begin;
 
-    data_map.insert("mode".to_string(), json!(config.processing.mode));
-    data_map.insert("ingest".to_string(), json!(server_is_running));
     data_map.insert("index".to_string(), json!(media.index));
-
-    if begin > 0.0 {
-        let played_time = current_time - begin;
-        data_map.insert(
-            "played".to_string(),
-            json!((played_time * 1000.0).round() / 1000.0),
-        );
-    }
-
+    data_map.insert("ingest".to_string(), json!(server_is_running));
+    data_map.insert("mode".to_string(), json!(config.processing.mode));
+    data_map.insert(
+        "shift".to_string(),
+        json!((shift * 1000.0).round() / 1000.0),
+    );
+    data_map.insert(
+        "elapsed".to_string(),
+        json!((played_time * 1000.0).round() / 1000.0),
+    );
     data_map.insert("media".to_string(), get_media_map(media));
 
     data_map
