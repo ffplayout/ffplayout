@@ -56,9 +56,9 @@
                             <div
                                 v-else
                                 class="h-1/3 font-bold text truncate"
-                                :title="filename(playlistStore.currentClip)"
+                                :title="playlistStore.currentClipTitle || filename(playlistStore.currentClip)"
                             >
-                                {{ filename(playlistStore.currentClip) || $t('control.noClip') }}
+                                {{ playlistStore.currentClipTitle || filename(playlistStore.currentClip) || $t('control.noClip') }}
                             </div>
                             <div class="grow">
                                 <strong>{{ $t('player.duration') }}:</strong>
@@ -163,6 +163,7 @@
 import { storeToRefs } from 'pinia'
 import mpegts from 'mpegts.js'
 
+const { t } = useI18n()
 const { $dayjs } = useNuxtApp()
 const authStore = useAuth()
 const configStore = useConfig()
@@ -171,7 +172,7 @@ const playlistStore = usePlaylist()
 const { filename, secToHMS } = stringFormatter()
 const { configID } = storeToRefs(useConfig())
 
-playlistStore.currentClip = 'Es wird kein Clip abgespielt'
+playlistStore.currentClip = t('control.noClip')
 const timeStr = ref('00:00:00')
 const timer = ref()
 const errorCounter = ref(0)

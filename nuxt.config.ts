@@ -91,27 +91,27 @@ export default defineNuxtConfig({
             player: {
                 de: '/wiedergabe',
                 en: '/player',
-                'pt-br': '/playout',
+                'pt-br': '/player',
             },
             media: {
                 de: '/medien',
                 en: '/media',
-                'pt-br': '/mídias',
+                'pt-br': '/armazenamento',
             },
             message: {
                 de: '/nachrichten',
                 en: '/message',
-                'pt-br': '/mensagens',
+                'pt-br': '/legenda',
             },
             logging: {
                 de: '/protokollierung',
                 en: '/logging',
-                'pt-br': '/registros',
+                'pt-br': '/registro',
             },
             configure: {
                 de: '/einstellungen',
                 en: '/configure',
-                'pt-br': '/configuração',
+                'pt-br': '/configurar',
             },
         },
         detectBrowserLanguage: {

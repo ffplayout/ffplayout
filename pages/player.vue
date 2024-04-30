@@ -121,50 +121,56 @@
 
         <GenericModal :show="showSourceModal" :title="$t('player.addEdit')" :modal-action="processSource">
             <div>
-                <label class="form-control w-full mt-3">
+                <label class="form-control w-auto mt-auto">
                     <div class="label">
-                        <span class="label-text">{{ $t('player.in') }}</span>
+                        <span class="label-text">{{ $t('player.title') }}</span>
                     </div>
-                    <input v-model.number="newSource.in" type="number" class="input input-sm input-bordered w-full" />
+                    <input v-model.number="newSource.title" type="text" class="input input-sm input-bordered w-auto" />
+                </label>
+                <label class="form-control w-auto mt-auto">
+                    <div class="label">
+                        <span class="label-text">{{ $t('player.timeIn') }}</span>
+                    </div>
+                    <input v-model.number="newSource.in" type="number" class="input input-sm input-bordered w-auto" />
                 </label>
 
-                <label class="form-control w-full mt-3">
+                <label class="form-control w-auto mt-auto">
                     <div class="label">
-                        <span class="label-text">{{ $t('player.out') }}</span>
+                        <span class="label-text">{{ $t('player.timeOut') }}</span>
                     </div>
-                    <input v-model.number="newSource.out" type="number" class="input input-sm input-bordered w-full" />
+                    <input v-model.number="newSource.out" type="number" class="input input-sm input-bordered w-auto" />
                 </label>
 
-                <label class="form-control w-full mt-3">
+                <label class="form-control w-auto mt-auto">
                     <div class="label">
-                        <span class="label-text">{{ $t('player.duration') }}</span>
+                        <span class="label-text">{{ $t('player.timeDuration') }}</span>
                     </div>
                     <input
                         v-model.number="newSource.duration"
                         type="number"
-                        class="input input-sm input-bordered w-full"
+                        class="input input-sm input-bordered w-auto"
                     />
                 </label>
 
-                <label class="form-control w-full mt-3">
+                <label class="form-control w-auto mt-auto">
                     <div class="label">
                         <span class="label-text">{{ $t('player.file') }}</span>
                     </div>
-                    <input v-model="newSource.source" type="text" class="input input-sm input-bordered w-full" />
+                    <input v-model="newSource.source" type="text" class="input input-sm input-bordered w-auto" />
                 </label>
 
-                <label class="form-control w-full mt-3">
+                <label class="form-control w-auto mt-auto">
                     <div class="label">
                         <span class="label-text">{{ $t('player.audio') }}</span>
                     </div>
-                    <input v-model="newSource.audio" type="text" class="input input-sm input-bordered w-full" />
+                    <input v-model="newSource.audio" type="text" class="input input-sm input-bordered w-auto" />
                 </label>
 
-                <label class="form-control w-full mt-3">
+                <label class="form-control w-auto mt-auto">
                     <div class="label">
                         <span class="label-text">{{ $t('player.customFilter') }}</span>
                     </div>
-                    <input v-model="newSource.custom_filter" type="text" class="input input-sm input-bordered w-full" />
+                    <input v-model="newSource.custom_filter" type="text" class="input input-sm input-bordered w-auto" />
                 </label>
 
                 <div class="form-control">
@@ -240,6 +246,7 @@ const isVideo = ref(false)
 
 const newSource = ref({
     begin: 0,
+    title: '',
     in: 0,
     out: 0,
     duration: 0,
@@ -332,6 +339,7 @@ function processSource(process: boolean) {
     editId.value = -1
     newSource.value = {
         begin: 0,
+        title: '',
         in: 0,
         out: 0,
         duration: 0,
@@ -349,6 +357,7 @@ function editPlaylistItem(i: number) {
 
     newSource.value = {
         begin: playlistStore.playlist[i].begin,
+        title: playlistStore.playlist[i].title,
         in: playlistStore.playlist[i].in,
         out: playlistStore.playlist[i].out,
         duration: playlistStore.playlist[i].duration,

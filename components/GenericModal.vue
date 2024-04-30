@@ -1,5 +1,5 @@
 <template>
-    <div v-if="show" class="z-50 fixed top-0 bottom-0 left-0 right-0 flex justify-center items-center bg-black/30">
+    <div v-if="show" class="z-50 fixed top-0 bottom-0 left-0 right-0 flex justify-center items-center bg-black/30 overflow-auto m-auto max-h-screen space-y-1">
         <div class="flex flex-col bg-base-100 min-w-[400px] max-w-[90%] h-auto rounded-md p-5 shadow-xl">
             <div class="inline-block">
                 <div class="flex gap-2">
