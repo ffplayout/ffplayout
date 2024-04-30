@@ -192,7 +192,7 @@ const streamUrl = ref(
     `/data/event/${configStore.configGui[configStore.configID].id}?endpoint=playout&uuid=${authStore.uuid}`
 )
 
-// 'http://127.0.0.1:8787/data/event/1?endpoint=system&uuid=f2f8c29b-712a-48c5-8919-b535d3a05a3a'
+// 'http://127.0.0.1:8787/data/event/1?endpoint=playout&uuid=f2f8c29b-712a-48c5-8919-b535d3a05a3a'
 const { status, data, error, close } = useEventSource(streamUrl, [], {
     autoReconnect: {
         retries: -1,

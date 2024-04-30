@@ -128,5 +128,6 @@ declare global {
         mode: string
         elapsed: number
         shift: number
+        title?: string
     }
 }
