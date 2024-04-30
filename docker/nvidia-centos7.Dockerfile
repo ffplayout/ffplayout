@@ -1,5 +1,6 @@
 FROM nvidia/cuda:12.0.1-cudnn8-runtime-centos7
 
+ENV FFPLAYOUT_VERSION=0.21.3
 ENV NVIDIA_VISIBLE_DEVICES all
 ENV NVIDIA_DRIVER_CAPABILITIES compute,video,utility
 
@@ -95,11 +96,11 @@ RUN echo "PermitRootLogin yes" >> /etc/ssh/sshd_config
 
 RUN    yum update -y \
     && yum install -y dejavu-sans-fonts sudo wget \
-    && wget -q -O /tmp/ffplayout-0.21.0-1.x86_64.rpm "https://github.com/ffplayout/ffplayout/releases/download/v0.20.2/ffplayout-0.21.0-1.x86_64.rpm" \
-    && yum install -y /tmp/ffplayout-0.21.0-1.x86_64.rpm \
+    && wget -q -O /tmp/ffplayout-${FFPLAYOUT_VERSION}-1.x86_64.rpm "https://github.com/ffplayout/ffplayout/releases/download/v${FFPLAYOUT_VERSION}/ffplayout-${FFPLAYOUT_VERSION}-1.x86_64.rpm" \
+    && yum install -y /tmp/ffplayout-${FFPLAYOUT_VERSION}-1.x86_64.rpm \
     && yum clean all \
     && echo 'Docker!' | passwd --stdin root \
-    && rm /tmp/ffplayout-0.21.0-1.x86_64.rpm \
+    && rm /tmp/ffplayout-${FFPLAYOUT_VERSION}-1.x86_64.rpm \
     && mkdir -p /home/ffpu && chown -R ffpu: /home/ffpu \
     && systemctl enable ffplayout \
     && systemctl enable ffpapi
