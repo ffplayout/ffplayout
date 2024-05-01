@@ -8,7 +8,7 @@ use ffplayout_lib::{
 
 #[test]
 fn video_audio_input() {
-    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.yml")), None);
+    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.toml")), None);
     let player_control = PlayerControl::new();
     let playout_stat = PlayoutStatus::new();
     config.out.mode = Stream;
@@ -37,7 +37,7 @@ fn video_audio_input() {
 
 #[test]
 fn video_audio_custom_filter1_input() {
-    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.yml")), None);
+    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.toml")), None);
     let player_control = PlayerControl::new();
     let playout_stat = PlayoutStatus::new();
     config.out.mode = Stream;
@@ -64,7 +64,7 @@ fn video_audio_custom_filter1_input() {
 
 #[test]
 fn video_audio_custom_filter2_input() {
-    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.yml")), None);
+    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.toml")), None);
     let player_control = PlayerControl::new();
     let playout_stat = PlayoutStatus::new();
     config.out.mode = Stream;
@@ -93,7 +93,7 @@ fn video_audio_custom_filter2_input() {
 
 #[test]
 fn video_audio_custom_filter3_input() {
-    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.yml")), None);
+    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.toml")), None);
     let player_control = PlayerControl::new();
     let playout_stat = PlayoutStatus::new();
     config.out.mode = Stream;
@@ -121,7 +121,7 @@ fn video_audio_custom_filter3_input() {
 
 #[test]
 fn dual_audio_aevalsrc_input() {
-    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.yml")), None);
+    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.toml")), None);
     let player_control = PlayerControl::new();
     let playout_stat = PlayoutStatus::new();
     config.out.mode = Stream;
@@ -149,7 +149,7 @@ fn dual_audio_aevalsrc_input() {
 
 #[test]
 fn dual_audio_input() {
-    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.yml")), None);
+    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.toml")), None);
     let player_control = PlayerControl::new();
     let playout_stat = PlayoutStatus::new();
     config.out.mode = Stream;
@@ -176,7 +176,7 @@ fn dual_audio_input() {
 
 #[test]
 fn video_separate_audio_input() {
-    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.yml")), None);
+    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.toml")), None);
     let player_control = PlayerControl::new();
     let playout_stat = PlayoutStatus::new();
     config.out.mode = Stream;
@@ -213,7 +213,7 @@ fn video_separate_audio_input() {
 
 #[test]
 fn video_audio_stream() {
-    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.yml")), None);
+    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.toml")), None);
     config.out.mode = Stream;
     config.processing.add_logo = false;
     config.out.output_cmd = Some(vec_strings![
@@ -272,7 +272,7 @@ fn video_audio_stream() {
 
 #[test]
 fn video_audio_filter1_stream() {
-    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.yml")), None);
+    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.toml")), None);
     config.out.mode = Stream;
     config.processing.add_logo = false;
     config.text.add_text = false;
@@ -347,7 +347,7 @@ fn video_audio_filter1_stream() {
 
 #[test]
 fn video_audio_filter2_stream() {
-    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.yml")), None);
+    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.toml")), None);
     config.out.mode = Stream;
     config.processing.add_logo = false;
     config.text.add_text = true;
@@ -430,7 +430,7 @@ fn video_audio_filter2_stream() {
 
 #[test]
 fn video_audio_filter3_stream() {
-    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.yml")), None);
+    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.toml")), None);
     config.out.mode = Stream;
     config.processing.add_logo = false;
     config.text.add_text = true;
@@ -516,7 +516,7 @@ fn video_audio_filter3_stream() {
 
 #[test]
 fn video_audio_filter4_stream() {
-    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.yml")), None);
+    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.toml")), None);
     config.out.mode = Stream;
     config.processing.add_logo = false;
     config.text.add_text = true;
@@ -602,7 +602,7 @@ fn video_audio_filter4_stream() {
 
 #[test]
 fn video_dual_audio_stream() {
-    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.yml")), None);
+    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.toml")), None);
     config.out.mode = Stream;
     config.processing.add_logo = false;
     config.processing.audio_tracks = 2;
@@ -673,7 +673,7 @@ fn video_dual_audio_stream() {
 
 #[test]
 fn video_dual_audio_filter_stream() {
-    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.yml")), None);
+    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.toml")), None);
     config.out.mode = Stream;
     config.processing.add_logo = false;
     config.processing.audio_tracks = 2;
@@ -753,7 +753,7 @@ fn video_dual_audio_filter_stream() {
 
 #[test]
 fn video_audio_multi_stream() {
-    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.yml")), None);
+    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.toml")), None);
     config.out.mode = Stream;
     config.processing.add_logo = false;
     config.out.output_cmd = Some(vec_strings![
@@ -842,7 +842,7 @@ fn video_audio_multi_stream() {
 
 #[test]
 fn video_dual_audio_multi_stream() {
-    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.yml")), None);
+    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.toml")), None);
     config.out.mode = Stream;
     config.processing.add_logo = false;
     config.processing.audio_tracks = 2;
@@ -956,7 +956,7 @@ fn video_dual_audio_multi_stream() {
 
 #[test]
 fn video_audio_text_multi_stream() {
-    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.yml")), None);
+    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.toml")), None);
     config.out.mode = Stream;
     config.processing.add_logo = false;
     config.text.add_text = true;
@@ -1069,7 +1069,7 @@ fn video_audio_text_multi_stream() {
 
 #[test]
 fn video_dual_audio_multi_filter_stream() {
-    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.yml")), None);
+    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.toml")), None);
     config.out.mode = Stream;
     config.processing.add_logo = false;
     config.processing.audio_tracks = 2;
@@ -1198,7 +1198,7 @@ fn video_dual_audio_multi_filter_stream() {
 
 #[test]
 fn video_audio_text_filter_stream() {
-    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.yml")), None);
+    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.toml")), None);
     config.out.mode = Stream;
     config.processing.add_logo = false;
     config.processing.audio_tracks = 1;
@@ -1320,7 +1320,7 @@ fn video_audio_text_filter_stream() {
 
 #[test]
 fn video_audio_hls() {
-    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.yml")), None);
+    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.toml")), None);
     let player_control = PlayerControl::new();
     let playout_stat = PlayoutStatus::new();
     config.out.mode = HLS;
@@ -1407,7 +1407,7 @@ fn video_audio_hls() {
 
 #[test]
 fn video_audio_sub_meta_hls() {
-    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.yml")), None);
+    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.toml")), None);
     let player_control = PlayerControl::new();
     let playout_stat = PlayoutStatus::new();
     config.out.mode = HLS;
@@ -1502,7 +1502,7 @@ fn video_audio_sub_meta_hls() {
 
 #[test]
 fn video_multi_audio_hls() {
-    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.yml")), None);
+    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.toml")), None);
     let player_control = PlayerControl::new();
     let playout_stat = PlayoutStatus::new();
     config.out.mode = HLS;
@@ -1592,7 +1592,7 @@ fn video_multi_audio_hls() {
 
 #[test]
 fn multi_video_audio_hls() {
-    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.yml")), None);
+    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.toml")), None);
     let player_control = PlayerControl::new();
     let playout_stat = PlayoutStatus::new();
     config.out.mode = HLS;
@@ -1707,7 +1707,7 @@ fn multi_video_audio_hls() {
 
 #[test]
 fn multi_video_multi_audio_hls() {
-    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.yml")), None);
+    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.toml")), None);
     let player_control = PlayerControl::new();
     let playout_stat = PlayoutStatus::new();
     config.out.mode = HLS;

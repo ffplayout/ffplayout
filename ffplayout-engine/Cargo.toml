@@ -45,7 +45,7 @@ depends = ""
 recommends = "sudo"
 suggests = "ffmpeg"
 copyright = "Copyright (c) 2022, Jonathan Baecker. All rights reserved."
-conf-files = ["/etc/ffplayout/ffplayout.yml"]
+conf-files = ["/etc/ffplayout/ffplayout.toml"]
 assets = [
     [
         "../target/x86_64-unknown-linux-musl/release/ffpapi",
@@ -78,12 +78,12 @@ assets = [
         "644",
     ],
     [
-        "../assets/advanced.yml",
+        "../assets/advanced.toml",
         "/etc/ffplayout/",
         "644",
     ],
     [
-        "../assets/ffplayout.yml",
+        "../assets/ffplayout.toml",
         "/etc/ffplayout/",
         "644",
     ],
@@ -93,8 +93,8 @@ assets = [
         "644",
     ],
     [
-        "../assets/ffplayout.yml",
-        "/usr/share/ffplayout/ffplayout.yml.orig",
+        "../assets/ffplayout.toml",
+        "/usr/share/ffplayout/ffplayout.toml.orig",
         "644",
     ],
     [
@@ -154,12 +154,12 @@ assets = [
         "644",
     ],
     [
-        "../assets/ffplayout.yml",
+        "../assets/ffplayout.toml",
         "/etc/ffplayout/",
         "644",
     ],
     [
-        "../assets/advanced.yml",
+        "../assets/advanced.toml",
         "/etc/ffplayout/",
         "644",
     ],
@@ -169,8 +169,8 @@ assets = [
         "644",
     ],
     [
-        "../assets/ffplayout.yml",
-        "/usr/share/ffplayout/ffplayout.yml.orig",
+        "../assets/ffplayout.toml",
+        "/usr/share/ffplayout/ffplayout.toml.orig",
         "644",
     ],
     [
@@ -202,8 +202,8 @@ license = "GPL-3.0"
 assets = [
     { source = "../target/x86_64-unknown-linux-musl/release/ffpapi", dest = "/usr/bin/ffpapi", mode = "755" },
     { source = "../target/x86_64-unknown-linux-musl/release/ffplayout", dest = "/usr/bin/ffplayout", mode = "755" },
-    { source = "../assets/advanced.yml", dest = "/etc/ffplayout/advanced.yml", mode = "644", config = true },
-    { source = "../assets/ffplayout.yml", dest = "/etc/ffplayout/ffplayout.yml", mode = "644", config = true },
+    { source = "../assets/advanced.toml", dest = "/etc/ffplayout/advanced.toml", mode = "644", config = true },
+    { source = "../assets/ffplayout.toml", dest = "/etc/ffplayout/ffplayout.toml", mode = "644", config = true },
     { source = "../assets/ffpapi.service", dest = "/lib/systemd/system/ffpapi.service", mode = "644" },
     { source = "../assets/ffplayout.service", dest = "/lib/systemd/system/ffplayout.service", mode = "644" },
     { source = "../assets/ffplayout@.service", dest = "/lib/systemd/system/ffplayout@.service", mode = "644" },
@@ -213,7 +213,7 @@ assets = [
     { source = "../assets/ffplayout.1.gz", dest = "/usr/share/man/man1/ffplayout.1.gz", mode = "644", doc = true },
     { source = "../LICENSE", dest = "/usr/share/doc/ffplayout/LICENSE", mode = "644" },
     { source = "../assets/logo.png", dest = "/usr/share/ffplayout/logo.png", mode = "644" },
-    { source = "../assets/ffplayout.yml", dest = "/usr/share/ffplayout/ffplayout.yml.orig", mode = "644" },
+    { source = "../assets/ffplayout.toml", dest = "/usr/share/ffplayout/ffplayout.toml.orig", mode = "644" },
     { source = "../assets/ffplayout.conf", dest = "/usr/share/ffplayout/ffplayout.conf.example", mode = "644" },
     { source = "../debian/postinst", dest = "/usr/share/ffplayout/postinst", mode = "755" },
 ]

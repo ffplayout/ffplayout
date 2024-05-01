@@ -1,11 +1,10 @@
-use std::{fs::File, path::PathBuf};
+use std::{fs::File, io::Read, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
 use shlex::split;
 
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
 pub struct AdvancedConfig {
-    pub help: Option<String>,
     pub decoder: DecoderConfig,
     pub encoder: EncoderConfig,
     pub ingest: IngestConfig,
@@ -66,10 +65,15 @@ impl AdvancedConfig {
     pub fn new(cfg_path: PathBuf) -> Self {
         let mut config: AdvancedConfig = Default::default();
 
-        if let Ok(f) = File::open(cfg_path) {
-            config = match serde_yaml::from_reader(f) {
-                Ok(yaml) => yaml,
-                Err(_) => AdvancedConfig::default(),
+        if let Ok(mut file) = File::open(cfg_path) {
+            let mut contents = String::new();
+
+            if let Err(e) = file.read_to_string(&mut contents) {
+                eprintln!("Read advanced config file: {e}")
+            };
+
+            if let Ok(tm) = toml_edit::de::from_str(&contents) {
+                config = tm
             };
 
             if let Some(input_parm) = &config.decoder.input_param {

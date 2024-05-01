@@ -1,6 +1,7 @@
 use std::{
     env, fmt,
     fs::File,
+    io::Read,
     path::{Path, PathBuf},
     process,
     str::FromStr,
@@ -365,32 +366,37 @@ fn default_channels() -> u8 {
 impl PlayoutConfig {
     /// Read config from YAML file, and set some extra config values.
     pub fn new(cfg_path: Option<PathBuf>, advanced_path: Option<PathBuf>) -> Self {
-        let mut config_path = PathBuf::from("/etc/ffplayout/ffplayout.yml");
+        let mut config_path = PathBuf::from("/etc/ffplayout/ffplayout.toml");
 
         if let Some(cfg) = cfg_path {
             config_path = cfg;
         }
 
         if !config_path.is_file() {
-            if Path::new("./assets/ffplayout.yml").is_file() {
-                config_path = PathBuf::from("./assets/ffplayout.yml")
+            if Path::new("./assets/ffplayout.toml").is_file() {
+                config_path = PathBuf::from("./assets/ffplayout.toml")
             } else if let Some(p) = env::current_exe().ok().as_ref().and_then(|op| op.parent()) {
-                config_path = p.join("ffplayout.yml")
+                config_path = p.join("ffplayout.toml")
             };
         }
 
-        let f = match File::open(&config_path) {
+        let mut file = match File::open(&config_path) {
             Ok(file) => file,
             Err(_) => {
                 eprintln!(
-                    "ffplayout.yml not found!\nPut \"ffplayout.yml\" in \"/etc/playout/\" or beside the executable!"
+                    "ffplayout.toml not found!\nPut \"ffplayout.toml\" in \"/etc/playout/\" or beside the executable!"
                 );
                 process::exit(1);
             }
         };
 
-        let mut config: PlayoutConfig =
-            serde_yaml::from_reader(f).expect("Could not read config file.");
+        let mut contents = String::new();
+
+        if let Err(e) = file.read_to_string(&mut contents) {
+            eprintln!("Read config file: {e}")
+        };
+
+        let mut config: PlayoutConfig = toml_edit::de::from_str(&contents).unwrap();
 
         if let Some(adv_path) = advanced_path {
             config.advanced = Some(AdvancedConfig::new(adv_path))
