@@ -132,6 +132,7 @@ fn time_before() -> NaiveDateTime {
 struct ProgramItem {
     source: String,
     start: String,
+    title: Option<String>,
     r#in: f64,
     out: f64,
     duration: f64,
@@ -1195,6 +1196,7 @@ async fn get_program(
             let p_item = ProgramItem {
                 source,
                 start: start.format("%Y-%m-%d %H:%M:%S%.3f%:z").to_string(),
+                title: item.title,
                 r#in: item.seek,
                 out: item.out,
                 duration: item.duration,
