@@ -99,9 +99,9 @@ pub async fn db_init(domain: Option<String>) -> Result<&'static str, Box<dyn std
     };
 
     let config_path = if env::consts::OS == "linux" {
-        "/etc/ffplayout/ffplayout.yml"
+        "/etc/ffplayout/ffplayout.toml"
     } else {
-        "./assets/ffplayout.yml"
+        "./assets/ffplayout.toml"
     };
 
     let query = "CREATE TRIGGER global_row_count

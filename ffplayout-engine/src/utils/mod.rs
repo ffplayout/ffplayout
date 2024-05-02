@@ -25,7 +25,7 @@ use ffplayout_lib::{
 pub fn get_config(args: Args) -> Result<PlayoutConfig, ProcError> {
     let cfg_path = match args.channel {
         Some(c) => {
-            let path = PathBuf::from(format!("/etc/ffplayout/{c}.yml"));
+            let path = PathBuf::from(format!("/etc/ffplayout/{c}.toml"));
 
             if !path.is_file() {
                 return Err(ProcError::Custom(format!(
@@ -38,15 +38,15 @@ pub fn get_config(args: Args) -> Result<PlayoutConfig, ProcError> {
         None => args.config,
     };
 
-    let mut adv_config_path = PathBuf::from("/etc/ffplayout/advanced.yml");
+    let mut adv_config_path = PathBuf::from("/etc/ffplayout/advanced.toml");
 
     if let Some(adv_path) = args.advanced_config {
         adv_config_path = adv_path;
     } else if !adv_config_path.is_file() {
-        if Path::new("./assets/advanced.yml").is_file() {
-            adv_config_path = PathBuf::from("./assets/advanced.yml")
+        if Path::new("./assets/advanced.toml").is_file() {
+            adv_config_path = PathBuf::from("./assets/advanced.toml")
         } else if let Some(p) = env::current_exe().ok().as_ref().and_then(|op| op.parent()) {
-            adv_config_path = p.join("advanced.yml")
+            adv_config_path = p.join("advanced.toml")
         };
     }
 
@@ -251,14 +251,21 @@ pub fn prepare_output_cmd(
 
 /// map media struct to json object
 pub fn get_media_map(media: Media) -> Value {
-    json!({
-        "title": media.title,
+    let mut obj = json!({
         "in": media.seek,
         "out": media.out,
         "duration": media.duration,
         "category": media.category,
         "source": media.source,
-    })
+    });
+
+    if let Some(title) = media.title {
+        obj.as_object_mut()
+            .unwrap()
+            .insert("title".to_string(), Value::String(title));
+    }
+
+    obj
 }
 
 /// prepare json object for response

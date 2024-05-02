@@ -40,7 +40,7 @@ fn get_date_tomorrow() {
 
 #[test]
 fn test_delta() {
-    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.yml")), None);
+    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.toml")), None);
     config.mail.recipient = "".into();
     config.processing.mode = Playlist;
     config.playlist.day_start = "00:00:00".into();

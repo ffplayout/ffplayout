@@ -42,13 +42,13 @@ rpassword = "7.2"
 sanitize-filename = "0.5"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-serde_yaml = "0.9"
 simplelog = { version = "0.12", features = ["paris"] }
 static-files = "0.2"
 sysinfo ={ version = "0.30", features = ["linux-netdevs"] }
 sqlx = { version = "0.7", features = ["runtime-tokio", "sqlite"] }
 tokio = { version = "1.29", features = ["full"] }
 tokio-stream = "0.1"
+toml_edit = {version ="0.22", features = ["serde"]}
 uuid = "1.8"
 
 [build-dependencies]

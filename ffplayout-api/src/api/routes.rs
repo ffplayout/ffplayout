@@ -388,7 +388,7 @@ async fn remove_user(
 ///     "id": 1,
 ///     "name": "Channel 1",
 ///     "preview_url": "http://localhost/live/preview.m3u8",
-///     "config_path": "/etc/ffplayout/ffplayout.yml",
+///     "config_path": "/etc/ffplayout/ffplayout.toml",
 ///     "extra_extensions": "jpg,jpeg,png",
 ///     "service": "ffplayout.service",
 ///     "utc_offset": "+120"
@@ -426,7 +426,7 @@ async fn get_all_channels(pool: web::Data<Pool<Sqlite>>) -> Result<impl Responde
 ///
 /// ```BASH
 /// curl -X PATCH http://127.0.0.1:8787/api/channel/1 -H "Content-Type: application/json" \
-/// -d '{ "id": 1, "name": "Channel 1", "preview_url": "http://localhost/live/stream.m3u8", "config_path": "/etc/ffplayout/ffplayout.yml", "extra_extensions": "jpg,jpeg,png"}' \
+/// -d '{ "id": 1, "name": "Channel 1", "preview_url": "http://localhost/live/stream.m3u8", "config_path": "/etc/ffplayout/ffplayout.toml", "extra_extensions": "jpg,jpeg,png"}' \
 /// -H "Authorization: Bearer <TOKEN>"
 /// ```
 #[patch("/channel/{id}")]
@@ -450,7 +450,7 @@ async fn patch_channel(
 ///
 /// ```BASH
 /// curl -X POST http://127.0.0.1:8787/api/channel/ -H "Content-Type: application/json" \
-/// -d '{ "name": "Channel 2", "preview_url": "http://localhost/live/channel2.m3u8", "config_path": "/etc/ffplayout/channel2.yml", "extra_extensions": "jpg,jpeg,png", "service": "ffplayout@channel2.service" }' \
+/// -d '{ "name": "Channel 2", "preview_url": "http://localhost/live/channel2.m3u8", "config_path": "/etc/ffplayout/channel2.toml", "extra_extensions": "jpg,jpeg,png", "service": "ffplayout@channel2.service" }' \
 /// -H "Authorization: Bearer <TOKEN>"
 /// ```
 #[post("/channel/")]
@@ -491,7 +491,7 @@ async fn remove_channel(
 /// curl -X GET http://127.0.0.1:8787/api/playout/config/1 -H 'Authorization: Bearer <TOKEN>'
 /// ```
 ///
-/// Response is a JSON object from the ffplayout.yml
+/// Response is a JSON object from the ffplayout.toml
 #[get("/playout/config/{id}")]
 #[protect(any("Role::Admin", "Role::User"), ty = "Role")]
 async fn get_playout_config(
@@ -522,17 +522,10 @@ async fn update_playout_config(
     data: web::Json<PlayoutConfig>,
 ) -> Result<impl Responder, ServiceError> {
     if let Ok(channel) = handles::select_channel(&pool.into_inner(), &id).await {
-        if let Ok(f) = std::fs::OpenOptions::new()
-            .write(true)
-            .truncate(true)
-            .open(channel.config_path)
-        {
-            serde_yaml::to_writer(f, &data).unwrap();
+        let toml_string = toml_edit::ser::to_string_pretty(&data)?;
+        fs::write(&channel.config_path, toml_string).await?;
 
-            return Ok("Update playout config success.");
-        } else {
-            return Err(ServiceError::InternalServerError);
-        };
+        return Ok("Update playout config success.");
     };
 
     Err(ServiceError::InternalServerError)

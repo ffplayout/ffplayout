@@ -33,7 +33,7 @@ pub async fn create_channel(
     };
 
     let mut config = PlayoutConfig::new(
-        Some(PathBuf::from("/usr/share/ffplayout/ffplayout.yml.orig")),
+        Some(PathBuf::from("/usr/share/ffplayout/ffplayout.toml.orig")),
         None,
     );
 
@@ -48,8 +48,8 @@ pub async fn create_channel(
         .replace("stream.m3u8", &format!("stream{channel_num}.m3u8"))
         .replace("stream-%d.ts", &format!("stream{channel_num}-%d.ts"));
 
-    let file = fs::File::create(&target_channel.config_path)?;
-    serde_yaml::to_writer(file, &config).unwrap();
+    let toml_string = toml_edit::ser::to_string(&config)?;
+    fs::write(&target_channel.config_path, toml_string)?;
 
     let new_channel = handles::insert_channel(conn, target_channel).await?;
     control_service(conn, &config, new_channel.id, &ServiceCmd::Enable, None).await?;
