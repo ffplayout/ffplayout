@@ -251,14 +251,21 @@ pub fn prepare_output_cmd(
 
 /// map media struct to json object
 pub fn get_media_map(media: Media) -> Value {
-    json!({
-        "title": media.title,
+    let mut obj = json!({
         "in": media.seek,
         "out": media.out,
         "duration": media.duration,
         "category": media.category,
         "source": media.source,
-    })
+    });
+
+    if let Some(title) = media.title {
+        obj.as_object_mut()
+            .unwrap()
+            .insert("title".to_string(), Value::String(title));
+    }
+
+    obj
 }
 
 /// prepare json object for response
