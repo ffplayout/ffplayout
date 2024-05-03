@@ -210,7 +210,7 @@ pub fn validate_playlist(
                 // Filter out same item in current playlist, then add the probe to it.
                 // Check also if duration differs with playlist value, log error if so and adjust that value.
                 list.iter_mut().filter(|list_item| list_item.source == item.source).for_each(|o| {
-                    o.probe = item.probe.clone();
+                    o.probe.clone_from(&item.probe);
 
                     if let Some(dur) =
                         item.probe.as_ref().and_then(|f| f.format.duration.clone())
@@ -228,7 +228,7 @@ pub fn validate_playlist(
                     }
 
                     if o.audio == item.audio && item.probe_audio.is_some() {
-                        o.probe_audio = item.probe_audio.clone();
+                        o.probe_audio.clone_from(&item.probe_audio);
                         o.duration_audio = item.duration_audio;
                     }
                 });

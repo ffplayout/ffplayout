@@ -101,12 +101,12 @@ pub fn get_config(args: Args) -> Result<PlayoutConfig, ProcError> {
     }
 
     if let Some(start) = args.start {
-        config.playlist.day_start = start.clone();
+        config.playlist.day_start.clone_from(&start);
         config.playlist.start_sec = Some(time_to_sec(&start));
     }
 
     if let Some(length) = args.length {
-        config.playlist.length = length.clone();
+        config.playlist.length.clone_from(&length);
 
         if length.contains(':') {
             config.playlist.length_sec = Some(time_to_sec(&length));

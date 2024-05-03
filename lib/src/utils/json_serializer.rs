@@ -115,7 +115,7 @@ pub fn read_json(
     let mut current_file = playlist_path.as_path().display().to_string();
 
     if let Some(p) = path {
-        playlist_path = Path::new(&p).to_owned();
+        Path::new(&p).clone_into(&mut playlist_path);
         current_file = p
     }
 

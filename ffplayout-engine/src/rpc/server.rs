@@ -219,7 +219,7 @@ fn control_back(
 
             let (delta, _) = get_delta(config, &media.begin.unwrap_or(0.0));
             *time_shift = delta;
-            *date = current_date.clone();
+            date.clone_from(&current_date);
             write_status(config, &current_date, delta);
 
             data_map.insert("operation".to_string(), json!("move_to_last"));
@@ -268,7 +268,7 @@ fn control_next(
 
             let (delta, _) = get_delta(config, &media.begin.unwrap_or(0.0));
             *time_shift = delta;
-            *date = current_date.clone();
+            date.clone_from(&current_date);
             write_status(config, &current_date, delta);
 
             data_map.insert("operation".to_string(), json!("move_to_next"));
@@ -306,7 +306,7 @@ fn control_reset(
         info!("Reset playout to original state");
         let mut data_map = Map::new();
         *time_shift = 0.0;
-        *date = current_date.clone();
+        date.clone_from(&current_date);
         playout_stat.list_init.store(true, Ordering::SeqCst);
 
         write_status(config, &current_date, 0.0);

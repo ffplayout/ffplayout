@@ -95,7 +95,11 @@ impl CurrentProgram {
                 }
             }
 
-            *self.player_control.current_list.lock().unwrap() = self.json_playlist.program.clone();
+            self.player_control
+                .current_list
+                .lock()
+                .unwrap()
+                .clone_from(&self.json_playlist.program);
 
             if self.json_playlist.path.is_none() {
                 trace!("missing playlist");
@@ -161,7 +165,11 @@ impl CurrentProgram {
             self.playout_stat.list_init.store(false, Ordering::SeqCst);
             self.set_status(self.json_playlist.date.clone());
 
-            *self.player_control.current_list.lock().unwrap() = self.json_playlist.program.clone();
+            self.player_control
+                .current_list
+                .lock()
+                .unwrap()
+                .clone_from(&self.json_playlist.program);
             self.player_control.current_index.store(0, Ordering::SeqCst);
         } else {
             self.load_or_update_playlist(seek)
@@ -171,7 +179,11 @@ impl CurrentProgram {
     }
 
     fn set_status(&mut self, date: String) {
-        *self.playout_stat.current_date.lock().unwrap() = date.clone();
+        self.playout_stat
+            .current_date
+            .lock()
+            .unwrap()
+            .clone_from(&date);
         *self.playout_stat.time_shift.lock().unwrap() = 0.0;
 
         if let Err(e) = fs::write(
@@ -346,7 +358,11 @@ impl CurrentProgram {
 
         self.json_playlist.start_sec = Some(time_sec);
         set_defaults(&mut self.json_playlist);
-        *self.player_control.current_list.lock().unwrap() = self.json_playlist.program.clone();
+        self.player_control
+            .current_list
+            .lock()
+            .unwrap()
+            .clone_from(&self.json_playlist.program);
     }
 }
 
@@ -355,7 +371,7 @@ impl Iterator for CurrentProgram {
     type Item = Media;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.last_json_path = self.json_playlist.path.clone();
+        self.last_json_path.clone_from(&self.json_playlist.path);
         self.last_node_ad = self.current_node.last_ad;
         self.check_for_playlist(self.playout_stat.list_init.load(Ordering::SeqCst));
 
