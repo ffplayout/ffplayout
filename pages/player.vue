@@ -246,7 +246,7 @@ const isVideo = ref(false)
 
 const newSource = ref({
     begin: 0,
-    title: '',
+    title: null,
     in: 0,
     out: 0,
     duration: 0,

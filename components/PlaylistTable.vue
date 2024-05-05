@@ -252,7 +252,6 @@ function addClip(event: any) {
     playlistStore.playlist.splice(n, 0, {
         uid,
         begin: 0,
-        title: mediaStore.folderTree.files[o].name,
         source: sourcePath,
         in: 0,
         out: mediaStore.folderTree.files[o].duration,

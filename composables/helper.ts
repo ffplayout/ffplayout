@@ -214,6 +214,10 @@ export const playlistOperations = () => {
                     delete item.custom_filter
                 }
 
+                if (!item.title) {
+                    delete item.title
+                }
+
                 if (
                     begin + (item.out - item.in) >
                     configStore.playout.playlist.startInSec + configStore.playout.playlist.lengthInSec
