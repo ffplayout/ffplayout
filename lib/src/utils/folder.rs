@@ -213,7 +213,7 @@ pub fn fill_filler_list(
         }
 
         if let Some(control) = player_control.as_ref() {
-            *control.filler_list.lock().unwrap() = filler_list.clone();
+            control.filler_list.lock().unwrap().clone_from(&filler_list);
         }
     } else if filler_path.is_file() {
         let mut media = Media::new(0, &config.storage.filler.to_string_lossy(), false);
@@ -227,7 +227,7 @@ pub fn fill_filler_list(
         filler_list.push(media);
 
         if let Some(control) = player_control.as_ref() {
-            *control.filler_list.lock().unwrap() = filler_list.clone();
+            control.filler_list.lock().unwrap().clone_from(&filler_list);
         }
     }
 

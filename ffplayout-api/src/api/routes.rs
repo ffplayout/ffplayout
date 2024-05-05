@@ -63,13 +63,6 @@ use ffplayout_lib::{
 };
 
 #[derive(Serialize)]
-struct ResponseObj<T> {
-    message: String,
-    status: i32,
-    data: Option<T>,
-}
-
-#[derive(Serialize)]
 struct UserObj<T> {
     message: String,
     user: Option<T>,
@@ -870,7 +863,7 @@ pub async fn gen_playlist(
             config.storage.paths = path_list;
         }
 
-        config.general.template = obj.template.clone();
+        config.general.template.clone_from(&obj.template);
     }
 
     match generate_playlist(config.to_owned(), channel.name).await {

@@ -143,7 +143,7 @@ pub fn stat(config: PlayoutConfig) -> SystemStat {
 
     for (interface_name, data) in &*networks {
         if !interfaces.is_empty() && interface_name == interfaces[0].0 {
-            network.name = interface_name.clone();
+            network.name.clone_from(interface_name);
             network.current_in = data.received();
             network.total_in = data.total_received();
             network.current_out = data.transmitted();
