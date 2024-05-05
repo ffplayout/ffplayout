@@ -20,7 +20,7 @@
                             {{ $t('player.file') }}
                         </div>
                     </th>
-                    <th class="w-[90px] p-0 text-center">
+                    <th class="w-[85px] p-0 text-center">
                         <div class="border-b border-my-gray px-4 py-3 -mb-[2px]">
                             {{ $t('player.play') }}
                         </div>
@@ -45,7 +45,7 @@
                             {{ $t('player.ad') }}
                         </div>
                     </th>
-                    <th class="w-[95px] p-0 text-center">
+                    <th class="w-[85px] p-0 text-center">
                         <div class="border-b border-my-gray px-4 py-3 -mb-[2px]">
                             {{ $t('player.edit') }}
                         </div>
@@ -76,9 +76,7 @@
                         class="draggable border-t border-b border-base-content/20 duration-1000 transition-all"
                         :class="{
                             '!bg-lime-500/30':
-                                playlistStore.playoutIsRunning &&
-                                listDate === todayDate &&
-                                index === currentClipIndex,
+                                playlistStore.playoutIsRunning && listDate === todayDate && index === currentClipIndex,
                             '!bg-amber-600/40': element.overtime,
                         }"
                     >
@@ -185,7 +183,7 @@ function scrollTo(index: number) {
 
 function classSwitcher() {
     if (playlistStore.playlist.length === 0) {
-        sortContainer.value.sortable.el.classList.add('is-empty')
+        sortContainer.value?.sortable.el.classList.add('is-empty')
     } else {
         const lastItem = playlistStore.playlist[playlistStore.playlist.length - 1]
 
@@ -193,11 +191,11 @@ function classSwitcher() {
             configStore.playout.playlist.startInSec + configStore.playout.playlist.lengthInSec >
             lastItem.begin + lastItem.out - lastItem.in
         ) {
-            sortContainer.value.sortable.el.classList.add('add-space')
+            sortContainer.value?.sortable.el.classList.add('add-space')
         } else {
-            sortContainer.value.sortable.el.classList.remove('add-space')
+            sortContainer.value?.sortable.el.classList.remove('add-space')
         }
-        sortContainer.value.sortable.el.classList.remove('is-empty')
+        sortContainer.value?.sortable.el.classList.remove('is-empty')
     }
 }
 
@@ -207,7 +205,7 @@ async function getPlaylist() {
     playlistStore.isLoading = false
 
     if (listDate.value === todayDate.value) {
-        await until(currentClipIndex).toMatch(v => v > 0, { timeout: 1500 })
+        await until(currentClipIndex).toMatch((v) => v > 0, { timeout: 1500 })
         scrollTo(currentClipIndex.value)
     } else {
         scrollTo(0)
@@ -324,7 +322,15 @@ function deletePlaylistItem(index: number) {
     padding-bottom: 0.5rem;
 }
 
-#playlist-container .sortable-ghost td:nth-last-child(-n + 5) {
+#playlist-container .sortable-ghost td:nth-last-child(3) {
     display: table-cell !important;
+}
+
+@media (min-width: 1280px) {
+    #playlist-container .sortable-ghost td:nth-last-child(5),
+    #playlist-container .sortable-ghost td:nth-last-child(4),
+    #playlist-container .sortable-ghost td:nth-last-child(-n + 2) {
+        display: table-cell !important;
+    }
 }
 </style>

@@ -48,7 +48,7 @@
                                             class="grid grid-cols-[auto_30px] border-b border-base-content/20"
                                             :class="
                                                 filename(mediaStore.folderTree.source) === folder.name &&
-                                                'bg-base-300 rounded'
+                                                '!bg-secondary text-black'
                                             "
                                             @drop="handleDrop($event, folder, true)"
                                             @dragover="handleDragOver"

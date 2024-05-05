@@ -2,8 +2,8 @@
     <div class="w-full">
         <div class="grid grid-cols-1 md:grid-cols-[auto_512px] xl:grid-cols-[512px_auto_450px]">
             <div class="order-1 p-1">
-                <div class="bg-base-100 w-full h-full rounded shadow">
-                    <div class="w-full h-full p-2">
+                <div class="bg-base-100 w-full h-full rounded shadow flex items-center p-2">
+                    <div class="w-full aspect-video">
                         <video v-if="streamExtension === 'flv'" ref="httpStreamFlv" controls />
                         <VideoPlayer
                             v-else-if="configStore.configGui[configStore.configID]"
@@ -58,7 +58,11 @@
                                 class="h-1/3 font-bold text truncate"
                                 :title="playlistStore.currentClipTitle || filename(playlistStore.currentClip)"
                             >
-                                {{ playlistStore.currentClipTitle || filename(playlistStore.currentClip) || $t('control.noClip') }}
+                                {{
+                                    playlistStore.currentClipTitle ||
+                                    filename(playlistStore.currentClip) ||
+                                    $t('control.noClip')
+                                }}
                             </div>
                             <div class="grow">
                                 <strong>{{ $t('player.duration') }}:</strong>
