@@ -173,7 +173,12 @@
                 <div class="form-control">
                     <label class="cursor-pointer label">
                         <span class="label-text">{{ $t('player.ad') }}</span>
-                        <input type="checkbox" class="checkbox checkbox-sm" @click="isAd" />
+                        <input
+                            type="checkbox"
+                            class="checkbox checkbox-sm"
+                            :checked="newSource.category === 'advertisement'"
+                            @click="isAd"
+                        />
                     </label>
                 </div>
             </div>
@@ -351,6 +356,8 @@ function processSource(process: boolean) {
 function editPlaylistItem(i: number) {
     editId.value = i
     showSourceModal.value = true
+
+    console.log('ad', playlistStore.playlist[i].category)
 
     newSource.value = {
         begin: playlistStore.playlist[i].begin,
