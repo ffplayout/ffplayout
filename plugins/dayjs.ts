@@ -7,7 +7,7 @@ import utc from 'dayjs/plugin/utc.js'
 import 'dayjs/locale/de'
 import 'dayjs/locale/en'
 import 'dayjs/locale/es'
-import 'dayjs/locale/pt'
+import 'dayjs/locale/pt-br'
 import 'dayjs/locale/ru'
 
 declare module '#app' {
