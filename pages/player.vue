@@ -129,27 +129,23 @@
                 </label>
                 <label class="form-control w-auto mt-auto">
                     <div class="label">
-                        <span class="label-text">{{ $t('player.timeIn') }}</span>
+                        <span class="label-text">{{ $t('player.in') }}</span>
                     </div>
-                    <input v-model.number="newSource.in" type="number" class="input input-sm input-bordered w-auto" />
+                    <TimePicker v-model="newSource.in" />
                 </label>
 
                 <label class="form-control w-auto mt-auto">
                     <div class="label">
-                        <span class="label-text">{{ $t('player.timeOut') }}</span>
+                        <span class="label-text">{{ $t('player.out') }}</span>
                     </div>
-                    <input v-model.number="newSource.out" type="number" class="input input-sm input-bordered w-auto" />
+                    <TimePicker v-model="newSource.out" />
                 </label>
 
                 <label class="form-control w-auto mt-auto">
                     <div class="label">
-                        <span class="label-text">{{ $t('player.timeDuration') }}</span>
+                        <span class="label-text">{{ $t('player.duration') }}</span>
                     </div>
-                    <input
-                        v-model.number="newSource.duration"
-                        type="number"
-                        class="input input-sm input-bordered w-auto"
-                    />
+                    <TimePicker v-model="newSource.duration" />
                 </label>
 
                 <label class="form-control w-auto mt-auto">
