@@ -191,3 +191,8 @@ Output from `{"media":"current"}` show:
 ```
 
 If you are in playlist mode and move backwards or forwards in time, the time shift is saved so the playlist is still in sync. Bear in mind, however, that this may make your playlist too short. If you do not reset it, it will automatically reset the next day.
+
+## Founding
+
+If you like this project and would like to make a donation, please use one of the options provided.
+Please note that donations are not intended to get support or features! Donations are only a sign of appreciation.
