@@ -98,7 +98,11 @@ impl CurrentProgram {
                     self.set_status(self.json_playlist.date.clone());
                 }
 
-                *self.playout_stat.current_date.lock().unwrap() = self.json_playlist.date.clone();
+                self.playout_stat
+                    .current_date
+                    .lock()
+                    .unwrap()
+                    .clone_from(&self.json_playlist.date);
             }
 
             self.player_control
