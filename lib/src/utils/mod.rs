@@ -6,6 +6,7 @@ use std::{
     net::TcpListener,
     path::{Path, PathBuf},
     process::{exit, ChildStderr, Command, Stdio},
+    str::FromStr,
     sync::{Arc, Mutex},
 };
 
@@ -297,13 +298,13 @@ impl MediaProbe {
 
 /// Calculate fps from rate/factor string
 pub fn fps_calc(r_frame_rate: &str, default: f64) -> f64 {
-    let mut fps = default;
-
     if let Some((r, f)) = r_frame_rate.split_once('/') {
-        fps = r.parse::<f64>().unwrap_or(1.0) / f.parse::<f64>().unwrap_or(1.0);
+        if let (Ok(r_value), Ok(f_value)) = (r.parse::<f64>(), f.parse::<f64>()) {
+            return r_value / f_value;
+        }
     }
 
-    fps
+    default
 }
 
 pub fn json_reader(path: &PathBuf) -> Result<JsonPlaylist, Error> {
@@ -333,12 +334,16 @@ pub fn write_status(config: &PlayoutConfig, date: &str, shift: f64) {
         "date": date,
     });
 
-    let status_data: String = serde_json::to_string(&data).expect("Serialize status data failed");
-    if let Err(e) = fs::write(&config.general.stat_file, status_data) {
-        error!(
-            "Unable to write to status file <b><magenta>{}</></b>: {e}",
-            config.general.stat_file
-        )
+    match serde_json::to_string(&data) {
+        Ok(status) => {
+            if let Err(e) = fs::write(&config.general.stat_file, status) {
+                error!(
+                    "Unable to write to status file <b><magenta>{}</></b>: {e}",
+                    config.general.stat_file
+                )
+            };
+        }
+        Err(e) => error!("Serialize status data failed: {e}"),
     };
 }
 
@@ -420,21 +425,20 @@ pub fn time_to_sec(time_str: &str) -> f64 {
         return time_in_seconds();
     }
 
-    let t: Vec<&str> = time_str.split(':').collect();
-    let h: f64 = t[0].parse().unwrap();
-    let m: f64 = t[1].parse().unwrap();
-    let s: f64 = t[2].parse().unwrap();
+    let mut t = time_str.split(':').filter_map(|n| f64::from_str(n).ok());
 
-    h * 3600.0 + m * 60.0 + s
+    t.next().unwrap_or(0.0) * 3600.0 + t.next().unwrap_or(0.0) * 60.0 + t.next().unwrap_or(0.0)
 }
 
 /// Convert floating number (seconds) to a formatted time string.
 pub fn sec_to_time(sec: f64) -> String {
+    let s = (sec * 1000.0).round() / 1000.0;
+
     format!(
         "{:0>2}:{:0>2}:{:06.3}",
-        (sec / 60.0 / 60.0) as i32,
-        (sec / 60.0 % 60.0) as i32,
-        (sec % 60.0),
+        (s / 3600.0) as i32,
+        (s / 60.0 % 60.0) as i32,
+        (s % 60.0),
     )
 }
 
@@ -450,14 +454,8 @@ pub fn is_close<T: num_traits::Signed + std::cmp::PartialOrd>(a: T, b: T, to: T)
 }
 
 /// add duration from all media clips
-pub fn sum_durations(clip_list: &Vec<Media>) -> f64 {
-    let mut list_duration = 0.0;
-
-    for item in clip_list {
-        list_duration += item.out
-    }
-
-    list_duration
+pub fn sum_durations(clip_list: &[Media]) -> f64 {
+    clip_list.iter().map(|item| item.out).sum()
 }
 
 /// Get delta between clip start and current time. This value we need to check,
