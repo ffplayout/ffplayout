@@ -1,6 +1,6 @@
 use std::{
     fs::{self, File},
-    path::PathBuf,
+    path::Path,
     process::exit,
     sync::{atomic::AtomicBool, Arc, Mutex},
     thread,
@@ -47,7 +47,7 @@ struct StatusData {
 fn status_file(stat_file: &str, playout_stat: &PlayoutStatus) -> Result<(), ProcError> {
     debug!("Start ffplayout v{VERSION}, status file path: <b><magenta>{stat_file}</></b>");
 
-    if !PathBuf::from(stat_file).exists() {
+    if !Path::new(stat_file).exists() {
         let data = json!({
             "time_shift": 0.0,
             "date": String::new(),
