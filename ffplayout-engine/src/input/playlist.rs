@@ -93,6 +93,16 @@ impl CurrentProgram {
                 if let Some(file) = &self.json_playlist.path {
                     info!("Read playlist: <b><magenta>{file}</></b>");
                 }
+
+                if *self.playout_stat.date.lock().unwrap() != self.json_playlist.date {
+                    self.set_status(self.json_playlist.date.clone());
+                }
+
+                self.playout_stat
+                    .current_date
+                    .lock()
+                    .unwrap()
+                    .clone_from(&self.json_playlist.date);
             }
 
             self.player_control
@@ -179,6 +189,12 @@ impl CurrentProgram {
     }
 
     fn set_status(&mut self, date: String) {
+        if *self.playout_stat.date.lock().unwrap() != date
+            && *self.playout_stat.time_shift.lock().unwrap() != 0.0
+        {
+            info!("Reset playout status");
+        }
+
         self.playout_stat
             .current_date
             .lock()
@@ -232,10 +248,7 @@ impl CurrentProgram {
         let mut time_sec = self.get_current_time();
         let shift = *self.playout_stat.time_shift.lock().unwrap();
 
-        if *self.playout_stat.current_date.lock().unwrap()
-            == *self.playout_stat.date.lock().unwrap()
-            && shift != 0.0
-        {
+        if shift != 0.0 {
             info!("Shift playlist start for <yellow>{shift:.3}</> seconds");
             time_sec += shift;
         }

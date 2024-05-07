@@ -251,7 +251,7 @@ pub fn player(
         };
     }
 
-    debug!("Out of source loop");
+    trace!("Out of source loop");
 
     sleep(Duration::from_secs(1));
 
