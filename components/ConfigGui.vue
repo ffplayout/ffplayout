@@ -97,7 +97,7 @@ async function addChannel() {
 
     newChannel.id = channels.length + 1
     newChannel.name = `Channel ${Math.random().toString(36).substring(7)}`
-    newChannel.config_path = `${playoutConfigPath}${confName}.yml`
+    newChannel.config_path = `${playoutConfigPath}${confName}.toml`
     newChannel.service = `ffplayout@${confName}.service`
 
     channels.push(newChannel)

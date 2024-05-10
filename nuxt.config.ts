@@ -49,10 +49,10 @@ export default defineNuxtConfig({
     modules: [
         '@nuxt/eslint',
         '@nuxtjs/color-mode',
+        '@nuxtjs/tailwindcss',
         '@nuxtjs/i18n',
         '@pinia/nuxt',
         '@vueuse/nuxt',
-        '@nuxtjs/tailwindcss',
     ],
     css: ['@/assets/scss/main.scss'],
 
