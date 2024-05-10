@@ -26,7 +26,7 @@
                         <details tabindex="0" @focusout="closeDropdown">
                             <summary>
                                 <div class="h-[19px] text-base">
-                                    <span> {{ $t('button.channels') }} </span>
+                                    <span> {{ configStore.configGui[configStore.configID].name }} </span>
                                 </div>
                             </summary>
                             <ul class="p-2">
@@ -63,7 +63,7 @@
                     <details tabindex="0" @focusout="closeDropdown">
                         <summary>
                             <div class="h-[19px] text-base">
-                                <span> {{ $t('button.channels') }} </span>
+                                <span> {{ configStore.configGui[configStore.configID].name }} </span>
                             </div>
                         </summary>
                         <ul class="p-2 bg-base-100 rounded-md !mt-1 w-36" tabindex="0">
