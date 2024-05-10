@@ -101,6 +101,7 @@ impl Filters {
                 chain.push_str(&format!("{sep}{filter}"));
             } else {
                 chain.push_str(&format!(
+                    // build audio/video selector like [0:a:0]
                     "{sep}[{position}:{filter_type}:{track_nr}]{filter}",
                 ));
             }
