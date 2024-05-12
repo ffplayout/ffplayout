@@ -357,8 +357,6 @@ function editPlaylistItem(i: number) {
     editId.value = i
     showSourceModal.value = true
 
-    console.log('ad', playlistStore.playlist[i].category)
-
     newSource.value = {
         begin: playlistStore.playlist[i].begin,
         title: playlistStore.playlist[i].title,

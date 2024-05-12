@@ -226,13 +226,13 @@ function addBG(obj: any) {
     if (obj.item) {
         obj.item.classList.add('!bg-fuchsia-900/30')
     } else {
-        obj.classList.add('!bg-fuchsia-900/30')
+        obj?.classList?.add('!bg-fuchsia-900/30')
     }
 }
 
 function removeBG(item: any) {
     setTimeout(() => {
-        item.classList.remove('!bg-fuchsia-900/30')
+        item?.classList?.remove('!bg-fuchsia-900/30')
     }, 100)
 }
 
@@ -241,7 +241,7 @@ function addClip(event: any) {
     const n = event.newIndex
     const uid = genUID()
 
-    event.item.remove()
+    event.item?.remove()
 
     const storagePath = configStore.playout.storage.path
     const sourcePath = `${storagePath}/${mediaStore.folderTree.source}/${mediaStore.folderTree.files[o].name}`.replace(
@@ -280,6 +280,8 @@ function moveItemInArray(event: any) {
 
 function deletePlaylistItem(index: number) {
     playlistStore.playlist.splice(index, 1)
+
+    processPlaylist(listDate.value, playlistStore.playlist, false)
     classSwitcher()
 }
 </script>

@@ -235,6 +235,8 @@ export const playlistOperations = () => {
                     !configStore.playout.playlist.infinit
                 ) {
                     item.overtime = true
+                } else if (item.overtime) {
+                    delete item.overtime
                 }
 
                 item.begin = begin
