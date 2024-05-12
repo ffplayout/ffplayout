@@ -85,6 +85,11 @@ export default defineNuxtConfig({
                 name: 'Português (BR)',
                 file: 'pt-BR.js',
             },
+            {
+                code: 'ru',
+                name: 'Русский язык (RU)',
+                file: 'ru-RU.js',
+            },
         ],
         customRoutes: 'config',
         pages: {
@@ -92,26 +97,31 @@ export default defineNuxtConfig({
                 de: '/wiedergabe',
                 en: '/player',
                 'pt-br': '/player',
+                ru: '/player',
             },
             media: {
                 de: '/medien',
                 en: '/media',
                 'pt-br': '/armazenamento',
+                ru: '/media',
             },
             message: {
                 de: '/nachrichten',
                 en: '/message',
                 'pt-br': '/legenda',
+                ru: '/message',
             },
             logging: {
                 de: '/protokollierung',
                 en: '/logging',
                 'pt-br': '/registro',
+                ru: '/logging',
             },
             configure: {
                 de: '/einstellungen',
                 en: '/configure',
                 'pt-br': '/configurar',
+                ru: '/configure',
             },
         },
         detectBrowserLanguage: {
