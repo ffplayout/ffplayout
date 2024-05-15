@@ -165,6 +165,7 @@ function setHelp(key: string, text: string): string {
 
 async function onSubmitPlayout() {
     const update = await configStore.setPlayoutConfig(configStore.playout)
+    configStore.onetimeInfo = true
 
     if (update.status === 200) {
         indexStore.msgAlert('success', 'Update playout config success!', 2)

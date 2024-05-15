@@ -85,6 +85,7 @@ export default {
         shift: 'Shift',
         all: 'All',
         addBlock: 'Add time block',
+        infinitInfo: 'Playout runs in infinite mode. No time based information is possible.',
     },
     media: {
         notExists: 'Storage not exist!',

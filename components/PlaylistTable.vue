@@ -10,7 +10,7 @@
         <table class="table table-zebra table-fixed">
             <thead class="top-0 sticky z-10">
                 <tr class="bg-base-100 rounded-tr-lg">
-                    <th class="w-[85px] p-0 text-left">
+                    <th v-if="!configStore.playout.playlist.infinit" class="w-[85px] p-0 text-left">
                         <div class="border-b border-my-gray px-4 py-3 -mb-[2px]">
                             {{ $t('player.start') }}
                         </div>
@@ -80,7 +80,9 @@
                             '!bg-amber-600/40': element.overtime,
                         }"
                     >
-                        <td class="ps-4 py-2 text-left">{{ secondsToTime(element.begin) }}</td>
+                        <td v-if="!configStore.playout.playlist.infinit" class="ps-4 py-2 text-left">
+                            {{ secondsToTime(element.begin) }}
+                        </td>
                         <td class="py-2 text-left truncate" :class="{ 'grabbing cursor-grab': width > 768 }">
                             {{ element.title || filename(element.source) }}
                         </td>
@@ -189,7 +191,8 @@ function classSwitcher() {
 
         if (
             configStore.playout.playlist.startInSec + configStore.playout.playlist.lengthInSec >
-            lastItem.begin + lastItem.out - lastItem.in
+                lastItem.begin + lastItem.out - lastItem.in ||
+            configStore.playout.playlist.infinit
         ) {
             sortContainer.value?.sortable.el.classList.add('add-space')
         } else {
@@ -305,6 +308,10 @@ function deletePlaylistItem(index: number) {
     height: 37px;
     display: flex;
     position: absolute;
+}
+
+#sort-container .timeHidden {
+    display: none !important;
 }
 
 /*

@@ -2,8 +2,9 @@
     <div class="h-full">
         <PlayerControl />
         <div class="flex justify-end p-1">
-            <div>
+            <div class="h-[32px]">
                 <VueDatePicker
+                    v-if="!configStore.playout.playlist.infinit && configStore.playout.processing.mode !== 'folder'"
                     v-model="listDate"
                     :clearable="false"
                     :hide-navigation="['time']"
@@ -19,7 +20,10 @@
             </div>
         </div>
         <div class="p-1 min-h-[260px] h-[calc(100vh-800px)] xl:h-[calc(100vh-480px)]">
-            <splitpanes class="border border-my-gray rounded shadow">
+            <splitpanes
+                v-if="configStore.playout.processing.mode === 'playlist'"
+                class="border border-my-gray rounded shadow"
+            >
                 <pane
                     v-if="width > 768"
                     class="relative h-full !bg-base-300 rounded-s"
@@ -33,9 +37,12 @@
                     <PlaylistTable ref="playlistTable" :edit-item="editPlaylistItem" :preview="setPreviewData" />
                 </pane>
             </splitpanes>
+            <div v-else class="h-full border border-b-2 border-my-gray rounded shadow">
+                <MediaBrowser :preview="setPreviewData" />
+            </div>
         </div>
 
-        <div class="h-16 join flex justify-end p-3">
+        <div v-if="configStore.playout.processing.mode === 'playlist'" class="h-16 join flex justify-end p-3">
             <button class="btn btn-sm btn-primary join-item" :title="$t('player.copy')" @click="showCopyModal = true">
                 <i class="bi-files" />
             </button>
@@ -258,6 +265,13 @@ const newSource = ref({
     audio: '',
     uid: '',
 } as PlaylistItem)
+
+onMounted(() => {
+    if (configStore.onetimeInfo && configStore.playout.playlist.infinit) {
+        indexStore.msgAlert('warning', t('player.infinitInfo'), 7)
+        configStore.onetimeInfo = false
+    }
+})
 
 const calendarFormat = (date: Date) => {
     return $dayjs(date).locale(locale.value).format('dddd - LL')

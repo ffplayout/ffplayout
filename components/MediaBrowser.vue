@@ -43,9 +43,9 @@
                         :id="`file-${index}`"
                         :key="element.name"
                         class="w-full border-b border-t border-base-content/20"
-                        :class="{ 'grabbing cursor-grab': width > 768 }"
+                        :class="{ 'grabbing cursor-grab': width > 768 && configStore.playout.processing.mode === 'playlist' }"
                     >
-                        <td class="ps-2 py-1 w-[20px]">
+                        <td class="ps-2 py-1 w-[20px]" :class="{'timeHidden': configStore.playout.playlist.infinit}">
                             <i v-if="mediaType(element.name) === 'audio'" class="bi-music-note-beamed" />
                             <i v-else-if="mediaType(element.name) === 'video'" class="bi-film" />
                             <i v-else-if="mediaType(element.name) === 'image'" class="bi-file-earmark-image" />
@@ -77,6 +77,7 @@
 const { width } = useWindowSize({ initialWidth: 800 })
 const { secToHMS, mediaType } = stringFormatter()
 
+const configStore = useConfig()
 const mediaStore = useMedia()
 const { configID } = storeToRefs(useConfig())
 

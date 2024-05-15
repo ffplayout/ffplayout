@@ -85,6 +85,7 @@ export default {
         shift: 'Diferença horária',
         all: 'Todos',
         addBlock: 'Adicionar bloco de tempo',
+        infinitInfo: 'O playout é executado no modo infinito. Nenhuma informação baseada em tempo é possível',
     },
     media: {
         notExists: 'O armazenamento não existe!',

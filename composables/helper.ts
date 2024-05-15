@@ -111,7 +111,7 @@ export const stringFormatter = () => {
     }
 
     function secondsToTime(sec: number) {
-        return new Date(sec * 1000).toISOString().substring(11, 19)
+        return new Date(sec * 1000 || 0).toISOString().substring(11, 19)
     }
 
     function mediaType(path: string) {
@@ -153,13 +153,13 @@ export const stringFormatter = () => {
         const ext = path.split('.').pop()
 
         if (ext) {
-            if (liveType.includes(ext)) {
+            if (liveType.includes(ext.toLowerCase())) {
                 return 'live'
-            } else if (videoType.includes(ext)) {
+            } else if (videoType.includes(ext.toLowerCase())) {
                 return 'video'
-            } else if (audioType.includes(ext)) {
+            } else if (audioType.includes(ext.toLowerCase())) {
                 return 'audio'
-            } else if (imageType.includes(ext)) {
+            } else if (imageType.includes(ext.toLowerCase())) {
                 return 'image'
             }
         }

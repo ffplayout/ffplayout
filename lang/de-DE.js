@@ -85,6 +85,7 @@ export default {
         shift: 'Zeitverschiebung',
         all: 'Alle',
         addBlock: 'Zeitblock hinzufügen',
+        infinitInfo: 'Die Wiedergabe läuft im unendlichen Modus. Es sind keine zeitbasierten Informationen möglich.',
     },
     media: {
         notExists: 'Speicher existiert nicht!',

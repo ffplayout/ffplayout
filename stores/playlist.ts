@@ -54,7 +54,7 @@ export const usePlaylist = defineStore('playlist', {
                         if (
                             this.playlist.length > 0 &&
                             programData.length > 0 &&
-                            this.playlist[0].date === date &&
+                            (this.playlist[0].date === date || configStore.playout.playlist.infinit) &&
                             $_.differenceWith(this.playlist, programData, (a, b) => {
                                 return $_.isEqual($_.omit(a, ['uid']), $_.omit(b, ['uid']))
                             }).length > 0

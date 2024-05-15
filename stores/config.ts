@@ -13,6 +13,7 @@ export const useConfig = defineStore('config', {
         currentUser: '',
         configUser: {} as User,
         utcOffset: 0,
+        onetimeInfo: true,
     }),
 
     getters: {},
