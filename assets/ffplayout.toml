@@ -118,7 +118,7 @@ help_text = """'filler' is for playing instead of a missing file or fill the end
     to pick files randomly."""
 path = "/var/lib/ffplayout/tv-media"
 filler = "/var/lib/ffplayout/tv-media/filler/filler.mp4"
-extensions = ["mp4", "mkv"]
+extensions = ["mp4", "mkv", "webm"]
 shuffle = true
 
 [text]
@@ -131,7 +131,7 @@ add_text = true
 text_from_filename = false
 fontfile = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 style = "x=(w-tw)/2:y=(h-line_h)*0.9:fontsize=24:fontcolor=#ffffff:box=1:boxcolor=#000000:boxborderw=4"
-regex = "^.+[/\\](.*)(.mp4|.mkv)$"
+regex = "^.+[/\\](.*)(.mp4|.mkv|.webm)$"
 
 [task]
 help_text = """Run an external program with a given media object. The media object is in json format \

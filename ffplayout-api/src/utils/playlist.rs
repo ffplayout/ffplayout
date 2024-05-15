@@ -35,13 +35,22 @@ pub async fn write_playlist(
 ) -> Result<String, ServiceError> {
     let (config, _) = playout_config(conn, &id).await?;
     let date = json_data.date.clone();
-    let mut playlist_path = PathBuf::from(&config.playlist.path);
+    let mut playlist_path = config.playlist.path;
     let d: Vec<&str> = date.split('-').collect();
-    playlist_path = playlist_path
-        .join(d[0])
-        .join(d[1])
-        .join(date.clone())
-        .with_extension("json");
+
+    if !playlist_path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| ext.eq_ignore_ascii_case("json"))
+        .unwrap_or(false)
+    {
+        playlist_path = playlist_path
+            .join(d[0])
+            .join(d[1])
+            .join(date.clone())
+            .with_extension("json");
+    }
+
     let mut file_exists = false;
 
     if let Some(p) = playlist_path.parent() {
