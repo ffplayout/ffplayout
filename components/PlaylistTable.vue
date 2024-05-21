@@ -269,7 +269,9 @@ function addClip(event: any) {
         addBG(newNode)
         removeBG(newNode)
 
-        playlistContainer.value.scroll({ top: playlistContainer.value.scrollHeight, behavior: 'smooth' })
+        if (n > playlistStore.playlist.length - 3) {
+            playlistContainer.value.scroll({ top: playlistContainer.value.scrollHeight, behavior: 'smooth' })
+        }
     })
 }
 

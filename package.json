@@ -1,6 +1,6 @@
 {
   "name": "ffplayout-frontend",
-  "version": "0.9.3",
+  "version": "0.9.4",
   "description": "Web GUI for ffplayout",
   "author": "Jonathan Baecker",
   "private": true,
@@ -29,15 +29,15 @@
     "video.js": "^8.12.0"
   },
   "devDependencies": {
-    "@nuxt/eslint": "^0.3.12",
+    "@nuxt/eslint": "^0.3.13",
     "@nuxtjs/i18n": "^8.3.1",
     "@nuxtjs/tailwindcss": "^6.12.0",
-    "@types/lodash": "^4.17.1",
+    "@types/lodash": "^4.17.4",
     "@types/video.js": "^7.3.58",
     "daisyui": "^4.11.1",
     "postcss": "^8.4.38",
     "postcss-loader": "^8.1.1",
-    "sass": "^1.77.1",
+    "sass": "^1.77.2",
     "sass-loader": "^14.2.1",
     "vue": "^3.4.27",
     "vue-router": "^4.3.2"
