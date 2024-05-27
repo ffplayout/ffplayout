@@ -14,7 +14,8 @@ pub async fn read_playlist(
     date: String,
 ) -> Result<JsonPlaylist, ServiceError> {
     let (config, _) = playout_config(conn, &id).await?;
-    let mut playlist_path = PathBuf::from(&config.playlist.path);
+    let (path, _, _) = norm_abs_path(&config.playlist.path, "")?;
+    let mut playlist_path = path;
     let d: Vec<&str> = date.split('-').collect();
     playlist_path = playlist_path
         .join(d[0])
@@ -96,7 +97,7 @@ pub async fn generate_playlist(
 
             for path in &source.paths {
                 let (safe_path, _, _) =
-                    norm_abs_path(&config.storage.path, &path.to_string_lossy());
+                    norm_abs_path(&config.storage.path, &path.to_string_lossy())?;
                 paths.push(safe_path);
             }
 

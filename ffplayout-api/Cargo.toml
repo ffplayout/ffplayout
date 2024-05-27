@@ -27,6 +27,7 @@ clap = { version = "4.3", features = ["derive"] }
 derive_more = "0.99"
 faccess = "0.2"
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
+home = "0.5"
 jsonwebtoken = "9"
 lazy_static = "1.4"
 lexical-sort = "0.3"

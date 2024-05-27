@@ -12,6 +12,9 @@ pub enum ServiceError {
     #[display(fmt = "Conflict: {_0}")]
     Conflict(String),
 
+    #[display(fmt = "Forbidden: {_0}")]
+    Forbidden(String),
+
     #[display(fmt = "Unauthorized: {_0}")]
     Unauthorized(String),
 
@@ -31,6 +34,7 @@ impl ResponseError for ServiceError {
             }
             ServiceError::BadRequest(ref message) => HttpResponse::BadRequest().json(message),
             ServiceError::Conflict(ref message) => HttpResponse::Conflict().json(message),
+            ServiceError::Forbidden(ref message) => HttpResponse::Forbidden().json(message),
             ServiceError::Unauthorized(ref message) => HttpResponse::Unauthorized().json(message),
             ServiceError::NoContent(ref message) => HttpResponse::NoContent().json(message),
             ServiceError::ServiceUnavailable(ref message) => {
