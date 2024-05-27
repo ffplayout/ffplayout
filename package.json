@@ -1,6 +1,6 @@
 {
   "name": "ffplayout-frontend",
-  "version": "0.9.4",
+  "version": "0.10.0",
   "description": "Web GUI for ffplayout",
   "author": "Jonathan Baecker",
   "private": true,
@@ -15,7 +15,7 @@
   "dependencies": {
     "@nuxtjs/color-mode": "^3.4.1",
     "@pinia/nuxt": "^0.5.1",
-    "@vuepic/vue-datepicker": "^8.6.0",
+    "@vuepic/vue-datepicker": "^8.7.0",
     "@vueuse/nuxt": "^10.9.0",
     "bootstrap-icons": "^1.11.3",
     "dayjs": "^1.11.11",

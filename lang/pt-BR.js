@@ -86,6 +86,7 @@ export default {
         all: 'Todos',
         addBlock: 'Adicionar bloco de tempo',
         infinitInfo: 'O playout é executado no modo infinito. Nenhuma informação baseada em tempo é possível',
+        generateDone: 'Gerar lista de reprodução concluída...',
     },
     media: {
         notExists: 'O armazenamento não existe!',
@@ -128,6 +129,10 @@ export default {
         borderWidth: 'Largura da borda',
         send: 'Enviar',
         name: 'Nome',
+        saveDone: 'Salvar predefinição concluída!',
+        saveFailed: 'Falha ao salvar a predefinição!',
+        sendDone: 'Enviando com sucesso...',
+        sendFailed: 'O envio falhou...',
     },
     log: {
         download: 'Baixar arquivo de registro',
@@ -181,6 +186,10 @@ export default {
         outText: `A compressão final do stream gerado pelo playout. Ajuste as configurações de acordo com suas necessidades. 'mode' possui as opções 'desktop', 'hls', 'null', 'stream'. Use 'stream' e ajuste as configurações de 'output_param:' se você desejar retransmitir o stream para um servidor rtmp/rtsp/srt/... Em ambiente de produção não sirva a playlist hls com ffpapi, use nginx ou outro servidor web!`,
         restartTile: 'Reiniciar Playout',
         restartText: 'Reiniciar o ffplayout para aplicar as alterações?',
+        updatePlayoutSuccess: 'Sucesso na atualização da configuração do playout!',
+        updatePlayoutFailed: 'Falha na atualização da configuração do playout!',
+        forbiddenPlaylistPath: 'Acesso proibido: A pasta da lista de reprodução não pode ser aberta',
+        noPlayoutConfig: 'Nenhuma configuração de playout encontrada!',
     },
     user: {
         title: 'Configuração de usuário',

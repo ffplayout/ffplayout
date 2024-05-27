@@ -51,6 +51,12 @@ declare global {
         body?: any
     }
 
+    interface Playlist {
+        channel: string
+        date: string
+        program: PlaylistItem[]
+    }
+
     interface PlaylistItem {
         date?: string
         uid: string

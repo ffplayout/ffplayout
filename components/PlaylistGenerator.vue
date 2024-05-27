@@ -268,6 +268,7 @@
 </template>
 <script setup lang="ts">
 const { $dayjs } = useNuxtApp()
+const { t } = useI18n()
 
 const { width } = useWindowSize({ initialWidth: 800 })
 const authStore = useAuth()
@@ -409,7 +410,7 @@ async function generatePlaylist() {
         .then((response: any) => {
             playlistStore.playlist = processPlaylist(playlistStore.listDate, response.program, false)
             prop.switchClass()
-            indexStore.msgAlert('success', 'Generate Playlist done...', 2)
+            indexStore.msgAlert('success', t('player.generateDone'), 2)
         })
         .catch((e: any) => {
             indexStore.msgAlert('error', e.data ? e.data : e, 4)

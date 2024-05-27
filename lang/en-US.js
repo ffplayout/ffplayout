@@ -86,6 +86,7 @@ export default {
         all: 'All',
         addBlock: 'Add time block',
         infinitInfo: 'Playout runs in infinite mode. No time based information is possible.',
+        generateDone: 'Generate Playlist done...',
     },
     media: {
         notExists: 'Storage not exist!',
@@ -128,6 +129,10 @@ export default {
         borderWidth: 'Border Width',
         send: 'Send',
         name: 'Name',
+        saveDone: 'Save Preset done!',
+        saveFailed: 'Save Preset failed!',
+        sendDone: 'Sending success...',
+        sendFailed: 'Sending failed...',
     },
     log: {
         download: 'Download log file',
@@ -181,6 +186,10 @@ export default {
         outText: `The final playout compression. Adjust the settings according to your needs. 'mode' has the options 'desktop', 'hls', 'null', 'stream'. Use 'stream' and adjust the 'output_param:' settings if you want to stream to an rtmp/rtsp/srt/... server. In production don't serve hls playlist with ffpapi, use nginx or another web server!`,
         restartTile: 'Restart Playout',
         restartText: 'Restart ffplayout to apply changes?',
+        updatePlayoutSuccess: 'Update playout config success!',
+        updatePlayoutFailed: 'Update playout config failed!',
+        forbiddenPlaylistPath: 'Access forbidden: Playlist folder cannot be opened.',
+        noPlayoutConfig: 'No playout config found!',
     },
     user: {
         title: 'User Configuration',

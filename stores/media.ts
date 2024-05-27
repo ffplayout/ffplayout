@@ -19,6 +19,7 @@ export const useMedia = defineStore('media', {
                 this.isLoading = true
             }
 
+            const { $i18n } = useNuxtApp()
             const authStore = useAuth()
             const configStore = useConfig()
             const indexStore = useIndex()
@@ -35,7 +36,7 @@ export const useMedia = defineStore('media', {
                     if (response.status === 200) {
                         return response.json()
                     } else {
-                        indexStore.msgAlert('error', useNuxtApp().$i18n.t('media.notExists'), 3)
+                        indexStore.msgAlert('error', $i18n.t('media.notExists'), 3)
 
                         return {
                             source: '',
@@ -64,13 +65,13 @@ export const useMedia = defineStore('media', {
 
                     if (foldersOnly) {
                         this.folderCrumbs = crumbs
-                        data.parent_folders = data.parent_folders.map((i: any) => ({ uid: genUID(), name: i }))
+                        data.parent_folders = data.parent_folders?.map((i: any) => ({ uid: genUID(), name: i })) ?? []
                         data.folders = data.folders.map((i: any) => ({ uid: genUID(), name: i }))
                         this.folderList = data
                     } else {
                         this.currentPath = path
                         this.crumbs = crumbs
-                        data.parent_folders = data.parent_folders.map((i: any) => ({ uid: genUID(), name: i }))
+                        data.parent_folders = data.parent_folders?.map((i: any) => ({ uid: genUID(), name: i })) ?? []
                         data.folders = data.folders.map((i: any) => ({ uid: genUID(), name: i }))
                         this.folderTree = data
                     }

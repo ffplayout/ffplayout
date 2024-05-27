@@ -86,6 +86,7 @@ export default {
         all: 'Все',
         addBlock: 'Добавить время начало передачи',
         infinitInfo: 'Воспроизведение работает в бесконечном режиме. Никакая информация, основанная на времени, невозможна.',
+        generateDone: 'Генерация плейлиста завершена...',
     },
     media: {
         notExists: 'Папки не существует!',
@@ -128,6 +129,10 @@ export default {
         borderWidth: 'Border Width',
         send: 'Отправить в эфир',
         name: 'Название',
+        saveDone: 'Сохранение предустановки выполнено!',
+        saveFailed: 'Сохранить пресет не удалось!',
+        sendDone: 'Отправка успешна...',
+        sendFailed: 'Отправка не удалась...',
     },
     log: {
         download: 'Скачать лог файл',
@@ -181,6 +186,10 @@ export default {
         outText: `The final playout compression. Adjust the settings according to your needs. 'mode' has the options 'desktop', 'hls', 'null', 'stream'. Use 'stream' and adjust the 'output_param:' settings if you want to stream to an rtmp/rtsp/srt/... server. In production don't serve hls playlist with ffpapi, use nginx or another web server!`,
         restartTile: 'Перезапуск Playout',
         restartText: 'Перезапустить ffplayout для применения изменений?',
+        updatePlayoutSuccess: 'Обновление конфигурации воспроизведения прошло успешно!',
+        updatePlayoutFailed: 'Обновление конфигурации воспроизведения не удалось!',
+        forbiddenPlaylistPath: 'Доступ запрещен: Папка плейлиста не может быть открыта.',
+        noPlayoutConfig: 'Конфигурация воспроизведения не найдена!',
     },
     user: {
         title: 'Конфигурация пользователя',

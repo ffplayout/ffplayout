@@ -36,17 +36,11 @@ export const usePlaylist = defineStore('playlist', {
             const configStore = useConfig()
             const indexStore = useIndex()
             const channel = configStore.configGui[configStore.configID].id
-            let statusCode = 0
 
-            await fetch(`/api/playlist/${channel}?date=${date}`, {
+            await $fetch<Playlist>(`/api/playlist/${channel}?date=${date}`, {
                 method: 'GET',
                 headers: authStore.authHeader,
             })
-                .then((response) => {
-                    statusCode = response.status
-
-                    return response.json()
-                })
                 .then((data) => {
                     if (data.program) {
                         const programData = processPlaylist(date, data.program, false)
@@ -66,8 +60,10 @@ export const usePlaylist = defineStore('playlist', {
                     }
                 })
                 .catch((e) => {
-                    if (statusCode >= 400) {
-                        indexStore.msgAlert('error', e, 3)
+                    if (e.status >= 403) {
+                        indexStore.msgAlert('error', e.data, 5)
+                    } else if (e.status >= 400) {
+                        indexStore.msgAlert('error', e.data, 5)
                     } else if (this.playlist.length > 0 && this.playlist[0].date === date) {
                         indexStore.msgAlert('warning', $i18n.t('player.unsavedProgram'), 3)
                     } else {

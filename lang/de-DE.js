@@ -86,6 +86,7 @@ export default {
         all: 'Alle',
         addBlock: 'Zeitblock hinzufügen',
         infinitInfo: 'Die Wiedergabe läuft im unendlichen Modus. Es sind keine zeitbasierten Informationen möglich.',
+        generateDone: 'Wiedergabeliste generieren erledigt...',
     },
     media: {
         notExists: 'Speicher existiert nicht!',
@@ -128,6 +129,10 @@ export default {
         borderWidth: 'Rahmenbreite',
         send: 'Senden',
         name: 'Name',
+        saveDone: 'Voreinstellung gespeichert!',
+        saveFailed: 'Voreinstellung speichern fehlgeschlagen!',
+        sendDone: 'Erfolgreich gesendet...',
+        sendFailed: 'Senden fehlgeschlagen...',
     },
     log: {
         download: 'Protokoll herunterladen',
@@ -182,6 +187,10 @@ export default {
         outText: `Die endgültige Playout-Kompression. Passen Sie die Einstellungen entsprechend Ihren Bedürfnissen an. 'mode' hat die Optionen 'desktop', 'hls', 'null', 'stream'. Verwenden Sie 'stream' und passen Sie die 'output_param:'-Einstellungen an, wenn Sie zu einem rtmp/rtsp/srt/... Server streamen wollen. In der Produktion sollten Sie die hls-Wiedergabeliste nicht mit ffpapi ausliefern, sondern nginx oder einen anderen Webserver verwenden!`,
         restartTile: 'Playout neustarten',
         restartText: 'ffplayout neustarten um Einstellungen anzuwenden?',
+        updatePlayoutSuccess: 'Update der Playout-Konfiguration erfolgreich!',
+        updatePlayoutFailed: 'Update playout config fehlgeschlagen!',
+        forbiddenPlaylistPath: 'Zugriff untersagt: Playlist-Ordner kann nicht geöffnet werden.',
+        noPlayoutConfig: 'Keine Playout-Konfiguration gefunden!',
     },
     user: {
         title: 'Benutzer-Konfiguration',

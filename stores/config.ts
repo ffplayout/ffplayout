@@ -117,6 +117,7 @@ export const useConfig = defineStore('config', {
         },
 
         async getPlayoutConfig() {
+            const { $i18n } = useNuxtApp()
             const { timeToSeconds } = stringFormatter()
             const authStore = useAuth()
             const indexStore = useIndex()
@@ -138,7 +139,7 @@ export const useConfig = defineStore('config', {
                     this.playout = data
                 })
                 .catch(() => {
-                    indexStore.msgAlert('error', 'No playout config found!', 3)
+                    indexStore.msgAlert('error', $i18n.t('config.noPlayoutConfig'), 3)
                 })
         },
 

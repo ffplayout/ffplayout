@@ -223,6 +223,7 @@
 </template>
 
 <script setup lang="ts">
+const { t } = useI18n()
 const authStore = useAuth()
 const configStore = useConfig()
 const indexStore = useIndex()
@@ -356,9 +357,9 @@ async function savePreset() {
         })
 
         if (response.status === 200) {
-            indexStore.msgAlert('success', 'Save Preset done!', 2)
+            indexStore.msgAlert('success', t('message.saveDone'), 2)
         } else {
-            indexStore.msgAlert('error', 'Save Preset failed!', 2)
+            indexStore.msgAlert('error', t('message.saveFailed'), 2)
         }
     }
 }
@@ -395,10 +396,10 @@ async function createNewPreset(create: boolean) {
         })
 
         if (response.status === 200) {
-            indexStore.msgAlert('success', 'Save Preset done!', 2)
+            indexStore.msgAlert('success', t('message.saveDone'), 2)
             getPreset(-1)
         } else {
-            indexStore.msgAlert('error', 'Save Preset failed!', 2)
+            indexStore.msgAlert('error', t('message.saveFailed'), 2)
         }
     }
 
@@ -439,9 +440,9 @@ async function submitMessage() {
     })
 
     if (response.status === 200) {
-        indexStore.msgAlert('success', 'Sending success...', 2)
+        indexStore.msgAlert('success', t('message.sendDone'), 2)
     } else {
-        indexStore.msgAlert('error', 'Sending failed...', 2)
+        indexStore.msgAlert('error', t('message.sendFailed'), 2)
     }
 }
 </script>
