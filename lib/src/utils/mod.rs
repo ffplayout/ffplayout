@@ -10,9 +10,6 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-#[cfg(not(windows))]
-use std::env;
-
 use chrono::{prelude::*, TimeDelta};
 use ffprobe::{ffprobe, Stream as FFStream};
 use rand::prelude::*;
@@ -32,9 +29,6 @@ pub mod import;
 pub mod json_serializer;
 mod json_validate;
 mod logging;
-
-#[cfg(windows)]
-mod windows;
 
 pub use config::{
     self as playout_config,
@@ -986,19 +980,6 @@ pub fn custom_format<T: fmt::Display>(template: &str, args: &[T]) -> String {
     }
 
     filled_template
-}
-
-pub fn home_dir() -> Option<PathBuf> {
-    home_dir_inner()
-}
-
-#[cfg(windows)]
-use windows::home_dir_inner;
-
-#[cfg(any(unix, target_os = "redox"))]
-fn home_dir_inner() -> Option<PathBuf> {
-    #[allow(deprecated)]
-    env::home_dir()
 }
 
 /// Get system time, in non test/debug case.

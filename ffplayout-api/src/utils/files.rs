@@ -6,6 +6,7 @@ use std::{
 use actix_multipart::Multipart;
 use actix_web::{web, HttpResponse};
 use futures_util::TryStreamExt as _;
+use lazy_static::lazy_static;
 use lexical_sort::{natural_lexical_cmp, PathSort};
 use rand::{distributions::Alphanumeric, Rng};
 use relative_path::RelativePath;
@@ -54,11 +55,30 @@ pub struct VideoFile {
     duration: f64,
 }
 
+lazy_static! {
+    pub static ref HOME_DIR: String = home::home_dir()
+        .unwrap_or("/home/h1wl3n2og".into()) // any random not existing folder
+        .as_os_str()
+        .to_string_lossy()
+        .to_string();
+}
+
+const FOLDER_WHITELIST: &[&str; 6] = &[
+    "/media",
+    "/mnt",
+    "/playlists",
+    "/tv-media",
+    "/usr/share/ffplayout",
+    "/var/lib/ffplayout",
+];
+
 /// Normalize absolut path
 ///
 /// This function takes care, that it is not possible to break out from root_path.
-/// It also gives always a relative path back.
-pub fn norm_abs_path(root_path: &Path, input_path: &str) -> (PathBuf, String, String) {
+pub fn norm_abs_path(
+    root_path: &Path,
+    input_path: &str,
+) -> Result<(PathBuf, String, String), ServiceError> {
     let path_relative = RelativePath::new(&root_path.to_string_lossy())
         .normalize()
         .to_string()
@@ -91,7 +111,15 @@ pub fn norm_abs_path(root_path: &Path, input_path: &str) -> (PathBuf, String, St
 
     let path = &root_path.join(&source_relative);
 
-    (path.to_path_buf(), path_suffix, source_relative)
+    if !FOLDER_WHITELIST.iter().any(|f| path.starts_with(f))
+        && !path.starts_with(HOME_DIR.to_string())
+    {
+        return Err(ServiceError::Forbidden(
+            "Access forbidden: Folder cannot be opened.".to_string(),
+        ));
+    }
+
+    Ok((path.to_path_buf(), path_suffix, source_relative))
 }
 
 /// File Browser
@@ -114,7 +142,7 @@ pub async fn browser(
     let mut extensions = config.storage.extensions;
     extensions.append(&mut channel_extensions);
 
-    let (path, parent, path_component) = norm_abs_path(&config.storage.path, &path_obj.source);
+    let (path, parent, path_component) = norm_abs_path(&config.storage.path, &path_obj.source)?;
 
     let parent_path = if !path_component.is_empty() {
         path.parent().unwrap()
@@ -212,7 +240,7 @@ pub async fn create_directory(
     path_obj: &PathObject,
 ) -> Result<HttpResponse, ServiceError> {
     let (config, _) = playout_config(conn, &id).await?;
-    let (path, _, _) = norm_abs_path(&config.storage.path, &path_obj.source);
+    let (path, _, _) = norm_abs_path(&config.storage.path, &path_obj.source)?;
 
     if let Err(e) = fs::create_dir_all(&path).await {
         return Err(ServiceError::BadRequest(e.to_string()));
@@ -283,8 +311,8 @@ pub async fn rename_file(
     move_object: &MoveObject,
 ) -> Result<MoveObject, ServiceError> {
     let (config, _) = playout_config(conn, &id).await?;
-    let (source_path, _, _) = norm_abs_path(&config.storage.path, &move_object.source);
-    let (mut target_path, _, _) = norm_abs_path(&config.storage.path, &move_object.target);
+    let (source_path, _, _) = norm_abs_path(&config.storage.path, &move_object.source)?;
+    let (mut target_path, _, _) = norm_abs_path(&config.storage.path, &move_object.target)?;
 
     if !source_path.exists() {
         return Err(ServiceError::BadRequest("Source file not exist!".into()));
@@ -318,7 +346,7 @@ pub async fn remove_file_or_folder(
     source_path: &str,
 ) -> Result<(), ServiceError> {
     let (config, _) = playout_config(conn, &id).await?;
-    let (source, _, _) = norm_abs_path(&config.storage.path, source_path);
+    let (source, _, _) = norm_abs_path(&config.storage.path, source_path)?;
 
     if !source.exists() {
         return Err(ServiceError::BadRequest("Source does not exists!".into()));
@@ -351,7 +379,7 @@ pub async fn remove_file_or_folder(
 
 async fn valid_path(conn: &Pool<Sqlite>, id: i32, path: &str) -> Result<PathBuf, ServiceError> {
     let (config, _) = playout_config(conn, &id).await?;
-    let (test_path, _, _) = norm_abs_path(&config.storage.path, path);
+    let (test_path, _, _) = norm_abs_path(&config.storage.path, path)?;
 
     if !test_path.is_dir() {
         return Err(ServiceError::BadRequest("Target folder not exists!".into()));

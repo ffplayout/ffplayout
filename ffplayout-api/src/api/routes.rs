@@ -855,7 +855,7 @@ pub async fn gen_playlist(
             let mut path_list = vec![];
 
             for path in paths {
-                let (p, _, _) = norm_abs_path(&config.storage.path, path);
+                let (p, _, _) = norm_abs_path(&config.storage.path, path)?;
 
                 path_list.push(p);
             }
@@ -1024,7 +1024,7 @@ async fn get_file(
     let (config, _) = playout_config(&pool.into_inner(), &id).await?;
     let storage_path = config.storage.path;
     let file_path = req.match_info().query("filename");
-    let (path, _, _) = norm_abs_path(&storage_path, file_path);
+    let (path, _, _) = norm_abs_path(&storage_path, file_path)?;
     let file = actix_files::NamedFile::open(path)?;
 
     Ok(file
