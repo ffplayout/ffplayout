@@ -15,7 +15,7 @@ use shlex::split;
 use crate::AdvancedConfig;
 
 use super::vec_strings;
-use crate::utils::{free_tcp_socket, home_dir, time_to_sec, OutputMode::*};
+use crate::utils::{free_tcp_socket, time_to_sec, OutputMode::*};
 
 pub const DUMMY_LEN: f64 = 60.0;
 pub const IMAGE_FORMAT: [&str; 21] = [
@@ -406,7 +406,7 @@ impl PlayoutConfig {
 
         config.general.config_path = config_path.to_string_lossy().to_string();
 
-        config.general.stat_file = home_dir()
+        config.general.stat_file = home::home_dir()
             .unwrap_or_else(env::temp_dir)
             .join(if config.general.stat_file.is_empty() {
                 ".ffp_status"

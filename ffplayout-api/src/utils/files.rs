@@ -112,7 +112,7 @@ pub fn norm_abs_path(
     let path = &root_path.join(&source_relative);
 
     if !FOLDER_WHITELIST.iter().any(|f| path.starts_with(f))
-        && !path.starts_with(&HOME_DIR.to_string())
+        && !path.starts_with(HOME_DIR.to_string())
     {
         return Err(ServiceError::Forbidden(
             "Access forbidden: Folder cannot be opened.".to_string(),
