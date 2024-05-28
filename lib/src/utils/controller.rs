@@ -40,7 +40,7 @@ use ProcessUnit::*;
 ///
 /// We save here some global states, about what is running and which processes are alive.
 /// This we need for process termination, skipping clip decoder etc.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ProcessControl {
     pub decoder_term: Arc<Mutex<Option<Child>>>,
     pub encoder_term: Arc<Mutex<Option<Child>>>,

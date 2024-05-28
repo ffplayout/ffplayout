@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use simplelog::*;
 
-use ffplayout::{
+use ffplayout_engine::{
     output::{player, write_hls},
     rpc::run_server,
     utils::{arg_parse::get_args, get_config},
@@ -25,7 +25,7 @@ use ffplayout_lib::utils::{
 };
 
 #[cfg(debug_assertions)]
-use ffplayout::utils::Args;
+use ffplayout_engine::utils::Args;
 
 #[cfg(debug_assertions)]
 use ffplayout_lib::utils::{mock_time, time_now};

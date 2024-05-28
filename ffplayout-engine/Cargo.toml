@@ -1,5 +1,5 @@
 [package]
-name = "ffplayout"
+name = "ffplayout-engine"
 description = "24/7 playout based on rust and ffmpeg"
 readme = "README.md"
 version.workspace = true
@@ -8,7 +8,7 @@ authors.workspace = true
 repository.workspace = true
 edition.workspace = true
 
-default-run = "ffplayout"
+default-run = "ffplayout_engine"
 
 [dependencies]
 ffplayout-lib = { path = "../lib" }
@@ -32,7 +32,7 @@ zeromq = { version = "0.3", default-features = false, features = [
 ] }
 
 [[bin]]
-name = "ffplayout"
+name = "ffplayout_engine"
 path = "src/main.rs"
 
 # DEBIAN DEB PACKAGE

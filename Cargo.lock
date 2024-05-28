@@ -1294,22 +1294,44 @@ checksum = "9fc0510504f03c51ada170672ac806f1f105a88aa97a5281117e1ddc3368e51a"
 name = "ffplayout"
 version = "0.23.0"
 dependencies = [
+ "actix-files",
+ "actix-multipart",
+ "actix-web",
+ "actix-web-grants",
+ "actix-web-httpauth",
+ "actix-web-lab",
+ "actix-web-static-files",
+ "argon2",
  "chrono",
  "clap",
- "crossbeam-channel",
+ "derive_more",
+ "faccess",
  "ffplayout-lib",
- "futures",
- "itertools",
- "notify",
- "notify-debouncer-full",
+ "futures-util",
+ "home",
+ "jsonwebtoken",
+ "lazy_static",
+ "lexical-sort",
+ "local-ip-address",
+ "once_cell",
+ "parking_lot",
+ "path-clean",
  "rand",
  "regex",
+ "relative-path",
  "reqwest",
+ "rpassword",
+ "sanitize-filename",
  "serde",
  "serde_json",
  "simplelog",
- "tiny_http",
- "zeromq",
+ "sqlx",
+ "static-files",
+ "sysinfo",
+ "tokio",
+ "tokio-stream",
+ "toml_edit",
+ "uuid",
 ]
 
 [[package]]
@@ -1354,6 +1376,28 @@ dependencies = [
  "tokio-stream",
  "toml_edit",
  "uuid",
+]
+
+[[package]]
+name = "ffplayout-engine"
+version = "0.23.0"
+dependencies = [
+ "chrono",
+ "clap",
+ "crossbeam-channel",
+ "ffplayout-lib",
+ "futures",
+ "itertools",
+ "notify",
+ "notify-debouncer-full",
+ "rand",
+ "regex",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "simplelog",
+ "tiny_http",
+ "zeromq",
 ]
 
 [[package]]
@@ -3593,7 +3637,7 @@ version = "0.23.0"
 dependencies = [
  "chrono",
  "crossbeam-channel",
- "ffplayout",
+ "ffplayout-engine",
  "ffplayout-lib",
  "ffprobe",
  "file-rotate",

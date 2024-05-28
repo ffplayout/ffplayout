@@ -1,6 +1,6 @@
 [workspace]
-members = ["ffplayout-api", "ffplayout-engine", "lib", "tests"]
-default-members = ["ffplayout-api", "ffplayout-engine", "tests"]
+members = ["ffplayout", "ffplayout-api", "ffplayout-engine", "lib", "tests"]
+default-members = ["ffplayout", "ffplayout-api", "ffplayout-engine", "tests"]
 resolver = "2"
 
 [workspace.package]

@@ -8,7 +8,7 @@ edition.workspace = true
 publish = false
 
 [dev-dependencies]
-ffplayout = { path = "../ffplayout-engine" }
+ffplayout-engine = { path = "../ffplayout-engine" }
 # ffplayout-api = { path = "../ffplayout-api" }
 ffplayout-lib = { path = "../lib" }
 

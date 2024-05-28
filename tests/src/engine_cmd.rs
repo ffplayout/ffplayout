@@ -1,6 +1,6 @@
 use std::{fs, path::PathBuf};
 
-use ffplayout::{input::playlist::gen_source, utils::prepare_output_cmd};
+use ffplayout_engine::{input::playlist::gen_source, utils::prepare_output_cmd};
 use ffplayout_lib::{
     utils::{Media, OutputMode::*, PlayerControl, PlayoutConfig, PlayoutStatus, ProcessUnit::*},
     vec_strings,

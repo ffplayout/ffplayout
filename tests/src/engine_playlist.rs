@@ -6,7 +6,7 @@ use std::{
 use serial_test::serial;
 use simplelog::*;
 
-use ffplayout::{input::playlist::gen_source, output::player};
+use ffplayout_engine::{input::playlist::gen_source, output::player};
 use ffplayout_lib::{utils::*, vec_strings};
 
 fn timed_stop(sec: u64, proc_ctl: ProcessControl) {
