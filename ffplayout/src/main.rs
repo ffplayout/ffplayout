@@ -1,10 +1,4 @@
-use std::{
-    collections::HashSet,
-    env,
-    process::exit,
-    sync::{atomic::Ordering, Arc},
-    thread,
-};
+use std::{collections::HashSet, env, process::exit, sync::Arc, thread};
 
 use actix_files::Files;
 use actix_web::{
@@ -23,6 +17,7 @@ use tokio::sync::Mutex;
 use ffplayout::{
     api::{auth, routes::*},
     db::{db_pool, handles, models::LoginUser},
+    player::controller::ChannelController,
     sse::{broadcast::Broadcaster, routes::*, AuthState},
     utils::{control::ProcessControl, db_path, init_config, run_args},
     ARGS,
@@ -76,21 +71,19 @@ async fn main() -> std::io::Result<()> {
         }
     };
 
+    let channel_controller = ChannelController::new();
     let mut channels = handles::select_all_channels(&pool)
         .await
         .unwrap_or_default();
 
     for channel in channels.iter_mut() {
-        // TODO: maybe run here the player
-        channel
-            .control
-            .is_alive
-            .store(channel.active, Ordering::SeqCst)
+        let channel_clone = channel.clone();
+        if channel.active {
+            thread::spawn(move || {
+                println!("{channel_clone:?}");
+            });
+        }
     }
-
-    thread::spawn(move || {
-        println!("{channels:?}");
-    });
 
     if let Some(conn) = &ARGS.listen {
         if db_path().is_err() {

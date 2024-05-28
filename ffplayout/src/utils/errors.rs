@@ -1,3 +1,5 @@
+use std::io;
+
 use actix_web::{error::ResponseError, Error, HttpResponse};
 use derive_more::Display;
 
@@ -101,5 +103,21 @@ impl From<toml_edit::ser::Error> for ServiceError {
 impl From<uuid::Error> for ServiceError {
     fn from(err: uuid::Error) -> ServiceError {
         ServiceError::BadRequest(err.to_string())
+    }
+}
+
+#[derive(Debug, Display)]
+pub enum ProcessError {
+    #[display(fmt = "Failed to spawn ffmpeg/ffprobe. {}", _0)]
+    CommandSpawn(io::Error),
+    #[display(fmt = "IO error: {}", _0)]
+    IO(io::Error),
+    #[display(fmt = "{}", _0)]
+    Custom(String),
+}
+
+impl From<std::io::Error> for ProcessError {
+    fn from(err: std::io::Error) -> ProcessError {
+        ProcessError::IO(err)
     }
 }

@@ -1,4 +1,3 @@
-use ffplayout_lib::utils::ProcessControl;
 use regex::Regex;
 use serde::{
     de::{self, Visitor},
@@ -103,7 +102,7 @@ where
     deserializer.deserialize_any(StringOrNumberVisitor)
 }
 
-#[derive(Debug, Deserialize, Serialize, sqlx::FromRow)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize, sqlx::FromRow)]
 pub struct Channel {
     #[serde(skip_deserializing)]
     pub id: i32,
@@ -112,12 +111,10 @@ pub struct Channel {
     pub config_path: String,
     pub extra_extensions: String,
     pub active: bool,
+    pub modified: Option<String>,
+    pub time_shift: f64,
 
     #[sqlx(default)]
     #[serde(default)]
     pub utc_offset: i32,
-
-    #[serde(skip_serializing, skip_deserializing)]
-    #[sqlx(skip)]
-    pub control: ProcessControl,
 }

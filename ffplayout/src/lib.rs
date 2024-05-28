@@ -6,6 +6,7 @@ use sysinfo::{Disks, Networks, System};
 
 pub mod api;
 pub mod db;
+pub mod player;
 pub mod sse;
 pub mod utils;
 
