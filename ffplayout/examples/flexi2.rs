@@ -1,5 +1,7 @@
 use log::*;
 use std::io::Write;
+// use std::io::{Error, ErrorKind};
+// use std::sync::{Arc, Mutex};
 
 use flexi_logger::writers::{FileLogWriter, LogWriter};
 use flexi_logger::{Age, Cleanup, Criterion, DeferredNow, FileSpec, Logger, Naming};
@@ -9,6 +11,8 @@ pub struct LogMailer;
 
 impl LogWriter for LogMailer {
     fn write(&self, now: &mut DeferredNow, record: &Record<'_>) -> std::io::Result<()> {
+        println!("target: {:?}", record.target());
+        println!("key/value: {:?}", record.key_values().get("channel".into()));
         println!(
             "[{}] [{:>5}] Mail logger: {:?}",
             now.now().format("%Y-%m-%d %H:%M:%S"),
@@ -60,6 +64,33 @@ pub fn file_logger(to_file: bool) -> Box<dyn LogWriter> {
         Box::new(LogConsole)
     }
 }
+
+// struct MyWriter<F> {
+//     file: Arc<Mutex<F>>,
+// }
+
+// impl<F: std::io::Write + Send + Sync> LogWriter for MyWriter<F> {
+//     fn write(
+//         &self,
+//         now: &mut flexi_logger::DeferredNow,
+//         record: &flexi_logger::Record,
+//     ) -> std::io::Result<()> {
+//         let mut file = self
+//             .file
+//             .lock()
+//             .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?;
+//         flexi_logger::default_format(&mut *file, now, record)
+//     }
+
+//     fn flush(&self) -> std::io::Result<()> {
+//         let mut file = self
+//             .file
+//             .lock()
+//             .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?;
+//         file.flush()
+//     }
+// }
+
 // Define a macro for writing messages to the alert log and to the normal log
 #[macro_use]
 mod macros {
@@ -131,7 +162,7 @@ fn main() {
 
     // Explicitly send logs to different loggers
     info!(target: "{Mail}", "This logs only to Mail");
-    warn!(target: "{File,Mail}", "This logs to File and Mail");
+    warn!(target: "{File,Mail}", channel = 1; "This logs to File and Mail");
     error!(target: "{File}", "This logs only to file");
     error!(target: "{_Default}", "This logs to console");
 
