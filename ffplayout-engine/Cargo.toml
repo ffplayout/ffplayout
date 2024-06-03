@@ -45,7 +45,7 @@ depends = ""
 recommends = "sudo"
 suggests = "ffmpeg"
 copyright = "Copyright (c) 2022, Jonathan Baecker. All rights reserved."
-conf-files = ["/etc/ffplayout/ffplayout.toml"]
+conf-files = ["/etc/ffplayout/ffplayout.toml", "/etc/ffplayout/advanced.toml"]
 assets = [
     [
         "../target/x86_64-unknown-linux-musl/release/ffpapi",
