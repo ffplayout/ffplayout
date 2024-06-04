@@ -6,7 +6,7 @@ input_param = ""
 # output_param get also applied to ingest instance.
 output_param = ""
 
-[filters]
+[decoder.filters]
 deinterlace = "" # yadif=0:-1:0
 pad_scale_w = "" # scale={}:-1
 pad_scale_h = "" # scale=-1:{}
