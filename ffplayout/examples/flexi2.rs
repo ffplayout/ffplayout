@@ -150,7 +150,7 @@ pub fn file_formatter(
 fn main() {
     let to_file = true;
 
-    Logger::try_with_str("trace")
+    Logger::try_with_str("WARN")
         .expect("LogSpecification String has errors")
         .format(console_formatter)
         .print_message()

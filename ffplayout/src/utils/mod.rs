@@ -4,6 +4,7 @@ use std::{
     fmt,
     fs::{self, metadata, File},
     io::{stdin, stdout, Read, Write},
+    net::TcpListener,
     path::{Path, PathBuf},
     str::FromStr,
 };
@@ -12,6 +13,7 @@ use chrono::{format::ParseErrorKind, prelude::*};
 use faccess::PathExt;
 use once_cell::sync::OnceCell;
 use path_clean::PathClean;
+use rand::Rng;
 use rpassword::read_password;
 use serde::{de, Deserialize, Deserializer, Serialize};
 use simplelog::*;
@@ -19,11 +21,14 @@ use sqlx::{sqlite::SqliteRow, FromRow, Pool, Row, Sqlite};
 
 use crate::ARGS;
 
+pub mod advanced_config;
 pub mod args_parse;
 pub mod channels;
+pub mod config;
 pub mod control;
 pub mod errors;
 pub mod files;
+pub mod logging;
 pub mod playlist;
 pub mod system;
 
@@ -387,4 +392,18 @@ where
             }
         }
     }
+}
+
+/// get a free tcp socket
+pub fn free_tcp_socket(exclude_socket: String) -> Option<String> {
+    for _ in 0..100 {
+        let port = rand::thread_rng().gen_range(45321..54268);
+        let socket = format!("127.0.0.1:{port}");
+
+        if socket != exclude_socket && TcpListener::bind(("127.0.0.1", port)).is_ok() {
+            return Some(socket);
+        }
+    }
+
+    None
 }

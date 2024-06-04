@@ -6,10 +6,12 @@ use sysinfo::{Disks, Networks, System};
 
 pub mod api;
 pub mod db;
+pub mod macros;
 pub mod player;
 pub mod sse;
 pub mod utils;
 
+use utils::advanced_config::AdvancedConfig;
 use utils::args_parse::Args;
 
 lazy_static! {
