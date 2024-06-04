@@ -6,6 +6,9 @@ input_param = ""
 # output_param get also applied to ingest instance.
 output_param = ""
 
+[encoder]
+input_param = ""
+
 [filters]
 deinterlace = "" # yadif=0:-1:0
 pad_scale_w = "" # scale={}:-1
@@ -29,9 +32,6 @@ afade_out = "" # afade=out:st={}:d=1.0
 apad = "" # apad=whole_dur={}
 volume = "" # volume={}
 split = "" # split={}{}
-
-[encoder]
-input_param = ""
 
 [ingest]
 input_param = ""
