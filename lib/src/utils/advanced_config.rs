@@ -8,6 +8,7 @@ use shlex::split;
 pub struct AdvancedConfig {
     pub decoder: DecoderConfig,
     pub encoder: EncoderConfig,
+    pub filters: Filters,
     pub ingest: IngestConfig,
 }
 
@@ -18,7 +19,6 @@ pub struct DecoderConfig {
     pub input_param: Option<String>,
     #[serde_as(as = "NoneAsEmptyString")]
     pub output_param: Option<String>,
-    pub filters: Filters,
     #[serde(skip_serializing, skip_deserializing)]
     pub input_cmd: Option<Vec<String>>,
     #[serde(skip_serializing, skip_deserializing)]
