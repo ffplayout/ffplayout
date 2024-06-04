@@ -1,6 +1,3 @@
-extern crate log;
-extern crate simplelog;
-
 use std::{
     collections::HashMap,
     io::{self, ErrorKind, Write},
@@ -10,14 +7,15 @@ use std::{
     time::Duration,
 };
 
+use actix_web::{rt::time::interval, web};
 use chrono::prelude::*;
 use flexi_logger::writers::{FileLogWriter, LogWriter};
 use flexi_logger::{Age, Cleanup, Criterion, DeferredNow, FileSpec, Logger, Naming};
 use lettre::{
-    message::header, transport::smtp::authentication::Credentials, Message, SmtpTransport,
-    Transport,
+    message::header, transport::smtp::authentication::Credentials, AsyncSmtpTransport,
+    AsyncTransport, Message, Tokio1Executor,
 };
-use log::{kv::Value, Level, LevelFilter, Log, Metadata, Record};
+use log::{kv::Value, *};
 use paris::formatter::colorize_string;
 
 use crate::utils::{
@@ -138,6 +136,76 @@ fn file_logger(config: &Logging) -> Box<dyn LogWriter> {
     } else {
         Box::new(LogConsole)
     }
+}
+
+/// send log messages to mail recipient
+pub async fn send_mail(config: &PlayoutConfig, msg: String) {
+    let recipient = config
+        .mail
+        .recipient
+        .split_terminator([',', ';', ' '])
+        .filter(|s| s.contains('@'))
+        .map(|s| s.trim())
+        .collect::<Vec<&str>>();
+
+    let mut message = Message::builder()
+        .from(config.mail.sender_addr.parse().unwrap())
+        .subject(&config.mail.subject)
+        .header(header::ContentType::TEXT_PLAIN);
+
+    for r in recipient {
+        message = message.to(r.parse().unwrap());
+    }
+
+    if let Ok(mail) = message.body(msg) {
+        let credentials = Credentials::new(
+            config.mail.sender_addr.clone(),
+            config.mail.sender_pass.clone(),
+        );
+
+        let mut transporter =
+            AsyncSmtpTransport::<Tokio1Executor>::relay(config.mail.smtp_server.clone().as_str());
+
+        if config.mail.starttls {
+            transporter = AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(
+                config.mail.smtp_server.clone().as_str(),
+            );
+        }
+
+        let mailer = transporter.unwrap().credentials(credentials).build();
+
+        // Send the mail
+        if let Err(e) = mailer.send(&mail).await? {
+            error!(target: "{file}", channel = 1; "Could not send mail: {e}");
+        }
+    } else {
+        error!(target: "{file}", channel = 1; "Mail Message failed!");
+    }
+}
+
+/// Basic Mail Queue
+///
+/// Check every give seconds for messages and send them.
+fn mail_queue(config: PlayoutConfig, messages: Arc<Mutex<Vec<String>>>) {
+    let sec = config.mail.interval;
+
+    actix_web::rt::spawn(async move {
+        let mut interval = interval(Duration::from_secs(sec));
+
+        loop {
+            let mut msg = messages.lock().unwrap();
+
+            if msg.len() > 0 {
+                send_mail(&config, msg.join("\n")).await;
+
+                msg.clear();
+            }
+
+            drop(msg);
+
+            interval.tick().await;
+        }
+    });
 }
 
 /// Initialize our logging, to have:
