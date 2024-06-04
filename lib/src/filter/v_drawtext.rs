@@ -47,7 +47,7 @@ pub fn filter_node(
         filter = match &config
             .advanced
             .clone()
-            .and_then(|a| a.decoder.filters.drawtext_from_file)
+            .and_then(|a| a.filters.drawtext_from_file)
         {
             Some(drawtext) => custom_format(drawtext, &[&escaped_text, &config.text.style, &font]),
             None => format!("drawtext=text='{escaped_text}':{}{font}", config.text.style),
@@ -64,7 +64,7 @@ pub fn filter_node(
         filter = match config
             .advanced
             .as_ref()
-            .and_then(|a| a.decoder.filters.drawtext_from_zmq.clone())
+            .and_then(|a| a.filters.drawtext_from_zmq.clone())
         {
             Some(drawtext) => custom_format(&drawtext, &[&socket.replace(':', "\\:"), &filter_cmd]),
             None => format!(
