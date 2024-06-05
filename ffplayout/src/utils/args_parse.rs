@@ -19,6 +19,18 @@ pub struct Args {
     #[clap(short, long, help = "Listen on IP:PORT, like: 127.0.0.1:8787")]
     pub listen: Option<String>,
 
+    #[clap(long, help = "Keep log file for given days")]
+    pub log_backup_count: Option<usize>,
+
+    #[clap(long, help = "Override logging level: trace, debug, info, warn, error")]
+    pub log_level: Option<String>,
+
+    #[clap(long, help = "Logging path")]
+    pub log_path: Option<PathBuf>,
+
+    #[clap(long, help = "Log to console")]
+    pub log_to_console: bool,
+
     #[clap(short, long, help = "Initialize Database")]
     pub init: bool,
 

@@ -38,6 +38,8 @@ async fn create_schema(conn: &Pool<Sqlite>) -> Result<SqliteQueryResult, sqlx::E
             config_path              TEXT NOT NULL,
             extra_extensions         TEXT NOT NULL,
             active                   INTEGER NOT NULL DEFAULT 0,
+            modified                 TEXT,
+            time_shift               REAL NOT NULL DEFAULT 0,
             UNIQUE(name)
         );
     CREATE TABLE IF NOT EXISTS presets

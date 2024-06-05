@@ -20,7 +20,7 @@ authorization = "av2Kx8g67lF9qj5wEH3ym1bI4cCs"
 help_text = """Send error messages to email address, like missing playlist; invalid \
     json format; missing clip path. Leave recipient blank, if you don't need this.
     'mail_level' can be INFO, WARNING or ERROR.
-    'interval' means seconds until a new mail will be sended."""
+    'interval' means seconds until a new mail will be sended, value must be in increments of 10."""
 subject = "Playout Error"
 smtp_server = "mail.example.org"
 starttls = true
@@ -28,7 +28,7 @@ sender_addr = "ffplayout@example.org"
 sender_pass = "abc123"
 recipient = ""
 mail_level = "ERROR"
-interval = 30
+interval = 120
 
 [logging]
 help_text = """If 'log_to_file' is true, log to file, when is false log to console.

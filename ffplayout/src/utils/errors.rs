@@ -121,3 +121,21 @@ impl From<std::io::Error> for ProcessError {
         ProcessError::IO(err)
     }
 }
+
+impl From<lettre::address::AddressError> for ProcessError {
+    fn from(err: lettre::address::AddressError) -> ProcessError {
+        ProcessError::Custom(err.to_string())
+    }
+}
+
+impl From<lettre::transport::smtp::Error> for ProcessError {
+    fn from(err: lettre::transport::smtp::Error) -> ProcessError {
+        ProcessError::Custom(err.to_string())
+    }
+}
+
+impl From<lettre::error::Error> for ProcessError {
+    fn from(err: lettre::error::Error) -> ProcessError {
+        ProcessError::Custom(err.to_string())
+    }
+}

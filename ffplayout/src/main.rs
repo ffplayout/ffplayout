@@ -1,4 +1,11 @@
-use std::{collections::HashSet, env, process::exit, sync::Arc, thread};
+use std::{
+    collections::HashSet,
+    env, io,
+    path::PathBuf,
+    process::exit,
+    sync::{Arc, Mutex},
+    thread,
+};
 
 use actix_files::Files;
 use actix_web::{
@@ -10,23 +17,26 @@ use actix_web_httpauth::{extractors::bearer::BearerAuth, middleware::HttpAuthent
 #[cfg(all(not(debug_assertions), feature = "embed_frontend"))]
 use actix_web_static_files::ResourceFiles;
 
+use log::*;
 use path_clean::PathClean;
-use simplelog::*;
-use tokio::sync::Mutex;
 
 use ffplayout::{
     api::{auth, routes::*},
     db::{db_pool, handles, models::LoginUser},
     player::controller::ChannelController,
     sse::{broadcast::Broadcaster, routes::*, AuthState},
-    utils::{control::ProcessControl, db_path, init_config, run_args},
+    utils::{
+        config::PlayoutConfig,
+        control::ProcessControl,
+        db_path, init_globales,
+        logging::{init_logging, MailQueue},
+        round_to_nearest_ten, run_args,
+    },
     ARGS,
 };
 
 #[cfg(any(debug_assertions, not(feature = "embed_frontend")))]
 use ffplayout::utils::public_path;
-
-use ffplayout_lib::utils::{init_logging, PlayoutConfig};
 
 #[cfg(all(not(debug_assertions), feature = "embed_frontend"))]
 include!(concat!(env!("OUT_DIR"), "/generated.rs"));
@@ -51,52 +61,68 @@ async fn validator(
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    let mut config = PlayoutConfig::new(None, None);
-    config.mail.recipient = String::new();
-    config.logging.log_to_file = false;
-    config.logging.timestamp = false;
-
-    let logging = init_logging(&config, None, None);
-    CombinedLogger::init(logging).unwrap();
-
     if let Err(c) = run_args().await {
         exit(c);
     }
 
-    let pool = match db_pool().await {
-        Ok(p) => p,
-        Err(e) => {
-            error!("{e}");
-            exit(1);
-        }
-    };
-
-    let channel_controller = ChannelController::new();
-    let mut channels = handles::select_all_channels(&pool)
+    let pool = db_pool()
         .await
-        .unwrap_or_default();
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
 
-    for channel in channels.iter_mut() {
-        let channel_clone = channel.clone();
+    let _channel_controller = ChannelController::new();
+    let channels = handles::select_all_channels(&pool)
+        .await
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+
+    let mail_queues = Arc::new(Mutex::new(vec![]));
+    let mail_messages = Arc::new(Mutex::new(vec![]));
+
+    for channel in channels.iter() {
+        println!("channel: {channel:?}");
+        let _channel_clone = channel.clone();
+
+        let config_path = PathBuf::from(&channel.config_path);
+        let config = match web::block(move || PlayoutConfig::new(Some(config_path), None)).await {
+            Ok(config) => config,
+            Err(e) => {
+                error!("Failed to load configuration: {}", e);
+                continue;
+            }
+        };
+
+        let queue = MailQueue::new(
+            channel.id,
+            round_to_nearest_ten(config.mail.interval),
+            config.mail,
+        );
+
+        if let Ok(mut q) = mail_queues.lock() {
+            q.push(queue);
+        }
+
         if channel.active {
             thread::spawn(move || {
-                println!("{channel_clone:?}");
+                thread::sleep(std::time::Duration::from_secs(5));
+
+                error!(target: "{mail}", channel = 1; "This logs to File and Mail");
             });
         }
     }
+
+    init_logging(mail_queues, mail_messages)?;
 
     if let Some(conn) = &ARGS.listen {
         if db_path().is_err() {
             error!("Database is not initialized! Init DB first and add admin user.");
             exit(1);
         }
-        init_config(&pool).await;
+        init_globales(&pool).await;
         let ip_port = conn.split(':').collect::<Vec<&str>>();
         let addr = ip_port[0];
         let port = ip_port[1].parse::<u16>().unwrap();
         let engine_process = web::Data::new(ProcessControl::new());
         let auth_state = web::Data::new(AuthState {
-            uuids: Mutex::new(HashSet::new()),
+            uuids: tokio::sync::Mutex::new(HashSet::new()),
         });
         let broadcast_data = Broadcaster::create();
 

@@ -126,7 +126,7 @@ impl GlobalSettings {
 
 static INSTANCE: OnceCell<GlobalSettings> = OnceCell::new();
 
-pub async fn init_config(conn: &Pool<Sqlite>) {
+pub async fn init_globales(conn: &Pool<Sqlite>) {
     let config = GlobalSettings::new(conn).await;
     INSTANCE.set(config).unwrap();
 }
@@ -406,4 +406,12 @@ pub fn free_tcp_socket(exclude_socket: String) -> Option<String> {
     }
 
     None
+}
+
+pub fn round_to_nearest_ten(num: u64) -> u64 {
+    if num % 10 >= 5 {
+        ((num / 10) + 1) * 10
+    } else {
+        (num / 10) * 10
+    }
 }
