@@ -102,18 +102,12 @@ impl LogWriter for MultiFileLogger {
 }
 
 pub struct LogMailer {
-    pub messages: Arc<Mutex<Vec<MailMessage>>>,
+    pub mail_queues: Arc<Mutex<Vec<MailQueue>>>,
 }
 
 impl LogMailer {
-    pub fn new(messages: Arc<Mutex<Vec<MailMessage>>>) -> Self {
-        Self { messages }
-    }
-
-    fn push(&self, msg: MailMessage) {
-        if let Ok(mut list) = self.messages.lock() {
-            list.push(msg)
-        }
+    pub fn new(mail_queues: Arc<Mutex<Vec<MailQueue>>>) -> Self {
+        Self { mail_queues }
     }
 }
 
@@ -129,18 +123,20 @@ impl LogWriter for LogMailer {
         )
         .unwrap_or(0);
 
-        let msg = MailMessage::new(
-            id,
+        let msg = format!(
+            "[{}] [{:>5}] {}",
+            now.now().format("%Y-%m-%d %H:%M:%S"),
             record.level(),
-            format!(
-                "[{}] [{:>5}] {}",
-                now.now().format("%Y-%m-%d %H:%M:%S"),
-                record.level(),
-                record.args()
-            ),
+            record.args()
         );
 
-        self.push(msg.clone());
+        if let Ok(mut queues) = self.mail_queues.lock() {
+            if let Some(queue) = queues.iter_mut().find(|q| q.id == id) {
+                if queue.level_eq(record.level()) {
+                    queue.push(msg)
+                }
+            }
+        }
 
         Ok(())
     }
@@ -152,28 +148,41 @@ impl LogWriter for LogMailer {
 #[derive(Clone, Debug)]
 pub struct MailQueue {
     pub id: i32,
-    pub expire: u64,
     pub config: Mail,
     pub lines: Vec<String>,
 }
 
 impl MailQueue {
-    pub fn new(id: i32, expire: u64, config: Mail) -> Self {
+    pub fn new(id: i32, config: Mail) -> Self {
         Self {
             id,
-            expire,
             config,
             lines: vec![],
         }
     }
 
-    pub fn update(&mut self, expire: u64, config: Mail) {
-        self.expire = expire;
+    pub fn level_eq(&self, level: Level) -> bool {
+        match level {
+            Level::Error => self.config.mail_level == Level::Error,
+            Level::Warn => matches!(self.config.mail_level, Level::Warn | Level::Error),
+            Level::Info => matches!(
+                self.config.mail_level,
+                Level::Info | Level::Warn | Level::Error
+            ),
+            _ => false,
+        }
+    }
+
+    pub fn update(&mut self, config: Mail) {
         self.config = config;
     }
 
     pub fn clear(&mut self) {
         self.lines.clear();
+    }
+
+    pub fn push(&mut self, line: String) {
+        self.lines.push(line);
     }
 
     fn text(&self) -> String {
@@ -182,28 +191,6 @@ impl MailQueue {
 
     fn is_empty(&self) -> bool {
         self.lines.is_empty()
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct MailMessage {
-    pub id: i32,
-    pub level: Level,
-    pub line: String,
-}
-
-impl MailMessage {
-    pub fn new(id: i32, level: Level, line: String) -> Self {
-        Self { id, level, line }
-    }
-
-    fn eq(&self, level: Level) -> bool {
-        match level {
-            Level::Error => self.level == Level::Error,
-            Level::Warn => matches!(self.level, Level::Warn | Level::Error),
-            Level::Info => matches!(self.level, Level::Info | Level::Warn | Level::Error),
-            _ => false,
-        }
     }
 }
 
@@ -250,9 +237,7 @@ fn file_logger() -> Box<dyn LogWriter> {
     if ARGS.log_to_console {
         Box::new(LogConsole)
     } else {
-        let logger = MultiFileLogger::new(log_path);
-
-        Box::new(logger)
+        Box::new(MultiFileLogger::new(log_path))
     }
 }
 
@@ -297,7 +282,7 @@ pub async fn send_mail(config: &Mail, msg: String) -> Result<(), ProcessError> {
 /// Basic Mail Queue
 ///
 /// Check every give seconds for messages and send them.
-pub fn mail_queue(mail_queues: Arc<Mutex<Vec<MailQueue>>>, messages: Arc<Mutex<Vec<MailMessage>>>) {
+pub fn mail_queue(mail_queues: Arc<Mutex<Vec<MailQueue>>>) {
     actix_web::rt::spawn(async move {
         let sec = 10;
         let mut interval = interval(Duration::from_secs(sec));
@@ -313,7 +298,7 @@ pub fn mail_queue(mail_queues: Arc<Mutex<Vec<MailQueue>>>, messages: Arc<Mutex<V
                 counter += sec;
             }
 
-            let mut msg_list = match mail_queues.lock() {
+            let mut queues = match mail_queues.lock() {
                 Ok(l) => l,
                 Err(e) => {
                     error!("Failed to lock mail_queues {e}");
@@ -321,30 +306,18 @@ pub fn mail_queue(mail_queues: Arc<Mutex<Vec<MailQueue>>>, messages: Arc<Mutex<V
                 }
             };
 
-            let mut msgs = match messages.lock() {
-                Ok(m) => m,
-                Err(e) => {
-                    error!("Failed to lock messages {e}");
-                    continue;
-                }
-            };
-
-            while let Some(msg) = msgs.pop() {
-                if let Some(queue) = msg_list.iter_mut().find(|q| q.id == msg.id) {
-                    if msg.eq(queue.config.mail_level) {
-                        queue.lines.push(msg.line.clone());
-                    }
-                }
-            }
-
             // Process mail queues and send emails
-            for queue in msg_list.iter_mut() {
+            for queue in queues.iter_mut() {
                 let interval = round_to_nearest_ten(counter);
+                let expire = round_to_nearest_ten(queue.config.interval);
 
-                if interval % queue.expire == 0 && !queue.is_empty() {
-                    if let Err(e) = send_mail(&queue.config, queue.text()).await {
-                        error!(target: "{file}", channel = queue.id; "Failed to send mail: {e}");
+                if interval % expire == 0 && !queue.is_empty() {
+                    if queue.config.recipient.contains('@') {
+                        if let Err(e) = send_mail(&queue.config, queue.text()).await {
+                            error!(target: "{file}", channel = queue.id; "Failed to send mail: {e}");
+                        }
                     }
+
                     // Clear the messages after sending the email
                     queue.clear();
                 }
@@ -358,10 +331,7 @@ pub fn mail_queue(mail_queues: Arc<Mutex<Vec<MailQueue>>>, messages: Arc<Mutex<V
 /// - console logger
 /// - file logger
 /// - mail logger
-pub fn init_logging(
-    mail_queues: Arc<Mutex<Vec<MailQueue>>>,
-    messages: Arc<Mutex<Vec<MailMessage>>>,
-) -> io::Result<()> {
+pub fn init_logging(mail_queues: Arc<Mutex<Vec<MailQueue>>>) -> io::Result<()> {
     let log_level = match ARGS
         .log_level
         .clone()
@@ -378,7 +348,7 @@ pub fn init_logging(
         _ => LevelFilter::Debug,
     };
 
-    mail_queue(mail_queues, messages.clone());
+    mail_queue(mail_queues.clone());
 
     // Build the initial log specification
     let mut builder = LogSpecification::builder();
@@ -396,7 +366,7 @@ pub fn init_logging(
         .format(console_formatter)
         .log_to_stderr()
         .add_writer("file", file_logger())
-        .add_writer("mail", Box::new(LogMailer::new(messages)))
+        .add_writer("mail", Box::new(LogMailer::new(mail_queues)))
         .start()
         .map_err(|e| io::Error::new(ErrorKind::Other, e.to_string()))?;
 

@@ -30,7 +30,7 @@ use ffplayout::{
         control::ProcessControl,
         db_path, init_globales,
         logging::{init_logging, MailQueue},
-        round_to_nearest_ten, run_args,
+        run_args,
     },
     ARGS,
 };
@@ -75,7 +75,9 @@ async fn main() -> std::io::Result<()> {
         .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
 
     let mail_queues = Arc::new(Mutex::new(vec![]));
-    let mail_messages = Arc::new(Mutex::new(vec![]));
+
+    init_globales(&pool).await;
+    init_logging(mail_queues.clone())?;
 
     for channel in channels.iter() {
         println!("channel: {channel:?}");
@@ -90,33 +92,31 @@ async fn main() -> std::io::Result<()> {
             }
         };
 
-        let queue = MailQueue::new(
-            channel.id,
-            round_to_nearest_ten(config.mail.interval),
-            config.mail,
-        );
+        let queue = MailQueue::new(channel.id, config.mail);
 
-        if let Ok(mut q) = mail_queues.lock() {
-            q.push(queue);
+        if let Ok(mut mq) = mail_queues.lock() {
+            mq.push(queue);
         }
+
+        warn!("This logs to console");
 
         if channel.active {
             thread::spawn(move || {
-                thread::sleep(std::time::Duration::from_secs(5));
+                info!(target: "{file}", channel = 1; "Start Playout");
 
-                error!(target: "{mail}", channel = 1; "This logs to File and Mail");
+                thread::sleep(std::time::Duration::from_secs(1));
+
+                error!(target: "{file,mail}", channel = 1; "This logs to File and Mail");
             });
         }
     }
-
-    init_logging(mail_queues, mail_messages)?;
 
     if let Some(conn) = &ARGS.listen {
         if db_path().is_err() {
             error!("Database is not initialized! Init DB first and add admin user.");
             exit(1);
         }
-        init_globales(&pool).await;
+
         let ip_port = conn.split(':').collect::<Vec<&str>>();
         let addr = ip_port[0];
         let port = ip_port[1].parse::<u16>().unwrap();
@@ -130,6 +130,8 @@ async fn main() -> std::io::Result<()> {
 
         // no 'allow origin' here, give it to the reverse proxy
         HttpServer::new(move || {
+            let queues = mail_queues.clone();
+
             let auth = HttpAuthentication::bearer(validator);
             let db_pool = web::Data::new(pool.clone());
             // Customize logging format to get IP though proxies.
@@ -138,6 +140,7 @@ async fn main() -> std::io::Result<()> {
 
             let mut web_app = App::new()
                 .app_data(db_pool)
+                .app_data(web::Data::from(queues))
                 .app_data(engine_process.clone())
                 .app_data(auth_state.clone())
                 .app_data(web::Data::from(Arc::clone(&broadcast_data)))
