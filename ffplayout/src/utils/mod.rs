@@ -31,6 +31,7 @@ pub mod files;
 pub mod logging;
 pub mod playlist;
 pub mod system;
+pub mod task_runner;
 
 use crate::db::{
     db_pool,

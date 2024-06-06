@@ -2,6 +2,7 @@ use std::io;
 
 use actix_web::{error::ResponseError, Error, HttpResponse};
 use derive_more::Display;
+use ffprobe::FfProbeError;
 
 #[derive(Debug, Display)]
 pub enum ServiceError {
@@ -113,12 +114,20 @@ pub enum ProcessError {
     #[display(fmt = "IO error: {}", _0)]
     IO(io::Error),
     #[display(fmt = "{}", _0)]
+    Ffprobe(FfProbeError),
+    #[display(fmt = "{}", _0)]
     Custom(String),
 }
 
 impl From<std::io::Error> for ProcessError {
     fn from(err: std::io::Error) -> ProcessError {
         ProcessError::IO(err)
+    }
+}
+
+impl From<FfProbeError> for ProcessError {
+    fn from(err: FfProbeError) -> Self {
+        Self::Ffprobe(err)
     }
 }
 
@@ -136,6 +145,12 @@ impl From<lettre::transport::smtp::Error> for ProcessError {
 
 impl From<lettre::error::Error> for ProcessError {
     fn from(err: lettre::error::Error) -> ProcessError {
+        ProcessError::Custom(err.to_string())
+    }
+}
+
+impl<T> From<std::sync::PoisonError<T>> for ProcessError {
+    fn from(err: std::sync::PoisonError<T>) -> ProcessError {
         ProcessError::Custom(err.to_string())
     }
 }

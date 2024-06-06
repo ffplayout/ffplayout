@@ -407,3 +407,24 @@ pub fn init_logging(mail_queues: Arc<Mutex<Vec<Arc<Mutex<MailQueue>>>>>) -> io::
 
     Ok(())
 }
+
+/// Format ingest and HLS logging output
+pub fn log_line(line: &str, level: &str) {
+    if line.contains("[info]") && level.to_lowercase() == "info" {
+        info!("<bright black>[Server]</> {}", line.replace("[info] ", ""))
+    } else if line.contains("[warning]")
+        && (level.to_lowercase() == "warning" || level.to_lowercase() == "info")
+    {
+        warn!(
+            "<bright black>[Server]</> {}",
+            line.replace("[warning] ", "")
+        )
+    } else if line.contains("[error]")
+        && !line.contains("Input/output error")
+        && !line.contains("Broken pipe")
+    {
+        error!("<bright black>[Server]</> {}", line.replace("[error] ", ""));
+    } else if line.contains("[fatal]") {
+        error!("<bright black>[Server]</> {}", line.replace("[fatal] ", ""))
+    }
+}

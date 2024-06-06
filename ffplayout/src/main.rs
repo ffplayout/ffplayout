@@ -23,7 +23,7 @@ use path_clean::PathClean;
 use ffplayout::{
     api::{auth, routes::*},
     db::{db_pool, handles, models::LoginUser},
-    player::controller::ChannelController,
+    player::controller::{self, ChannelController, ChannelManager},
     sse::{broadcast::Broadcaster, routes::*, AuthState},
     utils::{
         config::PlayoutConfig,
@@ -69,7 +69,7 @@ async fn main() -> std::io::Result<()> {
         .await
         .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
 
-    let _channel_controller = ChannelController::new();
+    let channel_controller = Arc::new(Mutex::new(ChannelController::new()));
     let channels = handles::select_all_channels(&pool)
         .await
         .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
@@ -80,9 +80,6 @@ async fn main() -> std::io::Result<()> {
     init_logging(mail_queues.clone())?;
 
     for channel in channels.iter() {
-        println!("channel: {channel:?}");
-        let _channel_clone = channel.clone();
-
         let config_path = PathBuf::from(&channel.config_path);
         let config = match web::block(move || PlayoutConfig::new(Some(config_path), None)).await {
             Ok(config) => config,
@@ -92,26 +89,27 @@ async fn main() -> std::io::Result<()> {
             }
         };
 
+        let channel_manager = Arc::new(Mutex::new(ChannelManager::new(
+            channel.clone(),
+            config.clone(),
+        )));
+
+        channel_controller
+            .lock()
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?
+            .add(channel_manager);
+        let control_clone = channel_controller.clone();
         let m_queue = Arc::new(Mutex::new(MailQueue::new(channel.id, config.mail)));
 
         if let Ok(mut mqs) = mail_queues.lock() {
             mqs.push(m_queue.clone());
         }
 
-        warn!("This logs to console");
-
         if channel.active {
+            info!(target: Target::file(), channel = channel.id; "Start Playout");
+
             thread::spawn(move || {
-                info!(target: Target::file(), channel = 1; "Start Playout");
-
-                thread::sleep(std::time::Duration::from_secs(1));
-
-                error!(target: Target::file_mail(), channel = 1; "This logs to File and Mail, channel 1");
-                error!(target: Target::file_mail(), channel = 2; "This logs to File and Mail, channel 2");
-                error!(target: Target::file_mail(), channel = 1; "This logs to File and Mail, channel 1");
-                error!(target: Target::file_mail(), channel = 3; "This logs to File and Mail, channel 3");
-                error!(target: Target::file_mail(), channel = 1; "This logs to File and Mail, channel 1");
-                error!(target: Target::file_mail(), channel = 1; "This logs to File and Mail, channel 1");
+                controller::start(control_clone);
             });
         }
     }
