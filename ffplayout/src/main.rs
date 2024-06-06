@@ -29,7 +29,7 @@ use ffplayout::{
         config::PlayoutConfig,
         control::ProcessControl,
         db_path, init_globales,
-        logging::{init_logging, MailQueue},
+        logging::{init_logging, MailQueue, Target},
         run_args,
     },
     ARGS,
@@ -92,21 +92,26 @@ async fn main() -> std::io::Result<()> {
             }
         };
 
-        let queue = MailQueue::new(channel.id, config.mail);
+        let m_queue = Arc::new(Mutex::new(MailQueue::new(channel.id, config.mail)));
 
-        if let Ok(mut mq) = mail_queues.lock() {
-            mq.push(queue);
+        if let Ok(mut mqs) = mail_queues.lock() {
+            mqs.push(m_queue.clone());
         }
 
         warn!("This logs to console");
 
         if channel.active {
             thread::spawn(move || {
-                info!(target: "{file}", channel = 1; "Start Playout");
+                info!(target: Target::file(), channel = 1; "Start Playout");
 
                 thread::sleep(std::time::Duration::from_secs(1));
 
-                error!(target: "{file,mail}", channel = 1; "This logs to File and Mail");
+                error!(target: Target::file_mail(), channel = 1; "This logs to File and Mail, channel 1");
+                error!(target: Target::file_mail(), channel = 2; "This logs to File and Mail, channel 2");
+                error!(target: Target::file_mail(), channel = 1; "This logs to File and Mail, channel 1");
+                error!(target: Target::file_mail(), channel = 3; "This logs to File and Mail, channel 3");
+                error!(target: Target::file_mail(), channel = 1; "This logs to File and Mail, channel 1");
+                error!(target: Target::file_mail(), channel = 1; "This logs to File and Mail, channel 1");
             });
         }
     }

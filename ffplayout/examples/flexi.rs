@@ -2,16 +2,10 @@ use std::fmt;
 
 use flexi_logger::{
     filter::{LogLineFilter, LogLineWriter},
-    DeferredNow, FlexiLoggerError, FormatFunction, Logger,
+    DeferredNow, FlexiLoggerError, Logger,
 };
 use log::info;
 use log::kv::Key;
-
-use flexi_logger::writers::LogWriter;
-use std::{
-    io::{Error, ErrorKind},
-    sync::{Arc, Mutex},
-};
 
 #[derive(Debug)]
 enum Target {
@@ -56,7 +50,7 @@ fn main() -> Result<(), FlexiLoggerError> {
         .filter(Box::new(Console))
         .start()?;
 
-    info!(target = Target::Terminal.as_str(); "info logging");
+    info!(target: Target::Terminal.as_str(), "info logging");
 
     Ok(())
 }
