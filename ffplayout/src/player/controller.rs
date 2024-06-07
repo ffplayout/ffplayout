@@ -5,6 +5,7 @@ use std::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc, Mutex,
     },
+    thread,
 };
 
 #[cfg(not(windows))]
@@ -16,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use crate::db::models::Channel;
 use crate::player::{
     output::{player, write_hls},
-    utils::Media,
+    utils::{folder::fill_filler_list, Media},
 };
 use crate::utils::{
     config::{OutputMode::*, PlayoutConfig},
@@ -245,12 +246,26 @@ impl ChannelController {
             channel.id != channel_id
         });
     }
+
+    pub fn run_count(&self) -> usize {
+        self.channels
+            .iter()
+            .filter(|manager| manager.is_alive.load(Ordering::SeqCst))
+            .count()
+    }
 }
 
-pub fn start(channel: Arc<Mutex<ChannelManager>>) -> Result<(), ProcessError> {
-    let mode = channel.lock()?.config.lock()?.out.mode.clone();
+pub fn start(channel: ChannelManager) -> Result<(), ProcessError> {
+    let config = channel.config.lock()?.clone();
+    let mode = config.out.mode.clone();
     let play_control = PlayerControl::new();
+    let play_control_clone = play_control.clone();
     let play_status = PlayoutStatus::new();
+
+    // Fill filler list, can also be a single file.
+    thread::spawn(move || {
+        fill_filler_list(&config, Some(play_control_clone));
+    });
 
     match mode {
         // write files/playlist to HLS m3u8 playlist

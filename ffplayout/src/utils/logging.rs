@@ -393,6 +393,8 @@ pub fn init_logging(mail_queues: Arc<Mutex<Vec<Arc<Mutex<MailQueue>>>>>) -> io::
     let mut builder = LogSpecification::builder();
     builder
         .default(log_level)
+        .module("actix_files", LevelFilter::Error)
+        .module("actix_web", LevelFilter::Error)
         .module("hyper", LevelFilter::Error)
         .module("libc", LevelFilter::Error)
         .module("neli", LevelFilter::Error)

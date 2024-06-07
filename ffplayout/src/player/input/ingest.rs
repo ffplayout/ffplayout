@@ -1,7 +1,7 @@
 use std::{
     io::{BufRead, BufReader, Read},
     process::{exit, ChildStderr, Command, Stdio},
-    sync::{atomic::Ordering, Arc, Mutex},
+    sync::atomic::Ordering,
     thread,
 };
 
@@ -25,7 +25,7 @@ fn server_monitor(
     level: &str,
     ignore: Vec<String>,
     buffer: BufReader<ChildStderr>,
-    channel_mgr: Arc<Mutex<ChannelManager>>,
+    channel_mgr: ChannelManager,
 ) -> Result<(), ProcessError> {
     for line in buffer.lines() {
         let line = line?;
@@ -37,7 +37,7 @@ fn server_monitor(
         }
 
         if line.contains("rtmp") && line.contains("Unexpected stream") && !valid_stream(&line) {
-            if let Err(e) = channel_mgr.lock()?.stop(Ingest) {
+            if let Err(e) = channel_mgr.stop(Ingest) {
                 error!("{e}");
             };
         }
@@ -46,7 +46,7 @@ fn server_monitor(
             .iter()
             .any(|i| line.contains(*i))
         {
-            channel_mgr.lock()?.stop_all();
+            channel_mgr.stop_all();
         }
     }
 
@@ -59,7 +59,7 @@ fn server_monitor(
 pub fn ingest_server(
     config: PlayoutConfig,
     ingest_sender: Sender<(usize, [u8; 65088])>,
-    channel_mgr: Arc<Mutex<ChannelManager>>,
+    channel_mgr: ChannelManager,
 ) -> Result<(), ProcessError> {
     let mut buffer: [u8; 65088] = [0; 65088];
     let mut server_cmd = vec_strings!["-hide_banner", "-nostats", "-v", "level+info"];
@@ -67,8 +67,8 @@ pub fn ingest_server(
     let mut dummy_media = Media::new(0, "Live Stream", false);
     dummy_media.unit = Ingest;
     dummy_media.add_filter(&config, &None);
-    let is_terminated = channel_mgr.lock()?.is_terminated.clone();
-    let ingest_is_running = channel_mgr.lock()?.ingest_is_running.clone();
+    let is_terminated = channel_mgr.is_terminated.clone();
+    let ingest_is_running = channel_mgr.ingest_is_running.clone();
 
     if let Some(ingest_input_cmd) = config
         .advanced
@@ -93,7 +93,7 @@ pub fn ingest_server(
 
     if let Some(url) = stream_input.iter().find(|s| s.contains("://")) {
         if !test_tcp_port(url) {
-            channel_mgr.lock()?.stop_all();
+            channel_mgr.stop_all();
             exit(1);
         }
 
@@ -126,7 +126,7 @@ pub fn ingest_server(
         let error_reader_thread =
             thread::spawn(move || server_monitor(&level, ignore, server_err, proc_ctl));
 
-        *channel_mgr.lock()?.ingest.lock().unwrap() = Some(server_proc);
+        *channel_mgr.ingest.lock().unwrap() = Some(server_proc);
         is_running = false;
 
         loop {
@@ -147,10 +147,7 @@ pub fn ingest_server(
                 if let Err(e) = ingest_sender.send((bytes_len, buffer)) {
                     error!("Ingest server write error: {e:?}");
 
-                    channel_mgr
-                        .lock()?
-                        .is_terminated
-                        .store(true, Ordering::SeqCst);
+                    is_terminated.store(true, Ordering::SeqCst);
                     break;
                 }
             } else {
@@ -161,7 +158,7 @@ pub fn ingest_server(
         drop(ingest_reader);
         ingest_is_running.store(false, Ordering::SeqCst);
 
-        if let Err(e) = channel_mgr.lock()?.wait(Ingest) {
+        if let Err(e) = channel_mgr.wait(Ingest) {
             error!("{e}")
         }
 

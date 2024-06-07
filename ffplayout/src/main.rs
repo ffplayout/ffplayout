@@ -2,7 +2,7 @@ use std::{
     collections::HashSet,
     env, io,
     path::PathBuf,
-    process::exit,
+    process::{self, exit},
     sync::{Arc, Mutex},
     thread,
 };
@@ -27,9 +27,8 @@ use ffplayout::{
     sse::{broadcast::Broadcaster, routes::*, AuthState},
     utils::{
         config::PlayoutConfig,
-        control::ProcessControl,
         db_path, init_globales,
-        logging::{init_logging, MailQueue, Target},
+        logging::{init_logging, MailQueue},
         run_args,
     },
     ARGS,
@@ -40,6 +39,14 @@ use ffplayout::utils::public_path;
 
 #[cfg(all(not(debug_assertions), feature = "embed_frontend"))]
 include!(concat!(env!("OUT_DIR"), "/generated.rs"));
+
+fn thread_counter() -> usize {
+    let available_threads = thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(1);
+
+    (available_threads / 2).max(2)
+}
 
 async fn validator(
     req: ServiceRequest,
@@ -69,7 +76,7 @@ async fn main() -> std::io::Result<()> {
         .await
         .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
 
-    let channel_controller = Arc::new(Mutex::new(ChannelController::new()));
+    let channel_controllers = Arc::new(Mutex::new(ChannelController::new()));
     let channels = handles::select_all_channels(&pool)
         .await
         .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
@@ -89,16 +96,13 @@ async fn main() -> std::io::Result<()> {
             }
         };
 
-        let channel_manager = Arc::new(Mutex::new(ChannelManager::new(
-            channel.clone(),
-            config.clone(),
-        )));
+        let channel_manager = ChannelManager::new(channel.clone(), config.clone());
 
-        channel_controller
+        channel_controllers
             .lock()
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?
-            .add(channel_manager);
-        let control_clone = channel_controller.clone();
+            .add(channel_manager.clone());
+        let controllers = channel_controllers.clone();
         let m_queue = Arc::new(Mutex::new(MailQueue::new(channel.id, config.mail)));
 
         if let Ok(mut mqs) = mail_queues.lock() {
@@ -106,10 +110,14 @@ async fn main() -> std::io::Result<()> {
         }
 
         if channel.active {
-            info!(target: Target::file(), channel = channel.id; "Start Playout");
-
             thread::spawn(move || {
-                controller::start(control_clone);
+                if let Err(e) = controller::start(channel_manager) {
+                    error!("{e}");
+                };
+
+                if controllers.lock().unwrap().run_count() == 0 {
+                    process::exit(0)
+                };
             });
         }
     }
@@ -123,13 +131,15 @@ async fn main() -> std::io::Result<()> {
         let ip_port = conn.split(':').collect::<Vec<&str>>();
         let addr = ip_port[0];
         let port = ip_port[1].parse::<u16>().unwrap();
-        let engine_process = web::Data::new(ProcessControl::new());
+        let controllers = web::Data::from(channel_controllers);
         let auth_state = web::Data::new(AuthState {
             uuids: tokio::sync::Mutex::new(HashSet::new()),
         });
         let broadcast_data = Broadcaster::create();
+        let thread_count = thread_counter();
 
-        info!("running ffplayout API, listen on http://{conn}");
+        info!("Running ffplayout API, listen on http://{conn}");
+        debug!("Use {thread_count} threads for the webserver");
 
         // no 'allow origin' here, give it to the reverse proxy
         HttpServer::new(move || {
@@ -144,7 +154,7 @@ async fn main() -> std::io::Result<()> {
             let mut web_app = App::new()
                 .app_data(db_pool)
                 .app_data(web::Data::from(queues))
-                .app_data(engine_process.clone())
+                .app_data(controllers.clone())
                 .app_data(auth_state.clone())
                 .app_data(web::Data::from(Arc::clone(&broadcast_data)))
                 .wrap(logger)
@@ -231,6 +241,7 @@ async fn main() -> std::io::Result<()> {
             web_app
         })
         .bind((addr, port))?
+        .workers(thread_count)
         .run()
         .await
     } else {

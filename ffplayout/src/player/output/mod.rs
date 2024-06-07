@@ -1,7 +1,7 @@
 use std::{
     io::{prelude::*, BufReader, BufWriter, Read},
     process::{Command, Stdio},
-    sync::{atomic::Ordering, Arc, Mutex},
+    sync::atomic::Ordering,
     thread::{self, sleep},
     time::Duration,
 };
@@ -34,11 +34,11 @@ use crate::vec_strings;
 /// When a live ingest arrive, it stops the current playing and switch to the live source.
 /// When ingest stops, it switch back to playlist/folder mode.
 pub fn player(
-    channel_mgr: Arc<Mutex<ChannelManager>>,
+    channel_mgr: ChannelManager,
     play_control: &PlayerControl,
     playout_stat: PlayoutStatus,
 ) -> Result<(), ProcessError> {
-    let config = channel_mgr.lock()?.config.lock()?.clone();
+    let config = channel_mgr.config.lock()?.clone();
     let config_clone = config.clone();
     let ff_log_format = format!("level+{}", config.logging.ffmpeg_level.to_lowercase());
     let ignore_enc = config.logging.ignore_lines.clone();
@@ -47,16 +47,15 @@ pub fn player(
     let playlist_init = playout_stat.list_init.clone();
     let play_stat = playout_stat.clone();
 
-    let channel = channel_mgr.lock()?;
-    let is_terminated = channel_mgr.lock()?.is_terminated.clone();
-    let ingest_is_running = channel_mgr.lock()?.ingest_is_running.clone();
+    let is_terminated = channel_mgr.is_terminated.clone();
+    let ingest_is_running = channel_mgr.ingest_is_running.clone();
 
     // get source iterator
     let node_sources = source_generator(
         config.clone(),
         play_control,
         playout_stat,
-        channel.is_terminated.clone(),
+        is_terminated.clone(),
     );
 
     // get ffmpeg output instance
@@ -70,7 +69,7 @@ pub fn player(
     let mut enc_writer = BufWriter::new(enc_proc.stdin.take().unwrap());
     let enc_err = BufReader::new(enc_proc.stderr.take().unwrap());
 
-    *channel.encoder.lock().unwrap() = Some(enc_proc);
+    *channel_mgr.encoder.lock().unwrap() = Some(enc_proc);
     let enc_p_ctl = channel_mgr.clone();
 
     // spawn a thread to log ffmpeg output error messages
@@ -188,7 +187,7 @@ pub fn player(
         let mut dec_reader = BufReader::new(dec_proc.stdout.take().unwrap());
         let dec_err = BufReader::new(dec_proc.stderr.take().unwrap());
 
-        *channel_mgr.lock()?.decoder.lock().unwrap() = Some(dec_proc);
+        *channel_mgr.clone().decoder.lock().unwrap() = Some(dec_proc);
         let channel_mgr_c = channel_mgr.clone();
 
         let error_decoder_thread =
@@ -200,7 +199,7 @@ pub fn player(
                 if !live_on {
                     info!("Switch from {} to live ingest", config.processing.mode);
 
-                    if let Err(e) = channel_mgr.lock()?.stop(Decoder) {
+                    if let Err(e) = channel_mgr.stop(Decoder) {
                         error!("{e}")
                     }
 
@@ -245,7 +244,7 @@ pub fn player(
             }
         }
 
-        if let Err(e) = channel_mgr.lock()?.wait(Decoder) {
+        if let Err(e) = channel_mgr.wait(Decoder) {
             error!("{e}")
         }
 
@@ -258,7 +257,7 @@ pub fn player(
 
     sleep(Duration::from_secs(1));
 
-    channel_mgr.lock()?.stop_all();
+    channel_mgr.stop_all();
 
     if let Err(e) = error_encoder_thread.join() {
         error!("{e:?}");

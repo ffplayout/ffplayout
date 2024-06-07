@@ -799,7 +799,7 @@ pub fn stderr_reader(
     buffer: BufReader<ChildStderr>,
     ignore: Vec<String>,
     suffix: ProcessUnit,
-    channel_mgr: Arc<Mutex<ChannelManager>>,
+    channel_mgr: ChannelManager,
 ) -> Result<(), ProcessError> {
     for line in buffer.lines() {
         let line = line?;
@@ -832,7 +832,7 @@ pub fn stderr_reader(
                 || (line.contains("No such file or directory")
                     && !line.contains("failed to delete old segment"))
             {
-                channel_mgr.lock()?.stop_all();
+                channel_mgr.stop_all();
                 exit(1);
             }
         }

@@ -20,7 +20,7 @@ out:
 use std::{
     io::{BufRead, BufReader},
     process::{exit, Command, Stdio},
-    sync::{atomic::Ordering, Arc, Mutex},
+    sync::atomic::Ordering,
     thread::{self, sleep},
     time::Duration,
 };
@@ -45,7 +45,7 @@ use crate::{
 fn ingest_to_hls_server(
     config: PlayoutConfig,
     playout_stat: PlayoutStatus,
-    channel_mgr: Arc<Mutex<ChannelManager>>,
+    channel_mgr: ChannelManager,
 ) -> Result<(), ProcessError> {
     let playlist_init = playout_stat.list_init;
 
@@ -54,8 +54,8 @@ fn ingest_to_hls_server(
     let mut dummy_media = Media::new(0, "Live Stream", false);
     dummy_media.unit = Ingest;
 
-    let is_terminated = channel_mgr.lock()?.is_terminated.clone();
-    let ingest_is_running = channel_mgr.lock()?.ingest_is_running.clone();
+    let is_terminated = channel_mgr.is_terminated.clone();
+    let ingest_is_running = channel_mgr.ingest_is_running.clone();
 
     if let Some(ingest_input_cmd) = config
         .advanced
@@ -71,7 +71,7 @@ fn ingest_to_hls_server(
 
     if let Some(url) = stream_input.iter().find(|s| s.contains("://")) {
         if !test_tcp_port(url) {
-            channel_mgr.lock()?.stop_all();
+            channel_mgr.stop_all();
             exit(1);
         }
 
@@ -101,14 +101,14 @@ fn ingest_to_hls_server(
         };
 
         let server_err = BufReader::new(server_proc.stderr.take().unwrap());
-        *channel_mgr.lock()?.ingest.lock().unwrap() = Some(server_proc);
+        *channel_mgr.ingest.lock().unwrap() = Some(server_proc);
         is_running = false;
 
         for line in server_err.lines() {
             let line = line?;
 
             if line.contains("rtmp") && line.contains("Unexpected stream") && !valid_stream(&line) {
-                if let Err(e) = proc_ctl.lock()?.stop(Ingest) {
+                if let Err(e) = proc_ctl.stop(Ingest) {
                     error!("{e}");
                 };
             }
@@ -120,7 +120,7 @@ fn ingest_to_hls_server(
 
                 info!("Switch from {} to live ingest", config.processing.mode);
 
-                if let Err(e) = channel_mgr.lock()?.stop(Decoder) {
+                if let Err(e) = channel_mgr.stop(Decoder) {
                     error!("{e}");
                 }
             }
@@ -134,7 +134,7 @@ fn ingest_to_hls_server(
 
         ingest_is_running.store(false, Ordering::SeqCst);
 
-        if let Err(e) = channel_mgr.lock()?.wait(Ingest) {
+        if let Err(e) = channel_mgr.wait(Ingest) {
             error!("{e}")
         }
 
@@ -150,18 +150,18 @@ fn ingest_to_hls_server(
 ///
 /// Write with single ffmpeg instance directly to a HLS playlist.
 pub fn write_hls(
-    channel_mgr: Arc<Mutex<ChannelManager>>,
+    channel_mgr: ChannelManager,
     player_control: PlayerControl,
     playout_stat: PlayoutStatus,
 ) -> Result<(), ProcessError> {
-    let config = channel_mgr.lock()?.config.lock()?.clone();
+    let config = channel_mgr.config.lock()?.clone();
     let config_clone = config.clone();
     let ff_log_format = format!("level+{}", config.logging.ffmpeg_level.to_lowercase());
     let play_stat = playout_stat.clone();
     let play_stat2 = playout_stat.clone();
     let channel_mgr_c = channel_mgr.clone();
-    let is_terminated = channel_mgr.lock()?.is_terminated.clone();
-    let ingest_is_running = channel_mgr.lock()?.ingest_is_running.clone();
+    let is_terminated = channel_mgr.is_terminated.clone();
+    let ingest_is_running = channel_mgr.ingest_is_running.clone();
 
     let get_source = source_generator(
         config.clone(),
@@ -261,13 +261,13 @@ pub fn write_hls(
         };
 
         let enc_err = BufReader::new(dec_proc.stderr.take().unwrap());
-        *channel_mgr.lock()?.decoder.lock().unwrap() = Some(dec_proc);
+        *channel_mgr.decoder.lock().unwrap() = Some(dec_proc);
 
         if let Err(e) = stderr_reader(enc_err, ignore, Decoder, channel_mgr.clone()) {
             error!("{e:?}")
         };
 
-        if let Err(e) = channel_mgr.lock()?.wait(Decoder) {
+        if let Err(e) = channel_mgr.wait(Decoder) {
             error!("{e}");
         }
 
@@ -278,7 +278,7 @@ pub fn write_hls(
 
     sleep(Duration::from_secs(1));
 
-    channel_mgr.lock()?.stop_all();
+    channel_mgr.stop_all();
 
     Ok(())
 }

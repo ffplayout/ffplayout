@@ -31,7 +31,7 @@ ffprobe = "0.4"
 flexi_logger = { version = "0.28", features = ["kv", "colors"] }
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
 home = "0.5"
-itertools = "0.12"
+itertools = "0.13"
 jsonwebtoken = "9"
 lazy_static = "1.4"
 lettre = { version = "0.11", features = ["builder", "rustls-tls", "smtp-transport", "tokio1", "tokio1-rustls-tls"], default-features = false }
