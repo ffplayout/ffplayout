@@ -13,9 +13,11 @@ pub use folder::watchman;
 pub use ingest::ingest_server;
 pub use playlist::CurrentProgram;
 
-use crate::utils::config::PlayoutConfig;
-use ffplayout_lib::utils::{controller::PlayerControl, folder::FolderSource};
-use ffplayout_lib::utils::{Media, PlayoutStatus, ProcessMode::*};
+use crate::player::{
+    controller::{PlayerControl, PlayoutStatus},
+    utils::{folder::FolderSource, Media},
+};
+use crate::utils::config::{PlayoutConfig, ProcessMode::*};
 
 /// Create a source iterator from playlist, or from folder.
 pub fn source_generator(

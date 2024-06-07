@@ -28,6 +28,7 @@ pub mod config;
 pub mod control;
 pub mod errors;
 pub mod files;
+pub mod generator;
 pub mod logging;
 pub mod playlist;
 pub mod system;
@@ -38,8 +39,8 @@ use crate::db::{
     handles::{db_init, insert_user, select_channel, select_global},
     models::{Channel, User},
 };
-use crate::utils::errors::ServiceError;
-use ffplayout_lib::utils::{time_to_sec, PlayoutConfig};
+use crate::player::utils::time_to_sec;
+use crate::utils::{config::PlayoutConfig, errors::ServiceError, logging::log_file_path};
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
 pub enum Role {
@@ -308,42 +309,30 @@ pub async fn playout_config(
     ))
 }
 
-pub async fn read_log_file(
-    conn: &Pool<Sqlite>,
-    channel_id: &i32,
-    date: &str,
-) -> Result<String, ServiceError> {
-    if let Ok(channel) = select_channel(conn, channel_id).await {
-        let mut date_str = "".to_string();
+pub async fn read_log_file(channel_id: &i32, date: &str) -> Result<String, ServiceError> {
+    let mut date_str = "".to_string();
 
-        if !date.is_empty() {
-            date_str.push('.');
-            date_str.push_str(date);
-        }
-
-        if let Ok(config) = read_playout_config(&channel.config_path) {
-            let mut log_path = Path::new(&config.logging.path)
-                .join("ffplayout.log")
-                .display()
-                .to_string();
-            log_path.push_str(&date_str);
-
-            let file_size = metadata(&log_path)?.len() as f64;
-
-            let file_content = if file_size > 5000000.0 {
-                error!("Log file to big: {}", sizeof_fmt(file_size));
-                format!("The log file is larger ({}) than the hard limit of 5MB, the probability is very high that something is wrong with the playout. Check this on the server with `less {log_path}`.", sizeof_fmt(file_size))
-            } else {
-                fs::read_to_string(log_path)?
-            };
-
-            return Ok(file_content);
-        }
+    if !date.is_empty() {
+        date_str.push('.');
+        date_str.push_str(date);
     }
 
-    Err(ServiceError::NoContent(
-        "Requested log file not exists, or not readable.".to_string(),
-    ))
+    let mut log_path = log_file_path()
+        .join(format!("ffplayout_{channel_id}.log"))
+        .display()
+        .to_string();
+    log_path.push_str(&date_str);
+
+    let file_size = metadata(&log_path)?.len() as f64;
+
+    let file_content = if file_size > 5000000.0 {
+        error!("Log file to big: {}", sizeof_fmt(file_size));
+        format!("The log file is larger ({}) than the hard limit of 5MB, the probability is very high that something is wrong with the playout. Check this on the server with `less {log_path}`.", sizeof_fmt(file_size))
+    } else {
+        fs::read_to_string(log_path)?
+    };
+
+    return Ok(file_content);
 }
 
 /// get human readable file size

@@ -1,7 +1,7 @@
 use std::{
     io::{prelude::*, BufReader, BufWriter, Read},
     process::{Command, Stdio},
-    sync::atomic::Ordering,
+    sync::{atomic::Ordering, Arc, Mutex},
     thread::{self, sleep},
     time::Duration,
 };
@@ -16,14 +16,13 @@ mod stream;
 
 pub use hls::write_hls;
 
-use crate::player::input::{ingest_server, source_generator};
-use crate::utils::{config::PlayoutConfig, task_runner};
-
-use ffplayout_lib::utils::{
-    sec_to_time, stderr_reader, OutputMode::*, PlayerControl, PlayoutStatus, ProcessControl,
-    ProcessUnit::*,
+use crate::player::{
+    controller::{ChannelManager, PlayerControl, PlayoutStatus, ProcessUnit::*},
+    input::{ingest_server, source_generator},
+    utils::{sec_to_time, stderr_reader},
 };
-use ffplayout_lib::vec_strings;
+use crate::utils::{config::OutputMode::*, errors::ProcessError, task_runner};
+use crate::vec_strings;
 
 /// Player
 ///
@@ -35,11 +34,11 @@ use ffplayout_lib::vec_strings;
 /// When a live ingest arrive, it stops the current playing and switch to the live source.
 /// When ingest stops, it switch back to playlist/folder mode.
 pub fn player(
-    config: &PlayoutConfig,
+    channel_mgr: Arc<Mutex<ChannelManager>>,
     play_control: &PlayerControl,
     playout_stat: PlayoutStatus,
-    proc_control: ProcessControl,
-) {
+) -> Result<(), ProcessError> {
+    let config = channel_mgr.lock()?.config.lock()?.clone();
     let config_clone = config.clone();
     let ff_log_format = format!("level+{}", config.logging.ffmpeg_level.to_lowercase());
     let ignore_enc = config.logging.ignore_lines.clone();
@@ -48,47 +47,51 @@ pub fn player(
     let playlist_init = playout_stat.list_init.clone();
     let play_stat = playout_stat.clone();
 
+    let channel = channel_mgr.lock()?;
+    let is_terminated = channel_mgr.lock()?.is_terminated.clone();
+    let ingest_is_running = channel_mgr.lock()?.ingest_is_running.clone();
+
     // get source iterator
     let node_sources = source_generator(
         config.clone(),
         play_control,
         playout_stat,
-        proc_control.is_terminated.clone(),
+        channel.is_terminated.clone(),
     );
 
     // get ffmpeg output instance
     let mut enc_proc = match config.out.mode {
-        Desktop => desktop::output(config, &ff_log_format),
-        Null => null::output(config, &ff_log_format),
-        Stream => stream::output(config, &ff_log_format),
+        Desktop => desktop::output(&config, &ff_log_format),
+        Null => null::output(&config, &ff_log_format),
+        Stream => stream::output(&config, &ff_log_format),
         _ => panic!("Output mode doesn't exists!"),
     };
 
     let mut enc_writer = BufWriter::new(enc_proc.stdin.take().unwrap());
     let enc_err = BufReader::new(enc_proc.stderr.take().unwrap());
 
-    *proc_control.encoder_term.lock().unwrap() = Some(enc_proc);
-    let enc_p_ctl = proc_control.clone();
+    *channel.encoder.lock().unwrap() = Some(enc_proc);
+    let enc_p_ctl = channel_mgr.clone();
 
     // spawn a thread to log ffmpeg output error messages
     let error_encoder_thread =
         thread::spawn(move || stderr_reader(enc_err, ignore_enc, Encoder, enc_p_ctl));
 
-    let proc_control_c = proc_control.clone();
+    let channel_mgr_c = channel_mgr.clone();
     let mut ingest_receiver = None;
 
     // spawn a thread for ffmpeg ingest server and create a channel for package sending
     if config.ingest.enable {
         let (ingest_sender, rx) = bounded(96);
         ingest_receiver = Some(rx);
-        thread::spawn(move || ingest_server(config_clone, ingest_sender, proc_control_c));
+        thread::spawn(move || ingest_server(config_clone, ingest_sender, channel_mgr_c));
     }
 
     'source_iter: for node in node_sources {
         *play_control.current_media.lock().unwrap() = Some(node.clone());
         let ignore_dec = config.logging.ignore_lines.clone();
 
-        if proc_control.is_terminated.load(Ordering::SeqCst) {
+        if is_terminated.load(Ordering::SeqCst) {
             debug!("Playout is terminated, break out from source loop");
             break;
         }
@@ -128,7 +131,7 @@ pub fn player(
             if config.task.path.is_file() {
                 let task_config = config.clone();
                 let task_node = node.clone();
-                let server_running = proc_control.server_is_running.load(Ordering::SeqCst);
+                let server_running = ingest_is_running.load(Ordering::SeqCst);
                 let stat = play_stat.clone();
 
                 thread::spawn(move || {
@@ -185,19 +188,19 @@ pub fn player(
         let mut dec_reader = BufReader::new(dec_proc.stdout.take().unwrap());
         let dec_err = BufReader::new(dec_proc.stderr.take().unwrap());
 
-        *proc_control.decoder_term.lock().unwrap() = Some(dec_proc);
-        let dec_p_ctl = proc_control.clone();
+        *channel_mgr.lock()?.decoder.lock().unwrap() = Some(dec_proc);
+        let channel_mgr_c = channel_mgr.clone();
 
         let error_decoder_thread =
-            thread::spawn(move || stderr_reader(dec_err, ignore_dec, Decoder, dec_p_ctl));
+            thread::spawn(move || stderr_reader(dec_err, ignore_dec, Decoder, channel_mgr_c));
 
         loop {
             // when server is running, read from it
-            if proc_control.server_is_running.load(Ordering::SeqCst) {
+            if ingest_is_running.load(Ordering::SeqCst) {
                 if !live_on {
                     info!("Switch from {} to live ingest", config.processing.mode);
 
-                    if let Err(e) = proc_control.stop(Decoder) {
+                    if let Err(e) = channel_mgr.lock()?.stop(Decoder) {
                         error!("{e}")
                     }
 
@@ -242,7 +245,7 @@ pub fn player(
             }
         }
 
-        if let Err(e) = proc_control.wait(Decoder) {
+        if let Err(e) = channel_mgr.lock()?.wait(Decoder) {
             error!("{e}")
         }
 
@@ -255,9 +258,11 @@ pub fn player(
 
     sleep(Duration::from_secs(1));
 
-    proc_control.stop_all();
+    channel_mgr.lock()?.stop_all();
 
     if let Err(e) = error_encoder_thread.join() {
         error!("{e:?}");
     };
+
+    Ok(())
 }

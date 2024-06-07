@@ -1,8 +1,10 @@
 use std::process::{self, Command, Stdio};
 
-use simplelog::*;
+use log::*;
 
-use ffplayout_lib::{filter::v_drawtext, utils::PlayoutConfig, vec_strings};
+use crate::player::filter::v_drawtext;
+use crate::utils::config::PlayoutConfig;
+use crate::vec_strings;
 
 /// Desktop Output
 ///

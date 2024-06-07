@@ -6,12 +6,11 @@ use actix_web_lab::{
     util::InfallibleStream,
 };
 
-use ffplayout_lib::utils::PlayoutConfig;
 use parking_lot::Mutex;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 
-use crate::utils::{control::media_info, system};
+use crate::utils::{config::PlayoutConfig, control::media_info, system};
 
 #[derive(Debug, Clone)]
 struct Client {

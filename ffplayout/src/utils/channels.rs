@@ -4,15 +4,8 @@ use rand::prelude::*;
 use simplelog::*;
 use sqlx::{Pool, Sqlite};
 
-use crate::utils::{
-    control::{control_service, ServiceCmd},
-    errors::ServiceError,
-};
-
-use ffplayout_lib::utils::PlayoutConfig;
-
 use crate::db::{handles, models::Channel};
-use crate::utils::playout_config;
+use crate::utils::{config::PlayoutConfig, errors::ServiceError, playout_config};
 
 pub async fn create_channel(
     conn: &Pool<Sqlite>,
@@ -34,7 +27,6 @@ pub async fn create_channel(
     );
 
     config.general.stat_file = format!(".ffp_{channel_name}",);
-    config.logging.path = config.logging.path.join(&channel_name);
     config.rpc_server.address = format!("127.0.0.1:70{:7>2}", channel_num);
     config.playlist.path = config.playlist.path.join(channel_name);
 
@@ -48,17 +40,16 @@ pub async fn create_channel(
     fs::write(&target_channel.config_path, toml_string)?;
 
     let new_channel = handles::insert_channel(conn, target_channel).await?;
-    control_service(conn, &config, new_channel.id, &ServiceCmd::Enable, None).await?;
+    // TODO: Create Channel controller
 
     Ok(new_channel)
 }
 
 pub async fn delete_channel(conn: &Pool<Sqlite>, id: i32) -> Result<(), ServiceError> {
     let channel = handles::select_channel(conn, &id).await?;
-    let (config, _) = playout_config(conn, &id).await?;
+    let (_config, _) = playout_config(conn, &id).await?;
 
-    control_service(conn, &config, channel.id, &ServiceCmd::Stop, None).await?;
-    control_service(conn, &config, channel.id, &ServiceCmd::Disable, None).await?;
+    // TODO: Remove Channel controller
 
     if let Err(e) = fs::remove_file(channel.config_path) {
         error!("{e}");

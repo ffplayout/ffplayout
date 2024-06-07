@@ -18,38 +18,44 @@ out:
 */
 
 use std::{
-    io::{BufRead, BufReader, Error},
+    io::{BufRead, BufReader},
     process::{exit, Command, Stdio},
-    sync::atomic::Ordering,
+    sync::{atomic::Ordering, Arc, Mutex},
     thread::{self, sleep},
     time::Duration,
 };
 
-use simplelog::*;
+use log::*;
 
-use crate::player::{
-    controller::{PlayerControl, PlayoutStatus, ProcessControl, ProcessUnit::*},
-    input::source_generator,
-    utils::{
-        get_delta, prepare_output_cmd, sec_to_time, stderr_reader, test_tcp_port, valid_stream,
-        Media,
-    },
-};
 use crate::utils::{config::PlayoutConfig, logging::log_line, task_runner};
 use crate::vec_strings;
+use crate::{
+    player::{
+        controller::{ChannelManager, PlayerControl, PlayoutStatus, ProcessUnit::*},
+        input::source_generator,
+        utils::{
+            get_delta, prepare_output_cmd, sec_to_time, stderr_reader, test_tcp_port, valid_stream,
+            Media,
+        },
+    },
+    utils::errors::ProcessError,
+};
 
 /// Ingest Server for HLS
 fn ingest_to_hls_server(
     config: PlayoutConfig,
     playout_stat: PlayoutStatus,
-    proc_control: ProcessControl,
-) -> Result<(), Error> {
+    channel_mgr: Arc<Mutex<ChannelManager>>,
+) -> Result<(), ProcessError> {
     let playlist_init = playout_stat.list_init;
 
     let mut server_prefix = vec_strings!["-hide_banner", "-nostats", "-v", "level+info"];
     let stream_input = config.ingest.input_cmd.clone().unwrap();
     let mut dummy_media = Media::new(0, "Live Stream", false);
     dummy_media.unit = Ingest;
+
+    let is_terminated = channel_mgr.lock()?.is_terminated.clone();
+    let ingest_is_running = channel_mgr.lock()?.ingest_is_running.clone();
 
     if let Some(ingest_input_cmd) = config
         .advanced
@@ -65,7 +71,7 @@ fn ingest_to_hls_server(
 
     if let Some(url) = stream_input.iter().find(|s| s.contains("://")) {
         if !test_tcp_port(url) {
-            proc_control.stop_all();
+            channel_mgr.lock()?.stop_all();
             exit(1);
         }
 
@@ -81,7 +87,7 @@ fn ingest_to_hls_server(
             server_cmd.join(" ")
         );
 
-        let proc_ctl = proc_control.clone();
+        let proc_ctl = channel_mgr.clone();
         let mut server_proc = match Command::new("ffmpeg")
             .args(server_cmd.clone())
             .stderr(Stdio::piped())
@@ -95,26 +101,26 @@ fn ingest_to_hls_server(
         };
 
         let server_err = BufReader::new(server_proc.stderr.take().unwrap());
-        *proc_control.server_term.lock().unwrap() = Some(server_proc);
+        *channel_mgr.lock()?.ingest.lock().unwrap() = Some(server_proc);
         is_running = false;
 
         for line in server_err.lines() {
             let line = line?;
 
             if line.contains("rtmp") && line.contains("Unexpected stream") && !valid_stream(&line) {
-                if let Err(e) = proc_ctl.stop(Ingest) {
+                if let Err(e) = proc_ctl.lock()?.stop(Ingest) {
                     error!("{e}");
                 };
             }
 
             if !is_running {
-                proc_control.server_is_running.store(true, Ordering::SeqCst);
+                ingest_is_running.store(true, Ordering::SeqCst);
                 playlist_init.store(true, Ordering::SeqCst);
                 is_running = true;
 
                 info!("Switch from {} to live ingest", config.processing.mode);
 
-                if let Err(e) = proc_control.stop(Decoder) {
+                if let Err(e) = channel_mgr.lock()?.stop(Decoder) {
                     error!("{e}");
                 }
             }
@@ -122,19 +128,17 @@ fn ingest_to_hls_server(
             log_line(&line, &config.logging.ffmpeg_level);
         }
 
-        if proc_control.server_is_running.load(Ordering::SeqCst) {
+        if ingest_is_running.load(Ordering::SeqCst) {
             info!("Switch from live ingest to {}", config.processing.mode);
         }
 
-        proc_control
-            .server_is_running
-            .store(false, Ordering::SeqCst);
+        ingest_is_running.store(false, Ordering::SeqCst);
 
-        if let Err(e) = proc_control.wait(Ingest) {
+        if let Err(e) = channel_mgr.lock()?.wait(Ingest) {
             error!("{e}")
         }
 
-        if proc_control.is_terminated.load(Ordering::SeqCst) {
+        if is_terminated.load(Ordering::SeqCst) {
             break;
         }
     }
@@ -146,27 +150,29 @@ fn ingest_to_hls_server(
 ///
 /// Write with single ffmpeg instance directly to a HLS playlist.
 pub fn write_hls(
-    config: &PlayoutConfig,
+    channel_mgr: Arc<Mutex<ChannelManager>>,
     player_control: PlayerControl,
     playout_stat: PlayoutStatus,
-    proc_control: ProcessControl,
-) {
+) -> Result<(), ProcessError> {
+    let config = channel_mgr.lock()?.config.lock()?.clone();
     let config_clone = config.clone();
     let ff_log_format = format!("level+{}", config.logging.ffmpeg_level.to_lowercase());
     let play_stat = playout_stat.clone();
     let play_stat2 = playout_stat.clone();
-    let proc_control_c = proc_control.clone();
+    let channel_mgr_c = channel_mgr.clone();
+    let is_terminated = channel_mgr.lock()?.is_terminated.clone();
+    let ingest_is_running = channel_mgr.lock()?.ingest_is_running.clone();
 
     let get_source = source_generator(
         config.clone(),
         &player_control,
         playout_stat,
-        proc_control.is_terminated.clone(),
+        is_terminated.clone(),
     );
 
     // spawn a thread for ffmpeg ingest server and create a channel for package sending
     if config.ingest.enable {
-        thread::spawn(move || ingest_to_hls_server(config_clone, play_stat, proc_control_c));
+        thread::spawn(move || ingest_to_hls_server(config_clone, play_stat, channel_mgr_c));
     }
 
     for node in get_source {
@@ -192,7 +198,7 @@ pub fn write_hls(
             if config.task.path.is_file() {
                 let task_config = config.clone();
                 let task_node = node.clone();
-                let server_running = proc_control.server_is_running.load(Ordering::SeqCst);
+                let server_running = ingest_is_running.load(Ordering::SeqCst);
                 let stat = play_stat2.clone();
 
                 thread::spawn(move || {
@@ -219,7 +225,7 @@ pub fn write_hls(
         let mut read_rate = 1.0;
 
         if let Some(begin) = &node.begin {
-            let (delta, _) = get_delta(config, begin);
+            let (delta, _) = get_delta(&config, begin);
             let duration = node.out - node.seek;
             let speed = duration / (duration + delta);
 
@@ -235,7 +241,7 @@ pub fn write_hls(
         enc_prefix.append(&mut vec_strings!["-readrate", read_rate]);
 
         enc_prefix.append(&mut cmd);
-        let enc_cmd = prepare_output_cmd(config, enc_prefix, &node.filter);
+        let enc_cmd = prepare_output_cmd(&config, enc_prefix, &node.filter);
 
         debug!(
             "HLS writer CMD: <bright-blue>\"ffmpeg {}\"</>",
@@ -255,22 +261,24 @@ pub fn write_hls(
         };
 
         let enc_err = BufReader::new(dec_proc.stderr.take().unwrap());
-        *proc_control.decoder_term.lock().unwrap() = Some(dec_proc);
+        *channel_mgr.lock()?.decoder.lock().unwrap() = Some(dec_proc);
 
-        if let Err(e) = stderr_reader(enc_err, ignore, Decoder, proc_control.clone()) {
+        if let Err(e) = stderr_reader(enc_err, ignore, Decoder, channel_mgr.clone()) {
             error!("{e:?}")
         };
 
-        if let Err(e) = proc_control.wait(Decoder) {
+        if let Err(e) = channel_mgr.lock()?.wait(Decoder) {
             error!("{e}");
         }
 
-        while proc_control.server_is_running.load(Ordering::SeqCst) {
+        while ingest_is_running.load(Ordering::SeqCst) {
             sleep(Duration::from_secs(1));
         }
     }
 
     sleep(Duration::from_secs(1));
 
-    proc_control.stop_all();
+    channel_mgr.lock()?.stop_all();
+
+    Ok(())
 }

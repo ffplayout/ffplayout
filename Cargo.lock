@@ -1355,6 +1355,7 @@ dependencies = [
  "tokio-stream",
  "toml_edit",
  "uuid",
+ "walkdir",
 ]
 
 [[package]]

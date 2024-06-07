@@ -1,12 +1,13 @@
 use std::process::{self, Command, Stdio};
 
-use simplelog::*;
+use log::*;
 
-use crate::player::utils::prepare_output_cmd;
-use ffplayout_lib::{
-    utils::{Media, PlayoutConfig, ProcessUnit::*},
-    vec_strings,
+use crate::player::{
+    controller::ProcessUnit::*,
+    utils::{prepare_output_cmd, Media},
 };
+use crate::utils::config::PlayoutConfig;
+use crate::vec_strings;
 
 /// Desktop Output
 ///

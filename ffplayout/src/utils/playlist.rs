@@ -3,9 +3,10 @@ use std::{fs, path::PathBuf};
 use simplelog::*;
 use sqlx::{Pool, Sqlite};
 
-use crate::utils::{errors::ServiceError, files::norm_abs_path, playout_config};
-use ffplayout_lib::utils::{
-    generate_playlist as playlist_generator, json_reader, json_writer, JsonPlaylist, PlayoutConfig,
+use crate::player::utils::{json_reader, json_writer, JsonPlaylist};
+use crate::utils::{
+    config::PlayoutConfig, errors::ServiceError, files::norm_abs_path,
+    generator::generate_playlist as playlist_generator, playout_config,
 };
 
 pub async fn read_playlist(

@@ -1,29 +1,32 @@
 use std::{
-    io::{BufRead, BufReader, Error, Read},
+    io::{BufRead, BufReader, Read},
     process::{exit, ChildStderr, Command, Stdio},
-    sync::atomic::Ordering,
+    sync::{atomic::Ordering, Arc, Mutex},
     thread,
 };
 
 use crossbeam_channel::Sender;
 use simplelog::*;
 
-use crate::player::utils::valid_stream;
-use crate::utils::logging::log_line;
-use ffplayout_lib::{
-    utils::{
-        controller::ProcessUnit::*, test_tcp_port, Media, PlayoutConfig, ProcessControl,
-        FFMPEG_IGNORE_ERRORS, FFMPEG_UNRECOVERABLE_ERRORS,
+use crate::utils::{
+    config::{PlayoutConfig, FFMPEG_IGNORE_ERRORS, FFMPEG_UNRECOVERABLE_ERRORS},
+    logging::log_line,
+};
+use crate::vec_strings;
+use crate::{
+    player::{
+        controller::{ChannelManager, ProcessUnit::*},
+        utils::{test_tcp_port, valid_stream, Media},
     },
-    vec_strings,
+    utils::errors::ProcessError,
 };
 
 fn server_monitor(
     level: &str,
     ignore: Vec<String>,
     buffer: BufReader<ChildStderr>,
-    proc_ctl: ProcessControl,
-) -> Result<(), Error> {
+    channel_mgr: Arc<Mutex<ChannelManager>>,
+) -> Result<(), ProcessError> {
     for line in buffer.lines() {
         let line = line?;
 
@@ -34,7 +37,7 @@ fn server_monitor(
         }
 
         if line.contains("rtmp") && line.contains("Unexpected stream") && !valid_stream(&line) {
-            if let Err(e) = proc_ctl.stop(Ingest) {
+            if let Err(e) = channel_mgr.lock()?.stop(Ingest) {
                 error!("{e}");
             };
         }
@@ -43,7 +46,7 @@ fn server_monitor(
             .iter()
             .any(|i| line.contains(*i))
         {
-            proc_ctl.stop_all();
+            channel_mgr.lock()?.stop_all();
         }
     }
 
@@ -56,14 +59,16 @@ fn server_monitor(
 pub fn ingest_server(
     config: PlayoutConfig,
     ingest_sender: Sender<(usize, [u8; 65088])>,
-    proc_control: ProcessControl,
-) -> Result<(), Error> {
+    channel_mgr: Arc<Mutex<ChannelManager>>,
+) -> Result<(), ProcessError> {
     let mut buffer: [u8; 65088] = [0; 65088];
     let mut server_cmd = vec_strings!["-hide_banner", "-nostats", "-v", "level+info"];
     let stream_input = config.ingest.input_cmd.clone().unwrap();
     let mut dummy_media = Media::new(0, "Live Stream", false);
     dummy_media.unit = Ingest;
     dummy_media.add_filter(&config, &None);
+    let is_terminated = channel_mgr.lock()?.is_terminated.clone();
+    let ingest_is_running = channel_mgr.lock()?.ingest_is_running.clone();
 
     if let Some(ingest_input_cmd) = config
         .advanced
@@ -88,7 +93,7 @@ pub fn ingest_server(
 
     if let Some(url) = stream_input.iter().find(|s| s.contains("://")) {
         if !test_tcp_port(url) {
-            proc_control.stop_all();
+            channel_mgr.lock()?.stop_all();
             exit(1);
         }
 
@@ -100,8 +105,8 @@ pub fn ingest_server(
         server_cmd.join(" ")
     );
 
-    while !proc_control.is_terminated.load(Ordering::SeqCst) {
-        let proc_ctl = proc_control.clone();
+    while !is_terminated.load(Ordering::SeqCst) {
+        let proc_ctl = channel_mgr.clone();
         let level = config.logging.ingest_level.clone().unwrap();
         let ignore = config.logging.ignore_lines.clone();
         let mut server_proc = match Command::new("ffmpeg")
@@ -121,7 +126,7 @@ pub fn ingest_server(
         let error_reader_thread =
             thread::spawn(move || server_monitor(&level, ignore, server_err, proc_ctl));
 
-        *proc_control.server_term.lock().unwrap() = Some(server_proc);
+        *channel_mgr.lock()?.ingest.lock().unwrap() = Some(server_proc);
         is_running = false;
 
         loop {
@@ -134,7 +139,7 @@ pub fn ingest_server(
             };
 
             if !is_running {
-                proc_control.server_is_running.store(true, Ordering::SeqCst);
+                ingest_is_running.store(true, Ordering::SeqCst);
                 is_running = true;
             }
 
@@ -142,7 +147,10 @@ pub fn ingest_server(
                 if let Err(e) = ingest_sender.send((bytes_len, buffer)) {
                     error!("Ingest server write error: {e:?}");
 
-                    proc_control.is_terminated.store(true, Ordering::SeqCst);
+                    channel_mgr
+                        .lock()?
+                        .is_terminated
+                        .store(true, Ordering::SeqCst);
                     break;
                 }
             } else {
@@ -151,11 +159,9 @@ pub fn ingest_server(
         }
 
         drop(ingest_reader);
-        proc_control
-            .server_is_running
-            .store(false, Ordering::SeqCst);
+        ingest_is_running.store(false, Ordering::SeqCst);
 
-        if let Err(e) = proc_control.wait(Ingest) {
+        if let Err(e) = channel_mgr.lock()?.wait(Ingest) {
             error!("{e}")
         }
 

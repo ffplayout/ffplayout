@@ -2,7 +2,7 @@ use std::{
     fmt,
     process::Child,
     sync::{
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc, Mutex,
     },
 };
@@ -14,8 +14,14 @@ use log::*;
 use serde::{Deserialize, Serialize};
 
 use crate::db::models::Channel;
-use crate::player::output::{player, write_hls};
-use crate::utils::{config::PlayoutConfig, errors::ProcessError};
+use crate::player::{
+    output::{player, write_hls},
+    utils::Media,
+};
+use crate::utils::{
+    config::{OutputMode::*, PlayoutConfig},
+    errors::ProcessError,
+};
 
 /// Defined process units.
 #[derive(Clone, Debug, Default, Copy, Eq, Serialize, Deserialize, PartialEq)]
@@ -163,6 +169,34 @@ impl ChannelManager {
     }
 }
 
+/// Global player control, to get infos about current clip etc.
+#[derive(Clone, Debug)]
+pub struct PlayerControl {
+    pub current_media: Arc<Mutex<Option<Media>>>,
+    pub current_list: Arc<Mutex<Vec<Media>>>,
+    pub filler_list: Arc<Mutex<Vec<Media>>>,
+    pub current_index: Arc<AtomicUsize>,
+    pub filler_index: Arc<AtomicUsize>,
+}
+
+impl PlayerControl {
+    pub fn new() -> Self {
+        Self {
+            current_media: Arc::new(Mutex::new(None)),
+            current_list: Arc::new(Mutex::new(vec![Media::new(0, "", false)])),
+            filler_list: Arc::new(Mutex::new(vec![])),
+            current_index: Arc::new(AtomicUsize::new(0)),
+            filler_index: Arc::new(AtomicUsize::new(0)),
+        }
+    }
+}
+
+impl Default for PlayerControl {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Global playout control, for move forward/backward clip, or resetting playlist/state.
 #[derive(Clone, Debug)]
 pub struct PlayoutStatus {
@@ -213,15 +247,15 @@ impl ChannelController {
     }
 }
 
-pub fn start(controller: Arc<Mutex<ChannelManager>>) -> Result<(), ProcessError> {
-    let config = controller.lock()?.config.lock()?.clone();
+pub fn start(channel: Arc<Mutex<ChannelManager>>) -> Result<(), ProcessError> {
+    let mode = channel.lock()?.config.lock()?.out.mode.clone();
+    let play_control = PlayerControl::new();
+    let play_status = PlayoutStatus::new();
 
-    match config.out.mode {
+    match mode {
         // write files/playlist to HLS m3u8 playlist
-        HLS => write_hls(&config, play_control, playout_stat, proc_control),
+        HLS => write_hls(channel, play_control, play_status),
         // play on desktop or stream to a remote target
-        _ => player(&config, &play_control, playout_stat, proc_control),
-    };
-
-    Ok(())
+        _ => player(channel, &play_control, play_status),
+    }
 }

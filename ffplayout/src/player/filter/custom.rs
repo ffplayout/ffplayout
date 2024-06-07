@@ -1,5 +1,5 @@
+use log::*;
 use regex::Regex;
-use simplelog::*;
 
 /// Apply custom filters
 pub fn filter_node(filter: &str) -> (String, String) {

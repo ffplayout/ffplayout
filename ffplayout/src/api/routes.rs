@@ -38,9 +38,13 @@ use crate::db::{
     handles,
     models::{Channel, LoginUser, TextPreset, User},
 };
+use crate::player::utils::{
+    get_date_range, import::import_file, sec_to_time, time_to_sec, JsonPlaylist,
+};
 use crate::utils::{
     channels::{create_channel, delete_channel},
-    control::{control_service, control_state, media_info, send_message, ControlParams, Process},
+    config::{PlayoutConfig, Template},
+    control::{control_state, media_info, send_message, ControlParams, Process},
     errors::ServiceError,
     files::{
         browser, create_directory, norm_abs_path, remove_file_or_folder, rename_file, upload,
@@ -50,16 +54,10 @@ use crate::utils::{
     playlist::{delete_playlist, generate_playlist, read_playlist, write_playlist},
     playout_config, public_path, read_log_file, read_playout_config, system, Role,
 };
+use crate::vec_strings;
 use crate::{
     api::auth::{create_jwt, Claims},
     utils::control::ProcessControl,
-};
-use ffplayout_lib::{
-    utils::{
-        get_date_range, import::import_file, sec_to_time, time_to_sec, JsonPlaylist, PlayoutConfig,
-        Template,
-    },
-    vec_strings,
 };
 
 #[derive(Serialize)]
@@ -766,19 +764,12 @@ pub async fn media_last(
 pub async fn process_control(
     pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
-    proc: web::Json<Process>,
-    engine_process: web::Data<ProcessControl>,
+    _proc: web::Json<Process>,
+    _engine_process: web::Data<ProcessControl>,
 ) -> Result<impl Responder, ServiceError> {
-    let (config, _) = playout_config(&pool.clone().into_inner(), &id).await?;
+    let (_config, _) = playout_config(&pool.clone().into_inner(), &id).await?;
 
-    control_service(
-        &pool.into_inner(),
-        &config,
-        *id,
-        &proc.command,
-        Some(engine_process),
-    )
-    .await
+    Ok(web::Json("no implemented"))
 }
 
 /// #### ffplayout Playlist Operations
@@ -901,11 +892,10 @@ pub async fn del_playlist(
 #[get("/log/{id}")]
 #[protect(any("Role::Admin", "Role::User"), ty = "Role")]
 pub async fn get_log(
-    pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
     log: web::Query<DateObj>,
 ) -> Result<impl Responder, ServiceError> {
-    read_log_file(&pool.into_inner(), &id, &log.date).await
+    read_log_file(&id, &log.date).await
 }
 
 /// ### File Operations

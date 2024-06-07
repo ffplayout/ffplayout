@@ -10,13 +10,16 @@ use std::{
 use serde_json::json;
 use simplelog::*;
 
-use ffplayout_lib::utils::{
-    controller::PlayerControl,
-    gen_dummy, get_delta, is_close, is_remote,
-    json_serializer::{read_json, set_defaults},
-    loop_filler, loop_image, modified_time, seek_and_length, time_in_seconds, JsonPlaylist, Media,
-    MediaProbe, PlayoutConfig, PlayoutStatus, IMAGE_FORMAT,
+use crate::player::{
+    controller::{PlayerControl, PlayoutStatus},
+    utils::{
+        gen_dummy, get_delta, is_close, is_remote,
+        json_serializer::{read_json, set_defaults},
+        loop_filler, loop_image, modified_time, seek_and_length, time_in_seconds, JsonPlaylist,
+        Media, MediaProbe,
+    },
 };
+use crate::utils::config::{PlayoutConfig, IMAGE_FORMAT};
 
 /// Struct for current playlist.
 ///

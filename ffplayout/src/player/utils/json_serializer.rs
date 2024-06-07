@@ -8,10 +8,14 @@ use std::{
 
 use simplelog::*;
 
-use crate::utils::{
-    get_date, is_remote, modified_time, time_from_header, validate_playlist, Media, PlayerControl,
-    PlayoutConfig, DUMMY_LEN,
+use crate::player::{
+    controller::PlayerControl,
+    utils::{
+        get_date, is_remote, json_validate::validate_playlist, modified_time, time_from_header,
+        Media, PlayoutConfig,
+    },
 };
+use crate::utils::config::DUMMY_LEN;
 
 /// This is our main playlist object, it holds all necessary information for the current day.
 #[derive(Debug, Serialize, Deserialize, Clone)]

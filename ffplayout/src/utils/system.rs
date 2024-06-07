@@ -4,8 +4,8 @@ use local_ip_address::list_afinet_netifas;
 use serde::Serialize;
 use sysinfo::System;
 
+use crate::utils::config::PlayoutConfig;
 use crate::{DISKS, NETWORKS, SYS};
-use ffplayout_lib::utils::PlayoutConfig;
 
 const IGNORE_INTERFACES: [&str; 7] = ["docker", "lxdbr", "tab", "tun", "virbr", "veth", "vnet"];
 

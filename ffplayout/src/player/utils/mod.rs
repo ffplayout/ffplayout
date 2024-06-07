@@ -19,19 +19,20 @@ use serde::{de::Deserializer, Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use simplelog::*;
 
+pub mod folder;
+pub mod import;
 pub mod json_serializer;
+pub mod json_validate;
 
-use crate::db::models::Channel;
 use crate::player::{
     controller::{
-        PlayoutStatus,
+        ChannelManager, PlayoutStatus,
         ProcessUnit::{self, *},
     },
     filter::{filter_chains, Filters},
 };
 use crate::utils::{
-    config::{OutputMode::HLS, PlayoutConfig, FFMPEG_IGNORE_ERRORS, FFMPEG_UNRECOVERABLE_ERRORS},
-    control::ProcessControl,
+    config::{OutputMode::*, PlayoutConfig, FFMPEG_IGNORE_ERRORS, FFMPEG_UNRECOVERABLE_ERRORS},
     errors::ProcessError,
 };
 pub use json_serializer::{read_json, JsonPlaylist};
@@ -144,7 +145,6 @@ pub fn get_media_map(media: Media) -> Value {
 /// prepare json object for response
 pub fn get_data_map(
     config: &PlayoutConfig,
-    channel: Channel,
     media: Media,
     playout_stat: &PlayoutStatus,
     server_is_running: bool,
@@ -799,8 +799,8 @@ pub fn stderr_reader(
     buffer: BufReader<ChildStderr>,
     ignore: Vec<String>,
     suffix: ProcessUnit,
-    proc_control: ProcessControl,
-) -> Result<(), Error> {
+    channel_mgr: Arc<Mutex<ChannelManager>>,
+) -> Result<(), ProcessError> {
     for line in buffer.lines() {
         let line = line?;
 
@@ -832,7 +832,7 @@ pub fn stderr_reader(
                 || (line.contains("No such file or directory")
                     && !line.contains("failed to delete old segment"))
             {
-                proc_control.stop_all();
+                channel_mgr.lock()?.stop_all();
                 exit(1);
             }
         }

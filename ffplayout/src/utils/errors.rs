@@ -111,12 +111,16 @@ impl From<uuid::Error> for ServiceError {
 pub enum ProcessError {
     #[display(fmt = "Failed to spawn ffmpeg/ffprobe. {}", _0)]
     CommandSpawn(io::Error),
+    #[display(fmt = "{}", _0)]
+    Custom(String),
     #[display(fmt = "IO error: {}", _0)]
     IO(io::Error),
     #[display(fmt = "{}", _0)]
     Ffprobe(FfProbeError),
-    #[display(fmt = "{}", _0)]
-    Custom(String),
+    #[display(fmt = "Regex compile error {}", _0)]
+    Regex(String),
+    #[display(fmt = "Thread error {}", _0)]
+    Thread(String),
 }
 
 impl From<std::io::Error> for ProcessError {
@@ -152,5 +156,23 @@ impl From<lettre::error::Error> for ProcessError {
 impl<T> From<std::sync::PoisonError<T>> for ProcessError {
     fn from(err: std::sync::PoisonError<T>) -> ProcessError {
         ProcessError::Custom(err.to_string())
+    }
+}
+
+impl From<regex::Error> for ProcessError {
+    fn from(err: regex::Error) -> Self {
+        Self::Regex(err.to_string())
+    }
+}
+
+impl From<serde_json::Error> for ProcessError {
+    fn from(err: serde_json::Error) -> Self {
+        Self::Custom(err.to_string())
+    }
+}
+
+impl From<Box<dyn std::any::Any + std::marker::Send>> for ProcessError {
+    fn from(err: Box<dyn std::any::Any + std::marker::Send>) -> Self {
+        Self::Thread(format!("{err:?}"))
     }
 }

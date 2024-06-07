@@ -253,7 +253,7 @@ fn file_formatter(
     )
 }
 
-fn file_logger() -> Box<dyn LogWriter> {
+pub fn log_file_path() -> PathBuf {
     let mut log_path = ARGS
         .log_path
         .clone()
@@ -263,10 +263,14 @@ fn file_logger() -> Box<dyn LogWriter> {
         log_path = env::current_dir().unwrap();
     }
 
+    log_path
+}
+
+fn file_logger() -> Box<dyn LogWriter> {
     if ARGS.log_to_console {
         Box::new(LogConsole)
     } else {
-        Box::new(MultiFileLogger::new(log_path))
+        Box::new(MultiFileLogger::new(log_file_path()))
     }
 }
 

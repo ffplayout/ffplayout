@@ -15,7 +15,6 @@ use crate::player::{
     utils::{custom_format, fps_calc, is_close, Media},
 };
 use crate::utils::config::{OutputMode::*, PlayoutConfig};
-
 use crate::vec_strings;
 
 #[derive(Clone, Debug, Copy, Eq, PartialEq)]

@@ -17,7 +17,8 @@ use notify::{
 use notify_debouncer_full::new_debouncer;
 use simplelog::*;
 
-use ffplayout_lib::utils::{include_file_extension, Media, PlayoutConfig};
+use crate::player::utils::{include_file_extension, Media};
+use crate::utils::config::PlayoutConfig;
 
 /// Create a watcher, which monitor file changes.
 /// When a change is register, update the current file list.

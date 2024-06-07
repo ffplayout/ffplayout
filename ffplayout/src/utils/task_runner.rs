@@ -4,7 +4,8 @@ use log::*;
 
 use crate::player::utils::get_data_map;
 
-use ffplayout_lib::utils::{config::PlayoutConfig, Media, PlayoutStatus};
+use crate::player::{controller::PlayoutStatus, utils::Media};
+use crate::utils::config::PlayoutConfig;
 
 pub fn run(config: PlayoutConfig, node: Media, playout_stat: PlayoutStatus, server_running: bool) {
     let obj =
