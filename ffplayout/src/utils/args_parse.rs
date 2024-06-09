@@ -31,9 +31,6 @@ pub struct Args {
     #[clap(long, help = "Log to console")]
     pub log_to_console: bool,
 
-    #[clap(short, long, help = "Initialize Database")]
-    pub init: bool,
-
     #[clap(short, long, help = "domain name for initialization")]
     pub domain: Option<String>,
 

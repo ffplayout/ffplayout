@@ -1,5 +1,3 @@
-use std::env;
-
 use argon2::{
     password_hash::{rand_core::OsRng, SaltString},
     Argon2, PasswordHasher,
@@ -16,124 +14,39 @@ use crate::db::{
 };
 use crate::utils::{db_path, local_utc_offset, GlobalSettings, Role};
 
-async fn create_schema(conn: &Pool<Sqlite>) -> Result<SqliteQueryResult, sqlx::Error> {
-    let query = r#"PRAGMA foreign_keys = ON;
-    CREATE TABLE IF NOT EXISTS global
-        (
-            id                       INTEGER PRIMARY KEY AUTOINCREMENT,
-            secret                   TEXT NOT NULL,
-            UNIQUE(secret)
-        );
-    CREATE TABLE IF NOT EXISTS roles
-        (
-            id                       INTEGER PRIMARY KEY AUTOINCREMENT,
-            name                     TEXT NOT NULL,
-            UNIQUE(name)
-        );
-    CREATE TABLE IF NOT EXISTS channels
-        (
-            id                       INTEGER PRIMARY KEY AUTOINCREMENT,
-            name                     TEXT NOT NULL,
-            preview_url              TEXT NOT NULL,
-            config_path              TEXT NOT NULL,
-            extra_extensions         TEXT NOT NULL,
-            active                   INTEGER NOT NULL DEFAULT 0,
-            modified                 TEXT,
-            time_shift               REAL NOT NULL DEFAULT 0,
-            UNIQUE(name)
-        );
-    CREATE TABLE IF NOT EXISTS presets
-        (
-            id                       INTEGER PRIMARY KEY AUTOINCREMENT,
-            name                     TEXT NOT NULL,
-            text                     TEXT NOT NULL,
-            x                        TEXT NOT NULL,
-            y                        TEXT NOT NULL,
-            fontsize                 TEXT NOT NULL,
-            line_spacing             TEXT NOT NULL,
-            fontcolor                TEXT NOT NULL,
-            box                      TEXT NOT NULL,
-            boxcolor                 TEXT NOT NULL,
-            boxborderw               TEXT NOT NULL,
-            alpha                    TEXT NOT NULL,
-            channel_id               INTEGER NOT NULL DEFAULT 1,
-            FOREIGN KEY (channel_id) REFERENCES channels (id) ON UPDATE SET NULL ON DELETE SET NULL,
-            UNIQUE(name)
-        );
-    CREATE TABLE IF NOT EXISTS user
-        (
-            id                       INTEGER PRIMARY KEY AUTOINCREMENT,
-            mail                     TEXT NOT NULL,
-            username                 TEXT NOT NULL,
-            password                 TEXT NOT NULL,
-            role_id                  INTEGER NOT NULL DEFAULT 2,
-            channel_id               INTEGER NOT NULL DEFAULT 1,
-            FOREIGN KEY (role_id)    REFERENCES roles (id) ON UPDATE SET NULL ON DELETE SET NULL,
-            FOREIGN KEY (channel_id) REFERENCES channels (id) ON UPDATE SET NULL ON DELETE SET NULL,
-            UNIQUE(mail, username)
-        );"#;
-
-    sqlx::query(query).execute(conn).await
-}
-
-pub async fn db_init(domain: Option<String>) -> Result<&'static str, Box<dyn std::error::Error>> {
+pub async fn db_migrate() -> Result<&'static str, Box<dyn std::error::Error>> {
     let db_path = db_path()?;
 
     if !Sqlite::database_exists(db_path).await.unwrap_or(false) {
         Sqlite::create_database(db_path).await.unwrap();
-
-        let pool = db_pool().await?;
-
-        match create_schema(&pool).await {
-            Ok(_) => info!("Database created Successfully"),
-            Err(e) => panic!("{e}"),
-        }
     }
-    let secret: String = rand::thread_rng()
-        .sample_iter(&Alphanumeric)
-        .take(80)
-        .map(char::from)
-        .collect();
 
-    let url = match domain {
-        Some(d) => format!("http://{d}/live/stream.m3u8"),
-        None => "http://localhost/live/stream.m3u8".to_string(),
-    };
+    let pool = db_pool().await?;
 
-    let config_path = if env::consts::OS == "linux" {
-        "/etc/ffplayout/ffplayout.toml"
-    } else {
-        "./assets/ffplayout.toml"
-    };
+    match sqlx::migrate!("../migrations").run(&pool).await {
+        Ok(_) => info!("Database migration successfully"),
+        Err(e) => panic!("{e}"),
+    }
 
-    let query = "CREATE TRIGGER global_row_count
+    if let Err(_) = select_global(&pool).await {
+        let secret: String = rand::thread_rng()
+            .sample_iter(&Alphanumeric)
+            .take(80)
+            .map(char::from)
+            .collect();
+
+        let query = "CREATE TRIGGER global_row_count
         BEFORE INSERT ON global
         WHEN (SELECT COUNT(*) FROM global) >= 1
         BEGIN
             SELECT RAISE(FAIL, 'Database is already initialized!');
         END;
-        INSERT INTO global(secret) VALUES($1);
-        INSERT INTO channels(name, preview_url, config_path, extra_extensions, active)
-        VALUES('Channel 1', $2, $3, 'jpg,jpeg,png', 0);
-        INSERT INTO roles(name) VALUES('admin'), ('user'), ('guest');
-        INSERT INTO presets(name, text, x, y, fontsize, line_spacing, fontcolor, box, boxcolor, boxborderw, alpha, channel_id)
-        VALUES('Default', 'Wellcome to ffplayout messenger!', '(w-text_w)/2', '(h-text_h)/2', '24', '4', '#ffffff@0xff', '0', '#000000@0x80', '4', '1.0', '1'),
-        ('Empty Text', '', '0', '0', '24', '4', '#000000', '0', '#000000', '0', '0', '1'),
-        ('Bottom Text fade in', 'The upcoming event will be delayed by a few minutes.', '(w-text_w)/2', '(h-line_h)*0.9', '24', '4', '#ffffff',
-            '1', '#000000@0x80', '4', 'ifnot(ld(1),st(1,t));if(lt(t,ld(1)+1),0,if(lt(t,ld(1)+2),(t-(ld(1)+1))/1,if(lt(t,ld(1)+8),1,if(lt(t,ld(1)+9),(1-(t-(ld(1)+8)))/1,0))))', '1'),
-        ('Scrolling Text', 'We have a very important announcement to make.', 'ifnot(ld(1),st(1,t));if(lt(t,ld(1)+1),w+4,w-w/12*mod(t-ld(1),12*(w+tw)/w))', '(h-line_h)*0.9',
-            '24', '4', '#ffffff', '1', '#000000@0x80', '4', '1.0', '1');";
+        INSERT INTO global(secret) VALUES($1);";
 
-    let pool = db_pool().await?;
+        sqlx::query(query).bind(secret).execute(&pool).await?;
+    }
 
-    sqlx::query(query)
-        .bind(secret)
-        .bind(url)
-        .bind(config_path)
-        .execute(&pool)
-        .await?;
-
-    Ok("Database initialized!")
+    Ok("Database migrated!")
 }
 
 pub async fn select_global(conn: &Pool<Sqlite>) -> Result<GlobalSettings, sqlx::Error> {

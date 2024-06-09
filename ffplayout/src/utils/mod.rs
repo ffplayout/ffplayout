@@ -36,7 +36,7 @@ pub mod task_runner;
 
 use crate::db::{
     db_pool,
-    handles::{db_init, insert_user, select_channel, select_global},
+    handles::{db_migrate, insert_user, select_channel, select_global},
     models::{Channel, User},
 };
 use crate::player::utils::time_to_sec;
@@ -188,19 +188,15 @@ pub fn public_path() -> PathBuf {
 pub async fn run_args() -> Result<(), i32> {
     let mut args = ARGS.clone();
 
-    if !args.init && args.listen.is_none() && !args.ask && args.username.is_none() {
-        error!("Wrong number of arguments! Run ffpapi --help for more information.");
+    if args.listen.is_none() && !args.ask && args.username.is_none() {
+        eprintln!("Wrong number of arguments! Run ffpapi --help for more information.");
 
         return Err(0);
     }
 
-    if args.init {
-        if let Err(e) = db_init(args.domain).await {
-            panic!("{e}");
-        };
-
-        return Err(0);
-    }
+    if let Err(e) = db_migrate().await {
+        panic!("{e}");
+    };
 
     if args.ask {
         let mut user = String::new();
