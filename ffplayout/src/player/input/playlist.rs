@@ -12,7 +12,7 @@ use sqlx::{Pool, Sqlite};
 
 use crate::db::handles;
 use crate::player::{
-    controller::{PlayerControl, PlayoutStatus},
+    controller::ChannelManager,
     utils::{
         gen_dummy, get_delta, is_close, is_remote,
         json_serializer::{read_json, set_defaults},
@@ -27,29 +27,26 @@ use crate::utils::config::{PlayoutConfig, IMAGE_FORMAT};
 /// Here we prepare the init clip and build a iterator where we pull our clips.
 #[derive(Debug)]
 pub struct CurrentProgram {
+    manager: ChannelManager,
     config: PlayoutConfig,
     db_pool: Pool<Sqlite>,
     start_sec: f64,
     end_sec: f64,
     json_playlist: JsonPlaylist,
-    player_control: PlayerControl,
     current_node: Media,
     is_terminated: Arc<AtomicBool>,
-    playout_stat: PlayoutStatus,
     last_json_path: Option<String>,
     last_node_ad: bool,
 }
 
 /// Prepare a playlist iterator.
 impl CurrentProgram {
-    pub fn new(
-        config: &PlayoutConfig,
-        db_pool: Pool<Sqlite>,
-        playout_stat: PlayoutStatus,
-        is_terminated: Arc<AtomicBool>,
-        player_control: &PlayerControl,
-    ) -> Self {
+    pub fn new(manager: ChannelManager, db_pool: Pool<Sqlite>) -> Self {
+        let config = manager.config.lock().unwrap().clone();
+        let is_terminated = manager.is_terminated.clone();
+
         Self {
+            manager,
             config: config.clone(),
             db_pool,
             start_sec: config.playlist.start_sec.unwrap(),
@@ -58,10 +55,8 @@ impl CurrentProgram {
                 "1970-01-01".to_string(),
                 config.playlist.start_sec.unwrap(),
             ),
-            player_control: player_control.clone(),
             current_node: Media::new(0, "", false),
             is_terminated,
-            playout_stat,
             last_json_path: None,
             last_node_ad: false,
         }
@@ -78,7 +73,7 @@ impl CurrentProgram {
                 && self.json_playlist.modified != modified_time(&path)
             {
                 info!("Reload playlist <b><magenta>{path}</></b>");
-                self.playout_stat.list_init.store(true, Ordering::SeqCst);
+                self.manager.list_init.store(true, Ordering::SeqCst);
                 get_current = true;
                 reload = true;
             }
@@ -89,7 +84,7 @@ impl CurrentProgram {
         if get_current {
             self.json_playlist = read_json(
                 &mut self.config,
-                &self.player_control,
+                self.manager.current_list.clone(),
                 self.json_playlist.path.clone(),
                 self.is_terminated.clone(),
                 seek,
@@ -101,18 +96,27 @@ impl CurrentProgram {
                     info!("Read playlist: <b><magenta>{file}</></b>");
                 }
 
-                if *self.playout_stat.date.lock().unwrap() != self.json_playlist.date {
+                if *self
+                    .manager
+                    .channel
+                    .lock()
+                    .unwrap()
+                    .current_date
+                    .clone()
+                    .unwrap_or_default()
+                    != self.json_playlist.date
+                {
                     self.set_status(self.json_playlist.date.clone());
                 }
 
-                self.playout_stat
+                self.manager
                     .current_date
                     .lock()
                     .unwrap()
                     .clone_from(&self.json_playlist.date);
             }
 
-            self.player_control
+            self.manager
                 .current_list
                 .lock()
                 .unwrap()
@@ -122,8 +126,8 @@ impl CurrentProgram {
                 trace!("missing playlist");
 
                 self.current_node = Media::new(0, "", false);
-                self.playout_stat.list_init.store(true, Ordering::SeqCst);
-                self.player_control.current_index.store(0, Ordering::SeqCst);
+                self.manager.list_init.store(true, Ordering::SeqCst);
+                self.manager.current_index.store(0, Ordering::SeqCst);
             }
         }
     }
@@ -145,9 +149,7 @@ impl CurrentProgram {
         let mut next_start =
             self.current_node.begin.unwrap_or_default() - self.start_sec + duration + delta;
 
-        if node_index > 0
-            && node_index == self.player_control.current_list.lock().unwrap().len() - 1
-        {
+        if node_index > 0 && node_index == self.manager.current_list.lock().unwrap().len() - 1 {
             next_start += self.config.general.stop_threshold;
         }
 
@@ -168,7 +170,7 @@ impl CurrentProgram {
 
             self.json_playlist = read_json(
                 &mut self.config,
-                &self.player_control,
+                self.manager.current_list.clone(),
                 None,
                 self.is_terminated.clone(),
                 false,
@@ -179,15 +181,15 @@ impl CurrentProgram {
                 info!("Read next playlist: <b><magenta>{file}</></b>");
             }
 
-            self.playout_stat.list_init.store(false, Ordering::SeqCst);
+            self.manager.list_init.store(false, Ordering::SeqCst);
             self.set_status(self.json_playlist.date.clone());
 
-            self.player_control
+            self.manager
                 .current_list
                 .lock()
                 .unwrap()
                 .clone_from(&self.json_playlist.program);
-            self.player_control.current_index.store(0, Ordering::SeqCst);
+            self.manager.current_index.store(0, Ordering::SeqCst);
         } else {
             self.load_or_update_playlist(seek)
         }
@@ -196,18 +198,20 @@ impl CurrentProgram {
     }
 
     fn set_status(&mut self, date: String) {
-        if *self.playout_stat.date.lock().unwrap() != date
-            && *self.playout_stat.time_shift.lock().unwrap() != 0.0
+        if self.manager.channel.lock().unwrap().current_date != Some(date.clone())
+            && self.manager.channel.lock().unwrap().time_shift != 0.0
         {
             info!("Reset playout status");
         }
 
-        self.playout_stat
-            .current_date
+        self.manager.current_date.lock().unwrap().clone_from(&date);
+        self.manager
+            .channel
             .lock()
             .unwrap()
-            .clone_from(&date);
-        *self.playout_stat.time_shift.lock().unwrap() = 0.0;
+            .current_date
+            .clone_from(&Some(date.clone()));
+        self.manager.channel.lock().unwrap().time_shift = 0.0;
 
         if let Err(e) = executor::block_on(handles::update_stat(
             &self.db_pool,
@@ -221,8 +225,8 @@ impl CurrentProgram {
 
     // Check if last and/or next clip is a advertisement.
     fn last_next_ad(&mut self, node: &mut Media) {
-        let index = self.player_control.current_index.load(Ordering::SeqCst);
-        let current_list = self.player_control.current_list.lock().unwrap();
+        let index = self.manager.current_index.load(Ordering::SeqCst);
+        let current_list = self.manager.current_list.lock().unwrap();
 
         if index + 1 < current_list.len() && &current_list[index + 1].category == "advertisement" {
             node.next_ad = true;
@@ -251,7 +255,7 @@ impl CurrentProgram {
     // On init or reload we need to seek for the current clip.
     fn get_current_clip(&mut self) {
         let mut time_sec = self.get_current_time();
-        let shift = *self.playout_stat.time_shift.lock().unwrap();
+        let shift = self.manager.channel.lock().unwrap().time_shift.clone();
 
         if shift != 0.0 {
             info!("Shift playlist start for <yellow>{shift:.3}</> seconds");
@@ -265,17 +269,10 @@ impl CurrentProgram {
             self.recalculate_begin(true)
         }
 
-        for (i, item) in self
-            .player_control
-            .current_list
-            .lock()
-            .unwrap()
-            .iter()
-            .enumerate()
-        {
+        for (i, item) in self.manager.current_list.lock().unwrap().iter().enumerate() {
             if item.begin.unwrap() + item.out - item.seek > time_sec {
-                self.playout_stat.list_init.store(false, Ordering::SeqCst);
-                self.player_control.current_index.store(i, Ordering::SeqCst);
+                self.manager.list_init.store(false, Ordering::SeqCst);
+                self.manager.current_index.store(i, Ordering::SeqCst);
 
                 break;
             }
@@ -288,10 +285,10 @@ impl CurrentProgram {
         self.get_current_clip();
         let mut is_filler = false;
 
-        if !self.playout_stat.list_init.load(Ordering::SeqCst) {
+        if !self.manager.list_init.load(Ordering::SeqCst) {
             let time_sec = self.get_current_time();
-            let index = self.player_control.current_index.load(Ordering::SeqCst);
-            let nodes = self.player_control.current_list.lock().unwrap();
+            let index = self.manager.current_index.load(Ordering::SeqCst);
+            let nodes = self.manager.current_list.lock().unwrap();
             let last_index = nodes.len() - 1;
 
             // de-instance node to preserve original values in list
@@ -303,13 +300,11 @@ impl CurrentProgram {
             trace!("Clip from init: {}", node_clone.source);
 
             node_clone.seek += time_sec
-                - (node_clone.begin.unwrap() - *self.playout_stat.time_shift.lock().unwrap());
+                - (node_clone.begin.unwrap() - self.manager.channel.lock().unwrap().time_shift);
 
             self.last_next_ad(&mut node_clone);
 
-            self.player_control
-                .current_index
-                .fetch_add(1, Ordering::SeqCst);
+            self.manager.current_index.fetch_add(1, Ordering::SeqCst);
 
             self.current_node = handle_list_init(
                 &self.config,
@@ -334,7 +329,7 @@ impl CurrentProgram {
 
     fn fill_end(&mut self, total_delta: f64) {
         // Fill end from playlist
-        let index = self.player_control.current_index.load(Ordering::SeqCst);
+        let index = self.manager.current_index.load(Ordering::SeqCst);
         let mut media = Media::new(index, "", false);
         media.begin = Some(time_in_seconds());
         media.duration = total_delta;

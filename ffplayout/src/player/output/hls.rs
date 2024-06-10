@@ -28,11 +28,11 @@ use std::{
 use log::*;
 use sqlx::{Pool, Sqlite};
 
-use crate::utils::{config::PlayoutConfig, logging::log_line, task_runner};
+use crate::utils::{logging::log_line, task_runner};
 use crate::vec_strings;
 use crate::{
     player::{
-        controller::{ChannelManager, PlayerControl, PlayoutStatus, ProcessUnit::*},
+        controller::{ChannelManager, ProcessUnit::*},
         input::source_generator,
         utils::{
             get_delta, prepare_output_cmd, sec_to_time, stderr_reader, test_tcp_port, valid_stream,
@@ -43,20 +43,18 @@ use crate::{
 };
 
 /// Ingest Server for HLS
-fn ingest_to_hls_server(
-    config: PlayoutConfig,
-    playout_stat: PlayoutStatus,
-    channel_mgr: ChannelManager,
-) -> Result<(), ProcessError> {
-    let playlist_init = playout_stat.list_init;
+fn ingest_to_hls_server(manager: ChannelManager) -> Result<(), ProcessError> {
+    let config = manager.config.lock().unwrap();
+    let playlist_init = manager.list_init.clone();
+    let chain = manager.chain.clone();
 
     let mut server_prefix = vec_strings!["-hide_banner", "-nostats", "-v", "level+info"];
     let stream_input = config.ingest.input_cmd.clone().unwrap();
     let mut dummy_media = Media::new(0, "Live Stream", false);
     dummy_media.unit = Ingest;
 
-    let is_terminated = channel_mgr.is_terminated.clone();
-    let ingest_is_running = channel_mgr.ingest_is_running.clone();
+    let is_terminated = manager.is_terminated.clone();
+    let ingest_is_running = manager.ingest_is_running.clone();
 
     if let Some(ingest_input_cmd) = &config.advanced.ingest.input_cmd {
         server_prefix.append(&mut ingest_input_cmd.clone());
@@ -68,15 +66,18 @@ fn ingest_to_hls_server(
 
     if let Some(url) = stream_input.iter().find(|s| s.contains("://")) {
         if !test_tcp_port(url) {
-            channel_mgr.stop_all();
+            manager.stop_all();
             exit(1);
         }
 
         info!("Start ingest server, listening on: <b><magenta>{url}</></b>");
     };
 
+    drop(config);
+
     loop {
-        dummy_media.add_filter(&config, &playout_stat.chain);
+        let config = manager.config.lock().unwrap().clone();
+        dummy_media.add_filter(&config, &chain);
         let server_cmd = prepare_output_cmd(&config, server_prefix.clone(), &dummy_media.filter);
 
         debug!(
@@ -84,7 +85,7 @@ fn ingest_to_hls_server(
             server_cmd.join(" ")
         );
 
-        let proc_ctl = channel_mgr.clone();
+        let proc_ctl = manager.clone();
         let mut server_proc = match Command::new("ffmpeg")
             .args(server_cmd.clone())
             .stderr(Stdio::piped())
@@ -98,7 +99,7 @@ fn ingest_to_hls_server(
         };
 
         let server_err = BufReader::new(server_proc.stderr.take().unwrap());
-        *channel_mgr.ingest.lock().unwrap() = Some(server_proc);
+        *manager.ingest.lock().unwrap() = Some(server_proc);
         is_running = false;
 
         for line in server_err.lines() {
@@ -117,7 +118,7 @@ fn ingest_to_hls_server(
 
                 info!("Switch from {} to live ingest", config.processing.mode);
 
-                if let Err(e) = channel_mgr.stop(Decoder) {
+                if let Err(e) = manager.stop(Decoder) {
                     error!("{e}");
                 }
             }
@@ -131,7 +132,7 @@ fn ingest_to_hls_server(
 
         ingest_is_running.store(false, Ordering::SeqCst);
 
-        if let Err(e) = channel_mgr.wait(Ingest) {
+        if let Err(e) = manager.wait(Ingest) {
             error!("{e}")
         }
 
@@ -146,35 +147,24 @@ fn ingest_to_hls_server(
 /// HLS Writer
 ///
 /// Write with single ffmpeg instance directly to a HLS playlist.
-pub fn write_hls(
-    channel_mgr: ChannelManager,
-    db_pool: Pool<Sqlite>,
-    player_control: PlayerControl,
-    playout_stat: PlayoutStatus,
-) -> Result<(), ProcessError> {
-    let config = channel_mgr.config.lock()?.clone();
-    let config_clone = config.clone();
-    let ff_log_format = format!("level+{}", config.logging.ffmpeg_level.to_lowercase());
-    let play_stat = playout_stat.clone();
-    let channel_mgr_2 = channel_mgr.clone();
-    let is_terminated = channel_mgr.is_terminated.clone();
-    let ingest_is_running = channel_mgr.ingest_is_running.clone();
+pub fn write_hls(manager: ChannelManager, db_pool: Pool<Sqlite>) -> Result<(), ProcessError> {
+    let config = manager.config.lock()?.clone();
+    let current_media = manager.current_media.clone();
 
-    let get_source = source_generator(
-        config.clone(),
-        db_pool,
-        &player_control,
-        playout_stat,
-        is_terminated.clone(),
-    );
+    let ff_log_format = format!("level+{}", config.logging.ffmpeg_level.to_lowercase());
+
+    let channel_mgr_2 = manager.clone();
+    let ingest_is_running = manager.ingest_is_running.clone();
+
+    let get_source = source_generator(manager.clone(), db_pool);
 
     // spawn a thread for ffmpeg ingest server and create a channel for package sending
     if config.ingest.enable {
-        thread::spawn(move || ingest_to_hls_server(config_clone, play_stat, channel_mgr_2));
+        thread::spawn(move || ingest_to_hls_server(channel_mgr_2));
     }
 
     for node in get_source {
-        *player_control.current_media.lock().unwrap() = Some(node.clone());
+        *current_media.lock().unwrap() = Some(node.clone());
         let ignore = config.logging.ignore_lines.clone();
 
         let mut cmd = match &node.cmd {
@@ -194,7 +184,7 @@ pub fn write_hls(
 
         if config.task.enable {
             if config.task.path.is_file() {
-                let channel_mgr_3 = channel_mgr.clone();
+                let channel_mgr_3 = manager.clone();
 
                 thread::spawn(move || task_runner::run(channel_mgr_3));
             } else {
@@ -250,13 +240,13 @@ pub fn write_hls(
         };
 
         let enc_err = BufReader::new(dec_proc.stderr.take().unwrap());
-        *channel_mgr.decoder.lock().unwrap() = Some(dec_proc);
+        *manager.decoder.lock().unwrap() = Some(dec_proc);
 
-        if let Err(e) = stderr_reader(enc_err, ignore, Decoder, channel_mgr.clone()) {
+        if let Err(e) = stderr_reader(enc_err, ignore, Decoder, manager.clone()) {
             error!("{e:?}")
         };
 
-        if let Err(e) = channel_mgr.wait(Decoder) {
+        if let Err(e) = manager.wait(Decoder) {
             error!("{e}");
         }
 
@@ -267,7 +257,7 @@ pub fn write_hls(
 
     sleep(Duration::from_secs(1));
 
-    channel_mgr.stop_all();
+    manager.stop_all();
 
     Ok(())
 }

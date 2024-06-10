@@ -108,7 +108,6 @@ pub struct Channel {
     pub id: i32,
     pub name: String,
     pub preview_url: String,
-    pub config_path: String,
     pub extra_extensions: String,
     pub active: bool,
     pub current_date: Option<String>,

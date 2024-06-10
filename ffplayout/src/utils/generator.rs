@@ -16,14 +16,11 @@ use rand::{seq::SliceRandom, thread_rng, Rng};
 use simplelog::*;
 use walkdir::WalkDir;
 
-use crate::player::{
-    controller::PlayerControl,
-    utils::{
-        folder::{fill_filler_list, FolderSource},
-        gen_dummy, get_date_range, include_file_extension,
-        json_serializer::JsonPlaylist,
-        sum_durations, Media,
-    },
+use crate::player::utils::{
+    folder::{fill_filler_list, FolderSource},
+    gen_dummy, get_date_range, include_file_extension,
+    json_serializer::JsonPlaylist,
+    sum_durations, Media,
 };
 use crate::utils::{
     config::{PlayoutConfig, Template},

@@ -3,7 +3,7 @@ use std::{
     process::{Command, Stdio},
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc,
+        Arc, Mutex,
     },
     time::Instant,
 };
@@ -12,9 +12,8 @@ use log::*;
 use regex::Regex;
 
 use crate::player::filter::FilterType::Audio;
-use crate::player::{
-    controller::PlayerControl,
-    utils::{is_close, is_remote, loop_image, sec_to_time, seek_and_length, JsonPlaylist, Media},
+use crate::player::utils::{
+    is_close, is_remote, loop_image, sec_to_time, seek_and_length, JsonPlaylist, Media,
 };
 use crate::utils::{
     config::{OutputMode::Null, PlayoutConfig, FFMPEG_IGNORE_ERRORS, IMAGE_FORMAT},
@@ -155,7 +154,7 @@ fn check_media(
 /// This function we run in a thread, to don't block the main function.
 pub fn validate_playlist(
     mut config: PlayoutConfig,
-    player_control: PlayerControl,
+    current_list: Arc<Mutex<Vec<Media>>>,
     mut playlist: JsonPlaylist,
     is_terminated: Arc<AtomicBool>,
 ) {
@@ -206,7 +205,7 @@ pub fn validate_playlist(
                     sec_to_time(begin),
                     item.source
                 )
-            } else if let Ok(mut list) = player_control.current_list.try_lock() {
+            } else if let Ok(mut list) = current_list.try_lock() {
                 // Filter out same item in current playlist, then add the probe to it.
                 // Check also if duration differs with playlist value, log error if so and adjust that value.
                 list.iter_mut().filter(|list_item| list_item.source == item.source).for_each(|o| {

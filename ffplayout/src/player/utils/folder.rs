@@ -1,5 +1,5 @@
 use std::sync::{
-    atomic::Ordering,
+    atomic::{AtomicUsize, Ordering},
     {Arc, Mutex},
 };
 
@@ -8,7 +8,6 @@ use rand::{seq::SliceRandom, thread_rng};
 use simplelog::*;
 use walkdir::WalkDir;
 
-use crate::player::controller::PlayerControl;
 use crate::player::utils::{include_file_extension, time_in_seconds, Media, PlayoutConfig};
 
 /// Folder Sources
@@ -18,7 +17,8 @@ use crate::player::utils::{include_file_extension, time_in_seconds, Media, Playo
 pub struct FolderSource {
     config: PlayoutConfig,
     filter_chain: Option<Arc<Mutex<Vec<String>>>>,
-    pub player_control: PlayerControl,
+    pub current_list: Arc<Mutex<Vec<Media>>>,
+    pub current_index: Arc<AtomicUsize>,
     current_node: Media,
 }
 
@@ -26,7 +26,8 @@ impl FolderSource {
     pub fn new(
         config: &PlayoutConfig,
         filter_chain: Option<Arc<Mutex<Vec<String>>>>,
-        player_control: &PlayerControl,
+        current_list: Arc<Mutex<Vec<Media>>>,
+        current_index: Arc<AtomicUsize>,
     ) -> Self {
         let mut path_list = vec![];
         let mut media_list = vec![];
@@ -77,12 +78,13 @@ impl FolderSource {
             index += 1;
         }
 
-        *player_control.current_list.lock().unwrap() = media_list;
+        *current_list.lock().unwrap() = media_list;
 
         Self {
             config: config.clone(),
             filter_chain,
-            player_control: player_control.clone(),
+            current_list,
+            current_index,
             current_node: Media::new(0, "", false),
         }
     }
@@ -90,22 +92,24 @@ impl FolderSource {
     pub fn from_list(
         config: &PlayoutConfig,
         filter_chain: Option<Arc<Mutex<Vec<String>>>>,
-        player_control: &PlayerControl,
+        current_list: Arc<Mutex<Vec<Media>>>,
+        current_index: Arc<AtomicUsize>,
         list: Vec<Media>,
     ) -> Self {
-        *player_control.current_list.lock().unwrap() = list;
+        *current_list.lock().unwrap() = list;
 
         Self {
             config: config.clone(),
             filter_chain,
-            player_control: player_control.clone(),
+            current_list,
+            current_index,
             current_node: Media::new(0, "", false),
         }
     }
 
     fn shuffle(&mut self) {
         let mut rng = thread_rng();
-        let mut nodes = self.player_control.current_list.lock().unwrap();
+        let mut nodes = self.current_list.lock().unwrap();
 
         nodes.shuffle(&mut rng);
 
@@ -115,7 +119,7 @@ impl FolderSource {
     }
 
     fn sort(&mut self) {
-        let mut nodes = self.player_control.current_list.lock().unwrap();
+        let mut nodes = self.current_list.lock().unwrap();
 
         nodes.sort_by(|d1, d2| d1.source.cmp(&d2.source));
 
@@ -130,19 +134,15 @@ impl Iterator for FolderSource {
     type Item = Media;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.player_control.current_index.load(Ordering::SeqCst)
-            < self.player_control.current_list.lock().unwrap().len()
-        {
-            let i = self.player_control.current_index.load(Ordering::SeqCst);
-            self.current_node = self.player_control.current_list.lock().unwrap()[i].clone();
+        if self.current_index.load(Ordering::SeqCst) < self.current_list.lock().unwrap().len() {
+            let i = self.current_index.load(Ordering::SeqCst);
+            self.current_node = self.current_list.lock().unwrap()[i].clone();
             let _ = self.current_node.add_probe(false).ok();
             self.current_node
                 .add_filter(&self.config, &self.filter_chain);
             self.current_node.begin = Some(time_in_seconds());
 
-            self.player_control
-                .current_index
-                .fetch_add(1, Ordering::SeqCst);
+            self.current_index.fetch_add(1, Ordering::SeqCst);
 
             Some(self.current_node.clone())
         } else {
@@ -160,13 +160,13 @@ impl Iterator for FolderSource {
                 self.sort();
             }
 
-            self.current_node = self.player_control.current_list.lock().unwrap()[0].clone();
+            self.current_node = self.current_list.lock().unwrap()[0].clone();
             let _ = self.current_node.add_probe(false).ok();
             self.current_node
                 .add_filter(&self.config, &self.filter_chain);
             self.current_node.begin = Some(time_in_seconds());
 
-            self.player_control.current_index.store(1, Ordering::SeqCst);
+            self.current_index.store(1, Ordering::SeqCst);
 
             Some(self.current_node.clone())
         }
@@ -175,7 +175,7 @@ impl Iterator for FolderSource {
 
 pub fn fill_filler_list(
     config: &PlayoutConfig,
-    player_control: Option<PlayerControl>,
+    fillers: Option<Arc<Mutex<Vec<Media>>>>,
 ) -> Vec<Media> {
     let mut filler_list = vec![];
     let filler_path = &config.storage.filler;
@@ -190,7 +190,7 @@ pub fn fill_filler_list(
         {
             let mut media = Media::new(index, &entry.path().to_string_lossy(), false);
 
-            if player_control.is_none() {
+            if fillers.is_none() {
                 if let Err(e) = media.add_probe(false) {
                     error!("{e:?}");
                 };
@@ -211,13 +211,13 @@ pub fn fill_filler_list(
             item.index = Some(index);
         }
 
-        if let Some(control) = player_control.as_ref() {
-            control.filler_list.lock().unwrap().clone_from(&filler_list);
+        if let Some(f) = fillers.as_ref() {
+            f.lock().unwrap().clone_from(&filler_list);
         }
     } else if filler_path.is_file() {
         let mut media = Media::new(0, &config.storage.filler.to_string_lossy(), false);
 
-        if player_control.is_none() {
+        if fillers.is_none() {
             if let Err(e) = media.add_probe(false) {
                 error!("{e:?}");
             };
@@ -225,8 +225,8 @@ pub fn fill_filler_list(
 
         filler_list.push(media);
 
-        if let Some(control) = player_control.as_ref() {
-            control.filler_list.lock().unwrap().clone_from(&filler_list);
+        if let Some(f) = fillers.as_ref() {
+            f.lock().unwrap().clone_from(&filler_list);
         }
     }
 

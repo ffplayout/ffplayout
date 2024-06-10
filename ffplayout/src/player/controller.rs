@@ -72,6 +72,11 @@ impl ChannelManager {
             is_alive: Arc::new(AtomicBool::new(channel.active)),
             channel: Arc::new(Mutex::new(channel)),
             config: Arc::new(Mutex::new(config)),
+            current_media: Arc::new(Mutex::new(None)),
+            current_list: Arc::new(Mutex::new(vec![Media::new(0, "", false)])),
+            filler_list: Arc::new(Mutex::new(vec![])),
+            current_index: Arc::new(AtomicUsize::new(0)),
+            filler_index: Arc::new(AtomicUsize::new(0)),
             ..Default::default()
         }
     }
@@ -178,62 +183,6 @@ impl ChannelManager {
     }
 }
 
-/// Global player control, to get infos about current clip etc.
-#[derive(Clone, Debug)]
-pub struct PlayerControl {
-    pub current_media: Arc<Mutex<Option<Media>>>,
-    pub current_list: Arc<Mutex<Vec<Media>>>,
-    pub filler_list: Arc<Mutex<Vec<Media>>>,
-    pub current_index: Arc<AtomicUsize>,
-    pub filler_index: Arc<AtomicUsize>,
-}
-
-impl PlayerControl {
-    pub fn new() -> Self {
-        Self {
-            current_media: Arc::new(Mutex::new(None)),
-            current_list: Arc::new(Mutex::new(vec![Media::new(0, "", false)])),
-            filler_list: Arc::new(Mutex::new(vec![])),
-            current_index: Arc::new(AtomicUsize::new(0)),
-            filler_index: Arc::new(AtomicUsize::new(0)),
-        }
-    }
-}
-
-impl Default for PlayerControl {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-/// Global playout control, for move forward/backward clip, or resetting playlist/state.
-#[derive(Clone, Debug)]
-pub struct PlayoutStatus {
-    pub chain: Option<Arc<Mutex<Vec<String>>>>,
-    pub current_date: Arc<Mutex<String>>,
-    pub date: Arc<Mutex<String>>,
-    pub list_init: Arc<AtomicBool>,
-    pub time_shift: Arc<Mutex<f64>>,
-}
-
-impl PlayoutStatus {
-    pub fn new() -> Self {
-        Self {
-            chain: None,
-            current_date: Arc::new(Mutex::new(String::new())),
-            date: Arc::new(Mutex::new(String::new())),
-            list_init: Arc::new(AtomicBool::new(true)),
-            time_shift: Arc::new(Mutex::new(0.0)),
-        }
-    }
-}
-
-impl Default for PlayoutStatus {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 #[derive(Clone, Debug, Default)]
 pub struct ChannelController {
     pub channels: Vec<ChannelManager>,
@@ -273,22 +222,20 @@ impl ChannelController {
     }
 }
 
-pub fn start(db_pool: Pool<Sqlite>, channel: ChannelManager) -> Result<(), ProcessError> {
-    let config = channel.config.lock()?.clone();
+pub fn start(db_pool: Pool<Sqlite>, manager: ChannelManager) -> Result<(), ProcessError> {
+    let config = manager.config.lock()?.clone();
     let mode = config.output.mode.clone();
-    let play_control = PlayerControl::new();
-    let play_control_clone = play_control.clone();
-    let play_status = PlayoutStatus::new();
+    let filler_list = manager.filler_list.clone();
 
     // Fill filler list, can also be a single file.
     thread::spawn(move || {
-        fill_filler_list(&config, Some(play_control_clone));
+        fill_filler_list(&config, Some(filler_list));
     });
 
     match mode {
         // write files/playlist to HLS m3u8 playlist
-        HLS => write_hls(channel, db_pool, play_control, play_status),
+        HLS => write_hls(manager, db_pool),
         // play on desktop or stream to a remote target
-        _ => player(channel, db_pool, &play_control, play_status),
+        _ => player(manager, db_pool),
     }
 }

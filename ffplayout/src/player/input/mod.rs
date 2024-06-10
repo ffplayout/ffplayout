@@ -1,7 +1,4 @@
-use std::{
-    sync::{atomic::AtomicBool, Arc},
-    thread,
-};
+use std::thread;
 
 use simplelog::*;
 use sqlx::{Pool, Sqlite};
@@ -15,19 +12,22 @@ pub use ingest::ingest_server;
 pub use playlist::CurrentProgram;
 
 use crate::player::{
-    controller::{PlayerControl, PlayoutStatus},
+    controller::ChannelManager,
     utils::{folder::FolderSource, Media},
 };
-use crate::utils::config::{PlayoutConfig, ProcessMode::*};
+use crate::utils::config::ProcessMode::*;
 
 /// Create a source iterator from playlist, or from folder.
 pub fn source_generator(
-    config: PlayoutConfig,
+    manager: ChannelManager,
     db_pool: Pool<Sqlite>,
-    player_control: &PlayerControl,
-    playout_stat: PlayoutStatus,
-    is_terminated: Arc<AtomicBool>,
 ) -> Box<dyn Iterator<Item = Media>> {
+    let config = manager.config.lock().unwrap().clone();
+    let is_terminated = manager.is_terminated.clone();
+    let chain = manager.chain.clone();
+    let current_list = manager.current_list.clone();
+    let current_index = manager.current_index.clone();
+
     match config.processing.mode {
         Folder => {
             info!("Playout in folder mode");
@@ -37,23 +37,18 @@ pub fn source_generator(
             );
 
             let config_clone = config.clone();
-            let folder_source = FolderSource::new(&config, playout_stat.chain, player_control);
-            let node_clone = folder_source.player_control.current_list.clone();
+            let folder_source =
+                FolderSource::new(&config, chain, current_list.clone(), current_index);
+            let list_clone = current_list.clone();
 
             // Spawn a thread to monitor folder for file changes.
-            thread::spawn(move || watchman(config_clone, is_terminated.clone(), node_clone));
+            thread::spawn(move || watchman(config_clone, is_terminated.clone(), list_clone));
 
             Box::new(folder_source) as Box<dyn Iterator<Item = Media>>
         }
         Playlist => {
             info!("Playout in playlist mode");
-            let program = CurrentProgram::new(
-                &config,
-                db_pool,
-                playout_stat,
-                is_terminated,
-                player_control,
-            );
+            let program = CurrentProgram::new(manager, db_pool);
 
             Box::new(program) as Box<dyn Iterator<Item = Media>>
         }

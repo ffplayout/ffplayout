@@ -63,7 +63,7 @@ CREATE TABLE configurations (
     starttls INTEGER NOT NULL DEFAULT 0,
     mail_level TEXT NOT NULL DEFAULT "ERROR",
     interval INTEGER NOT NULL DEFAULT 120,
-    log_help TEXT NOT NULL DEFAULT "If 'log_to_file' is true, log to file, when is false log to console. \n'backup_count' says how long log files will be saved in days.\n'local_time' to false will set log timestamps to UTC. Path to /var/log/ only if you run this program as daemon.\n'level' can be DEBUG, INFO, WARNING, ERROR.\n'ffmpeg_level/ingest_level' can be INFO, WARNING, ERROR.\n'detect_silence' logs an error message if the audio line is silent for 15 seconds during the validation process.\n'ignore_lines' makes logging to ignore strings that contains matched lines, in frontend is a semicolon separated list.",
+    logging_help TEXT NOT NULL DEFAULT "If 'log_to_file' is true, log to file, when is false log to console. \n'backup_count' says how long log files will be saved in days.\n'local_time' to false will set log timestamps to UTC. Path to /var/log/ only if you run this program as daemon.\n'level' can be DEBUG, INFO, WARNING, ERROR.\n'ffmpeg_level/ingest_level' can be INFO, WARNING, ERROR.\n'detect_silence' logs an error message if the audio line is silent for 15 seconds during the validation process.\n'ignore_lines' makes logging to ignore strings that contains matched lines, in frontend is a semicolon separated list.",
     log_to_file INTEGER NOT NULL DEFAULT 1,
     backup_count INTEGER NOT NULL DEFAULT 7,
     local_time INTEGER NOT NULL DEFAULT 1,

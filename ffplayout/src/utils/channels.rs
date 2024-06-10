@@ -1,11 +1,8 @@
-use std::fs;
-
 use rand::prelude::*;
-use simplelog::*;
 use sqlx::{Pool, Sqlite};
 
 use crate::db::{handles, models::Channel};
-use crate::utils::{config::PlayoutConfig, errors::ServiceError, playout_config};
+use crate::utils::{config::PlayoutConfig, errors::ServiceError};
 
 pub async fn create_channel(
     conn: &Pool<Sqlite>,
@@ -34,12 +31,10 @@ pub async fn create_channel(
 }
 
 pub async fn delete_channel(conn: &Pool<Sqlite>, id: i32) -> Result<(), ServiceError> {
-    let _channel = handles::select_channel(conn, &id).await?;
-    let (_config, _) = playout_config(conn, &id).await?;
-
+    let channel = handles::select_channel(conn, &id).await?;
     // TODO: Remove Channel controller
 
-    handles::delete_channel(conn, &id).await?;
+    handles::delete_channel(conn, &channel.id).await?;
 
     Ok(())
 }

@@ -2,18 +2,15 @@ use serde::{Deserialize, Serialize};
 use std::{
     fs::File,
     path::Path,
-    sync::{atomic::AtomicBool, Arc},
+    sync::{atomic::AtomicBool, Arc, Mutex},
     thread,
 };
 
 use simplelog::*;
 
-use crate::player::{
-    controller::PlayerControl,
-    utils::{
-        get_date, is_remote, json_validate::validate_playlist, modified_time, time_from_header,
-        Media, PlayoutConfig,
-    },
+use crate::player::utils::{
+    get_date, is_remote, json_validate::validate_playlist, modified_time, time_from_header, Media,
+    PlayoutConfig,
 };
 use crate::utils::config::DUMMY_LEN;
 
@@ -95,14 +92,13 @@ pub fn set_defaults(playlist: &mut JsonPlaylist) {
 /// which we need to process.
 pub fn read_json(
     config: &mut PlayoutConfig,
-    player_control: &PlayerControl,
+    current_list: Arc<Mutex<Vec<Media>>>,
     path: Option<String>,
     is_terminated: Arc<AtomicBool>,
     seek: bool,
     get_next: bool,
 ) -> JsonPlaylist {
     let config_clone = config.clone();
-    let control_clone = player_control.clone();
     let mut playlist_path = config.playlist.path.clone();
     let start_sec = config.playlist.start_sec.unwrap();
     let date = get_date(seek, start_sec, get_next);
@@ -150,12 +146,7 @@ pub fn read_json(
 
                     if !config.general.skip_validation {
                         thread::spawn(move || {
-                            validate_playlist(
-                                config_clone,
-                                control_clone,
-                                list_clone,
-                                is_terminated,
-                            )
+                            validate_playlist(config_clone, current_list, list_clone, is_terminated)
                         });
                     }
 
@@ -194,7 +185,7 @@ pub fn read_json(
 
         if !config.general.skip_validation {
             thread::spawn(move || {
-                validate_playlist(config_clone, control_clone, list_clone, is_terminated)
+                validate_playlist(config_clone, current_list, list_clone, is_terminated)
             });
         }
 

@@ -18,7 +18,7 @@ mod stream;
 pub use hls::write_hls;
 
 use crate::player::{
-    controller::{ChannelManager, PlayerControl, PlayoutStatus, ProcessUnit::*},
+    controller::{ChannelManager, ProcessUnit::*},
     input::{ingest_server, source_generator},
     utils::{sec_to_time, stderr_reader},
 };
@@ -34,31 +34,20 @@ use crate::vec_strings;
 /// for getting live feeds.
 /// When a live ingest arrive, it stops the current playing and switch to the live source.
 /// When ingest stops, it switch back to playlist/folder mode.
-pub fn player(
-    channel_mgr: ChannelManager,
-    db_pool: Pool<Sqlite>,
-    play_control: &PlayerControl,
-    playout_stat: PlayoutStatus,
-) -> Result<(), ProcessError> {
-    let config = channel_mgr.config.lock()?.clone();
+pub fn player(manager: ChannelManager, db_pool: Pool<Sqlite>) -> Result<(), ProcessError> {
+    let config = manager.config.lock()?.clone();
     let config_clone = config.clone();
     let ff_log_format = format!("level+{}", config.logging.ffmpeg_level.to_lowercase());
     let ignore_enc = config.logging.ignore_lines.clone();
     let mut buffer = [0; 65088];
     let mut live_on = false;
-    let playlist_init = playout_stat.list_init.clone();
+    let playlist_init = manager.list_init.clone();
 
-    let is_terminated = channel_mgr.is_terminated.clone();
-    let ingest_is_running = channel_mgr.ingest_is_running.clone();
+    let is_terminated = manager.is_terminated.clone();
+    let ingest_is_running = manager.ingest_is_running.clone();
 
     // get source iterator
-    let node_sources = source_generator(
-        config.clone(),
-        db_pool,
-        play_control,
-        playout_stat,
-        is_terminated.clone(),
-    );
+    let node_sources = source_generator(manager.clone(), db_pool);
 
     // get ffmpeg output instance
     let mut enc_proc = match config.output.mode {
@@ -71,14 +60,14 @@ pub fn player(
     let mut enc_writer = BufWriter::new(enc_proc.stdin.take().unwrap());
     let enc_err = BufReader::new(enc_proc.stderr.take().unwrap());
 
-    *channel_mgr.encoder.lock().unwrap() = Some(enc_proc);
-    let enc_p_ctl = channel_mgr.clone();
+    *manager.encoder.lock().unwrap() = Some(enc_proc);
+    let enc_p_ctl = manager.clone();
 
     // spawn a thread to log ffmpeg output error messages
     let error_encoder_thread =
         thread::spawn(move || stderr_reader(enc_err, ignore_enc, Encoder, enc_p_ctl));
 
-    let channel_mgr_2 = channel_mgr.clone();
+    let channel_mgr_2 = manager.clone();
     let mut ingest_receiver = None;
 
     // spawn a thread for ffmpeg ingest server and create a channel for package sending
@@ -88,8 +77,12 @@ pub fn player(
         thread::spawn(move || ingest_server(config_clone, ingest_sender, channel_mgr_2));
     }
 
+    drop(config);
+
     'source_iter: for node in node_sources {
-        *play_control.current_media.lock().unwrap() = Some(node.clone());
+        let config = manager.config.lock()?.clone();
+
+        *manager.current_media.lock().unwrap() = Some(node.clone());
         let ignore_dec = config.logging.ignore_lines.clone();
 
         if is_terminated.load(Ordering::SeqCst) {
@@ -115,7 +108,7 @@ pub fn player(
             format!(
                 " ({}/{})",
                 node.index.unwrap() + 1,
-                play_control.current_list.lock().unwrap().len()
+                manager.current_list.lock().unwrap().len()
             )
         } else {
             String::new()
@@ -130,7 +123,7 @@ pub fn player(
 
         if config.task.enable {
             if config.task.path.is_file() {
-                let channel_mgr_3 = channel_mgr.clone();
+                let channel_mgr_3 = manager.clone();
 
                 thread::spawn(move || task_runner::run(channel_mgr_3));
             } else {
@@ -180,8 +173,8 @@ pub fn player(
         let mut dec_reader = BufReader::new(dec_proc.stdout.take().unwrap());
         let dec_err = BufReader::new(dec_proc.stderr.take().unwrap());
 
-        *channel_mgr.clone().decoder.lock().unwrap() = Some(dec_proc);
-        let channel_mgr_c = channel_mgr.clone();
+        *manager.clone().decoder.lock().unwrap() = Some(dec_proc);
+        let channel_mgr_c = manager.clone();
 
         let error_decoder_thread =
             thread::spawn(move || stderr_reader(dec_err, ignore_dec, Decoder, channel_mgr_c));
@@ -192,7 +185,7 @@ pub fn player(
                 if !live_on {
                     info!("Switch from {} to live ingest", config.processing.mode);
 
-                    if let Err(e) = channel_mgr.stop(Decoder) {
+                    if let Err(e) = manager.stop(Decoder) {
                         error!("{e}")
                     }
 
@@ -237,7 +230,7 @@ pub fn player(
             }
         }
 
-        if let Err(e) = channel_mgr.wait(Decoder) {
+        if let Err(e) = manager.wait(Decoder) {
             error!("{e}")
         }
 
@@ -250,7 +243,7 @@ pub fn player(
 
     sleep(Duration::from_secs(1));
 
-    channel_mgr.stop_all();
+    manager.stop_all();
 
     if let Err(e) = error_encoder_thread.join() {
         error!("{e:?}");

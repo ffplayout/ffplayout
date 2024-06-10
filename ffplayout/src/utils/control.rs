@@ -189,7 +189,8 @@ pub async fn control_state(
                     let (delta, _) = get_delta(&config, &media.begin.unwrap_or(0.0));
                     manager.channel.lock().unwrap().time_shift = delta;
                     date.clone_from(&current_date);
-                    handles::update_stat(conn, config.general.channel_id, current_date, delta);
+                    handles::update_stat(conn, config.general.channel_id, current_date, delta)
+                        .await?;
 
                     data_map.insert("operation".to_string(), json!("move_to_last"));
                     data_map.insert("shifted_seconds".to_string(), json!(delta));
@@ -225,7 +226,8 @@ pub async fn control_state(
                     let (delta, _) = get_delta(&config, &media.begin.unwrap_or(0.0));
                     manager.channel.lock().unwrap().time_shift = delta;
                     date.clone_from(&current_date);
-                    handles::update_stat(conn, config.general.channel_id, current_date, delta);
+                    handles::update_stat(conn, config.general.channel_id, current_date, delta)
+                        .await?;
 
                     data_map.insert("operation".to_string(), json!("move_to_next"));
                     data_map.insert("shifted_seconds".to_string(), json!(delta));
@@ -254,7 +256,7 @@ pub async fn control_state(
                 date.clone_from(&current_date);
                 manager.list_init.store(true, Ordering::SeqCst);
 
-                handles::update_stat(conn, config.general.channel_id, current_date, 0.0);
+                handles::update_stat(conn, config.general.channel_id, current_date, 0.0).await?;
 
                 data_map.insert("operation".to_string(), json!("reset_playout_state"));
 

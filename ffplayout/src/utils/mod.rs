@@ -2,8 +2,8 @@ use std::{
     env,
     error::Error,
     fmt,
-    fs::{self, metadata, File},
-    io::{stdin, stdout, Read, Write},
+    fs::{self, metadata},
+    io::{stdin, stdout, Write},
     net::TcpListener,
     path::{Path, PathBuf},
     str::FromStr,
@@ -40,11 +40,11 @@ pub mod task_runner;
 
 use crate::db::{
     db_pool,
-    handles::{insert_user, select_channel, select_global},
-    models::{Channel, User},
+    handles::{insert_user, select_global},
+    models::User,
 };
 use crate::player::utils::time_to_sec;
-use crate::utils::{config::PlayoutConfig, errors::ServiceError, logging::log_file_path};
+use crate::utils::{errors::ServiceError, logging::log_file_path};
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
 pub enum Role {
@@ -394,35 +394,6 @@ pub async fn run_args() -> Result<(), i32> {
     }
 
     Ok(())
-}
-
-pub fn read_playout_config(path: &str) -> Result<PlayoutConfig, Box<dyn Error>> {
-    let mut file = File::open(path)?;
-    let mut contents = String::new();
-    file.read_to_string(&mut contents)?;
-
-    let mut config: PlayoutConfig = toml_edit::de::from_str(&contents)?;
-
-    config.playlist.start_sec = Some(time_to_sec(&config.playlist.day_start));
-    config.playlist.length_sec = Some(time_to_sec(&config.playlist.length));
-
-    Ok(config)
-}
-
-pub async fn playout_config(
-    conn: &Pool<Sqlite>,
-    channel_id: &i32,
-) -> Result<(PlayoutConfig, Channel), ServiceError> {
-    if let Ok(channel) = select_channel(conn, channel_id).await {
-        match read_playout_config(&channel.config_path.clone()) {
-            Ok(config) => return Ok((config, channel)),
-            Err(e) => error!("{e}"),
-        }
-    }
-
-    Err(ServiceError::BadRequest(
-        "Error in getting config!".to_string(),
-    ))
 }
 
 pub async fn read_log_file(channel_id: &i32, date: &str) -> Result<String, ServiceError> {

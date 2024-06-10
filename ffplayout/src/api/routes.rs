@@ -493,8 +493,10 @@ async fn get_playout_config(
     id: web::Path<i32>,
     _details: AuthDetails<Role>,
 ) -> Result<impl Responder, ServiceError> {
-    if let Ok(channel) = handles::select_channel(&pool.into_inner(), &id).await {
+    if let Ok(_channel) = handles::select_channel(&pool.into_inner(), &id).await {
         // TODO: get config
+
+        return Ok("Update playout config success.");
     };
 
     Err(ServiceError::InternalServerError)
@@ -511,9 +513,9 @@ async fn get_playout_config(
 async fn update_playout_config(
     pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
-    data: web::Json<PlayoutConfig>,
+    _data: web::Json<PlayoutConfig>,
 ) -> Result<impl Responder, ServiceError> {
-    if let Ok(channel) = handles::select_channel(&pool.into_inner(), &id).await {
+    if let Ok(_channel) = handles::select_channel(&pool.into_inner(), &id).await {
         // TODO: update config
 
         return Ok("Update playout config success.");
@@ -722,13 +724,10 @@ pub async fn media_current(
 #[post("/control/{id}/process/")]
 #[protect(any("Role::Admin", "Role::User"), ty = "Role")]
 pub async fn process_control(
-    pool: web::Data<Pool<Sqlite>>,
-    id: web::Path<i32>,
+    _id: web::Path<i32>,
     _proc: web::Json<Process>,
     _engine_process: web::Data<ProcessControl>,
 ) -> Result<impl Responder, ServiceError> {
-    let (_config, _) = playout_config(&pool.clone().into_inner(), &id).await?;
-
     Ok(web::Json("no implemented"))
 }
 
@@ -743,11 +742,14 @@ pub async fn process_control(
 #[get("/playlist/{id}")]
 #[protect(any("Role::Admin", "Role::User"), ty = "Role")]
 pub async fn get_playlist(
-    pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
     obj: web::Query<DateObj>,
+    controllers: web::Data<Mutex<ChannelController>>,
 ) -> Result<impl Responder, ServiceError> {
-    match read_playlist(&pool.into_inner(), *id, obj.date.clone()).await {
+    let manager = controllers.lock().unwrap().get(*id).unwrap();
+    let config = manager.config.lock().unwrap().clone();
+
+    match read_playlist(&config, obj.date.clone()).await {
         Ok(playlist) => Ok(web::Json(playlist)),
         Err(e) => Err(e),
     }
@@ -763,11 +765,14 @@ pub async fn get_playlist(
 #[post("/playlist/{id}/")]
 #[protect(any("Role::Admin", "Role::User"), ty = "Role")]
 pub async fn save_playlist(
-    pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
     data: web::Json<JsonPlaylist>,
+    controllers: web::Data<Mutex<ChannelController>>,
 ) -> Result<impl Responder, ServiceError> {
-    match write_playlist(&pool.into_inner(), *id, data.into_inner()).await {
+    let manager = controllers.lock().unwrap().get(*id).unwrap();
+    let config = manager.config.lock().unwrap().clone();
+
+    match write_playlist(&config, data.into_inner()).await {
         Ok(res) => Ok(web::Json(res)),
         Err(e) => Err(e),
     }
@@ -794,11 +799,13 @@ pub async fn save_playlist(
 #[post("/playlist/{id}/generate/{date}")]
 #[protect(any("Role::Admin", "Role::User"), ty = "Role")]
 pub async fn gen_playlist(
-    pool: web::Data<Pool<Sqlite>>,
     params: web::Path<(i32, String)>,
     data: Option<web::Json<PathsObj>>,
+    controllers: web::Data<Mutex<ChannelController>>,
 ) -> Result<impl Responder, ServiceError> {
-    let (mut config, channel) = playout_config(&pool.into_inner(), &params.0).await?;
+    let manager = controllers.lock().unwrap().get(params.0).unwrap();
+    let channel_name = manager.channel.lock().unwrap().name.clone();
+    let mut config = manager.config.lock().unwrap();
     config.general.generate = Some(vec![params.1.clone()]);
 
     if let Some(obj) = data {
@@ -817,7 +824,7 @@ pub async fn gen_playlist(
         config.general.template.clone_from(&obj.template);
     }
 
-    match generate_playlist(config.to_owned(), channel.name).await {
+    match generate_playlist(config.clone(), channel_name).await {
         Ok(playlist) => Ok(web::Json(playlist)),
         Err(e) => Err(e),
     }
@@ -832,10 +839,13 @@ pub async fn gen_playlist(
 #[delete("/playlist/{id}/{date}")]
 #[protect(any("Role::Admin", "Role::User"), ty = "Role")]
 pub async fn del_playlist(
-    pool: web::Data<Pool<Sqlite>>,
     params: web::Path<(i32, String)>,
+    controllers: web::Data<Mutex<ChannelController>>,
 ) -> Result<impl Responder, ServiceError> {
-    match delete_playlist(&pool.into_inner(), params.0, &params.1).await {
+    let manager = controllers.lock().unwrap().get(params.0).unwrap();
+    let config = manager.config.lock().unwrap().clone();
+
+    match delete_playlist(&config, &params.1).await {
         Ok(m) => Ok(web::Json(m)),
         Err(e) => Err(e),
     }
@@ -869,11 +879,15 @@ pub async fn get_log(
 #[post("/file/{id}/browse/")]
 #[protect(any("Role::Admin", "Role::User"), ty = "Role")]
 pub async fn file_browser(
-    pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
     data: web::Json<PathObject>,
+    controllers: web::Data<Mutex<ChannelController>>,
 ) -> Result<impl Responder, ServiceError> {
-    match browser(&pool.into_inner(), *id, &data.into_inner()).await {
+    let manager = controllers.lock().unwrap().get(*id).unwrap();
+    let channel = manager.channel.lock().unwrap().clone();
+    let config = manager.config.lock().unwrap().clone();
+
+    match browser(&config, &channel, &data.into_inner()).await {
         Ok(obj) => Ok(web::Json(obj)),
         Err(e) => Err(e),
     }
@@ -888,11 +902,14 @@ pub async fn file_browser(
 #[post("/file/{id}/create-folder/")]
 #[protect(any("Role::Admin", "Role::User"), ty = "Role")]
 pub async fn add_dir(
-    pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
     data: web::Json<PathObject>,
+    controllers: web::Data<Mutex<ChannelController>>,
 ) -> Result<HttpResponse, ServiceError> {
-    create_directory(&pool.into_inner(), *id, &data.into_inner()).await
+    let manager = controllers.lock().unwrap().get(*id).unwrap();
+    let config = manager.config.lock().unwrap().clone();
+
+    create_directory(&config, &data.into_inner()).await
 }
 
 /// **Rename File**
@@ -904,11 +921,14 @@ pub async fn add_dir(
 #[post("/file/{id}/rename/")]
 #[protect(any("Role::Admin", "Role::User"), ty = "Role")]
 pub async fn move_rename(
-    pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
     data: web::Json<MoveObject>,
+    controllers: web::Data<Mutex<ChannelController>>,
 ) -> Result<impl Responder, ServiceError> {
-    match rename_file(&pool.into_inner(), *id, &data.into_inner()).await {
+    let manager = controllers.lock().unwrap().get(*id).unwrap();
+    let config = manager.config.lock().unwrap().clone();
+
+    match rename_file(&config, &data.into_inner()).await {
         Ok(obj) => Ok(web::Json(obj)),
         Err(e) => Err(e),
     }
@@ -923,11 +943,14 @@ pub async fn move_rename(
 #[post("/file/{id}/remove/")]
 #[protect(any("Role::Admin", "Role::User"), ty = "Role")]
 pub async fn remove(
-    pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
     data: web::Json<PathObject>,
+    controllers: web::Data<Mutex<ChannelController>>,
 ) -> Result<impl Responder, ServiceError> {
-    match remove_file_or_folder(&pool.into_inner(), *id, &data.into_inner().source).await {
+    let manager = controllers.lock().unwrap().get(*id).unwrap();
+    let config = manager.config.lock().unwrap().clone();
+
+    match remove_file_or_folder(&config, &data.into_inner().source).await {
         Ok(obj) => Ok(web::Json(obj)),
         Err(e) => Err(e),
     }
@@ -942,12 +965,15 @@ pub async fn remove(
 #[put("/file/{id}/upload/")]
 #[protect(any("Role::Admin", "Role::User"), ty = "Role")]
 async fn save_file(
-    pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
     req: HttpRequest,
     payload: Multipart,
     obj: web::Query<FileObj>,
+    controllers: web::Data<Mutex<ChannelController>>,
 ) -> Result<HttpResponse, ServiceError> {
+    let manager = controllers.lock().unwrap().get(*id).unwrap();
+    let config = manager.config.lock().unwrap().clone();
+
     let size: u64 = req
         .headers()
         .get("content-length")
@@ -955,7 +981,7 @@ async fn save_file(
         .and_then(|cls| cls.parse().ok())
         .unwrap_or(0);
 
-    upload(&pool.into_inner(), *id, size, payload, &obj.path, false).await
+    upload(&config, size, payload, &obj.path, false).await
 }
 
 /// **Get File**
@@ -967,12 +993,13 @@ async fn save_file(
 /// ```
 #[get("/file/{id}/{filename:.*}")]
 async fn get_file(
-    pool: web::Data<Pool<Sqlite>>,
     req: HttpRequest,
+    controllers: web::Data<Mutex<ChannelController>>,
 ) -> Result<actix_files::NamedFile, ServiceError> {
     let id: i32 = req.match_info().query("id").parse()?;
-    let (config, _) = playout_config(&pool.into_inner(), &id).await?;
-    let storage_path = config.storage.path;
+    let manager = controllers.lock().unwrap().get(id).unwrap();
+    let config = manager.config.lock().unwrap();
+    let storage_path = config.storage.path.clone();
     let file_path = req.match_info().query("filename");
     let (path, _, _) = norm_abs_path(&storage_path, file_path)?;
     let file = actix_files::NamedFile::open(path)?;
@@ -1026,17 +1053,18 @@ async fn get_public(public: web::Path<String>) -> Result<actix_files::NamedFile,
 #[put("/file/{id}/import/")]
 #[protect(any("Role::Admin", "Role::User"), ty = "Role")]
 async fn import_playlist(
-    pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
     req: HttpRequest,
     payload: Multipart,
     obj: web::Query<ImportObj>,
+    controllers: web::Data<Mutex<ChannelController>>,
 ) -> Result<HttpResponse, ServiceError> {
+    let manager = controllers.lock().unwrap().get(*id).unwrap();
+    let channel_name = manager.channel.lock().unwrap().name.clone();
+    let config = manager.config.lock().unwrap().clone();
     let file = obj.file.file_name().unwrap_or_default();
     let path = env::temp_dir().join(file);
     let path_clone = path.clone();
-    let (config, _) = playout_config(&pool.clone().into_inner(), &id).await?;
-    let channel = handles::select_channel(&pool.clone().into_inner(), &id).await?;
     let size: u64 = req
         .headers()
         .get("content-length")
@@ -1044,10 +1072,10 @@ async fn import_playlist(
         .and_then(|cls| cls.parse().ok())
         .unwrap_or(0);
 
-    upload(&pool.into_inner(), *id, size, payload, &path, true).await?;
+    upload(&config, size, payload, &path, true).await?;
 
     let response = task::spawn_blocking(move || {
-        import_file(&config, &obj.date, Some(channel.name), &path_clone)
+        import_file(&config, &obj.date, Some(channel_name), &path_clone)
     })
     .await??;
 
@@ -1081,11 +1109,12 @@ async fn import_playlist(
 #[get("/program/{id}/")]
 #[protect(any("Role::Admin", "Role::User"), ty = "Role")]
 async fn get_program(
-    pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
     obj: web::Query<ProgramObj>,
+    controllers: web::Data<Mutex<ChannelController>>,
 ) -> Result<impl Responder, ServiceError> {
-    let (config, _) = playout_config(&pool.clone().into_inner(), &id).await?;
+    let manager = controllers.lock().unwrap().get(*id).unwrap();
+    let config = manager.config.lock().unwrap().clone();
     let start_sec = config.playlist.start_sec.unwrap();
     let mut days = 0;
     let mut program = vec![];
@@ -1110,14 +1139,13 @@ async fn get_program(
     ]);
 
     for date in date_range {
-        let conn = pool.clone().into_inner();
         let mut naive = NaiveDateTime::parse_from_str(
             &format!("{date} {}", sec_to_time(start_sec)),
             "%Y-%m-%d %H:%M:%S%.3f",
         )
         .unwrap();
 
-        let playlist = match read_playlist(&conn, *id, date.clone()).await {
+        let playlist = match read_playlist(&config, date.clone()).await {
             Ok(p) => p,
             Err(e) => {
                 error!("Error in Playlist from {date}: {e}");
@@ -1169,10 +1197,11 @@ async fn get_program(
 #[get("/system/{id}")]
 #[protect(any("Role::Admin", "Role::User"), ty = "Role")]
 pub async fn get_system_stat(
-    pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
+    controllers: web::Data<Mutex<ChannelController>>,
 ) -> Result<impl Responder, ServiceError> {
-    let (config, _) = playout_config(&pool.clone().into_inner(), &id).await?;
+    let manager = controllers.lock().unwrap().get(*id).unwrap();
+    let config = manager.config.lock().unwrap().clone();
 
     let stat = web::block(move || system::stat(config)).await?;
 
