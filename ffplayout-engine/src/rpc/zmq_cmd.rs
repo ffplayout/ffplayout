@@ -1,7 +1,6 @@
 use std::error::Error;
 
-use zeromq::Socket;
-use zeromq::{SocketRecv, SocketSend, ZmqMessage};
+use zeromq::{Socket, SocketRecv, SocketSend, ZmqMessage};
 
 pub async fn zmq_send(msg: &str, socket_addr: &str) -> Result<String, Box<dyn Error>> {
     let mut socket = zeromq::ReqSocket::new();

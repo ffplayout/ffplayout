@@ -1,15 +1,31 @@
-use std::{collections::HashMap, fmt, str::FromStr, sync::atomic::AtomicBool};
+use std::{
+    error::Error,
+    fmt,
+    str::FromStr,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Mutex,
+    },
+};
 
-use reqwest::{header::AUTHORIZATION, Client, Response};
+use log::*;
 use serde::{Deserialize, Serialize};
-use tokio::{process::Child, sync::Mutex};
+use serde_json::{json, Map, Value};
+use sqlx::{Pool, Sqlite};
+use tokio::process::Child;
+use zeromq::{Socket, SocketRecv, SocketSend, ZmqMessage};
 
-use crate::utils::{config::PlayoutConfig, errors::ServiceError};
+use crate::db::handles;
+use crate::player::{
+    controller::{ChannelManager, ProcessUnit::*},
+    utils::{get_delta, get_media_map},
+};
+use crate::utils::{config::OutputMode::*, errors::ServiceError, TextFilter};
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 struct TextParams {
     control: String,
-    message: HashMap<String, String>,
+    message: TextFilter,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -77,50 +93,192 @@ pub struct Process {
     pub command: ServiceCmd,
 }
 
-async fn post_request<T>(config: &PlayoutConfig, obj: T) -> Result<Response, ServiceError>
-where
-    T: Serialize,
-{
-    let url = format!("http://{}", config.rpc_server.address);
-    let client = Client::new();
+async fn zmq_send(msg: &str, socket_addr: &str) -> Result<String, Box<dyn Error>> {
+    let mut socket = zeromq::ReqSocket::new();
+    socket.connect(&format!("tcp://{socket_addr}")).await?;
+    socket.send(msg.into()).await?;
+    let repl: ZmqMessage = socket.recv().await?;
+    let response = String::from_utf8(repl.into_vec()[0].to_vec())?;
 
-    match client
-        .post(&url)
-        .header(AUTHORIZATION, &config.rpc_server.authorization)
-        .json(&obj)
-        .send()
-        .await
-    {
-        Ok(result) => Ok(result),
-        Err(e) => Err(ServiceError::ServiceUnavailable(e.to_string())),
-    }
+    Ok(response)
 }
 
 pub async fn send_message(
-    config: &PlayoutConfig,
-    message: HashMap<String, String>,
-) -> Result<Response, ServiceError> {
-    let json_obj = TextParams {
-        control: "text".into(),
-        message,
-    };
+    manager: ChannelManager,
+    message: TextFilter,
+) -> Result<Map<String, Value>, ServiceError> {
+    let filter = message.to_string();
+    let mut data_map = Map::new();
+    let config = manager.config.lock().unwrap().clone();
 
-    post_request(config, json_obj).await
+    if config.text.zmq_stream_socket.is_some() {
+        if let Some(clips_filter) = manager.chain.clone() {
+            *clips_filter.lock().unwrap() = vec![filter.clone()];
+        }
+
+        if config.output.mode == HLS {
+            if manager.ingest_is_running.load(Ordering::SeqCst) {
+                let filter_server = format!("drawtext@dyntext reinit {filter}");
+
+                if let Ok(reply) = zmq_send(
+                    &filter_server,
+                    &config.text.zmq_server_socket.clone().unwrap(),
+                )
+                .await
+                {
+                    data_map.insert("message".to_string(), json!(reply));
+                    return Ok(data_map);
+                };
+            } else if let Err(e) = manager.stop(Ingest) {
+                error!("Ingest {e:?}")
+            }
+        }
+
+        if config.output.mode != HLS || !manager.ingest_is_running.load(Ordering::SeqCst) {
+            let filter_stream = format!("drawtext@dyntext reinit {filter}");
+
+            if let Ok(reply) = zmq_send(
+                &filter_stream,
+                &config.text.zmq_stream_socket.clone().unwrap(),
+            )
+            .await
+            {
+                data_map.insert("message".to_string(), json!(reply));
+                return Ok(data_map);
+            };
+        }
+    }
+
+    Err(ServiceError::ServiceUnavailable(
+        "text message missing!".to_string(),
+    ))
 }
 
 pub async fn control_state(
-    config: &PlayoutConfig,
+    conn: &Pool<Sqlite>,
+    manager: ChannelManager,
     command: &str,
-) -> Result<Response, ServiceError> {
-    let json_obj = ControlParams {
-        control: command.to_owned(),
-    };
+) -> Result<Map<String, Value>, ServiceError> {
+    let config = manager.config.lock().unwrap().clone();
+    let current_date = manager.current_date.lock().unwrap().clone();
+    let current_list = manager.current_list.lock().unwrap();
+    let mut date = manager.current_date.lock().unwrap();
+    let index = manager.current_index.load(Ordering::SeqCst);
 
-    post_request(config, json_obj).await
-}
+    match command {
+        "back" => {
+            if index > 1 && current_list.len() > 1 {
+                if let Some(proc) = manager.decoder.lock().unwrap().as_mut() {
+                    if let Err(e) = proc.kill() {
+                        error!("Decoder {e:?}")
+                    };
 
-pub async fn media_info(config: &PlayoutConfig, command: String) -> Result<Response, ServiceError> {
-    let json_obj = MediaParams { media: command };
+                    if let Err(e) = proc.wait() {
+                        error!("Decoder {e:?}")
+                    };
 
-    post_request(config, json_obj).await
+                    info!("Move to last clip");
+                    let mut data_map = Map::new();
+                    let mut media = current_list[index - 2].clone();
+                    manager.current_index.fetch_sub(2, Ordering::SeqCst);
+
+                    if let Err(e) = media.add_probe(false) {
+                        error!("{e:?}");
+                    };
+
+                    let (delta, _) = get_delta(&config, &media.begin.unwrap_or(0.0));
+                    manager.channel.lock().unwrap().time_shift = delta;
+                    date.clone_from(&current_date);
+                    handles::update_stat(conn, config.general.channel_id, current_date, delta);
+
+                    data_map.insert("operation".to_string(), json!("move_to_last"));
+                    data_map.insert("shifted_seconds".to_string(), json!(delta));
+                    data_map.insert("media".to_string(), get_media_map(media));
+
+                    return Ok(data_map);
+                }
+
+                return Err(ServiceError::InternalServerError);
+            }
+        }
+
+        "next" => {
+            if index < current_list.len() {
+                if let Some(proc) = manager.decoder.lock().unwrap().as_mut() {
+                    if let Err(e) = proc.kill() {
+                        error!("Decoder {e:?}")
+                    };
+
+                    if let Err(e) = proc.wait() {
+                        error!("Decoder {e:?}")
+                    };
+
+                    info!("Move to next clip");
+
+                    let mut data_map = Map::new();
+                    let mut media = current_list[index].clone();
+
+                    if let Err(e) = media.add_probe(false) {
+                        error!("{e:?}");
+                    };
+
+                    let (delta, _) = get_delta(&config, &media.begin.unwrap_or(0.0));
+                    manager.channel.lock().unwrap().time_shift = delta;
+                    date.clone_from(&current_date);
+                    handles::update_stat(conn, config.general.channel_id, current_date, delta);
+
+                    data_map.insert("operation".to_string(), json!("move_to_next"));
+                    data_map.insert("shifted_seconds".to_string(), json!(delta));
+                    data_map.insert("media".to_string(), get_media_map(media));
+
+                    return Ok(data_map);
+                }
+
+                return Err(ServiceError::InternalServerError);
+            }
+        }
+
+        "reset" => {
+            if let Some(proc) = manager.decoder.lock().unwrap().as_mut() {
+                if let Err(e) = proc.kill() {
+                    error!("Decoder {e:?}")
+                };
+
+                if let Err(e) = proc.wait() {
+                    error!("Decoder {e:?}")
+                };
+
+                info!("Reset playout to original state");
+                let mut data_map = Map::new();
+                manager.channel.lock().unwrap().time_shift = 0.0;
+                date.clone_from(&current_date);
+                manager.list_init.store(true, Ordering::SeqCst);
+
+                handles::update_stat(conn, config.general.channel_id, current_date, 0.0);
+
+                data_map.insert("operation".to_string(), json!("reset_playout_state"));
+
+                return Ok(data_map);
+            }
+
+            return Err(ServiceError::InternalServerError);
+        }
+
+        "stop_all" => {
+            manager.stop_all();
+
+            let mut data_map = Map::new();
+            data_map.insert("message".to_string(), json!("Stop playout!"));
+
+            return Ok(data_map);
+        }
+
+        _ => {
+            return Err(ServiceError::ServiceUnavailable(
+                "Command not found!".to_string(),
+            ))
+        }
+    }
+
+    Ok(Map::new())
 }

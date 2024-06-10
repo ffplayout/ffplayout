@@ -1,4 +1,4 @@
-use std::{fs, path::PathBuf};
+use std::fs;
 
 use rand::prelude::*;
 use simplelog::*;
@@ -11,33 +11,21 @@ pub async fn create_channel(
     conn: &Pool<Sqlite>,
     target_channel: Channel,
 ) -> Result<Channel, ServiceError> {
-    if !target_channel.config_path.starts_with("/etc/ffplayout") {
-        return Err(ServiceError::BadRequest("Bad config path!".to_string()));
-    }
-
     let channel_name = target_channel.name.to_lowercase().replace(' ', "");
     let channel_num = match handles::select_last_channel(conn).await {
         Ok(num) => num + 1,
         Err(_) => rand::thread_rng().gen_range(71..99),
     };
 
-    let mut config = PlayoutConfig::new(
-        Some(PathBuf::from("/usr/share/ffplayout/ffplayout.toml.orig")),
-        None,
-    );
+    let mut config = PlayoutConfig::new(conn, channel_num).await;
 
-    config.general.stat_file = format!(".ffp_{channel_name}",);
-    config.rpc_server.address = format!("127.0.0.1:70{:7>2}", channel_num);
     config.playlist.path = config.playlist.path.join(channel_name);
 
-    config.out.output_param = config
-        .out
+    config.output.output_param = config
+        .output
         .output_param
         .replace("stream.m3u8", &format!("stream{channel_num}.m3u8"))
         .replace("stream-%d.ts", &format!("stream{channel_num}-%d.ts"));
-
-    let toml_string = toml_edit::ser::to_string(&config)?;
-    fs::write(&target_channel.config_path, toml_string)?;
 
     let new_channel = handles::insert_channel(conn, target_channel).await?;
     // TODO: Create Channel controller
@@ -46,14 +34,10 @@ pub async fn create_channel(
 }
 
 pub async fn delete_channel(conn: &Pool<Sqlite>, id: i32) -> Result<(), ServiceError> {
-    let channel = handles::select_channel(conn, &id).await?;
+    let _channel = handles::select_channel(conn, &id).await?;
     let (_config, _) = playout_config(conn, &id).await?;
 
     // TODO: Remove Channel controller
-
-    if let Err(e) = fs::remove_file(channel.config_path) {
-        error!("{e}");
-    };
 
     handles::delete_channel(conn, &id).await?;
 

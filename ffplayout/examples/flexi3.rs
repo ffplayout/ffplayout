@@ -22,13 +22,15 @@ impl MultiFileLogger {
             let writer = FileLogWriter::builder(
                 FileSpec::default()
                     .suppress_timestamp()
-                    .basename("ffplayout")
-                    .discriminant(channel),
+                    .basename("ffplayout"),
             )
             .append()
             .rotate(
                 Criterion::Age(Age::Day),
-                Naming::Timestamps,
+                Naming::TimestampsCustomFormat {
+                    current_infix: Some(""),
+                    format: "%Y-%m-%d",
+                },
                 Cleanup::KeepLogFiles(7),
             )
             .print_message()

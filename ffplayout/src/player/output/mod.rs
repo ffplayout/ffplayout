@@ -7,7 +7,8 @@ use std::{
 };
 
 use crossbeam_channel::bounded;
-use simplelog::*;
+use log::*;
+use sqlx::{Pool, Sqlite};
 
 mod desktop;
 mod hls;
@@ -35,6 +36,7 @@ use crate::vec_strings;
 /// When ingest stops, it switch back to playlist/folder mode.
 pub fn player(
     channel_mgr: ChannelManager,
+    db_pool: Pool<Sqlite>,
     play_control: &PlayerControl,
     playout_stat: PlayoutStatus,
 ) -> Result<(), ProcessError> {
@@ -45,7 +47,6 @@ pub fn player(
     let mut buffer = [0; 65088];
     let mut live_on = false;
     let playlist_init = playout_stat.list_init.clone();
-    let play_stat = playout_stat.clone();
 
     let is_terminated = channel_mgr.is_terminated.clone();
     let ingest_is_running = channel_mgr.ingest_is_running.clone();
@@ -53,13 +54,14 @@ pub fn player(
     // get source iterator
     let node_sources = source_generator(
         config.clone(),
+        db_pool,
         play_control,
         playout_stat,
         is_terminated.clone(),
     );
 
     // get ffmpeg output instance
-    let mut enc_proc = match config.out.mode {
+    let mut enc_proc = match config.output.mode {
         Desktop => desktop::output(&config, &ff_log_format),
         Null => null::output(&config, &ff_log_format),
         Stream => stream::output(&config, &ff_log_format),
@@ -76,14 +78,14 @@ pub fn player(
     let error_encoder_thread =
         thread::spawn(move || stderr_reader(enc_err, ignore_enc, Encoder, enc_p_ctl));
 
-    let channel_mgr_c = channel_mgr.clone();
+    let channel_mgr_2 = channel_mgr.clone();
     let mut ingest_receiver = None;
 
     // spawn a thread for ffmpeg ingest server and create a channel for package sending
     if config.ingest.enable {
         let (ingest_sender, rx) = bounded(96);
         ingest_receiver = Some(rx);
-        thread::spawn(move || ingest_server(config_clone, ingest_sender, channel_mgr_c));
+        thread::spawn(move || ingest_server(config_clone, ingest_sender, channel_mgr_2));
     }
 
     'source_iter: for node in node_sources {
@@ -128,14 +130,9 @@ pub fn player(
 
         if config.task.enable {
             if config.task.path.is_file() {
-                let task_config = config.clone();
-                let task_node = node.clone();
-                let server_running = ingest_is_running.load(Ordering::SeqCst);
-                let stat = play_stat.clone();
+                let channel_mgr_3 = channel_mgr.clone();
 
-                thread::spawn(move || {
-                    task_runner::run(task_config, task_node, stat, server_running)
-                });
+                thread::spawn(move || task_runner::run(channel_mgr_3));
             } else {
                 error!(
                     "<bright-blue>{:?}</> executable not exists!",
@@ -146,11 +143,7 @@ pub fn player(
 
         let mut dec_cmd = vec_strings!["-hide_banner", "-nostats", "-v", &ff_log_format];
 
-        if let Some(decoder_input_cmd) = config
-            .advanced
-            .as_ref()
-            .and_then(|a| a.decoder.input_cmd.clone())
-        {
+        if let Some(decoder_input_cmd) = &config.advanced.decoder.input_cmd {
             dec_cmd.append(&mut decoder_input_cmd.clone());
         }
 

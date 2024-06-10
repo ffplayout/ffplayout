@@ -14,11 +14,7 @@ pub fn output(config: &PlayoutConfig, log_format: &str) -> process::Child {
 
     let mut enc_cmd = vec_strings!["-hide_banner", "-nostats", "-v", log_format];
 
-    if let Some(encoder_input_cmd) = config
-        .advanced
-        .as_ref()
-        .and_then(|a| a.encoder.input_cmd.clone())
-    {
+    if let Some(encoder_input_cmd) = &config.advanced.encoder.input_cmd {
         enc_cmd.append(&mut encoder_input_cmd.clone());
     }
 
@@ -30,7 +26,7 @@ pub fn output(config: &PlayoutConfig, log_format: &str) -> process::Child {
         "ffplayout"
     ]);
 
-    if let Some(mut cmd) = config.out.output_cmd.clone() {
+    if let Some(mut cmd) = config.output.output_cmd.clone() {
         if !cmd.iter().any(|i| {
             [
                 "-c",

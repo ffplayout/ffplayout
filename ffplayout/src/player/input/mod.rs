@@ -4,6 +4,7 @@ use std::{
 };
 
 use simplelog::*;
+use sqlx::{Pool, Sqlite};
 
 pub mod folder;
 pub mod ingest;
@@ -22,6 +23,7 @@ use crate::utils::config::{PlayoutConfig, ProcessMode::*};
 /// Create a source iterator from playlist, or from folder.
 pub fn source_generator(
     config: PlayoutConfig,
+    db_pool: Pool<Sqlite>,
     player_control: &PlayerControl,
     playout_stat: PlayoutStatus,
     is_terminated: Arc<AtomicBool>,
@@ -45,7 +47,13 @@ pub fn source_generator(
         }
         Playlist => {
             info!("Playout in playlist mode");
-            let program = CurrentProgram::new(&config, playout_stat, is_terminated, player_control);
+            let program = CurrentProgram::new(
+                &config,
+                db_pool,
+                playout_stat,
+                is_terminated,
+                player_control,
+            );
 
             Box::new(program) as Box<dyn Iterator<Item = Media>>
         }

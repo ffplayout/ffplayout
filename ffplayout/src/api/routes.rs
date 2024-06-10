@@ -8,7 +8,7 @@
 ///
 /// For all endpoints an (Bearer) authentication is required.\
 /// `{id}` represent the channel id, and at default is 1.
-use std::{collections::HashMap, env, path::PathBuf};
+use std::{env, path::PathBuf, sync::Mutex};
 
 use actix_files;
 use actix_multipart::Multipart;
@@ -27,24 +27,20 @@ use argon2::{
     Argon2, PasswordHasher, PasswordVerifier,
 };
 use chrono::{DateTime, Datelike, Local, NaiveDateTime, TimeDelta, TimeZone, Utc};
+use log::*;
 use path_clean::PathClean;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use simplelog::*;
 use sqlx::{Pool, Sqlite};
 use tokio::{fs, task};
 
-use crate::db::{
-    handles,
-    models::{Channel, LoginUser, TextPreset, User},
-};
 use crate::player::utils::{
-    get_date_range, import::import_file, sec_to_time, time_to_sec, JsonPlaylist,
+    get_data_map, get_date_range, import::import_file, sec_to_time, time_to_sec, JsonPlaylist,
 };
 use crate::utils::{
     channels::{create_channel, delete_channel},
     config::{PlayoutConfig, Template},
-    control::{control_state, media_info, send_message, ControlParams, Process},
+    control::{control_state, send_message, ControlParams, Process},
     errors::ServiceError,
     files::{
         browser, create_directory, norm_abs_path, remove_file_or_folder, rename_file, upload,
@@ -52,12 +48,19 @@ use crate::utils::{
     },
     naive_date_time_from_str,
     playlist::{delete_playlist, generate_playlist, read_playlist, write_playlist},
-    playout_config, public_path, read_log_file, read_playout_config, system, Role,
+    public_path, read_log_file, system, Role, TextFilter,
 };
 use crate::vec_strings;
 use crate::{
     api::auth::{create_jwt, Claims},
     utils::control::ProcessControl,
+};
+use crate::{
+    db::{
+        handles,
+        models::{Channel, LoginUser, TextPreset, User},
+    },
+    player::controller::ChannelController,
 };
 
 #[derive(Serialize)]
@@ -491,9 +494,7 @@ async fn get_playout_config(
     _details: AuthDetails<Role>,
 ) -> Result<impl Responder, ServiceError> {
     if let Ok(channel) = handles::select_channel(&pool.into_inner(), &id).await {
-        if let Ok(config) = read_playout_config(&channel.config_path) {
-            return Ok(web::Json(config));
-        }
+        // TODO: get config
     };
 
     Err(ServiceError::InternalServerError)
@@ -513,8 +514,7 @@ async fn update_playout_config(
     data: web::Json<PlayoutConfig>,
 ) -> Result<impl Responder, ServiceError> {
     if let Ok(channel) = handles::select_channel(&pool.into_inner(), &id).await {
-        let toml_string = toml_edit::ser::to_string_pretty(&data)?;
-        fs::write(&channel.config_path, toml_string).await?;
+        // TODO: update config
 
         return Ok("Update playout config success.");
     };
@@ -632,14 +632,14 @@ async fn delete_preset(
 #[post("/control/{id}/text/")]
 #[protect(any("Role::Admin", "Role::User"), ty = "Role")]
 pub async fn send_text_message(
-    pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
-    data: web::Json<HashMap<String, String>>,
+    data: web::Json<TextFilter>,
+    controllers: web::Data<Mutex<ChannelController>>,
 ) -> Result<impl Responder, ServiceError> {
-    let (config, _) = playout_config(&pool.clone().into_inner(), &id).await?;
+    let manager = controllers.lock().unwrap().get(*id).unwrap();
 
-    match send_message(&config, data.into_inner()).await {
-        Ok(res) => Ok(res.text().await.unwrap_or_else(|_| "Success".into())),
+    match send_message(manager, data.into_inner()).await {
+        Ok(res) => Ok(web::Json(res)),
         Err(e) => Err(e),
     }
 }
@@ -660,11 +660,12 @@ pub async fn control_playout(
     pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
     control: web::Json<ControlParams>,
+    controllers: web::Data<Mutex<ChannelController>>,
 ) -> Result<impl Responder, ServiceError> {
-    let (config, _) = playout_config(&pool.clone().into_inner(), &id).await?;
+    let manager = controllers.lock().unwrap().get(*id).unwrap();
 
-    match control_state(&config, &control.control).await {
-        Ok(res) => Ok(res.text().await.unwrap_or_else(|_| "Success".into())),
+    match control_state(&pool, manager, &control.control).await {
+        Ok(res) => Ok(web::Json(res)),
         Err(e) => Err(e),
     }
 }
@@ -696,54 +697,13 @@ pub async fn control_playout(
 #[get("/control/{id}/media/current")]
 #[protect(any("Role::Admin", "Role::User"), ty = "Role")]
 pub async fn media_current(
-    pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
+    controllers: web::Data<Mutex<ChannelController>>,
 ) -> Result<impl Responder, ServiceError> {
-    let (config, _) = playout_config(&pool.clone().into_inner(), &id).await?;
+    let manager = controllers.lock().unwrap().get(*id).unwrap();
+    let media_map = get_data_map(&manager);
 
-    match media_info(&config, "current".into()).await {
-        Ok(res) => Ok(res.text().await.unwrap_or_else(|_| "Success".into())),
-        Err(e) => Err(e),
-    }
-}
-
-/// **Get next Clip**
-///
-/// ```BASH
-/// curl -X GET http://127.0.0.1:8787/api/control/1/media/next -H 'Authorization: Bearer <TOKEN>'
-/// ```
-#[get("/control/{id}/media/next")]
-#[protect(any("Role::Admin", "Role::User"), ty = "Role")]
-pub async fn media_next(
-    pool: web::Data<Pool<Sqlite>>,
-    id: web::Path<i32>,
-) -> Result<impl Responder, ServiceError> {
-    let (config, _) = playout_config(&pool.clone().into_inner(), &id).await?;
-
-    match media_info(&config, "next".into()).await {
-        Ok(res) => Ok(res.text().await.unwrap_or_else(|_| "Success".into())),
-        Err(e) => Err(e),
-    }
-}
-
-/// **Get last Clip**
-///
-/// ```BASH
-/// curl -X GET http://127.0.0.1:8787/api/control/1/media/last
-/// -H 'Content-Type: application/json' -H 'Authorization: Bearer <TOKEN>'
-/// ```
-#[get("/control/{id}/media/last")]
-#[protect(any("Role::Admin", "Role::User"), ty = "Role")]
-pub async fn media_last(
-    pool: web::Data<Pool<Sqlite>>,
-    id: web::Path<i32>,
-) -> Result<impl Responder, ServiceError> {
-    let (config, _) = playout_config(&pool.clone().into_inner(), &id).await?;
-
-    match media_info(&config, "last".into()).await {
-        Ok(res) => Ok(res.text().await.unwrap_or_else(|_| "Success".into())),
-        Err(e) => Err(e),
-    }
+    Ok(web::Json(media_map))
 }
 
 /// #### ffplayout Process Control

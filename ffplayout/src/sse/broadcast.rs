@@ -1,4 +1,7 @@
-use std::{sync::Arc, time::Duration};
+use std::{
+    sync::{atomic::Ordering, Arc},
+    time::Duration,
+};
 
 use actix_web::{rt::time::interval, web};
 use actix_web_lab::{
@@ -10,26 +13,20 @@ use parking_lot::Mutex;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 
-use crate::utils::{config::PlayoutConfig, control::media_info, system};
+use crate::player::{controller::ChannelManager, utils::get_data_map};
+use crate::utils::system;
 
 #[derive(Debug, Clone)]
 struct Client {
-    _channel: i32,
-    config: PlayoutConfig,
+    manager: ChannelManager,
     endpoint: String,
     sender: mpsc::Sender<sse::Event>,
 }
 
 impl Client {
-    fn new(
-        _channel: i32,
-        config: PlayoutConfig,
-        endpoint: String,
-        sender: mpsc::Sender<sse::Event>,
-    ) -> Self {
+    fn new(manager: ChannelManager, endpoint: String, sender: mpsc::Sender<sse::Event>) -> Self {
         Self {
-            _channel,
-            config,
+            manager,
             endpoint,
             sender,
         }
@@ -102,8 +99,7 @@ impl Broadcaster {
     /// Registers client with broadcaster, returning an SSE response body.
     pub async fn new_client(
         &self,
-        channel: i32,
-        config: PlayoutConfig,
+        manager: ChannelManager,
         endpoint: String,
     ) -> Sse<InfallibleStream<ReceiverStream<sse::Event>>> {
         let (tx, rx) = mpsc::channel(10);
@@ -113,7 +109,7 @@ impl Broadcaster {
         self.inner
             .lock()
             .clients
-            .push(Client::new(channel, config, endpoint, tx));
+            .push(Client::new(manager, endpoint, tx));
 
         Sse::from_infallible_receiver(rx)
     }
@@ -123,23 +119,22 @@ impl Broadcaster {
         let clients = self.inner.lock().clients.clone();
 
         for client in clients.iter().filter(|client| client.endpoint == "playout") {
-            match media_info(&client.config, "current".into()).await {
-                Ok(res) => {
-                    let _ = client
-                        .sender
-                        .send(
-                            sse::Data::new(res.text().await.unwrap_or_else(|_| "Success".into()))
-                                .into(),
-                        )
-                        .await;
-                }
-                Err(_) => {
-                    let _ = client
-                        .sender
-                        .send(sse::Data::new("not running").into())
-                        .await;
-                }
-            };
+            let media_map = get_data_map(&client.manager);
+
+            if client.manager.is_alive.load(Ordering::SeqCst) {
+                let _ = client
+                    .sender
+                    .send(
+                        sse::Data::new(serde_json::to_string(&media_map).unwrap_or_default())
+                            .into(),
+                    )
+                    .await;
+            } else {
+                let _ = client
+                    .sender
+                    .send(sse::Data::new("not running").into())
+                    .await;
+            }
         }
     }
 
@@ -149,7 +144,8 @@ impl Broadcaster {
 
         for client in clients {
             if &client.endpoint == "system" {
-                if let Ok(stat) = web::block(move || system::stat(client.config.clone())).await {
+                let config = client.manager.config.lock().unwrap().clone();
+                if let Ok(stat) = web::block(move || system::stat(config.clone())).await {
                     let stat_string = stat.to_string();
                     let _ = client.sender.send(sse::Data::new(stat_string).into()).await;
                 };

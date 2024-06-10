@@ -13,6 +13,7 @@ use signal_child::Signalable;
 
 use log::*;
 use serde::{Deserialize, Serialize};
+use sqlx::{Pool, Sqlite};
 
 use crate::db::models::Channel;
 use crate::player::{
@@ -55,6 +56,14 @@ pub struct ChannelManager {
     pub ingest_is_running: Arc<AtomicBool>,
     pub is_terminated: Arc<AtomicBool>,
     pub is_alive: Arc<AtomicBool>,
+    pub chain: Option<Arc<Mutex<Vec<String>>>>,
+    pub current_date: Arc<Mutex<String>>,
+    pub list_init: Arc<AtomicBool>,
+    pub current_media: Arc<Mutex<Option<Media>>>,
+    pub current_list: Arc<Mutex<Vec<Media>>>,
+    pub filler_list: Arc<Mutex<Vec<Media>>>,
+    pub current_index: Arc<AtomicUsize>,
+    pub filler_index: Arc<AtomicUsize>,
 }
 
 impl ChannelManager {
@@ -72,10 +81,9 @@ impl ChannelManager {
 
         channel.name = other.name.clone();
         channel.preview_url = other.preview_url.clone();
-        channel.config_path = other.config_path.clone();
         channel.extra_extensions = other.extra_extensions.clone();
         channel.active = other.active.clone();
-        channel.modified = other.modified.clone();
+        channel.current_date = other.current_date.clone();
         channel.time_shift = other.time_shift.clone();
         channel.utc_offset = other.utc_offset.clone();
     }
@@ -240,6 +248,16 @@ impl ChannelController {
         self.channels.push(manager);
     }
 
+    pub fn get(&self, id: i32) -> Option<ChannelManager> {
+        for manager in self.channels.iter() {
+            if manager.channel.lock().unwrap().id == id {
+                return Some(manager.clone());
+            }
+        }
+
+        None
+    }
+
     pub fn remove(&mut self, channel_id: i32) {
         self.channels.retain(|manager| {
             let channel = manager.channel.lock().unwrap();
@@ -255,9 +273,9 @@ impl ChannelController {
     }
 }
 
-pub fn start(channel: ChannelManager) -> Result<(), ProcessError> {
+pub fn start(db_pool: Pool<Sqlite>, channel: ChannelManager) -> Result<(), ProcessError> {
     let config = channel.config.lock()?.clone();
-    let mode = config.out.mode.clone();
+    let mode = config.output.mode.clone();
     let play_control = PlayerControl::new();
     let play_control_clone = play_control.clone();
     let play_status = PlayoutStatus::new();
@@ -269,8 +287,8 @@ pub fn start(channel: ChannelManager) -> Result<(), ProcessError> {
 
     match mode {
         // write files/playlist to HLS m3u8 playlist
-        HLS => write_hls(channel, play_control, play_status),
+        HLS => write_hls(channel, db_pool, play_control, play_status),
         // play on desktop or stream to a remote target
-        _ => player(channel, &play_control, play_status),
+        _ => player(channel, db_pool, &play_control, play_status),
     }
 }

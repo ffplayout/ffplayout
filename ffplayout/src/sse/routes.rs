@@ -1,11 +1,13 @@
+use std::sync::Mutex;
+
 use actix_web::{get, post, web, Responder};
 use actix_web_grants::proc_macro::protect;
 use serde::{Deserialize, Serialize};
-use sqlx::{Pool, Sqlite};
 
 use super::{check_uuid, prune_uuids, AuthState, UuidData};
+use crate::player::controller::ChannelController;
 use crate::sse::broadcast::Broadcaster;
-use crate::utils::{errors::ServiceError, playout_config, Role};
+use crate::utils::{errors::ServiceError, Role};
 
 #[derive(Deserialize, Serialize)]
 struct User {
@@ -62,21 +64,21 @@ async fn validate_uuid(
 /// ```BASH
 /// curl -X GET 'http://127.0.0.1:8787/data/event/1?endpoint=system&uuid=f2f8c29b-712a-48c5-8919-b535d3a05a3a'
 /// ```
-#[get("/event/{channel}")]
+#[get("/event/{id}")]
 async fn event_stream(
-    pool: web::Data<Pool<Sqlite>>,
     broadcaster: web::Data<Broadcaster>,
     data: web::Data<AuthState>,
     id: web::Path<i32>,
     user: web::Query<User>,
+    controllers: web::Data<Mutex<ChannelController>>,
 ) -> Result<impl Responder, ServiceError> {
     let mut uuids = data.uuids.lock().await;
 
     check_uuid(&mut uuids, user.uuid.as_str())?;
 
-    let (config, _) = playout_config(&pool.clone().into_inner(), &id).await?;
+    let manager = controllers.lock().unwrap().get(*id).unwrap();
 
     Ok(broadcaster
-        .new_client(*id, config, user.endpoint.clone())
+        .new_client(manager.clone(), user.endpoint.clone())
         .await)
 }

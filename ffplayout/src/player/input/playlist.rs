@@ -1,5 +1,4 @@
 use std::{
-    fs,
     path::Path,
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -7,9 +6,11 @@ use std::{
     },
 };
 
-use serde_json::json;
+use futures::executor;
 use simplelog::*;
+use sqlx::{Pool, Sqlite};
 
+use crate::db::handles;
 use crate::player::{
     controller::{PlayerControl, PlayoutStatus},
     utils::{
@@ -27,6 +28,7 @@ use crate::utils::config::{PlayoutConfig, IMAGE_FORMAT};
 #[derive(Debug)]
 pub struct CurrentProgram {
     config: PlayoutConfig,
+    db_pool: Pool<Sqlite>,
     start_sec: f64,
     end_sec: f64,
     json_playlist: JsonPlaylist,
@@ -42,12 +44,14 @@ pub struct CurrentProgram {
 impl CurrentProgram {
     pub fn new(
         config: &PlayoutConfig,
+        db_pool: Pool<Sqlite>,
         playout_stat: PlayoutStatus,
         is_terminated: Arc<AtomicBool>,
         player_control: &PlayerControl,
     ) -> Self {
         Self {
             config: config.clone(),
+            db_pool,
             start_sec: config.playlist.start_sec.unwrap(),
             end_sec: config.playlist.length_sec.unwrap(),
             json_playlist: JsonPlaylist::new(
@@ -205,15 +209,13 @@ impl CurrentProgram {
             .clone_from(&date);
         *self.playout_stat.time_shift.lock().unwrap() = 0.0;
 
-        if let Err(e) = fs::write(
-            &self.config.general.stat_file,
-            serde_json::to_string(&json!({
-                "time_shift": 0.0,
-                "date": date,
-            }))
-            .unwrap(),
-        ) {
-            error!("Unable to write status file: {e}");
+        if let Err(e) = executor::block_on(handles::update_stat(
+            &self.db_pool,
+            self.config.general.channel_id,
+            date,
+            0.0,
+        )) {
+            error!("Unable to write status: {e}");
         };
     }
 

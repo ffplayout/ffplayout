@@ -1,7 +1,6 @@
 use std::{
     collections::HashSet,
     env, io,
-    path::PathBuf,
     process::{self, exit},
     sync::{Arc, Mutex},
     thread,
@@ -68,13 +67,17 @@ async fn validator(
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    if let Err(c) = run_args().await {
-        exit(c);
-    }
-
     let pool = db_pool()
         .await
         .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+
+    if let Err(e) = handles::db_migrate(&pool).await {
+        panic!("{e}");
+    };
+
+    if let Err(c) = run_args().await {
+        exit(c);
+    }
 
     let channel_controllers = Arc::new(Mutex::new(ChannelController::new()));
     let channels = handles::select_all_channels(&pool)
@@ -87,14 +90,7 @@ async fn main() -> std::io::Result<()> {
     init_logging(mail_queues.clone())?;
 
     for channel in channels.iter() {
-        let config_path = PathBuf::from(&channel.config_path);
-        let config = match web::block(move || PlayoutConfig::new(Some(config_path), None)).await {
-            Ok(config) => config,
-            Err(e) => {
-                error!("Failed to load configuration: {}", e);
-                continue;
-            }
-        };
+        let config = PlayoutConfig::new(&pool, channel.id).await;
 
         let channel_manager = ChannelManager::new(channel.clone(), config.clone());
 
@@ -110,8 +106,10 @@ async fn main() -> std::io::Result<()> {
         }
 
         if channel.active {
+            let pool_clone = pool.clone();
+
             thread::spawn(move || {
-                if let Err(e) = controller::start(channel_manager) {
+                if let Err(e) = controller::start(pool_clone, channel_manager) {
                     error!("{e}");
                 };
 
@@ -182,8 +180,6 @@ async fn main() -> std::io::Result<()> {
                         .service(send_text_message)
                         .service(control_playout)
                         .service(media_current)
-                        .service(media_next)
-                        .service(media_last)
                         .service(process_control)
                         .service(get_playlist)
                         .service(save_playlist)

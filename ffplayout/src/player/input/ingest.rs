@@ -70,11 +70,7 @@ pub fn ingest_server(
     let is_terminated = channel_mgr.is_terminated.clone();
     let ingest_is_running = channel_mgr.ingest_is_running.clone();
 
-    if let Some(ingest_input_cmd) = config
-        .advanced
-        .as_ref()
-        .and_then(|a| a.ingest.input_cmd.clone())
-    {
+    if let Some(ingest_input_cmd) = config.advanced.ingest.input_cmd {
         server_cmd.append(&mut ingest_input_cmd.clone());
     }
 
@@ -107,7 +103,7 @@ pub fn ingest_server(
 
     while !is_terminated.load(Ordering::SeqCst) {
         let proc_ctl = channel_mgr.clone();
-        let level = config.logging.ingest_level.clone().unwrap();
+        let level = config.logging.ingest_level.clone();
         let ignore = config.logging.ignore_lines.clone();
         let mut server_proc = match Command::new("ffmpeg")
             .args(server_cmd.clone())

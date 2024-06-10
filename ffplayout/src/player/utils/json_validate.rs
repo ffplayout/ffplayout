@@ -37,15 +37,11 @@ fn check_media(
     let mut dec_cmd = vec_strings!["-hide_banner", "-nostats", "-v", "level+info"];
     let mut error_list = vec![];
     let mut config = config.clone();
-    config.out.mode = Null;
+    config.output.mode = Null;
 
     let mut process_length = 0.1;
 
-    if let Some(decoder_input_cmd) = config
-        .advanced
-        .as_ref()
-        .and_then(|a| a.decoder.input_cmd.clone())
-    {
+    if let Some(decoder_input_cmd) = &config.advanced.decoder.input_cmd {
         dec_cmd.append(&mut decoder_input_cmd.clone());
     }
 

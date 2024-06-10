@@ -11,12 +11,16 @@ use std::{
 
 use chrono::{format::ParseErrorKind, prelude::*};
 use faccess::PathExt;
+use log::*;
 use once_cell::sync::OnceCell;
 use path_clean::PathClean;
 use rand::Rng;
+use regex::Regex;
 use rpassword::read_password;
-use serde::{de, Deserialize, Deserializer, Serialize};
-use simplelog::*;
+use serde::{
+    de::{self, Visitor},
+    Deserialize, Deserializer, Serialize,
+};
 use sqlx::{sqlite::SqliteRow, FromRow, Pool, Row, Sqlite};
 
 use crate::ARGS;
@@ -36,7 +40,7 @@ pub mod task_runner;
 
 use crate::db::{
     db_pool,
-    handles::{db_migrate, insert_user, select_channel, select_global},
+    handles::{insert_user, select_channel, select_global},
     models::{Channel, User},
 };
 use crate::player::utils::time_to_sec;
@@ -133,6 +137,126 @@ pub async fn init_globales(conn: &Pool<Sqlite>) {
     INSTANCE.set(config).unwrap();
 }
 
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+pub struct TextFilter {
+    pub text: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_number_or_string")]
+    pub x: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_number_or_string")]
+    pub y: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_number_or_string")]
+    pub fontsize: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_number_or_string")]
+    pub line_spacing: Option<String>,
+    pub fontcolor: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_number_or_string")]
+    pub alpha: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_number_or_string")]
+    pub r#box: Option<String>,
+    pub boxcolor: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_number_or_string")]
+    pub boxborderw: Option<String>,
+}
+
+/// Deserialize number or string
+pub fn deserialize_number_or_string<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    struct StringOrNumberVisitor;
+
+    impl<'de> Visitor<'de> for StringOrNumberVisitor {
+        type Value = Option<String>;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            formatter.write_str("a string or a number")
+        }
+
+        fn visit_str<E: de::Error>(self, value: &str) -> Result<Self::Value, E> {
+            let re = Regex::new(r"0,([0-9]+)").unwrap();
+            let clean_string = re.replace_all(value, "0.$1").to_string();
+            Ok(Some(clean_string))
+        }
+
+        fn visit_u64<E: de::Error>(self, value: u64) -> Result<Self::Value, E> {
+            Ok(Some(value.to_string()))
+        }
+
+        fn visit_i64<E: de::Error>(self, value: i64) -> Result<Self::Value, E> {
+            Ok(Some(value.to_string()))
+        }
+
+        fn visit_f64<E: de::Error>(self, value: f64) -> Result<Self::Value, E> {
+            Ok(Some(value.to_string()))
+        }
+    }
+
+    deserializer.deserialize_any(StringOrNumberVisitor)
+}
+
+impl fmt::Display for TextFilter {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let escaped_text = self
+            .text
+            .clone()
+            .unwrap_or_default()
+            .replace('\'', "'\\\\\\''")
+            .replace('\\', "\\\\\\\\")
+            .replace('%', "\\\\\\%")
+            .replace(':', "\\:");
+
+        let mut s = format!("text='{escaped_text}'");
+
+        if let Some(v) = &self.x {
+            if !v.is_empty() {
+                s.push_str(&format!(":x='{v}'"));
+            }
+        }
+        if let Some(v) = &self.y {
+            if !v.is_empty() {
+                s.push_str(&format!(":y='{v}'"));
+            }
+        }
+        if let Some(v) = &self.fontsize {
+            if !v.is_empty() {
+                s.push_str(&format!(":fontsize={v}"));
+            }
+        }
+        if let Some(v) = &self.line_spacing {
+            if !v.is_empty() {
+                s.push_str(&format!(":line_spacing={v}"));
+            }
+        }
+        if let Some(v) = &self.fontcolor {
+            if !v.is_empty() {
+                s.push_str(&format!(":fontcolor={v}"));
+            }
+        }
+        if let Some(v) = &self.alpha {
+            if !v.is_empty() {
+                s.push_str(&format!(":alpha='{v}'"));
+            }
+        }
+        if let Some(v) = &self.r#box {
+            if !v.is_empty() {
+                s.push_str(&format!(":box={v}"));
+            }
+        }
+        if let Some(v) = &self.boxcolor {
+            if !v.is_empty() {
+                s.push_str(&format!(":boxcolor={v}"));
+            }
+        }
+        if let Some(v) = &self.boxborderw {
+            if !v.is_empty() {
+                s.push_str(&format!(":boxborderw={v}"));
+            }
+        }
+
+        write!(f, "{s}")
+    }
+}
+
 pub fn db_path() -> Result<&'static str, Box<dyn std::error::Error>> {
     if let Some(path) = ARGS.db.clone() {
         let absolute_path = if path.is_absolute() {
@@ -193,10 +317,6 @@ pub async fn run_args() -> Result<(), i32> {
 
         return Err(0);
     }
-
-    if let Err(e) = db_migrate().await {
-        panic!("{e}");
-    };
 
     if args.ask {
         let mut user = String::new();

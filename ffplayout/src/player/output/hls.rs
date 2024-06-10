@@ -26,6 +26,7 @@ use std::{
 };
 
 use log::*;
+use sqlx::{Pool, Sqlite};
 
 use crate::utils::{config::PlayoutConfig, logging::log_line, task_runner};
 use crate::vec_strings;
@@ -57,11 +58,7 @@ fn ingest_to_hls_server(
     let is_terminated = channel_mgr.is_terminated.clone();
     let ingest_is_running = channel_mgr.ingest_is_running.clone();
 
-    if let Some(ingest_input_cmd) = config
-        .advanced
-        .as_ref()
-        .and_then(|a| a.ingest.input_cmd.clone())
-    {
+    if let Some(ingest_input_cmd) = &config.advanced.ingest.input_cmd {
         server_prefix.append(&mut ingest_input_cmd.clone());
     }
 
@@ -151,6 +148,7 @@ fn ingest_to_hls_server(
 /// Write with single ffmpeg instance directly to a HLS playlist.
 pub fn write_hls(
     channel_mgr: ChannelManager,
+    db_pool: Pool<Sqlite>,
     player_control: PlayerControl,
     playout_stat: PlayoutStatus,
 ) -> Result<(), ProcessError> {
@@ -158,13 +156,13 @@ pub fn write_hls(
     let config_clone = config.clone();
     let ff_log_format = format!("level+{}", config.logging.ffmpeg_level.to_lowercase());
     let play_stat = playout_stat.clone();
-    let play_stat2 = playout_stat.clone();
-    let channel_mgr_c = channel_mgr.clone();
+    let channel_mgr_2 = channel_mgr.clone();
     let is_terminated = channel_mgr.is_terminated.clone();
     let ingest_is_running = channel_mgr.ingest_is_running.clone();
 
     let get_source = source_generator(
         config.clone(),
+        db_pool,
         &player_control,
         playout_stat,
         is_terminated.clone(),
@@ -172,7 +170,7 @@ pub fn write_hls(
 
     // spawn a thread for ffmpeg ingest server and create a channel for package sending
     if config.ingest.enable {
-        thread::spawn(move || ingest_to_hls_server(config_clone, play_stat, channel_mgr_c));
+        thread::spawn(move || ingest_to_hls_server(config_clone, play_stat, channel_mgr_2));
     }
 
     for node in get_source {
@@ -196,14 +194,9 @@ pub fn write_hls(
 
         if config.task.enable {
             if config.task.path.is_file() {
-                let task_config = config.clone();
-                let task_node = node.clone();
-                let server_running = ingest_is_running.load(Ordering::SeqCst);
-                let stat = play_stat2.clone();
+                let channel_mgr_3 = channel_mgr.clone();
 
-                thread::spawn(move || {
-                    task_runner::run(task_config, task_node, stat, server_running)
-                });
+                thread::spawn(move || task_runner::run(channel_mgr_3));
             } else {
                 error!(
                     "<bright-blue>{:?}</> executable not exists!",
@@ -214,11 +207,7 @@ pub fn write_hls(
 
         let mut enc_prefix = vec_strings!["-hide_banner", "-nostats", "-v", &ff_log_format];
 
-        if let Some(encoder_input_cmd) = config
-            .advanced
-            .as_ref()
-            .and_then(|a| a.encoder.input_cmd.clone())
-        {
+        if let Some(encoder_input_cmd) = &config.advanced.encoder.input_cmd {
             enc_prefix.append(&mut encoder_input_cmd.clone());
         }
 

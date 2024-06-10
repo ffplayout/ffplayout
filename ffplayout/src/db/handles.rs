@@ -5,30 +5,20 @@ use argon2::{
 
 use rand::{distributions::Alphanumeric, Rng};
 use simplelog::*;
-use sqlx::{migrate::MigrateDatabase, sqlite::SqliteQueryResult, Pool, Sqlite};
+use sqlx::{sqlite::SqliteQueryResult, Pool, Sqlite};
 use tokio::task;
 
-use crate::db::{
-    db_pool,
-    models::{Channel, TextPreset, User},
-};
-use crate::utils::{db_path, local_utc_offset, GlobalSettings, Role};
+use super::models::{AdvancedConfiguration, Configuration};
+use crate::db::models::{Channel, TextPreset, User};
+use crate::utils::{local_utc_offset, GlobalSettings, Role};
 
-pub async fn db_migrate() -> Result<&'static str, Box<dyn std::error::Error>> {
-    let db_path = db_path()?;
-
-    if !Sqlite::database_exists(db_path).await.unwrap_or(false) {
-        Sqlite::create_database(db_path).await.unwrap();
-    }
-
-    let pool = db_pool().await?;
-
-    match sqlx::migrate!("../migrations").run(&pool).await {
+pub async fn db_migrate(conn: &Pool<Sqlite>) -> Result<&'static str, Box<dyn std::error::Error>> {
+    match sqlx::migrate!("../migrations").run(conn).await {
         Ok(_) => info!("Database migration successfully"),
         Err(e) => panic!("{e}"),
     }
 
-    if let Err(_) = select_global(&pool).await {
+    if let Err(_) = select_global(conn).await {
         let secret: String = rand::thread_rng()
             .sample_iter(&Alphanumeric)
             .take(80)
@@ -43,7 +33,7 @@ pub async fn db_migrate() -> Result<&'static str, Box<dyn std::error::Error>> {
         END;
         INSERT INTO global(secret) VALUES($1);";
 
-        sqlx::query(query).bind(secret).execute(&pool).await?;
+        sqlx::query(query).bind(secret).execute(conn).await?;
     }
 
     Ok("Database migrated!")
@@ -80,24 +70,39 @@ pub async fn update_channel(
     id: i32,
     channel: Channel,
 ) -> Result<SqliteQueryResult, sqlx::Error> {
-    let query = "UPDATE channels SET name = $2, preview_url = $3, config_path = $4, extra_extensions = $5 WHERE id = $1";
+    let query =
+        "UPDATE channels SET name = $2, preview_url = $3, extra_extensions = $4 WHERE id = $1";
 
     sqlx::query(query)
         .bind(id)
         .bind(channel.name)
         .bind(channel.preview_url)
-        .bind(channel.config_path)
         .bind(channel.extra_extensions)
         .execute(conn)
         .await
 }
 
+pub async fn update_stat(
+    conn: &Pool<Sqlite>,
+    id: i32,
+    current_date: String,
+    time_shift: f64,
+) -> Result<SqliteQueryResult, sqlx::Error> {
+    let query = "UPDATE channels SET current_date = $2, time_shift = $3 WHERE id = $1";
+
+    sqlx::query(query)
+        .bind(id)
+        .bind(current_date)
+        .bind(time_shift)
+        .execute(conn)
+        .await
+}
+
 pub async fn insert_channel(conn: &Pool<Sqlite>, channel: Channel) -> Result<Channel, sqlx::Error> {
-    let query = "INSERT INTO channels (name, preview_url, config_path, extra_extensions) VALUES($1, $2, $3, $4)";
+    let query = "INSERT INTO channels (name, preview_url, extra_extensions) VALUES($1, $2, $3)";
     let result = sqlx::query(query)
         .bind(channel.name)
         .bind(channel.preview_url)
-        .bind(channel.config_path)
         .bind(channel.extra_extensions)
         .execute(conn)
         .await?;
@@ -121,6 +126,24 @@ pub async fn select_last_channel(conn: &Pool<Sqlite>) -> Result<i32, sqlx::Error
     let query = "SELECT id FROM channels ORDER BY id DESC LIMIT 1;";
 
     sqlx::query_scalar(query).fetch_one(conn).await
+}
+
+pub async fn select_configuration(
+    conn: &Pool<Sqlite>,
+    channel: i32,
+) -> Result<Configuration, sqlx::Error> {
+    let query = "SELECT * FROM configurations WHERE channel_id = $1";
+
+    sqlx::query_as(query).bind(channel).fetch_one(conn).await
+}
+
+pub async fn select_advanced_configuration(
+    conn: &Pool<Sqlite>,
+    channel: i32,
+) -> Result<AdvancedConfiguration, sqlx::Error> {
+    let query = "SELECT * FROM advanced_configurations WHERE channel_id = $1";
+
+    sqlx::query_as(query).bind(channel).fetch_one(conn).await
 }
 
 pub async fn select_role(conn: &Pool<Sqlite>, id: &i32) -> Result<Role, sqlx::Error> {

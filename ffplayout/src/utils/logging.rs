@@ -8,8 +8,8 @@ use std::{
 };
 
 use actix_web::rt::time::interval;
-use flexi_logger::writers::{FileLogWriter, LogWriter};
 use flexi_logger::{
+    writers::{FileLogWriter, LogWriter},
     Age, Cleanup, Criterion, DeferredNow, FileSpec, Level, LogSpecification, Logger, Naming,
 };
 use lettre::{
@@ -85,7 +85,10 @@ impl MultiFileLogger {
             .append()
             .rotate(
                 Criterion::Age(Age::Day),
-                Naming::Timestamps,
+                Naming::TimestampsCustomFormat {
+                    current_infix: Some(""),
+                    format: "%Y-%m-%d",
+                },
                 Cleanup::KeepLogFiles(ARGS.log_backup_count.unwrap_or(14)),
             )
             .try_build()

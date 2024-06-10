@@ -1,13 +1,13 @@
 use std::{
     ffi::OsStr,
     fmt,
-    fs::{self, metadata, File},
+    fs::{metadata, File},
     io::{BufRead, BufReader, Error},
     net::TcpListener,
     path::{Path, PathBuf},
     process::{exit, ChildStderr, Command, Stdio},
     str::FromStr,
-    sync::{Arc, Mutex},
+    sync::{atomic::Ordering, Arc, Mutex},
 };
 
 use chrono::{prelude::*, TimeDelta};
@@ -26,7 +26,7 @@ pub mod json_validate;
 
 use crate::player::{
     controller::{
-        ChannelManager, PlayoutStatus,
+        ChannelManager,
         ProcessUnit::{self, *},
     },
     filter::{filter_chains, Filters},
@@ -62,7 +62,7 @@ pub fn prepare_output_cmd(
     mut cmd: Vec<String>,
     filters: &Option<Filters>,
 ) -> Vec<String> {
-    let mut output_params = config.out.clone().output_cmd.unwrap();
+    let mut output_params = config.output.clone().output_cmd.unwrap();
     let mut new_params = vec![];
     let mut count = 0;
     let re_v = Regex::new(r"\[?0:v(:0)?\]?").unwrap();
@@ -143,21 +143,26 @@ pub fn get_media_map(media: Media) -> Value {
 }
 
 /// prepare json object for response
-pub fn get_data_map(
-    config: &PlayoutConfig,
-    media: Media,
-    playout_stat: &PlayoutStatus,
-    server_is_running: bool,
-) -> Map<String, Value> {
+pub fn get_data_map(manager: &ChannelManager) -> Map<String, Value> {
+    let media = manager
+        .current_media
+        .lock()
+        .unwrap()
+        .clone()
+        .unwrap_or(Media::new(0, "", false));
+    let channel = manager.channel.lock().unwrap().clone();
+    let config = manager.config.lock().unwrap().processing.clone();
+    let ingest_is_running = manager.ingest_is_running.load(Ordering::SeqCst);
+
     let mut data_map = Map::new();
     let current_time = time_in_seconds();
-    let shift = *playout_stat.time_shift.lock().unwrap();
+    let shift = channel.time_shift;
     let begin = media.begin.unwrap_or(0.0) - shift;
     let played_time = current_time - begin;
 
     data_map.insert("index".to_string(), json!(media.index));
-    data_map.insert("ingest".to_string(), json!(server_is_running));
-    data_map.insert("mode".to_string(), json!(config.processing.mode));
+    data_map.insert("ingest".to_string(), json!(ingest_is_running));
+    data_map.insert("mode".to_string(), json!(config.mode));
     data_map.insert(
         "shift".to_string(),
         json!((shift * 1000.0).round() / 1000.0),
@@ -437,34 +442,6 @@ pub fn json_writer(path: &PathBuf, data: JsonPlaylist) -> Result<(), Error> {
 
     Ok(())
 }
-
-/// Write current status to status file in temp folder.
-///
-/// The status file is init in main function and mostly modified in RPC server.
-pub fn write_status(config: &PlayoutConfig, date: &str, shift: f64) {
-    let data = json!({
-        "time_shift": shift,
-        "date": date,
-    });
-
-    match serde_json::to_string(&data) {
-        Ok(status) => {
-            if let Err(e) = fs::write(&config.general.stat_file, status) {
-                error!(
-                    "Unable to write to status file <b><magenta>{}</></b>: {e}",
-                    config.general.stat_file
-                )
-            };
-        }
-        Err(e) => error!("Serialize status data failed: {e}"),
-    };
-}
-
-// pub fn get_timestamp() -> i32 {
-//     let local: DateTime<Local> = time_now();
-
-//     local.timestamp_millis() as i32
-// }
 
 /// Get current time in seconds.
 pub fn time_in_seconds() -> f64 {
@@ -758,9 +735,9 @@ pub fn include_file_extension(config: &PlayoutConfig, file_path: &Path) -> bool 
         }
     }
 
-    if config.out.mode == HLS {
+    if config.output.mode == HLS {
         if let Some(ts_path) = config
-            .out
+            .output
             .output_cmd
             .clone()
             .unwrap_or_else(|| vec![String::new()])
@@ -775,7 +752,7 @@ pub fn include_file_extension(config: &PlayoutConfig, file_path: &Path) -> bool 
         }
 
         if let Some(m3u8_path) = config
-            .out
+            .output
             .output_cmd
             .clone()
             .unwrap_or_else(|| vec![String::new()])
@@ -932,14 +909,14 @@ pub fn validate_ffmpeg(config: &mut PlayoutConfig) -> Result<(), String> {
     is_in_system("ffmpeg")?;
     is_in_system("ffprobe")?;
 
-    if config.out.mode == Desktop {
+    if config.output.mode == Desktop {
         is_in_system("ffplay")?;
     }
 
     ffmpeg_filter_and_libs(config)?;
 
     if config
-        .out
+        .output
         .output_cmd
         .as_ref()
         .unwrap()
@@ -960,7 +937,7 @@ pub fn validate_ffmpeg(config: &mut PlayoutConfig) -> Result<(), String> {
     }
 
     if config
-        .out
+        .output
         .output_cmd
         .as_ref()
         .unwrap()

@@ -19,11 +19,7 @@ pub fn output(config: &PlayoutConfig, log_format: &str) -> process::Child {
 
     let mut enc_prefix = vec_strings!["-hide_banner", "-nostats", "-v", log_format];
 
-    if let Some(input_cmd) = config
-        .advanced
-        .as_ref()
-        .and_then(|a| a.encoder.input_cmd.clone())
-    {
+    if let Some(input_cmd) = &config.advanced.encoder.input_cmd {
         enc_prefix.append(&mut input_cmd.clone());
     }
 
