@@ -173,7 +173,7 @@ export default {
         rpcText:
             'Führe einen JSON-RPC-Server aus, um Informationen über die Wiedergabe und einige Kontrollfunktionen zu erhalten.',
         mailText: `Senden Sie Fehlermeldungen an die E-Mail-Adresse, z. B. fehlende Playlist, ungültiges json-Format, fehlender Clip-Pfad. Lassen Sie den Empfänger leer, wenn Sie keine Benachrichtigung benötigen. 'mail_level' kann INFO, WARNING oder ERROR sein. 'interval' bedeutet Sekunden, bis eine neue E-Mail gesendet wird.`,
-        logText: `Wenn 'log_to_file' true ist, wird in eine Datei protokolliert, wenn false, in die Konsole. 'backup_count' gibt an, wie lange die Log-Dateien in Tagen gespeichert werden. 'local_time' auf false setzt die Log-Zeitstempel auf UTC. Pfad zu /var/log/ nur, wenn Sie dies als Daemon ausführen.
+        logText: `Wenn 'log_to_file' true ist, wird in eine Datei protokolliert, wenn false, in die Konsole. 'local_time' auf false setzt die Log-Zeitstempel auf UTC. Pfad zu /var/log/ nur, wenn Sie dies als Daemon ausführen.
         'level' kann DEBUG, INFO, WARNING, ERROR sein. 'ffmpeg_level' kann INFO, WARNING, ERROR sein. 'detect_silence' protokolliert eine Fehlermeldung, wenn die Audiospur während des Validierungsprozesses 15 Sekunden lang still ist.`,
         processingText: `Standardverarbeitung für alle Clips, um sie einheitlich zu machen. Modus kann "playlist" oder "folder" sein. 'aspect' muss eine Fließkommazahl sein. 'logo' wird nur verwendet, wenn der Pfad existiert.
         'logo_scale' skaliert das Logo auf die Zielgröße, leer lassen, wenn keine Skalierung erforderlich ist, Format ist 'width:height', zum Beispiel '100:-1' für proportionale Skalierung. Mit 'logo_opacity' können Sie das Logo transparent machen.

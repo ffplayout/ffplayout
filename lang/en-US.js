@@ -172,7 +172,7 @@ export default {
         'stop_threshold' will stop ffplayout if it is async in time above this value. A number less than 3 may cause unexpected errors.`,
         rpcText: 'Run a JSON RPC server to get information about what is playing and for some control functions.',
         mailText: `Send error messages to the email address, such as missing playlist; invalid json format; missing clip path. Leave the recipient blank if you don't need it. 'mail_level' can be INFO, WARNING or ERROR. 'interval' means seconds until a new mail is sent.`,
-        logText: `If 'log_to_file' is true, log to file, if false, log to console. 'backup_count' says how long log files will be saved in days. 'local_time' to false will set log timestamps to UTC. Path to /var/log/ only if you are running this as a daemon.
+        logText: `If 'log_to_file' is true, log to file, if false, log to console. 'local_time' to false will set log timestamps to UTC. Path to /var/log/ only if you are running this as a daemon.
         'level' can be DEBUG, INFO, WARNING, ERROR. 'ffmpeg_level' can be INFO, WARNING, ERROR. 'detect_silence' logs an error message if the audio line is silent for 15 seconds during the validation process.`,
         processingText: `Default processing for all clips to make them unique. Mode can be Playlist or Folder. 'aspect' must be a float number. 'logo' is only used if the path exists.
         'logo_scale' scales the logo to the target size, leave empty if no scaling is needed, format is 'width:height', for example '100:-1' for proportional scaling. With 'logo_opacity' you can make the logo transparent.
