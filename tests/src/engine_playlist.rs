@@ -4,23 +4,42 @@ use std::{
 };
 
 use serial_test::serial;
-use simplelog::*;
+use sqlx::{Pool, Sqlite};
+use tokio::runtime::Runtime;
 
-use ffplayout_engine::{input::playlist::gen_source, output::player};
-use ffplayout_lib::{utils::*, vec_strings};
+use ffplayout::db::{db_pool, handles};
+use ffplayout::player::output::player;
+use ffplayout::player::utils::*;
+use ffplayout::player::{controller::ChannelManager, input::playlist::gen_source, utils::Media};
+use ffplayout::utils::config::OutputMode::Null;
+use ffplayout::utils::config::{PlayoutConfig, ProcessMode::Playlist};
+use ffplayout::vec_strings;
 
-fn timed_stop(sec: u64, proc_ctl: ProcessControl) {
+fn get_pool() -> Pool<Sqlite> {
+    Runtime::new().unwrap().block_on(db_pool()).unwrap()
+}
+
+fn timed_stop(sec: u64, manager: ChannelManager) {
     sleep(Duration::from_secs(sec));
 
-    info!("Timed stop of process");
+    println!("Timed stop of process");
 
-    proc_ctl.stop_all();
+    manager.stop_all();
 }
 
 #[test]
 #[ignore]
 fn test_gen_source() {
-    let mut config = PlayoutConfig::new(None, None);
+    let pool = get_pool();
+    let mut config = Runtime::new()
+        .unwrap()
+        .block_on(PlayoutConfig::new(&pool, 1));
+    let channel = Runtime::new()
+        .unwrap()
+        .block_on(handles::select_channel(&pool, &1))
+        .unwrap();
+    let manager = ChannelManager::new(Some(pool), channel, config.clone());
+
     config.general.skip_validation = true;
     config.mail.recipient = "".into();
     config.processing.mode = Playlist;
@@ -32,49 +51,23 @@ fn test_gen_source() {
     config.playlist.length_sec = Some(86400.0);
     config.playlist.path = "assets/playlists".into();
     config.storage.filler = "assets/media_filler/filler_0.mp4".into();
-    config.logging.log_to_file = false;
-    config.logging.timestamp = false;
-    config.logging.level = LevelFilter::Trace;
-    let play_control = PlayerControl::new();
-    let playout_stat = PlayoutStatus::new();
-
-    let logging = init_logging(&config, None, None);
-    CombinedLogger::init(logging).unwrap_or_default();
 
     let mut valid_source_with_probe = Media::new(0, "assets/media_mix/av_sync.mp4", true);
-    let valid_media = gen_source(
-        &config,
-        valid_source_with_probe.clone(),
-        &playout_stat,
-        &play_control,
-        100,
-    );
+    let valid_media = gen_source(&config, valid_source_with_probe.clone(), &manager, 100);
 
     assert_eq!(valid_source_with_probe.source, valid_media.source);
 
     let mut valid_source_without_probe = Media::new(0, "assets/media_mix/av_sync.mp4", false);
     valid_source_without_probe.duration = 30.0;
     valid_source_without_probe.out = 20.0;
-    let valid_media = gen_source(
-        &config,
-        valid_source_without_probe.clone(),
-        &playout_stat,
-        &play_control,
-        100,
-    );
+    let valid_media = gen_source(&config, valid_source_without_probe.clone(), &manager, 100);
 
     assert_eq!(valid_source_without_probe.source, valid_media.source);
     assert_eq!(valid_media.out, 20.0);
 
     valid_source_with_probe.out = 0.9;
 
-    let valid_media = gen_source(
-        &config,
-        valid_source_with_probe.clone(),
-        &playout_stat,
-        &play_control,
-        100,
-    );
+    let valid_media = gen_source(&config, valid_source_with_probe.clone(), &manager, 100);
 
     assert_eq!(valid_media.out, 1.2);
 
@@ -82,13 +75,7 @@ fn test_gen_source() {
     no_valid_source_with_probe.duration = 30.0;
     no_valid_source_with_probe.out = 30.0;
 
-    let valid_media = gen_source(
-        &config,
-        no_valid_source_with_probe.clone(),
-        &playout_stat,
-        &play_control,
-        100,
-    );
+    let valid_media = gen_source(&config, no_valid_source_with_probe.clone(), &manager, 100);
 
     assert_eq!(valid_media.source, "assets/media_filler/filler_0.mp4");
 }
@@ -97,7 +84,17 @@ fn test_gen_source() {
 #[serial]
 #[ignore]
 fn playlist_missing() {
-    let mut config = PlayoutConfig::new(None, None);
+    let pool = get_pool();
+    let mut config = Runtime::new()
+        .unwrap()
+        .block_on(PlayoutConfig::new(&pool, 1));
+    let channel = Runtime::new()
+        .unwrap()
+        .block_on(handles::select_channel(&pool, &1))
+        .unwrap();
+    let manager = ChannelManager::new(Some(pool), channel, config.clone());
+    let manager_clone = manager.clone();
+
     config.general.skip_validation = true;
     config.mail.recipient = "".into();
     config.processing.mode = Playlist;
@@ -109,29 +106,18 @@ fn playlist_missing() {
     config.playlist.length_sec = Some(86400.0);
     config.playlist.path = "assets/playlists".into();
     config.storage.filler = "assets/media_filler/filler_0.mp4".into();
-    config.logging.log_to_file = false;
-    config.logging.timestamp = false;
-    config.logging.level = LevelFilter::Trace;
-    config.out.mode = Null;
-    config.out.output_count = 1;
-    config.out.output_filter = None;
-    config.out.output_cmd = Some(vec_strings!["-f", "null", "-"]);
-
-    let play_control = PlayerControl::new();
-    let playout_stat = PlayoutStatus::new();
-    let proc_control = ProcessControl::new();
-    let proc_ctl = proc_control.clone();
-
-    let logging = init_logging(&config, None, None);
-    CombinedLogger::init(logging).unwrap_or_default();
+    config.output.mode = Null;
+    config.output.output_count = 1;
+    config.output.output_filter = None;
+    config.output.output_cmd = Some(vec_strings!["-f", "null", "-"]);
 
     mock_time::set_mock_time("2023-02-07T23:59:45");
 
-    thread::spawn(move || timed_stop(28, proc_ctl));
+    thread::spawn(move || timed_stop(28, manager_clone));
 
-    player(&config, &play_control, playout_stat.clone(), proc_control);
+    player(manager.clone()).unwrap();
 
-    let playlist_date = &*playout_stat.current_date.lock().unwrap();
+    let playlist_date = &*manager.current_date.lock().unwrap();
 
     assert_eq!(playlist_date, "2023-02-08");
 }
@@ -140,7 +126,17 @@ fn playlist_missing() {
 #[serial]
 #[ignore]
 fn playlist_next_missing() {
-    let mut config = PlayoutConfig::new(None, None);
+    let pool = get_pool();
+    let mut config = Runtime::new()
+        .unwrap()
+        .block_on(PlayoutConfig::new(&pool, 1));
+    let channel = Runtime::new()
+        .unwrap()
+        .block_on(handles::select_channel(&pool, &1))
+        .unwrap();
+    let manager = ChannelManager::new(Some(pool), channel, config.clone());
+    let manager_clone = manager.clone();
+
     config.general.skip_validation = true;
     config.mail.recipient = "".into();
     config.processing.mode = Playlist;
@@ -152,29 +148,18 @@ fn playlist_next_missing() {
     config.playlist.length_sec = Some(86400.0);
     config.playlist.path = "assets/playlists".into();
     config.storage.filler = "assets/media_filler/filler_0.mp4".into();
-    config.logging.log_to_file = false;
-    config.logging.timestamp = false;
-    config.logging.level = LevelFilter::Trace;
-    config.out.mode = Null;
-    config.out.output_count = 1;
-    config.out.output_filter = None;
-    config.out.output_cmd = Some(vec_strings!["-f", "null", "-"]);
-
-    let play_control = PlayerControl::new();
-    let playout_stat = PlayoutStatus::new();
-    let proc_control = ProcessControl::new();
-    let proc_ctl = proc_control.clone();
-
-    let logging = init_logging(&config, None, None);
-    CombinedLogger::init(logging).unwrap_or_default();
+    config.output.mode = Null;
+    config.output.output_count = 1;
+    config.output.output_filter = None;
+    config.output.output_cmd = Some(vec_strings!["-f", "null", "-"]);
 
     mock_time::set_mock_time("2023-02-09T23:59:45");
 
-    thread::spawn(move || timed_stop(28, proc_ctl));
+    thread::spawn(move || timed_stop(28, manager_clone));
 
-    player(&config, &play_control, playout_stat.clone(), proc_control);
+    player(manager.clone()).unwrap();
 
-    let playlist_date = &*playout_stat.current_date.lock().unwrap();
+    let playlist_date = &*manager.current_date.lock().unwrap();
 
     assert_eq!(playlist_date, "2023-02-10");
 }
@@ -183,7 +168,17 @@ fn playlist_next_missing() {
 #[serial]
 #[ignore]
 fn playlist_to_short() {
-    let mut config = PlayoutConfig::new(None, None);
+    let pool = get_pool();
+    let mut config = Runtime::new()
+        .unwrap()
+        .block_on(PlayoutConfig::new(&pool, 1));
+    let channel = Runtime::new()
+        .unwrap()
+        .block_on(handles::select_channel(&pool, &1))
+        .unwrap();
+    let manager = ChannelManager::new(Some(pool), channel, config.clone());
+    let manager_clone = manager.clone();
+
     config.general.skip_validation = true;
     config.mail.recipient = "".into();
     config.processing.mode = Playlist;
@@ -195,29 +190,18 @@ fn playlist_to_short() {
     config.playlist.length_sec = Some(86400.0);
     config.playlist.path = "assets/playlists".into();
     config.storage.filler = "assets/media_filler/filler_0.mp4".into();
-    config.logging.log_to_file = false;
-    config.logging.timestamp = false;
-    config.logging.level = log::LevelFilter::Trace;
-    config.out.mode = Null;
-    config.out.output_count = 1;
-    config.out.output_filter = None;
-    config.out.output_cmd = Some(vec_strings!["-f", "null", "-"]);
-
-    let play_control = PlayerControl::new();
-    let playout_stat = PlayoutStatus::new();
-    let proc_control = ProcessControl::new();
-    let proc_ctl = proc_control.clone();
-
-    let logging = init_logging(&config, None, None);
-    CombinedLogger::init(logging).unwrap_or_default();
+    config.output.mode = Null;
+    config.output.output_count = 1;
+    config.output.output_filter = None;
+    config.output.output_cmd = Some(vec_strings!["-f", "null", "-"]);
 
     mock_time::set_mock_time("2024-01-31T05:59:40");
 
-    thread::spawn(move || timed_stop(28, proc_ctl));
+    thread::spawn(move || timed_stop(28, manager_clone));
 
-    player(&config, &play_control, playout_stat.clone(), proc_control);
+    player(manager.clone()).unwrap();
 
-    let playlist_date = &*playout_stat.current_date.lock().unwrap();
+    let playlist_date = &*manager.current_date.lock().unwrap();
 
     assert_eq!(playlist_date, "2024-01-31");
 }
@@ -226,7 +210,17 @@ fn playlist_to_short() {
 #[serial]
 #[ignore]
 fn playlist_init_after_list_end() {
-    let mut config = PlayoutConfig::new(None, None);
+    let pool = get_pool();
+    let mut config = Runtime::new()
+        .unwrap()
+        .block_on(PlayoutConfig::new(&pool, 1));
+    let channel = Runtime::new()
+        .unwrap()
+        .block_on(handles::select_channel(&pool, &1))
+        .unwrap();
+    let manager = ChannelManager::new(Some(pool), channel, config.clone());
+    let manager_clone = manager.clone();
+
     config.general.skip_validation = true;
     config.mail.recipient = "".into();
     config.processing.mode = Playlist;
@@ -238,29 +232,18 @@ fn playlist_init_after_list_end() {
     config.playlist.length_sec = Some(86400.0);
     config.playlist.path = "assets/playlists".into();
     config.storage.filler = "assets/media_filler/filler_0.mp4".into();
-    config.logging.log_to_file = false;
-    config.logging.timestamp = false;
-    config.logging.level = log::LevelFilter::Trace;
-    config.out.mode = Null;
-    config.out.output_count = 1;
-    config.out.output_filter = None;
-    config.out.output_cmd = Some(vec_strings!["-f", "null", "-"]);
-
-    let play_control = PlayerControl::new();
-    let playout_stat = PlayoutStatus::new();
-    let proc_control = ProcessControl::new();
-    let proc_ctl = proc_control.clone();
-
-    let logging = init_logging(&config, None, None);
-    CombinedLogger::init(logging).unwrap_or_default();
+    config.output.mode = Null;
+    config.output.output_count = 1;
+    config.output.output_filter = None;
+    config.output.output_cmd = Some(vec_strings!["-f", "null", "-"]);
 
     mock_time::set_mock_time("2024-01-31T05:59:47");
 
-    thread::spawn(move || timed_stop(28, proc_ctl));
+    thread::spawn(move || timed_stop(28, manager_clone));
 
-    player(&config, &play_control, playout_stat.clone(), proc_control);
+    player(manager.clone()).unwrap();
 
-    let playlist_date = &*playout_stat.current_date.lock().unwrap();
+    let playlist_date = &*manager.current_date.lock().unwrap();
 
     assert_eq!(playlist_date, "2024-01-31");
 }
@@ -269,7 +252,17 @@ fn playlist_init_after_list_end() {
 #[serial]
 #[ignore]
 fn playlist_change_at_midnight() {
-    let mut config = PlayoutConfig::new(None, None);
+    let pool = get_pool();
+    let mut config = Runtime::new()
+        .unwrap()
+        .block_on(PlayoutConfig::new(&pool, 1));
+    let channel = Runtime::new()
+        .unwrap()
+        .block_on(handles::select_channel(&pool, &1))
+        .unwrap();
+    let manager = ChannelManager::new(Some(pool), channel, config.clone());
+    let manager_clone = manager.clone();
+
     config.general.skip_validation = true;
     config.mail.recipient = "".into();
     config.processing.mode = Playlist;
@@ -281,29 +274,18 @@ fn playlist_change_at_midnight() {
     config.playlist.length_sec = Some(86400.0);
     config.playlist.path = "assets/playlists".into();
     config.storage.filler = "assets/media_filler/filler_0.mp4".into();
-    config.logging.log_to_file = false;
-    config.logging.timestamp = false;
-    config.logging.level = LevelFilter::Trace;
-    config.out.mode = Null;
-    config.out.output_count = 1;
-    config.out.output_filter = None;
-    config.out.output_cmd = Some(vec_strings!["-f", "null", "-"]);
-
-    let play_control = PlayerControl::new();
-    let playout_stat = PlayoutStatus::new();
-    let proc_control = ProcessControl::new();
-    let proc_ctl = proc_control.clone();
-
-    let logging = init_logging(&config, None, None);
-    CombinedLogger::init(logging).unwrap_or_default();
+    config.output.mode = Null;
+    config.output.output_count = 1;
+    config.output.output_filter = None;
+    config.output.output_cmd = Some(vec_strings!["-f", "null", "-"]);
 
     mock_time::set_mock_time("2023-02-08T23:59:45");
 
-    thread::spawn(move || timed_stop(28, proc_ctl));
+    thread::spawn(move || timed_stop(28, manager_clone));
 
-    player(&config, &play_control, playout_stat.clone(), proc_control);
+    player(manager.clone()).unwrap();
 
-    let playlist_date = &*playout_stat.current_date.lock().unwrap();
+    let playlist_date = &*manager.current_date.lock().unwrap();
 
     assert_eq!(playlist_date, "2023-02-09");
 }
@@ -312,7 +294,17 @@ fn playlist_change_at_midnight() {
 #[serial]
 #[ignore]
 fn playlist_change_before_midnight() {
-    let mut config = PlayoutConfig::new(None, None);
+    let pool = get_pool();
+    let mut config = Runtime::new()
+        .unwrap()
+        .block_on(PlayoutConfig::new(&pool, 1));
+    let channel = Runtime::new()
+        .unwrap()
+        .block_on(handles::select_channel(&pool, &1))
+        .unwrap();
+    let manager = ChannelManager::new(Some(pool), channel, config.clone());
+    let manager_clone = manager.clone();
+
     config.general.skip_validation = true;
     config.mail.recipient = "".into();
     config.processing.mode = Playlist;
@@ -324,29 +316,18 @@ fn playlist_change_before_midnight() {
     config.playlist.length_sec = Some(86400.0);
     config.playlist.path = "assets/playlists".into();
     config.storage.filler = "assets/media_filler/filler_0.mp4".into();
-    config.logging.log_to_file = false;
-    config.logging.timestamp = false;
-    config.logging.level = LevelFilter::Trace;
-    config.out.mode = Null;
-    config.out.output_count = 1;
-    config.out.output_filter = None;
-    config.out.output_cmd = Some(vec_strings!["-f", "null", "-"]);
-
-    let play_control = PlayerControl::new();
-    let playout_stat = PlayoutStatus::new();
-    let proc_control = ProcessControl::new();
-    let proc_ctl = proc_control.clone();
-
-    let logging = init_logging(&config, None, None);
-    CombinedLogger::init(logging).unwrap_or_default();
+    config.output.mode = Null;
+    config.output.output_count = 1;
+    config.output.output_filter = None;
+    config.output.output_cmd = Some(vec_strings!["-f", "null", "-"]);
 
     mock_time::set_mock_time("2023-02-08T23:59:30");
 
-    thread::spawn(move || timed_stop(35, proc_ctl));
+    thread::spawn(move || timed_stop(35, manager_clone));
 
-    player(&config, &play_control, playout_stat.clone(), proc_control);
+    player(manager.clone()).unwrap();
 
-    let playlist_date = &*playout_stat.current_date.lock().unwrap();
+    let playlist_date = &*manager.current_date.lock().unwrap();
 
     assert_eq!(playlist_date, "2023-02-09");
 }
@@ -355,7 +336,17 @@ fn playlist_change_before_midnight() {
 #[serial]
 #[ignore]
 fn playlist_change_at_six() {
-    let mut config = PlayoutConfig::new(None, None);
+    let pool = get_pool();
+    let mut config = Runtime::new()
+        .unwrap()
+        .block_on(PlayoutConfig::new(&pool, 1));
+    let channel = Runtime::new()
+        .unwrap()
+        .block_on(handles::select_channel(&pool, &1))
+        .unwrap();
+    let manager = ChannelManager::new(Some(pool), channel, config.clone());
+    let manager_clone = manager.clone();
+
     config.general.skip_validation = true;
     config.mail.recipient = "".into();
     config.processing.mode = Playlist;
@@ -367,28 +358,18 @@ fn playlist_change_at_six() {
     config.playlist.length_sec = Some(86400.0);
     config.playlist.path = "assets/playlists".into();
     config.storage.filler = "assets/media_filler/filler_0.mp4".into();
-    config.logging.log_to_file = false;
-    config.logging.timestamp = false;
-    config.out.mode = Null;
-    config.out.output_count = 1;
-    config.out.output_filter = None;
-    config.out.output_cmd = Some(vec_strings!["-f", "null", "-"]);
-
-    let play_control = PlayerControl::new();
-    let playout_stat = PlayoutStatus::new();
-    let proc_control = ProcessControl::new();
-    let proc_ctl = proc_control.clone();
-
-    let logging = init_logging(&config, None, None);
-    CombinedLogger::init(logging).unwrap_or_default();
+    config.output.mode = Null;
+    config.output.output_count = 1;
+    config.output.output_filter = None;
+    config.output.output_cmd = Some(vec_strings!["-f", "null", "-"]);
 
     mock_time::set_mock_time("2023-02-09T05:59:45");
 
-    thread::spawn(move || timed_stop(28, proc_ctl));
+    thread::spawn(move || timed_stop(28, manager_clone));
 
-    player(&config, &play_control, playout_stat.clone(), proc_control);
+    player(manager.clone()).unwrap();
 
-    let playlist_date = &*playout_stat.current_date.lock().unwrap();
+    let playlist_date = &*manager.current_date.lock().unwrap();
 
     assert_eq!(playlist_date, "2023-02-09");
 }

@@ -84,7 +84,7 @@ pub async fn write_playlist(
     Err(ServiceError::InternalServerError)
 }
 
-pub async fn generate_playlist(manager: ChannelManager) -> Result<JsonPlaylist, ServiceError> {
+pub fn generate_playlist(manager: ChannelManager) -> Result<JsonPlaylist, ServiceError> {
     let mut config = manager.config.lock().unwrap();
 
     if let Some(mut template) = config.general.template.take() {

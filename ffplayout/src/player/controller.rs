@@ -15,7 +15,7 @@ use log::*;
 use serde::{Deserialize, Serialize};
 use sqlx::{Pool, Sqlite};
 
-use crate::db::models::Channel;
+use crate::db::{handles, models::Channel};
 use crate::player::{
     output::{player, write_hls},
     utils::{folder::fill_filler_list, Media},
@@ -48,6 +48,7 @@ use ProcessUnit::*;
 
 #[derive(Clone, Debug, Default)]
 pub struct ChannelManager {
+    pub db_pool: Option<Pool<Sqlite>>,
     pub config: Arc<Mutex<PlayoutConfig>>,
     pub channel: Arc<Mutex<Channel>>,
     pub decoder: Arc<Mutex<Option<Child>>>,
@@ -64,11 +65,13 @@ pub struct ChannelManager {
     pub filler_list: Arc<Mutex<Vec<Media>>>,
     pub current_index: Arc<AtomicUsize>,
     pub filler_index: Arc<AtomicUsize>,
+    pub run_count: Arc<AtomicUsize>,
 }
 
 impl ChannelManager {
-    pub fn new(channel: Channel, config: PlayoutConfig) -> Self {
+    pub fn new(db_pool: Option<Pool<Sqlite>>, channel: Channel, config: PlayoutConfig) -> Self {
         Self {
+            db_pool,
             is_alive: Arc::new(AtomicBool::new(channel.active)),
             channel: Arc::new(Mutex::new(channel)),
             config: Arc::new(Mutex::new(config)),
@@ -77,6 +80,7 @@ impl ChannelManager {
             filler_list: Arc::new(Mutex::new(vec![])),
             current_index: Arc::new(AtomicUsize::new(0)),
             filler_index: Arc::new(AtomicUsize::new(0)),
+            run_count: Arc::new(AtomicUsize::new(0)),
             ..Default::default()
         }
     }
@@ -91,6 +95,29 @@ impl ChannelManager {
         channel.last_date.clone_from(&other.last_date);
         channel.time_shift.clone_from(&other.time_shift);
         channel.utc_offset.clone_from(&other.utc_offset);
+    }
+
+    pub async fn async_start(&self) {
+        self.run_count.fetch_add(1, Ordering::SeqCst);
+        self.is_alive.store(true, Ordering::SeqCst);
+        self.is_terminated.store(false, Ordering::SeqCst);
+
+        let pool_clone = self.db_pool.clone().unwrap();
+        let self_clone = self.clone();
+        let channel_id = self.channel.lock().unwrap().id;
+
+        if let Err(e) = handles::update_player(&pool_clone, channel_id, true).await {
+            error!("Unable write to player status: {e}");
+        };
+
+        thread::spawn(move || {
+            let run_count = self_clone.run_count.clone();
+
+            if let Err(e) = start_channel(self_clone) {
+                run_count.fetch_sub(1, Ordering::SeqCst);
+                error!("{e}");
+            };
+        });
     }
 
     pub fn stop(&self, unit: ProcessUnit) -> Result<(), ProcessError> {
@@ -156,11 +183,44 @@ impl ChannelManager {
         Ok(())
     }
 
+    pub async fn async_stop(&self) {
+        debug!("Stop all child processes");
+        self.is_terminated.store(true, Ordering::SeqCst);
+        self.ingest_is_running.store(false, Ordering::SeqCst);
+        self.run_count.fetch_sub(1, Ordering::SeqCst);
+        let pool = self.db_pool.clone().unwrap();
+        let channel_id = self.channel.lock().unwrap().id;
+
+        if let Err(e) = handles::update_player(&pool, channel_id, false).await {
+            error!("Unable write to player status: {e}");
+        };
+
+        if self.is_alive.load(Ordering::SeqCst) {
+            self.is_alive.store(false, Ordering::SeqCst);
+
+            trace!("Playout is alive and processes are terminated");
+
+            for unit in [Decoder, Encoder, Ingest] {
+                if let Err(e) = self.stop(unit) {
+                    if !e.to_string().contains("exited process") {
+                        error!("{e}")
+                    }
+                }
+                if let Err(e) = self.wait(unit) {
+                    if !e.to_string().contains("exited process") {
+                        error!("{e}")
+                    }
+                }
+            }
+        }
+    }
+
     /// No matter what is running, terminate them all.
     pub fn stop_all(&self) {
         debug!("Stop all child processes");
         self.is_terminated.store(true, Ordering::SeqCst);
         self.ingest_is_running.store(false, Ordering::SeqCst);
+        self.run_count.fetch_sub(1, Ordering::SeqCst);
 
         if self.is_alive.load(Ordering::SeqCst) {
             self.is_alive.store(false, Ordering::SeqCst);
@@ -222,7 +282,7 @@ impl ChannelController {
     }
 }
 
-pub fn start(db_pool: Pool<Sqlite>, manager: ChannelManager) -> Result<(), ProcessError> {
+pub fn start_channel(manager: ChannelManager) -> Result<(), ProcessError> {
     let config = manager.config.lock()?.clone();
     let mode = config.output.mode.clone();
     let filler_list = manager.filler_list.clone();
@@ -234,8 +294,8 @@ pub fn start(db_pool: Pool<Sqlite>, manager: ChannelManager) -> Result<(), Proce
 
     match mode {
         // write files/playlist to HLS m3u8 playlist
-        HLS => write_hls(manager, db_pool),
+        HLS => write_hls(manager),
         // play on desktop or stream to a remote target
-        _ => player(manager, db_pool),
+        _ => player(manager),
     }
 }

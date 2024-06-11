@@ -8,7 +8,6 @@ use std::{
 
 use crossbeam_channel::bounded;
 use log::*;
-use sqlx::{Pool, Sqlite};
 
 mod desktop;
 mod hls;
@@ -34,7 +33,7 @@ use crate::vec_strings;
 /// for getting live feeds.
 /// When a live ingest arrive, it stops the current playing and switch to the live source.
 /// When ingest stops, it switch back to playlist/folder mode.
-pub fn player(manager: ChannelManager, db_pool: Pool<Sqlite>) -> Result<(), ProcessError> {
+pub fn player(manager: ChannelManager) -> Result<(), ProcessError> {
     let config = manager.config.lock()?.clone();
     let config_clone = config.clone();
     let ff_log_format = format!("level+{}", config.logging.ffmpeg_level.to_lowercase());
@@ -47,7 +46,7 @@ pub fn player(manager: ChannelManager, db_pool: Pool<Sqlite>) -> Result<(), Proc
     let ingest_is_running = manager.ingest_is_running.clone();
 
     // get source iterator
-    let node_sources = source_generator(manager.clone(), db_pool);
+    let node_sources = source_generator(manager.clone());
 
     // get ffmpeg output instance
     let mut enc_proc = match config.output.mode {

@@ -98,6 +98,16 @@ pub async fn update_stat(
         .await
 }
 
+pub async fn update_player(
+    conn: &Pool<Sqlite>,
+    id: i32,
+    active: bool,
+) -> Result<SqliteQueryResult, sqlx::Error> {
+    let query = "UPDATE channels SET active = $2 WHERE id = $1";
+
+    sqlx::query(query).bind(id).bind(active).execute(conn).await
+}
+
 pub async fn insert_channel(conn: &Pool<Sqlite>, channel: Channel) -> Result<Channel, sqlx::Error> {
     let query = "INSERT INTO channels (name, preview_url, extra_extensions) VALUES($1, $2, $3)";
     let result = sqlx::query(query)

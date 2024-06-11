@@ -6,8 +6,7 @@ use std::{
     },
 };
 
-use simplelog::*;
-use sqlx::{Pool, Sqlite};
+use log::*;
 
 use crate::db::handles;
 use crate::player::{
@@ -26,9 +25,8 @@ use crate::utils::config::{PlayoutConfig, IMAGE_FORMAT};
 /// Here we prepare the init clip and build a iterator where we pull our clips.
 #[derive(Debug)]
 pub struct CurrentProgram {
-    manager: ChannelManager,
     config: PlayoutConfig,
-    db_pool: Pool<Sqlite>,
+    manager: ChannelManager,
     start_sec: f64,
     end_sec: f64,
     json_playlist: JsonPlaylist,
@@ -40,14 +38,13 @@ pub struct CurrentProgram {
 
 /// Prepare a playlist iterator.
 impl CurrentProgram {
-    pub fn new(manager: ChannelManager, db_pool: Pool<Sqlite>) -> Self {
+    pub fn new(manager: ChannelManager) -> Self {
         let config = manager.config.lock().unwrap().clone();
         let is_terminated = manager.is_terminated.clone();
 
         Self {
-            manager,
             config: config.clone(),
-            db_pool,
+            manager,
             start_sec: config.playlist.start_sec.unwrap(),
             end_sec: config.playlist.length_sec.unwrap(),
             json_playlist: JsonPlaylist::new(
@@ -211,11 +208,12 @@ impl CurrentProgram {
             .last_date
             .clone_from(&Some(date.clone()));
         self.manager.channel.lock().unwrap().time_shift = 0.0;
+        let db_pool = self.manager.db_pool.clone().unwrap();
 
         if let Err(e) = tokio::runtime::Runtime::new()
             .unwrap()
             .block_on(handles::update_stat(
-                &self.db_pool,
+                &db_pool,
                 self.config.general.channel_id,
                 date,
                 0.0,

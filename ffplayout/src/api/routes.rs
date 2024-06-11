@@ -34,13 +34,14 @@ use serde::{Deserialize, Serialize};
 use sqlx::{Pool, Sqlite};
 use tokio::fs;
 
+use crate::api::auth::{create_jwt, Claims};
 use crate::player::utils::{
     get_data_map, get_date_range, import::import_file, sec_to_time, time_to_sec, JsonPlaylist,
 };
 use crate::utils::{
     channels::{create_channel, delete_channel},
     config::{PlayoutConfig, Template},
-    control::{control_state, send_message, ControlParams, Process},
+    control::{control_state, send_message, ControlParams, Process, ProcessCtl},
     errors::ServiceError,
     files::{
         browser, create_directory, norm_abs_path, remove_file_or_folder, rename_file, upload,
@@ -51,10 +52,6 @@ use crate::utils::{
     public_path, read_log_file, system, Role, TextFilter,
 };
 use crate::vec_strings;
-use crate::{
-    api::auth::{create_jwt, Claims},
-    utils::control::ProcessControl,
-};
 use crate::{
     db::{
         handles,
@@ -723,10 +720,26 @@ pub async fn media_current(
 #[post("/control/{id}/process/")]
 #[protect(any("Role::GlobalAdmin", "Role::User"), ty = "Role")]
 pub async fn process_control(
-    _id: web::Path<i32>,
-    _proc: web::Json<Process>,
-    _engine_process: web::Data<ProcessControl>,
+    id: web::Path<i32>,
+    proc: web::Json<Process>,
+    controllers: web::Data<Mutex<ChannelController>>,
 ) -> Result<impl Responder, ServiceError> {
+    let manager = controllers.lock().unwrap().get(*id).unwrap();
+
+    match proc.into_inner().command {
+        ProcessCtl::Start => {
+            manager.async_start().await;
+        }
+        ProcessCtl::Stop => {
+            manager.async_stop().await;
+        }
+        ProcessCtl::Restart => {
+            manager.async_stop().await;
+            tokio::time::sleep(tokio::time::Duration::from_millis(1500)).await;
+            manager.async_start().await;
+        }
+    }
+
     Ok(web::Json("no implemented"))
 }
 
@@ -828,7 +841,7 @@ pub async fn gen_playlist(
             .clone_from(&obj.template);
     }
 
-    match generate_playlist(manager).await {
+    match generate_playlist(manager) {
         Ok(playlist) => Ok(web::Json(playlist)),
         Err(e) => Err(e),
     }

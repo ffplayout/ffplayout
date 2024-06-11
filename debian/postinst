@@ -23,7 +23,6 @@ if [ ! -d "/usr/share/ffplayout/db" ]; then
 
     chown -R ${sysUser}: "/usr/share/ffplayout"
     chown -R ${sysUser}: "/var/lib/ffplayout"
-    chown -R ${sysUser}: "/etc/ffplayout"
 fi
 
 if [ ! -d "/var/log/ffplayout" ]; then

@@ -1,18 +1,9 @@
-use std::{
-    error::Error,
-    fmt,
-    str::FromStr,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Mutex,
-    },
-};
+use std::{error::Error, fmt, str::FromStr, sync::atomic::Ordering};
 
 use log::*;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use sqlx::{Pool, Sqlite};
-use tokio::process::Child;
 use zeromq::{Socket, SocketRecv, SocketSend, ZmqMessage};
 
 use crate::db::handles;
@@ -38,59 +29,40 @@ struct MediaParams {
     media: String,
 }
 
-/// ffplayout engine process
-///
-/// When running not on Linux, or with environment variable `PIGGYBACK_MODE=true`,
-/// the engine get startet and controlled from ffpapi
-pub struct ProcessControl {
-    pub engine_child: Mutex<Option<Child>>,
-    pub is_running: AtomicBool,
-    pub piggyback: AtomicBool,
-}
-
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
-pub enum ServiceCmd {
-    Enable,
-    Disable,
+pub enum ProcessCtl {
     Start,
     Stop,
     Restart,
-    Status,
 }
 
-impl FromStr for ServiceCmd {
+impl FromStr for ProcessCtl {
     type Err = String;
 
     fn from_str(input: &str) -> Result<Self, Self::Err> {
         match input.to_lowercase().as_str() {
-            "enable" => Ok(Self::Enable),
-            "disable" => Ok(Self::Disable),
             "start" => Ok(Self::Start),
             "stop" => Ok(Self::Stop),
             "restart" => Ok(Self::Restart),
-            "status" => Ok(Self::Status),
             _ => Err(format!("Command '{input}' not found!")),
         }
     }
 }
 
-impl fmt::Display for ServiceCmd {
+impl fmt::Display for ProcessCtl {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            Self::Enable => write!(f, "enable"),
-            Self::Disable => write!(f, "disable"),
             Self::Start => write!(f, "start"),
             Self::Stop => write!(f, "stop"),
             Self::Restart => write!(f, "restart"),
-            Self::Status => write!(f, "status"),
         }
     }
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Process {
-    pub command: ServiceCmd,
+    pub command: ProcessCtl,
 }
 
 async fn zmq_send(msg: &str, socket_addr: &str) -> Result<String, Box<dyn Error>> {

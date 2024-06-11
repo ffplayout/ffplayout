@@ -1,7 +1,7 @@
 use std::{
     collections::HashSet,
     env, io,
-    process::{self, exit},
+    process::exit,
     sync::{Arc, Mutex},
     thread,
 };
@@ -22,7 +22,7 @@ use path_clean::PathClean;
 use ffplayout::{
     api::{auth, routes::*},
     db::{db_pool, handles, models::LoginUser},
-    player::controller::{self, ChannelController, ChannelManager},
+    player::controller::{ChannelController, ChannelManager},
     sse::{broadcast::Broadcaster, routes::*, AuthState},
     utils::{
         config::PlayoutConfig,
@@ -92,13 +92,13 @@ async fn main() -> std::io::Result<()> {
     for channel in channels.iter() {
         let config = PlayoutConfig::new(&pool, channel.id).await;
 
-        let channel_manager = ChannelManager::new(channel.clone(), config.clone());
+        let channel_manager =
+            ChannelManager::new(Some(pool.clone()), channel.clone(), config.clone());
 
         channel_controllers
             .lock()
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?
             .add(channel_manager.clone());
-        let controllers = channel_controllers.clone();
         let m_queue = Arc::new(Mutex::new(MailQueue::new(channel.id, config.mail)));
 
         if let Ok(mut mqs) = mail_queues.lock() {
@@ -106,17 +106,7 @@ async fn main() -> std::io::Result<()> {
         }
 
         if channel.active {
-            let pool_clone = pool.clone();
-
-            thread::spawn(move || {
-                if let Err(e) = controller::start(pool_clone, channel_manager) {
-                    error!("{e}");
-                };
-
-                if controllers.lock().unwrap().run_count() == 0 {
-                    process::exit(0)
-                };
-            });
+            channel_manager.async_start().await;
         }
     }
 

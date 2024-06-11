@@ -26,7 +26,6 @@ use std::{
 };
 
 use log::*;
-use sqlx::{Pool, Sqlite};
 
 use crate::utils::{logging::log_line, task_runner};
 use crate::vec_strings;
@@ -147,7 +146,7 @@ fn ingest_to_hls_server(manager: ChannelManager) -> Result<(), ProcessError> {
 /// HLS Writer
 ///
 /// Write with single ffmpeg instance directly to a HLS playlist.
-pub fn write_hls(manager: ChannelManager, db_pool: Pool<Sqlite>) -> Result<(), ProcessError> {
+pub fn write_hls(manager: ChannelManager) -> Result<(), ProcessError> {
     let config = manager.config.lock()?.clone();
     let current_media = manager.current_media.clone();
 
@@ -156,7 +155,7 @@ pub fn write_hls(manager: ChannelManager, db_pool: Pool<Sqlite>) -> Result<(), P
     let channel_mgr_2 = manager.clone();
     let ingest_is_running = manager.ingest_is_running.clone();
 
-    let get_source = source_generator(manager.clone(), db_pool);
+    let get_source = source_generator(manager.clone());
 
     // spawn a thread for ffmpeg ingest server and create a channel for package sending
     if config.ingest.enable {
