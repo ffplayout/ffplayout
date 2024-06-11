@@ -16,11 +16,14 @@ use rand::{seq::SliceRandom, thread_rng, Rng};
 use simplelog::*;
 use walkdir::WalkDir;
 
-use crate::player::utils::{
-    folder::{fill_filler_list, FolderSource},
-    gen_dummy, get_date_range, include_file_extension,
-    json_serializer::JsonPlaylist,
-    sum_durations, Media,
+use crate::player::{
+    controller::ChannelManager,
+    utils::{
+        folder::{fill_filler_list, FolderSource},
+        gen_dummy, get_date_range, include_file_extension,
+        json_serializer::JsonPlaylist,
+        sum_durations, Media,
+    },
 };
 use crate::utils::{
     config::{PlayoutConfig, Template},
@@ -131,7 +134,7 @@ pub fn filler_list(config: &PlayoutConfig, total_length: f64) -> Vec<Media> {
 
 pub fn generate_from_template(
     config: &PlayoutConfig,
-    player_control: &PlayerControl,
+    manager: &ChannelManager,
     template: Template,
 ) -> FolderSource {
     let mut media_list = vec![];
@@ -192,14 +195,14 @@ pub fn generate_from_template(
         index += 1;
     }
 
-    FolderSource::from_list(config, None, player_control, media_list)
+    FolderSource::from_list(manager, media_list)
 }
 
 /// Generate playlists
-pub fn generate_playlist(
-    config: &PlayoutConfig,
-    channel_name: Option<String>,
-) -> Result<Vec<JsonPlaylist>, Error> {
+pub fn playlist_generator(manager: &ChannelManager) -> Result<Vec<JsonPlaylist>, Error> {
+    let config = manager.config.lock().unwrap();
+    let channel_name = manager.channel.lock().unwrap().name.clone();
+
     let total_length = match config.playlist.length_sec {
         Some(length) => length,
         None => {
@@ -210,16 +213,10 @@ pub fn generate_playlist(
             }
         }
     };
-    let player_control = PlayerControl::new();
     let playlist_root = &config.playlist.path;
     let mut playlists = vec![];
     let mut date_range = vec![];
     let mut from_template = false;
-
-    let channel = match channel_name {
-        Some(name) => name,
-        None => "Channel 1".to_string(),
-    };
 
     if !playlist_root.is_dir() {
         error!(
@@ -242,12 +239,12 @@ pub fn generate_playlist(
     let folder_iter = if let Some(template) = &config.general.template {
         from_template = true;
 
-        generate_from_template(config, &player_control, template.clone())
+        generate_from_template(&config, manager, template.clone())
     } else {
-        FolderSource::new(config, None, &player_control)
+        FolderSource::new(&config, manager.clone())
     };
 
-    let list_length = player_control.current_list.lock().unwrap().len();
+    let list_length = manager.current_list.lock().unwrap().len();
 
     for date in date_range {
         let d: Vec<&str> = date.split('-').collect();
@@ -275,7 +272,7 @@ pub fn generate_playlist(
         );
 
         let mut playlist = JsonPlaylist {
-            channel: channel.clone(),
+            channel: channel_name.clone(),
             date,
             path: None,
             start_sec: None,
@@ -285,7 +282,7 @@ pub fn generate_playlist(
         };
 
         if from_template {
-            let media_list = player_control.current_list.lock().unwrap();
+            let media_list = manager.current_list.lock().unwrap();
             playlist.program = media_list.to_vec();
         } else {
             for item in folder_iter.clone() {
@@ -306,7 +303,7 @@ pub fn generate_playlist(
 
             if config.playlist.length_sec.unwrap() > list_duration {
                 let time_left = config.playlist.length_sec.unwrap() - list_duration;
-                let mut fillers = filler_list(config, time_left);
+                let mut fillers = filler_list(&config, time_left);
 
                 playlist.program.append(&mut fillers);
             }

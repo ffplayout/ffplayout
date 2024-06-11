@@ -83,10 +83,11 @@ impl FromStr for OutputMode {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum ProcessMode {
     Folder,
+    #[default]
     Playlist,
 }
 
@@ -96,12 +97,6 @@ impl ProcessMode {
             "folder" => Self::Folder,
             _ => Self::Playlist,
         }
-    }
-}
-
-impl Default for ProcessMode {
-    fn default() -> Self {
-        ProcessMode::Playlist
     }
 }
 
@@ -144,6 +139,7 @@ pub struct Source {
 /// This we init ones, when ffplayout is starting and use them globally in the hole program.
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct PlayoutConfig {
+    #[serde(skip_serializing)]
     pub advanced: AdvancedConfig,
     pub general: General,
     pub mail: Mail,
@@ -160,13 +156,20 @@ pub struct PlayoutConfig {
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct General {
     pub help_text: String,
+    #[serde(skip_serializing)]
     pub channel_id: i32,
     pub stop_threshold: f64,
+    #[serde(skip_serializing)]
     pub generate: Option<Vec<String>>,
+    #[serde(skip_serializing)]
     pub ffmpeg_filters: Vec<String>,
+    #[serde(skip_serializing)]
     pub ffmpeg_libs: Vec<String>,
+    #[serde(skip_serializing)]
     pub template: Option<Template>,
+    #[serde(skip_serializing)]
     pub skip_validation: bool,
+    #[serde(skip_serializing)]
     pub validate: bool,
 }
 
@@ -278,6 +281,7 @@ pub struct Processing {
     pub audio_channels: u8,
     pub volume: f64,
     pub custom_filter: String,
+    #[serde(skip_serializing)]
     pub cmd: Option<Vec<String>>,
 }
 
@@ -314,6 +318,7 @@ pub struct Ingest {
     pub enable: bool,
     input_param: String,
     pub custom_filter: String,
+    #[serde(skip_serializing)]
     pub input_cmd: Option<Vec<String>>,
 }
 
@@ -334,8 +339,10 @@ pub struct Playlist {
     pub help_text: String,
     pub path: PathBuf,
     pub day_start: String,
+    #[serde(skip_serializing)]
     pub start_sec: Option<f64>,
     pub length: String,
+    #[serde(skip_serializing)]
     pub length_sec: Option<f64>,
     pub infinit: bool,
 }
@@ -358,6 +365,7 @@ impl Playlist {
 pub struct Storage {
     pub help_text: String,
     pub path: PathBuf,
+    #[serde(skip_serializing)]
     pub paths: Vec<PathBuf>,
     pub filler: PathBuf,
     pub extensions: Vec<String>,
@@ -385,8 +393,11 @@ impl Storage {
 pub struct Text {
     pub help_text: String,
     pub add_text: bool,
+    #[serde(skip_serializing)]
     pub node_pos: Option<usize>,
+    #[serde(skip_serializing)]
     pub zmq_stream_socket: Option<String>,
+    #[serde(skip_serializing)]
     pub zmq_server_socket: Option<String>,
     pub fontfile: String,
     pub text_from_filename: bool,
@@ -398,7 +409,7 @@ impl Text {
     fn new(config: &Configuration) -> Self {
         Self {
             help_text: config.text_help.clone(),
-            add_text: config.add_text.clone(),
+            add_text: config.add_text,
             node_pos: None,
             zmq_stream_socket: None,
             zmq_server_socket: None,
@@ -432,8 +443,11 @@ pub struct Output {
     pub help_text: String,
     pub mode: OutputMode,
     pub output_param: String,
+    #[serde(skip_serializing)]
     pub output_count: usize,
+    #[serde(skip_serializing)]
     pub output_filter: Option<String>,
+    #[serde(skip_serializing)]
     pub output_cmd: Option<Vec<String>>,
 }
 

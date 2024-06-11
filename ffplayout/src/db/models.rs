@@ -110,7 +110,7 @@ pub struct Channel {
     pub preview_url: String,
     pub extra_extensions: String,
     pub active: bool,
-    pub current_date: Option<String>,
+    pub last_date: Option<String>,
     pub time_shift: f64,
 
     #[sqlx(default)]
@@ -192,7 +192,6 @@ pub struct Configuration {
 
     pub text_help: String,
     pub add_text: bool,
-
     pub fontfile: String,
     pub text_from_filename: bool,
     pub style: String,

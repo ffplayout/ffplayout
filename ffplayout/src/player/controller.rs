@@ -56,7 +56,7 @@ pub struct ChannelManager {
     pub ingest_is_running: Arc<AtomicBool>,
     pub is_terminated: Arc<AtomicBool>,
     pub is_alive: Arc<AtomicBool>,
-    pub chain: Option<Arc<Mutex<Vec<String>>>>,
+    pub filter_chain: Option<Arc<Mutex<Vec<String>>>>,
     pub current_date: Arc<Mutex<String>>,
     pub list_init: Arc<AtomicBool>,
     pub current_media: Arc<Mutex<Option<Media>>>,
@@ -84,13 +84,13 @@ impl ChannelManager {
     pub fn update_channel(self, other: &Channel) {
         let mut channel = self.channel.lock().unwrap();
 
-        channel.name = other.name.clone();
-        channel.preview_url = other.preview_url.clone();
-        channel.extra_extensions = other.extra_extensions.clone();
-        channel.active = other.active.clone();
-        channel.current_date = other.current_date.clone();
-        channel.time_shift = other.time_shift.clone();
-        channel.utc_offset = other.utc_offset.clone();
+        channel.name.clone_from(&other.name);
+        channel.preview_url.clone_from(&other.preview_url);
+        channel.extra_extensions.clone_from(&other.extra_extensions);
+        channel.active.clone_from(&other.active);
+        channel.last_date.clone_from(&other.last_date);
+        channel.time_shift.clone_from(&other.time_shift);
+        channel.utc_offset.clone_from(&other.utc_offset);
     }
 
     pub fn stop(&self, unit: ProcessUnit) -> Result<(), ProcessError> {

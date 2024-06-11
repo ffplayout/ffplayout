@@ -1090,7 +1090,6 @@ dependencies = [
  "ffplayout-lib",
  "ffprobe",
  "flexi_logger",
- "futures",
  "futures-util",
  "home",
  "itertools 0.13.0",

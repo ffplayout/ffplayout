@@ -402,7 +402,7 @@ pub async fn upload(
         let filepath = if abs_path {
             path.to_path_buf()
         } else {
-            valid_path(&config, &path.to_string_lossy())
+            valid_path(config, &path.to_string_lossy())
                 .await?
                 .join(filename)
         };

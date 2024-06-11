@@ -48,7 +48,8 @@ use crate::utils::{errors::ServiceError, logging::log_file_path};
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
 pub enum Role {
-    Admin,
+    GlobalAdmin,
+    ChannelAdmin,
     User,
     Guest,
 }
@@ -56,7 +57,8 @@ pub enum Role {
 impl Role {
     pub fn set_role(role: &str) -> Self {
         match role {
-            "admin" => Role::Admin,
+            "global_admin" => Role::GlobalAdmin,
+            "channel_admin" => Role::ChannelAdmin,
             "user" => Role::User,
             _ => Role::Guest,
         }
@@ -68,7 +70,8 @@ impl FromStr for Role {
 
     fn from_str(input: &str) -> Result<Self, Self::Err> {
         match input {
-            "admin" => Ok(Self::Admin),
+            "global_admin" => Ok(Self::GlobalAdmin),
+            "channel_admin" => Ok(Self::ChannelAdmin),
             "user" => Ok(Self::User),
             _ => Ok(Self::Guest),
         }
@@ -78,7 +81,8 @@ impl FromStr for Role {
 impl fmt::Display for Role {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            Self::Admin => write!(f, "admin"),
+            Self::GlobalAdmin => write!(f, "global_admin"),
+            Self::ChannelAdmin => write!(f, "channel_admin"),
             Self::User => write!(f, "user"),
             Self::Guest => write!(f, "guest"),
         }
@@ -101,7 +105,8 @@ where
 impl FromRow<'_, SqliteRow> for Role {
     fn from_row(row: &SqliteRow) -> sqlx::Result<Self> {
         match row.get("name") {
-            "admin" => Ok(Self::Admin),
+            "global_admin" => Ok(Self::GlobalAdmin),
+            "channel_admin" => Ok(Self::ChannelAdmin),
             "user" => Ok(Self::User),
             _ => Ok(Self::Guest),
         }
@@ -419,7 +424,7 @@ pub async fn read_log_file(channel_id: &i32, date: &str) -> Result<String, Servi
         fs::read_to_string(log_path)?
     };
 
-    return Ok(file_content);
+    Ok(file_content)
 }
 
 /// get human readable file size

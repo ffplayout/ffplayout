@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{hash_map, HashMap},
     env,
     io::{self, ErrorKind, Write},
     path::PathBuf,
@@ -73,7 +73,7 @@ impl MultiFileLogger {
 
     fn get_writer(&self, channel: i32) -> io::Result<Arc<Mutex<FileLogWriter>>> {
         let mut writers = self.writers.lock().unwrap();
-        if !writers.contains_key(&channel) {
+        if let hash_map::Entry::Vacant(e) = writers.entry(channel) {
             let writer = FileLogWriter::builder(
                 FileSpec::default()
                     .suppress_timestamp()
@@ -93,8 +93,9 @@ impl MultiFileLogger {
             )
             .try_build()
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
-            writers.insert(channel, Arc::new(Mutex::new(writer)));
+            e.insert(Arc::new(Mutex::new(writer)));
         }
+
         Ok(writers.get(&channel).unwrap().clone())
     }
 }
@@ -326,6 +327,7 @@ pub fn mail_queue(mail_queues: Arc<Mutex<Vec<Arc<Mutex<MailQueue>>>>>) {
 
         loop {
             interval.tick().await;
+            let mut tasks = vec![];
 
             // Reset the counter after one day
             if counter >= 86400 {
@@ -334,34 +336,40 @@ pub fn mail_queue(mail_queues: Arc<Mutex<Vec<Arc<Mutex<MailQueue>>>>>) {
                 counter += sec;
             }
 
-            let mut queues = match mail_queues.lock() {
-                Ok(l) => l,
-                Err(e) => {
-                    error!("Failed to lock mail_queues {e}");
-                    continue;
-                }
-            };
-
-            // Process mail queues and send emails
-            for queue in queues.iter_mut() {
-                let interval = round_to_nearest_ten(counter);
-                let mut q_lock = queue.lock().unwrap_or_else(|poisoned| {
-                    error!("Queue mutex was poisoned");
-
-                    poisoned.into_inner()
-                });
-
-                let expire = round_to_nearest_ten(q_lock.config.interval);
-
-                if interval % expire == 0 && !q_lock.is_empty() {
-                    if q_lock.config.recipient.contains('@') {
-                        if let Err(e) = send_mail(&q_lock.config, q_lock.text()).await {
-                            error!(target: "{file}", channel = q_lock.id; "Failed to send mail: {e}");
-                        }
+            {
+                let mut queues = match mail_queues.lock() {
+                    Ok(l) => l,
+                    Err(e) => {
+                        error!("Failed to lock mail_queues {e}");
+                        continue;
                     }
+                };
 
-                    // Clear the messages after sending the email
-                    q_lock.clear();
+                // Process mail queues and send emails
+                for queue in queues.iter_mut() {
+                    let interval = round_to_nearest_ten(counter);
+                    let mut q_lock = queue.lock().unwrap_or_else(|poisoned| {
+                        error!("Queue mutex was poisoned");
+
+                        poisoned.into_inner()
+                    });
+
+                    let expire = round_to_nearest_ten(q_lock.config.interval);
+
+                    if interval % expire == 0 && !q_lock.is_empty() {
+                        if q_lock.config.recipient.contains('@') {
+                            tasks.push((q_lock.config.clone(), q_lock.text().clone(), q_lock.id));
+                        }
+
+                        // Clear the messages after sending the email
+                        q_lock.clear();
+                    }
+                }
+            }
+
+            for (config, text, id) in tasks {
+                if let Err(e) = send_mail(&config, text).await {
+                    error!(target: "{file}", channel = id; "Failed to send mail: {e}");
                 }
             }
         }

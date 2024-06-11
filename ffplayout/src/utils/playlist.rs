@@ -2,10 +2,11 @@ use std::{fs, path::PathBuf};
 
 use log::*;
 
+use crate::player::controller::ChannelManager;
 use crate::player::utils::{json_reader, json_writer, JsonPlaylist};
 use crate::utils::{
     config::PlayoutConfig, errors::ServiceError, files::norm_abs_path,
-    generator::generate_playlist as playlist_generator,
+    generator::playlist_generator,
 };
 
 pub async fn read_playlist(
@@ -83,10 +84,9 @@ pub async fn write_playlist(
     Err(ServiceError::InternalServerError)
 }
 
-pub async fn generate_playlist(
-    mut config: PlayoutConfig,
-    channel: String,
-) -> Result<JsonPlaylist, ServiceError> {
+pub async fn generate_playlist(manager: ChannelManager) -> Result<JsonPlaylist, ServiceError> {
+    let mut config = manager.config.lock().unwrap();
+
     if let Some(mut template) = config.general.template.take() {
         for source in template.sources.iter_mut() {
             let mut paths = vec![];
@@ -103,7 +103,9 @@ pub async fn generate_playlist(
         config.general.template = Some(template);
     }
 
-    match playlist_generator(&config, Some(channel)) {
+    drop(config);
+
+    match playlist_generator(&manager) {
         Ok(playlists) => {
             if !playlists.is_empty() {
                 Ok(playlists[0].clone())

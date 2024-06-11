@@ -46,7 +46,7 @@ use crate::{
 fn ingest_to_hls_server(manager: ChannelManager) -> Result<(), ProcessError> {
     let config = manager.config.lock().unwrap();
     let playlist_init = manager.list_init.clone();
-    let chain = manager.chain.clone();
+    let chain = manager.filter_chain.clone();
 
     let mut server_prefix = vec_strings!["-hide_banner", "-nostats", "-v", "level+info"];
     let stream_input = config.ingest.input_cmd.clone().unwrap();

@@ -30,7 +30,6 @@ faccess = "0.2"
 ffprobe = "0.4"
 flexi_logger = { version = "0.28", features = ["kv", "colors"] }
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
-futures = "0.3"
 home = "0.5"
 itertools = "0.13"
 jsonwebtoken = "9"

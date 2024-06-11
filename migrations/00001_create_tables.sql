@@ -16,7 +16,7 @@ CREATE TABLE channels (
     preview_url TEXT NOT NULL,
     extra_extensions TEXT NOT NULL,
     active INTEGER NOT NULL DEFAULT 0,
-    current_date TEXT,
+    last_date TEXT,
     time_shift REAL NOT NULL DEFAULT 0
 );
 CREATE TABLE presets (
@@ -36,7 +36,7 @@ CREATE TABLE presets (
     FOREIGN KEY (channel_id) REFERENCES channels (id) ON UPDATE CASCADE ON DELETE CASCADE,
     UNIQUE(name)
 );
-CREATE TABLE users (
+CREATE TABLE user (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     mail TEXT NOT NULL,
     username TEXT NOT NULL,
@@ -105,7 +105,7 @@ CREATE TABLE configurations (
     extensions TEXT NOT NULL DEFAULT "mp4;mkv;webm",
     shuffle INTEGER NOT NULL DEFAULT 1,
     text_help TEXT NOT NULL DEFAULT "Overlay text in combination with libzmq for remote text manipulation. On windows fontfile path need to be like this 'C\\:/WINDOWS/fonts/DejaVuSans.ttf'.\n'text_from_filename' activate the extraction from text of a filename. With 'style' you can define the drawtext parameters like position, color, etc. Post Text over API will override this. With 'regex' you can format file names, to get a title from it.",
-    add_textINTEGER NOT NULL DEFAULT 1,
+    add_text INTEGER NOT NULL DEFAULT 1,
     text_from_filename INTEGER NOT NULL DEFAULT 0,
     fontfile TEXT NOT NULL DEFAULT "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
     style TEXT NOT NULL DEFAULT "x=(w-tw)/2:y=(h-line_h)*0.9:fontsize=24:fontcolor=#ffffff:box=1:boxcolor=#000000:boxborderw=4",

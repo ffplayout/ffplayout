@@ -112,7 +112,7 @@ pub async fn send_message(
     let config = manager.config.lock().unwrap().clone();
 
     if config.text.zmq_stream_socket.is_some() {
-        if let Some(clips_filter) = manager.chain.clone() {
+        if let Some(clips_filter) = manager.filter_chain.clone() {
             *clips_filter.lock().unwrap() = vec![filter.clone()];
         }
 
@@ -161,8 +161,8 @@ pub async fn control_state(
 ) -> Result<Map<String, Value>, ServiceError> {
     let config = manager.config.lock().unwrap().clone();
     let current_date = manager.current_date.lock().unwrap().clone();
-    let current_list = manager.current_list.lock().unwrap();
-    let mut date = manager.current_date.lock().unwrap();
+    let current_list = manager.current_list.lock().unwrap().clone();
+    let mut date = manager.current_date.lock().unwrap().clone();
     let index = manager.current_index.load(Ordering::SeqCst);
 
     match command {
@@ -176,30 +176,29 @@ pub async fn control_state(
                     if let Err(e) = proc.wait() {
                         error!("Decoder {e:?}")
                     };
-
-                    info!("Move to last clip");
-                    let mut data_map = Map::new();
-                    let mut media = current_list[index - 2].clone();
-                    manager.current_index.fetch_sub(2, Ordering::SeqCst);
-
-                    if let Err(e) = media.add_probe(false) {
-                        error!("{e:?}");
-                    };
-
-                    let (delta, _) = get_delta(&config, &media.begin.unwrap_or(0.0));
-                    manager.channel.lock().unwrap().time_shift = delta;
-                    date.clone_from(&current_date);
-                    handles::update_stat(conn, config.general.channel_id, current_date, delta)
-                        .await?;
-
-                    data_map.insert("operation".to_string(), json!("move_to_last"));
-                    data_map.insert("shifted_seconds".to_string(), json!(delta));
-                    data_map.insert("media".to_string(), get_media_map(media));
-
-                    return Ok(data_map);
+                } else {
+                    return Err(ServiceError::InternalServerError);
                 }
 
-                return Err(ServiceError::InternalServerError);
+                info!("Move to last clip");
+                let mut data_map = Map::new();
+                let mut media = current_list[index - 2].clone();
+                manager.current_index.fetch_sub(2, Ordering::SeqCst);
+
+                if let Err(e) = media.add_probe(false) {
+                    error!("{e:?}");
+                };
+
+                let (delta, _) = get_delta(&config, &media.begin.unwrap_or(0.0));
+                manager.channel.lock().unwrap().time_shift = delta;
+                date.clone_from(&current_date);
+                handles::update_stat(conn, config.general.channel_id, current_date, delta).await?;
+
+                data_map.insert("operation".to_string(), json!("move_to_last"));
+                data_map.insert("shifted_seconds".to_string(), json!(delta));
+                data_map.insert("media".to_string(), get_media_map(media));
+
+                return Ok(data_map);
             }
         }
 
@@ -213,30 +212,29 @@ pub async fn control_state(
                     if let Err(e) = proc.wait() {
                         error!("Decoder {e:?}")
                     };
-
-                    info!("Move to next clip");
-
-                    let mut data_map = Map::new();
-                    let mut media = current_list[index].clone();
-
-                    if let Err(e) = media.add_probe(false) {
-                        error!("{e:?}");
-                    };
-
-                    let (delta, _) = get_delta(&config, &media.begin.unwrap_or(0.0));
-                    manager.channel.lock().unwrap().time_shift = delta;
-                    date.clone_from(&current_date);
-                    handles::update_stat(conn, config.general.channel_id, current_date, delta)
-                        .await?;
-
-                    data_map.insert("operation".to_string(), json!("move_to_next"));
-                    data_map.insert("shifted_seconds".to_string(), json!(delta));
-                    data_map.insert("media".to_string(), get_media_map(media));
-
-                    return Ok(data_map);
+                } else {
+                    return Err(ServiceError::InternalServerError);
                 }
 
-                return Err(ServiceError::InternalServerError);
+                info!("Move to next clip");
+
+                let mut data_map = Map::new();
+                let mut media = current_list[index].clone();
+
+                if let Err(e) = media.add_probe(false) {
+                    error!("{e:?}");
+                };
+
+                let (delta, _) = get_delta(&config, &media.begin.unwrap_or(0.0));
+                manager.channel.lock().unwrap().time_shift = delta;
+                date.clone_from(&current_date);
+                handles::update_stat(conn, config.general.channel_id, current_date, delta).await?;
+
+                data_map.insert("operation".to_string(), json!("move_to_next"));
+                data_map.insert("shifted_seconds".to_string(), json!(delta));
+                data_map.insert("media".to_string(), get_media_map(media));
+
+                return Ok(data_map);
             }
         }
 
@@ -249,21 +247,21 @@ pub async fn control_state(
                 if let Err(e) = proc.wait() {
                     error!("Decoder {e:?}")
                 };
-
-                info!("Reset playout to original state");
-                let mut data_map = Map::new();
-                manager.channel.lock().unwrap().time_shift = 0.0;
-                date.clone_from(&current_date);
-                manager.list_init.store(true, Ordering::SeqCst);
-
-                handles::update_stat(conn, config.general.channel_id, current_date, 0.0).await?;
-
-                data_map.insert("operation".to_string(), json!("reset_playout_state"));
-
-                return Ok(data_map);
+            } else {
+                return Err(ServiceError::InternalServerError);
             }
 
-            return Err(ServiceError::InternalServerError);
+            info!("Reset playout to original state");
+            let mut data_map = Map::new();
+            manager.channel.lock().unwrap().time_shift = 0.0;
+            date.clone_from(&current_date);
+            manager.list_init.store(true, Ordering::SeqCst);
+
+            handles::update_stat(conn, config.general.channel_id, current_date, 0.0).await?;
+
+            data_map.insert("operation".to_string(), json!("reset_playout_state"));
+
+            return Ok(data_map);
         }
 
         "stop_all" => {

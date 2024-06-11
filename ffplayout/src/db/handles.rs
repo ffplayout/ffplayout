@@ -18,7 +18,7 @@ pub async fn db_migrate(conn: &Pool<Sqlite>) -> Result<&'static str, Box<dyn std
         Err(e) => panic!("{e}"),
     }
 
-    if let Err(_) = select_global(conn).await {
+    if select_global(conn).await.is_err() {
         let secret: String = rand::thread_rng()
             .sample_iter(&Alphanumeric)
             .take(80)
@@ -85,14 +85,14 @@ pub async fn update_channel(
 pub async fn update_stat(
     conn: &Pool<Sqlite>,
     id: i32,
-    current_date: String,
+    last_date: String,
     time_shift: f64,
 ) -> Result<SqliteQueryResult, sqlx::Error> {
-    let query = "UPDATE channels SET current_date = $2, time_shift = $3 WHERE id = $1";
+    let query = "UPDATE channels SET last_date = $2, time_shift = $3 WHERE id = $1";
 
     sqlx::query(query)
         .bind(id)
-        .bind(current_date)
+        .bind(last_date)
         .bind(time_shift)
         .execute(conn)
         .await

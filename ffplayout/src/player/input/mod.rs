@@ -24,9 +24,7 @@ pub fn source_generator(
 ) -> Box<dyn Iterator<Item = Media>> {
     let config = manager.config.lock().unwrap().clone();
     let is_terminated = manager.is_terminated.clone();
-    let chain = manager.chain.clone();
     let current_list = manager.current_list.clone();
-    let current_index = manager.current_index.clone();
 
     match config.processing.mode {
         Folder => {
@@ -37,8 +35,7 @@ pub fn source_generator(
             );
 
             let config_clone = config.clone();
-            let folder_source =
-                FolderSource::new(&config, chain, current_list.clone(), current_index);
+            let folder_source = FolderSource::new(&config, manager);
             let list_clone = current_list.clone();
 
             // Spawn a thread to monitor folder for file changes.

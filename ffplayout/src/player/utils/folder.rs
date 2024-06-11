@@ -1,5 +1,5 @@
 use std::sync::{
-    atomic::{AtomicUsize, Ordering},
+    atomic::Ordering,
     {Arc, Mutex},
 };
 
@@ -8,27 +8,22 @@ use rand::{seq::SliceRandom, thread_rng};
 use simplelog::*;
 use walkdir::WalkDir;
 
-use crate::player::utils::{include_file_extension, time_in_seconds, Media, PlayoutConfig};
+use crate::player::{
+    controller::ChannelManager,
+    utils::{include_file_extension, time_in_seconds, Media, PlayoutConfig},
+};
 
 /// Folder Sources
 ///
 /// Like playlist source, we create here a folder list for iterate over it.
 #[derive(Debug, Clone)]
 pub struct FolderSource {
-    config: PlayoutConfig,
-    filter_chain: Option<Arc<Mutex<Vec<String>>>>,
-    pub current_list: Arc<Mutex<Vec<Media>>>,
-    pub current_index: Arc<AtomicUsize>,
+    manager: ChannelManager,
     current_node: Media,
 }
 
 impl FolderSource {
-    pub fn new(
-        config: &PlayoutConfig,
-        filter_chain: Option<Arc<Mutex<Vec<String>>>>,
-        current_list: Arc<Mutex<Vec<Media>>>,
-        current_index: Arc<AtomicUsize>,
-    ) -> Self {
+    pub fn new(config: &PlayoutConfig, manager: ChannelManager) -> Self {
         let mut path_list = vec![];
         let mut media_list = vec![];
         let mut index: usize = 0;
@@ -78,38 +73,26 @@ impl FolderSource {
             index += 1;
         }
 
-        *current_list.lock().unwrap() = media_list;
+        *manager.current_list.lock().unwrap() = media_list;
 
         Self {
-            config: config.clone(),
-            filter_chain,
-            current_list,
-            current_index,
+            manager,
             current_node: Media::new(0, "", false),
         }
     }
 
-    pub fn from_list(
-        config: &PlayoutConfig,
-        filter_chain: Option<Arc<Mutex<Vec<String>>>>,
-        current_list: Arc<Mutex<Vec<Media>>>,
-        current_index: Arc<AtomicUsize>,
-        list: Vec<Media>,
-    ) -> Self {
-        *current_list.lock().unwrap() = list;
+    pub fn from_list(manager: &ChannelManager, list: Vec<Media>) -> Self {
+        *manager.current_list.lock().unwrap() = list;
 
         Self {
-            config: config.clone(),
-            filter_chain,
-            current_list,
-            current_index,
+            manager: manager.clone(),
             current_node: Media::new(0, "", false),
         }
     }
 
     fn shuffle(&mut self) {
         let mut rng = thread_rng();
-        let mut nodes = self.current_list.lock().unwrap();
+        let mut nodes = self.manager.current_list.lock().unwrap();
 
         nodes.shuffle(&mut rng);
 
@@ -119,7 +102,7 @@ impl FolderSource {
     }
 
     fn sort(&mut self) {
-        let mut nodes = self.current_list.lock().unwrap();
+        let mut nodes = self.manager.current_list.lock().unwrap();
 
         nodes.sort_by(|d1, d2| d1.source.cmp(&d2.source));
 
@@ -134,39 +117,43 @@ impl Iterator for FolderSource {
     type Item = Media;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.current_index.load(Ordering::SeqCst) < self.current_list.lock().unwrap().len() {
-            let i = self.current_index.load(Ordering::SeqCst);
-            self.current_node = self.current_list.lock().unwrap()[i].clone();
+        let config = self.manager.config.lock().unwrap().clone();
+
+        if self.manager.current_index.load(Ordering::SeqCst)
+            < self.manager.current_list.lock().unwrap().len()
+        {
+            let i = self.manager.current_index.load(Ordering::SeqCst);
+            self.current_node = self.manager.current_list.lock().unwrap()[i].clone();
             let _ = self.current_node.add_probe(false).ok();
             self.current_node
-                .add_filter(&self.config, &self.filter_chain);
+                .add_filter(&config, &self.manager.filter_chain);
             self.current_node.begin = Some(time_in_seconds());
 
-            self.current_index.fetch_add(1, Ordering::SeqCst);
+            self.manager.current_index.fetch_add(1, Ordering::SeqCst);
 
             Some(self.current_node.clone())
         } else {
-            if self.config.storage.shuffle {
-                if self.config.general.generate.is_none() {
+            if config.storage.shuffle {
+                if config.general.generate.is_none() {
                     info!("Shuffle files");
                 }
 
                 self.shuffle();
             } else {
-                if self.config.general.generate.is_none() {
+                if config.general.generate.is_none() {
                     info!("Sort files");
                 }
 
                 self.sort();
             }
 
-            self.current_node = self.current_list.lock().unwrap()[0].clone();
+            self.current_node = self.manager.current_list.lock().unwrap()[0].clone();
             let _ = self.current_node.add_probe(false).ok();
             self.current_node
-                .add_filter(&self.config, &self.filter_chain);
+                .add_filter(&config, &self.manager.filter_chain);
             self.current_node.begin = Some(time_in_seconds());
 
-            self.current_index.store(1, Ordering::SeqCst);
+            self.manager.current_index.store(1, Ordering::SeqCst);
 
             Some(self.current_node.clone())
         }
