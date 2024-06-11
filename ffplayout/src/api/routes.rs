@@ -8,7 +8,11 @@
 ///
 /// For all endpoints an (Bearer) authentication is required.\
 /// `{id}` represent the channel id, and at default is 1.
-use std::{env, path::PathBuf, sync::Mutex};
+use std::{
+    env,
+    path::PathBuf,
+    sync::{atomic::Ordering, Mutex},
+};
 
 use actix_files;
 use actix_multipart::Multipart;
@@ -34,13 +38,15 @@ use serde::{Deserialize, Serialize};
 use sqlx::{Pool, Sqlite};
 use tokio::fs;
 
-use crate::api::auth::{create_jwt, Claims};
 use crate::player::utils::{
     get_data_map, get_date_range, import::import_file, sec_to_time, time_to_sec, JsonPlaylist,
 };
 use crate::utils::{
     channels::{create_channel, delete_channel},
-    config::{PlayoutConfig, Template},
+    config::{
+        string_to_log_level, string_to_output_mode, string_to_processing_mode, PlayoutConfig,
+        Template,
+    },
     control::{control_state, send_message, ControlParams, Process, ProcessCtl},
     errors::ServiceError,
     files::{
@@ -52,6 +58,10 @@ use crate::utils::{
     public_path, read_log_file, system, Role, TextFilter,
 };
 use crate::vec_strings;
+use crate::{
+    api::auth::{create_jwt, Claims},
+    db::models::Configuration,
+};
 use crate::{
     db::{
         handles,
@@ -493,7 +503,6 @@ async fn get_playout_config(
 ) -> Result<impl Responder, ServiceError> {
     let manager = controllers.lock().unwrap().get(*id).unwrap();
     let config = manager.config.lock().unwrap().clone();
-    // let config = PlayoutConfig::new(&pool.into_inner(), *id).await;
 
     Ok(web::Json(config))
 }
@@ -509,15 +518,80 @@ async fn get_playout_config(
 async fn update_playout_config(
     pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
-    _data: web::Json<PlayoutConfig>,
+    data: web::Json<PlayoutConfig>,
+    controllers: web::Data<Mutex<ChannelController>>,
 ) -> Result<impl Responder, ServiceError> {
-    if let Ok(_channel) = handles::select_channel(&pool.into_inner(), &id).await {
-        // TODO: update config
+    let manager = controllers.lock().unwrap().get(*id).unwrap();
+    let mut config = manager.config.lock().unwrap();
+    let id = config.general.id;
+    let channel_id = config.general.channel_id;
+    let db_config = Configuration::from(id, channel_id, data.into_inner());
 
-        return Ok("Update playout config success.");
-    };
+    if let Err(e) = handles::update_configuration(&pool.into_inner(), db_config.clone()).await {
+        return Err(ServiceError::Conflict(format!("{e}")));
+    }
 
-    Err(ServiceError::InternalServerError)
+    config.general.stop_threshold = db_config.stop_threshold;
+    config.mail.subject = db_config.subject;
+    config.mail.smtp_server = db_config.smtp_server;
+    config.mail.starttls = db_config.starttls;
+    config.mail.sender_addr = db_config.sender_addr;
+    config.mail.sender_pass = db_config.sender_pass;
+    config.mail.recipient = db_config.recipient;
+    config.mail.mail_level = string_to_log_level(db_config.mail_level);
+    config.mail.interval = db_config.interval as u64;
+    config.logging.ffmpeg_level = db_config.ffmpeg_level;
+    config.logging.ingest_level = db_config.ingest_level;
+    config.logging.detect_silence = db_config.detect_silence;
+    config.logging.ignore_lines = db_config
+        .ignore_lines
+        .split(";")
+        .map(|l| l.to_string())
+        .collect();
+    config.processing.mode = string_to_processing_mode(db_config.processing_mode);
+    config.processing.audio_only = db_config.audio_only;
+    config.processing.audio_track_index = db_config.audio_track_index;
+    config.processing.copy_audio = db_config.copy_audio;
+    config.processing.copy_video = db_config.copy_video;
+    config.processing.width = db_config.width;
+    config.processing.height = db_config.height;
+    config.processing.aspect = db_config.aspect;
+    config.processing.fps = db_config.fps;
+    config.processing.add_logo = db_config.add_logo;
+    config.processing.logo = db_config.logo;
+    config.processing.logo_scale = db_config.logo_scale;
+    config.processing.logo_opacity = db_config.logo_opacity;
+    config.processing.logo_position = db_config.logo_position;
+    config.processing.audio_tracks = db_config.audio_tracks;
+    config.processing.audio_channels = db_config.audio_channels;
+    config.processing.volume = db_config.volume;
+    config.processing.custom_filter = db_config.decoder_filter;
+    config.ingest.enable = db_config.ingest_enable;
+    config.ingest.input_param = db_config.ingest_param;
+    config.ingest.custom_filter = db_config.ingest_filter;
+    config.playlist.path = PathBuf::from(db_config.playlist_path);
+    config.playlist.day_start = db_config.day_start;
+    config.playlist.length = db_config.length;
+    config.playlist.infinit = db_config.infinit;
+    config.storage.path = PathBuf::from(db_config.storage_path);
+    config.storage.filler = PathBuf::from(db_config.filler);
+    config.storage.extensions = db_config
+        .extensions
+        .split(";")
+        .map(|l| l.to_string())
+        .collect();
+    config.storage.shuffle = db_config.shuffle;
+    config.text.add_text = db_config.add_text;
+    config.text.fontfile = db_config.fontfile;
+    config.text.text_from_filename = db_config.text_from_filename;
+    config.text.style = db_config.style;
+    config.text.regex = db_config.regex;
+    config.task.enable = db_config.task_enable;
+    config.task.path = PathBuf::from(db_config.task_path);
+    config.output.mode = string_to_output_mode(db_config.output_mode);
+    config.output.output_param = db_config.output_param;
+
+    Ok(web::Json("Update success"))
 }
 
 /// #### Text Presets
@@ -727,6 +801,13 @@ pub async fn process_control(
     let manager = controllers.lock().unwrap().get(*id).unwrap();
 
     match proc.into_inner().command {
+        ProcessCtl::Status => {
+            if manager.is_alive.load(Ordering::SeqCst) {
+                return Ok(web::Json("active"));
+            } else {
+                return Ok(web::Json("not running"));
+            }
+        }
         ProcessCtl::Start => {
             manager.async_start().await;
         }
@@ -740,7 +821,7 @@ pub async fn process_control(
         }
     }
 
-    Ok(web::Json("no implemented"))
+    Ok(web::Json("Success"))
 }
 
 /// #### ffplayout Playlist Operations

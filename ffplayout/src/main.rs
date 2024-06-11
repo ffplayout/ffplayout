@@ -127,7 +127,6 @@ async fn main() -> std::io::Result<()> {
         let thread_count = thread_counter();
 
         info!("Running ffplayout API, listen on http://{conn}");
-        debug!("Use {thread_count} threads for the webserver");
 
         // no 'allow origin' here, give it to the reverse proxy
         HttpServer::new(move || {

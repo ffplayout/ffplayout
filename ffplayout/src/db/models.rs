@@ -4,6 +4,8 @@ use serde::{
     Deserialize, Serialize,
 };
 
+use crate::utils::config::PlayoutConfig;
+
 #[derive(Debug, Deserialize, Serialize, sqlx::FromRow)]
 pub struct User {
     #[sqlx(default)]
@@ -184,7 +186,6 @@ pub struct Configuration {
 
     pub storage_help: String,
     pub storage_path: String,
-
     #[serde(alias = "filler_clip")]
     pub filler: String,
     pub extensions: String,
@@ -204,6 +205,76 @@ pub struct Configuration {
     pub output_help: String,
     pub output_mode: String,
     pub output_param: String,
+}
+
+impl Configuration {
+    pub fn from(id: i32, channel_id: i32, config: PlayoutConfig) -> Self {
+        Self {
+            id,
+            channel_id,
+            general_help: config.general.help_text,
+            stop_threshold: config.general.stop_threshold,
+            mail_help: config.mail.help_text,
+            subject: config.mail.subject,
+            smtp_server: config.mail.smtp_server,
+            starttls: config.mail.starttls,
+            sender_addr: config.mail.sender_addr,
+            sender_pass: config.mail.sender_pass,
+            recipient: config.mail.recipient,
+            mail_level: config.mail.mail_level.to_string(),
+            interval: config.mail.interval as i64,
+            logging_help: config.logging.help_text,
+            ffmpeg_level: config.logging.ffmpeg_level,
+            ingest_level: config.logging.ingest_level,
+            detect_silence: config.logging.detect_silence,
+            ignore_lines: config.logging.ignore_lines.join(";"),
+            processing_help: config.processing.help_text,
+            processing_mode: config.processing.mode.to_string(),
+            audio_only: config.processing.audio_only,
+            audio_track_index: config.processing.audio_track_index,
+            copy_audio: config.processing.copy_audio,
+            copy_video: config.processing.copy_video,
+            width: config.processing.width,
+            height: config.processing.height,
+            aspect: config.processing.aspect,
+            fps: config.processing.fps,
+            add_logo: config.processing.add_logo,
+            logo: config.processing.logo,
+            logo_scale: config.processing.logo_scale,
+            logo_opacity: config.processing.logo_opacity,
+            logo_position: config.processing.logo_position,
+            audio_tracks: config.processing.audio_tracks,
+            audio_channels: config.processing.audio_channels,
+            volume: config.processing.volume,
+            decoder_filter: config.processing.custom_filter,
+            ingest_help: config.ingest.help_text,
+            ingest_enable: config.ingest.enable,
+            ingest_param: config.ingest.input_param,
+            ingest_filter: config.ingest.custom_filter,
+            playlist_help: config.playlist.help_text,
+            playlist_path: config.playlist.path.to_string_lossy().to_string(),
+            day_start: config.playlist.day_start,
+            length: config.playlist.length,
+            infinit: config.playlist.infinit,
+            storage_help: config.storage.help_text,
+            storage_path: config.storage.path.to_string_lossy().to_string(),
+            filler: config.storage.filler.to_string_lossy().to_string(),
+            extensions: config.storage.extensions.join(";"),
+            shuffle: config.storage.shuffle,
+            text_help: config.text.help_text,
+            add_text: config.text.add_text,
+            fontfile: config.text.fontfile,
+            text_from_filename: config.text.text_from_filename,
+            style: config.text.style,
+            regex: config.text.regex,
+            task_help: config.task.help_text,
+            task_enable: config.task.enable,
+            task_path: config.task.path.to_string_lossy().to_string(),
+            output_help: config.output.help_text,
+            output_mode: config.output.mode.to_string(),
+            output_param: config.output.output_param,
+        }
+    }
 }
 
 fn default_track_index() -> i32 {

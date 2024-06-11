@@ -45,6 +45,7 @@ pub const FFMPEG_UNRECOVERABLE_ERRORS: [&str; 5] = [
 ];
 
 #[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum OutputMode {
     Desktop,
     HLS,
@@ -79,6 +80,17 @@ impl FromStr for OutputMode {
             "null" => Ok(Self::Null),
             "stream" => Ok(Self::Stream),
             _ => Err("Use 'desktop', 'hls', 'null' or 'stream'".to_string()),
+        }
+    }
+}
+
+impl fmt::Display for OutputMode {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            OutputMode::Desktop => write!(f, "desktop"),
+            OutputMode::HLS => write!(f, "hls"),
+            OutputMode::Null => write!(f, "null"),
+            OutputMode::Stream => write!(f, "stream"),
         }
     }
 }
@@ -139,7 +151,7 @@ pub struct Source {
 /// This we init ones, when ffplayout is starting and use them globally in the hole program.
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct PlayoutConfig {
-    #[serde(skip_serializing)]
+    #[serde(skip_serializing, skip_deserializing)]
     pub advanced: AdvancedConfig,
     pub general: General,
     pub mail: Mail,
@@ -156,28 +168,31 @@ pub struct PlayoutConfig {
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct General {
     pub help_text: String,
-    #[serde(skip_serializing)]
+    #[serde(skip_serializing, skip_deserializing)]
+    pub id: i32,
+    #[serde(skip_serializing, skip_deserializing)]
     pub channel_id: i32,
     pub stop_threshold: f64,
-    #[serde(skip_serializing)]
+    #[serde(skip_serializing, skip_deserializing)]
     pub generate: Option<Vec<String>>,
-    #[serde(skip_serializing)]
+    #[serde(skip_serializing, skip_deserializing)]
     pub ffmpeg_filters: Vec<String>,
-    #[serde(skip_serializing)]
+    #[serde(skip_serializing, skip_deserializing)]
     pub ffmpeg_libs: Vec<String>,
-    #[serde(skip_serializing)]
+    #[serde(skip_serializing, skip_deserializing)]
     pub template: Option<Template>,
-    #[serde(skip_serializing)]
+    #[serde(skip_serializing, skip_deserializing)]
     pub skip_validation: bool,
-    #[serde(skip_serializing)]
+    #[serde(skip_serializing, skip_deserializing)]
     pub validate: bool,
 }
 
 impl General {
-    fn new(channel_id: i32, config: &Configuration) -> Self {
+    fn new(config: &Configuration) -> Self {
         Self {
             help_text: config.general_help.clone(),
-            channel_id,
+            id: config.id,
+            channel_id: config.channel_id,
             stop_threshold: config.stop_threshold,
             generate: None,
             ffmpeg_filters: vec![],
@@ -281,7 +296,7 @@ pub struct Processing {
     pub audio_channels: u8,
     pub volume: f64,
     pub custom_filter: String,
-    #[serde(skip_serializing)]
+    #[serde(skip_serializing, skip_deserializing)]
     pub cmd: Option<Vec<String>>,
 }
 
@@ -316,9 +331,9 @@ impl Processing {
 pub struct Ingest {
     pub help_text: String,
     pub enable: bool,
-    input_param: String,
+    pub input_param: String,
     pub custom_filter: String,
-    #[serde(skip_serializing)]
+    #[serde(skip_serializing, skip_deserializing)]
     pub input_cmd: Option<Vec<String>>,
 }
 
@@ -339,10 +354,10 @@ pub struct Playlist {
     pub help_text: String,
     pub path: PathBuf,
     pub day_start: String,
-    #[serde(skip_serializing)]
+    #[serde(skip_serializing, skip_deserializing)]
     pub start_sec: Option<f64>,
     pub length: String,
-    #[serde(skip_serializing)]
+    #[serde(skip_serializing, skip_deserializing)]
     pub length_sec: Option<f64>,
     pub infinit: bool,
 }
@@ -365,7 +380,7 @@ impl Playlist {
 pub struct Storage {
     pub help_text: String,
     pub path: PathBuf,
-    #[serde(skip_serializing)]
+    #[serde(skip_serializing, skip_deserializing)]
     pub paths: Vec<PathBuf>,
     pub filler: PathBuf,
     pub extensions: Vec<String>,
@@ -393,11 +408,11 @@ impl Storage {
 pub struct Text {
     pub help_text: String,
     pub add_text: bool,
-    #[serde(skip_serializing)]
+    #[serde(skip_serializing, skip_deserializing)]
     pub node_pos: Option<usize>,
-    #[serde(skip_serializing)]
+    #[serde(skip_serializing, skip_deserializing)]
     pub zmq_stream_socket: Option<String>,
-    #[serde(skip_serializing)]
+    #[serde(skip_serializing, skip_deserializing)]
     pub zmq_server_socket: Option<String>,
     pub fontfile: String,
     pub text_from_filename: bool,
@@ -443,11 +458,11 @@ pub struct Output {
     pub help_text: String,
     pub mode: OutputMode,
     pub output_param: String,
-    #[serde(skip_serializing)]
+    #[serde(skip_serializing, skip_deserializing)]
     pub output_count: usize,
-    #[serde(skip_serializing)]
+    #[serde(skip_serializing, skip_deserializing)]
     pub output_filter: Option<String>,
-    #[serde(skip_serializing)]
+    #[serde(skip_serializing, skip_deserializing)]
     pub output_cmd: Option<Vec<String>>,
 }
 
@@ -474,6 +489,24 @@ pub fn string_to_log_level(l: String) -> Level {
     }
 }
 
+pub fn string_to_processing_mode(l: String) -> ProcessMode {
+    match l.to_lowercase().as_str() {
+        "playlist" => ProcessMode::Playlist,
+        "folder" => ProcessMode::Folder,
+        _ => ProcessMode::Playlist,
+    }
+}
+
+pub fn string_to_output_mode(l: String) -> OutputMode {
+    match l.to_lowercase().as_str() {
+        "desktop" => OutputMode::Desktop,
+        "hls" => OutputMode::HLS,
+        "null" => OutputMode::Null,
+        "stream" => OutputMode::Stream,
+        _ => OutputMode::HLS,
+    }
+}
+
 fn default_track_index() -> i32 {
     -1
 }
@@ -496,7 +529,7 @@ impl PlayoutConfig {
             .expect("Can't read advanced config");
 
         let advanced = AdvancedConfig::new(adv_config);
-        let general = General::new(channel, &config);
+        let general = General::new(&config);
         let mail = Mail::new(&config);
         let logging = Logging::new(&config);
         let mut processing = Processing::new(&config);

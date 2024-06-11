@@ -147,6 +147,67 @@ pub async fn select_configuration(
     sqlx::query_as(query).bind(channel).fetch_one(conn).await
 }
 
+pub async fn update_configuration(
+    conn: &Pool<Sqlite>,
+    config: Configuration,
+) -> Result<SqliteQueryResult, sqlx::Error> {
+    let query = "UPDATE configurations SET stop_threshold = $2, subject = $3, smtp_server = $4, sender_addr = $5, sender_pass = $6, recipient = $7, starttls = $8, mail_level = $9, interval = $10, ffmpeg_level = $11, ingest_level = $12, detect_silence = $13 , ignore_lines = $14, processing_mode = $15, audio_only = $16, copy_audio = $17, copy_video = $18, width = $19, height = $20, aspect = $21, add_logo = $22, logo = $23, logo_scale = $24, logo_opacity = $25, logo_position = $26, audio_tracks = $27, audio_track_index = $28, audio_channels = $29, volume = $30, decoder_filter = $31, ingest_enable = $32, ingest_param = $33, ingest_filter = $34, playlist_path = $35, day_start = $36, length = $37, infinit = $38, storage_path = $39, filler = $40, extensions = $41, shuffle = $42, add_text = $43, text_from_filename = $44, fontfile = $45, regex = $46, task_enable = $47, task_path = $48, output_mode = $49, output_param = $50 WHERE id = $1";
+
+    sqlx::query(query)
+        .bind(config.id)
+        .bind(config.stop_threshold)
+        .bind(config.subject)
+        .bind(config.smtp_server)
+        .bind(config.sender_addr)
+        .bind(config.sender_pass)
+        .bind(config.recipient)
+        .bind(config.starttls)
+        .bind(config.mail_level)
+        .bind(config.interval)
+        .bind(config.ffmpeg_level)
+        .bind(config.ingest_level)
+        .bind(config.detect_silence)
+        .bind(config.ignore_lines)
+        .bind(config.processing_mode)
+        .bind(config.audio_only)
+        .bind(config.copy_audio)
+        .bind(config.copy_video)
+        .bind(config.width)
+        .bind(config.height)
+        .bind(config.aspect)
+        .bind(config.add_logo)
+        .bind(config.logo)
+        .bind(config.logo_scale)
+        .bind(config.logo_opacity)
+        .bind(config.logo_position)
+        .bind(config.audio_tracks)
+        .bind(config.audio_track_index)
+        .bind(config.audio_channels)
+        .bind(config.volume)
+        .bind(config.decoder_filter)
+        .bind(config.ingest_enable)
+        .bind(config.ingest_param)
+        .bind(config.ingest_filter)
+        .bind(config.playlist_path)
+        .bind(config.day_start)
+        .bind(config.length)
+        .bind(config.infinit)
+        .bind(config.storage_path)
+        .bind(config.filler)
+        .bind(config.extensions)
+        .bind(config.shuffle)
+        .bind(config.add_text)
+        .bind(config.text_from_filename)
+        .bind(config.fontfile)
+        .bind(config.regex)
+        .bind(config.task_enable)
+        .bind(config.task_path)
+        .bind(config.output_mode)
+        .bind(config.output_param)
+        .execute(conn)
+        .await
+}
+
 pub async fn select_advanced_configuration(
     conn: &Pool<Sqlite>,
     channel: i32,

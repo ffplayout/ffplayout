@@ -32,6 +32,7 @@ struct MediaParams {
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum ProcessCtl {
+    Status,
     Start,
     Stop,
     Restart,
@@ -42,6 +43,7 @@ impl FromStr for ProcessCtl {
 
     fn from_str(input: &str) -> Result<Self, Self::Err> {
         match input.to_lowercase().as_str() {
+            "status" => Ok(Self::Status),
             "start" => Ok(Self::Start),
             "stop" => Ok(Self::Stop),
             "restart" => Ok(Self::Restart),
@@ -53,6 +55,7 @@ impl FromStr for ProcessCtl {
 impl fmt::Display for ProcessCtl {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
+            Self::Status => write!(f, "status"),
             Self::Start => write!(f, "start"),
             Self::Stop => write!(f, "stop"),
             Self::Restart => write!(f, "restart"),
