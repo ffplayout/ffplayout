@@ -23,7 +23,7 @@ export const useMedia = defineStore('media', {
             const authStore = useAuth()
             const configStore = useConfig()
             const indexStore = useIndex()
-            const channel = configStore.configGui[configStore.configID].id
+            const channel = configStore.configChannel[configStore.configID].id
             const crumbs: Crumb[] = []
             let root = '/'
 

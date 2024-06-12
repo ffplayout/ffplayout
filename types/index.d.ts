@@ -23,11 +23,9 @@ declare global {
 
     interface GuiConfig {
         id: number
-        config_path: string
         extra_extensions: string | string[]
         name: string
         preview_url: string
-        service: string
         uts_offset?: number
     }
 

@@ -5,7 +5,7 @@
             <button class="btn btn-sm btn-primary" @click="addChannel()">{{ $t('config.addChannel') }}</button>
         </div>
         <form
-            v-if="configStore.configGui && configStore.configGui[configStore.configID]"
+            v-if="configStore.configChannel && configStore.configChannel[configStore.configID]"
             class="w-full"
             @submit.prevent="onSubmitGui"
         >
@@ -14,7 +14,7 @@
                     <span class="label-text">{{ $t('config.name') }}</span>
                 </div>
                 <input
-                    v-model="configStore.configGui[configStore.configID].name"
+                    v-model="configStore.configChannel[configStore.configID].name"
                     type="text"
                     placeholder="Type here"
                     class="input input-bordered w-full"
@@ -26,18 +26,7 @@
                     <span class="label-text">{{ $t('config.previewUrl') }}</span>
                 </div>
                 <input
-                    v-model="configStore.configGui[configStore.configID].preview_url"
-                    type="text"
-                    class="input input-bordered w-full"
-                />
-            </label>
-
-            <label class="form-control w-full mt-5">
-                <div class="label">
-                    <span class="label-text">{{ $t('config.configPath') }}</span>
-                </div>
-                <input
-                    v-model="configStore.configGui[configStore.configID].config_path"
+                    v-model="configStore.configChannel[configStore.configID].preview_url"
                     type="text"
                     class="input input-bordered w-full"
                 />
@@ -48,28 +37,16 @@
                     <span class="label-text">{{ $t('config.extensions') }}</span>
                 </div>
                 <input
-                    v-model="configStore.configGui[configStore.configID].extra_extensions"
+                    v-model="configStore.configChannel[configStore.configID].extra_extensions"
                     type="text"
                     class="input input-bordered w-full"
-                />
-            </label>
-
-            <label class="form-control w-full mt-5">
-                <div class="label">
-                    <span class="label-text">{{ $t('config.service') }}</span>
-                </div>
-                <input
-                    v-model="configStore.configGui[configStore.configID].service"
-                    type="text"
-                    class="input input-bordered w-full !bg-base-100"
-                    disabled
                 />
             </label>
 
             <div class="join my-4">
                 <button class="join-item btn btn-primary" type="submit">{{ $t('config.save') }}</button>
                 <button
-                    v-if="configStore.configGui.length > 1 && configStore.configGui[configStore.configID].id > 1"
+                    v-if="configStore.configChannel.length > 1 && configStore.configChannel[configStore.configID].id > 1"
                     class="join-item btn btn-primary"
                     @click="deleteChannel()"
                 >
@@ -89,27 +66,22 @@ const configStore = useConfig()
 const indexStore = useIndex()
 
 async function addChannel() {
-    const channels = $_.cloneDeep(configStore.configGui)
-    const newChannel = $_.cloneDeep(configStore.configGui[configStore.configGui.length - 1])
-
-    const playoutConfigPath = newChannel.config_path.match(/.*\//)
-    const confName = `channel${String(channels.length + 1).padStart(3, '0')}`
+    const channels = $_.cloneDeep(configStore.configChannel)
+    const newChannel = $_.cloneDeep(configStore.configChannel[configStore.configChannel.length - 1])
 
     newChannel.id = channels.length + 1
     newChannel.name = `Channel ${Math.random().toString(36).substring(7)}`
-    newChannel.config_path = `${playoutConfigPath}${confName}.toml`
-    newChannel.service = `ffplayout@${confName}.service`
 
     channels.push(newChannel)
-    configStore.configGui = channels
-    configStore.configID = configStore.configGui.length - 1
+    configStore.configChannel = channels
+    configStore.configID = configStore.configChannel.length - 1
 }
 
 async function onSubmitGui() {
     /*
         Save GUI settings.
     */
-    const update = await configStore.setGuiConfig(configStore.configGui[configStore.configID])
+    const update = await configStore.setGuiConfig(configStore.configChannel[configStore.configID])
 
     if (update.status) {
         indexStore.msgAlert('success', t('config.updateChannelSuccess'), 2)
@@ -119,7 +91,7 @@ async function onSubmitGui() {
 }
 
 async function deleteChannel() {
-    const config = $_.cloneDeep(configStore.configGui)
+    const config = $_.cloneDeep(configStore.configChannel)
     const id = config[configStore.configID].id
 
     if (id === 1) {
@@ -133,8 +105,8 @@ async function deleteChannel() {
     })
 
     config.splice(configStore.configID, 1)
-    configStore.configGui = config
-    configStore.configID = configStore.configGui.length - 1
+    configStore.configChannel = config
+    configStore.configID = configStore.configChannel.length - 1
     await configStore.getPlayoutConfig()
 
     if (response.status === 200) {

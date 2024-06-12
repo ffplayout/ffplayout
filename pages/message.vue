@@ -266,7 +266,7 @@ onMounted(() => {
 })
 
 async function getPreset(index: number) {
-    fetch(`/api/presets/${configStore.configGui[configStore.configID].id}`, {
+    fetch(`/api/presets/${configStore.configChannel[configStore.configID].id}`, {
         method: 'GET',
         headers: authStore.authHeader,
     })
@@ -347,7 +347,7 @@ async function savePreset() {
                     : form.value.boxColor + '@' + numberToHex(form.value.boxAlpha),
             boxborderw: form.value.border,
             alpha: form.value.overallAlpha,
-            channel_id: configStore.configGui[configStore.configID].id,
+            channel_id: configStore.configChannel[configStore.configID].id,
         }
 
         const response = await fetch(`/api/presets/${form.value.id}`, {
@@ -386,7 +386,7 @@ async function createNewPreset(create: boolean) {
                     : form.value.boxColor + '@' + numberToHex(form.value.boxAlpha),
             boxborderw: form.value.border.toString(),
             alpha: form.value.overallAlpha.toString(),
-            channel_id: configStore.configGui[configStore.configID].id,
+            channel_id: configStore.configChannel[configStore.configID].id,
         }
 
         const response = await fetch('/api/presets/', {
@@ -433,7 +433,7 @@ async function submitMessage() {
         boxborderw: form.value.border.toString(),
     }
 
-    const response = await fetch(`/api/control/${configStore.configGui[configStore.configID].id}/text/`, {
+    const response = await fetch(`/api/control/${configStore.configChannel[configStore.configID].id}/text/`, {
         method: 'POST',
         headers: { ...configStore.contentType, ...authStore.authHeader },
         body: JSON.stringify(obj),

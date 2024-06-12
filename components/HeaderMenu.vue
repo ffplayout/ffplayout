@@ -22,15 +22,15 @@
                             </span>
                         </NuxtLink>
                     </li>
-                    <li v-if="configStore.configGui.length > 1">
+                    <li v-if="configStore.configChannel.length > 1">
                         <details tabindex="0" @focusout="closeDropdown">
                             <summary>
                                 <div class="h-[19px] text-base">
-                                    <span> {{ configStore.configGui[configStore.configID].name }} </span>
+                                    <span> {{ configStore.configChannel[configStore.configID].name }} </span>
                                 </div>
                             </summary>
                             <ul class="p-2">
-                                <li v-for="(channel, index) in configStore.configGui" :key="index">
+                                <li v-for="(channel, index) in configStore.configChannel" :key="index">
                                     <span>
                                         <a class="dropdown-item" @click="selectChannel(index)">{{ channel.name }}</a>
                                     </span>
@@ -59,15 +59,15 @@
                         </span>
                     </NuxtLink>
                 </li>
-                <li v-if="configStore.configGui.length > 1">
+                <li v-if="configStore.configChannel.length > 1">
                     <details tabindex="0" @focusout="closeDropdown">
                         <summary>
                             <div class="h-[19px] text-base">
-                                <span> {{ configStore.configGui[configStore.configID].name }} </span>
+                                <span> {{ configStore.configChannel[configStore.configID].name }} </span>
                             </div>
                         </summary>
                         <ul class="p-2 bg-base-100 rounded-md !mt-1 w-36" tabindex="0">
-                            <li v-for="(channel, index) in configStore.configGui" :key="index">
+                            <li v-for="(channel, index) in configStore.configChannel" :key="index">
                                 <a class="dropdown-item" @click="selectChannel(index)">
                                     {{ channel.name }}
                                 </a>

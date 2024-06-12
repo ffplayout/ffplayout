@@ -68,7 +68,7 @@ async function getLog() {
         date = ''
     }
 
-    await fetch(`/api/log/${configStore.configGui[configStore.configID].id}?date=${date}`, {
+    await fetch(`/api/log/${configStore.configChannel[configStore.configID].id}?date=${date}`, {
         method: 'GET',
         headers: authStore.authHeader,
     })

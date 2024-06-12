@@ -25,7 +25,7 @@
         </div>
         <div class="w-[calc(100%-70px)] mt-10 px-6">
             <div v-if="activeConf === 1" class="w-full flex justify-center">
-                <ConfigGui />
+                <ConfigChannel />
             </div>
 
             <div v-else-if="activeConf === 2" class="w-full flex justify-center">

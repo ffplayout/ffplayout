@@ -6,8 +6,8 @@ export const useConfig = defineStore('config', {
         configID: 0,
         configCount: 0,
         contentType: { 'content-type': 'application/json;charset=UTF-8' },
-        configGui: [] as GuiConfig[],
-        configGuiRaw: [] as GuiConfig[],
+        configChannel: [] as GuiConfig[],
+        configChannelRaw: [] as GuiConfig[],
         playlistLength: 86400.0,
         playout: {} as any,
         currentUser: '',
@@ -48,8 +48,8 @@ export const useConfig = defineStore('config', {
                 .then((response) => response.json())
                 .then((objs) => {
                     this.utcOffset = objs[0].utc_offset
-                    this.configGui = objs
-                    this.configGuiRaw = _.cloneDeep(objs)
+                    this.configChannel = objs
+                    this.configChannelRaw = _.cloneDeep(objs)
                     this.configCount = objs.length
                 })
                 .catch((e) => {
@@ -61,14 +61,12 @@ export const useConfig = defineStore('config', {
                         navigateTo('/')
                     }
 
-                    this.configGui = [
+                    this.configChannel = [
                         {
                             id: 1,
-                            config_path: '',
                             extra_extensions: '',
                             name: 'Channel 1',
                             preview_url: '',
-                            service: '',
                             uts_offset: 0,
                         },
                     ]
@@ -82,7 +80,7 @@ export const useConfig = defineStore('config', {
             const stringObj = _.cloneDeep(obj)
             let response
 
-            if (this.configGuiRaw.some((e) => e.id === stringObj.id)) {
+            if (this.configChannelRaw.some((e) => e.id === stringObj.id)) {
                 response = await fetch(`/api/channel/${obj.id}`, {
                     method: 'PATCH',
                     headers: { ...this.contentType, ...authStore.authHeader },
@@ -98,7 +96,7 @@ export const useConfig = defineStore('config', {
                 const json = await response.json()
                 const guiConfigs = []
 
-                for (const obj of this.configGui) {
+                for (const obj of this.configChannel) {
                     if (obj.name === stringObj.name) {
                         guiConfigs.push(json)
                     } else {
@@ -106,8 +104,8 @@ export const useConfig = defineStore('config', {
                     }
                 }
 
-                this.configGui = guiConfigs
-                this.configGuiRaw = _.cloneDeep(guiConfigs)
+                this.configChannel = guiConfigs
+                this.configChannelRaw = _.cloneDeep(guiConfigs)
                 this.configCount = guiConfigs.length
             }
 
@@ -121,7 +119,7 @@ export const useConfig = defineStore('config', {
             const { timeToSeconds } = stringFormatter()
             const authStore = useAuth()
             const indexStore = useIndex()
-            const channel = this.configGui[this.configID].id
+            const channel = this.configChannel[this.configID].id
 
             await fetch(`/api/playout/config/${channel}`, {
                 method: 'GET',
@@ -146,7 +144,7 @@ export const useConfig = defineStore('config', {
         async setPlayoutConfig(obj: any) {
             const { timeToSeconds } = stringFormatter()
             const authStore = useAuth()
-            const channel = this.configGui[this.configID].id
+            const channel = this.configChannel[this.configID].id
 
             this.playlistLength = timeToSeconds(obj.playlist.length)
             this.playout.playlist.startInSec = timeToSeconds(obj.playlist.day_start)
