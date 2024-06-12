@@ -133,7 +133,7 @@ pub async fn delete_channel(
 }
 
 pub async fn select_last_channel(conn: &Pool<Sqlite>) -> Result<i32, sqlx::Error> {
-    let query = "SELECT id FROM channels ORDER BY id DESC LIMIT 1;";
+    let query = "select seq from sqlite_sequence WHERE name = 'channel';";
 
     sqlx::query_scalar(query).fetch_one(conn).await
 }
@@ -145,6 +145,23 @@ pub async fn select_configuration(
     let query = "SELECT * FROM configurations WHERE channel_id = $1";
 
     sqlx::query_as(query).bind(channel).fetch_one(conn).await
+}
+
+pub async fn insert_configuration(
+    conn: &Pool<Sqlite>,
+    channel_id: i32,
+    playlist_path: String,
+    output_param: String,
+) -> Result<SqliteQueryResult, sqlx::Error> {
+    let query =
+        "INSERT INTO configurations (channel_id, playlist_path, output_param) VALUES($1, $2, $3)";
+
+    sqlx::query(query)
+        .bind(channel_id)
+        .bind(playlist_path)
+        .bind(output_param)
+        .execute(conn)
+        .await
 }
 
 pub async fn update_configuration(
@@ -206,6 +223,15 @@ pub async fn update_configuration(
         .bind(config.output_param)
         .execute(conn)
         .await
+}
+
+pub async fn insert_advanced_configuration(
+    conn: &Pool<Sqlite>,
+    channel_id: i32,
+) -> Result<SqliteQueryResult, sqlx::Error> {
+    let query = "INSERT INTO advanced_configurations (channel_id) VALUES($1)";
+
+    sqlx::query(query).bind(channel_id).execute(conn).await
 }
 
 pub async fn select_advanced_configuration(

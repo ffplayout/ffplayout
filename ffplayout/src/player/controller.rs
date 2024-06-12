@@ -72,7 +72,7 @@ impl ChannelManager {
     pub fn new(db_pool: Option<Pool<Sqlite>>, channel: Channel, config: PlayoutConfig) -> Self {
         Self {
             db_pool,
-            is_alive: Arc::new(AtomicBool::new(channel.active)),
+            is_alive: Arc::new(AtomicBool::new(false)),
             channel: Arc::new(Mutex::new(channel)),
             config: Arc::new(Mutex::new(config)),
             current_media: Arc::new(Mutex::new(None)),
@@ -98,26 +98,28 @@ impl ChannelManager {
     }
 
     pub async fn async_start(&self) {
-        self.run_count.fetch_add(1, Ordering::SeqCst);
-        self.is_alive.store(true, Ordering::SeqCst);
-        self.is_terminated.store(false, Ordering::SeqCst);
+        if !self.is_alive.load(Ordering::SeqCst) {
+            self.run_count.fetch_add(1, Ordering::SeqCst);
+            self.is_alive.store(true, Ordering::SeqCst);
+            self.is_terminated.store(false, Ordering::SeqCst);
 
-        let pool_clone = self.db_pool.clone().unwrap();
-        let self_clone = self.clone();
-        let channel_id = self.channel.lock().unwrap().id;
+            let pool_clone = self.db_pool.clone().unwrap();
+            let self_clone = self.clone();
+            let channel_id = self.channel.lock().unwrap().id;
 
-        if let Err(e) = handles::update_player(&pool_clone, channel_id, true).await {
-            error!("Unable write to player status: {e}");
-        };
-
-        thread::spawn(move || {
-            let run_count = self_clone.run_count.clone();
-
-            if let Err(e) = start_channel(self_clone) {
-                run_count.fetch_sub(1, Ordering::SeqCst);
-                error!("{e}");
+            if let Err(e) = handles::update_player(&pool_clone, channel_id, true).await {
+                error!("Unable write to player status: {e}");
             };
-        });
+
+            thread::spawn(move || {
+                let run_count = self_clone.run_count.clone();
+
+                if let Err(e) = start_channel(self_clone) {
+                    run_count.fetch_sub(1, Ordering::SeqCst);
+                    error!("{e}");
+                };
+            });
+        }
     }
 
     pub fn stop(&self, unit: ProcessUnit) -> Result<(), ProcessError> {

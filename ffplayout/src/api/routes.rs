@@ -11,7 +11,7 @@
 use std::{
     env,
     path::PathBuf,
-    sync::{atomic::Ordering, Mutex},
+    sync::{atomic::Ordering, Arc, Mutex},
 };
 
 use actix_files;
@@ -38,9 +38,6 @@ use serde::{Deserialize, Serialize};
 use sqlx::{Pool, Sqlite};
 use tokio::fs;
 
-use crate::player::utils::{
-    get_data_map, get_date_range, import::import_file, sec_to_time, time_to_sec, JsonPlaylist,
-};
 use crate::utils::{
     channels::{create_channel, delete_channel},
     config::{
@@ -68,6 +65,12 @@ use crate::{
         models::{Channel, LoginUser, TextPreset, User},
     },
     player::controller::ChannelController,
+};
+use crate::{
+    player::utils::{
+        get_data_map, get_date_range, import::import_file, sec_to_time, time_to_sec, JsonPlaylist,
+    },
+    utils::logging::MailQueue,
 };
 
 #[derive(Serialize)]
@@ -459,8 +462,17 @@ async fn patch_channel(
 async fn add_channel(
     pool: web::Data<Pool<Sqlite>>,
     data: web::Json<Channel>,
+    controllers: web::Data<Mutex<ChannelController>>,
+    queue: web::Data<Mutex<Vec<Arc<Mutex<MailQueue>>>>>,
 ) -> Result<impl Responder, ServiceError> {
-    match create_channel(&pool.into_inner(), data.into_inner()).await {
+    match create_channel(
+        &pool.into_inner(),
+        controllers.into_inner(),
+        queue.into_inner(),
+        data.into_inner(),
+    )
+    .await
+    {
         Ok(c) => Ok(web::Json(c)),
         Err(e) => Err(e),
     }
