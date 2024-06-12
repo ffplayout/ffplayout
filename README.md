@@ -59,10 +59,6 @@ For preview stream, read: [/docs/preview_stream.md](/docs/preview_stream.md)
 
 **\* Experimental features do not guarantee the same stability and may fail under unusual circumstances. Code and configuration options may change in the future.**
 
-## **ffplayout-api (ffpapi)**
-
-ffpapi serves the [frontend](https://github.com/ffplayout/ffplayout-frontend) and it acts as a [REST API](/ffplayout-api/README.md) for controlling the engine, manipulate playlists, add settings etc.
-
 ### Requirements
 
 - RAM and CPU depends on video resolution, minimum 4 threads and 3GB RAM for 720p are recommend

@@ -3,7 +3,7 @@
 /// Run the API thru the systemd service, or like:
 ///
 /// ```BASH
-/// ffpapi -l 127.0.0.1:8787
+/// ffplayout -l 127.0.0.1:8787
 /// ```
 ///
 /// For all endpoints an (Bearer) authentication is required.\
@@ -377,7 +377,7 @@ async fn remove_user(
     }
 }
 
-/// #### ffpapi Settings
+/// #### Settings
 ///
 /// **Get Settings from Channel**
 ///
@@ -392,9 +392,7 @@ async fn remove_user(
 ///     "id": 1,
 ///     "name": "Channel 1",
 ///     "preview_url": "http://localhost/live/preview.m3u8",
-///     "config_path": "/etc/ffplayout/ffplayout.toml",
 ///     "extra_extensions": "jpg,jpeg,png",
-///     "service": "ffplayout.service",
 ///     "utc_offset": "+120"
 /// }
 /// ```
@@ -430,7 +428,7 @@ async fn get_all_channels(pool: web::Data<Pool<Sqlite>>) -> Result<impl Responde
 ///
 /// ```BASH
 /// curl -X PATCH http://127.0.0.1:8787/api/channel/1 -H "Content-Type: application/json" \
-/// -d '{ "id": 1, "name": "Channel 1", "preview_url": "http://localhost/live/stream.m3u8", "config_path": "/etc/ffplayout/ffplayout.toml", "extra_extensions": "jpg,jpeg,png"}' \
+/// -d '{ "id": 1, "name": "Channel 1", "preview_url": "http://localhost/live/stream.m3u8", "extra_extensions": "jpg,jpeg,png"}' \
 /// -H "Authorization: Bearer <TOKEN>"
 /// ```
 #[patch("/channel/{id}")]
@@ -454,7 +452,7 @@ async fn patch_channel(
 ///
 /// ```BASH
 /// curl -X POST http://127.0.0.1:8787/api/channel/ -H "Content-Type: application/json" \
-/// -d '{ "name": "Channel 2", "preview_url": "http://localhost/live/channel2.m3u8", "config_path": "/etc/ffplayout/channel2.toml", "extra_extensions": "jpg,jpeg,png", "service": "ffplayout@channel2.service" }' \
+/// -d '{ "name": "Channel 2", "preview_url": "http://localhost/live/channel2.m3u8", "extra_extensions": "jpg,jpeg,png" }' \
 /// -H "Authorization: Bearer <TOKEN>"
 /// ```
 #[post("/channel/")]

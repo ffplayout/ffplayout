@@ -120,7 +120,7 @@ CREATE TABLE
         task_help TEXT NOT NULL DEFAULT "Run an external program with a given media object. The media object is in json format and contains all the information about the current clip. The external program can be a script or a binary, but should only run for a short time.",
         task_enable INTEGER NOT NULL DEFAULT 0,
         task_path TEXT NOT NULL DEFAULT "",
-        output_help TEXT NOT NULL DEFAULT "The final playout compression. Set the settings to your needs. 'mode' has the options 'desktop', 'hls', 'null', 'stream'. Use 'stream' and adjust 'output_param:' settings when you want to stream to a rtmp/rtsp/srt/... server.\nIn production don't serve hls playlist with ffpapi, use nginx or another web server!",
+        output_help TEXT NOT NULL DEFAULT "The final playout compression. Set the settings to your needs. 'mode' has the options 'desktop', 'hls', 'null', 'stream'. Use 'stream' and adjust 'output_param:' settings when you want to stream to a rtmp/rtsp/srt/... server.\nIn production don't serve hls playlist with ffplayout, use nginx or another web server!",
         output_mode TEXT NOT NULL DEFAULT "hls",
         output_param TEXT NOT NULL DEFAULT "-c:v libx264 -crf 23 -x264-params keyint=50:min-keyint=25:scenecut=-1 -maxrate 1300k -bufsize 2600k -preset faster -tune zerolatency -profile:v Main -level 3.1 -c:a aac -ar 44100 -b:a 128k -flags +cgop -f hls -hls_time 6 -hls_list_size 600 -hls_flags append_list+delete_segments+omit_endlist -hls_segment_filename /usr/share/ffplayout/public/live/stream-%d.ts /usr/share/ffplayout/public/live/stream.m3u8",
         FOREIGN KEY (channel_id) REFERENCES channels (id) ON UPDATE CASCADE ON DELETE CASCADE

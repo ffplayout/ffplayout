@@ -230,7 +230,7 @@ async fn main() -> std::io::Result<()> {
         .run()
         .await
     } else {
-        error!("Run ffpapi with listen parameter!");
+        error!("Run ffplayout with listen parameter!");
 
         Ok(())
     }

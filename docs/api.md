@@ -1,9 +1,9 @@
-## Possible endpoints
+### Possible endpoints
 
 Run the API thru the systemd service, or like:
 
 ```BASH
-ffpapi -l 127.0.0.1:8787
+ffplayout -l 127.0.0.1:8787
 ```
 
 For all endpoints an (Bearer) authentication is required.\
@@ -72,7 +72,7 @@ curl -X GET 'http://127.0.0.1:8787/api/user/2' -H 'Content-Type: application/jso
 -H 'Authorization: Bearer <TOKEN>'
 ```
 
-#### ffpapi Settings
+#### Settings
 
 **Get Settings from Channel**
 
@@ -87,9 +87,7 @@ curl -X GET http://127.0.0.1:8787/api/channel/1 -H "Authorization: Bearer <TOKEN
     "id": 1,
     "name": "Channel 1",
     "preview_url": "http://localhost/live/preview.m3u8",
-    "config_path": "/etc/ffplayout/ffplayout.yml",
     "extra_extensions": "jpg,jpeg,png",
-    "service": "ffplayout.service",
     "utc_offset": "+120"
 }
 ```
@@ -104,7 +102,7 @@ curl -X GET http://127.0.0.1:8787/api/channels -H "Authorization: Bearer <TOKEN>
 
 ```BASH
 curl -X PATCH http://127.0.0.1:8787/api/channel/1 -H "Content-Type: application/json" \
--d '{ "id": 1, "name": "Channel 1", "preview_url": "http://localhost/live/stream.m3u8", "config_path": "/etc/ffplayout/ffplayout.yml", "extra_extensions": "jpg,jpeg,png"}' \
+-d '{ "id": 1, "name": "Channel 1", "preview_url": "http://localhost/live/stream.m3u8", "extra_extensions": "jpg,jpeg,png"}' \
 -H "Authorization: Bearer <TOKEN>"
 ```
 
@@ -112,7 +110,7 @@ curl -X PATCH http://127.0.0.1:8787/api/channel/1 -H "Content-Type: application/
 
 ```BASH
 curl -X POST http://127.0.0.1:8787/api/channel/ -H "Content-Type: application/json" \
--d '{ "name": "Channel 2", "preview_url": "http://localhost/live/channel2.m3u8", "config_path": "/etc/ffplayout/channel2.yml", "extra_extensions": "jpg,jpeg,png", "service": "ffplayout@channel2.service" }' \
+-d '{ "name": "Channel 2", "preview_url": "http://localhost/live/channel2.m3u8", "extra_extensions": "jpg,jpeg,png" }' \
 -H "Authorization: Bearer <TOKEN>"
 ```
 
@@ -130,7 +128,7 @@ curl -X DELETE http://127.0.0.1:8787/api/channel/2 -H "Authorization: Bearer <TO
 curl -X GET http://127.0.0.1:8787/api/playout/config/1 -H 'Authorization: Bearer <TOKEN>'
 ```
 
-Response is a JSON object from the ffplayout.yml
+Response is a JSON object from the ffplayout.toml
 
 **Update Config**
 
@@ -210,38 +208,19 @@ curl -X GET http://127.0.0.1:8787/api/control/1/media/current
 **Response:**
 
 ```JSON
-{
-    "jsonrpc": "2.0",
-    "result": {
-      "current_media": {
+    {
+      "media": {
         "category": "",
         "duration": 154.2,
         "out": 154.2,
-        "seek": 0.0,
+        "in": 0.0,
         "source": "/opt/tv-media/clip.mp4"
       },
       "index": 39,
-      "play_mode": "playlist",
-      "played_sec": 67.80771999300123,
-      "remaining_sec": 86.39228000699876,
-      "start_sec": 24713.631999999998,
-      "start_time": "06:51:53.631"
-    },
-    "id": 1
-}
-```
-
-**Get next Clip**
-
-```BASH
-curl -X GET http://127.0.0.1:8787/api/control/1/media/next -H 'Authorization: Bearer <TOKEN>'
-```
-
-**Get last Clip**
-
-```BASH
-curl -X GET http://127.0.0.1:8787/api/control/1/media/last
--H 'Content-Type: application/json' -H 'Authorization: Bearer <TOKEN>'
+      "ingest": false,
+      "mode": "playlist",
+      "played": 67.808
+    }
 ```
 
 #### ffplayout Process Control

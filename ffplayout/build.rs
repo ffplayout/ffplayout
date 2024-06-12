@@ -2,10 +2,10 @@ use static_files::NpmBuild;
 
 fn main() -> std::io::Result<()> {
     if !cfg!(debug_assertions) && cfg!(feature = "embed_frontend") {
-        NpmBuild::new("../ffplayout-frontend")
+        NpmBuild::new("../frontend")
             .install()?
             .run("generate")?
-            .target("../ffplayout-frontend/.output/public")
+            .target("../frontend/.output/public")
             .change_detection()
             .to_resource_dir()
             .build()
