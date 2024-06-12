@@ -24,6 +24,7 @@ use crate::utils::{
     config::{OutputMode::*, PlayoutConfig},
     errors::ProcessError,
 };
+use crate::ARGS;
 
 /// Defined process units.
 #[derive(Clone, Debug, Default, Copy, Eq, Serialize, Deserialize, PartialEq)]
@@ -119,6 +120,44 @@ impl ChannelManager {
                     error!("{e}");
                 };
             });
+        }
+    }
+
+    pub async fn foreground_start(&self, index: usize) {
+        if !self.is_alive.load(Ordering::SeqCst) {
+            self.run_count.fetch_add(1, Ordering::SeqCst);
+            self.is_alive.store(true, Ordering::SeqCst);
+            self.is_terminated.store(false, Ordering::SeqCst);
+
+            let pool_clone = self.db_pool.clone().unwrap();
+            let self_clone = self.clone();
+            let channel_id = self.channel.lock().unwrap().id;
+
+            if let Err(e) = handles::update_player(&pool_clone, channel_id, true).await {
+                error!("Unable write to player status: {e}");
+            };
+
+            if index + 1 == ARGS.channels.clone().unwrap_or_default().len() {
+                let run_count = self_clone.run_count.clone();
+
+                tokio::task::spawn_blocking(move || {
+                    if let Err(e) = start_channel(self_clone) {
+                        run_count.fetch_sub(1, Ordering::SeqCst);
+                        error!("{e}");
+                    }
+                })
+                .await
+                .unwrap();
+            } else {
+                thread::spawn(move || {
+                    let run_count = self_clone.run_count.clone();
+
+                    if let Err(e) = start_channel(self_clone) {
+                        run_count.fetch_sub(1, Ordering::SeqCst);
+                        error!("{e}");
+                    };
+                });
+            }
         }
     }
 

@@ -26,7 +26,7 @@ use ffplayout::{
     sse::{broadcast::Broadcaster, routes::*, AuthState},
     utils::{
         config::PlayoutConfig,
-        db_path, init_globales,
+        init_globales,
         logging::{init_logging, MailQueue},
         run_args,
     },
@@ -79,41 +79,35 @@ async fn main() -> std::io::Result<()> {
         exit(c);
     }
 
-    let channel_controllers = Arc::new(Mutex::new(ChannelController::new()));
-    let channels = handles::select_all_channels(&pool)
-        .await
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
-
     let mail_queues = Arc::new(Mutex::new(vec![]));
 
     init_globales(&pool).await;
     init_logging(mail_queues.clone())?;
 
-    for channel in channels.iter() {
-        let config = PlayoutConfig::new(&pool, channel.id).await;
-
-        let channel_manager =
-            ChannelManager::new(Some(pool.clone()), channel.clone(), config.clone());
-
-        channel_controllers
-            .lock()
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?
-            .add(channel_manager.clone());
-        let m_queue = Arc::new(Mutex::new(MailQueue::new(channel.id, config.mail)));
-
-        if let Ok(mut mqs) = mail_queues.lock() {
-            mqs.push(m_queue.clone());
-        }
-
-        if channel.active {
-            channel_manager.async_start().await;
-        }
-    }
+    let channel_controllers = Arc::new(Mutex::new(ChannelController::new()));
 
     if let Some(conn) = &ARGS.listen {
-        if db_path().is_err() {
-            error!("Database is not initialized! Init DB first and add admin user.");
-            exit(1);
+        let channels = handles::select_all_channels(&pool)
+            .await
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+
+        for channel in channels.iter() {
+            let config = PlayoutConfig::new(&pool, channel.id).await;
+            let manager = ChannelManager::new(Some(pool.clone()), channel.clone(), config.clone());
+            let m_queue = Arc::new(Mutex::new(MailQueue::new(channel.id, config.mail)));
+
+            channel_controllers
+                .lock()
+                .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?
+                .add(manager.clone());
+
+            if let Ok(mut mqs) = mail_queues.lock() {
+                mqs.push(m_queue.clone());
+            }
+
+            if channel.active {
+                manager.async_start().await;
+            }
         }
 
         let ip_port = conn.split(':').collect::<Vec<&str>>();
@@ -229,6 +223,35 @@ async fn main() -> std::io::Result<()> {
         .workers(thread_count)
         .run()
         .await
+    } else if ARGS.list_channels {
+        let channels = handles::select_all_channels(&pool)
+            .await
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+        let ids = channels.iter().map(|c| c.id).collect::<Vec<i32>>();
+
+        info!("Available channels: {ids:?}");
+
+        Ok(())
+    } else if let Some(channels) = &ARGS.channels {
+        for (index, channel_id) in channels.iter().enumerate() {
+            let channel = handles::select_channel(&pool, &channel_id).await.unwrap();
+            let config = PlayoutConfig::new(&pool, *channel_id).await;
+            let manager = ChannelManager::new(Some(pool.clone()), channel.clone(), config.clone());
+            let m_queue = Arc::new(Mutex::new(MailQueue::new(*channel_id, config.mail)));
+
+            channel_controllers
+                .lock()
+                .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?
+                .add(manager.clone());
+
+            if let Ok(mut mqs) = mail_queues.lock() {
+                mqs.push(m_queue.clone());
+            }
+
+            manager.foreground_start(index).await;
+        }
+
+        Ok(())
     } else {
         error!("Run ffplayout with listen parameter!");
 

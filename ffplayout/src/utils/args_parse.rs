@@ -13,6 +13,17 @@ pub struct Args {
     #[clap(long, help = "path to database file")]
     pub db: Option<PathBuf>,
 
+    #[clap(
+        short,
+        long,
+        help = "Run channels by ids immediately (works without webserver and frontend, no listening parameter is needed)",
+        num_args = 1..,
+    )]
+    pub channels: Option<Vec<i32>>,
+
+    #[clap(long, help = "List available channel ids")]
+    pub list_channels: bool,
+
     #[clap(long, help = "path to public files")]
     pub public: Option<PathBuf>,
 

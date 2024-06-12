@@ -532,14 +532,16 @@ async fn update_playout_config(
     controllers: web::Data<Mutex<ChannelController>>,
 ) -> Result<impl Responder, ServiceError> {
     let manager = controllers.lock().unwrap().get(*id).unwrap();
-    let mut config = manager.config.lock().unwrap();
-    let id = config.general.id;
-    let channel_id = config.general.channel_id;
+    let general_config = manager.config.lock().unwrap().general.clone();
+    let id = general_config.id;
+    let channel_id = general_config.channel_id;
     let db_config = Configuration::from(id, channel_id, data.into_inner());
 
     if let Err(e) = handles::update_configuration(&pool.into_inner(), db_config.clone()).await {
         return Err(ServiceError::Conflict(format!("{e}")));
     }
+
+    let mut config = manager.config.lock().unwrap();
 
     config.general.stop_threshold = db_config.stop_threshold;
     config.mail.subject = db_config.subject;
@@ -555,7 +557,7 @@ async fn update_playout_config(
     config.logging.detect_silence = db_config.detect_silence;
     config.logging.ignore_lines = db_config
         .ignore_lines
-        .split(";")
+        .split(';')
         .map(|l| l.to_string())
         .collect();
     config.processing.mode = string_to_processing_mode(db_config.processing_mode);
@@ -587,7 +589,7 @@ async fn update_playout_config(
     config.storage.filler = PathBuf::from(db_config.filler);
     config.storage.extensions = db_config
         .extensions
-        .split(";")
+        .split(';')
         .map(|l| l.to_string())
         .collect();
     config.storage.shuffle = db_config.shuffle;

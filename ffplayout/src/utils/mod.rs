@@ -317,12 +317,6 @@ pub fn public_path() -> PathBuf {
 pub async fn run_args() -> Result<(), i32> {
     let mut args = ARGS.clone();
 
-    if args.listen.is_none() && !args.ask && args.username.is_none() {
-        eprintln!("Wrong number of arguments! Run ffplayout --help for more information.");
-
-        return Err(0);
-    }
-
     if args.ask {
         let mut user = String::new();
         print!("Username: ");
