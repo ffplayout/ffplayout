@@ -21,7 +21,7 @@ actix-web-httpauth = "0.8"
 actix-web-lab = "0.20"
 argon2 = "0.5"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
-clap = { version = "4.3", features = ["derive"] }
+clap = { version = "4.3", features = ["derive", "env"] }
 crossbeam-channel = "0.5"
 derive_more = "0.99"
 faccess = "0.2"

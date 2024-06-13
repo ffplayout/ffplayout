@@ -1,18 +1,14 @@
 use std::{
-    env,
-    error::Error,
-    fmt,
+    env, fmt,
     fs::{self, metadata},
     io::{stdin, stdout, Write},
     net::TcpListener,
     path::{Path, PathBuf},
-    str::FromStr,
 };
 
 use chrono::{format::ParseErrorKind, prelude::*};
 use faccess::PathExt;
 use log::*;
-use once_cell::sync::OnceCell;
 use path_clean::PathClean;
 use rand::Rng;
 use regex::Regex;
@@ -21,9 +17,6 @@ use serde::{
     de::{self, Visitor},
     Deserialize, Deserializer, Serialize,
 };
-use sqlx::{sqlite::SqliteRow, FromRow, Pool, Row, Sqlite};
-
-use crate::ARGS;
 
 pub mod advanced_config;
 pub mod args_parse;
@@ -38,109 +31,10 @@ pub mod playlist;
 pub mod system;
 pub mod task_runner;
 
-use crate::db::{
-    db_pool,
-    handles::{insert_user, select_global},
-    models::User,
-};
+use crate::db::{db_pool, handles::insert_user, models::User};
 use crate::player::utils::time_to_sec;
 use crate::utils::{errors::ServiceError, logging::log_file_path};
-
-#[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
-pub enum Role {
-    GlobalAdmin,
-    ChannelAdmin,
-    User,
-    Guest,
-}
-
-impl Role {
-    pub fn set_role(role: &str) -> Self {
-        match role {
-            "global_admin" => Role::GlobalAdmin,
-            "channel_admin" => Role::ChannelAdmin,
-            "user" => Role::User,
-            _ => Role::Guest,
-        }
-    }
-}
-
-impl FromStr for Role {
-    type Err = String;
-
-    fn from_str(input: &str) -> Result<Self, Self::Err> {
-        match input {
-            "global_admin" => Ok(Self::GlobalAdmin),
-            "channel_admin" => Ok(Self::ChannelAdmin),
-            "user" => Ok(Self::User),
-            _ => Ok(Self::Guest),
-        }
-    }
-}
-
-impl fmt::Display for Role {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            Self::GlobalAdmin => write!(f, "global_admin"),
-            Self::ChannelAdmin => write!(f, "channel_admin"),
-            Self::User => write!(f, "user"),
-            Self::Guest => write!(f, "guest"),
-        }
-    }
-}
-
-impl<'r> sqlx::decode::Decode<'r, ::sqlx::Sqlite> for Role
-where
-    &'r str: sqlx::decode::Decode<'r, sqlx::Sqlite>,
-{
-    fn decode(
-        value: <sqlx::Sqlite as sqlx::database::HasValueRef<'r>>::ValueRef,
-    ) -> Result<Role, Box<dyn Error + 'static + Send + Sync>> {
-        let value = <&str as sqlx::decode::Decode<sqlx::Sqlite>>::decode(value)?;
-
-        Ok(value.parse()?)
-    }
-}
-
-impl FromRow<'_, SqliteRow> for Role {
-    fn from_row(row: &SqliteRow) -> sqlx::Result<Self> {
-        match row.get("name") {
-            "global_admin" => Ok(Self::GlobalAdmin),
-            "channel_admin" => Ok(Self::ChannelAdmin),
-            "user" => Ok(Self::User),
-            _ => Ok(Self::Guest),
-        }
-    }
-}
-
-#[derive(Debug, sqlx::FromRow)]
-pub struct GlobalSettings {
-    pub secret: String,
-}
-
-impl GlobalSettings {
-    async fn new(conn: &Pool<Sqlite>) -> Self {
-        let global_settings = select_global(conn);
-
-        match global_settings.await {
-            Ok(g) => g,
-            Err(_) => GlobalSettings {
-                secret: String::new(),
-            },
-        }
-    }
-
-    pub fn global() -> &'static GlobalSettings {
-        INSTANCE.get().expect("Config is not initialized")
-    }
-}
-
-static INSTANCE: OnceCell<GlobalSettings> = OnceCell::new();
-
-pub async fn init_globales(conn: &Pool<Sqlite>) {
-    let config = GlobalSettings::new(conn).await;
-    INSTANCE.set(config).unwrap();
-}
+use crate::ARGS;
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct TextFilter {

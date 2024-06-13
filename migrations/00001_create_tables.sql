@@ -5,6 +5,10 @@ CREATE TABLE
     global (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         secret TEXT NOT NULL,
+        hls_path TEXT NOT NULL DEFAULT "/usr/share/ffplayout/public",
+        playlist_path TEXT NOT NULL DEFAULT "/var/lib/ffplayout/playlists",
+        storage_path TEXT NOT NULL DEFAULT "/var/lib/ffplayout/tv-media",
+        logging_path TEXT NOT NULL DEFAULT "/var/log/ffplayout",
         UNIQUE (secret)
     );
 
@@ -78,7 +82,7 @@ CREATE TABLE
         ingest_level TEXT NOT NULL DEFAULT "ERROR",
         detect_silence INTEGER NOT NULL DEFAULT 1,
         ignore_lines TEXT NOT NULL DEFAULT "P sub_mb_type 4 out of range at;error while decoding MB;negative number of zero coeffs at;out of range intra chroma pred mode;non-existing SPS 0 referenced in buffering period",
-        processing_help TEXT NOT NULL DEFAULT "Default processing for all clips, to have them unique. Mode can be playlist or folder.\n'aspect' must be a float number.'logo' is only used if the path exist.\n'logo_scale' scale the logo to target size, leave it blank when no scaling is needed, format is 'width:height', for example '100:-1' for proportional scaling. With 'logo_opacity' logo can become transparent.\nWith 'audio_tracks' it is possible to configure how many audio tracks should be processed.\n'audio_channels' can be use, if audio has more channels then only stereo.\nWith 'logo_position' in format 'x:y' you set the logo position.\nWith 'custom_filter' it is possible, to apply further filters. The filter outputs should end with [c_v_out] for video filter, and [c_a_out] for audio filter.",
+        processing_help TEXT NOT NULL DEFAULT "Default processing for all clips, to have them unique. Mode can be playlist or folder.\n'aspect' must be a float number.'logo' is only used if the path exist, path is relative to your storage folder.\n'logo_scale' scale the logo to target size, leave it blank when no scaling is needed, format is 'width:height', for example '100:-1' for proportional scaling. With 'logo_opacity' logo can become transparent.\nWith 'audio_tracks' it is possible to configure how many audio tracks should be processed.\n'audio_channels' can be use, if audio has more channels then only stereo.\nWith 'logo_position' in format 'x:y' you set the logo position.\nWith 'custom_filter' it is possible, to apply further filters. The filter outputs should end with [c_v_out] for video filter, and [c_a_out] for audio filter.",
         processing_mode TEXT NOT NULL DEFAULT "playlist",
         audio_only INTEGER NOT NULL DEFAULT 0,
         copy_audio INTEGER NOT NULL DEFAULT 0,
@@ -88,7 +92,7 @@ CREATE TABLE
         aspect REAL NOT NULL DEFAULT 1.778,
         fps REAL NOT NULL DEFAULT 25.0,
         add_logo INTEGER NOT NULL DEFAULT 1,
-        logo TEXT NOT NULL DEFAULT "/usr/share/ffplayout/logo.png",
+        logo TEXT NOT NULL DEFAULT "graphics/logo.png",
         logo_scale TEXT NOT NULL DEFAULT "",
         logo_opacity REAL NOT NULL DEFAULT 0.7,
         logo_position TEXT NOT NULL DEFAULT "W-w-12:12",
@@ -102,19 +106,17 @@ CREATE TABLE
         ingest_param TEXT NOT NULL DEFAULT "-f live_flv -listen 1 -i rtmp://127.0.0.1:1936/live/stream",
         ingest_filter TEXT NOT NULL DEFAULT "",
         playlist_help TEXT NOT NULL DEFAULT "'path' can be a path to a single file, or a directory. For directory put only the root folder, for example '/playlists', subdirectories are read by the program. Subdirectories needs this structure '/playlists/2018/01'.\n'day_start' means at which time the playlist should start, leave day_start blank when playlist should always start at the begin. 'length' represent the target length from playlist, when is blank real length will not consider.\n'infinit: true' works with single playlist file and loops it infinitely.",
-        playlist_path TEXT NOT NULL DEFAULT "/var/lib/ffplayout/playlists",
         day_start TEXT NOT NULL DEFAULT "05:59:25",
         length TEXT NOT NULL DEFAULT "24:00:00",
         infinit INTEGER NOT NULL DEFAULT 0,
         storage_help TEXT NOT NULL DEFAULT "'filler' is for playing instead of a missing file or fill the end to reach 24 hours, can be a file or folder, it will loop when is necessary.\n'extensions' search only files with this extension. Set 'shuffle' to 'true' to pick files randomly.",
-        storage_path TEXT NOT NULL DEFAULT "/var/lib/ffplayout/tv-media",
-        filler TEXT NOT NULL DEFAULT "/var/lib/ffplayout/tv-media/filler/filler.mp4",
+        filler TEXT NOT NULL DEFAULT "filler/filler.mp4",
         extensions TEXT NOT NULL DEFAULT "mp4;mkv;webm",
         shuffle INTEGER NOT NULL DEFAULT 1,
-        text_help TEXT NOT NULL DEFAULT "Overlay text in combination with libzmq for remote text manipulation. On windows fontfile path need to be like this 'C\\:/WINDOWS/fonts/DejaVuSans.ttf'.\n'text_from_filename' activate the extraction from text of a filename. With 'style' you can define the drawtext parameters like position, color, etc. Post Text over API will override this. With 'regex' you can format file names, to get a title from it.",
+        text_help TEXT NOT NULL DEFAULT "Overlay text in combination with libzmq for remote text manipulation. fontfile is a relative path to your storage folder.\n'text_from_filename' activate the extraction from text of a filename. With 'style' you can define the drawtext parameters like position, color, etc. Post Text over API will override this. With 'regex' you can format file names, to get a title from it.",
         add_text INTEGER NOT NULL DEFAULT 1,
         text_from_filename INTEGER NOT NULL DEFAULT 0,
-        fontfile TEXT NOT NULL DEFAULT "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        fontfile TEXT NOT NULL DEFAULT "fonts/DejaVuSans.ttf",
         style TEXT NOT NULL DEFAULT "x=(w-tw)/2:y=(h-line_h)*0.9:fontsize=24:fontcolor=#ffffff:box=1:boxcolor=#000000:boxborderw=4",
         regex TEXT NOT NULL DEFAULT "^.+[/\\](.*)(.mp4|.mkv|.webm)$",
         task_help TEXT NOT NULL DEFAULT "Run an external program with a given media object. The media object is in json format and contains all the information about the current clip. The external program can be a script or a binary, but should only run for a short time.",
@@ -122,7 +124,7 @@ CREATE TABLE
         task_path TEXT NOT NULL DEFAULT "",
         output_help TEXT NOT NULL DEFAULT "The final playout compression. Set the settings to your needs. 'mode' has the options 'desktop', 'hls', 'null', 'stream'. Use 'stream' and adjust 'output_param:' settings when you want to stream to a rtmp/rtsp/srt/... server.\nIn production don't serve hls playlist with ffplayout, use nginx or another web server!",
         output_mode TEXT NOT NULL DEFAULT "hls",
-        output_param TEXT NOT NULL DEFAULT "-c:v libx264 -crf 23 -x264-params keyint=50:min-keyint=25:scenecut=-1 -maxrate 1300k -bufsize 2600k -preset faster -tune zerolatency -profile:v Main -level 3.1 -c:a aac -ar 44100 -b:a 128k -flags +cgop -f hls -hls_time 6 -hls_list_size 600 -hls_flags append_list+delete_segments+omit_endlist -hls_segment_filename /usr/share/ffplayout/public/live/stream-%d.ts /usr/share/ffplayout/public/live/stream.m3u8",
+        output_param TEXT NOT NULL DEFAULT "-c:v libx264 -crf 23 -x264-params keyint=50:min-keyint=25:scenecut=-1 -maxrate 1300k -bufsize 2600k -preset faster -tune zerolatency -profile:v Main -level 3.1 -c:a aac -ar 44100 -b:a 128k -flags +cgop -f hls -hls_time 6 -hls_list_size 600 -hls_flags append_list+delete_segments+omit_endlist -hls_segment_filename live/stream-%d.ts live/stream.m3u8",
         FOREIGN KEY (channel_id) REFERENCES channels (id) ON UPDATE CASCADE ON DELETE CASCADE
     );
 

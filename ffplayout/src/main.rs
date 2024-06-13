@@ -21,12 +21,14 @@ use path_clean::PathClean;
 
 use ffplayout::{
     api::{auth, routes::*},
-    db::{db_pool, handles, models::LoginUser},
+    db::{
+        db_pool, handles,
+        models::{init_globales, LoginUser},
+    },
     player::controller::{ChannelController, ChannelManager},
     sse::{broadcast::Broadcaster, routes::*, AuthState},
     utils::{
         config::PlayoutConfig,
-        init_globales,
         logging::{init_logging, MailQueue},
         run_args,
     },

@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use shlex::split;
 use sqlx::{Pool, Sqlite};
 
-use crate::db::{handles, models::Configuration};
+use crate::db::{handles, models};
 use crate::utils::{free_tcp_socket, time_to_sec};
 use crate::vec_strings;
 use crate::AdvancedConfig;
@@ -152,6 +152,8 @@ pub struct Source {
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct PlayoutConfig {
     #[serde(skip_serializing, skip_deserializing)]
+    pub global: Global,
+    #[serde(skip_serializing, skip_deserializing)]
     pub advanced: AdvancedConfig,
     pub general: General,
     pub mail: Mail,
@@ -163,6 +165,25 @@ pub struct PlayoutConfig {
     pub text: Text,
     pub task: Task,
     pub output: Output,
+}
+
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+pub struct Global {
+    pub hls_path: PathBuf,
+    pub playlist_path: PathBuf,
+    pub storage_path: PathBuf,
+    pub logging_path: PathBuf,
+}
+
+impl Global {
+    pub fn new(config: &models::GlobalSettings) -> Self {
+        Self {
+            hls_path: PathBuf::from(config.hls_path.clone()),
+            playlist_path: PathBuf::from(config.playlist_path.clone()),
+            storage_path: PathBuf::from(config.storage_path.clone()),
+            logging_path: PathBuf::from(config.logging_path.clone()),
+        }
+    }
 }
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
@@ -188,7 +209,7 @@ pub struct General {
 }
 
 impl General {
-    fn new(config: &Configuration) -> Self {
+    fn new(config: &models::Configuration) -> Self {
         Self {
             help_text: config.general_help.clone(),
             id: config.id,
@@ -218,7 +239,7 @@ pub struct Mail {
 }
 
 impl Mail {
-    fn new(config: &Configuration) -> Self {
+    fn new(config: &models::Configuration) -> Self {
         Self {
             help_text: config.mail_help.clone(),
             subject: config.subject.clone(),
@@ -259,7 +280,7 @@ pub struct Logging {
 }
 
 impl Logging {
-    fn new(config: &Configuration) -> Self {
+    fn new(config: &models::Configuration) -> Self {
         Self {
             help_text: config.logging_help.clone(),
             ffmpeg_level: config.ffmpeg_level.clone(),
@@ -301,7 +322,7 @@ pub struct Processing {
 }
 
 impl Processing {
-    fn new(config: &Configuration) -> Self {
+    fn new(config: &models::Configuration) -> Self {
         Self {
             help_text: config.processing_help.clone(),
             mode: ProcessMode::new(&config.processing_mode.clone()),
@@ -338,7 +359,7 @@ pub struct Ingest {
 }
 
 impl Ingest {
-    fn new(config: &Configuration) -> Self {
+    fn new(config: &models::Configuration) -> Self {
         Self {
             help_text: config.ingest_help.clone(),
             enable: config.ingest_enable,
@@ -363,7 +384,7 @@ pub struct Playlist {
 }
 
 impl Playlist {
-    fn new(config: &Configuration) -> Self {
+    fn new(config: &models::Configuration) -> Self {
         Self {
             help_text: config.playlist_help.clone(),
             path: PathBuf::from(config.playlist_path.clone()),
@@ -388,7 +409,7 @@ pub struct Storage {
 }
 
 impl Storage {
-    fn new(config: &Configuration) -> Self {
+    fn new(config: &models::Configuration) -> Self {
         Self {
             help_text: config.storage_help.clone(),
             path: PathBuf::from(config.storage_path.clone()),
@@ -421,7 +442,7 @@ pub struct Text {
 }
 
 impl Text {
-    fn new(config: &Configuration) -> Self {
+    fn new(config: &models::Configuration) -> Self {
         Self {
             help_text: config.text_help.clone(),
             add_text: config.add_text,
@@ -444,7 +465,7 @@ pub struct Task {
 }
 
 impl Task {
-    fn new(config: &Configuration) -> Self {
+    fn new(config: &models::Configuration) -> Self {
         Self {
             help_text: config.task_help.clone(),
             enable: config.task_enable,
@@ -467,7 +488,7 @@ pub struct Output {
 }
 
 impl Output {
-    fn new(config: &Configuration) -> Self {
+    fn new(config: &models::Configuration) -> Self {
         Self {
             help_text: config.output_help.clone(),
             mode: OutputMode::new(&config.output_mode),
@@ -521,6 +542,9 @@ fn default_track_index() -> i32 {
 
 impl PlayoutConfig {
     pub async fn new(pool: &Pool<Sqlite>, channel: i32) -> Self {
+        let global = handles::select_global(pool)
+            .await
+            .expect("Can't read globals");
         let config = handles::select_configuration(pool, channel)
             .await
             .expect("Can't read config");
@@ -528,6 +552,7 @@ impl PlayoutConfig {
             .await
             .expect("Can't read advanced config");
 
+        let global = Global::new(&global);
         let advanced = AdvancedConfig::new(adv_config);
         let general = General::new(&config);
         let mail = Mail::new(&config);
@@ -644,6 +669,7 @@ impl PlayoutConfig {
         }
 
         Self {
+            global,
             advanced,
             general,
             mail,

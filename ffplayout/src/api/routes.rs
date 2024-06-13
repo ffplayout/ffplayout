@@ -38,6 +38,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::{Pool, Sqlite};
 use tokio::fs;
 
+use crate::db::models::Role;
 use crate::utils::{
     channels::{create_channel, delete_channel},
     config::{
@@ -52,7 +53,7 @@ use crate::utils::{
     },
     naive_date_time_from_str,
     playlist::{delete_playlist, generate_playlist, read_playlist, write_playlist},
-    public_path, read_log_file, system, Role, TextFilter,
+    public_path, read_log_file, system, TextFilter,
 };
 use crate::vec_strings;
 use crate::{
@@ -164,53 +165,56 @@ struct ProgramItem {
 #[post("/auth/login/")]
 pub async fn login(pool: web::Data<Pool<Sqlite>>, credentials: web::Json<User>) -> impl Responder {
     let conn = pool.into_inner();
-    match handles::select_login(&conn, &credentials.username).await {
+    let username = credentials.username.clone();
+    let password = credentials.password.clone();
+
+    match handles::select_login(&conn, &username).await {
         Ok(mut user) => {
             let role = handles::select_role(&conn, &user.role_id.unwrap_or_default())
                 .await
                 .unwrap_or(Role::Guest);
 
-            web::block(move || {
-                let pass = user.password.clone();
+            let pass = user.password.clone();
+            let password_clone = password.clone();
+
+            user.password = "".into();
+
+            if web::block(move || {
                 let hash = PasswordHash::new(&pass).unwrap();
-                user.password = "".into();
-
-                if Argon2::default()
-                    .verify_password(credentials.password.as_bytes(), &hash)
-                    .is_ok()
-                {
-                    let claims = Claims::new(user.id, user.username.clone(), role.clone());
-
-                    if let Ok(token) = create_jwt(claims) {
-                        user.token = Some(token);
-                    };
-
-                    info!("user {} login, with role: {role}", credentials.username);
-
-                    web::Json(UserObj {
-                        message: "login correct!".into(),
-                        user: Some(user),
-                    })
-                    .customize()
-                    .with_status(StatusCode::OK)
-                } else {
-                    error!("Wrong password for {}!", credentials.username);
-
-                    web::Json(UserObj {
-                        message: "Wrong password!".into(),
-                        user: None,
-                    })
-                    .customize()
-                    .with_status(StatusCode::FORBIDDEN)
-                }
+                Argon2::default().verify_password(password_clone.as_bytes(), &hash)
             })
             .await
-            .unwrap()
+            .is_ok()
+            {
+                let claims = Claims::new(user.id, username.clone(), role.clone());
+
+                if let Ok(token) = create_jwt(claims).await {
+                    user.token = Some(token);
+                };
+
+                info!("user {} login, with role: {role}", username);
+
+                web::Json(UserObj {
+                    message: "login correct!".into(),
+                    user: Some(user),
+                })
+                .customize()
+                .with_status(StatusCode::OK)
+            } else {
+                error!("Wrong password for {username}!");
+
+                web::Json(UserObj {
+                    message: "Wrong password!".into(),
+                    user: None,
+                })
+                .customize()
+                .with_status(StatusCode::FORBIDDEN)
+            }
         }
         Err(e) => {
-            error!("Login {} failed! {e}", credentials.username);
+            error!("Login {username} failed! {e}");
             web::Json(UserObj {
-                message: format!("Login {} failed!", credentials.username),
+                message: format!("Login {username} failed!"),
                 user: None,
             })
             .customize()

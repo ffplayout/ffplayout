@@ -5,9 +5,10 @@ use actix_web_grants::proc_macro::protect;
 use serde::{Deserialize, Serialize};
 
 use super::{check_uuid, prune_uuids, AuthState, UuidData};
+use crate::db::models::Role;
 use crate::player::controller::ChannelController;
 use crate::sse::broadcast::Broadcaster;
-use crate::utils::{errors::ServiceError, Role};
+use crate::utils::errors::ServiceError;
 
 #[derive(Deserialize, Serialize)]
 struct User {

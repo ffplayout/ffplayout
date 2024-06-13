@@ -77,6 +77,12 @@ impl From<std::num::ParseIntError> for ServiceError {
     }
 }
 
+impl From<jsonwebtoken::errors::Error> for ServiceError {
+    fn from(err: jsonwebtoken::errors::Error) -> ServiceError {
+        ServiceError::Unauthorized(err.to_string())
+    }
+}
+
 impl From<actix_web::error::BlockingError> for ServiceError {
     fn from(err: actix_web::error::BlockingError) -> ServiceError {
         ServiceError::BadRequest(err.to_string())

@@ -9,8 +9,8 @@ use sqlx::{sqlite::SqliteQueryResult, Pool, Sqlite};
 use tokio::task;
 
 use super::models::{AdvancedConfiguration, Configuration};
-use crate::db::models::{Channel, TextPreset, User};
-use crate::utils::{local_utc_offset, GlobalSettings, Role};
+use crate::db::models::{Channel, GlobalSettings, Role, TextPreset, User};
+use crate::utils::local_utc_offset;
 
 pub async fn db_migrate(conn: &Pool<Sqlite>) -> Result<&'static str, Box<dyn std::error::Error>> {
     match sqlx::migrate!("../migrations").run(conn).await {
@@ -40,7 +40,7 @@ pub async fn db_migrate(conn: &Pool<Sqlite>) -> Result<&'static str, Box<dyn std
 }
 
 pub async fn select_global(conn: &Pool<Sqlite>) -> Result<GlobalSettings, sqlx::Error> {
-    let query = "SELECT secret FROM global WHERE id = 1";
+    let query = "SELECT secret, hls_path, playlist_path, storage_path, logging_path FROM global WHERE id = 1";
 
     sqlx::query_as(query).fetch_one(conn).await
 }
