@@ -303,8 +303,6 @@ pub struct Processing {
     pub help_text: String,
     pub mode: ProcessMode,
     pub audio_only: bool,
-    #[serde(default = "default_track_index")]
-    pub audio_track_index: i32,
     pub copy_audio: bool,
     pub copy_video: bool,
     pub width: i64,
@@ -317,6 +315,8 @@ pub struct Processing {
     pub logo_opacity: f64,
     pub logo_position: String,
     pub audio_tracks: i32,
+    #[serde(default = "default_track_index")]
+    pub audio_track_index: i32,
     pub audio_channels: u8,
     pub volume: f64,
     pub custom_filter: String,

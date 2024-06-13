@@ -18,8 +18,12 @@ use crate::ARGS;
     about = "REST API for ffplayout",
     long_about = None)]
 pub struct Args {
-    #[clap(short, long, help = "ask for user credentials")]
-    pub ask: bool,
+    #[clap(
+        short,
+        long,
+        help = "Initialize defaults: global admin, paths, settings, etc."
+    )]
+    pub init: bool,
 
     #[clap(long, env, help = "path to database file")]
     pub db: Option<PathBuf>,
@@ -93,22 +97,21 @@ pub struct Args {
 pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
     let mut args = ARGS.clone();
 
-    if args.ask {
+    if args.init {
         let mut user = String::new();
-        print!("Username: ");
+        let mut mail = String::new();
+        let mut storage = String::new();
+        let mut playlist = String::new();
+        let mut hls = String::new();
+
+        print!("Global admin: ");
         stdout().flush().unwrap();
 
         stdin()
             .read_line(&mut user)
             .expect("Did not enter a correct name?");
-        if let Some('\n') = user.chars().next_back() {
-            user.pop();
-        }
-        if let Some('\r') = user.chars().next_back() {
-            user.pop();
-        }
 
-        args.username = Some(user);
+        args.username = Some(user.trim().to_string());
 
         print!("Password: ");
         stdout().flush().unwrap();
@@ -116,21 +119,29 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
 
         args.password = password.ok();
 
-        let mut mail = String::new();
         print!("Mail: ");
         stdout().flush().unwrap();
 
         stdin()
             .read_line(&mut mail)
             .expect("Did not enter a correct name?");
-        if let Some('\n') = mail.chars().next_back() {
-            mail.pop();
-        }
-        if let Some('\r') = mail.chars().next_back() {
-            mail.pop();
+
+        args.mail = Some(mail.trim().to_string());
+
+        print!("Storage path [/var/lib/ffplayout/tv-media]: ");
+        stdout().flush().unwrap();
+
+        stdin()
+            .read_line(&mut storage)
+            .expect("Did not enter a correct path?");
+
+        if storage.trim().is_empty() {
+            args.storage_path = Some(PathBuf::from("/var/lib/ffplayout/tv-media"));
+        } else {
+            args.storage_path = Some(PathBuf::from(storage.trim()));
         }
 
-        args.mail = Some(mail);
+        println!("{args:?}");
     }
 
     if let Some(username) = args.username {
