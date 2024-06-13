@@ -12,7 +12,7 @@ use sqlx::{Pool, Sqlite};
 use tokio::io::AsyncReadExt;
 
 use crate::db::{handles, models};
-use crate::utils::{free_tcp_socket, time_to_sec};
+use crate::utils::{files::norm_abs_path, free_tcp_socket, time_to_sec};
 use crate::vec_strings;
 use crate::AdvancedConfig;
 
@@ -559,10 +559,15 @@ impl PlayoutConfig {
         let mut processing = Processing::new(&config);
         let mut ingest = Ingest::new(&config);
         let mut playlist = Playlist::new(&config);
-        let storage = Storage::new(&config);
+        let mut storage = Storage::new(&config);
         let mut text = Text::new(&config);
         let task = Task::new(&config);
         let mut output = Output::new(&config);
+
+        let (filler_path, _, _) = norm_abs_path(&global.storage_path, &config.storage_filler)
+            .expect("Can't get filler path");
+
+        storage.filler = filler_path;
 
         playlist.start_sec = Some(time_to_sec(&playlist.day_start));
 
