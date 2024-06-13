@@ -6,7 +6,6 @@ use std::{
 use actix_multipart::Multipart;
 use actix_web::{web, HttpResponse};
 use futures_util::TryStreamExt as _;
-use lazy_static::lazy_static;
 use lexical_sort::{natural_lexical_cmp, PathSort};
 use rand::{distributions::Alphanumeric, Rng};
 use relative_path::RelativePath;
@@ -55,23 +54,6 @@ pub struct VideoFile {
     duration: f64,
 }
 
-lazy_static! {
-    pub static ref HOME_DIR: String = home::home_dir()
-        .unwrap_or("/home/h1wl3n2og".into()) // any random not existing folder
-        .as_os_str()
-        .to_string_lossy()
-        .to_string();
-}
-
-const FOLDER_WHITELIST: &[&str; 6] = &[
-    "/media",
-    "/mnt",
-    "/playlists",
-    "/tv-media",
-    "/usr/share/ffplayout",
-    "/var/lib/ffplayout",
-];
-
 /// Normalize absolut path
 ///
 /// This function takes care, that it is not possible to break out from root_path.
@@ -110,14 +92,6 @@ pub fn norm_abs_path(
     }
 
     let path = &root_path.join(&source_relative);
-
-    if !FOLDER_WHITELIST.iter().any(|f| path.starts_with(f))
-        && !path.starts_with(HOME_DIR.to_string())
-    {
-        return Err(ServiceError::Forbidden(
-            "Access forbidden: Folder cannot be opened.".to_string(),
-        ));
-    }
 
     Ok((path.to_path_buf(), path_suffix, source_relative))
 }
