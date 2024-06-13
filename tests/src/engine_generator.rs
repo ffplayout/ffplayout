@@ -90,7 +90,7 @@ fn test_generate_playlist_from_folder() {
     config.processing.mode = Playlist;
     config.storage.filler = "assets/".into();
     config.playlist.length_sec = Some(86400.0);
-    config.playlist.path = "assets/playlists".into();
+    config.global.playlist_path = "assets/playlists".into();
 
     let playlist = generate_playlist(manager);
 
@@ -143,7 +143,7 @@ fn test_generate_playlist_from_template() {
     config.processing.mode = Playlist;
     config.storage.filler = "assets/".into();
     config.playlist.length_sec = Some(86400.0);
-    config.playlist.path = "assets/playlists".into();
+    config.global.playlist_path = "assets/playlists".into();
 
     let playlist = generate_playlist(manager);
 

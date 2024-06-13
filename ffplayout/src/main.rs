@@ -28,9 +28,9 @@ use ffplayout::{
     player::controller::{ChannelController, ChannelManager},
     sse::{broadcast::Broadcaster, routes::*, AuthState},
     utils::{
+        args_parse::run_args,
         config::PlayoutConfig,
         logging::{init_logging, MailQueue},
-        run_args,
     },
     ARGS,
 };
@@ -69,6 +69,8 @@ async fn validator(
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+    let mail_queues = Arc::new(Mutex::new(vec![]));
+
     let pool = db_pool()
         .await
         .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
@@ -77,14 +79,12 @@ async fn main() -> std::io::Result<()> {
         panic!("{e}");
     };
 
-    if let Err(c) = run_args().await {
-        exit(c);
-    }
-
-    let mail_queues = Arc::new(Mutex::new(vec![]));
-
     init_globales(&pool).await;
     init_logging(mail_queues.clone())?;
+
+    if let Err(c) = run_args(&pool).await {
+        exit(c);
+    }
 
     let channel_controllers = Arc::new(Mutex::new(ChannelController::new()));
 
@@ -236,7 +236,7 @@ async fn main() -> std::io::Result<()> {
         Ok(())
     } else if let Some(channels) = &ARGS.channels {
         for (index, channel_id) in channels.iter().enumerate() {
-            let channel = handles::select_channel(&pool, &channel_id).await.unwrap();
+            let channel = handles::select_channel(&pool, channel_id).await.unwrap();
             let config = PlayoutConfig::new(&pool, *channel_id).await;
             let manager = ChannelManager::new(Some(pool.clone()), channel.clone(), config.clone());
             let m_queue = Arc::new(Mutex::new(MailQueue::new(*channel_id, config.mail)));

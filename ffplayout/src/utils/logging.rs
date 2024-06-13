@@ -347,7 +347,7 @@ pub fn mail_queue(mail_queues: Arc<Mutex<Vec<Arc<Mutex<MailQueue>>>>>) {
 
                 // Process mail queues and send emails
                 for queue in queues.iter_mut() {
-                    let interval = round_to_nearest_ten(counter);
+                    let interval = round_to_nearest_ten(counter as i64);
                     let mut q_lock = queue.lock().unwrap_or_else(|poisoned| {
                         error!("Queue mutex was poisoned");
 

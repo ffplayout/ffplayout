@@ -9,11 +9,14 @@ use flexi_logger::Level;
 use serde::{Deserialize, Serialize};
 use shlex::split;
 use sqlx::{Pool, Sqlite};
+use tokio::io::AsyncReadExt;
 
 use crate::db::{handles, models};
 use crate::utils::{free_tcp_socket, time_to_sec};
 use crate::vec_strings;
 use crate::AdvancedConfig;
+
+use super::errors::ServiceError;
 
 pub const DUMMY_LEN: f64 = 60.0;
 pub const IMAGE_FORMAT: [&str; 21] = [
@@ -214,7 +217,7 @@ impl General {
             help_text: config.general_help.clone(),
             id: config.id,
             channel_id: config.channel_id,
-            stop_threshold: config.stop_threshold,
+            stop_threshold: config.general_stop_threshold,
             generate: None,
             ffmpeg_filters: vec![],
             ffmpeg_libs: vec![],
@@ -235,21 +238,21 @@ pub struct Mail {
     pub sender_pass: String,
     pub recipient: String,
     pub mail_level: Level,
-    pub interval: u64,
+    pub interval: i64,
 }
 
 impl Mail {
     fn new(config: &models::Configuration) -> Self {
         Self {
             help_text: config.mail_help.clone(),
-            subject: config.subject.clone(),
-            smtp_server: config.smtp_server.clone(),
-            starttls: config.starttls,
-            sender_addr: config.sender_addr.clone(),
-            sender_pass: config.sender_pass.clone(),
-            recipient: config.recipient.clone(),
+            subject: config.mail_subject.clone(),
+            smtp_server: config.mail_smtp.clone(),
+            starttls: config.mail_starttls,
+            sender_addr: config.mail_addr.clone(),
+            sender_pass: config.mail_pass.clone(),
+            recipient: config.mail_recipient.clone(),
             mail_level: string_to_log_level(config.mail_level.clone()),
-            interval: config.interval as u64,
+            interval: config.mail_interval,
         }
     }
 }
@@ -265,7 +268,7 @@ impl Default for Mail {
             sender_pass: String::default(),
             recipient: String::default(),
             mail_level: Level::Debug,
-            interval: u64::default(),
+            interval: i64::default(),
         }
     }
 }
@@ -283,11 +286,11 @@ impl Logging {
     fn new(config: &models::Configuration) -> Self {
         Self {
             help_text: config.logging_help.clone(),
-            ffmpeg_level: config.ffmpeg_level.clone(),
-            ingest_level: config.ingest_level.clone(),
-            detect_silence: config.detect_silence,
+            ffmpeg_level: config.logging_ffmpeg_level.clone(),
+            ingest_level: config.logging_ingest_level.clone(),
+            detect_silence: config.logging_detect_silence,
             ignore_lines: config
-                .ignore_lines
+                .logging_ignore
                 .split(';')
                 .map(|s| s.to_string())
                 .collect(),
@@ -311,7 +314,7 @@ pub struct Processing {
     pub add_logo: bool,
     pub logo: String,
     pub logo_scale: String,
-    pub logo_opacity: f32,
+    pub logo_opacity: f64,
     pub logo_position: String,
     pub audio_tracks: i32,
     pub audio_channels: u8,
@@ -326,23 +329,23 @@ impl Processing {
         Self {
             help_text: config.processing_help.clone(),
             mode: ProcessMode::new(&config.processing_mode.clone()),
-            audio_only: config.audio_only,
-            audio_track_index: config.audio_track_index,
-            copy_audio: config.copy_audio,
-            copy_video: config.copy_video,
-            width: config.width,
-            height: config.height,
-            aspect: config.aspect,
-            fps: config.fps,
-            add_logo: config.add_logo,
-            logo: config.logo.clone(),
-            logo_scale: config.logo_scale.clone(),
-            logo_opacity: config.logo_opacity,
-            logo_position: config.logo_position.clone(),
-            audio_tracks: config.audio_tracks,
-            audio_channels: config.audio_channels,
-            volume: config.volume,
-            custom_filter: config.decoder_filter.clone(),
+            audio_only: config.processing_audio_only,
+            audio_track_index: config.processing_audio_track_index,
+            copy_audio: config.processing_copy_audio,
+            copy_video: config.processing_copy_video,
+            width: config.processing_width,
+            height: config.processing_height,
+            aspect: config.processing_aspect,
+            fps: config.processing_fps,
+            add_logo: config.processing_add_logo,
+            logo: config.processing_logo.clone(),
+            logo_scale: config.processing_logo_scale.clone(),
+            logo_opacity: config.processing_logo_opacity,
+            logo_position: config.processing_logo_position.clone(),
+            audio_tracks: config.processing_audio_tracks,
+            audio_channels: config.processing_audio_channels,
+            volume: config.processing_volume,
+            custom_filter: config.processing_filter.clone(),
             cmd: None,
         }
     }
@@ -373,7 +376,6 @@ impl Ingest {
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct Playlist {
     pub help_text: String,
-    pub path: PathBuf,
     pub day_start: String,
     #[serde(skip_serializing, skip_deserializing)]
     pub start_sec: Option<f64>,
@@ -387,12 +389,11 @@ impl Playlist {
     fn new(config: &models::Configuration) -> Self {
         Self {
             help_text: config.playlist_help.clone(),
-            path: PathBuf::from(config.playlist_path.clone()),
-            day_start: config.day_start.clone(),
+            day_start: config.playlist_day_start.clone(),
             start_sec: None,
-            length: config.length.clone(),
+            length: config.playlist_length.clone(),
             length_sec: None,
-            infinit: config.infinit,
+            infinit: config.playlist_infinit,
         }
     }
 }
@@ -400,7 +401,6 @@ impl Playlist {
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct Storage {
     pub help_text: String,
-    pub path: PathBuf,
     #[serde(skip_serializing, skip_deserializing)]
     pub paths: Vec<PathBuf>,
     pub filler: PathBuf,
@@ -412,15 +412,14 @@ impl Storage {
     fn new(config: &models::Configuration) -> Self {
         Self {
             help_text: config.storage_help.clone(),
-            path: PathBuf::from(config.storage_path.clone()),
             paths: vec![],
-            filler: PathBuf::from(config.filler.clone()),
+            filler: PathBuf::from(config.storage_filler.clone()),
             extensions: config
-                .extensions
+                .storage_extensions
                 .split(';')
                 .map(|s| s.to_string())
                 .collect(),
-            shuffle: config.shuffle,
+            shuffle: config.storage_shuffle,
         }
     }
 }
@@ -445,14 +444,14 @@ impl Text {
     fn new(config: &models::Configuration) -> Self {
         Self {
             help_text: config.text_help.clone(),
-            add_text: config.add_text,
+            add_text: config.text_add,
             node_pos: None,
             zmq_stream_socket: None,
             zmq_server_socket: None,
-            fontfile: config.fontfile.clone(),
+            fontfile: config.text_font.clone(),
             text_from_filename: config.text_from_filename,
-            style: config.style.clone(),
-            regex: config.regex.clone(),
+            style: config.text_style.clone(),
+            regex: config.text_regex.clone(),
         }
     }
 }
@@ -682,6 +681,34 @@ impl PlayoutConfig {
             task,
             output,
         }
+    }
+
+    pub async fn dump(pool: &Pool<Sqlite>, id: i32) -> Result<(), ServiceError> {
+        let config = Self::new(pool, id).await;
+
+        let toml_string = toml_edit::ser::to_string_pretty(&config)?;
+        tokio::fs::write(&format!("ffplayout_{id}.toml"), toml_string).await?;
+
+        Ok(())
+    }
+
+    pub async fn import(pool: &Pool<Sqlite>, import: Vec<String>) -> Result<(), ServiceError> {
+        let id = import[0].parse::<i32>()?;
+        let path = Path::new(&import[1]);
+
+        if path.is_file() {
+            let mut file = tokio::fs::File::open(path).await?;
+            let mut contents = String::new();
+            file.read_to_string(&mut contents).await?;
+
+            let config: PlayoutConfig = toml_edit::de::from_str(&contents).unwrap();
+
+            handles::update_configuration(pool, id, config).await?;
+        } else {
+            return Err(ServiceError::BadRequest("Path not exists!".to_string()));
+        }
+
+        Ok(())
     }
 }
 

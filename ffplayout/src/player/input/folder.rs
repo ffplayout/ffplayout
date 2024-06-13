@@ -28,7 +28,7 @@ pub fn watchman(
     is_terminated: Arc<AtomicBool>,
     sources: Arc<Mutex<Vec<Media>>>,
 ) {
-    let path = Path::new(&config.storage.path);
+    let path = Path::new(&config.global.storage_path);
 
     if !path.exists() {
         error!("Folder path not exists: '{path:?}'");

@@ -49,7 +49,7 @@ fn test_gen_source() {
     config.playlist.start_sec = Some(0.0);
     config.playlist.length = "24:00:00".into();
     config.playlist.length_sec = Some(86400.0);
-    config.playlist.path = "assets/playlists".into();
+    config.global.playlist_path = "assets/playlists".into();
     config.storage.filler = "assets/media_filler/filler_0.mp4".into();
 
     let mut valid_source_with_probe = Media::new(0, "assets/media_mix/av_sync.mp4", true);
@@ -104,7 +104,7 @@ fn playlist_missing() {
     config.playlist.start_sec = Some(0.0);
     config.playlist.length = "24:00:00".into();
     config.playlist.length_sec = Some(86400.0);
-    config.playlist.path = "assets/playlists".into();
+    config.global.playlist_path = "assets/playlists".into();
     config.storage.filler = "assets/media_filler/filler_0.mp4".into();
     config.output.mode = Null;
     config.output.output_count = 1;
@@ -146,7 +146,7 @@ fn playlist_next_missing() {
     config.playlist.start_sec = Some(0.0);
     config.playlist.length = "24:00:00".into();
     config.playlist.length_sec = Some(86400.0);
-    config.playlist.path = "assets/playlists".into();
+    config.global.playlist_path = "assets/playlists".into();
     config.storage.filler = "assets/media_filler/filler_0.mp4".into();
     config.output.mode = Null;
     config.output.output_count = 1;
@@ -188,7 +188,7 @@ fn playlist_to_short() {
     config.playlist.start_sec = Some(21600.0);
     config.playlist.length = "24:00:00".into();
     config.playlist.length_sec = Some(86400.0);
-    config.playlist.path = "assets/playlists".into();
+    config.global.playlist_path = "assets/playlists".into();
     config.storage.filler = "assets/media_filler/filler_0.mp4".into();
     config.output.mode = Null;
     config.output.output_count = 1;
@@ -230,7 +230,7 @@ fn playlist_init_after_list_end() {
     config.playlist.start_sec = Some(21600.0);
     config.playlist.length = "24:00:00".into();
     config.playlist.length_sec = Some(86400.0);
-    config.playlist.path = "assets/playlists".into();
+    config.global.playlist_path = "assets/playlists".into();
     config.storage.filler = "assets/media_filler/filler_0.mp4".into();
     config.output.mode = Null;
     config.output.output_count = 1;
@@ -272,7 +272,7 @@ fn playlist_change_at_midnight() {
     config.playlist.start_sec = Some(0.0);
     config.playlist.length = "24:00:00".into();
     config.playlist.length_sec = Some(86400.0);
-    config.playlist.path = "assets/playlists".into();
+    config.global.playlist_path = "assets/playlists".into();
     config.storage.filler = "assets/media_filler/filler_0.mp4".into();
     config.output.mode = Null;
     config.output.output_count = 1;
@@ -314,7 +314,7 @@ fn playlist_change_before_midnight() {
     config.playlist.start_sec = Some(0.0);
     config.playlist.length = "24:00:00".into();
     config.playlist.length_sec = Some(86400.0);
-    config.playlist.path = "assets/playlists".into();
+    config.global.playlist_path = "assets/playlists".into();
     config.storage.filler = "assets/media_filler/filler_0.mp4".into();
     config.output.mode = Null;
     config.output.output_count = 1;
@@ -356,7 +356,7 @@ fn playlist_change_at_six() {
     config.playlist.start_sec = Some(21600.0);
     config.playlist.length = "24:00:00".into();
     config.playlist.length_sec = Some(86400.0);
-    config.playlist.path = "assets/playlists".into();
+    config.global.playlist_path = "assets/playlists".into();
     config.storage.filler = "assets/media_filler/filler_0.mp4".into();
     config.output.mode = Null;
     config.output.output_count = 1;

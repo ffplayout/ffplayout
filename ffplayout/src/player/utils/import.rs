@@ -28,13 +28,13 @@ pub fn import_file(
         program: vec![],
     };
 
-    let playlist_root = &config.playlist.path;
+    let playlist_root = &config.global.playlist_path;
     if !playlist_root.is_dir() {
         return Err(Error::new(
             ErrorKind::Other,
             format!(
                 "Playlist folder <b><magenta>{:?}</></b> not exists!",
-                config.playlist.path,
+                config.global.playlist_path,
             ),
         ));
     }

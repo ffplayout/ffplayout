@@ -27,7 +27,7 @@ pub fn source_generator(manager: ChannelManager) -> Box<dyn Iterator<Item = Medi
             info!("Playout in folder mode");
             debug!(
                 "Monitor folder: <b><magenta>{:?}</></b>",
-                config.storage.path
+                config.global.storage_path
             );
 
             let config_clone = config.clone();

@@ -33,7 +33,7 @@ impl FolderSource {
                 path_list.push(path)
             }
         } else {
-            path_list.push(&config.storage.path)
+            path_list.push(&config.global.storage_path)
         }
 
         for path in &path_list {

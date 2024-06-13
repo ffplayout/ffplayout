@@ -128,7 +128,7 @@ curl -X DELETE http://127.0.0.1:8787/api/channel/2 -H "Authorization: Bearer <TO
 curl -X GET http://127.0.0.1:8787/api/playout/config/1 -H 'Authorization: Bearer <TOKEN>'
 ```
 
-Response is a JSON object from the ffplayout.toml
+Response is a JSON object
 
 **Update Config**
 

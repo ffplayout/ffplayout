@@ -1,7 +1,6 @@
 use std::{
     env, fmt,
     fs::{self, metadata},
-    io::{stdin, stdout, Write},
     net::TcpListener,
     path::{Path, PathBuf},
 };
@@ -12,7 +11,7 @@ use log::*;
 use path_clean::PathClean;
 use rand::Rng;
 use regex::Regex;
-use rpassword::read_password;
+
 use serde::{
     de::{self, Visitor},
     Deserialize, Deserializer, Serialize,
@@ -31,7 +30,6 @@ pub mod playlist;
 pub mod system;
 pub mod task_runner;
 
-use crate::db::{db_pool, handles::insert_user, models::User};
 use crate::player::utils::time_to_sec;
 use crate::utils::{errors::ServiceError, logging::log_file_path};
 use crate::ARGS;
@@ -208,87 +206,6 @@ pub fn public_path() -> PathBuf {
     PathBuf::from("./public/")
 }
 
-pub async fn run_args() -> Result<(), i32> {
-    let mut args = ARGS.clone();
-
-    if args.ask {
-        let mut user = String::new();
-        print!("Username: ");
-        stdout().flush().unwrap();
-
-        stdin()
-            .read_line(&mut user)
-            .expect("Did not enter a correct name?");
-        if let Some('\n') = user.chars().next_back() {
-            user.pop();
-        }
-        if let Some('\r') = user.chars().next_back() {
-            user.pop();
-        }
-
-        args.username = Some(user);
-
-        print!("Password: ");
-        stdout().flush().unwrap();
-        let password = read_password();
-
-        args.password = password.ok();
-
-        let mut mail = String::new();
-        print!("Mail: ");
-        stdout().flush().unwrap();
-
-        stdin()
-            .read_line(&mut mail)
-            .expect("Did not enter a correct name?");
-        if let Some('\n') = mail.chars().next_back() {
-            mail.pop();
-        }
-        if let Some('\r') = mail.chars().next_back() {
-            mail.pop();
-        }
-
-        args.mail = Some(mail);
-    }
-
-    if let Some(username) = args.username {
-        if args.mail.is_none() || args.password.is_none() {
-            error!("Mail/password missing!");
-            return Err(1);
-        }
-
-        let user = User {
-            id: 0,
-            mail: Some(args.mail.unwrap()),
-            username: username.clone(),
-            password: args.password.unwrap(),
-            role_id: Some(1),
-            channel_id: Some(1),
-            token: None,
-        };
-
-        match db_pool().await {
-            Ok(conn) => {
-                if let Err(e) = insert_user(&conn, user).await {
-                    error!("{e}");
-                    return Err(1);
-                };
-            }
-
-            Err(e) => {
-                error!("{e}");
-                return Err(1);
-            }
-        };
-
-        info!("Create admin user \"{username}\" done...");
-
-        return Err(0);
-    }
-
-    Ok(())
-}
-
 pub async fn read_log_file(channel_id: &i32, date: &str) -> Result<String, ServiceError> {
     let mut date_str = "".to_string();
 
@@ -378,7 +295,7 @@ pub fn free_tcp_socket(exclude_socket: String) -> Option<String> {
     None
 }
 
-pub fn round_to_nearest_ten(num: u64) -> u64 {
+pub fn round_to_nearest_ten(num: i64) -> i64 {
     if num % 10 >= 5 {
         ((num / 10) + 1) * 10
     } else {
