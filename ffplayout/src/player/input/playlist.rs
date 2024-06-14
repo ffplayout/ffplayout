@@ -150,7 +150,7 @@ impl CurrentProgram {
         }
 
         trace!(
-            "delta: {delta} | total_delta: {total_delta}, index: {node_index} \nnext_start: {next_start} | end_sec: {} | source {}",
+            "delta: {delta} | total_delta: {total_delta}, index: {node_index} \n        next_start: {next_start} | end_sec: {} | source {}",
             self.end_sec,
             self.current_node.source
         );
@@ -501,8 +501,14 @@ fn timed_source(
     let mut new_node = node.clone();
     new_node.process = Some(false);
 
-    trace!("Node begin: {}", node.begin.unwrap());
-    trace!("timed source is last: {last}");
+    trace!(
+        "Node - begin: {} | source: {}",
+        node.begin.unwrap(),
+        node.source
+    );
+    trace!(
+        "timed source is last: {last} | current_date: {current_date} | last_date: {last_date:?} | time_shift: {time_shift}"
+    );
 
     if config.playlist.length.contains(':') {
         if Some(current_date) == last_date && time_shift != 0.0 {

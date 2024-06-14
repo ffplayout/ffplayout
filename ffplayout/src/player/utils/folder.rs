@@ -28,6 +28,11 @@ impl FolderSource {
         let mut media_list = vec![];
         let mut index: usize = 0;
 
+        debug!(
+            "generate: {:?}, paths: {:?}",
+            config.general.generate, config.storage.paths
+        );
+
         if config.general.generate.is_some() && !config.storage.paths.is_empty() {
             for path in &config.storage.paths {
                 path_list.push(path)

@@ -200,7 +200,7 @@ pub fn generate_from_template(
 
 /// Generate playlists
 pub fn playlist_generator(manager: &ChannelManager) -> Result<Vec<JsonPlaylist>, Error> {
-    let config = manager.config.lock().unwrap();
+    let config = manager.config.lock().unwrap().clone();
     let channel_name = manager.channel.lock().unwrap().name.clone();
 
     let total_length = match config.playlist.length_sec {

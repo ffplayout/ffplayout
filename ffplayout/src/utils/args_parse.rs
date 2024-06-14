@@ -17,7 +17,7 @@ use crate::ARGS;
 
 #[derive(Parser, Debug, Clone)]
 #[clap(version,
-    about = "REST API for ffplayout",
+    about = "ffplayout - 24/7 broadcasting solution",
     long_about = None)]
 pub struct Args {
     #[clap(

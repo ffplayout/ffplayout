@@ -76,6 +76,7 @@ impl ChannelManager {
             is_alive: Arc::new(AtomicBool::new(false)),
             channel: Arc::new(Mutex::new(channel)),
             config: Arc::new(Mutex::new(config)),
+            list_init: Arc::new(AtomicBool::new(true)),
             current_media: Arc::new(Mutex::new(None)),
             current_list: Arc::new(Mutex::new(vec![Media::new(0, "", false)])),
             filler_list: Arc::new(Mutex::new(vec![])),

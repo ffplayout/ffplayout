@@ -233,19 +233,38 @@ impl MailQueue {
 }
 
 fn console_formatter(w: &mut dyn Write, _now: &mut DeferredNow, record: &Record) -> io::Result<()> {
-    let level = match record.level() {
-        Level::Debug => "<bright-blue>[DEBUG]</>",
-        Level::Error => "<bright-red>[ERROR]</>",
-        Level::Info => "<bright-green>[ INFO]</>",
-        Level::Trace => "<bright-yellow>[TRACE]</>",
-        Level::Warn => "<yellow>[ WARN]</>",
-    };
-
-    write!(
-        w,
-        "{}",
-        colorize_string(format!("{level} {}", record.args()))
-    )
+    match record.level() {
+        Level::Debug => write!(
+            w,
+            "{}",
+            colorize_string(format!("<bright-blue>[DEBUG]</> {}", record.args()))
+        ),
+        Level::Error => write!(
+            w,
+            "{}",
+            colorize_string(format!("<bright-red>[ERROR]</> {}", record.args()))
+        ),
+        Level::Info => write!(
+            w,
+            "{}",
+            colorize_string(format!("<bright-green>[ INFO]</> {}", record.args()))
+        ),
+        Level::Trace => write!(
+            w,
+            "{}",
+            colorize_string(format!(
+                "<bright-yellow>[TRACE]</> {}{} {}",
+                record.file().unwrap_or_default(),
+                record.line().unwrap_or_default(),
+                record.args()
+            ))
+        ),
+        Level::Warn => write!(
+            w,
+            "{}",
+            colorize_string(format!("<yellow>[ WARN]</> {}", record.args()))
+        ),
+    }
 }
 
 fn file_formatter(
@@ -411,14 +430,22 @@ pub fn init_logging(mail_queues: Arc<Mutex<Vec<Arc<Mutex<MailQueue>>>>>) -> io::
     let mut builder = LogSpecification::builder();
     builder
         .default(log_level)
+        .module("actix", LevelFilter::Error)
         .module("actix_files", LevelFilter::Error)
+        .module("actix_web", LevelFilter::Error)
+        .module("actix_web_service", LevelFilter::Error)
         .module("hyper", LevelFilter::Error)
+        .module("flexi_logger", LevelFilter::Error)
         .module("libc", LevelFilter::Error)
+        .module("log", LevelFilter::Error)
+        .module("mio", LevelFilter::Error)
         .module("neli", LevelFilter::Error)
         .module("reqwest", LevelFilter::Error)
+        .module("rpc", LevelFilter::Error)
         .module("rustls", LevelFilter::Error)
         .module("serial_test", LevelFilter::Error)
-        .module("sqlx", LevelFilter::Error);
+        .module("sqlx", LevelFilter::Error)
+        .module("tokio", LevelFilter::Error);
 
     Logger::with(builder.build())
         .format(console_formatter)

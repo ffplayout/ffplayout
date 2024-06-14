@@ -176,6 +176,7 @@ pub struct Global {
     pub playlist_path: PathBuf,
     pub storage_path: PathBuf,
     pub logging_path: PathBuf,
+    pub shared_storage: bool,
 }
 
 impl Global {
@@ -185,6 +186,7 @@ impl Global {
             playlist_path: PathBuf::from(config.playlist_path.clone()),
             storage_path: PathBuf::from(config.storage_path.clone()),
             logging_path: PathBuf::from(config.logging_path.clone()),
+            shared_storage: config.shared_storage,
         }
     }
 }
@@ -551,7 +553,7 @@ impl PlayoutConfig {
             .await
             .expect("Can't read advanced config");
 
-        let global = Global::new(&global);
+        let mut global = Global::new(&global);
         let advanced = AdvancedConfig::new(adv_config);
         let general = General::new(&config);
         let mail = Mail::new(&config);
@@ -563,6 +565,10 @@ impl PlayoutConfig {
         let mut text = Text::new(&config);
         let task = Task::new(&config);
         let mut output = Output::new(&config);
+
+        if !global.shared_storage {
+            global.storage_path = global.storage_path.join(channel.to_string());
+        }
 
         let (filler_path, _, _) = norm_abs_path(&global.storage_path, &config.storage_filler)
             .expect("Can't get filler path");

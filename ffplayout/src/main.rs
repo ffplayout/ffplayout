@@ -255,7 +255,7 @@ async fn main() -> std::io::Result<()> {
 
         Ok(())
     } else {
-        error!("Run ffplayout with listen parameter!");
+        error!("Run ffplayout with parameters! Run ffplayout -h for more information.");
 
         Ok(())
     }
