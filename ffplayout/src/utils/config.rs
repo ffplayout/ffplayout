@@ -695,7 +695,13 @@ impl PlayoutConfig {
     }
 
     pub async fn dump(pool: &Pool<Sqlite>, id: i32) -> Result<(), ServiceError> {
-        let config = Self::new(pool, id).await;
+        let mut config = Self::new(pool, id).await;
+        config.storage.filler = config
+            .storage
+            .filler
+            .strip_prefix(config.global.storage_path.clone())
+            .unwrap_or(&config.storage.filler)
+            .to_owned();
 
         let toml_string = toml_edit::ser::to_string_pretty(&config)?;
         tokio::fs::write(&format!("ffplayout_{id}.toml"), toml_string).await?;
