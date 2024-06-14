@@ -27,6 +27,7 @@ use crate::player::{
 };
 use crate::utils::{
     config::{PlayoutConfig, Template},
+    logging::Target,
     time_to_sec,
 };
 
@@ -140,6 +141,7 @@ pub fn generate_from_template(
     let mut media_list = vec![];
     let mut rng = thread_rng();
     let mut index: usize = 0;
+    let id = config.general.channel_id;
 
     for source in template.sources {
         let mut source_list = vec![];
@@ -147,7 +149,7 @@ pub fn generate_from_template(
             + (source.duration.minute() as f64 * 60.0)
             + source.duration.second() as f64;
 
-        debug!("Generating playlist block with <yellow>{duration:.2}</> seconds length");
+        debug!(target: Target::all(), channel = id; "Generating playlist block with <yellow>{duration:.2}</> seconds length");
 
         for path in source.paths {
             debug!("Search files in <b><magenta>{path:?}</></b>");
@@ -201,6 +203,7 @@ pub fn generate_from_template(
 /// Generate playlists
 pub fn playlist_generator(manager: &ChannelManager) -> Result<Vec<JsonPlaylist>, Error> {
     let config = manager.config.lock().unwrap().clone();
+    let id = config.general.channel_id;
     let channel_name = manager.channel.lock().unwrap().name.clone();
 
     let total_length = match config.playlist.length_sec {
@@ -220,6 +223,7 @@ pub fn playlist_generator(manager: &ChannelManager) -> Result<Vec<JsonPlaylist>,
 
     if !playlist_root.is_dir() {
         error!(
+            target: Target::all(), channel = id;
             "Playlist folder <b><magenta>{:?}</></b> not exists!",
             config.global.playlist_path
         );
@@ -232,7 +236,7 @@ pub fn playlist_generator(manager: &ChannelManager) -> Result<Vec<JsonPlaylist>,
     }
 
     if date_range.contains(&"-".to_string()) && date_range.len() == 3 {
-        date_range = get_date_range(&date_range)
+        date_range = get_date_range(id, &date_range)
     }
 
     // gives an iterator with infinit length
@@ -259,6 +263,7 @@ pub fn playlist_generator(manager: &ChannelManager) -> Result<Vec<JsonPlaylist>,
 
         if playlist_file.is_file() {
             warn!(
+                target: Target::all(), channel = id;
                 "Playlist exists, skip: <b><magenta>{}</></b>",
                 playlist_file.display()
             );
@@ -267,6 +272,7 @@ pub fn playlist_generator(manager: &ChannelManager) -> Result<Vec<JsonPlaylist>,
         }
 
         info!(
+            target: Target::all(), channel = id;
             "Generate playlist: <b><magenta>{}</></b>",
             playlist_file.display()
         );

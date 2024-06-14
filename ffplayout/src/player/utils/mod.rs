@@ -34,6 +34,7 @@ use crate::player::{
 use crate::utils::{
     config::{OutputMode::*, PlayoutConfig, FFMPEG_IGNORE_ERRORS, FFMPEG_UNRECOVERABLE_ERRORS},
     errors::ProcessError,
+    logging::Target,
 };
 pub use json_serializer::{read_json, JsonPlaylist};
 
@@ -776,8 +777,9 @@ pub fn stderr_reader(
     buffer: BufReader<ChildStderr>,
     ignore: Vec<String>,
     suffix: ProcessUnit,
-    channel_mgr: ChannelManager,
+    manager: ChannelManager,
 ) -> Result<(), ProcessError> {
+    let id = manager.channel.lock().unwrap().id;
     for line in buffer.lines() {
         let line = line?;
 
@@ -788,17 +790,17 @@ pub fn stderr_reader(
         }
 
         if line.contains("[info]") {
-            info!(
+            info!(target: Target::file_mail(), channel = id;
                 "<bright black>[{suffix}]</> {}",
                 line.replace("[info] ", "")
             )
         } else if line.contains("[warning]") {
-            warn!(
+            warn!(target: Target::file_mail(), channel = id;
                 "<bright black>[{suffix}]</> {}",
                 line.replace("[warning] ", "")
             )
         } else if line.contains("[error]") || line.contains("[fatal]") {
-            error!(
+            error!(target: Target::file_mail(), channel = id;
                 "<bright black>[{suffix}]</> {}",
                 line.replace("[error] ", "").replace("[fatal] ", "")
             );
@@ -809,7 +811,7 @@ pub fn stderr_reader(
                 || (line.contains("No such file or directory")
                     && !line.contains("failed to delete old segment"))
             {
-                channel_mgr.stop_all();
+                manager.stop_all();
                 exit(1);
             }
         }
@@ -837,6 +839,7 @@ fn is_in_system(name: &str) -> Result<(), String> {
 }
 
 fn ffmpeg_filter_and_libs(config: &mut PlayoutConfig) -> Result<(), String> {
+    let id = config.general.channel_id;
     let ignore_flags = [
         "--enable-gpl",
         "--enable-version3",
@@ -896,7 +899,7 @@ fn ffmpeg_filter_and_libs(config: &mut PlayoutConfig) -> Result<(), String> {
     }
 
     if let Err(e) = ff_proc.wait() {
-        error!("{e}")
+        error!(target: Target::file_mail(), channel = id; "{e}")
     };
 
     Ok(())
@@ -968,7 +971,7 @@ pub fn free_tcp_socket(exclude_socket: String) -> Option<String> {
 }
 
 /// check if tcp port is free
-pub fn test_tcp_port(url: &str) -> bool {
+pub fn test_tcp_port(id: i32, url: &str) -> bool {
     let re = Regex::new(r"^[\w]+\://").unwrap();
     let mut addr = url.to_string();
 
@@ -987,19 +990,19 @@ pub fn test_tcp_port(url: &str) -> bool {
         }
     };
 
-    error!("Address <b><magenta>{url}</></b> already in use!");
+    error!(target: Target::file_mail(), channel = id; "Address <b><magenta>{url}</></b> already in use!");
 
     false
 }
 
 /// Generate a vector with dates, from given range.
-pub fn get_date_range(date_range: &[String]) -> Vec<String> {
+pub fn get_date_range(id: i32, date_range: &[String]) -> Vec<String> {
     let mut range = vec![];
 
     let start = match NaiveDate::parse_from_str(&date_range[0], "%Y-%m-%d") {
         Ok(s) => s,
         Err(_) => {
-            error!("date format error in: <yellow>{:?}</>", date_range[0]);
+            error!(target: Target::file_mail(), channel = id; "date format error in: <yellow>{:?}</>", date_range[0]);
             exit(1);
         }
     };
@@ -1007,7 +1010,7 @@ pub fn get_date_range(date_range: &[String]) -> Vec<String> {
     let end = match NaiveDate::parse_from_str(&date_range[2], "%Y-%m-%d") {
         Ok(e) => e,
         Err(_) => {
-            error!("date format error in: <yellow>{:?}</>", date_range[2]);
+            error!(target: Target::file_mail(), channel = id; "date format error in: <yellow>{:?}</>", date_range[2]);
             exit(1);
         }
     };

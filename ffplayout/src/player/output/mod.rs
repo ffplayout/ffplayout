@@ -21,7 +21,7 @@ use crate::player::{
     input::{ingest_server, source_generator},
     utils::{sec_to_time, stderr_reader},
 };
-use crate::utils::{config::OutputMode::*, errors::ProcessError, task_runner};
+use crate::utils::{config::OutputMode::*, errors::ProcessError, logging::Target, task_runner};
 use crate::vec_strings;
 
 /// Player
@@ -35,6 +35,7 @@ use crate::vec_strings;
 /// When ingest stops, it switch back to playlist/folder mode.
 pub fn player(manager: ChannelManager) -> Result<(), ProcessError> {
     let config = manager.config.lock()?.clone();
+    let id = config.general.channel_id;
     let config_clone = config.clone();
     let ff_log_format = format!("level+{}", config.logging.ffmpeg_level.to_lowercase());
     let ignore_enc = config.logging.ignore_lines.clone();
@@ -85,7 +86,7 @@ pub fn player(manager: ChannelManager) -> Result<(), ProcessError> {
         let ignore_dec = config.logging.ignore_lines.clone();
 
         if is_terminated.load(Ordering::SeqCst) {
-            debug!("Playout is terminated, break out from source loop");
+            debug!(target: Target::file_mail(), channel = id; "Playout is terminated, break out from source loop");
             break;
         }
 
@@ -113,7 +114,7 @@ pub fn player(manager: ChannelManager) -> Result<(), ProcessError> {
             String::new()
         };
 
-        info!(
+        info!(target: Target::file_mail(), channel = id;
             "Play for <yellow>{}</>{c_index}: <b><magenta>{}  {}</></b>",
             sec_to_time(node.out - node.seek),
             node.source,
@@ -126,7 +127,7 @@ pub fn player(manager: ChannelManager) -> Result<(), ProcessError> {
 
                 thread::spawn(move || task_runner::run(channel_mgr_3));
             } else {
-                error!(
+                error!(target: Target::file_mail(), channel = id;
                     "<bright-blue>{:?}</> executable not exists!",
                     config.task.path
                 );
@@ -150,7 +151,7 @@ pub fn player(manager: ChannelManager) -> Result<(), ProcessError> {
             dec_cmd.append(&mut cmd);
         }
 
-        debug!(
+        debug!(target: Target::file_mail(), channel = id;
             "Decoder CMD: <bright-blue>\"ffmpeg {}\"</>",
             dec_cmd.join(" ")
         );
@@ -164,7 +165,7 @@ pub fn player(manager: ChannelManager) -> Result<(), ProcessError> {
         {
             Ok(proc) => proc,
             Err(e) => {
-                error!("couldn't spawn decoder process: {e}");
+                error!(target: Target::file_mail(), channel = id; "couldn't spawn decoder process: {e}");
                 panic!("couldn't spawn decoder process: {e}")
             }
         };
@@ -182,10 +183,10 @@ pub fn player(manager: ChannelManager) -> Result<(), ProcessError> {
             // when server is running, read from it
             if ingest_is_running.load(Ordering::SeqCst) {
                 if !live_on {
-                    info!("Switch from {} to live ingest", config.processing.mode);
+                    info!(target: Target::file_mail(), channel = id; "Switch from {} to live ingest", config.processing.mode);
 
                     if let Err(e) = manager.stop(Decoder) {
-                        error!("{e}")
+                        error!(target: Target::file_mail(), channel = id; "{e}")
                     }
 
                     live_on = true;
@@ -194,7 +195,7 @@ pub fn player(manager: ChannelManager) -> Result<(), ProcessError> {
 
                 for rx in ingest_receiver.as_ref().unwrap().try_iter() {
                     if let Err(e) = enc_writer.write(&rx.1[..rx.0]) {
-                        error!("Error from Ingest: {:?}", e);
+                        error!(target: Target::file_mail(), channel = id; "Error from Ingest: {:?}", e);
 
                         break 'source_iter;
                     };
@@ -202,7 +203,7 @@ pub fn player(manager: ChannelManager) -> Result<(), ProcessError> {
             // read from decoder instance
             } else {
                 if live_on {
-                    info!("Switch from live ingest to {}", config.processing.mode);
+                    info!(target: Target::file_mail(), channel = id; "Switch from live ingest to {}", config.processing.mode);
 
                     live_on = false;
                     break;
@@ -211,7 +212,7 @@ pub fn player(manager: ChannelManager) -> Result<(), ProcessError> {
                 let dec_bytes_len = match dec_reader.read(&mut buffer[..]) {
                     Ok(length) => length,
                     Err(e) => {
-                        error!("Reading error from decoder: {e:?}");
+                        error!(target: Target::file_mail(), channel = id; "Reading error from decoder: {e:?}");
 
                         break 'source_iter;
                     }
@@ -219,7 +220,7 @@ pub fn player(manager: ChannelManager) -> Result<(), ProcessError> {
 
                 if dec_bytes_len > 0 {
                     if let Err(e) = enc_writer.write(&buffer[..dec_bytes_len]) {
-                        error!("Encoder write error: {}", e.kind());
+                        error!(target: Target::file_mail(), channel = id; "Encoder write error: {}", e.kind());
 
                         break 'source_iter;
                     };
@@ -230,11 +231,11 @@ pub fn player(manager: ChannelManager) -> Result<(), ProcessError> {
         }
 
         if let Err(e) = manager.wait(Decoder) {
-            error!("{e}")
+            error!(target: Target::file_mail(), channel = id; "{e}")
         }
 
         if let Err(e) = error_decoder_thread.join() {
-            error!("{e:?}");
+            error!(target: Target::file_mail(), channel = id; "{e:?}");
         };
     }
 
@@ -245,7 +246,7 @@ pub fn player(manager: ChannelManager) -> Result<(), ProcessError> {
     manager.stop_all();
 
     if let Err(e) = error_encoder_thread.join() {
-        error!("{e:?}");
+        error!(target: Target::file_mail(), channel = id; "{e:?}");
     };
 
     Ok(())

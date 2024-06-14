@@ -6,7 +6,7 @@ use crate::player::{
     controller::ProcessUnit::*,
     utils::{prepare_output_cmd, Media},
 };
-use crate::utils::config::PlayoutConfig;
+use crate::utils::{config::PlayoutConfig, logging::Target};
 use crate::vec_strings;
 
 /// Desktop Output
@@ -14,6 +14,7 @@ use crate::vec_strings;
 /// Instead of streaming, we run a ffplay instance and play on desktop.
 pub fn output(config: &PlayoutConfig, log_format: &str) -> process::Child {
     let mut media = Media::new(0, "", false);
+    let id = config.general.channel_id;
     media.unit = Encoder;
     media.add_filter(config, &None);
 
@@ -27,7 +28,7 @@ pub fn output(config: &PlayoutConfig, log_format: &str) -> process::Child {
 
     let enc_cmd = prepare_output_cmd(config, enc_prefix, &media.filter);
 
-    debug!(
+    debug!(target: Target::file_mail(), channel = id;
         "Encoder CMD: <bright-blue>\"ffmpeg {}\"</>",
         enc_cmd.join(" ")
     );
@@ -39,7 +40,7 @@ pub fn output(config: &PlayoutConfig, log_format: &str) -> process::Child {
         .spawn()
     {
         Err(e) => {
-            error!("couldn't spawn encoder process: {e}");
+            error!(target: Target::file_mail(), channel = id; "couldn't spawn encoder process: {e}");
             panic!("couldn't spawn encoder process: {e}")
         }
         Ok(proc) => proc,

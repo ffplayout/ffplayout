@@ -14,7 +14,10 @@ use crate::player::{
     controller::ProcessUnit::*,
     utils::{custom_format, fps_calc, is_close, Media},
 };
-use crate::utils::config::{OutputMode::*, PlayoutConfig};
+use crate::utils::{
+    config::{OutputMode::*, PlayoutConfig},
+    logging::Target,
+};
 use crate::vec_strings;
 
 #[derive(Clone, Debug, Copy, Eq, PartialEq)]
@@ -637,12 +640,12 @@ pub fn filter_chains(
     }
 
     let (proc_vf, proc_af) = if node.unit == Ingest {
-        custom::filter_node(&config.ingest.custom_filter)
+        custom::filter_node(config.general.channel_id, &config.ingest.custom_filter)
     } else {
-        custom::filter_node(&config.processing.custom_filter)
+        custom::filter_node(config.general.channel_id, &config.processing.custom_filter)
     };
 
-    let (list_vf, list_af) = custom::filter_node(&node.custom_filter);
+    let (list_vf, list_af) = custom::filter_node(config.general.channel_id, &node.custom_filter);
 
     if !config.processing.copy_video {
         custom(&proc_vf, &mut filters, 0, Video);
@@ -671,7 +674,7 @@ pub fn filter_chains(
                 extend_audio(node, &mut filters, i, config);
             } else if node.unit == Decoder {
                 if !node.source.contains("color=c=") {
-                    warn!(
+                    warn!(target: Target::file_mail(), channel = config.general.channel_id;
                         "Missing audio track (id {i}) from <b><magenta>{}</></b>",
                         node.source
                     );
@@ -691,7 +694,7 @@ pub fn filter_chains(
             custom(&list_af, &mut filters, i, Audio);
         }
     } else if config.processing.audio_track_index > -1 {
-        error!("Setting 'audio_track_index' other than '-1' is not allowed in audio copy mode!")
+        error!(target: Target::file_mail(), channel = config.general.channel_id; "Setting 'audio_track_index' other than '-1' is not allowed in audio copy mode!")
     }
 
     if config.output.mode == HLS {

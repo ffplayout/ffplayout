@@ -10,7 +10,7 @@ use log::*;
 
 use crate::utils::{
     config::{PlayoutConfig, FFMPEG_IGNORE_ERRORS, FFMPEG_UNRECOVERABLE_ERRORS},
-    logging::log_line,
+    logging::{log_line, Target},
 };
 use crate::vec_strings;
 use crate::{
@@ -22,6 +22,7 @@ use crate::{
 };
 
 fn server_monitor(
+    id: i32,
     level: &str,
     ignore: Vec<String>,
     buffer: BufReader<ChildStderr>,
@@ -38,7 +39,7 @@ fn server_monitor(
 
         if line.contains("rtmp") && line.contains("Unexpected stream") && !valid_stream(&line) {
             if let Err(e) = channel_mgr.stop(Ingest) {
-                error!("{e}");
+                error!(target: Target::file_mail(), channel = id; "{e}");
             };
         }
 
@@ -61,6 +62,7 @@ pub fn ingest_server(
     ingest_sender: Sender<(usize, [u8; 65088])>,
     channel_mgr: ChannelManager,
 ) -> Result<(), ProcessError> {
+    let id = config.general.channel_id;
     let mut buffer: [u8; 65088] = [0; 65088];
     let mut server_cmd = vec_strings!["-hide_banner", "-nostats", "-v", "level+info"];
     let stream_input = config.ingest.input_cmd.clone().unwrap();
@@ -88,15 +90,15 @@ pub fn ingest_server(
     let mut is_running;
 
     if let Some(url) = stream_input.iter().find(|s| s.contains("://")) {
-        if !test_tcp_port(url) {
+        if !test_tcp_port(id, url) {
             channel_mgr.stop_all();
             exit(1);
         }
 
-        info!("Start ingest server, listening on: <b><magenta>{url}</></b>",);
+        info!(target: Target::file_mail(), channel = id; "Start ingest server, listening on: <b><magenta>{url}</></b>",);
     };
 
-    debug!(
+    debug!(target: Target::file_mail(), channel = id;
         "Server CMD: <bright-blue>\"ffmpeg {}\"</>",
         server_cmd.join(" ")
     );
@@ -112,7 +114,7 @@ pub fn ingest_server(
             .spawn()
         {
             Err(e) => {
-                error!("couldn't spawn ingest server: {e}");
+                error!(target: Target::file_mail(), channel = id; "couldn't spawn ingest server: {e}");
                 panic!("couldn't spawn ingest server: {e}")
             }
             Ok(proc) => proc,
@@ -120,7 +122,7 @@ pub fn ingest_server(
         let mut ingest_reader = BufReader::new(server_proc.stdout.take().unwrap());
         let server_err = BufReader::new(server_proc.stderr.take().unwrap());
         let error_reader_thread =
-            thread::spawn(move || server_monitor(&level, ignore, server_err, proc_ctl));
+            thread::spawn(move || server_monitor(id, &level, ignore, server_err, proc_ctl));
 
         *channel_mgr.ingest.lock().unwrap() = Some(server_proc);
         is_running = false;
@@ -129,7 +131,7 @@ pub fn ingest_server(
             let bytes_len = match ingest_reader.read(&mut buffer[..]) {
                 Ok(length) => length,
                 Err(e) => {
-                    debug!("Ingest server read {e:?}");
+                    debug!(target: Target::file_mail(), channel = id; "Ingest server read {e:?}");
                     break;
                 }
             };
@@ -141,7 +143,7 @@ pub fn ingest_server(
 
             if bytes_len > 0 {
                 if let Err(e) = ingest_sender.send((bytes_len, buffer)) {
-                    error!("Ingest server write error: {e:?}");
+                    error!(target: Target::file_mail(), channel = id; "Ingest server write error: {e:?}");
 
                     is_terminated.store(true, Ordering::SeqCst);
                     break;
@@ -155,11 +157,11 @@ pub fn ingest_server(
         ingest_is_running.store(false, Ordering::SeqCst);
 
         if let Err(e) = channel_mgr.wait(Ingest) {
-            error!("{e}")
+            error!(target: Target::file_mail(), channel = id; "{e}")
         }
 
         if let Err(e) = error_reader_thread.join() {
-            error!("{e:?}");
+            error!(target: Target::file_mail(), channel = id; "{e:?}");
         };
     }
 

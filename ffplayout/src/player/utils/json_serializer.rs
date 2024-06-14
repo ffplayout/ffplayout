@@ -12,7 +12,7 @@ use crate::player::utils::{
     get_date, is_remote, json_validate::validate_playlist, modified_time, time_from_header, Media,
     PlayoutConfig,
 };
-use crate::utils::config::DUMMY_LEN;
+use crate::utils::{config::DUMMY_LEN, logging::Target};
 
 /// This is our main playlist object, it holds all necessary information for the current day.
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -98,6 +98,7 @@ pub fn read_json(
     seek: bool,
     get_next: bool,
 ) -> JsonPlaylist {
+    let id = config.general.channel_id;
     let config_clone = config.clone();
     let mut playlist_path = config.global.playlist_path.clone();
     let start_sec = config.playlist.start_sec.unwrap();
@@ -130,7 +131,7 @@ pub fn read_json(
                     let mut playlist: JsonPlaylist = match serde_json::from_str(&body) {
                         Ok(p) => p,
                         Err(e) => {
-                            error!("Could't read remote json playlist. {e:?}");
+                            error!(target: Target::file_mail(), channel = id; "Could't read remote json playlist. {e:?}");
                             JsonPlaylist::new(date.clone(), start_sec)
                         }
                     };
@@ -167,7 +168,7 @@ pub fn read_json(
         let mut playlist: JsonPlaylist = match serde_json::from_reader(f) {
             Ok(p) => p,
             Err(e) => {
-                error!("Playlist file not readable! {e}");
+                error!(target: Target::file_mail(), channel = id; "Playlist file not readable! {e}");
                 JsonPlaylist::new(date.clone(), start_sec)
             }
         };
@@ -194,7 +195,7 @@ pub fn read_json(
         return playlist;
     }
 
-    error!("Playlist <b><magenta>{current_file}</></b> not exist!");
+    error!(target: Target::file_mail(), channel = id; "Playlist <b><magenta>{current_file}</></b> not exist!");
 
     JsonPlaylist::new(date, start_sec)
 }

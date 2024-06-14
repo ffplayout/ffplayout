@@ -18,6 +18,7 @@ use crate::player::utils::{
 use crate::utils::{
     config::{OutputMode::Null, PlayoutConfig, FFMPEG_IGNORE_ERRORS, IMAGE_FORMAT},
     errors::ProcessError,
+    logging::Target,
 };
 use crate::vec_strings;
 
@@ -33,6 +34,7 @@ fn check_media(
     begin: f64,
     config: &PlayoutConfig,
 ) -> Result<(), ProcessError> {
+    let id = config.general.channel_id;
     let mut dec_cmd = vec_strings!["-hide_banner", "-nostats", "-v", "level+info"];
     let mut error_list = vec![];
     let mut config = config.clone();
@@ -128,7 +130,7 @@ fn check_media(
     }
 
     if !error_list.is_empty() {
-        error!(
+        error!(target: Target::file_mail(), channel = id;
             "<bright black>[Validator]</> ffmpeg error on position <yellow>{pos}</> - {}: <b><magenta>{}</></b>: {}",
             sec_to_time(begin),
             node.source,
@@ -139,7 +141,7 @@ fn check_media(
     error_list.clear();
 
     if let Err(e) = enc_proc.wait() {
-        error!("Validation process: {e:?}");
+        error!(target: Target::file_mail(), channel = id; "Validation process: {e:?}");
     }
 
     Ok(())
@@ -158,6 +160,7 @@ pub fn validate_playlist(
     mut playlist: JsonPlaylist,
     is_terminated: Arc<AtomicBool>,
 ) {
+    let id = config.general.channel_id;
     let date = playlist.date;
 
     if config.text.add_text && !config.text.text_from_filename {
@@ -170,7 +173,7 @@ pub fn validate_playlist(
 
     length += begin;
 
-    debug!("Validate playlist from: <yellow>{date}</>");
+    debug!(target: Target::file_mail(), channel = id; "Validate playlist from: <yellow>{date}</>");
     let timer = Instant::now();
 
     for (index, item) in playlist.program.iter_mut().enumerate() {
@@ -183,13 +186,13 @@ pub fn validate_playlist(
         if !is_remote(&item.source) {
             if item.audio.is_empty() {
                 if let Err(e) = item.add_probe(false) {
-                    error!(
+                    error!(target: Target::file_mail(), channel = id;
                         "[Validation] Error on position <yellow>{pos:0>3}</> <yellow>{}</>: {e}",
                         sec_to_time(begin)
                     );
                 }
             } else if let Err(e) = item.add_probe(true) {
-                error!(
+                error!(target: Target::file_mail(), channel = id;
                     "[Validation] Error on position <yellow>{pos:0>3}</> <yellow>{}</>: {e}",
                     sec_to_time(begin)
                 );
@@ -198,9 +201,9 @@ pub fn validate_playlist(
 
         if item.probe.is_some() {
             if let Err(e) = check_media(item.clone(), pos, begin, &config) {
-                error!("{e}");
+                error!(target: Target::file_mail(), channel = id; "{e}");
             } else if config.general.validate {
-                debug!(
+                debug!(target: Target::file_mail(), channel = id;
                     "[Validation] Source at <yellow>{}</>, seems fine: <b><magenta>{}</></b>",
                     sec_to_time(begin),
                     item.source
@@ -217,7 +220,7 @@ pub fn validate_playlist(
                         let probe_duration = dur.parse().unwrap_or_default();
 
                         if !is_close(o.duration, probe_duration, 1.2) {
-                            error!(
+                            error!(target: Target::file_mail(), channel = id;
                                 "[Validation] File duration (at: <yellow>{}</>) differs from playlist value. File duration: <yellow>{}</>, playlist value: <yellow>{}</>, source <b><magenta>{}</></b>",
                                 sec_to_time(o.begin.unwrap_or_default()), sec_to_time(probe_duration), sec_to_time(o.duration), o.source
                             );
@@ -238,20 +241,20 @@ pub fn validate_playlist(
     }
 
     if !config.playlist.infinit && length > begin + 1.2 {
-        error!(
+        error!(target: Target::file_mail(), channel = id;
             "[Validation] Playlist from <yellow>{date}</> not long enough, <yellow>{}</> needed!",
             sec_to_time(length - begin),
         );
     }
 
     if config.general.validate {
-        info!(
+        info!(target: Target::file_mail(), channel = id;
             "[Validation] Playlist length: <yellow>{}</>",
             sec_to_time(begin - config.playlist.start_sec.unwrap())
         );
     }
 
-    debug!(
+    debug!(target: Target::file_mail(), channel = id;
         "Validation done, in <yellow>{:.3?}</>, playlist length: <yellow>{}</> ...",
         timer.elapsed(),
         sec_to_time(begin - config.playlist.start_sec.unwrap())

@@ -12,6 +12,7 @@ use crate::player::{
     controller::ChannelManager,
     utils::{include_file_extension, time_in_seconds, Media, PlayoutConfig},
 };
+use crate::utils::logging::Target;
 
 /// Folder Sources
 ///
@@ -24,11 +25,12 @@ pub struct FolderSource {
 
 impl FolderSource {
     pub fn new(config: &PlayoutConfig, manager: ChannelManager) -> Self {
+        let id = config.general.channel_id;
         let mut path_list = vec![];
         let mut media_list = vec![];
         let mut index: usize = 0;
 
-        debug!(
+        debug!(target: Target::file_mail(), channel = id;
             "generate: {:?}, paths: {:?}",
             config.general.generate, config.storage.paths
         );
@@ -43,7 +45,7 @@ impl FolderSource {
 
         for path in &path_list {
             if !path.is_dir() {
-                error!("Path not exists: <b><magenta>{path:?}</></b>");
+                error!(target: Target::file_mail(), channel = id; "Path not exists: <b><magenta>{path:?}</></b>");
             }
 
             for entry in WalkDir::new(path)
@@ -58,14 +60,14 @@ impl FolderSource {
         }
 
         if media_list.is_empty() {
-            error!(
+            error!(target: Target::file_mail(), channel = id;
                 "no playable files found under: <b><magenta>{:?}</></b>",
                 path_list
             );
         }
 
         if config.storage.shuffle {
-            info!("Shuffle files");
+            info!(target: Target::file_mail(), channel = id; "Shuffle files");
             let mut rng = thread_rng();
             media_list.shuffle(&mut rng);
         } else {
@@ -123,6 +125,7 @@ impl Iterator for FolderSource {
 
     fn next(&mut self) -> Option<Self::Item> {
         let config = self.manager.config.lock().unwrap().clone();
+        let id = config.general.id;
 
         if self.manager.current_index.load(Ordering::SeqCst)
             < self.manager.current_list.lock().unwrap().len()
@@ -140,13 +143,13 @@ impl Iterator for FolderSource {
         } else {
             if config.storage.shuffle {
                 if config.general.generate.is_none() {
-                    info!("Shuffle files");
+                    info!(target: Target::file_mail(), channel = id; "Shuffle files");
                 }
 
                 self.shuffle();
             } else {
                 if config.general.generate.is_none() {
-                    info!("Sort files");
+                    info!(target: Target::file_mail(), channel = id; "Sort files");
                 }
 
                 self.sort();
@@ -169,6 +172,7 @@ pub fn fill_filler_list(
     config: &PlayoutConfig,
     fillers: Option<Arc<Mutex<Vec<Media>>>>,
 ) -> Vec<Media> {
+    let id = config.general.channel_id;
     let mut filler_list = vec![];
     let filler_path = &config.storage.filler;
 
@@ -184,7 +188,7 @@ pub fn fill_filler_list(
 
             if fillers.is_none() {
                 if let Err(e) = media.add_probe(false) {
-                    error!("{e:?}");
+                    error!(target: Target::file_mail(), channel = id; "{e:?}");
                 };
             }
 
@@ -211,7 +215,7 @@ pub fn fill_filler_list(
 
         if fillers.is_none() {
             if let Err(e) = media.add_probe(false) {
-                error!("{e:?}");
+                error!(target: Target::file_mail(), channel = id; "{e:?}");
             };
         }
 

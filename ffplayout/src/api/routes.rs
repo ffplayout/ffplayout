@@ -1242,6 +1242,7 @@ async fn get_program(
 ) -> Result<impl Responder, ServiceError> {
     let manager = controllers.lock().unwrap().get(*id).unwrap();
     let config = manager.config.lock().unwrap().clone();
+    let id = config.general.channel_id;
     let start_sec = config.playlist.start_sec.unwrap();
     let mut days = 0;
     let mut program = vec![];
@@ -1259,11 +1260,14 @@ async fn get_program(
         days = 1;
     }
 
-    let date_range = get_date_range(&vec_strings![
-        (after - TimeDelta::try_days(days).unwrap_or_default()).format("%Y-%m-%d"),
-        "-",
-        before.format("%Y-%m-%d")
-    ]);
+    let date_range = get_date_range(
+        id,
+        &vec_strings![
+            (after - TimeDelta::try_days(days).unwrap_or_default()).format("%Y-%m-%d"),
+            "-",
+            before.format("%Y-%m-%d")
+        ],
+    );
 
     for date in date_range {
         let mut naive = NaiveDateTime::parse_from_str(

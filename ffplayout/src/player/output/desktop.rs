@@ -3,7 +3,7 @@ use std::process::{self, Command, Stdio};
 use log::*;
 
 use crate::player::filter::v_drawtext;
-use crate::utils::config::PlayoutConfig;
+use crate::utils::{config::PlayoutConfig, logging::Target};
 use crate::vec_strings;
 
 /// Desktop Output
@@ -45,13 +45,13 @@ pub fn output(config: &PlayoutConfig, log_format: &str) -> process::Child {
         }) {
             enc_cmd.append(&mut cmd);
         } else {
-            warn!("ffplay doesn't support given output parameters, they will be skipped!");
+            warn!(target: Target::file_mail(), channel = config.general.channel_id; "ffplay doesn't support given output parameters, they will be skipped!");
         }
     }
 
     if config.text.add_text && !config.text.text_from_filename && !config.processing.audio_only {
         if let Some(socket) = config.text.zmq_stream_socket.clone() {
-            debug!(
+            debug!(target: Target::file_mail(), channel = config.general.channel_id;
                 "Using drawtext filter, listening on address: <yellow>{}</>",
                 socket
             );
@@ -64,7 +64,7 @@ pub fn output(config: &PlayoutConfig, log_format: &str) -> process::Child {
 
     enc_cmd.append(&mut enc_filter);
 
-    debug!(
+    debug!(target: Target::file_mail(), channel = config.general.channel_id;
         "Encoder CMD: <bright-blue>\"ffplay {}\"</>",
         enc_cmd.join(" ")
     );
@@ -76,7 +76,7 @@ pub fn output(config: &PlayoutConfig, log_format: &str) -> process::Child {
         .spawn()
     {
         Err(e) => {
-            error!("couldn't spawn encoder process: {e}");
+            error!(target: Target::file_mail(), channel = config.general.channel_id; "couldn't spawn encoder process: {e}");
             panic!("couldn't spawn encoder process: {e}")
         }
         Ok(proc) => proc,

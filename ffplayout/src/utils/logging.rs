@@ -253,7 +253,7 @@ fn console_formatter(w: &mut dyn Write, _now: &mut DeferredNow, record: &Record)
             w,
             "{}",
             colorize_string(format!(
-                "<bright-yellow>[TRACE]</> {}{} {}",
+                "<bright-yellow>[TRACE]</> {}:{} {}",
                 record.file().unwrap_or_default(),
                 record.line().unwrap_or_default(),
                 record.args()
@@ -430,9 +430,9 @@ pub fn init_logging(mail_queues: Arc<Mutex<Vec<Arc<Mutex<MailQueue>>>>>) -> io::
     let mut builder = LogSpecification::builder();
     builder
         .default(log_level)
-        .module("actix", LevelFilter::Error)
-        .module("actix_files", LevelFilter::Error)
-        .module("actix_web", LevelFilter::Error)
+        .module("actix", LevelFilter::Info)
+        .module("actix_files", LevelFilter::Info)
+        .module("actix_web", LevelFilter::Info)
         .module("actix_web_service", LevelFilter::Error)
         .module("hyper", LevelFilter::Error)
         .module("flexi_logger", LevelFilter::Error)

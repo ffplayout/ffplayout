@@ -215,13 +215,9 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
             .read_line(&mut shared_store)
             .expect("Did not enter a correct path?");
 
-        if shared_store.trim().to_lowercase().starts_with('y') {
-            global.shared_storage = true;
-        } else {
-            global.shared_storage = false;
-        }
+        global.shared_storage = shared_store.trim().to_lowercase().starts_with('y');
 
-        if let Err(e) = handles::update_global(&pool, global).await {
+        if let Err(e) = handles::update_global(pool, global).await {
             eprintln!("{e}");
             return Err(1);
         };
@@ -245,7 +241,7 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
             token: None,
         };
 
-        if let Err(e) = insert_user(&pool, user).await {
+        if let Err(e) = insert_user(pool, user).await {
             eprintln!("{e}");
             return Err(1);
         };
@@ -256,7 +252,7 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
     }
 
     if let Some(id) = ARGS.dump_config {
-        match PlayoutConfig::dump(&pool, id).await {
+        match PlayoutConfig::dump(pool, id).await {
             Ok(_) => {
                 println!("Dump config to: ffplayout_{id}.toml");
                 exit(0);
@@ -270,7 +266,7 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
     }
 
     if let Some(import) = &ARGS.import_config {
-        match PlayoutConfig::import(&pool, import.clone()).await {
+        match PlayoutConfig::import(pool, import.clone()).await {
             Ok(_) => {
                 println!("Import config done...");
                 exit(0);

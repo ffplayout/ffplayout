@@ -1,8 +1,10 @@
 use log::*;
 use regex::Regex;
 
+use crate::utils::logging::Target;
+
 /// Apply custom filters
-pub fn filter_node(filter: &str) -> (String, String) {
+pub fn filter_node(id: i32, filter: &str) -> (String, String) {
     let re = Regex::new(r"^;?(\[[0-9]:[^\[]+\])?|\[[^\[]+\]$").unwrap(); // match start/end link
     let mut video_filter = String::new();
     let mut audio_filter = String::new();
@@ -32,7 +34,7 @@ pub fn filter_node(filter: &str) -> (String, String) {
     } else if filter.contains("[c_a_out]") {
         audio_filter = re.replace_all(filter, "").to_string();
     } else if !filter.is_empty() && filter != "~" {
-        error!("Custom filter is not well formatted, use correct out link names (\"[c_v_out]\" and/or \"[c_a_out]\"). Filter skipped!")
+        error!(target: Target::file_mail(), channel = id; "Custom filter is not well formatted, use correct out link names (\"[c_v_out]\" and/or \"[c_a_out]\"). Filter skipped!")
     }
 
     (video_filter, audio_filter)

@@ -14,18 +14,19 @@ use crate::player::{
     controller::ChannelManager,
     utils::{folder::FolderSource, Media},
 };
-use crate::utils::config::ProcessMode::*;
+use crate::utils::{config::ProcessMode::*, logging::Target};
 
 /// Create a source iterator from playlist, or from folder.
 pub fn source_generator(manager: ChannelManager) -> Box<dyn Iterator<Item = Media>> {
     let config = manager.config.lock().unwrap().clone();
+    let id = config.general.channel_id;
     let is_terminated = manager.is_terminated.clone();
     let current_list = manager.current_list.clone();
 
     match config.processing.mode {
         Folder => {
-            info!("Playout in folder mode");
-            debug!(
+            info!(target: Target::file_mail(), channel = id; "Playout in folder mode");
+            debug!(target: Target::file_mail(), channel = id;
                 "Monitor folder: <b><magenta>{:?}</></b>",
                 config.global.storage_path
             );
@@ -40,7 +41,7 @@ pub fn source_generator(manager: ChannelManager) -> Box<dyn Iterator<Item = Medi
             Box::new(folder_source) as Box<dyn Iterator<Item = Media>>
         }
         Playlist => {
-            info!("Playout in playlist mode");
+            info!(target: Target::file_mail(), channel = id; "Playout in playlist mode");
             let program = CurrentProgram::new(manager);
 
             Box::new(program) as Box<dyn Iterator<Item = Media>>

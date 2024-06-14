@@ -18,7 +18,7 @@ use notify::{
 use notify_debouncer_full::new_debouncer;
 
 use crate::player::utils::{include_file_extension, Media};
-use crate::utils::config::PlayoutConfig;
+use crate::utils::{config::PlayoutConfig, logging::Target};
 
 /// Create a watcher, which monitor file changes.
 /// When a change is register, update the current file list.
@@ -28,6 +28,7 @@ pub fn watchman(
     is_terminated: Arc<AtomicBool>,
     sources: Arc<Mutex<Vec<Media>>>,
 ) {
+    let id = config.general.channel_id;
     let path = Path::new(&config.global.storage_path);
 
     if !path.exists() {
@@ -58,7 +59,7 @@ pub fn watchman(
                             let media = Media::new(index, &new_path.to_string_lossy(), false);
 
                             sources.lock().unwrap().push(media);
-                            info!("Create new file: <b><magenta>{new_path:?}</></b>");
+                           info!(target: Target::file_mail(), channel = id; "Create new file: <b><magenta>{new_path:?}</></b>");
                         }
                     }
                     Remove(RemoveKind::File) | Modify(ModifyKind::Name(RenameMode::From)) => {
@@ -69,7 +70,7 @@ pub fn watchman(
                                 .lock()
                                 .unwrap()
                                 .retain(|x| x.source != old_path.to_string_lossy());
-                            info!("Remove file: <b><magenta>{old_path:?}</></b>");
+                           info!(target: Target::file_mail(), channel = id; "Remove file: <b><magenta>{old_path:?}</></b>");
                         }
                     }
                     Modify(ModifyKind::Name(RenameMode::Both)) => {
@@ -83,16 +84,16 @@ pub fn watchman(
                         .position(|x| *x.source == old_path.display().to_string()) {
                             let media = Media::new(index, &new_path.to_string_lossy(), false);
                             media_list[index] = media;
-                            info!("Move file: <b><magenta>{old_path:?}</></b> to <b><magenta>{new_path:?}</></b>");
+                           info!(target: Target::file_mail(), channel = id; "Move file: <b><magenta>{old_path:?}</></b> to <b><magenta>{new_path:?}</></b>");
                         } else if include_file_extension(&config, new_path) {
                             let index = media_list.len();
                             let media = Media::new(index, &new_path.to_string_lossy(), false);
 
                             media_list.push(media);
-                            info!("Create new file: <b><magenta>{new_path:?}</></b>");
+                           info!(target: Target::file_mail(), channel = id; "Create new file: <b><magenta>{new_path:?}</></b>");
                         }
                     }
-                    _ => debug!("Not tracked file event: {event:?}")
+                    _ => debug!(target: Target::file_mail(), channel = id; "Not tracked file event: {event:?}")
                 }),
                 Err(errors) => errors.iter().for_each(|error| error!("{error:?}")),
             }

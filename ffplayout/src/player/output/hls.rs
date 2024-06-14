@@ -38,12 +38,13 @@ use crate::{
             Media,
         },
     },
-    utils::errors::ProcessError,
+    utils::{errors::ProcessError, logging::Target},
 };
 
 /// Ingest Server for HLS
 fn ingest_to_hls_server(manager: ChannelManager) -> Result<(), ProcessError> {
     let config = manager.config.lock().unwrap();
+    let id = config.general.channel_id;
     let playlist_init = manager.list_init.clone();
     let chain = manager.filter_chain.clone();
 
@@ -64,12 +65,12 @@ fn ingest_to_hls_server(manager: ChannelManager) -> Result<(), ProcessError> {
     let mut is_running;
 
     if let Some(url) = stream_input.iter().find(|s| s.contains("://")) {
-        if !test_tcp_port(url) {
+        if !test_tcp_port(id, url) {
             manager.stop_all();
             exit(1);
         }
 
-        info!("Start ingest server, listening on: <b><magenta>{url}</></b>");
+        info!(target: Target::file_mail(), channel = id; "Start ingest server, listening on: <b><magenta>{url}</></b>");
     };
 
     drop(config);
@@ -79,7 +80,7 @@ fn ingest_to_hls_server(manager: ChannelManager) -> Result<(), ProcessError> {
         dummy_media.add_filter(&config, &chain);
         let server_cmd = prepare_output_cmd(&config, server_prefix.clone(), &dummy_media.filter);
 
-        debug!(
+        debug!(target: Target::file_mail(), channel = id;
             "Server CMD: <bright-blue>\"ffmpeg {}\"</>",
             server_cmd.join(" ")
         );
@@ -91,7 +92,7 @@ fn ingest_to_hls_server(manager: ChannelManager) -> Result<(), ProcessError> {
             .spawn()
         {
             Err(e) => {
-                error!("couldn't spawn ingest server: {e}");
+                error!(target: Target::file_mail(), channel = id; "couldn't spawn ingest server: {e}");
                 panic!("couldn't spawn ingest server: {e}");
             }
             Ok(proc) => proc,
@@ -106,7 +107,7 @@ fn ingest_to_hls_server(manager: ChannelManager) -> Result<(), ProcessError> {
 
             if line.contains("rtmp") && line.contains("Unexpected stream") && !valid_stream(&line) {
                 if let Err(e) = proc_ctl.stop(Ingest) {
-                    error!("{e}");
+                    error!(target: Target::file_mail(), channel = id; "{e}");
                 };
             }
 
@@ -115,10 +116,10 @@ fn ingest_to_hls_server(manager: ChannelManager) -> Result<(), ProcessError> {
                 playlist_init.store(true, Ordering::SeqCst);
                 is_running = true;
 
-                info!("Switch from {} to live ingest", config.processing.mode);
+                info!(target: Target::file_mail(), channel = id; "Switch from {} to live ingest", config.processing.mode);
 
                 if let Err(e) = manager.stop(Decoder) {
-                    error!("{e}");
+                    error!(target: Target::file_mail(), channel = id; "{e}");
                 }
             }
 
@@ -126,13 +127,13 @@ fn ingest_to_hls_server(manager: ChannelManager) -> Result<(), ProcessError> {
         }
 
         if ingest_is_running.load(Ordering::SeqCst) {
-            info!("Switch from live ingest to {}", config.processing.mode);
+            info!(target: Target::file_mail(), channel = id; "Switch from live ingest to {}", config.processing.mode);
         }
 
         ingest_is_running.store(false, Ordering::SeqCst);
 
         if let Err(e) = manager.wait(Ingest) {
-            error!("{e}")
+            error!(target: Target::file_mail(), channel = id; "{e}")
         }
 
         if is_terminated.load(Ordering::SeqCst) {
@@ -148,6 +149,7 @@ fn ingest_to_hls_server(manager: ChannelManager) -> Result<(), ProcessError> {
 /// Write with single ffmpeg instance directly to a HLS playlist.
 pub fn write_hls(manager: ChannelManager) -> Result<(), ProcessError> {
     let config = manager.config.lock()?.clone();
+    let id = config.general.channel_id;
     let current_media = manager.current_media.clone();
 
     let ff_log_format = format!("level+{}", config.logging.ffmpeg_level.to_lowercase());
@@ -175,7 +177,7 @@ pub fn write_hls(manager: ChannelManager) -> Result<(), ProcessError> {
             continue;
         }
 
-        info!(
+        info!(target: Target::file_mail(), channel = id;
             "Play for <yellow>{}</>: <b><magenta>{}</></b>",
             sec_to_time(node.out - node.seek),
             node.source
@@ -187,7 +189,7 @@ pub fn write_hls(manager: ChannelManager) -> Result<(), ProcessError> {
 
                 thread::spawn(move || task_runner::run(channel_mgr_3));
             } else {
-                error!(
+                error!(target: Target::file_mail(), channel = id;
                     "<bright-blue>{:?}</> executable not exists!",
                     config.task.path
                 );
@@ -221,7 +223,7 @@ pub fn write_hls(manager: ChannelManager) -> Result<(), ProcessError> {
         enc_prefix.append(&mut cmd);
         let enc_cmd = prepare_output_cmd(&config, enc_prefix, &node.filter);
 
-        debug!(
+        debug!(target: Target::file_mail(), channel = id;
             "HLS writer CMD: <bright-blue>\"ffmpeg {}\"</>",
             enc_cmd.join(" ")
         );
@@ -233,7 +235,7 @@ pub fn write_hls(manager: ChannelManager) -> Result<(), ProcessError> {
         {
             Ok(proc) => proc,
             Err(e) => {
-                error!("couldn't spawn ffmpeg process: {e}");
+                error!(target: Target::file_mail(), channel = id; "couldn't spawn ffmpeg process: {e}");
                 panic!("couldn't spawn ffmpeg process: {e}")
             }
         };
@@ -242,11 +244,11 @@ pub fn write_hls(manager: ChannelManager) -> Result<(), ProcessError> {
         *manager.decoder.lock().unwrap() = Some(dec_proc);
 
         if let Err(e) = stderr_reader(enc_err, ignore, Decoder, manager.clone()) {
-            error!("{e:?}")
+            error!(target: Target::file_mail(), channel = id; "{e:?}")
         };
 
         if let Err(e) = manager.wait(Decoder) {
-            error!("{e}");
+            error!(target: Target::file_mail(), channel = id; "{e}");
         }
 
         while ingest_is_running.load(Ordering::SeqCst) {
