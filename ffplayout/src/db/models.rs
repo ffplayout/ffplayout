@@ -13,11 +13,13 @@ use crate::utils::config::PlayoutConfig;
 
 #[derive(Debug, Deserialize, Serialize, sqlx::FromRow)]
 pub struct GlobalSettings {
+    pub id: i32,
     pub secret: Option<String>,
     pub hls_path: String,
+    pub logging_path: String,
     pub playlist_path: String,
     pub storage_path: String,
-    pub logging_path: String,
+    pub shared_storage: bool,
 }
 
 impl GlobalSettings {
@@ -27,11 +29,13 @@ impl GlobalSettings {
         match global_settings.await {
             Ok(g) => g,
             Err(_) => GlobalSettings {
+                id: 0,
                 secret: None,
                 hls_path: String::new(),
+                logging_path: String::new(),
                 playlist_path: String::new(),
                 storage_path: String::new(),
-                logging_path: String::new(),
+                shared_storage: false,
             },
         }
     }

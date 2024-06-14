@@ -6,7 +6,7 @@ use std::{
     thread,
 };
 
-use simplelog::*;
+use log::*;
 
 use crate::player::utils::{
     get_date, is_remote, json_validate::validate_playlist, modified_time, time_from_header, Media,

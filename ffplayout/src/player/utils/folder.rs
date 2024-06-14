@@ -4,8 +4,8 @@ use std::sync::{
 };
 
 use lexical_sort::natural_lexical_cmp;
+use log::*;
 use rand::{seq::SliceRandom, thread_rng};
-use simplelog::*;
 use walkdir::WalkDir;
 
 use crate::player::{

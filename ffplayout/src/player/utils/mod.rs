@@ -12,12 +12,12 @@ use std::{
 
 use chrono::{prelude::*, TimeDelta};
 use ffprobe::{ffprobe, Stream as FFStream};
+use log::*;
 use rand::prelude::*;
 use regex::Regex;
 use reqwest::header;
 use serde::{de::Deserializer, Deserialize, Serialize};
 use serde_json::{json, Map, Value};
-use simplelog::*;
 
 pub mod folder;
 pub mod import;

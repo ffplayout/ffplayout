@@ -6,7 +6,7 @@ use std::{
 };
 
 use crossbeam_channel::Sender;
-use simplelog::*;
+use log::*;
 
 use crate::utils::{
     config::{PlayoutConfig, FFMPEG_IGNORE_ERRORS, FFMPEG_UNRECOVERABLE_ERRORS},

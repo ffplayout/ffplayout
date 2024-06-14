@@ -6,9 +6,10 @@ CREATE TABLE
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         secret TEXT NOT NULL,
         hls_path TEXT NOT NULL DEFAULT "/usr/share/ffplayout/public",
+        logging_path TEXT NOT NULL DEFAULT "/var/log/ffplayout",
         playlist_path TEXT NOT NULL DEFAULT "/var/lib/ffplayout/playlists",
         storage_path TEXT NOT NULL DEFAULT "/var/lib/ffplayout/tv-media",
-        logging_path TEXT NOT NULL DEFAULT "/var/log/ffplayout",
+        shared_storage INTEGER NOT NULL DEFAULT 1,
         UNIQUE (secret)
     );
 

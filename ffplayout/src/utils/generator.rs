@@ -12,8 +12,8 @@ use std::{
 
 use chrono::Timelike;
 use lexical_sort::{natural_lexical_cmp, StringSort};
+use log::*;
 use rand::{seq::SliceRandom, thread_rng, Rng};
-use simplelog::*;
 use walkdir::WalkDir;
 
 use crate::player::{

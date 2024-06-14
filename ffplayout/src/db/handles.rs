@@ -3,8 +3,8 @@ use argon2::{
     Argon2, PasswordHasher,
 };
 
+use log::*;
 use rand::{distributions::Alphanumeric, Rng};
-use simplelog::*;
 use sqlx::{sqlite::SqliteQueryResult, Pool, Sqlite};
 use tokio::task;
 
@@ -40,9 +40,26 @@ pub async fn db_migrate(conn: &Pool<Sqlite>) -> Result<&'static str, Box<dyn std
 }
 
 pub async fn select_global(conn: &Pool<Sqlite>) -> Result<GlobalSettings, sqlx::Error> {
-    let query = "SELECT secret, hls_path, playlist_path, storage_path, logging_path FROM global WHERE id = 1";
+    let query = "SELECT id, secret, hls_path, logging_path, playlist_path, storage_path, shared_storage FROM global WHERE id = 1";
 
     sqlx::query_as(query).fetch_one(conn).await
+}
+
+pub async fn update_global(
+    conn: &Pool<Sqlite>,
+    global: GlobalSettings,
+) -> Result<SqliteQueryResult, sqlx::Error> {
+    let query = "UPDATE global SET hls_path = $2, playlist_path = $3, storage_path = $4, logging_path = $5, shared_storage = $6 WHERE id = 1";
+
+    sqlx::query(query)
+        .bind(global.id)
+        .bind(global.hls_path)
+        .bind(global.playlist_path)
+        .bind(global.storage_path)
+        .bind(global.logging_path)
+        .bind(global.shared_storage)
+        .execute(conn)
+        .await
 }
 
 pub async fn select_channel(conn: &Pool<Sqlite>, id: &i32) -> Result<Channel, sqlx::Error> {

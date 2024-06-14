@@ -21,12 +21,17 @@ use paris::formatter::colorize_string;
 
 use super::ARGS;
 
+use crate::db::models::GlobalSettings;
 use crate::utils::{config::Mail, errors::ProcessError, round_to_nearest_ten};
 
 #[derive(Debug)]
 pub struct Target;
 
 impl Target {
+    pub fn all() -> &'static str {
+        "{file,mail,_Default}"
+    }
+
     pub fn console() -> &'static str {
         "{console}"
     }
@@ -258,10 +263,12 @@ fn file_formatter(
 }
 
 pub fn log_file_path() -> PathBuf {
+    let config = GlobalSettings::global();
+
     let mut log_path = ARGS
         .log_path
         .clone()
-        .unwrap_or(PathBuf::from("/var/log/ffplayout"));
+        .unwrap_or(PathBuf::from(&config.logging_path));
 
     if !log_path.is_dir() {
         log_path = env::current_dir().unwrap();

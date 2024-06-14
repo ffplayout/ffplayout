@@ -9,13 +9,13 @@ use std::{
     time::Duration,
 };
 
+use log::*;
 use notify::{
     event::{CreateKind, ModifyKind, RemoveKind, RenameMode},
     EventKind::{Create, Modify, Remove},
     RecursiveMode, Watcher,
 };
 use notify_debouncer_full::new_debouncer;
-use simplelog::*;
 
 use crate::player::utils::{include_file_extension, Media};
 use crate::utils::config::PlayoutConfig;

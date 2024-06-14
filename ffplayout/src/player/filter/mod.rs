@@ -4,8 +4,8 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use log::*;
 use regex::Regex;
-use simplelog::*;
 
 mod custom;
 pub mod v_drawtext;

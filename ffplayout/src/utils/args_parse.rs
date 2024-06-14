@@ -5,11 +5,13 @@ use std::{
 };
 
 use clap::Parser;
-use log::*;
 use rpassword::read_password;
 use sqlx::{Pool, Sqlite};
 
-use crate::db::{db_pool, handles::insert_user, models::User};
+use crate::db::{
+    handles::{self, insert_user},
+    models::{GlobalSettings, User},
+};
 use crate::utils::config::PlayoutConfig;
 use crate::ARGS;
 
@@ -62,7 +64,7 @@ pub struct Args {
     #[clap(
         long,
         env,
-        help = "Override logging level: trace, debug, info, warn, error"
+        help = "Override logging level: trace, debug, println, warn, eprintln"
     )]
     pub log_level: Option<String>,
 
@@ -80,6 +82,9 @@ pub struct Args {
 
     #[clap(long, env, help = "Storage root path")]
     pub storage_path: Option<PathBuf>,
+
+    #[clap(long, env, help = "Share storage across channels")]
+    pub shared_storage: bool,
 
     #[clap(short, long, help = "domain name for initialization")]
     pub domain: Option<String>,
@@ -102,7 +107,18 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
         let mut mail = String::new();
         let mut storage = String::new();
         let mut playlist = String::new();
+        let mut logging = String::new();
         let mut hls = String::new();
+        let mut shared_store = String::new();
+        let mut global = GlobalSettings {
+            id: 0,
+            secret: None,
+            hls_path: String::new(),
+            playlist_path: String::new(),
+            storage_path: String::new(),
+            logging_path: String::new(),
+            shared_storage: false,
+        };
 
         print!("Global admin: ");
         stdout().flush().unwrap();
@@ -136,17 +152,86 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
             .expect("Did not enter a correct path?");
 
         if storage.trim().is_empty() {
-            args.storage_path = Some(PathBuf::from("/var/lib/ffplayout/tv-media"));
+            global.storage_path = "/var/lib/ffplayout/tv-media".to_string();
         } else {
-            args.storage_path = Some(PathBuf::from(storage.trim()));
+            global.storage_path = storage
+                .trim()
+                .trim_matches(|c| c == '"' || c == '\'')
+                .to_string();
         }
 
-        println!("{args:?}");
+        print!("Playlist path [/var/lib/ffplayout/playlists]: ");
+        stdout().flush().unwrap();
+
+        stdin()
+            .read_line(&mut playlist)
+            .expect("Did not enter a correct path?");
+
+        if playlist.trim().is_empty() {
+            global.playlist_path = "/var/lib/ffplayout/playlists".to_string();
+        } else {
+            global.playlist_path = playlist
+                .trim()
+                .trim_matches(|c| c == '"' || c == '\'')
+                .to_string();
+        }
+
+        print!("HLS path [/usr/share/ffplayout/public]: ");
+        stdout().flush().unwrap();
+
+        stdin()
+            .read_line(&mut hls)
+            .expect("Did not enter a correct path?");
+
+        if hls.trim().is_empty() {
+            global.hls_path = "/usr/share/ffplayout/public".to_string();
+        } else {
+            global.hls_path = hls
+                .trim()
+                .trim_matches(|c| c == '"' || c == '\'')
+                .to_string();
+        }
+
+        print!("Logging path [/var/log/ffplayout]: ");
+        stdout().flush().unwrap();
+
+        stdin()
+            .read_line(&mut logging)
+            .expect("Did not enter a correct path?");
+
+        if logging.trim().is_empty() {
+            global.logging_path = "/var/log/ffplayout".to_string();
+        } else {
+            global.logging_path = logging
+                .trim()
+                .trim_matches(|c| c == '"' || c == '\'')
+                .to_string();
+        }
+
+        print!("Shared storage [Y/n]: ");
+        stdout().flush().unwrap();
+
+        stdin()
+            .read_line(&mut shared_store)
+            .expect("Did not enter a correct path?");
+
+        if shared_store.trim().to_lowercase().starts_with('y') {
+            global.shared_storage = true;
+        } else {
+            global.shared_storage = false;
+        }
+
+        if let Err(e) = handles::update_global(&pool, global).await {
+            eprintln!("{e}");
+            return Err(1);
+        };
+
+        println!("Set global settings...");
     }
 
     if let Some(username) = args.username {
         if args.mail.is_none() || args.password.is_none() {
-            error!("Mail/password missing!");
+            eprintln!("Mail/password missing!");
             return Err(1);
         }
 
@@ -160,21 +245,12 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
             token: None,
         };
 
-        match db_pool().await {
-            Ok(conn) => {
-                if let Err(e) = insert_user(&conn, user).await {
-                    error!("{e}");
-                    return Err(1);
-                };
-            }
-
-            Err(e) => {
-                error!("{e}");
-                return Err(1);
-            }
+        if let Err(e) = insert_user(&pool, user).await {
+            eprintln!("{e}");
+            return Err(1);
         };
 
-        info!("Create admin user \"{username}\" done...");
+        println!("Create global admin user \"{username}\" done...");
 
         return Err(0);
     }
@@ -182,11 +258,11 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
     if let Some(id) = ARGS.dump_config {
         match PlayoutConfig::dump(&pool, id).await {
             Ok(_) => {
-                info!("Dump config to: ffplayout_{id}.toml");
+                println!("Dump config to: ffplayout_{id}.toml");
                 exit(0);
             }
             Err(e) => {
-                error!("Dump config: {e}");
+                eprintln!("Dump config: {e}");
 
                 exit(1);
             }
@@ -196,11 +272,11 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
     if let Some(import) = &ARGS.import_config {
         match PlayoutConfig::import(&pool, import.clone()).await {
             Ok(_) => {
-                info!("Import config done...");
+                println!("Import config done...");
                 exit(0);
             }
             Err(e) => {
-                error!("{e}");
+                eprintln!("{e}");
 
                 exit(1);
             }

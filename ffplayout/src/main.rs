@@ -79,12 +79,12 @@ async fn main() -> std::io::Result<()> {
         panic!("{e}");
     };
 
-    init_globales(&pool).await;
-    init_logging(mail_queues.clone())?;
-
     if let Err(c) = run_args(&pool).await {
         exit(c);
     }
+
+    init_globales(&pool).await;
+    init_logging(mail_queues.clone())?;
 
     let channel_controllers = Arc::new(Mutex::new(ChannelController::new()));
 
