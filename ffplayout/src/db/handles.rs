@@ -10,7 +10,7 @@ use tokio::task;
 
 use super::models::{AdvancedConfiguration, Configuration};
 use crate::db::models::{Channel, GlobalSettings, Role, TextPreset, User};
-use crate::utils::{config::PlayoutConfig, local_utc_offset};
+use crate::utils::{advanced_config::AdvancedConfig, config::PlayoutConfig, local_utc_offset};
 
 pub async fn db_migrate(conn: &Pool<Sqlite>) -> Result<&'static str, Box<dyn std::error::Error>> {
     match sqlx::migrate!("../migrations").run(conn).await {
@@ -250,6 +250,45 @@ pub async fn insert_advanced_configuration(
     let query = "INSERT INTO advanced_configurations (channel_id) VALUES($1)";
 
     sqlx::query(query).bind(channel_id).execute(conn).await
+}
+
+pub async fn update_advanced_configuration(
+    conn: &Pool<Sqlite>,
+    channel_id: i32,
+    config: AdvancedConfig,
+) -> Result<SqliteQueryResult, sqlx::Error> {
+    let query = "UPDATE advanced_configurations SET decoder_input_param = $2, decoder_output_param = $3, encoder_input_param = $4, ingest_input_param = $5, filter_deinterlace = $6, filter_pad_scale_w = $7, filter_pad_scale_h = $8, filter_pad_video = $9, filter_fps = $10, filter_scale = $11, filter_set_dar = $12, filter_fade_in = $13, filter_fade_out = $14, filter_overlay_logo_scale = $15, filter_overlay_logo_fade_in = $16, filter_overlay_logo_fade_out = $17, filter_overlay_logo = $18, filter_tpad = $19, filter_drawtext_from_file = $20, filter_drawtext_from_zmq = $21, filter_aevalsrc = $22, filter_afade_in = $23, filter_afade_out = $24, filter_apad = $25, filter_volume = $26, filter_split = $27 WHERE channel_id = $1";
+
+    sqlx::query(query)
+        .bind(channel_id)
+        .bind(config.decoder.input_param)
+        .bind(config.decoder.output_param)
+        .bind(config.encoder.input_param)
+        .bind(config.ingest.input_param)
+        .bind(config.filter.deinterlace)
+        .bind(config.filter.pad_scale_w)
+        .bind(config.filter.pad_scale_h)
+        .bind(config.filter.pad_video)
+        .bind(config.filter.fps)
+        .bind(config.filter.scale)
+        .bind(config.filter.set_dar)
+        .bind(config.filter.fade_in)
+        .bind(config.filter.fade_out)
+        .bind(config.filter.overlay_logo_scale)
+        .bind(config.filter.overlay_logo_fade_in)
+        .bind(config.filter.overlay_logo_fade_out)
+        .bind(config.filter.overlay_logo)
+        .bind(config.filter.tpad)
+        .bind(config.filter.drawtext_from_file)
+        .bind(config.filter.drawtext_from_zmq)
+        .bind(config.filter.aevalsrc)
+        .bind(config.filter.afade_in)
+        .bind(config.filter.afade_out)
+        .bind(config.filter.apad)
+        .bind(config.filter.volume)
+        .bind(config.filter.split)
+        .execute(conn)
+        .await
 }
 
 pub async fn select_advanced_configuration(
