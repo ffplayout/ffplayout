@@ -25,4 +25,5 @@ ffplayout.1.gz
 /public/
 tmp/
 assets/playlist_template.json
+advanced_*.toml
 ffplayout_*.toml

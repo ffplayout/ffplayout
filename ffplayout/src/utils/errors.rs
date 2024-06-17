@@ -107,6 +107,12 @@ impl From<toml_edit::ser::Error> for ServiceError {
     }
 }
 
+impl From<toml_edit::TomlError> for ServiceError {
+    fn from(err: toml_edit::TomlError) -> ServiceError {
+        ServiceError::BadRequest(err.to_string())
+    }
+}
+
 impl From<uuid::Error> for ServiceError {
     fn from(err: uuid::Error) -> ServiceError {
         ServiceError::BadRequest(err.to_string())

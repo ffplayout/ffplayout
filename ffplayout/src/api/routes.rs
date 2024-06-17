@@ -25,6 +25,7 @@ use actix_web::{
     patch, post, put, web, HttpRequest, HttpResponse, Responder,
 };
 use actix_web_grants::{authorities::AuthDetails, proc_macro::protect};
+use shlex::split;
 
 use argon2::{
     password_hash::{rand_core::OsRng, PasswordHash, SaltString},
@@ -38,7 +39,6 @@ use serde::{Deserialize, Serialize};
 use sqlx::{Pool, Sqlite};
 use tokio::fs;
 
-use crate::api::auth::{create_jwt, Claims};
 use crate::db::models::Role;
 use crate::utils::{
     channels::{create_channel, delete_channel},
@@ -55,9 +55,13 @@ use crate::utils::{
 };
 use crate::vec_strings;
 use crate::{
+    api::auth::{create_jwt, Claims},
+    utils::advanced_config::AdvancedConfig,
+};
+use crate::{
     db::{
         handles,
-        models::{Channel, LoginUser, TextPreset, User},
+        models::{Channel, TextPreset, User, UserMeta},
     },
     player::controller::ChannelController,
 };
@@ -180,7 +184,12 @@ pub async fn login(pool: web::Data<Pool<Sqlite>>, credentials: web::Json<User>) 
             .await;
 
             if verified_password.is_ok() {
-                let claims = Claims::new(user.id, username.clone(), role.clone());
+                let claims = Claims::new(
+                    user.id,
+                    user.channel_id.unwrap_or_default(),
+                    username.clone(),
+                    role.clone(),
+                );
 
                 if let Ok(token) = create_jwt(claims).await {
                     user.token = Some(token);
@@ -227,12 +236,15 @@ pub async fn login(pool: web::Data<Pool<Sqlite>>, credentials: web::Json<User>) 
 /// -H 'Authorization: Bearer <TOKEN>'
 /// ```
 #[get("/user")]
-#[protect(any("Role::GlobalAdmin", "Role::User"), ty = "Role")]
+#[protect(
+    any("Role::GlobalAdmin", "Role::ChannelAdmin", "Role::User"),
+    ty = "Role"
+)]
 async fn get_user(
     pool: web::Data<Pool<Sqlite>>,
-    user: web::ReqData<LoginUser>,
+    user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    match handles::select_user(&pool.into_inner(), &user.username).await {
+    match handles::select_user(&pool.into_inner(), user.id).await {
         Ok(user) => Ok(web::Json(user)),
         Err(e) => {
             error!("{e}");
@@ -247,13 +259,13 @@ async fn get_user(
 /// curl -X GET 'http://127.0.0.1:8787/api/user/2' -H 'Content-Type: application/json' \
 /// -H 'Authorization: Bearer <TOKEN>'
 /// ```
-#[get("/user/{name}")]
+#[get("/user/{id}")]
 #[protect("Role::GlobalAdmin", ty = "Role")]
 async fn get_by_name(
     pool: web::Data<Pool<Sqlite>>,
-    name: web::Path<String>,
+    id: web::Path<i32>,
 ) -> Result<impl Responder, ServiceError> {
-    match handles::select_user(&pool.into_inner(), &name).await {
+    match handles::select_user(&pool.into_inner(), *id).await {
         Ok(user) => Ok(web::Json(user)),
         Err(e) => {
             error!("{e}");
@@ -287,49 +299,56 @@ async fn get_users(pool: web::Data<Pool<Sqlite>>) -> Result<impl Responder, Serv
 /// -d '{"mail": "<MAIL>", "password": "<PASS>"}' -H 'Authorization: Bearer <TOKEN>'
 /// ```
 #[put("/user/{id}")]
-#[protect(any("Role::GlobalAdmin", "Role::User"), ty = "Role")]
+#[protect(
+    any("Role::GlobalAdmin", "Role::ChannelAdmin", "Role::User"),
+    ty = "Role",
+    expr = "*id == user.id || role.has_authority(&Role::GlobalAdmin)"
+)]
 async fn update_user(
     pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
-    user: web::ReqData<LoginUser>,
     data: web::Json<User>,
     role: AuthDetails<Role>,
+    user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    if *id == user.id || role.has_authority(&Role::GlobalAdmin) {
-        let mut fields = String::new();
+    let mut fields = String::new();
 
-        if let Some(mail) = data.mail.clone() {
-            if !fields.is_empty() {
-                fields.push_str(", ");
-            }
-
-            fields.push_str(format!("mail = '{mail}'").as_str());
+    if let Some(mail) = data.mail.clone() {
+        if !fields.is_empty() {
+            fields.push_str(", ");
         }
 
-        if !data.password.is_empty() {
-            if !fields.is_empty() {
-                fields.push_str(", ");
-            }
-
-            let salt = SaltString::generate(&mut OsRng);
-            let password_hash = Argon2::default()
-                .hash_password(data.password.clone().as_bytes(), &salt)
-                .unwrap();
-
-            fields.push_str(format!("password = '{password_hash}'").as_str());
-        }
-
-        if handles::update_user(&pool.into_inner(), *id, fields)
-            .await
-            .is_ok()
-        {
-            return Ok("Update Success");
-        };
-
-        return Err(ServiceError::InternalServerError);
+        fields.push_str(format!("mail = '{mail}'").as_str());
     }
 
-    Err(ServiceError::Unauthorized("No Permission".to_string()))
+    if !data.password.is_empty() {
+        if !fields.is_empty() {
+            fields.push_str(", ");
+        }
+
+        let password_hash = web::block(move || {
+            let salt = SaltString::generate(&mut OsRng);
+
+            let argon = Argon2::default()
+                .hash_password(data.password.clone().as_bytes(), &salt)
+                .map(|p| p.to_string());
+
+            argon
+        })
+        .await?
+        .unwrap();
+
+        fields.push_str(format!("password = '{password_hash}'").as_str());
+    }
+
+    if handles::update_user(&pool.into_inner(), *id, fields)
+        .await
+        .is_ok()
+    {
+        return Ok("Update Success");
+    };
+
+    Err(ServiceError::InternalServerError)
 }
 
 /// **Add User**
@@ -360,13 +379,13 @@ async fn add_user(
 /// curl -X GET 'http://127.0.0.1:8787/api/user/2' -H 'Content-Type: application/json' \
 /// -H 'Authorization: Bearer <TOKEN>'
 /// ```
-#[delete("/user/{name}")]
+#[delete("/user/{id}")]
 #[protect("Role::GlobalAdmin", ty = "Role")]
 async fn remove_user(
     pool: web::Data<Pool<Sqlite>>,
-    name: web::Path<String>,
+    id: web::Path<i32>,
 ) -> Result<impl Responder, ServiceError> {
-    match handles::delete_user(&pool.into_inner(), &name).await {
+    match handles::delete_user(&pool.into_inner(), *id).await {
         Ok(_) => return Ok("Delete user success"),
         Err(e) => {
             error!("{e}");
@@ -395,10 +414,16 @@ async fn remove_user(
 /// }
 /// ```
 #[get("/channel/{id}")]
-#[protect(any("Role::GlobalAdmin", "Role::User"), ty = "Role")]
+#[protect(
+    any("Role::GlobalAdmin", "Role::ChannelAdmin", "Role::User"),
+    ty = "Role",
+    expr = "*id == user.channel || role.has_authority(&Role::GlobalAdmin)"
+)]
 async fn get_channel(
     pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
+    role: AuthDetails<Role>,
+    user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
     if let Ok(channel) = handles::select_channel(&pool.into_inner(), &id).await {
         return Ok(web::Json(channel));
@@ -413,7 +438,7 @@ async fn get_channel(
 /// curl -X GET http://127.0.0.1:8787/api/channels -H "Authorization: Bearer <TOKEN>"
 /// ```
 #[get("/channels")]
-#[protect(any("Role::GlobalAdmin", "Role::User"), ty = "Role")]
+#[protect(any("Role::GlobalAdmin"), ty = "Role")]
 async fn get_all_channels(pool: web::Data<Pool<Sqlite>>) -> Result<impl Responder, ServiceError> {
     if let Ok(channel) = handles::select_all_channels(&pool.into_inner()).await {
         return Ok(web::Json(channel));
@@ -430,11 +455,18 @@ async fn get_all_channels(pool: web::Data<Pool<Sqlite>>) -> Result<impl Responde
 /// -H "Authorization: Bearer <TOKEN>"
 /// ```
 #[patch("/channel/{id}")]
-#[protect("Role::GlobalAdmin", ty = "Role")]
+#[protect(
+    "Role::GlobalAdmin",
+    "Role::ChannelAdmin",
+    ty = "Role",
+    expr = "*id == user.channel || role.has_authority(&Role::GlobalAdmin)"
+)]
 async fn patch_channel(
     pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
     data: web::Json<Channel>,
+    role: AuthDetails<Role>,
+    user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
     if handles::update_channel(&pool.into_inner(), *id, data.into_inner())
         .await
@@ -494,6 +526,151 @@ async fn remove_channel(
 
 /// #### ffplayout Config
 ///
+/// **Get Advanced Config**
+///
+/// ```BASH
+/// curl -X GET http://127.0.0.1:8787/api/playout/advanced/1 -H 'Authorization: Bearer <TOKEN>'
+/// ```
+///
+/// Response is a JSON object
+#[get("/playout/advanced/{id}")]
+#[protect(
+    any("Role::GlobalAdmin", "Role::ChannelAdmin"),
+    ty = "Role",
+    expr = "*id == user.channel || role.has_authority(&Role::GlobalAdmin)"
+)]
+async fn get_advanced_config(
+    id: web::Path<i32>,
+    controllers: web::Data<Mutex<ChannelController>>,
+    role: AuthDetails<Role>,
+    user: web::ReqData<UserMeta>,
+) -> Result<impl Responder, ServiceError> {
+    let manager = controllers.lock().unwrap().get(*id).unwrap();
+    let config = manager.config.lock().unwrap().advanced.clone();
+
+    Ok(web::Json(config))
+}
+
+/// **Update Config**
+///
+/// ```BASH
+/// curl -X PUT http://127.0.0.1:8787/api/playout/advanced/1 -H "Content-Type: application/json" \
+/// -d { <CONFIG DATA> } -H 'Authorization: Bearer <TOKEN>'
+/// ```
+#[put("/playout/advanced/{id}")]
+#[protect(
+    "Role::GlobalAdmin",
+    "Role::ChannelAdmin",
+    ty = "Role",
+    expr = "*id == user.channel || role.has_authority(&Role::GlobalAdmin)"
+)]
+async fn update_advanced_config(
+    pool: web::Data<Pool<Sqlite>>,
+    id: web::Path<i32>,
+    data: web::Json<AdvancedConfig>,
+    controllers: web::Data<Mutex<ChannelController>>,
+    role: AuthDetails<Role>,
+    user: web::ReqData<UserMeta>,
+) -> Result<impl Responder, ServiceError> {
+    let manager = controllers.lock().unwrap().get(*id).unwrap();
+    let id = manager.config.lock().unwrap().general.id;
+
+    if let Err(e) =
+        handles::update_advanced_configuration(&pool.into_inner(), id, data.clone()).await
+    {
+        return Err(ServiceError::Conflict(format!("{e}")));
+    }
+
+    let mut cfg = manager.config.lock().unwrap();
+
+    cfg.advanced
+        .decoder
+        .input_param
+        .clone_from(&data.decoder.input_param);
+    cfg.advanced
+        .decoder
+        .output_param
+        .clone_from(&data.decoder.output_param);
+    cfg.advanced.decoder.input_cmd = split(&data.decoder.input_param.clone().unwrap_or_default());
+    cfg.advanced.decoder.output_cmd = split(&data.decoder.output_param.clone().unwrap_or_default());
+    cfg.advanced
+        .encoder
+        .input_param
+        .clone_from(&data.encoder.input_param);
+    cfg.advanced.encoder.input_cmd = split(&data.encoder.input_param.clone().unwrap_or_default());
+    cfg.advanced
+        .ingest
+        .input_param
+        .clone_from(&data.encoder.input_param);
+    cfg.advanced.ingest.input_cmd = split(&data.ingest.input_param.clone().unwrap_or_default());
+    cfg.advanced
+        .filter
+        .deinterlace
+        .clone_from(&data.filter.deinterlace);
+    cfg.advanced
+        .filter
+        .pad_scale_w
+        .clone_from(&data.filter.pad_scale_w);
+    cfg.advanced
+        .filter
+        .pad_scale_h
+        .clone_from(&data.filter.pad_scale_h);
+    cfg.advanced
+        .filter
+        .pad_video
+        .clone_from(&data.filter.pad_video);
+    cfg.advanced.filter.fps.clone_from(&data.filter.fps);
+    cfg.advanced.filter.scale.clone_from(&data.filter.scale);
+    cfg.advanced.filter.set_dar.clone_from(&data.filter.set_dar);
+    cfg.advanced.filter.fade_in.clone_from(&data.filter.fade_in);
+    cfg.advanced
+        .filter
+        .fade_out
+        .clone_from(&data.filter.fade_out);
+    cfg.advanced
+        .filter
+        .overlay_logo_scale
+        .clone_from(&data.filter.overlay_logo_scale);
+    cfg.advanced
+        .filter
+        .overlay_logo_fade_in
+        .clone_from(&data.filter.overlay_logo_fade_in);
+    cfg.advanced
+        .filter
+        .overlay_logo_fade_out
+        .clone_from(&data.filter.overlay_logo_fade_out);
+    cfg.advanced
+        .filter
+        .overlay_logo
+        .clone_from(&data.filter.overlay_logo);
+    cfg.advanced.filter.tpad.clone_from(&data.filter.tpad);
+    cfg.advanced
+        .filter
+        .drawtext_from_file
+        .clone_from(&data.filter.drawtext_from_file);
+    cfg.advanced
+        .filter
+        .drawtext_from_zmq
+        .clone_from(&data.filter.drawtext_from_zmq);
+    cfg.advanced
+        .filter
+        .aevalsrc
+        .clone_from(&data.filter.aevalsrc);
+    cfg.advanced
+        .filter
+        .afade_in
+        .clone_from(&data.filter.afade_in);
+    cfg.advanced
+        .filter
+        .afade_out
+        .clone_from(&data.filter.afade_out);
+    cfg.advanced.filter.apad.clone_from(&data.filter.apad);
+    cfg.advanced.filter.volume.clone_from(&data.filter.volume);
+    cfg.advanced.filter.split.clone_from(&data.filter.split);
+
+    Ok(web::Json("Update success"))
+}
+
 /// **Get Config**
 ///
 /// ```BASH
@@ -502,12 +679,16 @@ async fn remove_channel(
 ///
 /// Response is a JSON object
 #[get("/playout/config/{id}")]
-#[protect(any("Role::GlobalAdmin", "Role::User"), ty = "Role")]
+#[protect(
+    any("Role::GlobalAdmin", "Role::ChannelAdmin", "Role::User"),
+    ty = "Role",
+    expr = "*id == user.channel || role.has_authority(&Role::GlobalAdmin)"
+)]
 async fn get_playout_config(
-    _pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
-    _details: AuthDetails<Role>,
     controllers: web::Data<Mutex<ChannelController>>,
+    role: AuthDetails<Role>,
+    user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
     let manager = controllers.lock().unwrap().get(*id).unwrap();
     let config = manager.config.lock().unwrap().clone();
@@ -522,12 +703,19 @@ async fn get_playout_config(
 /// -d { <CONFIG DATA> } -H 'Authorization: Bearer <TOKEN>'
 /// ```
 #[put("/playout/config/{id}")]
-#[protect("Role::GlobalAdmin", ty = "Role")]
+#[protect(
+    "Role::GlobalAdmin",
+    "Role::ChannelAdmin",
+    ty = "Role",
+    expr = "*id == user.channel || role.has_authority(&Role::GlobalAdmin)"
+)]
 async fn update_playout_config(
     pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
     data: web::Json<PlayoutConfig>,
     controllers: web::Data<Mutex<ChannelController>>,
+    role: AuthDetails<Role>,
+    user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
     let manager = controllers.lock().unwrap().get(*id).unwrap();
     let id = manager.config.lock().unwrap().general.id;
@@ -635,10 +823,16 @@ async fn update_playout_config(
 /// -H 'Authorization: Bearer <TOKEN>'
 /// ```
 #[get("/presets/{id}")]
-#[protect(any("Role::GlobalAdmin", "Role::User"), ty = "Role")]
+#[protect(
+    any("Role::GlobalAdmin", "Role::ChannelAdmin", "Role::User"),
+    ty = "Role",
+    expr = "*id == user.channel || role.has_authority(&Role::GlobalAdmin)"
+)]
 async fn get_presets(
     pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
+    role: AuthDetails<Role>,
+    user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
     if let Ok(presets) = handles::select_presets(&pool.into_inner(), *id).await {
         return Ok(web::Json(presets));
@@ -655,11 +849,17 @@ async fn get_presets(
 /// -H 'Authorization: Bearer <TOKEN>'
 /// ```
 #[put("/presets/{id}")]
-#[protect(any("Role::GlobalAdmin", "Role::User"), ty = "Role")]
+#[protect(
+    any("Role::GlobalAdmin", "Role::ChannelAdmin", "Role::User"),
+    ty = "Role",
+    expr = "*id == user.channel || role.has_authority(&Role::GlobalAdmin)"
+)]
 async fn update_preset(
     pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
     data: web::Json<TextPreset>,
+    role: AuthDetails<Role>,
+    user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
     if handles::update_preset(&pool.into_inner(), &id, data.into_inner())
         .await
@@ -674,15 +874,22 @@ async fn update_preset(
 /// **Add new Preset**
 ///
 /// ```BASH
-/// curl -X POST http://127.0.0.1:8787/api/presets/ -H 'Content-Type: application/json' \
+/// curl -X POST http://127.0.0.1:8787/api/presets/1/ -H 'Content-Type: application/json' \
 /// -d '{ "name": "<PRESET NAME>", "text": "TEXT>", "x": "<X>", "y": "<Y>", "fontsize": 24, "line_spacing": 4, "fontcolor": "#ffffff", "box": 1, "boxcolor": "#000000", "boxborderw": 4, "alpha": 1.0, "channel_id": 1 }' \
 /// -H 'Authorization: Bearer <TOKEN>'
 /// ```
-#[post("/presets/")]
-#[protect(any("Role::GlobalAdmin", "Role::User"), ty = "Role")]
+#[post("/presets/{id}/")]
+#[protect(
+    any("Role::GlobalAdmin", "Role::ChannelAdmin", "Role::User"),
+    ty = "Role",
+    expr = "*id == user.channel || role.has_authority(&Role::GlobalAdmin)"
+)]
 async fn add_preset(
     pool: web::Data<Pool<Sqlite>>,
+    id: web::Path<i32>,
     data: web::Json<TextPreset>,
+    role: AuthDetails<Role>,
+    user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
     if handles::insert_preset(&pool.into_inner(), data.into_inner())
         .await
@@ -701,10 +908,16 @@ async fn add_preset(
 /// -H 'Authorization: Bearer <TOKEN>'
 /// ```
 #[delete("/presets/{id}")]
-#[protect(any("Role::GlobalAdmin", "Role::User"), ty = "Role")]
+#[protect(
+    any("Role::GlobalAdmin", "Role::ChannelAdmin", "Role::User"),
+    ty = "Role",
+    expr = "*id == user.channel || role.has_authority(&Role::GlobalAdmin)"
+)]
 async fn delete_preset(
     pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
+    role: AuthDetails<Role>,
+    user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
     if handles::delete_preset(&pool.into_inner(), &id)
         .await
@@ -732,11 +945,17 @@ async fn delete_preset(
 /// -d '{"text": "Hello from ffplayout", "x": "(w-text_w)/2", "y": "(h-text_h)/2", fontsize": "24", "line_spacing": "4", "fontcolor": "#ffffff", "box": "1", "boxcolor": "#000000", "boxborderw": "4", "alpha": "1.0"}'
 /// ```
 #[post("/control/{id}/text/")]
-#[protect(any("Role::GlobalAdmin", "Role::User"), ty = "Role")]
+#[protect(
+    any("Role::GlobalAdmin", "Role::ChannelAdmin", "Role::User"),
+    ty = "Role",
+    expr = "*id == user.channel || role.has_authority(&Role::GlobalAdmin)"
+)]
 pub async fn send_text_message(
     id: web::Path<i32>,
     data: web::Json<TextFilter>,
     controllers: web::Data<Mutex<ChannelController>>,
+    role: AuthDetails<Role>,
+    user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
     let manager = controllers.lock().unwrap().get(*id).unwrap();
 
@@ -757,12 +976,18 @@ pub async fn send_text_message(
 /// -d '{ "command": "reset" }' -H 'Authorization: Bearer <TOKEN>'
 /// ```
 #[post("/control/{id}/playout/")]
-#[protect(any("Role::GlobalAdmin", "Role::User"), ty = "Role")]
+#[protect(
+    any("Role::GlobalAdmin", "Role::ChannelAdmin", "Role::User"),
+    ty = "Role",
+    expr = "*id == user.channel || role.has_authority(&Role::GlobalAdmin)"
+)]
 pub async fn control_playout(
     pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
     control: web::Json<ControlParams>,
     controllers: web::Data<Mutex<ChannelController>>,
+    role: AuthDetails<Role>,
+    user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
     let manager = controllers.lock().unwrap().get(*id).unwrap();
 
@@ -797,10 +1022,16 @@ pub async fn control_playout(
 ///     }
 /// ```
 #[get("/control/{id}/media/current")]
-#[protect(any("Role::GlobalAdmin", "Role::User"), ty = "Role")]
+#[protect(
+    any("Role::GlobalAdmin", "Role::ChannelAdmin", "Role::User"),
+    ty = "Role",
+    expr = "*id == user.channel || role.has_authority(&Role::GlobalAdmin)"
+)]
 pub async fn media_current(
     id: web::Path<i32>,
     controllers: web::Data<Mutex<ChannelController>>,
+    role: AuthDetails<Role>,
+    user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
     let manager = controllers.lock().unwrap().get(*id).unwrap();
     let media_map = get_data_map(&manager);
@@ -822,11 +1053,17 @@ pub async fn media_current(
 /// -d '{"command": "start"}'
 /// ```
 #[post("/control/{id}/process/")]
-#[protect(any("Role::GlobalAdmin", "Role::User"), ty = "Role")]
+#[protect(
+    any("Role::GlobalAdmin", "Role::ChannelAdmin", "Role::User"),
+    ty = "Role",
+    expr = "*id == user.channel || role.has_authority(&Role::GlobalAdmin)"
+)]
 pub async fn process_control(
     id: web::Path<i32>,
     proc: web::Json<Process>,
     controllers: web::Data<Mutex<ChannelController>>,
+    role: AuthDetails<Role>,
+    user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
     let manager = controllers.lock().unwrap().get(*id).unwrap();
 
@@ -863,11 +1100,17 @@ pub async fn process_control(
 /// -H 'Content-Type: application/json' -H 'Authorization: Bearer <TOKEN>'
 /// ```
 #[get("/playlist/{id}")]
-#[protect(any("Role::GlobalAdmin", "Role::User"), ty = "Role")]
+#[protect(
+    any("Role::GlobalAdmin", "Role::ChannelAdmin", "Role::User"),
+    ty = "Role",
+    expr = "*id == user.channel || role.has_authority(&Role::GlobalAdmin)"
+)]
 pub async fn get_playlist(
     id: web::Path<i32>,
     obj: web::Query<DateObj>,
     controllers: web::Data<Mutex<ChannelController>>,
+    role: AuthDetails<Role>,
+    user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
     let manager = controllers.lock().unwrap().get(*id).unwrap();
     let config = manager.config.lock().unwrap().clone();
@@ -886,11 +1129,17 @@ pub async fn get_playlist(
 /// --data "{<JSON playlist data>}"
 /// ```
 #[post("/playlist/{id}/")]
-#[protect(any("Role::GlobalAdmin", "Role::User"), ty = "Role")]
+#[protect(
+    any("Role::GlobalAdmin", "Role::ChannelAdmin", "Role::User"),
+    ty = "Role",
+    expr = "*id == user.channel || role.has_authority(&Role::GlobalAdmin)"
+)]
 pub async fn save_playlist(
     id: web::Path<i32>,
     data: web::Json<JsonPlaylist>,
     controllers: web::Data<Mutex<ChannelController>>,
+    role: AuthDetails<Role>,
+    user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
     let manager = controllers.lock().unwrap().get(*id).unwrap();
     let config = manager.config.lock().unwrap().clone();
@@ -920,14 +1169,21 @@ pub async fn save_playlist(
 ///            {"start": "10:00:00", "duration": "14:00:00", "shuffle": false, "paths": ["path/3", "path/4"]}]}}'
 /// ```
 #[post("/playlist/{id}/generate/{date}")]
-#[protect(any("Role::GlobalAdmin", "Role::User"), ty = "Role")]
+#[protect(
+    any("Role::GlobalAdmin", "Role::ChannelAdmin", "Role::User"),
+    ty = "Role",
+    expr = "*id == user.channel || role.has_authority(&Role::GlobalAdmin)"
+)]
 pub async fn gen_playlist(
-    params: web::Path<(i32, String)>,
+    id: web::Path<i32>,
+    date: web::Path<String>,
     data: Option<web::Json<PathsObj>>,
     controllers: web::Data<Mutex<ChannelController>>,
+    role: AuthDetails<Role>,
+    user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    let manager = controllers.lock().unwrap().get(params.0).unwrap();
-    manager.config.lock().unwrap().general.generate = Some(vec![params.1.clone()]);
+    let manager = controllers.lock().unwrap().get(*id).unwrap();
+    manager.config.lock().unwrap().general.generate = Some(vec![date.clone()]);
     let storage_path = manager.config.lock().unwrap().global.storage_path.clone();
 
     if let Some(obj) = data {
@@ -965,15 +1221,22 @@ pub async fn gen_playlist(
 /// -H 'Content-Type: application/json' -H 'Authorization: Bearer <TOKEN>'
 /// ```
 #[delete("/playlist/{id}/{date}")]
-#[protect(any("Role::GlobalAdmin", "Role::User"), ty = "Role")]
+#[protect(
+    any("Role::GlobalAdmin", "Role::ChannelAdmin", "Role::User"),
+    ty = "Role",
+    expr = "*id == user.channel || role.has_authority(&Role::GlobalAdmin)"
+)]
 pub async fn del_playlist(
-    params: web::Path<(i32, String)>,
+    id: web::Path<i32>,
+    date: web::Path<String>,
     controllers: web::Data<Mutex<ChannelController>>,
+    role: AuthDetails<Role>,
+    user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    let manager = controllers.lock().unwrap().get(params.0).unwrap();
+    let manager = controllers.lock().unwrap().get(*id).unwrap();
     let config = manager.config.lock().unwrap().clone();
 
-    match delete_playlist(&config, &params.1).await {
+    match delete_playlist(&config, &date).await {
         Ok(m) => Ok(web::Json(m)),
         Err(e) => Err(e),
     }
@@ -988,10 +1251,16 @@ pub async fn del_playlist(
 /// -H 'Content-Type: application/json' -H 'Authorization: Bearer <TOKEN>'
 /// ```
 #[get("/log/{id}")]
-#[protect(any("Role::GlobalAdmin", "Role::User"), ty = "Role")]
+#[protect(
+    any("Role::GlobalAdmin", "Role::ChannelAdmin", "Role::User"),
+    ty = "Role",
+    expr = "*id == user.channel || role.has_authority(&Role::GlobalAdmin)"
+)]
 pub async fn get_log(
     id: web::Path<i32>,
     log: web::Query<DateObj>,
+    role: AuthDetails<Role>,
+    user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
     read_log_file(&id, &log.date).await
 }
@@ -1005,11 +1274,17 @@ pub async fn get_log(
 /// -d '{ "source": "/" }' -H 'Authorization: Bearer <TOKEN>'
 /// ```
 #[post("/file/{id}/browse/")]
-#[protect(any("Role::GlobalAdmin", "Role::User"), ty = "Role")]
+#[protect(
+    any("Role::GlobalAdmin", "Role::ChannelAdmin", "Role::User"),
+    ty = "Role",
+    expr = "*id == user.channel || role.has_authority(&Role::GlobalAdmin)"
+)]
 pub async fn file_browser(
     id: web::Path<i32>,
     data: web::Json<PathObject>,
     controllers: web::Data<Mutex<ChannelController>>,
+    role: AuthDetails<Role>,
+    user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
     let manager = controllers.lock().unwrap().get(*id).unwrap();
     let channel = manager.channel.lock().unwrap().clone();
@@ -1028,11 +1303,17 @@ pub async fn file_browser(
 /// -d '{"source": "<FOLDER PATH>"}' -H 'Authorization: Bearer <TOKEN>'
 /// ```
 #[post("/file/{id}/create-folder/")]
-#[protect(any("Role::GlobalAdmin", "Role::User"), ty = "Role")]
+#[protect(
+    any("Role::GlobalAdmin", "Role::ChannelAdmin", "Role::User"),
+    ty = "Role",
+    expr = "*id == user.channel || role.has_authority(&Role::GlobalAdmin)"
+)]
 pub async fn add_dir(
     id: web::Path<i32>,
     data: web::Json<PathObject>,
     controllers: web::Data<Mutex<ChannelController>>,
+    role: AuthDetails<Role>,
+    user: web::ReqData<UserMeta>,
 ) -> Result<HttpResponse, ServiceError> {
     let manager = controllers.lock().unwrap().get(*id).unwrap();
     let config = manager.config.lock().unwrap().clone();
@@ -1047,11 +1328,17 @@ pub async fn add_dir(
 /// -d '{"source": "<SOURCE>", "target": "<TARGET>"}' -H 'Authorization: Bearer <TOKEN>'
 /// ```
 #[post("/file/{id}/rename/")]
-#[protect(any("Role::GlobalAdmin", "Role::User"), ty = "Role")]
+#[protect(
+    any("Role::GlobalAdmin", "Role::ChannelAdmin", "Role::User"),
+    ty = "Role",
+    expr = "*id == user.channel || role.has_authority(&Role::GlobalAdmin)"
+)]
 pub async fn move_rename(
     id: web::Path<i32>,
     data: web::Json<MoveObject>,
     controllers: web::Data<Mutex<ChannelController>>,
+    role: AuthDetails<Role>,
+    user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
     let manager = controllers.lock().unwrap().get(*id).unwrap();
     let config = manager.config.lock().unwrap().clone();
@@ -1069,11 +1356,17 @@ pub async fn move_rename(
 /// -d '{"source": "<SOURCE>"}' -H 'Authorization: Bearer <TOKEN>'
 /// ```
 #[post("/file/{id}/remove/")]
-#[protect(any("Role::GlobalAdmin", "Role::User"), ty = "Role")]
+#[protect(
+    any("Role::GlobalAdmin", "Role::ChannelAdmin", "Role::User"),
+    ty = "Role",
+    expr = "*id == user.channel || role.has_authority(&Role::GlobalAdmin)"
+)]
 pub async fn remove(
     id: web::Path<i32>,
     data: web::Json<PathObject>,
     controllers: web::Data<Mutex<ChannelController>>,
+    role: AuthDetails<Role>,
+    user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
     let manager = controllers.lock().unwrap().get(*id).unwrap();
     let config = manager.config.lock().unwrap().clone();
@@ -1090,14 +1383,21 @@ pub async fn remove(
 /// curl -X PUT http://127.0.0.1:8787/api/file/1/upload/ -H 'Authorization: Bearer <TOKEN>'
 /// -F "file=@file.mp4"
 /// ```
+#[allow(clippy::too_many_arguments)]
 #[put("/file/{id}/upload/")]
-#[protect(any("Role::GlobalAdmin", "Role::User"), ty = "Role")]
+#[protect(
+    any("Role::GlobalAdmin", "Role::ChannelAdmin", "Role::User"),
+    ty = "Role",
+    expr = "*id == user.channel || role.has_authority(&Role::GlobalAdmin)"
+)]
 async fn save_file(
     id: web::Path<i32>,
     req: HttpRequest,
     payload: Multipart,
     obj: web::Query<FileObj>,
     controllers: web::Data<Mutex<ChannelController>>,
+    role: AuthDetails<Role>,
+    user: web::ReqData<UserMeta>,
 ) -> Result<HttpResponse, ServiceError> {
     let manager = controllers.lock().unwrap().get(*id).unwrap();
     let config = manager.config.lock().unwrap().clone();
@@ -1178,14 +1478,21 @@ async fn get_public(public: web::Path<String>) -> Result<actix_files::NamedFile,
 /// curl -X PUT http://127.0.0.1:8787/api/file/1/import/ -H 'Authorization: Bearer <TOKEN>'
 /// -F "file=@list.m3u"
 /// ```
+#[allow(clippy::too_many_arguments)]
 #[put("/file/{id}/import/")]
-#[protect(any("Role::GlobalAdmin", "Role::User"), ty = "Role")]
+#[protect(
+    any("Role::GlobalAdmin", "Role::ChannelAdmin", "Role::User"),
+    ty = "Role",
+    expr = "*id == user.channel || role.has_authority(&Role::GlobalAdmin)"
+)]
 async fn import_playlist(
     id: web::Path<i32>,
     req: HttpRequest,
     payload: Multipart,
     obj: web::Query<ImportObj>,
     controllers: web::Data<Mutex<ChannelController>>,
+    role: AuthDetails<Role>,
+    user: web::ReqData<UserMeta>,
 ) -> Result<HttpResponse, ServiceError> {
     let manager = controllers.lock().unwrap().get(*id).unwrap();
     let channel_name = manager.channel.lock().unwrap().name.clone();
@@ -1234,11 +1541,17 @@ async fn import_playlist(
 /// -H 'Authorization: Bearer <TOKEN>'
 /// ```
 #[get("/program/{id}/")]
-#[protect(any("Role::GlobalAdmin", "Role::User"), ty = "Role")]
+#[protect(
+    any("Role::GlobalAdmin", "Role::ChannelAdmin", "Role::User"),
+    ty = "Role",
+    expr = "*id == user.channel || role.has_authority(&Role::GlobalAdmin)"
+)]
 async fn get_program(
     id: web::Path<i32>,
     obj: web::Query<ProgramObj>,
     controllers: web::Data<Mutex<ChannelController>>,
+    role: AuthDetails<Role>,
+    user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
     let manager = controllers.lock().unwrap().get(*id).unwrap();
     let config = manager.config.lock().unwrap().clone();
@@ -1326,10 +1639,16 @@ async fn get_program(
 /// -H 'Content-Type: application/json' -H 'Authorization: Bearer <TOKEN>'
 /// ```
 #[get("/system/{id}")]
-#[protect(any("Role::GlobalAdmin", "Role::User"), ty = "Role")]
+#[protect(
+    any("Role::GlobalAdmin", "Role::ChannelAdmin", "Role::User"),
+    ty = "Role",
+    expr = "*id == user.channel || role.has_authority(&Role::GlobalAdmin)"
+)]
 pub async fn get_system_stat(
     id: web::Path<i32>,
     controllers: web::Data<Mutex<ChannelController>>,
+    role: AuthDetails<Role>,
+    user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
     let manager = controllers.lock().unwrap().get(*id).unwrap();
     let config = manager.config.lock().unwrap().clone();

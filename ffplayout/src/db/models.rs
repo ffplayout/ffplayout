@@ -80,14 +80,14 @@ fn empty_string() -> String {
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
-pub struct LoginUser {
+pub struct UserMeta {
     pub id: i32,
-    pub username: String,
+    pub channel: i32,
 }
 
-impl LoginUser {
-    pub fn new(id: i32, username: String) -> Self {
-        Self { id, username }
+impl UserMeta {
+    pub fn new(id: i32, channel: i32) -> Self {
+        Self { id, channel }
     }
 }
 

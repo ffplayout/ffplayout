@@ -542,14 +542,14 @@ fn default_track_index() -> i32 {
 // }
 
 impl PlayoutConfig {
-    pub async fn new(pool: &Pool<Sqlite>, channel: i32) -> Self {
+    pub async fn new(pool: &Pool<Sqlite>, channel_id: i32) -> Self {
         let global = handles::select_global(pool)
             .await
             .expect("Can't read globals");
-        let config = handles::select_configuration(pool, channel)
+        let config = handles::select_configuration(pool, channel_id)
             .await
             .expect("Can't read config");
-        let adv_config = handles::select_advanced_configuration(pool, channel)
+        let adv_config = handles::select_advanced_configuration(pool, channel_id)
             .await
             .expect("Can't read advanced config");
 
@@ -567,7 +567,23 @@ impl PlayoutConfig {
         let mut output = Output::new(&config);
 
         if !global.shared_storage {
-            global.storage_path = global.storage_path.join(channel.to_string());
+            global.storage_path = global.storage_path.join(channel_id.to_string());
+        }
+
+        if !global.storage_path.is_dir() {
+            tokio::fs::create_dir_all(&global.storage_path)
+                .await
+                .expect("Can't create storage folder");
+        }
+
+        if channel_id > 1 || !global.shared_storage {
+            global.playlist_path = global.playlist_path.join(channel_id.to_string());
+        }
+
+        if !global.playlist_path.is_dir() {
+            tokio::fs::create_dir_all(&global.playlist_path)
+                .await
+                .expect("Can't create playlist folder");
         }
 
         let (filler_path, _, _) = norm_abs_path(&global.storage_path, &config.storage_filler)
@@ -696,12 +712,14 @@ impl PlayoutConfig {
 
     pub async fn dump(pool: &Pool<Sqlite>, id: i32) -> Result<(), ServiceError> {
         let mut config = Self::new(pool, id).await;
-        config.storage.filler = config
-            .storage
-            .filler
-            .strip_prefix(config.global.storage_path.clone())
-            .unwrap_or(&config.storage.filler)
-            .to_owned();
+        config.storage.filler.clone_from(
+            &config
+                .storage
+                .filler
+                .strip_prefix(config.global.storage_path.clone())
+                .unwrap_or(&config.storage.filler)
+                .to_path_buf(),
+        );
 
         let toml_string = toml_edit::ser::to_string_pretty(&config)?;
         tokio::fs::write(&format!("ffplayout_{id}.toml"), toml_string).await?;

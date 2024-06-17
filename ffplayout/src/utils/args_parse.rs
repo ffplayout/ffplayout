@@ -12,7 +12,7 @@ use crate::db::{
     handles::{self, insert_user},
     models::{GlobalSettings, User},
 };
-use crate::utils::config::PlayoutConfig;
+use crate::utils::{advanced_config::AdvancedConfig, config::PlayoutConfig};
 use crate::ARGS;
 
 #[derive(Parser, Debug, Clone)]
@@ -39,8 +39,21 @@ pub struct Args {
     )]
     pub channels: Option<Vec<i32>>,
 
+    #[clap(
+        long,
+        help = "Dump advanced channel configuration to advanced_{channel}.toml"
+    )]
+    pub dump_advanced: Option<i32>,
+
     #[clap(long, help = "Dump channel configuration to ffplayout_{channel}.toml")]
     pub dump_config: Option<i32>,
+
+    #[clap(
+        long,
+        help = "import advanced channel configuration from file. Input must be `{channel id} {path to toml}`",
+        num_args = 2
+    )]
+    pub import_advanced: Option<Vec<String>>,
 
     #[clap(
         long,
@@ -251,6 +264,32 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
         return Err(0);
     }
 
+    if ARGS.list_channels {
+        match handles::select_all_channels(pool).await {
+            Ok(channels) => {
+                let chl = channels
+                    .iter()
+                    .map(|c| (c.id, c.name.clone()))
+                    .collect::<Vec<(i32, String)>>();
+
+                println!(
+                    "Available channels:\n{}",
+                    chl.iter()
+                        .map(|(i, t)| format!("    {i}: '{t}'"))
+                        .collect::<Vec<String>>()
+                        .join("\n")
+                );
+
+                return Err(0);
+            }
+            Err(e) => {
+                eprintln!("List channels: {e}");
+
+                exit(1);
+            }
+        }
+    }
+
     if let Some(id) = ARGS.dump_config {
         match PlayoutConfig::dump(pool, id).await {
             Ok(_) => {
@@ -265,8 +304,50 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
         };
     }
 
+    if let Some(id) = ARGS.dump_config {
+        match PlayoutConfig::dump(pool, id).await {
+            Ok(_) => {
+                println!("Dump config to: ffplayout_{id}.toml");
+                exit(0);
+            }
+            Err(e) => {
+                eprintln!("Dump config: {e}");
+
+                exit(1);
+            }
+        };
+    }
+
+    if let Some(id) = ARGS.dump_advanced {
+        match AdvancedConfig::dump(pool, id).await {
+            Ok(_) => {
+                println!("Dump config to: advanced_{id}.toml");
+                exit(0);
+            }
+            Err(e) => {
+                eprintln!("Dump config: {e}");
+
+                exit(1);
+            }
+        };
+    }
+
     if let Some(import) = &ARGS.import_config {
         match PlayoutConfig::import(pool, import.clone()).await {
+            Ok(_) => {
+                println!("Import config done...");
+                exit(0);
+            }
+            Err(e) => {
+                eprintln!("{e}");
+
+                exit(1);
+            }
+        };
+    }
+
+    if let Some(import) = &ARGS.import_advanced {
+        match AdvancedConfig::import(pool, import.clone()).await {
             Ok(_) => {
                 println!("Import config done...");
                 exit(0);

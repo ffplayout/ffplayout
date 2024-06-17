@@ -167,15 +167,12 @@ pub async fn select_configuration(
 pub async fn insert_configuration(
     conn: &Pool<Sqlite>,
     channel_id: i32,
-    playlist_path: String,
     output_param: String,
 ) -> Result<SqliteQueryResult, sqlx::Error> {
-    let query =
-        "INSERT INTO configurations (channel_id, playlist_path, output_param) VALUES($1, $2, $3)";
+    let query = "INSERT INTO configurations (channel_id, output_param) VALUES($1, $2)";
 
     sqlx::query(query)
         .bind(channel_id)
-        .bind(playlist_path)
         .bind(output_param)
         .execute(conn)
         .await
@@ -308,19 +305,14 @@ pub async fn select_role(conn: &Pool<Sqlite>, id: &i32) -> Result<Role, sqlx::Er
 }
 
 pub async fn select_login(conn: &Pool<Sqlite>, user: &str) -> Result<User, sqlx::Error> {
-    let query = "SELECT id, mail, username, password, role_id FROM user WHERE username = $1";
+    let query =
+        "SELECT id, mail, username, password, role_id, channel_id FROM user WHERE username = $1";
 
     sqlx::query_as(query).bind(user).fetch_one(conn).await
 }
 
-pub async fn select_user(conn: &Pool<Sqlite>, user: &str) -> Result<User, sqlx::Error> {
-    let query = "SELECT id, mail, username, role_id FROM user WHERE username = $1";
-
-    sqlx::query_as(query).bind(user).fetch_one(conn).await
-}
-
-pub async fn select_user_by_id(conn: &Pool<Sqlite>, id: i32) -> Result<User, sqlx::Error> {
-    let query = "SELECT id, mail, username, role_id FROM user WHERE id = $1";
+pub async fn select_user(conn: &Pool<Sqlite>, id: i32) -> Result<User, sqlx::Error> {
+    let query = "SELECT id, mail, username, role_id, channel_id FROM user WHERE id = $1";
 
     sqlx::query_as(query).bind(id).fetch_one(conn).await
 }
@@ -367,13 +359,10 @@ pub async fn update_user(
     sqlx::query(&query).bind(id).execute(conn).await
 }
 
-pub async fn delete_user(
-    conn: &Pool<Sqlite>,
-    name: &str,
-) -> Result<SqliteQueryResult, sqlx::Error> {
-    let query = "DELETE FROM user WHERE username = $1;";
+pub async fn delete_user(conn: &Pool<Sqlite>, id: i32) -> Result<SqliteQueryResult, sqlx::Error> {
+    let query = "DELETE FROM user WHERE id = $1;";
 
-    sqlx::query(query).bind(name).execute(conn).await
+    sqlx::query(query).bind(id).execute(conn).await
 }
 
 pub async fn select_presets(conn: &Pool<Sqlite>, id: i32) -> Result<Vec<TextPreset>, sqlx::Error> {

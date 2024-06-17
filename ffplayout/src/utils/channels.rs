@@ -16,14 +16,12 @@ pub async fn create_channel(
     queue: Arc<Mutex<Vec<Arc<Mutex<MailQueue>>>>>,
     target_channel: Channel,
 ) -> Result<Channel, ServiceError> {
-    let channel_name = target_channel.name.to_lowercase().replace(' ', "");
     let channel = handles::insert_channel(conn, target_channel).await?;
 
-    let playlist_path = format!("/var/lib/ffplayout/playlists/{channel_name}");
     let output_param = format!("-c:v libx264 -crf 23 -x264-params keyint=50:min-keyint=25:scenecut=-1 -maxrate 1300k -bufsize 2600k -preset faster -tune zerolatency -profile:v Main -level 3.1 -c:a aac -ar 44100 -b:a 128k -flags +cgop -f hls -hls_time 6 -hls_list_size 600 -hls_flags append_list+delete_segments+omit_endlist -hls_segment_filename /usr/share/ffplayout/public/live/stream{0}-%d.ts /usr/share/ffplayout/public/live/stream{0}.m3u8", channel.id);
 
     handles::insert_advanced_configuration(conn, channel.id).await?;
-    handles::insert_configuration(conn, channel.id, playlist_path, output_param).await?;
+    handles::insert_configuration(conn, channel.id, output_param).await?;
 
     let config = PlayoutConfig::new(conn, channel.id).await;
     let m_queue = Arc::new(Mutex::new(MailQueue::new(channel.id, config.mail.clone())));

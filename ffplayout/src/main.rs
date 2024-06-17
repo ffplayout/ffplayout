@@ -23,7 +23,7 @@ use ffplayout::{
     api::{auth, routes::*},
     db::{
         db_pool, handles,
-        models::{init_globales, LoginUser},
+        models::{init_globales, UserMeta},
     },
     player::controller::{ChannelController, ChannelManager},
     sse::{broadcast::Broadcaster, routes::*, AuthState},
@@ -59,7 +59,7 @@ async fn validator(
             req.attach(vec![claims.role]);
 
             req.extensions_mut()
-                .insert(LoginUser::new(claims.id, claims.username));
+                .insert(UserMeta::new(claims.id, claims.channel));
 
             Ok(req)
         }
@@ -150,6 +150,8 @@ async fn main() -> std::io::Result<()> {
                         .service(get_by_name)
                         .service(get_users)
                         .service(remove_user)
+                        .service(get_advanced_config)
+                        .service(update_advanced_config)
                         .service(get_playout_config)
                         .service(update_playout_config)
                         .service(add_preset)
@@ -225,15 +227,6 @@ async fn main() -> std::io::Result<()> {
         .workers(thread_count)
         .run()
         .await
-    } else if ARGS.list_channels {
-        let channels = handles::select_all_channels(&pool)
-            .await
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
-        let ids = channels.iter().map(|c| c.id).collect::<Vec<i32>>();
-
-        info!("Available channels: {ids:?}");
-
-        Ok(())
     } else if let Some(channels) = &ARGS.channels {
         for (index, channel_id) in channels.iter().enumerate() {
             let channel = handles::select_channel(&pool, channel_id).await.unwrap();
