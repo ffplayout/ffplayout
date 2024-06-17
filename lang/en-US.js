@@ -137,6 +137,13 @@ export default {
     log: {
         download: 'Download log file',
     },
+    advanced: {
+        title: 'Advanced Configuration',
+        decoder: 'Decoder',
+        encoder: 'Encoder',
+        filter: 'Filter',
+        ingest: 'Ingest',
+    },
     config: {
         channel: 'Channel',
         user: 'User',

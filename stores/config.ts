@@ -9,6 +9,7 @@ export const useConfig = defineStore('config', {
         configChannel: [] as GuiConfig[],
         configChannelRaw: [] as GuiConfig[],
         playlistLength: 86400.0,
+        advanced: {} as any,
         playout: {} as any,
         currentUser: 0,
         configUser: {} as User,
@@ -25,13 +26,18 @@ export const useConfig = defineStore('config', {
 
             if (authStore.isLogin) {
                 await authStore.obtainUuid()
-                await this.getGuiConfig()
+                await this.getChannelConfig()
                 await this.getPlayoutConfig()
                 await this.getUserConfig()
+
+
+                if (this.configUser.id === 1) {
+                    await this.getAdvancedConfig()
+                }
             }
         },
 
-        async getGuiConfig() {
+        async getChannelConfig() {
             const authStore = useAuth()
             const indexStore = useIndex()
 
@@ -75,7 +81,7 @@ export const useConfig = defineStore('config', {
                 })
         },
 
-        async setGuiConfig(obj: GuiConfig): Promise<any> {
+        async setChannelConfig(obj: GuiConfig): Promise<any> {
             const authStore = useAuth()
             const stringObj = _.cloneDeep(obj)
             let response
@@ -138,6 +144,24 @@ export const useConfig = defineStore('config', {
                 })
                 .catch(() => {
                     indexStore.msgAlert('error', $i18n.t('config.noPlayoutConfig'), 3)
+                })
+        },
+
+        async getAdvancedConfig() {
+            const { $i18n } = useNuxtApp()
+            const authStore = useAuth()
+            const indexStore = useIndex()
+            const channel = this.configChannel[this.configID].id
+
+            await $fetch(`/api/playout/advanced/${channel}`, {
+                method: 'GET',
+                headers: authStore.authHeader,
+            })
+                .then((data) => {
+                    this.advanced = data
+                })
+                .catch(() => {
+                    indexStore.msgAlert('error', $i18n.t('config.noAdvancedConfig'), 3)
                 })
         },
 

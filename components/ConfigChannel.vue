@@ -81,7 +81,7 @@ async function onSubmitGui() {
     /*
         Save GUI settings.
     */
-    const update = await configStore.setGuiConfig(configStore.configChannel[configStore.configID])
+    const update = await configStore.setChannelConfig(configStore.configChannel[configStore.configID])
 
     if (update.status) {
         indexStore.msgAlert('success', t('config.updateChannelSuccess'), 2)
