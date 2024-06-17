@@ -29,12 +29,9 @@ RUN dnf update -y && \
 RUN [[ -f /tmp/ffplayout-${FFPLAYOUT_VERSION}-1.x86_64.rpm ]] || wget -q "https://github.com/ffplayout/ffplayout/releases/download/v${FFPLAYOUT_VERSION}/ffplayout-${FFPLAYOUT_VERSION}-1.x86_64.rpm" -P /tmp/ && \
     dnf install -y /tmp/ffplayout-${FFPLAYOUT_VERSION}-1.x86_64.rpm && \
     rm /tmp/ffplayout-${FFPLAYOUT_VERSION}-1.x86_64.rpm && \
-    sed -i "s/User=ffpu/User=root/g" /usr/lib/systemd/system/ffpapi.service && \
     sed -i "s/User=ffpu/User=root/g" /usr/lib/systemd/system/ffplayout.service && \
-    sed -i "s/User=ffpu/User=root/g" /usr/lib/systemd/system/ffplayout@.service && \
     systemctl enable ffplayout && \
-    systemctl enable ffpapi && \
-    ffpapi -u admin -p admin -m contact@example.com
+    ffplayout -u admin -p admin -m contact@example.com
 
 EXPOSE 8787
 

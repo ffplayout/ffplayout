@@ -1,10 +1,18 @@
-use std::path::PathBuf;
+use sqlx::{Pool, Sqlite};
+use tokio::runtime::Runtime;
 
 #[cfg(test)]
 use chrono::prelude::*;
 
+use ffplayout::db::db_pool;
 #[cfg(test)]
-use ffplayout_lib::utils::*;
+use ffplayout::player::utils::*;
+use ffplayout::utils::config::PlayoutConfig;
+use ffplayout::utils::config::ProcessMode::Playlist;
+
+fn get_pool() -> Pool<Sqlite> {
+    Runtime::new().unwrap().block_on(db_pool()).unwrap()
+}
 
 #[test]
 fn mock_date_time() {
@@ -40,12 +48,15 @@ fn get_date_tomorrow() {
 
 #[test]
 fn test_delta() {
-    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.toml")), None);
+    let pool = get_pool();
+    let mut config = Runtime::new()
+        .unwrap()
+        .block_on(PlayoutConfig::new(&pool, 1));
+
     config.mail.recipient = "".into();
     config.processing.mode = Playlist;
     config.playlist.day_start = "00:00:00".into();
     config.playlist.length = "24:00:00".into();
-    config.logging.log_to_file = false;
 
     mock_time::set_mock_time("2022-05-09T23:59:59");
     let (delta, _) = get_delta(&config, &86401.0);

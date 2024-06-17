@@ -139,7 +139,6 @@ ENV LD_LIBRARY_PATH=/usr/local/lib64:/usr/local/lib
 COPY --from=build /usr/local/ /usr/local/
 
 ADD ./overide.conf /etc/systemd/system/ffplayout.service.d/overide.conf
-ADD ./overide.conf /etc/systemd/system/ffpapi.service.d/overide.conf
 
 RUN \
     dnf update -y \
@@ -155,8 +154,7 @@ RUN \
     rm /tmp/ffplayout-${FFPLAYOUT_VERSION}-1.x86_64.rpm && \
     mkdir -p /home/ffpu && chown -R ffpu: /home/ffpu && \
     systemctl enable ffplayout && \
-    systemctl enable ffpapi && \
-    ffpapi -u admin -p admin -m contact@example.com
+    ffplayout -u admin -p admin -m contact@example.com
 
 EXPOSE 8787
 

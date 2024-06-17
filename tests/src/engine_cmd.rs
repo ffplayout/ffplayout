@@ -1,23 +1,41 @@
-use std::{fs, path::PathBuf};
+use std::fs;
 
-use ffplayout::{input::playlist::gen_source, utils::prepare_output_cmd};
-use ffplayout_lib::{
-    utils::{Media, OutputMode::*, PlayerControl, PlayoutConfig, PlayoutStatus, ProcessUnit::*},
-    vec_strings,
+use sqlx::{Pool, Sqlite};
+use tokio::runtime::Runtime;
+
+use ffplayout::db::{db_pool, handles};
+use ffplayout::player::{
+    controller::{ChannelManager, ProcessUnit::*},
+    input::playlist::gen_source,
+    utils::prepare_output_cmd,
+    utils::Media,
 };
+use ffplayout::utils::config::{OutputMode::*, PlayoutConfig};
+use ffplayout::vec_strings;
+
+fn get_pool() -> Pool<Sqlite> {
+    Runtime::new().unwrap().block_on(db_pool()).unwrap()
+}
 
 #[test]
 fn video_audio_input() {
-    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.toml")), None);
-    let player_control = PlayerControl::new();
-    let playout_stat = PlayoutStatus::new();
-    config.out.mode = Stream;
+    let pool = get_pool();
+    let mut config = Runtime::new()
+        .unwrap()
+        .block_on(PlayoutConfig::new(&pool, 1));
+    let channel = Runtime::new()
+        .unwrap()
+        .block_on(handles::select_channel(&pool, &1))
+        .unwrap();
+    let manager = ChannelManager::new(Some(pool), channel, config.clone());
+
+    config.output.mode = Stream;
     config.processing.add_logo = true;
     let logo_path = fs::canonicalize("./assets/logo.png").unwrap();
     config.processing.logo = logo_path.to_string_lossy().to_string();
 
     let media_obj = Media::new(0, "./assets/media_mix/with_audio.mp4", true);
-    let media = gen_source(&config, media_obj, &playout_stat, &player_control, 1);
+    let media = gen_source(&config, media_obj, &manager, 1);
 
     let test_filter_cmd =
         vec_strings![
@@ -37,15 +55,22 @@ fn video_audio_input() {
 
 #[test]
 fn video_audio_custom_filter1_input() {
-    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.toml")), None);
-    let player_control = PlayerControl::new();
-    let playout_stat = PlayoutStatus::new();
-    config.out.mode = Stream;
+    let pool = get_pool();
+    let mut config = Runtime::new()
+        .unwrap()
+        .block_on(PlayoutConfig::new(&pool, 1));
+    let channel = Runtime::new()
+        .unwrap()
+        .block_on(handles::select_channel(&pool, &1))
+        .unwrap();
+    let manager = ChannelManager::new(Some(pool), channel, config.clone());
+
+    config.output.mode = Stream;
     config.processing.add_logo = false;
     config.processing.custom_filter = "[0:v]gblur=2[c_v_out];[0:a]volume=0.2[c_a_out]".to_string();
 
     let media_obj = Media::new(0, "./assets/media_mix/with_audio.mp4", true);
-    let media = gen_source(&config, media_obj, &playout_stat, &player_control, 1);
+    let media = gen_source(&config, media_obj, &manager, 1);
 
     let test_filter_cmd = vec_strings![
         "-filter_complex",
@@ -64,17 +89,23 @@ fn video_audio_custom_filter1_input() {
 
 #[test]
 fn video_audio_custom_filter2_input() {
-    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.toml")), None);
-    let player_control = PlayerControl::new();
-    let playout_stat = PlayoutStatus::new();
-    config.out.mode = Stream;
+    let pool = get_pool();
+    let mut config = Runtime::new()
+        .unwrap()
+        .block_on(PlayoutConfig::new(&pool, 1));
+    let channel = Runtime::new()
+        .unwrap()
+        .block_on(handles::select_channel(&pool, &1))
+        .unwrap();
+    let manager = ChannelManager::new(Some(pool), channel, config.clone());
+    config.output.mode = Stream;
     config.processing.add_logo = false;
     config.processing.custom_filter =
         "[0:v]null[v];movie=logo.png[l];[v][l]overlay[c_v_out];[0:a]volume=0.2[c_a_out]"
             .to_string();
 
     let media_obj = Media::new(0, "./assets/media_mix/with_audio.mp4", true);
-    let media = gen_source(&config, media_obj, &playout_stat, &player_control, 1);
+    let media = gen_source(&config, media_obj, &manager, 1);
 
     let test_filter_cmd = vec_strings![
         "-filter_complex",
@@ -93,16 +124,22 @@ fn video_audio_custom_filter2_input() {
 
 #[test]
 fn video_audio_custom_filter3_input() {
-    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.toml")), None);
-    let player_control = PlayerControl::new();
-    let playout_stat = PlayoutStatus::new();
-    config.out.mode = Stream;
+    let pool = get_pool();
+    let mut config = Runtime::new()
+        .unwrap()
+        .block_on(PlayoutConfig::new(&pool, 1));
+    let channel = Runtime::new()
+        .unwrap()
+        .block_on(handles::select_channel(&pool, &1))
+        .unwrap();
+    let manager = ChannelManager::new(Some(pool), channel, config.clone());
+    config.output.mode = Stream;
     config.processing.add_logo = false;
     config.processing.custom_filter =
         "[v_in];movie=logo.png[l];[v_in][l]overlay[c_v_out];[0:a]volume=0.2[c_a_out]".to_string();
 
     let media_obj = Media::new(0, "./assets/media_mix/with_audio.mp4", true);
-    let media = gen_source(&config, media_obj, &playout_stat, &player_control, 1);
+    let media = gen_source(&config, media_obj, &manager, 1);
 
     let test_filter_cmd = vec_strings![
         "-filter_complex",
@@ -121,15 +158,21 @@ fn video_audio_custom_filter3_input() {
 
 #[test]
 fn dual_audio_aevalsrc_input() {
-    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.toml")), None);
-    let player_control = PlayerControl::new();
-    let playout_stat = PlayoutStatus::new();
-    config.out.mode = Stream;
+    let pool = get_pool();
+    let mut config = Runtime::new()
+        .unwrap()
+        .block_on(PlayoutConfig::new(&pool, 1));
+    let channel = Runtime::new()
+        .unwrap()
+        .block_on(handles::select_channel(&pool, &1))
+        .unwrap();
+    let manager = ChannelManager::new(Some(pool), channel, config.clone());
+    config.output.mode = Stream;
     config.processing.audio_tracks = 2;
     config.processing.add_logo = false;
 
     let media_obj = Media::new(0, "./assets/media_mix/with_audio.mp4", true);
-    let media = gen_source(&config, media_obj, &playout_stat, &player_control, 1);
+    let media = gen_source(&config, media_obj, &manager, 1);
 
     let test_filter_cmd =
         vec_strings![
@@ -149,15 +192,21 @@ fn dual_audio_aevalsrc_input() {
 
 #[test]
 fn dual_audio_input() {
-    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.toml")), None);
-    let player_control = PlayerControl::new();
-    let playout_stat = PlayoutStatus::new();
-    config.out.mode = Stream;
+    let pool = get_pool();
+    let mut config = Runtime::new()
+        .unwrap()
+        .block_on(PlayoutConfig::new(&pool, 1));
+    let channel = Runtime::new()
+        .unwrap()
+        .block_on(handles::select_channel(&pool, &1))
+        .unwrap();
+    let manager = ChannelManager::new(Some(pool), channel, config.clone());
+    config.output.mode = Stream;
     config.processing.audio_tracks = 2;
     config.processing.add_logo = false;
 
     let media_obj = Media::new(0, "./assets/media_mix/dual_audio.mp4", true);
-    let media = gen_source(&config, media_obj, &playout_stat, &player_control, 1);
+    let media = gen_source(&config, media_obj, &manager, 1);
 
     let test_filter_cmd = vec_strings![
         "-filter_complex",
@@ -176,16 +225,22 @@ fn dual_audio_input() {
 
 #[test]
 fn video_separate_audio_input() {
-    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.toml")), None);
-    let player_control = PlayerControl::new();
-    let playout_stat = PlayoutStatus::new();
-    config.out.mode = Stream;
+    let pool = get_pool();
+    let mut config = Runtime::new()
+        .unwrap()
+        .block_on(PlayoutConfig::new(&pool, 1));
+    let channel = Runtime::new()
+        .unwrap()
+        .block_on(handles::select_channel(&pool, &1))
+        .unwrap();
+    let manager = ChannelManager::new(Some(pool), channel, config.clone());
+    config.output.mode = Stream;
     config.processing.audio_tracks = 1;
     config.processing.add_logo = false;
 
     let mut media_obj = Media::new(0, "./assets/media_mix/no_audio.mp4", true);
     media_obj.audio = "./assets/media_mix/audio.mp3".to_string();
-    let media = gen_source(&config, media_obj, &playout_stat, &player_control, 1);
+    let media = gen_source(&config, media_obj, &manager, 1);
 
     let test_filter_cmd = vec_strings![
         "-filter_complex",
@@ -213,10 +268,13 @@ fn video_separate_audio_input() {
 
 #[test]
 fn video_audio_stream() {
-    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.toml")), None);
-    config.out.mode = Stream;
+    let pool = get_pool();
+    let mut config = Runtime::new()
+        .unwrap()
+        .block_on(PlayoutConfig::new(&pool, 1));
+    config.output.mode = Stream;
     config.processing.add_logo = false;
-    config.out.output_cmd = Some(vec_strings![
+    config.output.output_cmd = Some(vec_strings![
         "-c:v",
         "libx264",
         "-c:a",
@@ -272,12 +330,15 @@ fn video_audio_stream() {
 
 #[test]
 fn video_audio_filter1_stream() {
-    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.toml")), None);
-    config.out.mode = Stream;
+    let pool = get_pool();
+    let mut config = Runtime::new()
+        .unwrap()
+        .block_on(PlayoutConfig::new(&pool, 1));
+    config.output.mode = Stream;
     config.processing.add_logo = false;
     config.text.add_text = false;
-    config.out.output_filter = Some("[0:v]gblur=2[vout0];[0:a]volume=0.2[aout0]".to_string());
-    config.out.output_cmd = Some(vec_strings![
+    config.output.output_filter = Some("[0:v]gblur=2[vout0];[0:a]volume=0.2[aout0]".to_string());
+    config.output.output_cmd = Some(vec_strings![
         "-map",
         "[vout0]",
         "-map",
@@ -347,13 +408,16 @@ fn video_audio_filter1_stream() {
 
 #[test]
 fn video_audio_filter2_stream() {
-    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.toml")), None);
-    config.out.mode = Stream;
+    let pool = get_pool();
+    let mut config = Runtime::new()
+        .unwrap()
+        .block_on(PlayoutConfig::new(&pool, 1));
+    config.output.mode = Stream;
     config.processing.add_logo = false;
     config.text.add_text = true;
     config.text.fontfile = String::new();
-    config.out.output_filter = Some("[0:v]gblur=2[vout0];[0:a]volume=0.2[aout0]".to_string());
-    config.out.output_cmd = Some(vec_strings![
+    config.output.output_filter = Some("[0:v]gblur=2[vout0];[0:a]volume=0.2[aout0]".to_string());
+    config.output.output_cmd = Some(vec_strings![
         "-map",
         "[vout0]",
         "-map",
@@ -430,16 +494,19 @@ fn video_audio_filter2_stream() {
 
 #[test]
 fn video_audio_filter3_stream() {
-    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.toml")), None);
-    config.out.mode = Stream;
+    let pool = get_pool();
+    let mut config = Runtime::new()
+        .unwrap()
+        .block_on(PlayoutConfig::new(&pool, 1));
+    config.output.mode = Stream;
     config.processing.add_logo = false;
     config.text.add_text = true;
     config.text.fontfile = String::new();
-    config.out.output_filter = Some(
+    config.output.output_filter = Some(
         "[0:v]null[o];movie=/path/to/lower_third.png[l];[o][l]overlay=shortest=1[vout0]"
             .to_string(),
     );
-    config.out.output_cmd = Some(vec_strings![
+    config.output.output_cmd = Some(vec_strings![
         "-map",
         "[vout0]",
         "-map",
@@ -516,16 +583,19 @@ fn video_audio_filter3_stream() {
 
 #[test]
 fn video_audio_filter4_stream() {
-    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.toml")), None);
-    config.out.mode = Stream;
+    let pool = get_pool();
+    let mut config = Runtime::new()
+        .unwrap()
+        .block_on(PlayoutConfig::new(&pool, 1));
+    config.output.mode = Stream;
     config.processing.add_logo = false;
     config.text.add_text = true;
     config.text.fontfile = String::new();
-    config.out.output_filter = Some(
+    config.output.output_filter = Some(
         "[0:v]null[o];movie=/path/to/lower_third.png[l];[o][l]overlay=shortest=1[vout0];[0:a:0]volume=0.2[aout0]"
             .to_string(),
     );
-    config.out.output_cmd = Some(vec_strings![
+    config.output.output_cmd = Some(vec_strings![
         "-map",
         "[vout0]",
         "-map",
@@ -602,12 +672,15 @@ fn video_audio_filter4_stream() {
 
 #[test]
 fn video_dual_audio_stream() {
-    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.toml")), None);
-    config.out.mode = Stream;
+    let pool = get_pool();
+    let mut config = Runtime::new()
+        .unwrap()
+        .block_on(PlayoutConfig::new(&pool, 1));
+    config.output.mode = Stream;
     config.processing.add_logo = false;
     config.processing.audio_tracks = 2;
     config.text.add_text = false;
-    config.out.output_cmd = Some(vec_strings![
+    config.output.output_cmd = Some(vec_strings![
         "-c:v",
         "libx264",
         "-c:a",
@@ -673,12 +746,15 @@ fn video_dual_audio_stream() {
 
 #[test]
 fn video_dual_audio_filter_stream() {
-    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.toml")), None);
-    config.out.mode = Stream;
+    let pool = get_pool();
+    let mut config = Runtime::new()
+        .unwrap()
+        .block_on(PlayoutConfig::new(&pool, 1));
+    config.output.mode = Stream;
     config.processing.add_logo = false;
     config.processing.audio_tracks = 2;
     config.text.fontfile = String::new();
-    config.out.output_cmd = Some(vec_strings![
+    config.output.output_cmd = Some(vec_strings![
         "-c:v",
         "libx264",
         "-c:a",
@@ -753,10 +829,13 @@ fn video_dual_audio_filter_stream() {
 
 #[test]
 fn video_audio_multi_stream() {
-    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.toml")), None);
-    config.out.mode = Stream;
+    let pool = get_pool();
+    let mut config = Runtime::new()
+        .unwrap()
+        .block_on(PlayoutConfig::new(&pool, 1));
+    config.output.mode = Stream;
     config.processing.add_logo = false;
-    config.out.output_cmd = Some(vec_strings![
+    config.output.output_cmd = Some(vec_strings![
         "-c:v",
         "libx264",
         "-c:a",
@@ -842,11 +921,14 @@ fn video_audio_multi_stream() {
 
 #[test]
 fn video_dual_audio_multi_stream() {
-    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.toml")), None);
-    config.out.mode = Stream;
+    let pool = get_pool();
+    let mut config = Runtime::new()
+        .unwrap()
+        .block_on(PlayoutConfig::new(&pool, 1));
+    config.output.mode = Stream;
     config.processing.add_logo = false;
     config.processing.audio_tracks = 2;
-    config.out.output_cmd = Some(vec_strings![
+    config.output.output_cmd = Some(vec_strings![
         "-map",
         "0:v",
         "-map",
@@ -956,13 +1038,16 @@ fn video_dual_audio_multi_stream() {
 
 #[test]
 fn video_audio_text_multi_stream() {
-    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.toml")), None);
-    config.out.mode = Stream;
+    let pool = get_pool();
+    let mut config = Runtime::new()
+        .unwrap()
+        .block_on(PlayoutConfig::new(&pool, 1));
+    config.output.mode = Stream;
     config.processing.add_logo = false;
     config.text.add_text = true;
     config.text.fontfile = String::new();
-    config.out.output_count = 2;
-    config.out.output_cmd = Some(vec_strings![
+    config.output.output_count = 2;
+    config.output.output_cmd = Some(vec_strings![
         "-c:v",
         "libx264",
         "-c:a",
@@ -1069,13 +1154,16 @@ fn video_audio_text_multi_stream() {
 
 #[test]
 fn video_dual_audio_multi_filter_stream() {
-    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.toml")), None);
-    config.out.mode = Stream;
+    let pool = get_pool();
+    let mut config = Runtime::new()
+        .unwrap()
+        .block_on(PlayoutConfig::new(&pool, 1));
+    config.output.mode = Stream;
     config.processing.add_logo = false;
     config.processing.audio_tracks = 2;
-    config.out.output_count = 2;
+    config.output.output_count = 2;
     config.text.fontfile = String::new();
-    config.out.output_cmd = Some(vec_strings![
+    config.output.output_cmd = Some(vec_strings![
         "-map",
         "0:v",
         "-map",
@@ -1198,14 +1286,17 @@ fn video_dual_audio_multi_filter_stream() {
 
 #[test]
 fn video_audio_text_filter_stream() {
-    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.toml")), None);
-    config.out.mode = Stream;
+    let pool = get_pool();
+    let mut config = Runtime::new()
+        .unwrap()
+        .block_on(PlayoutConfig::new(&pool, 1));
+    config.output.mode = Stream;
     config.processing.add_logo = false;
     config.processing.audio_tracks = 1;
     config.text.add_text = true;
     config.text.fontfile = String::new();
-    config.out.output_count = 2;
-    config.out.output_cmd = Some(vec_strings![
+    config.output.output_count = 2;
+    config.output.output_cmd = Some(vec_strings![
         "-map",
         "0:v",
         "-map",
@@ -1320,13 +1411,19 @@ fn video_audio_text_filter_stream() {
 
 #[test]
 fn video_audio_hls() {
-    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.toml")), None);
-    let player_control = PlayerControl::new();
-    let playout_stat = PlayoutStatus::new();
-    config.out.mode = HLS;
+    let pool = get_pool();
+    let mut config = Runtime::new()
+        .unwrap()
+        .block_on(PlayoutConfig::new(&pool, 1));
+    let channel = Runtime::new()
+        .unwrap()
+        .block_on(handles::select_channel(&pool, &1))
+        .unwrap();
+    let manager = ChannelManager::new(Some(pool), channel, config.clone());
+    config.output.mode = HLS;
     config.processing.add_logo = false;
     config.text.add_text = false;
-    config.out.output_cmd = Some(vec_strings![
+    config.output.output_cmd = Some(vec_strings![
         "-c:v",
         "libx264",
         "-c:a",
@@ -1351,7 +1448,7 @@ fn video_audio_hls() {
     ]);
 
     let media_obj = Media::new(0, "./assets/media_mix/with_audio.mp4", true);
-    let media = gen_source(&config, media_obj, &playout_stat, &player_control, 1);
+    let media = gen_source(&config, media_obj, &manager, 1);
 
     let enc_prefix = vec_strings![
         "-hide_banner",
@@ -1407,13 +1504,19 @@ fn video_audio_hls() {
 
 #[test]
 fn video_audio_sub_meta_hls() {
-    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.toml")), None);
-    let player_control = PlayerControl::new();
-    let playout_stat = PlayoutStatus::new();
-    config.out.mode = HLS;
+    let pool = get_pool();
+    let mut config = Runtime::new()
+        .unwrap()
+        .block_on(PlayoutConfig::new(&pool, 1));
+    let channel = Runtime::new()
+        .unwrap()
+        .block_on(handles::select_channel(&pool, &1))
+        .unwrap();
+    let manager = ChannelManager::new(Some(pool), channel, config.clone());
+    config.output.mode = HLS;
     config.processing.add_logo = false;
     config.text.add_text = false;
-    config.out.output_cmd = Some(vec_strings![
+    config.output.output_cmd = Some(vec_strings![
         "-map",
         "0:s:0",
         "-map_metadata",
@@ -1442,7 +1545,7 @@ fn video_audio_sub_meta_hls() {
     ]);
 
     let media_obj = Media::new(0, "./assets/media_mix/with_audio.mp4", true);
-    let media = gen_source(&config, media_obj, &playout_stat, &player_control, 1);
+    let media = gen_source(&config, media_obj, &manager, 1);
 
     let enc_prefix = vec_strings![
         "-hide_banner",
@@ -1502,14 +1605,20 @@ fn video_audio_sub_meta_hls() {
 
 #[test]
 fn video_multi_audio_hls() {
-    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.toml")), None);
-    let player_control = PlayerControl::new();
-    let playout_stat = PlayoutStatus::new();
-    config.out.mode = HLS;
+    let pool = get_pool();
+    let mut config = Runtime::new()
+        .unwrap()
+        .block_on(PlayoutConfig::new(&pool, 1));
+    let channel = Runtime::new()
+        .unwrap()
+        .block_on(handles::select_channel(&pool, &1))
+        .unwrap();
+    let manager = ChannelManager::new(Some(pool), channel, config.clone());
+    config.output.mode = HLS;
     config.processing.add_logo = false;
     config.processing.audio_tracks = 2;
     config.text.add_text = false;
-    config.out.output_cmd = Some(vec_strings![
+    config.output.output_cmd = Some(vec_strings![
         "-c:v",
         "libx264",
         "-c:a",
@@ -1534,7 +1643,7 @@ fn video_multi_audio_hls() {
     ]);
 
     let media_obj = Media::new(0, "./assets/media_mix/dual_audio.mp4", true);
-    let media = gen_source(&config, media_obj, &playout_stat, &player_control, 1);
+    let media = gen_source(&config, media_obj, &manager, 1);
 
     let enc_prefix = vec_strings![
         "-hide_banner",
@@ -1592,17 +1701,23 @@ fn video_multi_audio_hls() {
 
 #[test]
 fn multi_video_audio_hls() {
-    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.toml")), None);
-    let player_control = PlayerControl::new();
-    let playout_stat = PlayoutStatus::new();
-    config.out.mode = HLS;
+    let pool = get_pool();
+    let mut config = Runtime::new()
+        .unwrap()
+        .block_on(PlayoutConfig::new(&pool, 1));
+    let channel = Runtime::new()
+        .unwrap()
+        .block_on(handles::select_channel(&pool, &1))
+        .unwrap();
+    let manager = ChannelManager::new(Some(pool), channel, config.clone());
+    config.output.mode = HLS;
     config.processing.add_logo = false;
     config.text.add_text = false;
-    config.out.output_count = 2;
-    config.out.output_filter = Some(
+    config.output.output_count = 2;
+    config.output.output_filter = Some(
         "[0:v]split=2[v1_out][v2];[v2]scale=w=512:h=288[v2_out];[0:a]asplit=2[a1][a2]".to_string(),
     );
-    config.out.output_cmd = Some(vec_strings![
+    config.output.output_cmd = Some(vec_strings![
         "-map",
         "[v1_out]",
         "-map",
@@ -1641,7 +1756,7 @@ fn multi_video_audio_hls() {
     ]);
 
     let media_obj = Media::new(0, "./assets/media_mix/with_audio.mp4", true);
-    let media = gen_source(&config, media_obj, &playout_stat, &player_control, 1);
+    let media = gen_source(&config, media_obj, &manager, 1);
 
     let enc_prefix = vec_strings![
         "-hide_banner",
@@ -1707,16 +1822,22 @@ fn multi_video_audio_hls() {
 
 #[test]
 fn multi_video_multi_audio_hls() {
-    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.toml")), None);
-    let player_control = PlayerControl::new();
-    let playout_stat = PlayoutStatus::new();
-    config.out.mode = HLS;
+    let pool = get_pool();
+    let mut config = Runtime::new()
+        .unwrap()
+        .block_on(PlayoutConfig::new(&pool, 1));
+    let channel = Runtime::new()
+        .unwrap()
+        .block_on(handles::select_channel(&pool, &1))
+        .unwrap();
+    let manager = ChannelManager::new(Some(pool), channel, config.clone());
+    config.output.mode = HLS;
     config.processing.add_logo = false;
     config.processing.audio_tracks = 2;
     config.text.add_text = false;
-    config.out.output_count = 2;
-    config.out.output_filter = Some("[0:v]split=2[v1_out][v2];[v2]scale=w=512:h=288[v2_out];[0:a:0]asplit=2[a_0_1][a_0_2];[0:a:1]asplit=2[a_1_1][a_1_2]".to_string());
-    config.out.output_cmd = Some(vec_strings![
+    config.output.output_count = 2;
+    config.output.output_filter = Some("[0:v]split=2[v1_out][v2];[v2]scale=w=512:h=288[v2_out];[0:a:0]asplit=2[a_0_1][a_0_2];[0:a:1]asplit=2[a_1_1][a_1_2]".to_string());
+    config.output.output_cmd = Some(vec_strings![
         "-map",
         "[v1_out]",
         "-map",
@@ -1759,7 +1880,7 @@ fn multi_video_multi_audio_hls() {
     ]);
 
     let media_obj = Media::new(0, "./assets/media_mix/dual_audio.mp4", true);
-    let media = gen_source(&config, media_obj, &playout_stat, &player_control, 1);
+    let media = gen_source(&config, media_obj, &manager, 1);
 
     let enc_prefix = vec_strings![
         "-hide_banner",
