@@ -10,7 +10,7 @@ export const useConfig = defineStore('config', {
         configChannelRaw: [] as GuiConfig[],
         playlistLength: 86400.0,
         playout: {} as any,
-        currentUser: '',
+        currentUser: 0,
         configUser: {} as User,
         utcOffset: 0,
         onetimeInfo: true,
@@ -172,7 +172,7 @@ export const useConfig = defineStore('config', {
             })
                 .then((response) => response.json())
                 .then((data) => {
-                    this.currentUser = data.username
+                    this.currentUser = data.id
                     this.configUser = data
                 })
         },

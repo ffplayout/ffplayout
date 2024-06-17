@@ -30,6 +30,7 @@ declare global {
     }
 
     interface User {
+        id: number
         username: string
         mail?: string
         password?: string

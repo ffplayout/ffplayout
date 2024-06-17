@@ -103,13 +103,14 @@ const authStore = useAuth()
 const configStore = useConfig()
 const indexStore = useIndex()
 
-const selected = ref(null as null | string)
+const selected = ref(null as null | number)
 const users = ref([] as User[])
 const showUserModal = ref(false)
 const newPass = ref('')
 const confirmPass = ref('')
 
 const user = ref({
+    id: 0,
     username: '',
     mail: '',
     password: '',
@@ -144,8 +145,8 @@ function onChange(event: any) {
 async function getUserConfig() {
     let selectUser = configStore.currentUser
 
-    if (user.value.username) {
-        selectUser = user.value.username.toString()
+    if (user.value.id) {
+        selectUser = user.value.id
     } else if (selected.value) {
         selectUser = selected.value
     }
@@ -160,7 +161,7 @@ async function getUserConfig() {
 }
 
 async function deleteUser() {
-    if (configStore.configUser.username === configStore.currentUser) {
+    if (configStore.configUser.id === configStore.currentUser) {
         indexStore.msgAlert('error', t('user.deleteNotPossible'), 2)
     } else {
         await fetch(`/api/user/${configStore.configUser.username}`, {
@@ -180,6 +181,7 @@ async function deleteUser() {
 }
 
 function clearUser() {
+    user.value.id = 0
     user.value.username = ''
     user.value.mail = ''
     user.value.password = ''
