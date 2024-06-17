@@ -65,11 +65,11 @@ function setTitle(input: string): string {
 }
 
 async function onSubmitAdvanced() {
-    const update = await configStore.setPlayoutConfig(configStore.playout)
+    const update = await configStore.setAdvancedConfig()
     configStore.onetimeInfo = true
 
     if (update.status === 200) {
-        indexStore.msgAlert('success', t('config.updatePlayoutSuccess'), 2)
+        indexStore.msgAlert('success', t('advanced.updateSuccess'), 2)
 
         const channel = configStore.configChannel[configStore.configID].id
 
@@ -83,7 +83,7 @@ async function onSubmitAdvanced() {
             }
         })
     } else {
-        indexStore.msgAlert('error', t('config.updatePlayoutFailed'), 2)
+        indexStore.msgAlert('error', t('advanced.updateFailed'), 2)
     }
 }
 

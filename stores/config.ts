@@ -187,6 +187,19 @@ export const useConfig = defineStore('config', {
             return update
         },
 
+        async setAdvancedConfig() {
+            const authStore = useAuth()
+            const channel = this.configChannel[this.configID].id
+
+            const update = await fetch(`/api/playout/advanced/${channel}`, {
+                method: 'PUT',
+                headers: { ...this.contentType, ...authStore.authHeader },
+                body: JSON.stringify(this.advanced),
+            })
+
+            return update
+        },
+
         async getUserConfig() {
             const authStore = useAuth()
 

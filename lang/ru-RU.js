@@ -143,6 +143,8 @@ export default {
         encoder: 'Encoder',
         filter: 'Filter',
         ingest: 'Ingest',
+        updateSuccess: 'Update advanced config success!',
+        updateFailed: 'Update advanced config failed!',
     },
     config: {
         channel: 'Канал',
