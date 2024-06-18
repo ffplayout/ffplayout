@@ -306,13 +306,13 @@ pub async fn select_role(conn: &Pool<Sqlite>, id: &i32) -> Result<Role, sqlx::Er
 
 pub async fn select_login(conn: &Pool<Sqlite>, user: &str) -> Result<User, sqlx::Error> {
     let query =
-        "SELECT id, mail, username, password, role_id, channel_id FROM user WHERE username = $1";
+        "SELECT id, mail, username, password, role_id, channel_ids FROM user WHERE username = $1";
 
     sqlx::query_as(query).bind(user).fetch_one(conn).await
 }
 
 pub async fn select_user(conn: &Pool<Sqlite>, id: i32) -> Result<User, sqlx::Error> {
-    let query = "SELECT id, mail, username, role_id, channel_id FROM user WHERE id = $1";
+    let query = "SELECT id, mail, username, role_id, channel_ids FROM user WHERE id = $1";
 
     sqlx::query_as(query).bind(id).fetch_one(conn).await
 }
@@ -338,13 +338,20 @@ pub async fn insert_user(
     .await
     .unwrap();
 
-    let query = "INSERT INTO user (mail, username, password, role_id) VALUES($1, $2, $3, $4)";
+    let query = "INSERT INTO user (mail, username, password, role_id, channel_ids) VALUES($1, $2, $3, $4, $5)";
 
     sqlx::query(query)
         .bind(user.mail)
         .bind(user.username)
         .bind(password_hash)
         .bind(user.role_id)
+        .bind(
+            user.channel_ids
+                .iter()
+                .map(|i| i.to_string())
+                .collect::<Vec<String>>()
+                .join(","),
+        )
         .execute(conn)
         .await
 }

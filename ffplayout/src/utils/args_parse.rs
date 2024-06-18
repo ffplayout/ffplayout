@@ -250,7 +250,7 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
             username: username.clone(),
             password: args.password.unwrap(),
             role_id: Some(1),
-            channel_id: Some(1),
+            channel_ids: vec![1],
             token: None,
         };
 

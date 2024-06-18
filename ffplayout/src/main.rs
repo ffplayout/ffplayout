@@ -59,7 +59,7 @@ async fn validator(
             req.attach(vec![claims.role]);
 
             req.extensions_mut()
-                .insert(UserMeta::new(claims.id, claims.channel));
+                .insert(UserMeta::new(claims.id, claims.channels));
 
             Ok(req)
         }

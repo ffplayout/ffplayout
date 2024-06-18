@@ -15,17 +15,17 @@ const JWT_EXPIRATION_DAYS: i64 = 7;
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Claims {
     pub id: i32,
-    pub channel: i32,
+    pub channels: Vec<i32>,
     pub username: String,
     pub role: Role,
     exp: i64,
 }
 
 impl Claims {
-    pub fn new(id: i32, channel: i32, username: String, role: Role) -> Self {
+    pub fn new(id: i32, channels: Vec<i32>, username: String, role: Role) -> Self {
         Self {
             id,
-            channel,
+            channels,
             username,
             role,
             exp: (Utc::now() + TimeDelta::try_days(JWT_EXPIRATION_DAYS).unwrap()).timestamp(),

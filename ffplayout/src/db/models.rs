@@ -6,6 +6,7 @@ use serde::{
     de::{self, Visitor},
     Deserialize, Serialize,
 };
+use serde_with::{formats::CommaSeparator, serde_as, StringWithSeparator};
 use sqlx::{sqlite::SqliteRow, FromRow, Pool, Row, Sqlite};
 
 use crate::db::handles;
@@ -52,27 +53,42 @@ pub async fn init_globales(conn: &Pool<Sqlite>) {
     INSTANCE.set(config).unwrap();
 }
 
-#[derive(Debug, Deserialize, Serialize, sqlx::FromRow)]
+#[serde_as]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct User {
-    #[sqlx(default)]
     #[serde(skip_deserializing)]
     pub id: i32,
-    #[sqlx(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mail: Option<String>,
     pub username: String,
-    #[sqlx(default)]
     #[serde(skip_serializing, default = "empty_string")]
     pub password: String,
-    #[sqlx(default)]
     #[serde(skip_serializing)]
     pub role_id: Option<i32>,
-    #[sqlx(default)]
     #[serde(skip_serializing)]
-    pub channel_id: Option<i32>,
-    #[sqlx(default)]
+    #[serde_as(as = "StringWithSeparator::<CommaSeparator, i32>")]
+    pub channel_ids: Vec<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub token: Option<String>,
+}
+
+impl FromRow<'_, SqliteRow> for User {
+    fn from_row(row: &SqliteRow) -> sqlx::Result<Self> {
+        Ok(Self {
+            id: row.try_get("id").unwrap_or_default(),
+            mail: row.get("mail"),
+            username: row.try_get("username").unwrap_or_default(),
+            password: row.try_get("password").unwrap_or_default(),
+            role_id: row.get("role_id"),
+            channel_ids: row
+                .try_get::<String, &str>("channel_ids")
+                .unwrap_or_default()
+                .split(',')
+                .map(|i| i.parse::<i32>().unwrap_or_default())
+                .collect(),
+            token: row.get("token"),
+        })
+    }
 }
 
 fn empty_string() -> String {
@@ -82,12 +98,12 @@ fn empty_string() -> String {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct UserMeta {
     pub id: i32,
-    pub channel: i32,
+    pub channels: Vec<i32>,
 }
 
 impl UserMeta {
-    pub fn new(id: i32, channel: i32) -> Self {
-        Self { id, channel }
+    pub fn new(id: i32, channels: Vec<i32>) -> Self {
+        Self { id, channels }
     }
 }
 

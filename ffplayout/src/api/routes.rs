@@ -186,7 +186,7 @@ pub async fn login(pool: web::Data<Pool<Sqlite>>, credentials: web::Json<User>) 
             if verified_password.is_ok() {
                 let claims = Claims::new(
                     user.id,
-                    user.channel_id.unwrap_or_default(),
+                    user.channel_ids.clone(),
                     username.clone(),
                     role.clone(),
                 );
@@ -417,7 +417,7 @@ async fn remove_user(
 #[protect(
     any("Role::GlobalAdmin", "Role::ChannelAdmin", "Role::User"),
     ty = "Role",
-    expr = "*id == user.channel || role.has_authority(&Role::GlobalAdmin)"
+    expr = "user.channels.contains(&*id) || role.has_authority(&Role::GlobalAdmin)"
 )]
 async fn get_channel(
     pool: web::Data<Pool<Sqlite>>,
@@ -459,7 +459,7 @@ async fn get_all_channels(pool: web::Data<Pool<Sqlite>>) -> Result<impl Responde
     "Role::GlobalAdmin",
     "Role::ChannelAdmin",
     ty = "Role",
-    expr = "*id == user.channel || role.has_authority(&Role::GlobalAdmin)"
+    expr = "user.channels.contains(&*id) || role.has_authority(&Role::GlobalAdmin)"
 )]
 async fn patch_channel(
     pool: web::Data<Pool<Sqlite>>,
@@ -537,7 +537,7 @@ async fn remove_channel(
 #[protect(
     any("Role::GlobalAdmin", "Role::ChannelAdmin"),
     ty = "Role",
-    expr = "*id == user.channel || role.has_authority(&Role::GlobalAdmin)"
+    expr = "user.channels.contains(&*id) || role.has_authority(&Role::GlobalAdmin)"
 )]
 async fn get_advanced_config(
     id: web::Path<i32>,
@@ -562,7 +562,7 @@ async fn get_advanced_config(
     "Role::GlobalAdmin",
     "Role::ChannelAdmin",
     ty = "Role",
-    expr = "*id == user.channel || role.has_authority(&Role::GlobalAdmin)"
+    expr = "user.channels.contains(&*id) || role.has_authority(&Role::GlobalAdmin)"
 )]
 async fn update_advanced_config(
     pool: web::Data<Pool<Sqlite>>,
@@ -682,7 +682,7 @@ async fn update_advanced_config(
 #[protect(
     any("Role::GlobalAdmin", "Role::ChannelAdmin", "Role::User"),
     ty = "Role",
-    expr = "*id == user.channel || role.has_authority(&Role::GlobalAdmin)"
+    expr = "user.channels.contains(&*id) || role.has_authority(&Role::GlobalAdmin)"
 )]
 async fn get_playout_config(
     id: web::Path<i32>,
@@ -707,7 +707,7 @@ async fn get_playout_config(
     "Role::GlobalAdmin",
     "Role::ChannelAdmin",
     ty = "Role",
-    expr = "*id == user.channel || role.has_authority(&Role::GlobalAdmin)"
+    expr = "user.channels.contains(&*id) || role.has_authority(&Role::GlobalAdmin)"
 )]
 async fn update_playout_config(
     pool: web::Data<Pool<Sqlite>>,
@@ -826,7 +826,7 @@ async fn update_playout_config(
 #[protect(
     any("Role::GlobalAdmin", "Role::ChannelAdmin", "Role::User"),
     ty = "Role",
-    expr = "*id == user.channel || role.has_authority(&Role::GlobalAdmin)"
+    expr = "user.channels.contains(&*id) || role.has_authority(&Role::GlobalAdmin)"
 )]
 async fn get_presets(
     pool: web::Data<Pool<Sqlite>>,
@@ -852,7 +852,7 @@ async fn get_presets(
 #[protect(
     any("Role::GlobalAdmin", "Role::ChannelAdmin", "Role::User"),
     ty = "Role",
-    expr = "*id == user.channel || role.has_authority(&Role::GlobalAdmin)"
+    expr = "user.channels.contains(&*id) || role.has_authority(&Role::GlobalAdmin)"
 )]
 async fn update_preset(
     pool: web::Data<Pool<Sqlite>>,
@@ -882,7 +882,7 @@ async fn update_preset(
 #[protect(
     any("Role::GlobalAdmin", "Role::ChannelAdmin", "Role::User"),
     ty = "Role",
-    expr = "*id == user.channel || role.has_authority(&Role::GlobalAdmin)"
+    expr = "user.channels.contains(&*id) || role.has_authority(&Role::GlobalAdmin)"
 )]
 async fn add_preset(
     pool: web::Data<Pool<Sqlite>>,
@@ -911,7 +911,7 @@ async fn add_preset(
 #[protect(
     any("Role::GlobalAdmin", "Role::ChannelAdmin", "Role::User"),
     ty = "Role",
-    expr = "*id == user.channel || role.has_authority(&Role::GlobalAdmin)"
+    expr = "user.channels.contains(&*id) || role.has_authority(&Role::GlobalAdmin)"
 )]
 async fn delete_preset(
     pool: web::Data<Pool<Sqlite>>,
@@ -948,7 +948,7 @@ async fn delete_preset(
 #[protect(
     any("Role::GlobalAdmin", "Role::ChannelAdmin", "Role::User"),
     ty = "Role",
-    expr = "*id == user.channel || role.has_authority(&Role::GlobalAdmin)"
+    expr = "user.channels.contains(&*id) || role.has_authority(&Role::GlobalAdmin)"
 )]
 pub async fn send_text_message(
     id: web::Path<i32>,
@@ -979,7 +979,7 @@ pub async fn send_text_message(
 #[protect(
     any("Role::GlobalAdmin", "Role::ChannelAdmin", "Role::User"),
     ty = "Role",
-    expr = "*id == user.channel || role.has_authority(&Role::GlobalAdmin)"
+    expr = "user.channels.contains(&*id) || role.has_authority(&Role::GlobalAdmin)"
 )]
 pub async fn control_playout(
     pool: web::Data<Pool<Sqlite>>,
@@ -1025,7 +1025,7 @@ pub async fn control_playout(
 #[protect(
     any("Role::GlobalAdmin", "Role::ChannelAdmin", "Role::User"),
     ty = "Role",
-    expr = "*id == user.channel || role.has_authority(&Role::GlobalAdmin)"
+    expr = "user.channels.contains(&*id) || role.has_authority(&Role::GlobalAdmin)"
 )]
 pub async fn media_current(
     id: web::Path<i32>,
@@ -1056,7 +1056,7 @@ pub async fn media_current(
 #[protect(
     any("Role::GlobalAdmin", "Role::ChannelAdmin", "Role::User"),
     ty = "Role",
-    expr = "*id == user.channel || role.has_authority(&Role::GlobalAdmin)"
+    expr = "user.channels.contains(&*id) || role.has_authority(&Role::GlobalAdmin)"
 )]
 pub async fn process_control(
     id: web::Path<i32>,
@@ -1103,7 +1103,7 @@ pub async fn process_control(
 #[protect(
     any("Role::GlobalAdmin", "Role::ChannelAdmin", "Role::User"),
     ty = "Role",
-    expr = "*id == user.channel || role.has_authority(&Role::GlobalAdmin)"
+    expr = "user.channels.contains(&*id) || role.has_authority(&Role::GlobalAdmin)"
 )]
 pub async fn get_playlist(
     id: web::Path<i32>,
@@ -1132,7 +1132,7 @@ pub async fn get_playlist(
 #[protect(
     any("Role::GlobalAdmin", "Role::ChannelAdmin", "Role::User"),
     ty = "Role",
-    expr = "*id == user.channel || role.has_authority(&Role::GlobalAdmin)"
+    expr = "user.channels.contains(&*id) || role.has_authority(&Role::GlobalAdmin)"
 )]
 pub async fn save_playlist(
     id: web::Path<i32>,
@@ -1172,7 +1172,7 @@ pub async fn save_playlist(
 #[protect(
     any("Role::GlobalAdmin", "Role::ChannelAdmin", "Role::User"),
     ty = "Role",
-    expr = "*id == user.channel || role.has_authority(&Role::GlobalAdmin)"
+    expr = "user.channels.contains(&*id) || role.has_authority(&Role::GlobalAdmin)"
 )]
 pub async fn gen_playlist(
     id: web::Path<i32>,
@@ -1224,7 +1224,7 @@ pub async fn gen_playlist(
 #[protect(
     any("Role::GlobalAdmin", "Role::ChannelAdmin", "Role::User"),
     ty = "Role",
-    expr = "*id == user.channel || role.has_authority(&Role::GlobalAdmin)"
+    expr = "user.channels.contains(&*id) || role.has_authority(&Role::GlobalAdmin)"
 )]
 pub async fn del_playlist(
     id: web::Path<i32>,
@@ -1254,7 +1254,7 @@ pub async fn del_playlist(
 #[protect(
     any("Role::GlobalAdmin", "Role::ChannelAdmin", "Role::User"),
     ty = "Role",
-    expr = "*id == user.channel || role.has_authority(&Role::GlobalAdmin)"
+    expr = "user.channels.contains(&*id) || role.has_authority(&Role::GlobalAdmin)"
 )]
 pub async fn get_log(
     id: web::Path<i32>,
@@ -1277,7 +1277,7 @@ pub async fn get_log(
 #[protect(
     any("Role::GlobalAdmin", "Role::ChannelAdmin", "Role::User"),
     ty = "Role",
-    expr = "*id == user.channel || role.has_authority(&Role::GlobalAdmin)"
+    expr = "user.channels.contains(&*id) || role.has_authority(&Role::GlobalAdmin)"
 )]
 pub async fn file_browser(
     id: web::Path<i32>,
@@ -1306,7 +1306,7 @@ pub async fn file_browser(
 #[protect(
     any("Role::GlobalAdmin", "Role::ChannelAdmin", "Role::User"),
     ty = "Role",
-    expr = "*id == user.channel || role.has_authority(&Role::GlobalAdmin)"
+    expr = "user.channels.contains(&*id) || role.has_authority(&Role::GlobalAdmin)"
 )]
 pub async fn add_dir(
     id: web::Path<i32>,
@@ -1331,7 +1331,7 @@ pub async fn add_dir(
 #[protect(
     any("Role::GlobalAdmin", "Role::ChannelAdmin", "Role::User"),
     ty = "Role",
-    expr = "*id == user.channel || role.has_authority(&Role::GlobalAdmin)"
+    expr = "user.channels.contains(&*id) || role.has_authority(&Role::GlobalAdmin)"
 )]
 pub async fn move_rename(
     id: web::Path<i32>,
@@ -1359,7 +1359,7 @@ pub async fn move_rename(
 #[protect(
     any("Role::GlobalAdmin", "Role::ChannelAdmin", "Role::User"),
     ty = "Role",
-    expr = "*id == user.channel || role.has_authority(&Role::GlobalAdmin)"
+    expr = "user.channels.contains(&*id) || role.has_authority(&Role::GlobalAdmin)"
 )]
 pub async fn remove(
     id: web::Path<i32>,
@@ -1388,7 +1388,7 @@ pub async fn remove(
 #[protect(
     any("Role::GlobalAdmin", "Role::ChannelAdmin", "Role::User"),
     ty = "Role",
-    expr = "*id == user.channel || role.has_authority(&Role::GlobalAdmin)"
+    expr = "user.channels.contains(&*id) || role.has_authority(&Role::GlobalAdmin)"
 )]
 async fn save_file(
     id: web::Path<i32>,
@@ -1483,7 +1483,7 @@ async fn get_public(public: web::Path<String>) -> Result<actix_files::NamedFile,
 #[protect(
     any("Role::GlobalAdmin", "Role::ChannelAdmin", "Role::User"),
     ty = "Role",
-    expr = "*id == user.channel || role.has_authority(&Role::GlobalAdmin)"
+    expr = "user.channels.contains(&*id) || role.has_authority(&Role::GlobalAdmin)"
 )]
 async fn import_playlist(
     id: web::Path<i32>,
@@ -1544,7 +1544,7 @@ async fn import_playlist(
 #[protect(
     any("Role::GlobalAdmin", "Role::ChannelAdmin", "Role::User"),
     ty = "Role",
-    expr = "*id == user.channel || role.has_authority(&Role::GlobalAdmin)"
+    expr = "user.channels.contains(&*id) || role.has_authority(&Role::GlobalAdmin)"
 )]
 async fn get_program(
     id: web::Path<i32>,
@@ -1642,7 +1642,7 @@ async fn get_program(
 #[protect(
     any("Role::GlobalAdmin", "Role::ChannelAdmin", "Role::User"),
     ty = "Role",
-    expr = "*id == user.channel || role.has_authority(&Role::GlobalAdmin)"
+    expr = "user.channels.contains(&*id) || role.has_authority(&Role::GlobalAdmin)"
 )]
 pub async fn get_system_stat(
     id: web::Path<i32>,
