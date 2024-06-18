@@ -6,6 +6,7 @@ export const useAuth = defineStore('auth', {
         isLogin: false,
         jwtToken: '',
         authHeader: {},
+        channelID: 0,
         role: '',
         uuid: null as null | string,
     }),
@@ -50,6 +51,7 @@ export const useAuth = defineStore('auth', {
                     this.updateToken(response.user?.token)
                     const decodedToken = jwtDecode<JwtPayloadExt>(response.user?.token)
                     this.isLogin = true
+                    this.channelID = decodedToken.channel
                     this.role = decodedToken.role
                 })
                 .catch(() => {})
@@ -65,7 +67,11 @@ export const useAuth = defineStore('auth', {
                 .then((response) => {
                     this.uuid = response.uuid
                 })
-                .catch(() => {
+                .catch(e => {
+                    console.log('status', e.status)
+                    if (e.status === 401) {
+                        this.removeToken()
+                    }
                     this.uuid = null
                 })
         },
@@ -78,6 +84,7 @@ export const useAuth = defineStore('auth', {
                 const decodedToken = jwtDecode<JwtPayloadExt>(token)
                 const timestamp = Date.now() / 1000
                 const expireToken = decodedToken.exp
+                this.channelID = decodedToken.channel
                 this.role = decodedToken.role
 
                 if (expireToken && this.jwtToken && expireToken - timestamp > 15) {

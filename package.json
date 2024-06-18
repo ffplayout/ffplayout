@@ -37,7 +37,7 @@
     "daisyui": "^4.12.2",
     "postcss": "^8.4.38",
     "postcss-loader": "^8.1.1",
-    "sass": "^1.77.5",
+    "sass": "^1.77.6",
     "sass-loader": "^14.2.1",
     "vue": "^3.4.29",
     "vue-router": "^4.3.3"

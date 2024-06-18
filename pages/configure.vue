@@ -9,6 +9,7 @@
                 {{ $t('config.channel') }}
             </button>
             <button
+            v-if="authStore.role === 'GlobalAdmin'"
                 class="join-item w-full btn btn-sm btn-primary duration-500"
                 :class="activeConf === 2 && 'btn-secondary'"
                 @click="activeConf = 2"
@@ -52,6 +53,8 @@
 
 <script setup lang="ts">
 const { t } = useI18n()
+
+const authStore = useAuth()
 
 useHead({
     title: `${t('button.configure')} | ffplayout`,

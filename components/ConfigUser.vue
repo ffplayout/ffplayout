@@ -57,7 +57,7 @@
     </div>
 
     <GenericModal :show="showUserModal" title="Add user" :modal-action="addUser">
-        <div class="w-full max-w-[500px] h-[420px]">
+        <div class="w-full max-w-[500px] h-[490px]">
             <label class="form-control w-full">
                 <div class="label">
                     <span class="label-text">{{ $t('user.name') }}</span>
@@ -85,6 +85,13 @@
                 </div>
                 <input v-model="user.confirm" type="password" class="input input-bordered w-full" />
             </label>
+
+            <div class="form-control mt-5">
+                <select v-model="user.channel_id" class="select select-bordered select-md w-full">
+                    <option disabled selected>Channel</option>
+                    <option v-for="channel in configStore.configChannel" :key="channel.id" :value="channel.id">{{ channel.name }}</option>
+                </select>
+            </div>
 
             <div class="form-control mt-3">
                 <label class="label cursor-pointer w-1/2">
@@ -116,7 +123,8 @@ const user = ref({
     password: '',
     confirm: '',
     admin: false,
-    role_id: 2,
+    channel_id: 1,
+    role_id: 3,
 } as User)
 
 onMounted(() => {
@@ -187,20 +195,21 @@ function clearUser() {
     user.value.password = ''
     user.value.confirm = ''
     user.value.admin = false
-    user.value.role_id = 2
+    user.value.channel_id = 1
+    user.value.role_id = 3
 }
 
 async function addUser(add: boolean) {
     if (add) {
         if (user.value.admin) {
-            user.value.role_id = 1
-        } else {
             user.value.role_id = 2
+        } else {
+            user.value.role_id = 3
         }
 
         delete user.value.admin
 
-        if (user.value.password === user.value.confirm) {
+        if (user.value.username && user.value.password && user.value.password === user.value.confirm) {
             authStore.inspectToken()
             const update = await configStore.addNewUser(user.value)
             showUserModal.value = false

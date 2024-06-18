@@ -4,6 +4,7 @@ export {}
 
 declare global {
     interface JwtPayloadExt extends JwtPayload {
+        channel: number
         role: string
     }
 
@@ -36,6 +37,7 @@ declare global {
         password?: string
         confirm?: string
         admin?: boolean
+        channel_id?: number
         role_id?: number
     }
 
