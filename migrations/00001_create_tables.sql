@@ -58,8 +58,8 @@ CREATE TABLE
         password TEXT NOT NULL,
         role_id INTEGER NOT NULL DEFAULT 3,
         channel_id INTEGER NOT NULL DEFAULT 1,
-        FOREIGN KEY (role_id) REFERENCES roles (id) ON UPDATE SET NULL ON DELETE SET NULL,
-        FOREIGN KEY (channel_id) REFERENCES channels (id) ON UPDATE CASCADE ON DELETE CASCADE,
+        FOREIGN KEY (role_id) REFERENCES roles (id) ON UPDATE SET NULL ON DELETE SET DEFAULT,
+        FOREIGN KEY (channel_id) REFERENCES channels (id) ON UPDATE CASCADE ON DELETE SET DEFAULT,
         UNIQUE (mail, username)
     );
 

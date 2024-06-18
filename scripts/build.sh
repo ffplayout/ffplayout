@@ -35,7 +35,7 @@ for target in "${targets[@]}"; do
         cross build --release --target=$target
 
         cp ./target/${target}/release/ffplayout.exe .
-        zip -r "ffplayout-v${version}_${target}.zip" assets docker docs LICENSE README.md CHANGELOG.md ffplayout.exe -x *.db -x *.db-shm -x *.db-wal -x '11-ffplayout' -x *.service
+        zip -r "ffplayout-v${version}_${target}.zip" assets docker docs LICENSE README.md CHANGELOG.md ffplayout.exe -x *.db -x *.db-shm -x *.db-wal -x *.service
         rm -f ffplayout.exe
     else
         if [[ -f "ffplayout-v${version}_${target}.tar.gz" ]]; then

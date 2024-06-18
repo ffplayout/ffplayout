@@ -29,7 +29,10 @@ impl User {
 /// curl -X GET 'http://127.0.0.1:8787/api/generate-uuid' -H 'Authorization: Bearer <TOKEN>'
 /// ```
 #[post("/generate-uuid")]
-#[protect(any("Role::GlobalAdmin", "Role::User"), ty = "Role")]
+#[protect(
+    any("Role::GlobalAdmin", "Role::ChannelAdmin", "Role::User"),
+    ty = "Role"
+)]
 async fn generate_uuid(data: web::Data<AuthState>) -> Result<impl Responder, ServiceError> {
     let mut uuids = data.uuids.lock().await;
     let new_uuid = UuidData::new();

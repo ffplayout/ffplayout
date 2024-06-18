@@ -189,22 +189,6 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
                 .to_string();
         }
 
-        print!("HLS path [/usr/share/ffplayout/public]: ");
-        stdout().flush().unwrap();
-
-        stdin()
-            .read_line(&mut hls)
-            .expect("Did not enter a correct path?");
-
-        if hls.trim().is_empty() {
-            global.hls_path = "/usr/share/ffplayout/public".to_string();
-        } else {
-            global.hls_path = hls
-                .trim()
-                .trim_matches(|c| c == '"' || c == '\'')
-                .to_string();
-        }
-
         print!("Logging path [/var/log/ffplayout]: ");
         stdout().flush().unwrap();
 
@@ -216,6 +200,22 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
             global.logging_path = "/var/log/ffplayout".to_string();
         } else {
             global.logging_path = logging
+                .trim()
+                .trim_matches(|c| c == '"' || c == '\'')
+                .to_string();
+        }
+
+        print!("HLS path [/usr/share/ffplayout/public]: ");
+        stdout().flush().unwrap();
+
+        stdin()
+            .read_line(&mut hls)
+            .expect("Did not enter a correct path?");
+
+        if hls.trim().is_empty() {
+            global.hls_path = "/usr/share/ffplayout/public".to_string();
+        } else {
+            global.hls_path = hls
                 .trim()
                 .trim_matches(|c| c == '"' || c == '\'')
                 .to_string();
