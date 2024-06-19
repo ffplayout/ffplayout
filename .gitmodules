@@ -1,3 +1,4 @@
 [submodule "ffplayout-frontend"]
 	path = ffplayout-frontend
 	url = https://github.com/ffplayout/ffplayout-frontend.git
+	branch = v0.10.x
