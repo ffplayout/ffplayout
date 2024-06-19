@@ -317,6 +317,12 @@ pub async fn select_user(conn: &Pool<Sqlite>, id: i32) -> Result<User, sqlx::Err
     sqlx::query_as(query).bind(id).fetch_one(conn).await
 }
 
+pub async fn select_global_admins(conn: &Pool<Sqlite>) -> Result<Vec<User>, sqlx::Error> {
+    let query = "SELECT id, mail, username, role_id, channel_ids FROM user WHERE role_id = 1";
+
+    sqlx::query_as(query).fetch_all(conn).await
+}
+
 pub async fn select_users(conn: &Pool<Sqlite>) -> Result<Vec<User>, sqlx::Error> {
     let query = "SELECT id, username FROM user";
 
@@ -364,6 +370,16 @@ pub async fn update_user(
     let query = format!("UPDATE user SET {fields} WHERE id = $1");
 
     sqlx::query(&query).bind(id).execute(conn).await
+}
+
+pub async fn update_user_channel(
+    conn: &Pool<Sqlite>,
+    id: i32,
+    ids: String,
+) -> Result<SqliteQueryResult, sqlx::Error> {
+    let query = format!("UPDATE user SET channel_ids = $2 WHERE id = $1");
+
+    sqlx::query(&query).bind(id).bind(ids).execute(conn).await
 }
 
 pub async fn delete_user(conn: &Pool<Sqlite>, id: i32) -> Result<SqliteQueryResult, sqlx::Error> {

@@ -249,6 +249,15 @@ pub struct Channel {
     pub utc_offset: i32,
 }
 
+impl Channel {
+    pub fn default() -> Self {
+        Self {
+            id: 1,
+            ..Default::default()
+        }
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, sqlx::FromRow)]
 pub struct Configuration {
     pub id: i32,

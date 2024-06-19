@@ -10,7 +10,7 @@ use sqlx::{Pool, Sqlite};
 
 use crate::db::{
     handles::{self, insert_user},
-    models::{GlobalSettings, User},
+    models::{Channel, GlobalSettings, User},
 };
 use crate::utils::{advanced_config::AdvancedConfig, config::PlayoutConfig};
 use crate::ARGS;
@@ -26,6 +26,9 @@ pub struct Args {
         help = "Initialize defaults: global admin, paths, settings, etc."
     )]
     pub init: bool,
+
+    #[clap(short, long, help = "Add a global admin user")]
+    pub add: bool,
 
     #[clap(long, env, help = "path to database file")]
     pub db: Option<PathBuf>,
@@ -112,12 +115,42 @@ pub struct Args {
     pub password: Option<String>,
 }
 
+fn global_user(args: &mut Args) {
+    let mut user = String::new();
+    let mut mail = String::new();
+
+    print!("Global admin: ");
+    stdout().flush().unwrap();
+
+    stdin()
+        .read_line(&mut user)
+        .expect("Did not enter a correct name?");
+
+    args.username = Some(user.trim().to_string());
+
+    print!("Password: ");
+    stdout().flush().unwrap();
+    let password = read_password();
+
+    args.password = password.ok();
+
+    print!("Mail: ");
+    stdout().flush().unwrap();
+
+    stdin()
+        .read_line(&mut mail)
+        .expect("Did not enter a correct name?");
+
+    args.mail = Some(mail.trim().to_string());
+}
+
 pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
+    let channels = handles::select_all_channels(pool).await;
     let mut args = ARGS.clone();
 
     if args.init {
-        let mut user = String::new();
-        let mut mail = String::new();
+        let check_user = handles::select_user(pool, 1).await;
+
         let mut storage = String::new();
         let mut playlist = String::new();
         let mut logging = String::new();
@@ -133,29 +166,9 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
             shared_storage: false,
         };
 
-        print!("Global admin: ");
-        stdout().flush().unwrap();
-
-        stdin()
-            .read_line(&mut user)
-            .expect("Did not enter a correct name?");
-
-        args.username = Some(user.trim().to_string());
-
-        print!("Password: ");
-        stdout().flush().unwrap();
-        let password = read_password();
-
-        args.password = password.ok();
-
-        print!("Mail: ");
-        stdout().flush().unwrap();
-
-        stdin()
-            .read_line(&mut mail)
-            .expect("Did not enter a correct name?");
-
-        args.mail = Some(mail.trim().to_string());
+        if check_user.is_err() {
+            global_user(&mut args);
+        }
 
         print!("Storage path [/var/lib/ffplayout/tv-media]: ");
         stdout().flush().unwrap();
@@ -238,6 +251,10 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
         println!("Set global settings...");
     }
 
+    if args.add {
+        global_user(&mut args);
+    }
+
     if let Some(username) = args.username {
         if args.mail.is_none() || args.password.is_none() {
             eprintln!("Mail/password missing!");
@@ -250,7 +267,11 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
             username: username.clone(),
             password: args.password.unwrap(),
             role_id: Some(1),
-            channel_ids: vec![1],
+            channel_ids: channels
+                .unwrap_or(vec![Channel::default()])
+                .iter()
+                .map(|c| c.id)
+                .collect(),
             token: None,
         };
 
@@ -265,7 +286,7 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
     }
 
     if ARGS.list_channels {
-        match handles::select_all_channels(pool).await {
+        match channels {
             Ok(channels) => {
                 let chl = channels
                     .iter()

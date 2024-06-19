@@ -3,6 +3,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use log::*;
 use sqlx::{Pool, Sqlite};
 
 use super::logging::MailQueue;
@@ -34,6 +35,26 @@ pub async fn create_channel(
 
     if let Ok(mut mqs) = queue.lock() {
         mqs.push(m_queue.clone());
+    }
+
+    if let Ok(channels) = handles::select_all_channels(conn).await {
+        if let Ok(admins) = handles::select_global_admins(conn).await {
+            for admin in admins {
+                if let Err(e) = handles::update_user_channel(
+                    conn,
+                    admin.id,
+                    channels
+                        .iter()
+                        .map(|c| c.id.to_string())
+                        .collect::<Vec<String>>()
+                        .join(","),
+                )
+                .await
+                {
+                    error!("Update global admin: {e}");
+                };
+            }
+        }
     }
 
     Ok(channel)
