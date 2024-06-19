@@ -48,7 +48,7 @@ pub async fn create_channel(
         .replace("stream.m3u8", &format!("stream{channel_num}.m3u8"))
         .replace("stream-%d.ts", &format!("stream{channel_num}-%d.ts"));
 
-    let toml_string = toml_edit::ser::to_string(&config)?;
+    let toml_string = toml_edit::ser::to_string_pretty(&config)?;
     fs::write(&target_channel.config_path, toml_string)?;
 
     let new_channel = handles::insert_channel(conn, target_channel).await?;
