@@ -71,9 +71,21 @@ pub async fn select_channel(conn: &Pool<Sqlite>, id: &i32) -> Result<Channel, sq
     Ok(result)
 }
 
-pub async fn select_all_channels(conn: &Pool<Sqlite>) -> Result<Vec<Channel>, sqlx::Error> {
-    let query = "SELECT * FROM channels";
-    let mut results: Vec<Channel> = sqlx::query_as(query).fetch_all(conn).await?;
+pub async fn select_related_channels(
+    conn: &Pool<Sqlite>,
+    ids: Option<Vec<i32>>,
+) -> Result<Vec<Channel>, sqlx::Error> {
+    let query = match ids {
+        Some(ids) => format!(
+            "SELECT * FROM channels WHERE id IN ({}) ORDER BY id ASC;",
+            ids.iter()
+                .map(|i| i.to_string())
+                .collect::<Vec<String>>()
+                .join(", ")
+        ),
+        None => "SELECT * FROM channels ORDER BY id ASC;".to_string(),
+    };
+    let mut results: Vec<Channel> = sqlx::query_as(&query).fetch_all(conn).await?;
 
     for result in results.iter_mut() {
         result.utc_offset = local_utc_offset();
@@ -377,9 +389,9 @@ pub async fn update_user_channel(
     id: i32,
     ids: String,
 ) -> Result<SqliteQueryResult, sqlx::Error> {
-    let query = format!("UPDATE user SET channel_ids = $2 WHERE id = $1");
+    let query = "UPDATE user SET channel_ids = $2 WHERE id = $1";
 
-    sqlx::query(&query).bind(id).bind(ids).execute(conn).await
+    sqlx::query(query).bind(id).bind(ids).execute(conn).await
 }
 
 pub async fn delete_user(conn: &Pool<Sqlite>, id: i32) -> Result<SqliteQueryResult, sqlx::Error> {

@@ -4,7 +4,7 @@ use actix_web::{get, post, web, Responder};
 use actix_web_grants::proc_macro::protect;
 use serde::{Deserialize, Serialize};
 
-use super::{check_uuid, prune_uuids, AuthState, UuidData};
+use super::{check_uuid, prune_uuids, SseAuthState, UuidData};
 use crate::db::models::Role;
 use crate::player::controller::ChannelController;
 use crate::sse::broadcast::Broadcaster;
@@ -33,7 +33,7 @@ impl User {
     any("Role::GlobalAdmin", "Role::ChannelAdmin", "Role::User"),
     ty = "Role"
 )]
-async fn generate_uuid(data: web::Data<AuthState>) -> Result<impl Responder, ServiceError> {
+async fn generate_uuid(data: web::Data<SseAuthState>) -> Result<impl Responder, ServiceError> {
     let mut uuids = data.uuids.lock().await;
     let new_uuid = UuidData::new();
     let user_auth = User::new(String::new(), new_uuid.uuid.to_string());
@@ -52,7 +52,7 @@ async fn generate_uuid(data: web::Data<AuthState>) -> Result<impl Responder, Ser
 /// ```
 #[get("/validate")]
 async fn validate_uuid(
-    data: web::Data<AuthState>,
+    data: web::Data<SseAuthState>,
     user: web::Query<User>,
 ) -> Result<impl Responder, ServiceError> {
     let mut uuids = data.uuids.lock().await;
@@ -71,7 +71,7 @@ async fn validate_uuid(
 #[get("/event/{id}")]
 async fn event_stream(
     broadcaster: web::Data<Broadcaster>,
-    data: web::Data<AuthState>,
+    data: web::Data<SseAuthState>,
     id: web::Path<i32>,
     user: web::Query<User>,
     controllers: web::Data<Mutex<ChannelController>>,

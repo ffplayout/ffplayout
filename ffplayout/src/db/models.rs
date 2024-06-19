@@ -6,7 +6,7 @@ use serde::{
     de::{self, Visitor},
     Deserialize, Serialize,
 };
-use serde_with::{formats::CommaSeparator, serde_as, StringWithSeparator};
+// use serde_with::{formats::CommaSeparator, serde_as, StringWithSeparator};
 use sqlx::{sqlite::SqliteRow, FromRow, Pool, Row, Sqlite};
 
 use crate::db::handles;
@@ -53,7 +53,7 @@ pub async fn init_globales(conn: &Pool<Sqlite>) {
     INSTANCE.set(config).unwrap();
 }
 
-#[serde_as]
+// #[serde_as]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct User {
     #[serde(skip_deserializing)]
@@ -65,8 +65,8 @@ pub struct User {
     pub password: String,
     #[serde(skip_serializing)]
     pub role_id: Option<i32>,
-    #[serde(skip_serializing)]
-    #[serde_as(as = "StringWithSeparator::<CommaSeparator, i32>")]
+    #[serde(skip_serializing, skip_deserializing)]
+    // #[serde_as(as = "StringWithSeparator::<CommaSeparator, i32>")]
     pub channel_ids: Vec<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub token: Option<String>,
@@ -76,17 +76,17 @@ impl FromRow<'_, SqliteRow> for User {
     fn from_row(row: &SqliteRow) -> sqlx::Result<Self> {
         Ok(Self {
             id: row.try_get("id").unwrap_or_default(),
-            mail: row.get("mail"),
+            mail: row.try_get("mail").unwrap_or_default(),
             username: row.try_get("username").unwrap_or_default(),
             password: row.try_get("password").unwrap_or_default(),
-            role_id: row.get("role_id"),
+            role_id: row.try_get("role_id").unwrap_or_default(),
             channel_ids: row
                 .try_get::<String, &str>("channel_ids")
                 .unwrap_or_default()
                 .split(',')
                 .map(|i| i.parse::<i32>().unwrap_or_default())
                 .collect(),
-            token: row.get("token"),
+            token: None,
         })
     }
 }

@@ -439,8 +439,13 @@ async fn get_channel(
 /// ```
 #[get("/channels")]
 #[protect(any("Role::GlobalAdmin"), ty = "Role")]
-async fn get_all_channels(pool: web::Data<Pool<Sqlite>>) -> Result<impl Responder, ServiceError> {
-    if let Ok(channel) = handles::select_all_channels(&pool.into_inner()).await {
+async fn get_all_channels(
+    pool: web::Data<Pool<Sqlite>>,
+    user: web::ReqData<UserMeta>,
+) -> Result<impl Responder, ServiceError> {
+    if let Ok(channel) =
+        handles::select_related_channels(&pool.into_inner(), Some(user.channels.clone())).await
+    {
         return Ok(web::Json(channel));
     }
 

@@ -37,7 +37,7 @@ pub async fn create_channel(
         mqs.push(m_queue.clone());
     }
 
-    if let Ok(channels) = handles::select_all_channels(conn).await {
+    if let Ok(channels) = handles::select_related_channels(conn, None).await {
         if let Ok(admins) = handles::select_global_admins(conn).await {
             for admin in admins {
                 if let Err(e) = handles::update_user_channel(

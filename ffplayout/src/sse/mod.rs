@@ -32,7 +32,7 @@ impl Default for UuidData {
     }
 }
 
-pub struct AuthState {
+pub struct SseAuthState {
     pub uuids: Mutex<HashSet<UuidData>>,
 }
 

@@ -145,7 +145,7 @@ fn global_user(args: &mut Args) {
 }
 
 pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
-    let channels = handles::select_all_channels(pool).await;
+    let channels = handles::select_related_channels(pool, None).await;
     let mut args = ARGS.clone();
 
     if args.init {

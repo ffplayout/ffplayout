@@ -26,7 +26,7 @@ use ffplayout::{
         models::{init_globales, UserMeta},
     },
     player::controller::{ChannelController, ChannelManager},
-    sse::{broadcast::Broadcaster, routes::*, AuthState},
+    sse::{broadcast::Broadcaster, routes::*, SseAuthState},
     utils::{
         args_parse::run_args,
         config::PlayoutConfig,
@@ -89,7 +89,7 @@ async fn main() -> std::io::Result<()> {
     let channel_controllers = Arc::new(Mutex::new(ChannelController::new()));
 
     if let Some(conn) = &ARGS.listen {
-        let channels = handles::select_all_channels(&pool)
+        let channels = handles::select_related_channels(&pool, None)
             .await
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
 
@@ -116,7 +116,7 @@ async fn main() -> std::io::Result<()> {
         let addr = ip_port[0];
         let port = ip_port[1].parse::<u16>().unwrap();
         let controllers = web::Data::from(channel_controllers);
-        let auth_state = web::Data::new(AuthState {
+        let auth_state = web::Data::new(SseAuthState {
             uuids: tokio::sync::Mutex::new(HashSet::new()),
         });
         let broadcast_data = Broadcaster::create();
