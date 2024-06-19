@@ -37,7 +37,7 @@ declare global {
         password?: string
         confirm?: string
         admin?: boolean
-        channel_id?: number
+        channel_ids?: number[]
         role_id?: number
     }
 

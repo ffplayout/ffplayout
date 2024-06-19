@@ -15,6 +15,7 @@
   "dependencies": {
     "@nuxtjs/color-mode": "^3.4.1",
     "@pinia/nuxt": "^0.5.1",
+    "@vueform/multiselect": "^2.6.8",
     "@vuepic/vue-datepicker": "^8.8.0",
     "@vueuse/nuxt": "^10.11.0",
     "bootstrap-icons": "^1.11.3",
@@ -35,6 +36,7 @@
     "@types/lodash": "^4.17.5",
     "@types/video.js": "^7.3.58",
     "daisyui": "^4.12.2",
+    "mini-svg-data-uri": "^1.4.4",
     "postcss": "^8.4.38",
     "postcss-loader": "^8.1.1",
     "sass": "^1.77.6",

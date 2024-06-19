@@ -87,10 +87,21 @@
             </label>
 
             <div class="form-control mt-5">
-                <select v-model="user.channel_id" class="select select-bordered select-md w-full">
+                <Multiselect
+                        v-model="user.channel_ids"
+                        :options="configStore.configChannel"
+                        mode="tags"
+                        :close-on-select="true"
+                        :can-clear="false"
+                        label="name"
+                        value-prop="id"
+                        :classes="multiSelectClasses"
+                    ></Multiselect>
+
+                <!-- <select v-model="user.channel_id" class="select select-bordered select-md w-full">
                     <option disabled selected>Channel</option>
                     <option v-for="channel in configStore.configChannel" :key="channel.id" :value="channel.id">{{ channel.name }}</option>
-                </select>
+                </select> -->
             </div>
 
             <div class="form-control mt-3">
@@ -105,6 +116,7 @@
 
 <script setup lang="ts">
 const { t } = useI18n()
+const { multiSelectClasses } = useVariables()
 
 const authStore = useAuth()
 const configStore = useConfig()
@@ -123,7 +135,7 @@ const user = ref({
     password: '',
     confirm: '',
     admin: false,
-    channel_id: 1,
+    channel_ids: [1],
     role_id: 3,
 } as User)
 
@@ -195,7 +207,7 @@ function clearUser() {
     user.value.password = ''
     user.value.confirm = ''
     user.value.admin = false
-    user.value.channel_id = 1
+    user.value.channel_ids = [1]
     user.value.role_id = 3
 }
 
