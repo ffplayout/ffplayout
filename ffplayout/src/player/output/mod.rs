@@ -3,7 +3,7 @@ use std::{
     process::{Command, Stdio},
     sync::atomic::Ordering,
     thread::{self, sleep},
-    time::Duration,
+    time::{Duration, SystemTime},
 };
 
 use crossbeam_channel::bounded;
@@ -79,11 +79,14 @@ pub fn player(manager: ChannelManager) -> Result<(), ProcessError> {
 
     drop(config);
 
+    let mut error_count = 0;
+
     'source_iter: for node in node_sources {
         let config = manager.config.lock()?.clone();
 
         *manager.current_media.lock().unwrap() = Some(node.clone());
         let ignore_dec = config.logging.ignore_lines.clone();
+        let timer = SystemTime::now();
 
         if is_terminated.load(Ordering::SeqCst) {
             debug!(target: Target::file_mail(), channel = id; "Playout is terminated, break out from source loop");
@@ -237,6 +240,19 @@ pub fn player(manager: ChannelManager) -> Result<(), ProcessError> {
         if let Err(e) = error_decoder_thread.join() {
             error!(target: Target::file_mail(), channel = id; "{e:?}");
         };
+
+        if let Ok(elapsed) = timer.elapsed() {
+            if elapsed.as_millis() < 300 {
+                error_count += 1;
+
+                if error_count > 10 {
+                    error!(target: Target::file_mail(), channel = id; "Reach fatal error count, terminate channel!");
+                    break;
+                }
+            } else {
+                error_count = 0;
+            }
+        }
     }
 
     trace!("Out of source loop");

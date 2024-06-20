@@ -7,7 +7,6 @@
 use std::{
     fs::{create_dir_all, write},
     io::Error,
-    process::exit,
 };
 
 use chrono::Timelike;
@@ -227,8 +226,6 @@ pub fn playlist_generator(manager: &ChannelManager) -> Result<Vec<JsonPlaylist>,
             "Playlist folder <b><magenta>{:?}</></b> not exists!",
             config.global.playlist_path
         );
-
-        exit(1);
     }
 
     if let Some(range) = config.general.generate.clone() {

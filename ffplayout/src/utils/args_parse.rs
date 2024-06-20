@@ -149,7 +149,7 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
     let mut args = ARGS.clone();
 
     if args.init {
-        let check_user = handles::select_user(pool, 1).await;
+        let check_user = handles::select_users(pool).await;
 
         let mut storage = String::new();
         let mut playlist = String::new();
@@ -166,7 +166,7 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
             shared_storage: false,
         };
 
-        if check_user.is_err() {
+        if check_user.unwrap_or_default().is_empty() {
             global_user(&mut args);
         }
 

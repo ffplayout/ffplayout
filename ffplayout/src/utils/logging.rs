@@ -274,7 +274,7 @@ fn file_formatter(
 ) -> std::io::Result<()> {
     write!(
         w,
-        "[{}] {} {}",
+        "[{}] [{:>5}] {}",
         now.now().format("%Y-%m-%d %H:%M:%S%.6f"),
         record.level(),
         record.args()

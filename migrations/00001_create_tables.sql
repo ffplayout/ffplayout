@@ -57,10 +57,20 @@ CREATE TABLE
         username TEXT NOT NULL,
         password TEXT NOT NULL,
         role_id INTEGER NOT NULL DEFAULT 3,
-        channel_ids TEXT DEFAULT "1",
         FOREIGN KEY (role_id) REFERENCES roles (id) ON UPDATE SET NULL ON DELETE SET DEFAULT,
         UNIQUE (mail, username)
     );
+
+CREATE TABLE
+    user_channels (
+        id INTEGER PRIMARY KEY,
+        channel_id INTEGER NOT NULL,
+        user_id INTEGER NOT NULL,
+        FOREIGN KEY (channel_id) REFERENCES channels (id) ON UPDATE CASCADE ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES user (id) ON UPDATE CASCADE ON DELETE CASCADE
+    );
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_user_channels_unique ON user_channels (channel_id, user_id);
 
 CREATE TABLE
     configurations (

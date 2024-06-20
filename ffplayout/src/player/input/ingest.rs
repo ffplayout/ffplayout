@@ -1,6 +1,6 @@
 use std::{
     io::{BufRead, BufReader, Read},
-    process::{exit, ChildStderr, Command, Stdio},
+    process::{ChildStderr, Command, Stdio},
     sync::atomic::Ordering,
     thread,
 };
@@ -92,7 +92,6 @@ pub fn ingest_server(
     if let Some(url) = stream_input.iter().find(|s| s.contains("://")) {
         if !test_tcp_port(id, url) {
             channel_mgr.stop_all();
-            exit(1);
         }
 
         info!(target: Target::file_mail(), channel = id; "Start ingest server, listening on: <b><magenta>{url}</></b>",);

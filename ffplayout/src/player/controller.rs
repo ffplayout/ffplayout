@@ -99,6 +99,11 @@ impl ChannelManager {
         channel.utc_offset.clone_from(&other.utc_offset);
     }
 
+    pub fn update_config(&self, new_config: PlayoutConfig) {
+        let mut config = self.config.lock().unwrap();
+        *config = new_config;
+    }
+
     pub async fn async_start(&self) {
         if !self.is_alive.load(Ordering::SeqCst) {
             self.run_count.fetch_add(1, Ordering::SeqCst);
@@ -228,6 +233,7 @@ impl ChannelManager {
     pub async fn async_stop(&self) {
         debug!("Stop all child processes");
         self.is_terminated.store(true, Ordering::SeqCst);
+        self.is_alive.store(false, Ordering::SeqCst);
         self.ingest_is_running.store(false, Ordering::SeqCst);
         self.run_count.fetch_sub(1, Ordering::SeqCst);
         let pool = self.db_pool.clone().unwrap();
@@ -237,21 +243,10 @@ impl ChannelManager {
             error!("Unable write to player status: {e}");
         };
 
-        if self.is_alive.load(Ordering::SeqCst) {
-            self.is_alive.store(false, Ordering::SeqCst);
-
-            trace!("Playout is alive and processes are terminated");
-
-            for unit in [Decoder, Encoder, Ingest] {
-                if let Err(e) = self.stop(unit) {
-                    if !e.to_string().contains("exited process") {
-                        error!("{e}")
-                    }
-                }
-                if let Err(e) = self.wait(unit) {
-                    if !e.to_string().contains("exited process") {
-                        error!("{e}")
-                    }
+        for unit in [Decoder, Encoder, Ingest] {
+            if let Err(e) = self.stop(unit) {
+                if !e.to_string().contains("exited process") {
+                    error!("{e}")
                 }
             }
         }

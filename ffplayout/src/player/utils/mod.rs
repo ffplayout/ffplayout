@@ -812,7 +812,6 @@ pub fn stderr_reader(
                     && !line.contains("failed to delete old segment"))
             {
                 manager.stop_all();
-                exit(1);
             }
         }
     }

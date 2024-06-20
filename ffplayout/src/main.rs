@@ -115,7 +115,7 @@ async fn main() -> std::io::Result<()> {
         let ip_port = conn.split(':').collect::<Vec<&str>>();
         let addr = ip_port[0];
         let port = ip_port[1].parse::<u16>().unwrap();
-        let controllers = web::Data::from(channel_controllers);
+        let controllers = web::Data::from(channel_controllers.clone());
         let auth_state = web::Data::new(SseAuthState {
             uuids: tokio::sync::Mutex::new(HashSet::new()),
         });
@@ -226,7 +226,7 @@ async fn main() -> std::io::Result<()> {
         .bind((addr, port))?
         .workers(thread_count)
         .run()
-        .await
+        .await?;
     } else if let Some(channels) = &ARGS.channels {
         for (index, channel_id) in channels.iter().enumerate() {
             let channel = handles::select_channel(&pool, channel_id).await.unwrap();
@@ -245,11 +245,13 @@ async fn main() -> std::io::Result<()> {
 
             manager.foreground_start(index).await;
         }
-
-        Ok(())
     } else {
         error!("Run ffplayout with parameters! Run ffplayout -h for more information.");
-
-        Ok(())
     }
+
+    for channel in &channel_controllers.lock().unwrap().channels {
+        channel.stop_all();
+    }
+
+    Ok(())
 }

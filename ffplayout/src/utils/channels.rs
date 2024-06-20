@@ -16,16 +16,9 @@ async fn map_global_admins(conn: &Pool<Sqlite>) -> Result<(), ServiceError> {
     let admins = handles::select_global_admins(conn).await?;
 
     for admin in admins {
-        if let Err(e) = handles::update_user_channel(
-            conn,
-            admin.id,
-            channels
-                .iter()
-                .map(|c| c.id.to_string())
-                .collect::<Vec<String>>()
-                .join(","),
-        )
-        .await
+        if let Err(e) =
+            handles::insert_user_channel(conn, admin.id, channels.iter().map(|c| c.id).collect())
+                .await
         {
             error!("Update global admin: {e}");
         };
@@ -42,7 +35,7 @@ pub async fn create_channel(
 ) -> Result<Channel, ServiceError> {
     let channel = handles::insert_channel(conn, target_channel).await?;
 
-    let output_param = format!("-c:v libx264 -crf 23 -x264-params keyint=50:min-keyint=25:scenecut=-1 -maxrate 1300k -bufsize 2600k -preset faster -tune zerolatency -profile:v Main -level 3.1 -c:a aac -ar 44100 -b:a 128k -flags +cgop -f hls -hls_time 6 -hls_list_size 600 -hls_flags append_list+delete_segments+omit_endlist -hls_segment_filename /usr/share/ffplayout/public/live/stream{0}-%d.ts /usr/share/ffplayout/public/live/stream{0}.m3u8", channel.id);
+    let output_param = format!("-c:v libx264 -crf 23 -x264-params keyint=50:min-keyint=25:scenecut=-1 -maxrate 1300k -bufsize 2600k -preset faster -tune zerolatency -profile:v Main -level 3.1 -c:a aac -ar 44100 -b:a 128k -flags +cgop -f hls -hls_time 6 -hls_list_size 600 -hls_flags append_list+delete_segments+omit_endlist -hls_segment_filename live/stream{0}-%d.ts live/stream{0}.m3u8", channel.id);
 
     handles::insert_advanced_configuration(conn, channel.id).await?;
     handles::insert_configuration(conn, channel.id, output_param).await?;

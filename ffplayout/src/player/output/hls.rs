@@ -19,10 +19,10 @@ out:
 
 use std::{
     io::{BufRead, BufReader},
-    process::{exit, Command, Stdio},
+    process::{Command, Stdio},
     sync::atomic::Ordering,
     thread::{self, sleep},
-    time::Duration,
+    time::{Duration, SystemTime},
 };
 
 use log::*;
@@ -67,7 +67,6 @@ fn ingest_to_hls_server(manager: ChannelManager) -> Result<(), ProcessError> {
     if let Some(url) = stream_input.iter().find(|s| s.contains("://")) {
         if !test_tcp_port(id, url) {
             manager.stop_all();
-            exit(1);
         }
 
         info!(target: Target::file_mail(), channel = id; "Start ingest server, listening on: <b><magenta>{url}</></b>");
@@ -151,6 +150,7 @@ pub fn write_hls(manager: ChannelManager) -> Result<(), ProcessError> {
     let config = manager.config.lock()?.clone();
     let id = config.general.channel_id;
     let current_media = manager.current_media.clone();
+    let is_terminated = manager.is_terminated.clone();
 
     let ff_log_format = format!("level+{}", config.logging.ffmpeg_level.to_lowercase());
 
@@ -164,9 +164,16 @@ pub fn write_hls(manager: ChannelManager) -> Result<(), ProcessError> {
         thread::spawn(move || ingest_to_hls_server(channel_mgr_2));
     }
 
+    let mut error_count = 0;
+
     for node in get_source {
         *current_media.lock().unwrap() = Some(node.clone());
         let ignore = config.logging.ignore_lines.clone();
+        let timer = SystemTime::now();
+
+        if is_terminated.load(Ordering::SeqCst) {
+            break;
+        }
 
         let mut cmd = match &node.cmd {
             Some(cmd) => cmd.clone(),
@@ -196,10 +203,10 @@ pub fn write_hls(manager: ChannelManager) -> Result<(), ProcessError> {
             }
         }
 
-        let mut enc_prefix = vec_strings!["-hide_banner", "-nostats", "-v", &ff_log_format];
+        let mut dec_prefix = vec_strings!["-hide_banner", "-nostats", "-v", &ff_log_format];
 
-        if let Some(encoder_input_cmd) = &config.advanced.encoder.input_cmd {
-            enc_prefix.append(&mut encoder_input_cmd.clone());
+        if let Some(decoder_input_cmd) = &config.advanced.decoder.input_cmd {
+            dec_prefix.append(&mut decoder_input_cmd.clone());
         }
 
         let mut read_rate = 1.0;
@@ -218,18 +225,18 @@ pub fn write_hls(manager: ChannelManager) -> Result<(), ProcessError> {
             }
         }
 
-        enc_prefix.append(&mut vec_strings!["-readrate", read_rate]);
+        dec_prefix.append(&mut vec_strings!["-readrate", read_rate]);
 
-        enc_prefix.append(&mut cmd);
-        let enc_cmd = prepare_output_cmd(&config, enc_prefix, &node.filter);
+        dec_prefix.append(&mut cmd);
+        let dec_cmd = prepare_output_cmd(&config, dec_prefix, &node.filter);
 
         debug!(target: Target::file_mail(), channel = id;
             "HLS writer CMD: <bright-blue>\"ffmpeg {}\"</>",
-            enc_cmd.join(" ")
+            dec_cmd.join(" ")
         );
 
         let mut dec_proc = match Command::new("ffmpeg")
-            .args(enc_cmd)
+            .args(dec_cmd)
             .stderr(Stdio::piped())
             .spawn()
         {
@@ -240,10 +247,10 @@ pub fn write_hls(manager: ChannelManager) -> Result<(), ProcessError> {
             }
         };
 
-        let enc_err = BufReader::new(dec_proc.stderr.take().unwrap());
+        let dec_err = BufReader::new(dec_proc.stderr.take().unwrap());
         *manager.decoder.lock().unwrap() = Some(dec_proc);
 
-        if let Err(e) = stderr_reader(enc_err, ignore, Decoder, manager.clone()) {
+        if let Err(e) = stderr_reader(dec_err, ignore, Decoder, manager.clone()) {
             error!(target: Target::file_mail(), channel = id; "{e:?}")
         };
 
@@ -253,6 +260,19 @@ pub fn write_hls(manager: ChannelManager) -> Result<(), ProcessError> {
 
         while ingest_is_running.load(Ordering::SeqCst) {
             sleep(Duration::from_secs(1));
+        }
+
+        if let Ok(elapsed) = timer.elapsed() {
+            if elapsed.as_millis() < 300 {
+                error_count += 1;
+
+                if error_count > 10 {
+                    error!(target: Target::file_mail(), channel = id; "Reach fatal error count, terminate channel!");
+                    break;
+                }
+            } else {
+                error_count = 0;
+            }
         }
     }
 

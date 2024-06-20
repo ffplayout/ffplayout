@@ -25,7 +25,6 @@ use actix_web::{
     patch, post, put, web, HttpRequest, HttpResponse, Responder,
 };
 use actix_web_grants::{authorities::AuthDetails, proc_macro::protect};
-use shlex::split;
 
 use argon2::{
     password_hash::{rand_core::OsRng, PasswordHash, SaltString},
@@ -162,13 +161,12 @@ struct ProgramItem {
 /// ```
 #[post("/auth/login/")]
 pub async fn login(pool: web::Data<Pool<Sqlite>>, credentials: web::Json<User>) -> impl Responder {
-    let conn = pool.into_inner();
     let username = credentials.username.clone();
     let password = credentials.password.clone();
 
-    match handles::select_login(&conn, &username).await {
+    match handles::select_login(&pool, &username).await {
         Ok(mut user) => {
-            let role = handles::select_role(&conn, &user.role_id.unwrap_or_default())
+            let role = handles::select_role(&pool, &user.role_id.unwrap_or_default())
                 .await
                 .unwrap_or(Role::Guest);
 
@@ -244,7 +242,7 @@ async fn get_user(
     pool: web::Data<Pool<Sqlite>>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    match handles::select_user(&pool.into_inner(), user.id).await {
+    match handles::select_user(&pool, user.id).await {
         Ok(user) => Ok(web::Json(user)),
         Err(e) => {
             error!("{e}");
@@ -265,7 +263,7 @@ async fn get_by_name(
     pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
 ) -> Result<impl Responder, ServiceError> {
-    match handles::select_user(&pool.into_inner(), *id).await {
+    match handles::select_user(&pool, *id).await {
         Ok(user) => Ok(web::Json(user)),
         Err(e) => {
             error!("{e}");
@@ -283,7 +281,7 @@ async fn get_by_name(
 #[get("/users")]
 #[protect("Role::GlobalAdmin", ty = "Role")]
 async fn get_users(pool: web::Data<Pool<Sqlite>>) -> Result<impl Responder, ServiceError> {
-    match handles::select_users(&pool.into_inner()).await {
+    match handles::select_users(&pool).await {
         Ok(users) => Ok(web::Json(users)),
         Err(e) => {
             error!("{e}");
@@ -356,10 +354,7 @@ async fn update_user(
         fields.push_str(&format!("password = '{password_hash}'"));
     }
 
-    if handles::update_user(&pool.into_inner(), *id, fields)
-        .await
-        .is_ok()
-    {
+    if handles::update_user(&pool, *id, fields).await.is_ok() {
         return Ok("Update Success");
     };
 
@@ -379,7 +374,7 @@ async fn add_user(
     pool: web::Data<Pool<Sqlite>>,
     data: web::Json<User>,
 ) -> Result<impl Responder, ServiceError> {
-    match handles::insert_user(&pool.into_inner(), data.into_inner()).await {
+    match handles::insert_user(&pool, data.into_inner()).await {
         Ok(_) => Ok("Add User Success"),
         Err(e) => {
             error!("{e}");
@@ -400,7 +395,7 @@ async fn remove_user(
     pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
 ) -> Result<impl Responder, ServiceError> {
-    match handles::delete_user(&pool.into_inner(), *id).await {
+    match handles::delete_user(&pool, *id).await {
         Ok(_) => return Ok("Delete user success"),
         Err(e) => {
             error!("{e}");
@@ -440,7 +435,7 @@ async fn get_channel(
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    if let Ok(channel) = handles::select_channel(&pool.into_inner(), &id).await {
+    if let Ok(channel) = handles::select_channel(&pool, &id).await {
         return Ok(web::Json(channel));
     }
 
@@ -461,9 +456,7 @@ async fn get_all_channels(
     pool: web::Data<Pool<Sqlite>>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    if let Ok(channel) =
-        handles::select_related_channels(&pool.into_inner(), Some(user.channels.clone())).await
-    {
+    if let Ok(channel) = handles::select_related_channels(&pool, Some(user.id.clone())).await {
         return Ok(web::Json(channel));
     }
 
@@ -491,7 +484,7 @@ async fn patch_channel(
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    if handles::update_channel(&pool.into_inner(), *id, data.into_inner())
+    if handles::update_channel(&pool, *id, data.into_inner())
         .await
         .is_ok()
     {
@@ -517,7 +510,7 @@ async fn add_channel(
     queue: web::Data<Mutex<Vec<Arc<Mutex<MailQueue>>>>>,
 ) -> Result<impl Responder, ServiceError> {
     match create_channel(
-        &pool.into_inner(),
+        &pool,
         controllers.into_inner(),
         queue.into_inner(),
         data.into_inner(),
@@ -542,14 +535,9 @@ async fn remove_channel(
     controllers: web::Data<Mutex<ChannelController>>,
     queue: web::Data<Mutex<Vec<Arc<Mutex<MailQueue>>>>>,
 ) -> Result<impl Responder, ServiceError> {
-    if delete_channel(
-        &pool.into_inner(),
-        *id,
-        controllers.into_inner(),
-        queue.into_inner(),
-    )
-    .await
-    .is_ok()
+    if delete_channel(&pool, *id, controllers.into_inner(), queue.into_inner())
+        .await
+        .is_ok()
     {
         return Ok("Delete Channel Success");
     }
@@ -606,100 +594,11 @@ async fn update_advanced_config(
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
     let manager = controllers.lock().unwrap().get(*id).unwrap();
-    let id = manager.config.lock().unwrap().general.id;
 
-    if let Err(e) =
-        handles::update_advanced_configuration(&pool.into_inner(), id, data.clone()).await
-    {
-        return Err(ServiceError::Conflict(format!("{e}")));
-    }
+    handles::update_advanced_configuration(&pool, *id, data.clone()).await?;
+    let new_config = PlayoutConfig::new(&pool, *id).await;
 
-    let mut cfg = manager.config.lock().unwrap();
-
-    cfg.advanced
-        .decoder
-        .input_param
-        .clone_from(&data.decoder.input_param);
-    cfg.advanced
-        .decoder
-        .output_param
-        .clone_from(&data.decoder.output_param);
-    cfg.advanced.decoder.input_cmd = split(&data.decoder.input_param.clone().unwrap_or_default());
-    cfg.advanced.decoder.output_cmd = split(&data.decoder.output_param.clone().unwrap_or_default());
-    cfg.advanced
-        .encoder
-        .input_param
-        .clone_from(&data.encoder.input_param);
-    cfg.advanced.encoder.input_cmd = split(&data.encoder.input_param.clone().unwrap_or_default());
-    cfg.advanced
-        .ingest
-        .input_param
-        .clone_from(&data.encoder.input_param);
-    cfg.advanced.ingest.input_cmd = split(&data.ingest.input_param.clone().unwrap_or_default());
-    cfg.advanced
-        .filter
-        .deinterlace
-        .clone_from(&data.filter.deinterlace);
-    cfg.advanced
-        .filter
-        .pad_scale_w
-        .clone_from(&data.filter.pad_scale_w);
-    cfg.advanced
-        .filter
-        .pad_scale_h
-        .clone_from(&data.filter.pad_scale_h);
-    cfg.advanced
-        .filter
-        .pad_video
-        .clone_from(&data.filter.pad_video);
-    cfg.advanced.filter.fps.clone_from(&data.filter.fps);
-    cfg.advanced.filter.scale.clone_from(&data.filter.scale);
-    cfg.advanced.filter.set_dar.clone_from(&data.filter.set_dar);
-    cfg.advanced.filter.fade_in.clone_from(&data.filter.fade_in);
-    cfg.advanced
-        .filter
-        .fade_out
-        .clone_from(&data.filter.fade_out);
-    cfg.advanced
-        .filter
-        .overlay_logo_scale
-        .clone_from(&data.filter.overlay_logo_scale);
-    cfg.advanced
-        .filter
-        .overlay_logo_fade_in
-        .clone_from(&data.filter.overlay_logo_fade_in);
-    cfg.advanced
-        .filter
-        .overlay_logo_fade_out
-        .clone_from(&data.filter.overlay_logo_fade_out);
-    cfg.advanced
-        .filter
-        .overlay_logo
-        .clone_from(&data.filter.overlay_logo);
-    cfg.advanced.filter.tpad.clone_from(&data.filter.tpad);
-    cfg.advanced
-        .filter
-        .drawtext_from_file
-        .clone_from(&data.filter.drawtext_from_file);
-    cfg.advanced
-        .filter
-        .drawtext_from_zmq
-        .clone_from(&data.filter.drawtext_from_zmq);
-    cfg.advanced
-        .filter
-        .aevalsrc
-        .clone_from(&data.filter.aevalsrc);
-    cfg.advanced
-        .filter
-        .afade_in
-        .clone_from(&data.filter.afade_in);
-    cfg.advanced
-        .filter
-        .afade_out
-        .clone_from(&data.filter.afade_out);
-    cfg.advanced.filter.apad.clone_from(&data.filter.apad);
-    cfg.advanced.filter.volume.clone_from(&data.filter.volume);
-    cfg.advanced.filter.split.clone_from(&data.filter.split);
+    manager.update_config(new_config);
 
     Ok(web::Json("Update success"))
 }
@@ -751,100 +650,12 @@ async fn update_playout_config(
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
     let manager = controllers.lock().unwrap().get(*id).unwrap();
-    let id = manager.config.lock().unwrap().general.id;
+    let config_id = manager.config.lock().unwrap().general.id;
 
-    if let Err(e) = handles::update_configuration(&pool.into_inner(), id, data.clone()).await {
-        return Err(ServiceError::Conflict(format!("{e}")));
-    }
+    handles::update_configuration(&pool, config_id, data.clone()).await?;
+    let new_config = PlayoutConfig::new(&pool, *id).await;
 
-    let mut config = manager.config.lock().unwrap();
-    let (filler_path, _, _) = norm_abs_path(
-        &config.global.storage_path,
-        data.storage.filler.to_string_lossy().as_ref(),
-    )?;
-
-    config.general.stop_threshold = data.general.stop_threshold;
-    config.mail.subject.clone_from(&data.mail.subject);
-    config.mail.smtp_server.clone_from(&data.mail.smtp_server);
-    config.mail.starttls = data.mail.starttls;
-    config.mail.sender_addr.clone_from(&data.mail.sender_addr);
-    config.mail.sender_pass.clone_from(&data.mail.sender_pass);
-    config.mail.recipient.clone_from(&data.mail.recipient);
-    config.mail.mail_level = data.mail.mail_level;
-    config.mail.interval = data.mail.interval;
-    config
-        .logging
-        .ffmpeg_level
-        .clone_from(&data.logging.ffmpeg_level);
-    config
-        .logging
-        .ingest_level
-        .clone_from(&data.logging.ingest_level);
-    config.logging.detect_silence = data.logging.detect_silence;
-    config
-        .logging
-        .ignore_lines
-        .clone_from(&data.logging.ignore_lines);
-    config.processing.mode.clone_from(&data.processing.mode);
-    config.processing.audio_only = data.processing.audio_only;
-    config.processing.audio_track_index = data.processing.audio_track_index;
-    config.processing.copy_audio = data.processing.copy_audio;
-    config.processing.copy_video = data.processing.copy_video;
-    config.processing.width = data.processing.width;
-    config.processing.height = data.processing.height;
-    config.processing.aspect = data.processing.aspect;
-    config.processing.fps = data.processing.fps;
-    config.processing.add_logo = data.processing.add_logo;
-    config.processing.logo.clone_from(&data.processing.logo);
-    config
-        .processing
-        .logo_scale
-        .clone_from(&data.processing.logo_scale);
-    config.processing.logo_opacity = data.processing.logo_opacity;
-    config
-        .processing
-        .logo_position
-        .clone_from(&data.processing.logo_position);
-    config.processing.audio_tracks = data.processing.audio_tracks;
-    config.processing.audio_channels = data.processing.audio_channels;
-    config.processing.volume = data.processing.volume;
-    config
-        .processing
-        .custom_filter
-        .clone_from(&data.processing.custom_filter);
-    config.ingest.enable = data.ingest.enable;
-    config
-        .ingest
-        .input_param
-        .clone_from(&data.ingest.input_param);
-    config
-        .ingest
-        .custom_filter
-        .clone_from(&data.ingest.custom_filter);
-    config
-        .playlist
-        .day_start
-        .clone_from(&data.playlist.day_start);
-    config.playlist.length.clone_from(&data.playlist.length);
-    config.playlist.infinit = data.playlist.infinit;
-    config.storage.filler.clone_from(&filler_path);
-    config
-        .storage
-        .extensions
-        .clone_from(&data.storage.extensions);
-    config.storage.shuffle = data.storage.shuffle;
-    config.text.add_text = data.text.add_text;
-    config.text.fontfile.clone_from(&data.text.fontfile);
-    config.text.text_from_filename = data.text.text_from_filename;
-    config.text.style.clone_from(&data.text.style);
-    config.text.regex.clone_from(&data.text.regex);
-    config.task.enable = data.task.enable;
-    config.task.path.clone_from(&data.task.path);
-    config.output.mode.clone_from(&data.output.mode);
-    config
-        .output
-        .output_param
-        .clone_from(&data.output.output_param);
+    manager.update_config(new_config);
 
     Ok(web::Json("Update success"))
 }
@@ -871,7 +682,7 @@ async fn get_presets(
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    if let Ok(presets) = handles::select_presets(&pool.into_inner(), *id).await {
+    if let Ok(presets) = handles::select_presets(&pool, *id).await {
         return Ok(web::Json(presets));
     }
 
@@ -898,7 +709,7 @@ async fn update_preset(
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    if handles::update_preset(&pool.into_inner(), &id, data.into_inner())
+    if handles::update_preset(&pool, &id, data.into_inner())
         .await
         .is_ok()
     {
@@ -928,7 +739,7 @@ async fn add_preset(
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    if handles::insert_preset(&pool.into_inner(), data.into_inner())
+    if handles::insert_preset(&pool, data.into_inner())
         .await
         .is_ok()
     {
@@ -956,10 +767,7 @@ async fn delete_preset(
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    if handles::delete_preset(&pool.into_inner(), &id)
-        .await
-        .is_ok()
-    {
+    if handles::delete_preset(&pool, &id).await.is_ok() {
         return Ok("Delete preset Success");
     }
 

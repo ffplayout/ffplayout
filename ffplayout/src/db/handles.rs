@@ -5,7 +5,7 @@ use argon2::{
 
 use log::*;
 use rand::{distributions::Alphanumeric, Rng};
-use sqlx::{sqlite::SqliteQueryResult, Pool, Sqlite};
+use sqlx::{sqlite::SqliteQueryResult, Pool, Row, Sqlite};
 use tokio::task;
 
 use super::models::{AdvancedConfiguration, Configuration};
@@ -73,18 +73,18 @@ pub async fn select_channel(conn: &Pool<Sqlite>, id: &i32) -> Result<Channel, sq
 
 pub async fn select_related_channels(
     conn: &Pool<Sqlite>,
-    ids: Option<Vec<i32>>,
+    user_id: Option<i32>,
 ) -> Result<Vec<Channel>, sqlx::Error> {
-    let query = match ids {
-        Some(ids) => format!(
-            "SELECT * FROM channels WHERE id IN ({}) ORDER BY id ASC;",
-            ids.iter()
-                .map(|i| i.to_string())
-                .collect::<Vec<String>>()
-                .join(", ")
+    let query = match user_id {
+        Some(id) => format!(
+            "SELECT c.id, c.name, c.preview_url, c.extra_extensions, c.active, c.last_date, c.time_shift FROM channels c
+                left join user_channels uc on uc.channel_id = c.id
+                left join user u on u.id = uc.user_id
+             WHERE u.id = {id} ORDER BY c.id ASC;"
         ),
         None => "SELECT * FROM channels ORDER BY id ASC;".to_string(),
     };
+
     let mut results: Vec<Channel> = sqlx::query_as(&query).fetch_all(conn).await?;
 
     for result in results.iter_mut() {
@@ -318,19 +318,25 @@ pub async fn select_role(conn: &Pool<Sqlite>, id: &i32) -> Result<Role, sqlx::Er
 
 pub async fn select_login(conn: &Pool<Sqlite>, user: &str) -> Result<User, sqlx::Error> {
     let query =
-        "SELECT id, mail, username, password, role_id, channel_ids FROM user WHERE username = $1";
+        "SELECT u.id, u.mail, u.username, u.password, u.role_id, group_concat(uc.channel_id, ',') as channel_ids FROM user u
+        left join user_channels uc on uc.user_id = u.id
+    WHERE u.username = $1";
 
     sqlx::query_as(query).bind(user).fetch_one(conn).await
 }
 
 pub async fn select_user(conn: &Pool<Sqlite>, id: i32) -> Result<User, sqlx::Error> {
-    let query = "SELECT id, mail, username, role_id, channel_ids FROM user WHERE id = $1";
+    let query = "SELECT u.id, u.mail, u.username, u.role_id, group_concat(uc.channel_id, ',') as channel_ids FROM user u
+        left join user_channels uc on uc.user_id = u.id
+    WHERE u.id = $1";
 
     sqlx::query_as(query).bind(id).fetch_one(conn).await
 }
 
 pub async fn select_global_admins(conn: &Pool<Sqlite>) -> Result<Vec<User>, sqlx::Error> {
-    let query = "SELECT id, mail, username, role_id, channel_ids FROM user WHERE role_id = 1";
+    let query = "SELECT u.id, u.mail, u.username, u.role_id, group_concat(uc.channel_id, ',') as channel_ids FROM user u
+        left join user_channels uc on uc.user_id = u.id
+    WHERE u.role_id = 1";
 
     sqlx::query_as(query).fetch_all(conn).await
 }
@@ -341,10 +347,7 @@ pub async fn select_users(conn: &Pool<Sqlite>) -> Result<Vec<User>, sqlx::Error>
     sqlx::query_as(query).fetch_all(conn).await
 }
 
-pub async fn insert_user(
-    conn: &Pool<Sqlite>,
-    user: User,
-) -> Result<SqliteQueryResult, sqlx::Error> {
+pub async fn insert_user(conn: &Pool<Sqlite>, user: User) -> Result<(), sqlx::Error> {
     let password_hash = task::spawn_blocking(move || {
         let salt = SaltString::generate(&mut OsRng);
         let hash = Argon2::default()
@@ -356,23 +359,23 @@ pub async fn insert_user(
     .await
     .unwrap();
 
-    let query = "INSERT INTO user (mail, username, password, role_id, channel_ids) VALUES($1, $2, $3, $4, $5)";
+    let query =
+        "INSERT INTO user (mail, username, password, role_id) VALUES($1, $2, $3, $4) RETURNING id";
 
-    sqlx::query(query)
+    let user_id: i32 = sqlx::query(query)
         .bind(user.mail)
         .bind(user.username)
         .bind(password_hash)
         .bind(user.role_id)
-        .bind(
-            user.channel_ids
-                .unwrap_or_default()
-                .iter()
-                .map(|i| i.to_string())
-                .collect::<Vec<String>>()
-                .join(","),
-        )
-        .execute(conn)
-        .await
+        .fetch_one(conn)
+        .await?
+        .get("id");
+
+    if let Some(channel_ids) = user.channel_ids {
+        insert_user_channel(conn, user_id, channel_ids).await?;
+    }
+
+    Ok(())
 }
 
 pub async fn update_user(
@@ -385,14 +388,22 @@ pub async fn update_user(
     sqlx::query(&query).bind(id).execute(conn).await
 }
 
-pub async fn update_user_channel(
+pub async fn insert_user_channel(
     conn: &Pool<Sqlite>,
-    id: i32,
-    ids: String,
-) -> Result<SqliteQueryResult, sqlx::Error> {
-    let query = "UPDATE user SET channel_ids = $2 WHERE id = $1";
+    user_id: i32,
+    channel_ids: Vec<i32>,
+) -> Result<(), sqlx::Error> {
+    for channel in &channel_ids {
+        let query = "INSERT OR IGNORE INTO user_channels (channel_id, user_id) VALUES ($1, $2);";
 
-    sqlx::query(query).bind(id).bind(ids).execute(conn).await
+        sqlx::query(query)
+            .bind(channel)
+            .bind(user_id)
+            .execute(conn)
+            .await?;
+    }
+
+    Ok(())
 }
 
 pub async fn delete_user(conn: &Pool<Sqlite>, id: i32) -> Result<SqliteQueryResult, sqlx::Error> {
