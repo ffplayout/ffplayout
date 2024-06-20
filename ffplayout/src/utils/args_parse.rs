@@ -267,11 +267,13 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
             username: username.clone(),
             password: args.password.unwrap(),
             role_id: Some(1),
-            channel_ids: channels
-                .unwrap_or(vec![Channel::default()])
-                .iter()
-                .map(|c| c.id)
-                .collect(),
+            channel_ids: Some(
+                channels
+                    .unwrap_or(vec![Channel::default()])
+                    .iter()
+                    .map(|c| c.id)
+                    .collect(),
+            ),
             token: None,
         };
 

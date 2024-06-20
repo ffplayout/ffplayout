@@ -365,6 +365,7 @@ pub async fn insert_user(
         .bind(user.role_id)
         .bind(
             user.channel_ids
+                .unwrap_or_default()
                 .iter()
                 .map(|i| i.to_string())
                 .collect::<Vec<String>>()

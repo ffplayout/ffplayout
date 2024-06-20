@@ -186,7 +186,7 @@ pub async fn login(pool: web::Data<Pool<Sqlite>>, credentials: web::Json<User>) 
             if verified_password.is_ok() {
                 let claims = Claims::new(
                     user.id,
-                    user.channel_ids.clone(),
+                    user.channel_ids.clone().unwrap_or_default(),
                     username.clone(),
                     role.clone(),
                 );
@@ -321,14 +321,14 @@ async fn update_user(
         fields.push_str(&format!("mail = '{mail}'"));
     }
 
-    if !data.channel_ids.is_empty() {
+    if let Some(channel_ids) = &data.channel_ids {
         if !fields.is_empty() {
             fields.push_str(", ");
         }
 
         fields.push_str(&format!(
             "channel_ids = '{}'",
-            data.channel_ids
+            channel_ids
                 .iter()
                 .map(|i| i.to_string())
                 .collect::<Vec<String>>()
@@ -760,7 +760,7 @@ async fn update_playout_config(
     let mut config = manager.config.lock().unwrap();
     let (filler_path, _, _) = norm_abs_path(
         &config.global.storage_path,
-        &data.storage.filler.to_string_lossy().to_string(),
+        data.storage.filler.to_string_lossy().as_ref(),
     )?;
 
     config.general.stop_threshold = data.general.stop_threshold;

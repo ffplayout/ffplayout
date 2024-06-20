@@ -65,7 +65,7 @@ pub struct User {
     pub password: String,
     pub role_id: Option<i32>,
     // #[serde_as(as = "StringWithSeparator::<CommaSeparator, i32>")]
-    pub channel_ids: Vec<i32>,
+    pub channel_ids: Option<Vec<i32>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub token: Option<String>,
 }
@@ -78,12 +78,13 @@ impl FromRow<'_, SqliteRow> for User {
             username: row.try_get("username").unwrap_or_default(),
             password: row.try_get("password").unwrap_or_default(),
             role_id: row.try_get("role_id").unwrap_or_default(),
-            channel_ids: row
-                .try_get::<String, &str>("channel_ids")
-                .unwrap_or_default()
-                .split(',')
-                .map(|i| i.parse::<i32>().unwrap_or_default())
-                .collect(),
+            channel_ids: Some(
+                row.try_get::<String, &str>("channel_ids")
+                    .unwrap_or_default()
+                    .split(',')
+                    .map(|i| i.parse::<i32>().unwrap_or_default())
+                    .collect(),
+            ),
             token: None,
         })
     }
@@ -233,7 +234,7 @@ where
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize, sqlx::FromRow)]
 pub struct Channel {
-    #[serde(skip_deserializing)]
+    #[serde(default = "default_id", skip_deserializing)]
     pub id: i32,
     pub name: String,
     pub preview_url: String,
@@ -247,13 +248,8 @@ pub struct Channel {
     pub utc_offset: i32,
 }
 
-impl Channel {
-    pub fn default() -> Self {
-        Self {
-            id: 1,
-            ..Default::default()
-        }
-    }
+fn default_id() -> i32 {
+    1
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, sqlx::FromRow)]
