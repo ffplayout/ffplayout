@@ -4,7 +4,7 @@
         <div class="flex flex-col xs:flex-row gap-2 w-full mb-5 mt-10">
             <div class="grow">
                 <select v-model="selected" class="select select-bordered w-full max-w-xs" @change="onChange($event)">
-                    <option v-for="item in users" :key="item.username">{{ item.username }}</option>
+                    <option v-for="item in users" :key="item.username" :value="item.id">{{ item.username }}</option>
                 </select>
             </div>
             <div class="flex-none join">
@@ -50,6 +50,20 @@
                 <input v-model="confirmPass" type="password" class="input input-bordered w-full" />
             </label>
 
+            <div class="form-control w-full max-w-md mt-5">
+                <Multiselect
+                    v-model="configStore.configUser.channel_ids"
+                    :options="configStore.configChannel"
+                    mode="tags"
+                    :close-on-select="true"
+                    :can-clear="false"
+                    label="name"
+                    value-prop="id"
+                    :classes="multiSelectClasses"
+                    :disabled="configStore.configUser.role_id === 1"
+                />
+            </div>
+
             <div>
                 <button class="btn btn-primary mt-5" type="submit">{{ $t('user.save') }}</button>
             </div>
@@ -88,20 +102,15 @@
 
             <div class="form-control mt-5">
                 <Multiselect
-                        v-model="user.channel_ids"
-                        :options="configStore.configChannel"
-                        mode="tags"
-                        :close-on-select="true"
-                        :can-clear="false"
-                        label="name"
-                        value-prop="id"
-                        :classes="multiSelectClasses"
-                    ></Multiselect>
-
-                <!-- <select v-model="user.channel_id" class="select select-bordered select-md w-full">
-                    <option disabled selected>Channel</option>
-                    <option v-for="channel in configStore.configChannel" :key="channel.id" :value="channel.id">{{ channel.name }}</option>
-                </select> -->
+                    v-model="user.channel_ids"
+                    :options="configStore.configChannel"
+                    mode="tags"
+                    :close-on-select="true"
+                    :can-clear="false"
+                    label="name"
+                    value-prop="id"
+                    :classes="multiSelectClasses"
+                />
             </div>
 
             <div class="form-control mt-3">
@@ -163,14 +172,7 @@ function onChange(event: any) {
 }
 
 async function getUserConfig() {
-    let selectUser = configStore.currentUser
-
-    if (user.value.id) {
-        selectUser = user.value.id
-    } else if (selected.value) {
-        selectUser = selected.value
-    }
-    await fetch(`/api/user/${selectUser}`, {
+    await fetch(`/api/user/${selected.value}`, {
         method: 'GET',
         headers: authStore.authHeader,
     })

@@ -68,7 +68,6 @@ export const useAuth = defineStore('auth', {
                     this.uuid = response.uuid
                 })
                 .catch(e => {
-                    console.log('status', e.status)
                     if (e.status === 401) {
                         this.removeToken()
                     }

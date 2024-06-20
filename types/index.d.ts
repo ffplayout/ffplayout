@@ -4,6 +4,7 @@ export {}
 
 declare global {
     interface JwtPayloadExt extends JwtPayload {
+        id: number
         channel: number
         role: string
     }

@@ -1,7 +1,7 @@
 export const useVariables = () => {
     const multiSelectClasses = {
         container: 'relative input input-bordered w-full flex items-center justify-end px-0 min-h-[32px]',
-        containerDisabled: 'cursor-default bg-gray-100',
+        containerDisabled: 'cursor-default !bg-base-100',
         containerOpen: 'rounded-b-none',
         containerOpenTop: 'rounded-t-none',
         containerActive: 'ring ring-green-500 ring-opacity-30',
