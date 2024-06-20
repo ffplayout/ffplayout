@@ -63,9 +63,7 @@ pub struct User {
     pub username: String,
     #[serde(skip_serializing, default = "empty_string")]
     pub password: String,
-    #[serde(skip_serializing)]
     pub role_id: Option<i32>,
-    #[serde(skip_serializing, skip_deserializing)]
     // #[serde_as(as = "StringWithSeparator::<CommaSeparator, i32>")]
     pub channel_ids: Vec<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]

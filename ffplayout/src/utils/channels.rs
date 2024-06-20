@@ -11,6 +11,29 @@ use crate::db::{handles, models::Channel};
 use crate::player::controller::{ChannelController, ChannelManager};
 use crate::utils::{config::PlayoutConfig, errors::ServiceError};
 
+async fn map_global_admins(conn: &Pool<Sqlite>) -> Result<(), ServiceError> {
+    let channels = handles::select_related_channels(conn, None).await?;
+    let admins = handles::select_global_admins(conn).await?;
+
+    for admin in admins {
+        if let Err(e) = handles::update_user_channel(
+            conn,
+            admin.id,
+            channels
+                .iter()
+                .map(|c| c.id.to_string())
+                .collect::<Vec<String>>()
+                .join(","),
+        )
+        .await
+        {
+            error!("Update global admin: {e}");
+        };
+    }
+
+    Ok(())
+}
+
 pub async fn create_channel(
     conn: &Pool<Sqlite>,
     controllers: Arc<Mutex<ChannelController>>,
@@ -37,34 +60,32 @@ pub async fn create_channel(
         mqs.push(m_queue.clone());
     }
 
-    if let Ok(channels) = handles::select_related_channels(conn, None).await {
-        if let Ok(admins) = handles::select_global_admins(conn).await {
-            for admin in admins {
-                if let Err(e) = handles::update_user_channel(
-                    conn,
-                    admin.id,
-                    channels
-                        .iter()
-                        .map(|c| c.id.to_string())
-                        .collect::<Vec<String>>()
-                        .join(","),
-                )
-                .await
-                {
-                    error!("Update global admin: {e}");
-                };
-            }
-        }
-    }
+    map_global_admins(conn).await?;
 
     Ok(channel)
 }
 
-pub async fn delete_channel(conn: &Pool<Sqlite>, id: i32) -> Result<(), ServiceError> {
+pub async fn delete_channel(
+    conn: &Pool<Sqlite>,
+    id: i32,
+    controllers: Arc<Mutex<ChannelController>>,
+    queue: Arc<Mutex<Vec<Arc<Mutex<MailQueue>>>>>,
+) -> Result<(), ServiceError> {
     let channel = handles::select_channel(conn, &id).await?;
     // TODO: Remove Channel controller
 
     handles::delete_channel(conn, &channel.id).await?;
+
+    controllers
+        .lock()
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?
+        .remove(id);
+
+    if let Ok(mut mqs) = queue.lock() {
+        mqs.retain(|q| q.lock().unwrap().id != id);
+    }
+
+    map_global_admins(conn).await?;
 
     Ok(())
 }

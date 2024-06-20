@@ -318,7 +318,22 @@ async fn update_user(
             fields.push_str(", ");
         }
 
-        fields.push_str(format!("mail = '{mail}'").as_str());
+        fields.push_str(&format!("mail = '{mail}'"));
+    }
+
+    if !data.channel_ids.is_empty() {
+        if !fields.is_empty() {
+            fields.push_str(", ");
+        }
+
+        fields.push_str(&format!(
+            "channel_ids = '{}'",
+            data.channel_ids
+                .iter()
+                .map(|i| i.to_string())
+                .collect::<Vec<String>>()
+                .join(",")
+        ));
     }
 
     if !data.password.is_empty() {
@@ -338,7 +353,7 @@ async fn update_user(
         .await?
         .unwrap();
 
-        fields.push_str(format!("password = '{password_hash}'").as_str());
+        fields.push_str(&format!("password = '{password_hash}'"));
     }
 
     if handles::update_user(&pool.into_inner(), *id, fields)
@@ -438,7 +453,10 @@ async fn get_channel(
 /// curl -X GET http://127.0.0.1:8787/api/channels -H "Authorization: Bearer <TOKEN>"
 /// ```
 #[get("/channels")]
-#[protect(any("Role::GlobalAdmin"), ty = "Role")]
+#[protect(
+    any("Role::GlobalAdmin", "Role::ChannelAdmin", "Role::User"),
+    ty = "Role"
+)]
 async fn get_all_channels(
     pool: web::Data<Pool<Sqlite>>,
     user: web::ReqData<UserMeta>,
@@ -521,8 +539,18 @@ async fn add_channel(
 async fn remove_channel(
     pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
+    controllers: web::Data<Mutex<ChannelController>>,
+    queue: web::Data<Mutex<Vec<Arc<Mutex<MailQueue>>>>>,
 ) -> Result<impl Responder, ServiceError> {
-    if delete_channel(&pool.into_inner(), *id).await.is_ok() {
+    if delete_channel(
+        &pool.into_inner(),
+        *id,
+        controllers.into_inner(),
+        queue.into_inner(),
+    )
+    .await
+    .is_ok()
+    {
         return Ok("Delete Channel Success");
     }
 
@@ -730,6 +758,10 @@ async fn update_playout_config(
     }
 
     let mut config = manager.config.lock().unwrap();
+    let (filler_path, _, _) = norm_abs_path(
+        &config.global.storage_path,
+        &data.storage.filler.to_string_lossy().to_string(),
+    )?;
 
     config.general.stop_threshold = data.general.stop_threshold;
     config.mail.subject.clone_from(&data.mail.subject);
@@ -795,7 +827,7 @@ async fn update_playout_config(
         .clone_from(&data.playlist.day_start);
     config.playlist.length.clone_from(&data.playlist.length);
     config.playlist.infinit = data.playlist.infinit;
-    config.storage.filler.clone_from(&data.storage.filler);
+    config.storage.filler.clone_from(&filler_path);
     config
         .storage
         .extensions
