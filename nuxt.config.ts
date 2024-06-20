@@ -12,6 +12,7 @@ export default defineNuxtConfig({
             '/data': { target: 'http://127.0.0.1:8787/data' },
             '/live': { target: 'http://127.0.0.1:8787/live' },
             '/file': { target: 'http://127.0.0.1:8787/file' },
+            '/hls': { target: 'http://127.0.0.1:8787/hls' },
         },
     },
 
