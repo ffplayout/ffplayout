@@ -62,9 +62,7 @@ export const usePlaylist = defineStore('playlist', {
                     }
                 })
                 .catch((e) => {
-                    if (e.status >= 403) {
-                        indexStore.msgAlert('error', e.data, 5)
-                    } else if (e.status >= 400) {
+                    if (e.status >= 400) {
                         indexStore.msgAlert('error', e.data, 5)
                     } else if (
                         channel === this.last_channel &&
