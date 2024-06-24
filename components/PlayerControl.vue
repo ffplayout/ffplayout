@@ -243,7 +243,7 @@ watch([status, error], async () => {
         indexStore.sseConnected = false
         errorCounter.value += 1
 
-        if (errorCounter.value > 15) {
+        if (errorCounter.value > 11) {
             await authStore.obtainUuid()
             streamUrl.value = `/data/event/${configStore.configChannel[configStore.configID].id}?endpoint=playout&uuid=${
                 authStore.uuid

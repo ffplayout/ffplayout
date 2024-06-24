@@ -137,6 +137,7 @@ const { processPlaylist, genUID } = playlistOperations()
 const playlistContainer = ref()
 const sortContainer = ref()
 const todayDate = ref($dayjs().utcOffset(configStore.utcOffset).format('YYYY-MM-DD'))
+const { configID } = storeToRefs(useConfig())
 const { currentClipIndex, listDate } = storeToRefs(usePlaylist())
 
 const playlistSortOptions = {
@@ -164,8 +165,11 @@ onMounted(() => {
     getPlaylist()
 })
 
-watch([listDate], () => {
+watch([listDate, configID], () => {
     getPlaylist()
+    setTimeout(() => {
+        getPlaylist()
+    }, 800)
 })
 
 defineExpose({

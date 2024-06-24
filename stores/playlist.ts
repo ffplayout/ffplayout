@@ -26,6 +26,7 @@ export const usePlaylist = defineStore('playlist', {
         elapsedSec: 0,
         shift: 0,
         playoutIsRunning: false,
+        last_channel: 0,
     }),
 
     getters: {},
@@ -46,6 +47,7 @@ export const usePlaylist = defineStore('playlist', {
                         const programData = processPlaylist(date, data.program, false)
 
                         if (
+                            channel === this.last_channel &&
                             this.playlist.length > 0 &&
                             programData.length > 0 &&
                             (this.playlist[0].date === date || configStore.playout.playlist.infinit) &&
@@ -64,12 +66,18 @@ export const usePlaylist = defineStore('playlist', {
                         indexStore.msgAlert('error', e.data, 5)
                     } else if (e.status >= 400) {
                         indexStore.msgAlert('error', e.data, 5)
-                    } else if (this.playlist.length > 0 && this.playlist[0].date === date) {
+                    } else if (
+                        channel === this.last_channel &&
+                        this.playlist.length > 0 &&
+                        this.playlist[0].date === date
+                    ) {
                         indexStore.msgAlert('warning', $i18n.t('player.unsavedProgram'), 3)
                     } else {
                         this.playlist = []
                     }
                 })
+
+            this.last_channel = channel
         },
 
         setStatus(item: PlayoutStatus) {
