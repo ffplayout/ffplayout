@@ -2,7 +2,7 @@
     <div class="w-full max-w-[800px]">
         <h2 class="pt-3 text-3xl">{{ $t('config.channelConf') }}</h2>
         <div class="w-full flex justify-end my-4">
-            <button class="btn btn-sm btn-primary" @click="addChannel()">{{ $t('config.addChannel') }}</button>
+            <button v-if="authStore.role === 'GlobalAdmin'" class="btn btn-sm btn-primary" @click="addChannel()">{{ $t('config.addChannel') }}</button>
         </div>
         <form
             v-if="configStore.configChannel && configStore.configChannel[configStore.configID]"
@@ -46,7 +46,7 @@
             <div class="join my-4">
                 <button class="join-item btn btn-primary" type="submit">{{ $t('config.save') }}</button>
                 <button
-                    v-if="configStore.configChannel.length > 1 && configStore.configChannel[configStore.configID].id > 1"
+                    v-if="authStore.role === 'GlobalAdmin' && configStore.configChannel.length > 1 && configStore.configChannel[configStore.configID].id > 1"
                     class="join-item btn btn-primary"
                     @click="deleteChannel()"
                 >

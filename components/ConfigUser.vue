@@ -1,7 +1,7 @@
 <template>
     <div class="w-full max-w-[800px] pe-8">
         <h2 class="pt-3 text-3xl">{{ $t('user.title') }}</h2>
-        <div class="flex flex-col xs:flex-row gap-2 w-full mb-5 mt-10">
+        <div v-if="authStore.role === 'GlobalAdmin'" class="flex flex-col xs:flex-row gap-2 w-full mb-5 mt-10">
             <div class="grow">
                 <select v-model="selected" class="select select-bordered w-full max-w-xs" @change="onChange($event)">
                     <option v-for="item in users" :key="item.username" :value="item.id">{{ item.username }}</option>
@@ -16,7 +16,7 @@
                 </button>
             </div>
         </div>
-        <form v-if="configStore.configUser" @submit.prevent="onSubmitUser">
+        <form v-if="configStore.configUser" class="mt-5" @submit.prevent="onSubmitUser">
             <label class="form-control w-full max-w-md">
                 <div class="label">
                     <span class="label-text">{{ $t('user.name') }}</span>
@@ -50,7 +50,7 @@
                 <input v-model="confirmPass" type="password" class="input input-bordered w-full" />
             </label>
 
-            <div class="form-control w-full max-w-md mt-5">
+            <div v-if="authStore.role === 'GlobalAdmin'" class="form-control w-full max-w-md mt-5">
                 <Multiselect
                     v-model="configStore.configUser.channel_ids"
                     :options="configStore.configChannel"
