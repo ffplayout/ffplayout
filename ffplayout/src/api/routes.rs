@@ -456,7 +456,7 @@ async fn get_all_channels(
     pool: web::Data<Pool<Sqlite>>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    if let Ok(channel) = handles::select_related_channels(&pool, Some(user.id.clone())).await {
+    if let Ok(channel) = handles::select_related_channels(&pool, Some(user.id)).await {
         return Ok(web::Json(channel));
     }
 
@@ -636,8 +636,7 @@ async fn get_playout_config(
 /// ```
 #[put("/playout/config/{id}")]
 #[protect(
-    "Role::GlobalAdmin",
-    "Role::ChannelAdmin",
+    any("Role::GlobalAdmin", "Role::ChannelAdmin"),
     ty = "Role",
     expr = "user.channels.contains(&*id) || role.has_authority(&Role::GlobalAdmin)"
 )]
