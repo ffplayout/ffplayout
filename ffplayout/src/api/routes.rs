@@ -1016,18 +1016,17 @@ pub async fn save_playlist(
 #[protect(
     any("Role::GlobalAdmin", "Role::ChannelAdmin", "Role::User"),
     ty = "Role",
-    expr = "user.channels.contains(&*id) || role.has_authority(&Role::GlobalAdmin)"
+    expr = "user.channels.contains(&params.0) || role.has_authority(&Role::GlobalAdmin)"
 )]
 pub async fn gen_playlist(
-    id: web::Path<i32>,
-    date: web::Path<String>,
+    params: web::Path<(i32, String)>,
     data: Option<web::Json<PathsObj>>,
     controllers: web::Data<Mutex<ChannelController>>,
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    let manager = controllers.lock().unwrap().get(*id).unwrap();
-    manager.config.lock().unwrap().general.generate = Some(vec![date.clone()]);
+    let manager = controllers.lock().unwrap().get(params.0).unwrap();
+    manager.config.lock().unwrap().general.generate = Some(vec![params.1.clone()]);
     let storage_path = manager.config.lock().unwrap().global.storage_path.clone();
 
     if let Some(obj) = data {
@@ -1068,19 +1067,18 @@ pub async fn gen_playlist(
 #[protect(
     any("Role::GlobalAdmin", "Role::ChannelAdmin", "Role::User"),
     ty = "Role",
-    expr = "user.channels.contains(&*id) || role.has_authority(&Role::GlobalAdmin)"
+    expr = "user.channels.contains(&params.0) || role.has_authority(&Role::GlobalAdmin)"
 )]
 pub async fn del_playlist(
-    id: web::Path<i32>,
-    date: web::Path<String>,
+    params: web::Path<(i32, String)>,
     controllers: web::Data<Mutex<ChannelController>>,
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    let manager = controllers.lock().unwrap().get(*id).unwrap();
+    let manager = controllers.lock().unwrap().get(params.0).unwrap();
     let config = manager.config.lock().unwrap().clone();
 
-    match delete_playlist(&config, &date).await {
+    match delete_playlist(&config, &params.1).await {
         Ok(m) => Ok(web::Json(m)),
         Err(e) => Err(e),
     }

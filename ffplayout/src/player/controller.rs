@@ -15,7 +15,6 @@ use log::*;
 use serde::{Deserialize, Serialize};
 use sqlx::{Pool, Sqlite};
 
-use crate::db::{handles, models::Channel};
 use crate::player::{
     output::{player, write_hls},
     utils::{folder::fill_filler_list, Media},
@@ -25,6 +24,12 @@ use crate::utils::{
     errors::ProcessError,
 };
 use crate::ARGS;
+use crate::{
+    db::{handles, models::Channel},
+    utils::logging::Target,
+};
+
+const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Defined process units.
 #[derive(Clone, Debug, Default, Copy, Eq, Serialize, Deserialize, PartialEq)]
@@ -323,6 +328,9 @@ pub fn start_channel(manager: ChannelManager) -> Result<(), ProcessError> {
     let config = manager.config.lock()?.clone();
     let mode = config.output.mode.clone();
     let filler_list = manager.filler_list.clone();
+    let channel_id = config.general.channel_id;
+
+    debug!(target: Target::all(), channel = channel_id; "Start ffplayout v{VERSION}, channel: <yellow>{channel_id}</>");
 
     // Fill filler list, can also be a single file.
     thread::spawn(move || {
