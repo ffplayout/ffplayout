@@ -22,11 +22,11 @@ export const stringFormatter = () => {
         return bytes.toFixed(dp) + ' ' + units[u]
     }
 
-    function formatLog(text: string) {
+    function formatLog(text: string): string {
         return text
-            .replace(/\x1B\[33m(.*?)\x1B\[0m/g, '<span class="log-number">$1</span>')
-            .replace(/\x1B\[1m\x1B\[35m(.*?)\x1B\[0m\x1B\[22m/g, '<span class="log-addr">$1</span>')
-            .replace(/\x1B\[94m(.*?)\x1B\[0m/g, '<span class="log-cmd">$1</span>')
+            .replace(/<yellow>(.*?)<\/>/g, '<span class="log-number">$1</span>')
+            .replace(/<b><magenta>(.*?)<\/><\/b>/g, '<span class="log-addr">$1</span>')
+            .replace(/<bright-blue>(.*?)<\/>/g, '<span class="log-cmd">$1</span>')
             .replace(/\x1B\[90m(.*?)\x1B\[0m/g, '<span class="log-debug">$1</span>')
             .replace(/(\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}.[\d]+\])/g, '<span class="log-time">$1</span>')
             .replace(/\[ INFO\]/g, '<span class="log-info">[ INFO]</span>')
