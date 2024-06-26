@@ -554,7 +554,6 @@ fn timed_source(
 }
 
 fn duplicate_for_seek_and_loop(node: &mut Media, current_list: &Arc<Mutex<Vec<Media>>>) {
-    warn!("Clip loops and has seek value: duplicate clip to separate loop and seek.");
     let mut nodes = current_list.lock().unwrap();
     let index = node.index.unwrap_or_default();
 
@@ -597,7 +596,10 @@ pub fn gen_source(
     let mut duration = node.out - node.seek;
 
     if duration < 1.0 {
-        warn!("Clip is less then 1 second long (<yellow>{duration:.3}</>), adjust length.");
+        warn!(
+            target: Target::file_mail(), channel = config.general.channel_id;
+            "Clip is less then 1 second long (<yellow>{duration:.3}</>), adjust length."
+        );
 
         duration = 1.2;
 
@@ -630,6 +632,7 @@ pub fn gen_source(
             node.cmd = Some(loop_image(&node));
         } else {
             if node.seek > 0.0 && node.out > node.duration {
+                warn!(target: Target::file_mail(), channel = config.general.channel_id; "Clip loops and has seek value: duplicate clip to separate loop and seek.");
                 duplicate_for_seek_and_loop(&mut node, &manager.current_list);
             }
 
@@ -797,7 +800,7 @@ fn handle_list_end(
         node.seek + total_delta
     } else {
         if node.duration > total_delta {
-            warn!("Adjust clip duration to: <yellow>{total_delta:.2}</>");
+            warn!(target: Target::file_mail(), channel = config.general.channel_id; "Adjust clip duration to: <yellow>{total_delta:.2}</>");
         }
 
         total_delta
@@ -812,7 +815,7 @@ fn handle_list_end(
     {
         node.out = out;
     } else {
-        warn!("Playlist is not long enough: <yellow>{total_delta:.2}</> seconds needed");
+        warn!(target: Target::file_mail(), channel = config.general.channel_id; "Playlist is not long enough: <yellow>{total_delta:.2}</> seconds needed");
     }
 
     node.process = Some(true);
