@@ -1,5 +1,6 @@
 use std::{
-    fmt,
+    fmt, fs, io,
+    path::Path,
     process::Child,
     sync::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
@@ -12,8 +13,11 @@ use std::{
 use signal_child::Signalable;
 
 use log::*;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use sqlx::{Pool, Sqlite};
+use sysinfo::Disks;
+use walkdir::WalkDir;
 
 use crate::player::{
     output::{player, write_hls},
@@ -330,6 +334,12 @@ pub fn start_channel(manager: ChannelManager) -> Result<(), ProcessError> {
     let filler_list = manager.filler_list.clone();
     let channel_id = config.general.channel_id;
 
+    drain_hls_path(
+        &config.global.hls_path,
+        &config.output.output_cmd.clone().unwrap_or_default(),
+        channel_id,
+    )?;
+
     debug!(target: Target::all(), channel = channel_id; "Start ffplayout v{VERSION}, channel: <yellow>{channel_id}</>");
 
     // Fill filler list, can also be a single file.
@@ -343,4 +353,58 @@ pub fn start_channel(manager: ChannelManager) -> Result<(), ProcessError> {
         // play on desktop or stream to a remote target
         _ => player(manager),
     }
+}
+
+pub fn drain_hls_path(path: &Path, params: &Vec<String>, channel_id: i32) -> io::Result<()> {
+    let disks = Disks::new_with_refreshed_list();
+    // 1059061760
+    // 1000000000
+
+    for disk in &disks {
+        if disk.mount_point().to_string_lossy().len() > 1
+            && path.starts_with(disk.mount_point())
+            && disk.available_space() < 1073741824
+            && path.is_dir()
+        {
+            warn!(target: Target::file_mail(), channel = channel_id; "HLS storage space is less then 1GB, drain TS files...");
+            delete_ts(path, params)?
+        }
+    }
+
+    Ok(())
+}
+
+fn delete_ts<P: AsRef<Path> + Clone + std::fmt::Debug>(
+    path: P,
+    params: &Vec<String>,
+) -> io::Result<()> {
+    let ts_file = params
+        .iter()
+        .filter(|f| f.to_lowercase().ends_with(".ts") || f.to_lowercase().ends_with(".m3u8"))
+        .collect::<Vec<&String>>();
+
+    for entry in WalkDir::new(path.clone())
+        .into_iter()
+        .flat_map(|e| e.ok())
+        .filter(|f| f.path().is_file())
+        .filter(|f| paths_match(&ts_file, &f.path().to_string_lossy()))
+        .map(|p| p.path().to_string_lossy().to_string())
+    {
+        fs::remove_file(entry)?;
+    }
+
+    Ok(())
+}
+
+fn paths_match(patterns: &Vec<&String>, actual_path: &str) -> bool {
+    for pattern in patterns {
+        let pattern_escaped = regex::escape(&pattern);
+        let pattern_regex = pattern_escaped.replace(r"%d", r"\d+");
+        let re = Regex::new(&pattern_regex).unwrap();
+
+        if re.is_match(actual_path) {
+            return true;
+        }
+    }
+    false
 }

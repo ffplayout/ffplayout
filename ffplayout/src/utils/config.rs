@@ -167,6 +167,7 @@ pub struct PlayoutConfig {
     pub storage: Storage,
     pub text: Text,
     pub task: Task,
+    #[serde(alias = "out")]
     pub output: Output,
 }
 
@@ -578,6 +579,7 @@ impl PlayoutConfig {
 
         if channel_id > 1 || !global.shared_storage {
             global.playlist_path = global.playlist_path.join(channel_id.to_string());
+            global.hls_path = global.hls_path.join(channel_id.to_string());
         }
 
         if !global.playlist_path.is_dir() {
