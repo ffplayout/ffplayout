@@ -1,6 +1,7 @@
 <template>
     <div class="min-w-[200px] pe-8 w-[768px]">
         <h2 class="pt-3 text-3xl">{{ $t('advanced.title') }}</h2>
+        <p class="mt-5 font-bold text-orange-500">{{ $t('advanced.warning') }}</p>
         <form
             v-if="configStore.advanced"
             class="mt-10 grid md:grid-cols-[180px_auto] gap-5"

@@ -145,6 +145,7 @@ export default {
         ingest: 'Ingest',
         updateSuccess: 'Update advanced config success!',
         updateFailed: 'Update advanced config failed!',
+        warning: 'Warning! These settings are experimental and only intended for advanced users who are familiar with ffmpeg. Only change the settings here if you are sure of what you are doing! The settings can make the system unstable.',
     },
     config: {
         channel: 'Kanal',
