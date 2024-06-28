@@ -44,7 +44,7 @@ for target in "${targets[@]}"; do
 
         cross build --release --target=$target
 
-        tar --transform 's/.*\///g' -czvf "ffplayout-v${version}_${target}.tar.gz" --exclude='*.db' --exclude='*.db-shm' --exclude='*.db-wal' assets docker docs LICENSE README.md CHANGELOG.md ./target/${target}/release/ffplayout
+        tar --transform 's/\.\/target\/.*\///g' -czvf "ffplayout-v${version}_${target}.tar.gz" --exclude='*.db' --exclude='*.db-shm' --exclude='*.db-wal' assets docker docs LICENSE README.md CHANGELOG.md ./target/${target}/release/ffplayout
     fi
 
     echo ""
