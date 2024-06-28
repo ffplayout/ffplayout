@@ -3,7 +3,7 @@ Description=Rust and ffmpeg based playout solution
 After=network.target remote-fs.target
 
 [Service]
-ExecStart=/usr/bin/ffplayout
+ExecStart=/usr/bin/ffplayout -l 0.0.0.0:8787
 Restart=always
 StartLimitInterval=20
 RestartSec=1
