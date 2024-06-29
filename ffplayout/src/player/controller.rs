@@ -118,6 +118,7 @@ impl ChannelManager {
             self.run_count.fetch_add(1, Ordering::SeqCst);
             self.is_alive.store(true, Ordering::SeqCst);
             self.is_terminated.store(false, Ordering::SeqCst);
+            self.list_init.store(true, Ordering::SeqCst);
 
             let pool_clone = self.db_pool.clone().unwrap();
             let self_clone = self.clone();
@@ -143,6 +144,7 @@ impl ChannelManager {
             self.run_count.fetch_add(1, Ordering::SeqCst);
             self.is_alive.store(true, Ordering::SeqCst);
             self.is_terminated.store(false, Ordering::SeqCst);
+            self.list_init.store(true, Ordering::SeqCst);
 
             let pool_clone = self.db_pool.clone().unwrap();
             let self_clone = self.clone();

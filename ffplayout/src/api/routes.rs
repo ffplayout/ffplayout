@@ -910,6 +910,7 @@ pub async fn process_control(
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
     let manager = controllers.lock().unwrap().get(*id).unwrap();
+    manager.list_init.store(true, Ordering::SeqCst);
 
     match proc.into_inner().command {
         ProcessCtl::Status => {

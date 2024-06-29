@@ -681,7 +681,7 @@ impl PlayoutConfig {
             }
 
             for item in cmd.iter_mut() {
-                if item.ends_with(".ts") || item.ends_with(".m3u8") {
+                if item.ends_with(".ts") || (item.ends_with(".m3u8") && item != "master.m3u8") {
                     if let Ok((hls_path, _, _)) = norm_abs_path(&global.hls_path, item) {
                         item.clone_from(&hls_path.to_string_lossy().to_string());
                     };
