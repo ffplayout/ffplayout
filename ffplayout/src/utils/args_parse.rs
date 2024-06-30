@@ -12,7 +12,10 @@ use crate::db::{
     handles::{self, insert_user},
     models::{Channel, GlobalSettings, User},
 };
-use crate::utils::{advanced_config::AdvancedConfig, config::PlayoutConfig};
+use crate::utils::{
+    advanced_config::AdvancedConfig,
+    config::{OutputMode, PlayoutConfig},
+};
 use crate::ARGS;
 
 #[derive(Parser, Debug, Clone)]
@@ -37,10 +40,13 @@ pub struct Args {
         short,
         long,
         env,
-        help = "Run channels by ids immediately (works without webserver and frontend, no listening parameter is needed)",
+        help = "Channels by ids to process (for foreground, etc.)",
         num_args = 1..,
     )]
     pub channels: Option<Vec<i32>>,
+
+    #[clap(long, env, help = "Run playout without webserver and frontend.")]
+    pub foreground: bool,
 
     #[clap(
         long,
@@ -74,6 +80,21 @@ pub struct Args {
     #[clap(short, env, long, help = "Listen on IP:PORT, like: 127.0.0.1:8787")]
     pub listen: Option<String>,
 
+    #[clap(short, long, help = "Play folder content")]
+    pub folder: Option<PathBuf>,
+
+    #[clap(
+        short,
+        long,
+        help = "Generate playlist for dates, like: 2022-01-01 - 2022-01-10",
+        name = "YYYY-MM-DD",
+        num_args = 1..,
+    )]
+    pub generate: Option<Vec<String>>,
+
+    #[clap(long, help = "Optional folder path list for playlist generations", num_args = 1..)]
+    pub gen_paths: Option<Vec<PathBuf>>,
+
     #[clap(long, env, help = "Keep log file for given days")]
     pub log_backup_count: Option<usize>,
 
@@ -102,9 +123,6 @@ pub struct Args {
     #[clap(long, env, help = "Share storage across channels")]
     pub shared_storage: bool,
 
-    #[clap(short, long, help = "domain name for initialization")]
-    pub domain: Option<String>,
-
     #[clap(short, long, help = "Create admin user")]
     pub username: Option<String>,
 
@@ -113,6 +131,31 @@ pub struct Args {
 
     #[clap(short, long, help = "Admin password")]
     pub password: Option<String>,
+
+    #[clap(long, help = "Path to playlist, or playlist root folder.")]
+    pub playlist: Option<PathBuf>,
+
+    #[clap(
+        short,
+        long,
+        help = "Start time in 'hh:mm:ss', 'now' for start with first"
+    )]
+    pub start: Option<String>,
+
+    #[clap(short = 'T', long, help = "JSON Template file for generating playlist")]
+    pub template: Option<PathBuf>,
+
+    #[clap(short, long, help = "Set output mode: desktop, hls, null, stream")]
+    pub output: Option<OutputMode>,
+
+    #[clap(short, long, help = "Set audio volume")]
+    pub volume: Option<f64>,
+
+    #[clap(long, help = "Skip validation process")]
+    pub skip_validation: bool,
+
+    #[clap(long, help = "Only validate given playlist")]
+    pub validate: bool,
 }
 
 fn global_user(args: &mut Args) {
@@ -243,9 +286,16 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
 
         global.shared_storage = shared_store.trim().to_lowercase().starts_with('y');
 
-        if let Err(e) = handles::update_global(pool, global).await {
+        if let Err(e) = handles::update_global(pool, global.clone()).await {
             eprintln!("{e}");
             return Err(1);
+        };
+
+        if !global.shared_storage {
+            let mut channel = handles::select_channel(pool, &1).await.unwrap();
+            channel.preview_url = "http://127.0.0.1:8787/1/stream.m3u8".to_string();
+
+            handles::update_channel(pool, 1, channel).await.unwrap();
         };
 
         println!("Set global settings...");

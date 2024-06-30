@@ -12,7 +12,7 @@ use sqlx::{sqlite::SqliteRow, FromRow, Pool, Row, Sqlite};
 use crate::db::handles;
 use crate::utils::config::PlayoutConfig;
 
-#[derive(Debug, Deserialize, Serialize, sqlx::FromRow)]
+#[derive(Clone, Debug, Deserialize, Serialize, sqlx::FromRow)]
 pub struct GlobalSettings {
     pub id: i32,
     pub secret: Option<String>,

@@ -1,5 +1,5 @@
 use std::{
-    fmt,
+    fmt, io,
     path::{Path, PathBuf},
     str::FromStr,
 };
@@ -9,12 +9,13 @@ use flexi_logger::Level;
 use serde::{Deserialize, Serialize};
 use shlex::split;
 use sqlx::{Pool, Sqlite};
-use tokio::io::AsyncReadExt;
+use tokio::{fs, io::AsyncReadExt};
 
 use crate::db::{handles, models};
 use crate::utils::{files::norm_abs_path, free_tcp_socket, time_to_sec};
 use crate::vec_strings;
 use crate::AdvancedConfig;
+use crate::ARGS;
 
 use super::errors::ServiceError;
 
@@ -682,7 +683,12 @@ impl PlayoutConfig {
 
             for item in cmd.iter_mut() {
                 if item.ends_with(".ts") || (item.ends_with(".m3u8") && item != "master.m3u8") {
-                    if let Ok((hls_path, _, _)) = norm_abs_path(&global.hls_path, item) {
+                    let filename = Path::new(item)
+                        .file_name()
+                        .unwrap()
+                        .to_string_lossy()
+                        .to_string();
+                    if let Ok((hls_path, _, _)) = norm_abs_path(&global.hls_path, &filename) {
                         item.clone_from(&hls_path.to_string_lossy().to_string());
                     };
                 }
@@ -794,4 +800,64 @@ fn pre_audio_codec(proc_filter: &str, ingest_filter: &str, channel_count: u8) ->
     }
 
     codec
+}
+
+/// Read command line arguments, and override the config with them.
+pub async fn get_config(pool: &Pool<Sqlite>, channel_id: i32) -> Result<PlayoutConfig, io::Error> {
+    let mut config = PlayoutConfig::new(pool, channel_id).await;
+    let args = ARGS.clone();
+
+    config.general.generate = args.generate;
+    config.general.validate = args.validate;
+    config.general.skip_validation = args.skip_validation;
+
+    if let Some(template_file) = args.template {
+        let mut f = fs::File::options()
+            .read(true)
+            .write(false)
+            .open(template_file)
+            .await?;
+        let mut buffer = Vec::new();
+        f.read_to_end(&mut buffer).await?;
+
+        let mut template: Template = serde_json::from_slice(&buffer)?;
+
+        template.sources.sort_by(|d1, d2| d1.start.cmp(&d2.start));
+
+        config.general.template = Some(template);
+    }
+
+    if let Some(paths) = args.gen_paths {
+        config.storage.paths = paths;
+    }
+
+    if let Some(playlist) = args.playlist {
+        config.global.playlist_path = playlist;
+    }
+
+    if let Some(folder) = args.folder {
+        config.global.storage_path = folder;
+        config.processing.mode = ProcessMode::Folder;
+    }
+
+    if let Some(start) = args.start {
+        config.playlist.day_start.clone_from(&start);
+        config.playlist.start_sec = Some(time_to_sec(&start));
+    }
+
+    if let Some(output) = args.output {
+        config.output.mode = output;
+
+        if config.output.mode == OutputMode::Null {
+            config.output.output_count = 1;
+            config.output.output_filter = None;
+            config.output.output_cmd = Some(vec_strings!["-f", "null", "-"]);
+        }
+    }
+
+    if let Some(volume) = args.volume {
+        config.processing.volume = volume;
+    }
+
+    Ok(config)
 }

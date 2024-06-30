@@ -1,8 +1,10 @@
 use std::{
     collections::HashSet,
-    env, io,
+    env,
+    fs::File,
+    io,
     process::exit,
-    sync::{Arc, Mutex},
+    sync::{atomic::AtomicBool, Arc, Mutex},
     thread,
 };
 
@@ -25,12 +27,16 @@ use ffplayout::{
         db_pool, handles,
         models::{init_globales, UserMeta},
     },
-    player::controller::{ChannelController, ChannelManager},
+    player::{
+        controller::{ChannelController, ChannelManager},
+        utils::{get_date, is_remote, json_validate::validate_playlist, JsonPlaylist},
+    },
     sse::{broadcast::Broadcaster, routes::*, SseAuthState},
     utils::{
         args_parse::run_args,
-        config::PlayoutConfig,
+        config::get_config,
         logging::{init_logging, MailQueue},
+        playlist::generate_playlist,
     },
     ARGS,
 };
@@ -94,7 +100,7 @@ async fn main() -> std::io::Result<()> {
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
 
         for channel in channels.iter() {
-            let config = PlayoutConfig::new(&pool, channel.id).await;
+            let config = get_config(&pool, channel.id).await?;
             let manager = ChannelManager::new(Some(pool.clone()), channel.clone(), config.clone());
             let m_queue = Arc::new(Mutex::new(MailQueue::new(channel.id, config.mail)));
 
@@ -227,26 +233,64 @@ async fn main() -> std::io::Result<()> {
         .workers(thread_count)
         .run()
         .await?;
-    } else if let Some(channels) = &ARGS.channels {
-        for (index, channel_id) in channels.iter().enumerate() {
-            let channel = handles::select_channel(&pool, channel_id).await.unwrap();
-            let config = PlayoutConfig::new(&pool, *channel_id).await;
-            let manager = ChannelManager::new(Some(pool.clone()), channel.clone(), config.clone());
-            let m_queue = Arc::new(Mutex::new(MailQueue::new(*channel_id, config.mail)));
-
-            channel_controllers
-                .lock()
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?
-                .add(manager.clone());
-
-            if let Ok(mut mqs) = mail_queues.lock() {
-                mqs.push(m_queue.clone());
-            }
-
-            manager.foreground_start(index).await;
-        }
     } else {
-        error!("Run ffplayout with parameters! Run ffplayout -h for more information.");
+        let channels = ARGS.channels.clone().unwrap_or_else(|| vec![1]);
+
+        for (index, channel_id) in channels.iter().enumerate() {
+            let config = get_config(&pool, *channel_id).await?;
+            let channel = handles::select_channel(&pool, channel_id).await.unwrap();
+            let manager = ChannelManager::new(Some(pool.clone()), channel.clone(), config.clone());
+
+            if ARGS.foreground {
+                let m_queue = Arc::new(Mutex::new(MailQueue::new(*channel_id, config.mail)));
+
+                channel_controllers
+                    .lock()
+                    .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?
+                    .add(manager.clone());
+
+                if let Ok(mut mqs) = mail_queues.lock() {
+                    mqs.push(m_queue.clone());
+                }
+
+                manager.foreground_start(index).await;
+            } else if ARGS.generate.is_some() {
+                // run a simple playlist generator and save them to disk
+                if let Err(e) = generate_playlist(manager) {
+                    error!("{e}");
+                    exit(1);
+                };
+            } else if ARGS.validate {
+                let mut playlist_path = config.global.playlist_path.clone();
+                let start_sec = config.playlist.start_sec.unwrap();
+                let date = get_date(false, start_sec, false);
+
+                if playlist_path.is_dir() || is_remote(&playlist_path.to_string_lossy()) {
+                    let d: Vec<&str> = date.split('-').collect();
+                    playlist_path = playlist_path
+                        .join(d[0])
+                        .join(d[1])
+                        .join(date.clone())
+                        .with_extension("json");
+                }
+
+                let f = File::options()
+                    .read(true)
+                    .write(false)
+                    .open(&playlist_path)?;
+
+                let playlist: JsonPlaylist = serde_json::from_reader(f)?;
+
+                validate_playlist(
+                    config,
+                    Arc::new(Mutex::new(Vec::new())),
+                    playlist,
+                    Arc::new(AtomicBool::new(false)),
+                );
+            } else {
+                error!("Run ffplayout with parameters! Run ffplayout -h for more information.");
+            }
+        }
     }
 
     for channel in &channel_controllers.lock().unwrap().channels {

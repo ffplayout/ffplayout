@@ -357,10 +357,8 @@ pub fn start_channel(manager: ChannelManager) -> Result<(), ProcessError> {
     }
 }
 
-pub fn drain_hls_path(path: &Path, params: &Vec<String>, channel_id: i32) -> io::Result<()> {
+pub fn drain_hls_path(path: &Path, params: &[String], channel_id: i32) -> io::Result<()> {
     let disks = Disks::new_with_refreshed_list();
-    // 1059061760
-    // 1000000000
 
     for disk in &disks {
         if disk.mount_point().to_string_lossy().len() > 1
@@ -378,7 +376,7 @@ pub fn drain_hls_path(path: &Path, params: &Vec<String>, channel_id: i32) -> io:
 
 fn delete_ts<P: AsRef<Path> + Clone + std::fmt::Debug>(
     path: P,
-    params: &Vec<String>,
+    params: &[String],
 ) -> io::Result<()> {
     let ts_file = params
         .iter()
@@ -400,7 +398,7 @@ fn delete_ts<P: AsRef<Path> + Clone + std::fmt::Debug>(
 
 fn paths_match(patterns: &Vec<&String>, actual_path: &str) -> bool {
     for pattern in patterns {
-        let pattern_escaped = regex::escape(&pattern);
+        let pattern_escaped = regex::escape(pattern);
         let pattern_regex = pattern_escaped.replace(r"%d", r"\d+");
         let re = Regex::new(&pattern_regex).unwrap();
 
