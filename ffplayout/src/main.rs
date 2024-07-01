@@ -81,9 +81,11 @@ async fn main() -> std::io::Result<()> {
         .await
         .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
 
-    if let Err(e) = handles::db_migrate(&pool).await {
-        panic!("{e}");
-    };
+    if ARGS.dump_advanced.is_none() && ARGS.dump_config.is_none() {
+        if let Err(e) = handles::db_migrate(&pool).await {
+            panic!("{e}");
+        };
+    }
 
     if let Err(c) = run_args(&pool).await {
         exit(c);
