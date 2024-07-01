@@ -7,8 +7,8 @@ ffplayout provides ***.deb** and ***.rpm** packages, which makes it more easy to
 3. install ffmpeg/ffprobe, or compile and copy it to **/usr/local/bin/**
 4. activate systemd services:
     - `systemctl enable ffplayout`
-5. add admin:
-    - `ffplayout -a`
+5. initial defaults and add global admin user:
+    - `sudo -u ffpu ffplayout -i`
 6. use a revers proxy for SSL, Port is **8787**.
 7. login with your browser, address without proxy would be: **http://[IP ADDRESS]:8787**
 
