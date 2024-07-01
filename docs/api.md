@@ -122,6 +122,21 @@ curl -X DELETE http://127.0.0.1:8787/api/channel/2 -H "Authorization: Bearer <TO
 
 #### ffplayout Config
 
+**Get Advanced Config**
+
+```BASH
+curl -X GET http://127.0.0.1:8787/api/playout/advanced/1 -H 'Authorization: Bearer <TOKEN>'
+```
+
+Response is a JSON object
+
+**Update Advanced Config**
+
+```BASH
+curl -X PUT http://127.0.0.1:8787/api/playout/advanced/1 -H "Content-Type: application/json" \
+-d { <CONFIG DATA> } -H 'Authorization: Bearer <TOKEN>'
+```
+
 **Get Config**
 
 ```BASH
@@ -159,7 +174,7 @@ curl -X PUT http://127.0.0.1:8787/api/presets/1 -H 'Content-Type: application/js
 **Add new Preset**
 
 ```BASH
-curl -X POST http://127.0.0.1:8787/api/presets/ -H 'Content-Type: application/json' \
+curl -X POST http://127.0.0.1:8787/api/presets/1/ -H 'Content-Type: application/json' \
 -d '{ "name": "<PRESET NAME>", "text": "TEXT>", "x": "<X>", "y": "<Y>", "fontsize": 24, "line_spacing": 4, "fontcolor": "#ffffff", "box": 1, "boxcolor": "#000000", "boxborderw": 4, "alpha": 1.0, "channel_id": 1 }' \
 -H 'Authorization: Bearer <TOKEN>'
 ```
@@ -282,10 +297,10 @@ curl -X DELETE http://127.0.0.1:8787/api/playlist/1/2022-06-20
 
 ### Log file
 
-**Read Log Life**
+**Read Log File**
 
 ```BASH
-curl -X GET http://127.0.0.1:8787/api/log/1
+curl -X GET http://127.0.0.1:8787/api/log/1?date=2022-06-20
 -H 'Content-Type: application/json' -H 'Authorization: Bearer <TOKEN>'
 ```
 

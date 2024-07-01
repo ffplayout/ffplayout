@@ -1,6 +1,5 @@
 use std::{
     env, fmt,
-    fs::{self, metadata},
     net::TcpListener,
     path::{Path, PathBuf},
 };
@@ -11,6 +10,7 @@ use log::*;
 use path_clean::PathClean;
 use rand::Rng;
 use regex::Regex;
+use tokio::fs;
 
 use serde::{
     de::{self, Visitor},
@@ -207,29 +207,23 @@ pub fn public_path() -> PathBuf {
 }
 
 pub async fn read_log_file(channel_id: &i32, date: &str) -> Result<String, ServiceError> {
-    let mut date_str = "".to_string();
-
-    if !date.is_empty() {
-        date_str.push('.');
-        date_str.push_str(date);
-    }
-
-    let mut log_path = log_file_path()
-        .join(format!("ffplayout_{channel_id}.log"))
-        .display()
-        .to_string();
-    log_path.push_str(&date_str);
-
-    let file_size = metadata(&log_path)?.len() as f64;
-
-    let file_content = if file_size > 5000000.0 {
-        error!("Log file to big: {}", sizeof_fmt(file_size));
-        format!("The log file is larger ({}) than the hard limit of 5MB, the probability is very high that something is wrong with the playout. Check this on the server with `less {log_path}`.", sizeof_fmt(file_size))
+    let date_str = if date.is_empty() {
+        "".to_string()
     } else {
-        fs::read_to_string(log_path)?
+        format!("_{date}")
     };
 
-    Ok(file_content)
+    let log_path = log_file_path().join(format!("ffplayout_{channel_id}{date_str}.log"));
+    let file_size = fs::metadata(&log_path).await?.len() as f64;
+
+    let log_content = if file_size > 5000000.0 {
+        error!("Log file to big: {}", sizeof_fmt(file_size));
+        format!("The log file is larger ({}) than the hard limit of 5MB, the probability is very high that something is wrong with the playout. Check this on the server with `less {log_path:?}`.", sizeof_fmt(file_size))
+    } else {
+        fs::read_to_string(log_path).await?
+    };
+
+    Ok(log_content)
 }
 
 /// get human readable file size

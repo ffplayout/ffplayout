@@ -572,7 +572,7 @@ async fn get_advanced_config(
     Ok(web::Json(config))
 }
 
-/// **Update Config**
+/// **Update Advanced Config**
 ///
 /// ```BASH
 /// curl -X PUT http://127.0.0.1:8787/api/playout/advanced/1 -H "Content-Type: application/json" \
@@ -1087,10 +1087,10 @@ pub async fn del_playlist(
 
 /// ### Log file
 ///
-/// **Read Log Life**
+/// **Read Log File**
 ///
 /// ```BASH
-/// curl -X GET http://127.0.0.1:8787/api/log/1
+/// curl -X GET http://127.0.0.1:8787/api/log/1?date=2022-06-20
 /// -H 'Content-Type: application/json' -H 'Authorization: Bearer <TOKEN>'
 /// ```
 #[get("/log/{id}")]
