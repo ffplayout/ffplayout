@@ -26,7 +26,7 @@ pub const IMAGE_FORMAT: [&str; 21] = [
 ];
 
 // Some well known errors can be safely ignore
-pub const FFMPEG_IGNORE_ERRORS: [&str; 11] = [
+pub const FFMPEG_IGNORE_ERRORS: [&str; 12] = [
     "ac-tex damaged",
     "codec s302m, is muxed as a private data stream",
     "corrupt decoded frame in stream",
@@ -36,6 +36,7 @@ pub const FFMPEG_IGNORE_ERRORS: [&str; 11] = [
     "Referenced QT chapter track not found",
     "skipped MB in I-frame at",
     "Thread message queue blocking",
+    "timestamp discontinuity",
     "Warning MVs not available",
     "frame size not set",
 ];
