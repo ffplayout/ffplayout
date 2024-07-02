@@ -50,3 +50,16 @@ onBeforeUnmount(() => {
     }
 })
 </script>
+
+<style>
+.video-js .vjs-volume-panel.vjs-volume-panel-horizontal {
+  width: 10em;
+}
+
+.video-js .vjs-volume-panel .vjs-volume-control.vjs-volume-horizontal {
+  width: 5em;
+  height: 3em;
+  margin-right: 0;
+  opacity: 1;
+}
+</style>
