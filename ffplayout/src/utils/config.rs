@@ -684,12 +684,12 @@ impl PlayoutConfig {
 
             for item in cmd.iter_mut() {
                 if item.ends_with(".ts") || (item.ends_with(".m3u8") && item != "master.m3u8") {
-                    let filename = Path::new(item)
-                        .file_name()
-                        .unwrap()
-                        .to_string_lossy()
-                        .to_string();
-                    if let Ok((hls_path, _, _)) = norm_abs_path(&global.hls_path, &filename) {
+                    if let Ok((hls_path, _, _)) = norm_abs_path(&global.hls_path, &item) {
+                        let parent = hls_path.parent().expect("HLS parent path");
+
+                        if !parent.is_dir() {
+                            fs::create_dir_all(parent).await.expect("Create HLS path");
+                        }
                         item.clone_from(&hls_path.to_string_lossy().to_string());
                     };
                 }

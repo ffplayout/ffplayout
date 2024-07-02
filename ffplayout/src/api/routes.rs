@@ -1288,20 +1288,28 @@ async fn get_file(
 /// Can be used for HLS Playlist and other static files in public folder
 ///
 /// ```BASH
-/// curl -X GET http://127.0.0.1:8787/live/stream.m3u8
+/// curl -X GET http://127.0.0.1:8787/live/1/stream.m3u8
 /// ```
-#[get("/{public:((live|preview|public).*|.*(ts|m3u8))}")]
-async fn get_public(public: web::Path<String>) -> Result<actix_files::NamedFile, ServiceError> {
+#[get("/{public:live|preview|public}/{id}/{file_stem:.*}")]
+async fn get_public(
+    path: web::Path<(String, i32, String)>,
+    controllers: web::Data<Mutex<ChannelController>>,
+) -> Result<actix_files::NamedFile, ServiceError> {
+    let (public, id, file_stem) = path.into_inner();
     let public_path = public_path();
 
-    let absolute_path = if public_path.is_absolute() {
+    let absolute_path = if file_stem.ends_with(".ts") || file_stem.ends_with(".m3u8") {
+        let manager = controllers.lock().unwrap().get(id).unwrap();
+        let config = manager.config.lock().unwrap();
+        config.global.hls_path.join(public)
+    } else if public_path.is_absolute() {
         public_path.to_path_buf()
     } else {
         env::current_dir()?.join(public_path)
     }
     .clean();
 
-    let path = absolute_path.join(public.as_str());
+    let path = absolute_path.join(file_stem.as_str());
     let file = actix_files::NamedFile::open(path)?;
 
     Ok(file
