@@ -29,8 +29,18 @@ const props = defineProps({
 })
 
 onMounted(() => {
+    const volume = localStorage.getItem('volume')
+
     player.value = videojs(props.reference, props.options, function onPlayerReady() {
         // console.log('onPlayerReady', this);
+    })
+
+    if (volume !== null) {
+        player.value.volume(volume)
+    }
+
+    player.value.on('volumechange', () => {
+        localStorage.setItem('volume', player.value.volume())
     })
 })
 
