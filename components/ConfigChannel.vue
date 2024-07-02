@@ -77,7 +77,7 @@ async function addChannel() {
 
     newChannel.id = channels.length + 1
     newChannel.name = `Channel ${Math.random().toString(36).substring(7)}`
-    newChannel.preview_url = `${window.location.protocol}//${window.location.host}/stream.m3u8`
+    newChannel.preview_url = `${window.location.protocol}//${window.location.host}/live/${newChannel.id}/stream.m3u8`
 
     channels.push(newChannel)
     configStore.configChannel = channels
