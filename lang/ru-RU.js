@@ -173,7 +173,7 @@ export default {
         storage: 'Storage',
         text: 'Текст',
         task: 'Task',
-        out: 'Out',
+        output: 'Out',
         placeholderPass: 'Password',
         help: 'Help',
         generalText: `Sometimes it can happen that a file is corrupted but still playable, this can cause a streaming error on all following files. The only way to fix this is to stop and restart ffplayout. Here we only say when to stop, the starting process is up to you. The best way is a systemd service on Linux.
@@ -191,7 +191,7 @@ export default {
         storageText: `Play ordered or random files from path. 'filler_clip' is for filling the end to reach 24 hours, it will loop when necessary. Set 'extensions' to search only for files with that extension. Set 'shuffle' to 'true' to select files randomly.`,
         textText: `Overlay text in combination with libzmq for remote text manipulation. On Windows, the font file path must be 'C\\:/WINDOWS/fonts/DejaVuSans.ttf'. 'text_from_filename' activates text extraction from a filename. With 'style' you can set the drawtext parameters like position, color, etc. Post Text via API will override this. With 'regex' you can format the filename to get a title.`,
         taskText: `Run an external program with a given media object. The media object is in json format and contains all the information about the current clip. The external program can be a script or a binary. or a binary, but should only run for a short time.`,
-        outText: `The final playout compression. Adjust the settings according to your needs. 'mode' has the options 'desktop', 'hls', 'null', 'stream'. Use 'stream' and adjust the 'output_param:' settings if you want to stream to an rtmp/rtsp/srt/... server. In production don't serve hls playlist with ffpapi, use nginx or another web server!`,
+        outputText: `The final playout compression. Adjust the settings according to your needs. 'mode' has the options 'desktop', 'hls', 'null', 'stream'. Use 'stream' and adjust the 'output_param:' settings if you want to stream to an rtmp/rtsp/srt/... server. In production don't serve hls playlist with ffpapi, use nginx or another web server!`,
         restartTile: 'Перезапуск Playout',
         restartText: 'Перезапустить ffplayout для применения изменений?',
         updatePlayoutSuccess: 'Обновление конфигурации воспроизведения прошло успешно!',

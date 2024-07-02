@@ -173,7 +173,7 @@ export default {
         storage: 'Speicher',
         text: 'Text',
         task: 'Aufgabe',
-        out: 'Ausgabe',
+        output: 'Ausgabe',
         placeholderPass: 'Passwort',
         help: 'Hilfe',
         generalText: `Manchmal kann es vorkommen, dass eine Datei beschädigt, aber noch abspielbar ist, was einen Streaming-Fehler bei allen folgenden Dateien verursachen kann. Die einzige Möglichkeit, dies zu beheben, besteht darin, ffplayout anzuhalten und neu zu starten. Wir sagen hier nur, wann es gestoppt werden muss, der Startvorgang ist Ihnen überlassen. Der beste Weg ist ein systemd-Dienst unter Linux.
@@ -192,7 +192,7 @@ export default {
         storageText: `Spielt geordnete oder zufällige Dateien aus dem Pfad ab. 'filler_clip' ist zum Füllen des Endes, um 24 Stunden zu erreichen, es wird eine Schleife abgespielt, wenn nötig. Setzen Sie 'extensions', um nur nach Dateien mit dieser Erweiterung zu suchen. Setzen Sie 'shuffle' auf 'true', um Dateien zufällig auszuwählen.`,
         textText: `Überlagernder Text in Kombination mit libzmq für die Remote-Textmanipulation. Unter Windows muss der Pfad der Schriftartdatei 'C\\:/WINDOWS/fonts/DejaVuSans.ttf' sein. 'text_from_filename' aktiviert die Textextraktion aus einem Dateinamen. Mit 'style' können Sie die Zeichentext-Parameter wie Position, Farbe, etc. festlegen. Post Text via API wird dies überschreiben. Mit 'regex' können Sie den Dateinamen formatieren, um einen Titel zu erhalten.`,
         taskText: `Führt ein externes Programm mit einem bestimmten Medienobjekt aus. Das Medienobjekt liegt im json-Format vor und enthält alle Informationen über den aktuellen Clip. Das externe Programm kann ein Skript oder eine Binärdatei sein. oder eine Binärdatei, sollte aber nur für kurze Zeit laufen.`,
-        outText: `Die endgültige Playout-Kompression. Passen Sie die Einstellungen entsprechend Ihren Bedürfnissen an. 'mode' hat die Optionen 'desktop', 'hls', 'null', 'stream'. Verwenden Sie 'stream' und passen Sie die 'output_param:'-Einstellungen an, wenn Sie zu einem rtmp/rtsp/srt/... Server streamen wollen. In der Produktion sollten Sie die hls-Wiedergabeliste nicht mit ffpapi ausliefern, sondern nginx oder einen anderen Webserver verwenden!`,
+        outputText: `Die endgültige Playout-Kompression. Passen Sie die Einstellungen entsprechend Ihren Bedürfnissen an. 'mode' hat die Optionen 'desktop', 'hls', 'null', 'stream'. Verwenden Sie 'stream' und passen Sie die 'output_param:'-Einstellungen an, wenn Sie zu einem rtmp/rtsp/srt/... Server streamen wollen. In der Produktion sollten Sie die hls-Wiedergabeliste nicht mit ffpapi ausliefern, sondern nginx oder einen anderen Webserver verwenden!`,
         restartTile: 'Playout neustarten',
         restartText: 'ffplayout neustarten um Einstellungen anzuwenden?',
         updatePlayoutSuccess: 'Update der Playout-Konfiguration erfolgreich!',

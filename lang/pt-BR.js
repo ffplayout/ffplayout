@@ -173,7 +173,7 @@ export default {
         storage: 'Armazenamento',
         text: 'Texto',
         task: 'Tarefa',
-        out: 'Saída',
+        output: 'Saída',
         placeholderPass: 'Senha',
         help: 'Ajuda',
         generalText: `Às vezes pode acontecer que um arquivo esteja corrompido mas ainda assim ele pode ser reproduzido, isso pode causar um erro de transmissão em todos os arquivos seguintes. A única maneira de corrigir isso é parar e reiniciar o ffplayout. Aqui só dizemos quando parar, o processo de início é por sua conta. A melhor maneira é um serviço systemd no Linux.
@@ -191,7 +191,7 @@ export default {
         storageText: `Reproduza arquivos de mídia de maneira ordenada ou aleatória a partir de um caminho de diretório ('path') especificado. 'filler_clip' define um "clipe de preenchimento", cuja função é preencher a lacuna de tempo de uma playlist com duração inferior a 24 horas completas, esse clipe ou conjunto de clipes também será repetido quando algum arquivo de mídia não puder ser reproduzido, quando estiver indisponível ou se nenhuma playlist válida estiver sendo reproduzida. Defina 'extensions' para delimitar a busca interna de arquivos de mídia apenas por arquivos com a extensão adicionada. Defina 'shuffle' como 'true' para selecionar arquivos aleatoriamente.`,
         textText: `Sobreponha texto (legenda) em combinação com o libzmq, para manipulação remota de texto. No Windows, o caminho do arquivo de fonte deve ser 'C\\:/WINDOWS/fonts/DejaVuSans.ttf'. 'text_from_filename' ativa a extração de texto (legenda) a partir de um arquivo de texto especificado. Com 'style' você pode definir os parâmetros drawtext como posição, cor, etc. Postar Texto via API irá substituir isso. Com 'regex' você pode formatar o nome do arquivo para obter um título.`,
         taskText: `Execute um programa externo em conjunto com um determinado objeto de mídia. O objeto de mídia está no formato JSON e contém todas as informações sobre o clipe atual. O programa externo pode ser um script ou um binário. ou um binário, mas deve ser executado apenas por um curto período de tempo.`,
-        outText: `A compressão final do stream gerado pelo playout. Ajuste as configurações de acordo com suas necessidades. 'mode' possui as opções 'desktop', 'hls', 'null', 'stream'. Use 'stream' e ajuste as configurações de 'output_param:' se você desejar retransmitir o stream para um servidor rtmp/rtsp/srt/... Em ambiente de produção não sirva a playlist hls com ffpapi, use nginx ou outro servidor web!`,
+        outputText: `A compressão final do stream gerado pelo playout. Ajuste as configurações de acordo com suas necessidades. 'mode' possui as opções 'desktop', 'hls', 'null', 'stream'. Use 'stream' e ajuste as configurações de 'output_param:' se você desejar retransmitir o stream para um servidor rtmp/rtsp/srt/... Em ambiente de produção não sirva a playlist hls com ffpapi, use nginx ou outro servidor web!`,
         restartTile: 'Reiniciar Playout',
         restartText: 'Reiniciar o ffplayout para aplicar as alterações?',
         updatePlayoutSuccess: 'Sucesso na atualização da configuração do playout!',

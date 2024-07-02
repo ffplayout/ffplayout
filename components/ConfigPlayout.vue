@@ -127,8 +127,8 @@ function setTitle(input: string): string {
             return t('config.text')
         case 'task':
             return t('config.task')
-        case 'out':
-            return t('config.out')
+        case 'output':
+            return t('config.output')
         default:
             return input
     }
@@ -156,8 +156,8 @@ function setHelp(key: string, text: string): string {
             return t('config.textText')
         case 'task':
             return t('config.taskText')
-        case 'out':
-            return t('config.outText')
+        case 'output':
+            return t('config.outputText')
         default:
             return text
     }
