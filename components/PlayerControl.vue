@@ -6,7 +6,7 @@
                     <div class="w-full aspect-video">
                         <video v-if="streamExtension === 'flv'" ref="httpStreamFlv" controls />
                         <VideoPlayer
-                            v-else-if="configStore.configChannel[configStore.configID]"
+                            v-else-if="configStore.showPlayer && configStore.configChannel[configStore.configID]"
                             :key="configStore.configID"
                             class="live-player"
                             reference="httpStream"
@@ -245,9 +245,9 @@ watch([status, error], async () => {
 
         if (errorCounter.value > 11) {
             await authStore.obtainUuid()
-            streamUrl.value = `/data/event/${configStore.configChannel[configStore.configID].id}?endpoint=playout&uuid=${
-                authStore.uuid
-            }`
+            streamUrl.value = `/data/event/${
+                configStore.configChannel[configStore.configID].id
+            }?endpoint=playout&uuid=${authStore.uuid}`
             errorCounter.value = 0
         }
     }
@@ -309,7 +309,7 @@ function resetStatus() {
 
 async function controlProcess(state: string) {
     /*
-        Control playout systemd service (start, stop, restart)
+        Control playout (start, stop, restart)
     */
     const channel = configStore.configChannel[configStore.configID].id
 

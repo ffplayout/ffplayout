@@ -15,6 +15,7 @@ export const useConfig = defineStore('config', {
         configUser: {} as User,
         utcOffset: 0,
         onetimeInfo: true,
+        showPlayer: true,
     }),
 
     getters: {},

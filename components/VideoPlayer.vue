@@ -15,6 +15,8 @@
 import videojs from 'video.js'
 import 'video.js/dist/video-js.css'
 
+const configStore = useConfig()
+
 const player = ref()
 
 const props = defineProps({
@@ -42,6 +44,16 @@ onMounted(() => {
     player.value.on('volumechange', () => {
         localStorage.setItem('volume', player.value.volume())
     })
+
+    player.value.on('error', () => {
+        setTimeout(() => {
+            configStore.showPlayer = false
+
+            nextTick(() => {
+                configStore.showPlayer = true
+            })
+        }, 2000)
+    })
 })
 
 onBeforeUnmount(() => {
@@ -53,13 +65,13 @@ onBeforeUnmount(() => {
 
 <style>
 .video-js .vjs-volume-panel.vjs-volume-panel-horizontal {
-  width: 10em;
+    width: 10em;
 }
 
 .video-js .vjs-volume-panel .vjs-volume-control.vjs-volume-horizontal {
-  width: 5em;
-  height: 3em;
-  margin-right: 0;
-  opacity: 1;
+    width: 5em;
+    height: 3em;
+    margin-right: 0;
+    opacity: 1;
 }
 </style>
