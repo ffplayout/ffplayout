@@ -4,7 +4,7 @@ use std::{
 };
 
 use serial_test::serial;
-use sqlx::{sqlite::SqlitePoolOptions, Pool, Sqlite};
+use sqlx::sqlite::SqlitePoolOptions;
 use tokio::runtime::Runtime;
 
 use ffplayout::db::handles;
@@ -15,7 +15,7 @@ use ffplayout::utils::config::OutputMode::Null;
 use ffplayout::utils::config::{PlayoutConfig, ProcessMode::Playlist};
 use ffplayout::vec_strings;
 
-async fn memory_db() -> Pool<Sqlite> {
+async fn prepare_config() -> (PlayoutConfig, ChannelManager) {
     let pool = SqlitePoolOptions::new()
         .connect("sqlite::memory:")
         .await
@@ -33,11 +33,15 @@ async fn memory_db() -> Pool<Sqlite> {
     .await
     .unwrap();
 
-    pool
+    let config = PlayoutConfig::new(&pool, 1).await;
+    let channel = handles::select_channel(&pool, &1).await.unwrap();
+    let manager = ChannelManager::new(Some(pool), channel, config.clone());
+
+    (config, manager)
 }
 
-fn get_pool() -> Pool<Sqlite> {
-    Runtime::new().unwrap().block_on(memory_db())
+fn get_config() -> (PlayoutConfig, ChannelManager) {
+    Runtime::new().unwrap().block_on(prepare_config())
 }
 
 fn timed_stop(sec: u64, manager: ChannelManager) {
@@ -51,15 +55,7 @@ fn timed_stop(sec: u64, manager: ChannelManager) {
 #[test]
 #[ignore]
 fn test_gen_source() {
-    let pool = get_pool();
-    let mut config = Runtime::new()
-        .unwrap()
-        .block_on(PlayoutConfig::new(&pool, 1));
-    let channel = Runtime::new()
-        .unwrap()
-        .block_on(handles::select_channel(&pool, &1))
-        .unwrap();
-    let manager = ChannelManager::new(Some(pool), channel, config.clone());
+    let (mut config, manager) = get_config();
 
     config.general.skip_validation = true;
     config.mail.recipient = "".into();
@@ -105,15 +101,7 @@ fn test_gen_source() {
 #[serial]
 #[ignore]
 fn playlist_missing() {
-    let pool = get_pool();
-    let mut config = Runtime::new()
-        .unwrap()
-        .block_on(PlayoutConfig::new(&pool, 1));
-    let channel = Runtime::new()
-        .unwrap()
-        .block_on(handles::select_channel(&pool, &1))
-        .unwrap();
-    let manager = ChannelManager::new(Some(pool), channel, config.clone());
+    let (mut config, manager) = get_config();
     let manager_clone = manager.clone();
 
     config.general.skip_validation = true;
@@ -147,15 +135,7 @@ fn playlist_missing() {
 #[serial]
 #[ignore]
 fn playlist_next_missing() {
-    let pool = get_pool();
-    let mut config = Runtime::new()
-        .unwrap()
-        .block_on(PlayoutConfig::new(&pool, 1));
-    let channel = Runtime::new()
-        .unwrap()
-        .block_on(handles::select_channel(&pool, &1))
-        .unwrap();
-    let manager = ChannelManager::new(Some(pool), channel, config.clone());
+    let (mut config, manager) = get_config();
     let manager_clone = manager.clone();
 
     config.general.skip_validation = true;
@@ -189,15 +169,7 @@ fn playlist_next_missing() {
 #[serial]
 #[ignore]
 fn playlist_to_short() {
-    let pool = get_pool();
-    let mut config = Runtime::new()
-        .unwrap()
-        .block_on(PlayoutConfig::new(&pool, 1));
-    let channel = Runtime::new()
-        .unwrap()
-        .block_on(handles::select_channel(&pool, &1))
-        .unwrap();
-    let manager = ChannelManager::new(Some(pool), channel, config.clone());
+    let (mut config, manager) = get_config();
     let manager_clone = manager.clone();
 
     config.general.skip_validation = true;
@@ -231,15 +203,7 @@ fn playlist_to_short() {
 #[serial]
 #[ignore]
 fn playlist_init_after_list_end() {
-    let pool = get_pool();
-    let mut config = Runtime::new()
-        .unwrap()
-        .block_on(PlayoutConfig::new(&pool, 1));
-    let channel = Runtime::new()
-        .unwrap()
-        .block_on(handles::select_channel(&pool, &1))
-        .unwrap();
-    let manager = ChannelManager::new(Some(pool), channel, config.clone());
+    let (mut config, manager) = get_config();
     let manager_clone = manager.clone();
 
     config.general.skip_validation = true;
@@ -273,15 +237,7 @@ fn playlist_init_after_list_end() {
 #[serial]
 #[ignore]
 fn playlist_change_at_midnight() {
-    let pool = get_pool();
-    let mut config = Runtime::new()
-        .unwrap()
-        .block_on(PlayoutConfig::new(&pool, 1));
-    let channel = Runtime::new()
-        .unwrap()
-        .block_on(handles::select_channel(&pool, &1))
-        .unwrap();
-    let manager = ChannelManager::new(Some(pool), channel, config.clone());
+    let (mut config, manager) = get_config();
     let manager_clone = manager.clone();
 
     config.general.skip_validation = true;
@@ -315,15 +271,7 @@ fn playlist_change_at_midnight() {
 #[serial]
 #[ignore]
 fn playlist_change_before_midnight() {
-    let pool = get_pool();
-    let mut config = Runtime::new()
-        .unwrap()
-        .block_on(PlayoutConfig::new(&pool, 1));
-    let channel = Runtime::new()
-        .unwrap()
-        .block_on(handles::select_channel(&pool, &1))
-        .unwrap();
-    let manager = ChannelManager::new(Some(pool), channel, config.clone());
+    let (mut config, manager) = get_config();
     let manager_clone = manager.clone();
 
     config.general.skip_validation = true;
@@ -357,15 +305,7 @@ fn playlist_change_before_midnight() {
 #[serial]
 #[ignore]
 fn playlist_change_at_six() {
-    let pool = get_pool();
-    let mut config = Runtime::new()
-        .unwrap()
-        .block_on(PlayoutConfig::new(&pool, 1));
-    let channel = Runtime::new()
-        .unwrap()
-        .block_on(handles::select_channel(&pool, &1))
-        .unwrap();
-    let manager = ChannelManager::new(Some(pool), channel, config.clone());
+    let (mut config, manager) = get_config();
     let manager_clone = manager.clone();
 
     config.general.skip_validation = true;

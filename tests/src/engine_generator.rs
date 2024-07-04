@@ -4,7 +4,7 @@ use std::{
 };
 
 use chrono::NaiveTime;
-use sqlx::{sqlite::SqlitePoolOptions, Pool, Sqlite};
+use sqlx::sqlite::SqlitePoolOptions;
 use tokio::runtime::Runtime;
 
 use ffplayout::db::handles;
@@ -16,7 +16,7 @@ use ffplayout::utils::{
     generator::*,
 };
 
-async fn memory_db() -> Pool<Sqlite> {
+async fn prepare_config() -> (PlayoutConfig, ChannelManager) {
     let pool = SqlitePoolOptions::new()
         .connect("sqlite::memory:")
         .await
@@ -34,11 +34,15 @@ async fn memory_db() -> Pool<Sqlite> {
     .await
     .unwrap();
 
-    pool
+    let config = PlayoutConfig::new(&pool, 1).await;
+    let channel = handles::select_channel(&pool, &1).await.unwrap();
+    let manager = ChannelManager::new(Some(pool), channel, config.clone());
+
+    (config, manager)
 }
 
-fn get_pool() -> Pool<Sqlite> {
-    Runtime::new().unwrap().block_on(memory_db())
+fn get_config() -> (PlayoutConfig, ChannelManager) {
+    Runtime::new().unwrap().block_on(prepare_config())
 }
 
 #[test]
@@ -82,10 +86,7 @@ fn test_ordered_list() {
 #[test]
 #[ignore]
 fn test_filler_list() {
-    let pool = get_pool();
-    let mut config = Runtime::new()
-        .unwrap()
-        .block_on(PlayoutConfig::new(&pool, 1));
+    let (mut config, _) = get_config();
 
     config.storage.filler = "assets/".into();
 
@@ -97,15 +98,7 @@ fn test_filler_list() {
 #[test]
 #[ignore]
 fn test_generate_playlist_from_folder() {
-    let pool = get_pool();
-    let mut config = Runtime::new()
-        .unwrap()
-        .block_on(PlayoutConfig::new(&pool, 1));
-    let channel = Runtime::new()
-        .unwrap()
-        .block_on(handles::select_channel(&pool, &1))
-        .unwrap();
-    let manager = ChannelManager::new(Some(pool), channel, config.clone());
+    let (mut config, manager) = get_config();
 
     config.general.generate = Some(vec!["2023-09-11".to_string()]);
     config.processing.mode = Playlist;
@@ -134,15 +127,7 @@ fn test_generate_playlist_from_folder() {
 #[test]
 #[ignore]
 fn test_generate_playlist_from_template() {
-    let pool = get_pool();
-    let mut config = Runtime::new()
-        .unwrap()
-        .block_on(PlayoutConfig::new(&pool, 1));
-    let channel = Runtime::new()
-        .unwrap()
-        .block_on(handles::select_channel(&pool, &1))
-        .unwrap();
-    let manager = ChannelManager::new(Some(pool), channel, config.clone());
+    let (mut config, manager) = get_config();
 
     config.general.generate = Some(vec!["2023-09-12".to_string()]);
     config.general.template = Some(Template {

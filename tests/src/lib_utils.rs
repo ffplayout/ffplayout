@@ -1,4 +1,4 @@
-use sqlx::{sqlite::SqlitePoolOptions, Pool, Sqlite};
+use sqlx::sqlite::SqlitePoolOptions;
 use tokio::runtime::Runtime;
 
 #[cfg(test)]
@@ -6,11 +6,10 @@ use chrono::prelude::*;
 
 #[cfg(test)]
 use ffplayout::db::handles;
-use ffplayout::player::utils::*;
-use ffplayout::utils::config::PlayoutConfig;
-use ffplayout::utils::config::ProcessMode::Playlist;
+use ffplayout::player::{controller::ChannelManager, utils::*};
+use ffplayout::utils::config::{PlayoutConfig, ProcessMode::Playlist};
 
-async fn memory_db() -> Pool<Sqlite> {
+async fn prepare_config() -> (PlayoutConfig, ChannelManager) {
     let pool = SqlitePoolOptions::new()
         .connect("sqlite::memory:")
         .await
@@ -28,11 +27,15 @@ async fn memory_db() -> Pool<Sqlite> {
     .await
     .unwrap();
 
-    pool
+    let config = PlayoutConfig::new(&pool, 1).await;
+    let channel = handles::select_channel(&pool, &1).await.unwrap();
+    let manager = ChannelManager::new(Some(pool), channel, config.clone());
+
+    (config, manager)
 }
 
-fn get_pool() -> Pool<Sqlite> {
-    Runtime::new().unwrap().block_on(memory_db())
+fn get_config() -> (PlayoutConfig, ChannelManager) {
+    Runtime::new().unwrap().block_on(prepare_config())
 }
 
 #[test]
@@ -69,10 +72,7 @@ fn get_date_tomorrow() {
 
 #[test]
 fn test_delta() {
-    let pool = get_pool();
-    let mut config = Runtime::new()
-        .unwrap()
-        .block_on(PlayoutConfig::new(&pool, 1));
+    let (mut config, _) = get_config();
 
     config.mail.recipient = "".into();
     config.processing.mode = Playlist;
