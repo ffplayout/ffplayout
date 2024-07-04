@@ -676,15 +676,13 @@ pub fn filter_chains(
                 || Path::new(&node.audio).is_file()
             {
                 extend_audio(node, &mut filters, i, config);
-            } else if node.unit == Decoder {
-                if !node.source.contains("color=c=") {
-                    warn!(target: Target::file_mail(), channel = config.general.channel_id;
-                        "Missing audio track (id {i}) from <b><magenta>{}</></b>",
-                        node.source
-                    );
+            } else if node.unit == Decoder && !node.source.contains("color=c=") {
+                warn!(target: Target::file_mail(), channel = config.general.channel_id;
+                    "Missing audio track (id {i}) from <b><magenta>{}</></b>",
+                    node.source
+                );
 
-                    add_audio(node, &mut filters, i, config);
-                }
+                add_audio(node, &mut filters, i, config);
             }
 
             // add at least anull filter, for correct filter construction,
