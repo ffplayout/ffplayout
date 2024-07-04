@@ -1,9 +1,9 @@
 use std::fs;
 
-use sqlx::{Pool, Sqlite};
+use sqlx::{sqlite::SqlitePoolOptions, Pool, Sqlite};
 use tokio::runtime::Runtime;
 
-use ffplayout::db::{db_pool, handles};
+use ffplayout::db::handles;
 use ffplayout::player::{
     controller::{ChannelManager, ProcessUnit::*},
     input::playlist::gen_source,
@@ -13,8 +13,29 @@ use ffplayout::player::{
 use ffplayout::utils::config::{OutputMode::*, PlayoutConfig};
 use ffplayout::vec_strings;
 
+async fn memory_db() -> Pool<Sqlite> {
+    let pool = SqlitePoolOptions::new()
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    handles::db_migrate(&pool).await.unwrap();
+
+    sqlx::query(
+        r#"
+        UPDATE global SET hls_path = "assets/hls", logging_path = "assets/log",
+            playlist_path = "assets/playlists", storage_path = "assets/storage";
+        UPDATE configurations SET processing_width = 1024, processing_height = 576;
+        "#,
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    pool
+}
+
 fn get_pool() -> Pool<Sqlite> {
-    Runtime::new().unwrap().block_on(db_pool()).unwrap()
+    Runtime::new().unwrap().block_on(memory_db())
 }
 
 #[test]

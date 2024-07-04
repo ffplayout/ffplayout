@@ -1,17 +1,38 @@
-use sqlx::{Pool, Sqlite};
+use sqlx::{sqlite::SqlitePoolOptions, Pool, Sqlite};
 use tokio::runtime::Runtime;
 
 #[cfg(test)]
 use chrono::prelude::*;
 
-use ffplayout::db::db_pool;
 #[cfg(test)]
+use ffplayout::db::handles;
 use ffplayout::player::utils::*;
 use ffplayout::utils::config::PlayoutConfig;
 use ffplayout::utils::config::ProcessMode::Playlist;
 
+async fn memory_db() -> Pool<Sqlite> {
+    let pool = SqlitePoolOptions::new()
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    handles::db_migrate(&pool).await.unwrap();
+
+    sqlx::query(
+        r#"
+        UPDATE global SET hls_path = "assets/hls", logging_path = "assets/log",
+            playlist_path = "assets/playlists", storage_path = "assets/storage";
+        UPDATE configurations SET processing_width = 1024, processing_height = 576;
+        "#,
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    pool
+}
+
 fn get_pool() -> Pool<Sqlite> {
-    Runtime::new().unwrap().block_on(db_pool()).unwrap()
+    Runtime::new().unwrap().block_on(memory_db())
 }
 
 #[test]
