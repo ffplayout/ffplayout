@@ -3,7 +3,7 @@ PRAGMA foreign_keys = ON;
 
 CREATE TABLE
     global (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id INTEGER PRIMARY KEY,
         secret TEXT NOT NULL,
         hls_path TEXT NOT NULL DEFAULT "/usr/share/ffplayout/public",
         logging_path TEXT NOT NULL DEFAULT "/var/log/ffplayout",
@@ -15,14 +15,14 @@ CREATE TABLE
 
 CREATE TABLE
     roles (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id INTEGER PRIMARY KEY,
         name TEXT NOT NULL,
         UNIQUE (name)
     );
 
 CREATE TABLE
     channels (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id INTEGER PRIMARY KEY,
         name TEXT NOT NULL,
         preview_url TEXT NOT NULL,
         extra_extensions TEXT NOT NULL DEFAULT 'jpg,jpeg,png',
@@ -33,7 +33,7 @@ CREATE TABLE
 
 CREATE TABLE
     presets (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id INTEGER PRIMARY KEY,
         name TEXT NOT NULL,
         text TEXT NOT NULL,
         x TEXT NOT NULL,
@@ -52,7 +52,7 @@ CREATE TABLE
 
 CREATE TABLE
     user (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id INTEGER PRIMARY KEY,
         mail TEXT NOT NULL,
         username TEXT NOT NULL,
         password TEXT NOT NULL,
@@ -74,7 +74,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_user_channels_unique ON user_channels (cha
 
 CREATE TABLE
     configurations (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id INTEGER PRIMARY KEY,
         channel_id INTEGER NOT NULL DEFAULT 1,
         general_help TEXT NOT NULL DEFAULT "Sometimes it can happen, that a file is corrupt but still playable, this can produce an streaming error over all following files. The only way in this case is, to stop ffplayout and start it again. Here we only say when it stops, the starting process is in your hand. Best way is a systemd service on linux.\n'stop_threshold' stop ffplayout, if it is async in time above this value. A number below 3 can cause unexpected errors.",
         general_stop_threshold REAL NOT NULL DEFAULT 11.0,
@@ -140,7 +140,7 @@ CREATE TABLE
 
 CREATE TABLE
     advanced_configurations (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id INTEGER PRIMARY KEY,
         channel_id INTEGER NOT NULL DEFAULT 1,
         decoder_input_param TEXT,
         decoder_output_param TEXT,
