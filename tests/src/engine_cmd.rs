@@ -1,6 +1,6 @@
 use std::fs;
 
-use sqlx::{sqlite::SqlitePoolOptions, Pool, Sqlite};
+use sqlx::sqlite::SqlitePoolOptions;
 use tokio::runtime::Runtime;
 
 use ffplayout::db::handles;
@@ -13,7 +13,7 @@ use ffplayout::player::{
 use ffplayout::utils::config::{OutputMode::*, PlayoutConfig};
 use ffplayout::vec_strings;
 
-async fn memory_db() -> Pool<Sqlite> {
+async fn prepare_config() -> (PlayoutConfig, ChannelManager) {
     let pool = SqlitePoolOptions::new()
         .connect("sqlite::memory:")
         .await
@@ -31,24 +31,20 @@ async fn memory_db() -> Pool<Sqlite> {
     .await
     .unwrap();
 
-    pool
+    let config = PlayoutConfig::new(&pool, 1).await;
+    let channel = handles::select_channel(&pool, &1).await.unwrap();
+    let manager = ChannelManager::new(Some(pool), channel, config.clone());
+
+    (config, manager)
 }
 
-fn get_pool() -> Pool<Sqlite> {
-    Runtime::new().unwrap().block_on(memory_db())
+fn get_config() -> (PlayoutConfig, ChannelManager) {
+    Runtime::new().unwrap().block_on(prepare_config())
 }
 
 #[test]
 fn video_audio_input() {
-    let pool = get_pool();
-    let mut config = Runtime::new()
-        .unwrap()
-        .block_on(PlayoutConfig::new(&pool, 1));
-    let channel = Runtime::new()
-        .unwrap()
-        .block_on(handles::select_channel(&pool, &1))
-        .unwrap();
-    let manager = ChannelManager::new(Some(pool), channel, config.clone());
+    let (mut config, manager) = get_config();
 
     config.output.mode = Stream;
     config.processing.add_logo = true;
@@ -76,15 +72,7 @@ fn video_audio_input() {
 
 #[test]
 fn video_audio_custom_filter1_input() {
-    let pool = get_pool();
-    let mut config = Runtime::new()
-        .unwrap()
-        .block_on(PlayoutConfig::new(&pool, 1));
-    let channel = Runtime::new()
-        .unwrap()
-        .block_on(handles::select_channel(&pool, &1))
-        .unwrap();
-    let manager = ChannelManager::new(Some(pool), channel, config.clone());
+    let (mut config, manager) = get_config();
 
     config.output.mode = Stream;
     config.processing.add_logo = false;
@@ -110,15 +98,8 @@ fn video_audio_custom_filter1_input() {
 
 #[test]
 fn video_audio_custom_filter2_input() {
-    let pool = get_pool();
-    let mut config = Runtime::new()
-        .unwrap()
-        .block_on(PlayoutConfig::new(&pool, 1));
-    let channel = Runtime::new()
-        .unwrap()
-        .block_on(handles::select_channel(&pool, &1))
-        .unwrap();
-    let manager = ChannelManager::new(Some(pool), channel, config.clone());
+    let (mut config, manager) = get_config();
+
     config.output.mode = Stream;
     config.processing.add_logo = false;
     config.processing.custom_filter =
@@ -145,15 +126,8 @@ fn video_audio_custom_filter2_input() {
 
 #[test]
 fn video_audio_custom_filter3_input() {
-    let pool = get_pool();
-    let mut config = Runtime::new()
-        .unwrap()
-        .block_on(PlayoutConfig::new(&pool, 1));
-    let channel = Runtime::new()
-        .unwrap()
-        .block_on(handles::select_channel(&pool, &1))
-        .unwrap();
-    let manager = ChannelManager::new(Some(pool), channel, config.clone());
+    let (mut config, manager) = get_config();
+
     config.output.mode = Stream;
     config.processing.add_logo = false;
     config.processing.custom_filter =
@@ -179,15 +153,8 @@ fn video_audio_custom_filter3_input() {
 
 #[test]
 fn dual_audio_aevalsrc_input() {
-    let pool = get_pool();
-    let mut config = Runtime::new()
-        .unwrap()
-        .block_on(PlayoutConfig::new(&pool, 1));
-    let channel = Runtime::new()
-        .unwrap()
-        .block_on(handles::select_channel(&pool, &1))
-        .unwrap();
-    let manager = ChannelManager::new(Some(pool), channel, config.clone());
+    let (mut config, manager) = get_config();
+
     config.output.mode = Stream;
     config.processing.audio_tracks = 2;
     config.processing.add_logo = false;
@@ -213,15 +180,8 @@ fn dual_audio_aevalsrc_input() {
 
 #[test]
 fn dual_audio_input() {
-    let pool = get_pool();
-    let mut config = Runtime::new()
-        .unwrap()
-        .block_on(PlayoutConfig::new(&pool, 1));
-    let channel = Runtime::new()
-        .unwrap()
-        .block_on(handles::select_channel(&pool, &1))
-        .unwrap();
-    let manager = ChannelManager::new(Some(pool), channel, config.clone());
+    let (mut config, manager) = get_config();
+
     config.output.mode = Stream;
     config.processing.audio_tracks = 2;
     config.processing.add_logo = false;
@@ -246,15 +206,8 @@ fn dual_audio_input() {
 
 #[test]
 fn video_separate_audio_input() {
-    let pool = get_pool();
-    let mut config = Runtime::new()
-        .unwrap()
-        .block_on(PlayoutConfig::new(&pool, 1));
-    let channel = Runtime::new()
-        .unwrap()
-        .block_on(handles::select_channel(&pool, &1))
-        .unwrap();
-    let manager = ChannelManager::new(Some(pool), channel, config.clone());
+    let (mut config, manager) = get_config();
+
     config.output.mode = Stream;
     config.processing.audio_tracks = 1;
     config.processing.add_logo = false;
@@ -289,10 +242,8 @@ fn video_separate_audio_input() {
 
 #[test]
 fn video_audio_stream() {
-    let pool = get_pool();
-    let mut config = Runtime::new()
-        .unwrap()
-        .block_on(PlayoutConfig::new(&pool, 1));
+    let (mut config, _) = get_config();
+
     config.output.mode = Stream;
     config.processing.add_logo = false;
     config.output.output_cmd = Some(vec_strings![
@@ -351,10 +302,8 @@ fn video_audio_stream() {
 
 #[test]
 fn video_audio_filter1_stream() {
-    let pool = get_pool();
-    let mut config = Runtime::new()
-        .unwrap()
-        .block_on(PlayoutConfig::new(&pool, 1));
+    let (mut config, _) = get_config();
+
     config.output.mode = Stream;
     config.processing.add_logo = false;
     config.text.add_text = false;
@@ -429,10 +378,8 @@ fn video_audio_filter1_stream() {
 
 #[test]
 fn video_audio_filter2_stream() {
-    let pool = get_pool();
-    let mut config = Runtime::new()
-        .unwrap()
-        .block_on(PlayoutConfig::new(&pool, 1));
+    let (mut config, _) = get_config();
+
     config.output.mode = Stream;
     config.processing.add_logo = false;
     config.text.add_text = true;
@@ -515,10 +462,8 @@ fn video_audio_filter2_stream() {
 
 #[test]
 fn video_audio_filter3_stream() {
-    let pool = get_pool();
-    let mut config = Runtime::new()
-        .unwrap()
-        .block_on(PlayoutConfig::new(&pool, 1));
+    let (mut config, _) = get_config();
+
     config.output.mode = Stream;
     config.processing.add_logo = false;
     config.text.add_text = true;
@@ -604,10 +549,8 @@ fn video_audio_filter3_stream() {
 
 #[test]
 fn video_audio_filter4_stream() {
-    let pool = get_pool();
-    let mut config = Runtime::new()
-        .unwrap()
-        .block_on(PlayoutConfig::new(&pool, 1));
+    let (mut config, _) = get_config();
+
     config.output.mode = Stream;
     config.processing.add_logo = false;
     config.text.add_text = true;
@@ -693,10 +636,8 @@ fn video_audio_filter4_stream() {
 
 #[test]
 fn video_dual_audio_stream() {
-    let pool = get_pool();
-    let mut config = Runtime::new()
-        .unwrap()
-        .block_on(PlayoutConfig::new(&pool, 1));
+    let (mut config, _) = get_config();
+
     config.output.mode = Stream;
     config.processing.add_logo = false;
     config.processing.audio_tracks = 2;
@@ -767,10 +708,8 @@ fn video_dual_audio_stream() {
 
 #[test]
 fn video_dual_audio_filter_stream() {
-    let pool = get_pool();
-    let mut config = Runtime::new()
-        .unwrap()
-        .block_on(PlayoutConfig::new(&pool, 1));
+    let (mut config, _) = get_config();
+
     config.output.mode = Stream;
     config.processing.add_logo = false;
     config.processing.audio_tracks = 2;
@@ -850,10 +789,8 @@ fn video_dual_audio_filter_stream() {
 
 #[test]
 fn video_audio_multi_stream() {
-    let pool = get_pool();
-    let mut config = Runtime::new()
-        .unwrap()
-        .block_on(PlayoutConfig::new(&pool, 1));
+    let (mut config, _) = get_config();
+
     config.output.mode = Stream;
     config.processing.add_logo = false;
     config.output.output_cmd = Some(vec_strings![
@@ -942,10 +879,8 @@ fn video_audio_multi_stream() {
 
 #[test]
 fn video_dual_audio_multi_stream() {
-    let pool = get_pool();
-    let mut config = Runtime::new()
-        .unwrap()
-        .block_on(PlayoutConfig::new(&pool, 1));
+    let (mut config, _) = get_config();
+
     config.output.mode = Stream;
     config.processing.add_logo = false;
     config.processing.audio_tracks = 2;
@@ -1059,10 +994,8 @@ fn video_dual_audio_multi_stream() {
 
 #[test]
 fn video_audio_text_multi_stream() {
-    let pool = get_pool();
-    let mut config = Runtime::new()
-        .unwrap()
-        .block_on(PlayoutConfig::new(&pool, 1));
+    let (mut config, _) = get_config();
+
     config.output.mode = Stream;
     config.processing.add_logo = false;
     config.text.add_text = true;
@@ -1175,10 +1108,8 @@ fn video_audio_text_multi_stream() {
 
 #[test]
 fn video_dual_audio_multi_filter_stream() {
-    let pool = get_pool();
-    let mut config = Runtime::new()
-        .unwrap()
-        .block_on(PlayoutConfig::new(&pool, 1));
+    let (mut config, _) = get_config();
+
     config.output.mode = Stream;
     config.processing.add_logo = false;
     config.processing.audio_tracks = 2;
@@ -1307,10 +1238,8 @@ fn video_dual_audio_multi_filter_stream() {
 
 #[test]
 fn video_audio_text_filter_stream() {
-    let pool = get_pool();
-    let mut config = Runtime::new()
-        .unwrap()
-        .block_on(PlayoutConfig::new(&pool, 1));
+    let (mut config, _) = get_config();
+
     config.output.mode = Stream;
     config.processing.add_logo = false;
     config.processing.audio_tracks = 1;
@@ -1432,15 +1361,8 @@ fn video_audio_text_filter_stream() {
 
 #[test]
 fn video_audio_hls() {
-    let pool = get_pool();
-    let mut config = Runtime::new()
-        .unwrap()
-        .block_on(PlayoutConfig::new(&pool, 1));
-    let channel = Runtime::new()
-        .unwrap()
-        .block_on(handles::select_channel(&pool, &1))
-        .unwrap();
-    let manager = ChannelManager::new(Some(pool), channel, config.clone());
+    let (mut config, manager) = get_config();
+
     config.output.mode = HLS;
     config.processing.add_logo = false;
     config.text.add_text = false;
@@ -1525,15 +1447,8 @@ fn video_audio_hls() {
 
 #[test]
 fn video_audio_sub_meta_hls() {
-    let pool = get_pool();
-    let mut config = Runtime::new()
-        .unwrap()
-        .block_on(PlayoutConfig::new(&pool, 1));
-    let channel = Runtime::new()
-        .unwrap()
-        .block_on(handles::select_channel(&pool, &1))
-        .unwrap();
-    let manager = ChannelManager::new(Some(pool), channel, config.clone());
+    let (mut config, manager) = get_config();
+
     config.output.mode = HLS;
     config.processing.add_logo = false;
     config.text.add_text = false;
@@ -1626,15 +1541,8 @@ fn video_audio_sub_meta_hls() {
 
 #[test]
 fn video_multi_audio_hls() {
-    let pool = get_pool();
-    let mut config = Runtime::new()
-        .unwrap()
-        .block_on(PlayoutConfig::new(&pool, 1));
-    let channel = Runtime::new()
-        .unwrap()
-        .block_on(handles::select_channel(&pool, &1))
-        .unwrap();
-    let manager = ChannelManager::new(Some(pool), channel, config.clone());
+    let (mut config, manager) = get_config();
+
     config.output.mode = HLS;
     config.processing.add_logo = false;
     config.processing.audio_tracks = 2;
@@ -1722,15 +1630,8 @@ fn video_multi_audio_hls() {
 
 #[test]
 fn multi_video_audio_hls() {
-    let pool = get_pool();
-    let mut config = Runtime::new()
-        .unwrap()
-        .block_on(PlayoutConfig::new(&pool, 1));
-    let channel = Runtime::new()
-        .unwrap()
-        .block_on(handles::select_channel(&pool, &1))
-        .unwrap();
-    let manager = ChannelManager::new(Some(pool), channel, config.clone());
+    let (mut config, manager) = get_config();
+
     config.output.mode = HLS;
     config.processing.add_logo = false;
     config.text.add_text = false;
@@ -1843,15 +1744,8 @@ fn multi_video_audio_hls() {
 
 #[test]
 fn multi_video_multi_audio_hls() {
-    let pool = get_pool();
-    let mut config = Runtime::new()
-        .unwrap()
-        .block_on(PlayoutConfig::new(&pool, 1));
-    let channel = Runtime::new()
-        .unwrap()
-        .block_on(handles::select_channel(&pool, &1))
-        .unwrap();
-    let manager = ChannelManager::new(Some(pool), channel, config.clone());
+    let (mut config, manager) = get_config();
+
     config.output.mode = HLS;
     config.processing.add_logo = false;
     config.processing.audio_tracks = 2;
