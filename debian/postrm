@@ -6,7 +6,7 @@ sysUser="ffpu"
 case "$1" in
     abort-install|purge)
         deluser $sysUser
-        rm -rf /usr/share/ffplayout /var/log/ffplayout /etc/ffplayout /var/lib/ffplayout /home/$sysUser
+        rm -rf /usr/share/ffplayout /var/log/ffplayout /var/lib/ffplayout /home/$sysUser
     ;;
 
     remove)

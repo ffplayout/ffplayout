@@ -19,7 +19,16 @@
     },
     "cSpell.words": [
         "actix",
+        "ffpengine",
+        "flexi",
+        "lettre",
+        "libc",
+        "neli",
+        "paris",
+        "reqwest",
         "rsplit",
+        "rustls",
+        "sqlx",
         "starttls",
         "tokio",
         "uuids"

@@ -13,13 +13,13 @@ Check the [releases](https://github.com/ffplayout/ffplayout/releases/latest) for
 
 ### Features
 
-- have all values in a separate config file
+- start program with [web based frontend](https://github.com/ffplayout/ffplayout-frontend), or run playout in foreground mode without frontend
 - dynamic playlist
 - replace missing playlist or clip with single filler or multiple fillers from folder, if no filler exists, create dummy clip
 - playing clips in [watched](/docs/folder_mode.md) folder mode
 - send emails with error message
 - overlay a logo
-- overlay text, controllable through [ffplayout-frontend](https://github.com/ffplayout/ffplayout-frontend) (needs ffmpeg with libzmq and enabled JSON RPC server)
+- overlay text, controllable through [web frontend](https://github.com/ffplayout/ffplayout-frontend) (needs ffmpeg with libzmq and enabled JSON RPC server)
 - loop playlist infinitely
 - [remote source](/docs/remote_source.md)
 - trim and fade the last clip, to get full 24 hours
@@ -42,7 +42,6 @@ Check the [releases](https://github.com/ffplayout/ffplayout/releases/latest) for
   - **desktop**
   - **HLS**
   - **null** (for debugging)
-- JSON RPC server, to get information about what is playing and to control it
 - [live ingest](/docs/live_ingest.md)
 - image source (will loop until out duration is reached)
 - extra audio source, has priority over audio from video (experimental *)
@@ -51,23 +50,19 @@ Check the [releases](https://github.com/ffplayout/ffplayout/releases/latest) for
 - [custom filters](/docs/custom_filters.md) globally in config, or in playlist for specific clips
 - import playlist from text or m3u file, with CLI or frontend
 - audio only, for radio mode (experimental *)
-- [Piggyback Mode](/ffplayout-api/README.md#piggyback-mode), mostly for non Linux systems (experimental *)
 - generate playlist based on [template](/docs/playlist_gen.md) (experimental *)
 - During playlist import, all video clips are validated and, if desired, checked to ensure that the audio track is not completely muted.
+- run multiple channels (experimental *)
 
 For preview stream, read: [/docs/preview_stream.md](/docs/preview_stream.md)
 
 **\* Experimental features do not guarantee the same stability and may fail under unusual circumstances. Code and configuration options may change in the future.**
 
-## **ffplayout-api (ffpapi)**
-
-ffpapi serves the [frontend](https://github.com/ffplayout/ffplayout-frontend) and it acts as a [REST API](/ffplayout-api/README.md) for controlling the engine, manipulate playlists, add settings etc.
-
 ### Requirements
 
-- RAM and CPU depends on video resolution, minimum 4 threads and 3GB RAM for 720p are recommend
+- RAM and CPU depends on video resolution, minimum 4 _dedicated_ threads and 3GB RAM for 720p are recommend
 - **ffmpeg** v5.0+ and **ffprobe** (**ffplay** if you want to play on desktop)
-- if you want to overlay text, ffmpeg needs to have **libzmq**
+- if you want to overlay dynamic text, ffmpeg needs to have **libzmq**
 
 ### Install
 
@@ -119,78 +114,13 @@ Check [install](docs/install.md) for details about how to install ffplayout.
     ]
 }
 ```
+If you are in playlist mode and move backwards or forwards in time, the time shift is saved so the playlist is still in sync. Bear in mind, however, that this may make your playlist too short. If you do not reset it, it will automatically reset the next day.
 
 ## **Warning**
 
 (Endless) streaming over multiple days will only work if config has a **day_start** value and the **length** value is **24 hours**. If you only need a few hours for each day, use a *cron* job or something similar.
 
 -----
-
-## HLS output
-
-For outputting to HLS, output parameters should look like:
-
-```yaml
-out:
-    ...
-
-    output_param: >-
-        ...
-
-        -flags +cgop
-        -f hls
-        -hls_time 6
-        -hls_list_size 600
-        -hls_flags append_list+delete_segments+omit_endlist+program_date_time
-        -hls_segment_filename /var/www/html/live/stream-%09d.ts /var/www/html/live/stream.m3u8
-```
-
------
-
-## JSON RPC
-
-The ffplayout engine can run a simple RPC server. A request looks like:
-
-```Bash
-curl -X POST -H "Content-Type: application/json" -H "Authorization: ---auth-key---" \
-    -d '{"control":"next"}' \
-    127.0.0.1:7070
-```
-
-At the moment this commends are possible:
-
-```Bash
-'{"media":"current"}'  # get infos about current clip
-'{"media":"next"}'  # get infos about next clip
-'{"media":"last"}'  # get infos about last clip
-'{"control":"next"}'   # jump to next clip
-'{"control":"back"}'   # jump to last clip
-'{"control":"reset"}'  # reset playlist to old state
-'{"control":"text", \
-  "message": {"text": "Hello from ffplayout", "x": "(w-text_w)/2", "y": "(h-text_h)/2", \
-  "fontsize": 24, "line_spacing": 4, "fontcolor": "#ffffff", "box": 1, \
-  "boxcolor": "#000000", "boxborderw": 4, "alpha": 1.0}}' # send text to drawtext filter from ffmpeg
-```
-
-Output from `{"media":"current"}` show:
-
-```JSON
-{
-    "media": {
-        "category": "",
-        "duration": 154.2,
-        "out": 154.2,
-        "in": 0.0,
-        "source": "/opt/tv-media/clip.mp4"
-    },
-    "index": 39,
-    "mode": "playlist",
-    "ingest": false,
-    "played": 67.80771999300123,
-}
-```
-
-If you are in playlist mode and move backwards or forwards in time, the time shift is saved so the playlist is still in sync. Bear in mind, however, that this may make your playlist too short. If you do not reset it, it will automatically reset the next day.
 
 ## Founding
 

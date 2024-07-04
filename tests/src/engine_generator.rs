@@ -4,13 +4,46 @@ use std::{
 };
 
 use chrono::NaiveTime;
-use simplelog::*;
+use sqlx::sqlite::SqlitePoolOptions;
+use tokio::runtime::Runtime;
 
-use ffplayout_lib::utils::{
-    config::{Source, Template},
+use ffplayout::db::handles;
+use ffplayout::player::{controller::ChannelManager, utils::*};
+use ffplayout::utils::config::ProcessMode::Playlist;
+use ffplayout::utils::playlist::generate_playlist;
+use ffplayout::utils::{
+    config::{PlayoutConfig, Source, Template},
     generator::*,
-    *,
 };
+
+async fn prepare_config() -> (PlayoutConfig, ChannelManager) {
+    let pool = SqlitePoolOptions::new()
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    handles::db_migrate(&pool).await.unwrap();
+
+    sqlx::query(
+        r#"
+        UPDATE global SET hls_path = "assets/hls", logging_path = "assets/log",
+            playlist_path = "assets/playlists", storage_path = "assets/storage";
+        UPDATE configurations SET processing_width = 1024, processing_height = 576;
+        "#,
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let config = PlayoutConfig::new(&pool, 1).await;
+    let channel = handles::select_channel(&pool, &1).await.unwrap();
+    let manager = ChannelManager::new(Some(pool), channel, config.clone());
+
+    (config, manager)
+}
+
+fn get_config() -> (PlayoutConfig, ChannelManager) {
+    Runtime::new().unwrap().block_on(prepare_config())
+}
 
 #[test]
 fn test_random_list() {
@@ -53,7 +86,8 @@ fn test_ordered_list() {
 #[test]
 #[ignore]
 fn test_filler_list() {
-    let mut config = PlayoutConfig::new(None, None);
+    let (mut config, _) = get_config();
+
     config.storage.filler = "assets/".into();
 
     let f_list = filler_list(&config, 2440.0);
@@ -64,20 +98,15 @@ fn test_filler_list() {
 #[test]
 #[ignore]
 fn test_generate_playlist_from_folder() {
-    let mut config = PlayoutConfig::new(None, None);
+    let (mut config, manager) = get_config();
+
     config.general.generate = Some(vec!["2023-09-11".to_string()]);
     config.processing.mode = Playlist;
-    config.logging.log_to_file = false;
-    config.logging.timestamp = false;
-    config.logging.level = LevelFilter::Error;
     config.storage.filler = "assets/".into();
     config.playlist.length_sec = Some(86400.0);
-    config.playlist.path = "assets/playlists".into();
+    config.global.playlist_path = "assets/playlists".into();
 
-    let logging = init_logging(&config, None, None);
-    CombinedLogger::init(logging).unwrap_or_default();
-
-    let playlist = generate_playlist(&config, Some("Channel 1".to_string()));
+    let playlist = generate_playlist(manager);
 
     assert!(playlist.is_ok());
 
@@ -87,7 +116,7 @@ fn test_generate_playlist_from_folder() {
 
     fs::remove_file(playlist_file).unwrap();
 
-    let total_duration = sum_durations(&playlist.unwrap()[0].program);
+    let total_duration = sum_durations(&playlist.unwrap().program);
 
     assert!(
         total_duration > 86399.0 && total_duration < 86401.0,
@@ -98,7 +127,8 @@ fn test_generate_playlist_from_folder() {
 #[test]
 #[ignore]
 fn test_generate_playlist_from_template() {
-    let mut config = PlayoutConfig::new(None, None);
+    let (mut config, manager) = get_config();
+
     config.general.generate = Some(vec!["2023-09-12".to_string()]);
     config.general.template = Some(Template {
         sources: vec![
@@ -117,17 +147,11 @@ fn test_generate_playlist_from_template() {
         ],
     });
     config.processing.mode = Playlist;
-    config.logging.log_to_file = false;
-    config.logging.timestamp = false;
-    config.logging.level = LevelFilter::Error;
     config.storage.filler = "assets/".into();
     config.playlist.length_sec = Some(86400.0);
-    config.playlist.path = "assets/playlists".into();
+    config.global.playlist_path = "assets/playlists".into();
 
-    let logging = init_logging(&config, None, None);
-    CombinedLogger::init(logging).unwrap_or_default();
-
-    let playlist = generate_playlist(&config, Some("Channel 1".to_string()));
+    let playlist = generate_playlist(manager);
 
     assert!(playlist.is_ok());
 
@@ -137,7 +161,7 @@ fn test_generate_playlist_from_template() {
 
     fs::remove_file(playlist_file).unwrap();
 
-    let total_duration = sum_durations(&playlist.unwrap()[0].program);
+    let total_duration = sum_durations(&playlist.unwrap().program);
 
     assert!(
         total_duration > 86399.0 && total_duration < 86401.0,

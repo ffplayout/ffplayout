@@ -1,10 +1,42 @@
-use std::path::PathBuf;
+use sqlx::sqlite::SqlitePoolOptions;
+use tokio::runtime::Runtime;
 
 #[cfg(test)]
 use chrono::prelude::*;
 
 #[cfg(test)]
-use ffplayout_lib::utils::*;
+use ffplayout::db::handles;
+use ffplayout::player::{controller::ChannelManager, utils::*};
+use ffplayout::utils::config::{PlayoutConfig, ProcessMode::Playlist};
+
+async fn prepare_config() -> (PlayoutConfig, ChannelManager) {
+    let pool = SqlitePoolOptions::new()
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    handles::db_migrate(&pool).await.unwrap();
+
+    sqlx::query(
+        r#"
+        UPDATE global SET hls_path = "assets/hls", logging_path = "assets/log",
+            playlist_path = "assets/playlists", storage_path = "assets/storage";
+        UPDATE configurations SET processing_width = 1024, processing_height = 576;
+        "#,
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let config = PlayoutConfig::new(&pool, 1).await;
+    let channel = handles::select_channel(&pool, &1).await.unwrap();
+    let manager = ChannelManager::new(Some(pool), channel, config.clone());
+
+    (config, manager)
+}
+
+fn get_config() -> (PlayoutConfig, ChannelManager) {
+    Runtime::new().unwrap().block_on(prepare_config())
+}
 
 #[test]
 fn mock_date_time() {
@@ -40,12 +72,12 @@ fn get_date_tomorrow() {
 
 #[test]
 fn test_delta() {
-    let mut config = PlayoutConfig::new(Some(PathBuf::from("../assets/ffplayout.toml")), None);
+    let (mut config, _) = get_config();
+
     config.mail.recipient = "".into();
     config.processing.mode = Playlist;
     config.playlist.day_start = "00:00:00".into();
     config.playlist.length = "24:00:00".into();
-    config.logging.log_to_file = false;
 
     mock_time::set_mock_time("2022-05-09T23:59:59");
     let (delta, _) = get_delta(&config, &86401.0);

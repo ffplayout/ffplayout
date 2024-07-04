@@ -20,9 +20,10 @@
 *.deb
 *.rpm
 ffplayout.1.gz
-ffpapi.1.gz
 /assets/*.db*
 /dist/
 /public/
 tmp/
 assets/playlist_template.json
+advanced*.toml
+ffplayout*.toml

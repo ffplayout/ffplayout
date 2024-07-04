@@ -72,7 +72,7 @@ In this mode you can output directly to a hls playlist. The nice thing here is, 
 
 HLS output is currently the default, mostly because it works out of the box and don't need a streaming target. In default settings it saves the segments to **/usr/share/ffplayout/public/live/**.
 
-**It is recommend to serve the HLS stream with nginx or another web server, and not with ffpapi (which is more meant for previewing).**
+**It is recommend to serve the HLS stream with nginx or another web server, and not with ffplayout (which is more meant for previewing).**
 
 **HLS multiple outputs example:**
 

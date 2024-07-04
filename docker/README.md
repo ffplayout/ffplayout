@@ -26,7 +26,7 @@ You can take a look at the [Dockerfile](Dockerfile)
 ## Storage
 
 There are some folders/files that are important for ffplayout to work well such as:
- - **/usr/share/ffplayout/db** => where all the data for the `ffpapi` are stored (user/pass etc)
+ - **/usr/share/ffplayout/db** => where all the data are stored (user/pass etc)
  - **/var/lib/ffplayout/tv-media** => where the media are stored by default (configurable)
  - **/var/lib/ffplayout/playlists** => where playlists are stored (configurable)
  - **/etc/ffplayout/ffplayout.yml** => the core config file

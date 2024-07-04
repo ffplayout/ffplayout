@@ -102,8 +102,7 @@ RUN    yum update -y \
     && echo 'Docker!' | passwd --stdin root \
     && rm /tmp/ffplayout-${FFPLAYOUT_VERSION}-1.x86_64.rpm \
     && mkdir -p /home/ffpu && chown -R ffpu: /home/ffpu \
-    && systemctl enable ffplayout \
-    && systemctl enable ffpapi
+    && systemctl enable ffplayout
 
 EXPOSE 8787
 RUN echo "/usr/local/lib" >> /etc/ld.so.conf.d/nvidia.conf

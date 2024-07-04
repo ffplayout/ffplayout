@@ -1,6 +1,6 @@
 ## Advanced settings
 
-Within **/etc/ffplayout/advanced.yml** you can control all ffmpeg inputs/decoder output and filters.
+With **advanced settings** you can control all ffmpeg inputs/decoder output and filters.
 
 > **_Note:_** Changing these settings is for advanced users only! There will be no support or guarantee that it will work and be stable after changing them!
 
