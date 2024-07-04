@@ -590,6 +590,12 @@ impl PlayoutConfig {
                 .expect("Can't create playlist folder");
         }
 
+        if !global.logging_path.is_dir() {
+            tokio::fs::create_dir_all(&global.logging_path)
+                .await
+                .expect("Can't create logging folder");
+        }
+
         let (filler_path, _, _) = norm_abs_path(&global.storage_path, &config.storage_filler)
             .expect("Can't get filler path");
 

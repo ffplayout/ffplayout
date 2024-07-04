@@ -156,12 +156,16 @@ impl fmt::Display for TextFilter {
 
 pub fn db_path() -> Result<&'static str, Box<dyn std::error::Error>> {
     if let Some(path) = ARGS.db.clone() {
-        let absolute_path = if path.is_absolute() {
+        let mut absolute_path = if path.is_absolute() {
             path
         } else {
             env::current_dir()?.join(path)
         }
         .clean();
+
+        if absolute_path.is_dir() {
+            absolute_path = absolute_path.join("ffplayout.db");
+        }
 
         if let Some(abs_path) = absolute_path.parent() {
             if abs_path.writable() {

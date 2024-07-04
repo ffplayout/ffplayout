@@ -1,7 +1,6 @@
 use std::{
     io::{stdin, stdout, Write},
     path::PathBuf,
-    process::exit,
 };
 
 use clap::Parser;
@@ -9,7 +8,7 @@ use rpassword::read_password;
 use sqlx::{Pool, Sqlite};
 
 use crate::db::{
-    handles::{self, insert_user},
+    handles,
     models::{Channel, GlobalSettings, User},
 };
 use crate::utils::{
@@ -112,13 +111,13 @@ pub struct Args {
     pub log_to_console: bool,
 
     #[clap(long, env, help = "HLS output path")]
-    pub hls_path: Option<PathBuf>,
+    pub hls_path: Option<String>,
 
     #[clap(long, env, help = "Playlist root path")]
-    pub playlist_path: Option<PathBuf>,
+    pub playlist_path: Option<String>,
 
     #[clap(long, env, help = "Storage root path")]
-    pub storage_path: Option<PathBuf>,
+    pub storage_path: Option<String>,
 
     #[clap(long, env, help = "Share storage across channels")]
     pub shared_storage: bool,
@@ -188,8 +187,19 @@ fn global_user(args: &mut Args) {
 }
 
 pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
-    let channels = handles::select_related_channels(pool, None).await;
     let mut args = ARGS.clone();
+
+    if args.dump_advanced.is_none() && args.dump_config.is_none() {
+        if let Err(e) = handles::db_migrate(pool).await {
+            panic!("{e}");
+        };
+    }
+
+    let channels = handles::select_related_channels(pool, None)
+        .await
+        .unwrap_or(vec![Channel::default()]);
+
+    let mut error_code = -1;
 
     if args.init {
         let check_user = handles::select_users(pool).await;
@@ -288,7 +298,7 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
 
         if let Err(e) = handles::update_global(pool, global.clone()).await {
             eprintln!("{e}");
-            return Err(1);
+            error_code = 1;
         };
 
         if !global.shared_storage {
@@ -306,10 +316,14 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
     }
 
     if let Some(username) = args.username {
+        error_code = 0;
+
         if args.mail.is_none() || args.password.is_none() {
             eprintln!("Mail/password missing!");
-            return Err(1);
+            error_code = 1;
         }
+
+        let chl: Vec<i32> = channels.clone().iter().map(|c| c.id).collect();
 
         let user = User {
             id: 0,
@@ -317,62 +331,70 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
             username: username.clone(),
             password: args.password.unwrap(),
             role_id: Some(1),
-            channel_ids: Some(
-                channels
-                    .unwrap_or(vec![Channel::default()])
-                    .iter()
-                    .map(|c| c.id)
-                    .collect(),
-            ),
+            channel_ids: Some(chl.clone()),
             token: None,
         };
 
-        if let Err(e) = insert_user(pool, user).await {
+        if let Err(e) = handles::insert_user(pool, user).await {
             eprintln!("{e}");
-            return Err(1);
+            error_code = 1;
         };
 
         println!("Create global admin user \"{username}\" done...");
+    }
 
-        return Err(0);
+    if !args.init
+        && args.storage_path.is_some()
+        && args.playlist_path.is_some()
+        && args.hls_path.is_some()
+        && args.log_path.is_some()
+    {
+        error_code = 0;
+
+        let global = GlobalSettings {
+            id: 0,
+            secret: None,
+            hls_path: args.hls_path.unwrap(),
+            playlist_path: args.playlist_path.unwrap(),
+            storage_path: args.storage_path.unwrap(),
+            logging_path: args.log_path.unwrap().to_string_lossy().to_string(),
+            shared_storage: args.shared_storage,
+        };
+
+        if let Err(e) = handles::update_global(pool, global.clone()).await {
+            eprintln!("{e}");
+            error_code = 1;
+        } else {
+            println!("Update global paths...");
+        };
     }
 
     if ARGS.list_channels {
-        match channels {
-            Ok(channels) => {
-                let chl = channels
-                    .iter()
-                    .map(|c| (c.id, c.name.clone()))
-                    .collect::<Vec<(i32, String)>>();
+        let chl = channels
+            .iter()
+            .map(|c| (c.id, c.name.clone()))
+            .collect::<Vec<(i32, String)>>();
 
-                println!(
-                    "Available channels:\n{}",
-                    chl.iter()
-                        .map(|(i, t)| format!("    {i}: '{t}'"))
-                        .collect::<Vec<String>>()
-                        .join("\n")
-                );
+        println!(
+            "Available channels:\n{}",
+            chl.iter()
+                .map(|(i, t)| format!("    {i}: '{t}'"))
+                .collect::<Vec<String>>()
+                .join("\n")
+        );
 
-                return Err(0);
-            }
-            Err(e) => {
-                eprintln!("List channels: {e}");
-
-                exit(1);
-            }
-        }
+        error_code = 0;
     }
 
     if let Some(id) = ARGS.dump_config {
         match PlayoutConfig::dump(pool, id).await {
             Ok(_) => {
                 println!("Dump config to: ffplayout_{id}.toml");
-                exit(0);
+                error_code = 0;
             }
             Err(e) => {
                 eprintln!("Dump config: {e}");
-
-                exit(1);
+                error_code = 1;
             }
         };
     }
@@ -381,12 +403,11 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
         match PlayoutConfig::dump(pool, id).await {
             Ok(_) => {
                 println!("Dump config to: ffplayout_{id}.toml");
-                exit(0);
+                error_code = 0;
             }
             Err(e) => {
                 eprintln!("Dump config: {e}");
-
-                exit(1);
+                error_code = 1;
             }
         };
     }
@@ -395,12 +416,11 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
         match AdvancedConfig::dump(pool, id).await {
             Ok(_) => {
                 println!("Dump config to: advanced_{id}.toml");
-                exit(0);
+                error_code = 0;
             }
             Err(e) => {
                 eprintln!("Dump config: {e}");
-
-                exit(1);
+                error_code = 1;
             }
         };
     }
@@ -409,12 +429,11 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
         match PlayoutConfig::import(pool, import.clone()).await {
             Ok(_) => {
                 println!("Import config done...");
-                exit(0);
+                error_code = 0;
             }
             Err(e) => {
                 eprintln!("{e}");
-
-                exit(1);
+                error_code = 1;
             }
         };
     }
@@ -423,15 +442,18 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
         match AdvancedConfig::import(pool, import.clone()).await {
             Ok(_) => {
                 println!("Import config done...");
-                exit(0);
+                error_code = 0;
             }
             Err(e) => {
                 eprintln!("{e}");
-
-                exit(1);
+                error_code = 1;
             }
         };
     }
 
-    Ok(())
+    if error_code > -1 {
+        Err(error_code)
+    } else {
+        Ok(())
+    }
 }

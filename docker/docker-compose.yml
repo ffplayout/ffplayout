@@ -2,10 +2,7 @@ version: '3'
 
 services:
   ffplayout:
-    cap_add:
-      - SYS_ADMIN
     container_name: ffplayout
-    privileged: true
     build:
       context: .
       dockerfile: ./Dockerfile

@@ -40,8 +40,11 @@ How to build the image:\
 # build default
 docker build -t ffplayout-image .
 
+# build with shared storage (same storage for all channels)
+docker build --build-arg SHARED_STORAGE=true .
+
 # build from root folder, to copy local *.rpm package
-docker build -f docker/Dockerfile -t ffplayout-image:alma .
+docker build -f docker/Dockerfile -t ffplayout-image .
 
 # build ffmpeg from source
 docker build -f fromSource.Dockerfile -t ffplayout-image:from-source .
@@ -53,10 +56,10 @@ docker build -f nvidia-centos7.Dockerfile -t ffplayout-image:nvidia .
 example of command to start the container:
 
 ```BASH
-docker run -it --name ffplayout --privileged -p 8787:8787 ffplayout-image
+docker run -it -v /path/to/db:/db -v /path/to/storage:/tv-media -v /path/to/playlists:/playlists -v /path/to/hls:/hls -v /path/to/logging:/logging --name ffplayout -p 8787:8787 ffplayout-image
 
 # run in daemon mode
-docker run -d --name ffplayout --privileged -p 8787:8787 ffplayout-image
+docker run -d --name ffplayout -p 8787:8787 ffplayout-image
 
 # run with docker-compose
 docker-compose up -d
