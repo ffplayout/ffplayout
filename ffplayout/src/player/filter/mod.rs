@@ -592,6 +592,10 @@ pub fn filter_chains(
 ) -> Filters {
     let mut filters = Filters::new(config.clone(), 0);
 
+    if node.source.contains("color=c=") {
+        filters.audio_position = 1;
+    }
+
     if node.unit == Encoder {
         if !config.processing.audio_only {
             add_text(node, &mut filters, config, filter_chain);
@@ -678,9 +682,9 @@ pub fn filter_chains(
                         "Missing audio track (id {i}) from <b><magenta>{}</></b>",
                         node.source
                     );
-                }
 
-                add_audio(node, &mut filters, i, config);
+                    add_audio(node, &mut filters, i, config);
+                }
             }
 
             // add at least anull filter, for correct filter construction,
