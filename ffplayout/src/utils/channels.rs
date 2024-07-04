@@ -1,4 +1,5 @@
 use std::{
+    ffi::OsStr,
     io,
     path::Path,
     sync::{Arc, Mutex},
@@ -33,7 +34,18 @@ fn preview_url(url: &str, id: i32) -> String {
 
     if let Some(parent) = url_path.parent() {
         if let Some(filename) = url_path.file_name() {
-            let new_path = parent.join(id.to_string()).join(filename);
+            let new_path = if parent
+                .file_name()
+                .unwrap_or_else(|| OsStr::new("0"))
+                .to_string_lossy()
+                .to_string()
+                .parse::<i32>()
+                .is_ok()
+            {
+                parent.join(filename)
+            } else {
+                parent.join(id.to_string()).join(filename)
+            };
 
             if let Some(new_url) = new_path.to_str() {
                 return new_url.to_string();
@@ -55,7 +67,7 @@ pub async fn create_channel(
 
     handles::update_channel(conn, channel.id, channel.clone()).await?;
 
-    let output_param = format!("-c:v libx264 -crf 23 -x264-params keyint=50:min-keyint=25:scenecut=-1 -maxrate 1300k -bufsize 2600k -preset faster -tune zerolatency -profile:v Main -level 3.1 -c:a aac -ar 44100 -b:a 128k -flags +cgop -f hls -hls_time 6 -hls_list_size 600 -hls_flags append_list+delete_segments+omit_endlist -hls_segment_filename {0}/stream-%d.ts {0}/stream.m3u8", channel.id);
+    let output_param = "-c:v libx264 -crf 23 -x264-params keyint=50:min-keyint=25:scenecut=-1 -maxrate 1300k -bufsize 2600k -preset faster -tune zerolatency -profile:v Main -level 3.1 -c:a aac -ar 44100 -b:a 128k -flags +cgop -f hls -hls_time 6 -hls_list_size 600 -hls_flags append_list+delete_segments+omit_endlist -hls_segment_filename live/stream-%d.ts live/stream.m3u8".to_string();
 
     handles::insert_advanced_configuration(conn, channel.id).await?;
     handles::insert_configuration(conn, channel.id, output_param).await?;
