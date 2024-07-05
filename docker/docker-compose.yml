@@ -6,5 +6,11 @@ services:
     build:
       context: .
       dockerfile: ./Dockerfile
+    volumes:
+      - ./data/db:/db
+      - ./data/storage:/tv-media
+      - ./data/playlists:/playlists
+      - ./data/logging:/logging
+      - ./data/hls:/hls
     ports:
       - '8787:8787'
