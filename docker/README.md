@@ -1,22 +1,5 @@
 # Run ffplayout in container
 
-
-## Base Image
-
-Use of [CentOS image](https://hub.docker.com/_/centos) as base image as it offer the possibility to use systemd.
-In order to run systemd in a container it has to run in privileged mode and bind to the `cgroup` of the host.
-
-> **_NOTE:_**  A system with CGroup V2 is need!
-> Currently tested host systems are:
-> - debian 12 with official docker ce from docker.com
-> - Manjaro from 2024 Kernel 6.6+
-> - fedora 39 with podman
-
-## Image
-
-In addition to the base image, there is the compilation of ffmpeg and all lib from source based on https://github.com/jrottenberg/ffmpeg.
-We can't use directly the image from `jrottenberg/ffmpeg` as it compile ffmpeg with the flag `--enable-small` that remove some part of the json from the ffprobe command.
-
 The image is build with a default user/pass `admin/admin`.
 
 You can take a look at the [Dockerfile](Dockerfile)
@@ -29,7 +12,6 @@ There are some folders/files that are important for ffplayout to work well such 
  - **/usr/share/ffplayout/db** => where all the data are stored (user/pass etc)
  - **/var/lib/ffplayout/tv-media** => where the media are stored by default (configurable)
  - **/var/lib/ffplayout/playlists** => where playlists are stored (configurable)
- - **/etc/ffplayout/ffplayout.yml** => the core config file
 
 It may be useful to create/link volume for those folders/files.
 
@@ -47,10 +29,11 @@ docker build --build-arg SHARED_STORAGE=true .
 docker build -f docker/Dockerfile -t ffplayout-image .
 
 # build ffmpeg from source
-docker build -f fromSource.Dockerfile -t ffplayout-image:from-source .
+docker build -f ffmpeg.Dockerfile -t ffmpeg-build .
+docker build -f nonfree.Dockerfile -t ffplayout-image:nonfree .
 
 # build with nvidia image for hardware support
-docker build -f nvidia-centos7.Dockerfile -t ffplayout-image:nvidia .
+docker build -f nvidia.Dockerfile -t ffplayout-image:nvidia .
 ```
 
 example of command to start the container:
