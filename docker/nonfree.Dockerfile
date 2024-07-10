@@ -9,6 +9,7 @@ ENV SHARED_STORAGE=${SHARED_STORAGE}
 COPY --from=ffmpeg-build /usr/local/bin/ffmpeg /usr/local/bin/ffmpeg
 COPY --from=ffmpeg-build /usr/local/bin/ffprobe /usr/local/bin/ffprobe
 COPY README.md ffplayout-v${FFPLAYOUT_VERSION}_x86_64-unknown-linux-musl.tar.* /tmp/
+COPY scripts/run.sh /
 
 RUN apk update && \
     apk upgrade && \
@@ -22,8 +23,6 @@ RUN [[ -f "/tmp/ffplayout-v${FFPLAYOUT_VERSION}_x86_64-unknown-linux-musl.tar.gz
     rm -rf /tmp/* && \
     mkdir ${DB}
 
-RUN ffplayout -u admin -p admin -m contact@example.com --storage-path "/tv-media" --playlist-path "/playlists" --hls-path "/hls" --log-path "/logging"
-
 EXPOSE 8787
 
-CMD ["/usr/bin/ffplayout", "-l", "0.0.0.0:8787"]
+CMD ["/run.sh"]
