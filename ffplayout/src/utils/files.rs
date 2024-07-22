@@ -363,7 +363,7 @@ pub async fn upload(
     abs_path: bool,
 ) -> Result<HttpResponse, ServiceError> {
     while let Some(mut field) = payload.try_next().await? {
-        let content_disposition = field.content_disposition();
+        let content_disposition = field.content_disposition().ok_or("No content")?;
         debug!("{content_disposition}");
         let rand_string: String = rand::thread_rng()
             .sample_iter(&Alphanumeric)

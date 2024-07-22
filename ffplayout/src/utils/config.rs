@@ -578,7 +578,10 @@ impl PlayoutConfig {
         if !global.storage_path.is_dir() {
             tokio::fs::create_dir_all(&global.storage_path)
                 .await
-                .expect("Can't create storage folder");
+                .expect(&format!(
+                    "Can't create storage folder: {:#?}",
+                    global.storage_path
+                ));
         }
 
         let mut storage = Storage::new(&config, global.storage_path.clone());
