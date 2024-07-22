@@ -87,6 +87,7 @@ export default {
         addBlock: 'Add time block',
         infinitInfo: 'Playout runs in infinite mode. No time based information is possible.',
         generateDone: 'Generate Playlist done...',
+        dateYesterday: 'Current time is before the playlist start time!',
     },
     media: {
         notExists: 'Storage not exist!',

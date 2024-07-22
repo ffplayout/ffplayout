@@ -87,6 +87,7 @@ export default {
         addBlock: 'Adicionar bloco de tempo',
         infinitInfo: 'O playout é executado no modo infinito. Nenhuma informação baseada em tempo é possível',
         generateDone: 'Gerar lista de reprodução concluída...',
+        dateYesterday: 'Current time is before the playlist start time!',
     },
     media: {
         notExists: 'O armazenamento não existe!',

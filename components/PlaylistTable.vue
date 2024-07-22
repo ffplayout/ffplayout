@@ -162,11 +162,12 @@ defineProps({
 })
 
 onMounted(() => {
-    getPlaylist()
+    setTimeout(() => {
+        getPlaylist()
+    }, 150)
 })
 
 watch([listDate, configID], () => {
-    getPlaylist()
     setTimeout(() => {
         getPlaylist()
     }, 800)

@@ -2,7 +2,16 @@
     <div class="h-full">
         <PlayerControl />
         <div class="flex justify-end p-1">
-            <div class="h-[32px]">
+            <div class="h-[32px] grid grid-cols-2">
+                <div class="text-warning flex justify-end p-2">
+                    <div
+                        v-if="firstLoad && beforeDayStart"
+                        class="tooltip tooltip-right tooltip-warning"
+                        :data-tip="$t('player.dateYesterday')"
+                    >
+                        <SvgIcon name="warning" />
+                    </div>
+                </div>
                 <VueDatePicker
                     v-if="!configStore.playout.playlist.infinit && configStore.playout.processing.mode !== 'folder'"
                     v-model="listDate"
@@ -16,6 +25,7 @@
                     :dark="colorMode.value === 'dark'"
                     input-class-name="input input-sm !input-bordered !w-[300px] text-right !pe-3"
                     required
+                    @update:model-value=";(beforeDayStart = false), (firstLoad = false)"
                 />
             </div>
         </div>
@@ -215,8 +225,6 @@
 </template>
 
 <script setup lang="ts">
-import { storeToRefs } from 'pinia'
-
 const colorMode = useColorMode()
 const { locale, t } = useI18n()
 const { $_, $dayjs } = useNuxtApp()
@@ -234,8 +242,9 @@ useHead({
     title: `${t('button.player')} | ffplayout`,
 })
 
-const { listDate } = storeToRefs(usePlaylist())
+const { listDate, firstLoad } = storeToRefs(usePlaylist())
 
+const beforeDayStart = ref(false)
 const targetDate = ref($dayjs().utcOffset(configStore.utcOffset).format('YYYY-MM-DD'))
 const playlistTable = ref()
 const editId = ref(-1)
@@ -266,7 +275,19 @@ const newSource = ref({
     uid: '',
 } as PlaylistItem)
 
-onMounted(() => {
+onBeforeMount(() => {
+    const currentTime = $dayjs().utcOffset(configStore.utcOffset)
+
+    if (
+        firstLoad.value &&
+        currentTime.format('YYYY-MM-DD') === playlistStore.listDate &&
+        currentTime.format('HH:mm:ss') > '00:00:00' &&
+        currentTime.format('HH:mm:ss') < configStore.playout.playlist.day_start
+    ) {
+        listDate.value = $dayjs(playlistStore.listDate).subtract(1, 'day').format('YYYY-MM-DD')
+        beforeDayStart.value = true
+    }
+
     if (configStore.onetimeInfo && configStore.playout.playlist.infinit) {
         indexStore.msgAlert('warning', t('player.infinitInfo'), 7)
         configStore.onetimeInfo = false
@@ -435,9 +456,9 @@ async function importPlaylist(imp: boolean) {
 
         playlistStore.isLoading = true
         await $fetch(
-            `/api/file/${configStore.configChannel[configStore.configID].id}/import/?file=${textFile.value[0].name}&date=${
-                listDate.value
-            }`,
+            `/api/file/${configStore.configChannel[configStore.configID].id}/import/?file=${
+                textFile.value[0].name
+            }&date=${listDate.value}`,
             {
                 method: 'PUT',
                 headers: authStore.authHeader,

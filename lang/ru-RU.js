@@ -87,6 +87,7 @@ export default {
         addBlock: 'Добавить время начало передачи',
         infinitInfo: 'Воспроизведение работает в бесконечном режиме. Никакая информация, основанная на времени, невозможна.',
         generateDone: 'Генерация плейлиста завершена...',
+        dateYesterday: 'Current time is before the playlist start time!',
     },
     media: {
         notExists: 'Папки не существует!',
