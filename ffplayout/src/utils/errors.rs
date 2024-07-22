@@ -125,6 +125,12 @@ impl From<serde_json::Error> for ServiceError {
     }
 }
 
+impl From<&str> for ServiceError {
+    fn from(err: &str) -> ServiceError {
+        ServiceError::BadRequest(err.to_string())
+    }
+}
+
 #[derive(Debug, Display)]
 pub enum ProcessError {
     #[display(fmt = "Failed to spawn ffmpeg/ffprobe. {}", _0)]

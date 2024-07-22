@@ -578,7 +578,9 @@ impl PlayoutConfig {
         if !global.storage_path.is_dir() {
             tokio::fs::create_dir_all(&global.storage_path)
                 .await
-                .expect("Can't create storage folder");
+                .unwrap_or_else(|_| {
+                    panic!("Can't create storage folder: {:#?}", global.storage_path)
+                });
         }
 
         let mut storage = Storage::new(&config, global.storage_path.clone());
@@ -591,13 +593,17 @@ impl PlayoutConfig {
         if !global.playlist_path.is_dir() {
             tokio::fs::create_dir_all(&global.playlist_path)
                 .await
-                .expect("Can't create playlist folder");
+                .unwrap_or_else(|_| {
+                    panic!("Can't create playlist folder: {:#?}", global.playlist_path)
+                });
         }
 
         if !global.logging_path.is_dir() {
             tokio::fs::create_dir_all(&global.logging_path)
                 .await
-                .expect("Can't create logging folder");
+                .unwrap_or_else(|_| {
+                    panic!("Can't create logging folder: {:#?}", global.logging_path)
+                });
         }
 
         let (filler_path, _, _) = norm_abs_path(&global.storage_path, &config.storage_filler)

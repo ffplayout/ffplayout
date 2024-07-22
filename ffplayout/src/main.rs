@@ -238,6 +238,12 @@ async fn main() -> std::io::Result<()> {
             let manager = ChannelManager::new(Some(pool.clone()), channel.clone(), config.clone());
 
             if ARGS.foreground {
+                if ARGS.channels.is_none() {
+                    error!(
+                        "Foreground mode needs at least 1 channel, run with `--channels (1 2 ...)`"
+                    );
+                    exit(1);
+                }
                 let m_queue = Arc::new(Mutex::new(MailQueue::new(*channel_id, config.mail)));
 
                 channel_controllers
