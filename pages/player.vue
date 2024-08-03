@@ -23,7 +23,7 @@
                     auto-apply
                     :locale="locale"
                     :dark="colorMode.value === 'dark'"
-                    input-class-name="input input-sm !input-bordered !w-[300px] text-right !pe-3"
+                    :ui="{ input: 'input input-sm !input-bordered !w-[300px] text-right !pe-3' }"
                     required
                     @update:model-value=";(beforeDayStart = false), (firstLoad = false)"
                 />
@@ -131,7 +131,7 @@
                 auto-apply
                 :locale="locale"
                 :dark="colorMode.value === 'dark'"
-                input-class-name="input input-sm !input-bordered !w-[full text-right !pe-3"
+                :ui="{ input: 'input input-sm !input-bordered !w-[full text-right !pe-3' }"
                 required
             />
         </GenericModal>
