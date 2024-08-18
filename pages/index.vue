@@ -54,6 +54,7 @@
                 <input
                     v-model="formUsername"
                     type="text"
+                    name="username"
                     :placeholder="$t('input.username')"
                     class="input input-bordered w-full"
                     required
@@ -62,6 +63,7 @@
                 <input
                     v-model="formPassword"
                     type="password"
+                    name="passwort"
                     :placeholder="$t('input.password')"
                     class="input input-bordered w-full mt-5"
                     required
