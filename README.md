@@ -122,7 +122,11 @@ If you are in playlist mode and move backwards or forwards in time, the time shi
 
 -----
 
-## Founding
+## Sponsoring
 
 If you like this project and would like to make a donation, please use one of the options provided.
 Please note that donations are not intended to get support or features! Donations are only a sign of appreciation.
+
+### Backers
+
+[![](https://opencollective.com/ffplayout/backers.svg?width=800&button=true)](https://opencollective.com/ffplayout)
