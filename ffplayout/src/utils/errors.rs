@@ -6,25 +6,25 @@ use ffprobe::FfProbeError;
 
 #[derive(Debug, Display)]
 pub enum ServiceError {
-    #[display(fmt = "Internal Server Error")]
+    #[display("Internal Server Error")]
     InternalServerError,
 
-    #[display(fmt = "BadRequest: {_0}")]
+    #[display("BadRequest: {_0}")]
     BadRequest(String),
 
-    #[display(fmt = "Conflict: {_0}")]
+    #[display("Conflict: {_0}")]
     Conflict(String),
 
-    #[display(fmt = "Forbidden: {_0}")]
+    #[display("Forbidden: {_0}")]
     Forbidden(String),
 
-    #[display(fmt = "Unauthorized: {_0}")]
+    #[display("Unauthorized: {_0}")]
     Unauthorized(String),
 
-    #[display(fmt = "NoContent: {_0}")]
+    #[display("NoContent: {_0}")]
     NoContent(String),
 
-    #[display(fmt = "ServiceUnavailable: {_0}")]
+    #[display("ServiceUnavailable: {_0}")]
     ServiceUnavailable(String),
 }
 
@@ -133,17 +133,17 @@ impl From<&str> for ServiceError {
 
 #[derive(Debug, Display)]
 pub enum ProcessError {
-    #[display(fmt = "Failed to spawn ffmpeg/ffprobe. {}", _0)]
+    #[display("Failed to spawn ffmpeg/ffprobe. {}", _0)]
     CommandSpawn(io::Error),
-    #[display(fmt = "{}", _0)]
+    #[display("{}", _0)]
     Custom(String),
-    #[display(fmt = "IO error: {}", _0)]
+    #[display("IO error: {}", _0)]
     IO(io::Error),
-    #[display(fmt = "{}", _0)]
+    #[display("{}", _0)]
     Ffprobe(FfProbeError),
-    #[display(fmt = "Regex compile error {}", _0)]
+    #[display("Regex compile error {}", _0)]
     Regex(String),
-    #[display(fmt = "Thread error {}", _0)]
+    #[display("Thread error {}", _0)]
     Thread(String),
 }
 

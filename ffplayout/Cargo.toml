@@ -18,13 +18,13 @@ actix-multipart = "0.7"
 actix-web = "4"
 actix-web-grants = "4"
 actix-web-httpauth = "0.8"
-actix-web-lab = "0.20"
+actix-web-lab = "0.22"
 actix-web-static-files = "4.0"
 argon2 = "0.5"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
 clap = { version = "4.3", features = ["derive", "env"] }
 crossbeam-channel = "0.5"
-derive_more = "0.99"
+derive_more = "1"
 faccess = "0.2"
 ffprobe = "0.4"
 flexi_logger = { version = "0.28", features = ["kv", "colors"] }
@@ -54,8 +54,8 @@ serde_json = "1.0"
 serde_with = "3.8"
 shlex = "1.1"
 static-files = "0.2"
-sysinfo ={ version = "0.30", features = ["linux-netdevs", "linux-tmpfs"] }
-sqlx = { version = "0.7", features = ["runtime-tokio", "sqlite"] }
+sysinfo ={ version = "0.31", features = ["linux-netdevs", "linux-tmpfs"] }
+sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite"] }
 time = { version = "0.3", features = ["formatting", "macros"] }
 tokio = { version = "1.29", features = ["full"] }
 tokio-stream = "0.1"

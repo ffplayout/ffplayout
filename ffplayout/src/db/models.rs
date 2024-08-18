@@ -154,7 +154,7 @@ where
     &'r str: sqlx::decode::Decode<'r, sqlx::Sqlite>,
 {
     fn decode(
-        value: <sqlx::Sqlite as sqlx::database::HasValueRef<'r>>::ValueRef,
+        value: sqlx::sqlite::SqliteValueRef<'r>,
     ) -> Result<Role, Box<dyn Error + 'static + Send + Sync>> {
         let value = <&str as sqlx::decode::Decode<sqlx::Sqlite>>::decode(value)?;
 
