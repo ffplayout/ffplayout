@@ -18,6 +18,7 @@ use lettre::{
 };
 use log::{kv::Value, *};
 use paris::formatter::colorize_string;
+use regex::Regex;
 
 use super::ARGS;
 
@@ -133,11 +134,15 @@ impl LogWriter for MultiFileLogger {
 
 pub struct LogMailer {
     pub mail_queues: Arc<Mutex<Vec<Arc<Mutex<MailQueue>>>>>,
+    raw_lines: Arc<Mutex<Vec<String>>>,
 }
 
 impl LogMailer {
     pub fn new(mail_queues: Arc<Mutex<Vec<Arc<Mutex<MailQueue>>>>>) -> Self {
-        Self { mail_queues }
+        Self {
+            mail_queues,
+            raw_lines: Arc::new(Mutex::new(vec![])),
+        }
     }
 }
 
@@ -164,15 +169,25 @@ impl LogWriter for LogMailer {
                 poisoned.into_inner()
             });
 
-            if q_lock.id == id && q_lock.level_eq(record.level()) {
+            let msg = strip_tags(&record.args().to_string());
+            let mut raw_lines = self.raw_lines.lock().unwrap();
+
+            if q_lock.id == id && q_lock.level_eq(record.level()) && !raw_lines.contains(&msg) {
                 q_lock.push(format!(
                     "[{}] [{:>5}] {}",
                     now.now().format("%Y-%m-%d %H:%M:%S"),
                     record.level(),
-                    record.args()
+                    msg.clone()
                 ));
+                raw_lines.push(msg);
 
                 break;
+            }
+
+            if raw_lines.len() > 1000 {
+                let last = raw_lines.pop().unwrap();
+                raw_lines.clear();
+                raw_lines.push(last);
             }
         }
 
@@ -200,15 +215,7 @@ impl MailQueue {
     }
 
     pub fn level_eq(&self, level: Level) -> bool {
-        match level {
-            Level::Error => self.config.mail_level == Level::Error,
-            Level::Warn => matches!(self.config.mail_level, Level::Warn | Level::Error),
-            Level::Info => matches!(
-                self.config.mail_level,
-                Level::Info | Level::Warn | Level::Error
-            ),
-            _ => false,
-        }
+        level <= self.config.mail_level
     }
 
     pub fn update(&mut self, config: Mail) {
@@ -230,6 +237,11 @@ impl MailQueue {
     fn is_empty(&self) -> bool {
         self.lines.is_empty()
     }
+}
+
+fn strip_tags(input: &str) -> String {
+    let re = Regex::new(r"<[^>]*>").unwrap();
+    re.replace_all(input, "").to_string()
 }
 
 fn console_formatter(w: &mut dyn Write, _now: &mut DeferredNow, record: &Record) -> io::Result<()> {
