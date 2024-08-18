@@ -1,6 +1,6 @@
 {
   "name": "ffplayout-frontend",
-  "version": "0.11.1",
+  "version": "0.11.2",
   "description": "Web GUI for ffplayout",
   "author": "Jonathan Baecker",
   "private": true,
@@ -13,35 +13,35 @@
     "postinstall": "nuxt prepare"
   },
   "dependencies": {
-    "@nuxtjs/color-mode": "^3.4.2",
-    "@pinia/nuxt": "^0.5.2",
+    "@nuxtjs/color-mode": "^3.4.4",
+    "@pinia/nuxt": "^0.5.3",
     "@vueform/multiselect": "^2.6.9",
-    "@vuepic/vue-datepicker": "^9.0.1",
-    "@vueuse/nuxt": "^10.11.0",
+    "@vuepic/vue-datepicker": "^9.0.2",
+    "@vueuse/nuxt": "^11.0.0",
     "bootstrap-icons": "^1.11.3",
     "dayjs": "^1.11.12",
     "jwt-decode": "^4.0.0",
     "lodash": "^4.17.21",
     "mpegts.js": "^1.7.3",
     "nuxt": "3.12.4",
-    "pinia": "^2.2.0",
+    "pinia": "^2.2.2",
     "sortablejs-vue3": "^1.2.11",
     "splitpanes": "^3.1.5",
-    "video.js": "^8.17.1"
+    "video.js": "^8.17.3"
   },
   "devDependencies": {
-    "@nuxt/eslint": "^0.4.0",
-    "@nuxtjs/i18n": "^8.3.3",
+    "@nuxt/eslint": "^0.5.0",
+    "@nuxtjs/i18n": "^8.4.0",
     "@nuxtjs/tailwindcss": "^6.12.1",
     "@types/lodash": "^4.17.7",
     "@types/video.js": "^7.3.58",
     "daisyui": "^4.12.10",
     "mini-svg-data-uri": "^1.4.4",
-    "postcss": "^8.4.40",
+    "postcss": "^8.4.41",
     "postcss-loader": "^8.1.1",
     "sass": "^1.77.8",
-    "sass-loader": "^14.2.1",
-    "vue": "^3.4.35",
-    "vue-router": "^4.4.2"
+    "sass-loader": "^16.0.0",
+    "vue": "^3.4.38",
+    "vue-router": "^4.4.3"
   }
 }

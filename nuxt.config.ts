@@ -132,7 +132,7 @@ export default defineNuxtConfig({
           alwaysRedirect: true,
       },
       // debug: true,
-      langDir: 'lang',
+      langDir: 'i18n/locales',
       defaultLocale: 'en',
 
       compilation: {
