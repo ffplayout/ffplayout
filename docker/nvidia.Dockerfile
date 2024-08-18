@@ -25,7 +25,7 @@ RUN dnf clean all -y && \
 RUN dnf install -y which sqlite libstdc++-static libtool autoconf clang \
     cmake ninja-build cargo ragel meson git pkgconfig bzip2 \
     python3-devel gperf perl glibc-static binutils-devel \
-    nasm rsync
+    nasm rsync wget
 
 WORKDIR /tmp
 
