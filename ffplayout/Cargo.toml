@@ -24,7 +24,7 @@ argon2 = "0.5"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
 clap = { version = "4.3", features = ["derive", "env"] }
 crossbeam-channel = "0.5"
-derive_more = "1"
+derive_more = { version = "1", features = ["display"] }
 faccess = "0.2"
 ffprobe = "0.4"
 flexi_logger = { version = "0.28", features = ["kv", "colors"] }
