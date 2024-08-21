@@ -309,6 +309,7 @@ async fn update_user(
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
+    let channel_ids = data.channel_ids.clone().unwrap_or_default();
     let mut fields = String::new();
 
     if let Some(mail) = data.mail.clone() {
@@ -317,21 +318,6 @@ async fn update_user(
         }
 
         fields.push_str(&format!("mail = '{mail}'"));
-    }
-
-    if let Some(channel_ids) = &data.channel_ids {
-        if !fields.is_empty() {
-            fields.push_str(", ");
-        }
-
-        fields.push_str(&format!(
-            "channel_ids = '{}'",
-            channel_ids
-                .iter()
-                .map(|i| i.to_string())
-                .collect::<Vec<String>>()
-                .join(",")
-        ));
     }
 
     if !data.password.is_empty() {
@@ -354,11 +340,19 @@ async fn update_user(
         fields.push_str(&format!("password = '{password_hash}'"));
     }
 
-    if handles::update_user(&pool, *id, fields).await.is_ok() {
-        return Ok("Update Success");
-    };
+    handles::update_user(&pool, *id, fields).await?;
 
-    Err(ServiceError::InternalServerError)
+    let related_channels = handles::select_related_channels(&pool, Some(*id)).await?;
+
+    for channel in related_channels {
+        if !channel_ids.contains(&channel.id) {
+            handles::delete_user_channel(&pool, *id, channel.id).await?;
+        }
+    }
+
+    handles::insert_user_channel(&pool, *id, channel_ids).await?;
+
+    Ok("Update Success")
 }
 
 /// **Add User**

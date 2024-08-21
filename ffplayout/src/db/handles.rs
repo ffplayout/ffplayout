@@ -94,6 +94,20 @@ pub async fn select_related_channels(
     Ok(results)
 }
 
+pub async fn delete_user_channel(
+    conn: &Pool<Sqlite>,
+    user_id: i32,
+    channel_id: i32,
+) -> Result<SqliteQueryResult, sqlx::Error> {
+    let query = "DELETE FROM user_channels WHERE user_id = $1 AND channel_id = $2";
+
+    sqlx::query(query)
+        .bind(user_id)
+        .bind(channel_id)
+        .execute(conn)
+        .await
+}
+
 pub async fn update_channel(
     conn: &Pool<Sqlite>,
     id: i32,
