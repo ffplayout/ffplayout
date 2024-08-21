@@ -1,6 +1,8 @@
 use std::{
+    fs,
     io::{stdin, stdout, Write},
-    path::PathBuf,
+    path::{Path, PathBuf},
+    process::exit,
 };
 
 use clap::Parser;
@@ -14,6 +16,7 @@ use crate::db::{
 use crate::utils::{
     advanced_config::AdvancedConfig,
     config::{OutputMode, PlayoutConfig},
+    db_path,
 };
 use crate::ARGS;
 
@@ -202,6 +205,37 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
     let mut error_code = -1;
 
     if args.init {
+        let uid = nix::unistd::Uid::current();
+        let current_user = nix::unistd::User::from_uid(uid).unwrap_or_default();
+        let process_user = nix::unistd::User::from_name("ffpu").unwrap_or_default();
+        let mut fix_permission = false;
+
+        #[cfg(target_family = "unix")]
+        if current_user != process_user {
+            let user_name = current_user.unwrap().name;
+            let mut fix_perm = String::new();
+
+            println!(
+                "\nYou run the initialization as user {}. Fix permissions after initialization?",
+                user_name
+            );
+
+            print!("Fix permission [Y/n]: ");
+            stdout().flush().unwrap();
+
+            stdin()
+                .read_line(&mut fix_perm)
+                .expect("Did not enter a yes or no?");
+
+            fix_permission = fix_perm.trim().to_lowercase().starts_with('y');
+
+            if fix_permission && user_name != "root" {
+                println!("You do not have permission to change DB file ownership! Run as proper process user or root.");
+
+                exit(1);
+            }
+        }
+
         let check_user = handles::select_users(pool).await;
 
         let mut storage = String::new();
@@ -292,7 +326,7 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
 
         stdin()
             .read_line(&mut shared_store)
-            .expect("Did not enter a correct path?");
+            .expect("Did not enter a yes or no?");
 
         global.shared_storage = shared_store.trim().to_lowercase().starts_with('y');
 
@@ -308,7 +342,28 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
             handles::update_channel(pool, 1, channel).await.unwrap();
         };
 
-        println!("Set global settings...");
+        if fix_permission {
+            let db_path = Path::new(db_path().unwrap()).with_extension("");
+            let user = process_user.unwrap();
+
+            let db = fs::canonicalize(db_path.with_extension("db")).unwrap();
+            let shm = fs::canonicalize(db_path.with_extension("db-shm")).unwrap();
+            let wal = fs::canonicalize(db_path.with_extension("db-wal")).unwrap();
+
+            nix::unistd::chown(&db, Some(user.uid), Some(user.gid)).expect("Change DB owner");
+
+            if shm.is_file() {
+                nix::unistd::chown(&shm, Some(user.uid), Some(user.gid))
+                    .expect("Change DB-SHM owner");
+            }
+
+            if wal.is_file() {
+                nix::unistd::chown(&wal, Some(user.uid), Some(user.gid))
+                    .expect("Change DB-WAL owner");
+            }
+        }
+
+        println!("\nSet global settings done...");
     }
 
     if args.add {

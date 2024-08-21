@@ -289,7 +289,7 @@ async fn main() -> std::io::Result<()> {
                     playlist,
                     Arc::new(AtomicBool::new(false)),
                 );
-            } else {
+            } else if !ARGS.init {
                 error!("Run ffplayout with parameters! Run ffplayout -h for more information.");
             }
         }

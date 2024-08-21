@@ -9,12 +9,12 @@ ffplayout provides ***.deb** and ***.rpm** packages, which makes it more easy to
     - `systemctl enable ffplayout`
 5. initial defaults and add global admin user:
     - `sudo -u ffpu ffplayout -i`
-6. use a revers proxy for SSL, Port is **8787**.
-7. login with your browser, address without proxy would be: **http://[IP ADDRESS]:8787**
+6. start ffplayout:
+    - `systemctl start ffplayout`
+7. use a revers proxy for SSL, Port is **8787**.
+8. login with your browser, address without proxy would be: **http://[IP ADDRESS]:8787**
 
 Default location for playlists and media files are: **/var/lib/ffplayout/**.
-
-When playlists are created and the ffplayout output is configured, you can start the process: `systemctl start ffplayout`, or click start in frontend.
 
 ### Manual Install
 -----
