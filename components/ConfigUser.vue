@@ -76,14 +76,14 @@
                 <div class="label">
                     <span class="label-text">{{ $t('user.name') }}</span>
                 </div>
-                <input v-model="user.username" type="text" class="input input-bordered w-full" />
+                <input v-model="user.username" name="username" type="text" class="input input-bordered w-full" />
             </label>
 
             <label class="form-control w-full mt-3">
                 <div class="label">
                     <span class="label-text">{{ $t('user.mail') }}</span>
                 </div>
-                <input v-model="user.mail" type="email" class="input input-bordered w-full" />
+                <input v-model="user.mail" name="mail" type="email" class="input input-bordered w-full" />
             </label>
 
             <label class="form-control w-full mt-3">
@@ -186,7 +186,7 @@ async function deleteUser() {
     if (configStore.configUser.id === configStore.currentUser) {
         indexStore.msgAlert('error', t('user.deleteNotPossible'), 2)
     } else {
-        await fetch(`/api/user/${configStore.configUser.username}`, {
+        await fetch(`/api/user/${configStore.configUser.id}`, {
             method: 'DELETE',
             headers: authStore.authHeader,
         })

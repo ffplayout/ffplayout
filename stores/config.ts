@@ -27,15 +27,24 @@ export const useConfig = defineStore('config', {
 
             if (authStore.isLogin) {
                 await authStore.obtainUuid()
-                await this.getChannelConfig()
-                await this.getPlayoutConfig()
-                await this.getUserConfig()
+                this.getChannelConfig().then(async () => {
+                    await this.getPlayoutConfig()
+                    await this.getUserConfig()
 
-
-                if (this.configUser.id === 1) {
-                    await this.getAdvancedConfig()
-                }
+                    if (this.configUser.id === 1) {
+                        await this.getAdvancedConfig()
+                    }
+                })
             }
+        },
+
+        logout() {
+            const authStore = useAuth()
+            const cookie = useCookie('token')
+            cookie.value = null
+            authStore.isLogin = false
+
+            navigateTo('/')
         },
 
         async getChannelConfig() {
@@ -54,6 +63,11 @@ export const useConfig = defineStore('config', {
                 })
                 .then((response) => response.json())
                 .then((objs) => {
+                    if (!objs[0]) {
+                        this.logout()
+                        throw new Error('User not found')
+                    }
+
                     this.utcOffset = objs[0].utc_offset
                     this.configChannel = objs
                     this.configChannelRaw = _.cloneDeep(objs)
@@ -61,11 +75,7 @@ export const useConfig = defineStore('config', {
                 })
                 .catch((e) => {
                     if (statusCode === 401) {
-                        const cookie = useCookie('token')
-                        cookie.value = null
-                        authStore.isLogin = false
-
-                        navigateTo('/')
+                        this.logout()
                     }
 
                     this.configChannel = [
@@ -210,6 +220,11 @@ export const useConfig = defineStore('config', {
             })
                 .then((response) => response.json())
                 .then((data) => {
+                    if (data.id === 0) {
+                        this.logout()
+                        throw new Error('User not found')
+                    }
+
                     this.currentUser = data.id
                     this.configUser = data
                 })
