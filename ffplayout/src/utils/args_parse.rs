@@ -369,6 +369,7 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
 
         handles::update_channel(pool, 1, channel).await.unwrap();
 
+        #[cfg(target_family = "unix")]
         if fix_permission {
             let db_path = Path::new(db_path().unwrap()).with_extension("");
             let user = process_user.unwrap();
