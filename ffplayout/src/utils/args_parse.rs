@@ -35,8 +35,15 @@ pub struct Args {
     #[clap(short, long, help = "Add a global admin user")]
     pub add: bool,
 
-    #[clap(long, env, help = "path to database file")]
+    #[clap(long, env, help = "Path to database file")]
     pub db: Option<PathBuf>,
+
+    #[clap(
+        long,
+        env,
+        help = "Drop database. WARNING: this will delete all configurations!"
+    )]
+    pub drop_db: bool,
 
     #[clap(
         short,
