@@ -203,7 +203,7 @@ export default {
         hlsPath: 'HLS-Pfad',
         playlistPath: 'Wiedergabelistenpfad',
         storagePath: 'Speicherpfad',
-        sharedStorage: 'Gemeinsamer Speicher ist aktiviert, verwenden Sie denselben Speicherstamm für alle Kanäle!',
+        sharedStorage: 'Gemeinsamer Speicher ist aktiviert, verwende denselben Speicherstamm für alle Kanäle!',
     },
     user: {
         title: 'Benutzer-Konfiguration',

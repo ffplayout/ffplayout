@@ -42,11 +42,13 @@
             </label>
 
             <template v-if="authStore.role === 'GlobalAdmin'">
-                <div v-if="configStore.playout.storage.shared_storage" class="mt-7 font-bold">
-                    <SvgIcon name="warning" classes="inline mr-2" />
-                    <span>{{ $t('config.sharedStorage') }}</span>
+                <div class="mt-7 font-bold h-3">
+                    <p v-if="configStore.playout.storage.shared_storage">
+                        <SvgIcon name="warning" classes="inline mr-2" />
+                        <span>{{ $t('config.sharedStorage') }}</span>
+                    </p>
                 </div>
-                <label class="form-control w-full">
+                <label class="form-control w-full mt-3">
                     <div class="label">
                         <span class="label-text">{{ $t('config.hlsPath') }}</span>
                     </div>
