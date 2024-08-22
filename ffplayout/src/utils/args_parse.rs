@@ -1,9 +1,10 @@
 use std::{
-    fs,
     io::{stdin, stdout, Write},
     path::{Path, PathBuf},
-    process::exit,
 };
+
+#[cfg(target_family = "unix")]
+use std::{fs, process::exit};
 
 use clap::Parser;
 use rpassword::read_password;
@@ -16,9 +17,11 @@ use crate::db::{
 use crate::utils::{
     advanced_config::AdvancedConfig,
     config::{OutputMode, PlayoutConfig},
-    db_path,
 };
 use crate::ARGS;
+
+#[cfg(target_family = "unix")]
+use crate::utils::db_path;
 
 #[derive(Parser, Debug, Clone)]
 #[clap(version,
