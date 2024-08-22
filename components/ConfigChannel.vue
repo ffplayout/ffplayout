@@ -129,6 +129,7 @@ async function onSubmitChannel() {
 
     if (update.status) {
         indexStore.msgAlert('success', t('config.updateChannelSuccess'), 2)
+        await configStore.getPlayoutConfig()
     } else {
         indexStore.msgAlert('error', t('config.updateChannelFailed'), 2)
     }

@@ -84,6 +84,9 @@ export const useConfig = defineStore('config', {
                             extra_extensions: '',
                             name: 'Channel 1',
                             preview_url: '',
+                            hls_path: '',
+                            playlist_path: '',
+                            storage_path: '',
                             uts_offset: 0,
                         },
                     ]

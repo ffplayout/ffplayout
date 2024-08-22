@@ -66,8 +66,8 @@ const severityLevels: { [key: string]: number } = {
     ERROR: 4,
 }
 
-onMounted(() => {
-    getLog()
+onMounted(async () => {
+    await getLog()
 })
 
 watch([listDate, id], () => {
