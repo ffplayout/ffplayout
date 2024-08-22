@@ -23,11 +23,14 @@ declare global {
         uuid: string
     }
 
-    interface GuiConfig {
+    interface Channel {
         id: number
         extra_extensions: string | string[]
         name: string
         preview_url: string
+        hls_path: string
+        playlist_path: string
+        storage_path: string
         uts_offset?: number
     }
 

@@ -3,11 +3,11 @@ import { defineStore } from 'pinia'
 
 export const useConfig = defineStore('config', {
     state: () => ({
-        configID: 0,
+        id: 0,
         configCount: 0,
         contentType: { 'content-type': 'application/json;charset=UTF-8' },
-        configChannel: [] as GuiConfig[],
-        configChannelRaw: [] as GuiConfig[],
+        channels: [] as Channel[],
+        channelsRaw: [] as Channel[],
         playlistLength: 86400.0,
         advanced: {} as any,
         playout: {} as any,
@@ -69,8 +69,8 @@ export const useConfig = defineStore('config', {
                     }
 
                     this.utcOffset = objs[0].utc_offset
-                    this.configChannel = objs
-                    this.configChannelRaw = _.cloneDeep(objs)
+                    this.channels = objs
+                    this.channelsRaw = _.cloneDeep(objs)
                     this.configCount = objs.length
                 })
                 .catch((e) => {
@@ -78,7 +78,7 @@ export const useConfig = defineStore('config', {
                         this.logout()
                     }
 
-                    this.configChannel = [
+                    this.channels = [
                         {
                             id: 1,
                             extra_extensions: '',
@@ -92,12 +92,12 @@ export const useConfig = defineStore('config', {
                 })
         },
 
-        async setChannelConfig(obj: GuiConfig): Promise<any> {
+        async setChannelConfig(obj: Channel): Promise<any> {
             const authStore = useAuth()
             const stringObj = _.cloneDeep(obj)
             let response
 
-            if (this.configChannelRaw.some((e) => e.id === stringObj.id)) {
+            if (this.channelsRaw.some((e) => e.id === stringObj.id)) {
                 response = await fetch(`/api/channel/${obj.id}`, {
                     method: 'PATCH',
                     headers: { ...this.contentType, ...authStore.authHeader },
@@ -113,7 +113,7 @@ export const useConfig = defineStore('config', {
                 const json = await response.json()
                 const guiConfigs = []
 
-                for (const obj of this.configChannel) {
+                for (const obj of this.channels) {
                     if (obj.name === stringObj.name) {
                         guiConfigs.push(json)
                     } else {
@@ -121,8 +121,8 @@ export const useConfig = defineStore('config', {
                     }
                 }
 
-                this.configChannel = guiConfigs
-                this.configChannelRaw = _.cloneDeep(guiConfigs)
+                this.channels = guiConfigs
+                this.channelsRaw = _.cloneDeep(guiConfigs)
                 this.configCount = guiConfigs.length
             }
 
@@ -136,7 +136,7 @@ export const useConfig = defineStore('config', {
             const { timeToSeconds } = stringFormatter()
             const authStore = useAuth()
             const indexStore = useIndex()
-            const channel = this.configChannel[this.configID].id
+            const channel = this.channels[this.id].id
 
             await fetch(`/api/playout/config/${channel}`, {
                 method: 'GET',
@@ -162,7 +162,7 @@ export const useConfig = defineStore('config', {
             const { $i18n } = useNuxtApp()
             const authStore = useAuth()
             const indexStore = useIndex()
-            const channel = this.configChannel[this.configID].id
+            const channel = this.channels[this.id].id
 
             await $fetch(`/api/playout/advanced/${channel}`, {
                 method: 'GET',
@@ -179,7 +179,7 @@ export const useConfig = defineStore('config', {
         async setPlayoutConfig(obj: any) {
             const { timeToSeconds } = stringFormatter()
             const authStore = useAuth()
-            const channel = this.configChannel[this.configID].id
+            const channel = this.channels[this.id].id
 
             this.playlistLength = timeToSeconds(obj.playlist.length)
             this.playout.playlist.startInSec = timeToSeconds(obj.playlist.day_start)
@@ -200,7 +200,7 @@ export const useConfig = defineStore('config', {
 
         async setAdvancedConfig() {
             const authStore = useAuth()
-            const channel = this.configChannel[this.configID].id
+            const channel = this.channels[this.id].id
 
             const update = await fetch(`/api/playout/advanced/${channel}`, {
                 method: 'PUT',

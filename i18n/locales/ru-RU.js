@@ -199,6 +199,9 @@ export default {
         updatePlayoutFailed: 'Обновление конфигурации воспроизведения не удалось!',
         forbiddenPlaylistPath: 'Доступ запрещен: Папка плейлиста не может быть открыта.',
         noPlayoutConfig: 'Конфигурация воспроизведения не найдена!',
+        hlsPath: 'HLS Path',
+        playlistPath: 'Playlist Path',
+        storagePath: 'Storage Path',
     },
     user: {
         title: 'Конфигурация пользователя',

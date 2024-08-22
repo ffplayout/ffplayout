@@ -326,7 +326,7 @@ function setPreviewData(path: string) {
         previewUrl.value = path
     } else {
         previewUrl.value = encodeURIComponent(
-            `/file/${configStore.configChannel[configStore.configID].id}${fullPath}`
+            `/file/${configStore.channels[configStore.id].id}${fullPath}`
         ).replace(/%2F/g, '/')
     }
 
@@ -456,7 +456,7 @@ async function importPlaylist(imp: boolean) {
 
         playlistStore.isLoading = true
         await $fetch(
-            `/api/file/${configStore.configChannel[configStore.configID].id}/import/?file=${
+            `/api/file/${configStore.channels[configStore.id].id}/import/?file=${
                 textFile.value[0].name
             }&date=${listDate.value}`,
             {
@@ -489,11 +489,11 @@ async function savePlaylist(save: boolean) {
 
         const saveList = processPlaylist(listDate.value, $_.cloneDeep(playlistStore.playlist), true)
 
-        await $fetch(`/api/playlist/${configStore.configChannel[configStore.configID].id}/`, {
+        await $fetch(`/api/playlist/${configStore.channels[configStore.id].id}/`, {
             method: 'POST',
             headers: { ...configStore.contentType, ...authStore.authHeader },
             body: JSON.stringify({
-                channel: configStore.configChannel[configStore.configID].name,
+                channel: configStore.channels[configStore.id].name,
                 date: targetDate.value,
                 program: saveList,
             }),
@@ -516,7 +516,7 @@ async function deletePlaylist(del: boolean) {
     showDeleteModal.value = false
 
     if (del) {
-        await $fetch(`/api/playlist/${configStore.configChannel[configStore.configID].id}/${listDate.value}`, {
+        await $fetch(`/api/playlist/${configStore.channels[configStore.id].id}/${listDate.value}`, {
             method: 'DELETE',
             headers: { ...configStore.contentType, ...authStore.authHeader },
         }).then(() => {

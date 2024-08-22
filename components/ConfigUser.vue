@@ -53,7 +53,7 @@
             <div v-if="authStore.role === 'GlobalAdmin'" class="form-control w-full max-w-md mt-5">
                 <Multiselect
                     v-model="configStore.configUser.channel_ids"
-                    :options="configStore.configChannel"
+                    :options="configStore.channels"
                     mode="tags"
                     :close-on-select="true"
                     :can-clear="false"
@@ -103,7 +103,7 @@
             <div class="form-control mt-5">
                 <Multiselect
                     v-model="user.channel_ids"
-                    :options="configStore.configChannel"
+                    :options="configStore.channels"
                     mode="tags"
                     :close-on-select="true"
                     :can-clear="false"

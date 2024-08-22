@@ -6,8 +6,8 @@
                     <div class="w-full aspect-video">
                         <video v-if="streamExtension === 'flv'" ref="httpStreamFlv" controls />
                         <VideoPlayer
-                            v-else-if="configStore.showPlayer && configStore.configChannel[configStore.configID]"
-                            :key="configStore.configID"
+                            v-else-if="configStore.showPlayer && configStore.channels[configStore.id]"
+                            :key="configStore.id"
                             class="live-player"
                             reference="httpStream"
                             :options="{
@@ -19,7 +19,7 @@
                                 sources: [
                                     {
                                         type: 'application/x-mpegURL',
-                                        src: configStore.configChannel[configStore.configID].preview_url,
+                                        src: configStore.channels[configStore.id].preview_url,
                                     },
                                 ],
                             }"
@@ -174,18 +174,18 @@ const configStore = useConfig()
 const indexStore = useIndex()
 const playlistStore = usePlaylist()
 const { filename, secToHMS } = stringFormatter()
-const { configID } = storeToRefs(useConfig())
+const { id } = storeToRefs(useConfig())
 
 playlistStore.currentClip = t('control.noClip')
 const timeStr = ref('00:00:00')
 const timer = ref()
 const errorCounter = ref(0)
-const streamExtension = ref(configStore.configChannel[configStore.configID].preview_url.split('.').pop())
+const streamExtension = ref(configStore.channels[configStore.id].preview_url.split('.').pop())
 const httpStreamFlv = ref(null)
 const httpFlvSource = ref({
     type: 'flv',
     isLive: true,
-    url: configStore.configChannel[configStore.configID].preview_url,
+    url: configStore.channels[configStore.id].preview_url,
 })
 const mpegtsOptions = ref({
     lazyLoadMaxDuration: 3 * 60,
@@ -193,7 +193,7 @@ const mpegtsOptions = ref({
 })
 
 const streamUrl = ref(
-    `/data/event/${configStore.configChannel[configStore.configID].id}?endpoint=playout&uuid=${authStore.uuid}`
+    `/data/event/${configStore.channels[configStore.id].id}?endpoint=playout&uuid=${authStore.uuid}`
 )
 
 // 'http://127.0.0.1:8787/data/event/1?endpoint=playout&uuid=f2f8c29b-712a-48c5-8919-b535d3a05a3a'
@@ -246,7 +246,7 @@ watch([status, error], async () => {
         if (errorCounter.value > 11) {
             await authStore.obtainUuid()
             streamUrl.value = `/data/event/${
-                configStore.configChannel[configStore.configID].id
+                configStore.channels[configStore.id].id
             }?endpoint=playout&uuid=${authStore.uuid}`
             errorCounter.value = 0
         }
@@ -265,10 +265,10 @@ watch([data], () => {
     }
 })
 
-watch([configID], () => {
+watch([id], () => {
     resetStatus()
 
-    streamUrl.value = `/data/event/${configStore.configChannel[configStore.configID].id}?endpoint=playout&uuid=${
+    streamUrl.value = `/data/event/${configStore.channels[configStore.id].id}?endpoint=playout&uuid=${
         authStore.uuid
     }`
 
@@ -311,7 +311,7 @@ async function controlProcess(state: string) {
     /*
         Control playout (start, stop, restart)
     */
-    const channel = configStore.configChannel[configStore.configID].id
+    const channel = configStore.channels[configStore.id].id
 
     await $fetch(`/api/control/${channel}/process/`, {
         method: 'POST',
@@ -327,7 +327,7 @@ async function controlPlayout(state: string) {
         - jump to last clip
         - reset playout state
     */
-    const channel = configStore.configChannel[configStore.configID].id
+    const channel = configStore.channels[configStore.id].id
 
     await $fetch(`/api/control/${channel}/playout/`, {
         method: 'POST',

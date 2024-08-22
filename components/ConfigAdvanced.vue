@@ -72,7 +72,7 @@ async function onSubmitAdvanced() {
     if (update.status === 200) {
         indexStore.msgAlert('success', t('advanced.updateSuccess'), 2)
 
-        const channel = configStore.configChannel[configStore.configID].id
+        const channel = configStore.channels[configStore.id].id
 
         await $fetch(`/api/control/${channel}/process/`, {
             method: 'POST',
@@ -90,7 +90,7 @@ async function onSubmitAdvanced() {
 
 async function restart(res: boolean) {
     if (res) {
-        const channel = configStore.configChannel[configStore.configID].id
+        const channel = configStore.channels[configStore.id].id
 
         await $fetch(`/api/control/${channel}/process/`, {
             method: 'POST',

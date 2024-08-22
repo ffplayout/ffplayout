@@ -402,7 +402,7 @@ async function generatePlaylist() {
         }
     }
 
-    await $fetch(`/api/playlist/${configStore.configChannel[configStore.configID].id}/generate/${playlistStore.listDate}`, {
+    await $fetch(`/api/playlist/${configStore.channels[configStore.id].id}/generate/${playlistStore.listDate}`, {
         method: 'POST',
         headers: { ...configStore.contentType, ...authStore.authHeader },
         body,

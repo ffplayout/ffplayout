@@ -312,7 +312,7 @@ const configStore = useConfig()
 const indexStore = useIndex()
 const mediaStore = useMedia()
 const { toMin, mediaType, filename, parent } = stringFormatter()
-const { configID } = storeToRefs(useConfig())
+const { id } = storeToRefs(useConfig())
 
 useHead({
     title: `${t('button.media')} | ffplayout`,
@@ -352,7 +352,7 @@ const xhr = ref(new XMLHttpRequest())
 
 onMounted(async () => {
     let config_extensions = configStore.playout.storage.extensions
-    let extra_extensions = configStore.configChannel[configStore.configID].extra_extensions
+    let extra_extensions = configStore.channels[configStore.id].extra_extensions
 
     if (typeof config_extensions === 'string') {
         config_extensions = config_extensions.split(',')
@@ -373,7 +373,7 @@ onMounted(async () => {
     }
 })
 
-watch([configID], () => {
+watch([id], () => {
     mediaStore.getTree('')
 })
 
@@ -425,7 +425,7 @@ async function handleDrop(event: any, targetFolder: any, isParent: boolean | nul
     }
 
     if (source !== target) {
-        await fetch(`/api/file/${configStore.configChannel[configStore.configID].id}/rename/`, {
+        await fetch(`/api/file/${configStore.channels[configStore.id].id}/rename/`, {
             method: 'POST',
             headers: { ...configStore.contentType, ...authStore.authHeader },
             body: JSON.stringify({ source, target }),
@@ -453,7 +453,7 @@ function setPreviewData(path: string) {
     }
 
     previewName.value = fullPath.split('/').slice(-1)[0]
-    previewUrl.value = encodeURIComponent(`/file/${configStore.configChannel[configStore.configID].id}${fullPath}`).replace(
+    previewUrl.value = encodeURIComponent(`/file/${configStore.channels[configStore.id].id}${fullPath}`).replace(
         /%2F/g,
         '/'
     )
@@ -493,7 +493,7 @@ async function deleteFileOrFolder(del: boolean) {
     showDeleteModal.value = false
 
     if (del) {
-        await fetch(`/api/file/${configStore.configChannel[configStore.configID].id}/remove/`, {
+        await fetch(`/api/file/${configStore.channels[configStore.id].id}/remove/`, {
             method: 'POST',
             headers: { ...configStore.contentType, ...authStore.authHeader },
             body: JSON.stringify({ source: deleteName.value }),
@@ -524,7 +524,7 @@ async function renameFile(ren: boolean) {
     showRenameModal.value = false
 
     if (ren && renameOldName.value !== renameNewName.value) {
-        await fetch(`/api/file/${configStore.configChannel[configStore.configID].id}/rename/`, {
+        await fetch(`/api/file/${configStore.channels[configStore.id].id}/rename/`, {
             method: 'POST',
             headers: { ...configStore.contentType, ...authStore.authHeader },
             body: JSON.stringify({ source: renameOldName.value, target: renameNewName.value }),
@@ -563,7 +563,7 @@ async function createFolder(create: boolean) {
             return
         }
 
-        await $fetch(`/api/file/${configStore.configChannel[configStore.configID].id}/create-folder/`, {
+        await $fetch(`/api/file/${configStore.channels[configStore.id].id}/create-folder/`, {
             method: 'POST',
             headers: { ...configStore.contentType, ...authStore.authHeader },
             body: JSON.stringify({ source: path }),
@@ -600,7 +600,7 @@ async function upload(file: any): Promise<null | undefined> {
     return new Promise((resolve) => {
         xhr.value.open(
             'PUT',
-            `/api/file/${configStore.configChannel[configStore.configID].id}/upload/?path=${encodeURIComponent(
+            `/api/file/${configStore.channels[configStore.id].id}/upload/?path=${encodeURIComponent(
                 mediaStore.crumbs[mediaStore.crumbs.length - 1].path
             )}`
         )

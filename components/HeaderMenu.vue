@@ -22,15 +22,15 @@
                             </span>
                         </NuxtLink>
                     </li>
-                    <li v-if="configStore.configChannel.length > 1">
+                    <li v-if="configStore.channels.length > 1">
                         <details tabindex="0" @focusout="closeDropdown">
                             <summary>
                                 <div class="h-[19px] text-base">
-                                    <span> {{ configStore.configChannel[configStore.configID].name }} </span>
+                                    <span> {{ configStore.channels[configStore.id].name }} </span>
                                 </div>
                             </summary>
                             <ul class="p-2">
-                                <li v-for="(channel, index) in configStore.configChannel" :key="index">
+                                <li v-for="(channel, index) in configStore.channels" :key="index">
                                     <span>
                                         <a class="dropdown-item" @click="selectChannel(index)">{{ channel.name }}</a>
                                     </span>
@@ -59,15 +59,15 @@
                         </span>
                     </NuxtLink>
                 </li>
-                <li v-if="configStore.configChannel.length > 1">
+                <li v-if="configStore.channels.length > 1">
                     <details tabindex="0" @focusout="closeDropdown">
                         <summary>
                             <div class="h-[19px] text-base">
-                                <span> {{ configStore.configChannel[configStore.configID].name }} </span>
+                                <span> {{ configStore.channels[configStore.id].name }} </span>
                             </div>
                         </summary>
                         <ul class="p-2 bg-base-100 rounded-md !mt-1 w-36" tabindex="0">
-                            <li v-for="(channel, index) in configStore.configChannel" :key="index">
+                            <li v-for="(channel, index) in configStore.channels" :key="index">
                                 <a class="dropdown-item" @click="selectChannel(index)">
                                     {{ channel.name }}
                                 </a>
@@ -128,7 +128,7 @@ function logout() {
 }
 
 function selectChannel(index: number) {
-    configStore.configID = index
+    configStore.id = index
     configStore.getPlayoutConfig()
 }
 
