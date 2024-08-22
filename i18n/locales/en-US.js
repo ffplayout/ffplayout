@@ -202,6 +202,7 @@ export default {
         hlsPath: 'HLS Path',
         playlistPath: 'Playlist Path',
         storagePath: 'Storage Path',
+        sharedStorage: 'Shared storage is enabled, use the same storage root for all channels!',
     },
     user: {
         title: 'User Configuration',

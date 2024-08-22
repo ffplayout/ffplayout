@@ -6,10 +6,7 @@
                 {{ $t('config.addChannel') }}
             </button>
         </div>
-        <form
-            class="w-full"
-            @submit.prevent="onSubmitChannel"
-        >
+        <form class="w-full" @submit.prevent="onSubmitChannel">
             <label class="form-control w-full">
                 <div class="label">
                     <span class="label-text">{{ $t('config.name') }}</span>
@@ -45,7 +42,11 @@
             </label>
 
             <template v-if="authStore.role === 'GlobalAdmin'">
-                <label class="form-control w-full mt-5">
+                <div v-if="configStore.playout.storage.shared_storage" class="mt-7 font-bold">
+                    <SvgIcon name="warning" classes="inline mr-2" />
+                    <span>{{ $t('config.sharedStorage') }}</span>
+                </div>
+                <label class="form-control w-full">
                     <div class="label">
                         <span class="label-text">{{ $t('config.hlsPath') }}</span>
                     </div>

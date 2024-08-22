@@ -202,6 +202,7 @@ export default {
         hlsPath: 'HLS Path',
         playlistPath: 'Playlist Path',
         storagePath: 'Storage Path',
+        sharedStorage: 'O armazenamento compartilhado está ativado, use a mesma raiz de armazenamento para todos os canais',
     },
     user: {
         title: 'Configuração de usuário',

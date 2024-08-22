@@ -202,6 +202,7 @@ export default {
         hlsPath: 'HLS Path',
         playlistPath: 'Playlist Path',
         storagePath: 'Storage Path',
+        sharedStorage: 'Общее хранилище включено, используйте один и тот же корень хранилища для всех каналов!',
     },
     user: {
         title: 'Конфигурация пользователя',
