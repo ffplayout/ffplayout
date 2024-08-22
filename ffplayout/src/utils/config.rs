@@ -414,10 +414,12 @@ pub struct Storage {
     pub filler: PathBuf,
     pub extensions: Vec<String>,
     pub shuffle: bool,
+    #[serde(skip_deserializing)]
+    pub shared_storage: bool,
 }
 
 impl Storage {
-    fn new(config: &models::Configuration, path: PathBuf) -> Self {
+    fn new(config: &models::Configuration, path: PathBuf, shared_storage: bool) -> Self {
         Self {
             help_text: config.storage_help.clone(),
             path,
@@ -429,6 +431,7 @@ impl Storage {
                 .map(|s| s.to_string())
                 .collect(),
             shuffle: config.storage_shuffle,
+            shared_storage,
         }
     }
 }
@@ -583,7 +586,8 @@ impl PlayoutConfig {
                 });
         }
 
-        let mut storage = Storage::new(&config, channel.storage_path.clone());
+        let mut storage =
+            Storage::new(&config, channel.storage_path.clone(), global.shared_storage);
 
         if !channel.playlist_path.is_dir() {
             tokio::fs::create_dir_all(&channel.playlist_path)
