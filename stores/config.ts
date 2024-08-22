@@ -20,14 +20,14 @@ export const useConfig = defineStore('config', {
 
     getters: {},
     actions: {
-        async nuxtClientInit() {
+        async configInit() {
             const authStore = useAuth()
 
             authStore.inspectToken()
 
             if (authStore.isLogin) {
                 await authStore.obtainUuid()
-                this.getChannelConfig().then(async () => {
+                await this.getChannelConfig().then(async () => {
                     await this.getPlayoutConfig()
                     await this.getUserConfig()
 
