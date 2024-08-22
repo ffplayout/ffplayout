@@ -216,34 +216,40 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
     let mut error_code = -1;
 
     if args.init {
-        let uid = nix::unistd::Uid::current();
-        let current_user = nix::unistd::User::from_uid(uid).unwrap_or_default();
+        #[cfg(target_family = "unix")]
         let process_user = nix::unistd::User::from_name("ffpu").unwrap_or_default();
+
+        #[cfg(target_family = "unix")]
         let mut fix_permission = false;
 
         #[cfg(target_family = "unix")]
-        if current_user != process_user {
-            let user_name = current_user.unwrap().name;
-            let mut fix_perm = String::new();
+        {
+            let uid = nix::unistd::Uid::current();
+            let current_user = nix::unistd::User::from_uid(uid).unwrap_or_default();
 
-            println!(
-                "\nYou run the initialization as user {}.\nFix permissions after initialization?\n",
-                user_name
-            );
+            if current_user != process_user {
+                let user_name = current_user.unwrap().name;
+                let mut fix_perm = String::new();
 
-            print!("Fix permission [Y/n]: ");
-            stdout().flush().unwrap();
+                println!(
+                    "\nYou run the initialization as user {}.\nFix permissions after initialization?\n",
+                    user_name
+                );
 
-            stdin()
-                .read_line(&mut fix_perm)
-                .expect("Did not enter a yes or no?");
+                print!("Fix permission [Y/n]: ");
+                stdout().flush().unwrap();
 
-            fix_permission = fix_perm.trim().to_lowercase().starts_with('y');
+                stdin()
+                    .read_line(&mut fix_perm)
+                    .expect("Did not enter a yes or no?");
 
-            if fix_permission && user_name != "root" {
-                println!("\nYou do not have permission to change DB file ownership!\nRun as proper process user or root.");
+                fix_permission = fix_perm.trim().to_lowercase().starts_with('y');
 
-                exit(1);
+                if fix_permission && user_name != "root" {
+                    println!("\nYou do not have permission to change DB file ownership!\nRun as proper process user or root.");
+
+                    exit(1);
+                }
             }
         }
 
