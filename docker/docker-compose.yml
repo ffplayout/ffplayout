@@ -11,6 +11,6 @@ services:
       - ./data/storage:/tv-media
       - ./data/playlists:/playlists
       - ./data/logging:/logging
-      - ./data/hls:/hls
+      - ./data/public:/public
     ports:
       - '8787:8787'
