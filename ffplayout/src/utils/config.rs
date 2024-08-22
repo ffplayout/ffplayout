@@ -26,12 +26,13 @@ pub const IMAGE_FORMAT: [&str; 21] = [
 ];
 
 // Some well known errors can be safely ignore
-pub const FFMPEG_IGNORE_ERRORS: [&str; 12] = [
+pub const FFMPEG_IGNORE_ERRORS: [&str; 13] = [
     "ac-tex damaged",
     "codec s302m, is muxed as a private data stream",
     "corrupt decoded frame in stream",
     "corrupt input packet in stream",
     "end mismatch left",
+    "Invalid mb type in I-frame at",
     "Packet corrupt",
     "Referenced QT chapter track not found",
     "skipped MB in I-frame at",
@@ -151,13 +152,13 @@ pub struct Source {
     pub paths: Vec<PathBuf>,
 }
 
-/// Global Config
+/// Channel Config
 ///
 /// This we init ones, when ffplayout is starting and use them globally in the hole program.
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct PlayoutConfig {
     #[serde(skip_serializing, skip_deserializing)]
-    pub global: Global,
+    pub channel: Channel,
     #[serde(skip_serializing, skip_deserializing)]
     pub advanced: AdvancedConfig,
     pub general: General,
@@ -174,21 +175,21 @@ pub struct PlayoutConfig {
 }
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
-pub struct Global {
+pub struct Channel {
+    pub logging_path: PathBuf,
     pub hls_path: PathBuf,
     pub playlist_path: PathBuf,
     pub storage_path: PathBuf,
-    pub logging_path: PathBuf,
     pub shared_storage: bool,
 }
 
-impl Global {
+impl Channel {
     pub fn new(config: &models::GlobalSettings) -> Self {
         Self {
-            hls_path: PathBuf::from(config.hls_path.clone()),
-            playlist_path: PathBuf::from(config.playlist_path.clone()),
-            storage_path: PathBuf::from(config.storage_path.clone()),
             logging_path: PathBuf::from(config.logging_path.clone()),
+            hls_path: PathBuf::from(config.public_root.clone()),
+            playlist_path: PathBuf::from(config.playlist_root.clone()),
+            storage_path: PathBuf::from(config.storage_root.clone()),
             shared_storage: config.shared_storage,
         }
     }
@@ -559,7 +560,7 @@ impl PlayoutConfig {
             .await
             .expect("Can't read advanced config");
 
-        let mut global = Global::new(&global);
+        let mut channel = Channel::new(&global);
         let advanced = AdvancedConfig::new(adv_config);
         let general = General::new(&config);
         let mail = Mail::new(&config);
@@ -571,42 +572,42 @@ impl PlayoutConfig {
         let task = Task::new(&config);
         let mut output = Output::new(&config);
 
-        if !global.shared_storage {
-            global.storage_path = global.storage_path.join(channel_id.to_string());
+        if global.shared_storage {
+            channel.storage_path = channel.storage_path.join(channel_id.to_string());
         }
 
-        if !global.storage_path.is_dir() {
-            tokio::fs::create_dir_all(&global.storage_path)
+        if !channel.storage_path.is_dir() {
+            tokio::fs::create_dir_all(&channel.storage_path)
                 .await
                 .unwrap_or_else(|_| {
-                    panic!("Can't create storage folder: {:#?}", global.storage_path)
+                    panic!("Can't create storage folder: {:#?}", channel.storage_path)
                 });
         }
 
-        let mut storage = Storage::new(&config, global.storage_path.clone());
+        let mut storage = Storage::new(&config, channel.storage_path.clone());
 
         if channel_id > 1 || !global.shared_storage {
-            global.playlist_path = global.playlist_path.join(channel_id.to_string());
-            global.hls_path = global.hls_path.join(channel_id.to_string());
+            channel.playlist_path = channel.playlist_path.join(channel_id.to_string());
+            channel.hls_path = channel.hls_path.join(channel_id.to_string());
         }
 
-        if !global.playlist_path.is_dir() {
-            tokio::fs::create_dir_all(&global.playlist_path)
+        if !channel.playlist_path.is_dir() {
+            tokio::fs::create_dir_all(&channel.playlist_path)
                 .await
                 .unwrap_or_else(|_| {
-                    panic!("Can't create playlist folder: {:#?}", global.playlist_path)
+                    panic!("Can't create playlist folder: {:#?}", channel.playlist_path)
                 });
         }
 
-        if !global.logging_path.is_dir() {
-            tokio::fs::create_dir_all(&global.logging_path)
+        if !channel.logging_path.is_dir() {
+            tokio::fs::create_dir_all(&channel.logging_path)
                 .await
                 .unwrap_or_else(|_| {
-                    panic!("Can't create logging folder: {:#?}", global.logging_path)
+                    panic!("Can't create logging folder: {:#?}", channel.logging_path)
                 });
         }
 
-        let (filler_path, _, _) = norm_abs_path(&global.storage_path, &config.storage_filler)
+        let (filler_path, _, _) = norm_abs_path(&channel.storage_path, &config.storage_filler)
             .expect("Can't get filler path");
 
         storage.filler = filler_path;
@@ -700,7 +701,7 @@ impl PlayoutConfig {
 
             for item in cmd.iter_mut() {
                 if item.ends_with(".ts") || (item.ends_with(".m3u8") && item != "master.m3u8") {
-                    if let Ok((hls_path, _, _)) = norm_abs_path(&global.hls_path, item) {
+                    if let Ok((hls_path, _, _)) = norm_abs_path(&channel.hls_path, item) {
                         let parent = hls_path.parent().expect("HLS parent path");
 
                         if !parent.is_dir() {
@@ -728,7 +729,7 @@ impl PlayoutConfig {
         }
 
         Self {
-            global,
+            channel,
             advanced,
             general,
             mail,
@@ -749,7 +750,7 @@ impl PlayoutConfig {
             &config
                 .storage
                 .filler
-                .strip_prefix(config.global.storage_path.clone())
+                .strip_prefix(config.channel.storage_path.clone())
                 .unwrap_or(&config.storage.filler)
                 .to_path_buf(),
         );
@@ -849,11 +850,11 @@ pub async fn get_config(pool: &Pool<Sqlite>, channel_id: i32) -> Result<PlayoutC
     }
 
     if let Some(playlist) = args.playlist {
-        config.global.playlist_path = playlist;
+        config.channel.playlist_path = playlist;
     }
 
     if let Some(folder) = args.folder {
-        config.global.storage_path = folder;
+        config.channel.storage_path = folder;
         config.processing.mode = ProcessMode::Folder;
     }
 

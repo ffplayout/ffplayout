@@ -14,7 +14,7 @@ pub async fn read_playlist(
     date: String,
 ) -> Result<JsonPlaylist, ServiceError> {
     let d: Vec<&str> = date.split('-').collect();
-    let mut playlist_path = config.global.playlist_path.clone();
+    let mut playlist_path = config.channel.playlist_path.clone();
 
     playlist_path = playlist_path
         .join(d[0])
@@ -34,7 +34,7 @@ pub async fn write_playlist(
 ) -> Result<String, ServiceError> {
     let date = json_data.date.clone();
     let d: Vec<&str> = date.split('-').collect();
-    let mut playlist_path = config.global.playlist_path.clone();
+    let mut playlist_path = config.channel.playlist_path.clone();
 
     if !playlist_path
         .extension()
@@ -93,7 +93,7 @@ pub fn generate_playlist(manager: ChannelManager) -> Result<JsonPlaylist, Servic
 
             for path in &source.paths {
                 let (safe_path, _, _) =
-                    norm_abs_path(&config.global.storage_path, &path.to_string_lossy())?;
+                    norm_abs_path(&config.channel.storage_path, &path.to_string_lossy())?;
                 paths.push(safe_path);
             }
 
@@ -124,7 +124,7 @@ pub fn generate_playlist(manager: ChannelManager) -> Result<JsonPlaylist, Servic
 
 pub async fn delete_playlist(config: &PlayoutConfig, date: &str) -> Result<String, ServiceError> {
     let d: Vec<&str> = date.split('-').collect();
-    let mut playlist_path = PathBuf::from(&config.global.playlist_path);
+    let mut playlist_path = PathBuf::from(&config.channel.playlist_path);
 
     playlist_path = playlist_path
         .join(d[0])

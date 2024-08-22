@@ -61,9 +61,25 @@ pub async fn create_channel(
     queue: Arc<Mutex<Vec<Arc<Mutex<MailQueue>>>>>,
     target_channel: Channel,
 ) -> Result<Channel, ServiceError> {
+    let global = handles::select_global(conn).await?;
     let mut channel = handles::insert_channel(conn, target_channel).await?;
 
     channel.preview_url = preview_url(&channel.preview_url, channel.id);
+
+    if global.shared_storage {
+        channel.hls_path = Path::new(&channel.hls_path)
+            .join(channel.id.to_string())
+            .to_string_lossy()
+            .to_string();
+        channel.playlist_path = Path::new(&channel.playlist_path)
+            .join(channel.id.to_string())
+            .to_string_lossy()
+            .to_string();
+        channel.storage_path = Path::new(&channel.storage_path)
+            .join(channel.id.to_string())
+            .to_string_lossy()
+            .to_string();
+    }
 
     handles::update_channel(conn, channel.id, channel.clone()).await?;
 

@@ -40,7 +40,7 @@ impl FolderSource {
                 path_list.push(path)
             }
         } else {
-            path_list.push(&config.global.storage_path)
+            path_list.push(&config.channel.storage_path)
         }
 
         for path in &path_list {

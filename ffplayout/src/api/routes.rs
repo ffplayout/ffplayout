@@ -478,10 +478,17 @@ async fn patch_channel(
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    if handles::update_channel(&pool, *id, data.into_inner())
-        .await
-        .is_ok()
-    {
+    let mut data = data.into_inner();
+
+    if !role.has_authority(&Role::GlobalAdmin) {
+        let channel = handles::select_channel(&pool, &id).await?;
+
+        data.hls_path = channel.hls_path;
+        data.playlist_path = channel.playlist_path;
+        data.storage_path = channel.storage_path;
+    }
+
+    if handles::update_channel(&pool, *id, data).await.is_ok() {
         return Ok("Update Success");
     };
 
@@ -1022,7 +1029,7 @@ pub async fn gen_playlist(
 ) -> Result<impl Responder, ServiceError> {
     let manager = controllers.lock().unwrap().get(params.0).unwrap();
     manager.config.lock().unwrap().general.generate = Some(vec![params.1.clone()]);
-    let storage_path = manager.config.lock().unwrap().global.storage_path.clone();
+    let storage_path = manager.config.lock().unwrap().channel.storage_path.clone();
 
     if let Some(obj) = data {
         if let Some(paths) = &obj.paths {
@@ -1264,7 +1271,7 @@ async fn get_file(
     let id: i32 = req.match_info().query("id").parse()?;
     let manager = controllers.lock().unwrap().get(id).unwrap();
     let config = manager.config.lock().unwrap();
-    let storage_path = config.global.storage_path.clone();
+    let storage_path = config.channel.storage_path.clone();
     let file_path = req.match_info().query("filename");
     let (path, _, _) = norm_abs_path(&storage_path, file_path)?;
     let file = actix_files::NamedFile::open(path)?;
@@ -1295,7 +1302,7 @@ async fn get_public(
     let absolute_path = if file_stem.ends_with(".ts") || file_stem.ends_with(".m3u8") {
         let manager = controllers.lock().unwrap().get(id).unwrap();
         let config = manager.config.lock().unwrap();
-        config.global.hls_path.join(public)
+        config.channel.hls_path.join(public)
     } else if public_path.is_absolute() {
         public_path.to_path_buf()
     } else {

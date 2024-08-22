@@ -113,16 +113,20 @@ pub struct Args {
     #[clap(long, env, help = "Log to console")]
     pub log_to_console: bool,
 
-    #[clap(long, env, help = "HLS output path")]
-    pub hls_path: Option<String>,
+    #[clap(long, env, help = "Public (HLS) output path")]
+    pub public_root: Option<String>,
 
     #[clap(long, env, help = "Playlist root path")]
-    pub playlist_path: Option<String>,
+    pub playlist_root: Option<String>,
 
     #[clap(long, env, help = "Storage root path")]
-    pub storage_path: Option<String>,
+    pub storage_root: Option<String>,
 
-    #[clap(long, env, help = "Share storage across channels")]
+    #[clap(
+        long,
+        env,
+        help = "Share storage root across channels, important for running in Container"
+    )]
     pub shared_storage: bool,
 
     #[clap(short, long, help = "Create admin user")]
@@ -216,7 +220,7 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
             let mut fix_perm = String::new();
 
             println!(
-                "\nYou run the initialization as user {}. Fix permissions after initialization?",
+                "\nYou run the initialization as user {}.\nFix permissions after initialization?\n",
                 user_name
             );
 
@@ -230,7 +234,7 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
             fix_permission = fix_perm.trim().to_lowercase().starts_with('y');
 
             if fix_permission && user_name != "root" {
-                println!("You do not have permission to change DB file ownership! Run as proper process user or root.");
+                println!("\nYou do not have permission to change DB file ownership!\nRun as proper process user or root.");
 
                 exit(1);
             }
@@ -246,10 +250,10 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
         let mut global = GlobalSettings {
             id: 0,
             secret: None,
-            hls_path: String::new(),
-            playlist_path: String::new(),
-            storage_path: String::new(),
             logging_path: String::new(),
+            playlist_root: String::new(),
+            public_root: String::new(),
+            storage_root: String::new(),
             shared_storage: false,
         };
 
@@ -265,9 +269,9 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
             .expect("Did not enter a correct path?");
 
         if storage.trim().is_empty() {
-            global.storage_path = "/var/lib/ffplayout/tv-media".to_string();
+            global.storage_root = "/var/lib/ffplayout/tv-media".to_string();
         } else {
-            global.storage_path = storage
+            global.storage_root = storage
                 .trim()
                 .trim_matches(|c| c == '"' || c == '\'')
                 .to_string();
@@ -281,9 +285,9 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
             .expect("Did not enter a correct path?");
 
         if playlist.trim().is_empty() {
-            global.playlist_path = "/var/lib/ffplayout/playlists".to_string();
+            global.playlist_root = "/var/lib/ffplayout/playlists".to_string();
         } else {
-            global.playlist_path = playlist
+            global.playlist_root = playlist
                 .trim()
                 .trim_matches(|c| c == '"' || c == '\'')
                 .to_string();
@@ -305,7 +309,7 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
                 .to_string();
         }
 
-        print!("HLS path [/usr/share/ffplayout/public]: ");
+        print!("Public (HLS) path [/usr/share/ffplayout/public]: ");
         stdout().flush().unwrap();
 
         stdin()
@@ -313,9 +317,9 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
             .expect("Did not enter a correct path?");
 
         if hls.trim().is_empty() {
-            global.hls_path = "/usr/share/ffplayout/public".to_string();
+            global.public_root = "/usr/share/ffplayout/public".to_string();
         } else {
-            global.hls_path = hls
+            global.public_root = hls
                 .trim()
                 .trim_matches(|c| c == '"' || c == '\'')
                 .to_string();
@@ -335,12 +339,28 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
             error_code = 1;
         };
 
-        if !global.shared_storage {
-            let mut channel = handles::select_channel(pool, &1).await.unwrap();
-            channel.preview_url = "http://127.0.0.1:8787/1/stream.m3u8".to_string();
+        let mut channel = handles::select_channel(pool, &1).await.unwrap();
+        channel.hls_path = global.public_root;
+        channel.playlist_path = global.playlist_root;
+        channel.storage_path = global.storage_root;
 
-            handles::update_channel(pool, 1, channel).await.unwrap();
+        if global.shared_storage {
+            channel.preview_url = "http://127.0.0.1:8787/1/stream.m3u8".to_string();
+            channel.hls_path = Path::new(&channel.hls_path)
+                .join("1")
+                .to_string_lossy()
+                .to_string();
+            channel.playlist_path = Path::new(&channel.playlist_path)
+                .join("1")
+                .to_string_lossy()
+                .to_string();
+            channel.storage_path = Path::new(&channel.storage_path)
+                .join("1")
+                .to_string_lossy()
+                .to_string();
         };
+
+        handles::update_channel(pool, 1, channel).await.unwrap();
 
         if fix_permission {
             let db_path = Path::new(db_path().unwrap()).with_extension("");
@@ -399,9 +419,9 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
     }
 
     if !args.init
-        && args.storage_path.is_some()
-        && args.playlist_path.is_some()
-        && args.hls_path.is_some()
+        && args.storage_root.is_some()
+        && args.playlist_root.is_some()
+        && args.public_root.is_some()
         && args.log_path.is_some()
     {
         error_code = 0;
@@ -409,18 +429,19 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
         let global = GlobalSettings {
             id: 0,
             secret: None,
-            hls_path: args.hls_path.unwrap(),
-            playlist_path: args.playlist_path.unwrap(),
-            storage_path: args.storage_path.unwrap(),
             logging_path: args.log_path.unwrap().to_string_lossy().to_string(),
+            playlist_root: args.playlist_root.unwrap(),
+            public_root: args.public_root.unwrap(),
+            storage_root: args.storage_root.unwrap(),
             shared_storage: args.shared_storage,
         };
 
-        if let Err(e) = handles::update_global(pool, global.clone()).await {
-            eprintln!("{e}");
-            error_code = 1;
-        } else {
-            println!("Update global paths...");
+        match handles::update_global(pool, global.clone()).await {
+            Ok(_) => println!("Update global paths..."),
+            Err(e) => {
+                eprintln!("{e}");
+                error_code = 1;
+            }
         };
     }
 

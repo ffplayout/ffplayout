@@ -263,7 +263,7 @@ async fn main() -> std::io::Result<()> {
                     exit(1);
                 };
             } else if ARGS.validate {
-                let mut playlist_path = config.global.playlist_path.clone();
+                let mut playlist_path = config.channel.playlist_path.clone();
                 let start_sec = config.playlist.start_sec.unwrap();
                 let date = get_date(false, start_sec, false);
 
