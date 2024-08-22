@@ -16,10 +16,10 @@ use crate::utils::config::PlayoutConfig;
 pub struct GlobalSettings {
     pub id: i32,
     pub secret: Option<String>,
-    pub hls_path: String,
     pub logging_path: String,
-    pub playlist_path: String,
-    pub storage_path: String,
+    pub playlist_root: String,
+    pub public_root: String,
+    pub storage_root: String,
     pub shared_storage: bool,
 }
 
@@ -32,10 +32,10 @@ impl GlobalSettings {
             Err(_) => GlobalSettings {
                 id: 0,
                 secret: None,
-                hls_path: String::new(),
                 logging_path: String::new(),
-                playlist_path: String::new(),
-                storage_path: String::new(),
+                playlist_root: String::new(),
+                public_root: String::new(),
+                storage_root: String::new(),
                 shared_storage: false,
             },
         }
@@ -240,6 +240,9 @@ pub struct Channel {
     pub preview_url: String,
     pub extra_extensions: String,
     pub active: bool,
+    pub hls_path: String,
+    pub playlist_path: String,
+    pub storage_path: String,
     pub last_date: Option<String>,
     pub time_shift: f64,
 

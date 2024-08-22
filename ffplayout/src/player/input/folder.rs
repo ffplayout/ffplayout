@@ -29,7 +29,7 @@ pub fn watchman(
     sources: Arc<Mutex<Vec<Media>>>,
 ) {
     let id = config.general.channel_id;
-    let path = Path::new(&config.global.storage_path);
+    let path = Path::new(&config.channel.storage_path);
 
     if !path.exists() {
         error!("Folder path not exists: '{path:?}'");

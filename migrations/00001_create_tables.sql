@@ -5,11 +5,11 @@ CREATE TABLE
     global (
         id INTEGER PRIMARY KEY,
         secret TEXT NOT NULL,
-        hls_path TEXT NOT NULL DEFAULT "/usr/share/ffplayout/public",
         logging_path TEXT NOT NULL DEFAULT "/var/log/ffplayout",
-        playlist_path TEXT NOT NULL DEFAULT "/var/lib/ffplayout/playlists",
-        storage_path TEXT NOT NULL DEFAULT "/var/lib/ffplayout/tv-media",
-        shared_storage INTEGER NOT NULL DEFAULT 1,
+        playlist_root TEXT NOT NULL DEFAULT "/var/lib/ffplayout/playlists",
+        public_root TEXT NOT NULL DEFAULT "/usr/share/ffplayout/public",
+        storage_root TEXT NOT NULL DEFAULT "/var/lib/ffplayout/tv-media",
+        shared_storage INTEGER NOT NULL DEFAULT 0,
         UNIQUE (secret)
     );
 
@@ -27,6 +27,9 @@ CREATE TABLE
         preview_url TEXT NOT NULL,
         extra_extensions TEXT NOT NULL DEFAULT 'jpg,jpeg,png',
         active INTEGER NOT NULL DEFAULT 0,
+        hls_path TEXT NOT NULL DEFAULT "/usr/share/ffplayout/public",
+        playlist_path TEXT NOT NULL DEFAULT "/var/lib/ffplayout/playlists",
+        storage_path TEXT NOT NULL DEFAULT "/var/lib/ffplayout/tv-media",
         last_date TEXT,
         time_shift REAL NOT NULL DEFAULT 0
     );

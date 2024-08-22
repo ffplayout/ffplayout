@@ -100,11 +100,11 @@ pub fn read_json(
 ) -> JsonPlaylist {
     let id = config.general.channel_id;
     let config_clone = config.clone();
-    let mut playlist_path = config.global.playlist_path.clone();
+    let mut playlist_path = config.channel.playlist_path.clone();
     let start_sec = config.playlist.start_sec.unwrap();
     let date = get_date(seek, start_sec, get_next);
 
-    if playlist_path.is_dir() || is_remote(&config.global.playlist_path.to_string_lossy()) {
+    if playlist_path.is_dir() || is_remote(&config.channel.playlist_path.to_string_lossy()) {
         let d: Vec<&str> = date.split('-').collect();
         playlist_path = playlist_path
             .join(d[0])

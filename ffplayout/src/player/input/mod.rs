@@ -28,7 +28,7 @@ pub fn source_generator(manager: ChannelManager) -> Box<dyn Iterator<Item = Medi
             info!(target: Target::file_mail(), channel = id; "Playout in folder mode");
             debug!(target: Target::file_mail(), channel = id;
                 "Monitor folder: <b><magenta>{:?}</></b>",
-                config.global.storage_path
+                config.channel.storage_path
             );
 
             let config_clone = config.clone();
