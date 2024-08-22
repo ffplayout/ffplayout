@@ -24,8 +24,8 @@ async fn prepare_config() -> (PlayoutConfig, ChannelManager) {
 
     sqlx::query(
         r#"
-        UPDATE global SET hls_path = "assets/hls", logging_path = "assets/log",
-            playlist_path = "assets/playlists", storage_path = "assets/storage";
+        UPDATE global SET public_root = "assets/hls", logging_path = "assets/log", playlist_root = "assets/playlists", storage_root = "assets/storage";
+        UPDATE channels SET hls_path = "assets/hls", playlist_path = "assets/playlists", storage_path = "assets/storage";
         UPDATE configurations SET processing_width = 1024, processing_height = 576;
         "#,
     )
