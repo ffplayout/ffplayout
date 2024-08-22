@@ -3,7 +3,6 @@ use argon2::{
     Argon2, PasswordHasher,
 };
 
-use log::*;
 use rand::{distributions::Alphanumeric, Rng};
 use sqlx::{sqlite::SqliteQueryResult, Pool, Row, Sqlite};
 use tokio::task;
@@ -13,9 +12,8 @@ use crate::db::models::{Channel, GlobalSettings, Role, TextPreset, User};
 use crate::utils::{advanced_config::AdvancedConfig, config::PlayoutConfig, local_utc_offset};
 
 pub async fn db_migrate(conn: &Pool<Sqlite>) -> Result<&'static str, Box<dyn std::error::Error>> {
-    match sqlx::migrate!("../migrations").run(conn).await {
-        Ok(_) => info!("Database migration successfully"),
-        Err(e) => panic!("{e}"),
+    if let Err(e) = sqlx::migrate!("../migrations").run(conn).await {
+        panic!("{e}");
     }
 
     if select_global(conn).await.is_err() {

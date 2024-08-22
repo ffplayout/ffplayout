@@ -41,7 +41,7 @@ use tokio::fs;
 use crate::db::models::Role;
 use crate::utils::{
     channels::{create_channel, delete_channel},
-    config::{PlayoutConfig, Template},
+    config::{get_config, PlayoutConfig, Template},
     control::{control_state, send_message, ControlParams, Process, ProcessCtl},
     errors::ServiceError,
     files::{
@@ -475,9 +475,11 @@ async fn patch_channel(
     pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
     data: web::Json<Channel>,
+    controllers: web::Data<Mutex<ChannelController>>,
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
+    let manager = controllers.lock().unwrap().get(*id).unwrap();
     let mut data = data.into_inner();
 
     if !role.has_authority(&Role::GlobalAdmin) {
@@ -488,11 +490,11 @@ async fn patch_channel(
         data.storage_path = channel.storage_path;
     }
 
-    if handles::update_channel(&pool, *id, data).await.is_ok() {
-        return Ok("Update Success");
-    };
+    handles::update_channel(&pool, *id, data).await?;
+    let new_config = get_config(&pool, *id).await?;
+    manager.update_config(new_config);
 
-    Err(ServiceError::InternalServerError)
+    Ok("Update Success")
 }
 
 /// **Create new Channel**
@@ -597,7 +599,7 @@ async fn update_advanced_config(
     let manager = controllers.lock().unwrap().get(*id).unwrap();
 
     handles::update_advanced_configuration(&pool, *id, data.clone()).await?;
-    let new_config = PlayoutConfig::new(&pool, *id).await;
+    let new_config = get_config(&pool, *id).await?;
 
     manager.update_config(new_config);
 
@@ -653,7 +655,7 @@ async fn update_playout_config(
     let config_id = manager.config.lock().unwrap().general.id;
 
     handles::update_configuration(&pool, config_id, data.clone()).await?;
-    let new_config = PlayoutConfig::new(&pool, *id).await;
+    let new_config = get_config(&pool, *id).await?;
 
     manager.update_config(new_config);
 

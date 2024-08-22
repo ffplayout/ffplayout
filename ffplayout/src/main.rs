@@ -2,7 +2,7 @@ use std::{
     collections::HashSet,
     env,
     fs::File,
-    io::{self, stdin, stdout, Write},
+    io,
     process::exit,
     sync::{atomic::AtomicBool, Arc, Mutex},
     thread,
@@ -14,7 +14,6 @@ use actix_web::{
 };
 use actix_web_grants::authorities::AttachAuthorities;
 use actix_web_httpauth::{extractors::bearer::BearerAuth, middleware::HttpAuthentication};
-use sqlx::{migrate::MigrateDatabase, Sqlite};
 
 #[cfg(all(not(debug_assertions), feature = "embed_frontend"))]
 use actix_web_static_files::ResourceFiles;
@@ -25,7 +24,7 @@ use path_clean::PathClean;
 use ffplayout::{
     api::{auth, routes::*},
     db::{
-        db_pool, handles,
+        db_drop, db_pool, handles,
         models::{init_globales, UserMeta},
     },
     player::{
@@ -36,7 +35,6 @@ use ffplayout::{
     utils::{
         args_parse::run_args,
         config::get_config,
-        db_path,
         logging::{init_logging, MailQueue},
         playlist::generate_playlist,
     },
@@ -292,23 +290,7 @@ async fn main() -> std::io::Result<()> {
                     Arc::new(AtomicBool::new(false)),
                 );
             } else if ARGS.drop_db {
-                let mut drop_answer = String::new();
-
-                print!("Drop Database [Y/n]: ");
-                stdout().flush().unwrap();
-
-                stdin()
-                    .read_line(&mut drop_answer)
-                    .expect("Did not enter a yes or no?");
-
-                let drop = drop_answer.trim().to_lowercase().starts_with('y');
-
-                if drop {
-                    match Sqlite::drop_database(db_path().unwrap()).await {
-                        Ok(_) => info!("Successfully dropped DB"),
-                        Err(e) => error!("{e}"),
-                    };
-                }
+                db_drop().await;
             } else if !ARGS.init {
                 error!("Run ffplayout with parameters! Run ffplayout -h for more information.");
             }

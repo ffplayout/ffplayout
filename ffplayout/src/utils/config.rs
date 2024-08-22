@@ -184,12 +184,12 @@ pub struct Channel {
 }
 
 impl Channel {
-    pub fn new(config: &models::GlobalSettings) -> Self {
+    pub fn new(config: &models::GlobalSettings, channel: models::Channel) -> Self {
         Self {
             logging_path: PathBuf::from(config.logging_path.clone()),
-            hls_path: PathBuf::from(config.public_root.clone()),
-            playlist_path: PathBuf::from(config.playlist_root.clone()),
-            storage_path: PathBuf::from(config.storage_root.clone()),
+            hls_path: PathBuf::from(channel.hls_path.clone()),
+            playlist_path: PathBuf::from(channel.playlist_path.clone()),
+            storage_path: PathBuf::from(channel.storage_path.clone()),
             shared_storage: config.shared_storage,
         }
     }
@@ -414,10 +414,12 @@ pub struct Storage {
     pub filler: PathBuf,
     pub extensions: Vec<String>,
     pub shuffle: bool,
+    #[serde(skip_deserializing)]
+    pub shared_storage: bool,
 }
 
 impl Storage {
-    fn new(config: &models::Configuration, path: PathBuf) -> Self {
+    fn new(config: &models::Configuration, path: PathBuf, shared_storage: bool) -> Self {
         Self {
             help_text: config.storage_help.clone(),
             path,
@@ -429,6 +431,7 @@ impl Storage {
                 .map(|s| s.to_string())
                 .collect(),
             shuffle: config.storage_shuffle,
+            shared_storage,
         }
     }
 }
@@ -553,6 +556,9 @@ impl PlayoutConfig {
         let global = handles::select_global(pool)
             .await
             .expect("Can't read globals");
+        let channel = handles::select_channel(pool, &channel_id)
+            .await
+            .expect("Can't read channel");
         let config = handles::select_configuration(pool, channel_id)
             .await
             .expect("Can't read config");
@@ -560,7 +566,7 @@ impl PlayoutConfig {
             .await
             .expect("Can't read advanced config");
 
-        let mut channel = Channel::new(&global);
+        let channel = Channel::new(&global, channel);
         let advanced = AdvancedConfig::new(adv_config);
         let general = General::new(&config);
         let mail = Mail::new(&config);
@@ -572,10 +578,6 @@ impl PlayoutConfig {
         let task = Task::new(&config);
         let mut output = Output::new(&config);
 
-        if global.shared_storage {
-            channel.storage_path = channel.storage_path.join(channel_id.to_string());
-        }
-
         if !channel.storage_path.is_dir() {
             tokio::fs::create_dir_all(&channel.storage_path)
                 .await
@@ -584,12 +586,8 @@ impl PlayoutConfig {
                 });
         }
 
-        let mut storage = Storage::new(&config, channel.storage_path.clone());
-
-        if channel_id > 1 || !global.shared_storage {
-            channel.playlist_path = channel.playlist_path.join(channel_id.to_string());
-            channel.hls_path = channel.hls_path.join(channel_id.to_string());
-        }
+        let mut storage =
+            Storage::new(&config, channel.storage_path.clone(), global.shared_storage);
 
         if !channel.playlist_path.is_dir() {
             tokio::fs::create_dir_all(&channel.playlist_path)

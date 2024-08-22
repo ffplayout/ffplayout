@@ -453,8 +453,39 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
             shared_storage: args.shared_storage,
         };
 
+        let mut channel = handles::select_channel(pool, &1)
+            .await
+            .expect("Select Channel 1");
+
+        if args.shared_storage {
+            channel.hls_path = Path::new(&global.public_root)
+                .join("1")
+                .to_string_lossy()
+                .to_string();
+            channel.playlist_path = Path::new(&global.playlist_root)
+                .join("1")
+                .to_string_lossy()
+                .to_string();
+            channel.storage_path = Path::new(&global.storage_root)
+                .join("1")
+                .to_string_lossy()
+                .to_string();
+        } else {
+            channel.hls_path = global.public_root.clone();
+            channel.playlist_path = global.playlist_root.clone();
+            channel.storage_path = global.storage_root.clone();
+        }
+
         match handles::update_global(pool, global.clone()).await {
-            Ok(_) => println!("Update global paths..."),
+            Ok(_) => println!("Update globals done..."),
+            Err(e) => {
+                eprintln!("{e}");
+                error_code = 1;
+            }
+        };
+
+        match handles::update_channel(pool, 1, channel).await {
+            Ok(_) => println!("Update channel done..."),
             Err(e) => {
                 eprintln!("{e}");
                 error_code = 1;

@@ -11,7 +11,7 @@ use sqlx::{Pool, Sqlite};
 use super::logging::MailQueue;
 use crate::db::{handles, models::Channel};
 use crate::player::controller::{ChannelController, ChannelManager};
-use crate::utils::{config::PlayoutConfig, errors::ServiceError};
+use crate::utils::{config::get_config, errors::ServiceError};
 
 async fn map_global_admins(conn: &Pool<Sqlite>) -> Result<(), ServiceError> {
     let channels = handles::select_related_channels(conn, None).await?;
@@ -88,7 +88,7 @@ pub async fn create_channel(
     handles::insert_advanced_configuration(conn, channel.id).await?;
     handles::insert_configuration(conn, channel.id, output_param).await?;
 
-    let config = PlayoutConfig::new(conn, channel.id).await;
+    let config = get_config(conn, channel.id).await?;
     let m_queue = Arc::new(Mutex::new(MailQueue::new(channel.id, config.mail.clone())));
     let manager = ChannelManager::new(Some(conn.clone()), channel.clone(), config);
 

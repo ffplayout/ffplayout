@@ -39,7 +39,7 @@ docker build -f nvidia.Dockerfile -t ffplayout-image:nvidia .
 example of command to start the container:
 
 ```BASH
-docker run -it -v /path/to/db:/db -v /path/to/storage:/tv-media -v /path/to/playlists:/playlists -v /path/to/hls:/hls -v /path/to/logging:/logging --name ffplayout -p 8787:8787 ffplayout-image
+docker run -it -v /path/to/db:/db -v /path/to/storage:/tv-media -v /path/to/playlists:/playlists -v /path/to/public:/public -v /path/to/logging:/logging --name ffplayout -p 8787:8787 ffplayout-image
 
 # run in daemon mode
 docker run -d --name ffplayout -p 8787:8787 ffplayout-image
