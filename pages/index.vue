@@ -127,7 +127,7 @@ async function login() {
             }, 3000)
         }
 
-        await configStore.nuxtClientInit()
+        await configStore.configInit()
     } catch (e) {
         formError.value = e as string
     }

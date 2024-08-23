@@ -368,7 +368,7 @@ onMounted(async () => {
 
     extensions.value = exts.join(', ')
 
-    if (!mediaStore.folderTree.parent) {
+    if (!mediaStore.folderTree.parent || !mediaStore.currentPath) {
         await mediaStore.getTree('')
     }
 })

@@ -96,8 +96,10 @@ defineProps({
     },
 })
 
-onMounted(() => {
-    mediaStore.getTree('')
+onMounted(async () => {
+    if (!mediaStore.folderTree.parent || !mediaStore.currentPath) {
+        await mediaStore.getTree('')
+    }
 })
 
 watch([id], () => {
