@@ -108,6 +108,10 @@ const authStore = useAuth()
 const configStore = useConfig()
 const indexStore = useIndex()
 
+function rmId(path: string) {
+    return path.replace(/\/\d+$/, '');
+}
+
 async function addChannel() {
     const channels = $_.cloneDeep(configStore.channels)
     const newChannel = $_.cloneDeep(configStore.channels[configStore.channels.length - 1])
@@ -115,9 +119,9 @@ async function addChannel() {
     newChannel.id = channels.length + 1
     newChannel.name = `Channel ${newChannel.id}`
     newChannel.preview_url = `${window.location.protocol}//${window.location.host}/live/${newChannel.id}/stream.m3u8`
-    newChannel.hls_path = `${newChannel.hls_path}/${newChannel.id}`
-    newChannel.playlist_path = `${newChannel.playlist_path}/${newChannel.id}`
-    newChannel.storage_path = `${newChannel.storage_path}/${newChannel.id}`
+    newChannel.hls_path = `${rmId(newChannel.hls_path)}/${newChannel.id}`
+    newChannel.playlist_path = `${rmId(newChannel.playlist_path)}/${newChannel.id}`
+    newChannel.storage_path = `${rmId(newChannel.storage_path)}/${newChannel.id}`
 
     channels.push(newChannel)
     configStore.channels = channels
