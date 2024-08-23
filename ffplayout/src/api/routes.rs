@@ -160,26 +160,27 @@ struct ProgramItem {
 /// }
 /// ```
 #[post("/auth/login/")]
-pub async fn login(pool: web::Data<Pool<Sqlite>>, credentials: web::Json<User>) -> impl Responder {
+pub async fn login(
+    pool: web::Data<Pool<Sqlite>>,
+    credentials: web::Json<User>,
+) -> Result<impl Responder, ServiceError> {
     let username = credentials.username.clone();
     let password = credentials.password.clone();
 
     match handles::select_login(&pool, &username).await {
         Ok(mut user) => {
-            let role = handles::select_role(&pool, &user.role_id.unwrap_or_default())
-                .await
-                .unwrap_or(Role::Guest);
+            let role = handles::select_role(&pool, &user.role_id.unwrap_or_default()).await?;
 
-            let pass = user.password.clone();
-            let password_clone = password.clone();
+            let pass_hash = user.password.clone();
+            let cred_password = password.clone();
 
             user.password = "".into();
 
             let verified_password = web::block(move || {
-                let hash = PasswordHash::new(&pass).unwrap();
-                Argon2::default().verify_password(password_clone.as_bytes(), &hash)
+                let hash = PasswordHash::new(&pass_hash)?;
+                Argon2::default().verify_password(cred_password.as_bytes(), &hash)
             })
-            .await;
+            .await?;
 
             if verified_password.is_ok() {
                 let claims = Claims::new(
@@ -195,31 +196,31 @@ pub async fn login(pool: web::Data<Pool<Sqlite>>, credentials: web::Json<User>) 
 
                 info!("user {} login, with role: {role}", username);
 
-                web::Json(UserObj {
+                Ok(web::Json(UserObj {
                     message: "login correct!".into(),
                     user: Some(user),
                 })
                 .customize()
-                .with_status(StatusCode::OK)
+                .with_status(StatusCode::OK))
             } else {
                 error!("Wrong password for {username}!");
 
-                web::Json(UserObj {
+                Ok(web::Json(UserObj {
                     message: "Wrong password!".into(),
                     user: None,
                 })
                 .customize()
-                .with_status(StatusCode::FORBIDDEN)
+                .with_status(StatusCode::FORBIDDEN))
             }
         }
         Err(e) => {
             error!("Login {username} failed! {e}");
-            web::Json(UserObj {
+            Ok(web::Json(UserObj {
                 message: format!("Login {username} failed!"),
                 user: None,
             })
             .customize()
-            .with_status(StatusCode::BAD_REQUEST)
+            .with_status(StatusCode::BAD_REQUEST))
         }
     }
 }

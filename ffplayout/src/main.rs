@@ -9,11 +9,9 @@ use std::{
 };
 
 use actix_files::Files;
-use actix_web::{
-    dev::ServiceRequest, middleware::Logger, web, App, Error, HttpMessage, HttpServer,
-};
-use actix_web_grants::authorities::AttachAuthorities;
-use actix_web_httpauth::{extractors::bearer::BearerAuth, middleware::HttpAuthentication};
+use actix_web::{middleware::Logger, web, App, HttpServer};
+
+use actix_web_httpauth::middleware::HttpAuthentication;
 
 #[cfg(all(not(debug_assertions), feature = "embed_frontend"))]
 use actix_web_static_files::ResourceFiles;
@@ -22,11 +20,8 @@ use log::*;
 use path_clean::PathClean;
 
 use ffplayout::{
-    api::{auth, routes::*},
-    db::{
-        db_drop, db_pool, handles,
-        models::{init_globales, UserMeta},
-    },
+    api::routes::*,
+    db::{db_drop, db_pool, handles, models::init_globales},
     player::{
         controller::{ChannelController, ChannelManager},
         utils::{get_date, is_remote, json_validate::validate_playlist, JsonPlaylist},
@@ -38,7 +33,7 @@ use ffplayout::{
         logging::{init_logging, MailQueue},
         playlist::generate_playlist,
     },
-    ARGS,
+    validator, ARGS,
 };
 
 #[cfg(any(debug_assertions, not(feature = "embed_frontend")))]
@@ -53,24 +48,6 @@ fn thread_counter() -> usize {
         .unwrap_or(1);
 
     (available_threads / 2).max(2)
-}
-
-async fn validator(
-    req: ServiceRequest,
-    credentials: BearerAuth,
-) -> Result<ServiceRequest, (Error, ServiceRequest)> {
-    // We just get permissions from JWT
-    match auth::decode_jwt(credentials.token()).await {
-        Ok(claims) => {
-            req.attach(vec![claims.role]);
-
-            req.extensions_mut()
-                .insert(UserMeta::new(claims.id, claims.channels));
-
-            Ok(req)
-        }
-        Err(e) => Err((e, req)),
-    }
 }
 
 #[actix_web::main]

@@ -67,15 +67,15 @@ pub async fn create_channel(
     channel.preview_url = preview_url(&channel.preview_url, channel.id);
 
     if global.shared_storage {
-        channel.hls_path = Path::new(&channel.hls_path)
+        channel.hls_path = Path::new(&global.public_root)
             .join(channel.id.to_string())
             .to_string_lossy()
             .to_string();
-        channel.playlist_path = Path::new(&channel.playlist_path)
+        channel.playlist_path = Path::new(&global.playlist_root)
             .join(channel.id.to_string())
             .to_string_lossy()
             .to_string();
-        channel.storage_path = Path::new(&channel.storage_path)
+        channel.storage_path = Path::new(&global.storage_root)
             .join(channel.id.to_string())
             .to_string_lossy()
             .to_string();
