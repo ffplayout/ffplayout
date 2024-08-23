@@ -54,7 +54,7 @@ pub async fn init_globales(conn: &Pool<Sqlite>) {
 }
 
 // #[serde_as]
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct User {
     #[serde(skip_deserializing)]
     pub id: i32,

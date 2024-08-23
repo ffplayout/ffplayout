@@ -1,5 +1,8 @@
 use std::sync::{Arc, Mutex};
 
+use actix_web::{dev::ServiceRequest, Error, HttpMessage};
+use actix_web_grants::authorities::AttachAuthorities;
+use actix_web_httpauth::extractors::bearer::BearerAuth;
 use clap::Parser;
 use lazy_static::lazy_static;
 use sysinfo::{Disks, Networks, System};
@@ -11,6 +14,8 @@ pub mod player;
 pub mod sse;
 pub mod utils;
 
+use api::auth;
+use db::models::UserMeta;
 use utils::advanced_config::AdvancedConfig;
 use utils::args_parse::Args;
 
@@ -21,4 +26,22 @@ lazy_static! {
     pub static ref NETWORKS: Arc<Mutex<Networks>> =
         Arc::new(Mutex::new(Networks::new_with_refreshed_list()));
     pub static ref SYS: Arc<Mutex<System>> = Arc::new(Mutex::new(System::new_all()));
+}
+
+pub async fn validator(
+    req: ServiceRequest,
+    credentials: BearerAuth,
+) -> Result<ServiceRequest, (Error, ServiceRequest)> {
+    // We just get permissions from JWT
+    match auth::decode_jwt(credentials.token()).await {
+        Ok(claims) => {
+            req.attach(vec![claims.role]);
+
+            req.extensions_mut()
+                .insert(UserMeta::new(claims.id, claims.channels));
+
+            Ok(req)
+        }
+        Err(e) => Err((e, req)),
+    }
 }

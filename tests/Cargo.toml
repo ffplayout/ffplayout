@@ -10,6 +10,11 @@ publish = false
 [dev-dependencies]
 ffplayout= { path = "../ffplayout" }
 
+actix-web = "4"
+actix-web-grants = "4"
+actix-web-httpauth = "0.8"
+actix-rt = "2.10"
+actix-test = "0.1"
 chrono = "0.4"
 crossbeam-channel = "0.5"
 ffprobe = "0.4"
@@ -28,6 +33,10 @@ time = { version = "0.3", features = ["formatting", "macros"] }
 tokio = { version = "1.29", features = ["full"] }
 toml_edit = {version ="0.22", features = ["serde"]}
 walkdir = "2"
+
+[[test]]
+name = "api_routes"
+path = "src/api_routes.rs"
 
 [[test]]
 name = "lib_utils"
