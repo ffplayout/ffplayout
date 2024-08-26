@@ -274,8 +274,9 @@ async fn main() -> std::io::Result<()> {
         }
     }
 
-    for channel in &channel_controllers.lock().unwrap().channels {
-        channel.stop_all();
+    for channel_ctl in &channel_controllers.lock().unwrap().channels {
+        channel_ctl.channel.lock().unwrap().active = false;
+        channel_ctl.stop_all();
     }
 
     Ok(())

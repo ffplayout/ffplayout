@@ -7,6 +7,7 @@ use std::{
         Arc, Mutex,
     },
     thread,
+    time::Duration,
 };
 
 #[cfg(not(windows))]
@@ -129,12 +130,31 @@ impl ChannelManager {
             };
 
             thread::spawn(move || {
-                let run_count = self_clone.run_count.clone();
+                let mut run_endless = true;
 
-                if let Err(e) = start_channel(self_clone) {
-                    run_count.fetch_sub(1, Ordering::SeqCst);
-                    error!("{e}");
-                };
+                while run_endless {
+                    let run_count = self_clone.run_count.clone();
+
+                    if let Err(e) = start_channel(self_clone.clone()) {
+                        run_count.fetch_sub(1, Ordering::SeqCst);
+                        error!("{e}");
+                    };
+
+                    let active = self_clone.channel.lock().unwrap().active;
+
+                    if !active {
+                        run_endless = false;
+                    } else {
+                        self_clone.run_count.fetch_add(1, Ordering::SeqCst);
+                        self_clone.is_alive.store(true, Ordering::SeqCst);
+                        self_clone.is_terminated.store(false, Ordering::SeqCst);
+                        self_clone.list_init.store(true, Ordering::SeqCst);
+
+                        thread::sleep(Duration::from_millis(250));
+                    }
+                }
+
+                trace!("Async start done");
             });
         }
     }
@@ -179,8 +199,6 @@ impl ChannelManager {
     }
 
     pub fn stop(&self, unit: ProcessUnit) -> Result<(), ProcessError> {
-        let mut channel = self.channel.lock()?;
-
         match unit {
             Decoder => {
                 if let Some(proc) = self.decoder.lock()?.as_mut() {
@@ -206,8 +224,6 @@ impl ChannelManager {
                 }
             }
         }
-
-        channel.active = false;
 
         self.wait(unit)?;
 

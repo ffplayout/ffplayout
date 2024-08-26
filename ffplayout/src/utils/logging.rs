@@ -30,7 +30,11 @@ pub struct Target;
 
 impl Target {
     pub fn all() -> &'static str {
-        "{file,mail,_Default}"
+        if ARGS.log_to_console {
+            "{_Default}"
+        } else {
+            "{file,mail,_Default}"
+        }
     }
 
     pub fn console() -> &'static str {

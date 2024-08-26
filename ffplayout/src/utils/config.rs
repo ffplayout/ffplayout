@@ -843,7 +843,7 @@ pub async fn get_config(pool: &Pool<Sqlite>, channel_id: i32) -> Result<PlayoutC
         config.general.template = Some(template);
     }
 
-    if let Some(paths) = args.gen_paths {
+    if let Some(paths) = args.paths {
         config.storage.paths = paths;
     }
 

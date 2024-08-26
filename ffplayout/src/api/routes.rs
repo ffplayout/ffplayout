@@ -928,6 +928,7 @@ pub async fn process_control(
             manager.async_start().await;
         }
         ProcessCtl::Stop => {
+            manager.channel.lock().unwrap().active = false;
             manager.async_stop().await;
         }
         ProcessCtl::Restart => {

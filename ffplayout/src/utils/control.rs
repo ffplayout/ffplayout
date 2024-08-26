@@ -240,6 +240,7 @@ pub async fn control_state(
         }
 
         "stop_all" => {
+            manager.channel.lock().unwrap().active = false;
             manager.stop_all();
 
             let mut data_map = Map::new();

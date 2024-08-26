@@ -49,6 +49,7 @@ fn timed_stop(sec: u64, manager: ChannelManager) {
 
     println!("Timed stop of process");
 
+    manager.channel.lock().unwrap().active = false;
     manager.stop_all();
 }
 

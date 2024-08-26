@@ -104,8 +104,8 @@ pub struct Args {
     )]
     pub generate: Option<Vec<String>>,
 
-    #[clap(long, help = "Optional folder path list for playlist generations", num_args = 1..)]
-    pub gen_paths: Option<Vec<PathBuf>>,
+    #[clap(long, help = "Optional path list for playlist generations", num_args = 1..)]
+    pub paths: Option<Vec<PathBuf>>,
 
     #[clap(long, env, help = "Keep log file for given days")]
     pub log_backup_count: Option<usize>,

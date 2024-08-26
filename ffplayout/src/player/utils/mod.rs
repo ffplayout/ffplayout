@@ -811,6 +811,7 @@ pub fn stderr_reader(
                 || (line.contains("No such file or directory")
                     && !line.contains("failed to delete old segment"))
             {
+                manager.channel.lock().unwrap().active = false;
                 manager.stop_all();
             }
         }
