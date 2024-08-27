@@ -206,7 +206,7 @@ fn global_user(args: &mut Args) {
 pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
     let mut args = ARGS.clone();
 
-    if args.dump_advanced.is_none() && args.dump_config.is_none() {
+    if args.dump_advanced.is_none() && args.dump_config.is_none() && !args.drop_db {
         if let Err(e) = handles::db_migrate(pool).await {
             panic!("{e}");
         };

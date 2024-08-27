@@ -11,10 +11,8 @@ use super::models::{AdvancedConfiguration, Configuration};
 use crate::db::models::{Channel, GlobalSettings, Role, TextPreset, User};
 use crate::utils::{advanced_config::AdvancedConfig, config::PlayoutConfig, local_utc_offset};
 
-pub async fn db_migrate(conn: &Pool<Sqlite>) -> Result<&'static str, Box<dyn std::error::Error>> {
-    if let Err(e) = sqlx::migrate!("../migrations").run(conn).await {
-        panic!("{e}");
-    }
+pub async fn db_migrate(conn: &Pool<Sqlite>) -> Result<(), Box<dyn std::error::Error>> {
+    sqlx::migrate!("../migrations").run(conn).await?;
 
     if select_global(conn).await.is_err() {
         let secret: String = rand::thread_rng()
@@ -34,7 +32,7 @@ pub async fn db_migrate(conn: &Pool<Sqlite>) -> Result<&'static str, Box<dyn std
         sqlx::query(query).bind(secret).execute(conn).await?;
     }
 
-    Ok("Database migrated!")
+    Ok(())
 }
 
 pub async fn select_global(conn: &Pool<Sqlite>) -> Result<GlobalSettings, sqlx::Error> {
