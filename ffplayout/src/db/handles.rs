@@ -11,10 +11,8 @@ use super::models::{AdvancedConfiguration, Configuration};
 use crate::db::models::{Channel, GlobalSettings, Role, TextPreset, User};
 use crate::utils::{advanced_config::AdvancedConfig, config::PlayoutConfig, local_utc_offset};
 
-pub async fn db_migrate(conn: &Pool<Sqlite>) -> Result<&'static str, Box<dyn std::error::Error>> {
-    if let Err(e) = sqlx::migrate!("../migrations").run(conn).await {
-        panic!("{e}");
-    }
+pub async fn db_migrate(conn: &Pool<Sqlite>) -> Result<(), Box<dyn std::error::Error>> {
+    sqlx::migrate!("../migrations").run(conn).await?;
 
     if select_global(conn).await.is_err() {
         let secret: String = rand::thread_rng()
@@ -34,7 +32,7 @@ pub async fn db_migrate(conn: &Pool<Sqlite>) -> Result<&'static str, Box<dyn std
         sqlx::query(query).bind(secret).execute(conn).await?;
     }
 
-    Ok("Database migrated!")
+    Ok(())
 }
 
 pub async fn select_global(conn: &Pool<Sqlite>) -> Result<GlobalSettings, sqlx::Error> {
@@ -485,6 +483,19 @@ pub async fn insert_preset(
         .bind(preset.boxborderw)
         .execute(conn)
         .await
+}
+
+pub async fn new_channel_presets(
+    conn: &Pool<Sqlite>,
+    channel_id: i32,
+) -> Result<SqliteQueryResult, sqlx::Error> {
+    let query = "INSERT INTO presets (name, text, x, y, fontsize, line_spacing, fontcolor, box, boxcolor, boxborderw, alpha, channel_id)
+        VALUES ('Default', 'Wellcome to ffplayout messenger!', '(w-text_w)/2', '(h-text_h)/2', '24', '4', '#ffffff@0xff', '0', '#000000@0x80', '4', '1.0', $1),
+        ('Empty Text', '', '0', '0', '24', '4', '#000000', '0', '#000000', '0', '0', $1),
+        ('Bottom Text fade in', 'The upcoming event will be delayed by a few minutes.', '(w-text_w)/2', '(h-line_h)*0.9', '24', '4', '#ffffff', '1', '#000000@0x80', '4', 'ifnot(ld(1),st(1,t));if(lt(t,ld(1)+1),0,if(lt(t,ld(1)+2),(t-(ld(1)+1))/1,if(lt(t,ld(1)+8),1,if(lt(t,ld(1)+9),(1-(t-(ld(1)+8)))/1,0))))', $1),
+        ('Scrolling Text', 'We have a very important announcement to make.', 'ifnot(ld(1),st(1,t));if(lt(t,ld(1)+1),w+4,w-w/12*mod(t-ld(1),12*(w+tw)/w))', '(h-line_h)*0.9', '24', '4', '#ffffff', '1', '#000000@0x80', '4', '1.0', $1);";
+
+    sqlx::query(query).bind(channel_id).execute(conn).await
 }
 
 pub async fn delete_preset(

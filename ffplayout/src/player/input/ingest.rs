@@ -47,6 +47,7 @@ fn server_monitor(
             .iter()
             .any(|i| line.contains(*i))
         {
+            channel_mgr.channel.lock().unwrap().active = false;
             channel_mgr.stop_all();
         }
     }
@@ -91,6 +92,7 @@ pub fn ingest_server(
 
     if let Some(url) = stream_input.iter().find(|s| s.contains("://")) {
         if !test_tcp_port(id, url) {
+            channel_mgr.channel.lock().unwrap().active = false;
             channel_mgr.stop_all();
         }
 

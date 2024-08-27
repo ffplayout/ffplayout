@@ -66,6 +66,7 @@ fn ingest_to_hls_server(manager: ChannelManager) -> Result<(), ProcessError> {
 
     if let Some(url) = stream_input.iter().find(|s| s.contains("://")) {
         if !test_tcp_port(id, url) {
+            manager.channel.lock().unwrap().active = false;
             manager.stop_all();
         }
 

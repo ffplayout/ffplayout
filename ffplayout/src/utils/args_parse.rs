@@ -104,8 +104,8 @@ pub struct Args {
     )]
     pub generate: Option<Vec<String>>,
 
-    #[clap(long, help = "Optional folder path list for playlist generations", num_args = 1..)]
-    pub gen_paths: Option<Vec<PathBuf>>,
+    #[clap(long, help = "Optional path list for playlist generations", num_args = 1..)]
+    pub paths: Option<Vec<PathBuf>>,
 
     #[clap(long, env, help = "Keep log file for given days")]
     pub log_backup_count: Option<usize>,
@@ -206,7 +206,7 @@ fn global_user(args: &mut Args) {
 pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
     let mut args = ARGS.clone();
 
-    if args.dump_advanced.is_none() && args.dump_config.is_none() {
+    if args.dump_advanced.is_none() && args.dump_config.is_none() && !args.drop_db {
         if let Err(e) = handles::db_migrate(pool).await {
             panic!("{e}");
         };

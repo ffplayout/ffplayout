@@ -63,6 +63,7 @@ pub async fn create_channel(
 ) -> Result<Channel, ServiceError> {
     let global = handles::select_global(conn).await?;
     let mut channel = handles::insert_channel(conn, target_channel).await?;
+    handles::new_channel_presets(conn, channel.id).await?;
 
     channel.preview_url = preview_url(&channel.preview_url, channel.id);
 

@@ -49,8 +49,7 @@ CREATE TABLE
         boxborderw TEXT NOT NULL,
         alpha TEXT NOT NULL,
         channel_id INTEGER NOT NULL DEFAULT 1,
-        FOREIGN KEY (channel_id) REFERENCES channels (id) ON UPDATE CASCADE ON DELETE CASCADE,
-        UNIQUE (name)
+        FOREIGN KEY (channel_id) REFERENCES channels (id) ON UPDATE CASCADE ON DELETE CASCADE
     );
 
 CREATE TABLE
