@@ -15,21 +15,21 @@
                     <div class="join">
                         <button
                             class="btn btn-sm join-item btn-primary"
-                            :title="$t('message.savePreset')"
+                            :title="t('message.savePreset')"
                             @click="savePreset()"
                         >
                             <i class="bi-cloud-upload" />
                         </button>
                         <button
                             class="btn btn-sm join-item btn-primary"
-                            :title="$t('message.newPreset')"
+                            :title="t('message.newPreset')"
                             @click="showCreateModal = true"
                         >
                             <i class="bi-file-plus" />
                         </button>
                         <button
                             class="btn btn-sm join-item btn-primary"
-                            :title="$t('message.delPreset')"
+                            :title="t('message.delPreset')"
                             @click="showDeleteModal = true"
                         >
                             <i class="bi-file-minus" />
@@ -42,7 +42,7 @@
                         v-model="form.text"
                         class="textarea textarea-bordered w-full"
                         rows="4"
-                        :placeholder="$t('message.placeholder')"
+                        :placeholder="t('message.placeholder')"
                     />
 
                     <div class="mt-2 grid xs:grid-cols-[auto_150px_150px] gap-4">
@@ -50,7 +50,7 @@
                             <div class="form-control">
                                 <label class="cursor-pointer p-0">
                                     <div class="label">
-                                        <span class="label-text">{{ $t('message.xAxis') }}</span>
+                                        <span class="label-text">{{ t('message.xAxis') }}</span>
                                     </div>
                                     <input
                                         v-model="form.x"
@@ -65,7 +65,7 @@
                             <div class="form-control">
                                 <label class="cursor-pointer p-0">
                                     <div class="label">
-                                        <span class="label-text">{{ $t('message.yAxis') }}</span>
+                                        <span class="label-text">{{ t('message.yAxis') }}</span>
                                     </div>
                                     <input
                                         v-model="form.y"
@@ -81,7 +81,7 @@
                         <div class="xs:mt-10">
                             <div class="form-control">
                                 <label class="label cursor-pointer p-0">
-                                    <span class="label-text">{{ $t('message.showBox') }}</span>
+                                    <span class="label-text">{{ t('message.showBox') }}</span>
                                     <input
                                         v-model="form.showBox"
                                         type="checkbox"
@@ -92,7 +92,7 @@
 
                             <label class="mt-2 form-control w-full">
                                 <div class="label">
-                                    <span class="label-text">{{ $t('message.boxColor') }}</span>
+                                    <span class="label-text">{{ t('message.boxColor') }}</span>
                                 </div>
                                 <input
                                     v-model="form.boxColor"
@@ -104,7 +104,7 @@
                         </div>
                         <label class="form-control w-full xs:mt-[68px]">
                             <div class="label">
-                                <span class="label-text">{{ $t('message.boxAlpha') }}</span>
+                                <span class="label-text">{{ t('message.boxAlpha') }}</span>
                             </div>
                             <input
                                 v-model="form.boxAlpha"
@@ -121,7 +121,7 @@
                         <div>
                             <label class="form-control w-full">
                                 <div class="label">
-                                    <span class="label-text">{{ $t('message.size') }}</span>
+                                    <span class="label-text">{{ t('message.size') }}</span>
                                 </div>
                                 <input
                                     v-model="form.fontSize"
@@ -133,7 +133,7 @@
 
                             <label class="form-control w-full mt-2">
                                 <div class="label">
-                                    <span class="label-text">{{ $t('message.fontColor') }}</span>
+                                    <span class="label-text">{{ t('message.fontColor') }}</span>
                                 </div>
                                 <input
                                     v-model="form.fontColor"
@@ -146,7 +146,7 @@
                         <div>
                             <label class="form-control w-full">
                                 <div class="label">
-                                    <span class="label-text">{{ $t('message.spacing') }}</span>
+                                    <span class="label-text">{{ t('message.spacing') }}</span>
                                 </div>
                                 <input
                                     v-model="form.fontSpacing"
@@ -157,7 +157,7 @@
                             </label>
                             <label class="form-control w-full mt-2">
                                 <div class="label">
-                                    <span class="label-text">{{ $t('message.fontAlpha') }}</span>
+                                    <span class="label-text">{{ t('message.fontAlpha') }}</span>
                                 </div>
                                 <input
                                     v-model="form.fontAlpha"
@@ -174,7 +174,7 @@
                         <div class="grow">
                             <label class="form-control w-full">
                                 <div class="label">
-                                    <span class="label-text">{{ $t('message.overallAlpha') }}</span>
+                                    <span class="label-text">{{ t('message.overallAlpha') }}</span>
                                 </div>
                                 <input
                                     v-model="form.overallAlpha"
@@ -185,7 +185,7 @@
                             </label>
                             <label class="form-control w-full xs:max-w-[150px] mt-2">
                                 <div class="label">
-                                    <span class="label-text">{{ $t('message.borderWidth') }}</span>
+                                    <span class="label-text">{{ t('message.borderWidth') }}</span>
                                 </div>
                                 <input
                                     v-model="form.border"
@@ -198,16 +198,16 @@
                     </div>
 
                     <div class="mt-5">
-                        <button class="btn btn-primary send-btn" type="submit">{{ $t('message.send') }}</button>
+                        <button class="btn btn-primary send-btn" type="submit">{{ t('message.send') }}</button>
                     </div>
                 </form>
             </div>
         </div>
 
-        <GenericModal :show="showCreateModal" :title="$t('message.newPreset')" :modal-action="createNewPreset">
+        <GenericModal :show="showCreateModal" :title="t('message.newPreset')" :modal-action="createNewPreset">
             <label class="form-control w-full">
                 <div class="label">
-                    <span class="label-text">{{ $t('message.name') }}</span>
+                    <span class="label-text">{{ t('message.name') }}</span>
                 </div>
                 <input v-model="newPresetName" type="text" class="input input-bordered w-full" />
             </label>
@@ -215,8 +215,8 @@
 
         <GenericModal
             :show="showDeleteModal"
-            :title="$t('message.delPreset')"
-            :text="`${$t('message.delText')}: <strong> ${selected}</strong>?`"
+            :title="t('message.delPreset')"
+            :text="`${t('message.delText')}: <strong> ${selected}</strong>?`"
             :modal-action="deletePreset"
         />
     </div>
@@ -227,6 +227,7 @@ const { t } = useI18n()
 const authStore = useAuth()
 const configStore = useConfig()
 const indexStore = useIndex()
+const { id } = storeToRefs(useConfig())
 const { numberToHex, hexToNumber } = stringFormatter()
 
 useHead({
@@ -263,6 +264,12 @@ const presets = ref([] as PresetName[])
 
 onMounted(() => {
     getPreset(-1)
+})
+
+watch([id], () => {
+    nextTick(() => {
+        getPreset(-1)
+    })
 })
 
 async function getPreset(index: number) {
@@ -350,7 +357,7 @@ async function savePreset() {
             channel_id: configStore.channels[configStore.id].id,
         }
 
-        const response = await fetch(`/api/presets/${form.value.id}`, {
+        const response = await fetch(`/api/presets/${configStore.channels[configStore.id].id}/${form.value.id}`, {
             method: 'PUT',
             headers: { ...configStore.contentType, ...authStore.authHeader },
             body: JSON.stringify(preset),
@@ -389,7 +396,7 @@ async function createNewPreset(create: boolean) {
             channel_id: configStore.channels[configStore.id].id,
         }
 
-        const response = await fetch('/api/presets/', {
+        const response = await fetch(`/api/presets/${configStore.channels[configStore.id].id}/`, {
             method: 'POST',
             headers: { ...configStore.contentType, ...authStore.authHeader },
             body: JSON.stringify(preset),
@@ -410,7 +417,7 @@ async function deletePreset(del: boolean) {
     showDeleteModal.value = false
 
     if (del && selected.value && selected.value !== '') {
-        await fetch(`/api/presets/${form.value.id}`, {
+        await fetch(`/api/presets/${configStore.channels[configStore.id].id}/${form.value.id}`, {
             method: 'DELETE',
             headers: authStore.authHeader,
         })

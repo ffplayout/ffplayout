@@ -19,10 +19,10 @@
             <div v-if="!hideButtons" class="flex justify-end mt-3">
                 <div class="join">
                     <button class="btn btn-sm bg-base-300 hover:bg-base-300/50 join-item" @click="modalAction(false)">
-                        {{ $t('cancel') }}
+                        {{ t('cancel') }}
                     </button>
                     <button class="btn btn-sm bg-base-300 hover:bg-base-300/50 join-item" @click="modalAction(true)">
-                        {{ $t('ok') }}
+                        {{ t('ok') }}
                     </button>
                 </div>
             </div>
@@ -30,6 +30,8 @@
     </div>
 </template>
 <script setup lang="ts">
+const { t } = useI18n()
+
 defineProps({
     title: {
         type: String,

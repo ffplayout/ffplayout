@@ -6,7 +6,7 @@
                 :class="activeConf === 1 && 'btn-secondary'"
                 @click="activeConf = 1"
             >
-                {{ $t('config.channel') }}
+                {{ t('config.channel') }}
             </button>
             <button
             v-if="authStore.role === 'GlobalAdmin'"
@@ -28,7 +28,7 @@
                 :class="activeConf === 4 && 'btn-secondary'"
                 @click="activeConf = 4"
             >
-                {{ $t('config.user') }}
+                {{ t('config.user') }}
             </button>
         </div>
         <div class="w-[calc(100%-70px)] mt-10 px-6">

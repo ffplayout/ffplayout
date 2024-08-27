@@ -7,26 +7,26 @@
             <SystemStats v-if="configStore.channels.length > 0" />
             <div class="flex flex-wrap justify-center gap-1 md:gap-0 md:join mt-5">
                 <NuxtLink :to="localePath({ name: 'player' })" class="btn join-item btn-primary px-2">
-                    {{ $t('button.player') }}
+                    {{ t('button.player') }}
                 </NuxtLink>
                 <NuxtLink :to="localePath({ name: 'media' })" class="btn join-item btn-primary px-2">
-                    {{ $t('button.media') }}
+                    {{ t('button.media') }}
                 </NuxtLink>
                 <NuxtLink :to="localePath({ name: 'message' })" class="btn join-item btn-primary px-2">
-                    {{ $t('button.message') }}
+                    {{ t('button.message') }}
                 </NuxtLink>
                 <NuxtLink :to="localePath({ name: 'logging' })" class="btn join-item btn-primary px-2">
-                    {{ $t('button.logging') }}
+                    {{ t('button.logging') }}
                 </NuxtLink>
                 <NuxtLink
                     v-if="authStore.role.toLowerCase().includes('admin')"
                     :to="localePath({ name: 'configure' })"
                     class="btn join-item btn-primary px-2"
                 >
-                    {{ $t('button.configure') }}
+                    {{ t('button.configure') }}
                 </NuxtLink>
                 <button class="btn join-item btn-primary px-2" @click="logout()">
-                    {{ $t('button.logout') }}
+                    {{ t('button.logout') }}
                 </button>
                 <select
                     v-model="selectedLang"
@@ -55,7 +55,7 @@
                     v-model="formUsername"
                     type="text"
                     name="username"
-                    :placeholder="$t('input.username')"
+                    :placeholder="t('input.username')"
                     class="input input-bordered w-full"
                     required
                 />
@@ -64,7 +64,7 @@
                     v-model="formPassword"
                     type="password"
                     name="passwort"
-                    :placeholder="$t('input.password')"
+                    :placeholder="t('input.password')"
                     class="input input-bordered w-full mt-5"
                     required
                 />
@@ -72,7 +72,7 @@
                 <div class="w-full mt-4 grid grid-flow-row-dense grid-cols-12 grid-rows-1 gap-2">
                     <div class="col-span-3">
                         <button type="submit" class="btn btn-primary">
-                            {{ $t('button.login') }}
+                            {{ t('button.login') }}
                         </button>
                     </div>
                     <div class="col-span-12 sm:col-span-9">

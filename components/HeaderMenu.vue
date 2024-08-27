@@ -40,7 +40,7 @@
                     </li>
                     <li class="bg-base-100 rounded-md">
                         <button class="h-[27px] text-base" exactActiveClass="is-active" @click="logout()">
-                            {{ $t('button.logout') }}
+                            {{ t('button.logout') }}
                         </button>
                     </li>
                 </ul>
@@ -77,7 +77,7 @@
                 </li>
                 <li class="bg-base-100 rounded-md p-0">
                     <button class="h-[27px] pt-[4px] text-base" @click="logout()">
-                        {{ $t('button.logout') }}
+                        {{ t('button.logout') }}
                     </button>
                 </li>
                 <li class="p-0">

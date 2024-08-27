@@ -7,7 +7,7 @@
                     <div
                         v-if="firstLoad && beforeDayStart"
                         class="tooltip tooltip-right tooltip-warning"
-                        :data-tip="$t('player.dateYesterday')"
+                        :data-tip="t('player.dateYesterday')"
                     >
                         <SvgIcon name="warning" />
                     </div>
@@ -53,55 +53,55 @@
         </div>
 
         <div v-if="configStore.playout.processing.mode === 'playlist'" class="h-16 join flex justify-end p-3">
-            <button class="btn btn-sm btn-primary join-item" :title="$t('player.copy')" @click="showCopyModal = true">
+            <button class="btn btn-sm btn-primary join-item" :title="t('player.copy')" @click="showCopyModal = true">
                 <i class="bi-files" />
             </button>
             <button
                 v-if="!configStore.playout.playlist.loop"
                 class="btn btn-sm btn-primary join-item"
-                :title="$t('player.loop')"
+                :title="t('player.loop')"
                 @click="loopClips()"
             >
                 <i class="bi-view-stacked" />
             </button>
             <button
                 class="btn btn-sm btn-primary join-item"
-                :title="$t('player.remote')"
+                :title="t('player.remote')"
                 @click="showSourceModal = true"
             >
                 <i class="bi-file-earmark-plus" />
             </button>
             <button
                 class="btn btn-sm btn-primary join-item"
-                :title="$t('player.import')"
+                :title="t('player.import')"
                 @click="showImportModal = true"
             >
                 <i class="bi-file-text" />
             </button>
             <button
                 class="btn btn-sm btn-primary join-item"
-                :title="$t('player.generate')"
+                :title="t('player.generate')"
                 @click="mediaStore.getTree('', true), (showPlaylistGenerator = true)"
             >
                 <i class="bi-sort-down-alt" />
             </button>
             <button
                 class="btn btn-sm btn-primary join-item"
-                :title="$t('player.reset')"
+                :title="t('player.reset')"
                 @click=";(playlistStore.playlist.length = 0), playlistTable.getPlaylist()"
             >
                 <i class="bi-arrow-counterclockwise" />
             </button>
             <button
                 class="btn btn-sm btn-primary join-item"
-                :title="$t('player.save')"
+                :title="t('player.save')"
                 @click=";(targetDate = listDate), savePlaylist(true)"
             >
                 <i class="bi-download" />
             </button>
             <button
                 class="btn btn-sm btn-primary join-item"
-                :title="$t('player.deletePlaylist')"
+                :title="t('player.deletePlaylist')"
                 @click="showDeleteModal = true"
             >
                 <i class="bi-trash" />
@@ -110,7 +110,7 @@
 
         <GenericModal
             :show="showPreviewModal"
-            :title="`${$t('media.preview')}: ${previewName}`"
+            :title="`${t('media.preview')}: ${previewName}`"
             :hide-buttons="true"
             :modal-action="closePlayer"
         >
@@ -120,7 +120,7 @@
             </div>
         </GenericModal>
 
-        <GenericModal :show="showCopyModal" :title="$t('player.copyTo')" :modal-action="savePlaylist">
+        <GenericModal :show="showCopyModal" :title="t('player.copyTo')" :modal-action="savePlaylist">
             <VueDatePicker
                 v-model="targetDate"
                 :clearable="false"
@@ -136,60 +136,60 @@
             />
         </GenericModal>
 
-        <GenericModal :show="showSourceModal" :title="$t('player.addEdit')" :modal-action="processSource">
+        <GenericModal :show="showSourceModal" :title="t('player.addEdit')" :modal-action="processSource">
             <div>
                 <label class="form-control w-auto mt-auto">
                     <div class="label">
-                        <span class="label-text">{{ $t('player.title') }}</span>
+                        <span class="label-text">{{ t('player.title') }}</span>
                     </div>
                     <input v-model.number="newSource.title" type="text" class="input input-sm input-bordered w-auto" />
                 </label>
 
                 <label class="form-control w-auto mt-auto">
                     <div class="label">
-                        <span class="label-text">{{ $t('player.duration') }}</span>
+                        <span class="label-text">{{ t('player.duration') }}</span>
                     </div>
                     <TimePicker v-model="newSource.duration" />
                 </label>
 
                 <label class="form-control w-auto mt-auto">
                     <div class="label">
-                        <span class="label-text">{{ $t('player.in') }}</span>
+                        <span class="label-text">{{ t('player.in') }}</span>
                     </div>
                     <TimePicker v-model="newSource.in" />
                 </label>
 
                 <label class="form-control w-auto mt-auto">
                     <div class="label">
-                        <span class="label-text">{{ $t('player.out') }}</span>
+                        <span class="label-text">{{ t('player.out') }}</span>
                     </div>
                     <TimePicker v-model="newSource.out" />
                 </label>
 
                 <label class="form-control w-auto mt-auto">
                     <div class="label">
-                        <span class="label-text">{{ $t('player.file') }}</span>
+                        <span class="label-text">{{ t('player.file') }}</span>
                     </div>
                     <input v-model="newSource.source" type="text" class="input input-sm input-bordered w-auto" />
                 </label>
 
                 <label class="form-control w-auto mt-auto">
                     <div class="label">
-                        <span class="label-text">{{ $t('player.audio') }}</span>
+                        <span class="label-text">{{ t('player.audio') }}</span>
                     </div>
                     <input v-model="newSource.audio" type="text" class="input input-sm input-bordered w-auto" />
                 </label>
 
                 <label class="form-control w-auto mt-auto">
                     <div class="label">
-                        <span class="label-text">{{ $t('player.customFilter') }}</span>
+                        <span class="label-text">{{ t('player.customFilter') }}</span>
                     </div>
                     <input v-model="newSource.custom_filter" type="text" class="input input-sm input-bordered w-auto" />
                 </label>
 
                 <div class="form-control">
                     <label class="cursor-pointer label">
-                        <span class="label-text">{{ $t('player.ad') }}</span>
+                        <span class="label-text">{{ t('player.ad') }}</span>
                         <input
                             type="checkbox"
                             class="checkbox checkbox-sm"
@@ -201,7 +201,7 @@
             </div>
         </GenericModal>
 
-        <GenericModal :show="showImportModal" :title="$t('player.import')" :modal-action="importPlaylist">
+        <GenericModal :show="showImportModal" :title="t('player.import')" :modal-action="importPlaylist">
             <input
                 type="file"
                 class="file-input file-input-sm file-input-bordered w-full"
@@ -212,7 +212,7 @@
 
         <GenericModal :show="showDeleteModal" title="Delete Program" :modal-action="deletePlaylist">
             <span>
-                {{ $t('player.deleteFrom') }} <strong>{{ listDate }}</strong>
+                {{ t('player.deleteFrom') }} <strong>{{ listDate }}</strong>
             </span>
         </GenericModal>
 

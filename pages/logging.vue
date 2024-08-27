@@ -25,7 +25,7 @@
                     :ui="{ input: 'join-item input !input-sm !input-bordered !w-[300px] text-right !pe-3' }"
                     required
                 />
-                <button class="btn btn-sm btn-primary join-item" :title="$t('log.download')" @click="downloadLog">
+                <button class="btn btn-sm btn-primary join-item" :title="t('log.download')" @click="downloadLog">
                     <i class="bi-download" />
                 </button>
             </div>

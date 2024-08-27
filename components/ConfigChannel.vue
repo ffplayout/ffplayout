@@ -1,15 +1,15 @@
 <template>
     <div v-if="configStore.channels && configStore.channels[configStore.id]" class="w-full max-w-[800px]">
-        <h2 class="pt-3 text-3xl">{{ $t('config.channelConf') }} ({{ configStore.channels[configStore.id].id }})</h2>
+        <h2 class="pt-3 text-3xl">{{ t('config.channelConf') }} ({{ configStore.channels[configStore.id].id }})</h2>
         <div class="w-full flex justify-end my-4">
             <button v-if="authStore.role === 'GlobalAdmin'" class="btn btn-sm btn-primary" @click="addChannel()">
-                {{ $t('config.addChannel') }}
+                {{ t('config.addChannel') }}
             </button>
         </div>
         <form class="w-full" @submit.prevent="onSubmitChannel">
             <label class="form-control w-full">
                 <div class="label">
-                    <span class="label-text">{{ $t('config.name') }}</span>
+                    <span class="label-text">{{ t('config.name') }}</span>
                 </div>
                 <input
                     v-model="configStore.channels[configStore.id].name"
@@ -21,7 +21,7 @@
 
             <label class="form-control w-full mt-5">
                 <div class="label">
-                    <span class="label-text">{{ $t('config.previewUrl') }}</span>
+                    <span class="label-text">{{ t('config.previewUrl') }}</span>
                 </div>
                 <input
                     v-model="configStore.channels[configStore.id].preview_url"
@@ -32,7 +32,7 @@
 
             <label class="form-control w-full mt-5">
                 <div class="label">
-                    <span class="label-text">{{ $t('config.extensions') }}</span>
+                    <span class="label-text">{{ t('config.extensions') }}</span>
                 </div>
                 <input
                     v-model="configStore.channels[configStore.id].extra_extensions"
@@ -45,12 +45,12 @@
                 <div class="mt-7 font-bold h-3">
                     <p v-if="configStore.playout.storage.shared_storage">
                         <SvgIcon name="warning" classes="inline mr-2" />
-                        <span>{{ $t('config.sharedStorage') }}</span>
+                        <span>{{ t('config.sharedStorage') }}</span>
                     </p>
                 </div>
                 <label class="form-control w-full mt-3">
                     <div class="label">
-                        <span class="label-text">{{ $t('config.hlsPath') }}</span>
+                        <span class="label-text">{{ t('config.hlsPath') }}</span>
                     </div>
                     <input
                         v-model="configStore.channels[configStore.id].hls_path"
@@ -61,7 +61,7 @@
 
                 <label class="form-control w-full mt-5">
                     <div class="label">
-                        <span class="label-text">{{ $t('config.playlistPath') }}</span>
+                        <span class="label-text">{{ t('config.playlistPath') }}</span>
                     </div>
                     <input
                         v-model="configStore.channels[configStore.id].playlist_path"
@@ -72,7 +72,7 @@
 
                 <label class="form-control w-full mt-5">
                     <div class="label">
-                        <span class="label-text">{{ $t('config.storagePath') }}</span>
+                        <span class="label-text">{{ t('config.storagePath') }}</span>
                     </div>
                     <input
                         v-model="configStore.channels[configStore.id].storage_path"
@@ -83,7 +83,7 @@
             </template>
 
             <div class="join my-4">
-                <button class="join-item btn btn-primary" type="submit">{{ $t('config.save') }}</button>
+                <button class="join-item btn btn-primary" type="submit">{{ t('config.save') }}</button>
                 <button
                     v-if="
                         authStore.role === 'GlobalAdmin' &&
@@ -93,7 +93,7 @@
                     class="join-item btn btn-primary"
                     @click="deleteChannel()"
                 >
-                    {{ $t('config.delete') }}
+                    {{ t('config.delete') }}
                 </button>
             </div>
         </form>
@@ -134,7 +134,9 @@ async function onSubmitChannel() {
     */
     const update = await configStore.setChannelConfig(configStore.channels[configStore.id])
 
-    if (update.status) {
+    console.log(update)
+
+    if (update.status && update.status < 400) {
         indexStore.msgAlert('success', t('config.updateChannelSuccess'), 2)
     } else {
         indexStore.msgAlert('error', t('config.updateChannelFailed'), 2)

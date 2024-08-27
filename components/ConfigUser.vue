@@ -1,6 +1,6 @@
 <template>
     <div class="w-full max-w-[800px] pe-8">
-        <h2 class="pt-3 text-3xl">{{ $t('user.title') }}</h2>
+        <h2 class="pt-3 text-3xl">{{ t('user.title') }}</h2>
         <div v-if="authStore.role === 'GlobalAdmin'" class="flex flex-col xs:flex-row gap-2 w-full mb-5 mt-10">
             <div class="grow">
                 <select v-model="selected" class="select select-bordered w-full max-w-xs" @change="onChange($event)">
@@ -9,17 +9,17 @@
             </div>
             <div class="flex-none join">
                 <button class="join-item btn btn-primary" title="Add new User" @click="showUserModal = true">
-                    {{ $t('user.add') }}
+                    {{ t('user.add') }}
                 </button>
                 <button class="join-item btn btn-primary" title="Delete selected user" @click="deleteUser()">
-                    {{ $t('user.delete') }}
+                    {{ t('user.delete') }}
                 </button>
             </div>
         </div>
         <form v-if="configStore.configUser" class="mt-5" @submit.prevent="onSubmitUser">
             <label class="form-control w-full max-w-md">
                 <div class="label">
-                    <span class="label-text">{{ $t('user.name') }}</span>
+                    <span class="label-text">{{ t('user.name') }}</span>
                 </div>
                 <input
                     v-model="configStore.configUser.username"
@@ -31,21 +31,21 @@
 
             <label class="form-control w-full max-w-md mt-3">
                 <div class="label">
-                    <span class="label-text">{{ $t('user.mail') }}</span>
+                    <span class="label-text">{{ t('user.mail') }}</span>
                 </div>
                 <input v-model="configStore.configUser.mail" type="email" class="input input-bordered w-full" />
             </label>
 
             <label class="form-control w-full max-w-md mt-3">
                 <div class="label">
-                    <span class="label-text">{{ $t('user.newPass') }}</span>
+                    <span class="label-text">{{ t('user.newPass') }}</span>
                 </div>
                 <input v-model="newPass" type="password" class="input input-bordered w-full" />
             </label>
 
             <label class="form-control w-full max-w-md mt-3">
                 <div class="label">
-                    <span class="label-text">{{ $t('user.confirmPass') }}</span>
+                    <span class="label-text">{{ t('user.confirmPass') }}</span>
                 </div>
                 <input v-model="confirmPass" type="password" class="input input-bordered w-full" />
             </label>
@@ -65,7 +65,7 @@
             </div>
 
             <div>
-                <button class="btn btn-primary mt-5" type="submit">{{ $t('user.save') }}</button>
+                <button class="btn btn-primary mt-5" type="submit">{{ t('user.save') }}</button>
             </div>
         </form>
     </div>
@@ -74,28 +74,28 @@
         <div class="w-full max-w-[500px] h-[490px]">
             <label class="form-control w-full">
                 <div class="label">
-                    <span class="label-text">{{ $t('user.name') }}</span>
+                    <span class="label-text">{{ t('user.name') }}</span>
                 </div>
                 <input v-model="user.username" name="username" type="text" class="input input-bordered w-full" />
             </label>
 
             <label class="form-control w-full mt-3">
                 <div class="label">
-                    <span class="label-text">{{ $t('user.mail') }}</span>
+                    <span class="label-text">{{ t('user.mail') }}</span>
                 </div>
                 <input v-model="user.mail" name="mail" type="email" class="input input-bordered w-full" />
             </label>
 
             <label class="form-control w-full mt-3">
                 <div class="label">
-                    <span class="label-text">{{ $t('user.password') }}</span>
+                    <span class="label-text">{{ t('user.password') }}</span>
                 </div>
                 <input v-model="user.password" type="password" class="input input-bordered w-full" />
             </label>
 
             <label class="form-control w-full mt-3">
                 <div class="label">
-                    <span class="label-text">{{ $t('user.confirmPass') }}</span>
+                    <span class="label-text">{{ t('user.confirmPass') }}</span>
                 </div>
                 <input v-model="user.confirm" type="password" class="input input-bordered w-full" />
             </label>
@@ -115,7 +115,7 @@
 
             <div class="form-control mt-3">
                 <label class="label cursor-pointer w-1/2">
-                    <span class="label-text">{{ $t('user.admin') }}</span>
+                    <span class="label-text">{{ t('user.admin') }}</span>
                     <input v-model.number="user.admin" type="checkbox" class="checkbox" />
                 </label>
             </div>

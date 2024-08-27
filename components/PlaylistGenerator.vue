@@ -5,7 +5,7 @@
         <div
             class="relative flex flex-col bg-base-100 w-[800px] min-w-[300px] max-w-[90vw] h-[680px] rounded-md p-5 shadow-xl"
         >
-            <div class="font-bold text-lg">{{ $t('player.generateProgram') }}</div>
+            <div class="font-bold text-lg">{{ t('player.generateProgram') }}</div>
 
             <div class="h-[calc(100%-95px)] mt-3">
                 <div role="tablist" class="tabs tabs-bordered">
@@ -14,7 +14,7 @@
                         name="my_tabs_2"
                         role="tab"
                         class="tab"
-                        :aria-label="$t('player.simple')"
+                        :aria-label="t('player.simple')"
                         checked
                         @change="advancedGenerator = false"
                     />
@@ -91,7 +91,7 @@
                         name="my_tabs_2"
                         role="tab"
                         class="tab"
-                        :aria-label="$t('player.advanced')"
+                        :aria-label="t('player.advanced')"
                         @change=";(advancedGenerator = true), resetCheckboxes()"
                     />
                     <div role="tabpanel" class="tab-content pt-3">
@@ -118,7 +118,7 @@
                                     <button
                                         type="button"
                                         class="btn btn-sm btn-primary"
-                                        :title="$t('player.addBlock')"
+                                        :title="t('player.addBlock')"
                                         @click="addTemplate()"
                                     >
                                         <i class="bi bi-folder-plus" />
@@ -174,7 +174,7 @@
                                             <div
                                                 class="input input-sm input-bordered join-item px-2 text-center bg-base-200 leading-7"
                                             >
-                                                {{ $t('player.start') }}:
+                                                {{ t('player.start') }}:
                                             </div>
                                             <input
                                                 v-model="item.start"
@@ -184,7 +184,7 @@
                                             <div
                                                 class="input input-sm input-bordered join-item px-2 text-center bg-base-200 leading-7"
                                             >
-                                            {{ $t('player.duration') }}:
+                                            {{ t('player.duration') }}:
                                             </div>
                                             <input
                                                 v-model="item.duration"
@@ -196,7 +196,7 @@
                                                 :class="item.shuffle ? 'bg-base-100' : 'bg-base-300'"
                                                 @click="item.shuffle = !item.shuffle"
                                             >
-                                                {{ item.shuffle ? $t('player.shuffle') : $t('player.sorted') }}
+                                                {{ item.shuffle ? t('player.shuffle') : t('player.sorted') }}
                                             </button>
                                         </div>
 
@@ -241,7 +241,7 @@
             <div class="flex h-14 pt-6 justify-end items-center">
                 <div v-if="!advancedGenerator" class="form-control">
                     <label class="label cursor-pointer w-12">
-                        <span class="label-text">{{ $t('player.all') }}</span>
+                        <span class="label-text">{{ t('player.all') }}</span>
                         <input
                             v-model="generateFromAll"
                             type="checkbox"
@@ -256,10 +256,10 @@
                         class="btn btn-sm btn-primary join-item"
                         @click="resetCheckboxes(), resetTemplate(), close()"
                     >
-                        {{ $t('cancel') }}
+                        {{ t('cancel') }}
                     </button>
                     <button type="button" class="btn btn-sm btn-primary join-item" @click="generatePlaylist(), close()">
-                        {{ $t('ok') }}
+                        {{ t('ok') }}
                     </button>
                 </div>
             </div>

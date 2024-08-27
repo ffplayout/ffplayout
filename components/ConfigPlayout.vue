@@ -1,6 +1,6 @@
 <template>
     <div class="max-w-[1200px] pe-8">
-        <h2 class="pt-3 text-3xl">{{ $t('config.playoutConf') }}</h2>
+        <h2 class="pt-3 text-3xl">{{ t('config.playoutConf') }}</h2>
         <form
             v-if="configStore.playout"
             class="mt-10 grid md:grid-cols-[180px_auto] gap-5"
@@ -26,7 +26,7 @@
                                 v-else-if="name.toString() === 'sender_pass'"
                                 v-model="item[name]"
                                 type="password"
-                                :placeholder="$t('config.placeholderPass')"
+                                :placeholder="t('config.placeholderPass')"
                                 class="input input-sm input-bordered w-full"
                             />
                             <textarea
@@ -73,14 +73,14 @@
                 </div>
             </template>
             <div class="mt-5 mb-10">
-                <button class="btn btn-primary" type="submit">{{ $t('config.save') }}</button>
+                <button class="btn btn-primary" type="submit">{{ t('config.save') }}</button>
             </div>
         </form>
     </div>
 
     <GenericModal
-        :title="$t('config.restartTile')"
-        :text="$t('config.restartText')"
+        :title="t('config.restartTile')"
+        :text="t('config.restartText')"
         :show="showModal"
         :modal-action="restart"
     />

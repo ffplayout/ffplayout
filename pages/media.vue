@@ -212,14 +212,14 @@
                 <div class="join">
                     <button
                         class="btn btn-sm btn-primary join-item"
-                        :title="$t('media.create')"
+                        :title="t('media.create')"
                         @click="showCreateModal = true"
                     >
                         <i class="bi-folder-plus" />
                     </button>
                     <button
                         class="btn btn-sm btn-primary join-item"
-                        :title="$t('media.upload')"
+                        :title="t('media.upload')"
                         @click="showUploadModal = true"
                     >
                         <i class="bi-upload" />
@@ -230,14 +230,14 @@
 
         <GenericModal
             :show="showDeleteModal"
-            :title="$t('media.deleteTitle')"
-            :text="`${$t('media.deleteQuestion')}:<br /><strong>${deleteName}</strong>`"
+            :title="t('media.deleteTitle')"
+            :text="`${t('media.deleteQuestion')}:<br /><strong>${deleteName}</strong>`"
             :modal-action="deleteFileOrFolder"
         />
 
         <GenericModal
             :show="showPreviewModal"
-            :title="`${$t('media.preview')}: ${previewName}`"
+            :title="`${t('media.preview')}: ${previewName}`"
             :modal-action="closePlayer"
             :hide-buttons="true"
         >
@@ -247,25 +247,25 @@
             </div>
         </GenericModal>
 
-        <GenericModal :show="showRenameModal" :title="$t('media.rename')" :modal-action="renameFile">
+        <GenericModal :show="showRenameModal" :title="t('media.rename')" :modal-action="renameFile">
             <label class="form-control w-full max-w-md">
                 <div class="label">
-                    <span class="label-text">{{ $t('media.newFile') }}</span>
+                    <span class="label-text">{{ t('media.newFile') }}</span>
                 </div>
                 <input v-model="renameNewName" type="text" class="input input-bordered w-full" />
             </label>
         </GenericModal>
 
-        <GenericModal :show="showCreateModal" :title="$t('media.createFolder')" :modal-action="createFolder">
+        <GenericModal :show="showCreateModal" :title="t('media.createFolder')" :modal-action="createFolder">
             <label class="form-control w-full max-w-md">
                 <div class="label">
-                    <span class="label-text">{{ $t('media.foldername') }}</span>
+                    <span class="label-text">{{ t('media.foldername') }}</span>
                 </div>
                 <input v-model="folderName.name" type="text" class="input input-bordered w-full" />
             </label>
         </GenericModal>
 
-        <GenericModal :show="showUploadModal" :title="$t('media.upload')" :modal-action="uploadFiles">
+        <GenericModal :show="showUploadModal" :title="t('media.upload')" :modal-action="uploadFiles">
             <div class="w-[700px] max-w-full">
                 <input
                     ref="fileInputName"
@@ -278,7 +278,7 @@
 
                 <label class="form-control w-full mt-3">
                     <div class="label">
-                        <span class="label-text">{{ $t('media.current') }}:</span>
+                        <span class="label-text">{{ t('media.current') }}:</span>
                     </div>
                     <progress class="progress progress-accent" :value="currentProgress" max="100" />
                 </label>
@@ -286,14 +286,14 @@
                 <label class="form-control w-full mt-1">
                     <div class="label">
                         <span class="label-text"
-                            >{{ $t('media.overall') }} ({{ currentNumber }}/{{ inputFiles.length }}):</span
+                            >{{ t('media.overall') }} ({{ currentNumber }}/{{ inputFiles.length }}):</span
                         >
                     </div>
                     <progress class="progress progress-accent" :value="overallProgress" max="100" />
                 </label>
                 <label class="form-control w-full mt-1">
                     <div class="label">
-                        <span class="label-text">{{ $t('media.uploading') }}:</span>
+                        <span class="label-text">{{ t('media.uploading') }}:</span>
                     </div>
                     <input v-model="uploadTask" type="text" class="input input-sm input-bordered w-full" disabled />
                 </label>
