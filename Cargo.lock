@@ -1210,7 +1210,7 @@ checksum = "9fc0510504f03c51ada170672ac806f1f105a88aa97a5281117e1ddc3368e51a"
 
 [[package]]
 name = "ffplayout"
-version = "0.24.0-beta2"
+version = "0.24.0-beta3"
 dependencies = [
  "actix-files",
  "actix-multipart",
@@ -3540,7 +3540,7 @@ dependencies = [
 
 [[package]]
 name = "tests"
-version = "0.24.0-beta2"
+version = "0.24.0-beta3"
 dependencies = [
  "actix-rt",
  "actix-test",
