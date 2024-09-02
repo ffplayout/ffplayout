@@ -6,6 +6,10 @@ labels: enhancement
 
 ---
 
+<!--
+Note: use this template only when you have a feature request!
+-->
+
 ### Feature description
 <!--
 A clear and concise description of what the feature should do.
