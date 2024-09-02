@@ -7,11 +7,12 @@ assignees: ''
 
 ---
 
-**Describe the bug**
-
+### Describe the bug
+<!--
 A clear and concise description of what the bug is.
+-->
 
-**To Reproduce**
+### To Reproduce
 
 Steps to reproduce the behavior:
 1. Go to '...'
@@ -19,22 +20,23 @@ Steps to reproduce the behavior:
 3. Scroll down to '....'
 4. See error
 
-**Expected behavior**
-
+### Expected behavior
+<!--
 A clear and concise description of what you expected to happen.
+-->
 
-**Desktop/Server/Software (please complete the following information):**
+### Desktop/Server/Software (please complete the following information):
 
- - OS: [e.g. debian 12]
+- OS: [e.g. debian 12]
 - ffplayout version
 - ffmpeg version
 - are you using the current master of ffplayout?
 
-**Config Settings:**
+### Config Settings:
 
 - command line arguments
 - config fie
 
-**Logging:**
+### Logging:
 
 - content of: ffplayout.log
