@@ -7,6 +7,10 @@ assignees: ''
 
 ---
 
+<!--
+Note: use this template only when you have a bug to report!
+-->
+
 ### Describe the bug
 <!--
 A clear and concise description of what the bug is.
