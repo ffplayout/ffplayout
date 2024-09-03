@@ -32,7 +32,7 @@ pub fn watchman(
     let path = Path::new(&config.channel.storage_path);
 
     if !path.exists() {
-        error!("Folder path not exists: '{path:?}'");
+        error!(target: Target::file_mail(), channel = id; "Folder path not exists: '{path:?}'");
         panic!("Folder path not exists: '{path:?}'");
     }
 
@@ -95,7 +95,7 @@ pub fn watchman(
                     }
                     _ => debug!(target: Target::file_mail(), channel = id; "Not tracked file event: {event:?}")
                 }),
-                Err(errors) => errors.iter().for_each(|error| error!("{error:?}")),
+                Err(errors) => errors.iter().for_each(|error| error!(target: Target::file_mail(), channel = id; "{error:?}")),
             }
         }
 
