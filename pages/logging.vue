@@ -4,10 +4,10 @@
             <div class="join">
                 <select v-model="errorLevel" class="join-item select select-sm select-bordered w-full max-w-xs">
                     <option
-                        v-for="(index, value) in severityLevels"
+                        v-for="(index, value) in indexStore.severityLevels"
                         :key="index"
                         :value="value"
-                        :selected="value === 'INFO' ? true : false"
+                        :selected="value === errorLevel"
                     >
                         {{ value }}
                     </option>
@@ -45,6 +45,8 @@ import { storeToRefs } from 'pinia'
 const colorMode = useColorMode()
 const { locale, t } = useI18n()
 
+const indexStore = useIndex()
+
 useHead({
     title: `${t('button.logging')} | ffplayout`,
 })
@@ -58,13 +60,21 @@ const currentLog = ref('')
 const listDate = ref($dayjs().utcOffset(configStore.utcOffset).format('YYYY-MM-DD'))
 const { formatLog } = stringFormatter()
 
-const errorLevel = ref('INFO')
-const severityLevels: { [key: string]: number } = {
-    DEBUG: 1,
-    INFO: 2,
-    WARN: 3,
-    ERROR: 4,
-}
+const levelCookie = useCookie('error_level', {
+    path: '/',
+    maxAge: 60 * 60 * 24 * 365,
+    sameSite: 'lax',
+})
+
+const errorLevel = computed({
+    get() {
+        return levelCookie.value || 'INFO'
+    },
+
+    set(value) {
+        levelCookie.value = value
+    },
+})
 
 onMounted(async () => {
     await getLog()
@@ -79,7 +89,7 @@ const calendarFormat = (date: Date) => {
 }
 
 function filterLogsBySeverity(logString: string, minSeverity: string): string {
-    const minLevel = severityLevels[minSeverity]
+    const minLevel = indexStore.severityLevels[minSeverity]
     const logLines = logString.trim().split(/\r?\n/)
 
     const filteredLogs = logLines.filter((log) => {
@@ -87,7 +97,7 @@ function filterLogsBySeverity(logString: string, minSeverity: string): string {
 
         if (match) {
             const logLevel = match[1]
-            return severityLevels[logLevel] >= minLevel
+            return indexStore.severityLevels[logLevel] >= minLevel
         }
         return false
     })

@@ -7,6 +7,12 @@ export const useIndex = defineStore('index', {
         alertVariant: 'success',
         alertMsg: '',
         sseConnected: false,
+        severityLevels: {
+            DEBUG: 1,
+            INFO: 2,
+            WARN: 3,
+            ERROR: 4,
+        } as { [key: string]: number }
     }),
 
     getters: {},
