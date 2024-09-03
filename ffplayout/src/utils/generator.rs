@@ -19,7 +19,7 @@ use crate::player::{
     controller::ChannelManager,
     utils::{
         folder::{fill_filler_list, FolderSource},
-        gen_dummy, get_date_range, include_file_extension,
+        get_date_range, include_file_extension,
         json_serializer::JsonPlaylist,
         sum_durations, Media,
     },
@@ -118,15 +118,6 @@ pub fn filler_list(config: &PlayoutConfig, total_length: f64) -> Vec<Media> {
         let last_index = filler_clip_list.len() - 1;
 
         filler_clip_list[last_index].out = filler_clip_list[last_index].duration - over_length;
-    } else {
-        let mut dummy = Media::new(0, "", false);
-        let (source, cmd) = gen_dummy(config, total_length);
-        dummy.source = source;
-        dummy.cmd = Some(cmd);
-        dummy.duration = total_length;
-        dummy.out = total_length;
-
-        filler_clip_list.push(dummy);
     }
 
     filler_clip_list
