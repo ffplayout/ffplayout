@@ -135,7 +135,7 @@ HLS output is currently the default, mostly because it works out of the box and 
 
 The using of **-filter_complex** and *mapping* is very limited, don't use it in situations other then for splitting the outputs.
 
-**Tee Muxer:**
+## Tee Muxer:
 
 The tee pseudo-muxer in FFmpeg is crucial in live streaming scenarios where a single input needs to be encoded once and then broadcast to multiple outputs in different formats or protocols. This feature significantly reduces computational overhead and improves efficiency—in my tests, it achieved a 200% reduction in CPU processing expenditure—by eliminating the need for multiple FFmpeg instances or re-encoding the same input multiple times for different outputs.
 
