@@ -9,8 +9,6 @@ assignees: ''
 
 <!--
 Note: use this template only when you have a bug to report!
-
-Please read also [contribution guideline](https://github.com/ffplayout/ffplayout/blob/master/CONTRIBUTING.md)
 -->
 
 ### Describe the bug
