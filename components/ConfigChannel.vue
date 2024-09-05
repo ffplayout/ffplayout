@@ -2,11 +2,11 @@
     <div v-if="configStore.channels && configStore.channels[configStore.id]" class="w-full max-w-[800px]">
         <h2 class="pt-3 text-3xl">{{ t('config.channelConf') }} ({{ configStore.channels[configStore.id].id }})</h2>
         <div class="w-full flex justify-end my-4">
-            <button v-if="authStore.role === 'GlobalAdmin'" class="btn btn-sm btn-primary" @click="addChannel()">
+            <button v-if="authStore.role === 'GlobalAdmin'" class="btn btn-sm btn-primary" @click="newChannel()">
                 {{ t('config.addChannel') }}
             </button>
         </div>
-        <form class="w-full" @submit.prevent="onSubmitChannel">
+        <div class="w-full">
             <label class="form-control w-full">
                 <div class="label">
                     <span class="label-text">{{ t('config.name') }}</span>
@@ -83,7 +83,9 @@
             </template>
 
             <div class="join my-4">
-                <button class="join-item btn btn-primary" type="submit">{{ t('config.save') }}</button>
+                <button class="join-item btn btn-primary" @click="addUpdateChannel()">
+                    {{ t('config.save') }}
+                </button>
                 <button
                     v-if="
                         authStore.role === 'GlobalAdmin' &&
@@ -96,7 +98,7 @@
                     {{ t('config.delete') }}
                 </button>
             </div>
-        </form>
+        </div>
     </div>
 </template>
 
@@ -109,10 +111,10 @@ const configStore = useConfig()
 const indexStore = useIndex()
 
 function rmId(path: string) {
-    return path.replace(/\/\d+$/, '');
+    return path.replace(/\/\d+$/, '')
 }
 
-async function addChannel() {
+function newChannel() {
     const channels = $_.cloneDeep(configStore.channels)
     const newChannel = $_.cloneDeep(configStore.channels[configStore.channels.length - 1])
 
@@ -128,13 +130,11 @@ async function addChannel() {
     configStore.id = configStore.channels.length - 1
 }
 
-async function onSubmitChannel() {
+async function addUpdateChannel() {
     /*
         Save channel settings.
     */
     const update = await configStore.setChannelConfig(configStore.channels[configStore.id])
-
-    console.log(update)
 
     if (update.status && update.status < 400) {
         indexStore.msgAlert('success', t('config.updateChannelSuccess'), 2)
@@ -160,6 +160,7 @@ async function deleteChannel() {
     config.splice(configStore.id, 1)
     configStore.channels = config
     configStore.id = configStore.channels.length - 1
+
     await configStore.getPlayoutConfig()
 
     if (response.status === 200) {

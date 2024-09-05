@@ -23,7 +23,7 @@
     "jwt-decode": "^4.0.0",
     "lodash": "^4.17.21",
     "mpegts.js": "^1.7.3",
-    "nuxt": "3.13.0",
+    "nuxt": "3.13.1",
     "pinia": "^2.2.2",
     "sortablejs-vue3": "^1.2.11",
     "splitpanes": "^3.1.5",
@@ -31,17 +31,17 @@
   },
   "devDependencies": {
     "@nuxt/eslint": "^0.5.5",
-    "@nuxtjs/i18n": "^8.5.1",
+    "@nuxtjs/i18n": "^8.5.2",
     "@nuxtjs/tailwindcss": "^6.12.1",
     "@types/lodash": "^4.17.7",
     "@types/video.js": "^7.3.58",
     "daisyui": "^4.12.10",
     "mini-svg-data-uri": "^1.4.4",
-    "postcss": "^8.4.44",
+    "postcss": "^8.4.45",
     "postcss-loader": "^8.1.1",
-    "sass": "^1.77.8",
+    "sass": "^1.78.0",
     "sass-loader": "^16.0.1",
-    "vue": "^3.5.0",
+    "vue": "^3.5.1",
     "vue-router": "^4.4.3"
   }
 }
