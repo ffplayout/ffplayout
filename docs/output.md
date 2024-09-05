@@ -161,9 +161,7 @@ The configuration of the tee pseudo-muxer in FFmpeg allows the broadcasting of a
 -flags +cgop
 -flags +global_header
 -f tee 
-"[f=flv:onfail=ignore]rtmp://127.0.0.1:1935/798e3a9e-47b5-4cd5-8079-76a20e03fee6.stream| 
-[f=mpegts:onfail=ignore]udp://127.0.0.1:1234?pkt_size=1316| 
-[f=hls:hls_time=6:hls_list_size=600:hls_flags=append_list+delete_segments+omit_endlist:hls_segment_filename=/usr/share/ffplayout/public/live/stream-%d.ts]/usr/share/ffplayout/public/live/stream.m3u8"
+[f=flv:onfail=ignore]rtmp://127.0.0.1:1935/798e3a9e-47b5-4cd5-8079-76a20e03fee6.stream|[f=mpegts:onfail=ignore]udp://127.0.0.1:1234?pkt_size=1316|[f=hls:hls_time=6:hls_list_size=600:hls_flags=append_list+delete_segments+omit_endlist:hls_segment_filename=/usr/share/ffplayout/public/live/stream-%d.ts]/usr/share/ffplayout/public/live/stream.m3u8
 ``` 
 
 
