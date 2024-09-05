@@ -570,7 +570,13 @@ async fn get_advanced_config(
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    let manager = controllers.lock().unwrap().get(*id).unwrap();
+    let manager = controllers
+        .lock()
+        .unwrap()
+        .get(*id)
+        .ok_or(ServiceError::BadRequest(format!(
+            "Channel ({id}) not exists!"
+        )))?;
     let config = manager.config.lock().unwrap().advanced.clone();
 
     Ok(web::Json(config))
@@ -626,7 +632,13 @@ async fn get_playout_config(
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    let manager = controllers.lock().unwrap().get(*id).unwrap();
+    let manager = controllers
+        .lock()
+        .unwrap()
+        .get(*id)
+        .ok_or(ServiceError::BadRequest(format!(
+            "Channel ({id}) not exists!"
+        )))?;
     let config = manager.config.lock().unwrap().clone();
 
     Ok(web::Json(config))

@@ -546,7 +546,7 @@ fn process_output_filters(config: &PlayoutConfig, chain: &mut Filters, custom_fi
     let filter =
         if (config.text.add_text && !config.text.text_from_filename) || config.output.mode == HLS {
             let re_v = Regex::new(r"\[[0:]+[v^\[]+([:0]+)?\]").unwrap(); // match video filter input link
-            let _re_a = Regex::new(r"\[[0:]+[a^\[]+([:0]+)?\]").unwrap(); // match video filter input link
+            let _re_a = Regex::new(r"\[[0:]+[a^\[]+([:0]+)?\]").unwrap(); // match audio filter input link
             let mut cf = custom_filter.to_string();
 
             if !chain.video_chain.is_empty() {

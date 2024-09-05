@@ -11,7 +11,7 @@ use crate::player::{
     controller::{ChannelManager, ProcessUnit::*},
     utils::{get_delta, get_media_map},
 };
-use crate::utils::{config::OutputMode::*, errors::ServiceError, TextFilter};
+use crate::utils::{config::OutputMode::*, errors::ServiceError, logging::Target, TextFilter};
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 struct TextParams {
@@ -85,6 +85,7 @@ pub async fn send_message(
     let filter = message.to_string();
     let mut data_map = Map::new();
     let config = manager.config.lock().unwrap().clone();
+    let id = config.general.channel_id;
 
     if config.text.zmq_stream_socket.is_some() {
         if let Some(clips_filter) = manager.filter_chain.clone() {
@@ -105,7 +106,7 @@ pub async fn send_message(
                     return Ok(data_map);
                 };
             } else if let Err(e) = manager.stop(Ingest) {
-                error!("Ingest {e:?}")
+                error!(target: Target::file_mail(), channel = id; "Ingest {e:?}")
             }
         }
 
@@ -135,6 +136,7 @@ pub async fn control_state(
     command: &str,
 ) -> Result<Map<String, Value>, ServiceError> {
     let config = manager.config.lock().unwrap().clone();
+    let id = config.general.channel_id;
     let current_date = manager.current_date.lock().unwrap().clone();
     let current_list = manager.current_list.lock().unwrap().clone();
     let mut date = manager.current_date.lock().unwrap().clone();
@@ -145,23 +147,23 @@ pub async fn control_state(
             if index > 1 && current_list.len() > 1 {
                 if let Some(proc) = manager.decoder.lock().unwrap().as_mut() {
                     if let Err(e) = proc.kill() {
-                        error!("Decoder {e:?}")
+                        error!(target: Target::file_mail(), channel = id; "Decoder {e:?}")
                     };
 
                     if let Err(e) = proc.wait() {
-                        error!("Decoder {e:?}")
+                        error!(target: Target::file_mail(), channel = id; "Decoder {e:?}")
                     };
                 } else {
                     return Err(ServiceError::InternalServerError);
                 }
 
-                info!("Move to last clip");
+                info!(target: Target::file_mail(), channel = id; "Move to last clip");
                 let mut data_map = Map::new();
                 let mut media = current_list[index - 2].clone();
                 manager.current_index.fetch_sub(2, Ordering::SeqCst);
 
                 if let Err(e) = media.add_probe(false) {
-                    error!("{e:?}");
+                    error!(target: Target::file_mail(), channel = id; "{e:?}");
                 };
 
                 let (delta, _) = get_delta(&config, &media.begin.unwrap_or(0.0));
@@ -181,23 +183,23 @@ pub async fn control_state(
             if index < current_list.len() {
                 if let Some(proc) = manager.decoder.lock().unwrap().as_mut() {
                     if let Err(e) = proc.kill() {
-                        error!("Decoder {e:?}")
+                        error!(target: Target::file_mail(), channel = id; "Decoder {e:?}")
                     };
 
                     if let Err(e) = proc.wait() {
-                        error!("Decoder {e:?}")
+                        error!(target: Target::file_mail(), channel = id; "Decoder {e:?}")
                     };
                 } else {
                     return Err(ServiceError::InternalServerError);
                 }
 
-                info!("Move to next clip");
+                info!(target: Target::file_mail(), channel = id; "Move to next clip");
 
                 let mut data_map = Map::new();
                 let mut media = current_list[index].clone();
 
                 if let Err(e) = media.add_probe(false) {
-                    error!("{e:?}");
+                    error!(target: Target::file_mail(), channel = id; "{e:?}");
                 };
 
                 let (delta, _) = get_delta(&config, &media.begin.unwrap_or(0.0));
@@ -216,17 +218,17 @@ pub async fn control_state(
         "reset" => {
             if let Some(proc) = manager.decoder.lock().unwrap().as_mut() {
                 if let Err(e) = proc.kill() {
-                    error!("Decoder {e:?}")
+                    error!(target: Target::file_mail(), channel = id; "Decoder {e:?}")
                 };
 
                 if let Err(e) = proc.wait() {
-                    error!("Decoder {e:?}")
+                    error!(target: Target::file_mail(), channel = id; "Decoder {e:?}")
                 };
             } else {
                 return Err(ServiceError::InternalServerError);
             }
 
-            info!("Reset playout to original state");
+            info!(target: Target::file_mail(), channel = id; "Reset playout to original state");
             let mut data_map = Map::new();
             manager.channel.lock().unwrap().time_shift = 0.0;
             date.clone_from(&current_date);

@@ -1,5 +1,5 @@
 use std::{
-    fmt, io,
+    fmt,
     path::{Path, PathBuf},
     str::FromStr,
 };
@@ -552,19 +552,13 @@ fn default_track_index() -> i32 {
 // }
 
 impl PlayoutConfig {
-    pub async fn new(pool: &Pool<Sqlite>, channel_id: i32) -> Self {
+    pub async fn new(pool: &Pool<Sqlite>, channel_id: i32) -> Result<Self, ServiceError> {
         let global = handles::select_global(pool)
             .await
             .expect("Can't read globals");
-        let channel = handles::select_channel(pool, &channel_id)
-            .await
-            .expect("Can't read channel");
-        let config = handles::select_configuration(pool, channel_id)
-            .await
-            .expect("Can't read config");
-        let adv_config = handles::select_advanced_configuration(pool, channel_id)
-            .await
-            .expect("Can't read advanced config");
+        let channel = handles::select_channel(pool, &channel_id).await?;
+        let config = handles::select_configuration(pool, channel_id).await?;
+        let adv_config = handles::select_advanced_configuration(pool, channel_id).await?;
 
         let channel = Channel::new(&global, channel);
         let advanced = AdvancedConfig::new(adv_config);
@@ -590,23 +584,14 @@ impl PlayoutConfig {
             Storage::new(&config, channel.storage_path.clone(), global.shared_storage);
 
         if !channel.playlist_path.is_dir() {
-            tokio::fs::create_dir_all(&channel.playlist_path)
-                .await
-                .unwrap_or_else(|_| {
-                    panic!("Can't create playlist folder: {:#?}", channel.playlist_path)
-                });
+            tokio::fs::create_dir_all(&channel.playlist_path).await?;
         }
 
         if !channel.logging_path.is_dir() {
-            tokio::fs::create_dir_all(&channel.logging_path)
-                .await
-                .unwrap_or_else(|_| {
-                    panic!("Can't create logging folder: {:#?}", channel.logging_path)
-                });
+            tokio::fs::create_dir_all(&channel.logging_path).await?;
         }
 
-        let (filler_path, _, _) = norm_abs_path(&channel.storage_path, &config.storage_filler)
-            .expect("Can't get filler path");
+        let (filler_path, _, _) = norm_abs_path(&channel.storage_path, &config.storage_filler)?;
 
         storage.filler = filler_path;
 
@@ -700,10 +685,10 @@ impl PlayoutConfig {
             for item in cmd.iter_mut() {
                 if item.ends_with(".ts") || (item.ends_with(".m3u8") && item != "master.m3u8") {
                     if let Ok((hls_path, _, _)) = norm_abs_path(&channel.hls_path, item) {
-                        let parent = hls_path.parent().expect("HLS parent path");
+                        let parent = hls_path.parent().ok_or("HLS parent path")?;
 
                         if !parent.is_dir() {
-                            fs::create_dir_all(parent).await.expect("Create HLS path");
+                            fs::create_dir_all(parent).await?;
                         }
                         item.clone_from(&hls_path.to_string_lossy().to_string());
                     };
@@ -726,7 +711,7 @@ impl PlayoutConfig {
             text.node_pos = None;
         }
 
-        Self {
+        Ok(Self {
             channel,
             advanced,
             general,
@@ -739,11 +724,11 @@ impl PlayoutConfig {
             text,
             task,
             output,
-        }
+        })
     }
 
     pub async fn dump(pool: &Pool<Sqlite>, id: i32) -> Result<(), ServiceError> {
-        let mut config = Self::new(pool, id).await;
+        let mut config = Self::new(pool, id).await?;
         config.storage.filler.clone_from(
             &config
                 .storage
@@ -819,8 +804,11 @@ fn pre_audio_codec(proc_filter: &str, ingest_filter: &str, channel_count: u8) ->
 }
 
 /// Read command line arguments, and override the config with them.
-pub async fn get_config(pool: &Pool<Sqlite>, channel_id: i32) -> Result<PlayoutConfig, io::Error> {
-    let mut config = PlayoutConfig::new(pool, channel_id).await;
+pub async fn get_config(
+    pool: &Pool<Sqlite>,
+    channel_id: i32,
+) -> Result<PlayoutConfig, ServiceError> {
+    let mut config = PlayoutConfig::new(pool, channel_id).await?;
     let args = ARGS.clone();
 
     config.general.generate = args.generate;
