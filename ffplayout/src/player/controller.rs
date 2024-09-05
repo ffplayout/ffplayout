@@ -126,7 +126,7 @@ impl ChannelManager {
             let channel_id = self.channel.lock().unwrap().id;
 
             if let Err(e) = handles::update_player(&pool_clone, channel_id, true).await {
-                error!("Unable write to player status: {e}");
+                error!(target: Target::all(), channel = channel_id; "Unable write to player status: {e}");
             };
 
             thread::spawn(move || {
@@ -171,7 +171,7 @@ impl ChannelManager {
             let channel_id = self.channel.lock().unwrap().id;
 
             if let Err(e) = handles::update_player(&pool_clone, channel_id, true).await {
-                error!("Unable write to player status: {e}");
+                error!(target: Target::all(), channel = channel_id; "Unable write to player status: {e}");
             };
 
             if index + 1 == ARGS.channels.clone().unwrap_or_default().len() {
@@ -258,16 +258,16 @@ impl ChannelManager {
     }
 
     pub async fn async_stop(&self) {
-        debug!("Stop all child processes");
         self.is_terminated.store(true, Ordering::SeqCst);
         self.is_alive.store(false, Ordering::SeqCst);
         self.ingest_is_running.store(false, Ordering::SeqCst);
         self.run_count.fetch_sub(1, Ordering::SeqCst);
         let pool = self.db_pool.clone().unwrap();
         let channel_id = self.channel.lock().unwrap().id;
+        debug!(target: Target::all(), channel = channel_id; "Stop all child processes from channel {channel_id}");
 
         if let Err(e) = handles::update_player(&pool, channel_id, false).await {
-            error!("Unable write to player status: {e}");
+            error!(target: Target::all(), channel = channel_id; "Unable write to player status: {e}");
         };
 
         for unit in [Decoder, Encoder, Ingest] {
@@ -281,26 +281,22 @@ impl ChannelManager {
 
     /// No matter what is running, terminate them all.
     pub fn stop_all(&self) {
-        debug!("Stop all child processes");
         self.is_terminated.store(true, Ordering::SeqCst);
+        self.is_alive.store(false, Ordering::SeqCst);
         self.ingest_is_running.store(false, Ordering::SeqCst);
         self.run_count.fetch_sub(1, Ordering::SeqCst);
+        let channel_id = self.channel.lock().unwrap().id;
+        debug!(target: Target::all(), channel = channel_id; "Stop all child processes from channel {channel_id}");
 
-        if self.is_alive.load(Ordering::SeqCst) {
-            self.is_alive.store(false, Ordering::SeqCst);
-
-            trace!("Playout is alive and processes are terminated");
-
-            for unit in [Decoder, Encoder, Ingest] {
-                if let Err(e) = self.stop(unit) {
-                    if !e.to_string().contains("exited process") {
-                        error!("{e}")
-                    }
+        for unit in [Decoder, Encoder, Ingest] {
+            if let Err(e) = self.stop(unit) {
+                if !e.to_string().contains("exited process") {
+                    error!(target: Target::all(), channel = channel_id; "{e}")
                 }
-                if let Err(e) = self.wait(unit) {
-                    if !e.to_string().contains("exited process") {
-                        error!("{e}")
-                    }
+            }
+            if let Err(e) = self.wait(unit) {
+                if !e.to_string().contains("exited process") {
+                    error!(target: Target::all(), channel = channel_id; "{e}")
                 }
             }
         }

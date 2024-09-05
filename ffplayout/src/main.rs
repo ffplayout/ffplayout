@@ -73,7 +73,9 @@ async fn main() -> std::io::Result<()> {
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
 
         for channel in channels.iter() {
-            let config = get_config(&pool, channel.id).await?;
+            let config = get_config(&pool, channel.id)
+                .await
+                .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
             let manager = ChannelManager::new(Some(pool.clone()), channel.clone(), config.clone());
             let m_queue = Arc::new(Mutex::new(MailQueue::new(channel.id, config.mail)));
 
@@ -210,7 +212,9 @@ async fn main() -> std::io::Result<()> {
         let channels = ARGS.channels.clone().unwrap_or_else(|| vec![1]);
 
         for (index, channel_id) in channels.iter().enumerate() {
-            let config = get_config(&pool, *channel_id).await?;
+            let config = get_config(&pool, *channel_id)
+                .await
+                .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
             let channel = handles::select_channel(&pool, channel_id).await.unwrap();
             let manager = ChannelManager::new(Some(pool.clone()), channel.clone(), config.clone());
 
