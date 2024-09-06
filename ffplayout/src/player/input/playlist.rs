@@ -372,7 +372,7 @@ impl CurrentProgram {
             let time_in_current_loop = elapsed_sec % self.json_playlist.length.unwrap();
 
             // Adjust the start time so that the playlist starts at the correct point in time
-            time_sec = time_sec - time_in_current_loop;
+            time_sec -= time_in_current_loop;
         }
 
         self.json_playlist.start_sec = Some(time_sec);
