@@ -356,12 +356,23 @@ impl CurrentProgram {
     }
 
     fn recalculate_begin(&mut self, extend: bool) {
-        debug!(target: Target::file_mail(), channel = self.id; "Infinit playlist reaches end, recalculate clip begins.");
+        debug!(target: Target::file_mail(), channel = self.id; "Infinit playlist reaches end, recalculate clip begins. Extend: <yellow>{extend}</>");
 
         let mut time_sec = time_in_seconds();
 
         if extend {
-            time_sec = self.start_sec + self.json_playlist.length.unwrap();
+            // Calculate the elapsed time since the playlist start
+            let elapsed_sec = if time_sec >= self.start_sec {
+                time_sec - self.start_sec
+            } else {
+                time_sec + 86400.0 - self.start_sec
+            };
+
+            // Time passed within the current playlist loop
+            let time_in_current_loop = elapsed_sec % self.json_playlist.length.unwrap();
+
+            // Adjust the start time so that the playlist starts at the correct point in time
+            time_sec = time_sec - time_in_current_loop;
         }
 
         self.json_playlist.start_sec = Some(time_sec);
