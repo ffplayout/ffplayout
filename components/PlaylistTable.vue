@@ -50,7 +50,7 @@
                             {{ t('player.edit') }}
                         </div>
                     </th>
-                    <th class="w-[85px] p-0 text-center hidden xl:table-cell justify-center">
+                    <th class="w-[85px] p-0 text-center hidden md:table-cell justify-center">
                         <div class="border-b border-my-gray px-4 py-3 -mb-[2px]">
                             {{ t('player.delete') }}
                         </div>
@@ -111,7 +111,7 @@
                                 <i class="bi-pencil-square" />
                             </button>
                         </td>
-                        <td class="py-2 text-center hidden xl:table-cell justify-center hover:text-base-content/70">
+                        <td class="py-2 text-center hidden md:table-cell justify-center hover:text-base-content/70">
                             <button @click="deletePlaylistItem(index)">
                                 <i class="bi-x-circle-fill" />
                             </button>

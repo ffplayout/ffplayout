@@ -30,7 +30,7 @@
     "video.js": "^8.17.3"
   },
   "devDependencies": {
-    "@nuxt/eslint": "^0.5.5",
+    "@nuxt/eslint": "^0.5.6",
     "@nuxtjs/i18n": "^8.5.2",
     "@nuxtjs/tailwindcss": "^6.12.1",
     "@types/lodash": "^4.17.7",
@@ -41,7 +41,7 @@
     "postcss-loader": "^8.1.1",
     "sass": "^1.78.0",
     "sass-loader": "^16.0.1",
-    "vue": "^3.5.1",
+    "vue": "^3.5.3",
     "vue-router": "^4.4.3"
   }
 }
