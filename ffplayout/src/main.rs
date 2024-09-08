@@ -105,12 +105,14 @@ async fn main() -> std::io::Result<()> {
 
         info!("Running ffplayout API, listen on http://{conn}");
 
+        let db_clone = pool.clone();
+
         // no 'allow origin' here, give it to the reverse proxy
         HttpServer::new(move || {
             let queues = mail_queues.clone();
 
             let auth = HttpAuthentication::bearer(validator);
-            let db_pool = web::Data::new(pool.clone());
+            let db_pool = web::Data::new(db_clone.clone());
             // Customize logging format to get IP though proxies.
             let logger = Logger::new("%{r}a \"%r\" %s %b \"%{Referer}i\" \"%{User-Agent}i\" %T")
                 .exclude_regex(r"/_nuxt/*");
@@ -282,6 +284,8 @@ async fn main() -> std::io::Result<()> {
         channel_ctl.channel.lock().unwrap().active = false;
         channel_ctl.stop_all();
     }
+
+    pool.close().await;
 
     Ok(())
 }
