@@ -16,7 +16,7 @@
     "@nuxtjs/color-mode": "^3.4.4",
     "@pinia/nuxt": "^0.5.4",
     "@vueform/multiselect": "^2.6.9",
-    "@vuepic/vue-datepicker": "^9.0.2",
+    "@vuepic/vue-datepicker": "^9.0.3",
     "@vueuse/nuxt": "^11.0.3",
     "bootstrap-icons": "^1.11.3",
     "dayjs": "^1.11.13",
