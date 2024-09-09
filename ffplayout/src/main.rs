@@ -7,10 +7,11 @@ use std::{
     thread,
 };
 
-use actix_files::Files;
 use actix_web::{middleware::Logger, web, App, HttpServer};
-
 use actix_web_httpauth::middleware::HttpAuthentication;
+
+#[cfg(any(debug_assertions, not(feature = "embed_frontend")))]
+use actix_files::Files;
 
 #[cfg(all(not(debug_assertions), feature = "embed_frontend"))]
 use actix_web_static_files::ResourceFiles;
