@@ -1,8 +1,8 @@
 export default {
     ok: 'Ok',
     cancel: 'Cancelar',
-    socketConnected: 'Event stream conectado',
-    socketDisconnected: 'Event stream desconectado',
+    socketConnected: 'Aviso! stream conectada.',
+    socketDisconnected: 'Aviso! stream desconectado.',
     alert: {
         wrongLogin: 'Dados incorretos!',
     },
@@ -87,7 +87,7 @@ export default {
         addBlock: 'Adicionar bloco de tempo',
         infinitInfo: 'O playout é executado no modo infinito. Nenhuma informação baseada em tempo é possível',
         generateDone: 'Gerar lista de reprodução concluída...',
-        dateYesterday: 'Current time is before the playlist start time!',
+        dateYesterday: 'A hora atual é anterior à hora de início da lista de reprodução!',
     },
     media: {
         notExists: 'O armazenamento não existe!',
@@ -139,14 +139,14 @@ export default {
         download: 'Baixar arquivo de registro',
     },
     advanced: {
-        title: 'Advanced Configuration',
+        title: 'Configurações avançadas',
         decoder: 'Decoder',
         encoder: 'Encoder',
         filter: 'Filter',
         ingest: 'Ingest',
-        updateSuccess: 'Update advanced config success!',
-        updateFailed: 'Update advanced config failed!',
-        warning: 'Warning! These settings are experimental and only intended for advanced users who are familiar with ffmpeg. Only change the settings here if you are sure of what you are doing! The settings can make the system unstable.',
+        updateSuccess: 'Configurações avançadas salva!',
+        updateFailed: 'Configurações avançadas foi falhado!',
+        warning: 'Aviso! Essas configurações são experimentais e destinadas apenas a usuários avançados familiarizados com o ffmpeg. Altere as configurações aqui apenas se tiver certeza do que está fazendo! As configurações podem tornar o sistema instável.',
     },
     config: {
         channel: 'Canal',
