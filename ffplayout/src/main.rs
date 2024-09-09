@@ -1,6 +1,5 @@
 use std::{
     collections::HashSet,
-    env,
     fs::File,
     io,
     process::exit,
@@ -17,7 +16,6 @@ use actix_web_httpauth::middleware::HttpAuthentication;
 use actix_web_static_files::ResourceFiles;
 
 use log::*;
-use path_clean::PathClean;
 
 use ffplayout::{
     api::routes::*,
@@ -173,18 +171,7 @@ async fn main() -> std::io::Result<()> {
                 )
                 .service(get_file);
 
-            if let Some(public) = &ARGS.public {
-                // When public path is set as argument use this path for serving extra static files,
-                // is useful for HLS stream etc.
-                let absolute_path = if public.is_absolute() {
-                    public.to_path_buf()
-                } else {
-                    env::current_dir().unwrap_or_default().join(public)
-                }
-                .clean();
-
-                web_app = web_app.service(Files::new("/", absolute_path));
-            } else {
+            if ARGS.public.is_none() {
                 // When no public path is given as argument, use predefine keywords in path,
                 // like /live; /preview; /public, or HLS extensions to recognize file should get from public folder
                 web_app = web_app.service(get_public);

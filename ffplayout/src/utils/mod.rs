@@ -195,7 +195,22 @@ pub fn db_path() -> Result<&'static str, Box<dyn std::error::Error>> {
 }
 
 pub fn public_path() -> PathBuf {
-    let path = PathBuf::from("./ffplayout-frontend/.output/public/");
+    if let Some(public) = &ARGS.public {
+        // When public path is set as argument use this path for serving static files.
+        // Works only when feature embed_frontend is not set.
+        let absolute_path = if public.is_absolute() {
+            public.to_path_buf()
+        } else {
+            env::current_dir().unwrap_or_default().join(public)
+        }
+        .clean();
+
+        return absolute_path;
+    }
+
+    let path = env::current_dir()
+        .unwrap_or_default()
+        .join("frontend/.output/public/");
 
     if cfg!(debug_assertions) && path.is_dir() {
         return path;
