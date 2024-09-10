@@ -305,6 +305,10 @@ pub fn log_file_path() -> PathBuf {
         .clone()
         .unwrap_or(PathBuf::from(&config.logging_path));
 
+    if !log_path.is_absolute() {
+        log_path = env::current_dir().unwrap().join(log_path);
+    }
+
     if !log_path.is_dir() {
         log_path = env::current_dir().unwrap();
     }

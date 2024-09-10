@@ -52,10 +52,10 @@ use crate::utils::{
     playlist::{delete_playlist, generate_playlist, read_playlist, write_playlist},
     public_path, read_log_file, system, TextFilter,
 };
-use crate::vec_strings;
 use crate::{
     api::auth::{create_jwt, Claims},
     utils::advanced_config::AdvancedConfig,
+    vec_strings,
 };
 use crate::{
     db::{
@@ -1309,24 +1309,21 @@ async fn get_file(
 /// Can be used for HLS Playlist and other static files in public folder
 ///
 /// ```BASH
-/// curl -X GET http://127.0.0.1:8787/live/1/stream.m3u8
+/// curl -X GET http://127.0.0.1:8787/1/live/stream.m3u8
 /// ```
-#[get("/{public:live|preview|public}/{id}/{file_stem:.*}")]
+#[get("/{id}/{public:live|preview|public}/{file_stem:.*}")]
 async fn get_public(
-    path: web::Path<(String, i32, String)>,
+    path: web::Path<(i32, String, String)>,
     controllers: web::Data<Mutex<ChannelController>>,
 ) -> Result<actix_files::NamedFile, ServiceError> {
-    let (public, id, file_stem) = path.into_inner();
-    let public_path = public_path();
+    let (id, public, file_stem) = path.into_inner();
 
     let absolute_path = if file_stem.ends_with(".ts") || file_stem.ends_with(".m3u8") {
         let manager = controllers.lock().unwrap().get(id).unwrap();
         let config = manager.config.lock().unwrap();
         config.channel.hls_path.join(public)
-    } else if public_path.is_absolute() {
-        public_path.to_path_buf()
     } else {
-        env::current_dir()?.join(public_path)
+        public_path()
     }
     .clean();
 

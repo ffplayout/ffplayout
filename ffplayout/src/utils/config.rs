@@ -407,14 +407,14 @@ impl Playlist {
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct Storage {
     pub help_text: String,
-    #[serde(skip_deserializing)]
+    #[serde(skip_serializing, skip_deserializing)]
     pub path: PathBuf,
     #[serde(skip_serializing, skip_deserializing)]
     pub paths: Vec<PathBuf>,
     pub filler: PathBuf,
     pub extensions: Vec<String>,
     pub shuffle: bool,
-    #[serde(skip_deserializing)]
+    #[serde(skip_serializing, skip_deserializing)]
     pub shared_storage: bool,
 }
 
@@ -603,9 +603,13 @@ impl PlayoutConfig {
             playlist.length_sec = Some(86400.0);
         }
 
-        if processing.add_logo && !Path::new(&processing.logo).is_file() {
+        let (logo_path, _, _) = norm_abs_path(&channel.storage_path, &processing.logo)?;
+
+        if processing.add_logo && !logo_path.is_file() {
             processing.add_logo = false;
         }
+
+        processing.logo = logo_path.to_string_lossy().to_string();
 
         if processing.audio_tracks < 1 {
             processing.audio_tracks = 1
@@ -710,6 +714,9 @@ impl PlayoutConfig {
             text.zmq_server_socket = None;
             text.node_pos = None;
         }
+
+        let (text_path, _, _) = norm_abs_path(&channel.storage_path, &text.fontfile)?;
+        text.fontfile = text_path.to_string_lossy().to_string();
 
         Ok(Self {
             channel,
@@ -857,6 +864,12 @@ pub async fn get_config(
             config.output.output_filter = None;
             config.output.output_cmd = Some(vec_strings!["-f", "null", "-"]);
         }
+    }
+
+    if args.shared_storage {
+        // config.channel.shared_storage could be true already,
+        // so should not be overridden with false when args.shared_storage is not set
+        config.channel.shared_storage = args.shared_storage
     }
 
     if let Some(volume) = args.volume {

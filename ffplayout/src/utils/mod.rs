@@ -30,6 +30,7 @@ pub mod playlist;
 pub mod system;
 pub mod task_runner;
 
+use crate::db::models::GlobalSettings;
 use crate::player::utils::time_to_sec;
 use crate::utils::{errors::ServiceError, logging::log_file_path};
 use crate::ARGS;
@@ -195,19 +196,28 @@ pub fn db_path() -> Result<&'static str, Box<dyn std::error::Error>> {
 }
 
 pub fn public_path() -> PathBuf {
-    let path = PathBuf::from("./ffplayout-frontend/.output/public/");
+    let config = GlobalSettings::global();
+    let dev_path = env::current_dir()
+        .unwrap_or_default()
+        .join("frontend/.output/public/");
+    let mut public_path = PathBuf::from(&config.public_root);
 
-    if cfg!(debug_assertions) && path.is_dir() {
-        return path;
+    if let Some(p) = &ARGS.public {
+        // When public path is set as argument use this path for serving static files.
+        // Works only when feature embed_frontend is not set.
+        let public = PathBuf::from(p);
+
+        public_path = if public.is_absolute() {
+            public.to_path_buf()
+        } else {
+            env::current_dir().unwrap_or_default().join(public)
+        }
+        .clean();
+    } else if cfg!(debug_assertions) && dev_path.is_dir() {
+        public_path = dev_path;
     }
 
-    let path = PathBuf::from("/usr/share/ffplayout/public/");
-
-    if path.is_dir() {
-        return path;
-    }
-
-    PathBuf::from("./public/")
+    public_path
 }
 
 pub async fn read_log_file(channel_id: &i32, date: &str) -> Result<String, ServiceError> {
