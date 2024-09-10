@@ -217,7 +217,7 @@ pub fn public_path() -> PathBuf {
         public_path = dev_path;
     }
 
-    return public_path;
+    public_path
 }
 
 pub async fn read_log_file(channel_id: &i32, date: &str) -> Result<String, ServiceError> {
