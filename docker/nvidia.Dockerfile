@@ -1,6 +1,6 @@
 FROM nvidia/cuda:12.5.0-runtime-rockylinux9
 
-ARG FFPLAYOUT_VERSION=0.24.0-beta2
+ARG FFPLAYOUT_VERSION=0.24.0-beta4
 ARG SHARED_STORAGE=false
 
 ENV DB=/db
@@ -204,7 +204,7 @@ COPY <<-EOT /run.sh
 #!/bin/sh
 
 if [ ! -f /db/ffplayout.db ]; then
-    ffplayout -u admin -p admin -m contact@example.com --storage-root "/tv-media" --playlist-root "/playlists" --public-root "/public" --log-path "/logging" --shared-storage
+    ffplayout -u admin -p admin -m contact@example.com --storage-root "/tv-media" --playlist-root "/playlists" --public "/public" --log-path "/logging" --shared-storage
 fi
 
 /usr/bin/ffplayout -l "0.0.0.0:8787"

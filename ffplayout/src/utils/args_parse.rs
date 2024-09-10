@@ -86,9 +86,6 @@ pub struct Args {
     #[clap(long, help = "List available channel ids")]
     pub list_channels: bool,
 
-    #[clap(long, env, help = "path to public files")]
-    pub public: Option<PathBuf>,
-
     #[clap(short, env, long, help = "Listen on IP:PORT, like: 127.0.0.1:8787")]
     pub listen: Option<String>,
 
@@ -123,8 +120,8 @@ pub struct Args {
     #[clap(long, env, help = "Log to console")]
     pub log_to_console: bool,
 
-    #[clap(long, env, help = "Public (HLS) output path")]
-    pub public_root: Option<String>,
+    #[clap(long, env, help = "Path to public files, also HLS playlists")]
+    pub public: Option<String>,
 
     #[clap(long, env, help = "Playlist root path")]
     pub playlist_root: Option<String>,
@@ -438,7 +435,7 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
     if !args.init
         && args.storage_root.is_some()
         && args.playlist_root.is_some()
-        && args.public_root.is_some()
+        && args.public.is_some()
         && args.log_path.is_some()
     {
         error_code = 0;
@@ -448,7 +445,7 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
             secret: None,
             logging_path: args.log_path.unwrap().to_string_lossy().to_string(),
             playlist_root: args.playlist_root.unwrap(),
-            public_root: args.public_root.unwrap(),
+            public_root: args.public.unwrap(),
             storage_root: args.storage_root.unwrap(),
             shared_storage: args.shared_storage,
         };
@@ -508,19 +505,6 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
         );
 
         error_code = 0;
-    }
-
-    if let Some(id) = ARGS.dump_config {
-        match PlayoutConfig::dump(pool, id).await {
-            Ok(_) => {
-                println!("Dump config to: ffplayout_{id}.toml");
-                error_code = 0;
-            }
-            Err(e) => {
-                eprintln!("Dump config: {e}");
-                error_code = 1;
-            }
-        };
     }
 
     if let Some(id) = ARGS.dump_config {
