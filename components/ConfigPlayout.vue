@@ -176,10 +176,12 @@ async function onSubmitPlayout() {
             method: 'POST',
             headers: { ...configStore.contentType, ...authStore.authHeader },
             body: JSON.stringify({ command: 'status' }),
-        }).then((response: any) => {
+        }).then(async (response: any) => {
             if (response === 'active') {
                 showModal.value = true
             }
+
+            await configStore.getPlayoutConfig()
         })
     } else {
         indexStore.msgAlert('error', t('config.updatePlayoutFailed'), 2)
