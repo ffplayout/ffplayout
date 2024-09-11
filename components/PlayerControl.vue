@@ -56,20 +56,21 @@
                             <div
                                 v-else
                                 class="h-1/3 font-bold text truncate"
-                                :title="playlistStore.currentClipTitle || filename(playlistStore.currentClip)"
+                                :class="{'text-base-content/60': playlistStore.current.category === 'advertisement'}"
+                                :title="playlistStore.current.title || filename(playlistStore.current.source)"
                             >
                                 {{
-                                    playlistStore.currentClipTitle ||
-                                    filename(playlistStore.currentClip) ||
+                                    playlistStore.current.title ||
+                                    filename(playlistStore.current.source) ||
                                     t('control.noClip')
                                 }}
                             </div>
                             <div class="grow">
                                 <strong>{{ t('player.duration') }}:</strong>
-                                {{ secToHMS(playlistStore.currentClipDuration) }} |
-                                <strong>{{ t('player.in') }}:</strong> {{ secToHMS(playlistStore.currentClipIn) }} |
+                                {{ secToHMS(playlistStore.current.duration) }} |
+                                <strong>{{ t('player.in') }}:</strong> {{ secToHMS(playlistStore.current.in) }} |
                                 <strong>{{ t('player.out') }}:</strong>
-                                {{ secToHMS(playlistStore.currentClipOut) }}
+                                {{ secToHMS(playlistStore.current.out) }}
 
                                 <template v-if="playlistStore.shift !== 0">
                                     | <strong>{{ t('player.shift') }}:</strong>
@@ -176,7 +177,17 @@ const playlistStore = usePlaylist()
 const { filename, secToHMS } = stringFormatter()
 const { id } = storeToRefs(useConfig())
 
-playlistStore.currentClip = t('control.noClip')
+const currentDefault = {
+    uid: '',
+    title: t('control.noClip'),
+    source: t('control.noClip'),
+    duration: 0,
+    in: 0,
+    out: 0,
+} as PlaylistItem
+
+playlistStore.current = currentDefault
+
 const timeStr = ref('00:00:00')
 const timer = ref()
 const errorCounter = ref(0)
@@ -278,7 +289,7 @@ watch([id], () => {
 })
 
 function timeRemaining() {
-    let remaining = playlistStore.currentClipOut - playlistStore.elapsedSec
+    let remaining = playlistStore.current.out - playlistStore.elapsedSec
 
     if (remaining < 0) {
         remaining = 0
@@ -298,13 +309,7 @@ async function clock() {
 function resetStatus() {
     playlistStore.elapsedSec = 0
     playlistStore.shift = 0
-    playlistStore.currentClip = ''
-    playlistStore.ingestRuns = false
-    playlistStore.currentClipDuration = 0
-    playlistStore.currentClipIn = 0
-    playlistStore.currentClipOut = 0
-    playlistStore.playoutIsRunning = false
-    playlistStore.progressValue = 0
+    playlistStore.current = currentDefault
 }
 
 async function controlProcess(state: string) {

@@ -15,13 +15,8 @@ export const usePlaylist = defineStore('playlist', {
         isLoading: true,
         listDate: dayjs().format('YYYY-MM-DD'),
         progressValue: 0,
-        currentClip: '',
-        currentClipIndex: 0,
-        currentClipTitle: null as null | string,
-        currentClipStart: 0,
-        currentClipDuration: 0,
-        currentClipIn: 0,
-        currentClipOut: 0,
+        current: {} as PlaylistItem,
+        currentIndex: 0,
         ingestRuns: false,
         elapsedSec: 0,
         shift: 0,
@@ -81,17 +76,13 @@ export const usePlaylist = defineStore('playlist', {
 
         setStatus(item: PlayoutStatus) {
             this.playoutIsRunning = true
-            this.currentClip = item.media.source
-            this.currentClipIn = item.media.in
-            this.currentClipOut = item.media.out
-            this.currentClipDuration = item.media.duration
-            this.currentClipTitle = item.media.title ?? null
-            this.currentClipIndex = item.index
+            this.current = item.media
+            this.currentIndex = item.index
             this.elapsedSec = item.elapsed
             this.ingestRuns = item.ingest
             this.shift = item.shift
 
-            this.progressValue = (this.elapsedSec * 100) / this.currentClipOut
+            this.progressValue = (this.elapsedSec * 100) / this.current.out
         },
     },
 })

@@ -76,8 +76,9 @@
                         class="draggable border-t border-b border-base-content/20 duration-1000 transition-all"
                         :class="{
                             '!bg-lime-500/30':
-                                playlistStore.playoutIsRunning && listDate === todayDate && index === currentClipIndex,
+                                playlistStore.playoutIsRunning && listDate === todayDate && index === currentIndex,
                             '!bg-amber-600/40': element.overtime,
+                            'text-base-content/60': element.category === 'advertisement'
                         }"
                     >
                         <td v-if="!configStore.playout.playlist.infinit" class="ps-4 py-2 text-left">
@@ -139,7 +140,7 @@ const playlistContainer = ref()
 const sortContainer = ref()
 const todayDate = ref($dayjs().utcOffset(configStore.utcOffset).format('YYYY-MM-DD'))
 const { id } = storeToRefs(useConfig())
-const { currentClipIndex, listDate } = storeToRefs(usePlaylist())
+const { currentIndex, listDate } = storeToRefs(usePlaylist())
 
 const playlistSortOptions = {
     group: 'playlist',
@@ -214,8 +215,8 @@ async function getPlaylist() {
     playlistStore.isLoading = false
 
     if (listDate.value === todayDate.value) {
-        await until(currentClipIndex).toMatch((v) => v > 0, { timeout: 1500 })
-        scrollTo(currentClipIndex.value)
+        await until(currentIndex).toMatch((v) => v > 0, { timeout: 1500 })
+        scrollTo(currentIndex.value)
     } else {
         scrollTo(0)
     }
