@@ -65,15 +65,15 @@ pub fn norm_abs_path(
         .normalize()
         .to_string()
         .replace("../", "");
-    let mut source_relative = RelativePath::new(input_path)
-        .normalize()
-        .to_string()
-        .replace("../", "");
     let path_suffix = root_path
         .file_name()
         .unwrap_or_default()
         .to_string_lossy()
         .to_string();
+    let mut source_relative = RelativePath::new(input_path)
+        .normalize()
+        .to_string()
+        .replace("../", "");
 
     if input_path.starts_with(&*root_path.to_string_lossy())
         || source_relative.starts_with(&path_relative)

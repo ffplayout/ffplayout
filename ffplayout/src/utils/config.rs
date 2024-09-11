@@ -317,6 +317,8 @@ pub struct Processing {
     pub fps: f64,
     pub add_logo: bool,
     pub logo: String,
+    #[serde(skip_serializing, skip_deserializing)]
+    pub logo_path: String,
     pub logo_scale: String,
     pub logo_opacity: f64,
     pub logo_position: String,
@@ -345,6 +347,7 @@ impl Processing {
             fps: config.processing_fps,
             add_logo: config.processing_add_logo,
             logo: config.processing_logo.clone(),
+            logo_path: config.processing_logo.clone(),
             logo_scale: config.processing_logo_scale.clone(),
             logo_opacity: config.processing_logo_opacity,
             logo_position: config.processing_logo_position.clone(),
@@ -411,7 +414,9 @@ pub struct Storage {
     pub path: PathBuf,
     #[serde(skip_serializing, skip_deserializing)]
     pub paths: Vec<PathBuf>,
-    pub filler: PathBuf,
+    pub filler: String,
+    #[serde(skip_serializing, skip_deserializing)]
+    pub filler_path: PathBuf,
     pub extensions: Vec<String>,
     pub shuffle: bool,
     #[serde(skip_serializing, skip_deserializing)]
@@ -424,7 +429,8 @@ impl Storage {
             help_text: config.storage_help.clone(),
             path,
             paths: vec![],
-            filler: PathBuf::from(config.storage_filler.clone()),
+            filler: config.storage_filler.clone(),
+            filler_path: PathBuf::from(config.storage_filler.clone()),
             extensions: config
                 .storage_extensions
                 .split(';')
@@ -446,7 +452,9 @@ pub struct Text {
     pub zmq_stream_socket: Option<String>,
     #[serde(skip_serializing, skip_deserializing)]
     pub zmq_server_socket: Option<String>,
-    pub fontfile: String,
+    pub font: String,
+    #[serde(skip_serializing, skip_deserializing)]
+    pub font_path: String,
     pub text_from_filename: bool,
     pub style: String,
     pub regex: String,
@@ -460,7 +468,8 @@ impl Text {
             node_pos: None,
             zmq_stream_socket: None,
             zmq_server_socket: None,
-            fontfile: config.text_font.clone(),
+            font: config.text_font.clone(),
+            font_path: config.text_font.clone(),
             text_from_filename: config.text_from_filename,
             style: config.text_style.clone(),
             regex: config.text_regex.clone(),
@@ -591,9 +600,11 @@ impl PlayoutConfig {
             tokio::fs::create_dir_all(&channel.logging_path).await?;
         }
 
-        let (filler_path, _, _) = norm_abs_path(&channel.storage_path, &config.storage_filler)?;
+        let (filler_path, _, filler) =
+            norm_abs_path(&channel.storage_path, &config.storage_filler)?;
 
-        storage.filler = filler_path;
+        storage.filler = filler;
+        storage.filler_path = filler_path;
 
         playlist.start_sec = Some(time_to_sec(&playlist.day_start));
 
@@ -603,13 +614,14 @@ impl PlayoutConfig {
             playlist.length_sec = Some(86400.0);
         }
 
-        let (logo_path, _, _) = norm_abs_path(&channel.storage_path, &processing.logo)?;
+        let (logo_path, _, logo) = norm_abs_path(&channel.storage_path, &processing.logo)?;
 
         if processing.add_logo && !logo_path.is_file() {
             processing.add_logo = false;
         }
 
-        processing.logo = logo_path.to_string_lossy().to_string();
+        processing.logo = logo;
+        processing.logo_path = logo_path.to_string_lossy().to_string();
 
         if processing.audio_tracks < 1 {
             processing.audio_tracks = 1
@@ -715,8 +727,9 @@ impl PlayoutConfig {
             text.node_pos = None;
         }
 
-        let (text_path, _, _) = norm_abs_path(&channel.storage_path, &text.fontfile)?;
-        text.fontfile = text_path.to_string_lossy().to_string();
+        let (font_path, _, font) = norm_abs_path(&channel.storage_path, &text.font)?;
+        text.font = font;
+        text.font_path = font_path.to_string_lossy().to_string();
 
         Ok(Self {
             channel,
@@ -735,15 +748,7 @@ impl PlayoutConfig {
     }
 
     pub async fn dump(pool: &Pool<Sqlite>, id: i32) -> Result<(), ServiceError> {
-        let mut config = Self::new(pool, id).await?;
-        config.storage.filler.clone_from(
-            &config
-                .storage
-                .filler
-                .strip_prefix(config.channel.storage_path.clone())
-                .unwrap_or(&config.storage.filler)
-                .to_path_buf(),
-        );
+        let config = Self::new(pool, id).await?;
 
         let toml_string = toml_edit::ser::to_string_pretty(&config)?;
         tokio::fs::write(&format!("ffplayout_{id}.toml"), toml_string).await?;

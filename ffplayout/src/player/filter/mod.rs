@@ -355,14 +355,14 @@ fn fade(
 
 fn overlay(node: &mut Media, chain: &mut Filters, config: &PlayoutConfig) {
     if config.processing.add_logo
-        && Path::new(&config.processing.logo).is_file()
+        && Path::new(&config.processing.logo_path).is_file()
         && &node.category != "advertisement"
     {
         let mut logo_chain = format!(
             "null[v];movie={}:loop=0,setpts=N/(FRAME_RATE*TB),format=rgba,colorchannelmixer=aa={}",
             config
                 .processing
-                .logo
+                .logo_path
                 .replace('\\', "/")
                 .replace(':', "\\\\:"),
             config.processing.logo_opacity,

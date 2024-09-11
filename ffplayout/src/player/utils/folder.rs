@@ -174,10 +174,10 @@ pub fn fill_filler_list(
 ) -> Vec<Media> {
     let id = config.general.channel_id;
     let mut filler_list = vec![];
-    let filler_path = &config.storage.filler;
+    let filler_path = &config.storage.filler_path;
 
     if filler_path.is_dir() {
-        for (index, entry) in WalkDir::new(&config.storage.filler)
+        for (index, entry) in WalkDir::new(&config.storage.filler_path)
             .into_iter()
             .flat_map(|e| e.ok())
             .filter(|f| f.path().is_file())
@@ -211,7 +211,7 @@ pub fn fill_filler_list(
             f.lock().unwrap().clone_from(&filler_list);
         }
     } else if filler_path.is_file() {
-        let mut media = Media::new(0, &config.storage.filler.to_string_lossy(), false);
+        let mut media = Media::new(0, &config.storage.filler_path.to_string_lossy(), false);
 
         if fillers.is_none() {
             if let Err(e) = media.add_probe(false) {
