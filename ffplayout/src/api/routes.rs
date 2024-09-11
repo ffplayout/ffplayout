@@ -10,7 +10,7 @@
 /// `{id}` represent the channel id, and at default is 1.
 use std::{
     env,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{atomic::Ordering, Arc, Mutex},
 };
 
@@ -659,13 +659,23 @@ async fn get_playout_config(
 async fn update_playout_config(
     pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
-    data: web::Json<PlayoutConfig>,
+    mut data: web::Json<PlayoutConfig>,
     controllers: web::Data<Mutex<ChannelController>>,
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
     let manager = controllers.lock().unwrap().get(*id).unwrap();
+    let p = manager.channel.lock().unwrap().storage_path.clone();
+    let storage_path = Path::new(&p);
     let config_id = manager.config.lock().unwrap().general.id;
+
+    let (_, _, logo) = norm_abs_path(&storage_path, &data.processing.logo)?;
+    let (_, _, filler) = norm_abs_path(&storage_path, &data.storage.filler)?;
+    let (_, _, font) = norm_abs_path(&storage_path, &data.text.font)?;
+
+    data.processing.logo = logo;
+    data.storage.filler = filler;
+    data.text.font = font;
 
     handles::update_configuration(&pool, config_id, data.clone()).await?;
     let new_config = get_config(&pool, *id).await?;

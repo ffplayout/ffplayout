@@ -669,7 +669,7 @@ pub fn gen_source(
         // Set list_init to true, to stay in sync.
         manager.list_init.store(true, Ordering::SeqCst);
 
-        if config.storage.filler.is_dir() && !fillers.is_empty() {
+        if config.storage.filler_path.is_dir() && !fillers.is_empty() {
             let index = manager.filler_index.fetch_add(1, Ordering::SeqCst);
             let mut filler_media = fillers[index].clone();
 
@@ -697,11 +697,11 @@ pub fn gen_source(
             node.cmd = Some(loop_filler(&node));
             node.probe = filler_media.probe;
         } else {
-            match MediaProbe::new(&config.storage.filler.to_string_lossy()) {
+            match MediaProbe::new(&config.storage.filler_path.to_string_lossy()) {
                 Ok(probe) => {
                     if config
                         .storage
-                        .filler
+                        .filler_path
                         .to_string_lossy()
                         .to_string()
                         .rsplit_once('.')
@@ -709,7 +709,12 @@ pub fn gen_source(
                         .filter(|c| IMAGE_FORMAT.contains(&c.as_str()))
                         .is_some()
                     {
-                        node.source = config.storage.filler.clone().to_string_lossy().to_string();
+                        node.source = config
+                            .storage
+                            .filler_path
+                            .clone()
+                            .to_string_lossy()
+                            .to_string();
                         node.cmd = Some(loop_image(&node));
                         node.probe = Some(probe);
                     } else if let Some(filler_duration) = probe
@@ -725,7 +730,12 @@ pub fn gen_source(
                             filler_out = duration;
                         }
 
-                        node.source = config.storage.filler.clone().to_string_lossy().to_string();
+                        node.source = config
+                            .storage
+                            .filler_path
+                            .clone()
+                            .to_string_lossy()
+                            .to_string();
                         node.seek = 0.0;
                         node.out = filler_out;
                         node.duration = filler_duration;

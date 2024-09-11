@@ -20,8 +20,8 @@ pub fn filter_node(
     let mut filter = String::new();
     let mut font = String::new();
 
-    if Path::new(&config.text.fontfile).is_file() {
-        font = format!(":fontfile='{}'", config.text.fontfile)
+    if Path::new(&config.text.font_path).is_file() {
+        font = format!(":fontfile='{}'", config.text.font_path)
     }
 
     let zmq_socket = match node.map(|n| n.unit) {

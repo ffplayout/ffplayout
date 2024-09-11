@@ -49,7 +49,7 @@ fn video_audio_input() {
     config.output.mode = Stream;
     config.processing.add_logo = true;
     let logo_path = fs::canonicalize("./assets/logo.png").unwrap();
-    config.processing.logo = logo_path.to_string_lossy().to_string();
+    config.processing.logo_path = logo_path.to_string_lossy().to_string();
 
     let media_obj = Media::new(0, "./assets/media_mix/with_audio.mp4", true);
     let media = gen_source(&config, media_obj, &manager, 1);
@@ -57,7 +57,7 @@ fn video_audio_input() {
     let test_filter_cmd =
         vec_strings![
             "-filter_complex",
-            format!("[0:v:0]scale=1024:576,null[v];movie={}:loop=0,setpts=N/(FRAME_RATE*TB),format=rgba,colorchannelmixer=aa=0.7[l];[v][l]overlay=W-w-12:12:shortest=1[vout0];[0:a:0]anull[aout0]", config.processing.logo)
+            format!("[0:v:0]scale=1024:576,null[v];movie={}:loop=0,setpts=N/(FRAME_RATE*TB),format=rgba,colorchannelmixer=aa=0.7[l];[v][l]overlay=W-w-12:12:shortest=1[vout0];[0:a:0]anull[aout0]", config.processing.logo_path)
         ];
 
     let test_filter_map = vec_strings!["-map", "[vout0]", "-map", "[aout0]"];
@@ -383,7 +383,7 @@ fn video_audio_filter2_stream() {
     config.output.mode = Stream;
     config.processing.add_logo = false;
     config.text.add_text = true;
-    config.text.fontfile = String::new();
+    config.text.font_path = String::new();
     config.output.output_filter = Some("[0:v]gblur=2[vout0];[0:a]volume=0.2[aout0]".to_string());
     config.output.output_cmd = Some(vec_strings![
         "-map",
@@ -467,7 +467,7 @@ fn video_audio_filter3_stream() {
     config.output.mode = Stream;
     config.processing.add_logo = false;
     config.text.add_text = true;
-    config.text.fontfile = String::new();
+    config.text.font_path = String::new();
     config.output.output_filter = Some(
         "[0:v]null[o];movie=/path/to/lower_third.png[l];[o][l]overlay=shortest=1[vout0]"
             .to_string(),
@@ -554,7 +554,7 @@ fn video_audio_filter4_stream() {
     config.output.mode = Stream;
     config.processing.add_logo = false;
     config.text.add_text = true;
-    config.text.fontfile = String::new();
+    config.text.font_path = String::new();
     config.output.output_filter = Some(
         "[0:v]null[o];movie=/path/to/lower_third.png[l];[o][l]overlay=shortest=1[vout0];[0:a:0]volume=0.2[aout0]"
             .to_string(),
@@ -713,7 +713,7 @@ fn video_dual_audio_filter_stream() {
     config.output.mode = Stream;
     config.processing.add_logo = false;
     config.processing.audio_tracks = 2;
-    config.text.fontfile = String::new();
+    config.text.font_path = String::new();
     config.output.output_cmd = Some(vec_strings![
         "-c:v",
         "libx264",
@@ -999,7 +999,7 @@ fn video_audio_text_multi_stream() {
     config.output.mode = Stream;
     config.processing.add_logo = false;
     config.text.add_text = true;
-    config.text.fontfile = String::new();
+    config.text.font_path = String::new();
     config.output.output_count = 2;
     config.output.output_cmd = Some(vec_strings![
         "-c:v",
@@ -1114,7 +1114,7 @@ fn video_dual_audio_multi_filter_stream() {
     config.processing.add_logo = false;
     config.processing.audio_tracks = 2;
     config.output.output_count = 2;
-    config.text.fontfile = String::new();
+    config.text.font_path = String::new();
     config.output.output_cmd = Some(vec_strings![
         "-map",
         "0:v",
@@ -1244,7 +1244,7 @@ fn video_audio_text_filter_stream() {
     config.processing.add_logo = false;
     config.processing.audio_tracks = 1;
     config.text.add_text = true;
-    config.text.fontfile = String::new();
+    config.text.font_path = String::new();
     config.output.output_count = 2;
     config.output.output_cmd = Some(vec_strings![
         "-map",
