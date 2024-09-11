@@ -669,9 +669,9 @@ async fn update_playout_config(
     let storage_path = Path::new(&p);
     let config_id = manager.config.lock().unwrap().general.id;
 
-    let (_, _, logo) = norm_abs_path(&storage_path, &data.processing.logo)?;
-    let (_, _, filler) = norm_abs_path(&storage_path, &data.storage.filler)?;
-    let (_, _, font) = norm_abs_path(&storage_path, &data.text.font)?;
+    let (_, _, logo) = norm_abs_path(storage_path, &data.processing.logo)?;
+    let (_, _, filler) = norm_abs_path(storage_path, &data.storage.filler)?;
+    let (_, _, font) = norm_abs_path(storage_path, &data.text.font)?;
 
     data.processing.logo = logo;
     data.storage.filler = filler;
