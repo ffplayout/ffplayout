@@ -170,7 +170,12 @@
                     <div class="label">
                         <span class="label-text">{{ t('player.file') }}</span>
                     </div>
-                    <input v-model="newSource.source" type="text" class="input input-sm input-bordered w-auto" />
+                    <input
+                        v-model="newSource.source"
+                        type="text"
+                        class="input input-sm input-bordered w-auto"
+                        :disabled="newSource.source.includes(configStore.channels[configStore.id].storage_path)"
+                    />
                 </label>
 
                 <label class="form-control w-auto mt-auto">
@@ -309,7 +314,7 @@ function closePlayer() {
 
 function setPreviewData(path: string) {
     let fullPath = path
-    const storagePath = configStore.playout.storage.path
+    const storagePath = configStore.channels[configStore.id].storage_path
     const lastIndex = storagePath.lastIndexOf('/')
 
     if (!path.includes('/')) {
@@ -325,9 +330,10 @@ function setPreviewData(path: string) {
     if (path.match(/^http/)) {
         previewUrl.value = path
     } else {
-        previewUrl.value = encodeURIComponent(
-            `/file/${configStore.channels[configStore.id].id}${fullPath}`
-        ).replace(/%2F/g, '/')
+        previewUrl.value = encodeURIComponent(`/file/${configStore.channels[configStore.id].id}${fullPath}`).replace(
+            /%2F/g,
+            '/'
+        )
     }
 
     const ext = previewName.value.split('.').slice(-1)[0].toLowerCase()
@@ -456,9 +462,9 @@ async function importPlaylist(imp: boolean) {
 
         playlistStore.isLoading = true
         await $fetch(
-            `/api/file/${configStore.channels[configStore.id].id}/import/?file=${
-                textFile.value[0].name
-            }&date=${listDate.value}`,
+            `/api/file/${configStore.channels[configStore.id].id}/import/?file=${textFile.value[0].name}&date=${
+                listDate.value
+            }`,
             {
                 method: 'PUT',
                 headers: authStore.authHeader,
