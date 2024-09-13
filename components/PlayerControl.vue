@@ -271,6 +271,7 @@ watch([data], () => {
             playlistStore.setStatus(playout_status)
         } catch {
             indexStore.sseConnected = true
+            playlistStore.playoutIsRunning = false
             resetStatus()
         }
     }

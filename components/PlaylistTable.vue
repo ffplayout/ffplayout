@@ -140,7 +140,7 @@ const playlistContainer = ref()
 const sortContainer = ref()
 const todayDate = ref($dayjs().utcOffset(configStore.utcOffset).format('YYYY-MM-DD'))
 const { id } = storeToRefs(useConfig())
-const { currentIndex, listDate } = storeToRefs(usePlaylist())
+const { currentIndex, listDate, playoutIsRunning } = storeToRefs(usePlaylist())
 
 const playlistSortOptions = {
     group: 'playlist',
@@ -173,6 +173,12 @@ watch([listDate, id], () => {
     setTimeout(() => {
         getPlaylist()
     }, 800)
+})
+
+watch([playoutIsRunning], () => {
+    setTimeout(() => {
+        scrollTo(currentIndex.value)
+    }, 400)
 })
 
 defineExpose({
