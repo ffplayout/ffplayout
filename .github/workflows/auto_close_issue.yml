@@ -8,5 +8,5 @@ jobs:
       uses: roots/issue-closer@v1.2
       with:
         repo-token: ${{ secrets.GITHUB_TOKEN }}
-        issue-close-message: "@${issue.user.login} this issue was automatically closed because it did not follow the issue template"
+        issue-close-message: "@${issue.user.login} this issue was automatically closed because it did not follow the issue template. Please read [CONTRIBUTING.md](https://github.com/ffplayout/ffplayout/blob/master/CONTRIBUTING.md) for more informations."
         issue-pattern: ".*### Describe the bug([\\s\\S]*?)### To Reproduce.*|### Feature description.*"
