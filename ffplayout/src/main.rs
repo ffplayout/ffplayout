@@ -170,13 +170,8 @@ async fn main() -> std::io::Result<()> {
                         .service(validate_uuid)
                         .service(event_stream),
                 )
-                .service(get_file);
-
-            if ARGS.public.is_none() {
-                // When no public path is given as argument, use predefine keywords in path,
-                // like /live; /preview; /public, or HLS extensions to recognize file should get from public folder
-                web_app = web_app.service(get_public);
-            }
+                .service(get_file)
+                .service(get_public);
 
             #[cfg(all(not(debug_assertions), feature = "embed_frontend"))]
             {
