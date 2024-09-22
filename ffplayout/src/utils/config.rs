@@ -756,10 +756,7 @@ impl PlayoutConfig {
         Ok(())
     }
 
-    pub async fn import(pool: &Pool<Sqlite>, import: Vec<String>) -> Result<(), ServiceError> {
-        let id = import[0].parse::<i32>()?;
-        let path = Path::new(&import[1]);
-
+    pub async fn import(pool: &Pool<Sqlite>, id: i32, path: &Path) -> Result<(), ServiceError> {
         if path.is_file() {
             let mut file = tokio::fs::File::open(path).await?;
             let mut contents = String::new();

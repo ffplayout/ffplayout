@@ -64,24 +64,20 @@ pub struct Args {
         long,
         help = "Dump advanced channel configuration to advanced_{channel}.toml"
     )]
-    pub dump_advanced: Option<i32>,
+    pub dump_advanced: bool,
 
     #[clap(long, help = "Dump channel configuration to ffplayout_{channel}.toml")]
-    pub dump_config: Option<i32>,
+    pub dump_config: bool,
 
     #[clap(
         long,
-        help = "import advanced channel configuration from file. Input must be `{channel id} {path to toml}`",
+        help = "import advanced channel configuration from file.",
         num_args = 2
     )]
-    pub import_advanced: Option<Vec<String>>,
+    pub import_advanced: Option<PathBuf>,
 
-    #[clap(
-        long,
-        help = "import channel configuration from file. Input must be `{channel id} {path to toml}`",
-        num_args = 2
-    )]
-    pub import_config: Option<Vec<String>>,
+    #[clap(long, help = "import channel configuration from file.", num_args = 2)]
+    pub import_config: Option<PathBuf>,
 
     #[clap(long, help = "List available channel ids")]
     pub list_channels: bool,
@@ -203,7 +199,7 @@ fn global_user(args: &mut Args) {
 pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
     let mut args = ARGS.clone();
 
-    if args.dump_advanced.is_none() && args.dump_config.is_none() && !args.drop_db {
+    if !args.dump_advanced && !args.dump_config && !args.drop_db {
         if let Err(e) = handles::db_migrate(pool).await {
             panic!("{e}");
         };
@@ -507,56 +503,84 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
         error_code = 0;
     }
 
-    if let Some(id) = ARGS.dump_config {
-        match PlayoutConfig::dump(pool, id).await {
-            Ok(_) => {
-                println!("Dump config to: ffplayout_{id}.toml");
-                error_code = 0;
+    if ARGS.dump_advanced {
+        if let Some(channels) = &ARGS.channels {
+            for id in channels {
+                match AdvancedConfig::dump(pool, *id).await {
+                    Ok(_) => {
+                        println!("Dump config to: advanced_{id}.toml");
+                        error_code = 0;
+                    }
+                    Err(e) => {
+                        eprintln!("Dump config: {e}");
+                        error_code = 1;
+                    }
+                };
             }
-            Err(e) => {
-                eprintln!("Dump config: {e}");
-                error_code = 1;
-            }
-        };
+        } else {
+            eprintln!("Channel ID(s) needed! Use `--channels 1 ...`");
+            error_code = 1;
+        }
     }
 
-    if let Some(id) = ARGS.dump_advanced {
-        match AdvancedConfig::dump(pool, id).await {
-            Ok(_) => {
-                println!("Dump config to: advanced_{id}.toml");
-                error_code = 0;
+    if ARGS.dump_config {
+        if let Some(channels) = &ARGS.channels {
+            for id in channels {
+                match PlayoutConfig::dump(pool, *id).await {
+                    Ok(_) => {
+                        println!("Dump config to: ffplayout_{id}.toml");
+                        error_code = 0;
+                    }
+                    Err(e) => {
+                        eprintln!("Dump config: {e}");
+                        error_code = 1;
+                    }
+                };
             }
-            Err(e) => {
-                eprintln!("Dump config: {e}");
-                error_code = 1;
-            }
-        };
+        } else {
+            eprintln!("Channel ID(s) needed! Use `--channels 1 ...`");
+            error_code = 1;
+        }
     }
 
-    if let Some(import) = &ARGS.import_config {
-        match PlayoutConfig::import(pool, import.clone()).await {
-            Ok(_) => {
-                println!("Import config done...");
-                error_code = 0;
+    if let Some(path) = &ARGS.import_advanced {
+        if let Some(channels) = &ARGS.channels {
+            for id in channels {
+                match AdvancedConfig::import(pool, *id, path).await {
+                    Ok(_) => {
+                        println!("Import config done...");
+                        error_code = 0;
+                    }
+                    Err(e) => {
+                        eprintln!("{e}");
+                        error_code = 1;
+                    }
+                };
             }
-            Err(e) => {
-                eprintln!("{e}");
-                error_code = 1;
-            }
-        };
+        } else {
+            eprintln!("Channel ID(s) needed! Use `--channels 1 ...`");
+            error_code = 1;
+        }
     }
 
-    if let Some(import) = &ARGS.import_advanced {
-        match AdvancedConfig::import(pool, import.clone()).await {
-            Ok(_) => {
-                println!("Import config done...");
-                error_code = 0;
+    if let Some(path) = &ARGS.import_config {
+        if let Some(channels) = &ARGS.channels {
+            for id in channels {
+                match PlayoutConfig::import(pool, *id, path).await {
+                    Ok(_) => {
+                        println!("Import config done...");
+                        error_code = 0;
+                    }
+                    Err(e) => {
+                        eprintln!("{e}");
+                        error_code = 1;
+                    }
+                };
             }
-            Err(e) => {
-                eprintln!("{e}");
-                error_code = 1;
-            }
-        };
+        } else {
+            eprintln!("Channel ID(s) needed! Use `--channels 1 ...`");
+            error_code = 1;
+        }
     }
 
     if error_code > -1 {
