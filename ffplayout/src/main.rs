@@ -197,10 +197,16 @@ async fn main() -> std::io::Result<()> {
         let channels = ARGS.channels.clone().unwrap_or_else(|| vec![1]);
 
         for (index, channel_id) in channels.iter().enumerate() {
-            let config = get_config(&pool, *channel_id)
+            let config = match get_config(&pool, *channel_id).await {
+                Ok(c) => c,
+                Err(e) => {
+                    eprint!("No config found, channel may not exists!\nOriginal error message: ");
+                    return Err(io::Error::new(io::ErrorKind::Other, e.to_string()));
+                }
+            };
+            let channel = handles::select_channel(&pool, channel_id)
                 .await
                 .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
-            let channel = handles::select_channel(&pool, channel_id).await.unwrap();
             let manager = ChannelManager::new(Some(pool.clone()), channel.clone(), config.clone());
 
             if ARGS.foreground {
