@@ -94,7 +94,12 @@ async fn main() -> std::io::Result<()> {
 
         let ip_port = conn.split(':').collect::<Vec<&str>>();
         let addr = ip_port[0];
-        let port = ip_port[1].parse::<u16>().unwrap();
+        let port = ip_port
+            .get(1)
+            .ok_or("<ADRESSE>:<PORT> needed!")
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?
+            .parse::<u16>()
+            .unwrap();
         let controllers = web::Data::from(channel_controllers.clone());
         let auth_state = web::Data::new(SseAuthState {
             uuids: tokio::sync::Mutex::new(HashSet::new()),
