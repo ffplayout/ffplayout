@@ -154,7 +154,7 @@ impl Iterator for FolderSource {
                 self.sort();
             }
 
-            self.current_node = match self.manager.current_list.lock().unwrap().get(0) {
+            self.current_node = match self.manager.current_list.lock().unwrap().first() {
                 Some(m) => m.clone(),
                 None => return None,
             };
