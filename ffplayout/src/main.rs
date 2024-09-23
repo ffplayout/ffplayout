@@ -96,10 +96,11 @@ async fn main() -> std::io::Result<()> {
         let addr = ip_port[0];
         let port = ip_port
             .get(1)
-            .ok_or("<ADRESSE>:<PORT> needed!")
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?
-            .parse::<u16>()
-            .unwrap();
+            .and_then(|p| p.parse::<u16>().ok())
+            .ok_or(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "<ADRESSE>:<PORT> needed! For example: 127.0.0.1:8787",
+            ))?;
         let controllers = web::Data::from(channel_controllers.clone());
         let auth_state = web::Data::new(SseAuthState {
             uuids: tokio::sync::Mutex::new(HashSet::new()),
