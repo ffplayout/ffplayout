@@ -136,7 +136,6 @@ impl Iterator for FolderSource {
             self.current_node
                 .add_filter(&config, &self.manager.filter_chain);
             self.current_node.begin = Some(time_in_seconds());
-
             self.manager.current_index.fetch_add(1, Ordering::SeqCst);
 
             Some(self.current_node.clone())
@@ -155,12 +154,14 @@ impl Iterator for FolderSource {
                 self.sort();
             }
 
-            self.current_node = self.manager.current_list.lock().unwrap()[0].clone();
+            self.current_node = match self.manager.current_list.lock().unwrap().get(0) {
+                Some(m) => m.clone(),
+                None => return None,
+            };
             let _ = self.current_node.add_probe(false).ok();
             self.current_node
                 .add_filter(&config, &self.manager.filter_chain);
             self.current_node.begin = Some(time_in_seconds());
-
             self.manager.current_index.store(1, Ordering::SeqCst);
 
             Some(self.current_node.clone())
