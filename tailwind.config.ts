@@ -1,3 +1,4 @@
+import daisyui from 'daisyui'
 import svgToDataUri from 'mini-svg-data-uri'
 
 module.exports = {
@@ -120,5 +121,5 @@ module.exports = {
             },
         ],
     },
-    plugins: [require('daisyui')],
+    plugins: [daisyui],
 }

@@ -2,8 +2,8 @@
     <div class="h-full">
         <PlayerControl />
         <div class="flex justify-end p-1">
-            <div class="h-[32px] grid grid-cols-2">
-                <div class="text-warning flex justify-end p-2">
+            <div class="h-[32px] flex">
+                <div class="text-warning flex-none flex justify-end p-2">
                     <div
                         v-if="firstLoad && beforeDayStart"
                         class="tooltip tooltip-right tooltip-warning"

@@ -170,26 +170,26 @@
                                         :key="item.start"
                                         class="flex flex-col gap-1 justify-center items-center border border-my-gray rounded mt-1 p-1"
                                     >
-                                        <div class="grid grid-cols-[60px_67px_70px_67px_70px] join">
+                                        <div class="flex flex-wrap xs:grid xs:grid-cols-[58px_64px_67px_64px_67px] xs:join">
                                             <div
-                                                class="input input-sm input-bordered join-item px-2 text-center bg-base-200 leading-7"
+                                                class="input input-sm input-bordered join-item px-1 text-center bg-base-200 leading-7"
                                             >
                                                 {{ t('player.start') }}:
                                             </div>
                                             <input
                                                 v-model="item.start"
                                                 type="text"
-                                                class="input input-sm input-bordered join-item px-2 text-center"
+                                                class="input input-sm input-bordered join-item px-1 text-center"
                                             />
                                             <div
-                                                class="input input-sm input-bordered join-item px-2 text-center bg-base-200 leading-7"
+                                                class="input input-sm input-bordered join-item px-1 text-center bg-base-200 leading-7"
                                             >
                                             {{ t('player.duration') }}:
                                             </div>
                                             <input
                                                 v-model="item.duration"
                                                 type="text"
-                                                class="input input-sm input-bordered join-item px-2 text-center"
+                                                class="input input-sm input-bordered join-item px-1 text-center"
                                             />
                                             <button
                                                 class="btn btn-sm input-bordered join-item"

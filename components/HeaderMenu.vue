@@ -3,20 +3,25 @@
         <NuxtLink class="navbar-brand min-w-[46px] p-2" href="/">
             <img src="~/assets/images/ffplayout-small.png" class="img-fluid" alt="Logo" width="30" height="30" />
         </NuxtLink>
-        <EventStatus v-if="route.name?.toString().includes('player__')" class="z-10"/>
+        <EventStatus v-if="route.name?.toString().includes('player__')" class="z-10" />
         <div class="navbar-end w-1/5 grow">
-            <label class="swap swap-rotate me-2 md:hidden">
+            <label class="swap swap-rotate me-2 2sm:hidden">
                 <input type="checkbox" :checked="indexStore.darkMode" @change="toggleDarkTheme" />
                 <SvgIcon name="swap-on" classes="w-5 h-5" />
                 <SvgIcon name="swap-off" classes="w-5 h-5" />
             </label>
-            <div class="dropdown dropdown-end z-50">
-                <div tabindex="0" role="button" class="btn btn-ghost md:hidden">
+            <details ref="menuDropdown" tabindex="0" class="dropdown dropdown-end z-50">
+                <summary class="btn btn-ghost 2sm:hidden" @click="clickMenu()" @blur="blurMenu()">
                     <SvgIcon name="burger" classes="w-5 h-5" />
-                </div>
+                </summary>
                 <ul class="menu menu-sm dropdown-content mt-1 z-[1] p-2 shadow bg-base-100 rounded-box w-52">
                     <li v-for="item in menuItems" :key="item.name" class="bg-base-100 rounded-md">
-                        <NuxtLink :to="item.link" class="h-[27px] text-base" exact-active-class="is-active">
+                        <NuxtLink
+                            :to="item.link"
+                            class="h-[27px] text-base"
+                            exact-active-class="is-active"
+                            @click="closeMenu()"
+                        >
                             <span>
                                 {{ item.name }}
                             </span>
@@ -32,7 +37,7 @@
                             <ul class="p-2">
                                 <li v-for="(channel, index) in configStore.channels" :key="index">
                                     <span>
-                                        <a class="dropdown-item" @click="selectChannel(index)">{{ channel.name }}</a>
+                                        <a class="dropdown-item cursor-pointer" @click="selectChannel(index)">{{ channel.name }}</a>
                                     </span>
                                 </li>
                             </ul>
@@ -44,9 +49,9 @@
                         </button>
                     </li>
                 </ul>
-            </div>
+            </details>
         </div>
-        <div class="navbar-end hidden md:flex w-4/5 min-w-[750px]">
+        <div class="navbar-end hidden 2sm:flex w-4/5 min-w-[750px]">
             <ul class="menu menu-sm menu-horizontal px-1">
                 <li v-for="item in menuItems" :key="item.name" class="bg-base-100 rounded-md p-0">
                     <NuxtLink
@@ -68,7 +73,7 @@
                         </summary>
                         <ul class="p-2 bg-base-100 rounded-md !mt-1 w-36" tabindex="0">
                             <li v-for="(channel, index) in configStore.channels" :key="index">
-                                <a class="dropdown-item" @click="selectChannel(index)">
+                                <a class="dropdown-item cursor-pointer" @click="selectChannel(index)">
                                     {{ channel.name }}
                                 </a>
                             </li>
@@ -103,6 +108,9 @@ const authStore = useAuth()
 const configStore = useConfig()
 const indexStore = useIndex()
 
+const menuDropdown = ref()
+const isOpen = ref(false)
+
 const menuItems = ref([
     { name: t('button.home'), link: localePath({ name: 'index' }) },
     { name: t('button.player'), link: localePath({ name: 'player' }) },
@@ -114,6 +122,33 @@ const menuItems = ref([
 
 if (colorMode.value === 'dark') {
     indexStore.darkMode = true
+}
+
+function closeMenu() {
+    setTimeout(() => {
+        isOpen.value = false
+        menuDropdown.value.removeAttribute('open')
+        console.log('close')
+    }, 200)
+}
+
+function clickMenu() {
+    console.log('close')
+    isOpen.value = !isOpen.value
+
+    if (!isOpen.value) {
+        menuDropdown.value.removeAttribute('open')
+    }
+}
+
+function blurMenu() {
+    if (isOpen.value) {
+        isOpen.value = !isOpen.value
+    } else {
+        setTimeout(() => {
+            menuDropdown.value.removeAttribute('open')
+        }, 200)
+    }
 }
 
 function closeDropdown($event: any) {
