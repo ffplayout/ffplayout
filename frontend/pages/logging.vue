@@ -22,7 +22,7 @@
                     auto-apply
                     :locale="locale"
                     :dark="colorMode.value === 'dark'"
-                    :ui="{ input: 'join-item input !input-sm !input-bordered !w-[300px] text-right !pe-3' }"
+                    :ui="{ input: 'join-item input !input-sm !input-bordered !w-[170px] text-right !pe-3' }"
                     required
                 />
                 <button class="btn btn-sm btn-primary join-item" :title="t('log.download')" @click="downloadLog">
@@ -85,7 +85,7 @@ watch([listDate, id], () => {
 })
 
 const calendarFormat = (date: Date) => {
-    return $dayjs(date).locale(locale.value).format('dddd - LL')
+   return $dayjs(date).locale(locale.value).format('ddd L')
 }
 
 function filterLogsBySeverity(logString: string, minSeverity: string): string {

@@ -1,6 +1,5 @@
 <template>
-    <!-- <div v-if="data">{{ systemStatus(data) }}</div> -->
-    <div class="grid grid-cols-1 xs:grid-cols-2 border-4 rounded-md border-primary text-left shadow min-w-[728px] max-w-[960px]">
+    <div class="grid grid-cols-1 xs:grid-cols-2 border-4 rounded-md border-primary text-left shadow min-w-[320px] max-w-[960px] mt-5 xs:mt-0">
         <div class="p-4 bg-base-100">
             <span class="text-3xl">{{ sysStat.system.name }} {{ sysStat.system.version }}</span>
             <span v-if="sysStat.system.kernel">

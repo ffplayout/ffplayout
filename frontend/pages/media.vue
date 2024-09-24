@@ -55,7 +55,7 @@
                                             @dragleave="handleDragLeave"
                                         >
                                             <td class="px-2 py-1.5 truncate">
-                                                <span
+                                                <a
                                                     class="cursor-pointer"
                                                     @click="
                                                         mediaStore.getTree(
@@ -65,7 +65,7 @@
                                                 >
                                                     <i class="bi-folder-fill" />
                                                     {{ folder.name }}
-                                                </span>
+                                                </a>
                                             </td>
 
                                             <td class="px-2 py-1.5 text-center">
@@ -105,13 +105,13 @@
                                     <tr
                                         v-for="folder in mediaStore.folderTree.folders"
                                         :key="folder.uid"
-                                        class="grid grid-cols-[auto_170px] border-b border-base-content/20"
+                                        class="grid grid-cols-[auto_40px] border-b border-base-content/20"
                                         @drop="handleDrop($event, folder, false)"
                                         @dragover="handleDragOver"
                                         @dragleave="handleDragLeave"
                                     >
-                                        <td class="px-2 py-1.5">
-                                            <button
+                                        <td class="px-2 py-1.5 truncate cursor-pointer">
+                                            <a
                                                 class="truncate"
                                                 @click="
                                                     mediaStore.getTree(
@@ -121,7 +121,7 @@
                                             >
                                                 <i class="bi-folder-fill" />
                                                 {{ folder.name }}
-                                            </button>
+                                            </a>
                                         </td>
                                         <td class="ps-2 pe-[14px] py-1.5 text-right">
                                             <button
