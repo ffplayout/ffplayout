@@ -68,3 +68,42 @@ cargo deb --no-build --target=aarch64-unknown-linux-gnu --variant=arm64 -p ffpla
 # for rhel based systems:
 cargo generate-rpm --target=x86_64-unknown-linux-musl
 ```
+
+## Setup Frontend
+
+Make sure to install the dependencies:
+
+```bash
+# yarn
+yarn install
+
+# npm
+npm install
+
+# pnpm
+pnpm install --shamefully-hoist
+```
+
+## Development Server
+
+Start the development server on http://localhost:3000
+
+```bash
+npm run dev
+```
+
+## Production
+
+Build the application for production:
+
+```bash
+npm run build
+```
+
+Locally preview production build:
+
+```bash
+npm run preview
+```
+
+Check out the [deployment documentation](https://nuxt.com/docs/getting-started/deployment) for more information.

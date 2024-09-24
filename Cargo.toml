@@ -1,6 +1,5 @@
 [workspace]
-members = ["ffplayout", "tests"]
-default-members = ["ffplayout", "tests"]
+members = ["engine", "tests"]
 resolver = "2"
 
 [workspace.package]

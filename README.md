@@ -13,13 +13,13 @@ Check the [releases](https://github.com/ffplayout/ffplayout/releases/latest) for
 
 ### Features
 
-- start program with [web based frontend](https://github.com/ffplayout/ffplayout-frontend), or run playout in foreground mode without frontend
+- start program with [web based frontend](/frontend/), or run playout in foreground mode without frontend
 - dynamic playlist
 - replace missing playlist or clip with single filler or multiple fillers from folder, if no filler exists, create dummy clip
 - playing clips in [watched](/docs/folder_mode.md) folder mode
 - send emails with error message
 - overlay a logo
-- overlay text, controllable through [web frontend](https://github.com/ffplayout/ffplayout-frontend) (needs ffmpeg with libzmq and enabled JSON RPC server)
+- overlay text, controllable through [web frontend](/frontend/) (needs ffmpeg with libzmq and enabled JSON RPC server)
 - loop playlist infinitely
 - [remote source](/docs/remote_source.md)
 - trim and fade the last clip, to get full 24 hours

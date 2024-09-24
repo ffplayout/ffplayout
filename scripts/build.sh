@@ -3,10 +3,6 @@
 source $(dirname "$0")/man_create.sh
 target=$1
 
-if [ ! -f 'frontend/package.json' ]; then
-    git submodule update --init
-fi
-
 if [[ -n $target ]]; then
     targets=($target)
 else

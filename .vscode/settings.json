@@ -1,4 +1,15 @@
 {
+    "eslint.useFlatConfig": true,
+    "prettier.tabWidth": 4,
+    "prettier.printWidth": 120,
+    "vue3snippets.semi": false,
+    "vue3snippets.singleQuote": true,
+    "vue3snippets.jsxSingleQuote": true,
+    "vue3snippets.printWidth": 120,
+    "vue3snippets.tabWidth": 4,
+    "prettier.jsxSingleQuote": true,
+    "prettier.semi": false,
+    "prettier.singleQuote": true,
     "rust-analyzer.cargo.target": null,
     "rust-analyzer.checkOnSave": true,
     "rust-analyzer.cargo.buildScripts.overrideCommand": null,
@@ -8,6 +19,24 @@
     "rust-analyzer.inlayHints.typeHints.enable": false,
     "rust-analyzer.diagnostics.disabled": ["unresolved-proc-macro"],
     "[dockercompose]": {
+        "editor.defaultFormatter": "esbenp.prettier-vscode"
+    },
+    "[css]": {
+        "editor.defaultFormatter": "esbenp.prettier-vscode"
+    },
+    "[html]": {
+        "editor.defaultFormatter": "esbenp.prettier-vscode"
+    },
+    "[javascript]": {
+        "editor.defaultFormatter": "esbenp.prettier-vscode"
+    },
+    "[scss]": {
+        "editor.defaultFormatter": "esbenp.prettier-vscode"
+    },
+    "[vue]": {
+        "editor.defaultFormatter": "esbenp.prettier-vscode"
+    },
+    "[typescript]": {
         "editor.defaultFormatter": "esbenp.prettier-vscode"
     },
     "[rust]": {
@@ -23,6 +52,7 @@
         "flexi",
         "lettre",
         "libc",
+        "nuxt",
         "neli",
         "paris",
         "reqwest",
