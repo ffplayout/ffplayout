@@ -53,6 +53,29 @@ pub async fn init_globales(conn: &Pool<Sqlite>) {
     INSTANCE.set(config).unwrap();
 }
 
+#[derive(Clone, Debug, Default, Deserialize, Serialize, sqlx::FromRow)]
+pub struct Channel {
+    #[serde(default = "default_id", skip_deserializing)]
+    pub id: i32,
+    pub name: String,
+    pub preview_url: String,
+    pub extra_extensions: String,
+    pub active: bool,
+    pub hls_path: String,
+    pub playlist_path: String,
+    pub storage_path: String,
+    pub last_date: Option<String>,
+    pub time_shift: f64,
+
+    #[sqlx(default)]
+    #[serde(default)]
+    pub utc_offset: i32,
+}
+
+fn default_id() -> i32 {
+    1
+}
+
 // #[serde_as]
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct User {
@@ -230,29 +253,6 @@ where
     }
 
     deserializer.deserialize_any(StringOrNumberVisitor)
-}
-
-#[derive(Clone, Debug, Default, Deserialize, Serialize, sqlx::FromRow)]
-pub struct Channel {
-    #[serde(default = "default_id", skip_deserializing)]
-    pub id: i32,
-    pub name: String,
-    pub preview_url: String,
-    pub extra_extensions: String,
-    pub active: bool,
-    pub hls_path: String,
-    pub playlist_path: String,
-    pub storage_path: String,
-    pub last_date: Option<String>,
-    pub time_shift: f64,
-
-    #[sqlx(default)]
-    #[serde(default)]
-    pub utc_offset: i32,
-}
-
-fn default_id() -> i32 {
-    1
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, sqlx::FromRow)]
