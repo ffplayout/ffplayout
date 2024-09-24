@@ -1,0 +1,39 @@
+node_modules
+*.log*
+.nuxt
+.nitro
+.cache
+.output
+.env
+dist
+.eslintcache
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# Service worker
+sw.*
+
+# Mac OSX
+.DS_Store
+
+# Vim swap files
+*.swp
+
+master.m3u8
+tv-media
+tv-media/
+Videos
+Videos/
+*.tar*
+home
+home/
+live1
+live1/
+Musik
+Musik/
+
+test.vue

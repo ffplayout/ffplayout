@@ -1,0 +1,10 @@
+{
+    "recommendations": [
+        "bradlc.vscode-tailwindcss",
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "hollowtree.vue-snippets",
+        "vue.volar",
+        "wscats.vue",
+    ]
+}

@@ -1,0 +1,47 @@
+{
+  "name": "ffplayout-frontend",
+  "version": "0.12.1",
+  "description": "Web GUI for ffplayout",
+  "author": "Jonathan Baecker",
+  "private": true,
+  "scripts": {
+    "build": "nuxt build",
+    "dev": "nuxt dev",
+    "generate": "nuxt generate",
+    "reset": "rm -rf .nuxt node_modules .output package-lock.json && npm install",
+    "preview": "nuxt preview",
+    "postinstall": "nuxt prepare"
+  },
+  "dependencies": {
+    "@nuxtjs/color-mode": "^3.5.1",
+    "@pinia/nuxt": "^0.5.4",
+    "@vueform/multiselect": "^2.6.10",
+    "@vuepic/vue-datepicker": "^9.0.3",
+    "@vueuse/nuxt": "^11.1.0",
+    "bootstrap-icons": "^1.11.3",
+    "dayjs": "^1.11.13",
+    "jwt-decode": "^4.0.0",
+    "lodash": "^4.17.21",
+    "mpegts.js": "^1.7.3",
+    "nuxt": "3.13.2",
+    "pinia": "^2.2.2",
+    "sortablejs-vue3": "^1.2.11",
+    "splitpanes": "^3.1.5",
+    "video.js": "^8.17.4"
+  },
+  "devDependencies": {
+    "@nuxt/eslint": "^0.5.7",
+    "@nuxtjs/i18n": "^8.5.5",
+    "@nuxtjs/tailwindcss": "^6.12.1",
+    "@types/lodash": "^4.17.9",
+    "@types/video.js": "^7.3.58",
+    "daisyui": "^4.12.10",
+    "mini-svg-data-uri": "^1.4.4",
+    "postcss": "^8.4.47",
+    "postcss-loader": "^8.1.1",
+    "sass": "^1.79.3",
+    "sass-loader": "^16.0.2",
+    "vue": "^3.5.8",
+    "vue-router": "^4.4.5"
+  }
+}
