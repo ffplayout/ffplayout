@@ -4,6 +4,9 @@ use std::{
     path::{Path, PathBuf},
 };
 
+#[cfg(target_family = "unix")]
+use std::os::unix::fs::MetadataExt;
+
 use chrono::{format::ParseErrorKind, prelude::*};
 use faccess::PathExt;
 use log::*;
@@ -311,11 +314,7 @@ pub fn round_to_nearest_ten(num: i64) -> i64 {
     }
 }
 
-pub async fn copy_assets(
-    storage_path: &Path,
-    fix_permission: bool,
-    user: Option<nix::unistd::User>,
-) -> Result<(), std::io::Error> {
+pub async fn copy_assets(storage_path: &Path) -> Result<(), std::io::Error> {
     if storage_path.is_dir() {
         let target = storage_path.join("00-assets");
         let mut dummy_source = Path::new("/usr/share/ffplayout/dummy.vtt");
@@ -343,17 +342,26 @@ pub async fn copy_assets(
             fs::copy(&logo_source, &logo_target).await?;
 
             #[cfg(target_family = "unix")]
-            if fix_permission {
-                let user = user.unwrap();
+            {
+                let uid = nix::unistd::Uid::current();
+                let parent_owner = storage_path.metadata().unwrap().uid();
 
-                if dummy_target.is_file() {
-                    nix::unistd::chown(&dummy_target, Some(user.uid), Some(user.gid))?;
-                }
-                if font_target.is_file() {
-                    nix::unistd::chown(&font_target, Some(user.uid), Some(user.gid))?;
-                }
-                if logo_target.is_file() {
-                    nix::unistd::chown(&logo_target, Some(user.uid), Some(user.gid))?;
+                if uid.is_root() && uid.to_string() != parent_owner.to_string() {
+                    let user = nix::unistd::User::from_uid(parent_owner.into())
+                        .unwrap_or_default()
+                        .unwrap();
+
+                    nix::unistd::chown(&target, Some(user.uid), Some(user.gid))?;
+
+                    if dummy_target.is_file() {
+                        nix::unistd::chown(&dummy_target, Some(user.uid), Some(user.gid))?;
+                    }
+                    if font_target.is_file() {
+                        nix::unistd::chown(&font_target, Some(user.uid), Some(user.gid))?;
+                    }
+                    if logo_target.is_file() {
+                        nix::unistd::chown(&logo_target, Some(user.uid), Some(user.gid))?;
+                    }
                 }
             }
         }

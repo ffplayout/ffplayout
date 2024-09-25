@@ -36,22 +36,10 @@ pub async fn create_channel(
 ) -> Result<Channel, ServiceError> {
     let channel = handles::insert_channel(conn, target_channel).await?;
     let storage_path = PathBuf::from(channel.storage_path.clone());
-    let mut user = None;
-    let mut fix_permission = false;
-
-    if cfg!(target_family = "unix") {
-        user = nix::unistd::User::from_name("ffpu").unwrap_or_default();
-        let uid = nix::unistd::Uid::current();
-        let current_user = nix::unistd::User::from_uid(uid).unwrap_or_default();
-
-        if current_user.unwrap().name == "root" {
-            fix_permission = true;
-        };
-    }
 
     handles::new_channel_presets(conn, channel.id).await?;
 
-    if let Err(e) = copy_assets(&storage_path, fix_permission, user).await {
+    if let Err(e) = copy_assets(&storage_path).await {
         error!("{e}");
     };
 

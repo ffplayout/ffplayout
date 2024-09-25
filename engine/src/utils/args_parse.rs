@@ -4,11 +4,13 @@ use std::{
 };
 
 #[cfg(target_family = "unix")]
-use std::process::exit;
+use std::os::unix::fs::MetadataExt;
 
 use clap::Parser;
 use rpassword::read_password;
 use sqlx::{Pool, Sqlite};
+
+#[cfg(target_family = "unix")]
 use tokio::fs;
 
 use crate::db::{
@@ -199,13 +201,6 @@ fn global_user(args: &mut Args) {
 }
 
 pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
-    let mut user = None;
-    let mut fix_permission = false;
-
-    if cfg!(target_family = "unix") {
-        user = nix::unistd::User::from_name("ffpu").unwrap_or_default();
-    }
-
     let mut args = ARGS.clone();
 
     if !args.dump_advanced && !args.dump_config && !args.drop_db {
@@ -221,37 +216,6 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
     let mut error_code = -1;
 
     if args.init {
-        #[cfg(target_family = "unix")]
-        {
-            let uid = nix::unistd::Uid::current();
-            let current_user = nix::unistd::User::from_uid(uid).unwrap_or_default();
-
-            if current_user != user {
-                let user_name = current_user.unwrap().name;
-                let mut fix_perm = String::new();
-
-                println!(
-                    "\nYou run the initialization as user {}.\nFix permissions after initialization?\n",
-                    user_name
-                );
-
-                print!("Fix permission [Y/n]: ");
-                stdout().flush().unwrap();
-
-                stdin()
-                    .read_line(&mut fix_perm)
-                    .expect("Did not enter a yes or no?");
-
-                fix_permission = fix_perm.trim().to_lowercase().starts_with('y');
-
-                if fix_permission && user_name != "root" {
-                    println!("\nYou do not have permission to change DB file ownership!\nRun as proper process user or root.");
-
-                    exit(1);
-                }
-            }
-        }
-
         let check_user = handles::select_users(pool).await;
 
         let mut storage = String::new();
@@ -373,36 +337,15 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
             channel.storage_path = storage_path.to_string_lossy().to_string();
         };
 
-        if let Err(e) = copy_assets(&storage_path, fix_permission, user.clone()).await {
+        if let Err(e) = copy_assets(&storage_path).await {
             eprintln!("{e}");
         };
 
         handles::update_channel(pool, 1, channel).await.unwrap();
 
         #[cfg(target_family = "unix")]
-        if fix_permission {
-            let user = user.clone().unwrap();
-            let db_path = Path::new(db_path().unwrap());
-
-            let db = fs::canonicalize(db_path).await.unwrap();
-            let shm = fs::canonicalize(db_path.with_extension("db-shm"))
-                .await
-                .unwrap();
-            let wal = fs::canonicalize(db_path.with_extension("db-wal"))
-                .await
-                .unwrap();
-
-            nix::unistd::chown(&db, Some(user.uid), Some(user.gid)).expect("Change DB owner");
-
-            if shm.is_file() {
-                nix::unistd::chown(&shm, Some(user.uid), Some(user.gid))
-                    .expect("Change DB-SHM owner");
-            }
-
-            if wal.is_file() {
-                nix::unistd::chown(&wal, Some(user.uid), Some(user.gid))
-                    .expect("Change DB-WAL owner");
-            }
+        {
+            update_permissions().await;
         }
 
         println!("\nSet global settings done...");
@@ -481,7 +424,7 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
             channel.storage_path = global.storage_root.clone();
         }
 
-        if let Err(e) = copy_assets(&storage_path, false, user).await {
+        if let Err(e) = copy_assets(&storage_path).await {
             eprintln!("{e}");
         };
 
@@ -500,6 +443,11 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
                 error_code = 1;
             }
         };
+
+        #[cfg(target_family = "unix")]
+        {
+            update_permissions().await;
+        }
     }
 
     if ARGS.list_channels {
@@ -603,5 +551,37 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
         Err(error_code)
     } else {
         Ok(())
+    }
+}
+
+#[cfg(target_family = "unix")]
+async fn update_permissions() {
+    let db_path = Path::new(db_path().unwrap());
+    let uid = nix::unistd::Uid::current();
+    let parent_owner = db_path.parent().unwrap().metadata().unwrap().uid();
+    let user = nix::unistd::User::from_uid(parent_owner.into())
+        .unwrap_or_default()
+        .unwrap();
+
+    if uid.is_root() && uid.to_string() != parent_owner.to_string() {
+        println!("Adjust DB permission...");
+
+        let db = fs::canonicalize(db_path).await.unwrap();
+        let shm = fs::canonicalize(db_path.with_extension("db-shm"))
+            .await
+            .unwrap();
+        let wal = fs::canonicalize(db_path.with_extension("db-wal"))
+            .await
+            .unwrap();
+
+        nix::unistd::chown(&db, Some(user.uid), Some(user.gid)).expect("Change DB owner");
+
+        if shm.is_file() {
+            nix::unistd::chown(&shm, Some(user.uid), Some(user.gid)).expect("Change DB-SHM owner");
+        }
+
+        if wal.is_file() {
+            nix::unistd::chown(&wal, Some(user.uid), Some(user.gid)).expect("Change DB-WAL owner");
+        }
     }
 }
