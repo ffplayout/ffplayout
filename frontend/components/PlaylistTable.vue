@@ -25,7 +25,7 @@
                             {{ t('player.play') }}
                         </div>
                     </th>
-                    <th class="w-[85px] p-0 text-center hidden md:table-cell">
+                    <th class="w-[85px] p-0 text-center hidden 2xs:table-cell">
                         <div class="border-b border-my-gray px-4 py-3 -mb-[2px]">
                             {{ t('player.duration') }}
                         </div>
@@ -50,7 +50,7 @@
                             {{ t('player.edit') }}
                         </div>
                     </th>
-                    <th class="w-[85px] p-0 text-center hidden md:table-cell justify-center">
+                    <th class="w-[85px] p-0 text-center hidden 2xs:table-cell justify-center">
                         <div class="border-b border-my-gray px-4 py-3 -mb-[2px]">
                             {{ t('player.delete') }}
                         </div>
@@ -78,7 +78,7 @@
                             '!bg-lime-500/30':
                                 playlistStore.playoutIsRunning && listDate === todayDate && index === currentIndex,
                             '!bg-amber-600/40': element.overtime,
-                            'text-base-content/50': element.category === 'advertisement'
+                            'text-base-content/50': element.category === 'advertisement',
                         }"
                     >
                         <td v-if="!configStore.playout.playlist.infinit" class="ps-4 py-2 text-left">
@@ -92,7 +92,7 @@
                                 <i class="bi-play-fill" />
                             </button>
                         </td>
-                        <td class="py-2 text-center hidden md:table-cell">{{ secToHMS(element.duration) }}</td>
+                        <td class="py-2 text-center hidden 2xs:table-cell">{{ secToHMS(element.duration) }}</td>
                         <td class="py-2 text-center hidden xl:table-cell">
                             {{ secToHMS(element.in) }}
                         </td>
@@ -112,7 +112,7 @@
                                 <i class="bi-pencil-square" />
                             </button>
                         </td>
-                        <td class="py-2 text-center hidden md:table-cell justify-center hover:text-base-content/70">
+                        <td class="py-2 text-center hidden 2xs:table-cell justify-center hover:text-base-content/70">
                             <button @click="deletePlaylistItem(index)">
                                 <i class="bi-x-circle-fill" />
                             </button>
@@ -345,7 +345,8 @@ function deletePlaylistItem(index: number) {
     padding-bottom: 0.5rem;
 }
 
-#playlist-container .sortable-ghost td:nth-last-child(3) {
+#playlist-container .sortable-ghost td:nth-last-child(3),
+#playlist-container .sortable-ghost td:nth-last-child(-n + 1) {
     display: table-cell !important;
 }
 
