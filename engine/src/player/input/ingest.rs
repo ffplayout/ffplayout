@@ -75,7 +75,7 @@ pub fn ingest_server(
     let vtt_dummy = config
         .channel
         .storage_path
-        .join(&config.processing.vtt_dummy.clone().unwrap_or_default());
+        .join(config.processing.vtt_dummy.clone().unwrap_or_default());
 
     if let Some(ingest_input_cmd) = config.advanced.ingest.input_cmd {
         server_cmd.append(&mut ingest_input_cmd.clone());

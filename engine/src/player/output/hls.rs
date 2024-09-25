@@ -66,7 +66,7 @@ fn ingest_to_hls_server(manager: ChannelManager) -> Result<(), ProcessError> {
         let vtt_dummy = config
             .channel
             .storage_path
-            .join(&config.processing.vtt_dummy.clone().unwrap_or_default());
+            .join(config.processing.vtt_dummy.clone().unwrap_or_default());
 
         if vtt_dummy.is_file() {
             server_prefix.append(&mut vec_strings!["-i", vtt_dummy.to_string_lossy()]);

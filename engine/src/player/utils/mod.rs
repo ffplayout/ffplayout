@@ -70,7 +70,7 @@ pub fn prepare_output_cmd(
     let vtt_dummy = config
         .channel
         .storage_path
-        .join(&config.processing.vtt_dummy.clone().unwrap_or_default());
+        .join(config.processing.vtt_dummy.clone().unwrap_or_default());
 
     if let Some(mut filter) = filters.clone() {
         for (i, param) in output_params.iter().enumerate() {
@@ -124,10 +124,7 @@ pub fn prepare_output_cmd(
     }
 
     if config.processing.vtt_enable && vtt_dummy.is_file() {
-        let mut i = cmd.iter().filter(|&n| &*n == "-i").count();
-        if i > 0 {
-            i -= 1
-        }
+        let i = cmd.iter().filter(|&n| n == "-i").count().saturating_sub(1);
 
         cmd.append(&mut vec_strings!("-map", format!("{i}:s?")));
     }
@@ -626,7 +623,7 @@ pub fn loop_image(config: &PlayoutConfig, node: &Media) -> Vec<String> {
         let vtt_dummy = config
             .channel
             .storage_path
-            .join(&config.processing.vtt_dummy.clone().unwrap_or_default());
+            .join(config.processing.vtt_dummy.clone().unwrap_or_default());
 
         if vtt_file.is_file() {
             source_cmd.append(&mut vec_strings![
@@ -661,7 +658,7 @@ pub fn loop_filler(config: &PlayoutConfig, node: &Media) -> Vec<String> {
         let vtt_dummy = config
             .channel
             .storage_path
-            .join(&config.processing.vtt_dummy.clone().unwrap_or_default());
+            .join(config.processing.vtt_dummy.clone().unwrap_or_default());
 
         if vtt_file.is_file() {
             if loop_count > 1 {
@@ -733,7 +730,7 @@ pub fn seek_and_length(config: &PlayoutConfig, node: &mut Media) -> Vec<String> 
         let vtt_dummy = config
             .channel
             .storage_path
-            .join(&config.processing.vtt_dummy.clone().unwrap_or_default());
+            .join(config.processing.vtt_dummy.clone().unwrap_or_default());
 
         if vtt_file.is_file() {
             if loop_count > 1 {
@@ -778,7 +775,7 @@ pub fn gen_dummy(config: &PlayoutConfig, duration: f64) -> (String, Vec<String>)
         let vtt_dummy = config
             .channel
             .storage_path
-            .join(&config.processing.vtt_dummy.clone().unwrap_or_default());
+            .join(config.processing.vtt_dummy.clone().unwrap_or_default());
 
         if vtt_dummy.is_file() {
             source_cmd.append(&mut vec_strings!["-i", vtt_dummy.to_string_lossy()]);
