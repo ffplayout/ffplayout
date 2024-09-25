@@ -62,6 +62,17 @@ fn ingest_to_hls_server(manager: ChannelManager) -> Result<(), ProcessError> {
 
     server_prefix.append(&mut stream_input.clone());
 
+    if config.processing.vtt_enable {
+        let vtt_dummy = config
+            .channel
+            .storage_path
+            .join(&config.processing.vtt_dummy.clone().unwrap_or_default());
+
+        if vtt_dummy.is_file() {
+            server_prefix.append(&mut vec_strings!["-i", vtt_dummy.to_string_lossy()]);
+        }
+    }
+
     let mut is_running;
 
     if let Some(url) = stream_input.iter().find(|s| s.contains("://")) {

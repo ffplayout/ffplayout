@@ -67,6 +67,10 @@ pub fn prepare_output_cmd(
     let mut new_params = vec![];
     let mut count = 0;
     let re_v = Regex::new(r"\[?0:v(:0)?\]?").unwrap();
+    let vtt_dummy = config
+        .channel
+        .storage_path
+        .join(&config.processing.vtt_dummy.clone().unwrap_or_default());
 
     if let Some(mut filter) = filters.clone() {
         for (i, param) in output_params.iter().enumerate() {
@@ -117,6 +121,15 @@ pub fn prepare_output_cmd(
                 cmd.append(&mut vec_strings!["-map", format!("0:a:{i}")]);
             }
         }
+    }
+
+    if config.processing.vtt_enable && vtt_dummy.is_file() {
+        let mut i = cmd.iter().filter(|&n| &*n == "-i").count();
+        if i > 0 {
+            i -= 1
+        }
+
+        cmd.append(&mut vec_strings!("-map", format!("{i}:s?")));
     }
 
     cmd.append(&mut output_params);
@@ -589,7 +602,7 @@ pub fn get_delta(config: &PlayoutConfig, begin: &f64) -> (f64, f64) {
 }
 
 /// Loop image until target duration is reached.
-pub fn loop_image(node: &Media) -> Vec<String> {
+pub fn loop_image(config: &PlayoutConfig, node: &Media) -> Vec<String> {
     let duration = node.out - node.seek;
     let mut source_cmd: Vec<String> = vec_strings!["-loop", "1", "-i", node.source.clone()];
 
@@ -608,11 +621,30 @@ pub fn loop_image(node: &Media) -> Vec<String> {
 
     source_cmd.append(&mut vec_strings!["-t", duration]);
 
+    if config.processing.vtt_enable {
+        let vtt_file = Path::new(&node.source).with_extension("vtt");
+        let vtt_dummy = config
+            .channel
+            .storage_path
+            .join(&config.processing.vtt_dummy.clone().unwrap_or_default());
+
+        if vtt_file.is_file() {
+            source_cmd.append(&mut vec_strings![
+                "-i",
+                vtt_file.to_string_lossy(),
+                "-t",
+                node.out
+            ]);
+        } else if vtt_dummy.is_file() {
+            source_cmd.append(&mut vec_strings!["-i", vtt_dummy.to_string_lossy()]);
+        }
+    }
+
     source_cmd
 }
 
 /// Loop filler until target duration is reached.
-pub fn loop_filler(node: &Media) -> Vec<String> {
+pub fn loop_filler(config: &PlayoutConfig, node: &Media) -> Vec<String> {
     let loop_count = (node.out / node.duration).ceil() as i32;
     let mut source_cmd = vec![];
 
@@ -624,11 +656,34 @@ pub fn loop_filler(node: &Media) -> Vec<String> {
 
     source_cmd.append(&mut vec_strings!["-i", node.source, "-t", node.out]);
 
+    if config.processing.vtt_enable {
+        let vtt_file = Path::new(&node.source).with_extension("vtt");
+        let vtt_dummy = config
+            .channel
+            .storage_path
+            .join(&config.processing.vtt_dummy.clone().unwrap_or_default());
+
+        if vtt_file.is_file() {
+            if loop_count > 1 {
+                source_cmd.append(&mut vec_strings!["-stream_loop", loop_count]);
+            }
+
+            source_cmd.append(&mut vec_strings![
+                "-i",
+                vtt_file.to_string_lossy(),
+                "-t",
+                node.out
+            ]);
+        } else if vtt_dummy.is_file() {
+            source_cmd.append(&mut vec_strings!["-i", vtt_dummy.to_string_lossy()]);
+        }
+    }
+
     source_cmd
 }
 
 /// Set clip seek in and length value.
-pub fn seek_and_length(node: &mut Media) -> Vec<String> {
+pub fn seek_and_length(config: &PlayoutConfig, node: &mut Media) -> Vec<String> {
     let loop_count = (node.out / node.duration).ceil() as i32;
     let mut source_cmd = vec![];
     let mut cut_audio = false;
@@ -673,6 +728,28 @@ pub fn seek_and_length(node: &mut Media) -> Vec<String> {
         }
     }
 
+    if config.processing.vtt_enable {
+        let vtt_file = Path::new(&node.source).with_extension("vtt");
+        let vtt_dummy = config
+            .channel
+            .storage_path
+            .join(&config.processing.vtt_dummy.clone().unwrap_or_default());
+
+        if vtt_file.is_file() {
+            if loop_count > 1 {
+                source_cmd.append(&mut vec_strings!["-stream_loop", loop_count]);
+            }
+
+            source_cmd.append(&mut vec_strings!["-i", vtt_file.to_string_lossy()]);
+
+            if node.duration > node.out || remote_source || loop_count > 1 {
+                source_cmd.append(&mut vec_strings!["-t", node.out - node.seek]);
+            }
+        } else if vtt_dummy.is_file() {
+            source_cmd.append(&mut vec_strings!["-i", vtt_dummy.to_string_lossy()]);
+        }
+    }
+
     source_cmd
 }
 
@@ -683,7 +760,7 @@ pub fn gen_dummy(config: &PlayoutConfig, duration: f64) -> (String, Vec<String>)
         "color=c={color}:s={}x{}:d={duration}",
         config.processing.width, config.processing.height
     );
-    let cmd: Vec<String> = vec_strings![
+    let mut source_cmd: Vec<String> = vec_strings![
         "-f",
         "lavfi",
         "-i",
@@ -697,7 +774,18 @@ pub fn gen_dummy(config: &PlayoutConfig, duration: f64) -> (String, Vec<String>)
         format!("anoisesrc=d={duration}:c=pink:r=48000:a=0.3")
     ];
 
-    (source, cmd)
+    if config.processing.vtt_enable {
+        let vtt_dummy = config
+            .channel
+            .storage_path
+            .join(&config.processing.vtt_dummy.clone().unwrap_or_default());
+
+        if vtt_dummy.is_file() {
+            source_cmd.append(&mut vec_strings!["-i", vtt_dummy.to_string_lossy()]);
+        }
+    }
+
+    (source, source_cmd)
 }
 
 // fn get_output_count(cmd: &[String]) -> i32 {

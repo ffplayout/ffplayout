@@ -150,6 +150,14 @@ pub fn player(manager: ChannelManager) -> Result<(), ProcessError> {
             dec_cmd.append(&mut filter.map());
         }
 
+        if config.processing.vtt_enable && dec_cmd.iter().any(|s| s.ends_with(".vtt")) {
+            let mut i = dec_cmd.iter().filter(|&n| &*n == "-i").count();
+            if i > 0 {
+                i -= 1
+            }
+            dec_cmd.append(&mut vec_strings!("-map", format!("{i}:s"), "-c:s", "copy"));
+        }
+
         if let Some(mut cmd) = config.processing.cmd.clone() {
             dec_cmd.append(&mut cmd);
         }

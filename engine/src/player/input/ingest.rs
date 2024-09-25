@@ -72,6 +72,10 @@ pub fn ingest_server(
     dummy_media.add_filter(&config, &None);
     let is_terminated = channel_mgr.is_terminated.clone();
     let ingest_is_running = channel_mgr.ingest_is_running.clone();
+    let vtt_dummy = config
+        .channel
+        .storage_path
+        .join(&config.processing.vtt_dummy.clone().unwrap_or_default());
 
     if let Some(ingest_input_cmd) = config.advanced.ingest.input_cmd {
         server_cmd.append(&mut ingest_input_cmd.clone());
@@ -79,9 +83,17 @@ pub fn ingest_server(
 
     server_cmd.append(&mut stream_input.clone());
 
+    if config.processing.vtt_enable && vtt_dummy.is_file() {
+        server_cmd.append(&mut vec_strings!["-i", vtt_dummy.to_string_lossy()]);
+    }
+
     if let Some(mut filter) = dummy_media.filter {
         server_cmd.append(&mut filter.cmd());
         server_cmd.append(&mut filter.map());
+    }
+
+    if config.processing.vtt_enable && vtt_dummy.is_file() {
+        server_cmd.append(&mut vec_strings!("-map", "1:s"));
     }
 
     if let Some(mut cmd) = config.processing.cmd {
