@@ -328,6 +328,8 @@ pub struct Processing {
     pub audio_channels: u8,
     pub volume: f64,
     pub custom_filter: String,
+    pub vtt_enable: bool,
+    pub vtt_dummy: Option<String>,
     #[serde(skip_serializing, skip_deserializing)]
     pub cmd: Option<Vec<String>>,
 }
@@ -355,6 +357,8 @@ impl Processing {
             audio_channels: config.processing_audio_channels,
             volume: config.processing_volume,
             custom_filter: config.processing_filter.clone(),
+            vtt_enable: config.processing_vtt_enable,
+            vtt_dummy: config.processing_vtt_dummy.clone(),
             cmd: None,
         }
     }

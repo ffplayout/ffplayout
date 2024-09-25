@@ -4,11 +4,12 @@ use std::{
 };
 
 #[cfg(target_family = "unix")]
-use std::{fs, process::exit};
+use std::process::exit;
 
 use clap::Parser;
 use rpassword::read_password;
 use sqlx::{Pool, Sqlite};
+use tokio::fs;
 
 use crate::db::{
     handles,
@@ -17,6 +18,7 @@ use crate::db::{
 use crate::utils::{
     advanced_config::AdvancedConfig,
     config::{OutputMode, PlayoutConfig},
+    copy_assets,
 };
 use crate::ARGS;
 
@@ -197,6 +199,13 @@ fn global_user(args: &mut Args) {
 }
 
 pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
+    let mut user = None;
+    let mut fix_permission = false;
+
+    if cfg!(target_family = "unix") {
+        user = nix::unistd::User::from_name("ffpu").unwrap_or_default();
+    }
+
     let mut args = ARGS.clone();
 
     if !args.dump_advanced && !args.dump_config && !args.drop_db {
@@ -213,17 +222,11 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
 
     if args.init {
         #[cfg(target_family = "unix")]
-        let process_user = nix::unistd::User::from_name("ffpu").unwrap_or_default();
-
-        #[cfg(target_family = "unix")]
-        let mut fix_permission = false;
-
-        #[cfg(target_family = "unix")]
         {
             let uid = nix::unistd::Uid::current();
             let current_user = nix::unistd::User::from_uid(uid).unwrap_or_default();
 
-            if current_user != process_user {
+            if current_user != user {
                 let user_name = current_user.unwrap().name;
                 let mut fix_perm = String::new();
 
@@ -353,7 +356,11 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
         channel.playlist_path = global.playlist_root;
         channel.storage_path = global.storage_root;
 
+        let mut storage_path = PathBuf::from(channel.storage_path.clone());
+
         if global.shared_storage {
+            storage_path = storage_path.join("1");
+
             channel.preview_url = "http://127.0.0.1:8787/1/stream.m3u8".to_string();
             channel.hls_path = Path::new(&channel.hls_path)
                 .join("1")
@@ -363,22 +370,27 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
                 .join("1")
                 .to_string_lossy()
                 .to_string();
-            channel.storage_path = Path::new(&channel.storage_path)
-                .join("1")
-                .to_string_lossy()
-                .to_string();
+            channel.storage_path = storage_path.to_string_lossy().to_string();
+        };
+
+        if let Err(e) = copy_assets(&storage_path, fix_permission, user.clone()).await {
+            eprintln!("{e}");
         };
 
         handles::update_channel(pool, 1, channel).await.unwrap();
 
         #[cfg(target_family = "unix")]
         if fix_permission {
-            let db_path = Path::new(db_path().unwrap()).with_extension("");
-            let user = process_user.unwrap();
+            let user = user.clone().unwrap();
+            let db_path = Path::new(db_path().unwrap());
 
-            let db = fs::canonicalize(db_path.with_extension("db")).unwrap();
-            let shm = fs::canonicalize(db_path.with_extension("db-shm")).unwrap();
-            let wal = fs::canonicalize(db_path.with_extension("db-wal")).unwrap();
+            let db = fs::canonicalize(db_path).await.unwrap();
+            let shm = fs::canonicalize(db_path.with_extension("db-shm"))
+                .await
+                .unwrap();
+            let wal = fs::canonicalize(db_path.with_extension("db-wal"))
+                .await
+                .unwrap();
 
             nix::unistd::chown(&db, Some(user.uid), Some(user.gid)).expect("Change DB owner");
 
@@ -410,7 +422,7 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
 
         let chl: Vec<i32> = channels.clone().iter().map(|c| c.id).collect();
 
-        let user = User {
+        let ff_user = User {
             id: 0,
             mail: Some(args.mail.unwrap()),
             username: username.clone(),
@@ -420,7 +432,7 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
             token: None,
         };
 
-        if let Err(e) = handles::insert_user(pool, user).await {
+        if let Err(e) = handles::insert_user(pool, ff_user).await {
             eprintln!("{e}");
             error_code = 1;
         };
@@ -449,8 +461,11 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
         let mut channel = handles::select_channel(pool, &1)
             .await
             .expect("Select Channel 1");
+        let mut storage_path = PathBuf::from(global.storage_root.clone());
 
         if args.shared_storage {
+            storage_path = storage_path.join("1");
+
             channel.hls_path = Path::new(&global.public_root)
                 .join("1")
                 .to_string_lossy()
@@ -459,15 +474,16 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
                 .join("1")
                 .to_string_lossy()
                 .to_string();
-            channel.storage_path = Path::new(&global.storage_root)
-                .join("1")
-                .to_string_lossy()
-                .to_string();
+            channel.storage_path = storage_path.to_string_lossy().to_string();
         } else {
             channel.hls_path = global.public_root.clone();
             channel.playlist_path = global.playlist_root.clone();
             channel.storage_path = global.storage_root.clone();
         }
+
+        if let Err(e) = copy_assets(&storage_path, false, user).await {
+            eprintln!("{e}");
+        };
 
         match handles::update_global(pool, global.clone()).await {
             Ok(_) => println!("Update globals done..."),

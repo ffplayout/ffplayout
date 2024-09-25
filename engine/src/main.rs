@@ -199,6 +199,8 @@ async fn main() -> std::io::Result<()> {
         .workers(thread_count)
         .run()
         .await?;
+    } else if ARGS.drop_db {
+        db_drop().await;
     } else {
         let channels = ARGS.channels.clone().unwrap_or_else(|| vec![1]);
 
@@ -267,8 +269,6 @@ async fn main() -> std::io::Result<()> {
                     playlist,
                     Arc::new(AtomicBool::new(false)),
                 );
-            } else if ARGS.drop_db {
-                db_drop().await;
             } else if !ARGS.init {
                 error!("Run ffplayout with parameters! Run ffplayout -h for more information.");
             }

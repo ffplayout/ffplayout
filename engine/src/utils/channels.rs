@@ -1,7 +1,6 @@
 use std::{
-    ffi::OsStr,
     io,
-    path::Path,
+    path::PathBuf,
     sync::{Arc, Mutex},
 };
 
@@ -11,7 +10,7 @@ use sqlx::{Pool, Sqlite};
 use super::logging::MailQueue;
 use crate::db::{handles, models::Channel};
 use crate::player::controller::{ChannelController, ChannelManager};
-use crate::utils::{config::get_config, errors::ServiceError};
+use crate::utils::{config::get_config, copy_assets, errors::ServiceError};
 
 async fn map_global_admins(conn: &Pool<Sqlite>) -> Result<(), ServiceError> {
     let channels = handles::select_related_channels(conn, None).await?;
@@ -29,58 +28,32 @@ async fn map_global_admins(conn: &Pool<Sqlite>) -> Result<(), ServiceError> {
     Ok(())
 }
 
-fn preview_url(url: &str, id: i32) -> String {
-    let url_path = Path::new(url);
-
-    if let Some(parent) = url_path.parent() {
-        if let Some(filename) = url_path.file_name() {
-            let new_path = if parent
-                .file_name()
-                .unwrap_or_else(|| OsStr::new("0"))
-                .to_string_lossy()
-                .to_string()
-                .parse::<i32>()
-                .is_ok()
-            {
-                parent.join(filename)
-            } else {
-                parent.join(id.to_string()).join(filename)
-            };
-
-            if let Some(new_url) = new_path.to_str() {
-                return new_url.to_string();
-            }
-        }
-    }
-    url.to_string()
-}
-
 pub async fn create_channel(
     conn: &Pool<Sqlite>,
     controllers: Arc<Mutex<ChannelController>>,
     queue: Arc<Mutex<Vec<Arc<Mutex<MailQueue>>>>>,
     target_channel: Channel,
 ) -> Result<Channel, ServiceError> {
-    let global = handles::select_global(conn).await?;
-    let mut channel = handles::insert_channel(conn, target_channel).await?;
+    let channel = handles::insert_channel(conn, target_channel).await?;
+    let storage_path = PathBuf::from(channel.storage_path.clone());
+    let mut user = None;
+    let mut fix_permission = false;
+
+    if cfg!(target_family = "unix") {
+        user = nix::unistd::User::from_name("ffpu").unwrap_or_default();
+        let uid = nix::unistd::Uid::current();
+        let current_user = nix::unistd::User::from_uid(uid).unwrap_or_default();
+
+        if current_user.unwrap().name == "root" {
+            fix_permission = true;
+        };
+    }
+
     handles::new_channel_presets(conn, channel.id).await?;
 
-    channel.preview_url = preview_url(&channel.preview_url, channel.id);
-
-    if global.shared_storage {
-        channel.hls_path = Path::new(&global.public_root)
-            .join(channel.id.to_string())
-            .to_string_lossy()
-            .to_string();
-        channel.playlist_path = Path::new(&global.playlist_root)
-            .join(channel.id.to_string())
-            .to_string_lossy()
-            .to_string();
-        channel.storage_path = Path::new(&global.storage_root)
-            .join(channel.id.to_string())
-            .to_string_lossy()
-            .to_string();
-    }
+    if let Err(e) = copy_assets(&storage_path, fix_permission, user).await {
+        error!("{e}");
+    };
 
     handles::update_channel(conn, channel.id, channel.clone()).await?;
 

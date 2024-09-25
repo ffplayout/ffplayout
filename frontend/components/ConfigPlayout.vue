@@ -15,7 +15,15 @@
                         class="form-control w-full"
                         :class="[typeof prop === 'boolean' && 'flex-row', name.toString() !== 'help_text' && 'mt-2']"
                     >
-                        <template v-if="name.toString() !== 'startInSec' && name.toString() !== 'lengthInSec' && !(name.toString() === 'path' && key.toString() === 'storage')" >
+                    <!-- TODO: vtt_ check is temporary, needs to be removed when is done implemented -->
+                        <template
+                            v-if="
+                                name.toString() !== 'startInSec' &&
+                                name.toString() !== 'lengthInSec' &&
+                                !name.startsWith('vtt_') &&
+                                !(name.toString() === 'path' && key.toString() === 'storage')
+                            "
+                        >
                             <div v-if="name.toString() !== 'help_text'" class="label">
                                 <span class="label-text !text-md font-bold">{{ name }}</span>
                             </div>

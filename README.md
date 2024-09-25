@@ -120,6 +120,9 @@ If you are in playlist mode and move backwards or forwards in time, the time shi
 
 (Endless) streaming over multiple days will only work if config has a **day_start** value and the **length** value is **24 hours**. If you only need a few hours for each day, use a *cron* job or something similar.
 
+## Note
+This project includes the DejaVu font, which are licensed under the [Bitstream Vera Fonts License](/assets/FONT_LICENSE.txt).
+
 -----
 
 ## Sponsoring

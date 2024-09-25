@@ -480,7 +480,11 @@ async fn patch_channel(
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    let manager = controllers.lock().unwrap().get(*id).unwrap();
+    let manager = controllers
+        .lock()
+        .unwrap()
+        .get(*id)
+        .ok_or(format!("Channel {id} not found!"))?;
     let mut data = data.into_inner();
 
     if !role.has_authority(&Role::GlobalAdmin) {
