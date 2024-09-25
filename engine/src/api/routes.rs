@@ -1332,7 +1332,10 @@ async fn get_public(
 ) -> Result<actix_files::NamedFile, ServiceError> {
     let (id, public, file_stem) = path.into_inner();
 
-    let absolute_path = if file_stem.ends_with(".ts") || file_stem.ends_with(".m3u8") {
+    let absolute_path = if file_stem.ends_with(".ts")
+        || file_stem.ends_with(".m3u8")
+        || file_stem.ends_with(".vtt")
+    {
         let manager = controllers.lock().unwrap().get(id).unwrap();
         let config = manager.config.lock().unwrap();
         config.channel.hls_path.join(public)

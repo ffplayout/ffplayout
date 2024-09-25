@@ -659,7 +659,9 @@ impl PlayoutConfig {
                 "-maxrate",
                 &bitrate,
                 "-bufsize",
-                &buff_size
+                &buff_size,
+                "-mpegts_flags",
+                "initial_discontinuity"
             ]);
         }
 
