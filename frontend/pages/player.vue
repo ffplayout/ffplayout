@@ -35,7 +35,7 @@
                 class="border border-my-gray rounded shadow"
             >
                 <pane
-                    v-if="width > 768"
+                    v-if="width > 739"
                     class="relative h-full !bg-base-300 rounded-s"
                     min-size="0"
                     max-size="80"

@@ -43,7 +43,7 @@
                         :id="`file-${index}`"
                         :key="element.name"
                         class="w-full border-b border-t border-base-content/20"
-                        :class="{ 'grabbing cursor-grab': width > 768 && configStore.playout.processing.mode === 'playlist' }"
+                        :class="{ 'grabbing cursor-grab': width > 739 && configStore.playout.processing.mode === 'playlist' }"
                     >
                         <td class="ps-2 py-1 w-[20px]" :class="{'timeHidden': configStore.playout.playlist.infinit}">
                             <i v-if="mediaType(element.name) === 'audio'" class="bi-music-note-beamed" />
