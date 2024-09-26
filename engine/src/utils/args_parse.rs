@@ -35,140 +35,149 @@ pub struct Args {
     #[clap(
         short,
         long,
+        help_heading = Some("Initial Setup"),
         help = "Initialize defaults: global admin, paths, settings, etc."
     )]
     pub init: bool,
 
-    #[clap(short, long, help = "Add a global admin user")]
+    #[clap(short, long, help_heading = Some("Initial Setup"), help = "Add a global admin user")]
     pub add: bool,
 
-    #[clap(long, env, help = "Path to database file")]
+    #[clap(long, env, help_heading = Some("Initial Setup"), help = "Playlist root path")]
+    pub playlist_root: Option<String>,
+
+    #[clap(long, env, help_heading = Some("Initial Setup"), help = "Storage root path")]
+    pub storage_root: Option<String>,
+
+    #[clap(
+        long,
+        env,
+        help_heading = Some("Initial Setup"),
+        help = "Share storage root across channels, important for running in Container"
+    )]
+    pub shared_storage: bool,
+
+    #[clap(short, long, help_heading = Some("Initial Setup"), help = "Create admin user")]
+    pub username: Option<String>,
+
+    #[clap(short, long, help_heading = Some("Initial Setup"), help = "Admin mail address")]
+    pub mail: Option<String>,
+
+    #[clap(short, long, help_heading = Some("Initial Setup"), help = "Admin password")]
+    pub password: Option<String>,
+
+    #[clap(long, env, help_heading = Some("Initial Setup"), help = "Logging path")]
+    pub log_path: Option<PathBuf>,
+
+    #[clap(long, env, help_heading = Some("Initial Setup"), help = "Path to public files, also HLS playlists")]
+    pub public: Option<String>,
+
+    #[clap(long, env, help_heading = Some("General"), help = "Path to database file")]
     pub db: Option<PathBuf>,
 
     #[clap(
         long,
         env,
+        help_heading = Some("General"),
         help = "Drop database. WARNING: this will delete all configurations!"
     )]
     pub drop_db: bool,
 
     #[clap(
-        short,
         long,
-        env,
-        help = "Channels by ids to process (for foreground, etc.)",
-        num_args = 1..,
-    )]
-    pub channels: Option<Vec<i32>>,
-
-    #[clap(long, env, help = "Run playout without webserver and frontend.")]
-    pub foreground: bool,
-
-    #[clap(
-        long,
+        help_heading = Some("General"),
         help = "Dump advanced channel configuration to advanced_{channel}.toml"
     )]
     pub dump_advanced: bool,
 
-    #[clap(long, help = "Dump channel configuration to ffplayout_{channel}.toml")]
+    #[clap(long, help_heading = Some("General"), help = "Dump channel configuration to ffplayout_{channel}.toml")]
     pub dump_config: bool,
 
     #[clap(
         long,
+        help_heading = Some("General"),
         help = "import advanced channel configuration from file.",
         num_args = 2
     )]
     pub import_advanced: Option<PathBuf>,
 
-    #[clap(long, help = "import channel configuration from file.", num_args = 2)]
+    #[clap(long, help_heading = Some("General"), help = "import channel configuration from file.", num_args = 2)]
     pub import_config: Option<PathBuf>,
 
-    #[clap(long, help = "List available channel ids")]
+    #[clap(long, help_heading = Some("General"), help = "List available channel ids")]
     pub list_channels: bool,
 
-    #[clap(short, env, long, help = "Listen on IP:PORT, like: 127.0.0.1:8787")]
+    #[clap(short, env, long, help_heading = Some("General"), help = "Listen on IP:PORT, like: 127.0.0.1:8787")]
     pub listen: Option<String>,
-
-    #[clap(short, long, help = "Play folder content")]
-    pub folder: Option<PathBuf>,
 
     #[clap(
         short,
         long,
+        help_heading = Some("Playlist"),
         help = "Generate playlist for dates, like: 2022-01-01 - 2022-01-10",
         name = "YYYY-MM-DD",
         num_args = 1..,
     )]
     pub generate: Option<Vec<String>>,
 
-    #[clap(long, help = "Optional path list for playlist generations", num_args = 1..)]
+    #[clap(long, help_heading = Some("Playlist"), help = "Optional path list for playlist generations", num_args = 1..)]
     pub paths: Option<Vec<PathBuf>>,
 
-    #[clap(long, env, help = "Keep log file for given days")]
-    pub log_backup_count: Option<usize>,
-
-    #[clap(
-        long,
-        env,
-        help = "Override logging level: trace, debug, println, warn, eprintln"
-    )]
-    pub log_level: Option<String>,
-
-    #[clap(long, env, help = "Logging path")]
-    pub log_path: Option<PathBuf>,
-
-    #[clap(long, env, help = "Log to console")]
-    pub log_to_console: bool,
-
-    #[clap(long, env, help = "Path to public files, also HLS playlists")]
-    pub public: Option<String>,
-
-    #[clap(long, env, help = "Playlist root path")]
-    pub playlist_root: Option<String>,
-
-    #[clap(long, env, help = "Storage root path")]
-    pub storage_root: Option<String>,
-
-    #[clap(
-        long,
-        env,
-        help = "Share storage root across channels, important for running in Container"
-    )]
-    pub shared_storage: bool,
-
-    #[clap(short, long, help = "Create admin user")]
-    pub username: Option<String>,
-
-    #[clap(short, long, help = "Admin mail address")]
-    pub mail: Option<String>,
-
-    #[clap(short, long, help = "Admin password")]
-    pub password: Option<String>,
-
-    #[clap(long, help = "Path to playlist, or playlist root folder.")]
+    #[clap(long, help_heading = Some("Playlist"), help = "Path to playlist, or playlist root folder.")]
     pub playlist: Option<PathBuf>,
 
     #[clap(
         short,
         long,
+        help_heading = Some("Playlist"),
         help = "Start time in 'hh:mm:ss', 'now' for start with first"
     )]
     pub start: Option<String>,
 
-    #[clap(short = 'T', long, help = "JSON Template file for generating playlist")]
+    #[clap(short = 'T', long, help_heading = Some("Playlist"), help = "JSON Template file for generating playlist")]
     pub template: Option<PathBuf>,
 
-    #[clap(short, long, help = "Set output mode: desktop, hls, null, stream")]
+    #[clap(long, help_heading = Some("Playlist"), help = "Only validate given playlist")]
+    pub validate: bool,
+
+    #[clap(
+        short,
+        long,
+        env,
+        help_heading = Some("Playout"),
+        help = "Channels by ids to process (for foreground, etc.)",
+        num_args = 1..,
+    )]
+    pub channels: Option<Vec<i32>>,
+
+    #[clap(long, env, help_heading = Some("Playout"), help = "Run playout without webserver and frontend.")]
+    pub foreground: bool,
+
+    #[clap(short, long, help_heading = Some("Playout"), help = "Play folder content")]
+    pub folder: Option<PathBuf>,
+
+    #[clap(long, env, help_heading = Some("Playout"), help = "Keep log file for given days")]
+    pub log_backup_count: Option<usize>,
+
+    #[clap(
+        long,
+        env,
+        help_heading = Some("Playout"),
+        help = "Override logging level: trace, debug, println, warn, eprintln"
+    )]
+    pub log_level: Option<String>,
+
+    #[clap(long, env, help_heading = Some("Playout"), help = "Log to console")]
+    pub log_to_console: bool,
+
+    #[clap(short, long, help_heading = Some("Playout"), help = "Set output mode: desktop, hls, null, stream")]
     pub output: Option<OutputMode>,
 
-    #[clap(short, long, help = "Set audio volume")]
+    #[clap(short, long, help_heading = Some("Playout"), help = "Set audio volume")]
     pub volume: Option<f64>,
 
-    #[clap(long, help = "Skip validation process")]
+    #[clap(long, help_heading = Some("Playout"), help = "Skip validation process")]
     pub skip_validation: bool,
-
-    #[clap(long, help = "Only validate given playlist")]
-    pub validate: bool,
 }
 
 fn global_user(args: &mut Args) {
