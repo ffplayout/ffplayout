@@ -100,12 +100,11 @@ pub struct Args {
     #[clap(
         long,
         help_heading = Some("General"),
-        help = "import advanced channel configuration from file.",
-        num_args = 2
+        help = "import advanced channel configuration from file."
     )]
     pub import_advanced: Option<PathBuf>,
 
-    #[clap(long, help_heading = Some("General"), help = "import channel configuration from file.", num_args = 2)]
+    #[clap(long, help_heading = Some("General"), help = "import channel configuration from file.")]
     pub import_config: Option<PathBuf>,
 
     #[clap(long, help_heading = Some("General"), help = "List available channel ids")]
