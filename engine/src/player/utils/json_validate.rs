@@ -65,9 +65,9 @@ fn check_media(
         .filter(|c| IMAGE_FORMAT.contains(&c.as_str()))
         .is_some()
     {
-        node.cmd = Some(loop_image(&node));
+        node.cmd = Some(loop_image(&config, &node));
     } else {
-        node.cmd = Some(seek_and_length(&mut node));
+        node.cmd = Some(seek_and_length(&config, &mut node));
     }
 
     node.add_filter(&config, &None);

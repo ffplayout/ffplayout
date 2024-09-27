@@ -78,7 +78,7 @@
                             '!bg-lime-500/30':
                                 playlistStore.playoutIsRunning && listDate === todayDate && index === currentIndex,
                             '!bg-amber-600/40': element.overtime,
-                            'text-base-content/50': element.category === 'advertisement',
+                            'text-blue-300': element.category === 'advertisement',
                         }"
                     >
                         <td v-if="!configStore.playout.playlist.infinit" class="ps-4 py-2 text-left">

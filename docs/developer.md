@@ -107,3 +107,13 @@ npm run preview
 ```
 
 Check out the [deployment documentation](https://nuxt.com/docs/getting-started/deployment) for more information.
+
+### Experimental Frontend Features
+
+To use experimental frontend features, add `NUXT_BUILD_EXPERIMENTAL=true` tu run and build command, like:
+
+```
+NUXT_BUILD_EXPERIMENTAL=true npm run dev
+```
+
+**Note:** This function is only for developers and testers who can do without support.

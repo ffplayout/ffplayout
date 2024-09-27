@@ -640,14 +640,14 @@ pub fn gen_source(
             .filter(|c| IMAGE_FORMAT.contains(&c.as_str()))
             .is_some()
         {
-            node.cmd = Some(loop_image(&node));
+            node.cmd = Some(loop_image(config, &node));
         } else {
             if node.seek > 0.0 && node.out > node.duration {
                 warn!(target: Target::file_mail(), channel = config.general.channel_id; "Clip loops and has seek value: duplicate clip to separate loop and seek.");
                 duplicate_for_seek_and_loop(&mut node, &manager.current_list);
             }
 
-            node.cmd = Some(seek_and_length(&mut node));
+            node.cmd = Some(seek_and_length(config, &mut node));
         }
     } else {
         trace!("clip index: {node_index} | last index: {last_index}");
@@ -694,7 +694,7 @@ pub fn gen_source(
             node.seek = 0.0;
             node.out = filler_media.out;
             node.duration = filler_media.duration;
-            node.cmd = Some(loop_filler(&node));
+            node.cmd = Some(loop_filler(config, &node));
             node.probe = filler_media.probe;
         } else {
             match MediaProbe::new(&config.storage.filler_path.to_string_lossy()) {
@@ -715,7 +715,7 @@ pub fn gen_source(
                             .clone()
                             .to_string_lossy()
                             .to_string();
-                        node.cmd = Some(loop_image(&node));
+                        node.cmd = Some(loop_image(config, &node));
                         node.probe = Some(probe);
                     } else if let Some(filler_duration) = probe
                         .clone()
@@ -739,7 +739,7 @@ pub fn gen_source(
                         node.seek = 0.0;
                         node.out = filler_out;
                         node.duration = filler_duration;
-                        node.cmd = Some(loop_filler(&node));
+                        node.cmd = Some(loop_filler(config, &node));
                         node.probe = Some(probe);
                     } else {
                         // Create colored placeholder.

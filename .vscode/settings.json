@@ -48,19 +48,23 @@
     },
     "cSpell.words": [
         "actix",
+        "canonicalize",
         "ffpengine",
         "flexi",
+        "httpauth",
         "lettre",
         "libc",
-        "nuxt",
         "neli",
+        "nuxt",
         "paris",
+        "Referer",
         "reqwest",
         "rsplit",
         "rustls",
         "sqlx",
         "starttls",
         "tokio",
+        "unistd",
         "uuids"
     ]
 }

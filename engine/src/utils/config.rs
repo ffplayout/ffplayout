@@ -328,6 +328,10 @@ pub struct Processing {
     pub audio_channels: u8,
     pub volume: f64,
     pub custom_filter: String,
+    #[serde(default)]
+    pub vtt_enable: bool,
+    #[serde(default)]
+    pub vtt_dummy: Option<String>,
     #[serde(skip_serializing, skip_deserializing)]
     pub cmd: Option<Vec<String>>,
 }
@@ -355,6 +359,8 @@ impl Processing {
             audio_channels: config.processing_audio_channels,
             volume: config.processing_volume,
             custom_filter: config.processing_filter.clone(),
+            vtt_enable: config.processing_vtt_enable,
+            vtt_dummy: config.processing_vtt_dummy.clone(),
             cmd: None,
         }
     }
@@ -452,6 +458,7 @@ pub struct Text {
     pub zmq_stream_socket: Option<String>,
     #[serde(skip_serializing, skip_deserializing)]
     pub zmq_server_socket: Option<String>,
+    #[serde(alias = "fontfile")]
     pub font: String,
     #[serde(skip_serializing, skip_deserializing)]
     pub font_path: String,
@@ -655,7 +662,9 @@ impl PlayoutConfig {
                 "-maxrate",
                 &bitrate,
                 "-bufsize",
-                &buff_size
+                &buff_size,
+                "-mpegts_flags",
+                "initial_discontinuity"
             ]);
         }
 
@@ -845,7 +854,7 @@ pub async fn get_config(
     }
 
     if let Some(playlist) = args.playlist {
-        config.channel.playlist_path = playlist;
+        config.channel.playlist_path = PathBuf::from(&playlist);
     }
 
     if let Some(folder) = args.folder {

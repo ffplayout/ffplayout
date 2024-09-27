@@ -15,7 +15,14 @@
                         class="form-control w-full"
                         :class="[typeof prop === 'boolean' && 'flex-row', name.toString() !== 'help_text' && 'mt-2']"
                     >
-                        <template v-if="name.toString() !== 'startInSec' && name.toString() !== 'lengthInSec' && !(name.toString() === 'path' && key.toString() === 'storage')" >
+                        <template
+                            v-if="
+                                name.toString() !== 'startInSec' &&
+                                name.toString() !== 'lengthInSec' &&
+                                !(name.startsWith('vtt_') && !config.public.buildExperimental) &&
+                                !(name.toString() === 'path' && key.toString() === 'storage')
+                            "
+                        >
                             <div v-if="name.toString() !== 'help_text'" class="label">
                                 <span class="label-text !text-md font-bold">{{ name }}</span>
                             </div>
@@ -87,6 +94,7 @@
 </template>
 
 <script setup lang="ts">
+const config = useRuntimeConfig()
 const { t } = useI18n()
 
 const authStore = useAuth()

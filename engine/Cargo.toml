@@ -78,7 +78,6 @@ static-files = "0.2"
 name = "ffplayout"
 path = "src/main.rs"
 
-
 # DEBIAN DEB PACKAGE
 [package.metadata.deb]
 name = "ffplayout"
@@ -97,6 +96,21 @@ assets = [
     [
         "../assets/ffplayout.service",
         "/lib/systemd/system/",
+        "644",
+    ],
+    [
+        "../assets/dummy.vtt",
+        "/usr/share/ffplayout/",
+        "644",
+    ],
+    [
+        "../assets/DejaVuSans.ttf",
+        "/usr/share/ffplayout/",
+        "644",
+    ],
+    [
+        "../assets/FONT_LICENSE.txt",
+        "/usr/share/ffplayout/",
         "644",
     ],
     [
@@ -136,6 +150,21 @@ assets = [
         "644",
     ],
     [
+        "../assets/dummy.vtt",
+        "/usr/share/ffplayout/",
+        "644",
+    ],
+    [
+        "../assets/DejaVuSans.ttf",
+        "/usr/share/ffplayout/",
+        "644",
+    ],
+    [
+        "../assets/FONT_LICENSE.txt",
+        "/usr/share/ffplayout/",
+        "644",
+    ],
+    [
         "../assets/logo.png",
         "/usr/share/ffplayout/",
         "644",
@@ -157,7 +186,7 @@ assets = [
     ],
 ]
 
-# REHL RPM PACKAGE
+# RHEL RPM PACKAGE
 [package.metadata.generate-rpm]
 name = "ffplayout"
 license = "GPL-3.0"
@@ -167,6 +196,9 @@ assets = [
     { source = "../README.md", dest = "/usr/share/doc/ffplayout/README", mode = "644" },
     { source = "../assets/ffplayout.1.gz", dest = "/usr/share/man/man1/ffplayout.1.gz", mode = "644", doc = true },
     { source = "../LICENSE", dest = "/usr/share/doc/ffplayout/LICENSE", mode = "644" },
+    { source = "../assets/dummy.vtt", dest = "/usr/share/ffplayout/dummy.vtt", mode = "644" },
+    { source = "../assets/DejaVuSans.ttf", dest = "/usr/share/ffplayout/DejaVuSans.ttf", mode = "644" },
+    { source = "../assets/FONT_LICENSE.txt", dest = "/usr/share/ffplayout/FONT_LICENSE.txt", mode = "644" },
     { source = "../assets/logo.png", dest = "/usr/share/ffplayout/logo.png", mode = "644" },
     { source = "../assets/ffplayout.conf", dest = "/usr/share/ffplayout/ffplayout.conf.example", mode = "644" },
     { source = "../debian/postinst", dest = "/usr/share/ffplayout/postinst", mode = "755" },

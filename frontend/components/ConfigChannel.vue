@@ -120,7 +120,7 @@ function newChannel() {
 
     newChannel.id = channels.length + 1
     newChannel.name = `Channel ${newChannel.id}`
-    newChannel.preview_url = `${window.location.protocol}//${window.location.host}/live/${newChannel.id}/stream.m3u8`
+    newChannel.preview_url = `${window.location.protocol}//${window.location.host}/${newChannel.id}/live/stream.m3u8`
     newChannel.hls_path = `${rmId(newChannel.hls_path)}/${newChannel.id}`
     newChannel.playlist_path = `${rmId(newChannel.playlist_path)}/${newChannel.id}`
     newChannel.storage_path = `${rmId(newChannel.storage_path)}/${newChannel.id}`
@@ -158,6 +158,7 @@ async function deleteChannel() {
     })
 
     config.splice(configStore.id, 1)
+    configStore.channelsRaw.splice(configStore.id, 1)
     configStore.channels = config
     configStore.id = configStore.channels.length - 1
 

@@ -104,7 +104,7 @@ CREATE TABLE
         processing_aspect REAL NOT NULL DEFAULT 1.778,
         processing_fps REAL NOT NULL DEFAULT 25.0,
         processing_add_logo INTEGER NOT NULL DEFAULT 1,
-        processing_logo TEXT NOT NULL DEFAULT "graphics/logo.png",
+        processing_logo TEXT NOT NULL DEFAULT "00-assets/logo.png",
         processing_logo_scale TEXT NOT NULL DEFAULT "",
         processing_logo_opacity REAL NOT NULL DEFAULT 0.7,
         processing_logo_position TEXT NOT NULL DEFAULT "W-w-12:12",
@@ -113,6 +113,8 @@ CREATE TABLE
         processing_audio_channels INTEGER NOT NULL DEFAULT 2,
         processing_volume REAL NOT NULL DEFAULT 1.0,
         processing_filter TEXT NOT NULL DEFAULT "",
+        processing_vtt_enable INTEGER NOT NULL DEFAULT 0,
+        processing_vtt_dummy TEXT NULL DEFAULT "00-assets/dummy.vtt",
         ingest_help "Run a server for a ingest stream. This stream will override the normal streaming until is done. There is only a very simple authentication mechanism, which check if the stream name is correct.\n'custom_filter' can be used in the same way then the one in the process section.",
         ingest_enable INTEGER NOT NULL DEFAULT 0,
         ingest_param TEXT NOT NULL DEFAULT "-f live_flv -listen 1 -i rtmp://127.0.0.1:1936/live/stream",
@@ -128,7 +130,7 @@ CREATE TABLE
         text_help TEXT NOT NULL DEFAULT "Overlay text in combination with libzmq for remote text manipulation. fontfile is a relative path to your storage folder.\n'text_from_filename' activate the extraction from text of a filename. With 'style' you can define the drawtext parameters like position, color, etc. Post Text over API will override this. With 'regex' you can format file names, to get a title from it.",
         text_add INTEGER NOT NULL DEFAULT 1,
         text_from_filename INTEGER NOT NULL DEFAULT 0,
-        text_font TEXT NOT NULL DEFAULT "fonts/DejaVuSans.ttf",
+        text_font TEXT NOT NULL DEFAULT "00-assets/DejaVuSans.ttf",
         text_style TEXT NOT NULL DEFAULT "x=(w-tw)/2:y=(h-line_h)*0.9:fontsize=24:fontcolor=#ffffff:box=1:boxcolor=#000000:boxborderw=4",
         text_regex TEXT NOT NULL DEFAULT "^.+[/\\](.*)(.mp4|.mkv|.webm)$",
         task_help TEXT NOT NULL DEFAULT "Run an external program with a given media object. The media object is in json format and contains all the information about the current clip. The external program can be a script or a binary, but should only run for a short time.",
@@ -136,7 +138,7 @@ CREATE TABLE
         task_path TEXT NOT NULL DEFAULT "",
         output_help TEXT NOT NULL DEFAULT "The final playout compression. Set the settings to your needs. 'mode' has the options 'desktop', 'hls', 'null', 'stream'. Use 'stream' and adjust 'output_param:' settings when you want to stream to a rtmp/rtsp/srt/... server.\nIn production don't serve hls playlist with ffplayout, use nginx or another web server!",
         output_mode TEXT NOT NULL DEFAULT "hls",
-        output_param TEXT NOT NULL DEFAULT "-c:v libx264 -crf 23 -x264-params keyint=50:min-keyint=25:scenecut=-1 -maxrate 1300k -bufsize 2600k -preset faster -tune zerolatency -profile:v Main -level 3.1 -c:a aac -ar 44100 -b:a 128k -flags +cgop -f hls -hls_time 6 -hls_list_size 600 -hls_flags append_list+delete_segments+omit_endlist -hls_segment_filename live/stream-%d.ts live/stream.m3u8",
+        output_param TEXT NOT NULL DEFAULT "-c:v libx264 -crf 23 -x264-params keyint=50:min-keyint=25:scenecut=-1 -maxrate 1300k -bufsize 2600k -preset faster -tune zerolatency -profile:v Main -level 3.1 -c:a aac -ar 44100 -b:a 128k -flags +cgop -muxpreload 0 -muxdelay 0 -f hls -hls_time 6 -hls_list_size 600 -hls_flags append_list+delete_segments+omit_endlist -hls_segment_filename live/stream-%d.ts live/stream.m3u8",
         FOREIGN KEY (channel_id) REFERENCES channels (id) ON UPDATE CASCADE ON DELETE CASCADE
     );
 

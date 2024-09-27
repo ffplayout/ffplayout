@@ -17,6 +17,12 @@ export default defineNuxtConfig({
         },
     },
 
+    runtimeConfig: {
+        public: {
+            buildExperimental: process.env.NUXT_BUILD_EXPERIMENTAL,
+        },
+    },
+
     ignore: ['**/public/tv-media**', '**/public/Videos**', '**/public/live**', '**/public/home**'],
     ssr: false,
 

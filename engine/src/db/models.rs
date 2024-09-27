@@ -302,6 +302,10 @@ pub struct Configuration {
     pub processing_volume: f64,
     #[serde(default)]
     pub processing_filter: String,
+    #[serde(default)]
+    pub processing_vtt_enable: bool,
+    #[serde(default)]
+    pub processing_vtt_dummy: Option<String>,
 
     pub ingest_help: String,
     pub ingest_enable: bool,
@@ -375,6 +379,8 @@ impl Configuration {
             processing_audio_channels: config.processing.audio_channels,
             processing_volume: config.processing.volume,
             processing_filter: config.processing.custom_filter,
+            processing_vtt_enable: config.processing.vtt_enable,
+            processing_vtt_dummy: config.processing.vtt_dummy,
             ingest_help: config.ingest.help_text,
             ingest_enable: config.ingest.enable,
             ingest_param: config.ingest.input_param,

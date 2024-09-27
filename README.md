@@ -3,7 +3,7 @@
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
-## **ffplayout-engine (ffplayout)**
+![player](/docs/images/player.png)
 
 [ffplayout](/ffplayout-engine/README.md) is a 24/7 broadcasting solution. It can playout a folder containing audio or video clips, or play a *JSON* playlist for each day, keeping the current playlist editable.
 
@@ -119,6 +119,9 @@ If you are in playlist mode and move backwards or forwards in time, the time shi
 ## **Warning**
 
 (Endless) streaming over multiple days will only work if config has a **day_start** value and the **length** value is **24 hours**. If you only need a few hours for each day, use a *cron* job or something similar.
+
+## Note
+This project includes the DejaVu font, which are licensed under the [Bitstream Vera Fonts License](/assets/FONT_LICENSE.txt).
 
 -----
 
