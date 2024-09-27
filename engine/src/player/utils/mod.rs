@@ -752,6 +752,8 @@ pub fn seek_and_length(config: &PlayoutConfig, node: &mut Media) -> Vec<String> 
             }
         } else if vtt_dummy.is_file() {
             source_cmd.append(&mut vec_strings!["-i", vtt_dummy.to_string_lossy()]);
+        } else {
+            error!("<b><magenta>{:?}</></b> not found!", vtt_dummy)
         }
     }
 
