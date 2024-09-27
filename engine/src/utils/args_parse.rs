@@ -30,7 +30,12 @@ use crate::utils::db_path;
 #[derive(Parser, Debug, Clone)]
 #[clap(version,
     about = "ffplayout - 24/7 broadcasting solution",
-    long_about = None)]
+    long_about = Some("ffplayout - 24/7 broadcasting solution\n
+Stream dynamic playlists or folder contents with the power of ffmpeg.
+The target can be an HLS playlist, rtmp/srt/udp server, desktop player
+or any other output supported by ffmpeg.\n
+ffplayout also provides a web frontend and API to control streaming,
+manage config, files, text overlay, etc. "))]
 pub struct Args {
     #[clap(
         short,
@@ -43,20 +48,6 @@ pub struct Args {
     #[clap(short, long, help_heading = Some("Initial Setup"), help = "Add a global admin user")]
     pub add: bool,
 
-    #[clap(long, env, help_heading = Some("Initial Setup"), help = "Playlist root path")]
-    pub playlist_root: Option<String>,
-
-    #[clap(long, env, help_heading = Some("Initial Setup"), help = "Storage root path")]
-    pub storage_root: Option<String>,
-
-    #[clap(
-        long,
-        env,
-        help_heading = Some("Initial Setup"),
-        help = "Share storage root across channels, important for running in Container"
-    )]
-    pub shared_storage: bool,
-
     #[clap(short, long, help_heading = Some("Initial Setup"), help = "Create admin user")]
     pub username: Option<String>,
 
@@ -66,18 +57,31 @@ pub struct Args {
     #[clap(short, long, help_heading = Some("Initial Setup"), help = "Admin password")]
     pub password: Option<String>,
 
-    #[clap(long, env, help_heading = Some("Initial Setup"), help = "Logging path")]
+    #[clap(long, env, help_heading = Some("Initial Setup"), help = "Storage root path")]
+    pub storage: Option<String>,
+
+    #[clap(
+        long,
+        env,
+        help_heading = Some("Initial Setup"),
+        help = "Share storage across channels, important for running in Containers"
+    )]
+    pub shared_storage: bool,
+
+    #[clap(long, env, help_heading = Some("Initial Setup / General"), help = "Logging path")]
     pub log_path: Option<PathBuf>,
 
-    #[clap(long, env, help_heading = Some("Initial Setup"), help = "Path to public files, also HLS playlists")]
+    #[clap(long, env, help_heading = Some("Initial Setup / General"), help = "Path to public files, also HLS playlists")]
     pub public: Option<String>,
+
+    #[clap(long, help_heading = Some("Initial Setup / Playlist"), help = "Path to playlist, or playlist root folder.")]
+    pub playlist: Option<String>,
 
     #[clap(long, env, help_heading = Some("General"), help = "Path to database file")]
     pub db: Option<PathBuf>,
 
     #[clap(
         long,
-        env,
         help_heading = Some("General"),
         help = "Drop database. WARNING: this will delete all configurations!"
     )]
@@ -111,6 +115,27 @@ pub struct Args {
     pub listen: Option<String>,
 
     #[clap(
+        long,
+        env,
+        help_heading = Some("General"),
+        help = "Override logging level: trace, debug, println, warn, eprintln"
+    )]
+    pub log_level: Option<String>,
+
+    #[clap(long, env, help_heading = Some("General"), help = "Log to console")]
+    pub log_to_console: bool,
+
+    #[clap(
+        short,
+        long,
+        env,
+        help_heading = Some("General / Playout"),
+        help = "Channels by ids to process (for export config, foreground running, etc.)",
+        num_args = 1..,
+    )]
+    pub channels: Option<Vec<i32>>,
+
+    #[clap(
         short,
         long,
         help_heading = Some("Playlist"),
@@ -123,9 +148,6 @@ pub struct Args {
     #[clap(long, help_heading = Some("Playlist"), help = "Optional path list for playlist generations", num_args = 1..)]
     pub paths: Option<Vec<PathBuf>>,
 
-    #[clap(long, help_heading = Some("Playlist"), help = "Path to playlist, or playlist root folder.")]
-    pub playlist: Option<PathBuf>,
-
     #[clap(
         short,
         long,
@@ -134,21 +156,11 @@ pub struct Args {
     )]
     pub start: Option<String>,
 
-    #[clap(short = 'T', long, help_heading = Some("Playlist"), help = "JSON Template file for generating playlist")]
+    #[clap(short = 'T', long, help_heading = Some("Playlist"), help = "JSON template file for generating playlist")]
     pub template: Option<PathBuf>,
 
     #[clap(long, help_heading = Some("Playlist"), help = "Only validate given playlist")]
     pub validate: bool,
-
-    #[clap(
-        short,
-        long,
-        env,
-        help_heading = Some("Playout"),
-        help = "Channels by ids to process (for foreground, etc.)",
-        num_args = 1..,
-    )]
-    pub channels: Option<Vec<i32>>,
 
     #[clap(long, env, help_heading = Some("Playout"), help = "Run playout without webserver and frontend.")]
     pub foreground: bool,
@@ -158,17 +170,6 @@ pub struct Args {
 
     #[clap(long, env, help_heading = Some("Playout"), help = "Keep log file for given days")]
     pub log_backup_count: Option<usize>,
-
-    #[clap(
-        long,
-        env,
-        help_heading = Some("Playout"),
-        help = "Override logging level: trace, debug, println, warn, eprintln"
-    )]
-    pub log_level: Option<String>,
-
-    #[clap(long, env, help_heading = Some("Playout"), help = "Log to console")]
-    pub log_to_console: bool,
 
     #[clap(short, long, help_heading = Some("Playout"), help = "Set output mode: desktop, hls, null, stream")]
     pub output: Option<OutputMode>,
@@ -393,8 +394,8 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
     }
 
     if !args.init
-        && args.storage_root.is_some()
-        && args.playlist_root.is_some()
+        && args.storage.is_some()
+        && args.playlist.is_some()
         && args.public.is_some()
         && args.log_path.is_some()
     {
@@ -404,9 +405,9 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
             id: 0,
             secret: None,
             logging_path: args.log_path.unwrap().to_string_lossy().to_string(),
-            playlist_root: args.playlist_root.unwrap(),
+            playlist_root: args.playlist.unwrap(),
             public_root: args.public.unwrap(),
-            storage_root: args.storage_root.unwrap(),
+            storage_root: args.storage.unwrap(),
             shared_storage: args.shared_storage,
         };
 

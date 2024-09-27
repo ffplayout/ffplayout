@@ -851,7 +851,7 @@ pub async fn get_config(
     }
 
     if let Some(playlist) = args.playlist {
-        config.channel.playlist_path = playlist;
+        config.channel.playlist_path = PathBuf::from(&playlist);
     }
 
     if let Some(folder) = args.folder {

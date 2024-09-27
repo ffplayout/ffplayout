@@ -625,6 +625,10 @@ pub fn loop_image(config: &PlayoutConfig, node: &Media) -> Vec<String> {
             .storage_path
             .join(config.processing.vtt_dummy.clone().unwrap_or_default());
 
+        if node.seek > 0.5 {
+            source_cmd.append(&mut vec_strings!["-ss", node.seek]);
+        }
+
         if vtt_file.is_file() {
             source_cmd.append(&mut vec_strings![
                 "-i",
@@ -731,6 +735,10 @@ pub fn seek_and_length(config: &PlayoutConfig, node: &mut Media) -> Vec<String> 
             .channel
             .storage_path
             .join(config.processing.vtt_dummy.clone().unwrap_or_default());
+
+        if node.seek > 0.5 {
+            source_cmd.append(&mut vec_strings!["-ss", node.seek]);
+        }
 
         if vtt_file.is_file() {
             if loop_count > 1 {

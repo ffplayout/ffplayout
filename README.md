@@ -3,7 +3,7 @@
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
-## **ffplayout-engine (ffplayout)**
+![player](/docs/images/player.png)
 
 [ffplayout](/ffplayout-engine/README.md) is a 24/7 broadcasting solution. It can playout a folder containing audio or video clips, or play a *JSON* playlist for each day, keeping the current playlist editable.
 
