@@ -328,7 +328,9 @@ pub struct Processing {
     pub audio_channels: u8,
     pub volume: f64,
     pub custom_filter: String,
+    #[serde(default)]
     pub vtt_enable: bool,
+    #[serde(default)]
     pub vtt_dummy: Option<String>,
     #[serde(skip_serializing, skip_deserializing)]
     pub cmd: Option<Vec<String>>,
@@ -456,6 +458,7 @@ pub struct Text {
     pub zmq_stream_socket: Option<String>,
     #[serde(skip_serializing, skip_deserializing)]
     pub zmq_server_socket: Option<String>,
+    #[serde(alias = "fontfile")]
     pub font: String,
     #[serde(skip_serializing, skip_deserializing)]
     pub font_path: String,
