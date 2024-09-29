@@ -11,47 +11,47 @@
             <thead class="top-0 sticky z-10">
                 <tr class="bg-base-100 rounded-tr-lg">
                     <th v-if="!configStore.playout.playlist.infinit" class="w-[85px] p-0 text-left">
-                        <div class="border-b border-my-gray px-4 py-3 -mb-[2px]">
+                        <div class="border-b border-my-gray px-4 py-3">
                             {{ t('player.start') }}
                         </div>
                     </th>
                     <th class="w-full p-0 text-left">
-                        <div class="border-b border-my-gray px-4 py-3 -mb-[2px]">
+                        <div class="border-b border-my-gray px-4 py-3">
                             {{ t('player.file') }}
                         </div>
                     </th>
                     <th class="w-[85px] p-0 text-center">
-                        <div class="border-b border-my-gray px-4 py-3 -mb-[2px]">
+                        <div class="border-b border-my-gray px-4 py-3">
                             {{ t('player.play') }}
                         </div>
                     </th>
                     <th class="w-[85px] p-0 text-center hidden 2xs:table-cell">
-                        <div class="border-b border-my-gray px-4 py-3 -mb-[2px]">
+                        <div class="border-b border-my-gray px-4 py-3">
                             {{ t('player.duration') }}
                         </div>
                     </th>
                     <th class="w-[85px] p-0 text-center hidden xl:table-cell">
-                        <div class="border-b border-my-gray px-4 py-3 -mb-[2px]">
+                        <div class="border-b border-my-gray px-4 py-3">
                             {{ t('player.in') }}
                         </div>
                     </th>
                     <th class="w-[85px] p-0 text-center hidden xl:table-cell">
-                        <div class="border-b border-my-gray px-4 py-3 -mb-[2px]">
+                        <div class="border-b border-my-gray px-4 py-3">
                             {{ t('player.out') }}
                         </div>
                     </th>
                     <th class="w-[85px] p-0 text-center hidden xl:table-cell justify-center">
-                        <div class="border-b border-my-gray px-4 py-3 -mb-[2px]">
+                        <div class="border-b border-my-gray px-4 py-3">
                             {{ t('player.ad') }}
                         </div>
                     </th>
                     <th class="w-[85px] p-0 text-center">
-                        <div class="border-b border-my-gray px-4 py-3 -mb-[2px]">
+                        <div class="border-b border-my-gray px-4 py-3">
                             {{ t('player.edit') }}
                         </div>
                     </th>
                     <th class="w-[85px] p-0 text-center hidden 2xs:table-cell justify-center">
-                        <div class="border-b border-my-gray px-4 py-3 -mb-[2px]">
+                        <div class="border-b border-my-gray px-4 py-3">
                             {{ t('player.delete') }}
                         </div>
                     </th>

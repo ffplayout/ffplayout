@@ -638,6 +638,8 @@ pub fn loop_image(config: &PlayoutConfig, node: &Media) -> Vec<String> {
             ]);
         } else if vtt_dummy.is_file() {
             source_cmd.append(&mut vec_strings!["-i", vtt_dummy.to_string_lossy()]);
+        } else {
+            error!("WebVTT enabled, but no vtt or dummy file found!");
         }
     }
 
@@ -677,6 +679,8 @@ pub fn loop_filler(config: &PlayoutConfig, node: &Media) -> Vec<String> {
             ]);
         } else if vtt_dummy.is_file() {
             source_cmd.append(&mut vec_strings!["-i", vtt_dummy.to_string_lossy()]);
+        } else {
+            error!("WebVTT enabled, but no vtt or dummy file found!");
         }
     }
 
@@ -789,6 +793,8 @@ pub fn gen_dummy(config: &PlayoutConfig, duration: f64) -> (String, Vec<String>)
 
         if vtt_dummy.is_file() {
             source_cmd.append(&mut vec_strings!["-i", vtt_dummy.to_string_lossy()]);
+        } else {
+            error!("WebVTT enabled, but no vtt or dummy file found!");
         }
     }
 
@@ -906,6 +912,7 @@ pub fn stderr_reader(
                 || (line.contains("No such file or directory")
                     && !line.contains("failed to delete old segment"))
             {
+                error!(target: Target::file_mail(), channel = id; "Hit unrecoverable error!");
                 manager.channel.lock().unwrap().active = false;
                 manager.stop_all();
             }
