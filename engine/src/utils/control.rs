@@ -145,6 +145,22 @@ pub async fn control_state(
     match command {
         "back" => {
             if index > 1 && current_list.len() > 1 {
+                let mut data_map = Map::new();
+                let mut media = current_list[index - 2].clone();
+                let (delta, _) = get_delta(&config, &media.begin.unwrap_or(0.0));
+
+                info!(target: Target::file_mail(), channel = id; "Move to last clip");
+
+                manager.current_index.fetch_sub(2, Ordering::SeqCst);
+
+                if let Err(e) = media.add_probe(false) {
+                    error!(target: Target::file_mail(), channel = id; "{e:?}");
+                };
+
+                manager.channel.lock().unwrap().time_shift = delta;
+                date.clone_from(&current_date);
+                handles::update_stat(conn, config.general.channel_id, current_date, delta).await?;
+
                 if let Some(proc) = manager.decoder.lock().unwrap().as_mut() {
                     if let Err(e) = proc.kill() {
                         error!(target: Target::file_mail(), channel = id; "Decoder {e:?}")
@@ -156,20 +172,6 @@ pub async fn control_state(
                 } else {
                     return Err(ServiceError::InternalServerError);
                 }
-
-                info!(target: Target::file_mail(), channel = id; "Move to last clip");
-                let mut data_map = Map::new();
-                let mut media = current_list[index - 2].clone();
-                manager.current_index.fetch_sub(2, Ordering::SeqCst);
-
-                if let Err(e) = media.add_probe(false) {
-                    error!(target: Target::file_mail(), channel = id; "{e:?}");
-                };
-
-                let (delta, _) = get_delta(&config, &media.begin.unwrap_or(0.0));
-                manager.channel.lock().unwrap().time_shift = delta;
-                date.clone_from(&current_date);
-                handles::update_stat(conn, config.general.channel_id, current_date, delta).await?;
 
                 data_map.insert("operation".to_string(), json!("move_to_last"));
                 data_map.insert("shifted_seconds".to_string(), json!(delta));
@@ -181,6 +183,20 @@ pub async fn control_state(
 
         "next" => {
             if index < current_list.len() {
+                let mut data_map = Map::new();
+                let mut media = current_list[index].clone();
+                let (delta, _) = get_delta(&config, &media.begin.unwrap_or(0.0));
+
+                info!(target: Target::file_mail(), channel = id; "Move to next clip");
+
+                if let Err(e) = media.add_probe(false) {
+                    error!(target: Target::file_mail(), channel = id; "{e:?}");
+                };
+
+                manager.channel.lock().unwrap().time_shift = delta;
+                date.clone_from(&current_date);
+                handles::update_stat(conn, config.general.channel_id, current_date, delta).await?;
+
                 if let Some(proc) = manager.decoder.lock().unwrap().as_mut() {
                     if let Err(e) = proc.kill() {
                         error!(target: Target::file_mail(), channel = id; "Decoder {e:?}")
@@ -193,20 +209,6 @@ pub async fn control_state(
                     return Err(ServiceError::InternalServerError);
                 }
 
-                info!(target: Target::file_mail(), channel = id; "Move to next clip");
-
-                let mut data_map = Map::new();
-                let mut media = current_list[index].clone();
-
-                if let Err(e) = media.add_probe(false) {
-                    error!(target: Target::file_mail(), channel = id; "{e:?}");
-                };
-
-                let (delta, _) = get_delta(&config, &media.begin.unwrap_or(0.0));
-                manager.channel.lock().unwrap().time_shift = delta;
-                date.clone_from(&current_date);
-                handles::update_stat(conn, config.general.channel_id, current_date, delta).await?;
-
                 data_map.insert("operation".to_string(), json!("move_to_next"));
                 data_map.insert("shifted_seconds".to_string(), json!(delta));
                 data_map.insert("media".to_string(), get_media_map(media));
@@ -216,6 +218,16 @@ pub async fn control_state(
         }
 
         "reset" => {
+            let mut data_map = Map::new();
+
+            info!(target: Target::file_mail(), channel = id; "Reset playout to original state");
+
+            manager.channel.lock().unwrap().time_shift = 0.0;
+            date.clone_from(&current_date);
+            manager.list_init.store(true, Ordering::SeqCst);
+
+            handles::update_stat(conn, config.general.channel_id, current_date, 0.0).await?;
+
             if let Some(proc) = manager.decoder.lock().unwrap().as_mut() {
                 if let Err(e) = proc.kill() {
                     error!(target: Target::file_mail(), channel = id; "Decoder {e:?}")
@@ -228,25 +240,7 @@ pub async fn control_state(
                 return Err(ServiceError::InternalServerError);
             }
 
-            info!(target: Target::file_mail(), channel = id; "Reset playout to original state");
-            let mut data_map = Map::new();
-            manager.channel.lock().unwrap().time_shift = 0.0;
-            date.clone_from(&current_date);
-            manager.list_init.store(true, Ordering::SeqCst);
-
-            handles::update_stat(conn, config.general.channel_id, current_date, 0.0).await?;
-
             data_map.insert("operation".to_string(), json!("reset_playout_state"));
-
-            return Ok(data_map);
-        }
-
-        "stop_all" => {
-            manager.channel.lock().unwrap().active = false;
-            manager.stop_all();
-
-            let mut data_map = Map::new();
-            data_map.insert("message".to_string(), json!("Stop playout!"));
 
             return Ok(data_map);
         }
