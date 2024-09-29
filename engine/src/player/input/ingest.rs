@@ -47,6 +47,7 @@ fn server_monitor(
             .iter()
             .any(|i| line.contains(*i))
         {
+            error!(target: Target::file_mail(), channel = id; "Hit unrecoverable error!");
             channel_mgr.channel.lock().unwrap().active = false;
             channel_mgr.stop_all();
         }
