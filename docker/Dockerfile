@@ -12,7 +12,7 @@ COPY <<-EOT /run.sh
 #!/bin/sh
 
 if [ ! -f /db/ffplayout.db ]; then
-    ffplayout -u admin -p admin -m contact@example.com --storage-root "/tv-media" --playlist-root "/playlists" --public "/public" --log-path "/logging" --shared-storage
+    ffplayout -u admin -p admin -m contact@example.com --storage "/tv-media" --playlist "/playlists" --public "/public" --log-path "/logging" --shared-storage
 fi
 
 /usr/bin/ffplayout -l "0.0.0.0:8787"
