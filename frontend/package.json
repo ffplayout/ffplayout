@@ -1,6 +1,6 @@
 {
   "name": "frontend",
-  "version": "0.12.1",
+  "version": "0.12.2",
   "description": "Web GUI for ffplayout",
   "author": "Jonathan Baecker",
   "private": true,
@@ -39,9 +39,9 @@
     "mini-svg-data-uri": "^1.4.4",
     "postcss": "^8.4.47",
     "postcss-loader": "^8.1.1",
-    "sass": "^1.79.3",
+    "sass": "^1.79.4",
     "sass-loader": "^16.0.2",
-    "vue": "^3.5.8",
+    "vue": "^3.5.10",
     "vue-router": "^4.4.5"
   }
 }
