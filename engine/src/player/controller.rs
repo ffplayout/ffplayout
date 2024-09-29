@@ -392,7 +392,11 @@ fn delete_ts<P: AsRef<Path> + Clone + std::fmt::Debug>(
 ) -> io::Result<()> {
     let ts_file = params
         .iter()
-        .filter(|f| f.to_lowercase().ends_with(".ts") || f.to_lowercase().ends_with(".m3u8"))
+        .filter(|f| {
+            f.to_lowercase().ends_with(".ts")
+                || f.to_lowercase().ends_with(".m3u8")
+                || f.to_lowercase().ends_with(".vtt")
+        })
         .collect::<Vec<&String>>();
 
     for entry in WalkDir::new(path.clone())
