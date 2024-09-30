@@ -955,8 +955,10 @@ pub async fn process_control(
             }
         }
         ProcessCtl::Start => {
-            manager.channel.lock().unwrap().active = true;
-            manager.async_start().await;
+            if !manager.is_alive.load(Ordering::SeqCst) {
+                manager.channel.lock().unwrap().active = true;
+                manager.async_start().await;
+            }
         }
         ProcessCtl::Stop => {
             manager.channel.lock().unwrap().active = false;
@@ -965,7 +967,10 @@ pub async fn process_control(
         ProcessCtl::Restart => {
             manager.async_stop().await;
             tokio::time::sleep(tokio::time::Duration::from_millis(1500)).await;
-            manager.async_start().await;
+
+            if !manager.is_alive.load(Ordering::SeqCst) {
+                manager.async_start().await;
+            }
         }
     }
 
