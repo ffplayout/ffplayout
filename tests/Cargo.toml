@@ -39,8 +39,8 @@ name = "api_routes"
 path = "src/api_routes.rs"
 
 [[test]]
-name = "lib_utils"
-path = "src/lib_utils.rs"
+name = "utils"
+path = "src/utils.rs"
 
 [[test]]
 name = "engine_playlist"

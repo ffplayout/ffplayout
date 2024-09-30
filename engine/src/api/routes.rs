@@ -490,9 +490,9 @@ async fn patch_channel(
     if !role.has_authority(&Role::GlobalAdmin) {
         let channel = handles::select_channel(&pool, &id).await?;
 
-        data.hls_path = channel.hls_path;
-        data.playlist_path = channel.playlist_path;
-        data.storage_path = channel.storage_path;
+        data.public = channel.public;
+        data.playlists = channel.playlists;
+        data.storage = channel.storage;
     }
 
     handles::update_channel(&pool, *id, data).await?;
@@ -669,13 +669,13 @@ async fn update_playout_config(
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
     let manager = controllers.lock().unwrap().get(*id).unwrap();
-    let p = manager.channel.lock().unwrap().storage_path.clone();
-    let storage_path = Path::new(&p);
+    let p = manager.channel.lock().unwrap().storage.clone();
+    let storage = Path::new(&p);
     let config_id = manager.config.lock().unwrap().general.id;
 
-    let (_, _, logo) = norm_abs_path(storage_path, &data.processing.logo)?;
-    let (_, _, filler) = norm_abs_path(storage_path, &data.storage.filler)?;
-    let (_, _, font) = norm_abs_path(storage_path, &data.text.font)?;
+    let (_, _, logo) = norm_abs_path(storage, &data.processing.logo)?;
+    let (_, _, filler) = norm_abs_path(storage, &data.storage.filler)?;
+    let (_, _, font) = norm_abs_path(storage, &data.text.font)?;
 
     data.processing.logo = logo;
     data.storage.filler = filler;
@@ -1064,14 +1064,14 @@ pub async fn gen_playlist(
 ) -> Result<impl Responder, ServiceError> {
     let manager = controllers.lock().unwrap().get(params.0).unwrap();
     manager.config.lock().unwrap().general.generate = Some(vec![params.1.clone()]);
-    let storage_path = manager.config.lock().unwrap().channel.storage_path.clone();
+    let storage = manager.config.lock().unwrap().channel.storage.clone();
 
     if let Some(obj) = data {
         if let Some(paths) = &obj.paths {
             let mut path_list = vec![];
 
             for path in paths {
-                let (p, _, _) = norm_abs_path(&storage_path, path)?;
+                let (p, _, _) = norm_abs_path(&storage, path)?;
 
                 path_list.push(p);
             }
@@ -1306,9 +1306,9 @@ async fn get_file(
     let id: i32 = req.match_info().query("id").parse()?;
     let manager = controllers.lock().unwrap().get(id).unwrap();
     let config = manager.config.lock().unwrap();
-    let storage_path = config.channel.storage_path.clone();
+    let storage = config.channel.storage.clone();
     let file_path = req.match_info().query("filename");
-    let (path, _, _) = norm_abs_path(&storage_path, file_path)?;
+    let (path, _, _) = norm_abs_path(&storage, file_path)?;
     let file = actix_files::NamedFile::open(path)?;
 
     Ok(file
@@ -1339,7 +1339,7 @@ async fn get_public(
     {
         let manager = controllers.lock().unwrap().get(id).unwrap();
         let config = manager.config.lock().unwrap();
-        config.channel.hls_path.join(public)
+        config.channel.public.join(public)
     } else {
         public_path()
     }

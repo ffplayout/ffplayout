@@ -65,7 +65,7 @@ fn ingest_to_hls_server(manager: ChannelManager) -> Result<(), ProcessError> {
     if config.processing.vtt_enable {
         let vtt_dummy = config
             .channel
-            .storage_path
+            .storage
             .join(config.processing.vtt_dummy.clone().unwrap_or_default());
 
         if vtt_dummy.is_file() {

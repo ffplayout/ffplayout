@@ -118,7 +118,7 @@ pub fn stat(config: PlayoutConfig) -> SystemStat {
 
     for disk in &*disks {
         if disk.mount_point().to_string_lossy().len() > 1
-            && config.channel.storage_path.starts_with(disk.mount_point())
+            && config.channel.storage.starts_with(disk.mount_point())
         {
             storage.path = disk.name().to_string_lossy().to_string();
             storage.total = disk.total_space();

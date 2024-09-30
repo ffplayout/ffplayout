@@ -69,7 +69,7 @@ pub fn prepare_output_cmd(
     let re_v = Regex::new(r"\[?0:v(:0)?\]?").unwrap();
     let vtt_dummy = config
         .channel
-        .storage_path
+        .storage
         .join(config.processing.vtt_dummy.clone().unwrap_or_default());
 
     if let Some(mut filter) = filters.clone() {
@@ -622,7 +622,7 @@ pub fn loop_image(config: &PlayoutConfig, node: &Media) -> Vec<String> {
         let vtt_file = Path::new(&node.source).with_extension("vtt");
         let vtt_dummy = config
             .channel
-            .storage_path
+            .storage
             .join(config.processing.vtt_dummy.clone().unwrap_or_default());
 
         if node.seek > 0.5 {
@@ -663,7 +663,7 @@ pub fn loop_filler(config: &PlayoutConfig, node: &Media) -> Vec<String> {
         let vtt_file = Path::new(&node.source).with_extension("vtt");
         let vtt_dummy = config
             .channel
-            .storage_path
+            .storage
             .join(config.processing.vtt_dummy.clone().unwrap_or_default());
 
         if vtt_file.is_file() {
@@ -737,7 +737,7 @@ pub fn seek_and_length(config: &PlayoutConfig, node: &mut Media) -> Vec<String> 
         let vtt_file = Path::new(&node.source).with_extension("vtt");
         let vtt_dummy = config
             .channel
-            .storage_path
+            .storage
             .join(config.processing.vtt_dummy.clone().unwrap_or_default());
 
         if node.seek > 0.5 {
@@ -788,7 +788,7 @@ pub fn gen_dummy(config: &PlayoutConfig, duration: f64) -> (String, Vec<String>)
     if config.processing.vtt_enable {
         let vtt_dummy = config
             .channel
-            .storage_path
+            .storage
             .join(config.processing.vtt_dummy.clone().unwrap_or_default());
 
         if vtt_dummy.is_file() {

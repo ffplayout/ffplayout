@@ -135,7 +135,7 @@ assets = [
     ],
 ]
 maintainer-scripts = "../debian/"
-systemd-units = { enable = false, unit-scripts = "../assets" }
+systemd-units = { enable = true, unit-scripts = "../assets" }
 
 [package.metadata.deb.variants.arm64]
 assets = [

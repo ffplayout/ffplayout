@@ -176,21 +176,21 @@ pub struct PlayoutConfig {
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct Channel {
-    pub logging_path: PathBuf,
-    pub hls_path: PathBuf,
-    pub playlist_path: PathBuf,
-    pub storage_path: PathBuf,
-    pub shared_storage: bool,
+    pub logs: PathBuf,
+    pub public: PathBuf,
+    pub playlists: PathBuf,
+    pub storage: PathBuf,
+    pub shared: bool,
 }
 
 impl Channel {
     pub fn new(config: &models::GlobalSettings, channel: models::Channel) -> Self {
         Self {
-            logging_path: PathBuf::from(config.logging_path.clone()),
-            hls_path: PathBuf::from(channel.hls_path.clone()),
-            playlist_path: PathBuf::from(channel.playlist_path.clone()),
-            storage_path: PathBuf::from(channel.storage_path.clone()),
-            shared_storage: config.shared_storage,
+            logs: PathBuf::from(config.logs.clone()),
+            public: PathBuf::from(channel.public.clone()),
+            playlists: PathBuf::from(channel.playlists.clone()),
+            storage: PathBuf::from(channel.storage.clone()),
+            shared: config.shared,
         }
     }
 }
@@ -588,27 +588,23 @@ impl PlayoutConfig {
         let task = Task::new(&config);
         let mut output = Output::new(&config);
 
-        if !channel.storage_path.is_dir() {
-            tokio::fs::create_dir_all(&channel.storage_path)
+        if !channel.storage.is_dir() {
+            tokio::fs::create_dir_all(&channel.storage)
                 .await
-                .unwrap_or_else(|_| {
-                    panic!("Can't create storage folder: {:#?}", channel.storage_path)
-                });
+                .unwrap_or_else(|_| panic!("Can't create storage folder: {:#?}", channel.storage));
         }
 
-        let mut storage =
-            Storage::new(&config, channel.storage_path.clone(), global.shared_storage);
+        let mut storage = Storage::new(&config, channel.storage.clone(), global.shared);
 
-        if !channel.playlist_path.is_dir() {
-            tokio::fs::create_dir_all(&channel.playlist_path).await?;
+        if !channel.playlists.is_dir() {
+            tokio::fs::create_dir_all(&channel.playlists).await?;
         }
 
-        if !channel.logging_path.is_dir() {
-            tokio::fs::create_dir_all(&channel.logging_path).await?;
+        if !channel.logs.is_dir() {
+            tokio::fs::create_dir_all(&channel.logs).await?;
         }
 
-        let (filler_path, _, filler) =
-            norm_abs_path(&channel.storage_path, &config.storage_filler)?;
+        let (filler_path, _, filler) = norm_abs_path(&channel.storage, &config.storage_filler)?;
 
         storage.filler = filler;
         storage.filler_path = filler_path;
@@ -621,7 +617,7 @@ impl PlayoutConfig {
             playlist.length_sec = Some(86400.0);
         }
 
-        let (logo_path, _, logo) = norm_abs_path(&channel.storage_path, &processing.logo)?;
+        let (logo_path, _, logo) = norm_abs_path(&channel.storage, &processing.logo)?;
 
         if processing.add_logo && !logo_path.is_file() {
             processing.add_logo = false;
@@ -709,13 +705,13 @@ impl PlayoutConfig {
 
             for item in cmd.iter_mut() {
                 if item.ends_with(".ts") || (item.ends_with(".m3u8") && item != "master.m3u8") {
-                    if let Ok((hls_path, _, _)) = norm_abs_path(&channel.hls_path, item) {
-                        let parent = hls_path.parent().ok_or("HLS parent path")?;
+                    if let Ok((public, _, _)) = norm_abs_path(&channel.public, item) {
+                        let parent = public.parent().ok_or("HLS parent path")?;
 
                         if !parent.is_dir() {
                             fs::create_dir_all(parent).await?;
                         }
-                        item.clone_from(&hls_path.to_string_lossy().to_string());
+                        item.clone_from(&public.to_string_lossy().to_string());
                     };
                 }
             }
@@ -736,7 +732,7 @@ impl PlayoutConfig {
             text.node_pos = None;
         }
 
-        let (font_path, _, font) = norm_abs_path(&channel.storage_path, &text.font)?;
+        let (font_path, _, font) = norm_abs_path(&channel.storage, &text.font)?;
         text.font = font;
         text.font_path = font_path.to_string_lossy().to_string();
 
@@ -853,12 +849,12 @@ pub async fn get_config(
         config.storage.paths = paths;
     }
 
-    if let Some(playlist) = args.playlist {
-        config.channel.playlist_path = PathBuf::from(&playlist);
+    if let Some(playlist) = args.playlists {
+        config.channel.playlists = PathBuf::from(&playlist);
     }
 
     if let Some(folder) = args.folder {
-        config.channel.storage_path = folder;
+        config.channel.storage = folder;
         config.processing.mode = ProcessMode::Folder;
     }
 
@@ -877,10 +873,10 @@ pub async fn get_config(
         }
     }
 
-    if args.shared_storage {
-        // config.channel.shared_storage could be true already,
-        // so should not be overridden with false when args.shared_storage is not set
-        config.channel.shared_storage = args.shared_storage
+    if args.shared {
+        // config.channel.shared could be true already,
+        // so should not be overridden with false when args.shared is not set
+        config.channel.shared = args.shared
     }
 
     if let Some(volume) = args.volume {
