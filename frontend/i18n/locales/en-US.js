@@ -199,7 +199,7 @@ export default {
         updatePlayoutFailed: 'Update playout config failed!',
         forbiddenPlaylistPath: 'Access forbidden: Playlist folder cannot be opened.',
         noPlayoutConfig: 'No playout config found!',
-        hlsPath: 'HLS Path',
+        publicPath: 'Public (HLS) Path',
         playlistPath: 'Playlist Path',
         storagePath: 'Storage Path',
         sharedStorage: 'Shared storage is enabled, use the same storage root for all channels!',

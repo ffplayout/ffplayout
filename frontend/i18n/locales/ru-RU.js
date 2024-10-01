@@ -199,7 +199,7 @@ export default {
         updatePlayoutFailed: 'Обновление конфигурации воспроизведения не удалось!',
         forbiddenPlaylistPath: 'Доступ запрещен: Папка плейлиста не может быть открыта.',
         noPlayoutConfig: 'Конфигурация воспроизведения не найдена!',
-        hlsPath: 'HLS Path',
+        publicPath: 'Public (HLS) Path',
         playlistPath: 'Playlist Path',
         storagePath: 'Storage Path',
         sharedStorage: 'Общее хранилище включено, используйте один и тот же корень хранилища для всех каналов!',

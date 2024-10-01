@@ -347,7 +347,7 @@ function addFolderToTemplate(event: any, item: TemplateItem) {
 
     event.item.remove()
 
-    const storagePath = configStore.channels[configStore.id].storage_path
+    const storagePath = configStore.channels[configStore.id].storage
     const navPath = mediaStore.folderCrumbs[mediaStore.folderCrumbs.length - 1].path
     const sourcePath = `${storagePath}/${navPath}/${mediaStore.folderList.folders[o].name}`.replace(/\/[/]+/g, '/')
 

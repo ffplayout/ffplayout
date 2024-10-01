@@ -1,4 +1,5 @@
 import dayjs from 'dayjs'
+import { differenceWith, isEqual, omit } from 'lodash-es'
 import utc from 'dayjs/plugin/utc.js'
 import timezone from 'dayjs/plugin/timezone.js'
 
@@ -28,13 +29,13 @@ export const usePlaylist = defineStore('playlist', {
     getters: {},
     actions: {
         async getPlaylist(date: string) {
-            const { $_, $i18n } = useNuxtApp()
+            const { $i18n } = useNuxtApp()
             const authStore = useAuth()
             const configStore = useConfig()
             const indexStore = useIndex()
             const channel = configStore.channels[configStore.id].id
 
-            await $fetch<Playlist>(`/api/playlist/${channel}?date=${date}`, {
+            await $fetch(`/api/playlist/${channel}?date=${date}`, {
                 method: 'GET',
                 headers: authStore.authHeader,
             })
@@ -47,8 +48,8 @@ export const usePlaylist = defineStore('playlist', {
                             this.playlist.length > 0 &&
                             programData.length > 0 &&
                             (this.playlist[0].date === date || configStore.playout.playlist.infinit) &&
-                            $_.differenceWith(this.playlist, programData, (a, b) => {
-                                return $_.isEqual($_.omit(a, ['uid']), $_.omit(b, ['uid']))
+                            differenceWith(this.playlist, programData, (a, b) => {
+                                return isEqual(omit(a, ['uid']), omit(b, ['uid']))
                             }).length > 0
                         ) {
                             indexStore.msgAlert('warning', $i18n.t('player.unsavedProgram'), 3)

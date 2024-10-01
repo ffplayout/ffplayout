@@ -329,6 +329,7 @@ watch([width], () => {
 const horizontal = ref(false)
 const deleteName = ref('')
 const renameOldName = ref('')
+const renameOldPath = ref('')
 const renameNewName = ref('')
 const previewName = ref('')
 const previewUrl = ref('')
@@ -513,8 +514,13 @@ async function deleteFileOrFolder(del: boolean) {
 }
 
 function setRenameValues(path: string) {
-    renameNewName.value = path
-    renameOldName.value = path
+    const index = path.lastIndexOf('/')
+    const dir = path.substring(0, index + 1) || '/'
+    const file = path.substring(index + 1)
+
+    renameOldName.value = file
+    renameOldPath.value = dir
+    renameNewName.value = file
 }
 
 async function renameFile(ren: boolean) {
@@ -527,7 +533,10 @@ async function renameFile(ren: boolean) {
         await fetch(`/api/file/${configStore.channels[configStore.id].id}/rename/`, {
             method: 'POST',
             headers: { ...configStore.contentType, ...authStore.authHeader },
-            body: JSON.stringify({ source: renameOldName.value, target: renameNewName.value }),
+            body: JSON.stringify({
+                source: `${renameOldPath.value}${renameOldName.value}`,
+                target: `${renameOldPath.value}${renameNewName.value}`,
+            }),
         })
             .then(async (res) => {
                 if (res.status >= 400) {
@@ -542,6 +551,7 @@ async function renameFile(ren: boolean) {
     }
 
     renameOldName.value = ''
+    renameOldPath.value = ''
     renameNewName.value = ''
 }
 

@@ -40,10 +40,10 @@ export const useAuth = defineStore('auth', {
                 password,
             }
 
-            await $fetch<LoginObj>('/auth/login/', {
+            await $fetch('/auth/login/', {
                 method: 'POST',
                 body: JSON.stringify(payload),
-                async onResponse({ response }) {
+                async onResponse(response: LoginObj) {
                     code = response.status
                 },
             })
@@ -60,7 +60,7 @@ export const useAuth = defineStore('auth', {
         },
 
         async obtainUuid() {
-            await $fetch<DataAuth>('/api/generate-uuid', {
+            await $fetch('/api/generate-uuid', {
                 method: 'POST',
                 headers: this.authHeader,
             })

@@ -199,7 +199,7 @@ export default {
         updatePlayoutFailed: 'Falha na atualização da configuração do playout!',
         forbiddenPlaylistPath: 'Acesso proibido: A pasta da lista de reprodução não pode ser aberta',
         noPlayoutConfig: 'Nenhuma configuração de playout encontrada!',
-        hlsPath: 'HLS Path',
+        publicPath: 'Public (HLS) Path',
         playlistPath: 'Playlist Path',
         storagePath: 'Storage Path',
         sharedStorage: 'O armazenamento compartilhado está ativado, use a mesma raiz de armazenamento para todos os canais',

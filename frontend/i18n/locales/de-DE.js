@@ -200,7 +200,7 @@ export default {
         updatePlayoutFailed: 'Update playout config fehlgeschlagen!',
         forbiddenPlaylistPath: 'Zugriff untersagt: Playlist-Ordner kann nicht geöffnet werden.',
         noPlayoutConfig: 'Keine Playout-Konfiguration gefunden!',
-        hlsPath: 'HLS-Pfad',
+        publicPath: 'Public (HLS) Pfad',
         playlistPath: 'Wiedergabelistenpfad',
         storagePath: 'Speicherpfad',
         sharedStorage: 'Gemeinsamer Speicher ist aktiviert, verwende denselben Speicherstamm für alle Kanäle!',

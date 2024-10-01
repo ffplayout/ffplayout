@@ -11,6 +11,7 @@ declare global {
 
     interface LoginObj {
         message: string
+        status: number
         user?: {
             id: number
             mail: string
@@ -28,9 +29,9 @@ declare global {
         extra_extensions: string | string[]
         name: string
         preview_url: string
-        hls_path: string
-        playlist_path: string
-        storage_path: string
+        public: string
+        playlists: string
+        storage: string
         uts_offset?: number
     }
 

@@ -174,7 +174,7 @@
                         v-model="newSource.source"
                         type="text"
                         class="input input-sm input-bordered w-auto"
-                        :disabled="newSource.source.includes(configStore.channels[configStore.id].storage_path)"
+                        :disabled="newSource.source.includes(configStore.channels[configStore.id].storage)"
                     />
                 </label>
 
@@ -230,9 +230,11 @@
 </template>
 
 <script setup lang="ts">
+import { cloneDeep } from 'lodash-es'
+
 const colorMode = useColorMode()
 const { locale, t } = useI18n()
-const { $_, $dayjs } = useNuxtApp()
+const { $dayjs } = useNuxtApp()
 const { width } = useWindowSize({ initialWidth: 800 })
 const { mediaType } = stringFormatter()
 const { processPlaylist, genUID } = playlistOperations()
@@ -314,7 +316,7 @@ function closePlayer() {
 
 function setPreviewData(path: string) {
     let fullPath = path
-    const storagePath = configStore.channels[configStore.id].storage_path
+    const storagePath = configStore.channels[configStore.id].storage
     const lastIndex = storagePath.lastIndexOf('/')
 
     if (!path.includes('/')) {
@@ -428,7 +430,7 @@ function loopClips() {
         for (const item of playlistStore.playlist) {
             if (length < configStore.playlistLength) {
                 item.uid = genUID()
-                tempList.push($_.cloneDeep(item))
+                tempList.push(cloneDeep(item))
                 length += item.out - item.in
             } else {
                 break
@@ -493,7 +495,7 @@ async function savePlaylist(save: boolean) {
             return
         }
 
-        const saveList = processPlaylist(listDate.value, $_.cloneDeep(playlistStore.playlist), true)
+        const saveList = processPlaylist(listDate.value, cloneDeep(playlistStore.playlist), true)
 
         await $fetch(`/api/playlist/${configStore.channels[configStore.id].id}/`, {
             method: 'POST',

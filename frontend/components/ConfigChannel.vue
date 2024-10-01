@@ -50,10 +50,10 @@
                 </div>
                 <label class="form-control w-full mt-3">
                     <div class="label">
-                        <span class="label-text">{{ t('config.hlsPath') }}</span>
+                        <span class="label-text">{{ t('config.publicPath') }}</span>
                     </div>
                     <input
-                        v-model="configStore.channels[configStore.id].hls_path"
+                        v-model="configStore.channels[configStore.id].public"
                         type="text"
                         class="input input-bordered w-full"
                     />
@@ -64,7 +64,7 @@
                         <span class="label-text">{{ t('config.playlistPath') }}</span>
                     </div>
                     <input
-                        v-model="configStore.channels[configStore.id].playlist_path"
+                        v-model="configStore.channels[configStore.id].playlists"
                         type="text"
                         class="input input-bordered w-full"
                     />
@@ -75,7 +75,7 @@
                         <span class="label-text">{{ t('config.storagePath') }}</span>
                     </div>
                     <input
-                        v-model="configStore.channels[configStore.id].storage_path"
+                        v-model="configStore.channels[configStore.id].storage"
                         type="text"
                         class="input input-bordered w-full"
                     />
@@ -83,7 +83,7 @@
             </template>
 
             <div class="join my-4">
-                <button class="join-item btn btn-primary" @click="addUpdateChannel()">
+                <button class="join-item btn btn-primary" :class="saved ? 'btn-primary' : 'btn-error'" @click="addUpdateChannel()">
                     {{ t('config.save') }}
                 </button>
                 <button
@@ -103,31 +103,36 @@
 </template>
 
 <script setup lang="ts">
-const { $_ } = useNuxtApp()
+import { cloneDeep } from 'lodash-es'
+
 const { t } = useI18n()
 
 const authStore = useAuth()
 const configStore = useConfig()
 const indexStore = useIndex()
 
+const saved = ref(true)
+
 function rmId(path: string) {
     return path.replace(/\/\d+$/, '')
 }
 
 function newChannel() {
-    const channels = $_.cloneDeep(configStore.channels)
-    const newChannel = $_.cloneDeep(configStore.channels[configStore.channels.length - 1])
+    const channels = cloneDeep(configStore.channels)
+    const newChannel = cloneDeep(configStore.channels[configStore.channels.length - 1])
 
     newChannel.id = channels.length + 1
     newChannel.name = `Channel ${newChannel.id}`
     newChannel.preview_url = `${window.location.protocol}//${window.location.host}/${newChannel.id}/live/stream.m3u8`
-    newChannel.hls_path = `${rmId(newChannel.hls_path)}/${newChannel.id}`
-    newChannel.playlist_path = `${rmId(newChannel.playlist_path)}/${newChannel.id}`
-    newChannel.storage_path = `${rmId(newChannel.storage_path)}/${newChannel.id}`
+    newChannel.public = `${rmId(newChannel.public)}/${newChannel.id}`
+    newChannel.playlists = `${rmId(newChannel.playlists)}/${newChannel.id}`
+    newChannel.storage = `${rmId(newChannel.storage)}/${newChannel.id}`
 
     channels.push(newChannel)
     configStore.channels = channels
     configStore.id = configStore.channels.length - 1
+
+    saved.value = false
 }
 
 async function addUpdateChannel() {
@@ -138,13 +143,14 @@ async function addUpdateChannel() {
 
     if (update.status && update.status < 400) {
         indexStore.msgAlert('success', t('config.updateChannelSuccess'), 2)
+        saved.value = true
     } else {
         indexStore.msgAlert('error', t('config.updateChannelFailed'), 2)
     }
 }
 
 async function deleteChannel() {
-    const config = $_.cloneDeep(configStore.channels)
+    const config = cloneDeep(configStore.channels)
     const id = config[configStore.id].id
 
     if (id === 1) {

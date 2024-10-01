@@ -1,4 +1,4 @@
-import _ from 'lodash'
+import { cloneDeep } from 'lodash-es'
 import { defineStore } from 'pinia'
 
 export const useConfig = defineStore('config', {
@@ -70,7 +70,7 @@ export const useConfig = defineStore('config', {
 
                     this.utcOffset = objs[0].utc_offset
                     this.channels = objs
-                    this.channelsRaw = _.cloneDeep(objs)
+                    this.channelsRaw = cloneDeep(objs)
                     this.configCount = objs.length
                 })
                 .catch((e) => {
@@ -84,9 +84,9 @@ export const useConfig = defineStore('config', {
                             extra_extensions: '',
                             name: 'Channel 1',
                             preview_url: '',
-                            hls_path: '',
-                            playlist_path: '',
-                            storage_path: '',
+                            public: '',
+                            playlists: '',
+                            storage: '',
                             uts_offset: 0,
                         },
                     ]
@@ -97,7 +97,7 @@ export const useConfig = defineStore('config', {
 
         async setChannelConfig(obj: Channel): Promise<any> {
             const authStore = useAuth()
-            const stringObj = _.cloneDeep(obj)
+            const stringObj = cloneDeep(obj)
             let response
 
             if (this.channelsRaw.some((e) => e.id === stringObj.id)) {
@@ -125,7 +125,7 @@ export const useConfig = defineStore('config', {
                 }
 
                 this.channels = guiConfigs
-                this.channelsRaw = _.cloneDeep(guiConfigs)
+                this.channelsRaw = cloneDeep(guiConfigs)
                 this.configCount = guiConfigs.length
             }
 

@@ -78,7 +78,7 @@
                             '!bg-lime-500/30':
                                 playlistStore.playoutIsRunning && listDate === todayDate && index === currentIndex,
                             '!bg-amber-600/40': element.overtime,
-                            'text-blue-300': element.category === 'advertisement',
+                            'text-base-content/60': element.category === 'advertisement',
                         }"
                     >
                         <td v-if="!configStore.playout.playlist.infinit" class="ps-4 py-2 text-left">
@@ -259,7 +259,7 @@ function addClip(event: any) {
 
     event.item?.remove()
 
-    const storagePath = configStore.channels[configStore.id].storage_path
+    const storagePath = configStore.channels[configStore.id].storage
     const sourcePath = `${storagePath}/${mediaStore.folderTree.source}/${mediaStore.folderTree.files[o].name}`.replace(
         /\/[/]+/g,
         '/'
