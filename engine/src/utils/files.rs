@@ -27,6 +27,8 @@ pub struct PathObject {
     files: Option<Vec<VideoFile>>,
     #[serde(default)]
     pub folders_only: bool,
+    #[serde(default)]
+    pub recursive: bool,
 }
 
 impl PathObject {
@@ -38,6 +40,7 @@ impl PathObject {
             folders: Some(vec![]),
             files: Some(vec![]),
             folders_only: false,
+            recursive: false,
         }
     }
 }
@@ -312,6 +315,7 @@ pub async fn rename_file(
 pub async fn remove_file_or_folder(
     config: &PlayoutConfig,
     source_path: &str,
+    recursive: bool,
 ) -> Result<(), ServiceError> {
     let (source, _, _) = norm_abs_path(&config.channel.storage, source_path)?;
 
@@ -320,15 +324,27 @@ pub async fn remove_file_or_folder(
     }
 
     if source.is_dir() {
-        match fs::remove_dir(source).await {
-            Ok(_) => return Ok(()),
-            Err(e) => {
-                error!("{e}");
-                return Err(ServiceError::BadRequest(
-                    "Delete folder failed! (Folder must be empty)".into(),
-                ));
-            }
-        };
+        if recursive {
+            match fs::remove_dir_all(source).await {
+                Ok(_) => return Ok(()),
+                Err(e) => {
+                    error!("{e}");
+                    return Err(ServiceError::BadRequest(
+                        "Delete folder and its content failed!".into(),
+                    ));
+                }
+            };
+        } else {
+            match fs::remove_dir(source).await {
+                Ok(_) => return Ok(()),
+                Err(e) => {
+                    error!("{e}");
+                    return Err(ServiceError::BadRequest(
+                        "Delete folder failed! (Folder must be empty)".into(),
+                    ));
+                }
+            };
+        }
     }
 
     if source.is_file() {

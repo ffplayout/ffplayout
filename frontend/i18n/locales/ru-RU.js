@@ -110,6 +110,7 @@ export default {
         folderError: 'Ошибка Создания папки',
         uploadError: 'Ошибка Загрузки',
         fileExists: 'Файл уже имеется!',
+        recursive: 'Рекурсивный',
     },
     message: {
         savePreset: 'Сохранить шаблон',

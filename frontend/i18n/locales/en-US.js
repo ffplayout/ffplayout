@@ -110,6 +110,7 @@ export default {
         folderError: 'Folder create error',
         uploadError: 'Upload error',
         fileExists: 'File exists already!',
+        recursive: 'Recursive',
     },
     message: {
         savePreset: 'Save Preset',

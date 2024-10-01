@@ -110,6 +110,7 @@ export default {
         folderError: 'Fehler beim Erstellen des Ordners',
         uploadError: 'Fehler beim Hochladen',
         fileExists: 'Datei existiert bereits!',
+        recursive: 'Rekursiv',
     },
     message: {
         savePreset: 'Voreinstellung speichern',

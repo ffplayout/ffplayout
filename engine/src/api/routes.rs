@@ -1254,8 +1254,9 @@ pub async fn remove(
 ) -> Result<impl Responder, ServiceError> {
     let manager = controllers.lock().unwrap().get(*id).unwrap();
     let config = manager.config.lock().unwrap().clone();
+    let recursive = data.recursive;
 
-    match remove_file_or_folder(&config, &data.into_inner().source).await {
+    match remove_file_or_folder(&config, &data.into_inner().source, recursive).await {
         Ok(obj) => Ok(web::Json(obj)),
         Err(e) => Err(e),
     }

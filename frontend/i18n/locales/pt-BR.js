@@ -110,6 +110,7 @@ export default {
         folderError: 'Erro ao criar pasta',
         uploadError: 'Erro ao carregar',
         fileExists: 'O arquivo já existe!',
+        recursive: 'Recursivo',
     },
     message: {
         savePreset: 'Salvar predefinição',

@@ -233,7 +233,17 @@
             :title="t('media.deleteTitle')"
             :text="`${t('media.deleteQuestion')}:<br /><strong>${deleteName}</strong>`"
             :modal-action="deleteFileOrFolder"
-        />
+        >
+            <div>
+                <input class="input input-sm w-full" type="text" :value="deleteName" disabled />
+                <div v-if="!extensionsArr.some(suffix => deleteName.endsWith(suffix))" class="form-control mt-3">
+                    <label class="label cursor-pointer w-1/4">
+                        <input v-model="recursive" type="checkbox" class="checkbox checkbox-sm checkbox-warning" />
+                        <span class="label-text">{{ t('media.recursive') }}</span>
+                    </label>
+                </div>
+            </div>
+        </GenericModal>
 
         <GenericModal
             :show="showPreviewModal"
@@ -328,6 +338,7 @@ watch([width], () => {
 
 const horizontal = ref(false)
 const deleteName = ref('')
+const recursive = ref(false)
 const renameOldName = ref('')
 const renameOldPath = ref('')
 const renameNewName = ref('')
@@ -341,6 +352,7 @@ const showRenameModal = ref(false)
 const showCreateModal = ref(false)
 const showUploadModal = ref(false)
 const extensions = ref('')
+const extensionsArr = ref([] as string[])
 const folderName = ref({} as Folder)
 const inputFiles = ref([] as File[])
 const fileInputName = ref()
@@ -363,11 +375,11 @@ onMounted(async () => {
         extra_extensions = extra_extensions.split(',')
     }
 
-    const exts = [...config_extensions, ...extra_extensions].map((ext) => {
+    extensionsArr.value = [...config_extensions, ...extra_extensions].map((ext) => {
         return `.${ext}`
     })
 
-    extensions.value = exts.join(', ')
+    extensions.value = extensionsArr.value.join(', ')
 
     if (!mediaStore.folderTree.parent || !mediaStore.currentPath) {
         await mediaStore.getTree('')
@@ -497,7 +509,7 @@ async function deleteFileOrFolder(del: boolean) {
         await fetch(`/api/file/${configStore.channels[configStore.i].id}/remove/`, {
             method: 'POST',
             headers: { ...configStore.contentType, ...authStore.authHeader },
-            body: JSON.stringify({ source: deleteName.value }),
+            body: JSON.stringify({ source: deleteName.value, recursive: recursive.value }),
         })
             .then(async (response) => {
                 if (response.status !== 200) {
@@ -508,6 +520,8 @@ async function deleteFileOrFolder(del: boolean) {
             .catch((e) => {
                 indexStore.msgAlert('error', `${t('media.deleteError')}: ${e}`, 5)
             })
+
+        recursive.value = false
     }
 
     deleteName.value = ''
