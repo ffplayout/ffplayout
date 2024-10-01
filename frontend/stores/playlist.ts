@@ -33,7 +33,7 @@ export const usePlaylist = defineStore('playlist', {
             const authStore = useAuth()
             const configStore = useConfig()
             const indexStore = useIndex()
-            const channel = configStore.channels[configStore.id].id
+            const channel = configStore.channels[configStore.i].id
 
             await $fetch(`/api/playlist/${channel}?date=${date}`, {
                 method: 'GET',

@@ -174,7 +174,7 @@
                         v-model="newSource.source"
                         type="text"
                         class="input input-sm input-bordered w-auto"
-                        :disabled="newSource.source.includes(configStore.channels[configStore.id].storage)"
+                        :disabled="newSource.source.includes(configStore.channels[configStore.i].storage)"
                     />
                 </label>
 
@@ -316,7 +316,7 @@ function closePlayer() {
 
 function setPreviewData(path: string) {
     let fullPath = path
-    const storagePath = configStore.channels[configStore.id].storage
+    const storagePath = configStore.channels[configStore.i].storage
     const lastIndex = storagePath.lastIndexOf('/')
 
     if (!path.includes('/')) {
@@ -332,7 +332,7 @@ function setPreviewData(path: string) {
     if (path.match(/^http/)) {
         previewUrl.value = path
     } else {
-        previewUrl.value = encodeURIComponent(`/file/${configStore.channels[configStore.id].id}${fullPath}`).replace(
+        previewUrl.value = encodeURIComponent(`/file/${configStore.channels[configStore.i].id}${fullPath}`).replace(
             /%2F/g,
             '/'
         )
@@ -464,7 +464,7 @@ async function importPlaylist(imp: boolean) {
 
         playlistStore.isLoading = true
         await $fetch(
-            `/api/file/${configStore.channels[configStore.id].id}/import/?file=${textFile.value[0].name}&date=${
+            `/api/file/${configStore.channels[configStore.i].id}/import/?file=${textFile.value[0].name}&date=${
                 listDate.value
             }`,
             {
@@ -497,11 +497,11 @@ async function savePlaylist(save: boolean) {
 
         const saveList = processPlaylist(listDate.value, cloneDeep(playlistStore.playlist), true)
 
-        await $fetch(`/api/playlist/${configStore.channels[configStore.id].id}/`, {
+        await $fetch(`/api/playlist/${configStore.channels[configStore.i].id}/`, {
             method: 'POST',
             headers: { ...configStore.contentType, ...authStore.authHeader },
             body: JSON.stringify({
-                channel: configStore.channels[configStore.id].name,
+                channel: configStore.channels[configStore.i].name,
                 date: targetDate.value,
                 program: saveList,
             }),
@@ -524,7 +524,7 @@ async function deletePlaylist(del: boolean) {
     showDeleteModal.value = false
 
     if (del) {
-        await $fetch(`/api/playlist/${configStore.channels[configStore.id].id}/${listDate.value}`, {
+        await $fetch(`/api/playlist/${configStore.channels[configStore.i].id}/${listDate.value}`, {
             method: 'DELETE',
             headers: { ...configStore.contentType, ...authStore.authHeader },
         }).then(() => {

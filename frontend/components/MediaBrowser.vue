@@ -79,7 +79,7 @@ const { secToHMS, mediaType } = stringFormatter()
 
 const configStore = useConfig()
 const mediaStore = useMedia()
-const { id } = storeToRefs(useConfig())
+const { i } = storeToRefs(useConfig())
 
 const browserSortOptions = {
     group: { name: 'playlist', pull: 'clone', put: false },
@@ -102,7 +102,7 @@ onMounted(async () => {
     }
 })
 
-watch([id], () => {
+watch([i], () => {
     mediaStore.getTree('')
 })
 </script>

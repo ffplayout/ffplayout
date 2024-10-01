@@ -31,7 +31,7 @@
                         <details tabindex="0" @focusout="closeDropdown">
                             <summary>
                                 <div class="h-[19px] text-base">
-                                    <span> {{ configStore.channels[configStore.id].name }} </span>
+                                    <span> {{ configStore.channels[configStore.i].name }} </span>
                                 </div>
                             </summary>
                             <ul class="p-2">
@@ -68,7 +68,7 @@
                     <details tabindex="0" @focusout="closeDropdown">
                         <summary>
                             <div class="h-[19px] text-base">
-                                <span> {{ configStore.channels[configStore.id].name }} </span>
+                                <span> {{ configStore.channels[configStore.i].name }} </span>
                             </div>
                         </summary>
                         <ul class="p-2 bg-base-100 rounded-md !mt-1 w-36" tabindex="0">
@@ -127,17 +127,15 @@ if (colorMode.value === 'dark') {
 function closeMenu() {
     setTimeout(() => {
         isOpen.value = false
-        menuDropdown.value.removeAttribute('open')
-        console.log('close')
+        menuDropdown.value?.removeAttribute('open')
     }, 200)
 }
 
 function clickMenu() {
-    console.log('close')
     isOpen.value = !isOpen.value
 
     if (!isOpen.value) {
-        menuDropdown.value.removeAttribute('open')
+        menuDropdown.value?.removeAttribute('open')
     }
 }
 
@@ -146,14 +144,14 @@ function blurMenu() {
         isOpen.value = !isOpen.value
     } else {
         setTimeout(() => {
-            menuDropdown.value.removeAttribute('open')
+            menuDropdown.value?.removeAttribute('open')
         }, 200)
     }
 }
 
 function closeDropdown($event: any) {
     setTimeout(() => {
-        $event.target.parentNode.removeAttribute('open')
+        $event.target.parentNode?.removeAttribute('open')
     }, 200)
 }
 
@@ -163,7 +161,7 @@ function logout() {
 }
 
 function selectChannel(index: number) {
-    configStore.id = index
+    configStore.i = index
     configStore.getPlayoutConfig()
 }
 

@@ -1,6 +1,6 @@
 <template>
-    <div v-if="configStore.channels && configStore.channels[configStore.id]" class="w-full max-w-[800px]">
-        <h2 class="pt-3 text-3xl">{{ t('config.channelConf') }} ({{ configStore.channels[configStore.id].id }})</h2>
+    <div v-if="channel" class="w-full max-w-[800px]">
+        <h2 class="pt-3 text-3xl">{{ t('config.channelConf') }} ({{ channel.id }})</h2>
         <div class="w-full flex justify-end my-4">
             <button v-if="authStore.role === 'GlobalAdmin'" class="btn btn-sm btn-primary" @click="newChannel()">
                 {{ t('config.addChannel') }}
@@ -11,34 +11,21 @@
                 <div class="label">
                     <span class="label-text">{{ t('config.name') }}</span>
                 </div>
-                <input
-                    v-model="configStore.channels[configStore.id].name"
-                    type="text"
-                    placeholder="Type here"
-                    class="input input-bordered w-full"
-                />
+                <input v-model="channel.name" type="text" placeholder="Type here" class="input input-bordered w-full" />
             </label>
 
             <label class="form-control w-full mt-5">
                 <div class="label">
                     <span class="label-text">{{ t('config.previewUrl') }}</span>
                 </div>
-                <input
-                    v-model="configStore.channels[configStore.id].preview_url"
-                    type="text"
-                    class="input input-bordered w-full"
-                />
+                <input v-model="channel.preview_url" type="text" class="input input-bordered w-full" />
             </label>
 
             <label class="form-control w-full mt-5">
                 <div class="label">
                     <span class="label-text">{{ t('config.extensions') }}</span>
                 </div>
-                <input
-                    v-model="configStore.channels[configStore.id].extra_extensions"
-                    type="text"
-                    class="input input-bordered w-full"
-                />
+                <input v-model="channel.extra_extensions" type="text" class="input input-bordered w-full" />
             </label>
 
             <template v-if="authStore.role === 'GlobalAdmin'">
@@ -52,50 +39,37 @@
                     <div class="label">
                         <span class="label-text">{{ t('config.publicPath') }}</span>
                     </div>
-                    <input
-                        v-model="configStore.channels[configStore.id].public"
-                        type="text"
-                        class="input input-bordered w-full"
-                    />
+                    <input v-model="channel.public" type="text" class="input input-bordered w-full" />
                 </label>
 
                 <label class="form-control w-full mt-5">
                     <div class="label">
                         <span class="label-text">{{ t('config.playlistPath') }}</span>
                     </div>
-                    <input
-                        v-model="configStore.channels[configStore.id].playlists"
-                        type="text"
-                        class="input input-bordered w-full"
-                    />
+                    <input v-model="channel.playlists" type="text" class="input input-bordered w-full" />
                 </label>
 
                 <label class="form-control w-full mt-5">
                     <div class="label">
                         <span class="label-text">{{ t('config.storagePath') }}</span>
                     </div>
-                    <input
-                        v-model="configStore.channels[configStore.id].storage"
-                        type="text"
-                        class="input input-bordered w-full"
-                    />
+                    <input v-model="channel.storage" type="text" class="input input-bordered w-full" />
                 </label>
             </template>
 
-            <div class="join my-4">
-                <button class="join-item btn btn-primary" :class="saved ? 'btn-primary' : 'btn-error'" @click="addUpdateChannel()">
+            <div class="my-4 flex gap-1">
+                <button class="btn" :class="saved ? 'btn-primary' : 'btn-error'" @click="addUpdateChannel()">
                     {{ t('config.save') }}
                 </button>
                 <button
-                    v-if="
-                        authStore.role === 'GlobalAdmin' &&
-                        configStore.channels.length > 1 &&
-                        configStore.channels[configStore.id].id > 1
-                    "
-                    class="join-item btn btn-primary"
+                    v-if="authStore.role === 'GlobalAdmin' && configStore.channels.length > 1 && channel.id > 1 && saved"
+                    class="btn btn-primary"
                     @click="deleteChannel()"
                 >
                     {{ t('config.delete') }}
+                </button>
+                <button v-if="!saved" class="btn btn-primary text-xl" @click="resetChannel()">
+                    <i class="bi-arrow-repeat" />
                 </button>
             </div>
         </div>
@@ -110,27 +84,32 @@ const { t } = useI18n()
 const authStore = useAuth()
 const configStore = useConfig()
 const indexStore = useIndex()
+const { i } = storeToRefs(useConfig())
 
 const saved = ref(true)
+const channel = ref({} as Channel)
+
+onMounted(() => {
+    channel.value = cloneDeep(configStore.channels[i.value])
+})
+
+watch([i], () => {
+    if (configStore.channels[i.value]) {
+        channel.value = cloneDeep(configStore.channels[i.value])
+    }
+})
 
 function rmId(path: string) {
     return path.replace(/\/\d+$/, '')
 }
 
 function newChannel() {
-    const channels = cloneDeep(configStore.channels)
-    const newChannel = cloneDeep(configStore.channels[configStore.channels.length - 1])
-
-    newChannel.id = channels.length + 1
-    newChannel.name = `Channel ${newChannel.id}`
-    newChannel.preview_url = `${window.location.protocol}//${window.location.host}/${newChannel.id}/live/stream.m3u8`
-    newChannel.public = `${rmId(newChannel.public)}/${newChannel.id}`
-    newChannel.playlists = `${rmId(newChannel.playlists)}/${newChannel.id}`
-    newChannel.storage = `${rmId(newChannel.storage)}/${newChannel.id}`
-
-    channels.push(newChannel)
-    configStore.channels = channels
-    configStore.id = configStore.channels.length - 1
+    channel.value.id = configStore.channels.length + 1
+    channel.value.name = `Channel ${channel.value.id}`
+    channel.value.preview_url = `${window.location.protocol}//${window.location.host}/${channel.value.id}/live/stream.m3u8`
+    channel.value.public = `${rmId(channel.value.public)}/${channel.value.id}`
+    channel.value.playlists = `${rmId(channel.value.playlists)}/${channel.value.id}`
+    channel.value.storage = `${rmId(channel.value.storage)}/${channel.value.id}`
 
     saved.value = false
 }
@@ -139,35 +118,39 @@ async function addUpdateChannel() {
     /*
         Save channel settings.
     */
-    const update = await configStore.setChannelConfig(configStore.channels[configStore.id])
+    saved.value = true
+    i.value = channel.value.id - 1
+    configStore.channels.push(cloneDeep(channel.value))
+    const update = await configStore.setChannelConfig(channel.value)
 
     if (update.status && update.status < 400) {
         indexStore.msgAlert('success', t('config.updateChannelSuccess'), 2)
-        saved.value = true
+
+        await configStore.getPlayoutConfig()
+
     } else {
         indexStore.msgAlert('error', t('config.updateChannelFailed'), 2)
     }
 }
 
-async function deleteChannel() {
-    const config = cloneDeep(configStore.channels)
-    const id = config[configStore.id].id
+function resetChannel() {
+    channel.value = cloneDeep(configStore.channels[i.value])
+    saved.value = true
+}
 
-    if (id === 1) {
+async function deleteChannel() {
+    if (channel.value.id === 1) {
         indexStore.msgAlert('warning', t('config.errorChannelDelete'), 2)
         return
     }
 
-    const response = await fetch(`/api/channel/${id}`, {
+    const response = await fetch(`/api/channel/${channel.value.id}`, {
         method: 'DELETE',
         headers: authStore.authHeader,
     })
 
-    config.splice(configStore.id, 1)
-    configStore.channelsRaw.splice(configStore.id, 1)
-    configStore.channels = config
-    configStore.id = configStore.channels.length - 1
-
+    i.value = configStore.i - 1
+    await configStore.getChannelConfig()
     await configStore.getPlayoutConfig()
 
     if (response.status === 200) {

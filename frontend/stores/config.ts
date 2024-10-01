@@ -3,7 +3,7 @@ import { defineStore } from 'pinia'
 
 export const useConfig = defineStore('config', {
     state: () => ({
-        id: 0,
+        i: 0,
         configCount: 0,
         contentType: { 'content-type': 'application/json;charset=UTF-8' },
         channels: [] as Channel[],
@@ -114,19 +114,19 @@ export const useConfig = defineStore('config', {
                 })
 
                 const json = await response.json()
-                const guiConfigs = []
+                const channelConfigs = []
 
                 for (const obj of this.channels) {
                     if (obj.name === stringObj.name) {
-                        guiConfigs.push(json)
+                        channelConfigs.push(json)
                     } else {
-                        guiConfigs.push(obj)
+                        channelConfigs.push(obj)
                     }
                 }
 
-                this.channels = guiConfigs
-                this.channelsRaw = cloneDeep(guiConfigs)
-                this.configCount = guiConfigs.length
+                this.channels = channelConfigs
+                this.channelsRaw = cloneDeep(channelConfigs)
+                this.configCount = channelConfigs.length
             }
 
             await this.getPlayoutConfig()
@@ -139,7 +139,7 @@ export const useConfig = defineStore('config', {
             const { timeToSeconds } = stringFormatter()
             const authStore = useAuth()
             const indexStore = useIndex()
-            const channel = this.channels[this.id].id
+            const channel = this.channels[this.i].id
 
             await fetch(`/api/playout/config/${channel}`, {
                 method: 'GET',
@@ -165,7 +165,7 @@ export const useConfig = defineStore('config', {
             const { $i18n } = useNuxtApp()
             const authStore = useAuth()
             const indexStore = useIndex()
-            const channel = this.channels[this.id].id
+            const channel = this.channels[this.i].id
 
             await $fetch(`/api/playout/advanced/${channel}`, {
                 method: 'GET',
@@ -182,7 +182,7 @@ export const useConfig = defineStore('config', {
         async setPlayoutConfig(obj: any) {
             const { timeToSeconds } = stringFormatter()
             const authStore = useAuth()
-            const channel = this.channels[this.id].id
+            const channel = this.channels[this.i].id
 
             this.playlistLength = timeToSeconds(obj.playlist.length)
             this.playout.playlist.startInSec = timeToSeconds(obj.playlist.day_start)
@@ -203,7 +203,7 @@ export const useConfig = defineStore('config', {
 
         async setAdvancedConfig() {
             const authStore = useAuth()
-            const channel = this.channels[this.id].id
+            const channel = this.channels[this.i].id
 
             const update = await fetch(`/api/playout/advanced/${channel}`, {
                 method: 'PUT',

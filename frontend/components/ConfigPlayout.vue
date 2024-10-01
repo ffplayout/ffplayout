@@ -178,7 +178,7 @@ async function onSubmitPlayout() {
     if (update.status === 200) {
         indexStore.msgAlert('success', t('config.updatePlayoutSuccess'), 2)
 
-        const channel = configStore.channels[configStore.id].id
+        const channel = configStore.channels[configStore.i].id
 
         await $fetch(`/api/control/${channel}/process/`, {
             method: 'POST',
@@ -198,7 +198,7 @@ async function onSubmitPlayout() {
 
 async function restart(res: boolean) {
     if (res) {
-        const channel = configStore.channels[configStore.id].id
+        const channel = configStore.channels[configStore.i].id
 
         await $fetch(`/api/control/${channel}/process/`, {
             method: 'POST',

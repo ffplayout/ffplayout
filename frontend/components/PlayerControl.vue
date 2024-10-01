@@ -6,8 +6,8 @@
                     <div class="w-full aspect-video">
                         <video v-if="streamExtension === 'flv'" ref="httpStreamFlv" controls />
                         <VideoPlayer
-                            v-else-if="configStore.showPlayer && configStore.channels[configStore.id]"
-                            :key="configStore.id"
+                            v-else-if="configStore.showPlayer && configStore.channels[configStore.i]"
+                            :key="configStore.i"
                             class="live-player"
                             reference="httpStream"
                             :options="{
@@ -19,7 +19,7 @@
                                 sources: [
                                     {
                                         type: 'application/x-mpegURL',
-                                        src: configStore.channels[configStore.id].preview_url,
+                                        src: configStore.channels[configStore.i].preview_url,
                                     },
                                 ],
                             }"
@@ -180,7 +180,7 @@ const configStore = useConfig()
 const indexStore = useIndex()
 const playlistStore = usePlaylist()
 const { filename, secToHMS } = stringFormatter()
-const { id } = storeToRefs(useConfig())
+const { i } = storeToRefs(useConfig())
 
 const currentDefault = {
     uid: '',
@@ -196,19 +196,19 @@ playlistStore.current = currentDefault
 const timeStr = ref('00:00:00')
 const timer = ref()
 const errorCounter = ref(0)
-const streamExtension = ref(configStore.channels[configStore.id].preview_url.split('.').pop())
+const streamExtension = ref(configStore.channels[configStore.i].preview_url.split('.').pop())
 const httpStreamFlv = ref(null)
 const httpFlvSource = ref({
     type: 'flv',
     isLive: true,
-    url: configStore.channels[configStore.id].preview_url,
+    url: configStore.channels[configStore.i].preview_url,
 })
 const mpegtsOptions = ref({
     lazyLoadMaxDuration: 3 * 60,
     liveBufferLatencyChasing: true,
 })
 
-const streamUrl = ref(`/data/event/${configStore.channels[configStore.id].id}?endpoint=playout&uuid=${authStore.uuid}`)
+const streamUrl = ref(`/data/event/${configStore.channels[configStore.i].id}?endpoint=playout&uuid=${authStore.uuid}`)
 
 // 'http://127.0.0.1:8787/data/event/1?endpoint=playout&uuid=f2f8c29b-712a-48c5-8919-b535d3a05a3a'
 const { status, data, error, close } = useEventSource(streamUrl, [], {
@@ -259,7 +259,7 @@ watch([status, error], async () => {
 
         if (errorCounter.value > 11) {
             await authStore.obtainUuid()
-            streamUrl.value = `/data/event/${configStore.channels[configStore.id].id}?endpoint=playout&uuid=${
+            streamUrl.value = `/data/event/${configStore.channels[configStore.i].id}?endpoint=playout&uuid=${
                 authStore.uuid
             }`
             errorCounter.value = 0
@@ -280,10 +280,10 @@ watch([data], () => {
     }
 })
 
-watch([id], () => {
+watch([i], () => {
     resetStatus()
 
-    streamUrl.value = `/data/event/${configStore.channels[configStore.id].id}?endpoint=playout&uuid=${authStore.uuid}`
+    streamUrl.value = `/data/event/${configStore.channels[configStore.i].id}?endpoint=playout&uuid=${authStore.uuid}`
 
     if (timer.value) {
         clearTimeout(timer.value)
@@ -318,7 +318,7 @@ const controlProcess = throttle(async (state: string) => {
     /*
         Control playout (start, stop, restart)
     */
-    const channel = configStore.channels[configStore.id].id
+    const channel = configStore.channels[configStore.i].id
     await $fetch(`/api/control/${channel}/process/`, {
         method: 'POST',
         headers: { ...configStore.contentType, ...authStore.authHeader },
@@ -333,7 +333,7 @@ const controlPlayout = throttle(async (state: string) => {
         - jump to last clip
         - reset playout state
     */
-    const channel = configStore.channels[configStore.id].id
+    const channel = configStore.channels[configStore.i].id
 
     await $fetch(`/api/control/${channel}/playout/`, {
         method: 'POST',
