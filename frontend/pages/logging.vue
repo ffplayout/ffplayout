@@ -51,7 +51,7 @@ useHead({
     title: `${t('button.logging')} | ffplayout`,
 })
 
-const { id } = storeToRefs(useConfig())
+const { i } = storeToRefs(useConfig())
 
 const { $dayjs } = useNuxtApp()
 const authStore = useAuth()
@@ -80,7 +80,7 @@ onMounted(async () => {
     await getLog()
 })
 
-watch([listDate, id], () => {
+watch([listDate, i], () => {
     getLog()
 })
 
@@ -111,7 +111,7 @@ async function getLog() {
         date = ''
     }
 
-    await fetch(`/api/log/${configStore.channels[configStore.id].id}?date=${date}`, {
+    await fetch(`/api/log/${configStore.channels[configStore.i].id}?date=${date}`, {
         method: 'GET',
         headers: authStore.authHeader,
     })

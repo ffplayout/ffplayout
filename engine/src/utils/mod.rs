@@ -203,7 +203,7 @@ pub fn public_path() -> PathBuf {
     let dev_path = env::current_dir()
         .unwrap_or_default()
         .join("frontend/.output/public/");
-    let mut public_path = PathBuf::from(&config.public_root);
+    let mut public_path = PathBuf::from(&config.public);
 
     if let Some(p) = &ARGS.public {
         // When public path is set as argument use this path for serving static files.

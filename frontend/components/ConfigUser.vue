@@ -144,7 +144,7 @@ const user = ref({
     password: '',
     confirm: '',
     admin: false,
-    channel_ids: [1],
+    channel_ids: [configStore.channels[configStore.i]?.id ?? 1],
     role_id: 3,
 } as User)
 

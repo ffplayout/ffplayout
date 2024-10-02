@@ -36,7 +36,8 @@ pub async fn db_migrate(conn: &Pool<Sqlite>) -> Result<(), Box<dyn std::error::E
 }
 
 pub async fn select_global(conn: &Pool<Sqlite>) -> Result<GlobalSettings, sqlx::Error> {
-    let query = "SELECT id, secret, logging_path, playlist_root, public_root, storage_root, shared_storage FROM global WHERE id = 1";
+    let query =
+        "SELECT id, secret, logs, playlists, public, storage, shared FROM global WHERE id = 1";
 
     sqlx::query_as(query).fetch_one(conn).await
 }
@@ -45,15 +46,15 @@ pub async fn update_global(
     conn: &Pool<Sqlite>,
     global: GlobalSettings,
 ) -> Result<SqliteQueryResult, sqlx::Error> {
-    let query = "UPDATE global SET logging_path = $2, playlist_root = $3, public_root = $4, storage_root = $5, shared_storage = $6 WHERE id = 1";
+    let query = "UPDATE global SET logs = $2, playlists = $3, public = $4, storage = $5, shared = $6 WHERE id = 1";
 
     sqlx::query(query)
         .bind(global.id)
-        .bind(global.logging_path)
-        .bind(global.playlist_root)
-        .bind(global.public_root)
-        .bind(global.storage_root)
-        .bind(global.shared_storage)
+        .bind(global.logs)
+        .bind(global.playlists)
+        .bind(global.public)
+        .bind(global.storage)
+        .bind(global.shared)
         .execute(conn)
         .await
 }
@@ -73,7 +74,7 @@ pub async fn select_related_channels(
 ) -> Result<Vec<Channel>, sqlx::Error> {
     let query = match user_id {
         Some(id) => format!(
-            "SELECT c.id, c.name, c.preview_url, c.extra_extensions, c.active, c.hls_path, c.playlist_path, c.storage_path, c.last_date, c.time_shift FROM channels c
+            "SELECT c.id, c.name, c.preview_url, c.extra_extensions, c.active, c.public, c.playlists, c.storage, c.last_date, c.time_shift FROM channels c
                 left join user_channels uc on uc.channel_id = c.id
                 left join user u on u.id = uc.user_id
              WHERE u.id = {id} ORDER BY c.id ASC;"
@@ -110,16 +111,16 @@ pub async fn update_channel(
     channel: Channel,
 ) -> Result<SqliteQueryResult, sqlx::Error> {
     let query =
-        "UPDATE channels SET name = $2, preview_url = $3, extra_extensions = $4, hls_path = $5, playlist_path = $6, storage_path = $7 WHERE id = $1";
+        "UPDATE channels SET name = $2, preview_url = $3, extra_extensions = $4, public = $5, playlists = $6, storage = $7 WHERE id = $1";
 
     sqlx::query(query)
         .bind(id)
         .bind(channel.name)
         .bind(channel.preview_url)
         .bind(channel.extra_extensions)
-        .bind(channel.hls_path)
-        .bind(channel.playlist_path)
-        .bind(channel.storage_path)
+        .bind(channel.public)
+        .bind(channel.playlists)
+        .bind(channel.storage)
         .execute(conn)
         .await
 }
@@ -151,14 +152,14 @@ pub async fn update_player(
 }
 
 pub async fn insert_channel(conn: &Pool<Sqlite>, channel: Channel) -> Result<Channel, sqlx::Error> {
-    let query = "INSERT INTO channels (name, preview_url, extra_extensions, hls_path, playlist_path, storage_path) VALUES($1, $2, $3, $4, $5, $6)";
+    let query = "INSERT INTO channels (name, preview_url, extra_extensions, public, playlists, storage) VALUES($1, $2, $3, $4, $5, $6)";
     let result = sqlx::query(query)
         .bind(channel.name)
         .bind(channel.preview_url)
         .bind(channel.extra_extensions)
-        .bind(channel.hls_path)
-        .bind(channel.playlist_path)
-        .bind(channel.storage_path)
+        .bind(channel.public)
+        .bind(channel.playlists)
+        .bind(channel.storage)
         .execute(conn)
         .await?;
 

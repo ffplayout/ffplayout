@@ -6,8 +6,8 @@
                     <div class="w-full aspect-video">
                         <video v-if="streamExtension === 'flv'" ref="httpStreamFlv" controls />
                         <VideoPlayer
-                            v-else-if="configStore.showPlayer && configStore.channels[configStore.id]"
-                            :key="configStore.id"
+                            v-else-if="configStore.showPlayer && configStore.channels[configStore.i]"
+                            :key="configStore.i"
                             class="live-player"
                             reference="httpStream"
                             :options="{
@@ -19,7 +19,7 @@
                                 sources: [
                                     {
                                         type: 'application/x-mpegURL',
-                                        src: configStore.channels[configStore.id].preview_url,
+                                        src: configStore.channels[configStore.i].preview_url,
                                     },
                                 ],
                             }"
@@ -56,7 +56,7 @@
                             <div
                                 v-else
                                 class="h-1/3 font-bold text truncate"
-                                :class="{'text-base-content/60': playlistStore.current.category === 'advertisement'}"
+                                :class="{ 'text-base-content/60': playlistStore.current.category === 'advertisement' }"
                                 :title="playlistStore.current.title || filename(playlistStore.current.source)"
                             >
                                 {{
@@ -67,8 +67,8 @@
                             </div>
                             <div class="grow">
                                 <strong>{{ t('player.duration') }}:</strong>
-                                {{ secToHMS(playlistStore.current.duration) }} |
-                                <strong>{{ t('player.in') }}:</strong> {{ secToHMS(playlistStore.current.in) }} |
+                                {{ secToHMS(playlistStore.current.duration) }} | <strong>{{ t('player.in') }}:</strong>
+                                {{ secToHMS(playlistStore.current.in) }} |
                                 <strong>{{ t('player.out') }}:</strong>
                                 {{ secToHMS(playlistStore.current.out) }}
 
@@ -80,7 +80,11 @@
                             <div class="h-1/3">
                                 <progress
                                     class="progress progress-accent w-full"
-                                    :value="playlistStore.progressValue"
+                                    :value="
+                                        playlistStore.progressValue && playlistStore.progressValue <= 100
+                                            ? playlistStore.progressValue
+                                            : 0
+                                    "
                                     max="100"
                                 />
                             </div>
@@ -165,6 +169,7 @@
 </template>
 
 <script setup lang="ts">
+import { throttle } from 'lodash-es'
 import { storeToRefs } from 'pinia'
 import mpegts from 'mpegts.js'
 
@@ -175,7 +180,7 @@ const configStore = useConfig()
 const indexStore = useIndex()
 const playlistStore = usePlaylist()
 const { filename, secToHMS } = stringFormatter()
-const { id } = storeToRefs(useConfig())
+const { i } = storeToRefs(useConfig())
 
 const currentDefault = {
     uid: '',
@@ -191,21 +196,19 @@ playlistStore.current = currentDefault
 const timeStr = ref('00:00:00')
 const timer = ref()
 const errorCounter = ref(0)
-const streamExtension = ref(configStore.channels[configStore.id].preview_url.split('.').pop())
+const streamExtension = ref(configStore.channels[configStore.i].preview_url.split('.').pop())
 const httpStreamFlv = ref(null)
 const httpFlvSource = ref({
     type: 'flv',
     isLive: true,
-    url: configStore.channels[configStore.id].preview_url,
+    url: configStore.channels[configStore.i].preview_url,
 })
 const mpegtsOptions = ref({
     lazyLoadMaxDuration: 3 * 60,
     liveBufferLatencyChasing: true,
 })
 
-const streamUrl = ref(
-    `/data/event/${configStore.channels[configStore.id].id}?endpoint=playout&uuid=${authStore.uuid}`
-)
+const streamUrl = ref(`/data/event/${configStore.channels[configStore.i].id}?endpoint=playout&uuid=${authStore.uuid}`)
 
 // 'http://127.0.0.1:8787/data/event/1?endpoint=playout&uuid=f2f8c29b-712a-48c5-8919-b535d3a05a3a'
 const { status, data, error, close } = useEventSource(streamUrl, [], {
@@ -256,9 +259,9 @@ watch([status, error], async () => {
 
         if (errorCounter.value > 11) {
             await authStore.obtainUuid()
-            streamUrl.value = `/data/event/${
-                configStore.channels[configStore.id].id
-            }?endpoint=playout&uuid=${authStore.uuid}`
+            streamUrl.value = `/data/event/${configStore.channels[configStore.i].id}?endpoint=playout&uuid=${
+                authStore.uuid
+            }`
             errorCounter.value = 0
         }
     }
@@ -277,12 +280,10 @@ watch([data], () => {
     }
 })
 
-watch([id], () => {
+watch([i], () => {
     resetStatus()
 
-    streamUrl.value = `/data/event/${configStore.channels[configStore.id].id}?endpoint=playout&uuid=${
-        authStore.uuid
-    }`
+    streamUrl.value = `/data/event/${configStore.channels[configStore.i].id}?endpoint=playout&uuid=${authStore.uuid}`
 
     if (timer.value) {
         clearTimeout(timer.value)
@@ -313,32 +314,31 @@ function resetStatus() {
     playlistStore.current = currentDefault
 }
 
-async function controlProcess(state: string) {
+const controlProcess = throttle(async (state: string) => {
     /*
         Control playout (start, stop, restart)
     */
-    const channel = configStore.channels[configStore.id].id
-
+    const channel = configStore.channels[configStore.i].id
     await $fetch(`/api/control/${channel}/process/`, {
         method: 'POST',
         headers: { ...configStore.contentType, ...authStore.authHeader },
         body: JSON.stringify({ command: state }),
     })
-}
+}, 800)
 
-async function controlPlayout(state: string) {
+const controlPlayout = throttle(async (state: string) => {
     /*
         Control playout:
         - jump to next clip
         - jump to last clip
         - reset playout state
     */
-    const channel = configStore.channels[configStore.id].id
+    const channel = configStore.channels[configStore.i].id
 
     await $fetch(`/api/control/${channel}/playout/`, {
         method: 'POST',
         headers: { ...configStore.contentType, ...authStore.authHeader },
         body: JSON.stringify({ control: state }),
     })
-}
+}, 800)
 </script>

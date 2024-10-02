@@ -1,12 +1,12 @@
 In some situations, application closure may occur in conjunction with Live Ingest.
 
-Here is an example, in combination with SRS:
+Here is an example in combination with SRS:
 
 When a live stream is sent, it is forwarded to ffplayout, which then switches the TV program to the live stream.
 
-Problems now occur if the internet connection for the live stream is not stable. Then timeouts can occur, SRS breaks the connection to the playout and the whole ffplayout process has to be restarted. The default timeout is 5000ms, i.e. 5 seconds.
+Problems can occur if the internet connection for the live stream is not stable. In such cases, timeouts can occur, SRS breaks the connection to the playout, and the entire ffplayout process has to be restarted. The default timeout is 5000ms, or 5 seconds.
 
-The timeout can be heard in SRS in the respective vhosts with:
+The timeout can be changed in SRS in the respective vhosts with:
 
 ```NGINX
 publish {

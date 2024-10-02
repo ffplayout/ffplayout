@@ -39,12 +39,12 @@ export const stringFormatter = () => {
             .replace(/\[Validator\]/g, '<span class="log-server">[Validator]</span>')
     }
 
-    function timeToSeconds(time: string) {
+    function timeToSeconds(time: string): number {
         const t = time.split(':')
         return parseInt(t[0]) * 3600 + parseInt(t[1]) * 60 + parseInt(t[2])
     }
 
-    function secToHMS(sec: number) {
+    function secToHMS(sec: number): string {
         const sign = Math.sign(sec)
         sec = Math.abs(sec)
 
@@ -62,7 +62,7 @@ export const stringFormatter = () => {
         return `${hString}:${m}:${s}`
     }
 
-    function numberToHex(num: number) {
+    function numberToHex(num: number): string {
         return '0x' + Math.round(num * 255).toString(16)
     }
 
@@ -70,7 +70,7 @@ export const stringFormatter = () => {
         return parseFloat((parseFloat(parseInt(num, 16).toString()) / 255).toFixed(2))
     }
 
-    function filename(path: string) {
+    function filename(path: string): string {
         if (path) {
             const pathArr = path.split('/')
             const name = pathArr[pathArr.length - 1]
@@ -85,7 +85,7 @@ export const stringFormatter = () => {
         }
     }
 
-    function parent(path: string) {
+    function parent(path: string): string {
         if (path) {
             const pathArr = path.split('/')
             pathArr.pop()
@@ -100,7 +100,7 @@ export const stringFormatter = () => {
         }
     }
 
-    function toMin(sec: number) {
+    function toMin(sec: number): string {
         if (sec) {
             const minutes = Math.floor(sec / 60)
             const seconds = Math.round(sec - minutes * 60)
@@ -167,6 +167,14 @@ export const stringFormatter = () => {
         return null
     }
 
+    function dir_file(path: string): {dir: string, file: string} {
+        const index = path.lastIndexOf('/')
+        const dir = path.substring(0, index + 1) || '/'
+        const file = path.substring(index + 1)
+
+        return {dir, file}
+    }
+
     return {
         fileSize,
         formatLog,
@@ -179,6 +187,7 @@ export const stringFormatter = () => {
         toMin,
         secondsToTime,
         mediaType,
+        dir_file,
     }
 }
 

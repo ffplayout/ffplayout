@@ -4,11 +4,11 @@
         ref="playlistContainer"
         class="relative w-full h-full !bg-base-300 rounded-e overflow-auto"
     >
-        <div v-if="playlistStore.isLoading" class="w-full h-full absolute z-10 flex justify-center bg-base-100/70">
+        <div v-if="playlistStore.isLoading" class="w-full h-full absolute z-2 flex justify-center bg-base-100/70">
             <span class="loading loading-spinner loading-lg" />
         </div>
         <table class="table table-zebra table-fixed">
-            <thead class="top-0 sticky z-10">
+            <thead class="top-0 sticky z-2">
                 <tr class="bg-base-100 rounded-tr-lg">
                     <th v-if="!configStore.playout.playlist.infinit" class="w-[85px] p-0 text-left">
                         <div class="border-b border-my-gray px-4 py-3">
@@ -78,7 +78,7 @@
                             '!bg-lime-500/30':
                                 playlistStore.playoutIsRunning && listDate === todayDate && index === currentIndex,
                             '!bg-amber-600/40': element.overtime,
-                            'text-blue-300': element.category === 'advertisement',
+                            'text-base-content/60': element.category === 'advertisement',
                         }"
                     >
                         <td v-if="!configStore.playout.playlist.infinit" class="ps-4 py-2 text-left">
@@ -139,7 +139,7 @@ const { processPlaylist, genUID } = playlistOperations()
 const playlistContainer = ref()
 const sortContainer = ref()
 const todayDate = ref($dayjs().utcOffset(configStore.utcOffset).format('YYYY-MM-DD'))
-const { id } = storeToRefs(useConfig())
+const { i } = storeToRefs(useConfig())
 const { currentIndex, listDate, playoutIsRunning } = storeToRefs(usePlaylist())
 
 const playlistSortOptions = {
@@ -169,7 +169,7 @@ onMounted(() => {
     }, 150)
 })
 
-watch([listDate, id], () => {
+watch([listDate, i], () => {
     setTimeout(() => {
         getPlaylist()
     }, 800)
@@ -259,7 +259,7 @@ function addClip(event: any) {
 
     event.item?.remove()
 
-    const storagePath = configStore.channels[configStore.id].storage_path
+    const storagePath = configStore.channels[configStore.i].storage
     const sourcePath = `${storagePath}/${mediaStore.folderTree.source}/${mediaStore.folderTree.files[o].name}`.replace(
         /\/[/]+/g,
         '/'

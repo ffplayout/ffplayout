@@ -1,5 +1,5 @@
 <template>
-    <div class="grid grid-cols-1 xs:grid-cols-2 border-4 rounded-md border-primary text-left shadow min-w-[320px] md:min-w-[728px] max-w-[960px] mt-5 xs:mt-0">
+    <div class="grid grid-cols-1 xs:grid-cols-2 border-4 rounded-md border-primary text-left shadow min-w-[320px] md:min-w-[728px] max-w-[960px] mt-5">
         <div class="p-4 bg-base-100">
             <span class="text-3xl">{{ sysStat.system.name }} {{ sysStat.system.version }}</span>
             <span v-if="sysStat.system.kernel">
@@ -96,7 +96,7 @@ const configStore = useConfig()
 const indexStore = useIndex()
 
 const streamUrl = ref(
-    `/data/event/${configStore.channels[configStore.id].id}?endpoint=system&uuid=${authStore.uuid}`
+    `/data/event/${configStore.channels[configStore.i].id}?endpoint=system&uuid=${authStore.uuid}`
 )
 
 // 'http://127.0.0.1:8787/data/event/1?endpoint=system&uuid=f2f8c29b-712a-48c5-8919-b535d3a05a3a'
@@ -139,7 +139,7 @@ watch([status, error], async () => {
 
         if (errorCounter.value > 15) {
             await authStore.obtainUuid()
-            streamUrl.value = `/data/event/${configStore.channels[configStore.id].id}?endpoint=system&uuid=${
+            streamUrl.value = `/data/event/${configStore.channels[configStore.i].id}?endpoint=system&uuid=${
                 authStore.uuid
             }`
             errorCounter.value = 0

@@ -227,7 +227,7 @@ const { t } = useI18n()
 const authStore = useAuth()
 const configStore = useConfig()
 const indexStore = useIndex()
-const { id } = storeToRefs(useConfig())
+const { i } = storeToRefs(useConfig())
 const { numberToHex, hexToNumber } = stringFormatter()
 
 useHead({
@@ -266,14 +266,14 @@ onMounted(() => {
     getPreset(-1)
 })
 
-watch([id], () => {
+watch([i], () => {
     nextTick(() => {
         getPreset(-1)
     })
 })
 
 async function getPreset(index: number) {
-    fetch(`/api/presets/${configStore.channels[configStore.id].id}`, {
+    fetch(`/api/presets/${configStore.channels[configStore.i].id}`, {
         method: 'GET',
         headers: authStore.authHeader,
     })
@@ -354,10 +354,10 @@ async function savePreset() {
                     : form.value.boxColor + '@' + numberToHex(form.value.boxAlpha),
             boxborderw: form.value.border,
             alpha: form.value.overallAlpha,
-            channel_id: configStore.channels[configStore.id].id,
+            channel_id: configStore.channels[configStore.i].id,
         }
 
-        const response = await fetch(`/api/presets/${configStore.channels[configStore.id].id}/${form.value.id}`, {
+        const response = await fetch(`/api/presets/${configStore.channels[configStore.i].id}/${form.value.id}`, {
             method: 'PUT',
             headers: { ...configStore.contentType, ...authStore.authHeader },
             body: JSON.stringify(preset),
@@ -393,10 +393,10 @@ async function createNewPreset(create: boolean) {
                     : form.value.boxColor + '@' + numberToHex(form.value.boxAlpha),
             boxborderw: form.value.border.toString(),
             alpha: form.value.overallAlpha.toString(),
-            channel_id: configStore.channels[configStore.id].id,
+            channel_id: configStore.channels[configStore.i].id,
         }
 
-        const response = await fetch(`/api/presets/${configStore.channels[configStore.id].id}/`, {
+        const response = await fetch(`/api/presets/${configStore.channels[configStore.i].id}/`, {
             method: 'POST',
             headers: { ...configStore.contentType, ...authStore.authHeader },
             body: JSON.stringify(preset),
@@ -417,7 +417,7 @@ async function deletePreset(del: boolean) {
     showDeleteModal.value = false
 
     if (del && selected.value && selected.value !== '') {
-        await fetch(`/api/presets/${configStore.channels[configStore.id].id}/${form.value.id}`, {
+        await fetch(`/api/presets/${configStore.channels[configStore.i].id}/${form.value.id}`, {
             method: 'DELETE',
             headers: authStore.authHeader,
         })
@@ -440,7 +440,7 @@ async function submitMessage() {
         boxborderw: form.value.border.toString(),
     }
 
-    const response = await fetch(`/api/control/${configStore.channels[configStore.id].id}/text/`, {
+    const response = await fetch(`/api/control/${configStore.channels[configStore.i].id}/text/`, {
         method: 'POST',
         headers: { ...configStore.contentType, ...authStore.authHeader },
         body: JSON.stringify(obj),

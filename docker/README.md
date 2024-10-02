@@ -22,9 +22,6 @@ How to build the image:\
 # build default
 docker build -t ffplayout-image .
 
-# build with shared storage (same storage for all channels)
-docker build --build-arg SHARED_STORAGE=true .
-
 # build from root folder, to copy local *.rpm package
 docker build -f docker/Dockerfile -t ffplayout-image .
 

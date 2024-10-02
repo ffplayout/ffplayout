@@ -27,6 +27,8 @@ pub struct PathObject {
     files: Option<Vec<VideoFile>>,
     #[serde(default)]
     pub folders_only: bool,
+    #[serde(default)]
+    pub recursive: bool,
 }
 
 impl PathObject {
@@ -38,6 +40,7 @@ impl PathObject {
             folders: Some(vec![]),
             files: Some(vec![]),
             folders_only: false,
+            recursive: false,
         }
     }
 }
@@ -115,13 +118,12 @@ pub async fn browser(
     let mut extensions = config.storage.extensions.clone();
     extensions.append(&mut channel_extensions);
 
-    let (path, parent, path_component) =
-        norm_abs_path(&config.channel.storage_path, &path_obj.source)?;
+    let (path, parent, path_component) = norm_abs_path(&config.channel.storage, &path_obj.source)?;
 
     let parent_path = if !path_component.is_empty() {
         path.parent().unwrap()
     } else {
-        &config.channel.storage_path
+        &config.channel.storage
     };
 
     let mut obj = PathObject::new(path_component, Some(parent));
@@ -212,7 +214,7 @@ pub async fn create_directory(
     config: &PlayoutConfig,
     path_obj: &PathObject,
 ) -> Result<HttpResponse, ServiceError> {
-    let (path, _, _) = norm_abs_path(&config.channel.storage_path, &path_obj.source)?;
+    let (path, _, _) = norm_abs_path(&config.channel.storage, &path_obj.source)?;
 
     if let Err(e) = fs::create_dir_all(&path).await {
         return Err(ServiceError::BadRequest(e.to_string()));
@@ -281,8 +283,8 @@ pub async fn rename_file(
     config: &PlayoutConfig,
     move_object: &MoveObject,
 ) -> Result<MoveObject, ServiceError> {
-    let (source_path, _, _) = norm_abs_path(&config.channel.storage_path, &move_object.source)?;
-    let (mut target_path, _, _) = norm_abs_path(&config.channel.storage_path, &move_object.target)?;
+    let (source_path, _, _) = norm_abs_path(&config.channel.storage, &move_object.source)?;
+    let (mut target_path, _, _) = norm_abs_path(&config.channel.storage, &move_object.target)?;
 
     if !source_path.exists() {
         return Err(ServiceError::BadRequest("Source file not exist!".into()));
@@ -313,23 +315,36 @@ pub async fn rename_file(
 pub async fn remove_file_or_folder(
     config: &PlayoutConfig,
     source_path: &str,
+    recursive: bool,
 ) -> Result<(), ServiceError> {
-    let (source, _, _) = norm_abs_path(&config.channel.storage_path, source_path)?;
+    let (source, _, _) = norm_abs_path(&config.channel.storage, source_path)?;
 
     if !source.exists() {
         return Err(ServiceError::BadRequest("Source does not exists!".into()));
     }
 
     if source.is_dir() {
-        match fs::remove_dir(source).await {
-            Ok(_) => return Ok(()),
-            Err(e) => {
-                error!("{e}");
-                return Err(ServiceError::BadRequest(
-                    "Delete folder failed! (Folder must be empty)".into(),
-                ));
-            }
-        };
+        if recursive {
+            match fs::remove_dir_all(source).await {
+                Ok(_) => return Ok(()),
+                Err(e) => {
+                    error!("{e}");
+                    return Err(ServiceError::BadRequest(
+                        "Delete folder and its content failed!".into(),
+                    ));
+                }
+            };
+        } else {
+            match fs::remove_dir(source).await {
+                Ok(_) => return Ok(()),
+                Err(e) => {
+                    error!("{e}");
+                    return Err(ServiceError::BadRequest(
+                        "Delete folder failed! (Folder must be empty)".into(),
+                    ));
+                }
+            };
+        }
     }
 
     if source.is_file() {
@@ -346,7 +361,7 @@ pub async fn remove_file_or_folder(
 }
 
 async fn valid_path(config: &PlayoutConfig, path: &str) -> Result<PathBuf, ServiceError> {
-    let (test_path, _, _) = norm_abs_path(&config.channel.storage_path, path)?;
+    let (test_path, _, _) = norm_abs_path(&config.channel.storage, path)?;
 
     if !test_path.is_dir() {
         return Err(ServiceError::BadRequest("Target folder not exists!".into()));

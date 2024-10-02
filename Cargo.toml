@@ -3,6 +3,8 @@ members = ["engine", "tests"]
 resolver = "2"
 
 [workspace.package]
+description = "24/7 playout based on rust and ffmpeg"
+readme = "README.md"
 version = "0.24.0-beta5"
 license = "GPL-3.0"
 repository = "https://github.com/ffplayout/ffplayout"

@@ -35,7 +35,9 @@ Stream dynamic playlists or folder contents with the power of ffmpeg.
 The target can be an HLS playlist, rtmp/srt/udp server, desktop player
 or any other output supported by ffmpeg.\n
 ffplayout also provides a web frontend and API to control streaming,
-manage config, files, text overlay, etc. "))]
+manage config, files, text overlay, etc."),
+next_line_help = false,
+)]
 pub struct Args {
     #[clap(
         short,
@@ -44,9 +46,6 @@ pub struct Args {
         help = "Initialize defaults: global admin, paths, settings, etc."
     )]
     pub init: bool,
-
-    #[clap(short, long, help_heading = Some("Initial Setup"), help = "Add a global admin user")]
-    pub add: bool,
 
     #[clap(short, long, help_heading = Some("Initial Setup"), help = "Create admin user")]
     pub username: Option<String>,
@@ -66,16 +65,19 @@ pub struct Args {
         help_heading = Some("Initial Setup"),
         help = "Share storage across channels, important for running in Containers"
     )]
-    pub shared_storage: bool,
+    pub shared: bool,
 
     #[clap(long, env, help_heading = Some("Initial Setup / General"), help = "Logging path")]
-    pub log_path: Option<PathBuf>,
+    pub logs: Option<String>,
 
     #[clap(long, env, help_heading = Some("Initial Setup / General"), help = "Path to public files, also HLS playlists")]
     pub public: Option<String>,
 
     #[clap(long, help_heading = Some("Initial Setup / Playlist"), help = "Path to playlist, or playlist root folder.")]
-    pub playlist: Option<String>,
+    pub playlists: Option<String>,
+
+    #[clap(short, long, help_heading = Some("General"), help = "Add a global admin")]
+    pub add: bool,
 
     #[clap(long, env, help_heading = Some("General"), help = "Path to database file")]
     pub db: Option<PathBuf>,
@@ -129,7 +131,7 @@ pub struct Args {
         long,
         env,
         help_heading = Some("General / Playout"),
-        help = "Channels by ids to process (for export config, foreground running, etc.)",
+        help = "Channels by ids to process (for export config, generate playlist, foreground running, etc.)",
         num_args = 1..,
     )]
     pub channels: Option<Vec<i32>>,
@@ -184,29 +186,35 @@ fn global_user(args: &mut Args) {
     let mut user = String::new();
     let mut mail = String::new();
 
-    print!("Global admin: ");
-    stdout().flush().unwrap();
+    if args.username.is_none() {
+        print!("Global admin: ");
+        stdout().flush().unwrap();
 
-    stdin()
-        .read_line(&mut user)
-        .expect("Did not enter a correct name?");
+        stdin()
+            .read_line(&mut user)
+            .expect("Did not enter a correct name?");
 
-    args.username = Some(user.trim().to_string());
+        args.username = Some(user.trim().to_string());
+    }
 
-    print!("Password: ");
-    stdout().flush().unwrap();
-    let password = read_password();
+    if args.password.is_none() {
+        print!("Password: ");
+        stdout().flush().unwrap();
+        let password = read_password();
 
-    args.password = password.ok();
+        args.password = password.ok();
+    }
 
-    print!("Mail: ");
-    stdout().flush().unwrap();
+    if args.mail.is_none() {
+        print!("Mail: ");
+        stdout().flush().unwrap();
 
-    stdin()
-        .read_line(&mut mail)
-        .expect("Did not enter a correct name?");
+        stdin()
+            .read_line(&mut mail)
+            .expect("Did not enter a correct name?");
 
-    args.mail = Some(mail.trim().to_string());
+        args.mail = Some(mail.trim().to_string());
+    }
 }
 
 pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
@@ -230,94 +238,114 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
         let mut storage = String::new();
         let mut playlist = String::new();
         let mut logging = String::new();
-        let mut hls = String::new();
+        let mut public = String::new();
         let mut shared_store = String::new();
         let mut global = GlobalSettings {
             id: 0,
             secret: None,
-            logging_path: String::new(),
-            playlist_root: String::new(),
-            public_root: String::new(),
-            storage_root: String::new(),
-            shared_storage: false,
+            logs: String::new(),
+            playlists: String::new(),
+            public: String::new(),
+            storage: String::new(),
+            shared: false,
         };
 
         if check_user.unwrap_or_default().is_empty() {
             global_user(&mut args);
         }
 
-        print!("Storage path [/var/lib/ffplayout/tv-media]: ");
-        stdout().flush().unwrap();
-
-        stdin()
-            .read_line(&mut storage)
-            .expect("Did not enter a correct path?");
-
-        if storage.trim().is_empty() {
-            global.storage_root = "/var/lib/ffplayout/tv-media".to_string();
+        if let Some(st) = args.storage {
+            global.storage = st;
         } else {
-            global.storage_root = storage
-                .trim()
-                .trim_matches(|c| c == '"' || c == '\'')
-                .to_string();
+            print!("Storage path [/var/lib/ffplayout/tv-media]: ");
+            stdout().flush().unwrap();
+
+            stdin()
+                .read_line(&mut storage)
+                .expect("Did not enter a correct path?");
+
+            global.storage = if storage.trim().is_empty() {
+                "/var/lib/ffplayout/tv-media".to_string()
+            } else {
+                storage
+                    .trim()
+                    .trim_matches(|c| c == '"' || c == '\'')
+                    .to_string()
+            };
         }
 
-        print!("Playlist path [/var/lib/ffplayout/playlists]: ");
-        stdout().flush().unwrap();
-
-        stdin()
-            .read_line(&mut playlist)
-            .expect("Did not enter a correct path?");
-
-        if playlist.trim().is_empty() {
-            global.playlist_root = "/var/lib/ffplayout/playlists".to_string();
+        if let Some(pl) = args.playlists {
+            global.playlists = pl
         } else {
-            global.playlist_root = playlist
-                .trim()
-                .trim_matches(|c| c == '"' || c == '\'')
-                .to_string();
+            print!("Playlist path [/var/lib/ffplayout/playlists]: ");
+            stdout().flush().unwrap();
+
+            stdin()
+                .read_line(&mut playlist)
+                .expect("Did not enter a correct path?");
+
+            global.playlists = if playlist.trim().is_empty() {
+                "/var/lib/ffplayout/playlists".to_string()
+            } else {
+                playlist
+                    .trim()
+                    .trim_matches(|c| c == '"' || c == '\'')
+                    .to_string()
+            };
         }
 
-        print!("Logging path [/var/log/ffplayout]: ");
-        stdout().flush().unwrap();
-
-        stdin()
-            .read_line(&mut logging)
-            .expect("Did not enter a correct path?");
-
-        if logging.trim().is_empty() {
-            global.logging_path = "/var/log/ffplayout".to_string();
+        if let Some(lp) = args.logs {
+            global.logs = lp;
         } else {
-            global.logging_path = logging
-                .trim()
-                .trim_matches(|c| c == '"' || c == '\'')
-                .to_string();
+            print!("Logging path [/var/log/ffplayout]: ");
+            stdout().flush().unwrap();
+
+            stdin()
+                .read_line(&mut logging)
+                .expect("Did not enter a correct path?");
+
+            global.logs = if logging.trim().is_empty() {
+                "/var/log/ffplayout".to_string()
+            } else {
+                logging
+                    .trim()
+                    .trim_matches(|c| c == '"' || c == '\'')
+                    .to_string()
+            }
         }
 
-        print!("Public (HLS) path [/usr/share/ffplayout/public]: ");
-        stdout().flush().unwrap();
-
-        stdin()
-            .read_line(&mut hls)
-            .expect("Did not enter a correct path?");
-
-        if hls.trim().is_empty() {
-            global.public_root = "/usr/share/ffplayout/public".to_string();
+        if let Some(p) = args.public {
+            global.public = p;
         } else {
-            global.public_root = hls
-                .trim()
-                .trim_matches(|c| c == '"' || c == '\'')
-                .to_string();
+            print!("Public (HLS) path [/usr/share/ffplayout/public]: ");
+            stdout().flush().unwrap();
+
+            stdin()
+                .read_line(&mut public)
+                .expect("Did not enter a correct path?");
+
+            global.public = if public.trim().is_empty() {
+                "/usr/share/ffplayout/public".to_string()
+            } else {
+                public
+                    .trim()
+                    .trim_matches(|c| c == '"' || c == '\'')
+                    .to_string()
+            };
         }
 
-        print!("Shared storage [Y/n]: ");
-        stdout().flush().unwrap();
+        if args.shared {
+            global.shared = true;
+        } else {
+            print!("Shared storage [Y/n]: ");
+            stdout().flush().unwrap();
 
-        stdin()
-            .read_line(&mut shared_store)
-            .expect("Did not enter a yes or no?");
+            stdin()
+                .read_line(&mut shared_store)
+                .expect("Did not enter a yes or no?");
 
-        global.shared_storage = shared_store.trim().to_lowercase().starts_with('y');
+            global.shared = shared_store.trim().to_lowercase().starts_with('y');
+        }
 
         if let Err(e) = handles::update_global(pool, global.clone()).await {
             eprintln!("{e}");
@@ -325,25 +353,24 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
         };
 
         let mut channel = handles::select_channel(pool, &1).await.unwrap();
-        channel.hls_path = global.public_root;
-        channel.playlist_path = global.playlist_root;
-        channel.storage_path = global.storage_root;
+        channel.public = global.public;
+        channel.playlists = global.playlists;
+        channel.storage = global.storage;
 
-        let mut storage_path = PathBuf::from(channel.storage_path.clone());
+        let mut storage_path = PathBuf::from(channel.storage.clone());
 
-        if global.shared_storage {
+        if global.shared {
             storage_path = storage_path.join("1");
 
-            channel.preview_url = "http://127.0.0.1:8787/1/stream.m3u8".to_string();
-            channel.hls_path = Path::new(&channel.hls_path)
+            channel.public = Path::new(&channel.public)
                 .join("1")
                 .to_string_lossy()
                 .to_string();
-            channel.playlist_path = Path::new(&channel.playlist_path)
+            channel.playlists = Path::new(&channel.playlists)
                 .join("1")
                 .to_string_lossy()
                 .to_string();
-            channel.storage_path = storage_path.to_string_lossy().to_string();
+            channel.storage = storage_path.to_string_lossy().to_string();
         };
 
         if let Err(e) = copy_assets(&storage_path).await {
@@ -358,19 +385,12 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
         }
 
         println!("\nSet global settings done...");
-    }
-
-    if args.add {
+    } else if args.add {
         global_user(&mut args);
     }
 
     if let Some(username) = args.username {
         error_code = 0;
-
-        if args.mail.is_none() || args.password.is_none() {
-            eprintln!("Mail/password missing!");
-            error_code = 1;
-        }
 
         let chl: Vec<i32> = channels.clone().iter().map(|c| c.id).collect();
 
@@ -390,73 +410,6 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
         };
 
         println!("Create global admin user \"{username}\" done...");
-    }
-
-    if !args.init
-        && args.storage.is_some()
-        && args.playlist.is_some()
-        && args.public.is_some()
-        && args.log_path.is_some()
-    {
-        error_code = 0;
-
-        let global = GlobalSettings {
-            id: 0,
-            secret: None,
-            logging_path: args.log_path.unwrap().to_string_lossy().to_string(),
-            playlist_root: args.playlist.unwrap(),
-            public_root: args.public.unwrap(),
-            storage_root: args.storage.unwrap(),
-            shared_storage: args.shared_storage,
-        };
-
-        let mut channel = handles::select_channel(pool, &1)
-            .await
-            .expect("Select Channel 1");
-        let mut storage_path = PathBuf::from(global.storage_root.clone());
-
-        if args.shared_storage {
-            storage_path = storage_path.join("1");
-
-            channel.hls_path = Path::new(&global.public_root)
-                .join("1")
-                .to_string_lossy()
-                .to_string();
-            channel.playlist_path = Path::new(&global.playlist_root)
-                .join("1")
-                .to_string_lossy()
-                .to_string();
-            channel.storage_path = storage_path.to_string_lossy().to_string();
-        } else {
-            channel.hls_path = global.public_root.clone();
-            channel.playlist_path = global.playlist_root.clone();
-            channel.storage_path = global.storage_root.clone();
-        }
-
-        if let Err(e) = copy_assets(&storage_path).await {
-            eprintln!("{e}");
-        };
-
-        match handles::update_global(pool, global.clone()).await {
-            Ok(_) => println!("Update globals done..."),
-            Err(e) => {
-                eprintln!("{e}");
-                error_code = 1;
-            }
-        };
-
-        match handles::update_channel(pool, 1, channel).await {
-            Ok(_) => println!("Update channel done..."),
-            Err(e) => {
-                eprintln!("{e}");
-                error_code = 1;
-            }
-        };
-
-        #[cfg(target_family = "unix")]
-        {
-            update_permissions().await;
-        }
     }
 
     if ARGS.list_channels {

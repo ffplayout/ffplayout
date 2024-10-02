@@ -314,14 +314,11 @@ impl CurrentProgram {
             self.current_node =
                 handle_list_init(&self.config, node_clone, &self.manager, last_index);
 
-            if self.current_node.source.contains(
-                &self
-                    .config
-                    .channel
-                    .storage_path
-                    .to_string_lossy()
-                    .to_string(),
-            ) || self.current_node.source.contains("color=c=#121212")
+            if self
+                .current_node
+                .source
+                .contains(&self.config.channel.storage.to_string_lossy().to_string())
+                || self.current_node.source.contains("color=c=#121212")
             {
                 is_filler = true;
             }

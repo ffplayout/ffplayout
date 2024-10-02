@@ -206,7 +206,7 @@ pub fn playlist_generator(manager: &ChannelManager) -> Result<Vec<JsonPlaylist>,
             }
         }
     };
-    let playlist_root = &config.channel.playlist_path;
+    let playlist_root = &config.channel.playlists;
     let mut playlists = vec![];
     let mut date_range = vec![];
     let mut from_template = false;
@@ -215,7 +215,7 @@ pub fn playlist_generator(manager: &ChannelManager) -> Result<Vec<JsonPlaylist>,
         error!(
             target: Target::all(), channel = id;
             "Playlist folder <b><magenta>{:?}</></b> not exists!",
-            config.channel.playlist_path
+            config.channel.playlists
         );
     }
 

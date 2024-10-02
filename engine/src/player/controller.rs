@@ -349,7 +349,7 @@ pub fn start_channel(manager: ChannelManager) -> Result<(), ProcessError> {
     let channel_id = config.general.channel_id;
 
     drain_hls_path(
-        &config.channel.hls_path,
+        &config.channel.public,
         &config.output.output_cmd.clone().unwrap_or_default(),
         channel_id,
     )?;

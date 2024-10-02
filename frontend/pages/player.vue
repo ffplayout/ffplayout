@@ -174,7 +174,7 @@
                         v-model="newSource.source"
                         type="text"
                         class="input input-sm input-bordered w-auto"
-                        :disabled="newSource.source.includes(configStore.channels[configStore.id].storage_path)"
+                        :disabled="newSource.source.includes(configStore.channels[configStore.i].storage)"
                     />
                 </label>
 
@@ -230,9 +230,11 @@
 </template>
 
 <script setup lang="ts">
+import { cloneDeep } from 'lodash-es'
+
 const colorMode = useColorMode()
 const { locale, t } = useI18n()
-const { $_, $dayjs } = useNuxtApp()
+const { $dayjs } = useNuxtApp()
 const { width } = useWindowSize({ initialWidth: 800 })
 const { mediaType } = stringFormatter()
 const { processPlaylist, genUID } = playlistOperations()
@@ -314,7 +316,7 @@ function closePlayer() {
 
 function setPreviewData(path: string) {
     let fullPath = path
-    const storagePath = configStore.channels[configStore.id].storage_path
+    const storagePath = configStore.channels[configStore.i].storage
     const lastIndex = storagePath.lastIndexOf('/')
 
     if (!path.includes('/')) {
@@ -330,7 +332,7 @@ function setPreviewData(path: string) {
     if (path.match(/^http/)) {
         previewUrl.value = path
     } else {
-        previewUrl.value = encodeURIComponent(`/file/${configStore.channels[configStore.id].id}${fullPath}`).replace(
+        previewUrl.value = encodeURIComponent(`/file/${configStore.channels[configStore.i].id}${fullPath}`).replace(
             /%2F/g,
             '/'
         )
@@ -428,7 +430,7 @@ function loopClips() {
         for (const item of playlistStore.playlist) {
             if (length < configStore.playlistLength) {
                 item.uid = genUID()
-                tempList.push($_.cloneDeep(item))
+                tempList.push(cloneDeep(item))
                 length += item.out - item.in
             } else {
                 break
@@ -462,7 +464,7 @@ async function importPlaylist(imp: boolean) {
 
         playlistStore.isLoading = true
         await $fetch(
-            `/api/file/${configStore.channels[configStore.id].id}/import/?file=${textFile.value[0].name}&date=${
+            `/api/file/${configStore.channels[configStore.i].id}/import/?file=${textFile.value[0].name}&date=${
                 listDate.value
             }`,
             {
@@ -493,13 +495,13 @@ async function savePlaylist(save: boolean) {
             return
         }
 
-        const saveList = processPlaylist(listDate.value, $_.cloneDeep(playlistStore.playlist), true)
+        const saveList = processPlaylist(listDate.value, cloneDeep(playlistStore.playlist), true)
 
-        await $fetch(`/api/playlist/${configStore.channels[configStore.id].id}/`, {
+        await $fetch(`/api/playlist/${configStore.channels[configStore.i].id}/`, {
             method: 'POST',
             headers: { ...configStore.contentType, ...authStore.authHeader },
             body: JSON.stringify({
-                channel: configStore.channels[configStore.id].name,
+                channel: configStore.channels[configStore.i].name,
                 date: targetDate.value,
                 program: saveList,
             }),
@@ -522,7 +524,7 @@ async function deletePlaylist(del: boolean) {
     showDeleteModal.value = false
 
     if (del) {
-        await $fetch(`/api/playlist/${configStore.channels[configStore.id].id}/${listDate.value}`, {
+        await $fetch(`/api/playlist/${configStore.channels[configStore.i].id}/${listDate.value}`, {
             method: 'DELETE',
             headers: { ...configStore.contentType, ...authStore.authHeader },
         }).then(() => {

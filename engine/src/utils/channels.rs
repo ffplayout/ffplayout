@@ -35,7 +35,7 @@ pub async fn create_channel(
     target_channel: Channel,
 ) -> Result<Channel, ServiceError> {
     let channel = handles::insert_channel(conn, target_channel).await?;
-    let storage_path = PathBuf::from(channel.storage_path.clone());
+    let storage_path = PathBuf::from(channel.storage.clone());
 
     handles::new_channel_presets(conn, channel.id).await?;
 
