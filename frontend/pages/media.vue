@@ -230,12 +230,12 @@
 
         <GenericModal
             :show="showDeleteModal"
-            :title="t('media.deleteTitle')"
+            :title="`${t('media.delete')} ${extensionsArr.some(suffix => deleteName.endsWith(suffix)) ? t('media.file') : t('media.folder')}`"
             :text="`${t('media.deleteQuestion')}:<br /><strong>${deleteName}</strong>`"
             :modal-action="deleteFileOrFolder"
         >
             <div>
-                <input class="input input-sm w-full" type="text" :value="deleteName" disabled />
+                <input class="input input-sm w-full" type="text" :value="dir_file(deleteName).file" disabled />
                 <div v-if="!extensionsArr.some(suffix => deleteName.endsWith(suffix))" class="form-control mt-3">
                     <label class="label cursor-pointer w-1/4">
                         <input v-model="recursive" type="checkbox" class="checkbox checkbox-sm checkbox-warning" />
@@ -321,7 +321,7 @@ const authStore = useAuth()
 const configStore = useConfig()
 const indexStore = useIndex()
 const mediaStore = useMedia()
-const { toMin, mediaType, filename, parent } = stringFormatter()
+const { toMin, mediaType, filename, parent, dir_file } = stringFormatter()
 const { i } = storeToRefs(useConfig())
 
 useHead({
@@ -528,13 +528,11 @@ async function deleteFileOrFolder(del: boolean) {
 }
 
 function setRenameValues(path: string) {
-    const index = path.lastIndexOf('/')
-    const dir = path.substring(0, index + 1) || '/'
-    const file = path.substring(index + 1)
+    const filepath = dir_file(path)
 
-    renameOldName.value = file
-    renameOldPath.value = dir
-    renameNewName.value = file
+    renameOldName.value = filepath.file
+    renameOldPath.value = filepath.dir
+    renameNewName.value = filepath.file
 }
 
 async function renameFile(ren: boolean) {

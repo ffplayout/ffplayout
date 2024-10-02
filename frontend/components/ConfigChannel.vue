@@ -127,6 +127,7 @@ async function addUpdateChannel() {
         indexStore.msgAlert('success', t('config.updateChannelSuccess'), 2)
 
         await configStore.getPlayoutConfig()
+        await configStore.getUserConfig()
 
     } else {
         indexStore.msgAlert('error', t('config.updateChannelFailed'), 2)
@@ -152,6 +153,7 @@ async function deleteChannel() {
     i.value = configStore.i - 1
     await configStore.getChannelConfig()
     await configStore.getPlayoutConfig()
+    await configStore.getUserConfig()
 
     if (response.status === 200) {
         indexStore.msgAlert('success', t('config.errorChannelDelete'), 2)
