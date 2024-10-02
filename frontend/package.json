@@ -1,6 +1,6 @@
 {
   "name": "frontend",
-  "version": "0.12.2",
+  "version": "0.13.0",
   "description": "Web GUI for ffplayout",
   "author": "Jonathan Baecker",
   "private": true,
@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "@nuxtjs/color-mode": "^3.5.1",
-    "@pinia/nuxt": "^0.5.4",
+    "@pinia/nuxt": "^0.5.5",
     "@vueform/multiselect": "^2.6.10",
     "@vuepic/vue-datepicker": "^9.0.3",
     "@vueuse/nuxt": "^11.1.0",
@@ -24,7 +24,7 @@
     "lodash-es": "^4.17.21",
     "mpegts.js": "^1.7.3",
     "nuxt": "3.13.2",
-    "pinia": "^2.2.2",
+    "pinia": "^2.2.4",
     "sortablejs-vue3": "^1.2.11",
     "splitpanes": "^3.1.5",
     "video.js": "^8.17.4"
