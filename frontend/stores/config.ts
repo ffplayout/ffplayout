@@ -95,45 +95,6 @@ export const useConfig = defineStore('config', {
                 })
         },
 
-        async setChannelConfig(obj: Channel): Promise<any> {
-            const authStore = useAuth()
-            const stringObj = cloneDeep(obj)
-            let response
-
-            if (this.channelsRaw.some((e) => e.id === stringObj.id)) {
-                response = await fetch(`/api/channel/${obj.id}`, {
-                    method: 'PATCH',
-                    headers: { ...this.contentType, ...authStore.authHeader },
-                    body: JSON.stringify(stringObj),
-                })
-            } else {
-                response = await fetch('/api/channel/', {
-                    method: 'POST',
-                    headers: { ...this.contentType, ...authStore.authHeader },
-                    body: JSON.stringify(stringObj),
-                })
-
-                const json = await response.json()
-                const channelConfigs = []
-
-                for (const obj of this.channels) {
-                    if (obj.name === stringObj.name) {
-                        channelConfigs.push(json)
-                    } else {
-                        channelConfigs.push(obj)
-                    }
-                }
-
-                this.channels = channelConfigs
-                this.channelsRaw = cloneDeep(channelConfigs)
-                this.configCount = channelConfigs.length
-            }
-
-            await this.getPlayoutConfig()
-
-            return response
-        },
-
         async getPlayoutConfig() {
             const { $i18n } = useNuxtApp()
             const { timeToSeconds } = stringFormatter()

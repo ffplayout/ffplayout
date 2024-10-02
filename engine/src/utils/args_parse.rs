@@ -35,7 +35,9 @@ Stream dynamic playlists or folder contents with the power of ffmpeg.
 The target can be an HLS playlist, rtmp/srt/udp server, desktop player
 or any other output supported by ffmpeg.\n
 ffplayout also provides a web frontend and API to control streaming,
-manage config, files, text overlay, etc. "))]
+manage config, files, text overlay, etc."),
+next_line_help = false,
+)]
 pub struct Args {
     #[clap(
         short,
@@ -44,9 +46,6 @@ pub struct Args {
         help = "Initialize defaults: global admin, paths, settings, etc."
     )]
     pub init: bool,
-
-    #[clap(short, long, help_heading = Some("Initial Setup"), help = "Add a global admin")]
-    pub add: bool,
 
     #[clap(short, long, help_heading = Some("Initial Setup"), help = "Create admin user")]
     pub username: Option<String>,
@@ -76,6 +75,9 @@ pub struct Args {
 
     #[clap(long, help_heading = Some("Initial Setup / Playlist"), help = "Path to playlist, or playlist root folder.")]
     pub playlists: Option<String>,
+
+    #[clap(short, long, help_heading = Some("General"), help = "Add a global admin")]
+    pub add: bool,
 
     #[clap(long, env, help_heading = Some("General"), help = "Path to database file")]
     pub db: Option<PathBuf>,
@@ -360,7 +362,6 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
         if global.shared {
             storage_path = storage_path.join("1");
 
-            channel.preview_url = "http://127.0.0.1:8787/1/stream.m3u8".to_string();
             channel.public = Path::new(&channel.public)
                 .join("1")
                 .to_string_lossy()

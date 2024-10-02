@@ -11,21 +11,37 @@
                 <div class="label">
                     <span class="label-text">{{ t('config.name') }}</span>
                 </div>
-                <input v-model="channel.name" type="text" placeholder="Type here" class="input input-bordered w-full" />
+                <input
+                    v-model="channel.name"
+                    type="text"
+                    placeholder="Type here"
+                    class="input input-bordered w-full"
+                    @keyup="isChanged"
+                />
             </label>
 
             <label class="form-control w-full mt-5">
                 <div class="label">
                     <span class="label-text">{{ t('config.previewUrl') }}</span>
                 </div>
-                <input v-model="channel.preview_url" type="text" class="input input-bordered w-full" />
+                <input
+                    v-model="channel.preview_url"
+                    type="text"
+                    class="input input-bordered w-full"
+                    @keyup="isChanged"
+                />
             </label>
 
             <label class="form-control w-full mt-5">
                 <div class="label">
                     <span class="label-text">{{ t('config.extensions') }}</span>
                 </div>
-                <input v-model="channel.extra_extensions" type="text" class="input input-bordered w-full" />
+                <input
+                    v-model="channel.extra_extensions"
+                    type="text"
+                    class="input input-bordered w-full"
+                    @keyup="isChanged"
+                />
             </label>
 
             <template v-if="authStore.role === 'GlobalAdmin'">
@@ -39,21 +55,36 @@
                     <div class="label">
                         <span class="label-text">{{ t('config.publicPath') }}</span>
                     </div>
-                    <input v-model="channel.public" type="text" class="input input-bordered w-full" />
+                    <input
+                        v-model="channel.public"
+                        type="text"
+                        class="input input-bordered w-full"
+                        @keyup="isChanged"
+                    />
                 </label>
 
                 <label class="form-control w-full mt-5">
                     <div class="label">
                         <span class="label-text">{{ t('config.playlistPath') }}</span>
                     </div>
-                    <input v-model="channel.playlists" type="text" class="input input-bordered w-full" />
+                    <input
+                        v-model="channel.playlists"
+                        type="text"
+                        class="input input-bordered w-full"
+                        @keyup="isChanged"
+                    />
                 </label>
 
                 <label class="form-control w-full mt-5">
                     <div class="label">
                         <span class="label-text">{{ t('config.storagePath') }}</span>
                     </div>
-                    <input v-model="channel.storage" type="text" class="input input-bordered w-full" />
+                    <input
+                        v-model="channel.storage"
+                        type="text"
+                        class="input input-bordered w-full"
+                        @keyup="isChanged"
+                    />
                 </label>
             </template>
 
@@ -62,7 +93,9 @@
                     {{ t('config.save') }}
                 </button>
                 <button
-                    v-if="authStore.role === 'GlobalAdmin' && configStore.channels.length > 1 && channel.id > 1 && saved"
+                    v-if="
+                        authStore.role === 'GlobalAdmin' && configStore.channels.length > 1 && channel.id > 1 && saved
+                    "
                     class="btn btn-primary"
                     @click="deleteChannel()"
                 >
@@ -77,7 +110,7 @@
 </template>
 
 <script setup lang="ts">
-import { cloneDeep } from 'lodash-es'
+import { cloneDeep, isEqual } from 'lodash-es'
 
 const { t } = useI18n()
 
@@ -88,9 +121,11 @@ const { i } = storeToRefs(useConfig())
 
 const saved = ref(true)
 const channel = ref({} as Channel)
+const channelOrig = ref({} as Channel)
 
 onMounted(() => {
     channel.value = cloneDeep(configStore.channels[i.value])
+    channelOrig.value = cloneDeep(configStore.channels[i.value])
 })
 
 watch([i], () => {
@@ -98,6 +133,14 @@ watch([i], () => {
         channel.value = cloneDeep(configStore.channels[i.value])
     }
 })
+
+function isChanged() {
+    if (isEqual(channel.value, channelOrig.value)) {
+        saved.value = true
+    } else {
+        saved.value = false
+    }
+}
 
 function rmId(path: string) {
     return path.replace(/\/\d+$/, '')
@@ -114,23 +157,68 @@ function newChannel() {
     saved.value = false
 }
 
+async function addNewChannel() {
+    await $fetch('/api/channel/', {
+        method: 'POST',
+        headers: { ...configStore.contentType, ...authStore.authHeader },
+        body: JSON.stringify(channel.value),
+    })
+        .then((chl) => {
+            i.value = channel.value.id - 1
+            configStore.channels.push(cloneDeep(chl))
+            configStore.channelsRaw.push(chl)
+            configStore.configCount = configStore.channels.length
+
+            indexStore.msgAlert('success', t('config.updateChannelSuccess'), 2)
+        })
+        .catch(() => {
+            indexStore.msgAlert('error', t('config.updateChannelFailed'), 3)
+        })
+}
+
+async function updateChannel() {
+    await fetch(`/api/channel/${channel.value.id}`, {
+        method: 'PATCH',
+        headers: { ...configStore.contentType, ...authStore.authHeader },
+        body: JSON.stringify(channel.value),
+    })
+        .then(() => {
+            for (let i = 0; i < configStore.channels.length; i++) {
+                if (configStore.channels[i].id === channel.value.id) {
+                    configStore.channels[i] = cloneDeep(channel.value)
+                    break
+                }
+            }
+
+            for (let i = 0; i < configStore.channelsRaw.length; i++) {
+                if (configStore.channelsRaw[i].id === channel.value.id) {
+                    configStore.channelsRaw[i] = cloneDeep(channel.value)
+                    break
+                }
+            }
+
+            indexStore.msgAlert('success', t('config.updateChannelSuccess'), 2)
+        })
+        .catch(() => {
+            indexStore.msgAlert('error', t('config.updateChannelFailed'), 3)
+        })
+}
+
 async function addUpdateChannel() {
     /*
-        Save channel settings.
+        Save or update channel settings.
     */
-    saved.value = true
-    i.value = channel.value.id - 1
-    configStore.channels.push(cloneDeep(channel.value))
-    const update = await configStore.setChannelConfig(channel.value)
+    if (!saved.value) {
+        saved.value = true
 
-    if (update.status && update.status < 400) {
-        indexStore.msgAlert('success', t('config.updateChannelSuccess'), 2)
+        if (configStore.channels[i.value].id !== channel.value.id) {
+            await addNewChannel()
+        } else {
+            await updateChannel()
+        }
 
         await configStore.getPlayoutConfig()
         await configStore.getUserConfig()
-
-    } else {
-        indexStore.msgAlert('error', t('config.updateChannelFailed'), 2)
     }
 }
 
