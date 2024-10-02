@@ -19,7 +19,6 @@
                             v-if="
                                 name.toString() !== 'startInSec' &&
                                 name.toString() !== 'lengthInSec' &&
-                                !(name.startsWith('vtt_') && !config.public.buildExperimental) &&
                                 !(name.toString() === 'path' && key.toString() === 'storage')
                             "
                         >
