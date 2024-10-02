@@ -6,6 +6,7 @@ use std::{
 
 use chrono::NaiveTime;
 use flexi_logger::Level;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use shlex::split;
 use sqlx::{Pool, Sqlite};
@@ -703,9 +704,51 @@ impl PlayoutConfig {
                 cmd.remove(i);
             }
 
+            let is_tee_muxer = cmd.contains(&"tee".to_string());
+
             for item in cmd.iter_mut() {
                 if item.ends_with(".ts") || (item.ends_with(".m3u8") && item != "master.m3u8") {
-                    if let Ok((public, _, _)) = norm_abs_path(&channel.public, item) {
+                    if is_tee_muxer {
+                        // Processes the `item` string to replace `.ts` and `.m3u8` filenames with their absolute paths.
+                        // Ensures that the corresponding directories exist.
+                        //
+                        // - Uses regular expressions to identify `.ts` and `.m3u8` filenames within the `item` string.
+                        // - For each identified filename, normalizes its path and checks if the parent directory exists.
+                        // - Creates the parent directory if it does not exist.
+                        // - Replaces the original filename in the `item` string with the normalized absolute path.
+                        let re_ts = Regex::new(r"filename=(\S+?\.ts)").unwrap();
+                        let re_m3 = Regex::new(r"\](\S+?\.m3u8)").unwrap();
+
+                        for s in item.clone().split('|') {
+                            if let Some(ts) = re_ts.captures(s).and_then(|p| p.get(1)) {
+                                let (segment_path, _, _) =
+                                    norm_abs_path(&channel.public, ts.as_str())?;
+                                let parent = segment_path.parent().ok_or("HLS parent path")?;
+
+                                if !parent.is_dir() {
+                                    fs::create_dir_all(parent).await?;
+                                }
+
+                                item.clone_from(
+                                    &item.replace(ts.as_str(), &segment_path.to_string_lossy()),
+                                );
+                            }
+
+                            if let Some(m3) = re_m3.captures(s).and_then(|p| p.get(1)) {
+                                let (m3u8_path, _, _) =
+                                    norm_abs_path(&channel.public, m3.as_str())?;
+                                let parent = m3u8_path.parent().ok_or("HLS parent path")?;
+
+                                if !parent.is_dir() {
+                                    fs::create_dir_all(parent).await?;
+                                }
+
+                                item.clone_from(
+                                    &item.replace(m3.as_str(), &m3u8_path.to_string_lossy()),
+                                );
+                            }
+                        }
+                    } else if let Ok((public, _, _)) = norm_abs_path(&channel.public, item) {
                         let parent = public.parent().ok_or("HLS parent path")?;
 
                         if !parent.is_dir() {
