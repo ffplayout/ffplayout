@@ -230,13 +230,15 @@
 
         <GenericModal
             :show="showDeleteModal"
-            :title="`${t('media.delete')} ${extensionsArr.some(suffix => deleteName.endsWith(suffix)) ? t('media.file') : t('media.folder')}`"
+            :title="`${t('media.delete')} ${
+                extensionsArr.some((suffix) => deleteName.endsWith(suffix)) ? t('media.file') : t('media.folder')
+            }`"
             :text="`${t('media.deleteQuestion')}:<br /><strong>${deleteName}</strong>`"
             :modal-action="deleteFileOrFolder"
         >
             <div>
                 <input class="input input-sm w-full" type="text" :value="dir_file(deleteName).file" disabled />
-                <div v-if="!extensionsArr.some(suffix => deleteName.endsWith(suffix))" class="form-control mt-3">
+                <div v-if="!extensionsArr.some((suffix) => deleteName.endsWith(suffix))" class="form-control mt-3">
                     <label class="label cursor-pointer w-1/4">
                         <input v-model="recursive" type="checkbox" class="checkbox checkbox-sm checkbox-warning" />
                         <span class="label-text">{{ t('media.recursive') }}</span>
