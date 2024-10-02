@@ -1,4 +1,4 @@
-## Playlist generation template
+## Playlist Generation Template
 
 It is possible to generate playlists based on templates. A template could look like:
 

@@ -1,12 +1,12 @@
 ### Preview Stream
 
-When you are using the web frontend, maybe you wonder how you get a preview in the player. The default installation creates a HLS playlist and the player using this one, but most of the time the HLS mode is not used, instead the stream output mode is activated.
+When you are using the web frontend, you may wonder how to get a preview in the player. The default installation creates an HLS playlist, and the player uses this, but the HLS mode is not always utilized; instead, the stream output mode is activated.
 
-So if you stream to a external server, you have different options to get a preview stream for you player. The simplest one would be, if you get a m3u8 playlist address from your external target, like: https://example.org/live/stream.m3u8 this you can use in the configuration section from the frontend.
+So if you stream to an external server, you have different options to get a preview stream for your player. The simplest option would be to obtain an m3u8 playlist address from your external target, such as: https://example.org/live/stream.m3u8. You can use this in the configuration section of the frontend.
 
-Another option would be (which is not testet), to add a HLS output option to your streaming parameters.
+Another option (which has not been tested) is to add an HLS output option to your streaming parameters.
 
-The next option can be, that you install a rtmp server locally and create here your preview stream. In the following lines this is described in more detail.
+The next option is to install an RTMP server locally and create your preview stream there. In the following lines, this is described in more detail.
 
 The ffplayout engine has no special preview config parameters, but you can add your settings to the **output_param**, like:
 
@@ -29,11 +29,11 @@ The ffplayout engine has no special preview config parameters, but you can add y
     ...
 ```
 
-In this documentation we suspect, that you are using [ffplayout-frontend](https://github.com/ffplayout/ffplayout-frontend) and that you using [SRS](https://github.com/ossrs/srs) at least for the preview stream. The most stable solution is previewing over HLS, but it is also possible to use [HTTP-FLV](https://github.com/ossrs/srs/wiki/v4_EN_DeliveryHttpStream) for less latency.
+In this documentation, we assume that you are using [ffplayout-frontend](https://github.com/ffplayout/ffplayout-frontend) and that you are using [SRS](https://github.com/ossrs/srs) at least for the preview stream. The most stable solution is previewing over HLS, but it is also possible to use [HTTP-FLV](https://github.com/ossrs/srs/wiki/v4_EN_DeliveryHttpStream) for lower latency.
 
-To get this working we have to follow some steps.
+To get this working, we need to follow some steps.
 
-#### First step is to compile and install SRS:
+#### The first step is to compile and install SRS:
 
 ```BASH
 # install some tool for compiling
@@ -58,7 +58,7 @@ make install
 
 ```
 
-Now we need a systemd service, to startup SRS automatically. Create the file:
+Now we need a systemd service to start SRS automatically. Create the file:
 
 **/etc/systemd/system/srs.service**
 
@@ -134,11 +134,11 @@ vhost __defaultVhost__ {
 
 ```
 
-Now you can enable and start SRS with: `systemctl enable --now srs` and check if it is running: `systemctl status srs`
+Now you can enable and start SRS with: `systemctl enable --now srs` and check if it is running: `systemctl status srs`.
 
 #### Configure Nginx
 
-We assume that you have already installed nginx and you are using it already for the frontend. So open the frontend config **/etc/nginx/sites-enabled/ffplayout.conf** and add a new location to it:
+We assume that you have already installed Nginx and are using it for the frontend. Open the frontend config **/etc/nginx/sites-enabled/ffplayout.conf** and add a new location to it:
 
 ```NGINX
 location /live/stream.flv {
@@ -192,10 +192,10 @@ server {
 }
 ```
 
-Of course in production you should have a HTTPS directive to, but this step is up to you.
+Of course, in production, you should have an HTTPS directive as well, but this step is up to you.
 
 Restart Nginx.
 
-You can (re)start ffplayout and when you setup everything correct it should run without errors.
+You can (re)start ffplayout, and when you have set everything up correctly, it should run without errors.
 
-You can go now in your frontend configuration and change the `player_url` to: `http://[domain or IP]/live/stream.flv` or `http://[domain or IP]/live/stream.m3u8`, save and reload the page. When you go now to the player tap you should see the preview video.
+You can now go to your frontend configuration and change the `player_url` to: `http://[domain or IP]/live/stream.flv` or `http://[domain or IP]/live/stream.m3u8`. Save and reload the page. When you go to the player tab, you should see the preview video.

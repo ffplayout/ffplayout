@@ -1,8 +1,8 @@
 ### Live Ingest
 
-With live ingest you have the possibility to switch from playlist, or folder mode to a live stream.
+With live ingest, you have the possibility to switch from playlist or folder mode to a live stream.
 
-It works in a way, that it create a ffmpeg instance in _listen_ (_server_) mode. For example when you stream over RTMP to it, you can set the ingest input parameters to:
+It works by creating an ffmpeg instance in _listen_ (_server_) mode. For example, when streaming over RTMP, you can set the ingest input parameters to:
 
 ```
 -f live_flv -listen 1 -i rtmp://0.0.0.0:1936/live/my-secrete-streaming-key
@@ -14,14 +14,14 @@ For SRT you could use:
 -f mpegts -i 'srt://0.0.0.0:40077?mode=listener&passphrase=12345abcde'
 ```
 
-Have in mind, that the ingest mode **can't** pull from a server, it only can act as its own server and listen for income.
+Keep in mind that the ingest mode **can't** pull from a server; it can only act as its own server and listen for incoming streams.
 
-When it notice a incoming stream, it will stop the current playing and continue the live source. The output will not interrupt, so you have a continuously output stream.
+When it detects an incoming stream, it will stop the currently playing content and switch to the live source. The output will not be interrupted, so you will have a continuous output stream.
 
-In rare cases it can happen, that for a short moment after switching the image freezes, but then it will continue. Also a short frame flickering can happen.
+In rare cases, it may happen that, for a short moment after switching, the image freezes, but then it will continue. Also, a brief frame flicker might occur.
 
-You need to know, that **ffmpeg in current version has no authentication mechanism and it just listen to the protocol and port (no app and stream name).**
+You should know that **ffmpeg, in its current version, has no authentication mechanism and simply listens to the protocol and port (no app and stream name).**
 
-ffplayout catches this problem with monitoring the output from ffmpeg. When the input is **rtmp** and the app or stream name differs to the config it stops the ingest process. So in a way we have a bit control, which stream we let come in and which not.
+ffplayout addresses this issue by monitoring the output from ffmpeg. When the input is **rtmp** and the app or stream name differs from the configuration, it stops the ingest process. So, in a way, we have some control over which streams are accepted and which are not.
 
-In theory you can use every [protocol](https://ffmpeg.org/ffmpeg-protocols.html) from ffmpeg which support a **listen** mode.
+In theory, you can use any [protocol](https://ffmpeg.org/ffmpeg-protocols.html) from ffmpeg that supports a **listen** mode.

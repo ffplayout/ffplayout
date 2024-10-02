@@ -1,5 +1,6 @@
 ### Video from URL
-Videos from URL are videos where you can watch directly in browser or download, for example:
+
+Videos from a URL are videos that you can watch directly in your browser or download. For example:
 
 ```json
     {
@@ -10,8 +11,8 @@ Videos from URL are videos where you can watch directly in browser or download, 
     }
 ```
 
-This should work in general, because most time it have a duration information and it is faster playable then a real live stream source. Avoid seeking because it can take to much time.
+This should work in general because most of the time it has duration information and is faster to play than a real live stream source. Avoid seeking, as it can take too much time.
 
-**Live streams as input in playlist, like rtmp is not supported.**
+**Live streams as input in playlists, such as RTMP, are not supported.**
 
-Be careful with it, better test it multiple times!
+Be careful with this; it's better to test it multiple times!

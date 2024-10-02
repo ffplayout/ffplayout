@@ -2,11 +2,11 @@ ffplayout supports different types of outputs, let's explain them a bit:
 
 ## Stream
 
-The streaming output can be used for ever kind of classical streaming. For example for **rtmp, srt, rtp** etc. Any streaming type supported by ffmpeg should work.
+The streaming output can be used for any kind of classical streaming, such as **rtmp, srt, rtp**, etc. Any streaming type supported by ffmpeg should work.
 
 **Remember that you need a streaming server as a destination if you want to use this mode.**
 
-You can use for example:
+For example, you can use:
 
 - [SRS](https://github.com/ossrs/srs)
 - [OvenMediaEngine](https://www.ovenmediaengine.com/ome)
@@ -17,9 +17,9 @@ Of course, you can also use media platforms that support streaming input.
 
 ### Multiple Outputs:
 
-ffplayout supports multiple outputs in a way, that it can output the same stream to multiple targets with different encoding settings.
+ffplayout supports multiple outputs in such a way that it can send the same stream to multiple targets with different encoding settings.
 
-For example you want to stream different resolutions, you could apply this output parameters:
+For example, if you want to stream at different resolutions, you could apply these output parameters:
 
 ```YAML
     ...
@@ -58,21 +58,21 @@ For example you want to stream different resolutions, you could apply this outpu
 
 When you are using the text overlay filter, it will apply to all outputs.
 
-The same works to for HLS output.
+The same applies to HLS output.
 
-If you want to use different resolution, you should apply them in order from biggest to smallest. Use the biggest resolution in config under `processing:` and the smaller ones in `output_params:`.
+If you want to use different resolutions, you should apply them in order from largest to smallest. Use the largest resolution in the config under `processing:` and the smaller ones in `output_params:`.
 
 ## Desktop
 
-In desktop mode you will get your picture on screen. For this you need a desktop system, theoretical all platforms should work here. ffplayout will need for that **ffplay**.
+In desktop mode, you will get your picture on the screen. For this, you need a desktop system; theoretically, all platforms should work here. ffplayout will require **ffplay** for that.
 
 ## HLS
 
-In this mode you can output directly to a hls playlist. The nice thing here is, that ffplayout need less resources then in streaming mode.
+In this mode, you can output directly to an HLS playlist. The nice thing here is that ffplayout requires fewer resources than in streaming mode.
 
-HLS output is currently the default, mostly because it works out of the box and don't need a streaming target. In default settings it saves the segments to **/usr/share/ffplayout/public/live/**.
+HLS output is currently the default, mostly because it works out of the box and doesn't need a streaming target. By default, it saves the segments to **/usr/share/ffplayout/public/live/**.
 
-**It is recommend to serve the HLS stream with nginx or another web server, and not with ffplayout (which is more meant for previewing).**
+**It is recommended to serve the HLS stream with nginx or another web server, and not with ffplayout (which is more meant for previewing).**
 
 **HLS multiple outputs example:**
 
@@ -141,7 +141,7 @@ The tee pseudo-muxer in FFmpeg is crucial in live streaming scenarios where a si
 
 **FFmpeg's Tee Pseudo-Muxer Parameter Configuration:**
 
-The configuration of the tee pseudo-muxer in FFmpeg allows the broadcasting of a single input to multiple outputs simultaneously, each with specific settings. This is accomplished by specifying distinct formats and protocols for each output within a single command line, thus minimizing computational load by avoiding re-encoding for each target.
+The configuration of the tee pseudo-muxer in FFmpeg allows for the broadcasting of a single input to multiple outputs simultaneously, each with specific settings. This is accomplished by specifying distinct formats and protocols for each output within a single command line, thus minimizing computational load by avoiding re-encoding for each target.
 
 ### Parameters and Syntax:
 
@@ -160,9 +160,9 @@ The configuration of the tee pseudo-muxer in FFmpeg allows the broadcasting of a
 -b:a 128k
 -flags +cgop
 -flags +global_header
--f tee 
+-f tee
 [f=flv:onfail=ignore]rtmp://127.0.0.1:1935/798e3a9e-47b5-4cd5-8079-76a20e03fee6.stream|[f=mpegts:onfail=ignore]udp://127.0.0.1:1234?pkt_size=1316|[f=hls:hls_time=6:hls_list_size=600:hls_flags=append_list+delete_segments+omit_endlist:hls_segment_filename=/usr/share/ffplayout/public/live/stream-%d.ts]/usr/share/ffplayout/public/live/stream.m3u8
-``` 
+```
 
 
 **1. `-f tee`**: Specifies the use of the tee pseudo-muxer, which facilitates the multiplexing of the broadcast.
@@ -173,7 +173,7 @@ The configuration of the tee pseudo-muxer in FFmpeg allows the broadcasting of a
    - **First Output**: `[f=flv:onfail=ignore]rtmp://127.0.0.1:1935/798e3a9e-47b5-4cd5-8079-76a20e03fee6.stream`
      - **f=flv**: Sets the output format to FLV (Flash Video).
      - **onfail=ignore**: Directs FFmpeg to continue operating even if this output fails.
-     
+
    - **Second Output**: `[f=mpegts:onfail=ignore]udp://127.0.0.1:1234?pkt_size=1316`
      - **f=mpegts**: Sets the output format to MPEG-TS (MPEG Transport Stream).
      - **udp://...**: Uses the UDP protocol to send the stream with a specified packet size (`pkt_size=1316`).
@@ -181,4 +181,4 @@ The configuration of the tee pseudo-muxer in FFmpeg allows the broadcasting of a
    - **Third Output**: `[f=hls:hls_time=6:hls_list_size=600:hls_flags=append_list+delete_segments+omit_endlist:hls_segment_filename=/usr/share/ffplayout/public/live/stream-%d.ts]/usr/share/ffplayout/public/live/stream.m3u8`
      - **f=hls**: Sets the output format to HLS (HTTP Live Streaming).
 
-Each stream is processed by the tee pseudo-muxer, which encodes the input just once, directing it to various outputs as per the specifications, thereby allowing for an efficient and less resource-intensive operation.
+Each stream is processed by the tee pseudo-muxer, which encodes the input only once, directing it to various outputs as specified, thereby allowing for efficient and less resource-intensive operation.

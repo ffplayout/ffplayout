@@ -1,10 +1,10 @@
 ## Custom filter
 
-ffplayout allows it to define a custom filter string. For that is the parameter **custom_filter** in the **ffplayout.yml** config file under **processing**. The playlist can also contain a **custom_filter** parameter for every clip, with the same usage.
+ffplayout allows the definition of a custom filter string. For this, the parameter **custom_filter** is available in the playout configuration under **processing**. The playlist can also contain a **custom_filter** parameter for each clip, with the same usage.
 
-The filter outputs should end with `[c_v_out]` for video filter, and `[c_a_out]` for audio filter. The filters will be apply on every clip and after the filters which unify the clips.
+The filter outputs should end with `[c_v_out]` for video filters and `[c_a_out]` for audio filters. The filters will be applied to every clip and after the filters that unify the clips.
 
-It is possible to apply only video or audio filters, or both. For a better understanding here some examples:
+It is possible to apply only video filters, only audio filters, or both. For a better understanding, here are some examples:
 
 #### Apply Gaussian blur and volume filter:
 
@@ -51,7 +51,7 @@ The **custom filter** from **config -> processing** and from **playlist** got ap
 
 ```mermaid
 flowchart LR
-   
+
     subgraph fileloop["file loop"]
         direction LR
         Input --> dec
@@ -84,7 +84,6 @@ custom_filter: "[v_in];movie=image_input.png:s=v,loop=loop=250.0:size=1:start=0,
 And here are the explanation for each filter:
 
 ```PYTHON
-
 # get input from video
 [v_in];
 

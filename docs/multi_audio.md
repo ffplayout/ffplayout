@@ -2,15 +2,15 @@
 
 **\* This is an experimental feature and more intended for advanced users. Use it with caution!**
 
-With _ffplayout_ you can output streams with multiple audio tracks, with some limitations:
-* Not all formats support multiple audio tracks. For example _flv/rtmp_ doesn't support it.
-* In your output parameters you need to set the correct mapping.
+With _ffplayout_, you can output streams with multiple audio tracks, with some limitations:
+* Not all formats support multiple audio tracks. For example, _flv/rtmp_ doesn't support it.
+* In your output parameters, you need to set the correct mapping.
 
-ffmpeg filter usage and encoding parameters can become very complex, so it can happen that not every combination works out of the box.
+ffmpeg filter usage and encoding parameters can become very complex, so it may happen that not every combination works out of the box.
 
-To get e better idea of what works, you can examine [engin_cmd](../tests/src/engine_cmd.rs).
+To get a better idea of what works, you can examine [engine_cmd](../tests/src/engine_cmd.rs).
 
-If you just output a single video stream with multiple audio tracks, let's say with `srt://` protocol, you only need to set in you config under `processing:` the correct `audio_tracks:` count.
+If you are outputting a single video stream with multiple audio tracks, for example with the `srt://` protocol, you only need to set the correct `audio_tracks:` count in your config under `processing:`.
 
 For multiple video resolutions and multiple audio tracks, the parameters could look like:
 
