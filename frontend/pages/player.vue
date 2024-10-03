@@ -245,10 +245,6 @@ const indexStore = useIndex()
 const mediaStore = useMedia()
 const playlistStore = usePlaylist()
 
-useHead({
-    title: `${t('button.player')} | ffplayout`,
-})
-
 const { listDate, firstLoad } = storeToRefs(usePlaylist())
 
 const beforeDayStart = ref(false)
@@ -281,6 +277,17 @@ const newSource = ref({
     audio: '',
     uid: '',
 } as PlaylistItem)
+
+useHead({
+    title: `${t('button.player')} | ffplayout`,
+    bodyAttrs: {
+        class: computed(() => {
+            if (showPlaylistGenerator.value) return 'overflow-hidden'
+
+            return ''
+        }),
+    },
+})
 
 onBeforeMount(() => {
     const currentTime = $dayjs().utcOffset(configStore.utcOffset)

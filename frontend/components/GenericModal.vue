@@ -1,6 +1,6 @@
 <template>
-    <div v-if="show" class="z-50 fixed top-0 bottom-0 left-0 right-0 flex justify-center items-center bg-black/30 overflow-auto m-auto max-h-screen space-y-1">
-        <div class="flex flex-col bg-base-100 min-w-[400px] max-w-[90%] h-auto rounded-md p-5 shadow-xl">
+    <div v-if="show" class="z-50 fixed inset-0 flex justify-center items-start bg-black/30 overflow-auto">
+        <div class="flex flex-col bg-base-100 min-w-[300px] w-[400px] max-w-[90%] rounded-md p-5 shadow-xl my-5">
             <div class="inline-block">
                 <div class="flex gap-2">
                     <div class="font-bold text-lg truncate flex-1 w-0">{{ title }}</div>
@@ -32,7 +32,7 @@
 <script setup lang="ts">
 const { t } = useI18n()
 
-defineProps({
+const props = defineProps({
     title: {
         type: String,
         default: '',
@@ -54,6 +54,16 @@ defineProps({
     hideButtons: {
         type: Boolean,
         default: false,
+    },
+})
+
+useHead({
+    bodyAttrs: {
+        class: computed(() => {
+            if (props.show) return 'overflow-hidden'
+
+            return ''
+        }),
     },
 })
 </script>

@@ -140,6 +140,7 @@ export default {
     },
     log: {
         download: 'Download log file',
+        reload: 'Reload',
     },
     advanced: {
         title: 'Advanced Configuration',

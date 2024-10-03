@@ -140,6 +140,7 @@ export default {
     },
     log: {
         download: 'Baixar arquivo de registro',
+        reload: 'Recarregar',
     },
     advanced: {
         title: 'Configurações avançadas',
