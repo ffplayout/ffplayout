@@ -4,13 +4,13 @@
             <div v-if="props.error?.statusCode === 404">
                 <h1 class="text-center text-6xl">404</h1>
                 <p class="text-center font-bold mt-6">
-                    {{ $t('error.notFound') }}
+                    {{ t('error.notFound') }}
                 </p>
             </div>
             <div v-else-if="props.error?.statusCode === 500">
                 <h1 class="text-center text-6xl">{{ props.error.statusCode }}</h1>
                 <p class="text-center font-bold mt-6">
-                    {{ $t('error.serverError') }}
+                    {{ t('error.serverError') }}
                 </p>
             </div>
         </div>
@@ -19,6 +19,7 @@
 
 <script setup lang="ts">
 import type { NuxtError } from '#app'
+const { t } = useI18n()
 const localePath = useLocalePath()
 
 const props = defineProps({
