@@ -536,7 +536,9 @@ fn timed_source(
         if config.general.stop_threshold > 0.0
             && shifted_delta.abs() > config.general.stop_threshold
         {
-            error!(target: Target::file_mail(), channel = id; "Clip begin out of sync for <yellow>{delta:.3}</> seconds.");
+            if manager.is_alive.load(Ordering::SeqCst) {
+                error!(target: Target::file_mail(), channel = id; "Clip begin out of sync for <yellow>{delta:.3}</> seconds.");
+            }
 
             new_node.cmd = None;
 
