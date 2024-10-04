@@ -1,9 +1,9 @@
 <template>
     <div
-        class="z-50 fixed inset-0 flex justify-center items-start bg-black/30 overflow-auto"
+        class="z-50 fixed inset-0 flex justify-center bg-black/30 overflow-auto py-5"
     >
         <div
-            class="relative flex flex-col bg-base-100 w-[800px] min-w-[300px] max-w-[90vw] h-[680px] my-5 rounded-md p-5 shadow-xl"
+            class="relative flex flex-col bg-base-100 w-[800px] min-w-[300px] max-w-[90vw] h-[680px] my-auto rounded-md p-5 shadow-xl"
         >
             <div class="font-bold text-lg">{{ t('player.generateProgram') }}</div>
 

@@ -12,7 +12,7 @@ use sqlx::{sqlite::SqliteRow, FromRow, Pool, Row, Sqlite};
 use crate::db::handles;
 use crate::utils::config::PlayoutConfig;
 
-#[derive(Clone, Debug, Deserialize, Serialize, sqlx::FromRow)]
+#[derive(Clone, Default, Debug, Deserialize, Serialize, sqlx::FromRow)]
 pub struct GlobalSettings {
     pub id: i32,
     pub secret: Option<String>,
@@ -21,6 +21,10 @@ pub struct GlobalSettings {
     pub public: String,
     pub storage: String,
     pub shared: bool,
+    pub mail_smtp: String,
+    pub mail_user: String,
+    pub mail_password: String,
+    pub mail_starttls: bool,
 }
 
 impl GlobalSettings {
@@ -37,6 +41,10 @@ impl GlobalSettings {
                 public: String::new(),
                 storage: String::new(),
                 shared: false,
+                mail_smtp: String::new(),
+                mail_user: String::new(),
+                mail_password: String::new(),
+                mail_starttls: false,
             },
         }
     }
@@ -264,11 +272,7 @@ pub struct Configuration {
 
     pub mail_help: String,
     pub mail_subject: String,
-    pub mail_smtp: String,
-    pub mail_addr: String,
-    pub mail_pass: String,
     pub mail_recipient: String,
-    pub mail_starttls: bool,
     pub mail_level: String,
     pub mail_interval: i64,
 
@@ -348,10 +352,6 @@ impl Configuration {
             general_stop_threshold: config.general.stop_threshold,
             mail_help: config.mail.help_text,
             mail_subject: config.mail.subject,
-            mail_smtp: config.mail.smtp_server,
-            mail_starttls: config.mail.starttls,
-            mail_addr: config.mail.sender_addr,
-            mail_pass: config.mail.sender_pass,
             mail_recipient: config.mail.recipient,
             mail_level: config.mail.mail_level.to_string(),
             mail_interval: config.mail.interval,
