@@ -35,13 +35,13 @@
     "@nuxtjs/tailwindcss": "^6.12.1",
     "@types/lodash-es": "^4.17.12",
     "@types/video.js": "^7.3.58",
-    "daisyui": "^4.12.10",
+    "daisyui": "^4.12.11",
     "mini-svg-data-uri": "^1.4.4",
     "postcss": "^8.4.47",
     "postcss-loader": "^8.1.1",
     "sass": "^1.79.4",
     "sass-loader": "^16.0.2",
-    "vue": "^3.5.10",
+    "vue": "^3.5.11",
     "vue-router": "^4.4.5"
   }
 }
