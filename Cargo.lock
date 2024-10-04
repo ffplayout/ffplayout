@@ -1215,7 +1215,7 @@ checksum = "e8c02a5121d4ea3eb16a80748c74f5549a5665e4c21333c6098f283870fbdea6"
 
 [[package]]
 name = "ffplayout"
-version = "0.24.0-beta5"
+version = "0.24.0-rc1"
 dependencies = [
  "actix-files",
  "actix-multipart",
@@ -1324,9 +1324,9 @@ dependencies = [
 
 [[package]]
 name = "flexi_logger"
-version = "0.29.1"
+version = "0.29.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4aecae2cdf1c33e1c83896a37cc155e207a6358c915795932c338126e8eb3392"
+checksum = "a250587a211932896a131f214a4f64c047b826ce072d2018764e5ff5141df8fa"
 dependencies = [
  "chrono",
  "glob",
@@ -3674,7 +3674,7 @@ dependencies = [
 
 [[package]]
 name = "tests"
-version = "0.24.0-beta5"
+version = "0.24.0-rc1"
 dependencies = [
  "actix-rt",
  "actix-test",

@@ -396,7 +396,7 @@ pub fn mail_queue(mail_queues: Arc<Mutex<Vec<Arc<Mutex<MailQueue>>>>>) {
                         poisoned.into_inner()
                     });
 
-                    let expire = round_to_nearest_ten(q_lock.config.interval);
+                    let expire = round_to_nearest_ten(q_lock.config.interval.max(30));
 
                     if interval % expire == 0 && !q_lock.is_empty() {
                         if q_lock.config.recipient.contains('@') {

@@ -15,7 +15,7 @@ use tokio::fs;
 
 use crate::db::{
     handles,
-    models::{Channel, GlobalSettings, User},
+    models::{Channel, User},
 };
 use crate::utils::{
     advanced_config::AdvancedConfig,
@@ -59,6 +59,18 @@ pub struct Args {
     #[clap(long, env, help_heading = Some("Initial Setup"), help = "Storage root path")]
     pub storage: Option<String>,
 
+    #[clap(long, env, help_heading = Some("Initial Setup"), help = "SMTP server for system mails")]
+    pub mail_smtp: Option<String>,
+
+    #[clap(long, env, help_heading = Some("Initial Setup"), help = "Mail user for system mails")]
+    pub mail_user: Option<String>,
+
+    #[clap(long, env, help_heading = Some("Initial Setup"), help = "Mail password for system mails")]
+    pub mail_password: Option<String>,
+
+    #[clap(long, env, help_heading = Some("Initial Setup"), help = "Use TLS for system mails")]
+    pub mail_starttls: bool,
+
     #[clap(
         long,
         env,
@@ -76,8 +88,8 @@ pub struct Args {
     #[clap(long, help_heading = Some("Initial Setup / Playlist"), help = "Path to playlist, or playlist root folder.")]
     pub playlists: Option<String>,
 
-    #[clap(short, long, help_heading = Some("General"), help = "Add a global admin")]
-    pub add: bool,
+    #[clap(long, help_heading = Some("General"), help = "Add or update a global admin use")]
+    pub user_set: bool,
 
     #[clap(long, env, help_heading = Some("General"), help = "Path to database file")]
     pub db: Option<PathBuf>,
@@ -240,15 +252,10 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
         let mut logging = String::new();
         let mut public = String::new();
         let mut shared_store = String::new();
-        let mut global = GlobalSettings {
-            id: 0,
-            secret: None,
-            logs: String::new(),
-            playlists: String::new(),
-            public: String::new(),
-            storage: String::new(),
-            shared: false,
-        };
+        let mut mail_smtp = String::new();
+        let mut mail_user = String::new();
+        let mut mail_starttls = String::new();
+        let mut global = handles::select_global(pool).await.map_err(|_| 1)?;
 
         if check_user.unwrap_or_default().is_empty() {
             global_user(&mut args);
@@ -257,94 +264,156 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
         if let Some(st) = args.storage {
             global.storage = st;
         } else {
-            print!("Storage path [/var/lib/ffplayout/tv-media]: ");
+            print!("Storage path [{}]: ", global.storage);
             stdout().flush().unwrap();
-
             stdin()
                 .read_line(&mut storage)
                 .expect("Did not enter a correct path?");
 
-            global.storage = if storage.trim().is_empty() {
-                "/var/lib/ffplayout/tv-media".to_string()
-            } else {
-                storage
+            if !storage.trim().is_empty() {
+                global.storage = storage
                     .trim()
                     .trim_matches(|c| c == '"' || c == '\'')
-                    .to_string()
-            };
+                    .to_string();
+            }
         }
 
         if let Some(pl) = args.playlists {
             global.playlists = pl
         } else {
-            print!("Playlist path [/var/lib/ffplayout/playlists]: ");
+            print!("Playlist path [{}]: ", global.playlists);
             stdout().flush().unwrap();
-
             stdin()
                 .read_line(&mut playlist)
                 .expect("Did not enter a correct path?");
 
-            global.playlists = if playlist.trim().is_empty() {
-                "/var/lib/ffplayout/playlists".to_string()
-            } else {
-                playlist
+            if !playlist.trim().is_empty() {
+                global.playlists = playlist
                     .trim()
                     .trim_matches(|c| c == '"' || c == '\'')
-                    .to_string()
-            };
+                    .to_string();
+            }
         }
 
         if let Some(lp) = args.logs {
             global.logs = lp;
         } else {
-            print!("Logging path [/var/log/ffplayout]: ");
+            print!("Logging path [{}]: ", global.logs);
             stdout().flush().unwrap();
-
             stdin()
                 .read_line(&mut logging)
                 .expect("Did not enter a correct path?");
 
-            global.logs = if logging.trim().is_empty() {
-                "/var/log/ffplayout".to_string()
-            } else {
-                logging
+            if !logging.trim().is_empty() {
+                global.logs = logging
                     .trim()
                     .trim_matches(|c| c == '"' || c == '\'')
-                    .to_string()
+                    .to_string();
             }
         }
 
         if let Some(p) = args.public {
             global.public = p;
         } else {
-            print!("Public (HLS) path [/usr/share/ffplayout/public]: ");
+            print!("Public (HLS) path [{}]: ", global.public);
             stdout().flush().unwrap();
-
             stdin()
                 .read_line(&mut public)
                 .expect("Did not enter a correct path?");
 
-            global.public = if public.trim().is_empty() {
-                "/usr/share/ffplayout/public".to_string()
-            } else {
-                public
+            if !public.trim().is_empty() {
+                global.public = public
                     .trim()
                     .trim_matches(|c| c == '"' || c == '\'')
-                    .to_string()
-            };
+                    .to_string();
+            }
         }
 
         if args.shared {
             global.shared = true;
         } else {
-            print!("Shared storage [Y/n]: ");
+            print!(
+                "Shared storage [{}]: ",
+                if global.shared { "yes" } else { "no" }
+            );
             stdout().flush().unwrap();
-
             stdin()
                 .read_line(&mut shared_store)
                 .expect("Did not enter a yes or no?");
 
-            global.shared = shared_store.trim().to_lowercase().starts_with('y');
+            if !shared_store.trim().is_empty() {
+                global.shared = shared_store.trim().to_lowercase().starts_with('y');
+            }
+        }
+
+        if let Some(smtp) = args.mail_smtp {
+            global.mail_smtp = smtp;
+        } else {
+            print!("SMTP server [{}]: ", global.mail_smtp);
+            stdout().flush().unwrap();
+            stdin()
+                .read_line(&mut mail_smtp)
+                .expect("Did not enter a correct SMTP server?");
+
+            if !mail_smtp.trim().is_empty() {
+                global.mail_smtp = mail_smtp
+                    .trim()
+                    .trim_matches(|c| c == '"' || c == '\'')
+                    .to_string();
+            }
+        }
+
+        if let Some(user) = args.mail_user {
+            global.mail_user = user;
+        } else {
+            print!("SMTP user [{}]: ", global.mail_user);
+            stdout().flush().unwrap();
+            stdin()
+                .read_line(&mut mail_user)
+                .expect("Did not enter a correct SMTP user?");
+
+            if !mail_user.trim().is_empty() {
+                global.mail_user = mail_user
+                    .trim()
+                    .trim_matches(|c| c == '"' || c == '\'')
+                    .to_string();
+            }
+        }
+
+        if let Some(pass) = args.mail_password {
+            global.mail_password = pass;
+        } else {
+            print!(
+                "SMTP password [{}]: ",
+                if global.mail_password.is_empty() {
+                    ""
+                } else {
+                    "********"
+                }
+            );
+            stdout().flush().unwrap();
+            let password = read_password().unwrap_or_default();
+
+            if !password.trim().is_empty() {
+                global.mail_password = password.trim().to_string();
+            }
+        }
+
+        if args.mail_starttls {
+            global.mail_starttls = true;
+        } else {
+            print!(
+                "SMTP use TLS [{}]: ",
+                if global.mail_starttls { "yes" } else { "no" }
+            );
+            stdout().flush().unwrap();
+            stdin()
+                .read_line(&mut mail_starttls)
+                .expect("Did not enter a yes or no?");
+
+            if !mail_starttls.trim().is_empty() {
+                global.mail_starttls = mail_starttls.trim().to_lowercase().starts_with('y');
+            }
         }
 
         if let Err(e) = handles::update_global(pool, global.clone()).await {
@@ -385,7 +454,7 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
         }
 
         println!("\nSet global settings done...");
-    } else if args.add {
+    } else if args.user_set {
         global_user(&mut args);
     }
 
@@ -404,12 +473,12 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
             token: None,
         };
 
-        if let Err(e) = handles::insert_user(pool, ff_user).await {
+        if let Err(e) = handles::insert_or_update_user(pool, ff_user).await {
             eprintln!("{e}");
             error_code = 1;
         };
 
-        println!("Create global admin user \"{username}\" done...");
+        println!("Create/update global admin user \"{username}\" done...");
     }
 
     if ARGS.list_channels {

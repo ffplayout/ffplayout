@@ -43,12 +43,13 @@ pub const FFMPEG_IGNORE_ERRORS: [&str; 13] = [
     "frame size not set",
 ];
 
-pub const FFMPEG_UNRECOVERABLE_ERRORS: [&str; 5] = [
+pub const FFMPEG_UNRECOVERABLE_ERRORS: [&str; 6] = [
     "Address already in use",
     "Invalid argument",
     "Numerical result",
     "Error initializing complex filters",
     "Error while decoding stream #0:0: Invalid data found when processing input",
+    "Unrecognized option",
 ];
 
 #[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
@@ -239,9 +240,13 @@ impl General {
 pub struct Mail {
     pub help_text: String,
     pub subject: String,
+    #[serde(skip_serializing, skip_deserializing)]
     pub smtp_server: String,
+    #[serde(skip_serializing, skip_deserializing)]
     pub starttls: bool,
+    #[serde(skip_serializing, skip_deserializing)]
     pub sender_addr: String,
+    #[serde(skip_serializing, skip_deserializing)]
     pub sender_pass: String,
     pub recipient: String,
     pub mail_level: Level,
@@ -249,14 +254,14 @@ pub struct Mail {
 }
 
 impl Mail {
-    fn new(config: &models::Configuration) -> Self {
+    fn new(global: &models::GlobalSettings, config: &models::Configuration) -> Self {
         Self {
             help_text: config.mail_help.clone(),
             subject: config.mail_subject.clone(),
-            smtp_server: config.mail_smtp.clone(),
-            starttls: config.mail_starttls,
-            sender_addr: config.mail_addr.clone(),
-            sender_pass: config.mail_pass.clone(),
+            smtp_server: global.mail_smtp.clone(),
+            starttls: global.mail_starttls,
+            sender_addr: global.mail_user.clone(),
+            sender_pass: global.mail_password.clone(),
             recipient: config.mail_recipient.clone(),
             mail_level: string_to_log_level(config.mail_level.clone()),
             interval: config.mail_interval,
@@ -570,9 +575,7 @@ fn default_track_index() -> i32 {
 
 impl PlayoutConfig {
     pub async fn new(pool: &Pool<Sqlite>, channel_id: i32) -> Result<Self, ServiceError> {
-        let global = handles::select_global(pool)
-            .await
-            .expect("Can't read globals");
+        let global = handles::select_global(pool).await?;
         let channel = handles::select_channel(pool, &channel_id).await?;
         let config = handles::select_configuration(pool, channel_id).await?;
         let adv_config = handles::select_advanced_configuration(pool, channel_id).await?;
@@ -580,7 +583,7 @@ impl PlayoutConfig {
         let channel = Channel::new(&global, channel);
         let advanced = AdvancedConfig::new(adv_config);
         let general = General::new(&config);
-        let mail = Mail::new(&config);
+        let mail = Mail::new(&global, &config);
         let logging = Logging::new(&config);
         let mut processing = Processing::new(&config);
         let mut ingest = Ingest::new(&config);
@@ -919,11 +922,27 @@ pub async fn get_config(
     if args.shared {
         // config.channel.shared could be true already,
         // so should not be overridden with false when args.shared is not set
-        config.channel.shared = args.shared
+        config.channel.shared = true
     }
 
     if let Some(volume) = args.volume {
         config.processing.volume = volume;
+    }
+
+    if let Some(mail_smtp) = args.mail_smtp {
+        config.mail.smtp_server = mail_smtp;
+    }
+
+    if let Some(mail_user) = args.mail_user {
+        config.mail.sender_addr = mail_user;
+    }
+
+    if let Some(mail_password) = args.mail_password {
+        config.mail.sender_pass = mail_password;
+    }
+
+    if args.mail_starttls {
+        config.mail.starttls = true;
     }
 
     Ok(config)

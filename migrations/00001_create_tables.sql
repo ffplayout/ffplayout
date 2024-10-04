@@ -10,6 +10,10 @@ CREATE TABLE
         public TEXT NOT NULL DEFAULT "/usr/share/ffplayout/public",
         storage TEXT NOT NULL DEFAULT "/var/lib/ffplayout/tv-media",
         shared INTEGER NOT NULL DEFAULT 0,
+        mail_smtp TEXT NOT NULL DEFAULT "mail.example.org",
+        mail_user TEXT NOT NULL DEFAULT "ffplayout@example.org",
+        mail_password TEXT NOT NULL DEFAULT "",
+        mail_starttls INTEGER NULL DEFAULT 0,
         UNIQUE (secret)
     );
 
@@ -60,7 +64,7 @@ CREATE TABLE
         password TEXT NOT NULL,
         role_id INTEGER NOT NULL DEFAULT 3,
         FOREIGN KEY (role_id) REFERENCES roles (id) ON UPDATE SET NULL ON DELETE SET DEFAULT,
-        UNIQUE (mail, username)
+        UNIQUE (username)
     );
 
 CREATE TABLE
@@ -80,13 +84,9 @@ CREATE TABLE
         channel_id INTEGER NOT NULL DEFAULT 1,
         general_help TEXT NOT NULL DEFAULT "Sometimes it can happen that a file is corrupt but still playable. This can produce a streaming error for all following files. The only solution in this case is to stop ffplayout and start it again.\n'stop_threshold' stops ffplayout if it is asynchronous in time above this value. A number below 3 can cause unexpected errors.",
         general_stop_threshold REAL NOT NULL DEFAULT 11.0,
-        mail_help TEXT NOT NULL DEFAULT "Send error messages to an email address, such as missing playlist, invalid JSON format, or missing clip path. Leave the recipient blank if you don't need this.\n'mail_level' can be INFO, WARNING, or ERROR.\n'interval' refers to the number of seconds until a new email is sent; the value must be in increments of 10.",
+        mail_help TEXT NOT NULL DEFAULT "Send error messages to an email address, such as missing clips, missing or invalid playlist format, etc.. Leave the recipient blank if you don't need this.\n'mail_level' can be INFO, WARNING, or ERROR.\n'interval' refers to the number of seconds until a new email is sent; the value must be in increments of 10 and not lower then 30 seconds.",
         mail_subject TEXT NOT NULL DEFAULT "Playout Error",
-        mail_smtp TEXT NOT NULL DEFAULT "mail.example.org",
-        mail_addr TEXT NOT NULL DEFAULT "ffplayout@example.org",
-        mail_pass TEXT NOT NULL DEFAULT "",
         mail_recipient TEXT NOT NULL DEFAULT "",
-        mail_starttls INTEGER NOT NULL DEFAULT 0,
         mail_level TEXT NOT NULL DEFAULT "ERROR",
         mail_interval INTEGER NOT NULL DEFAULT 120,
         logging_help TEXT NOT NULL DEFAULT "'ffmpeg_level/ingest_level' can be INFO, WARNING, or ERROR.\n'detect_silence' logs an error message if the audio line is silent for 15 seconds during the validation process.\n'ignore' allows logging to ignore strings that contain matched lines; the format is a semicolon-separated list.",
@@ -213,7 +213,7 @@ INSERT INTO
 VALUES
     (
         'Default',
-        'Wellcome to ffplayout messenger!',
+        'Welcome to ffplayout messenger!',
         '(w-text_w)/2',
         '(h-text_h)/2',
         '24',
