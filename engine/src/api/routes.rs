@@ -946,6 +946,14 @@ pub async fn process_control(
     let manager = controllers.lock().unwrap().get(*id).unwrap();
     manager.list_init.store(true, Ordering::SeqCst);
 
+    if manager.is_processing.load(Ordering::SeqCst) {
+        return Err(ServiceError::Conflict(
+            "A command is already being processed, please wait".to_string(),
+        ));
+    }
+
+    manager.is_processing.store(true, Ordering::SeqCst);
+
     match proc.into_inner().command {
         ProcessCtl::Status => {
             if manager.is_alive.load(Ordering::SeqCst) {
@@ -973,6 +981,8 @@ pub async fn process_control(
             }
         }
     }
+
+    manager.is_processing.store(false, Ordering::SeqCst);
 
     Ok(web::Json("Success"))
 }

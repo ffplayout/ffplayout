@@ -35,7 +35,7 @@
     "@nuxtjs/tailwindcss": "^6.12.1",
     "@types/lodash-es": "^4.17.12",
     "@types/video.js": "^7.3.58",
-    "daisyui": "^4.12.11",
+    "daisyui": "^4.12.12",
     "mini-svg-data-uri": "^1.4.4",
     "postcss": "^8.4.47",
     "postcss-loader": "^8.1.1",

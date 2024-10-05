@@ -68,6 +68,7 @@ pub struct ChannelManager {
     pub ingest_is_running: Arc<AtomicBool>,
     pub is_terminated: Arc<AtomicBool>,
     pub is_alive: Arc<AtomicBool>,
+    pub is_processing: Arc<AtomicBool>,
     pub filter_chain: Option<Arc<Mutex<Vec<String>>>>,
     pub current_date: Arc<Mutex<String>>,
     pub list_init: Arc<AtomicBool>,
