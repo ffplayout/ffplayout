@@ -48,14 +48,14 @@
                 </div>
 
                 <div class="col-span-1 xs:col-span-2 p-1">
-                    <div class="w-full h-full bg-base-100 rounded flex items-center p-3 shadow">
-                        <div class="w-full h-full flex flex-col">
+                    <div class="w-full h-full bg-base-100 rounded flex items-center px-3 shadow">
+                        <div class="w-full h-full flex flex-col content-center">
                             <div v-if="playlistStore.ingestRuns" class="h-1/3 font-bold truncate">
                                 {{ t('control.ingest') }}
                             </div>
                             <div
                                 v-else
-                                class="h-1/3 font-bold text truncate"
+                                class="h-1/3 font-bold text truncate content-center leading-3"
                                 :class="{ 'text-base-content/60': playlistStore.current.category === 'advertisement' }"
                                 :title="playlistStore.current.title || filename(playlistStore.current.source)"
                             >
@@ -65,7 +65,7 @@
                                     t('control.noClip')
                                 }}
                             </div>
-                            <div class="grow">
+                            <div class="grow content-center leading-5">
                                 <strong>{{ t('player.duration') }}:</strong>
                                 {{ secToHMS(playlistStore.current.duration) }} | <strong>{{ t('player.in') }}:</strong>
                                 {{ secToHMS(playlistStore.current.in) }} |
@@ -76,8 +76,20 @@
                                     | <strong>{{ t('player.shift') }}:</strong>
                                     {{ secToHMS(playlistStore.shift) }}
                                 </template>
+                                <div>
+                                    <strong>{{ t('player.total') }}:</strong>
+                                    {{
+                                        secToHMS(
+                                            playlistStore.playlist.reduce(
+                                                (total, { in: seek, out }) => total + (out - seek),
+                                                0
+                                            )
+                                        )
+                                    }}
+                                </div>
                             </div>
-                            <div class="h-1/3">
+
+                            <div class="h-1/3 content-center">
                                 <progress
                                     class="progress progress-accent w-full"
                                     :value="
@@ -323,6 +335,8 @@ const controlProcess = throttle(async (state: string) => {
         method: 'POST',
         headers: { ...configStore.contentType, ...authStore.authHeader },
         body: JSON.stringify({ command: state }),
+    }).catch((e) => {
+        indexStore.msgAlert('error', e.data, 3)
     })
 }, 800)
 
@@ -339,6 +353,8 @@ const controlPlayout = throttle(async (state: string) => {
         method: 'POST',
         headers: { ...configStore.contentType, ...authStore.authHeader },
         body: JSON.stringify({ control: state }),
+    }).catch((e) => {
+        indexStore.msgAlert('error', e.data, 3)
     })
 }, 800)
 </script>

@@ -57,6 +57,7 @@ export default {
         play: 'Play',
         title: 'Title',
         duration: 'Duration',
+        total: 'Total',
         in: 'In',
         out: 'Out',
         ad: 'Ad',

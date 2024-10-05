@@ -57,6 +57,7 @@ export default {
         play: 'Play',
         title: 'Título',
         duration: 'Duração',
+        total: 'Total',
         in: 'Início',
         out: 'Fim',
         ad: 'Ad',
