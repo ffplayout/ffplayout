@@ -17,10 +17,6 @@ if [ ! -d "/usr/share/ffplayout/db" ]; then
     mkdir -p "/var/lib/ffplayout/playlists"
     mkdir -p "/var/lib/ffplayout/tv-media"
 
-    IP=$(hostname -I | cut -d ' ' -f1)
-
-    /usr/bin/ffplayout -i -d "${IP}:8787"
-
     chown -R ${sysUser}: "/usr/share/ffplayout"
     chown -R ${sysUser}: "/var/lib/ffplayout"
 fi
