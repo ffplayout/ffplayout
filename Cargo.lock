@@ -1215,7 +1215,7 @@ checksum = "e8c02a5121d4ea3eb16a80748c74f5549a5665e4c21333c6098f283870fbdea6"
 
 [[package]]
 name = "ffplayout"
-version = "0.24.0-rc1"
+version = "0.24.0-rc2"
 dependencies = [
  "actix-files",
  "actix-multipart",
@@ -3647,9 +3647,9 @@ dependencies = [
 
 [[package]]
 name = "sysinfo"
-version = "0.31.4"
+version = "0.32.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "355dbe4f8799b304b05e1b0f05fc59b2a18d36645cf169607da45bde2f69a1be"
+checksum = "e3b5ae3f4f7d64646c46c4cae4e3f01d1c5d255c7406fdd7c7f999a94e488791"
 dependencies = [
  "core-foundation-sys",
  "libc",
@@ -3674,7 +3674,7 @@ dependencies = [
 
 [[package]]
 name = "tests"
-version = "0.24.0-rc1"
+version = "0.24.0-rc2"
 dependencies = [
  "actix-rt",
  "actix-test",

@@ -183,13 +183,17 @@ async function onSubmitPlayout() {
             method: 'POST',
             headers: { ...configStore.contentType, ...authStore.authHeader },
             body: JSON.stringify({ command: 'status' }),
-        }).then(async (response: any) => {
-            if (response === 'active') {
-                showModal.value = true
-            }
-
-            await configStore.getPlayoutConfig()
         })
+            .then(async (response: any) => {
+                if (response === 'active') {
+                    showModal.value = true
+                }
+
+                await configStore.getPlayoutConfig()
+            })
+            .catch((e) => {
+                indexStore.msgAlert('error', e.data, 3)
+            })
     } else {
         indexStore.msgAlert('error', t('config.updatePlayoutFailed'), 2)
     }
@@ -203,6 +207,8 @@ async function restart(res: boolean) {
             method: 'POST',
             headers: { ...configStore.contentType, ...authStore.authHeader },
             body: JSON.stringify({ command: 'restart' }),
+        }).catch((e) => {
+            indexStore.msgAlert('error', e.data, 3)
         })
     }
 
