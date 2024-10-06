@@ -956,6 +956,8 @@ pub async fn process_control(
 
     match proc.into_inner().command {
         ProcessCtl::Status => {
+            manager.is_processing.store(false, Ordering::SeqCst);
+
             if manager.is_alive.load(Ordering::SeqCst) {
                 return Ok(web::Json("active"));
             } else {
