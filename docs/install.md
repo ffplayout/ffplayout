@@ -26,3 +26,4 @@ ffplayout provides ***.deb** and ***.rpm** packages, which makes it easier to in
 - Copy **assets/ffplayout.1.gz** to `/usr/share/man/man1/`
 - Copy the **public** folder to `/usr/share/ffplayout/`
 - Activate the service and run it: `systemctl enable --now ffplayout`
+- Initialize the defaults and add a global admin user: `sudo -u ffpu ffplayout -i`
