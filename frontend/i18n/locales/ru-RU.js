@@ -182,22 +182,32 @@ export default {
         output: 'Out',
         placeholderPass: 'Password',
         help: 'Help',
-        generalText: `Sometimes it can happen that a file is corrupted but still playable, this can cause a streaming error on all following files. The only way to fix this is to stop and restart ffplayout. Here we only say when to stop, the starting process is up to you. The best way is a systemd service on Linux.
-        'stop_threshold' will stop ffplayout if it is async in time above this value. A number less than 3 may cause unexpected errors.`,
-        rpcText: 'Запустите сервер JSON RPC, чтобы получить информацию о том, что воспроизводится, а также о некоторых функциях управления.',
-        mailText: `Отправлять сообщения об ошибках на адрес электронной почты, например об отсутствии списка воспроизведения; неверный формат json; отсутствует путь к клипу. Оставьте получателя пустым, если он вам не нужен. 'mail_level' может быть ИНФОРМАЦИЯ, ПРЕДУПРЕЖДЕНИЕ или ОШИБКА. 'interval' означает секунды до отправки нового письма.`,
-        logText: `If 'log_to_file' is true, log to file, if false, log to console. 'local_time' to false will set log timestamps to UTC. Path to /var/log/ only if you are running this as a daemon.
-        'level' can be DEBUG, INFO, WARNING, ERROR. 'ffmpeg_level' can be INFO, WARNING, ERROR. 'detect_silence' logs an error message if the audio line is silent for 15 seconds during the validation process.`,
-        processingText: `Default processing for all clips to make them unique. Mode can be Playlist or Folder. 'aspect' must be a float number. 'logo' is only used if the path exists.
-        'logo_scale' scales the logo to the target size, leave empty if no scaling is needed, format is 'width:height', for example '100:-1' for proportional scaling. With 'logo_opacity' you can make the logo transparent.
-        With 'audio_tracks' it is possible to configure how many audio tracks should be processed. 'audio_channels' can be used if the audio has more channels than just stereo. With 'logo_position' in 'x:y' format you set the logo position. With 'custom_filter' it is possible to apply additional filters. The filter outputs should end with [c_v_out] for video filters and [c_a_out] for audio filters.`,
-        ingestText: `Запустите сервер для получения входящего потока. Этот поток будет переопределять обычную потоковую передачу до тех пор, пока она не будет завершена. Существует только очень простой механизм аутентификации, позволяющий проверить правильность имени потока. 'custom_filter' можно использовать так же, как в разделе "Настройки эфира".`,
-        playlistText: `'path' can be a path to a single file or a directory. For directory specify only the root folder, for example '/playlists', subdirectories will be read by the program. Subdirectories need this structure '/playlists/2018/01'.
-        'day_start' is the time at which the playlist should start, leave 'day_start' empty if the playlist should always start at the beginning. 'length' represents the target length of the playlist, if empty, real length will not be considered. 'infinit: true' works with single playlist file and loops it infinitely.`,
-        storageText: `Play ordered or random files from path. 'filler_clip' is for filling the end to reach 24 hours, it will loop when necessary. Set 'extensions' to search only for files with that extension. Set 'shuffle' to 'true' to select files randomly.`,
-        textText: `Overlay text in combination with libzmq for remote text manipulation. On Windows, the font file path must be 'C\\:/WINDOWS/fonts/DejaVuSans.ttf'. 'text_from_filename' activates text extraction from a filename. With 'style' you can set the drawtext parameters like position, color, etc. Post Text via API will override this. With 'regex' you can format the filename to get a title.`,
-        taskText: `Run an external program with a given media object. The media object is in json format and contains all the information about the current clip. The external program can be a script or a binary. or a binary, but should only run for a short time.`,
-        outputText: `The final playout compression. Adjust the settings according to your needs. 'mode' has the options 'desktop', 'hls', 'null', 'stream'. Use 'stream' and adjust the 'output_param:' settings if you want to stream to an rtmp/rtsp/srt/... server. In production don't serve hls playlist with ffpapi, use nginx or another web server!`,
+        generalHelp: `Sometimes it can happen that a file is corrupt but still playable. This can produce a streaming error for all following files. The only solution in this case is to stop ffplayout and start it again.
+        'stop_threshold' stops ffplayout if it is asynchronous in time above this value. A number below 3 can cause unexpected errors.`,
+        mailHelp: `Send error messages to an email address, such as missing clips, missing or invalid playlist format, etc.. Leave the recipient blank if you don't need this.
+        'mail_level' can be INFO, WARNING, or ERROR.
+        'interval' refers to the number of seconds until a new email is sent; the value must be in increments of 10 and not lower then 30 seconds.`,
+        logHelp: `'ffmpeg_level/ingest_level' can be INFO, WARNING, or ERROR.
+        'detect_silence' logs an error message if the audio line is silent for 15 seconds during the validation process.
+        'ignore' allows logging to ignore strings that contain matched lines; the format is a semicolon-separated list.`,
+        processingHelp: `Default processing for all clips ensures uniqueness. The mode can be either 'playlist' or 'folder'.
+        The 'aspect' parameter must be a float number.
+        The 'audio_tracks' parameter specifies how many audio tracks should be processed.'audio_channels' can be used if the audio has more channels than stereo.
+        The 'logo' is used only if the path exists; the path is relative to your storage folder.
+        'logo_scale' scales the logo to the target size. Leave it blank if no scaling is needed. The format is 'width:height', for example, '100:-1' for proportional scaling. The 'logo_opacity' option allows the logo to become transparent.'logo_position' is specified in the format 'x:y', which sets the logo's position.
+        With 'custom_filter', it is possible to apply additional filters. The filter outputs should end with [c_v_out] for video filters and [c_a_out] for audio filters.
+        'vtt_enable' can only be used in HLS mode, and only when *.vtt files with the same filename as the video file exist.`,
+        ingestHelp: `Run a server for an ingest stream. This stream will override the normal streaming until it is finished. There is only a very simple authentication mechanism, which checks if the stream name is correct.
+        'custom_filter' can be used in the same way as the one in the process section.`,
+        playlistHelp: `'day_start' indicates at what time the playlist should start; leave 'day_start' blank if the playlist should always start at the beginning. 'length' represents the target length of the playlist; when it is blank, the real length will not be considered.
+        'infinite: true' works with a single playlist file and loops it infinitely.`,
+        storageHelp: `'filler' is used to play in place of a missing file or to fill the remaining time to reach a total of 24 hours. It can be a file or folder and will loop when necessary.
+        'extensions' specifies which files to search for by this extension. Activate 'shuffle' to pick files randomly.`,
+        textHelp: `Overlay text in combination with libzmq for remote text manipulation. 'font' is a relative path to your storage folder.
+        'text_from_filename' activates the extraction of text from a filename. With 'style', you can define the drawtext parameters, such as position, color, etc. Posting text over the API will override this. With 'regex', you can format file names to extract a title from them.`,
+        taskHelp: `Run an external program with a given media object. The media object is in JSON format and contains all the information about the current clip. The external program can be a script or a binary, but it should only run for a short time.`,
+        outputHelp: `The final playout encoding, set the settings according to your needs. 'mode' has the options 'desktop', 'hls', 'null', and 'stream'. Use 'stream' and adjust the 'output_param:' settings when you want to stream to an RTMP/RTSP/SRT/... server.
+        In production, don't serve HLS playlists with ffplayout; use Nginx or another web server!`,
         restartTile: 'Перезапуск Playout',
         restartText: 'Перезапустить ffplayout для применения изменений?',
         updatePlayoutSuccess: 'Обновление конфигурации воспроизведения прошло успешно!',

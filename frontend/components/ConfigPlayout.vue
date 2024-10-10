@@ -9,6 +9,11 @@
             <template v-for="(item, key) in configStore.playout" :key="key">
                 <div class="text-xl pt-3 text-right">{{ setTitle(key.toString()) }}:</div>
                 <div class="md:pt-4">
+                    <label class="form-control mb-2">
+                        <div class="whitespace-pre-line">
+                            {{ setHelp(key.toString()) }}
+                        </div>
+                    </label>
                     <label
                         v-for="(prop, name) in (item as Record<string, any>)"
                         :key="name"
@@ -22,14 +27,11 @@
                                 !(name.toString() === 'path' && key.toString() === 'storage')
                             "
                         >
-                            <div v-if="name.toString() !== 'help_text'" class="label">
+                            <div class="label">
                                 <span class="label-text !text-md font-bold">{{ name }}</span>
                             </div>
-                            <div v-if="name.toString() === 'help_text'" class="whitespace-pre-line">
-                                {{ setHelp(key.toString(), prop) }}
-                            </div>
                             <input
-                                v-else-if="name.toString() === 'sender_pass'"
+                                v-if="name.toString() === 'sender_pass'"
                                 v-model="item[name]"
                                 type="password"
                                 :placeholder="t('config.placeholderPass')"
@@ -141,32 +143,33 @@ function setTitle(input: string): string {
     }
 }
 
-function setHelp(key: string, text: string): string {
+function setHelp(key: string): string {
+    console.log('key:', key)
     switch (key) {
         case 'general':
-            return t('config.generalText')
+            return t('config.generalHelp')
         case 'rpc_server':
-            return t('config.rpcText')
+            return t('config.rpcHelp')
         case 'mail':
-            return t('config.mailText')
+            return t('config.mailHelp')
         case 'logging':
-            return t('config.logText')
+            return t('config.logHelp')
         case 'processing':
-            return t('config.processingText')
+            return t('config.processingHelp')
         case 'ingest':
-            return t('config.ingestText')
+            return t('config.ingestHelp')
         case 'playlist':
-            return t('config.playlistText')
+            return t('config.playlistHelp')
         case 'storage':
-            return t('config.storageText')
+            return t('config.storageHelp')
         case 'text':
-            return t('config.textText')
+            return t('config.textHelp')
         case 'task':
-            return t('config.taskText')
+            return t('config.taskHelp')
         case 'output':
-            return t('config.outputText')
+            return t('config.outputHelp')
         default:
-            return text
+            return ''
     }
 }
 

@@ -199,7 +199,6 @@ impl Channel {
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct General {
-    pub help_text: String,
     #[serde(skip_serializing, skip_deserializing)]
     pub id: i32,
     #[serde(skip_serializing, skip_deserializing)]
@@ -222,7 +221,6 @@ pub struct General {
 impl General {
     fn new(config: &models::Configuration) -> Self {
         Self {
-            help_text: config.general_help.clone(),
             id: config.id,
             channel_id: config.channel_id,
             stop_threshold: config.general_stop_threshold,
@@ -238,7 +236,6 @@ impl General {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Mail {
-    pub help_text: String,
     pub subject: String,
     #[serde(skip_serializing, skip_deserializing)]
     pub smtp_server: String,
@@ -256,7 +253,6 @@ pub struct Mail {
 impl Mail {
     fn new(global: &models::GlobalSettings, config: &models::Configuration) -> Self {
         Self {
-            help_text: config.mail_help.clone(),
             subject: config.mail_subject.clone(),
             smtp_server: global.mail_smtp.clone(),
             starttls: global.mail_starttls,
@@ -272,7 +268,6 @@ impl Mail {
 impl Default for Mail {
     fn default() -> Self {
         Mail {
-            help_text: String::default(),
             subject: String::default(),
             smtp_server: String::default(),
             starttls: bool::default(),
@@ -287,7 +282,6 @@ impl Default for Mail {
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct Logging {
-    pub help_text: String,
     pub ffmpeg_level: String,
     pub ingest_level: String,
     pub detect_silence: bool,
@@ -297,7 +291,6 @@ pub struct Logging {
 impl Logging {
     fn new(config: &models::Configuration) -> Self {
         Self {
-            help_text: config.logging_help.clone(),
             ffmpeg_level: config.logging_ffmpeg_level.clone(),
             ingest_level: config.logging_ingest_level.clone(),
             detect_silence: config.logging_detect_silence,
@@ -312,7 +305,6 @@ impl Logging {
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct Processing {
-    pub help_text: String,
     pub mode: ProcessMode,
     pub audio_only: bool,
     pub copy_audio: bool,
@@ -345,7 +337,6 @@ pub struct Processing {
 impl Processing {
     fn new(config: &models::Configuration) -> Self {
         Self {
-            help_text: config.processing_help.clone(),
             mode: ProcessMode::new(&config.processing_mode.clone()),
             audio_only: config.processing_audio_only,
             audio_track_index: config.processing_audio_track_index,
@@ -374,7 +365,6 @@ impl Processing {
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct Ingest {
-    pub help_text: String,
     pub enable: bool,
     pub input_param: String,
     pub custom_filter: String,
@@ -385,7 +375,6 @@ pub struct Ingest {
 impl Ingest {
     fn new(config: &models::Configuration) -> Self {
         Self {
-            help_text: config.ingest_help.clone(),
             enable: config.ingest_enable,
             input_param: config.ingest_param.clone(),
             custom_filter: config.ingest_filter.clone(),
@@ -396,7 +385,6 @@ impl Ingest {
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct Playlist {
-    pub help_text: String,
     pub day_start: String,
     #[serde(skip_serializing, skip_deserializing)]
     pub start_sec: Option<f64>,
@@ -409,7 +397,6 @@ pub struct Playlist {
 impl Playlist {
     fn new(config: &models::Configuration) -> Self {
         Self {
-            help_text: config.playlist_help.clone(),
             day_start: config.playlist_day_start.clone(),
             start_sec: None,
             length: config.playlist_length.clone(),
@@ -421,7 +408,6 @@ impl Playlist {
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct Storage {
-    pub help_text: String,
     #[serde(skip_serializing, skip_deserializing)]
     pub path: PathBuf,
     #[serde(skip_serializing, skip_deserializing)]
@@ -438,7 +424,6 @@ pub struct Storage {
 impl Storage {
     fn new(config: &models::Configuration, path: PathBuf, shared_storage: bool) -> Self {
         Self {
-            help_text: config.storage_help.clone(),
             path,
             paths: vec![],
             filler: config.storage_filler.clone(),
@@ -456,7 +441,6 @@ impl Storage {
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct Text {
-    pub help_text: String,
     pub add_text: bool,
     #[serde(skip_serializing, skip_deserializing)]
     pub node_pos: Option<usize>,
@@ -476,7 +460,6 @@ pub struct Text {
 impl Text {
     fn new(config: &models::Configuration) -> Self {
         Self {
-            help_text: config.text_help.clone(),
             add_text: config.text_add,
             node_pos: None,
             zmq_stream_socket: None,
@@ -492,7 +475,6 @@ impl Text {
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct Task {
-    pub help_text: String,
     pub enable: bool,
     pub path: PathBuf,
 }
@@ -500,7 +482,6 @@ pub struct Task {
 impl Task {
     fn new(config: &models::Configuration) -> Self {
         Self {
-            help_text: config.task_help.clone(),
             enable: config.task_enable,
             path: PathBuf::from(config.task_path.clone()),
         }
@@ -509,7 +490,6 @@ impl Task {
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct Output {
-    pub help_text: String,
     pub mode: OutputMode,
     pub output_param: String,
     #[serde(skip_serializing, skip_deserializing)]
@@ -523,7 +503,6 @@ pub struct Output {
 impl Output {
     fn new(config: &models::Configuration) -> Self {
         Self {
-            help_text: config.output_help.clone(),
             mode: OutputMode::new(&config.output_mode),
             output_param: config.output_param.clone(),
             output_count: 0,
