@@ -208,7 +208,6 @@ export default {
         taskHelp: `Execute um programa externo com um objeto de mídia fornecido. O objeto de mídia está no formato JSON e contém todas as informações sobre o clipe atual. O programa externo pode ser um script ou um binário, mas deve ser executado por um curto período de tempo.`,
         outputHelp: `A codificação final do playout, ajuste as configurações conforme suas necessidades. 'mode' tem as opções 'desktop', 'hls', 'null' e 'stream'. Use 'stream' e ajuste as configurações 'output_param:' quando quiser transmitir para um servidor RTMP/RTSP/SRT/... .
         Em produção, não sirva playlists HLS com ffplayout; use Nginx ou outro servidor web!`,
-
         restartTile: 'Reiniciar Playout',
         restartText: 'Reiniciar o ffplayout para aplicar as alterações?',
         updatePlayoutSuccess: 'Sucesso na atualização da configuração do playout!',
