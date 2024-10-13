@@ -1,4 +1,5 @@
 import type { JwtPayload } from 'jwt-decode'
+import type { PlayoutConfig, Playlist as Ply } from '~/types/playout_config'
 
 export {}
 
@@ -7,6 +8,15 @@ declare global {
         id: number
         channel: number
         role: string
+    }
+
+    interface PlaylistExt extends Ply {
+        startInSec: number,
+        lengthInSec: number
+    }
+
+    interface PlayoutConfigExt extends PlayoutConfig {
+        playlist: PlaylistExt
     }
 
     interface LoginObj {

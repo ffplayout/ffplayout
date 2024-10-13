@@ -57,7 +57,7 @@
                 <i class="bi-files" />
             </button>
             <button
-                v-if="!configStore.playout.playlist.loop"
+                v-if="!configStore.playout.playlist.infinit"
                 class="btn btn-sm btn-primary join-item"
                 :title="t('player.loop')"
                 @click="loopClips()"

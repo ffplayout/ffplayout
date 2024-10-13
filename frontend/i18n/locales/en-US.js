@@ -182,23 +182,23 @@ export default {
         output: 'Output',
         placeholderPass: 'Password',
         help: 'Help',
-        generalHelp: `Sometimes it can happen that a file is corrupt but still playable. This can produce a streaming error for all following files. The only solution in this case is to stop ffplayout and start it again.
-        'stop_threshold' stops ffplayout if it is asynchronous in time above this value. A number below 3 can cause unexpected errors.`,
-        mailHelp: `Send error messages to an email address, such as missing clips, missing or invalid playlist format, etc.. Leave the recipient blank if you don't need this.
-        'mail_level' can be INFO, WARNING, or ERROR.
-        'interval' refers to the number of seconds until a new email is sent; the value must be in increments of 10 and not lower then 30 seconds.`,
-        logHelp: `'ffmpeg_level/ingest_level' can be INFO, WARNING, or ERROR.
-        'detect_silence' logs an error message if the audio line is silent for 15 seconds during the validation process.
-        'ignore' allows logging to ignore strings that contain matched lines; the format is a semicolon-separated list.`,
+        generalHelp: 'Sometimes it can happen that a file is corrupt but still playable. This can produce a streaming error for all following files. The only solution in this case is to stop ffplayout and start it again.',
+        stopThreshold: 'The threshold stops ffplayout if it is asynchronous in time above this value. A number below 3 can cause unexpected errors.',
+        mailHelp: `Send error messages to an email address, such as missing clips, missing or invalid playlist format, etc.. Leave the recipient blank if you don't need this.`,
+        mailInterval: 'The interval refers to the number of seconds until a new email is sent; the value must be in increments of 10 and not lower then 30 seconds.',
+        logHelp: 'Adjust logging behavior.',
+        logDetect: 'Logs an error message if the audio line is silent for 15 seconds during the validation process.',
+        logIgnore: 'Ignore strings that contain matched lines; the format is a semicolon-separated list.',
         processingHelp: `Default processing for all clips ensures uniqueness. The mode can be either 'playlist' or 'folder'.
-        The 'aspect' parameter must be a float number.
-        The 'audio_tracks' parameter specifies how many audio tracks should be processed.'audio_channels' can be used if the audio has more channels than stereo.
-        The 'logo' is used only if the path exists; the path is relative to your storage folder.
-        'logo_scale' scales the logo to the target size. Leave it blank if no scaling is needed. The format is 'width:height', for example, '100:-1' for proportional scaling. The 'logo_opacity' option allows the logo to become transparent.'logo_position' is specified in the format 'x:y', which sets the logo's position.
-        With 'custom_filter', it is possible to apply additional filters. The filter outputs should end with [c_v_out] for video filters and [c_a_out] for audio filters.
-        'vtt_enable' can only be used in HLS mode, and only when *.vtt files with the same filename as the video file exist.`,
+        The 'Aspect' parameter must be a float number.
+        The 'Audio Tracks' parameter specifies how many audio tracks should be processed. 'Audio Channels' can be used if the audio has more channels than stereo.
+        The 'Logo' is used only if the path exists; the path is relative to your storage folder.
+        'Logo Scale' scales the logo to the target size. Leave it blank if no scaling is needed. The format is 'width:height', for example: '100:-1' for proportional scaling. The 'logo_opacity' option allows the logo to become transparent.
+        'Logo Position' is specified in the format 'x:y', which sets the logo's position.
+        With 'Custom Filter', it is possible to apply additional filters. The filter outputs should end with [c_v_out] for video filters and [c_a_out] for audio filters.
+        'Enable VTT' can only be used in HLS mode, and only when *.vtt files with the same filename as the video file exist.`,
         ingestHelp: `Run a server for an ingest stream. This stream will override the normal streaming until it is finished. There is only a very simple authentication mechanism, which checks if the stream name is correct.
-        'custom_filter' can be used in the same way as the one in the process section.`,
+        'Custom Filter' can be used in the same way as the one in the process section.`,
         playlistHelp: `'day_start' indicates at what time the playlist should start; leave 'day_start' blank if the playlist should always start at the beginning. 'length' represents the target length of the playlist; when it is blank, the real length will not be considered.
         'infinite: true' works with a single playlist file and loops it infinitely.`,
         storageHelp: `'filler' is used to play in place of a missing file or to fill the remaining time to reach a total of 24 hours. It can be a file or folder and will loop when necessary.

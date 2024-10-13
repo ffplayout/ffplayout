@@ -1,6 +1,7 @@
 import { cloneDeep } from 'lodash-es'
 import { defineStore } from 'pinia'
 
+
 export const useConfig = defineStore('config', {
     state: () => ({
         i: 0,
@@ -10,7 +11,7 @@ export const useConfig = defineStore('config', {
         channelsRaw: [] as Channel[],
         playlistLength: 86400.0,
         advanced: {} as any,
-        playout: {} as any,
+        playout: {} as PlayoutConfigExt,
         currentUser: 0,
         configUser: {} as User,
         utcOffset: 0,

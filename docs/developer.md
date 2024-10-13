@@ -69,6 +69,11 @@ cargo deb --no-build --target=aarch64-unknown-linux-gnu --variant=arm64 -p ffpla
 cargo generate-rpm --target=x86_64-unknown-linux-musl
 ```
 
+## Generate types for Frontend
+The frontend uses TypeScript, to generate types for the rust structs run: `cargo test`.
+
+The generated types are then in [types folder](/frontend/types).
+
 ## Setup Frontend
 
 Make sure to install the dependencies:

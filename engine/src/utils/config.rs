@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use shlex::split;
 use sqlx::{Pool, Sqlite};
 use tokio::{fs, io::AsyncReadExt};
+use ts_rs::TS;
 
 use crate::db::{handles, models};
 use crate::utils::{files::norm_abs_path, free_tcp_socket, time_to_sec};
@@ -52,7 +53,8 @@ pub const FFMPEG_UNRECOVERABLE_ERRORS: [&str; 6] = [
     "Unrecognized option",
 ];
 
-#[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize, TS)]
+#[ts(export, export_to = "playout_config.d.ts")]
 #[serde(rename_all = "lowercase")]
 pub enum OutputMode {
     Desktop,
@@ -103,7 +105,8 @@ impl fmt::Display for OutputMode {
     }
 }
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize, Eq, PartialEq, TS)]
+#[ts(export, export_to = "playout_config.d.ts")]
 #[serde(rename_all = "lowercase")]
 pub enum ProcessMode {
     Folder,
@@ -141,14 +144,16 @@ impl FromStr for ProcessMode {
     }
 }
 
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize, TS)]
 pub struct Template {
     pub sources: Vec<Source>,
 }
 
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize, TS)]
 pub struct Source {
+    #[ts(type = "string")]
     pub start: NaiveTime,
+    #[ts(type = "string")]
     pub duration: NaiveTime,
     pub shuffle: bool,
     pub paths: Vec<PathBuf>,
@@ -157,10 +162,14 @@ pub struct Source {
 /// Channel Config
 ///
 /// This we init ones, when ffplayout is starting and use them globally in the hole program.
-#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+
+#[derive(Debug, Default, Clone, Deserialize, Serialize, TS)]
+#[ts(export, export_to = "playout_config.d.ts")]
 pub struct PlayoutConfig {
+    #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
     pub channel: Channel,
+    #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
     pub advanced: AdvancedConfig,
     pub general: General,
@@ -176,7 +185,7 @@ pub struct PlayoutConfig {
     pub output: Output,
 }
 
-#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize, TS)]
 pub struct Channel {
     pub logs: PathBuf,
     pub public: PathBuf,
@@ -197,23 +206,32 @@ impl Channel {
     }
 }
 
-#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize, TS)]
+#[ts(export, export_to = "playout_config.d.ts")]
 pub struct General {
+    #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
     pub id: i32,
+    #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
     pub channel_id: i32,
     pub stop_threshold: f64,
+    #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
     pub generate: Option<Vec<String>>,
+    #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
     pub ffmpeg_filters: Vec<String>,
+    #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
     pub ffmpeg_libs: Vec<String>,
+    #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
     pub template: Option<Template>,
+    #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
     pub skip_validation: bool,
+    #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
     pub validate: bool,
 }
@@ -234,18 +252,24 @@ impl General {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, TS)]
+#[ts(export, export_to = "playout_config.d.ts")]
 pub struct Mail {
     pub subject: String,
+    #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
     pub smtp_server: String,
+    #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
     pub starttls: bool,
+    #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
     pub sender_addr: String,
+    #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
     pub sender_pass: String,
     pub recipient: String,
+    #[ts(type = "string")]
     pub mail_level: Level,
     pub interval: i64,
 }
@@ -280,7 +304,8 @@ impl Default for Mail {
     }
 }
 
-#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize, TS)]
+#[ts(export, export_to = "playout_config.d.ts")]
 pub struct Logging {
     pub ffmpeg_level: String,
     pub ingest_level: String,
@@ -303,7 +328,8 @@ impl Logging {
     }
 }
 
-#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize, TS)]
+#[ts(export, export_to = "playout_config.d.ts")]
 pub struct Processing {
     pub mode: ProcessMode,
     pub audio_only: bool,
@@ -315,6 +341,7 @@ pub struct Processing {
     pub fps: f64,
     pub add_logo: bool,
     pub logo: String,
+    #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
     pub logo_path: String,
     pub logo_scale: String,
@@ -330,6 +357,7 @@ pub struct Processing {
     pub vtt_enable: bool,
     #[serde(default)]
     pub vtt_dummy: Option<String>,
+    #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
     pub cmd: Option<Vec<String>>,
 }
@@ -363,11 +391,13 @@ impl Processing {
     }
 }
 
-#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize, TS)]
+#[ts(export, export_to = "playout_config.d.ts")]
 pub struct Ingest {
     pub enable: bool,
     pub input_param: String,
     pub custom_filter: String,
+    #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
     pub input_cmd: Option<Vec<String>>,
 }
@@ -383,12 +413,15 @@ impl Ingest {
     }
 }
 
-#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize, TS)]
+#[ts(export, export_to = "playout_config.d.ts")]
 pub struct Playlist {
     pub day_start: String,
+    #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
     pub start_sec: Option<f64>,
     pub length: String,
+    #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
     pub length_sec: Option<f64>,
     pub infinit: bool,
@@ -406,17 +439,22 @@ impl Playlist {
     }
 }
 
-#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize, TS)]
+#[ts(export, export_to = "playout_config.d.ts")]
 pub struct Storage {
+    #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
     pub path: PathBuf,
+    #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
     pub paths: Vec<PathBuf>,
     pub filler: String,
+    #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
     pub filler_path: PathBuf,
     pub extensions: Vec<String>,
     pub shuffle: bool,
+    #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
     pub shared_storage: bool,
 }
@@ -439,17 +477,23 @@ impl Storage {
     }
 }
 
-#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize, TS)]
+#[ts(export, export_to = "playout_config.d.ts")]
 pub struct Text {
     pub add_text: bool,
+    #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
     pub node_pos: Option<usize>,
+    #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
     pub zmq_stream_socket: Option<String>,
+    #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
     pub zmq_server_socket: Option<String>,
+    #[ts(rename = "font")]
     #[serde(alias = "fontfile")]
     pub font: String,
+    #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
     pub font_path: String,
     pub text_from_filename: bool,
@@ -473,7 +517,8 @@ impl Text {
     }
 }
 
-#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize, TS)]
+#[ts(export, export_to = "playout_config.d.ts")]
 pub struct Task {
     pub enable: bool,
     pub path: PathBuf,
@@ -488,14 +533,18 @@ impl Task {
     }
 }
 
-#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize, TS)]
+#[ts(export, export_to = "playout_config.d.ts")]
 pub struct Output {
     pub mode: OutputMode,
     pub output_param: String,
+    #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
     pub output_count: usize,
+    #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
     pub output_filter: Option<String>,
+    #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
     pub output_cmd: Option<Vec<String>>,
 }

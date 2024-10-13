@@ -183,10 +183,9 @@ export default {
         placeholderPass: 'Senha',
         help: 'Ajuda',
         generalHelp: `Às vezes, pode acontecer que um arquivo esteja corrompido, mas ainda seja reproduzível. Isso pode produzir um erro de streaming para todos os arquivos seguintes. A única solução nesse caso é parar o ffplayout e iniciá-lo novamente.
-        'stop_threshold' para o ffplayout se ele estiver fora de sincronia no tempo acima desse valor. Um número abaixo de 3 pode causar erros inesperados.`,
+        'Stop Threshold' para o ffplayout se ele estiver fora de sincronia no tempo acima desse valor. Um número abaixo de 3 pode causar erros inesperados.`,
         mailHelp: `Envie mensagens de erro para um endereço de e-mail, como clipes ausentes, formato de playlist ausente ou inválido, etc. Deixe o destinatário em branco se você não precisar disso.
-        'mail_level' pode ser INFO, WARNING ou ERROR.
-        'interval' refere-se ao número de segundos até que um novo e-mail seja enviado; o valor deve ser em incrementos de 10 e não inferior a 30 segundos.`,
+        'Interval' refere-se ao número de segundos até que um novo e-mail seja enviado; o valor deve ser em incrementos de 10 e não inferior a 30 segundos.`,
         logHelp: `'ffmpeg_level/ingest_level' pode ser INFO, WARNING ou ERROR.
         'detect_silence' registra uma mensagem de erro se a linha de áudio estiver em silêncio por 15 segundos durante o processo de validação.
         'ignore' permite que o log ignore cadeias de caracteres que contenham linhas correspondentes; o formato é uma lista separada por ponto e vírgula.`,

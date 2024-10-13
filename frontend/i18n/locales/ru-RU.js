@@ -183,10 +183,9 @@ export default {
         placeholderPass: 'Password',
         help: 'Help',
         generalHelp: `Sometimes it can happen that a file is corrupt but still playable. This can produce a streaming error for all following files. The only solution in this case is to stop ffplayout and start it again.
-        'stop_threshold' stops ffplayout if it is asynchronous in time above this value. A number below 3 can cause unexpected errors.`,
+        'Stop Threshold' stops ffplayout if it is asynchronous in time above this value. A number below 3 can cause unexpected errors.`,
         mailHelp: `Send error messages to an email address, such as missing clips, missing or invalid playlist format, etc.. Leave the recipient blank if you don't need this.
-        'mail_level' can be INFO, WARNING, or ERROR.
-        'interval' refers to the number of seconds until a new email is sent; the value must be in increments of 10 and not lower then 30 seconds.`,
+        'Interval' refers to the number of seconds until a new email is sent; the value must be in increments of 10 and not lower then 30 seconds.`,
         logHelp: `'ffmpeg_level/ingest_level' can be INFO, WARNING, or ERROR.
         'detect_silence' logs an error message if the audio line is silent for 15 seconds during the validation process.
         'ignore' allows logging to ignore strings that contain matched lines; the format is a semicolon-separated list.`,

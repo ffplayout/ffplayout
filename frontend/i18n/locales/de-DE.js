@@ -183,10 +183,9 @@ export default {
         placeholderPass: 'Passwort',
         help: 'Hilfe',
         generalHelp: `Manchmal kann es vorkommen, dass eine Datei beschädigt ist, aber dennoch abspielbar. Dies kann einen Streaming-Fehler für alle folgenden Dateien verursachen. Die einzige Lösung in diesem Fall ist, ffplayout zu stoppen und es erneut zu starten.
-        'stop_threshold' stoppt ffplayout, wenn es asynchron in der Zeit über diesen Wert hinaus ist. Ein Wert unter 3 kann unerwartete Fehler verursachen.`,
+        'Stop Threshold' stoppt ffplayout, wenn es asynchron in der Zeit über diesen Wert hinaus ist. Ein Wert unter 3 kann unerwartete Fehler verursachen.`,
         mailHelp: `Sende Fehlermeldungen an eine E-Mail-Adresse, wie z.B. fehlende Clips, fehlendes oder ungültiges Playlist-Format usw. Lass den Empfänger leer, wenn dies nicht benötigt wird.
-        'mail_level' kann INFO, WARNING oder ERROR sein.
-        'interval' bezieht sich auf die Anzahl der Sekunden bis zur nächsten E-Mail; der Wert muss in Schritten von 10 erfolgen und darf nicht weniger als 30 Sekunden betragen.`,
+        'Interval' bezieht sich auf die Anzahl der Sekunden bis zur nächsten E-Mail; der Wert muss in Schritten von 10 erfolgen und darf nicht weniger als 30 Sekunden betragen.`,
         logHelp: `'ffmpeg_level/ingest_level' kann INFO, WARNING oder ERROR sein.
         'detect_silence' protokolliert eine Fehlermeldung, wenn die Audioleitung während des Validierungsprozesses 15 Sekunden lang stumm ist.
         'ignore' erlaubt dem Protokoll, Zeichenfolgen zu ignorieren, die übereinstimmende Zeilen enthalten; das Format ist eine durch Semikolons getrennte Liste.`,
