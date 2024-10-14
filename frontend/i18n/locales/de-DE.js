@@ -182,31 +182,41 @@ export default {
         output: 'Ausgabe',
         placeholderPass: 'Passwort',
         help: 'Hilfe',
-        generalHelp: `Manchmal kann es vorkommen, dass eine Datei beschädigt ist, aber dennoch abspielbar. Dies kann einen Streaming-Fehler für alle folgenden Dateien verursachen. Die einzige Lösung in diesem Fall ist, ffplayout zu stoppen und es erneut zu starten.
-        'Stop Threshold' stoppt ffplayout, wenn es asynchron in der Zeit über diesen Wert hinaus ist. Ein Wert unter 3 kann unerwartete Fehler verursachen.`,
-        mailHelp: `Sende Fehlermeldungen an eine E-Mail-Adresse, wie z.B. fehlende Clips, fehlendes oder ungültiges Playlist-Format usw. Lass den Empfänger leer, wenn dies nicht benötigt wird.
-        'Interval' bezieht sich auf die Anzahl der Sekunden bis zur nächsten E-Mail; der Wert muss in Schritten von 10 erfolgen und darf nicht weniger als 30 Sekunden betragen.`,
-        logHelp: `'ffmpeg_level/ingest_level' kann INFO, WARNING oder ERROR sein.
-        'detect_silence' protokolliert eine Fehlermeldung, wenn die Audioleitung während des Validierungsprozesses 15 Sekunden lang stumm ist.
-        'ignore' erlaubt dem Protokoll, Zeichenfolgen zu ignorieren, die übereinstimmende Zeilen enthalten; das Format ist eine durch Semikolons getrennte Liste.`,
-        processingHelp: `Die Standardverarbeitung für alle Clips sorgt für Einzigartigkeit. Der Modus kann entweder 'playlist' oder 'folder' sein.
-        Der Parameter 'aspect' muss eine Gleitkommazahl sein.
-        Der Parameter 'audio_tracks' gibt an, wie viele Audiotracks verarbeitet werden sollen. 'audio_channels' kann verwendet werden, wenn das Audio mehr als Stereo-Kanäle hat.
-        Das 'logo' wird nur verwendet, wenn der Pfad existiert; der Pfad ist relativ zu deinem Speicherordner.
-        'logo_scale' skaliert das Logo auf die Zielgröße. Lasse es leer, wenn keine Skalierung erforderlich ist. Das Format ist 'Breite:Höhe', z.B. '100:-1' für proportionale Skalierung. Die Option 'logo_opacity' ermöglicht es, das Logo transparent zu machen. Die 'logo_position' wird im Format 'x:y' angegeben, was die Position des Logos festlegt.
-        Mit 'custom_filter' ist es möglich, zusätzliche Filter anzuwenden. Die Filterausgaben sollten mit [c_v_out] für Video-Filter und [c_a_out] für Audio-Filter enden.
-        'vtt_enable' kann nur im HLS-Modus verwendet werden, und nur wenn *.vtt-Dateien mit demselben Dateinamen wie die Videodatei existieren.`,
-        ingestHelp: `Starte einen Server für einen Eingabestream. Dieser Stream überschreibt den normalen Stream, bis er beendet ist. Es gibt nur einen sehr einfachen Authentifizierungsmechanismus, der überprüft, ob der Stream-Name korrekt ist.
-        'custom_filter' kann auf die gleiche Weise verwendet werden wie der im Verarbeitungsabschnitt.`,
-        playlistHelp: `'day_start' gibt an, zu welcher Zeit die Playlist starten soll; lass 'day_start' leer, wenn die Playlist immer am Anfang starten soll. 'length' stellt die Ziellänge der Playlist dar; wenn es leer ist, wird die reale Länge nicht berücksichtigt.
-        'infinite: true' funktioniert mit einer einzigen Playlist-Datei und schleift sie unendlich.`,
-        storageHelp: `'filler' wird verwendet, um anstelle einer fehlenden Datei oder zur Auffüllung der verbleibenden Zeit auf insgesamt 24 Stunden abzuspielen. Es kann eine Datei oder ein Ordner sein und wird bei Bedarf wiederholt.
-        'extensions' gibt an, nach welchen Dateien anhand dieser Erweiterung gesucht werden soll. Aktiviere 'shuffle', um Dateien zufällig auszuwählen.`,
-        textHelp: `Überlagere Text in Kombination mit libzmq zur Fernmanipulation von Text. 'font' ist ein relativer Pfad zu deinem Speicherordner.
-        'text_from_filename' aktiviert die Extraktion von Text aus einem Dateinamen. Mit 'style' kannst du die Drawtext-Parameter wie Position, Farbe usw. definieren. Die Übermittlung von Text über die API überschreibt dies. Mit 'regex' kannst du Dateinamen formatieren, um einen Titel daraus zu extrahieren.`,
-        taskHelp: `Führe ein externes Programm mit einem angegebenen Medienobjekt aus. Das Medienobjekt ist im JSON-Format und enthält alle Informationen über den aktuellen Clip. Das externe Programm kann ein Skript oder eine Binärdatei sein, aber es sollte nur für kurze Zeit ausgeführt werden.`,
-        outputHelp: `Das endgültige Playout-Encoding, passe die Einstellungen nach deinen Bedürfnissen an. 'mode' hat die Optionen 'desktop', 'hls', 'null' und 'stream'. Verwende 'stream' und passe die 'output_param:'-Einstellungen an, wenn du an einen RTMP/RTSP/SRT/...-Server streamen möchtest.
-        In der Produktion solltest du keine HLS-Playlists mit ffplayout bereitstellen; verwende Nginx oder einen anderen Webserver!`,
+        generalHelp: 'Manchmal kann es passieren, dass eine Datei beschädigt ist, aber dennoch abgespielt werden kann. Dies kann zu einem Streaming-Fehler für alle folgenden Dateien führen. Die einzige Lösung in diesem Fall ist, ffplayout zu stoppen und erneut zu starten.',
+        stopThreshold: 'Der Schwellenwert stoppt ffplayout, wenn es zeitlich asynchron über diesem Wert ist. Eine Zahl unter 3 kann unerwartete Fehler verursachen.',
+        mailHelp: `Sende Fehlermeldungen an eine E-Mail-Adresse, wie z.B. fehlende Clips, fehlendes oder ungültiges Playlist-Format usw. Lass den Empfänger leer, wenn du dies nicht benötigst.`,
+        mailInterval: 'Das Intervall bezieht sich auf die Anzahl der Sekunden, bis eine neue E-Mail gesendet wird; der Wert muss in 10er-Schritten und nicht unter 30 Sekunden liegen.',
+        logHelp: 'Passen Sie das Verhalten des Loggings an.',
+        logDetect: 'Protokolliert eine Fehlermeldung, wenn die Audioleitung während des Validierungsprozesses 15 Sekunden lang stumm ist.',
+        logIgnore: 'Ignoriere Zeichenfolgen, die übereinstimmende Zeilen enthalten; das Format ist eine durch Semikolon getrennte Liste.',
+        processingHelp: 'Die Standardverarbeitung für alle Clips stellt die Einzigartigkeit sicher.',
+        processingLogoPath: 'Das Logo wird nur verwendet, wenn der Pfad existiert; der Pfad ist relativ zum Speicherordner.',
+        processingLogoScale: `Lass die Skalierung des Logos leer, wenn keine Skalierung erforderlich ist. Das Format lautet 'Breite:Höhe', zum Beispiel: '100:-1' für proportionale Skalierung.`,
+        processingLogoPosition: `Die Position wird im Format 'x:y' angegeben.`,
+        processingAudioTracks: 'Gib an, wie viele Audiospuren verarbeitet werden sollen.',
+        processingAudioIndex: 'Welche Audiospur verwendet werden soll, -1 für alle.',
+        processingAudioChannels: 'Stelle die Anzahl der Audiokanäle ein, wenn das Audio mehr Kanäle als Stereo hat.',
+        processingCustomFilter: 'Füge benutzerdefinierte Filter zur Verarbeitung hinzu. Die Filterausgaben müssen mit [c_v_out] für Video-Filter und [c_a_out] für Audio-Filter enden.',
+        processingVTTEnable: 'VTT kann nur im HLS-Modus verwendet werden und nur, wenn *.vtt-Dateien mit demselben Namen wie die Videodatei vorhanden sind.',
+        processingVTTDummy: 'Ein Platzhalter wird benötigt, wenn keine vtt-Datei vorhanden ist.',
+        ingestHelp: `Starte einen Server für einen Ingest-Stream. Dieser Stream wird den normalen Stream überschreiben, bis er beendet ist. Es gibt nur einen sehr einfachen Authentifizierungsmechanismus, der überprüft, ob der Streamname korrekt ist.`,
+        ingestCustomFilter: 'Wende einen benutzerdefinierten Filter auf den Ingest-Stream auf dieselbe Weise wie im Abschnitt Verarbeitung an.',
+        playlistHelp: 'Playlist-Verwaltung.',
+        playlistDayStart: 'Zu welcher Zeit die Playlist starten soll; lasse es leer, wenn die Playlist immer von Anfang an starten soll.',
+        playlistLength: 'Ziel-Länge der Playlist; wenn es leer ist, wird die reale Länge nicht berücksichtigt.',
+        playlistInfinit: 'Eine einzelne Playlist-Datei endlos wiederholen.',
+        storageHelp: 'Speichereinstellungen, die Standorte sind relativ zum Kanal-Speicher.',
+        storageFiller: 'Verwende Füllmaterial, um anstelle einer fehlenden Datei abzuspielen oder um die verbleibende Zeit zu füllen, um eine Gesamtdauer von 24 Stunden zu erreichen. Es kann eine Datei oder ein Ordner sein und wird bei Bedarf wiederholt.',
+        storageExtension: 'Gib an, welche Dateien gesucht und verwendet werden sollen.',
+        storageShuffle: 'Wähle Dateien zufällig aus (im Ordner-Modus und bei der Playlist-Erstellung).',
+        textHelp: 'Texteinblendung in Kombination mit libzmq für die Fernmanipulation von Text.',
+        textFont: 'Relativer Pfad zum Kanal-Speicher.',
+        textFromFile: 'Extrahiere Text aus einem Dateinamen.',
+        textStyle: 'Definiere die Parameter für drawtext, wie Position, Farbe usw. Das Posten von Text über die API überschreibt dies.',
+        textRegex: 'Formatiere Dateinamen, um einen Titel daraus zu extrahieren.',
+        taskHelp: 'Führe ein externes Programm mit einem gegebenen Medienobjekt aus. Das Medienobjekt ist im JSON-Format und enthält alle Informationen über den aktuellen Clip. Das externe Programm kann ein Skript oder eine Binärdatei sein, sollte aber nur für kurze Zeit laufen.',
+        taskPath: 'Pfad zur ausführbaren Datei.',
+        outputHelp: `Die endgültige Playout-Codierung, passe die Einstellungen nach deinen Bedürfnissen an. Verwende den 'stream'-Modus und passe den 'Ausgabe-Parameter' an, wenn du zu einem RTMP/RTSP/SRT/...-Server streamen möchtest. Im Produktionsbetrieb verwende kein HLS mit ffplayout; nutze Nginx oder einen anderen Webserver!`,
         restartTile: 'Playout neustarten',
         restartText: 'ffplayout neustarten um Einstellungen anzuwenden?',
         updatePlayoutSuccess: 'Update der Playout-Konfiguration erfolgreich!',

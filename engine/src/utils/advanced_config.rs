@@ -5,11 +5,13 @@ use serde_with::{serde_as, NoneAsEmptyString};
 use shlex::split;
 use sqlx::{Pool, Sqlite};
 use tokio::io::AsyncReadExt;
+use ts_rs::TS;
 
 use crate::db::{handles, models::AdvancedConfiguration};
 use crate::utils::ServiceError;
 
-#[derive(Debug, Default, Serialize, Deserialize, Clone)]
+#[derive(Debug, Default, Serialize, Deserialize, Clone, TS)]
+#[ts(export, export_to = "advanced_config.d.ts")]
 pub struct AdvancedConfig {
     pub decoder: DecoderConfig,
     pub encoder: EncoderConfig,
@@ -18,81 +20,115 @@ pub struct AdvancedConfig {
 }
 
 #[serde_as]
-#[derive(Debug, Default, Serialize, Deserialize, Clone)]
+#[derive(Debug, Default, Serialize, Deserialize, Clone, TS)]
+#[ts(export, export_to = "advanced_config.d.ts")]
 pub struct DecoderConfig {
+    #[ts(type = "string")]
     #[serde_as(as = "NoneAsEmptyString")]
     pub input_param: Option<String>,
+    #[ts(type = "string")]
     #[serde_as(as = "NoneAsEmptyString")]
     pub output_param: Option<String>,
+    #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
     pub input_cmd: Option<Vec<String>>,
+    #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
     pub output_cmd: Option<Vec<String>>,
 }
 
 #[serde_as]
-#[derive(Debug, Default, Serialize, Deserialize, Clone)]
+#[derive(Debug, Default, Serialize, Deserialize, Clone, TS)]
+#[ts(export, export_to = "advanced_config.d.ts")]
 pub struct EncoderConfig {
+    #[ts(type = "string")]
     #[serde_as(as = "NoneAsEmptyString")]
     pub input_param: Option<String>,
+    #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
     pub input_cmd: Option<Vec<String>>,
 }
 
 #[serde_as]
-#[derive(Debug, Default, Serialize, Deserialize, Clone)]
+#[derive(Debug, Default, Serialize, Deserialize, Clone, TS)]
+#[ts(export, export_to = "advanced_config.d.ts")]
 pub struct IngestConfig {
+    #[ts(type = "string")]
     #[serde_as(as = "NoneAsEmptyString")]
     pub input_param: Option<String>,
+    #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
     pub input_cmd: Option<Vec<String>>,
 }
 
 #[serde_as]
-#[derive(Debug, Default, Serialize, Deserialize, Clone)]
+#[derive(Debug, Default, Serialize, Deserialize, Clone, TS)]
+#[ts(export, export_to = "advanced_config.d.ts")]
 pub struct FilterConfig {
+    #[ts(type = "string")]
     #[serde_as(as = "NoneAsEmptyString")]
     pub deinterlace: Option<String>,
+    #[ts(type = "string")]
     #[serde_as(as = "NoneAsEmptyString")]
     pub pad_scale_w: Option<String>,
+    #[ts(type = "string")]
     #[serde_as(as = "NoneAsEmptyString")]
     pub pad_scale_h: Option<String>,
+    #[ts(type = "string")]
     #[serde_as(as = "NoneAsEmptyString")]
     pub pad_video: Option<String>,
+    #[ts(type = "string")]
     #[serde_as(as = "NoneAsEmptyString")]
     pub fps: Option<String>,
+    #[ts(type = "string")]
     #[serde_as(as = "NoneAsEmptyString")]
     pub scale: Option<String>,
+    #[ts(type = "string")]
     #[serde_as(as = "NoneAsEmptyString")]
     pub set_dar: Option<String>,
+    #[ts(type = "string")]
     #[serde_as(as = "NoneAsEmptyString")]
     pub fade_in: Option<String>,
+    #[ts(type = "string")]
     #[serde_as(as = "NoneAsEmptyString")]
     pub fade_out: Option<String>,
+    #[ts(type = "string")]
     #[serde_as(as = "NoneAsEmptyString")]
     pub overlay_logo_scale: Option<String>,
+    #[ts(type = "string")]
     #[serde_as(as = "NoneAsEmptyString")]
     pub overlay_logo_fade_in: Option<String>,
+    #[ts(type = "string")]
     #[serde_as(as = "NoneAsEmptyString")]
     pub overlay_logo_fade_out: Option<String>,
+    #[ts(type = "string")]
     #[serde_as(as = "NoneAsEmptyString")]
     pub overlay_logo: Option<String>,
+    #[ts(type = "string")]
     #[serde_as(as = "NoneAsEmptyString")]
     pub tpad: Option<String>,
+    #[ts(type = "string")]
     #[serde_as(as = "NoneAsEmptyString")]
     pub drawtext_from_file: Option<String>,
+    #[ts(type = "string")]
     #[serde_as(as = "NoneAsEmptyString")]
     pub drawtext_from_zmq: Option<String>,
+    #[ts(type = "string")]
     #[serde_as(as = "NoneAsEmptyString")]
     pub aevalsrc: Option<String>,
+    #[ts(type = "string")]
     #[serde_as(as = "NoneAsEmptyString")]
     pub afade_in: Option<String>,
+    #[ts(type = "string")]
     #[serde_as(as = "NoneAsEmptyString")]
     pub afade_out: Option<String>,
+    #[ts(type = "string")]
     #[serde_as(as = "NoneAsEmptyString")]
     pub apad: Option<String>,
+    #[ts(type = "string")]
     #[serde_as(as = "NoneAsEmptyString")]
     pub volume: Option<String>,
+    #[ts(type = "string")]
     #[serde_as(as = "NoneAsEmptyString")]
     pub split: Option<String>,
 }

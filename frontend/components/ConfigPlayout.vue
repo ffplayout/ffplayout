@@ -1,5 +1,5 @@
 <template>
-    <div class="max-w-[1200px] pe-8">
+    <div class="max-w-[1200px] xs:pe-8">
         <h2 class="pt-3 text-3xl">{{ t('config.playoutConf') }}</h2>
         <form
             v-if="configStore.playout"
@@ -24,7 +24,7 @@
                         class="input input-sm input-bordered w-full max-w-36"
                     />
                     <div class="label">
-                        <span class="label-text-alt">{{ t('config.stopThreshold') }}</span>
+                        <span class="text-sm select-text text-base-content/80">{{ t('config.stopThreshold') }}</span>
                     </div>
                 </label>
             </div>
@@ -79,7 +79,7 @@
                         class="input input-sm input-bordered w-full max-w-36"
                     />
                     <div class="label">
-                        <span class="label-text-alt">{{ t('config.mailInterval') }}</span>
+                        <span class="text-sm select-text text-base-content/80">{{ t('config.mailInterval') }}</span>
                     </div>
                 </label>
             </div>
@@ -125,7 +125,7 @@
                         </div>
                     </div>
                     <div class="label py-0">
-                        <span class="label-text-alt">{{ t('config.logDetect') }}</span>
+                        <span class="text-sm select-text text-base-content/80">{{ t('config.logDetect') }}</span>
                     </div>
                 </label>
                 <label class="form-control w-full mt-2">
@@ -138,7 +138,7 @@
                         class="input input-sm input-bordered w-full truncate"
                     />
                     <div class="label">
-                        <span class="label-text-alt">{{ t('config.logIgnore') }}</span>
+                        <span class="text-sm select-text text-base-content/80">{{ t('config.logIgnore') }}</span>
                     </div>
                 </label>
             </div>
@@ -258,6 +258,11 @@
                         type="text"
                         class="input input-sm input-bordered w-full max-w-lg"
                     />
+                    <div class="label">
+                        <span class="text-sm select-text text-base-content/80">{{
+                            t('config.processingLogoPath')
+                        }}</span>
+                    </div>
                 </label>
                 <label class="form-control w-full mt-2">
                     <div class="label">
@@ -281,6 +286,11 @@
                         type="text"
                         class="input input-sm input-bordered w-full max-w-md"
                     />
+                    <div class="label">
+                        <span class="text-sm select-text text-base-content/80">{{
+                            t('config.processingLogoScale')
+                        }}</span>
+                    </div>
                 </label>
                 <label class="form-control w-full mt-2">
                     <div class="label">
@@ -291,6 +301,11 @@
                         type="text"
                         class="input input-sm input-bordered w-full max-w-md"
                     />
+                    <div class="label">
+                        <span class="text-sm select-text text-base-content/80">{{
+                            t('config.processingLogoPosition')
+                        }}</span>
+                    </div>
                 </label>
                 <label class="form-control w-full mt-2">
                     <div class="label">
@@ -304,6 +319,11 @@
                         step="1"
                         class="input input-sm input-bordered w-full max-w-36"
                     />
+                    <div class="label">
+                        <span class="text-sm select-text text-base-content/80">{{
+                            t('config.processingAudioTracks')
+                        }}</span>
+                    </div>
                 </label>
                 <label class="form-control w-full mt-2">
                     <div class="label">
@@ -317,6 +337,11 @@
                         step="1"
                         class="input input-sm input-bordered w-full max-w-36"
                     />
+                    <div class="label">
+                        <span class="text-sm select-text text-base-content/80">{{
+                            t('config.processingAudioIndex')
+                        }}</span>
+                    </div>
                 </label>
                 <label class="form-control w-full mt-2">
                     <div class="label">
@@ -330,6 +355,11 @@
                         step="1"
                         class="input input-sm input-bordered w-full max-w-36"
                     />
+                    <div class="label">
+                        <span class="text-sm select-text text-base-content/80">{{
+                            t('config.processingAudioChannels')
+                        }}</span>
+                    </div>
                 </label>
                 <label class="form-control w-full mt-2">
                     <div class="label">
@@ -353,15 +383,27 @@
                         class="textarea textarea-bordered"
                         rows="3"
                     />
-                </label>
-                <label class="form-control w-full flex-row mt-2">
-                    <input
-                        v-model="configStore.playout.processing.vtt_enable"
-                        type="checkbox"
-                        class="checkbox checkbox-sm me-1 mt-2"
-                    />
                     <div class="label">
-                        <span class="label-text !text-md font-bold">Enable VTT</span>
+                        <span class="text-sm select-text text-base-content/80">{{
+                            t('config.processingCustomFilter')
+                        }}</span>
+                    </div>
+                </label>
+                <label class="form-control w-full mt-2">
+                    <div class="flex flex-row">
+                        <input
+                            v-model="configStore.playout.processing.vtt_enable"
+                            type="checkbox"
+                            class="checkbox checkbox-sm me-1 mt-2"
+                        />
+                        <div class="label">
+                            <span class="label-text !text-md font-bold">Enable VTT</span>
+                        </div>
+                    </div>
+                    <div class="label py-0">
+                        <span class="text-sm select-text text-base-content/80">{{
+                            t('config.processingVTTEnable')
+                        }}</span>
                     </div>
                 </label>
                 <label class="form-control w-full mt-2">
@@ -373,6 +415,11 @@
                         type="text"
                         class="input input-sm input-bordered w-full max-w-lg"
                     />
+                    <div class="label">
+                        <span class="text-sm select-text text-base-content/80">{{
+                            t('config.processingVTTDummy')
+                        }}</span>
+                    </div>
                 </label>
             </div>
 
@@ -412,6 +459,11 @@
                         class="textarea textarea-bordered"
                         rows="3"
                     />
+                    <div class="label">
+                        <span class="text-sm select-text text-base-content/80">{{
+                            t('config.ingestCustomFilter')
+                        }}</span>
+                    </div>
                 </label>
             </div>
 
@@ -422,7 +474,7 @@
                         {{ t('config.playlistHelp') }}
                     </div>
                 </label>
-                <label class="form-control w-full max-w-xs">
+                <label class="form-control w-full">
                     <div class="label">
                         <span class="label-text text-base font-bold">Day Start</span>
                     </div>
@@ -432,8 +484,11 @@
                         class="input input-sm input-bordered w-full max-w-xs"
                         pattern="([01]?[0-9]|2[0-4]):[0-5][0-9]:[0-5][0-9]"
                     />
+                    <div class="label">
+                        <span class="text-sm select-text text-base-content/80">{{ t('config.playlistDayStart') }}</span>
+                    </div>
                 </label>
-                <label class="form-control w-full max-w-xs">
+                <label class="form-control w-full">
                     <div class="label">
                         <span class="label-text text-base font-bold">Length</span>
                     </div>
@@ -443,15 +498,23 @@
                         class="input input-sm input-bordered w-full max-w-xs"
                         pattern="([01]?[0-9]|2[0-4]):[0-5][0-9]:[0-5][0-9]"
                     />
-                </label>
-                <label class="form-control w-full flex-row mt-2">
-                    <input
-                        v-model="configStore.playout.playlist.infinit"
-                        type="checkbox"
-                        class="checkbox checkbox-sm me-1 mt-2"
-                    />
                     <div class="label">
-                        <span class="label-text !text-md font-bold">Enable</span>
+                        <span class="text-sm select-text text-base-content/80">{{ t('config.playlistLength') }}</span>
+                    </div>
+                </label>
+                <label class="form-control w-full mt-2">
+                    <div class="flex flex-row">
+                        <input
+                            v-model="configStore.playout.playlist.infinit"
+                            type="checkbox"
+                            class="checkbox checkbox-sm me-1 mt-2"
+                        />
+                        <div class="label">
+                            <span class="label-text !text-md font-bold">Infinit</span>
+                        </div>
+                    </div>
+                    <div class="label py-0">
+                        <span class="text-sm select-text text-base-content/80">{{ t('config.playlistInfinit') }}</span>
                     </div>
                 </label>
             </div>
@@ -473,6 +536,9 @@
                         name="filler"
                         class="input input-sm input-bordered w-full max-w-lg"
                     />
+                    <div class="label">
+                        <span class="text-sm select-text text-base-content/80">{{ t('config.storageFiller') }}</span>
+                    </div>
                 </label>
                 <label class="form-control w-full">
                     <div class="label">
@@ -483,15 +549,23 @@
                         type="text"
                         class="input input-sm input-bordered w-full max-w-lg"
                     />
-                </label>
-                <label class="form-control w-full flex-row mt-2">
-                    <input
-                        v-model="configStore.playout.storage.shuffle"
-                        type="checkbox"
-                        class="checkbox checkbox-sm me-1 mt-2"
-                    />
                     <div class="label">
-                        <span class="label-text !text-md font-bold">Shuffle</span>
+                        <span class="text-sm select-text text-base-content/80">{{ t('config.storageExtension') }}</span>
+                    </div>
+                </label>
+                <label class="form-control w-full mt-2">
+                    <div class="flex flex-row">
+                        <input
+                            v-model="configStore.playout.storage.shuffle"
+                            type="checkbox"
+                            class="checkbox checkbox-sm me-1 mt-2"
+                        />
+                        <div class="label">
+                            <span class="label-text !text-md font-bold">Shuffle</span>
+                        </div>
+                    </div>
+                    <div class="label py-0">
+                        <span class="text-sm select-text text-base-content/80">{{ t('config.storageShuffle') }}</span>
                     </div>
                 </label>
             </div>
@@ -522,15 +596,23 @@
                         type="text"
                         class="input input-sm input-bordered w-full max-w-lg"
                     />
-                </label>
-                <label class="form-control w-full flex-row mt-2">
-                    <input
-                        v-model="configStore.playout.text.text_from_filename"
-                        type="checkbox"
-                        class="checkbox checkbox-sm me-1 mt-2"
-                    />
                     <div class="label">
-                        <span class="label-text !text-md font-bold">Text from File</span>
+                        <span class="text-sm select-text text-base-content/80">{{ t('config.textFont') }}</span>
+                    </div>
+                </label>
+                <label class="form-control w-full mt-2">
+                    <div class="flex flex-row">
+                        <input
+                            v-model="configStore.playout.text.text_from_filename"
+                            type="checkbox"
+                            class="checkbox checkbox-sm me-1 mt-2"
+                        />
+                        <div class="label">
+                            <span class="label-text !text-md font-bold">Text from File</span>
+                        </div>
+                    </div>
+                    <div class="label py-0">
+                        <span class="text-sm select-text text-base-content/80">{{ t('config.textFromFile') }}</span>
                     </div>
                 </label>
                 <label class="form-control w-full">
@@ -542,6 +624,9 @@
                         type="text"
                         class="input input-sm input-bordered w-full truncate"
                     />
+                    <div class="label">
+                        <span class="text-sm select-text text-base-content/80">{{ t('config.textStyle') }}</span>
+                    </div>
                 </label>
                 <label class="form-control w-full">
                     <div class="label">
@@ -552,6 +637,9 @@
                         type="text"
                         class="input input-sm input-bordered w-full max-w-lg"
                     />
+                    <div class="label">
+                        <span class="text-sm select-text text-base-content/80">{{ t('config.textRegex') }}</span>
+                    </div>
                 </label>
             </div>
 
@@ -582,6 +670,9 @@
                         name="task_path"
                         class="input input-sm input-bordered w-full max-w-lg"
                     />
+                    <div class="label">
+                        <span class="text-sm select-text text-base-content/80">{{ t('config.taskPath') }}</span>
+                    </div>
                 </label>
             </div>
 

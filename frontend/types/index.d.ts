@@ -1,4 +1,5 @@
 import type { JwtPayload } from 'jwt-decode'
+import type { AdvancedConfig } from '~/types/advanced_config'
 import type { PlayoutConfig, Playlist as Ply } from '~/types/playout_config'
 
 export {}

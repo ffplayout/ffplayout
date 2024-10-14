@@ -454,8 +454,7 @@ pub struct Storage {
     pub filler_path: PathBuf,
     pub extensions: Vec<String>,
     pub shuffle: bool,
-    #[ts(skip)]
-    #[serde(skip_serializing, skip_deserializing)]
+    #[serde(skip_deserializing)]
     pub shared_storage: bool,
 }
 
@@ -490,7 +489,6 @@ pub struct Text {
     #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
     pub zmq_server_socket: Option<String>,
-    #[ts(rename = "font")]
     #[serde(alias = "fontfile")]
     pub font: String,
     #[ts(skip)]

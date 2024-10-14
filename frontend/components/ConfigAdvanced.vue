@@ -1,5 +1,5 @@
 <template>
-    <div class="min-w-[200px] pe-8 w-[768px]">
+    <div class="max-w-[1200px] xs:pe-8">
         <h2 class="pt-3 text-3xl">{{ t('advanced.title') }}</h2>
         <p class="mt-5 font-bold text-orange-500">{{ t('advanced.warning') }}</p>
         <form
@@ -7,26 +7,417 @@
             class="mt-10 grid md:grid-cols-[180px_auto] gap-5"
             @submit.prevent="onSubmitAdvanced"
         >
-            <template v-for="(item, key) in configStore.advanced" :key="key">
-                <div class="text-xl pt-3 text-right">{{ setTitle(key.toString()) }}:</div>
-                <div class="md:pt-4">
-                    <label
-                        v-for="(_, name) in (item as Record<string, any>)"
-                        :key="name"
-                        class="form-control w-full"
-                    >
-                        <div class="label">
-                            <span class="label-text !text-md font-bold">{{ name }}</span>
-                        </div>
-                        <input
-                            :id="name"
-                            v-model="item[name]"
-                            type="text"
-                            class="input input-sm input-bordered w-full"
-                        />
-                    </label>
-                </div>
-            </template>
+            <div class="text-xl pt-3 md:text-right">{{ t('advanced.decoder') }}:</div>
+            <div class="md:pt-4">
+                <label class="form-control mb-2">
+                    <div class="whitespace-pre-line">
+                        In streaming mode, the decoder settings are responsible for unifying the media files.
+                    </div>
+                </label>
+                <label class="form-control w-full mt-2">
+                    <div class="label">
+                        <span class="label-text !text-md font-bold">Input Parameter</span>
+                    </div>
+                    <input
+                        v-model="configStore.advanced.decoder.input_param"
+                        type="text"
+                        name="input_param"
+                        class="input input-sm input-bordered w-full"
+                    />
+                </label>
+                <label class="form-control w-full mt-2">
+                    <div class="label">
+                        <span class="label-text !text-md font-bold">Output Parameter</span>
+                    </div>
+                    <input
+                        v-model="configStore.advanced.decoder.output_param"
+                        type="text"
+                        name="output_param"
+                        class="input input-sm input-bordered w-full"
+                    />
+                    <div class="label">
+                        <span class="text-sm select-text text-base-content/80">
+                            Default: -c:v mpeg2video -g 1 -b:v 57600k -minrate 57600k -maxrate 57600k -bufsize 28800k
+                            -mpegts_flags initial_discontinuity -c:a s302m -strict -2 -sample_fmt s16 -ar 48000 -ac 2 -f
+                            mpegts
+                        </span>
+                    </div>
+                </label>
+            </div>
+
+            <div class="text-xl pt-3 md:text-right">{{ t('advanced.encoder') }}:</div>
+            <div class="md:pt-4">
+                <label class="form-control mb-2">
+                    <div class="whitespace-pre-line">Encoder settings representing the streaming output.</div>
+                </label>
+                <label class="form-control w-full mt-2">
+                    <div class="label">
+                        <span class="label-text !text-md font-bold">Input Parameter</span>
+                    </div>
+                    <input
+                        v-model="configStore.advanced.encoder.input_param"
+                        type="text"
+                        name="input_param"
+                        class="input input-sm input-bordered w-full"
+                    />
+                </label>
+            </div>
+
+            <div class="text-xl pt-3 md:text-right">{{ t('advanced.filter') }}:</div>
+            <div class="md:pt-4">
+                <label class="form-control mb-2">
+                    <div class="whitespace-pre-line">
+                        The filters are mainly there to transform audio and video into the correct format, but also to
+                        place text and logo over the video, create in/out fade etc.<br />
+
+                        If curly brackets are included in the default values, these must be adopted.<br />
+
+                        If a filter is not compatible and you know that it is not absolutely necessary to use it, add
+                        null/anull.
+                    </div>
+                </label>
+                <label class="form-control w-full mt-2">
+                    <div class="label">
+                        <span class="label-text !text-md font-bold">Deinterlace</span>
+                    </div>
+                    <input
+                        v-model="configStore.advanced.filter.deinterlace"
+                        type="text"
+                        name="deinterlace"
+                        class="input input-sm input-bordered w-full"
+                    />
+                    <div class="label">
+                        <span class="text-sm select-text text-base-content/80">Default: yadif=0:-1:0 </span>
+                    </div>
+                </label>
+                <label class="form-control w-full mt-2">
+                    <div class="label">
+                        <span class="label-text !text-md font-bold">Pad Scaling Width</span>
+                    </div>
+                    <input
+                        v-model="configStore.advanced.filter.pad_scale_w"
+                        type="text"
+                        name="pad_scale_w"
+                        class="input input-sm input-bordered w-full"
+                    />
+                    <div class="label">
+                        <span class="text-sm select-text text-base-content/80"> Default: scale={}:-1 </span>
+                    </div>
+                </label>
+                <label class="form-control w-full mt-2">
+                    <div class="label">
+                        <span class="label-text !text-md font-bold">Pad Scaling Height</span>
+                    </div>
+                    <input
+                        v-model="configStore.advanced.filter.pad_scale_h"
+                        type="text"
+                        name="pad_scale_h"
+                        class="input input-sm input-bordered w-full"
+                    />
+                    <div class="label">
+                        <span class="text-sm select-text text-base-content/80"> Default: scale=-1:{} </span>
+                    </div>
+                </label>
+                <label class="form-control w-full mt-2">
+                    <div class="label">
+                        <span class="label-text !text-md font-bold">Pad Video</span>
+                    </div>
+                    <input
+                        v-model="configStore.advanced.filter.pad_video"
+                        type="text"
+                        name="pad_video"
+                        class="input input-sm input-bordered w-full"
+                    />
+                    <div class="label">
+                        <span class="text-sm select-text text-base-content/80">
+                            Default: pad=max(iw\\,ih*({0}/{1})):ow/({0}/{1}):(ow-iw)/2:(oh-ih)/2
+                        </span>
+                    </div>
+                </label>
+                <label class="form-control w-full mt-2">
+                    <div class="label">
+                        <span class="label-text !text-md font-bold">FPS</span>
+                    </div>
+                    <input
+                        v-model="configStore.advanced.filter.fps"
+                        type="text"
+                        name="fps"
+                        class="input input-sm input-bordered w-full"
+                    />
+                    <div class="label">
+                        <span class="text-sm select-text text-base-content/80"> Default: fps={} </span>
+                    </div>
+                </label>
+                <label class="form-control w-full mt-2">
+                    <div class="label">
+                        <span class="label-text !text-md font-bold">Scale</span>
+                    </div>
+                    <input
+                        v-model="configStore.advanced.filter.scale"
+                        type="text"
+                        name="scale"
+                        class="input input-sm input-bordered w-full"
+                    />
+                    <div class="label">
+                        <span class="text-sm select-text text-base-content/80"> Default: scale={}:{} </span>
+                    </div>
+                </label>
+                <label class="form-control w-full mt-2">
+                    <div class="label">
+                        <span class="label-text !text-md font-bold">Set Dar</span>
+                    </div>
+                    <input
+                        v-model="configStore.advanced.filter.set_dar"
+                        type="text"
+                        name="set_dar"
+                        class="input input-sm input-bordered w-full"
+                    />
+                    <div class="label">
+                        <span class="text-sm select-text text-base-content/80"> Default: setdar=dar={} </span>
+                    </div>
+                </label>
+                <label class="form-control w-full mt-2">
+                    <div class="label">
+                        <span class="label-text !text-md font-bold">Fade In</span>
+                    </div>
+                    <input
+                        v-model="configStore.advanced.filter.fade_in"
+                        type="text"
+                        name="fade_in"
+                        class="input input-sm input-bordered w-full"
+                    />
+                    <div class="label">
+                        <span class="text-sm select-text text-base-content/80"> Default: fade=in:st=0:d=0.5 </span>
+                    </div>
+                </label>
+                <label class="form-control w-full mt-2">
+                    <div class="label">
+                        <span class="label-text !text-md font-bold">Fade Out</span>
+                    </div>
+                    <input
+                        v-model="configStore.advanced.filter.fade_out"
+                        type="text"
+                        name="fade_out"
+                        class="input input-sm input-bordered w-full"
+                    />
+                    <div class="label">
+                        <span class="text-sm select-text text-base-content/80"> Default: fade=out:st={}:d=1.0 </span>
+                    </div>
+                </label>
+                <label class="form-control w-full mt-2">
+                    <div class="label">
+                        <span class="label-text !text-md font-bold">Logo Scale</span>
+                    </div>
+                    <input
+                        v-model="configStore.advanced.filter.overlay_logo_scale"
+                        type="text"
+                        name="overlay_logo_scale"
+                        class="input input-sm input-bordered w-full"
+                    />
+                    <div class="label">
+                        <span class="text-sm select-text text-base-content/80"> Default: scale={} </span>
+                    </div>
+                </label>
+                <label class="form-control w-full mt-2">
+                    <div class="label">
+                        <span class="label-text !text-md font-bold">Logo Fade In</span>
+                    </div>
+                    <input
+                        v-model="configStore.advanced.filter.overlay_logo_fade_in"
+                        type="text"
+                        name="overlay_logo_fade_in"
+                        class="input input-sm input-bordered w-full"
+                    />
+                    <div class="label">
+                        <span class="text-sm select-text text-base-content/80">
+                            Default: fade=in:st=0:d=1.0:alpha=1
+                        </span>
+                    </div>
+                </label>
+                <label class="form-control w-full mt-2">
+                    <div class="label">
+                        <span class="label-text !text-md font-bold">Logo Fade Out</span>
+                    </div>
+                    <input
+                        v-model="configStore.advanced.filter.overlay_logo_fade_out"
+                        type="text"
+                        name="overlay_logo_fade_out"
+                        class="input input-sm input-bordered w-full"
+                    />
+                    <div class="label">
+                        <span class="text-sm select-text text-base-content/80">
+                            Default: fade=out:st={}:d=1.0:alpha=1
+                        </span>
+                    </div>
+                </label>
+                <label class="form-control w-full mt-2">
+                    <div class="label">
+                        <span class="label-text !text-md font-bold">Logo Overlay</span>
+                    </div>
+                    <input
+                        v-model="configStore.advanced.filter.overlay_logo"
+                        type="text"
+                        name="overlay_logo"
+                        class="input input-sm input-bordered w-full"
+                    />
+                    <div class="label">
+                        <span class="text-sm select-text text-base-content/80">
+                            Default: null[l];[v][l]overlay={}:shortest=1
+                        </span>
+                    </div>
+                </label>
+                <label class="form-control w-full mt-2">
+                    <div class="label">
+                        <span class="label-text !text-md font-bold">TPad</span>
+                    </div>
+                    <input
+                        v-model="configStore.advanced.filter.tpad"
+                        type="text"
+                        name="tpad"
+                        class="input input-sm input-bordered w-full"
+                    />
+                    <div class="label">
+                        <span class="text-sm select-text text-base-content/80">
+                            Default: tpad=stop_mode=add:stop_duration={}
+                        </span>
+                    </div>
+                </label>
+                <label class="form-control w-full mt-2">
+                    <div class="label">
+                        <span class="label-text !text-md font-bold">Drawtext from File</span>
+                    </div>
+                    <input
+                        v-model="configStore.advanced.filter.drawtext_from_file"
+                        type="text"
+                        name="drawtext_from_file"
+                        class="input input-sm input-bordered w-full"
+                    />
+                    <div class="label">
+                        <span class="text-sm select-text text-base-content/80"> Default: drawtext=text='{}':{}{} </span>
+                    </div>
+                </label>
+                <label class="form-control w-full mt-2">
+                    <div class="label">
+                        <span class="label-text !text-md font-bold">Drawtext from ZMQ</span>
+                    </div>
+                    <input
+                        v-model="configStore.advanced.filter.drawtext_from_zmq"
+                        type="text"
+                        name="drawtext_from_zmq"
+                        class="input input-sm input-bordered w-full"
+                    />
+                    <div class="label">
+                        <span class="text-sm select-text text-base-content/80">
+                            Default: zmq=b=tcp\\\\://'{}',drawtext@dyntext={}
+                        </span>
+                    </div>
+                </label>
+                <label class="form-control w-full mt-2">
+                    <div class="label">
+                        <span class="label-text !text-md font-bold">Audio Source</span>
+                    </div>
+                    <input
+                        v-model="configStore.advanced.filter.aevalsrc"
+                        type="text"
+                        name="aevalsrc"
+                        class="input input-sm input-bordered w-full"
+                    />
+                    <div class="label">
+                        <span class="text-sm select-text text-base-content/80 break-all">
+                            Default: aevalsrc=0:channel_layout=stereo:duration={}:sample_rate=48000
+                        </span>
+                    </div>
+                </label>
+                <label class="form-control w-full mt-2">
+                    <div class="label">
+                        <span class="label-text !text-md font-bold">Audio Fade In</span>
+                    </div>
+                    <input
+                        v-model="configStore.advanced.filter.afade_in"
+                        type="text"
+                        name="afade_in"
+                        class="input input-sm input-bordered w-full"
+                    />
+                    <div class="label">
+                        <span class="text-sm select-text text-base-content/80"> Default: afade=in:st=0:d=0.5 </span>
+                    </div>
+                </label>
+                <label class="form-control w-full mt-2">
+                    <div class="label">
+                        <span class="label-text !text-md font-bold">Audio Fade Out</span>
+                    </div>
+                    <input
+                        v-model="configStore.advanced.filter.afade_out"
+                        type="text"
+                        name="afade_out"
+                        class="input input-sm input-bordered w-full"
+                    />
+                    <div class="label">
+                        <span class="text-sm select-text text-base-content/80"> Default: afade=out:st={}:d=1.0 </span>
+                    </div>
+                </label>
+                <label class="form-control w-full mt-2">
+                    <div class="label">
+                        <span class="label-text !text-md font-bold">Audio Pad</span>
+                    </div>
+                    <input
+                        v-model="configStore.advanced.filter.apad"
+                        type="text"
+                        name="apad"
+                        class="input input-sm input-bordered w-full"
+                    />
+                    <div class="label">
+                        <span class="text-sm select-text text-base-content/80"> Default: apad=whole_dur={} </span>
+                    </div>
+                </label>
+                <label class="form-control w-full mt-2">
+                    <div class="label">
+                        <span class="label-text !text-md font-bold">Volumen</span>
+                    </div>
+                    <input
+                        v-model="configStore.advanced.filter.volume"
+                        type="text"
+                        name="volume"
+                        class="input input-sm input-bordered w-full"
+                    />
+                    <div class="label">
+                        <span class="text-sm select-text text-base-content/80"> Default: volume={} </span>
+                    </div>
+                </label>
+                <label class="form-control w-full mt-2">
+                    <div class="label">
+                        <span class="label-text !text-md font-bold">Split</span>
+                    </div>
+                    <input
+                        v-model="configStore.advanced.filter.split"
+                        type="text"
+                        name="split"
+                        class="input input-sm input-bordered w-full"
+                    />
+                    <div class="label">
+                        <span class="text-sm select-text text-base-content/80"> Default: split={}{} </span>
+                    </div>
+                </label>
+            </div>
+
+            <div class="text-xl pt-3 md:text-right">{{ t('advanced.ingest') }}:</div>
+            <div class="md:pt-4">
+                <label class="form-control mb-2">
+                    <div class="whitespace-pre-line">Ingest settings are for live streaming input.</div>
+                </label>
+                <label class="form-control w-full mt-2">
+                    <div class="label">
+                        <span class="label-text !text-md font-bold">Input Parameter</span>
+                    </div>
+                    <input
+                        v-model="configStore.advanced.ingest.input_param"
+                        type="text"
+                        name="input_param"
+                        class="input input-sm input-bordered w-full"
+                    />
+                </label>
+            </div>
+
             <div class="mt-5 mb-10">
                 <button class="btn btn-primary" type="submit">{{ t('config.save') }}</button>
             </div>
@@ -49,21 +440,6 @@ const configStore = useConfig()
 const indexStore = useIndex()
 
 const showModal = ref(false)
-
-function setTitle(input: string): string {
-    switch (input) {
-        case 'decoder':
-            return t('advanced.decoder')
-        case 'encoder':
-            return t('advanced.encoder')
-        case 'filter':
-            return t('advanced.filter')
-        case 'ingest':
-            return t('advanced.ingest')
-        default:
-            return input
-    }
-}
 
 async function onSubmitAdvanced() {
     const update = await configStore.setAdvancedConfig()

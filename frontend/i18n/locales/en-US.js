@@ -189,24 +189,34 @@ export default {
         logHelp: 'Adjust logging behavior.',
         logDetect: 'Logs an error message if the audio line is silent for 15 seconds during the validation process.',
         logIgnore: 'Ignore strings that contain matched lines; the format is a semicolon-separated list.',
-        processingHelp: `Default processing for all clips ensures uniqueness. The mode can be either 'playlist' or 'folder'.
-        The 'Aspect' parameter must be a float number.
-        The 'Audio Tracks' parameter specifies how many audio tracks should be processed. 'Audio Channels' can be used if the audio has more channels than stereo.
-        The 'Logo' is used only if the path exists; the path is relative to your storage folder.
-        'Logo Scale' scales the logo to the target size. Leave it blank if no scaling is needed. The format is 'width:height', for example: '100:-1' for proportional scaling. The 'logo_opacity' option allows the logo to become transparent.
-        'Logo Position' is specified in the format 'x:y', which sets the logo's position.
-        With 'Custom Filter', it is possible to apply additional filters. The filter outputs should end with [c_v_out] for video filters and [c_a_out] for audio filters.
-        'Enable VTT' can only be used in HLS mode, and only when *.vtt files with the same filename as the video file exist.`,
-        ingestHelp: `Run a server for an ingest stream. This stream will override the normal streaming until it is finished. There is only a very simple authentication mechanism, which checks if the stream name is correct.
-        'Custom Filter' can be used in the same way as the one in the process section.`,
-        playlistHelp: `'day_start' indicates at what time the playlist should start; leave 'day_start' blank if the playlist should always start at the beginning. 'length' represents the target length of the playlist; when it is blank, the real length will not be considered.
-        'infinite: true' works with a single playlist file and loops it infinitely.`,
-        storageHelp: `'filler' is used to play in place of a missing file or to fill the remaining time to reach a total of 24 hours. It can be a file or folder and will loop when necessary.
-        'extensions' specifies which files to search for by this extension. Activate 'shuffle' to pick files randomly.`,
-        textHelp: `Overlay text in combination with libzmq for remote text manipulation. 'font' is a relative path to your storage folder.
-        'text_from_filename' activates the extraction of text from a filename. With 'style', you can define the drawtext parameters, such as position, color, etc. Posting text over the API will override this. With 'regex', you can format file names to extract a title from them.`,
-        taskHelp: `Run an external program with a given media object. The media object is in JSON format and contains all the information about the current clip. The external program can be a script or a binary, but it should only run for a short time.`,
-        outputHelp: `The final playout encoding, set the settings according to your needs. 'mode' has the options 'desktop', 'hls', 'null', and 'stream'. Use 'stream' and adjust the 'output_param:' settings when you want to stream to an RTMP/RTSP/SRT/... server.
+        processingHelp: 'Default processing for all clips ensures uniqueness.',
+        processingLogoPath: 'The logo is used only if the path exists; the path is relative to the storage folder.',
+        processingLogoScale: `Leave logo scale blank if no scaling is needed. The format is 'width:height', for example: '100:-1' for proportional scaling.`,
+        processingLogoPosition: `Position is specified in the format 'x:y'`,
+        processingAudioTracks: 'Specify how many audio tracks should be processed.',
+        processingAudioIndex: 'Which audio line to use, -1 for all.',
+        processingAudioChannels: 'Set the audio channel count, if audio has more channels than stereo.',
+        processingCustomFilter: 'Add custom filters to the processing. The filter outputs must end with [c_v_out] for video filters and [c_a_out] for audio filters.',
+        processingVTTEnable: 'VTT can only be used in HLS mode and only if there are *.vtt files with the same name as the video file.',
+        processingVTTDummy: 'A placeholder is needed if there is no vtt file.',
+        ingestHelp: `Run a server for an ingest stream. This stream will override the normal streaming until it is finished. There is only a very simple authentication mechanism, which checks if the stream name is correct.`,
+        ingestCustomFilter: 'Apply a custom filter to the Ingest stream in the same way as in the Processing section.',
+        playlistHelp: 'Playlist handling.',
+        playlistDayStart: 'At what time the playlist should start; leave it blank if the playlist should always start at the beginning.',
+        playlistLength: 'Target length of the playlist; when it is blank, the real length will not be considered.',
+        playlistInfinit: 'Loop a single playlist file infinitely.',
+        storageHelp: 'Storage settings, locations are relative to channel storage.',
+        storageFiller: 'Use filler to play in place of a missing file or to fill the remaining time to reach a total of 24 hours. It can be a file or folder and will loop when necessary.',
+        storageExtension: 'Specify which files to search and use.',
+        storageShuffle: 'Pick files randomly (in folder mode and playlist generation).',
+        textHelp: 'Overlay text in combination with libzmq for remote text manipulation.',
+        textFont: 'Relative path to channel storage.',
+        textFromFile: 'Extraction of text from a filename.',
+        textStyle: 'Define the drawtext parameters, such as position, color, etc. Posting text over the API will override this.',
+        textRegex: 'Format file names to extract a title from them.',
+        taskHelp: 'Run an external program with a given media object. The media object is in JSON format and contains all the information about the current clip. The external program can be a script or a binary, but it should only run for a short time.',
+        taskPath: 'Path to executable.',
+        outputHelp: `The final playout encoding, set the settings according to your needs. Use 'stream' mode and adjust the 'Output Parameter' when you want to stream to an RTMP/RTSP/SRT/... server.
         In production, don't serve HLS playlists with ffplayout; use Nginx or another web server!`,
         restartTile: 'Restart Playout',
         restartText: 'Restart ffplayout to apply changes?',
