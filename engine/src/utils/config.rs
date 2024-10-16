@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use shlex::split;
 use sqlx::{Pool, Sqlite};
 use tokio::{fs, io::AsyncReadExt};
+use ts_rs::TS;
 
 use crate::db::{handles, models};
 use crate::utils::{files::norm_abs_path, free_tcp_socket, time_to_sec};
@@ -52,7 +53,8 @@ pub const FFMPEG_UNRECOVERABLE_ERRORS: [&str; 6] = [
     "Unrecognized option",
 ];
 
-#[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize, TS)]
+#[ts(export, export_to = "playout_config.d.ts")]
 #[serde(rename_all = "lowercase")]
 pub enum OutputMode {
     Desktop,
@@ -103,7 +105,8 @@ impl fmt::Display for OutputMode {
     }
 }
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize, Eq, PartialEq, TS)]
+#[ts(export, export_to = "playout_config.d.ts")]
 #[serde(rename_all = "lowercase")]
 pub enum ProcessMode {
     Folder,
@@ -141,14 +144,16 @@ impl FromStr for ProcessMode {
     }
 }
 
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize, TS)]
 pub struct Template {
     pub sources: Vec<Source>,
 }
 
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize, TS)]
 pub struct Source {
+    #[ts(type = "string")]
     pub start: NaiveTime,
+    #[ts(type = "string")]
     pub duration: NaiveTime,
     pub shuffle: bool,
     pub paths: Vec<PathBuf>,
@@ -157,10 +162,14 @@ pub struct Source {
 /// Channel Config
 ///
 /// This we init ones, when ffplayout is starting and use them globally in the hole program.
-#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+
+#[derive(Debug, Default, Clone, Deserialize, Serialize, TS)]
+#[ts(export, export_to = "playout_config.d.ts")]
 pub struct PlayoutConfig {
+    #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
     pub channel: Channel,
+    #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
     pub advanced: AdvancedConfig,
     pub general: General,
@@ -176,7 +185,7 @@ pub struct PlayoutConfig {
     pub output: Output,
 }
 
-#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize, TS)]
 pub struct Channel {
     pub logs: PathBuf,
     pub public: PathBuf,
@@ -197,24 +206,32 @@ impl Channel {
     }
 }
 
-#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize, TS)]
+#[ts(export, export_to = "playout_config.d.ts")]
 pub struct General {
-    pub help_text: String,
+    #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
     pub id: i32,
+    #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
     pub channel_id: i32,
     pub stop_threshold: f64,
+    #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
     pub generate: Option<Vec<String>>,
+    #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
     pub ffmpeg_filters: Vec<String>,
+    #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
     pub ffmpeg_libs: Vec<String>,
+    #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
     pub template: Option<Template>,
+    #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
     pub skip_validation: bool,
+    #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
     pub validate: bool,
 }
@@ -222,7 +239,6 @@ pub struct General {
 impl General {
     fn new(config: &models::Configuration) -> Self {
         Self {
-            help_text: config.general_help.clone(),
             id: config.id,
             channel_id: config.channel_id,
             stop_threshold: config.general_stop_threshold,
@@ -236,19 +252,24 @@ impl General {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, TS)]
+#[ts(export, export_to = "playout_config.d.ts")]
 pub struct Mail {
-    pub help_text: String,
     pub subject: String,
+    #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
     pub smtp_server: String,
+    #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
     pub starttls: bool,
+    #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
     pub sender_addr: String,
+    #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
     pub sender_pass: String,
     pub recipient: String,
+    #[ts(type = "string")]
     pub mail_level: Level,
     pub interval: i64,
 }
@@ -256,7 +277,6 @@ pub struct Mail {
 impl Mail {
     fn new(global: &models::GlobalSettings, config: &models::Configuration) -> Self {
         Self {
-            help_text: config.mail_help.clone(),
             subject: config.mail_subject.clone(),
             smtp_server: global.mail_smtp.clone(),
             starttls: global.mail_starttls,
@@ -272,7 +292,6 @@ impl Mail {
 impl Default for Mail {
     fn default() -> Self {
         Mail {
-            help_text: String::default(),
             subject: String::default(),
             smtp_server: String::default(),
             starttls: bool::default(),
@@ -285,9 +304,9 @@ impl Default for Mail {
     }
 }
 
-#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize, TS)]
+#[ts(export, export_to = "playout_config.d.ts")]
 pub struct Logging {
-    pub help_text: String,
     pub ffmpeg_level: String,
     pub ingest_level: String,
     pub detect_silence: bool,
@@ -297,7 +316,6 @@ pub struct Logging {
 impl Logging {
     fn new(config: &models::Configuration) -> Self {
         Self {
-            help_text: config.logging_help.clone(),
             ffmpeg_level: config.logging_ffmpeg_level.clone(),
             ingest_level: config.logging_ingest_level.clone(),
             detect_silence: config.logging_detect_silence,
@@ -310,9 +328,9 @@ impl Logging {
     }
 }
 
-#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize, TS)]
+#[ts(export, export_to = "playout_config.d.ts")]
 pub struct Processing {
-    pub help_text: String,
     pub mode: ProcessMode,
     pub audio_only: bool,
     pub copy_audio: bool,
@@ -323,6 +341,7 @@ pub struct Processing {
     pub fps: f64,
     pub add_logo: bool,
     pub logo: String,
+    #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
     pub logo_path: String,
     pub logo_scale: String,
@@ -338,6 +357,7 @@ pub struct Processing {
     pub vtt_enable: bool,
     #[serde(default)]
     pub vtt_dummy: Option<String>,
+    #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
     pub cmd: Option<Vec<String>>,
 }
@@ -345,7 +365,6 @@ pub struct Processing {
 impl Processing {
     fn new(config: &models::Configuration) -> Self {
         Self {
-            help_text: config.processing_help.clone(),
             mode: ProcessMode::new(&config.processing_mode.clone()),
             audio_only: config.processing_audio_only,
             audio_track_index: config.processing_audio_track_index,
@@ -372,12 +391,13 @@ impl Processing {
     }
 }
 
-#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize, TS)]
+#[ts(export, export_to = "playout_config.d.ts")]
 pub struct Ingest {
-    pub help_text: String,
     pub enable: bool,
     pub input_param: String,
     pub custom_filter: String,
+    #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
     pub input_cmd: Option<Vec<String>>,
 }
@@ -385,7 +405,6 @@ pub struct Ingest {
 impl Ingest {
     fn new(config: &models::Configuration) -> Self {
         Self {
-            help_text: config.ingest_help.clone(),
             enable: config.ingest_enable,
             input_param: config.ingest_param.clone(),
             custom_filter: config.ingest_filter.clone(),
@@ -394,13 +413,15 @@ impl Ingest {
     }
 }
 
-#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize, TS)]
+#[ts(export, export_to = "playout_config.d.ts")]
 pub struct Playlist {
-    pub help_text: String,
     pub day_start: String,
+    #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
     pub start_sec: Option<f64>,
     pub length: String,
+    #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
     pub length_sec: Option<f64>,
     pub infinit: bool,
@@ -409,7 +430,6 @@ pub struct Playlist {
 impl Playlist {
     fn new(config: &models::Configuration) -> Self {
         Self {
-            help_text: config.playlist_help.clone(),
             day_start: config.playlist_day_start.clone(),
             start_sec: None,
             length: config.playlist_length.clone(),
@@ -419,26 +439,28 @@ impl Playlist {
     }
 }
 
-#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize, TS)]
+#[ts(export, export_to = "playout_config.d.ts")]
 pub struct Storage {
-    pub help_text: String,
+    #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
     pub path: PathBuf,
+    #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
     pub paths: Vec<PathBuf>,
     pub filler: String,
+    #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
     pub filler_path: PathBuf,
     pub extensions: Vec<String>,
     pub shuffle: bool,
-    #[serde(skip_serializing, skip_deserializing)]
+    #[serde(skip_deserializing)]
     pub shared_storage: bool,
 }
 
 impl Storage {
     fn new(config: &models::Configuration, path: PathBuf, shared_storage: bool) -> Self {
         Self {
-            help_text: config.storage_help.clone(),
             path,
             paths: vec![],
             filler: config.storage_filler.clone(),
@@ -454,18 +476,22 @@ impl Storage {
     }
 }
 
-#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize, TS)]
+#[ts(export, export_to = "playout_config.d.ts")]
 pub struct Text {
-    pub help_text: String,
     pub add_text: bool,
+    #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
     pub node_pos: Option<usize>,
+    #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
     pub zmq_stream_socket: Option<String>,
+    #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
     pub zmq_server_socket: Option<String>,
     #[serde(alias = "fontfile")]
     pub font: String,
+    #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
     pub font_path: String,
     pub text_from_filename: bool,
@@ -476,7 +502,6 @@ pub struct Text {
 impl Text {
     fn new(config: &models::Configuration) -> Self {
         Self {
-            help_text: config.text_help.clone(),
             add_text: config.text_add,
             node_pos: None,
             zmq_stream_socket: None,
@@ -490,9 +515,9 @@ impl Text {
     }
 }
 
-#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize, TS)]
+#[ts(export, export_to = "playout_config.d.ts")]
 pub struct Task {
-    pub help_text: String,
     pub enable: bool,
     pub path: PathBuf,
 }
@@ -500,22 +525,24 @@ pub struct Task {
 impl Task {
     fn new(config: &models::Configuration) -> Self {
         Self {
-            help_text: config.task_help.clone(),
             enable: config.task_enable,
             path: PathBuf::from(config.task_path.clone()),
         }
     }
 }
 
-#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize, TS)]
+#[ts(export, export_to = "playout_config.d.ts")]
 pub struct Output {
-    pub help_text: String,
     pub mode: OutputMode,
     pub output_param: String,
+    #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
     pub output_count: usize,
+    #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
     pub output_filter: Option<String>,
+    #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
     pub output_cmd: Option<Vec<String>>,
 }
@@ -523,7 +550,6 @@ pub struct Output {
 impl Output {
     fn new(config: &models::Configuration) -> Self {
         Self {
-            help_text: config.output_help.clone(),
             mode: OutputMode::new(&config.output_mode),
             output_param: config.output_param.clone(),
             output_count: 0,

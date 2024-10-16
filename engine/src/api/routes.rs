@@ -869,10 +869,22 @@ pub async fn control_playout(
 ) -> Result<impl Responder, ServiceError> {
     let manager = controllers.lock().unwrap().get(*id).unwrap();
 
-    match control_state(&pool, manager, &control.control).await {
+    if manager.is_processing.load(Ordering::SeqCst) {
+        return Err(ServiceError::Conflict(
+            "A command is already being processed, please wait".to_string(),
+        ));
+    }
+
+    manager.is_processing.store(true, Ordering::SeqCst);
+
+    let resp = match control_state(&pool, &manager, &control.control).await {
         Ok(res) => Ok(web::Json(res)),
         Err(e) => Err(e),
-    }
+    };
+
+    manager.is_processing.store(false, Ordering::SeqCst);
+
+    resp
 }
 
 /// **Get current Clip**

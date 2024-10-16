@@ -1,5 +1,5 @@
 <template>
-    <div class="w-full max-w-[800px] pe-8">
+    <div class="w-full max-w-[800px] xs:pe-8">
         <h2 class="pt-3 text-3xl">{{ t('user.title') }}</h2>
         <div v-if="authStore.role === 'GlobalAdmin'" class="flex flex-col xs:flex-row gap-2 w-full mb-5 mt-10">
             <div class="grow">
@@ -234,12 +234,12 @@ async function addUser(add: boolean) {
                 await getUsers()
                 await getUserConfig()
             } else {
-                indexStore.msgAlert('error', t('user.addFailed'), 2)
+                indexStore.msgAlert('error', t('user.addFailed'), 3)
             }
 
             clearUser()
         } else {
-            indexStore.msgAlert('error', t('user.mismatch'), 2)
+            indexStore.msgAlert('error', t('user.mismatch'), 3)
         }
     } else {
         showUserModal.value = false
@@ -248,8 +248,13 @@ async function addUser(add: boolean) {
 }
 
 async function onSubmitUser() {
-    if (newPass.value && newPass.value === confirmPass.value) {
-        configStore.configUser.password = newPass.value
+    if (newPass.value) {
+        if (newPass.value === confirmPass.value) {
+            configStore.configUser.password = newPass.value
+        } else {
+            indexStore.msgAlert('error', t('user.mismatch'), 3)
+            return
+        }
     }
 
     authStore.inspectToken()

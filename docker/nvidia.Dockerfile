@@ -1,6 +1,6 @@
 FROM nvidia/cuda:12.5.0-runtime-rockylinux9
 
-ARG FFPLAYOUT_VERSION=0.24.0-rc1
+ARG FFPLAYOUT_VERSION=0.24.0-rc3
 ARG SHARED_STORAGE=false
 
 ENV DB=/db

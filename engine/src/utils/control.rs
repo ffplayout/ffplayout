@@ -132,7 +132,7 @@ pub async fn send_message(
 
 pub async fn control_state(
     conn: &Pool<Sqlite>,
-    manager: ChannelManager,
+    manager: &ChannelManager,
     command: &str,
 ) -> Result<Map<String, Value>, ServiceError> {
     let config = manager.config.lock().unwrap().clone();
