@@ -226,7 +226,7 @@ export default {
         publicPath: 'Public (HLS) Pfad',
         playlistPath: 'Wiedergabelistenpfad',
         storagePath: 'Speicherpfad',
-        sharedStorage: 'Gemeinsamer Speicher ist aktiviert, verwende denselben Speicherstamm für alle Kanäle!',
+        sharedStorage: 'ffplayout läuft innerhalb eines Containers, verwenden Sie den gleichen Speicherstamm für alle Kanäle!',
     },
     user: {
         title: 'Benutzer-Konfiguration',

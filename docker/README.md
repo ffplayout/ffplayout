@@ -22,7 +22,7 @@ How to build the image:\
 # build default
 docker build -t ffplayout-image .
 
-# build from root folder, to copy local *.rpm package
+# build from root folder, to copy *.tar.gz with self compiled binary
 docker build -f docker/Dockerfile -t ffplayout-image .
 
 # build ffmpeg from source
@@ -44,6 +44,14 @@ docker run -d --name ffplayout -p 8787:8787 ffplayout-image
 # run with docker-compose
 docker-compose up -d
 ```
+
+For setup mail server settings run:
+
+```
+docker exec -it ffplayout ffplayout -i
+```
+
+Then restart Container
 
 #### Note from CentOS docker hub page
 There have been reports that if you're using an Ubuntu host, you will need to add `-v /tmp/$(mktemp -d):/run` to the mount.

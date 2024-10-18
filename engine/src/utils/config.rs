@@ -162,7 +162,6 @@ pub struct Source {
 /// Channel Config
 ///
 /// This we init ones, when ffplayout is starting and use them globally in the hole program.
-
 #[derive(Debug, Default, Clone, Deserialize, Serialize, TS)]
 #[ts(export, export_to = "playout_config.d.ts")]
 pub struct PlayoutConfig {
@@ -624,7 +623,7 @@ impl PlayoutConfig {
                 .unwrap_or_else(|_| panic!("Can't create storage folder: {:#?}", channel.storage));
         }
 
-        let mut storage = Storage::new(&config, channel.storage.clone(), global.shared);
+        let mut storage = Storage::new(&config, channel.storage.clone(), channel.shared);
 
         if !channel.playlists.is_dir() {
             tokio::fs::create_dir_all(&channel.playlists).await?;
@@ -943,12 +942,6 @@ pub async fn get_config(
             config.output.output_filter = None;
             config.output.output_cmd = Some(vec_strings!["-f", "null", "-"]);
         }
-    }
-
-    if args.shared {
-        // config.channel.shared could be true already,
-        // so should not be overridden with false when args.shared is not set
-        config.channel.shared = true
     }
 
     if let Some(volume) = args.volume {

@@ -369,10 +369,6 @@ onMounted(async () => {
     let config_extensions = configStore.playout.storage.extensions
     let extra_extensions = configStore.channels[configStore.i].extra_extensions
 
-    if (typeof config_extensions === 'string') {
-        config_extensions = config_extensions.split(',')
-    }
-
     if (typeof extra_extensions === 'string') {
         extra_extensions = extra_extensions.split(',')
     }
