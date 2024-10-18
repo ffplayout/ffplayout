@@ -29,7 +29,7 @@ The ffplayout engine has no special preview config parameters, but you can add y
     ...
 ```
 
-In this documentation, we assume that you are using [ffplayout-frontend](https://github.com/ffplayout/ffplayout-frontend) and that you are using [SRS](https://github.com/ossrs/srs) at least for the preview stream. The most stable solution is previewing over HLS, but it is also possible to use [HTTP-FLV](https://github.com/ossrs/srs/wiki/v4_EN_DeliveryHttpStream) for lower latency.
+In this documentation, we assume that you are using [SRS](https://github.com/ossrs/srs) at least for the preview stream. The most stable solution is previewing over HLS, but it is also possible to use [HTTP-FLV](https://github.com/ossrs/srs/wiki/v4_EN_DeliveryHttpStream) for lower latency.
 
 To get this working, we need to follow some steps.
 
