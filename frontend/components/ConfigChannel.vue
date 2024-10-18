@@ -217,6 +217,7 @@ async function addUpdateChannel() {
             await updateChannel()
         }
 
+        await configStore.getAdvancedConfig()
         await configStore.getPlayoutConfig()
         await configStore.getUserConfig()
     }
@@ -240,6 +241,7 @@ async function deleteChannel() {
 
     i.value = configStore.i - 1
     await configStore.getChannelConfig()
+    await configStore.getAdvancedConfig()
     await configStore.getPlayoutConfig()
     await configStore.getUserConfig()
 

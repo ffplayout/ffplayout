@@ -162,6 +162,7 @@ function logout() {
 
 function selectChannel(index: number) {
     configStore.i = index
+    configStore.getAdvancedConfig()
     configStore.getPlayoutConfig()
 }
 
