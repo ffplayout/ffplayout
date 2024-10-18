@@ -13,9 +13,6 @@ COPY <<-EOT /run.sh
 
 if [ ! -f /db/ffplayout.db ]; then
     ffplayout -i -u admin -p admin -m contact@example.com --storage "/tv-media" --playlists "/playlists" --public "/public" --logs "/logging" --mail-smtp "mail.example.org" --mail-user "admin@example.org" --mail-password "abcd" --mail-starttls
-
-    mkdir /tv-media/1
-    cp -r /00-assets /tv-media/1/
 fi
 
 /usr/bin/ffplayout -l "0.0.0.0:8787"
@@ -31,8 +28,8 @@ RUN [[ -f "/tmp/ffplayout-v${FFPLAYOUT_VERSION}_x86_64-unknown-linux-musl.tar.gz
     cd /tmp && \
     tar xf "ffplayout-v${FFPLAYOUT_VERSION}_x86_64-unknown-linux-musl.tar.gz" && \
     cp ffplayout /usr/bin/ && \
-    mkdir /00-assets && \
-    cp assets/dummy.vtt assets/logo.png assets/DejaVuSans.ttf assets/FONT_LICENSE.txt /00-assets/ && \
+    mkdir -p /usr/share/ffplayout/ && \
+    cp assets/dummy.vtt assets/logo.png assets/DejaVuSans.ttf assets/FONT_LICENSE.txt /usr/share/ffplayout/ && \
     rm -rf /tmp/* && \
     mkdir ${DB}
 

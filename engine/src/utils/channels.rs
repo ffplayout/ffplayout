@@ -35,14 +35,8 @@ pub async fn create_channel(
     target_channel: Channel,
 ) -> Result<Channel, ServiceError> {
     let channel = handles::insert_channel(conn, target_channel).await?;
-    let storage_path = PathBuf::from(channel.storage.clone());
 
     handles::new_channel_presets(conn, channel.id).await?;
-
-    if let Err(e) = copy_assets(&storage_path).await {
-        error!("{e}");
-    };
-
     handles::update_channel(conn, channel.id, channel.clone()).await?;
 
     let output_param = "-c:v libx264 -crf 23 -x264-params keyint=50:min-keyint=25:scenecut=-1 -maxrate 1300k -bufsize 2600k -preset faster -tune zerolatency -profile:v Main -level 3.1 -c:a aac -ar 44100 -b:a 128k -flags +cgop -f hls -hls_time 6 -hls_list_size 600 -hls_flags append_list+delete_segments+omit_endlist -hls_segment_filename live/stream-%d.ts live/stream.m3u8".to_string();
@@ -52,7 +46,11 @@ pub async fn create_channel(
 
     let config = get_config(conn, channel.id).await?;
     let m_queue = Arc::new(Mutex::new(MailQueue::new(channel.id, config.mail.clone())));
-    let manager = ChannelManager::new(Some(conn.clone()), channel.clone(), config);
+    let manager = ChannelManager::new(Some(conn.clone()), channel.clone(), config.clone());
+
+    if let Err(e) = copy_assets(&PathBuf::from(&config.storage.path)).await {
+        error!("{e}");
+    };
 
     controllers
         .lock()
