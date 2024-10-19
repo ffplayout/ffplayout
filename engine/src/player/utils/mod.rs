@@ -2,10 +2,10 @@ use std::{
     ffi::OsStr,
     fmt,
     fs::{metadata, File},
-    io::{BufRead, BufReader, Error},
+    io::Error,
     net::TcpListener,
     path::{Path, PathBuf},
-    process::{exit, ChildStderr, Command, Stdio},
+    process::{exit, Command, Stdio},
     str::FromStr,
     sync::{atomic::Ordering, Arc, Mutex},
 };
@@ -18,6 +18,10 @@ use regex::Regex;
 use reqwest::header;
 use serde::{de::Deserializer, Deserialize, Serialize};
 use serde_json::{json, Map, Value};
+use tokio::{
+    io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter},
+    process::ChildStderr,
+};
 
 pub mod folder;
 pub mod import;
@@ -874,16 +878,16 @@ pub fn include_file_extension(config: &PlayoutConfig, file_path: &Path) -> bool 
 
 /// Read ffmpeg stderr decoder and encoder instance
 /// and log the output.
-pub fn stderr_reader(
-    buffer: BufReader<ChildStderr>,
+pub async fn stderr_reader(
+    buffer: tokio::io::BufReader<ChildStderr>,
     ignore: Vec<String>,
     suffix: ProcessUnit,
     manager: ChannelManager,
 ) -> Result<(), ProcessError> {
     let id = manager.channel.lock().unwrap().id;
-    for line in buffer.lines() {
-        let line = line?;
+    let mut lines = buffer.lines();
 
+    while let Some(line) = lines.next_line().await? {
         if FFMPEG_IGNORE_ERRORS.iter().any(|i| line.contains(*i))
             || ignore.iter().any(|i| line.contains(i))
         {
