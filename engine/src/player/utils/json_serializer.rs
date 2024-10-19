@@ -2,11 +2,12 @@ use serde::{Deserialize, Serialize};
 use std::{
     fs::File,
     path::Path,
-    sync::{atomic::AtomicBool, Arc, Mutex},
+    sync::{atomic::AtomicBool, Arc},
     thread,
 };
 
 use log::*;
+use tokio::sync::Mutex;
 
 use crate::player::utils::{
     get_date, is_remote, json_validate::validate_playlist, modified_time, time_from_header, Media,
@@ -90,7 +91,7 @@ pub fn set_defaults(playlist: &mut JsonPlaylist) {
 
 /// Read json playlist file, fills JsonPlaylist struct and set some extra values,
 /// which we need to process.
-pub fn read_json(
+pub async fn read_json(
     config: &mut PlayoutConfig,
     current_list: Arc<Mutex<Vec<Media>>>,
     path: Option<String>,

@@ -1,6 +1,7 @@
-use std::process::{self, Command, Stdio};
+use std::process::Stdio;
 
 use log::*;
+use tokio::process::{Child, Command};
 
 use crate::player::filter::v_drawtext;
 use crate::utils::{config::PlayoutConfig, logging::Target};
@@ -9,7 +10,7 @@ use crate::vec_strings;
 /// Desktop Output
 ///
 /// Instead of streaming, we run a ffplay instance and play on desktop.
-pub fn output(config: &PlayoutConfig, log_format: &str) -> process::Child {
+pub async fn output(config: &PlayoutConfig, log_format: &str) -> Child {
     let mut enc_filter: Vec<String> = vec![];
 
     let mut enc_cmd = vec_strings!["-hide_banner", "-nostats", "-v", log_format];
@@ -57,7 +58,7 @@ pub fn output(config: &PlayoutConfig, log_format: &str) -> process::Child {
             );
 
             let mut filter: String = "null,".to_string();
-            filter.push_str(v_drawtext::filter_node(config, None, &None).as_str());
+            filter.push_str(v_drawtext::filter_node(config, None, &None).await.as_str());
             enc_filter = vec!["-vf".to_string(), filter];
         }
     }

@@ -11,7 +11,7 @@
 use std::{
     env,
     path::{Path, PathBuf},
-    sync::{atomic::Ordering, Arc, Mutex},
+    sync::{atomic::Ordering, Arc},
 };
 
 use actix_files;
@@ -36,7 +36,7 @@ use path_clean::PathClean;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use sqlx::{Pool, Sqlite};
-use tokio::fs;
+use tokio::{fs, sync::Mutex};
 
 use crate::db::models::Role;
 use crate::utils::{
@@ -482,8 +482,9 @@ async fn patch_channel(
 ) -> Result<impl Responder, ServiceError> {
     let manager = controllers
         .lock()
-        .unwrap()
+        .await
         .get(*id)
+        .await
         .ok_or(format!("Channel {id} not found!"))?;
     let mut data = data.into_inner();
 
@@ -497,7 +498,7 @@ async fn patch_channel(
 
     handles::update_channel(&pool, *id, data).await?;
     let new_config = get_config(&pool, *id).await?;
-    manager.update_config(new_config);
+    manager.update_config(new_config).await;
 
     Ok("Update Success")
 }
@@ -576,12 +577,13 @@ async fn get_advanced_config(
 ) -> Result<impl Responder, ServiceError> {
     let manager = controllers
         .lock()
-        .unwrap()
+        .await
         .get(*id)
+        .await
         .ok_or(ServiceError::BadRequest(format!(
             "Channel ({id}) not exists!"
         )))?;
-    let config = manager.config.lock().unwrap().advanced.clone();
+    let config = manager.config.lock().await.advanced.clone();
 
     Ok(web::Json(config))
 }
@@ -607,12 +609,12 @@ async fn update_advanced_config(
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    let manager = controllers.lock().unwrap().get(*id).unwrap();
+    let manager = controllers.lock().await.get(*id).await.unwrap();
 
     handles::update_advanced_configuration(&pool, *id, data.clone()).await?;
     let new_config = get_config(&pool, *id).await?;
 
-    manager.update_config(new_config);
+    manager.update_config(new_config).await;
 
     Ok(web::Json("Update success"))
 }
@@ -638,12 +640,13 @@ async fn get_playout_config(
 ) -> Result<impl Responder, ServiceError> {
     let manager = controllers
         .lock()
-        .unwrap()
+        .await
         .get(*id)
+        .await
         .ok_or(ServiceError::BadRequest(format!(
             "Channel ({id}) not exists!"
         )))?;
-    let config = manager.config.lock().unwrap().clone();
+    let config = manager.config.lock().await.clone();
 
     Ok(web::Json(config))
 }
@@ -668,10 +671,10 @@ async fn update_playout_config(
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    let manager = controllers.lock().unwrap().get(*id).unwrap();
-    let p = manager.channel.lock().unwrap().storage.clone();
+    let manager = controllers.lock().await.get(*id).await.unwrap();
+    let p = manager.channel.lock().await.storage.clone();
     let storage = Path::new(&p);
-    let config_id = manager.config.lock().unwrap().general.id;
+    let config_id = manager.config.lock().await.general.id;
 
     let (_, _, logo) = norm_abs_path(storage, &data.processing.logo)?;
     let (_, _, filler) = norm_abs_path(storage, &data.storage.filler)?;
@@ -684,7 +687,7 @@ async fn update_playout_config(
     handles::update_configuration(&pool, config_id, data.clone()).await?;
     let new_config = get_config(&pool, *id).await?;
 
-    manager.update_config(new_config);
+    manager.update_config(new_config).await;
 
     Ok(web::Json("Update success"))
 }
@@ -835,7 +838,7 @@ pub async fn send_text_message(
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    let manager = controllers.lock().unwrap().get(*id).unwrap();
+    let manager = controllers.lock().await.get(*id).await.unwrap();
 
     match send_message(manager, data.into_inner()).await {
         Ok(res) => Ok(web::Json(res)),
@@ -867,7 +870,7 @@ pub async fn control_playout(
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    let manager = controllers.lock().unwrap().get(*id).unwrap();
+    let manager = controllers.lock().await.get(*id).await.unwrap();
 
     if manager.is_processing.load(Ordering::SeqCst) {
         return Err(ServiceError::Conflict(
@@ -923,8 +926,8 @@ pub async fn media_current(
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    let manager = controllers.lock().unwrap().get(*id).unwrap();
-    let media_map = get_data_map(&manager);
+    let manager = controllers.lock().await.get(*id).await.unwrap();
+    let media_map = get_data_map(&manager).await;
 
     Ok(web::Json(media_map))
 }
@@ -955,7 +958,7 @@ pub async fn process_control(
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    let manager = controllers.lock().unwrap().get(*id).unwrap();
+    let manager = controllers.lock().await.get(*id).await.unwrap();
     manager.list_init.store(true, Ordering::SeqCst);
 
     if manager.is_processing.load(Ordering::SeqCst) {
@@ -978,12 +981,12 @@ pub async fn process_control(
         }
         ProcessCtl::Start => {
             if !manager.is_alive.load(Ordering::SeqCst) {
-                manager.channel.lock().unwrap().active = true;
+                manager.channel.lock().await.active = true;
                 manager.async_start().await;
             }
         }
         ProcessCtl::Stop => {
-            manager.channel.lock().unwrap().active = false;
+            manager.channel.lock().await.active = false;
             manager.async_stop().await;
         }
         ProcessCtl::Restart => {
@@ -1022,8 +1025,8 @@ pub async fn get_playlist(
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    let manager = controllers.lock().unwrap().get(*id).unwrap();
-    let config = manager.config.lock().unwrap().clone();
+    let manager = controllers.lock().await.get(*id).await.unwrap();
+    let config = manager.config.lock().await.clone();
 
     match read_playlist(&config, obj.date.clone()).await {
         Ok(playlist) => Ok(web::Json(playlist)),
@@ -1051,8 +1054,8 @@ pub async fn save_playlist(
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    let manager = controllers.lock().unwrap().get(*id).unwrap();
-    let config = manager.config.lock().unwrap().clone();
+    let manager = controllers.lock().await.get(*id).await.unwrap();
+    let config = manager.config.lock().await.clone();
 
     match write_playlist(&config, data.into_inner()).await {
         Ok(res) => Ok(web::Json(res)),
@@ -1091,9 +1094,9 @@ pub async fn gen_playlist(
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    let manager = controllers.lock().unwrap().get(params.0).unwrap();
-    manager.config.lock().unwrap().general.generate = Some(vec![params.1.clone()]);
-    let storage = manager.config.lock().unwrap().channel.storage.clone();
+    let manager = controllers.lock().await.get(params.0).await.unwrap();
+    manager.config.lock().await.general.generate = Some(vec![params.1.clone()]);
+    let storage = manager.config.lock().await.channel.storage.clone();
 
     if let Some(obj) = data {
         if let Some(paths) = &obj.paths {
@@ -1105,19 +1108,19 @@ pub async fn gen_playlist(
                 path_list.push(p);
             }
 
-            manager.config.lock().unwrap().storage.paths = path_list;
+            manager.config.lock().await.storage.paths = path_list;
         }
 
         manager
             .config
             .lock()
-            .unwrap()
+            .await
             .general
             .template
             .clone_from(&obj.template);
     }
 
-    match generate_playlist(manager) {
+    match generate_playlist(manager).await {
         Ok(playlist) => Ok(web::Json(playlist)),
         Err(e) => Err(e),
     }
@@ -1141,8 +1144,8 @@ pub async fn del_playlist(
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    let manager = controllers.lock().unwrap().get(params.0).unwrap();
-    let config = manager.config.lock().unwrap().clone();
+    let manager = controllers.lock().await.get(params.0).await.unwrap();
+    let config = manager.config.lock().await.clone();
 
     match delete_playlist(&config, &params.1).await {
         Ok(m) => Ok(web::Json(m)),
@@ -1194,9 +1197,9 @@ pub async fn file_browser(
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    let manager = controllers.lock().unwrap().get(*id).unwrap();
-    let channel = manager.channel.lock().unwrap().clone();
-    let config = manager.config.lock().unwrap().clone();
+    let manager = controllers.lock().await.get(*id).await.unwrap();
+    let channel = manager.channel.lock().await.clone();
+    let config = manager.config.lock().await.clone();
 
     match browser(&config, &channel, &data.into_inner()).await {
         Ok(obj) => Ok(web::Json(obj)),
@@ -1223,8 +1226,8 @@ pub async fn add_dir(
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<HttpResponse, ServiceError> {
-    let manager = controllers.lock().unwrap().get(*id).unwrap();
-    let config = manager.config.lock().unwrap().clone();
+    let manager = controllers.lock().await.get(*id).await.unwrap();
+    let config = manager.config.lock().await.clone();
 
     create_directory(&config, &data.into_inner()).await
 }
@@ -1248,8 +1251,8 @@ pub async fn move_rename(
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    let manager = controllers.lock().unwrap().get(*id).unwrap();
-    let config = manager.config.lock().unwrap().clone();
+    let manager = controllers.lock().await.get(*id).await.unwrap();
+    let config = manager.config.lock().await.clone();
 
     match rename_file(&config, &data.into_inner()).await {
         Ok(obj) => Ok(web::Json(obj)),
@@ -1276,8 +1279,8 @@ pub async fn remove(
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    let manager = controllers.lock().unwrap().get(*id).unwrap();
-    let config = manager.config.lock().unwrap().clone();
+    let manager = controllers.lock().await.get(*id).await.unwrap();
+    let config = manager.config.lock().await.clone();
     let recursive = data.recursive;
 
     match remove_file_or_folder(&config, &data.into_inner().source, recursive).await {
@@ -1308,8 +1311,8 @@ async fn save_file(
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<HttpResponse, ServiceError> {
-    let manager = controllers.lock().unwrap().get(*id).unwrap();
-    let config = manager.config.lock().unwrap().clone();
+    let manager = controllers.lock().await.get(*id).await.unwrap();
+    let config = manager.config.lock().await.clone();
 
     let size: u64 = req
         .headers()
@@ -1334,8 +1337,8 @@ async fn get_file(
     controllers: web::Data<Mutex<ChannelController>>,
 ) -> Result<actix_files::NamedFile, ServiceError> {
     let id: i32 = req.match_info().query("id").parse()?;
-    let manager = controllers.lock().unwrap().get(id).unwrap();
-    let config = manager.config.lock().unwrap();
+    let manager = controllers.lock().await.get(id).await.unwrap();
+    let config = manager.config.lock().await;
     let storage = config.channel.storage.clone();
     let file_path = req.match_info().query("filename");
     let (path, _, _) = norm_abs_path(&storage, file_path)?;
@@ -1367,8 +1370,8 @@ async fn get_public(
         || file_stem.ends_with(".m3u8")
         || file_stem.ends_with(".vtt")
     {
-        let manager = controllers.lock().unwrap().get(id).unwrap();
-        let config = manager.config.lock().unwrap();
+        let manager = controllers.lock().await.get(id).await.unwrap();
+        let config = manager.config.lock().await;
         config.channel.public.join(public)
     } else {
         public_path()
@@ -1411,9 +1414,9 @@ async fn import_playlist(
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<HttpResponse, ServiceError> {
-    let manager = controllers.lock().unwrap().get(*id).unwrap();
-    let channel_name = manager.channel.lock().unwrap().name.clone();
-    let config = manager.config.lock().unwrap().clone();
+    let manager = controllers.lock().await.get(*id).await.unwrap();
+    let channel_name = manager.channel.lock().await.name.clone();
+    let config = manager.config.lock().await.clone();
     let file = obj.file.file_name().unwrap_or_default();
     let path = env::temp_dir().join(file);
     let path_clone = path.clone();
@@ -1470,8 +1473,8 @@ async fn get_program(
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    let manager = controllers.lock().unwrap().get(*id).unwrap();
-    let config = manager.config.lock().unwrap().clone();
+    let manager = controllers.lock().await.get(*id).await.unwrap();
+    let config = manager.config.lock().await.clone();
     let id = config.general.channel_id;
     let start_sec = config.playlist.start_sec.unwrap();
     let mut days = 0;
@@ -1567,8 +1570,8 @@ pub async fn get_system_stat(
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    let manager = controllers.lock().unwrap().get(*id).unwrap();
-    let config = manager.config.lock().unwrap().clone();
+    let manager = controllers.lock().await.get(*id).await.unwrap();
+    let config = manager.config.lock().await.clone();
 
     let stat = web::block(move || system::stat(config)).await?;
 

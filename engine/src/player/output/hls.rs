@@ -18,14 +18,18 @@ out:
 */
 
 use std::{
-    io::{BufRead, BufReader},
-    process::{Command, Stdio},
+    process::Stdio,
     sync::atomic::Ordering,
     thread::{self, sleep},
     time::{Duration, SystemTime},
 };
 
+use async_iterator::Iterator;
 use log::*;
+use tokio::{
+    io::{AsyncBufReadExt, BufReader},
+    process::Command,
+};
 
 use crate::utils::{logging::log_line, task_runner};
 use crate::vec_strings;
@@ -42,8 +46,8 @@ use crate::{
 };
 
 /// Ingest Server for HLS
-fn ingest_to_hls_server(manager: ChannelManager) -> Result<(), ProcessError> {
-    let config = manager.config.lock().unwrap();
+async fn ingest_to_hls_server(manager: ChannelManager) -> Result<(), ProcessError> {
+    let config = manager.config.lock().await;
     let id = config.general.channel_id;
     let playlist_init = manager.list_init.clone();
     let chain = manager.filter_chain.clone();
@@ -77,8 +81,8 @@ fn ingest_to_hls_server(manager: ChannelManager) -> Result<(), ProcessError> {
 
     if let Some(url) = stream_input.iter().find(|s| s.contains("://")) {
         if !test_tcp_port(id, url) {
-            manager.channel.lock().unwrap().active = false;
-            manager.stop_all();
+            manager.channel.lock().await.active = false;
+            manager.stop_all().await;
         }
 
         info!(target: Target::file_mail(), channel = id; "Start ingest server, listening on: <b><magenta>{url}</></b>");
@@ -87,8 +91,8 @@ fn ingest_to_hls_server(manager: ChannelManager) -> Result<(), ProcessError> {
     drop(config);
 
     loop {
-        let config = manager.config.lock().unwrap().clone();
-        dummy_media.add_filter(&config, &chain);
+        let config = manager.config.lock().await.clone();
+        dummy_media.add_filter(&config, &chain).await;
         let server_cmd = prepare_output_cmd(&config, server_prefix.clone(), &dummy_media.filter);
 
         debug!(target: Target::file_mail(), channel = id;
@@ -110,14 +114,13 @@ fn ingest_to_hls_server(manager: ChannelManager) -> Result<(), ProcessError> {
         };
 
         let server_err = BufReader::new(server_proc.stderr.take().unwrap());
-        *manager.ingest.lock().unwrap() = Some(server_proc);
+        *manager.ingest.lock().await = Some(server_proc);
         is_running = false;
 
-        for line in server_err.lines() {
-            let line = line?;
-
+        let mut lines = server_err.lines();
+        while let Some(line) = lines.next_line().await? {
             if line.contains("rtmp") && line.contains("Unexpected stream") && !valid_stream(&line) {
-                if let Err(e) = proc_ctl.stop(Ingest) {
+                if let Err(e) = proc_ctl.stop(Ingest).await {
                     error!(target: Target::file_mail(), channel = id; "{e}");
                 };
             }
@@ -129,7 +132,7 @@ fn ingest_to_hls_server(manager: ChannelManager) -> Result<(), ProcessError> {
 
                 info!(target: Target::file_mail(), channel = id; "Switch from {} to live ingest", config.processing.mode);
 
-                if let Err(e) = manager.stop(Decoder) {
+                if let Err(e) = manager.stop(Decoder).await {
                     error!(target: Target::file_mail(), channel = id; "{e}");
                 }
             }
@@ -143,7 +146,7 @@ fn ingest_to_hls_server(manager: ChannelManager) -> Result<(), ProcessError> {
 
         ingest_is_running.store(false, Ordering::SeqCst);
 
-        if let Err(e) = manager.wait(Ingest) {
+        if let Err(e) = manager.wait(Ingest).await {
             error!(target: Target::file_mail(), channel = id; "{e}")
         }
 
@@ -158,8 +161,8 @@ fn ingest_to_hls_server(manager: ChannelManager) -> Result<(), ProcessError> {
 /// HLS Writer
 ///
 /// Write with single ffmpeg instance directly to a HLS playlist.
-pub fn write_hls(manager: ChannelManager) -> Result<(), ProcessError> {
-    let config = manager.config.lock()?.clone();
+pub async fn write_hls(manager: ChannelManager) -> Result<(), ProcessError> {
+    let config = manager.config.lock().await.clone();
     let id = config.general.channel_id;
     let current_media = manager.current_media.clone();
     let is_terminated = manager.is_terminated.clone();
@@ -178,8 +181,9 @@ pub fn write_hls(manager: ChannelManager) -> Result<(), ProcessError> {
 
     let mut error_count = 0;
 
-    for node in get_source {
-        *current_media.lock().unwrap() = Some(node.clone());
+    let mut get_source = get_source.await;
+    while let Some(node) = get_source.next().await {
+        *current_media.lock().await = Some(node.clone());
         let ignore = config.logging.ignore_lines.clone();
         let timer = SystemTime::now();
 
@@ -260,13 +264,13 @@ pub fn write_hls(manager: ChannelManager) -> Result<(), ProcessError> {
         };
 
         let dec_err = BufReader::new(dec_proc.stderr.take().unwrap());
-        *manager.decoder.lock().unwrap() = Some(dec_proc);
+        *manager.decoder.lock().await = Some(dec_proc);
 
-        if let Err(e) = stderr_reader(dec_err, ignore, Decoder, manager.clone()) {
+        if let Err(e) = stderr_reader(dec_err, ignore, Decoder, manager.clone()).await {
             error!(target: Target::file_mail(), channel = id; "{e:?}")
         };
 
-        if let Err(e) = manager.wait(Decoder) {
+        if let Err(e) = manager.wait(Decoder).await {
             error!(target: Target::file_mail(), channel = id; "{e}");
         }
 
@@ -290,7 +294,7 @@ pub fn write_hls(manager: ChannelManager) -> Result<(), ProcessError> {
 
     sleep(Duration::from_secs(1));
 
-    manager.stop_all();
+    manager.stop_all().await;
 
     Ok(())
 }

@@ -9,6 +9,7 @@ use std::{
     io::Error,
 };
 
+use async_iterator::Iterator;
 use chrono::Timelike;
 use lexical_sort::{natural_lexical_cmp, StringSort};
 use log::*;
@@ -94,8 +95,8 @@ pub fn ordered_list(clip_list: Vec<Media>, total_length: f64) -> Vec<Media> {
     ordered_clip_list
 }
 
-pub fn filler_list(config: &PlayoutConfig, total_length: f64) -> Vec<Media> {
-    let filler_list = fill_filler_list(config, None);
+pub async fn filler_list(config: &PlayoutConfig, total_length: f64) -> Vec<Media> {
+    let filler_list = fill_filler_list(config, None).await;
     let mut index = 0;
     let mut filler_clip_list: Vec<Media> = vec![];
     let mut target_duration = 0.0;
@@ -123,7 +124,7 @@ pub fn filler_list(config: &PlayoutConfig, total_length: f64) -> Vec<Media> {
     filler_clip_list
 }
 
-pub fn generate_from_template(
+pub async fn generate_from_template(
     config: &PlayoutConfig,
     manager: &ChannelManager,
     template: Template,
@@ -173,7 +174,7 @@ pub fn generate_from_template(
         let total_length = sum_durations(&timed_list);
 
         if duration > total_length {
-            let mut filler = filler_list(config, duration - total_length);
+            let mut filler = filler_list(config, duration - total_length).await;
 
             timed_list.append(&mut filler);
         }
@@ -187,14 +188,14 @@ pub fn generate_from_template(
         index += 1;
     }
 
-    FolderSource::from_list(manager, media_list)
+    FolderSource::from_list(manager, media_list).await
 }
 
 /// Generate playlists
-pub fn playlist_generator(manager: &ChannelManager) -> Result<Vec<JsonPlaylist>, Error> {
-    let config = manager.config.lock().unwrap().clone();
+pub async fn playlist_generator(manager: &ChannelManager) -> Result<Vec<JsonPlaylist>, Error> {
+    let config = manager.config.lock().await.clone();
     let id = config.general.channel_id;
-    let channel_name = manager.channel.lock().unwrap().name.clone();
+    let channel_name = manager.channel.lock().await.name.clone();
 
     let total_length = match config.playlist.length_sec {
         Some(length) => length,
@@ -228,15 +229,15 @@ pub fn playlist_generator(manager: &ChannelManager) -> Result<Vec<JsonPlaylist>,
     }
 
     // gives an iterator with infinit length
-    let folder_iter = if let Some(template) = &config.general.template {
+    let mut folder_iter = if let Some(template) = &config.general.template {
         from_template = true;
 
-        generate_from_template(&config, manager, template.clone())
+        generate_from_template(&config, manager, template.clone()).await
     } else {
-        FolderSource::new(&config, manager.clone())
+        FolderSource::new(&config, manager.clone()).await
     };
 
-    let list_length = manager.current_list.lock().unwrap().len();
+    let list_length = manager.current_list.lock().await.len();
 
     for date in date_range {
         let d: Vec<&str> = date.split('-').collect();
@@ -276,10 +277,10 @@ pub fn playlist_generator(manager: &ChannelManager) -> Result<Vec<JsonPlaylist>,
         };
 
         if from_template {
-            let media_list = manager.current_list.lock().unwrap();
+            let media_list = manager.current_list.lock().await;
             playlist.program = media_list.to_vec();
         } else {
-            for item in folder_iter.clone() {
+            while let Some(item) = folder_iter.next().await {
                 let duration = item.duration;
 
                 if total_length >= length + duration {
@@ -297,7 +298,7 @@ pub fn playlist_generator(manager: &ChannelManager) -> Result<Vec<JsonPlaylist>,
 
             if config.playlist.length_sec.unwrap() > list_duration {
                 let time_left = config.playlist.length_sec.unwrap() - list_duration;
-                let mut fillers = filler_list(&config, time_left);
+                let mut fillers = filler_list(&config, time_left).await;
 
                 playlist.program.append(&mut fillers);
             }

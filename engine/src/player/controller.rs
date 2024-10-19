@@ -1,22 +1,18 @@
 use std::{
-    fmt, fs, io,
+    fmt,
     path::Path,
-    process::Child,
     sync::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc,
     },
 };
 
-#[cfg(not(windows))]
-use signal_child::Signalable;
-
 use log::*;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use sqlx::{Pool, Sqlite};
 use sysinfo::Disks;
-use tokio::sync::Mutex;
+use tokio::{fs, io, process::Child, sync::Mutex};
 use walkdir::WalkDir;
 
 use crate::player::{
@@ -129,32 +125,34 @@ impl ChannelManager {
                 error!(target: Target::all(), channel = channel_id; "Unable write to player status: {e}");
             };
 
-            tokio::spawn(async move {
-                let mut run_endless = true;
+            tokio::spawn({
+                let self_clone = self_clone.clone();
+                async move {
+                    let mut run_endless = true;
 
-                while run_endless {
-                    let run_count = self_clone.run_count.clone();
+                    while run_endless {
+                        let run_count = self_clone.run_count.clone();
+                        let self_clone2 = self_clone.clone();
 
-                    if let Err(e) = start_channel(self_clone.clone()).await {
-                        run_count.fetch_sub(1, Ordering::SeqCst);
-                        error!("{e}");
-                    };
+                        if let Err(e) = start_channel(self_clone2).await {
+                            run_count.fetch_sub(1, Ordering::SeqCst);
+                            error!("{e}");
+                        };
 
-                    let active = self_clone.channel.lock().await.active;
+                        if !self_clone.channel.lock().await.active {
+                            run_endless = false;
+                        } else {
+                            self_clone.run_count.fetch_add(1, Ordering::SeqCst);
+                            self_clone.is_alive.store(true, Ordering::SeqCst);
+                            self_clone.is_terminated.store(false, Ordering::SeqCst);
+                            self_clone.list_init.store(true, Ordering::SeqCst);
 
-                    if !active {
-                        run_endless = false;
-                    } else {
-                        self_clone.run_count.fetch_add(1, Ordering::SeqCst);
-                        self_clone.is_alive.store(true, Ordering::SeqCst);
-                        self_clone.is_terminated.store(false, Ordering::SeqCst);
-                        self_clone.list_init.store(true, Ordering::SeqCst);
-
-                        tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
+                            tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
+                        }
                     }
-                }
 
-                trace!("Async start done");
+                    trace!("Async start done");
+                }
             });
         }
     }
@@ -198,24 +196,22 @@ impl ChannelManager {
         match unit {
             Decoder => {
                 if let Some(proc) = self.decoder.lock().await.as_mut() {
-                    #[cfg(not(windows))]
-                    proc.term()
-                        .map_err(|e| ProcessError::Custom(format!("Decoder: {e}")))?;
-
-                    #[cfg(windows)]
                     proc.kill()
+                        .await
                         .map_err(|e| ProcessError::Custom(format!("Decoder: {e}")))?;
                 }
             }
             Encoder => {
                 if let Some(proc) = self.encoder.lock().await.as_mut() {
                     proc.kill()
+                        .await
                         .map_err(|e| ProcessError::Custom(format!("Encoder: {e}")))?;
                 }
             }
             Ingest => {
                 if let Some(proc) = self.ingest.lock().await.as_mut() {
                     proc.kill()
+                        .await
                         .map_err(|e| ProcessError::Custom(format!("Ingest: {e}")))?;
                 }
             }
@@ -233,18 +229,21 @@ impl ChannelManager {
             Decoder => {
                 if let Some(proc) = self.decoder.lock().await.as_mut() {
                     proc.wait()
+                        .await
                         .map_err(|e| ProcessError::Custom(format!("Decoder: {e}")))?;
                 }
             }
             Encoder => {
                 if let Some(proc) = self.encoder.lock().await.as_mut() {
                     proc.wait()
+                        .await
                         .map_err(|e| ProcessError::Custom(format!("Encoder: {e}")))?;
                 }
             }
             Ingest => {
                 if let Some(proc) = self.ingest.lock().await.as_mut() {
                     proc.wait()
+                        .await
                         .map_err(|e| ProcessError::Custom(format!("Ingest: {e}")))?;
                 }
             }
@@ -353,7 +352,8 @@ async fn start_channel(manager: ChannelManager) -> Result<(), ProcessError> {
         &config.channel.public,
         &config.output.output_cmd.clone().unwrap_or_default(),
         channel_id,
-    )?;
+    )
+    .await?;
 
     debug!(target: Target::all(), channel = channel_id; "Start ffplayout v{VERSION}, channel: <yellow>{channel_id}</>");
 
@@ -364,13 +364,13 @@ async fn start_channel(manager: ChannelManager) -> Result<(), ProcessError> {
 
     match mode {
         // write files/playlist to HLS m3u8 playlist
-        HLS => write_hls(manager),
+        HLS => write_hls(manager).await,
         // play on desktop or stream to a remote target
         _ => player(manager).await,
     }
 }
 
-fn drain_hls_path(path: &Path, params: &[String], channel_id: i32) -> io::Result<()> {
+async fn drain_hls_path(path: &Path, params: &[String], channel_id: i32) -> io::Result<()> {
     let disks = Disks::new_with_refreshed_list();
 
     for disk in &disks {
@@ -380,14 +380,14 @@ fn drain_hls_path(path: &Path, params: &[String], channel_id: i32) -> io::Result
             && path.is_dir()
         {
             warn!(target: Target::file_mail(), channel = channel_id; "HLS storage space is less then 1GB, drain TS files...");
-            delete_ts(path, params)?
+            delete_ts(path, params).await?
         }
     }
 
     Ok(())
 }
 
-fn delete_ts<P: AsRef<Path> + Clone + std::fmt::Debug>(
+async fn delete_ts<P: AsRef<Path> + Clone + std::fmt::Debug>(
     path: P,
     params: &[String],
 ) -> io::Result<()> {
@@ -407,7 +407,7 @@ fn delete_ts<P: AsRef<Path> + Clone + std::fmt::Debug>(
         .filter(|f| paths_match(&ts_file, &f.path().to_string_lossy()))
         .map(|p| p.path().to_string_lossy().to_string())
     {
-        fs::remove_file(entry)?;
+        fs::remove_file(entry).await?;
     }
 
     Ok(())

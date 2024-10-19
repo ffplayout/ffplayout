@@ -119,7 +119,7 @@ impl Broadcaster {
         let clients = self.inner.lock().clients.clone();
 
         for client in clients.iter().filter(|client| client.endpoint == "playout") {
-            let media_map = get_data_map(&client.manager);
+            let media_map = get_data_map(&client.manager).await;
 
             if client.manager.is_alive.load(Ordering::SeqCst) {
                 let _ = client
@@ -144,7 +144,7 @@ impl Broadcaster {
 
         for client in clients {
             if &client.endpoint == "system" {
-                let config = client.manager.config.lock().unwrap().clone();
+                let config = client.manager.config.lock().await.clone();
                 if let Ok(stat) = web::block(move || system::stat(config.clone())).await {
                     let stat_string = stat.to_string();
                     let _ = client.sender.send(sse::Data::new(stat_string).into()).await;

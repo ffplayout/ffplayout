@@ -3,11 +3,8 @@ use std::sync::{atomic::Ordering, Arc};
 use async_walkdir::{Filtering, WalkDir};
 use lexical_sort::natural_lexical_cmp;
 use log::*;
-use rand::{seq::SliceRandom, thread_rng};
-use std::pin::Pin;
-use std::task::{Context, Poll};
+use rand::{rngs::StdRng, seq::SliceRandom, SeedableRng};
 use tokio::sync::Mutex;
-use tokio_stream::Stream;
 use tokio_stream::StreamExt;
 
 use crate::player::{
@@ -86,7 +83,7 @@ impl FolderSource {
 
         if config.storage.shuffle {
             info!(target: Target::file_mail(), channel = id; "Shuffle files");
-            let mut rng = thread_rng();
+            let mut rng = StdRng::from_entropy();
             media_list.shuffle(&mut rng);
         } else {
             media_list.sort_by(|d1, d2| d1.source.cmp(&d2.source));
@@ -116,7 +113,7 @@ impl FolderSource {
     }
 
     async fn shuffle(&mut self) {
-        let mut rng = thread_rng();
+        let mut rng = StdRng::from_entropy();
         let mut nodes = self.manager.current_list.lock().await;
 
         nodes.shuffle(&mut rng);
@@ -152,7 +149,8 @@ impl async_iterator::Iterator for FolderSource {
             self.current_node = self.manager.current_list.lock().await[i].clone();
             let _ = self.current_node.add_probe(false).ok();
             self.current_node
-                .add_filter(&config, &self.manager.filter_chain);
+                .add_filter(&config, &self.manager.filter_chain)
+                .await;
             self.current_node.begin = Some(time_in_seconds());
             self.manager.current_index.fetch_add(1, Ordering::SeqCst);
 
@@ -163,13 +161,13 @@ impl async_iterator::Iterator for FolderSource {
                     info!(target: Target::file_mail(), channel = id; "Shuffle files");
                 }
 
-                self.shuffle();
+                self.shuffle().await;
             } else {
                 if config.general.generate.is_none() {
                     info!(target: Target::file_mail(), channel = id; "Sort files");
                 }
 
-                self.sort();
+                self.sort().await;
             }
 
             self.current_node = match self.manager.current_list.lock().await.first() {
@@ -178,7 +176,8 @@ impl async_iterator::Iterator for FolderSource {
             };
             let _ = self.current_node.add_probe(false).ok();
             self.current_node
-                .add_filter(&config, &self.manager.filter_chain);
+                .add_filter(&config, &self.manager.filter_chain)
+                .await;
             self.current_node.begin = Some(time_in_seconds());
             self.manager.current_index.store(1, Ordering::SeqCst);
 
@@ -234,7 +233,7 @@ pub async fn fill_filler_list(
         }
 
         if config.storage.shuffle {
-            let mut rng = thread_rng();
+            let mut rng = StdRng::from_entropy();
 
             filler_list.shuffle(&mut rng);
         } else {

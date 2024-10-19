@@ -2,11 +2,12 @@ use std::{
     path::Path,
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc, Mutex,
+        Arc,
     },
 };
 
 use log::*;
+use tokio::sync::Mutex;
 
 use crate::db::handles;
 use crate::player::{
@@ -42,8 +43,8 @@ pub struct CurrentProgram {
 
 /// Prepare a playlist iterator.
 impl CurrentProgram {
-    pub fn new(manager: ChannelManager) -> Self {
-        let config = manager.config.lock().unwrap().clone();
+    pub async fn new(manager: ChannelManager) -> Self {
+        let config = manager.config.lock().await.clone();
         let is_terminated = manager.is_terminated.clone();
 
         Self {
@@ -65,7 +66,7 @@ impl CurrentProgram {
 
     // Check if there is no current playlist or file got updated,
     // and when is so load/reload it.
-    fn load_or_update_playlist(&mut self, seek: bool) {
+    async fn load_or_update_playlist(&mut self, seek: bool) {
         let mut get_current = false;
         let mut reload = false;
 
@@ -90,7 +91,8 @@ impl CurrentProgram {
                 self.is_terminated.clone(),
                 seek,
                 false,
-            );
+            )
+            .await;
 
             if !reload {
                 if let Some(file) = &self.json_playlist.path {
@@ -101,26 +103,26 @@ impl CurrentProgram {
                     .manager
                     .channel
                     .lock()
-                    .unwrap()
+                    .await
                     .last_date
                     .clone()
                     .unwrap_or_default()
                     != self.json_playlist.date
                 {
-                    self.set_status(self.json_playlist.date.clone());
+                    self.set_status(self.json_playlist.date.clone()).await;
                 }
 
                 self.manager
                     .current_date
                     .lock()
-                    .unwrap()
+                    .await
                     .clone_from(&self.json_playlist.date);
             }
 
             self.manager
                 .current_list
                 .lock()
-                .unwrap()
+                .await
                 .clone_from(&self.json_playlist.program);
 
             if self.json_playlist.path.is_none() {
@@ -134,7 +136,7 @@ impl CurrentProgram {
     }
 
     // Check if day is past and it is time for a new playlist.
-    fn check_for_playlist(&mut self, seek: bool) -> bool {
+    async fn check_for_playlist(&mut self, seek: bool) -> bool {
         let (delta, total_delta) = get_delta(&self.config, &time_in_seconds());
         let mut next = false;
 
@@ -150,7 +152,7 @@ impl CurrentProgram {
         let mut next_start =
             self.current_node.begin.unwrap_or_default() - self.start_sec + duration + delta;
 
-        if node_index > 0 && node_index == self.manager.current_list.lock().unwrap().len() - 1 {
+        if node_index > 0 && node_index == self.manager.current_list.lock().await.len() - 1 {
             next_start += self.config.general.stop_threshold;
         }
 
@@ -176,62 +178,57 @@ impl CurrentProgram {
                 self.is_terminated.clone(),
                 false,
                 true,
-            );
+            )
+            .await;
 
             if let Some(file) = &self.json_playlist.path {
                 info!(target: Target::file_mail(), channel = self.id; "Read next playlist: <b><magenta>{file}</></b>");
             }
 
             self.manager.list_init.store(false, Ordering::SeqCst);
-            self.set_status(self.json_playlist.date.clone());
+            self.set_status(self.json_playlist.date.clone()).await;
 
             self.manager
                 .current_list
                 .lock()
-                .unwrap()
+                .await
                 .clone_from(&self.json_playlist.program);
             self.manager.current_index.store(0, Ordering::SeqCst);
         } else {
-            self.load_or_update_playlist(seek)
+            self.load_or_update_playlist(seek).await
         }
 
         next
     }
 
-    fn set_status(&mut self, date: String) {
-        if self.manager.channel.lock().unwrap().last_date != Some(date.clone())
-            && self.manager.channel.lock().unwrap().time_shift != 0.0
+    async fn set_status(&mut self, date: String) {
+        if self.manager.channel.lock().await.last_date != Some(date.clone())
+            && self.manager.channel.lock().await.time_shift != 0.0
         {
             info!(target: Target::file_mail(), channel = self.id; "Reset playout status");
         }
 
-        self.manager.current_date.lock().unwrap().clone_from(&date);
+        self.manager.current_date.lock().await.clone_from(&date);
         self.manager
             .channel
             .lock()
-            .unwrap()
+            .await
             .last_date
             .clone_from(&Some(date.clone()));
-        self.manager.channel.lock().unwrap().time_shift = 0.0;
+        self.manager.channel.lock().await.time_shift = 0.0;
         let db_pool = self.manager.db_pool.clone().unwrap();
 
-        if let Err(e) = tokio::runtime::Runtime::new()
-            .unwrap()
-            .block_on(handles::update_stat(
-                &db_pool,
-                self.config.general.channel_id,
-                date,
-                0.0,
-            ))
+        if let Err(e) =
+            handles::update_stat(&db_pool, self.config.general.channel_id, date, 0.0).await
         {
             error!(target: Target::file_mail(), channel = self.id; "Unable to write status: {e}");
         };
     }
 
     // Check if last and/or next clip is a advertisement.
-    fn last_next_ad(&mut self, node: &mut Media) {
+    async fn last_next_ad(&mut self, node: &mut Media) {
         let index = self.manager.current_index.load(Ordering::SeqCst);
-        let current_list = self.manager.current_list.lock().unwrap();
+        let current_list = self.manager.current_list.lock().await;
 
         if index + 1 < current_list.len() && &current_list[index + 1].category == "advertisement" {
             node.next_ad = true;
@@ -258,9 +255,9 @@ impl CurrentProgram {
     }
 
     // On init or reload we need to seek for the current clip.
-    fn get_current_clip(&mut self) {
+    async fn get_current_clip(&mut self) {
         let mut time_sec = self.get_current_time();
-        let shift = self.manager.channel.lock().unwrap().time_shift;
+        let shift = self.manager.channel.lock().await.time_shift;
 
         if shift != 0.0 {
             info!(target: Target::file_mail(), channel = self.id; "Shift playlist start for <yellow>{shift:.3}</> seconds");
@@ -271,10 +268,10 @@ impl CurrentProgram {
             && self.json_playlist.length.unwrap() < 86400.0
             && time_sec > self.json_playlist.length.unwrap() + self.start_sec
         {
-            self.recalculate_begin(true)
+            self.recalculate_begin(true).await
         }
 
-        for (i, item) in self.manager.current_list.lock().unwrap().iter().enumerate() {
+        for (i, item) in self.manager.current_list.lock().await.iter().enumerate() {
             if item.begin.unwrap() + item.out - item.seek > time_sec {
                 self.manager.list_init.store(false, Ordering::SeqCst);
                 self.manager.current_index.store(i, Ordering::SeqCst);
@@ -285,15 +282,15 @@ impl CurrentProgram {
     }
 
     // Prepare init clip.
-    fn init_clip(&mut self) -> bool {
+    async fn init_clip(&mut self) -> bool {
         trace!("init_clip");
-        self.get_current_clip();
+        self.get_current_clip().await;
         let mut is_filler = false;
 
         if !self.manager.list_init.load(Ordering::SeqCst) {
             let time_sec = self.get_current_time();
             let index = self.manager.current_index.load(Ordering::SeqCst);
-            let nodes = self.manager.current_list.lock().unwrap();
+            let nodes = self.manager.current_list.lock().await;
             let last_index = nodes.len() - 1;
 
             // de-instance node to preserve original values in list
@@ -305,14 +302,14 @@ impl CurrentProgram {
             trace!("Clip from init: {}", node_clone.source);
 
             node_clone.seek += time_sec
-                - (node_clone.begin.unwrap() - self.manager.channel.lock().unwrap().time_shift);
+                - (node_clone.begin.unwrap() - self.manager.channel.lock().await.time_shift);
 
-            self.last_next_ad(&mut node_clone);
+            self.last_next_ad(&mut node_clone).await;
 
             self.manager.current_index.fetch_add(1, Ordering::SeqCst);
 
             self.current_node =
-                handle_list_init(&self.config, node_clone, &self.manager, last_index);
+                handle_list_init(&self.config, node_clone, &self.manager, last_index).await;
 
             if self
                 .current_node
@@ -327,7 +324,7 @@ impl CurrentProgram {
         is_filler
     }
 
-    fn fill_end(&mut self, total_delta: f64) {
+    async fn fill_end(&mut self, total_delta: f64) {
         // Fill end from playlist
         let index = self.manager.current_index.load(Ordering::SeqCst);
         let mut media = Media::new(index, "", false);
@@ -335,24 +332,25 @@ impl CurrentProgram {
         media.duration = total_delta;
         media.out = total_delta;
 
-        self.last_next_ad(&mut media);
+        self.last_next_ad(&mut media).await;
 
-        self.current_node = gen_source(&self.config, media, &self.manager, 0);
+        self.current_node = gen_source(&self.config, media, &self.manager, 0).await;
 
         self.manager
             .current_list
             .lock()
-            .unwrap()
+            .await
             .push(self.current_node.clone());
 
         self.current_node.last_ad = self.last_node_ad;
         self.current_node
-            .add_filter(&self.config, &self.manager.filter_chain);
+            .add_filter(&self.config, &self.manager.filter_chain)
+            .await;
 
         self.manager.current_index.fetch_add(1, Ordering::SeqCst);
     }
 
-    fn recalculate_begin(&mut self, extend: bool) {
+    async fn recalculate_begin(&mut self, extend: bool) {
         debug!(target: Target::file_mail(), channel = self.id; "Infinit playlist reaches end, recalculate clip begins. Extend: <yellow>{extend}</>");
 
         let mut time_sec = time_in_seconds();
@@ -377,26 +375,27 @@ impl CurrentProgram {
         self.manager
             .current_list
             .lock()
-            .unwrap()
+            .await
             .clone_from(&self.json_playlist.program);
     }
 }
 
 /// Build the playlist iterator
-impl Iterator for CurrentProgram {
+impl async_iterator::Iterator for CurrentProgram {
     type Item = Media;
 
-    fn next(&mut self) -> Option<Self::Item> {
+    async fn next(&mut self) -> Option<Self::Item> {
         self.last_json_path.clone_from(&self.json_playlist.path);
         self.last_node_ad = self.current_node.last_ad;
-        self.check_for_playlist(self.manager.list_init.load(Ordering::SeqCst));
+        self.check_for_playlist(self.manager.list_init.load(Ordering::SeqCst))
+            .await;
 
         if self.manager.list_init.load(Ordering::SeqCst) {
             trace!("Init playlist, from next iterator");
             let mut init_clip_is_filler = false;
 
             if self.json_playlist.path.is_some() {
-                init_clip_is_filler = self.init_clip();
+                init_clip_is_filler = self.init_clip().await;
             }
 
             if self.manager.list_init.load(Ordering::SeqCst) && !init_clip_is_filler {
@@ -412,7 +411,7 @@ impl Iterator for CurrentProgram {
                 }
 
                 let mut last_index = 0;
-                let length = self.manager.current_list.lock().unwrap().len();
+                let length = self.manager.current_list.lock().await.len();
 
                 if length > 0 {
                     last_index = length - 1;
@@ -423,22 +422,23 @@ impl Iterator for CurrentProgram {
                 media.duration = total_delta;
                 media.out = total_delta;
 
-                self.last_next_ad(&mut media);
+                self.last_next_ad(&mut media).await;
 
-                self.current_node = gen_source(&self.config, media, &self.manager, last_index);
+                self.current_node =
+                    gen_source(&self.config, media, &self.manager, last_index).await;
             }
 
             return Some(self.current_node.clone());
         }
 
         if self.manager.current_index.load(Ordering::SeqCst)
-            < self.manager.current_list.lock().unwrap().len()
+            < self.manager.current_list.lock().await.len()
         {
             // get next clip from current playlist
 
             let mut is_last = false;
             let index = self.manager.current_index.load(Ordering::SeqCst);
-            let node_list = self.manager.current_list.lock().unwrap();
+            let node_list = self.manager.current_list.lock().await;
             let mut node = node_list[index].clone();
             let last_index = node_list.len() - 1;
 
@@ -448,10 +448,10 @@ impl Iterator for CurrentProgram {
                 is_last = true
             }
 
-            self.last_next_ad(&mut node);
+            self.last_next_ad(&mut node).await;
 
             self.current_node =
-                timed_source(node, &self.config, is_last, &self.manager, last_index);
+                timed_source(node, &self.config, is_last, &self.manager, last_index).await;
 
             self.manager.current_index.fetch_add(1, Ordering::SeqCst);
 
@@ -467,26 +467,26 @@ impl Iterator for CurrentProgram {
                 // and if we have to fill it with a placeholder.
                 trace!("Total delta on list end: {total_delta}");
 
-                self.fill_end(total_delta);
+                self.fill_end(total_delta).await;
 
                 return Some(self.current_node.clone());
             }
             // Get first clip from next playlist.
 
-            let c_list = self.manager.current_list.lock().unwrap();
+            let c_list = self.manager.current_list.lock().await;
             let mut first_node = c_list[0].clone();
 
             drop(c_list);
 
             if self.config.playlist.infinit {
-                self.recalculate_begin(false)
+                self.recalculate_begin(false).await
             }
 
             self.manager.current_index.store(0, Ordering::SeqCst);
-            self.last_next_ad(&mut first_node);
+            self.last_next_ad(&mut first_node).await;
             first_node.last_ad = self.last_node_ad;
 
-            self.current_node = gen_source(&self.config, first_node, &self.manager, 0);
+            self.current_node = gen_source(&self.config, first_node, &self.manager, 0).await;
 
             self.manager.current_index.store(1, Ordering::SeqCst);
 
@@ -499,7 +499,7 @@ impl Iterator for CurrentProgram {
 ///
 /// - check begin and length from clip
 /// - return clip only if we are in 24 hours time range
-fn timed_source(
+async fn timed_source(
     node: Media,
     config: &PlayoutConfig,
     last: bool,
@@ -507,9 +507,9 @@ fn timed_source(
     last_index: usize,
 ) -> Media {
     let id = config.general.channel_id;
-    let time_shift = manager.channel.lock().unwrap().time_shift;
-    let current_date = manager.current_date.lock().unwrap().clone();
-    let last_date = manager.channel.lock().unwrap().last_date.clone();
+    let time_shift = manager.channel.lock().await.time_shift;
+    let current_date = manager.current_date.lock().await.clone();
+    let last_date = manager.channel.lock().await.last_date.clone();
     let (delta, total_delta) = get_delta(config, &node.begin.unwrap());
     let mut shifted_delta = delta;
     let mut new_node = node.clone();
@@ -553,18 +553,18 @@ fn timed_source(
     {
         // when we are in the 24 hour range, get the clip
         new_node.process = Some(true);
-        new_node = gen_source(config, node, manager, last_index);
+        new_node = gen_source(config, node, manager, last_index).await;
     } else if total_delta <= 0.0 {
         info!(target: Target::file_mail(), channel = id; "Begin is over play time, skip: {}", node.source);
     } else if total_delta < node.duration - node.seek || last {
-        new_node = handle_list_end(config, node, total_delta, manager, last_index);
+        new_node = handle_list_end(config, node, total_delta, manager, last_index).await;
     }
 
     new_node
 }
 
-fn duplicate_for_seek_and_loop(node: &mut Media, current_list: &Arc<Mutex<Vec<Media>>>) {
-    let mut nodes = current_list.lock().unwrap();
+async fn duplicate_for_seek_and_loop(node: &mut Media, current_list: &Arc<Mutex<Vec<Media>>>) {
+    let mut nodes = current_list.lock().await;
     let index = node.index.unwrap_or_default();
 
     let mut node_duplicate = node.clone();
@@ -596,7 +596,7 @@ fn duplicate_for_seek_and_loop(node: &mut Media, current_list: &Arc<Mutex<Vec<Me
 }
 
 /// Generate the source CMD, or when clip not exist, get a dummy.
-pub fn gen_source(
+pub async fn gen_source(
     config: &PlayoutConfig,
     mut node: Media,
     manager: &ChannelManager,
@@ -643,7 +643,7 @@ pub fn gen_source(
         } else {
             if node.seek > 0.0 && node.out > node.duration {
                 warn!(target: Target::file_mail(), channel = config.general.channel_id; "Clip loops and has seek value: duplicate clip to separate loop and seek.");
-                duplicate_for_seek_and_loop(&mut node, &manager.current_list);
+                duplicate_for_seek_and_loop(&mut node, &manager.current_list).await;
             }
 
             node.cmd = Some(seek_and_length(config, &mut node));
@@ -774,7 +774,7 @@ pub fn gen_source(
         );
     }
 
-    node.add_filter(config, &manager.filter_chain.clone());
+    node.add_filter(config, &manager.filter_chain.clone()).await;
 
     trace!(
         "return gen_source: {}, seek: {}, out: {}",
@@ -788,7 +788,7 @@ pub fn gen_source(
 
 /// Handle init clip, but this clip can be the last one in playlist,
 /// this we have to figure out and calculate the right length.
-fn handle_list_init(
+async fn handle_list_init(
     config: &PlayoutConfig,
     mut node: Media,
     manager: &ChannelManager,
@@ -801,13 +801,13 @@ fn handle_list_init(
         node.out = total_delta + node.seek;
     }
 
-    gen_source(config, node, manager, last_index)
+    gen_source(config, node, manager, last_index).await
 }
 
 /// when we come to last clip in playlist,
 /// or when we reached total playtime,
 /// we end up here
-fn handle_list_end(
+async fn handle_list_end(
     config: &PlayoutConfig,
     mut node: Media,
     total_delta: f64,
@@ -840,5 +840,5 @@ fn handle_list_end(
 
     node.process = Some(true);
 
-    gen_source(config, node, manager, last_index)
+    gen_source(config, node, manager, last_index).await
 }

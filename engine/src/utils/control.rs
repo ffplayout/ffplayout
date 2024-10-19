@@ -84,12 +84,12 @@ pub async fn send_message(
 ) -> Result<Map<String, Value>, ServiceError> {
     let filter = message.to_string();
     let mut data_map = Map::new();
-    let config = manager.config.lock().unwrap().clone();
+    let config = manager.config.lock().await.clone();
     let id = config.general.channel_id;
 
     if config.text.zmq_stream_socket.is_some() {
         if let Some(clips_filter) = manager.filter_chain.clone() {
-            *clips_filter.lock().unwrap() = vec![filter.clone()];
+            *clips_filter.lock().await = vec![filter.clone()];
         }
 
         if config.output.mode == HLS {
@@ -105,7 +105,7 @@ pub async fn send_message(
                     data_map.insert("message".to_string(), json!(reply));
                     return Ok(data_map);
                 };
-            } else if let Err(e) = manager.stop(Ingest) {
+            } else if let Err(e) = manager.stop(Ingest).await {
                 error!(target: Target::file_mail(), channel = id; "Ingest {e:?}")
             }
         }
@@ -135,11 +135,11 @@ pub async fn control_state(
     manager: &ChannelManager,
     command: &str,
 ) -> Result<Map<String, Value>, ServiceError> {
-    let config = manager.config.lock().unwrap().clone();
+    let config = manager.config.lock().await.clone();
     let id = config.general.channel_id;
-    let current_date = manager.current_date.lock().unwrap().clone();
-    let current_list = manager.current_list.lock().unwrap().clone();
-    let mut date = manager.current_date.lock().unwrap().clone();
+    let current_date = manager.current_date.lock().await.clone();
+    let current_list = manager.current_list.lock().await.clone();
+    let mut date = manager.current_date.lock().await.clone();
     let index = manager.current_index.load(Ordering::SeqCst);
 
     match command {
@@ -157,16 +157,16 @@ pub async fn control_state(
                     error!(target: Target::file_mail(), channel = id; "{e:?}");
                 };
 
-                manager.channel.lock().unwrap().time_shift = delta;
+                manager.channel.lock().await.time_shift = delta;
                 date.clone_from(&current_date);
                 handles::update_stat(conn, config.general.channel_id, current_date, delta).await?;
 
-                if let Some(proc) = manager.decoder.lock().unwrap().as_mut() {
-                    if let Err(e) = proc.kill() {
+                if let Some(proc) = manager.decoder.lock().await.as_mut() {
+                    if let Err(e) = proc.kill().await {
                         error!(target: Target::file_mail(), channel = id; "Decoder {e:?}")
                     };
 
-                    if let Err(e) = proc.wait() {
+                    if let Err(e) = proc.wait().await {
                         error!(target: Target::file_mail(), channel = id; "Decoder {e:?}")
                     };
                 } else {
@@ -193,16 +193,16 @@ pub async fn control_state(
                     error!(target: Target::file_mail(), channel = id; "{e:?}");
                 };
 
-                manager.channel.lock().unwrap().time_shift = delta;
+                manager.channel.lock().await.time_shift = delta;
                 date.clone_from(&current_date);
                 handles::update_stat(conn, config.general.channel_id, current_date, delta).await?;
 
-                if let Some(proc) = manager.decoder.lock().unwrap().as_mut() {
-                    if let Err(e) = proc.kill() {
+                if let Some(proc) = manager.decoder.lock().await.as_mut() {
+                    if let Err(e) = proc.kill().await {
                         error!(target: Target::file_mail(), channel = id; "Decoder {e:?}")
                     };
 
-                    if let Err(e) = proc.wait() {
+                    if let Err(e) = proc.wait().await {
                         error!(target: Target::file_mail(), channel = id; "Decoder {e:?}")
                     };
                 } else {
@@ -222,18 +222,18 @@ pub async fn control_state(
 
             info!(target: Target::file_mail(), channel = id; "Reset playout to original state");
 
-            manager.channel.lock().unwrap().time_shift = 0.0;
+            manager.channel.lock().await.time_shift = 0.0;
             date.clone_from(&current_date);
             manager.list_init.store(true, Ordering::SeqCst);
 
             handles::update_stat(conn, config.general.channel_id, current_date, 0.0).await?;
 
-            if let Some(proc) = manager.decoder.lock().unwrap().as_mut() {
-                if let Err(e) = proc.kill() {
+            if let Some(proc) = manager.decoder.lock().await.as_mut() {
+                if let Err(e) = proc.kill().await {
                     error!(target: Target::file_mail(), channel = id; "Decoder {e:?}")
                 };
 
-                if let Err(e) = proc.wait() {
+                if let Err(e) = proc.wait().await {
                     error!(target: Target::file_mail(), channel = id; "Decoder {e:?}")
                 };
             } else {

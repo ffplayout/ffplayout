@@ -1,11 +1,8 @@
-use std::{
-    fmt,
-    path::Path,
-    sync::{Arc, Mutex},
-};
+use std::{fmt, path::Path, sync::Arc};
 
 use log::*;
 use regex::Regex;
+use tokio::sync::Mutex;
 
 mod custom;
 pub mod v_drawtext;
@@ -439,7 +436,7 @@ fn extend_video(node: &mut Media, chain: &mut Filters, config: &PlayoutConfig) {
 }
 
 /// add drawtext filter for lower thirds messages
-fn add_text(
+async fn add_text(
     node: &mut Media,
     chain: &mut Filters,
     config: &PlayoutConfig,
@@ -448,7 +445,7 @@ fn add_text(
     if config.text.add_text
         && (config.text.text_from_filename || config.output.mode == HLS || node.unit == Encoder)
     {
-        let filter = v_drawtext::filter_node(config, Some(node), filter_chain);
+        let filter = v_drawtext::filter_node(config, Some(node), filter_chain).await;
 
         chain.add_filter(&filter, 0, Video);
     }
@@ -585,7 +582,7 @@ fn custom(filter: &str, chain: &mut Filters, nr: i32, filter_type: FilterType) {
     }
 }
 
-pub fn filter_chains(
+pub async fn filter_chains(
     config: &PlayoutConfig,
     node: &mut Media,
     filter_chain: &Option<Arc<Mutex<Vec<String>>>>,
@@ -598,7 +595,7 @@ pub fn filter_chains(
 
     if node.unit == Encoder {
         if !config.processing.audio_only {
-            add_text(node, &mut filters, config, filter_chain);
+            add_text(node, &mut filters, config, filter_chain).await;
         }
 
         if let Some(f) = config.output.output_filter.clone() {
@@ -638,7 +635,7 @@ pub fn filter_chains(
             scale(None, None, 1.0, &mut filters, config);
         }
 
-        add_text(node, &mut filters, config, filter_chain);
+        add_text(node, &mut filters, config, filter_chain).await;
         fade(node, &mut filters, 0, Video, config);
         overlay(node, &mut filters, config);
     }

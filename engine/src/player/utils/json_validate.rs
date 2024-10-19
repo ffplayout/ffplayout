@@ -3,13 +3,14 @@ use std::{
     process::{Command, Stdio},
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc, Mutex,
+        Arc,
     },
     time::Instant,
 };
 
 use log::*;
 use regex::Regex;
+use tokio::sync::Mutex;
 
 use crate::player::filter::FilterType::Audio;
 use crate::player::utils::{
@@ -28,7 +29,7 @@ use crate::vec_strings;
 /// - Check if ffmpeg can read the file
 /// - Check if Metadata exists
 /// - Check if the file is not silent
-fn check_media(
+async fn check_media(
     mut node: Media,
     pos: usize,
     begin: f64,
@@ -70,7 +71,7 @@ fn check_media(
         node.cmd = Some(seek_and_length(&config, &mut node));
     }
 
-    node.add_filter(&config, &None);
+    node.add_filter(&config, &None).await;
 
     let mut filter = node.filter.unwrap_or_default();
 
@@ -154,7 +155,7 @@ fn check_media(
 /// - total playtime fits target length from config
 ///
 /// This function we run in a thread, to don't block the main function.
-pub fn validate_playlist(
+pub async fn validate_playlist(
     mut config: PlayoutConfig,
     current_list: Arc<Mutex<Vec<Media>>>,
     mut playlist: JsonPlaylist,
@@ -200,7 +201,7 @@ pub fn validate_playlist(
         }
 
         if item.probe.is_some() {
-            if let Err(e) = check_media(item.clone(), pos, begin, &config) {
+            if let Err(e) = check_media(item.clone(), pos, begin, &config).await {
                 error!(target: Target::file_mail(), channel = id; "{e}");
             } else if config.general.validate {
                 debug!(target: Target::file_mail(), channel = id;

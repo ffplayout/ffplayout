@@ -1,6 +1,7 @@
-use std::process::{self, Command, Stdio};
+use std::process::Stdio;
 
 use log::*;
+use tokio::process::{Child, Command};
 
 use crate::player::{
     controller::ProcessUnit::*,
@@ -12,11 +13,11 @@ use crate::vec_strings;
 /// Desktop Output
 ///
 /// Instead of streaming, we run a ffplay instance and play on desktop.
-pub fn output(config: &PlayoutConfig, log_format: &str) -> process::Child {
+pub async fn output(config: &PlayoutConfig, log_format: &str) -> Child {
     let mut media = Media::new(0, "", false);
     let id = config.general.channel_id;
     media.unit = Encoder;
-    media.add_filter(config, &None);
+    media.add_filter(config, &None).await;
 
     let mut enc_prefix = vec_strings!["-hide_banner", "-nostats", "-v", log_format];
 

@@ -5,9 +5,9 @@ use std::{
     io::Error,
     net::TcpListener,
     path::{Path, PathBuf},
-    process::{exit, Command, Stdio},
+    process::{exit, Stdio},
     str::FromStr,
-    sync::{atomic::Ordering, Arc, Mutex},
+    sync::{atomic::Ordering, Arc},
 };
 
 use chrono::{prelude::*, TimeDelta};
@@ -19,8 +19,9 @@ use reqwest::header;
 use serde::{de::Deserializer, Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use tokio::{
-    io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter},
-    process::ChildStderr,
+    io::{AsyncBufReadExt, BufReader},
+    process::{ChildStderr, Command},
+    sync::Mutex,
 };
 
 pub mod folder;
@@ -158,15 +159,15 @@ pub fn get_media_map(media: Media) -> Value {
 }
 
 /// prepare json object for response
-pub fn get_data_map(manager: &ChannelManager) -> Map<String, Value> {
+pub async fn get_data_map(manager: &ChannelManager) -> Map<String, Value> {
     let media = manager
         .current_media
         .lock()
-        .unwrap()
+        .await
         .clone()
         .unwrap_or(Media::new(0, "", false));
-    let channel = manager.channel.lock().unwrap().clone();
-    let config = manager.config.lock().unwrap().processing.clone();
+    let channel = manager.channel.lock().await.clone();
+    let config = manager.config.lock().await.processing.clone();
     let ingest_is_running = manager.ingest_is_running.load(Ordering::SeqCst);
 
     let mut data_map = Map::new();
@@ -343,13 +344,13 @@ impl Media {
         Ok(())
     }
 
-    pub fn add_filter(
+    pub async fn add_filter(
         &mut self,
         config: &PlayoutConfig,
         filter_chain: &Option<Arc<Mutex<Vec<String>>>>,
     ) {
         let mut node = self.clone();
-        self.filter = Some(filter_chains(config, &mut node, filter_chain))
+        self.filter = Some(filter_chains(config, &mut node, filter_chain).await)
     }
 }
 
@@ -884,7 +885,7 @@ pub async fn stderr_reader(
     suffix: ProcessUnit,
     manager: ChannelManager,
 ) -> Result<(), ProcessError> {
-    let id = manager.channel.lock().unwrap().id;
+    let id = manager.channel.lock().await.id;
     let mut lines = buffer.lines();
 
     while let Some(line) = lines.next_line().await? {
@@ -917,8 +918,8 @@ pub async fn stderr_reader(
                     && !line.contains("failed to delete old segment"))
             {
                 error!(target: Target::file_mail(), channel = id; "Hit unrecoverable error!");
-                manager.channel.lock().unwrap().active = false;
-                manager.stop_all();
+                manager.channel.lock().await.active = false;
+                manager.stop_all().await;
             }
         }
     }
@@ -927,14 +928,14 @@ pub async fn stderr_reader(
 }
 
 /// Run program to test if it is in system.
-fn is_in_system(name: &str) -> Result<(), String> {
+async fn is_in_system(name: &str) -> Result<(), String> {
     match Command::new(name)
         .stderr(Stdio::null())
         .stdout(Stdio::null())
         .spawn()
     {
         Ok(mut proc) => {
-            if let Err(e) = proc.wait() {
+            if let Err(e) = proc.wait().await {
                 return Err(format!("{e}"));
             };
         }
@@ -944,7 +945,7 @@ fn is_in_system(name: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn ffmpeg_filter_and_libs(config: &mut PlayoutConfig) -> Result<(), String> {
+async fn ffmpeg_filter_and_libs(config: &mut PlayoutConfig) -> Result<(), String> {
     let id = config.general.channel_id;
     let ignore_flags = [
         "--enable-gpl",
@@ -973,7 +974,8 @@ fn ffmpeg_filter_and_libs(config: &mut PlayoutConfig) -> Result<(), String> {
 
     // stderr shows only the ffmpeg configuration
     // get codec library's
-    for line in err_buffer.lines().map_while(Result::ok) {
+    let mut lines = err_buffer.lines();
+    while let Ok(Some(line)) = lines.next_line().await {
         if line.contains("configuration:") {
             let configs = line.split_whitespace();
 
@@ -991,7 +993,8 @@ fn ffmpeg_filter_and_libs(config: &mut PlayoutConfig) -> Result<(), String> {
 
     // stdout shows filter from ffmpeg
     // get filters
-    for line in out_buffer.lines().map_while(Result::ok) {
+    let mut lines = out_buffer.lines();
+    while let Ok(Some(line)) = lines.next_line().await {
         if line.contains('>') {
             let filter_line = line.split_whitespace().collect::<Vec<_>>();
 
@@ -1004,7 +1007,7 @@ fn ffmpeg_filter_and_libs(config: &mut PlayoutConfig) -> Result<(), String> {
         }
     }
 
-    if let Err(e) = ff_proc.wait() {
+    if let Err(e) = ff_proc.wait().await {
         error!(target: Target::file_mail(), channel = id; "{e}")
     };
 
@@ -1014,15 +1017,15 @@ fn ffmpeg_filter_and_libs(config: &mut PlayoutConfig) -> Result<(), String> {
 /// Validate ffmpeg/ffprobe/ffplay.
 ///
 /// Check if they are in system and has all libs and codecs we need.
-pub fn validate_ffmpeg(config: &mut PlayoutConfig) -> Result<(), String> {
-    is_in_system("ffmpeg")?;
-    is_in_system("ffprobe")?;
+pub async fn validate_ffmpeg(config: &mut PlayoutConfig) -> Result<(), String> {
+    is_in_system("ffmpeg").await?;
+    is_in_system("ffprobe").await?;
 
     if config.output.mode == Desktop {
-        is_in_system("ffplay")?;
+        is_in_system("ffplay").await?;
     }
 
-    ffmpeg_filter_and_libs(config)?;
+    ffmpeg_filter_and_libs(config).await?;
 
     if config
         .output

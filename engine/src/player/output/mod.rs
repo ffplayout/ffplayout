@@ -1,12 +1,11 @@
-use std::sync::atomic::Ordering;
-use std::sync::Arc;
+use std::{process::Stdio, sync::atomic::Ordering};
 
-use crossbeam_channel::bounded;
+use async_iterator::Iterator;
 use log::*;
 use tokio::{
-    io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter},
+    io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter},
     process::Command,
-    sync::{mpsc, Mutex},
+    sync::mpsc,
     task,
     time::{sleep, Duration},
 };
@@ -36,7 +35,7 @@ use crate::vec_strings;
 /// When a live ingest arrive, it stops the current playing and switch to the live source.
 /// When ingest stops, it switch back to playlist/folder mode.
 pub async fn player(manager: ChannelManager) -> Result<(), ProcessError> {
-    let config = manager.config.lock()?.clone();
+    let config = manager.config.lock().await.clone();
     let id = config.general.channel_id;
     let config_clone = config.clone();
     let ff_log_format = format!("level+{}", config.logging.ffmpeg_level.to_lowercase());
@@ -49,20 +48,20 @@ pub async fn player(manager: ChannelManager) -> Result<(), ProcessError> {
     let ingest_is_running = manager.ingest_is_running.clone();
 
     // get source iterator
-    let node_sources = source_generator(manager.clone());
+    let mut node_sources = source_generator(manager.clone()).await;
 
     // get ffmpeg output instance
     let mut enc_proc = match config.output.mode {
-        Desktop => desktop::output(&config, &ff_log_format),
-        Null => null::output(&config, &ff_log_format),
-        Stream => stream::output(&config, &ff_log_format),
+        Desktop => desktop::output(&config, &ff_log_format).await,
+        Null => null::output(&config, &ff_log_format).await,
+        Stream => stream::output(&config, &ff_log_format).await,
         _ => panic!("Output mode doesn't exists!"),
     };
 
     let mut enc_writer = BufWriter::new(enc_proc.stdin.take().unwrap());
     let enc_err = BufReader::new(enc_proc.stderr.take().unwrap());
 
-    *manager.encoder.lock()? = Some(enc_proc);
+    *manager.encoder.lock().await = Some(enc_proc);
     let enc_p_ctl = manager.clone();
 
     // spawn a task to log ffmpeg output error messages
@@ -73,7 +72,7 @@ pub async fn player(manager: ChannelManager) -> Result<(), ProcessError> {
 
     // spawn a task for ffmpeg ingest server and create a channel for package sending
     if config.ingest.enable {
-        let (ingest_sender, rx) = mpsc::channel(96);
+        let (ingest_sender, rx) = mpsc::channel(1000);
         ingest_receiver = Some(rx);
         task::spawn(ingest_server(config_clone, ingest_sender, channel_mgr_2));
     }
@@ -82,7 +81,7 @@ pub async fn player(manager: ChannelManager) -> Result<(), ProcessError> {
 
     let mut error_count = 0;
 
-    'source_iter: for node in node_sources {
+    'source_iter: while let Some(node) = node_sources.next().await {
         let config = manager.config.lock().await.clone();
 
         *manager.current_media.lock().await = Some(node.clone());
@@ -176,7 +175,6 @@ pub async fn player(manager: ChannelManager) -> Result<(), ProcessError> {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
-            .await
         {
             Ok(proc) => proc,
             Err(e) => {

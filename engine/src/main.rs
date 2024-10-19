@@ -3,8 +3,7 @@ use std::{
     fs::File,
     io,
     process::exit,
-    sync::{atomic::AtomicBool, Arc, Mutex},
-    thread,
+    sync::{atomic::AtomicBool, Arc, Mutex as Mt},
 };
 
 use actix_web::{middleware::Logger, web, App, HttpServer};
@@ -17,6 +16,7 @@ use actix_files::Files;
 use actix_web_static_files::ResourceFiles;
 
 use log::*;
+use tokio::sync::Mutex;
 
 use ffplayout::{
     api::routes::*,
@@ -41,17 +41,9 @@ use ffplayout::utils::public_path;
 #[cfg(all(not(debug_assertions), feature = "embed_frontend"))]
 include!(concat!(env!("OUT_DIR"), "/generated.rs"));
 
-fn thread_counter() -> usize {
-    let available_threads = thread::available_parallelism()
-        .map(|n| n.get())
-        .unwrap_or(1);
-
-    (available_threads / 2).max(2)
-}
-
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    let mail_queues = Arc::new(Mutex::new(vec![]));
+    let mail_queues = Arc::new(Mt::new(vec![]));
 
     let pool = db_pool()
         .await
@@ -76,16 +68,10 @@ async fn main() -> std::io::Result<()> {
                 .await
                 .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
             let manager = ChannelManager::new(Some(pool.clone()), channel.clone(), config.clone());
-            let m_queue = Arc::new(Mutex::new(MailQueue::new(channel.id, config.mail)));
+            let m_queue = Arc::new(Mt::new(MailQueue::new(channel.id, config.mail)));
 
-            channel_controllers
-                .lock()
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?
-                .add(manager.clone());
-
-            if let Ok(mut mqs) = mail_queues.lock() {
-                mqs.push(m_queue.clone());
-            }
+            channel_controllers.lock().await.add(manager.clone());
+            mail_queues.lock().unwrap().push(m_queue.clone());
 
             if channel.active {
                 manager.async_start().await;
@@ -106,7 +92,6 @@ async fn main() -> std::io::Result<()> {
             uuids: tokio::sync::Mutex::new(HashSet::new()),
         });
         let broadcast_data = Broadcaster::create();
-        let thread_count = thread_counter();
 
         info!("Running ffplayout API, listen on http://{conn}");
 
@@ -196,7 +181,6 @@ async fn main() -> std::io::Result<()> {
             web_app
         })
         .bind((addr, port))?
-        .workers(thread_count)
         .run()
         .await?;
     } else if ARGS.drop_db {
@@ -224,21 +208,15 @@ async fn main() -> std::io::Result<()> {
                     );
                     exit(1);
                 }
-                let m_queue = Arc::new(Mutex::new(MailQueue::new(*channel_id, config.mail)));
+                let m_queue = Arc::new(Mt::new(MailQueue::new(*channel_id, config.mail)));
 
-                channel_controllers
-                    .lock()
-                    .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?
-                    .add(manager.clone());
-
-                if let Ok(mut mqs) = mail_queues.lock() {
-                    mqs.push(m_queue.clone());
-                }
+                channel_controllers.lock().await.add(manager.clone());
+                mail_queues.lock().unwrap().push(m_queue.clone());
 
                 manager.foreground_start(index).await;
             } else if ARGS.generate.is_some() {
                 // run a simple playlist generator and save them to disk
-                if let Err(e) = generate_playlist(manager) {
+                if let Err(e) = generate_playlist(manager).await {
                     error!("{e}");
                     exit(1);
                 };
@@ -268,16 +246,17 @@ async fn main() -> std::io::Result<()> {
                     Arc::new(Mutex::new(Vec::new())),
                     playlist,
                     Arc::new(AtomicBool::new(false)),
-                );
+                )
+                .await;
             } else if !ARGS.init {
                 error!("Run ffplayout with parameters! Run ffplayout -h for more information.");
             }
         }
     }
 
-    for channel_ctl in &channel_controllers.lock().unwrap().channels {
-        channel_ctl.channel.lock().unwrap().active = false;
-        channel_ctl.stop_all();
+    for channel_ctl in &channel_controllers.lock().await.channels {
+        channel_ctl.channel.lock().await.active = false;
+        channel_ctl.stop_all().await;
     }
 
     pool.close().await;
