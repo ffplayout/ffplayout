@@ -13,7 +13,7 @@ use log::*;
 use path_clean::PathClean;
 use rand::Rng;
 use regex::Regex;
-use tokio::fs;
+use tokio::{fs, process::Command};
 
 use serde::{
     de::{self, Visitor},
@@ -336,7 +336,7 @@ pub async fn copy_assets(storage_path: &Path) -> Result<(), std::io::Error> {
             let font_target = target.join("DejaVuSans.ttf");
             let logo_target = target.join("logo.png");
 
-            fs::create_dir(&target).await?;
+            fs::create_dir_all(&target).await?;
             fs::copy(&dummy_source, &dummy_target).await?;
             fs::copy(&font_source, &font_target).await?;
             fs::copy(&logo_source, &logo_target).await?;
@@ -365,7 +365,25 @@ pub async fn copy_assets(storage_path: &Path) -> Result<(), std::io::Error> {
                 }
             }
         }
+    } else {
+        error!("Storage path {storage_path:?} not exists!");
     }
 
     Ok(())
+}
+
+/// Combined function to check if the program is running inside a container.
+/// Returns `true` if running inside a container, otherwise `false`.
+pub async fn is_running_in_container() -> bool {
+    // Check for Docker or Podman specific files
+    if Path::new("/.dockerenv").exists() || Path::new("/run/.containerenv").exists() {
+        return true;
+    }
+
+    // Run `systemd-detect-virt -c` to check if we are in a container
+    if let Ok(output) = Command::new("systemd-detect-virt").arg("-c").output().await {
+        return output.status.success();
+    }
+
+    false
 }

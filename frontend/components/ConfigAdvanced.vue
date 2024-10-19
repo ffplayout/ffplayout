@@ -36,10 +36,12 @@
                         class="input input-sm input-bordered w-full"
                     />
                     <div class="label">
-                        <span class="text-sm select-text text-base-content/80">
-                            Default: -c:v mpeg2video -g 1 -b:v 57600k -minrate 57600k -maxrate 57600k -bufsize 28800k
-                            -mpegts_flags initial_discontinuity -c:a s302m -strict -2 -sample_fmt s16 -ar 48000 -ac 2 -f
-                            mpegts
+                        <span class="text-sm text-base-content/80">
+                            Default:
+                            <span class="select-text cursor-text">
+                                -c:v mpeg2video -g 1 -b:v 57600k -minrate 57600k -maxrate 57600k -bufsize 28800k
+                                -mpegts_flags initial_discontinuity
+                            </span>
                         </span>
                     </div>
                 </label>
@@ -87,7 +89,9 @@
                         class="input input-sm input-bordered w-full"
                     />
                     <div class="label">
-                        <span class="text-sm select-text text-base-content/80">Default: yadif=0:-1:0 </span>
+                        <span class="text-sm text-base-content/80"
+                            >Default: <span class="select-text cursor-text">yadif=0:-1:0 </span></span
+                        >
                     </div>
                 </label>
                 <label class="form-control w-full mt-2">
@@ -101,7 +105,9 @@
                         class="input input-sm input-bordered w-full"
                     />
                     <div class="label">
-                        <span class="text-sm select-text text-base-content/80"> Default: scale={}:-1 </span>
+                        <span class="text-sm text-base-content/80">
+                            Default: <span class="select-text cursor-text">scale={}:-1 </span></span
+                        >
                     </div>
                 </label>
                 <label class="form-control w-full mt-2">
@@ -115,7 +121,9 @@
                         class="input input-sm input-bordered w-full"
                     />
                     <div class="label">
-                        <span class="text-sm select-text text-base-content/80"> Default: scale=-1:{} </span>
+                        <span class="text-sm text-base-content/80">
+                            Default: <span class="select-text cursor-text">scale=-1:{} </span></span
+                        >
                     </div>
                 </label>
                 <label class="form-control w-full mt-2">
@@ -129,8 +137,11 @@
                         class="input input-sm input-bordered w-full"
                     />
                     <div class="label">
-                        <span class="text-sm select-text text-base-content/80">
-                            Default: pad=max(iw\\,ih*({0}/{1})):ow/({0}/{1}):(ow-iw)/2:(oh-ih)/2
+                        <span class="text-sm text-base-content/80">
+                            Default:
+                            <span class="select-text cursor-text"
+                                >pad=max(iw\\,ih*({0}/{1})):ow/({0}/{1}):(ow-iw)/2:(oh-ih)/2</span
+                            >
                         </span>
                     </div>
                 </label>
@@ -145,7 +156,9 @@
                         class="input input-sm input-bordered w-full"
                     />
                     <div class="label">
-                        <span class="text-sm select-text text-base-content/80"> Default: fps={} </span>
+                        <span class="text-sm text-base-content/80">
+                            Default: <span class="select-text cursor-text">fps={} </span></span
+                        >
                     </div>
                 </label>
                 <label class="form-control w-full mt-2">
@@ -159,7 +172,9 @@
                         class="input input-sm input-bordered w-full"
                     />
                     <div class="label">
-                        <span class="text-sm select-text text-base-content/80"> Default: scale={}:{} </span>
+                        <span class="text-sm text-base-content/80">
+                            Default: <span class="select-text cursor-text">scale={}:{} </span></span
+                        >
                     </div>
                 </label>
                 <label class="form-control w-full mt-2">
@@ -173,7 +188,9 @@
                         class="input input-sm input-bordered w-full"
                     />
                     <div class="label">
-                        <span class="text-sm select-text text-base-content/80"> Default: setdar=dar={} </span>
+                        <span class="text-sm text-base-content/80">
+                            Default: <span class="select-text cursor-text">setdar=dar={} </span></span
+                        >
                     </div>
                 </label>
                 <label class="form-control w-full mt-2">
@@ -187,7 +204,9 @@
                         class="input input-sm input-bordered w-full"
                     />
                     <div class="label">
-                        <span class="text-sm select-text text-base-content/80"> Default: fade=in:st=0:d=0.5 </span>
+                        <span class="text-sm text-base-content/80">
+                            Default: <span class="select-text cursor-text">fade=in:st=0:d=0.5 </span></span
+                        >
                     </div>
                 </label>
                 <label class="form-control w-full mt-2">
@@ -201,7 +220,9 @@
                         class="input input-sm input-bordered w-full"
                     />
                     <div class="label">
-                        <span class="text-sm select-text text-base-content/80"> Default: fade=out:st={}:d=1.0 </span>
+                        <span class="text-sm text-base-content/80">
+                            Default: <span class="select-text cursor-text">fade=out:st={}:d=1.0 </span></span
+                        >
                     </div>
                 </label>
                 <label class="form-control w-full mt-2">
@@ -215,7 +236,9 @@
                         class="input input-sm input-bordered w-full"
                     />
                     <div class="label">
-                        <span class="text-sm select-text text-base-content/80"> Default: scale={} </span>
+                        <span class="text-sm text-base-content/80">
+                            Default: <span class="select-text cursor-text">scale={} </span></span
+                        >
                     </div>
                 </label>
                 <label class="form-control w-full mt-2">
@@ -229,8 +252,8 @@
                         class="input input-sm input-bordered w-full"
                     />
                     <div class="label">
-                        <span class="text-sm select-text text-base-content/80">
-                            Default: fade=in:st=0:d=1.0:alpha=1
+                        <span class="text-sm text-base-content/80">
+                            Default: <span class="select-text cursor-text">fade=in:st=0:d=1.0:alpha=1</span>
                         </span>
                     </div>
                 </label>
@@ -245,8 +268,8 @@
                         class="input input-sm input-bordered w-full"
                     />
                     <div class="label">
-                        <span class="text-sm select-text text-base-content/80">
-                            Default: fade=out:st={}:d=1.0:alpha=1
+                        <span class="text-sm text-base-content/80">
+                            Default: <span class="select-text cursor-text">fade=out:st={}:d=1.0:alpha=1</span>
                         </span>
                     </div>
                 </label>
@@ -261,8 +284,8 @@
                         class="input input-sm input-bordered w-full"
                     />
                     <div class="label">
-                        <span class="text-sm select-text text-base-content/80">
-                            Default: null[l];[v][l]overlay={}:shortest=1
+                        <span class="text-sm text-base-content/80">
+                            Default: <span class="select-text cursor-text">null[l];[v][l]overlay={}:shortest=1</span>
                         </span>
                     </div>
                 </label>
@@ -277,8 +300,8 @@
                         class="input input-sm input-bordered w-full"
                     />
                     <div class="label">
-                        <span class="text-sm select-text text-base-content/80">
-                            Default: tpad=stop_mode=add:stop_duration={}
+                        <span class="text-sm text-base-content/80">
+                            Default: <span class="select-text cursor-text">tpad=stop_mode=add:stop_duration={}</span>
                         </span>
                     </div>
                 </label>
@@ -293,7 +316,9 @@
                         class="input input-sm input-bordered w-full"
                     />
                     <div class="label">
-                        <span class="text-sm select-text text-base-content/80"> Default: drawtext=text='{}':{}{} </span>
+                        <span class="text-sm text-base-content/80">
+                            Default: <span class="select-text cursor-text">drawtext=text='{}':{}{} </span></span
+                        >
                     </div>
                 </label>
                 <label class="form-control w-full mt-2">
@@ -307,8 +332,9 @@
                         class="input input-sm input-bordered w-full"
                     />
                     <div class="label">
-                        <span class="text-sm select-text text-base-content/80">
-                            Default: zmq=b=tcp\\\\://'{}',drawtext@dyntext={}
+                        <span class="text-sm text-base-content/80">
+                            Default:
+                            <span class="select-text cursor-text">zmq=b=tcp\\\\://'{}',drawtext@dyntext={}</span>
                         </span>
                     </div>
                 </label>
@@ -323,7 +349,7 @@
                         class="input input-sm input-bordered w-full"
                     />
                     <div class="label">
-                        <span class="text-sm select-text text-base-content/80 break-all">
+                        <span class="text-sm text-base-content/80 break-all">
                             Default: aevalsrc=0:channel_layout=stereo:duration={}:sample_rate=48000
                         </span>
                     </div>
@@ -339,7 +365,9 @@
                         class="input input-sm input-bordered w-full"
                     />
                     <div class="label">
-                        <span class="text-sm select-text text-base-content/80"> Default: afade=in:st=0:d=0.5 </span>
+                        <span class="text-sm text-base-content/80">
+                            Default: <span class="select-text cursor-text">afade=in:st=0:d=0.5 </span></span
+                        >
                     </div>
                 </label>
                 <label class="form-control w-full mt-2">
@@ -353,7 +381,9 @@
                         class="input input-sm input-bordered w-full"
                     />
                     <div class="label">
-                        <span class="text-sm select-text text-base-content/80"> Default: afade=out:st={}:d=1.0 </span>
+                        <span class="text-sm text-base-content/80">
+                            Default: <span class="select-text cursor-text">afade=out:st={}:d=1.0 </span></span
+                        >
                     </div>
                 </label>
                 <label class="form-control w-full mt-2">
@@ -367,7 +397,9 @@
                         class="input input-sm input-bordered w-full"
                     />
                     <div class="label">
-                        <span class="text-sm select-text text-base-content/80"> Default: apad=whole_dur={} </span>
+                        <span class="text-sm text-base-content/80">
+                            Default: <span class="select-text cursor-text">apad=whole_dur={} </span></span
+                        >
                     </div>
                 </label>
                 <label class="form-control w-full mt-2">
@@ -381,7 +413,9 @@
                         class="input input-sm input-bordered w-full"
                     />
                     <div class="label">
-                        <span class="text-sm select-text text-base-content/80"> Default: volume={} </span>
+                        <span class="text-sm text-base-content/80">
+                            Default: <span class="select-text cursor-text">volume={} </span></span
+                        >
                     </div>
                 </label>
                 <label class="form-control w-full mt-2">
@@ -395,7 +429,9 @@
                         class="input input-sm input-bordered w-full"
                     />
                     <div class="label">
-                        <span class="text-sm select-text text-base-content/80"> Default: split={}{} </span>
+                        <span class="text-sm text-base-content/80">
+                            Default: <span class="select-text cursor-text">split={}{} </span></span
+                        >
                     </div>
                 </label>
             </div>

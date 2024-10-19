@@ -9,7 +9,10 @@ use tokio::task;
 
 use super::models::{AdvancedConfiguration, Configuration};
 use crate::db::models::{Channel, GlobalSettings, Role, TextPreset, User};
-use crate::utils::{advanced_config::AdvancedConfig, config::PlayoutConfig, local_utc_offset};
+use crate::utils::{
+    advanced_config::AdvancedConfig, config::PlayoutConfig, is_running_in_container,
+    local_utc_offset,
+};
 
 pub async fn db_migrate(conn: &Pool<Sqlite>) -> Result<(), Box<dyn std::error::Error>> {
     sqlx::migrate!("../migrations").run(conn).await?;
@@ -20,6 +23,7 @@ pub async fn db_migrate(conn: &Pool<Sqlite>) -> Result<(), Box<dyn std::error::E
             .take(80)
             .map(char::from)
             .collect();
+        let shared = is_running_in_container().await;
 
         let query = "CREATE TRIGGER global_row_count
         BEFORE INSERT ON global
@@ -27,9 +31,13 @@ pub async fn db_migrate(conn: &Pool<Sqlite>) -> Result<(), Box<dyn std::error::E
         BEGIN
             SELECT RAISE(FAIL, 'Database is already initialized!');
         END;
-        INSERT INTO global(secret) VALUES($1);";
+        INSERT INTO global(secret, shared) VALUES($1, $2);";
 
-        sqlx::query(query).bind(secret).execute(conn).await?;
+        sqlx::query(query)
+            .bind(secret)
+            .bind(shared)
+            .execute(conn)
+            .await?;
     }
 
     Ok(())
@@ -46,9 +54,8 @@ pub async fn update_global(
     conn: &Pool<Sqlite>,
     global: GlobalSettings,
 ) -> Result<SqliteQueryResult, sqlx::Error> {
-    let query =
-        "UPDATE global SET logs = $2, playlists = $3, public = $4, storage = $5, shared = $6,
-            mail_smtp = $7, mail_user = $8, mail_password = $9, mail_starttls = $10  WHERE id = 1";
+    let query = "UPDATE global SET logs = $2, playlists = $3, public = $4, storage = $5,
+            mail_smtp = $6, mail_user = $7, mail_password = $8, mail_starttls = $9  WHERE id = 1";
 
     sqlx::query(query)
         .bind(global.id)
@@ -56,7 +63,6 @@ pub async fn update_global(
         .bind(global.playlists)
         .bind(global.public)
         .bind(global.storage)
-        .bind(global.shared)
         .bind(global.mail_smtp)
         .bind(global.mail_user)
         .bind(global.mail_password)

@@ -27,21 +27,21 @@
     "pinia": "^2.2.4",
     "sortablejs-vue3": "^1.2.11",
     "splitpanes": "^3.1.5",
-    "video.js": "^8.17.4"
+    "video.js": "^8.18.1"
   },
   "devDependencies": {
-    "@nuxt/eslint": "^0.5.7",
+    "@nuxt/eslint": "^0.6.0",
     "@nuxtjs/i18n": "^8.5.5",
-    "@nuxtjs/tailwindcss": "^6.12.1",
+    "@nuxtjs/tailwindcss": "^6.12.2",
     "@types/lodash-es": "^4.17.12",
     "@types/video.js": "^7.3.58",
-    "daisyui": "^4.12.12",
+    "daisyui": "^4.12.13",
     "mini-svg-data-uri": "^1.4.4",
     "postcss": "^8.4.47",
     "postcss-loader": "^8.1.1",
-    "sass": "^1.79.4",
+    "sass": "^1.80.2",
     "sass-loader": "^16.0.2",
-    "vue": "^3.5.11",
+    "vue": "^3.5.12",
     "vue-router": "^4.4.5"
   }
 }

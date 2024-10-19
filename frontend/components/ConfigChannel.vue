@@ -116,6 +116,7 @@ const { t } = useI18n()
 
 const authStore = useAuth()
 const configStore = useConfig()
+const mediaStore = useMedia()
 const indexStore = useIndex()
 const { i } = storeToRefs(useConfig())
 
@@ -217,8 +218,10 @@ async function addUpdateChannel() {
             await updateChannel()
         }
 
+        await configStore.getAdvancedConfig()
         await configStore.getPlayoutConfig()
         await configStore.getUserConfig()
+        await mediaStore.getTree('')
     }
 }
 
@@ -240,8 +243,10 @@ async function deleteChannel() {
 
     i.value = configStore.i - 1
     await configStore.getChannelConfig()
+    await configStore.getAdvancedConfig()
     await configStore.getPlayoutConfig()
     await configStore.getUserConfig()
+    await mediaStore.getTree('')
 
     if (response.status === 200) {
         indexStore.msgAlert('success', t('config.errorChannelDelete'), 2)

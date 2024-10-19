@@ -71,14 +71,6 @@ pub struct Args {
     #[clap(long, env, help_heading = Some("Initial Setup"), help = "Use TLS for system mails")]
     pub mail_starttls: bool,
 
-    #[clap(
-        long,
-        env,
-        help_heading = Some("Initial Setup"),
-        help = "Share storage across channels, important for running in Containers"
-    )]
-    pub shared: bool,
-
     #[clap(long, env, help_heading = Some("Initial Setup / General"), help = "Logging path")]
     pub logs: Option<String>,
 
@@ -251,7 +243,6 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
         let mut playlist = String::new();
         let mut logging = String::new();
         let mut public = String::new();
-        let mut shared_store = String::new();
         let mut mail_smtp = String::new();
         let mut mail_user = String::new();
         let mut mail_starttls = String::new();
@@ -326,23 +317,6 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
                     .trim()
                     .trim_matches(|c| c == '"' || c == '\'')
                     .to_string();
-            }
-        }
-
-        if args.shared {
-            global.shared = true;
-        } else {
-            print!(
-                "Shared storage [{}]: ",
-                if global.shared { "yes" } else { "no" }
-            );
-            stdout().flush().unwrap();
-            stdin()
-                .read_line(&mut shared_store)
-                .expect("Did not enter a yes or no?");
-
-            if !shared_store.trim().is_empty() {
-                global.shared = shared_store.trim().to_lowercase().starts_with('y');
             }
         }
 

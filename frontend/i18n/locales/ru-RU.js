@@ -227,7 +227,7 @@ export default {
         publicPath: 'Public (HLS) Path',
         playlistPath: 'Playlist Path',
         storagePath: 'Storage Path',
-        sharedStorage: 'Общее хранилище включено, используйте один и тот же корень хранилища для всех каналов!',
+        sharedStorage: 'ffplayout работает внутри контейнера, используйте один и тот же корень хранилища для всех каналов!',
     },
     user: {
         title: 'Конфигурация пользователя',
