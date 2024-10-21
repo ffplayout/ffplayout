@@ -206,7 +206,7 @@ export default {
         playlistLength: 'Target length of the playlist; when it is blank, the real length will not be considered.',
         playlistInfinit: 'Loop a single playlist file infinitely.',
         storageHelp: 'Storage settings, locations are relative to channel storage.',
-        storageFiller: 'Use filler to play in place of a missing file or to fill the remaining time to reach a total of 24 hours. It can be a file or folder and will loop when necessary.',
+        storageFiller: 'Use filler to play in place of a missing file or to fill the remaining time to reach a total of 24 hours. It can be a file or folder, with relative path, and will loop when necessary.',
         storageExtension: 'Specify which files to search and use.',
         storageShuffle: 'Pick files randomly (in folder mode and playlist generation).',
         textHelp: 'Overlay text in combination with libzmq for remote text manipulation.',
@@ -218,6 +218,7 @@ export default {
         taskPath: 'Path to executable.',
         outputHelp: `The final playout encoding, set the settings according to your needs. Use 'stream' mode and adjust the 'Output Parameter' when you want to stream to an RTMP/RTSP/SRT/... server.
         In production, don't serve HLS playlists with ffplayout; use Nginx or another web server!`,
+        outputParam: 'HLS segment and playlist paths are relative.',
         restartTile: 'Restart Playout',
         restartText: 'Restart ffplayout to apply changes?',
         updatePlayoutSuccess: 'Update playout config success!',
