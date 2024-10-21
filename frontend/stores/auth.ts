@@ -43,8 +43,8 @@ export const useAuth = defineStore('auth', {
             await $fetch('/auth/login/', {
                 method: 'POST',
                 body: JSON.stringify(payload),
-                async onResponse(response: LoginObj) {
-                    code = response.status
+                async onResponse(data: any) {
+                    code = data.response.status
                 },
             })
                 .then((response) => {
@@ -54,7 +54,9 @@ export const useAuth = defineStore('auth', {
                     this.channelID = decodedToken.channel
                     this.role = decodedToken.role
                 })
-                .catch(() => {})
+                .catch((e) => {
+                    code = e.status
+                })
 
             return code
         },

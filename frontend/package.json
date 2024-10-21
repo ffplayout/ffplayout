@@ -39,7 +39,7 @@
     "mini-svg-data-uri": "^1.4.4",
     "postcss": "^8.4.47",
     "postcss-loader": "^8.1.1",
-    "sass": "^1.80.2",
+    "sass": "^1.80.3",
     "sass-loader": "^16.0.2",
     "vue": "^3.5.12",
     "vue-router": "^4.4.5"

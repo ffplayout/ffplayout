@@ -29,60 +29,62 @@
                 </label>
             </div>
 
-            <div class="text-xl pt-3 md:text-right">{{ t('config.mail') }}:</div>
-            <div class="md:pt-4">
-                <label class="form-control mb-2">
-                    <div class="whitespace-pre-line">
-                        {{ t('config.mailHelp') }}
-                    </div>
-                </label>
-                <label class="form-control w-full mt-2">
-                    <div class="label">
-                        <span class="label-text !text-md font-bold">Subject</span>
-                    </div>
-                    <input
-                        v-model="configStore.playout.mail.subject"
-                        type="text"
-                        class="input input-sm input-bordered w-full max-w-lg"
-                    />
-                </label>
-                <label class="form-control w-full mt-2">
-                    <div class="label">
-                        <span class="label-text !text-md font-bold">Recipient</span>
-                    </div>
-                    <input
-                        v-model="configStore.playout.mail.recipient"
-                        type="text"
-                        class="input input-sm input-bordered w-full max-w-lg"
-                    />
-                </label>
-                <label class="form-control w-full mt-2">
-                    <div class="label">
-                        <span class="label-text !text-md font-bold">Mail Level</span>
-                    </div>
-                    <select
-                        v-model="configStore.playout.mail.mail_level"
-                        class="select select-sm select-bordered w-full max-w-xs"
-                    >
-                        <option v-for="level in logLevels" :key="level" :value="level">{{ level }}</option>
-                    </select>
-                </label>
-                <label class="form-control w-full mt-2">
-                    <div class="label">
-                        <span class="label-text !text-md font-bold">Interval</span>
-                    </div>
-                    <input
-                        v-model="configStore.playout.mail.interval"
-                        type="number"
-                        min="30"
-                        step="10"
-                        class="input input-sm input-bordered w-full max-w-36"
-                    />
-                    <div class="label">
-                        <span class="text-sm select-text text-base-content/80">{{ t('config.mailInterval') }}</span>
-                    </div>
-                </label>
-            </div>
+            <template v-if="configStore.playout.mail.show">
+                <div class="text-xl pt-3 md:text-right">{{ t('config.mail') }}:</div>
+                <div class="md:pt-4">
+                    <label class="form-control mb-2">
+                        <div class="whitespace-pre-line">
+                            {{ t('config.mailHelp') }}
+                        </div>
+                    </label>
+                    <label class="form-control w-full mt-2">
+                        <div class="label">
+                            <span class="label-text !text-md font-bold">Subject</span>
+                        </div>
+                        <input
+                            v-model="configStore.playout.mail.subject"
+                            type="text"
+                            class="input input-sm input-bordered w-full max-w-lg"
+                        />
+                    </label>
+                    <label class="form-control w-full mt-2">
+                        <div class="label">
+                            <span class="label-text !text-md font-bold">Recipient</span>
+                        </div>
+                        <input
+                            v-model="configStore.playout.mail.recipient"
+                            type="text"
+                            class="input input-sm input-bordered w-full max-w-lg"
+                        />
+                    </label>
+                    <label class="form-control w-full mt-2">
+                        <div class="label">
+                            <span class="label-text !text-md font-bold">Mail Level</span>
+                        </div>
+                        <select
+                            v-model="configStore.playout.mail.mail_level"
+                            class="select select-sm select-bordered w-full max-w-xs"
+                        >
+                            <option v-for="level in logLevels" :key="level" :value="level">{{ level }}</option>
+                        </select>
+                    </label>
+                    <label class="form-control w-full mt-2">
+                        <div class="label">
+                            <span class="label-text !text-md font-bold">Interval</span>
+                        </div>
+                        <input
+                            v-model="configStore.playout.mail.interval"
+                            type="number"
+                            min="30"
+                            step="10"
+                            class="input input-sm input-bordered w-full max-w-36"
+                        />
+                        <div class="label">
+                            <span class="text-sm select-text text-base-content/80">{{ t('config.mailInterval') }}</span>
+                        </div>
+                    </label>
+                </div>
+            </template>
 
             <div class="text-xl pt-3 md:text-right">{{ t('config.logging') }}:</div>
             <div class="md:pt-4">

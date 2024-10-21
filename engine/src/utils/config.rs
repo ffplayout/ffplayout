@@ -254,6 +254,8 @@ impl General {
 #[derive(Debug, Clone, Deserialize, Serialize, TS)]
 #[ts(export, export_to = "playout_config.d.ts")]
 pub struct Mail {
+    #[serde(skip_deserializing)]
+    pub show: bool,
     pub subject: String,
     #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
@@ -276,6 +278,7 @@ pub struct Mail {
 impl Mail {
     fn new(global: &models::GlobalSettings, config: &models::Configuration) -> Self {
         Self {
+            show: !global.mail_password.is_empty() && global.mail_smtp != "mail.example.org",
             subject: config.mail_subject.clone(),
             smtp_server: global.mail_smtp.clone(),
             starttls: global.mail_starttls,
@@ -291,6 +294,7 @@ impl Mail {
 impl Default for Mail {
     fn default() -> Self {
         Mail {
+            show: false,
             subject: String::default(),
             smtp_server: String::default(),
             starttls: bool::default(),

@@ -6,7 +6,7 @@ export type Ingest = { enable: boolean, input_param: string, custom_filter: stri
 
 export type Logging = { ffmpeg_level: string, ingest_level: string, detect_silence: boolean, ignore_lines: Array<string>, };
 
-export type Mail = { subject: string, recipient: string, mail_level: string, interval: bigint, };
+export type Mail = { show: boolean, subject: string, recipient: string, mail_level: string, interval: bigint, };
 
 export type Output = { mode: OutputMode, output_param: string, };
 
