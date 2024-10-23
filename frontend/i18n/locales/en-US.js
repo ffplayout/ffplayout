@@ -1,8 +1,8 @@
 export default {
     ok: 'Ok',
     cancel: 'Cancel',
-    socketConnected: 'Event stream connected',
-    socketDisconnected: 'Event stream disconnected',
+    socketConnected: 'Message stream connected',
+    socketDisconnected: 'Message stream disconnected',
     alert: {
         wrongLogin: 'Incorrect login data!',
     },
