@@ -400,6 +400,7 @@ fn find_m3u8_files(path: &Path) -> io::Result<Vec<String>> {
     Ok(m3u8_files)
 }
 
+/// Check if segment is in playlist, if not, delete it.
 fn delete_old_segments<P: AsRef<Path> + Clone + std::fmt::Debug>(
     path: P,
     pl_segments: &[String],
