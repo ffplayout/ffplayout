@@ -24,6 +24,7 @@ export const usePlaylist = defineStore('playlist', {
         playoutIsRunning: false,
         last_channel: 0,
         firstLoad: true,
+        scrollToItem: false,
     }),
 
     getters: {},

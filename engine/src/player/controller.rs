@@ -11,9 +11,7 @@ use std::{
     time::Duration,
 };
 
-#[cfg(not(windows))]
-use signal_child::Signalable;
-
+use actix_web::web;
 use log::*;
 use m3u8_rs::Playlist;
 use serde::{Deserialize, Serialize};
@@ -26,7 +24,7 @@ use crate::player::{
 };
 use crate::utils::{
     config::{OutputMode::*, PlayoutConfig},
-    errors::ProcessError,
+    errors::{ProcessError, ServiceError},
 };
 use crate::ARGS;
 use crate::{
@@ -203,11 +201,6 @@ impl ChannelManager {
         match unit {
             Decoder => {
                 if let Some(proc) = self.decoder.lock()?.as_mut() {
-                    #[cfg(not(windows))]
-                    proc.term()
-                        .map_err(|e| ProcessError::Custom(format!("Decoder: {e}")))?;
-
-                    #[cfg(windows)]
                     proc.kill()
                         .map_err(|e| ProcessError::Custom(format!("Decoder: {e}")))?;
                 }
@@ -258,7 +251,7 @@ impl ChannelManager {
         Ok(())
     }
 
-    pub async fn async_stop(&self) {
+    pub async fn async_stop(&self) -> Result<(), ServiceError> {
         self.is_terminated.store(true, Ordering::SeqCst);
         self.is_alive.store(false, Ordering::SeqCst);
         self.ingest_is_running.store(false, Ordering::SeqCst);
@@ -272,12 +265,16 @@ impl ChannelManager {
         };
 
         for unit in [Decoder, Encoder, Ingest] {
-            if let Err(e) = self.stop(unit) {
+            let self_clone = self.clone();
+
+            if let Err(e) = web::block(move || self_clone.stop(unit)).await? {
                 if !e.to_string().contains("exited process") {
                     error!(target: Target::all(), channel = channel_id; "{e}")
                 }
             }
         }
+
+        Ok(())
     }
 
     /// No matter what is running, terminate them all.

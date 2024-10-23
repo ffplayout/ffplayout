@@ -330,14 +330,6 @@ useHead({
     title: `${t('button.media')} | ffplayout`,
 })
 
-watch([width], () => {
-    if (width.value < 640) {
-        horizontal.value = true
-    } else {
-        horizontal.value = false
-    }
-})
-
 const horizontal = ref(false)
 const deleteName = ref('')
 const recursive = ref(false)
@@ -381,6 +373,14 @@ onMounted(async () => {
 
     if (!mediaStore.folderTree.parent || !mediaStore.currentPath) {
         await mediaStore.getTree('')
+    }
+})
+
+watch([width], () => {
+    if (width.value < 640) {
+        horizontal.value = true
+    } else {
+        horizontal.value = false
     }
 })
 

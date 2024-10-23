@@ -420,6 +420,7 @@ async function generatePlaylist() {
     resetCheckboxes()
     resetTemplate()
 
+    playlistStore.scrollToItem = true
     playlistStore.isLoading = false
 }
 </script>

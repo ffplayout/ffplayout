@@ -984,10 +984,10 @@ pub async fn process_control(
         }
         ProcessCtl::Stop => {
             manager.channel.lock().unwrap().active = false;
-            manager.async_stop().await;
+            manager.async_stop().await?;
         }
         ProcessCtl::Restart => {
-            manager.async_stop().await;
+            manager.async_stop().await?;
             tokio::time::sleep(tokio::time::Duration::from_millis(1500)).await;
 
             if !manager.is_alive.load(Ordering::SeqCst) {
