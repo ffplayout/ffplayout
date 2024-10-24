@@ -19,7 +19,6 @@
                     {{ t('button.logging') }}
                 </NuxtLink>
                 <NuxtLink
-                    v-if="authStore.role.toLowerCase().includes('admin')"
                     :to="localePath({ name: 'configure' })"
                     class="btn join-item btn-primary px-2"
                 >

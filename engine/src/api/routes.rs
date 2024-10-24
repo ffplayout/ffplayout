@@ -467,8 +467,7 @@ async fn get_all_channels(
 /// ```
 #[patch("/channel/{id}")]
 #[protect(
-    "Role::GlobalAdmin",
-    "Role::ChannelAdmin",
+    any("Role::GlobalAdmin", "Role::ChannelAdmin"),
     ty = "Role",
     expr = "user.channels.contains(&*id) || role.has_authority(&Role::GlobalAdmin)"
 )]
