@@ -15,18 +15,26 @@
                     <SvgIcon name="burger" classes="w-5 h-5" />
                 </summary>
                 <ul class="menu menu-sm dropdown-content mt-1 z-[1] p-2 shadow bg-base-100 rounded-box w-52">
-                    <li v-for="item in menuItems" :key="item.name" class="bg-base-100 rounded-md">
-                        <NuxtLink
-                            :to="item.link"
-                            class="h-[27px] text-base"
-                            exact-active-class="is-active"
-                            @click="closeMenu()"
+                    <template v-for="item in menuItems" :key="item.name">
+                        <li
+                            v-if="
+                                item.label !== 'message' ||
+                                (configStore.playout.text.add_text && !configStore.playout.text.text_from_filename)
+                            "
+                            class="bg-base-100 rounded-md"
                         >
-                            <span>
-                                {{ item.name }}
-                            </span>
-                        </NuxtLink>
-                    </li>
+                            <NuxtLink
+                                :to="item.link"
+                                class="h-[27px] text-base"
+                                exact-active-class="is-active"
+                                @click="closeMenu()"
+                            >
+                                <span>
+                                    {{ item.name }}
+                                </span>
+                            </NuxtLink>
+                        </li>
+                    </template>
                     <li v-if="configStore.channels.length > 1">
                         <details tabindex="0" @focusout="closeDropdown">
                             <summary>
@@ -37,7 +45,9 @@
                             <ul class="p-2">
                                 <li v-for="(channel, index) in configStore.channels" :key="index">
                                     <span>
-                                        <a class="dropdown-item cursor-pointer" @click="selectChannel(index)">{{ channel.name }}</a>
+                                        <a class="dropdown-item cursor-pointer" @click="selectChannel(index)">{{
+                                            channel.name
+                                        }}</a>
                                     </span>
                                 </li>
                             </ul>
@@ -53,17 +63,26 @@
         </div>
         <div class="navbar-end hidden 2sm:flex w-4/5 min-w-[750px]">
             <ul class="menu menu-sm menu-horizontal px-1">
-                <li v-for="item in menuItems" :key="item.name" class="bg-base-100 rounded-md p-0">
-                    <NuxtLink
-                        :to="item.link"
-                        class="px-2 h-[27px] relative text-base text-base-content"
-                        active-class="is-active"
+                <template v-for="item in menuItems" :key="item.name">
+                    <li
+                        v-if="
+                            item.label !== 'message' ||
+                            (configStore.playout.text.add_text && !configStore.playout.text.text_from_filename)
+                        "
+                        class="bg-base-100 rounded-md p-0"
                     >
-                        <span>
-                            {{ item.name }}
-                        </span>
-                    </NuxtLink>
-                </li>
+                        <NuxtLink
+                            :to="item.link"
+                            class="px-2 h-[27px] relative text-base text-base-content"
+                            active-class="is-active"
+                        >
+                            <span>
+                                {{ item.name }}
+                            </span>
+                        </NuxtLink>
+                    </li>
+                </template>
+
                 <li v-if="configStore.channels.length > 1">
                     <details tabindex="0" @focusout="closeDropdown">
                         <summary>
@@ -112,12 +131,12 @@ const menuDropdown = ref()
 const isOpen = ref(false)
 
 const menuItems = ref([
-    { name: t('button.home'), link: localePath({ name: 'index' }) },
-    { name: t('button.player'), link: localePath({ name: 'player' }) },
-    { name: t('button.media'), link: localePath({ name: 'media' }) },
-    { name: t('button.message'), link: localePath({ name: 'message' }) },
-    { name: t('button.logging'), link: localePath({ name: 'logging' }) },
-    { name: t('button.configure'), link: localePath({ name: 'configure' }) },
+    { label: 'index', name: t('button.home'), link: localePath({ name: 'index' }) },
+    { label: 'player', name: t('button.player'), link: localePath({ name: 'player' }) },
+    { label: 'media', name: t('button.media'), link: localePath({ name: 'media' }) },
+    { label: 'message', name: t('button.message'), link: localePath({ name: 'message' }) },
+    { label: 'logging', name: t('button.logging'), link: localePath({ name: 'logging' }) },
+    { label: 'configure', name: t('button.configure'), link: localePath({ name: 'configure' }) },
 ])
 
 if (colorMode.value === 'dark') {

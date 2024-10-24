@@ -12,16 +12,17 @@
                 <NuxtLink :to="localePath({ name: 'media' })" class="btn join-item btn-primary px-2">
                     {{ t('button.media') }}
                 </NuxtLink>
-                <NuxtLink :to="localePath({ name: 'message' })" class="btn join-item btn-primary px-2">
+                <NuxtLink
+                    v-if="configStore.playout.text.add_text && !configStore.playout.text.text_from_filename"
+                    :to="localePath({ name: 'message' })"
+                    class="btn join-item btn-primary px-2"
+                >
                     {{ t('button.message') }}
                 </NuxtLink>
                 <NuxtLink :to="localePath({ name: 'logging' })" class="btn join-item btn-primary px-2">
                     {{ t('button.logging') }}
                 </NuxtLink>
-                <NuxtLink
-                    :to="localePath({ name: 'configure' })"
-                    class="btn join-item btn-primary px-2"
-                >
+                <NuxtLink :to="localePath({ name: 'configure' })" class="btn join-item btn-primary px-2">
                     {{ t('button.configure') }}
                 </NuxtLink>
                 <button class="btn join-item btn-primary px-2" @click="logout()">
