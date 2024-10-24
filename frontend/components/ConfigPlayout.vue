@@ -705,6 +705,11 @@
                         class="textarea textarea-bordered"
                         rows="6"
                     />
+                    <div class="label">
+                        <span class="text-sm select-text text-base-content/80">
+                            {{ t('config.outputParam') }}
+                        </span>
+                    </div>
                 </label>
             </div>
             <div class="mt-5 mb-10">

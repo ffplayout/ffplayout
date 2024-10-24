@@ -15,8 +15,9 @@
                     v-model="channel.name"
                     type="text"
                     placeholder="Type here"
-                    class="input input-bordered w-full"
+                    class="input input-bordered w-full !bg-base-100"
                     @keyup="isChanged"
+                    :disabled="authStore.role === 'User'"
                 />
             </label>
 
@@ -27,8 +28,9 @@
                 <input
                     v-model="channel.preview_url"
                     type="text"
-                    class="input input-bordered w-full"
+                    class="input input-bordered w-full !bg-base-100"
                     @keyup="isChanged"
+                    :disabled="authStore.role === 'User'"
                 />
             </label>
 
@@ -39,8 +41,10 @@
                 <input
                     v-model="channel.extra_extensions"
                     type="text"
-                    class="input input-bordered w-full"
+                    class="input input-bordered w-full !bg-base-100"
+                    :class="'input-disabled'"
                     @keyup="isChanged"
+                    :disabled="authStore.role === 'User'"
                 />
             </label>
 
@@ -88,7 +92,7 @@
                 </label>
             </template>
 
-            <div class="my-4 flex gap-1">
+            <div v-if="authStore.role !== 'User'" class="my-4 flex gap-1">
                 <button class="btn" :class="saved ? 'btn-primary' : 'btn-error'" @click="addUpdateChannel()">
                     {{ t('config.save') }}
                 </button>
@@ -218,7 +222,10 @@ async function addUpdateChannel() {
             await updateChannel()
         }
 
-        await configStore.getAdvancedConfig()
+        if (authStore.role === 'GlobalAdmin') {
+            await configStore.getAdvancedConfig()
+        }
+
         await configStore.getPlayoutConfig()
         await configStore.getUserConfig()
         await mediaStore.getTree('')
@@ -242,8 +249,12 @@ async function deleteChannel() {
     })
 
     i.value = configStore.i - 1
+
+    if (authStore.role === 'GlobalAdmin') {
+        await configStore.getAdvancedConfig()
+    }
+
     await configStore.getChannelConfig()
-    await configStore.getAdvancedConfig()
     await configStore.getPlayoutConfig()
     await configStore.getUserConfig()
     await mediaStore.getTree('')

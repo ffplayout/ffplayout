@@ -1,8 +1,8 @@
 export default {
     ok: 'Ok',
     cancel: 'Abbrechen',
-    socketConnected: 'Event Stream verbunden',
-    socketDisconnected: 'Event Stream nicht verbunden',
+    socketConnected: 'Message-Stream verbunden',
+    socketDisconnected: 'Message-Stream nicht verbunden',
     alert: {
         wrongLogin: 'Falsche Anmeldedaten!',
     },
@@ -206,7 +206,7 @@ export default {
         playlistLength: 'Ziel-Länge der Playlist; wenn es leer ist, wird die reale Länge nicht berücksichtigt.',
         playlistInfinit: 'Eine einzelne Playlist-Datei endlos wiederholen.',
         storageHelp: 'Speichereinstellungen, die Standorte sind relativ zum Kanal-Speicher.',
-        storageFiller: 'Verwende Füllmaterial, um anstelle einer fehlenden Datei abzuspielen oder um die verbleibende Zeit zu füllen, um eine Gesamtdauer von 24 Stunden zu erreichen. Es kann eine Datei oder ein Ordner sein und wird bei Bedarf wiederholt.',
+        storageFiller: 'Verwenden Sie einen Platzhalter, um eine fehlende Datei abzuspielen oder um die verbleibende Zeit auf insgesamt 24 Stunden zu füllen. Es kann sich um eine Datei oder einen Ordner mit relativem Pfad handeln, der bei Bedarf wiederholt wird.',
         storageExtension: 'Gib an, welche Dateien gesucht und verwendet werden sollen.',
         storageShuffle: 'Wähle Dateien zufällig aus (im Ordner-Modus und bei der Playlist-Erstellung).',
         textHelp: 'Texteinblendung in Kombination mit libzmq für die Fernmanipulation von Text.',
@@ -217,6 +217,7 @@ export default {
         taskHelp: 'Führe ein externes Programm mit einem gegebenen Medienobjekt aus. Das Medienobjekt ist im JSON-Format und enthält alle Informationen über den aktuellen Clip. Das externe Programm kann ein Skript oder eine Binärdatei sein, sollte aber nur für kurze Zeit laufen.',
         taskPath: 'Pfad zur ausführbaren Datei.',
         outputHelp: `Die endgültige Playout-Codierung, passe die Einstellungen nach deinen Bedürfnissen an. Verwende den 'stream'-Modus und passe den 'Ausgabe-Parameter' an, wenn du zu einem RTMP/RTSP/SRT/...-Server streamen möchtest. Im Produktionsbetrieb verwende kein HLS mit ffplayout; nutze Nginx oder einen anderen Webserver!`,
+        outputParam: 'HLS-Segment- und Playlist-Pfade sind relativ.',
         restartTile: 'Playout neustarten',
         restartText: 'ffplayout neustarten um Einstellungen anzuwenden?',
         updatePlayoutSuccess: 'Update der Playout-Konfiguration erfolgreich!',

@@ -467,8 +467,7 @@ async fn get_all_channels(
 /// ```
 #[patch("/channel/{id}")]
 #[protect(
-    "Role::GlobalAdmin",
-    "Role::ChannelAdmin",
+    any("Role::GlobalAdmin", "Role::ChannelAdmin"),
     ty = "Role",
     expr = "user.channels.contains(&*id) || role.has_authority(&Role::GlobalAdmin)"
 )]
@@ -984,10 +983,10 @@ pub async fn process_control(
         }
         ProcessCtl::Stop => {
             manager.channel.lock().unwrap().active = false;
-            manager.async_stop().await;
+            manager.async_stop().await?;
         }
         ProcessCtl::Restart => {
-            manager.async_stop().await;
+            manager.async_stop().await?;
             tokio::time::sleep(tokio::time::Duration::from_millis(1500)).await;
 
             if !manager.is_alive.load(Ordering::SeqCst) {

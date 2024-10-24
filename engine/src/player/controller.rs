@@ -11,9 +11,7 @@ use std::{
     time::Duration,
 };
 
-#[cfg(not(windows))]
-use signal_child::Signalable;
-
+use actix_web::web;
 use log::*;
 use m3u8_rs::Playlist;
 use serde::{Deserialize, Serialize};
@@ -26,7 +24,7 @@ use crate::player::{
 };
 use crate::utils::{
     config::{OutputMode::*, PlayoutConfig},
-    errors::ProcessError,
+    errors::{ProcessError, ServiceError},
 };
 use crate::ARGS;
 use crate::{
@@ -203,11 +201,6 @@ impl ChannelManager {
         match unit {
             Decoder => {
                 if let Some(proc) = self.decoder.lock()?.as_mut() {
-                    #[cfg(not(windows))]
-                    proc.term()
-                        .map_err(|e| ProcessError::Custom(format!("Decoder: {e}")))?;
-
-                    #[cfg(windows)]
                     proc.kill()
                         .map_err(|e| ProcessError::Custom(format!("Decoder: {e}")))?;
                 }
@@ -258,36 +251,48 @@ impl ChannelManager {
         Ok(())
     }
 
-    pub async fn async_stop(&self) {
+    pub async fn async_stop(&self) -> Result<(), ServiceError> {
+        let channel_id = self.channel.lock().unwrap().id;
+
+        if self.is_alive.load(Ordering::SeqCst) {
+            debug!(target: Target::all(), channel = channel_id; "Deactivate playout and stop all child processes from channel: <yellow>{channel_id}</>");
+        }
+
         self.is_terminated.store(true, Ordering::SeqCst);
         self.is_alive.store(false, Ordering::SeqCst);
         self.ingest_is_running.store(false, Ordering::SeqCst);
         self.run_count.fetch_sub(1, Ordering::SeqCst);
         let pool = self.db_pool.clone().unwrap();
-        let channel_id = self.channel.lock().unwrap().id;
-        debug!(target: Target::all(), channel = channel_id; "Deactivate playout and stop all child processes from channel: <yellow>{channel_id}</>");
 
         if let Err(e) = handles::update_player(&pool, channel_id, false).await {
             error!(target: Target::all(), channel = channel_id; "Unable write to player status: {e}");
         };
 
         for unit in [Decoder, Encoder, Ingest] {
-            if let Err(e) = self.stop(unit) {
+            let self_clone = self.clone();
+
+            if let Err(e) = web::block(move || self_clone.stop(unit)).await? {
                 if !e.to_string().contains("exited process") {
                     error!(target: Target::all(), channel = channel_id; "{e}")
                 }
             }
         }
+
+        Ok(())
     }
 
     /// No matter what is running, terminate them all.
     pub fn stop_all(&self) {
+        let channel_id = self.channel.lock().unwrap().id;
+
+        if self.is_alive.load(Ordering::SeqCst) {
+            debug!(target: Target::all(), channel = channel_id; "Stop all child processes from channel: <yellow>{channel_id}</>");
+        }
+
         self.is_terminated.store(true, Ordering::SeqCst);
         self.is_alive.store(false, Ordering::SeqCst);
         self.ingest_is_running.store(false, Ordering::SeqCst);
         self.run_count.fetch_sub(1, Ordering::SeqCst);
-        let channel_id = self.channel.lock().unwrap().id;
-        debug!(target: Target::all(), channel = channel_id; "Stop all child processes from channel: <yellow>{channel_id}</>");
 
         for unit in [Decoder, Encoder, Ingest] {
             if let Err(e) = self.stop(unit) {
@@ -400,6 +405,7 @@ fn find_m3u8_files(path: &Path) -> io::Result<Vec<String>> {
     Ok(m3u8_files)
 }
 
+/// Check if segment is in playlist, if not, delete it.
 fn delete_old_segments<P: AsRef<Path> + Clone + std::fmt::Debug>(
     path: P,
     pl_segments: &[String],
