@@ -32,7 +32,7 @@ export const useConfig = defineStore('config', {
                     await this.getPlayoutConfig()
                     await this.getUserConfig()
 
-                    if (this.configUser.id === 1) {
+                    if (authStore.role === 'GlobalAdmin') {
                         await this.getAdvancedConfig()
                     }
                 })

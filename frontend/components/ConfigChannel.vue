@@ -222,7 +222,10 @@ async function addUpdateChannel() {
             await updateChannel()
         }
 
-        await configStore.getAdvancedConfig()
+        if (authStore.role === 'GlobalAdmin') {
+            await configStore.getAdvancedConfig()
+        }
+
         await configStore.getPlayoutConfig()
         await configStore.getUserConfig()
         await mediaStore.getTree('')
@@ -246,8 +249,12 @@ async function deleteChannel() {
     })
 
     i.value = configStore.i - 1
+
+    if (authStore.role === 'GlobalAdmin') {
+        await configStore.getAdvancedConfig()
+    }
+
     await configStore.getChannelConfig()
-    await configStore.getAdvancedConfig()
     await configStore.getPlayoutConfig()
     await configStore.getUserConfig()
     await mediaStore.getTree('')
