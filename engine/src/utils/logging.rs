@@ -248,38 +248,32 @@ fn strip_tags(input: &str) -> String {
     re.replace_all(input, "").to_string()
 }
 
-fn console_formatter(w: &mut dyn Write, _now: &mut DeferredNow, record: &Record) -> io::Result<()> {
-    match record.level() {
-        Level::Debug => write!(
+fn console_formatter(w: &mut dyn Write, now: &mut DeferredNow, record: &Record) -> io::Result<()> {
+    let log_line = match record.level() {
+        Level::Debug => colorize_string(format!("<bright-blue>[DEBUG]</> {}", record.args())),
+        Level::Error => colorize_string(format!("<bright-red>[ERROR]</> {}", record.args())),
+        Level::Info => colorize_string(format!("<bright-green>[ INFO]</> {}", record.args())),
+        Level::Trace => colorize_string(format!(
+            "<bright-yellow>[TRACE]</> {}:{} {}",
+            record.file().unwrap_or_default(),
+            record.line().unwrap_or_default(),
+            record.args()
+        )),
+        Level::Warn => colorize_string(format!("<yellow>[ WARN]</> {}", record.args())),
+    };
+
+    if ARGS.log_timestamp {
+        write!(
             w,
-            "{}",
-            colorize_string(format!("<bright-blue>[DEBUG]</> {}", record.args()))
-        ),
-        Level::Error => write!(
-            w,
-            "{}",
-            colorize_string(format!("<bright-red>[ERROR]</> {}", record.args()))
-        ),
-        Level::Info => write!(
-            w,
-            "{}",
-            colorize_string(format!("<bright-green>[ INFO]</> {}", record.args()))
-        ),
-        Level::Trace => write!(
-            w,
-            "{}",
+            "{} {}",
             colorize_string(format!(
-                "<bright-yellow>[TRACE]</> {}:{} {}",
-                record.file().unwrap_or_default(),
-                record.line().unwrap_or_default(),
-                record.args()
-            ))
-        ),
-        Level::Warn => write!(
-            w,
-            "{}",
-            colorize_string(format!("<yellow>[ WARN]</> {}", record.args()))
-        ),
+                "<bright black>[{}]</>",
+                now.now().format("%Y-%m-%d %H:%M:%S%.6f")
+            )),
+            log_line
+        )
+    } else {
+        write!(w, "{}", log_line)
     }
 }
 

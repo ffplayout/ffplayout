@@ -42,7 +42,6 @@
                     v-model="channel.extra_extensions"
                     type="text"
                     class="input input-bordered w-full !bg-base-100"
-                    :class="'input-disabled'"
                     @keyup="isChanged"
                     :disabled="authStore.role === 'User'"
                 />

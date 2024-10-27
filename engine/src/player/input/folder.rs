@@ -13,7 +13,7 @@ use log::*;
 use notify::{
     event::{CreateKind, ModifyKind, RemoveKind, RenameMode},
     EventKind::{Create, Modify, Remove},
-    RecursiveMode, Watcher,
+    RecursiveMode,
 };
 use notify_debouncer_full::new_debouncer;
 
@@ -41,11 +41,7 @@ pub fn watchman(
 
     let mut debouncer = new_debouncer(Duration::from_secs(1), None, tx).unwrap();
 
-    debouncer
-        .watcher()
-        .watch(path, RecursiveMode::Recursive)
-        .unwrap();
-    debouncer.cache().add_root(path, RecursiveMode::Recursive);
+    debouncer.watch(path, RecursiveMode::Recursive).unwrap();
 
     while !is_terminated.load(Ordering::SeqCst) {
         if let Ok(result) = rx.try_recv() {
@@ -93,7 +89,7 @@ pub fn watchman(
                            info!(target: Target::file_mail(), channel = id; "Create new file: <b><magenta>{new_path:?}</></b>");
                         }
                     }
-                    _ => debug!(target: Target::file_mail(), channel = id; "Not tracked file event: {event:?}")
+                    _ => trace!(target: Target::file_mail(), channel = id; "Not tracked file event: {event:?}")
                 }),
                 Err(errors) => errors.iter().for_each(|error| error!(target: Target::file_mail(), channel = id; "{error:?}")),
             }

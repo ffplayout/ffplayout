@@ -1,11 +1,10 @@
 use std::{
     io::{BufRead, BufReader, Read},
     process::{ChildStderr, Command, Stdio},
-    sync::atomic::Ordering,
+    sync::{atomic::Ordering, mpsc::SyncSender},
     thread,
 };
 
-use crossbeam_channel::Sender;
 use log::*;
 
 use crate::utils::{
@@ -16,7 +15,7 @@ use crate::vec_strings;
 use crate::{
     player::{
         controller::{ChannelManager, ProcessUnit::*},
-        utils::{test_tcp_port, valid_stream, Media},
+        utils::{is_free_tcp_port, valid_stream, Media},
     },
     utils::errors::ProcessError,
 };
@@ -38,6 +37,8 @@ fn server_monitor(
         }
 
         if line.contains("rtmp") && line.contains("Unexpected stream") && !valid_stream(&line) {
+            warn!(target: Target::file_mail(), channel = id; "Unexpected ingest stream: {line}");
+
             if let Err(e) = channel_mgr.stop(Ingest) {
                 error!(target: Target::file_mail(), channel = id; "{e}");
             };
@@ -61,7 +62,7 @@ fn server_monitor(
 /// Start ffmpeg in listen mode, and wait for input.
 pub fn ingest_server(
     config: PlayoutConfig,
-    ingest_sender: Sender<(usize, [u8; 65088])>,
+    ingest_sender: SyncSender<(usize, [u8; 65088])>,
     channel_mgr: ChannelManager,
 ) -> Result<(), ProcessError> {
     let id = config.general.channel_id;
@@ -103,19 +104,19 @@ pub fn ingest_server(
 
     let mut is_running;
 
-    if let Some(url) = stream_input.iter().find(|s| s.contains("://")) {
-        if !test_tcp_port(id, url) {
-            channel_mgr.channel.lock().unwrap().active = false;
-            channel_mgr.stop_all();
-        }
-
-        info!(target: Target::file_mail(), channel = id; "Start ingest server, listening on: <b><magenta>{url}</></b>",);
-    };
-
     debug!(target: Target::file_mail(), channel = id;
         "Server CMD: <bright-blue>\"ffmpeg {}\"</>",
         server_cmd.join(" ")
     );
+
+    if let Some(url) = stream_input.iter().find(|s| s.contains("://")) {
+        if !is_free_tcp_port(id, url) {
+            channel_mgr.channel.lock().unwrap().active = false;
+            channel_mgr.stop_all();
+        } else {
+            info!(target: Target::file_mail(), channel = id; "Start ingest server, listening on: <b><magenta>{url}</></b>");
+        }
+    };
 
     while !is_terminated.load(Ordering::SeqCst) {
         let proc_ctl = channel_mgr.clone();
