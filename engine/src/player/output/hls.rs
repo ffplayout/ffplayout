@@ -138,7 +138,11 @@ fn ingest_to_hls_server(manager: ChannelManager) -> Result<(), ProcessError> {
                 }
             }
 
-            log_line(&line, &config.logging.ffmpeg_level);
+            if ingest_is_running.load(Ordering::SeqCst) {
+                log_line(&line, &config.logging.ingest_level);
+            } else {
+                log_line(&line, &config.logging.ffmpeg_level);
+            }
         }
 
         if ingest_is_running.load(Ordering::SeqCst) {
