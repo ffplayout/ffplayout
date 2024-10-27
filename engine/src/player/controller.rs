@@ -227,26 +227,39 @@ impl ChannelManager {
     /// Wait for process to proper close.
     /// This prevents orphaned/zombi processes in system
     pub fn wait(&self, unit: ProcessUnit) -> Result<(), ProcessError> {
-        match unit {
-            Decoder => {
-                if let Some(proc) = self.decoder.lock().unwrap().as_mut() {
-                    proc.wait()
-                        .map_err(|e| ProcessError::Custom(format!("Decoder: {e}")))?;
+        loop {
+            match unit {
+                Decoder => {
+                    if let Some(proc) = self.decoder.lock().unwrap().as_mut() {
+                        match proc.try_wait() {
+                            Ok(Some(_)) => break,
+                            Ok(None) => thread::sleep(Duration::from_millis(10)),
+                            Err(e) => return Err(ProcessError::Custom(format!("Decoder: {e}"))),
+                        }
+                    }
                 }
-            }
-            Encoder => {
-                if let Some(proc) = self.encoder.lock().unwrap().as_mut() {
-                    proc.wait()
-                        .map_err(|e| ProcessError::Custom(format!("Encoder: {e}")))?;
+                Encoder => {
+                    if let Some(proc) = self.encoder.lock().unwrap().as_mut() {
+                        match proc.try_wait() {
+                            Ok(Some(_)) => break,
+                            Ok(None) => thread::sleep(Duration::from_millis(10)),
+                            Err(e) => return Err(ProcessError::Custom(format!("Encoder: {e}"))),
+                        }
+                    }
                 }
-            }
-            Ingest => {
-                if let Some(proc) = self.ingest.lock().unwrap().as_mut() {
-                    proc.wait()
-                        .map_err(|e| ProcessError::Custom(format!("Ingest: {e}")))?;
+                Ingest => {
+                    if let Some(proc) = self.ingest.lock().unwrap().as_mut() {
+                        match proc.try_wait() {
+                            Ok(Some(_)) => break,
+                            Ok(None) => thread::sleep(Duration::from_millis(10)),
+                            Err(e) => return Err(ProcessError::Custom(format!("Ingest: {e}"))),
+                        }
+                    }
                 }
             }
         }
+
+        thread::sleep(Duration::from_millis(50));
 
         Ok(())
     }

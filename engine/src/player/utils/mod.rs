@@ -1059,7 +1059,7 @@ pub fn validate_ffmpeg(config: &mut PlayoutConfig) -> Result<(), String> {
 }
 
 /// get a free tcp socket
-pub fn free_tcp_socket(exclude_socket: String) -> Option<String> {
+pub fn gen_tcp_socket(exclude_socket: String) -> Option<String> {
     for _ in 0..100 {
         let port = rand::thread_rng().gen_range(45321..54268);
         let socket = format!("127.0.0.1:{port}");
@@ -1073,12 +1073,12 @@ pub fn free_tcp_socket(exclude_socket: String) -> Option<String> {
 }
 
 /// check if tcp port is free
-pub fn test_tcp_port(id: i32, url: &str) -> bool {
-    let re = Regex::new(r"^[\w]+\://").unwrap();
+pub fn is_free_tcp_port(id: i32, url: &str) -> bool {
+    let re = Regex::new(r"^[\w]+://([^/]+)").unwrap();
     let mut addr = url.to_string();
 
-    if re.is_match(url) {
-        addr = re.replace(url, "").to_string();
+    if let Some(base_url) = re.captures(url).and_then(|u| u.get(1)) {
+        addr = base_url.as_str().to_string();
     }
 
     if let Some(socket) = addr.split_once(':') {
@@ -1092,7 +1092,7 @@ pub fn test_tcp_port(id: i32, url: &str) -> bool {
         }
     };
 
-    error!(target: Target::file_mail(), channel = id; "Address <b><magenta>{url}</></b> already in use!");
+    error!(target: Target::file_mail(), channel = id; "Address <b><magenta>{addr}</></b> already in use!");
 
     false
 }

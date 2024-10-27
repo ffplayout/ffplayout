@@ -14,7 +14,7 @@ use tokio::{fs, io::AsyncReadExt};
 use ts_rs::TS;
 
 use crate::db::{handles, models};
-use crate::utils::{files::norm_abs_path, free_tcp_socket, time_to_sec};
+use crate::utils::{files::norm_abs_path, gen_tcp_socket, time_to_sec};
 use crate::vec_strings;
 use crate::AdvancedConfig;
 use crate::ARGS;
@@ -797,9 +797,9 @@ impl PlayoutConfig {
         // when text overlay without text_from_filename is on, turn also the RPC server on,
         // to get text messages from it
         if text.add_text && !text.text_from_filename {
-            text.zmq_stream_socket = free_tcp_socket(String::new());
+            text.zmq_stream_socket = gen_tcp_socket(String::new());
             text.zmq_server_socket =
-                free_tcp_socket(text.zmq_stream_socket.clone().unwrap_or_default());
+                gen_tcp_socket(text.zmq_stream_socket.clone().unwrap_or_default());
             text.node_pos = Some(2);
         } else {
             text.zmq_stream_socket = None;

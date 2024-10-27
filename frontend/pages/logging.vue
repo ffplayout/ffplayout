@@ -110,7 +110,7 @@ function filterLogsBySeverity(logString: string, minSeverity: string): string {
             const logLevel = match[1]
             return indexStore.severityLevels[logLevel] >= minLevel
         }
-        return false
+        return true
     })
     return filteredLogs.join('\n')
 }

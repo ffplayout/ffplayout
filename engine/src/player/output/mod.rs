@@ -1,12 +1,11 @@
 use std::{
     io::{prelude::*, BufReader, BufWriter, Read},
     process::{Command, Stdio},
-    sync::atomic::Ordering,
+    sync::{atomic::Ordering, mpsc::sync_channel},
     thread::{self, sleep},
     time::{Duration, SystemTime},
 };
 
-use crossbeam_channel::bounded;
 use log::*;
 
 mod desktop;
@@ -72,7 +71,7 @@ pub fn player(manager: ChannelManager) -> Result<(), ProcessError> {
 
     // spawn a thread for ffmpeg ingest server and create a channel for package sending
     if config.ingest.enable {
-        let (ingest_sender, rx) = bounded(96);
+        let (ingest_sender, rx) = sync_channel(96);
         ingest_receiver = Some(rx);
         thread::spawn(move || ingest_server(config_clone, ingest_sender, channel_mgr_2));
     }

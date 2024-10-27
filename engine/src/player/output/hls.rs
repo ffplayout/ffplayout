@@ -34,8 +34,8 @@ use crate::{
         controller::{ChannelManager, ProcessUnit::*},
         input::source_generator,
         utils::{
-            get_delta, prepare_output_cmd, sec_to_time, stderr_reader, test_tcp_port, valid_stream,
-            Media,
+            get_delta, is_free_tcp_port, prepare_output_cmd, sec_to_time, stderr_reader,
+            valid_stream, Media,
         },
     },
     utils::{errors::ProcessError, logging::Target},
@@ -47,6 +47,7 @@ fn ingest_to_hls_server(manager: ChannelManager) -> Result<(), ProcessError> {
     let id = config.general.channel_id;
     let playlist_init = manager.list_init.clone();
     let chain = manager.filter_chain.clone();
+    let mut error_count = 0;
 
     let mut server_prefix = vec_strings!["-hide_banner", "-nostats", "-v", "level+info"];
     let stream_input = config.ingest.input_cmd.clone().unwrap();
@@ -76,12 +77,12 @@ fn ingest_to_hls_server(manager: ChannelManager) -> Result<(), ProcessError> {
     let mut is_running;
 
     if let Some(url) = stream_input.iter().find(|s| s.contains("://")) {
-        if !test_tcp_port(id, url) {
+        if !is_free_tcp_port(id, url) {
             manager.channel.lock().unwrap().active = false;
             manager.stop_all();
+        } else {
+            info!(target: Target::file_mail(), channel = id; "Start ingest server, listening on: <b><magenta>{url}</></b>");
         }
-
-        info!(target: Target::file_mail(), channel = id; "Start ingest server, listening on: <b><magenta>{url}</></b>");
     };
 
     drop(config);
@@ -90,6 +91,7 @@ fn ingest_to_hls_server(manager: ChannelManager) -> Result<(), ProcessError> {
         let config = manager.config.lock().unwrap().clone();
         dummy_media.add_filter(&config, &chain);
         let server_cmd = prepare_output_cmd(&config, server_prefix.clone(), &dummy_media.filter);
+        let timer = SystemTime::now();
 
         debug!(target: Target::file_mail(), channel = id;
             "Server CMD: <bright-blue>\"ffmpeg {}\"</>",
@@ -117,6 +119,8 @@ fn ingest_to_hls_server(manager: ChannelManager) -> Result<(), ProcessError> {
             let line = line?;
 
             if line.contains("rtmp") && line.contains("Unexpected stream") && !valid_stream(&line) {
+                warn!(target: Target::file_mail(), channel = id; "Unexpected ingest stream: {line}");
+
                 if let Err(e) = proc_ctl.stop(Ingest) {
                     error!(target: Target::file_mail(), channel = id; "{e}");
                 };
@@ -149,6 +153,21 @@ fn ingest_to_hls_server(manager: ChannelManager) -> Result<(), ProcessError> {
 
         if is_terminated.load(Ordering::SeqCst) {
             break;
+        }
+
+        if let Ok(elapsed) = timer.elapsed() {
+            if elapsed.as_millis() < 300 {
+                error_count += 1;
+
+                if error_count > 10 {
+                    error!(target: Target::file_mail(), channel = id; "Reach fatal error count in ingest, terminate channel!");
+                    manager.channel.lock().unwrap().active = false;
+                    manager.stop_all();
+                    break;
+                }
+            } else {
+                error_count = 0;
+            }
         }
     }
 
