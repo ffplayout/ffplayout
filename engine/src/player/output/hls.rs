@@ -126,7 +126,7 @@ fn ingest_to_hls_server(manager: ChannelManager) -> Result<(), ProcessError> {
                 };
             }
 
-            if !is_running {
+            if !is_running && line.contains("Input #0") {
                 ingest_is_running.store(true, Ordering::SeqCst);
                 playlist_init.store(true, Ordering::SeqCst);
                 is_running = true;

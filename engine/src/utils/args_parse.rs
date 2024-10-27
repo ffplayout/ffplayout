@@ -167,7 +167,7 @@ pub struct Args {
     #[clap(long, help_heading = Some("Playlist"), help = "Only validate given playlist")]
     pub validate: bool,
 
-    #[clap(long, env, help_heading = Some("Playout"), help = "Run playout without webserver and frontend.")]
+    #[clap(long, env, help_heading = Some("Playout"), help = "Run playout without webserver and frontend")]
     pub foreground: bool,
 
     #[clap(short, long, help_heading = Some("Playout"), help = "Play folder content")]
@@ -175,6 +175,9 @@ pub struct Args {
 
     #[clap(long, env, help_heading = Some("Playout"), help = "Keep log file for given days")]
     pub log_backup_count: Option<usize>,
+
+    #[clap(long, env, help_heading = Some("Playout"), help = "Add timestamp to log line")]
+    pub log_timestamp: bool,
 
     #[clap(short, long, help_heading = Some("Playout"), help = "Set output mode: desktop, hls, null, stream")]
     pub output: Option<OutputMode>,

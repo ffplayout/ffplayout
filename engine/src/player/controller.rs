@@ -224,39 +224,31 @@ impl ChannelManager {
         Ok(())
     }
 
+    fn run_wait(
+        &self,
+        unit: ProcessUnit,
+        child: &Arc<Mutex<Option<Child>>>,
+    ) -> Result<(), ProcessError> {
+        if let Some(proc) = child.lock().unwrap().as_mut() {
+            loop {
+                match proc.try_wait() {
+                    Ok(Some(_)) => break,
+                    Ok(None) => thread::sleep(Duration::from_millis(10)),
+                    Err(e) => return Err(ProcessError::Custom(format!("{unit}: {e}"))),
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     /// Wait for process to proper close.
     /// This prevents orphaned/zombi processes in system
     pub fn wait(&self, unit: ProcessUnit) -> Result<(), ProcessError> {
-        loop {
-            match unit {
-                Decoder => {
-                    if let Some(proc) = self.decoder.lock().unwrap().as_mut() {
-                        match proc.try_wait() {
-                            Ok(Some(_)) => break,
-                            Ok(None) => thread::sleep(Duration::from_millis(10)),
-                            Err(e) => return Err(ProcessError::Custom(format!("Decoder: {e}"))),
-                        }
-                    }
-                }
-                Encoder => {
-                    if let Some(proc) = self.encoder.lock().unwrap().as_mut() {
-                        match proc.try_wait() {
-                            Ok(Some(_)) => break,
-                            Ok(None) => thread::sleep(Duration::from_millis(10)),
-                            Err(e) => return Err(ProcessError::Custom(format!("Encoder: {e}"))),
-                        }
-                    }
-                }
-                Ingest => {
-                    if let Some(proc) = self.ingest.lock().unwrap().as_mut() {
-                        match proc.try_wait() {
-                            Ok(Some(_)) => break,
-                            Ok(None) => thread::sleep(Duration::from_millis(10)),
-                            Err(e) => return Err(ProcessError::Custom(format!("Ingest: {e}"))),
-                        }
-                    }
-                }
-            }
+        match unit {
+            Decoder => self.run_wait(unit, &self.decoder)?,
+            Encoder => self.run_wait(unit, &self.encoder)?,
+            Ingest => self.run_wait(unit, &self.ingest)?,
         }
 
         thread::sleep(Duration::from_millis(50));
@@ -309,11 +301,6 @@ impl ChannelManager {
 
         for unit in [Decoder, Encoder, Ingest] {
             if let Err(e) = self.stop(unit) {
-                if !e.to_string().contains("exited process") {
-                    error!(target: Target::all(), channel = channel_id; "{e}")
-                }
-            }
-            if let Err(e) = self.wait(unit) {
                 if !e.to_string().contains("exited process") {
                     error!(target: Target::all(), channel = channel_id; "{e}")
                 }
