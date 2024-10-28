@@ -23,7 +23,9 @@ use regex::Regex;
 use super::ARGS;
 
 use crate::db::models::GlobalSettings;
-use crate::utils::{config::Mail, errors::ProcessError, round_to_nearest_ten};
+use crate::utils::{
+    config::Mail, errors::ProcessError, round_to_nearest_ten, time_machine::time_now,
+};
 
 #[derive(Debug)]
 pub struct Target;
@@ -263,12 +265,18 @@ fn console_formatter(w: &mut dyn Write, now: &mut DeferredNow, record: &Record) 
     };
 
     if ARGS.log_timestamp {
+        let time = if ARGS.fake_time.is_some() {
+            time_now()
+        } else {
+            *now.now()
+        };
+
         write!(
             w,
             "{} {}",
             colorize_string(format!(
                 "<bright black>[{}]</>",
-                now.now().format("%Y-%m-%d %H:%M:%S%.6f")
+                time.format("%Y-%m-%d %H:%M:%S%.6f")
             )),
             log_line
         )

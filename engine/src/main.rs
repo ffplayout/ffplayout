@@ -31,6 +31,7 @@ use ffplayout::{
         config::get_config,
         logging::{init_logging, MailQueue},
         playlist::generate_playlist,
+        time_machine::set_mock_time,
     },
     validator, ARGS,
 };
@@ -60,6 +61,8 @@ async fn main() -> std::io::Result<()> {
     if let Err(c) = run_args(&pool).await {
         exit(c);
     }
+
+    set_mock_time(&ARGS.fake_time);
 
     init_globales(&pool).await;
     init_logging(mail_queues.clone())?;

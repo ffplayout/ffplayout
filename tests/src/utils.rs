@@ -1,13 +1,14 @@
 use sqlx::sqlite::SqlitePoolOptions;
 use tokio::runtime::Runtime;
 
-#[cfg(test)]
 use chrono::prelude::*;
 
-#[cfg(test)]
 use ffplayout::db::handles;
 use ffplayout::player::{controller::ChannelManager, utils::*};
-use ffplayout::utils::config::{PlayoutConfig, ProcessMode::Playlist};
+use ffplayout::utils::{
+    config::{PlayoutConfig, ProcessMode::Playlist},
+    time_machine::{set_mock_time, time_now},
+};
 
 async fn prepare_config() -> (PlayoutConfig, ChannelManager) {
     let pool = SqlitePoolOptions::new()
@@ -44,7 +45,7 @@ fn mock_date_time() {
     let date_obj = NaiveDateTime::parse_from_str(time_str, "%Y-%m-%dT%H:%M:%S");
     let time = Local.from_local_datetime(&date_obj.unwrap()).unwrap();
 
-    mock_time::set_mock_time(time_str);
+    set_mock_time(&Some(time_str.to_string()));
 
     assert_eq!(
         time.format("%Y-%m-%dT%H:%M:%S.2f").to_string(),
@@ -54,7 +55,7 @@ fn mock_date_time() {
 
 #[test]
 fn get_date_yesterday() {
-    mock_time::set_mock_time("2022-05-20T05:59:24");
+    set_mock_time(&Some("2022-05-20T05:59:24".to_string()));
 
     let date = get_date(true, 21600.0, false);
 
@@ -63,7 +64,7 @@ fn get_date_yesterday() {
 
 #[test]
 fn get_date_tomorrow() {
-    mock_time::set_mock_time("2022-05-20T23:59:58");
+    set_mock_time(&Some("2022-05-20T23:59:58".to_string()));
 
     let date = get_date(false, 0.0, true);
 
@@ -79,7 +80,7 @@ fn test_delta() {
     config.playlist.day_start = "00:00:00".into();
     config.playlist.length = "24:00:00".into();
 
-    mock_time::set_mock_time("2022-05-09T23:59:59");
+    set_mock_time(&Some("2022-05-09T23:59:59".to_string()));
     let (delta, _) = get_delta(&config, &86401.0);
 
     assert!(delta < 2.0);

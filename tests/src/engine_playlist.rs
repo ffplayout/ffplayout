@@ -9,10 +9,10 @@ use tokio::runtime::Runtime;
 
 use ffplayout::db::handles;
 use ffplayout::player::output::player;
-use ffplayout::player::utils::*;
 use ffplayout::player::{controller::ChannelManager, input::playlist::gen_source, utils::Media};
 use ffplayout::utils::config::OutputMode::Null;
 use ffplayout::utils::config::{PlayoutConfig, ProcessMode::Playlist};
+use ffplayout::utils::time_machine::set_mock_time;
 use ffplayout::vec_strings;
 
 async fn prepare_config() -> (PlayoutConfig, ChannelManager) {
@@ -121,7 +121,7 @@ fn playlist_missing() {
     config.output.output_filter = None;
     config.output.output_cmd = Some(vec_strings!["-f", "null", "-"]);
 
-    mock_time::set_mock_time("2023-02-07T23:59:45");
+    set_mock_time(&Some("2023-02-07T23:59:45".to_string()));
 
     thread::spawn(move || timed_stop(28, manager_clone));
 
@@ -155,7 +155,7 @@ fn playlist_next_missing() {
     config.output.output_filter = None;
     config.output.output_cmd = Some(vec_strings!["-f", "null", "-"]);
 
-    mock_time::set_mock_time("2023-02-09T23:59:45");
+    set_mock_time(&Some("2023-02-09T23:59:45".to_string()));
 
     thread::spawn(move || timed_stop(28, manager_clone));
 
@@ -189,7 +189,7 @@ fn playlist_to_short() {
     config.output.output_filter = None;
     config.output.output_cmd = Some(vec_strings!["-f", "null", "-"]);
 
-    mock_time::set_mock_time("2024-01-31T05:59:40");
+    set_mock_time(&Some("2024-01-31T05:59:40".to_string()));
 
     thread::spawn(move || timed_stop(28, manager_clone));
 
@@ -223,7 +223,7 @@ fn playlist_init_after_list_end() {
     config.output.output_filter = None;
     config.output.output_cmd = Some(vec_strings!["-f", "null", "-"]);
 
-    mock_time::set_mock_time("2024-01-31T05:59:47");
+    set_mock_time(&Some("2024-01-31T05:59:47".to_string()));
 
     thread::spawn(move || timed_stop(28, manager_clone));
 
@@ -257,7 +257,7 @@ fn playlist_change_at_midnight() {
     config.output.output_filter = None;
     config.output.output_cmd = Some(vec_strings!["-f", "null", "-"]);
 
-    mock_time::set_mock_time("2023-02-08T23:59:45");
+    set_mock_time(&Some("2023-02-08T23:59:45".to_string()));
 
     thread::spawn(move || timed_stop(28, manager_clone));
 
@@ -291,7 +291,7 @@ fn playlist_change_before_midnight() {
     config.output.output_filter = None;
     config.output.output_cmd = Some(vec_strings!["-f", "null", "-"]);
 
-    mock_time::set_mock_time("2023-02-08T23:59:30");
+    set_mock_time(&Some("2023-02-08T23:59:30".to_string()));
 
     thread::spawn(move || timed_stop(35, manager_clone));
 
@@ -325,7 +325,7 @@ fn playlist_change_at_six() {
     config.output.output_filter = None;
     config.output.output_cmd = Some(vec_strings!["-f", "null", "-"]);
 
-    mock_time::set_mock_time("2023-02-09T05:59:45");
+    set_mock_time(&Some("2023-02-09T05:59:45".to_string()));
 
     thread::spawn(move || timed_stop(28, manager_clone));
 

@@ -32,6 +32,7 @@ pub mod logging;
 pub mod playlist;
 pub mod system;
 pub mod task_runner;
+pub mod time_machine;
 
 use crate::db::models::GlobalSettings;
 use crate::player::utils::time_to_sec;
