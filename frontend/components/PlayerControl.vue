@@ -335,7 +335,13 @@ const controlProcess = throttle(async (state: string) => {
         method: 'POST',
         headers: { ...configStore.contentType, ...authStore.authHeader },
         body: JSON.stringify({ command: state }),
-    }).catch((e) => {
+    })
+    .then(() => {
+        if (state === 'start') {
+            playlistStore.scrollToItem = true
+        }
+    })
+    .catch((e) => {
         indexStore.msgAlert('error', e.data, 3)
     })
 }, 800)
