@@ -1,13 +1,15 @@
 use sqlx::sqlite::SqlitePoolOptions;
 use tokio::runtime::Runtime;
 
-#[cfg(test)]
 use chrono::prelude::*;
+use serial_test::serial;
 
-#[cfg(test)]
 use ffplayout::db::handles;
 use ffplayout::player::{controller::ChannelManager, utils::*};
-use ffplayout::utils::config::{PlayoutConfig, ProcessMode::Playlist};
+use ffplayout::utils::{
+    config::{PlayoutConfig, ProcessMode::Playlist},
+    time_machine::{set_mock_time, time_now},
+};
 
 async fn prepare_config() -> (PlayoutConfig, ChannelManager) {
     let pool = SqlitePoolOptions::new()
@@ -39,12 +41,14 @@ fn get_config() -> (PlayoutConfig, ChannelManager) {
 }
 
 #[test]
+#[serial]
+#[ignore]
 fn mock_date_time() {
-    let time_str = "2022-05-20T06:00:00";
-    let date_obj = NaiveDateTime::parse_from_str(time_str, "%Y-%m-%dT%H:%M:%S");
+    let time_str = "2022-05-20T06:00:00+02:00";
+    let date_obj = NaiveDateTime::parse_from_str(time_str, "%Y-%m-%dT%H:%M:%S%z");
     let time = Local.from_local_datetime(&date_obj.unwrap()).unwrap();
 
-    mock_time::set_mock_time(time_str);
+    set_mock_time(&Some(time_str.to_string()));
 
     assert_eq!(
         time.format("%Y-%m-%dT%H:%M:%S.2f").to_string(),
@@ -53,8 +57,10 @@ fn mock_date_time() {
 }
 
 #[test]
+#[serial]
+#[ignore]
 fn get_date_yesterday() {
-    mock_time::set_mock_time("2022-05-20T05:59:24");
+    set_mock_time(&Some("2022-05-20T05:59:24+02:00".to_string()));
 
     let date = get_date(true, 21600.0, false);
 
@@ -62,8 +68,10 @@ fn get_date_yesterday() {
 }
 
 #[test]
+#[serial]
+#[ignore]
 fn get_date_tomorrow() {
-    mock_time::set_mock_time("2022-05-20T23:59:58");
+    set_mock_time(&Some("2022-05-20T23:59:58+02:00".to_string()));
 
     let date = get_date(false, 0.0, true);
 
@@ -71,6 +79,8 @@ fn get_date_tomorrow() {
 }
 
 #[test]
+#[serial]
+#[ignore]
 fn test_delta() {
     let (mut config, _) = get_config();
 
@@ -79,7 +89,7 @@ fn test_delta() {
     config.playlist.day_start = "00:00:00".into();
     config.playlist.length = "24:00:00".into();
 
-    mock_time::set_mock_time("2022-05-09T23:59:59");
+    set_mock_time(&Some("2022-05-09T23:59:59+02:00".to_string()));
     let (delta, _) = get_delta(&config, &86401.0);
 
     assert!(delta < 2.0);

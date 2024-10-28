@@ -74,6 +74,10 @@ pub struct Channel {
     pub storage: String,
     pub last_date: Option<String>,
     pub time_shift: f64,
+    // not in use currently
+    #[sqlx(default)]
+    #[serde(default, skip_serializing)]
+    pub timezone: Option<String>,
 
     #[sqlx(default)]
     #[serde(default)]

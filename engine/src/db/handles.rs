@@ -86,7 +86,7 @@ pub async fn select_related_channels(
 ) -> Result<Vec<Channel>, sqlx::Error> {
     let query = match user_id {
         Some(id) => format!(
-            "SELECT c.id, c.name, c.preview_url, c.extra_extensions, c.active, c.public, c.playlists, c.storage, c.last_date, c.time_shift FROM channels c
+            "SELECT c.id, c.name, c.preview_url, c.extra_extensions, c.active, c.public, c.playlists, c.storage, c.last_date, c.time_shift, c.timezone FROM channels c
                 left join user_channels uc on uc.channel_id = c.id
                 left join user u on u.id = uc.user_id
              WHERE u.id = {id} ORDER BY c.id ASC;"

@@ -27,7 +27,7 @@ use crate::ARGS;
 #[cfg(target_family = "unix")]
 use crate::utils::db_path;
 
-#[derive(Parser, Debug, Clone)]
+#[derive(Parser, Debug, Default, Clone)]
 #[clap(version,
     about = "ffplayout - 24/7 broadcasting solution",
     long_about = Some("ffplayout - 24/7 broadcasting solution\n
@@ -139,6 +139,9 @@ pub struct Args {
         num_args = 1..,
     )]
     pub channels: Option<Vec<i32>>,
+
+    #[clap(long, hide = true, help = "set fake time (for debugging)")]
+    pub fake_time: Option<String>,
 
     #[clap(
         short,
