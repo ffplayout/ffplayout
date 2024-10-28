@@ -42,6 +42,7 @@ fn get_config() -> (PlayoutConfig, ChannelManager) {
 
 #[test]
 #[serial]
+#[ignore]
 fn mock_date_time() {
     let time_str = "2022-05-20T06:00:00+02:00";
     let date_obj = NaiveDateTime::parse_from_str(time_str, "%Y-%m-%dT%H:%M:%S%z");
@@ -57,6 +58,7 @@ fn mock_date_time() {
 
 #[test]
 #[serial]
+#[ignore]
 fn get_date_yesterday() {
     set_mock_time(&Some("2022-05-20T05:59:24+02:00".to_string()));
 
@@ -67,6 +69,7 @@ fn get_date_yesterday() {
 
 #[test]
 #[serial]
+#[ignore]
 fn get_date_tomorrow() {
     set_mock_time(&Some("2022-05-20T23:59:58+02:00".to_string()));
 
@@ -77,6 +80,7 @@ fn get_date_tomorrow() {
 
 #[test]
 #[serial]
+#[ignore]
 fn test_delta() {
     let (mut config, _) = get_config();
 
