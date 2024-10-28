@@ -2,6 +2,7 @@ use sqlx::sqlite::SqlitePoolOptions;
 use tokio::runtime::Runtime;
 
 use chrono::prelude::*;
+use serial_test::serial;
 
 use ffplayout::db::handles;
 use ffplayout::player::{controller::ChannelManager, utils::*};
@@ -40,9 +41,10 @@ fn get_config() -> (PlayoutConfig, ChannelManager) {
 }
 
 #[test]
+#[serial]
 fn mock_date_time() {
-    let time_str = "2022-05-20T06:00:00";
-    let date_obj = NaiveDateTime::parse_from_str(time_str, "%Y-%m-%dT%H:%M:%S");
+    let time_str = "2022-05-20T06:00:00+02:00";
+    let date_obj = NaiveDateTime::parse_from_str(time_str, "%Y-%m-%dT%H:%M:%S%z");
     let time = Local.from_local_datetime(&date_obj.unwrap()).unwrap();
 
     set_mock_time(&Some(time_str.to_string()));
@@ -54,8 +56,9 @@ fn mock_date_time() {
 }
 
 #[test]
+#[serial]
 fn get_date_yesterday() {
-    set_mock_time(&Some("2022-05-20T05:59:24".to_string()));
+    set_mock_time(&Some("2022-05-20T05:59:24+02:00".to_string()));
 
     let date = get_date(true, 21600.0, false);
 
@@ -63,8 +66,9 @@ fn get_date_yesterday() {
 }
 
 #[test]
+#[serial]
 fn get_date_tomorrow() {
-    set_mock_time(&Some("2022-05-20T23:59:58".to_string()));
+    set_mock_time(&Some("2022-05-20T23:59:58+02:00".to_string()));
 
     let date = get_date(false, 0.0, true);
 
@@ -72,6 +76,7 @@ fn get_date_tomorrow() {
 }
 
 #[test]
+#[serial]
 fn test_delta() {
     let (mut config, _) = get_config();
 
@@ -80,7 +85,7 @@ fn test_delta() {
     config.playlist.day_start = "00:00:00".into();
     config.playlist.length = "24:00:00".into();
 
-    set_mock_time(&Some("2022-05-09T23:59:59".to_string()));
+    set_mock_time(&Some("2022-05-09T23:59:59+02:00".to_string()));
     let (delta, _) = get_delta(&config, &86401.0);
 
     assert!(delta < 2.0);

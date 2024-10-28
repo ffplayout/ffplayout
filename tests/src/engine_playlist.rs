@@ -103,7 +103,6 @@ fn test_gen_source() {
 #[ignore]
 fn playlist_missing() {
     let (mut config, manager) = get_config();
-    let manager_clone = manager.clone();
 
     config.general.skip_validation = true;
     config.mail.recipient = "".into();
@@ -121,7 +120,10 @@ fn playlist_missing() {
     config.output.output_filter = None;
     config.output.output_cmd = Some(vec_strings!["-f", "null", "-"]);
 
-    set_mock_time(&Some("2023-02-07T23:59:45".to_string()));
+    manager.update_config(config);
+    let manager_clone = manager.clone();
+
+    set_mock_time(&Some("2023-02-07T23:59:45+01:00".to_string()));
 
     thread::spawn(move || timed_stop(28, manager_clone));
 
@@ -137,7 +139,6 @@ fn playlist_missing() {
 #[ignore]
 fn playlist_next_missing() {
     let (mut config, manager) = get_config();
-    let manager_clone = manager.clone();
 
     config.general.skip_validation = true;
     config.mail.recipient = "".into();
@@ -155,7 +156,10 @@ fn playlist_next_missing() {
     config.output.output_filter = None;
     config.output.output_cmd = Some(vec_strings!["-f", "null", "-"]);
 
-    set_mock_time(&Some("2023-02-09T23:59:45".to_string()));
+    manager.update_config(config);
+    let manager_clone = manager.clone();
+
+    set_mock_time(&Some("2023-02-09T23:59:45+01:00".to_string()));
 
     thread::spawn(move || timed_stop(28, manager_clone));
 
@@ -171,7 +175,6 @@ fn playlist_next_missing() {
 #[ignore]
 fn playlist_to_short() {
     let (mut config, manager) = get_config();
-    let manager_clone = manager.clone();
 
     config.general.skip_validation = true;
     config.mail.recipient = "".into();
@@ -189,7 +192,10 @@ fn playlist_to_short() {
     config.output.output_filter = None;
     config.output.output_cmd = Some(vec_strings!["-f", "null", "-"]);
 
-    set_mock_time(&Some("2024-01-31T05:59:40".to_string()));
+    manager.update_config(config);
+    let manager_clone = manager.clone();
+
+    set_mock_time(&Some("2024-01-31T05:59:40+01:00".to_string()));
 
     thread::spawn(move || timed_stop(28, manager_clone));
 
@@ -205,7 +211,6 @@ fn playlist_to_short() {
 #[ignore]
 fn playlist_init_after_list_end() {
     let (mut config, manager) = get_config();
-    let manager_clone = manager.clone();
 
     config.general.skip_validation = true;
     config.mail.recipient = "".into();
@@ -223,7 +228,10 @@ fn playlist_init_after_list_end() {
     config.output.output_filter = None;
     config.output.output_cmd = Some(vec_strings!["-f", "null", "-"]);
 
-    set_mock_time(&Some("2024-01-31T05:59:47".to_string()));
+    manager.update_config(config);
+    let manager_clone = manager.clone();
+
+    set_mock_time(&Some("2024-01-31T05:59:47+01:00".to_string()));
 
     thread::spawn(move || timed_stop(28, manager_clone));
 
@@ -239,7 +247,6 @@ fn playlist_init_after_list_end() {
 #[ignore]
 fn playlist_change_at_midnight() {
     let (mut config, manager) = get_config();
-    let manager_clone = manager.clone();
 
     config.general.skip_validation = true;
     config.mail.recipient = "".into();
@@ -257,7 +264,10 @@ fn playlist_change_at_midnight() {
     config.output.output_filter = None;
     config.output.output_cmd = Some(vec_strings!["-f", "null", "-"]);
 
-    set_mock_time(&Some("2023-02-08T23:59:45".to_string()));
+    manager.update_config(config);
+    let manager_clone = manager.clone();
+
+    set_mock_time(&Some("2023-02-08T23:59:45+01:00".to_string()));
 
     thread::spawn(move || timed_stop(28, manager_clone));
 
@@ -273,7 +283,6 @@ fn playlist_change_at_midnight() {
 #[ignore]
 fn playlist_change_before_midnight() {
     let (mut config, manager) = get_config();
-    let manager_clone = manager.clone();
 
     config.general.skip_validation = true;
     config.mail.recipient = "".into();
@@ -291,7 +300,10 @@ fn playlist_change_before_midnight() {
     config.output.output_filter = None;
     config.output.output_cmd = Some(vec_strings!["-f", "null", "-"]);
 
-    set_mock_time(&Some("2023-02-08T23:59:30".to_string()));
+    manager.update_config(config);
+    let manager_clone = manager.clone();
+
+    set_mock_time(&Some("2023-02-08T23:59:30+01:00".to_string()));
 
     thread::spawn(move || timed_stop(35, manager_clone));
 
@@ -307,7 +319,6 @@ fn playlist_change_before_midnight() {
 #[ignore]
 fn playlist_change_at_six() {
     let (mut config, manager) = get_config();
-    let manager_clone = manager.clone();
 
     config.general.skip_validation = true;
     config.mail.recipient = "".into();
@@ -325,7 +336,10 @@ fn playlist_change_at_six() {
     config.output.output_filter = None;
     config.output.output_cmd = Some(vec_strings!["-f", "null", "-"]);
 
-    set_mock_time(&Some("2023-02-09T05:59:45".to_string()));
+    manager.update_config(config);
+    let manager_clone = manager.clone();
+
+    set_mock_time(&Some("2023-02-09T05:59:45+01:00".to_string()));
 
     thread::spawn(move || timed_stop(28, manager_clone));
 
