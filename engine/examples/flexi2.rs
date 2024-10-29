@@ -44,7 +44,7 @@ fn file_formatter(
 }
 
 fn main() {
-    Logger::try_with_str("WARN")
+    let _logger = Logger::try_with_str("WARN")
         .expect("LogSpecification String has errors")
         .print_message()
         .log_to_stderr()
