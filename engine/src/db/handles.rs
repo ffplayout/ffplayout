@@ -140,17 +140,21 @@ pub async fn update_channel(
 pub async fn update_stat(
     conn: &Pool<Sqlite>,
     id: i32,
-    last_date: String,
+    last_date: Option<String>,
     time_shift: f64,
 ) -> Result<SqliteQueryResult, sqlx::Error> {
-    let query = "UPDATE channels SET last_date = $2, time_shift = $3 WHERE id = $1";
+    let query = match last_date {
+        Some(_) => "UPDATE channels SET last_date = $2, time_shift = $3 WHERE id = $1",
+        None => "UPDATE channels SET time_shift = $2 WHERE id = $1",
+    };
 
-    sqlx::query(query)
-        .bind(id)
-        .bind(last_date)
-        .bind(time_shift)
-        .execute(conn)
-        .await
+    let mut q = sqlx::query(query).bind(id);
+
+    if last_date.is_some() {
+        q = q.bind(last_date);
+    }
+
+    q.bind(time_shift).execute(conn).await
 }
 
 pub async fn update_player(
