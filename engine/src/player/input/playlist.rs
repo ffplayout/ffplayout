@@ -220,7 +220,7 @@ impl CurrentProgram {
             .block_on(handles::update_stat(
                 &db_pool,
                 self.config.general.channel_id,
-                date,
+                Some(date),
                 0.0,
             ))
         {
@@ -536,13 +536,36 @@ fn timed_source(
         if config.general.stop_threshold > 0.0
             && shifted_delta.abs() > config.general.stop_threshold
         {
-            if manager.is_alive.load(Ordering::SeqCst) {
+            // Handle summer/winter time changes.
+            // It only checks if the time change is one hour backwards or forwards.
+            // If this is enough, or if a real change needs to be checked, it needs to show production usage.
+            if is_close(shifted_delta.abs(), 3600.0, config.general.stop_threshold) {
+                warn!(
+                    "A time change seemed to have occurred, apply time shift: <yellow>{shifted_delta:.3}</> seconds."
+                );
+
+                let db_pool = manager.db_pool.clone().unwrap();
+                manager.channel.lock().unwrap().time_shift = time_shift + shifted_delta;
+
+                if let Err(e) =
+                    tokio::runtime::Runtime::new()
+                        .unwrap()
+                        .block_on(handles::update_stat(
+                            &db_pool,
+                            id,
+                            None,
+                            time_shift + shifted_delta,
+                        ))
+                {
+                    error!(target: Target::file_mail(), channel = id; "Unable to write status: {e}");
+                };
+            } else if manager.is_alive.load(Ordering::SeqCst) {
                 error!(target: Target::file_mail(), channel = id; "Clip begin out of sync for <yellow>{delta:.3}</> seconds.");
+
+                new_node.cmd = None;
+
+                return new_node;
             }
-
-            new_node.cmd = None;
-
-            return new_node;
         }
     }
 
