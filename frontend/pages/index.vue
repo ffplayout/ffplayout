@@ -13,7 +13,7 @@
                     {{ t('button.media') }}
                 </NuxtLink>
                 <NuxtLink
-                    v-if="configStore.playout.text.add_text && !configStore.playout.text.text_from_filename"
+                    v-if="configStore.playout?.text?.add_text && !configStore.playout?.text?.text_from_filename"
                     :to="localePath({ name: 'message' })"
                     class="btn join-item btn-primary px-2"
                 >
