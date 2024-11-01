@@ -53,6 +53,7 @@ Check the [releases](https://github.com/ffplayout/ffplayout/releases/latest) for
 - generate playlist based on [template](/docs/playlist_gen.md) (experimental *)
 - During playlist import, all video clips are validated and, if desired, checked to ensure that the audio track is not completely muted.
 - run multiple channels (experimental *)
+- vtt [subtitle](/docs/closed_captions.md) in HLS mode (experimental *)
 
 For preview stream, read: [/docs/preview_stream.md](/docs/preview_stream.md)
 
@@ -61,7 +62,7 @@ For preview stream, read: [/docs/preview_stream.md](/docs/preview_stream.md)
 ### Requirements
 
 - RAM and CPU depends on video resolution, minimum 4 _dedicated_ threads and 3GB RAM for 720p are recommend
-- **ffmpeg** v5.0+ and **ffprobe** (**ffplay** if you want to play on desktop)
+- **ffmpeg** v5.0+ and **ffprobe** (**ffplay** if you want to play on desktop), version 7.2+ for vtt
 - if you want to overlay dynamic text, ffmpeg needs to have **libzmq**
 
 ### Install
