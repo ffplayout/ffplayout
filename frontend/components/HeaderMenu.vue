@@ -19,7 +19,7 @@
                         <li
                             v-if="
                                 item.label !== 'message' ||
-                                (configStore.playout.text.add_text && !configStore.playout.text.text_from_filename)
+                                (configStore.playout?.text?.add_text && !configStore.playout?.text?.text_from_filename)
                             "
                             class="bg-base-100 rounded-md"
                         >
@@ -67,7 +67,7 @@
                     <li
                         v-if="
                             item.label !== 'message' ||
-                            (configStore.playout.text.add_text && !configStore.playout.text.text_from_filename)
+                            (configStore.playout?.text?.add_text && !configStore.playout?.text?.text_from_filename)
                         "
                         class="bg-base-100 rounded-md p-0"
                     >
