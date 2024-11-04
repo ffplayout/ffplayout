@@ -139,7 +139,7 @@ export default defineNuxtConfig({
             alwaysRedirect: true,
         },
         // debug: true,
-        langDir: 'i18n/locales',
+        langDir: 'locales',
         defaultLocale: 'en',
 
         compilation: {
@@ -164,5 +164,5 @@ export default defineNuxtConfig({
         payloadExtraction: false,
     },
 
-    compatibilityDate: '2024-07-10',
+    compatibilityDate: '2024-11-02',
 })
