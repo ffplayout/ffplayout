@@ -1,12 +1,9 @@
 FROM nvidia/cuda:12.5.0-runtime-rockylinux9
 
-ARG FFPLAYOUT_VERSION=0.24.0
-ARG SHARED_STORAGE=false
+ARG FFPLAYOUT_VERSION=0.24.1
 
-ENV DB=/db
-ENV SHARED_STORAGE=${SHARED_STORAGE}
-
-ENV EXTRA_CFLAGS=-march=generic \
+ENV DB=/db \
+    EXTRA_CFLAGS=-march=generic \
     LOCALBUILDDIR=/tmp/build \
     LOCALDESTDIR=/tmp/local \
     PKG_CONFIG="pkg-config --static" \
@@ -56,10 +53,9 @@ RUN curl --retry 20 --retry-max-time 5 -L -k -f -w "%{response_code}" -o "libpng
     make install
 
 RUN git clone --depth 1 "https://github.com/fribidi/fribidi.git" && cd fribidi && \
-    ./autogen.sh && \
-    ./configure --prefix="$LOCALDESTDIR" --enable-shared=no && \
-    make -j $(nproc) 2>/dev/null || true && \
-    make install
+    mkdir build && cd build && \
+    meson setup -Ddocs=false -Dbin=false --default-library=static .. --prefix "$LOCALDESTDIR" --libdir="$LOCALDESTDIR/lib" && \
+    ninja && ninja install
 
 RUN curl --retry 20 --retry-max-time 5 -L -k -f -w "%{response_code}" -o "expat-2.5.0.tar.bz2" "https://github.com/libexpat/libexpat/releases/download/R_2_5_0/expat-2.5.0.tar.bz2" && \
     tar xf "expat-2.5.0.tar.bz2" && \
@@ -144,7 +140,7 @@ RUN git clone "https://bitbucket.org/multicoreware/x265_git.git" && cd x265_git/
     make install
 
 RUN git clone --depth 1 "https://gitlab.com/AOMediaCodec/SVT-AV1.git" && cd SVT-AV1/Build && \
-    cmake .. -G"Unix Makefiles" -DCMAKE_INSTALL_PREFIX="$LOCALDESTDIR" -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DCMAKE_INSTALL_BINDIR="bin" -DCMAKE_INSTALL_LIBDIR="lib" -DCMAKE_INSTALL_INCLUDEDIR="include" && \
+    cmake .. -G"Unix Makefiles" -DCMAKE_INSTALL_PREFIX="$LOCALDESTDIR" -DSVT_AV1_LTO=OFF -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DCMAKE_INSTALL_BINDIR="bin" -DCMAKE_INSTALL_LIBDIR="lib" -DCMAKE_INSTALL_INCLUDEDIR="include" && \
     make -j $(nproc) && \
     make install
 
@@ -190,11 +186,10 @@ RUN git clone --depth 1 https://git.ffmpeg.org/ffmpeg.git && cd ffmpeg && \
     --enable-openssl \
     --enable-libsvtav1 \
     --enable-libdav1d \
-    --enable-nvenc && \
+    --enable-nvenc || echo -e "\n\nTRACE:\n" && tail -50 ffbuild/config.log && echo -e "\n\n" && \
     make -j $(nproc) && \
-    make install
-
-RUN strip /usr/local/bin/ffmpeg /usr/local/bin/ffprobe
+    make install && \
+    strip /usr/local/bin/ffmpeg /usr/local/bin/ffprobe
 
 WORKDIR /
 
@@ -213,11 +208,12 @@ EOT
 RUN chmod +x /run.sh
 
 RUN [[ -f "/tmp/ffplayout-v${FFPLAYOUT_VERSION}_x86_64-unknown-linux-musl.tar.gz" ]] || \
-    wget -q "https://github.com/ffplayout/ffplayout/releases/download/v${FFPLAYOUT_VERSION}/ffplayout-v${FFPLAYOUT_VERSION}_x86_64-unknown-linux-musl.tar.gz" -P /tmp/ && \
-    cd /tmp && \
+    wget "https://github.com/ffplayout/ffplayout/releases/download/v${FFPLAYOUT_VERSION}/ffplayout-v${FFPLAYOUT_VERSION}_x86_64-unknown-linux-musl.tar.gz" -P /tmp/
+
+RUN cd /tmp && \
     tar xf "ffplayout-v${FFPLAYOUT_VERSION}_x86_64-unknown-linux-musl.tar.gz" && \
     cp ffplayout /usr/bin/ && \
-    mmkdir -p /usr/share/ffplayout/ && \
+    mkdir -p /usr/share/ffplayout/ && \
     cp assets/dummy.vtt assets/logo.png assets/DejaVuSans.ttf assets/FONT_LICENSE.txt /usr/share/ffplayout/ && \
     rm -rf /tmp/* && \
     mkdir ${DB}

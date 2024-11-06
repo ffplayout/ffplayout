@@ -547,7 +547,7 @@
                         <span class="label-text text-base font-bold">Extensions</span>
                     </div>
                     <input
-                        v-model="configStore.playout.storage.extensions"
+                        v-model="extensions"
                         type="text"
                         class="input input-sm input-bordered w-full max-w-lg"
                     />
@@ -739,6 +739,16 @@ const showModal = ref(false)
 const logLevels = ['INFO', 'WARNING', 'ERROR']
 const processingMode = ['folder', 'playlist']
 const outputMode = ['desktop', 'hls', 'stream', 'null']
+
+const extensions = computed({
+    get() {
+        return configStore.playout.storage.extensions.join(',')
+    },
+
+    set(value: string) {
+        configStore.playout.storage.extensions = value.replaceAll(' ', '').split(/,|;/)
+    }
+})
 
 const formatIgnoreLines = computed({
     get() {
