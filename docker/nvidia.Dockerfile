@@ -1,9 +1,9 @@
 FROM nvidia/cuda:12.5.0-runtime-rockylinux9
 
-ARG FFPLAYOUT_VERSION=0.24.0
+ARG FFPLAYOUT_VERSION=0.24.1
 
-ENV DB=/db
-ENV EXTRA_CFLAGS=-march=generic \
+ENV DB=/db \
+    EXTRA_CFLAGS=-march=generic \
     LOCALBUILDDIR=/tmp/build \
     LOCALDESTDIR=/tmp/local \
     PKG_CONFIG="pkg-config --static" \
