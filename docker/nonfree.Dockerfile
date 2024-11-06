@@ -1,10 +1,8 @@
 FROM alpine:latest
 
 ARG FFPLAYOUT_VERSION=0.24.0
-ARG SHARED_STORAGE=false
 
 ENV DB=/db
-ENV SHARED_STORAGE=${SHARED_STORAGE}
 
 COPY --from=ffmpeg-build /usr/local/bin/ffmpeg /usr/local/bin/ffmpeg
 COPY --from=ffmpeg-build /usr/local/bin/ffprobe /usr/local/bin/ffprobe

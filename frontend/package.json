@@ -24,7 +24,7 @@
     "jwt-decode": "^4.0.0",
     "lodash-es": "^4.17.21",
     "mpegts.js": "^1.7.3",
-    "nuxt": "3.14.0",
+    "nuxt": "3.14.159",
     "pinia": "^2.2.6",
     "sortablejs-vue3": "^1.2.11",
     "splitpanes": "^3.1.5",
