@@ -48,7 +48,7 @@ done
 
 if [[ "${#targets[@]}" == "5" ]] || [[ $targets == "x86_64-unknown-linux-musl" ]]; then
     cargo deb --no-build --target=x86_64-unknown-linux-musl -p ffplayout --manifest-path=engine/Cargo.toml -o ffplayout_${version}-1_amd64.deb
-    cargo generate-rpm --payload-compress none --target=x86_64-unknown-linux-musl -p engine -o ffplayout-${version}-1.x86_64.rpm
+    cargo generate-rpm --target=x86_64-unknown-linux-musl -p engine -o ffplayout-${version}-1.x86_64.rpm
 fi
 
 if [[ "${#targets[@]}" == "5" ]] || [[ $targets == "aarch64-unknown-linux-gnu" ]]; then
