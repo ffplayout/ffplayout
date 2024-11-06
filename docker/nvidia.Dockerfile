@@ -22,7 +22,7 @@ RUN dnf clean all -y && \
 RUN dnf install -y which sqlite libstdc++-static libtool autoconf clang \
     cmake ninja-build cargo ragel meson git pkgconfig bzip2 \
     python3-devel gperf perl glibc-static binutils-devel \
-    nasm rsync wget
+    nasm rsync wget zlib-devel
 
 WORKDIR /tmp
 
@@ -167,7 +167,8 @@ RUN git clone --depth 1 https://git.ffmpeg.org/ffmpeg.git && cd ffmpeg && \
     --enable-gpl \
     --enable-version3 \
     --enable-nonfree \
-    --enable-small \
+    --enable-avfilter \
+    --enable-zlib \
     --enable-static \
     --enable-libass \
     --enable-fontconfig \
