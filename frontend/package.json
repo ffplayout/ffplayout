@@ -38,7 +38,7 @@
     "@types/video.js": "^7.3.58",
     "daisyui": "^4.12.14",
     "mini-svg-data-uri": "^1.4.4",
-    "postcss": "^8.4.47",
+    "postcss": "^8.4.48",
     "postcss-loader": "^8.1.1",
     "sass": "^1.80.6",
     "sass-loader": "^16.0.3",

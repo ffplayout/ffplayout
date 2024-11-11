@@ -94,6 +94,9 @@ pub struct FilterConfig {
     pub fade_out: Option<String>,
     #[ts(type = "string")]
     #[serde_as(as = "NoneAsEmptyString")]
+    pub logo: Option<String>,
+    #[ts(type = "string")]
+    #[serde_as(as = "NoneAsEmptyString")]
     pub overlay_logo_scale: Option<String>,
     #[ts(type = "string")]
     #[serde_as(as = "NoneAsEmptyString")]
@@ -165,6 +168,7 @@ impl AdvancedConfig {
                 set_dar: config.filter_set_dar,
                 fade_in: config.filter_fade_in,
                 fade_out: config.filter_fade_out,
+                logo: config.filter_logo,
                 overlay_logo_scale: config.filter_overlay_logo_scale,
                 overlay_logo_fade_in: config.filter_overlay_logo_fade_in,
                 overlay_logo_fade_out: config.filter_overlay_logo_fade_out,
