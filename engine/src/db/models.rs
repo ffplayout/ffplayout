@@ -422,6 +422,7 @@ pub struct AdvancedConfiguration {
     pub filter_set_dar: Option<String>,
     pub filter_fade_in: Option<String>,
     pub filter_fade_out: Option<String>,
+    pub filter_logo: Option<String>,
     pub filter_overlay_logo_scale: Option<String>,
     pub filter_overlay_logo_fade_in: Option<String>,
     pub filter_overlay_logo_fade_out: Option<String>,

@@ -297,7 +297,7 @@ pub async fn update_advanced_configuration(
     channel_id: i32,
     config: AdvancedConfig,
 ) -> Result<SqliteQueryResult, sqlx::Error> {
-    let query = "UPDATE advanced_configurations SET decoder_input_param = $2, decoder_output_param = $3, encoder_input_param = $4, ingest_input_param = $5, filter_deinterlace = $6, filter_pad_scale_w = $7, filter_pad_scale_h = $8, filter_pad_video = $9, filter_fps = $10, filter_scale = $11, filter_set_dar = $12, filter_fade_in = $13, filter_fade_out = $14, filter_overlay_logo_scale = $15, filter_overlay_logo_fade_in = $16, filter_overlay_logo_fade_out = $17, filter_overlay_logo = $18, filter_tpad = $19, filter_drawtext_from_file = $20, filter_drawtext_from_zmq = $21, filter_aevalsrc = $22, filter_afade_in = $23, filter_afade_out = $24, filter_apad = $25, filter_volume = $26, filter_split = $27 WHERE channel_id = $1";
+    let query = "UPDATE advanced_configurations SET decoder_input_param = $2, decoder_output_param = $3, encoder_input_param = $4, ingest_input_param = $5, filter_deinterlace = $6, filter_pad_scale_w = $7, filter_pad_scale_h = $8, filter_pad_video = $9, filter_fps = $10, filter_scale = $11, filter_set_dar = $12, filter_fade_in = $13, filter_fade_out = $14, filter_logo = $15, filter_overlay_logo_scale = $16, filter_overlay_logo_fade_in = $17, filter_overlay_logo_fade_out = $18, filter_overlay_logo = $19, filter_tpad = $20, filter_drawtext_from_file = $21, filter_drawtext_from_zmq = $22, filter_aevalsrc = $23, filter_afade_in = $24, filter_afade_out = $25, filter_apad = $26, filter_volume = $27, filter_split = $28 WHERE channel_id = $1";
 
     sqlx::query(query)
         .bind(channel_id)
@@ -314,6 +314,7 @@ pub async fn update_advanced_configuration(
         .bind(config.filter.set_dar)
         .bind(config.filter.fade_in)
         .bind(config.filter.fade_out)
+        .bind(config.filter.logo)
         .bind(config.filter.overlay_logo_scale)
         .bind(config.filter.overlay_logo_fade_in)
         .bind(config.filter.overlay_logo_fade_out)
