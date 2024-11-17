@@ -127,10 +127,10 @@ RUN git clone --depth 1 https://git.ffmpeg.org/ffmpeg.git && cd ffmpeg && \
     --disable-doc \
     --disable-ffplay \
     --disable-shared \
+    --enable-avfilter \
     --enable-gpl \
     --enable-version3 \
     --enable-nonfree \
-    --enable-small \
     --enable-static \
     --enable-libass \
     --enable-fontconfig \
