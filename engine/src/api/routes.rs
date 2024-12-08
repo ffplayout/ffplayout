@@ -227,7 +227,6 @@ pub async fn login(
 
 /// From here on all request **must** contain the authorization header:\
 /// `"Authorization: Bearer <TOKEN>"`
-
 /// **Get current User**
 ///
 /// ```BASH
