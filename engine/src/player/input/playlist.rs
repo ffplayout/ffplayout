@@ -837,9 +837,9 @@ fn handle_list_end(
     manager: &ChannelManager,
     last_index: usize,
 ) -> Media {
-    debug!(target: Target::file_mail(), channel = config.general.channel_id; "Last clip from day");
+    debug!(target: Target::file_mail(), channel = config.general.channel_id; "Handle last clip from day");
 
-    let mut out = if node.seek > 0.0 {
+    let out = if node.seek > 0.0 {
         node.seek + total_delta
     } else {
         if node.duration > total_delta {
@@ -849,13 +849,7 @@ fn handle_list_end(
         total_delta
     };
 
-    // out can't be longer then duration
-    if out > node.duration {
-        out = node.duration
-    }
-
-    if node.duration > total_delta && total_delta > 1.0 && node.duration - node.seek >= total_delta
-    {
+    if node.out > total_delta && total_delta > 1.0 && node.out - node.seek >= total_delta {
         node.out = out;
     } else {
         warn!(target: Target::file_mail(), channel = config.general.channel_id; "Playlist is not long enough: <yellow>{total_delta:.2}</> seconds needed");

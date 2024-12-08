@@ -67,7 +67,7 @@ where
 {
     struct StringOrNumberVisitor;
 
-    impl<'de> Visitor<'de> for StringOrNumberVisitor {
+    impl Visitor<'_> for StringOrNumberVisitor {
         type Value = Option<String>;
 
         fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {

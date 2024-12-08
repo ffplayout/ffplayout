@@ -238,7 +238,7 @@ async fn copy_and_delete(source: &PathBuf, target: &PathBuf) -> Result<MoveObjec
                 ));
             };
 
-            return Ok(MoveObject {
+            Ok(MoveObject {
                 source: source
                     .file_name()
                     .unwrap_or_default()
@@ -249,7 +249,7 @@ async fn copy_and_delete(source: &PathBuf, target: &PathBuf) -> Result<MoveObjec
                     .unwrap_or_default()
                     .to_string_lossy()
                     .to_string(),
-            });
+            })
         }
         Err(e) => {
             error!("{e}");

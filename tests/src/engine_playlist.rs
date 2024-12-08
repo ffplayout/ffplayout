@@ -95,7 +95,7 @@ fn test_gen_source() {
 
     let valid_media = gen_source(&config, no_valid_source_with_probe.clone(), &manager, 100);
 
-    assert_eq!(valid_media.source, "assets/media_filler/filler_0.mp4");
+    assert_eq!(valid_media.source, "color=c=#121212:s=1024x576:d=30");
 }
 
 #[test]
