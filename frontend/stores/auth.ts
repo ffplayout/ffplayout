@@ -47,7 +47,7 @@ export const useAuth = defineStore('auth', {
                     code = data.response.status
                 },
             })
-                .then((response) => {
+                .then((response: any) => {
                     this.updateToken(response.user?.token)
                     const decodedToken = jwtDecode<JwtPayloadExt>(response.user?.token)
                     this.isLogin = true
@@ -66,7 +66,7 @@ export const useAuth = defineStore('auth', {
                 method: 'POST',
                 headers: this.authHeader,
             })
-                .then((response) => {
+                .then((response: any) => {
                     this.uuid = response.uuid
                 })
                 .catch(e => {

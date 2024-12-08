@@ -151,7 +151,7 @@ async function logout() {
     }
 }
 
-async function changeLang(code: string) {
+async function changeLang(code: any) {
     const path = switchLocalePath(code)
     const cookie = useCookie('i18n_redirected')
     cookie.value = code
