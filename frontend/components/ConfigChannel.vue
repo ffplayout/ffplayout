@@ -162,12 +162,12 @@ function newChannel() {
 }
 
 async function addNewChannel() {
-    await $fetch('/api/channel/', {
+    await $fetch<Channel>('/api/channel/', {
         method: 'POST',
         headers: { ...configStore.contentType, ...authStore.authHeader },
         body: JSON.stringify(channel.value),
     })
-        .then((chl) => {
+        .then((chl: Channel) => {
             i.value = channel.value.id - 1
             configStore.channels.push(cloneDeep(chl))
             configStore.channelsRaw.push(chl)
