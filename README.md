@@ -7,7 +7,7 @@
 
 [ffplayout](/ffplayout-engine/README.md) is a 24/7 broadcasting solution. It can playout a folder containing audio or video clips, or play a *JSON* playlist for each day, keeping the current playlist editable.
 
-The ffplayout applications are mostly designed to run as system services on Linux. But in general they should run on any platform supported by Rust.
+The application is mostly designed to run as system service on Linux. But in general it should run on any platform supported by Rust.
 
 Check the [releases](https://github.com/ffplayout/ffplayout/releases/latest) for pre compiled version.
 
