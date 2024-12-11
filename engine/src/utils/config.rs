@@ -19,7 +19,7 @@ use crate::vec_strings;
 use crate::AdvancedConfig;
 use crate::ARGS;
 
-use super::errors::ServiceError;
+use super::{errors::ServiceError, parse_s3_string, S3_INDICATOR};
 
 pub const DUMMY_LEN: f64 = 60.0;
 pub const IMAGE_FORMAT: [&str; 21] = [
@@ -195,6 +195,12 @@ pub struct Channel {
 
 impl Channel {
     pub fn new(config: &models::GlobalSettings, channel: models::Channel) -> Self {
+        // let mut storage = channel.storage.clone();
+        // if channel.storage.starts_with("s3://") {
+        //     let parsed_storage_path = parse_s3_string(&channel.storage).unwrap_err();
+        //     storage = format!("s3://");
+        // }
+
         Self {
             logs: PathBuf::from(config.logs.clone()),
             public: PathBuf::from(channel.public.clone()),
@@ -459,12 +465,23 @@ pub struct Storage {
     pub shuffle: bool,
     #[serde(skip_deserializing)]
     pub shared_storage: bool,
+    #[serde(skip_deserializing)]
+    pub s3_storage: Option<S3>,
+}
+
+#[derive(Debug, Default, Clone, Deserialize, Serialize, TS)]
+#[ts(export, export_to = "playout_config.d.ts")]
+pub struct S3 {
+    pub bucket_name: String,
+    pub endpoint_url: String,
+    pub access_key: String,
+    pub secret_key: String,
 }
 
 impl Storage {
     fn new(config: &models::Configuration, path: PathBuf, shared_storage: bool) -> Self {
         Self {
-            path,
+            path: path.clone(),
             paths: vec![],
             filler: config.storage_filler.clone(),
             filler_path: PathBuf::from(config.storage_filler.clone()),
@@ -475,6 +492,17 @@ impl Storage {
                 .collect(),
             shuffle: config.storage_shuffle,
             shared_storage,
+            s3_storage: {
+                if let Some(path_str) = path.to_str() {
+                    if path_str.starts_with(S3_INDICATOR) {
+                        Some(parse_s3_string(path_str).unwrap()) // to-do: error handling!
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            },
         }
     }
 }
