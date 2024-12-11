@@ -10,8 +10,8 @@ use tokio::task;
 use super::models::{AdvancedConfiguration, Configuration};
 use crate::db::models::{Channel, GlobalSettings, Role, TextPreset, User};
 use crate::utils::{
-    advanced_config::AdvancedConfig, config::PlayoutConfig, is_running_in_container,
-    local_utc_offset,
+    advanced_config::AdvancedConfig, config::PlayoutConfig, errors::ServiceError,
+    is_running_in_container, local_utc_offset,
 };
 
 pub async fn db_migrate(conn: &Pool<Sqlite>) -> Result<(), Box<dyn std::error::Error>> {
@@ -379,7 +379,7 @@ pub async fn select_users(conn: &Pool<Sqlite>) -> Result<Vec<User>, sqlx::Error>
     sqlx::query_as(query).fetch_all(conn).await
 }
 
-pub async fn insert_user(conn: &Pool<Sqlite>, user: User) -> Result<(), sqlx::Error> {
+pub async fn insert_user(conn: &Pool<Sqlite>, user: User) -> Result<(), ServiceError> {
     let password_hash = task::spawn_blocking(move || {
         let salt = SaltString::generate(&mut OsRng);
         let hash = Argon2::default()
@@ -388,8 +388,7 @@ pub async fn insert_user(conn: &Pool<Sqlite>, user: User) -> Result<(), sqlx::Er
 
         hash.to_string()
     })
-    .await
-    .unwrap();
+    .await?;
 
     let query =
         "INSERT INTO user (mail, username, password, role_id) VALUES($1, $2, $3, $4) RETURNING id";
@@ -410,7 +409,7 @@ pub async fn insert_user(conn: &Pool<Sqlite>, user: User) -> Result<(), sqlx::Er
     Ok(())
 }
 
-pub async fn insert_or_update_user(conn: &Pool<Sqlite>, user: User) -> Result<(), sqlx::Error> {
+pub async fn insert_or_update_user(conn: &Pool<Sqlite>, user: User) -> Result<(), ServiceError> {
     let password_hash = task::spawn_blocking(move || {
         let salt = SaltString::generate(&mut OsRng);
         let hash = Argon2::default()
@@ -419,8 +418,7 @@ pub async fn insert_or_update_user(conn: &Pool<Sqlite>, user: User) -> Result<()
 
         hash.to_string()
     })
-    .await
-    .unwrap();
+    .await?;
 
     let query = "INSERT INTO user (mail, username, password, role_id) VALUES($1, $2, $3, $4)
             ON CONFLICT(username) DO UPDATE SET
