@@ -851,7 +851,7 @@ fn handle_list_end(
 
     if node.out > total_delta && total_delta > 1.0 && node.out - node.seek >= total_delta {
         node.out = out;
-    } else {
+    } else if total_delta > node.duration {
         warn!(target: Target::file_mail(), channel = config.general.channel_id; "Playlist is not long enough: <yellow>{total_delta:.2}</> seconds needed");
     }
 
