@@ -173,7 +173,7 @@ impl ChannelManager {
                 error!(target: Target::all(), channel = channel_id; "Unable write to player status: {e}");
             };
 
-            if index + 1 == ARGS.channels.clone().unwrap_or_default().len() {
+            if index + 1 == ARGS.channel.clone().unwrap_or_default().len() {
                 let run_count = self_clone.run_count.clone();
 
                 tokio::task::spawn_blocking(move || {

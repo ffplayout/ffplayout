@@ -205,9 +205,9 @@ async fn main() -> std::io::Result<()> {
     } else if ARGS.drop_db {
         db_drop().await;
     } else {
-        let channels = ARGS.channels.clone().unwrap_or_else(|| vec![1]);
+        let channel = ARGS.channel.clone().unwrap_or_else(|| vec![1]);
 
-        for (index, channel_id) in channels.iter().enumerate() {
+        for (index, channel_id) in channel.iter().enumerate() {
             let config = match get_config(&pool, *channel_id).await {
                 Ok(c) => c,
                 Err(e) => {
@@ -221,9 +221,9 @@ async fn main() -> std::io::Result<()> {
             let manager = ChannelManager::new(Some(pool.clone()), channel.clone(), config.clone());
 
             if ARGS.foreground {
-                if ARGS.channels.is_none() {
+                if ARGS.channel.is_none() {
                     error!(
-                        "Foreground mode needs at least 1 channel, run with `--channels (1 2 ...)`"
+                        "Foreground mode needs at least 1 channel, run with `--channel (1 2 ...)`"
                     );
                     exit(1);
                 }
