@@ -32,7 +32,7 @@ pub struct CurrentProgram {
     config: PlayoutConfig,
     manager: ChannelManager,
     start_sec: f64,
-    end_sec: f64,
+    length_sec: f64,
     json_playlist: JsonPlaylist,
     current_node: Media,
     is_terminated: Arc<AtomicBool>,
@@ -51,7 +51,7 @@ impl CurrentProgram {
             config: config.clone(),
             manager,
             start_sec: config.playlist.start_sec.unwrap(),
-            end_sec: config.playlist.length_sec.unwrap(),
+            length_sec: config.playlist.length_sec.unwrap(),
             json_playlist: JsonPlaylist::new(
                 "1970-01-01".to_string(),
                 config.playlist.start_sec.unwrap(),
@@ -138,33 +138,34 @@ impl CurrentProgram {
         let (delta, total_delta) = get_delta(&self.config, &time_in_seconds());
         let mut next = false;
 
-        let duration = if self.current_node.duration >= self.current_node.out {
-            self.current_node.duration
-        } else {
-            // maybe out is longer to be able to loop
-            self.current_node.out
-        };
+        let mut duration = self.current_node.out;
 
         let node_index = self.current_node.index.unwrap_or_default();
 
-        let mut next_start =
-            self.current_node.begin.unwrap_or_default() - self.start_sec + duration + delta;
+        let mut next_start = self.current_node.begin.unwrap_or_default() - self.start_sec + delta;
+        let last_index = self.manager.current_list.lock().unwrap().len() - 1;
 
-        if node_index > 0 && node_index == self.manager.current_list.lock().unwrap().len() - 1 {
+        if node_index > 0 && node_index == last_index {
+            if self.current_node.duration >= self.current_node.out {
+                duration = self.current_node.duration
+            }
+
             next_start += self.config.general.stop_threshold;
         }
 
+        next_start += duration;
+
         trace!(
-            "delta: {delta} | total_delta: {total_delta}, index: {node_index} \n        next_start: {next_start} | end_sec: {} | source {}",
-            self.end_sec,
+            "delta: {delta} | total_delta: {total_delta}, index: {node_index}, last index: {last_index} \n        next_start: {next_start} | length_sec: {} | source {}",
+            self.length_sec,
             self.current_node.source
         );
 
         // Check if we over the target length or we are close to it, if so we load the next playlist.
         if !self.config.playlist.infinit
-            && (next_start >= self.end_sec
+            && (next_start >= self.length_sec
                 || is_close(total_delta, 0.0, 2.0)
-                || is_close(total_delta, self.end_sec, 2.0))
+                || is_close(total_delta, self.length_sec, 2.0))
         {
             trace!("get next day");
             next = true;
@@ -408,7 +409,7 @@ impl Iterator for CurrentProgram {
                 let (_, total_delta) = get_delta(&self.config, &current_time);
 
                 if self.start_sec > current_time {
-                    current_time += self.end_sec + 1.0;
+                    current_time += self.length_sec + 1.0;
                 }
 
                 let mut last_index = 0;
@@ -626,21 +627,28 @@ pub fn gen_source(
     last_index: usize,
 ) -> Media {
     let node_index = node.index.unwrap_or_default();
-    let mut duration = node.out - node.seek;
+    let duration = node.out - node.seek;
 
     if duration < 1.0 {
         warn!(
             target: Target::file_mail(), channel = config.general.channel_id;
-            "Clip is less then 1 second long (<yellow>{duration:.3}</>), adjust length."
+            "Skip clip that is less then one second long (<yellow>{duration:.3}</>)."
         );
 
-        duration = 1.2;
+        // INFO:
+        // This part has been changed twice, the last time in January 2024.
+        // Better case is that it skips the short clip, especially when reloading a playlist,
+        // it prevents the last clip from playing again for 1.2 seconds.
+        // But the behavior needs to be observed for a longer time to be sure that it has no side effects.
 
-        if node.seek > 1.0 {
-            node.seek -= 1.2;
-        } else {
-            node.out = 1.2;
-        }
+        // duration = 1.2;
+
+        // if node.seek > 1.0 {
+        //     node.seek -= 1.2;
+        // } else {
+        //     node.out = 1.2;
+        // }
+        node.process = Some(false);
     }
 
     trace!("Clip new length: {duration}, duration: {}", node.duration);
@@ -849,9 +857,12 @@ fn handle_list_end(
         total_delta
     };
 
-    if node.out > total_delta && total_delta > 1.0 && node.out - node.seek >= total_delta {
+    if (node.duration > total_delta || node.out > total_delta)
+        && (node.duration - node.seek >= total_delta || node.out - node.seek >= total_delta)
+        && total_delta > 1.0
+    {
         node.out = out;
-    } else {
+    } else if total_delta > node.duration {
         warn!(target: Target::file_mail(), channel = config.general.channel_id; "Playlist is not long enough: <yellow>{total_delta:.2}</> seconds needed");
     }
 

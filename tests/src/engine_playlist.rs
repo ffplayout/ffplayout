@@ -87,7 +87,7 @@ fn test_gen_source() {
 
     let valid_media = gen_source(&config, valid_source_with_probe.clone(), &manager, 100);
 
-    assert_eq!(valid_media.out, 1.2);
+    assert_eq!(valid_media.process, Some(false));
 
     let mut no_valid_source_with_probe = Media::new(0, "assets/media_mix/av_snc.mp4", true);
     no_valid_source_with_probe.duration = 30.0;
