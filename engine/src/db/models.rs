@@ -1,6 +1,5 @@
-use std::{error::Error, fmt, str::FromStr};
+use std::{error::Error, fmt, str::FromStr, sync::OnceLock};
 
-use once_cell::sync::OnceCell;
 use regex::Regex;
 use serde::{
     de::{self, Visitor},
@@ -11,6 +10,8 @@ use sqlx::{sqlite::SqliteRow, FromRow, Pool, Row, Sqlite};
 
 use crate::db::handles;
 use crate::utils::config::PlayoutConfig;
+
+static GLOBAL_SETTINGS: OnceLock<GlobalSettings> = OnceLock::new();
 
 #[derive(Clone, Default, Debug, Deserialize, Serialize, sqlx::FromRow)]
 pub struct GlobalSettings {
@@ -50,15 +51,13 @@ impl GlobalSettings {
     }
 
     pub fn global() -> &'static GlobalSettings {
-        INSTANCE.get().expect("Config is not initialized")
+        GLOBAL_SETTINGS.get().expect("Config is not initialized")
     }
 }
 
-static INSTANCE: OnceCell<GlobalSettings> = OnceCell::new();
-
 pub async fn init_globales(conn: &Pool<Sqlite>) {
     let config = GlobalSettings::new(conn).await;
-    INSTANCE.set(config).unwrap();
+    GLOBAL_SETTINGS.set(config).unwrap();
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize, sqlx::FromRow)]
