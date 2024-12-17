@@ -25,7 +25,7 @@ use crate::utils::{
 use crate::ARGS;
 
 #[cfg(target_family = "unix")]
-use crate::utils::db_path;
+use crate::utils::DB_PATH;
 
 #[derive(Parser, Debug, Default, Clone)]
 #[clap(version,
@@ -567,7 +567,7 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
 
 #[cfg(target_family = "unix")]
 async fn update_permissions() {
-    let db_path = Path::new(db_path().unwrap());
+    let db_path = DB_PATH.as_ref().unwrap();
     let uid = nix::unistd::Uid::current();
     let parent_owner = db_path.parent().unwrap().metadata().unwrap().uid();
     let user = nix::unistd::User::from_uid(parent_owner.into())

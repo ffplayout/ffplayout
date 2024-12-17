@@ -8,19 +8,19 @@ use sqlx::{migrate::MigrateDatabase, Pool, Sqlite, SqlitePool};
 pub mod handles;
 pub mod models;
 
-use crate::utils::db_path;
+use crate::utils::DB_PATH;
 use models::GlobalSettings;
 
 pub static GLOBAL_SETTINGS: OnceLock<GlobalSettings> = OnceLock::new();
-
 pub async fn db_pool() -> Result<Pool<Sqlite>, sqlx::Error> {
-    let db_path = db_path().unwrap();
+    let db_path = DB_PATH.as_ref().unwrap();
+    let db_path = db_path.to_string_lossy();
 
-    if !Sqlite::database_exists(db_path).await.unwrap_or(false) {
-        Sqlite::create_database(db_path).await.unwrap();
+    if !Sqlite::database_exists(&db_path).await.unwrap_or(false) {
+        Sqlite::create_database(&db_path).await.unwrap();
     }
 
-    let conn = SqlitePool::connect(db_path).await?;
+    let conn = SqlitePool::connect(&db_path).await?;
 
     Ok(conn)
 }
@@ -38,7 +38,8 @@ pub async fn db_drop() {
     let drop = drop_answer.trim().to_lowercase().starts_with('y');
 
     if drop {
-        match Sqlite::drop_database(db_path().unwrap()).await {
+        let db_path = DB_PATH.as_ref().unwrap();
+        match Sqlite::drop_database(&db_path.to_string_lossy()).await {
             Ok(_) => println!("Successfully dropped DB"),
             Err(e) => eprintln!("{e}"),
         };

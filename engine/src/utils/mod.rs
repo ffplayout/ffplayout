@@ -1,7 +1,9 @@
 use std::{
+    borrow::Cow,
     env, fmt,
     net::TcpListener,
     path::{Path, PathBuf},
+    sync::LazyLock,
 };
 
 #[cfg(target_family = "unix")]
@@ -159,45 +161,53 @@ impl fmt::Display for TextFilter {
     }
 }
 
-pub fn db_path() -> Result<&'static str, Box<dyn std::error::Error>> {
-    if let Some(path) = ARGS.db.clone() {
-        let mut absolute_path = if path.is_absolute() {
-            path
+pub static DB_PATH: LazyLock<Result<Cow<'static, Path>, sqlx::Error>> = LazyLock::new(|| {
+    const DEFAULT_DIR: &str = "/usr/share/ffplayout/db/";
+    const DEFAULT_PATH: &str = "/usr/share/ffplayout/db/ffplayout.db";
+    const ASSET_DIR: &str = "./assets";
+    const ASSET_PATH: &str = "./assets/ffplayout.db";
+    const DB_NAME: &str = "ffplayout.db";
+
+    let path = if let Some(path) = ARGS.db.as_deref() {
+        let mut path = Cow::Borrowed(path);
+        if !path.is_absolute() {
+            path = env::current_dir()?.join(path).into();
+        }
+        if path.is_dir() {
+            path = path.join(DB_NAME).into();
+        }
+        path
+    } else {
+        let sys_path = Path::new(DEFAULT_DIR);
+        let asset_path = Path::new(ASSET_DIR);
+
+        if !sys_path.writable() {
+            error!("Path {} not writable!", sys_path.display());
+        }
+
+        if sys_path.is_dir() && sys_path.writable() {
+            Path::new(DEFAULT_PATH).into()
+        } else if asset_path.is_dir() {
+            Path::new(ASSET_PATH).into()
         } else {
-            env::current_dir()?.join(path)
+            Path::new(DB_NAME).into()
         }
-        .clean();
+    };
 
-        if absolute_path.is_dir() {
-            absolute_path = absolute_path.join("ffplayout.db");
-        }
-
-        if let Some(abs_path) = absolute_path.parent() {
-            if abs_path.writable() {
-                return Ok(Box::leak(
-                    absolute_path.to_string_lossy().to_string().into_boxed_str(),
-                ));
-            }
-
-            error!("Given database path is not writable!");
-        }
+    if path.is_file() {
+        path.access(faccess::AccessMode::WRITE)?;
+    } else if let Some(p) = path.parent() {
+        p.access(faccess::AccessMode::WRITE)?;
+    } else {
+        return Err(
+            std::io::Error::new(std::io::ErrorKind::NotFound, "Database path not found").into(),
+        );
     }
 
-    let sys_path = Path::new("/usr/share/ffplayout/db");
-    let mut db_path = "./ffplayout.db";
+    info!("Database path: {}", path.display());
 
-    if sys_path.is_dir() && !sys_path.writable() {
-        error!("Path {} is not writable!", sys_path.display());
-    }
-
-    if sys_path.is_dir() && sys_path.writable() {
-        db_path = "/usr/share/ffplayout/db/ffplayout.db";
-    } else if Path::new("./assets").is_dir() {
-        db_path = "./assets/ffplayout.db";
-    }
-
-    Ok(db_path)
-}
+    Ok(path)
+});
 
 pub fn public_path() -> PathBuf {
     let config = GLOBAL_SETTINGS.get().unwrap();
