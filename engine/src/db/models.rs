@@ -1,6 +1,5 @@
 use std::{error::Error, fmt, str::FromStr};
 
-use once_cell::sync::OnceCell;
 use regex::Regex;
 use serde::{
     de::{self, Visitor},
@@ -48,17 +47,6 @@ impl GlobalSettings {
             },
         }
     }
-
-    pub fn global() -> &'static GlobalSettings {
-        INSTANCE.get().expect("Config is not initialized")
-    }
-}
-
-static INSTANCE: OnceCell<GlobalSettings> = OnceCell::new();
-
-pub async fn init_globales(conn: &Pool<Sqlite>) {
-    let config = GlobalSettings::new(conn).await;
-    INSTANCE.set(config).unwrap();
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize, sqlx::FromRow)]

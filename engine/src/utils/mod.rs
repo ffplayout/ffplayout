@@ -34,7 +34,7 @@ pub mod system;
 pub mod task_runner;
 pub mod time_machine;
 
-use crate::db::models::GlobalSettings;
+use crate::db::GLOBAL_SETTINGS;
 use crate::player::utils::time_to_sec;
 use crate::utils::{errors::ServiceError, logging::log_file_path};
 use crate::ARGS;
@@ -200,7 +200,7 @@ pub fn db_path() -> Result<&'static str, Box<dyn std::error::Error>> {
 }
 
 pub fn public_path() -> PathBuf {
-    let config = GlobalSettings::global();
+    let config = GLOBAL_SETTINGS.get().unwrap();
     let dev_path = env::current_dir()
         .unwrap_or_default()
         .join("frontend/.output/public/");

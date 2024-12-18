@@ -1,4 +1,7 @@
-use std::io::{stdin, stdout, Write};
+use std::{
+    io::{stdin, stdout, Write},
+    sync::OnceLock,
+};
 
 use sqlx::{migrate::MigrateDatabase, Pool, Sqlite, SqlitePool};
 
@@ -6,6 +9,9 @@ pub mod handles;
 pub mod models;
 
 use crate::utils::db_path;
+use models::GlobalSettings;
+
+pub static GLOBAL_SETTINGS: OnceLock<GlobalSettings> = OnceLock::new();
 
 pub async fn db_pool() -> Result<Pool<Sqlite>, sqlx::Error> {
     let db_path = db_path().unwrap();
@@ -37,4 +43,13 @@ pub async fn db_drop() {
             Err(e) => eprintln!("{e}"),
         };
     };
+}
+
+pub async fn init_globales(conn: &Pool<Sqlite>) -> Result<(), Box<dyn std::error::Error>> {
+    let config = GlobalSettings::new(conn).await;
+    GLOBAL_SETTINGS
+        .set(config)
+        .map_err(|_| "Failed to set global settings")?;
+
+    Ok(())
 }

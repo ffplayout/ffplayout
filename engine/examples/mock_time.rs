@@ -1,6 +1,6 @@
 use std::{
     process,
-    sync::{Arc, Mutex},
+    sync::{Arc, LazyLock, Mutex},
     thread::sleep,
     time::Duration,
 };
@@ -17,9 +17,8 @@ struct Args {
 }
 
 // Thread-local storage for time offset when mocking the time
-lazy_static::lazy_static! {
-    static ref DATE_TIME_DIFF: Arc<Mutex<Option<TimeDelta>>> = Arc::new(Mutex::new(None));
-}
+static DATE_TIME_DIFF: LazyLock<Arc<Mutex<Option<TimeDelta>>>> =
+    LazyLock::new(|| Arc::new(Mutex::new(None)));
 
 // Set the mock time offset if `--fake-time` argument is provided
 pub fn set_mock_time(fake_time: &Option<String>) {

@@ -20,7 +20,7 @@ use log::*;
 
 use ffplayout::{
     api::routes::*,
-    db::{db_drop, db_pool, handles, models::init_globales},
+    db::{db_drop, db_pool, handles, init_globales},
     player::{
         controller::{ChannelController, ChannelManager},
         utils::{get_date, is_remote, json_validate::validate_playlist, JsonPlaylist},
@@ -64,7 +64,9 @@ async fn main() -> std::io::Result<()> {
 
     set_mock_time(&ARGS.fake_time);
 
-    init_globales(&pool).await;
+    init_globales(&pool)
+        .await
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
     init_logging(mail_queues.clone())?;
 
     let channel_controllers = Arc::new(Mutex::new(ChannelController::new()));
