@@ -5,7 +5,7 @@ use jsonwebtoken::{self, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    db::models::{GlobalSettings, Role},
+    db::{models::Role, GLOBAL_SETTINGS},
     utils::errors::ServiceError,
 };
 
@@ -35,7 +35,7 @@ impl Claims {
 
 /// Create a json web token (JWT)
 pub async fn create_jwt(claims: Claims) -> Result<String, ServiceError> {
-    let config = GlobalSettings::global();
+    let config = GLOBAL_SETTINGS.get().unwrap();
     let encoding_key = EncodingKey::from_secret(config.secret.clone().unwrap().as_bytes());
     Ok(jsonwebtoken::encode(
         &Header::default(),
@@ -46,7 +46,7 @@ pub async fn create_jwt(claims: Claims) -> Result<String, ServiceError> {
 
 /// Decode a json web token (JWT)
 pub async fn decode_jwt(token: &str) -> Result<Claims, Error> {
-    let config = GlobalSettings::global();
+    let config = GLOBAL_SETTINGS.get().unwrap();
     let decoding_key = DecodingKey::from_secret(config.secret.clone().unwrap().as_bytes());
     jsonwebtoken::decode::<Claims>(token, &decoding_key, &Validation::default())
         .map(|data| data.claims)

@@ -22,7 +22,7 @@ use regex::Regex;
 
 use super::ARGS;
 
-use crate::db::models::GlobalSettings;
+use crate::db::GLOBAL_SETTINGS;
 use crate::utils::{
     config::Mail, errors::ProcessError, round_to_nearest_ten, time_machine::time_now,
 };
@@ -300,7 +300,7 @@ fn file_formatter(
 }
 
 pub fn log_file_path() -> PathBuf {
-    let config = GlobalSettings::global();
+    let config = GLOBAL_SETTINGS.get().unwrap();
     let mut log_path = PathBuf::from(&ARGS.logs.as_ref().unwrap_or(&config.logs));
 
     if !log_path.is_absolute() {
