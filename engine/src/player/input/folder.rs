@@ -13,7 +13,7 @@ use log::*;
 use notify::{
     event::{CreateKind, ModifyKind, RemoveKind, RenameMode},
     EventKind::{Create, Modify, Remove},
-    RecursiveMode, Watcher,
+    RecursiveMode,
 };
 use notify_debouncer_full::new_debouncer;
 use tokio::sync::Mutex;
@@ -42,11 +42,7 @@ pub async fn watchman(
 
     let mut debouncer = new_debouncer(Duration::from_secs(1), None, tx).unwrap();
 
-    debouncer
-        .watcher()
-        .watch(path, RecursiveMode::Recursive)
-        .unwrap();
-    debouncer.cache().add_root(path, RecursiveMode::Recursive);
+    debouncer.watch(path, RecursiveMode::Recursive).unwrap();
 
     while !is_terminated.load(Ordering::SeqCst) {
         if let Ok(result) = rx.try_recv() {

@@ -29,13 +29,14 @@ CREATE TABLE
         id INTEGER PRIMARY KEY,
         name TEXT NOT NULL,
         preview_url TEXT NOT NULL,
-        extra_extensions TEXT NOT NULL DEFAULT 'jpg,jpeg,png',
+        extra_extensions TEXT NOT NULL DEFAULT "jpg,jpeg,png",
         active INTEGER NOT NULL DEFAULT 0,
         public TEXT NOT NULL DEFAULT "/usr/share/ffplayout/public",
         playlists TEXT NOT NULL DEFAULT "/var/lib/ffplayout/playlists",
         storage TEXT NOT NULL DEFAULT "/var/lib/ffplayout/tv-media",
         last_date TEXT,
-        time_shift REAL NOT NULL DEFAULT 0
+        time_shift REAL NOT NULL DEFAULT 0,
+        timezone TEXT
     );
 
 CREATE TABLE

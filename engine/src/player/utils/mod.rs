@@ -40,6 +40,7 @@ use crate::utils::{
     config::{OutputMode::*, PlayoutConfig, FFMPEG_IGNORE_ERRORS, FFMPEG_UNRECOVERABLE_ERRORS},
     errors::ProcessError,
     logging::Target,
+    time_machine::time_now,
 };
 pub use json_serializer::{read_json, JsonPlaylist};
 
@@ -1066,7 +1067,7 @@ pub async fn validate_ffmpeg(config: &mut PlayoutConfig) -> Result<(), String> {
 }
 
 /// get a free tcp socket
-pub fn free_tcp_socket(exclude_socket: String) -> Option<String> {
+pub fn gen_tcp_socket(exclude_socket: String) -> Option<String> {
     for _ in 0..100 {
         let port = rand::thread_rng().gen_range(45321..54268);
         let socket = format!("127.0.0.1:{port}");
@@ -1080,12 +1081,12 @@ pub fn free_tcp_socket(exclude_socket: String) -> Option<String> {
 }
 
 /// check if tcp port is free
-pub fn test_tcp_port(id: i32, url: &str) -> bool {
-    let re = Regex::new(r"^[\w]+\://").unwrap();
+pub fn is_free_tcp_port(id: i32, url: &str) -> bool {
+    let re = Regex::new(r"^[\w]+://([^/]+)").unwrap();
     let mut addr = url.to_string();
 
-    if re.is_match(url) {
-        addr = re.replace(url, "").to_string();
+    if let Some(base_url) = re.captures(url).and_then(|u| u.get(1)) {
+        addr = base_url.as_str().to_string();
     }
 
     if let Some(socket) = addr.split_once(':') {
@@ -1099,7 +1100,7 @@ pub fn test_tcp_port(id: i32, url: &str) -> bool {
         }
     };
 
-    error!(target: Target::file_mail(), channel = id; "Address <b><magenta>{url}</></b> already in use!");
+    error!(target: Target::file_mail(), channel = id; "Address <b><magenta>{addr}</></b> already in use!");
 
     false
 }
@@ -1189,38 +1190,3 @@ pub fn custom_format<T: fmt::Display>(template: &str, args: &[T]) -> String {
 
     filled_template
 }
-
-/// Get system time, in non test/debug case.
-#[cfg(not(any(test, debug_assertions)))]
-pub fn time_now() -> DateTime<Local> {
-    Local::now()
-}
-
-/// Get mocked system time, in test/debug case.
-#[cfg(any(test, debug_assertions))]
-pub mod mock_time {
-    use super::*;
-    use std::cell::RefCell;
-
-    thread_local! {
-        static DATE_TIME_DIFF: RefCell<Option<TimeDelta>> = const { RefCell::new(None) };
-    }
-
-    pub fn time_now() -> DateTime<Local> {
-        DATE_TIME_DIFF.with(|cell| match cell.borrow().as_ref().cloned() {
-            Some(diff) => Local::now() - diff,
-            None => Local::now(),
-        })
-    }
-
-    pub fn set_mock_time(date_time: &str) {
-        if let Ok(d) = NaiveDateTime::parse_from_str(date_time, "%Y-%m-%dT%H:%M:%S") {
-            let time = Local.from_local_datetime(&d).unwrap();
-
-            DATE_TIME_DIFF.with(|cell| *cell.borrow_mut() = Some(Local::now() - time));
-        }
-    }
-}
-
-#[cfg(any(test, debug_assertions))]
-pub use mock_time::time_now;

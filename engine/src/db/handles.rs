@@ -10,8 +10,8 @@ use tokio::task;
 use super::models::{AdvancedConfiguration, Configuration};
 use crate::db::models::{Channel, GlobalSettings, Role, TextPreset, User};
 use crate::utils::{
-    advanced_config::AdvancedConfig, config::PlayoutConfig, is_running_in_container,
-    local_utc_offset,
+    advanced_config::AdvancedConfig, config::PlayoutConfig, errors::ServiceError,
+    is_running_in_container, local_utc_offset,
 };
 
 pub async fn db_migrate(conn: &Pool<Sqlite>) -> Result<(), Box<dyn std::error::Error>> {
@@ -86,7 +86,7 @@ pub async fn select_related_channels(
 ) -> Result<Vec<Channel>, sqlx::Error> {
     let query = match user_id {
         Some(id) => format!(
-            "SELECT c.id, c.name, c.preview_url, c.extra_extensions, c.active, c.public, c.playlists, c.storage, c.last_date, c.time_shift FROM channels c
+            "SELECT c.id, c.name, c.preview_url, c.extra_extensions, c.active, c.public, c.playlists, c.storage, c.last_date, c.time_shift, c.timezone FROM channels c
                 left join user_channels uc on uc.channel_id = c.id
                 left join user u on u.id = uc.user_id
              WHERE u.id = {id} ORDER BY c.id ASC;"
@@ -140,17 +140,21 @@ pub async fn update_channel(
 pub async fn update_stat(
     conn: &Pool<Sqlite>,
     id: i32,
-    last_date: String,
+    last_date: Option<String>,
     time_shift: f64,
 ) -> Result<SqliteQueryResult, sqlx::Error> {
-    let query = "UPDATE channels SET last_date = $2, time_shift = $3 WHERE id = $1";
+    let query = match last_date {
+        Some(_) => "UPDATE channels SET last_date = $2, time_shift = $3 WHERE id = $1",
+        None => "UPDATE channels SET time_shift = $2 WHERE id = $1",
+    };
 
-    sqlx::query(query)
-        .bind(id)
-        .bind(last_date)
-        .bind(time_shift)
-        .execute(conn)
-        .await
+    let mut q = sqlx::query(query).bind(id);
+
+    if last_date.is_some() {
+        q = q.bind(last_date);
+    }
+
+    q.bind(time_shift).execute(conn).await
 }
 
 pub async fn update_player(
@@ -293,7 +297,7 @@ pub async fn update_advanced_configuration(
     channel_id: i32,
     config: AdvancedConfig,
 ) -> Result<SqliteQueryResult, sqlx::Error> {
-    let query = "UPDATE advanced_configurations SET decoder_input_param = $2, decoder_output_param = $3, encoder_input_param = $4, ingest_input_param = $5, filter_deinterlace = $6, filter_pad_scale_w = $7, filter_pad_scale_h = $8, filter_pad_video = $9, filter_fps = $10, filter_scale = $11, filter_set_dar = $12, filter_fade_in = $13, filter_fade_out = $14, filter_overlay_logo_scale = $15, filter_overlay_logo_fade_in = $16, filter_overlay_logo_fade_out = $17, filter_overlay_logo = $18, filter_tpad = $19, filter_drawtext_from_file = $20, filter_drawtext_from_zmq = $21, filter_aevalsrc = $22, filter_afade_in = $23, filter_afade_out = $24, filter_apad = $25, filter_volume = $26, filter_split = $27 WHERE channel_id = $1";
+    let query = "UPDATE advanced_configurations SET decoder_input_param = $2, decoder_output_param = $3, encoder_input_param = $4, ingest_input_param = $5, filter_deinterlace = $6, filter_pad_scale_w = $7, filter_pad_scale_h = $8, filter_pad_video = $9, filter_fps = $10, filter_scale = $11, filter_set_dar = $12, filter_fade_in = $13, filter_fade_out = $14, filter_logo = $15, filter_overlay_logo_scale = $16, filter_overlay_logo_fade_in = $17, filter_overlay_logo_fade_out = $18, filter_overlay_logo = $19, filter_tpad = $20, filter_drawtext_from_file = $21, filter_drawtext_from_zmq = $22, filter_aevalsrc = $23, filter_afade_in = $24, filter_afade_out = $25, filter_apad = $26, filter_volume = $27, filter_split = $28 WHERE channel_id = $1";
 
     sqlx::query(query)
         .bind(channel_id)
@@ -310,6 +314,7 @@ pub async fn update_advanced_configuration(
         .bind(config.filter.set_dar)
         .bind(config.filter.fade_in)
         .bind(config.filter.fade_out)
+        .bind(config.filter.logo)
         .bind(config.filter.overlay_logo_scale)
         .bind(config.filter.overlay_logo_fade_in)
         .bind(config.filter.overlay_logo_fade_out)
@@ -374,7 +379,7 @@ pub async fn select_users(conn: &Pool<Sqlite>) -> Result<Vec<User>, sqlx::Error>
     sqlx::query_as(query).fetch_all(conn).await
 }
 
-pub async fn insert_user(conn: &Pool<Sqlite>, user: User) -> Result<(), sqlx::Error> {
+pub async fn insert_user(conn: &Pool<Sqlite>, user: User) -> Result<(), ServiceError> {
     let password_hash = task::spawn_blocking(move || {
         let salt = SaltString::generate(&mut OsRng);
         let hash = Argon2::default()
@@ -383,8 +388,7 @@ pub async fn insert_user(conn: &Pool<Sqlite>, user: User) -> Result<(), sqlx::Er
 
         hash.to_string()
     })
-    .await
-    .unwrap();
+    .await?;
 
     let query =
         "INSERT INTO user (mail, username, password, role_id) VALUES($1, $2, $3, $4) RETURNING id";
@@ -405,7 +409,7 @@ pub async fn insert_user(conn: &Pool<Sqlite>, user: User) -> Result<(), sqlx::Er
     Ok(())
 }
 
-pub async fn insert_or_update_user(conn: &Pool<Sqlite>, user: User) -> Result<(), sqlx::Error> {
+pub async fn insert_or_update_user(conn: &Pool<Sqlite>, user: User) -> Result<(), ServiceError> {
     let password_hash = task::spawn_blocking(move || {
         let salt = SaltString::generate(&mut OsRng);
         let hash = Argon2::default()
@@ -414,8 +418,7 @@ pub async fn insert_or_update_user(conn: &Pool<Sqlite>, user: User) -> Result<()
 
         hash.to_string()
     })
-    .await
-    .unwrap();
+    .await?;
 
     let query = "INSERT INTO user (mail, username, password, role_id) VALUES($1, $2, $3, $4)
             ON CONFLICT(username) DO UPDATE SET

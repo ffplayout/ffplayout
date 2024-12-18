@@ -20,7 +20,7 @@ use tokio::sync::Mutex;
 
 use ffplayout::{
     api::routes::*,
-    db::{db_drop, db_pool, handles, models::init_globales},
+    db::{db_drop, db_pool, handles, init_globales},
     player::{
         controller::{ChannelController, ChannelManager},
         utils::{get_date, is_remote, json_validate::validate_playlist, JsonPlaylist},
@@ -31,6 +31,7 @@ use ffplayout::{
         config::get_config,
         logging::{init_logging, MailQueue},
         playlist::generate_playlist,
+        time_machine::set_mock_time,
     },
     validator, ARGS,
 };
@@ -53,7 +54,11 @@ async fn main() -> std::io::Result<()> {
         exit(c);
     }
 
-    init_globales(&pool).await;
+    set_mock_time(&ARGS.fake_time);
+
+    init_globales(&pool)
+        .await
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
     init_logging(mail_queues.clone())?;
 
     let channel_controllers = Arc::new(Mutex::new(ChannelController::new()));
@@ -186,9 +191,9 @@ async fn main() -> std::io::Result<()> {
     } else if ARGS.drop_db {
         db_drop().await;
     } else {
-        let channels = ARGS.channels.clone().unwrap_or_else(|| vec![1]);
+        let channel = ARGS.channel.clone().unwrap_or_else(|| vec![1]);
 
-        for (index, channel_id) in channels.iter().enumerate() {
+        for (index, channel_id) in channel.iter().enumerate() {
             let config = match get_config(&pool, *channel_id).await {
                 Ok(c) => c,
                 Err(e) => {
@@ -202,9 +207,9 @@ async fn main() -> std::io::Result<()> {
             let manager = ChannelManager::new(Some(pool.clone()), channel.clone(), config.clone());
 
             if ARGS.foreground {
-                if ARGS.channels.is_none() {
+                if ARGS.channel.is_none() {
                     error!(
-                        "Foreground mode needs at least 1 channel, run with `--channels (1 2 ...)`"
+                        "Foreground mode needs at least 1 channel, run with `--channel (1 2 ...)`"
                     );
                     exit(1);
                 }

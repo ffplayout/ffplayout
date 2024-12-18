@@ -34,10 +34,9 @@
             </div>
         </div>
         <div class="px-3 inline-block h-[calc(100vh-140px)] text-[13px]">
-            <div
-                class="bg-base-300 whitespace-pre h-full font-mono overflow-auto p-3"
-                v-html="filterLogsBySeverity(formatLog(currentLog), errorLevel)"
-            />
+            <div id="log-container" class="bg-base-300 whitespace-pre h-full font-mono overflow-auto p-3">
+                <div id="log-content" v-html="filterLogsBySeverity(formatLog(currentLog), errorLevel)" />
+            </div>
         </div>
     </div>
 </template>
@@ -88,7 +87,16 @@ watch([listDate, i], () => {
 })
 
 const calendarFormat = (date: Date) => {
-   return $dayjs(date).locale(locale.value).format('ddd L')
+    return $dayjs(date).locale(locale.value).format('ddd L')
+}
+
+function scrollTo() {
+    const parent = document.getElementById('log-container')
+    const child = document.getElementById('log-content')
+
+    if (child && parent) {
+        parent.scrollTop = child.scrollHeight
+    }
 }
 
 function filterLogsBySeverity(logString: string, minSeverity: string): string {
@@ -102,7 +110,7 @@ function filterLogsBySeverity(logString: string, minSeverity: string): string {
             const logLevel = match[1]
             return indexStore.severityLevels[logLevel] >= minLevel
         }
-        return false
+        return true
     })
     return filteredLogs.join('\n')
 }
@@ -121,6 +129,10 @@ async function getLog() {
         .then((response) => response.text())
         .then((data) => {
             currentLog.value = data
+
+            nextTick(() => {
+                scrollTo()
+            })
         })
         .catch(() => {
             currentLog.value = ''

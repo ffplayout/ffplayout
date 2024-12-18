@@ -355,15 +355,23 @@ fn overlay(node: &mut Media, chain: &mut Filters, config: &PlayoutConfig) {
         && Path::new(&config.processing.logo_path).is_file()
         && &node.category != "advertisement"
     {
-        let mut logo_chain = format!(
-            "null[v];movie={}:loop=0,setpts=N/(FRAME_RATE*TB),format=rgba,colorchannelmixer=aa={}",
-            config
+        let mut logo_chain = match config.advanced.filter.logo.clone() {
+            Some(logo) => custom_format(&logo, &[config
                 .processing
                 .logo_path
                 .replace('\\', "/")
                 .replace(':', "\\\\:"),
-            config.processing.logo_opacity,
-        );
+            config.processing.logo_opacity.to_string()]),
+            None => format!(
+                "null[v];movie={}:loop=0,setpts=N/(FRAME_RATE*TB),format=rgba,colorchannelmixer=aa={}",
+                config
+                    .processing
+                    .logo_path
+                    .replace('\\', "/")
+                    .replace(':', "\\\\:"),
+                config.processing.logo_opacity,
+            ),
+        };
 
         if node.last_ad {
             match config.advanced.filter.overlay_logo_fade_in.clone() {

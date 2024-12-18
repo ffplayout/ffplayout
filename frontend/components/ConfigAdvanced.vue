@@ -227,6 +227,22 @@
                 </label>
                 <label class="form-control w-full mt-2">
                     <div class="label">
+                        <span class="label-text !text-md font-bold">Logo</span>
+                    </div>
+                    <input
+                        v-model="configStore.advanced.filter.logo"
+                        type="text"
+                        name="logo"
+                        class="input input-sm input-bordered w-full"
+                    />
+                    <div class="label">
+                        <span class="text-sm text-base-content/80">
+                            Default: <span class="select-text cursor-text">null[v];movie={}:loop=0,setpts=N/(FRAME_RATE*TB),format=rgba,colorchannelmixer=aa={}</span></span
+                        >
+                    </div>
+                </label>
+                <label class="form-control w-full mt-2">
+                    <div class="label">
                         <span class="label-text !text-md font-bold">Logo Scale</span>
                     </div>
                     <input
@@ -237,7 +253,7 @@
                     />
                     <div class="label">
                         <span class="text-sm text-base-content/80">
-                            Default: <span class="select-text cursor-text">scale={} </span></span
+                            Default: <span class="select-text cursor-text">scale={}</span></span
                         >
                     </div>
                 </label>

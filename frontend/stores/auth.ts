@@ -43,18 +43,20 @@ export const useAuth = defineStore('auth', {
             await $fetch('/auth/login/', {
                 method: 'POST',
                 body: JSON.stringify(payload),
-                async onResponse(response: LoginObj) {
-                    code = response.status
+                async onResponse(data: any) {
+                    code = data.response.status
                 },
             })
-                .then((response) => {
+                .then((response: any) => {
                     this.updateToken(response.user?.token)
                     const decodedToken = jwtDecode<JwtPayloadExt>(response.user?.token)
                     this.isLogin = true
                     this.channelID = decodedToken.channel
                     this.role = decodedToken.role
                 })
-                .catch(() => {})
+                .catch((e) => {
+                    code = e.status
+                })
 
             return code
         },
@@ -64,7 +66,7 @@ export const useAuth = defineStore('auth', {
                 method: 'POST',
                 headers: this.authHeader,
             })
-                .then((response) => {
+                .then((response: any) => {
                     this.uuid = response.uuid
                 })
                 .catch(e => {

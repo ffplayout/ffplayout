@@ -12,17 +12,17 @@
                 <NuxtLink :to="localePath({ name: 'media' })" class="btn join-item btn-primary px-2">
                     {{ t('button.media') }}
                 </NuxtLink>
-                <NuxtLink :to="localePath({ name: 'message' })" class="btn join-item btn-primary px-2">
+                <NuxtLink
+                    v-if="configStore.playout?.text?.add_text && !configStore.playout?.text?.text_from_filename"
+                    :to="localePath({ name: 'message' })"
+                    class="btn join-item btn-primary px-2"
+                >
                     {{ t('button.message') }}
                 </NuxtLink>
                 <NuxtLink :to="localePath({ name: 'logging' })" class="btn join-item btn-primary px-2">
                     {{ t('button.logging') }}
                 </NuxtLink>
-                <NuxtLink
-                    v-if="authStore.role.toLowerCase().includes('admin')"
-                    :to="localePath({ name: 'configure' })"
-                    class="btn join-item btn-primary px-2"
-                >
+                <NuxtLink :to="localePath({ name: 'configure' })" class="btn join-item btn-primary px-2">
                     {{ t('button.configure') }}
                 </NuxtLink>
                 <button class="btn join-item btn-primary px-2" @click="logout()">
@@ -151,7 +151,7 @@ async function logout() {
     }
 }
 
-async function changeLang(code: string) {
+async function changeLang(code: any) {
     const path = switchLocalePath(code)
     const cookie = useCookie('i18n_redirected')
     cookie.value = code

@@ -149,7 +149,9 @@ const user = ref({
 } as User)
 
 onMounted(() => {
-    getUsers()
+    if (authStore.role === 'GlobalAdmin') {
+        getUsers()
+    }
 })
 
 async function getUsers() {

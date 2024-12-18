@@ -1,6 +1,6 @@
 <template>
     <div v-if="show" class="z-50 fixed inset-0 flex justify-center bg-black/30 overflow-auto py-5">
-        <div class="flex flex-col bg-base-100 min-w-[300px] w-[400px] max-w-[90%] rounded-md p-5 shadow-xl my-auto">
+        <div class="flex flex-col bg-base-100 min-w-[300px] w-auto max-w-[90%] rounded-md p-5 shadow-xl my-auto">
             <div class="inline-block">
                 <div class="flex gap-2">
                     <div class="font-bold text-lg truncate flex-1 w-0">{{ title }}</div>

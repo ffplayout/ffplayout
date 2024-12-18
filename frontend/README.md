@@ -9,7 +9,7 @@ For a better understanding of the functionality, take a look at the screenshots 
 ![login](/docs/images/login.png)
 
 ### System Dashboard
-![login](/docs/images/dasboard.png)
+![login](/docs/images/dashboard.png)
 
 ### Control Page
 ![player](/docs/images/player.png)

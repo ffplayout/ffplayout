@@ -24,6 +24,7 @@ export const usePlaylist = defineStore('playlist', {
         playoutIsRunning: false,
         last_channel: 0,
         firstLoad: true,
+        scrollToItem: false,
     }),
 
     getters: {},
@@ -35,11 +36,11 @@ export const usePlaylist = defineStore('playlist', {
             const indexStore = useIndex()
             const channel = configStore.channels[configStore.i].id
 
-            await $fetch(`/api/playlist/${channel}?date=${date}`, {
+            await $fetch<Playlist>(`/api/playlist/${channel}?date=${date}`, {
                 method: 'GET',
                 headers: authStore.authHeader,
             })
-                .then((data) => {
+                .then((data: Playlist) => {
                     if (data.program) {
                         const programData = processPlaylist(date, data.program, false)
 

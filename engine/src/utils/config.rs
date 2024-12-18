@@ -14,7 +14,7 @@ use tokio::{fs, io::AsyncReadExt};
 use ts_rs::TS;
 
 use crate::db::{handles, models};
-use crate::utils::{files::norm_abs_path, free_tcp_socket, time_to_sec};
+use crate::utils::{files::norm_abs_path, gen_tcp_socket, time_to_sec};
 use crate::vec_strings;
 use crate::AdvancedConfig;
 use crate::ARGS;
@@ -254,6 +254,8 @@ impl General {
 #[derive(Debug, Clone, Deserialize, Serialize, TS)]
 #[ts(export, export_to = "playout_config.d.ts")]
 pub struct Mail {
+    #[serde(skip_deserializing)]
+    pub show: bool,
     pub subject: String,
     #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
@@ -276,6 +278,7 @@ pub struct Mail {
 impl Mail {
     fn new(global: &models::GlobalSettings, config: &models::Configuration) -> Self {
         Self {
+            show: !global.mail_password.is_empty() && global.mail_smtp != "mail.example.org",
             subject: config.mail_subject.clone(),
             smtp_server: global.mail_smtp.clone(),
             starttls: global.mail_starttls,
@@ -291,6 +294,7 @@ impl Mail {
 impl Default for Mail {
     fn default() -> Self {
         Mail {
+            show: false,
             subject: String::default(),
             smtp_server: String::default(),
             starttls: bool::default(),
@@ -793,9 +797,9 @@ impl PlayoutConfig {
         // when text overlay without text_from_filename is on, turn also the RPC server on,
         // to get text messages from it
         if text.add_text && !text.text_from_filename {
-            text.zmq_stream_socket = free_tcp_socket(String::new());
+            text.zmq_stream_socket = gen_tcp_socket(String::new());
             text.zmq_server_socket =
-                free_tcp_socket(text.zmq_stream_socket.clone().unwrap_or_default());
+                gen_tcp_socket(text.zmq_stream_socket.clone().unwrap_or_default());
             text.node_pos = Some(2);
         } else {
             text.zmq_stream_socket = None;

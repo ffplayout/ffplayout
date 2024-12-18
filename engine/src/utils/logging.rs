@@ -22,8 +22,10 @@ use regex::Regex;
 
 use super::ARGS;
 
-use crate::db::models::GlobalSettings;
-use crate::utils::{config::Mail, errors::ProcessError, round_to_nearest_ten};
+use crate::db::GLOBAL_SETTINGS;
+use crate::utils::{
+    config::Mail, errors::ProcessError, round_to_nearest_ten, time_machine::time_now,
+};
 
 #[derive(Debug)]
 pub struct Target;
@@ -248,38 +250,38 @@ fn strip_tags(input: &str) -> String {
     re.replace_all(input, "").to_string()
 }
 
-fn console_formatter(w: &mut dyn Write, _now: &mut DeferredNow, record: &Record) -> io::Result<()> {
-    match record.level() {
-        Level::Debug => write!(
+fn console_formatter(w: &mut dyn Write, now: &mut DeferredNow, record: &Record) -> io::Result<()> {
+    let log_line = match record.level() {
+        Level::Debug => colorize_string(format!("<bright-blue>[DEBUG]</> {}", record.args())),
+        Level::Error => colorize_string(format!("<bright-red>[ERROR]</> {}", record.args())),
+        Level::Info => colorize_string(format!("<bright-green>[ INFO]</> {}", record.args())),
+        Level::Trace => colorize_string(format!(
+            "<bright-yellow>[TRACE]</> {}:{} {}",
+            record.file().unwrap_or_default(),
+            record.line().unwrap_or_default(),
+            record.args()
+        )),
+        Level::Warn => colorize_string(format!("<yellow>[ WARN]</> {}", record.args())),
+    };
+
+    if ARGS.log_timestamp {
+        let time = if ARGS.fake_time.is_some() {
+            time_now()
+        } else {
+            *now.now()
+        };
+
+        write!(
             w,
-            "{}",
-            colorize_string(format!("<bright-blue>[DEBUG]</> {}", record.args()))
-        ),
-        Level::Error => write!(
-            w,
-            "{}",
-            colorize_string(format!("<bright-red>[ERROR]</> {}", record.args()))
-        ),
-        Level::Info => write!(
-            w,
-            "{}",
-            colorize_string(format!("<bright-green>[ INFO]</> {}", record.args()))
-        ),
-        Level::Trace => write!(
-            w,
-            "{}",
+            "{} {}",
             colorize_string(format!(
-                "<bright-yellow>[TRACE]</> {}:{} {}",
-                record.file().unwrap_or_default(),
-                record.line().unwrap_or_default(),
-                record.args()
-            ))
-        ),
-        Level::Warn => write!(
-            w,
-            "{}",
-            colorize_string(format!("<yellow>[ WARN]</> {}", record.args()))
-        ),
+                "<bright black>[{}]</>",
+                time.format("%Y-%m-%d %H:%M:%S%.6f")
+            )),
+            log_line
+        )
+    } else {
+        write!(w, "{}", log_line)
     }
 }
 
@@ -298,7 +300,7 @@ fn file_formatter(
 }
 
 pub fn log_file_path() -> PathBuf {
-    let config = GlobalSettings::global();
+    let config = GLOBAL_SETTINGS.get().unwrap();
     let mut log_path = PathBuf::from(&ARGS.logs.as_ref().unwrap_or(&config.logs));
 
     if !log_path.is_absolute() {

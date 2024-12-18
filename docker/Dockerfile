@@ -1,10 +1,8 @@
 FROM alpine:latest
 
-ARG FFPLAYOUT_VERSION=0.24.0-rc3
-ARG SHARED_STORAGE=false
+ARG FFPLAYOUT_VERSION=0.24.2
 
 ENV DB=/db
-ENV SHARED_STORAGE=${SHARED_STORAGE}
 
 COPY README.md ffplayout-v${FFPLAYOUT_VERSION}_x86_64-unknown-linux-musl.tar.* /tmp/
 
@@ -12,7 +10,7 @@ COPY <<-EOT /run.sh
 #!/bin/sh
 
 if [ ! -f /db/ffplayout.db ]; then
-    ffplayout -i -u admin -p admin -m contact@example.com --storage "/tv-media" --playlists "/playlists" --public "/public" --logs "/logging" --mail-smtp "mail.example.org" --mail-user "admin@example.org" --mail-password "abcd" --mail-starttls
+    ffplayout -i -u admin -p admin -m contact@example.com --storage "/tv-media" --playlists "/playlists" --public "/public" --logs "/logging" --mail-smtp "mail.example.org" --mail-user "admin@example.org" --mail-password "" --mail-starttls
 fi
 
 /usr/bin/ffplayout -l "0.0.0.0:8787"

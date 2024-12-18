@@ -27,7 +27,7 @@ use crate::ARGS;
 #[cfg(target_family = "unix")]
 use crate::utils::db_path;
 
-#[derive(Parser, Debug, Clone)]
+#[derive(Parser, Debug, Default, Clone)]
 #[clap(version,
     about = "ffplayout - 24/7 broadcasting solution",
     long_about = Some("ffplayout - 24/7 broadcasting solution\n
@@ -138,7 +138,10 @@ pub struct Args {
         help = "Channels by ids to process (for export config, generate playlist, foreground running, etc.)",
         num_args = 1..,
     )]
-    pub channels: Option<Vec<i32>>,
+    pub channel: Option<Vec<i32>>,
+
+    #[clap(long, hide = true, help = "set fake time (for debugging)")]
+    pub fake_time: Option<String>,
 
     #[clap(
         short,
@@ -167,7 +170,7 @@ pub struct Args {
     #[clap(long, help_heading = Some("Playlist"), help = "Only validate given playlist")]
     pub validate: bool,
 
-    #[clap(long, env, help_heading = Some("Playout"), help = "Run playout without webserver and frontend.")]
+    #[clap(long, env, help_heading = Some("Playout"), help = "Run playout without webserver and frontend")]
     pub foreground: bool,
 
     #[clap(short, long, help_heading = Some("Playout"), help = "Play folder content")]
@@ -175,6 +178,9 @@ pub struct Args {
 
     #[clap(long, env, help_heading = Some("Playout"), help = "Keep log file for given days")]
     pub log_backup_count: Option<usize>,
+
+    #[clap(long, env, help_heading = Some("Playout"), help = "Add timestamp to log line")]
+    pub log_timestamp: bool,
 
     #[clap(short, long, help_heading = Some("Playout"), help = "Set output mode: desktop, hls, null, stream")]
     pub output: Option<OutputMode>,
@@ -473,8 +479,8 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
     }
 
     if ARGS.dump_advanced {
-        if let Some(channels) = &ARGS.channels {
-            for id in channels {
+        if let Some(channel) = &ARGS.channel {
+            for id in channel {
                 match AdvancedConfig::dump(pool, *id).await {
                     Ok(_) => {
                         println!("Dump config to: advanced_{id}.toml");
@@ -487,14 +493,14 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
                 };
             }
         } else {
-            eprintln!("Channel ID(s) needed! Use `--channels 1 ...`");
+            eprintln!("Channel ID(s) needed! Use `--channel 1 ...`");
             error_code = 1;
         }
     }
 
     if ARGS.dump_config {
-        if let Some(channels) = &ARGS.channels {
-            for id in channels {
+        if let Some(channel) = &ARGS.channel {
+            for id in channel {
                 match PlayoutConfig::dump(pool, *id).await {
                     Ok(_) => {
                         println!("Dump config to: ffplayout_{id}.toml");
@@ -507,14 +513,14 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
                 };
             }
         } else {
-            eprintln!("Channel ID(s) needed! Use `--channels 1 ...`");
+            eprintln!("Channel ID(s) needed! Use `--channel 1 ...`");
             error_code = 1;
         }
     }
 
     if let Some(path) = &ARGS.import_advanced {
-        if let Some(channels) = &ARGS.channels {
-            for id in channels {
+        if let Some(channel) = &ARGS.channel {
+            for id in channel {
                 match AdvancedConfig::import(pool, *id, path).await {
                     Ok(_) => {
                         println!("Import config done...");
@@ -527,14 +533,14 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
                 };
             }
         } else {
-            eprintln!("Channel ID(s) needed! Use `--channels 1 ...`");
+            eprintln!("Channel ID(s) needed! Use `--channel 1 ...`");
             error_code = 1;
         }
     }
 
     if let Some(path) = &ARGS.import_config {
-        if let Some(channels) = &ARGS.channels {
-            for id in channels {
+        if let Some(channel) = &ARGS.channel {
+            for id in channel {
                 match PlayoutConfig::import(pool, *id, path).await {
                     Ok(_) => {
                         println!("Import config done...");
@@ -547,7 +553,7 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
                 };
             }
         } else {
-            eprintln!("Channel ID(s) needed! Use `--channels 1 ...`");
+            eprintln!("Channel ID(s) needed! Use `--channel 1 ...`");
             error_code = 1;
         }
     }

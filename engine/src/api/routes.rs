@@ -227,7 +227,6 @@ pub async fn login(
 
 /// From here on all request **must** contain the authorization header:\
 /// `"Authorization: Bearer <TOKEN>"`
-
 /// **Get current User**
 ///
 /// ```BASH
@@ -467,8 +466,7 @@ async fn get_all_channels(
 /// ```
 #[patch("/channel/{id}")]
 #[protect(
-    "Role::GlobalAdmin",
-    "Role::ChannelAdmin",
+    any("Role::GlobalAdmin", "Role::ChannelAdmin"),
     ty = "Role",
     expr = "user.channels.contains(&*id) || role.has_authority(&Role::GlobalAdmin)"
 )]
@@ -990,7 +988,7 @@ pub async fn process_control(
             manager.async_stop().await;
         }
         ProcessCtl::Restart => {
-            manager.async_stop().await;
+            manager.async_stop().await?;
             tokio::time::sleep(tokio::time::Duration::from_millis(1500)).await;
 
             if !manager.is_alive.load(Ordering::SeqCst) {

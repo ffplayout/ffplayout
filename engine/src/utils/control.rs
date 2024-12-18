@@ -159,19 +159,12 @@ pub async fn control_state(
 
                 manager.channel.lock().await.time_shift = delta;
                 date.clone_from(&current_date);
-                handles::update_stat(conn, config.general.channel_id, current_date, delta).await?;
+                handles::update_stat(conn, config.general.channel_id, Some(current_date), delta)
+                    .await?;
 
-                if let Some(proc) = manager.decoder.lock().await.as_mut() {
-                    if let Err(e) = proc.kill().await {
-                        error!(target: Target::file_mail(), channel = id; "Decoder {e:?}")
-                    };
-
-                    if let Err(e) = proc.wait().await {
-                        error!(target: Target::file_mail(), channel = id; "Decoder {e:?}")
-                    };
-                } else {
+                if manager.stop(Decoder).is_err() {
                     return Err(ServiceError::InternalServerError);
-                }
+                };
 
                 data_map.insert("operation".to_string(), json!("move_to_last"));
                 data_map.insert("shifted_seconds".to_string(), json!(delta));
@@ -195,19 +188,12 @@ pub async fn control_state(
 
                 manager.channel.lock().await.time_shift = delta;
                 date.clone_from(&current_date);
-                handles::update_stat(conn, config.general.channel_id, current_date, delta).await?;
+                handles::update_stat(conn, config.general.channel_id, Some(current_date), delta)
+                    .await?;
 
-                if let Some(proc) = manager.decoder.lock().await.as_mut() {
-                    if let Err(e) = proc.kill().await {
-                        error!(target: Target::file_mail(), channel = id; "Decoder {e:?}")
-                    };
-
-                    if let Err(e) = proc.wait().await {
-                        error!(target: Target::file_mail(), channel = id; "Decoder {e:?}")
-                    };
-                } else {
+                if manager.stop(Decoder).is_err() {
                     return Err(ServiceError::InternalServerError);
-                }
+                };
 
                 data_map.insert("operation".to_string(), json!("move_to_next"));
                 data_map.insert("shifted_seconds".to_string(), json!(delta));
@@ -226,19 +212,11 @@ pub async fn control_state(
             date.clone_from(&current_date);
             manager.list_init.store(true, Ordering::SeqCst);
 
-            handles::update_stat(conn, config.general.channel_id, current_date, 0.0).await?;
+            handles::update_stat(conn, config.general.channel_id, Some(current_date), 0.0).await?;
 
-            if let Some(proc) = manager.decoder.lock().await.as_mut() {
-                if let Err(e) = proc.kill().await {
-                    error!(target: Target::file_mail(), channel = id; "Decoder {e:?}")
-                };
-
-                if let Err(e) = proc.wait().await {
-                    error!(target: Target::file_mail(), channel = id; "Decoder {e:?}")
-                };
-            } else {
+            if manager.stop(Decoder).is_err() {
                 return Err(ServiceError::InternalServerError);
-            }
+            };
 
             data_map.insert("operation".to_string(), json!("reset_playout_state"));
 

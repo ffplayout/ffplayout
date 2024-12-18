@@ -98,8 +98,8 @@ pub fn stat(config: PlayoutConfig) -> SystemStat {
 
     interfaces.dedup_by(|a, b| a.0 == b.0);
 
-    disks.refresh();
-    networks.refresh();
+    disks.refresh(true);
+    networks.refresh(true);
     sys.refresh_cpu_usage();
     sys.refresh_memory();
 

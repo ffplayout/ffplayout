@@ -1,6 +1,5 @@
 use std::{error::Error, fmt, str::FromStr};
 
-use once_cell::sync::OnceCell;
 use regex::Regex;
 use serde::{
     de::{self, Visitor},
@@ -48,17 +47,6 @@ impl GlobalSettings {
             },
         }
     }
-
-    pub fn global() -> &'static GlobalSettings {
-        INSTANCE.get().expect("Config is not initialized")
-    }
-}
-
-static INSTANCE: OnceCell<GlobalSettings> = OnceCell::new();
-
-pub async fn init_globales(conn: &Pool<Sqlite>) {
-    let config = GlobalSettings::new(conn).await;
-    INSTANCE.set(config).unwrap();
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize, sqlx::FromRow)]
@@ -74,6 +62,10 @@ pub struct Channel {
     pub storage: String,
     pub last_date: Option<String>,
     pub time_shift: f64,
+    // not in use currently
+    #[sqlx(default)]
+    #[serde(default, skip_serializing)]
+    pub timezone: Option<String>,
 
     #[sqlx(default)]
     #[serde(default)]
@@ -234,7 +226,7 @@ where
 {
     struct StringOrNumberVisitor;
 
-    impl<'de> Visitor<'de> for StringOrNumberVisitor {
+    impl Visitor<'_> for StringOrNumberVisitor {
         type Value = String;
 
         fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -418,6 +410,7 @@ pub struct AdvancedConfiguration {
     pub filter_set_dar: Option<String>,
     pub filter_fade_in: Option<String>,
     pub filter_fade_out: Option<String>,
+    pub filter_logo: Option<String>,
     pub filter_overlay_logo_scale: Option<String>,
     pub filter_overlay_logo_fade_in: Option<String>,
     pub filter_overlay_logo_fade_out: Option<String>,
