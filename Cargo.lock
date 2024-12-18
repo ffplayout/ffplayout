@@ -611,7 +611,7 @@ checksum = "20235b6899dd1cb74a9afac0abf5b4a20c0e500dd6537280f4096e1b9f14da20"
 dependencies = [
  "async-fs",
  "futures-lite",
- "thiserror",
+ "thiserror 1.0.69",
 ]
 
 [[package]]

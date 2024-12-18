@@ -82,8 +82,8 @@ async fn ingest_to_hls_server(manager: ChannelManager) -> Result<(), ProcessErro
 
     if let Some(url) = stream_input.iter().find(|s| s.contains("://")) {
         if !is_free_tcp_port(id, url) {
-            manager.channel.lock().unwrap().active = false;
-            manager.stop_all();
+            manager.channel.lock().await.active = false;
+            manager.stop_all().await;
         } else {
             info!(target: Target::file_mail(), channel = id; "Start ingest server, listening on: <b><magenta>{url}</></b>");
         }
@@ -168,8 +168,8 @@ async fn ingest_to_hls_server(manager: ChannelManager) -> Result<(), ProcessErro
 
                 if error_count > 10 {
                     error!(target: Target::file_mail(), channel = id; "Reach fatal error count in ingest, terminate channel!");
-                    manager.channel.lock().unwrap().active = false;
-                    manager.stop_all();
+                    manager.channel.lock().await.active = false;
+                    manager.stop_all().await;
                     break;
                 }
             } else {

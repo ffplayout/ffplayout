@@ -1,14 +1,8 @@
-use std::{
-    io::{BufRead, BufReader, Read},
-    process::{ChildStderr, Command, Stdio},
-    sync::{atomic::Ordering, mpsc::SyncSender},
-    thread,
-};
 use std::{process::Stdio, sync::atomic::Ordering};
 
 use log::*;
 use tokio::{
-    io::{AsyncBufReadExt, AsyncReadExt, BufReader},
+    io::{AsyncBufReadExt, AsyncReadExt, BufReader, ErrorKind},
     process::{ChildStderr, Command},
     sync::mpsc::Sender,
 };
@@ -67,7 +61,7 @@ async fn server_monitor(
 /// Start ffmpeg in listen mode, and wait for input.
 pub async fn ingest_server(
     config: PlayoutConfig,
-    ingest_sender: SyncSender<(usize, [u8; 65088])>,
+    ingest_sender: Sender<(usize, [u8; 65088])>,
     channel_mgr: ChannelManager,
 ) -> Result<(), ProcessError> {
     let id = config.general.channel_id;
@@ -109,15 +103,6 @@ pub async fn ingest_server(
 
     let mut is_running;
 
-    if let Some(url) = stream_input.iter().find(|s| s.contains("://")) {
-        if !test_tcp_port(id, url) {
-            channel_mgr.channel.lock().await.active = false;
-            channel_mgr.stop_all().await;
-        }
-
-        info!(target: Target::file_mail(), channel = id; "Start ingest server, listening on: <b><magenta>{url}</></b>",);
-    };
-
     debug!(target: Target::file_mail(), channel = id;
         "Server CMD: <bright-blue>\"ffmpeg {}\"</>",
         server_cmd.join(" ")
@@ -125,8 +110,8 @@ pub async fn ingest_server(
 
     if let Some(url) = stream_input.iter().find(|s| s.contains("://")) {
         if !is_free_tcp_port(id, url) {
-            channel_mgr.channel.lock().unwrap().active = false;
-            channel_mgr.stop_all();
+            channel_mgr.channel.lock().await.active = false;
+            channel_mgr.stop_all().await;
         } else {
             info!(target: Target::file_mail(), channel = id; "Start ingest server, listening on: <b><magenta>{url}</></b>");
         }
@@ -148,7 +133,7 @@ pub async fn ingest_server(
             }
             Ok(proc) => proc,
         };
-        let mut ingest_reader = BufReader::new(server_proc.stdout.take().unwrap());
+        let mut ingest_stdout = server_proc.stdout.take().unwrap();
         let server_err = BufReader::new(server_proc.stderr.take().unwrap());
         let error_reader_thread =
             tokio::spawn(
@@ -159,8 +144,19 @@ pub async fn ingest_server(
         is_running = false;
 
         loop {
-            let bytes_len = match ingest_reader.read(&mut buffer[..]).await {
-                Ok(length) => length,
+            match ingest_stdout.read(&mut buffer[..]).await {
+                Ok(0) => break,
+                Ok(length) => {
+                    if let Err(e) = ingest_sender.send((length, buffer)).await {
+                        error!(target: Target::file_mail(), channel = id; "Ingest server write error: {e:?}");
+
+                        is_terminated.store(true, Ordering::SeqCst);
+                        break;
+                    }
+                }
+                Err(e) if e.kind() == ErrorKind::WouldBlock => {
+                    continue;
+                }
                 Err(e) => {
                     debug!(target: Target::file_mail(), channel = id; "Ingest server read {e:?}");
                     break;
@@ -171,20 +167,9 @@ pub async fn ingest_server(
                 ingest_is_running.store(true, Ordering::SeqCst);
                 is_running = true;
             }
-
-            if bytes_len > 0 {
-                if let Err(e) = ingest_sender.send((bytes_len, buffer)).await {
-                    error!(target: Target::file_mail(), channel = id; "Ingest server write error: {e:?}");
-
-                    is_terminated.store(true, Ordering::SeqCst);
-                    break;
-                }
-            } else {
-                break;
-            }
         }
 
-        drop(ingest_reader);
+        drop(ingest_stdout);
         ingest_is_running.store(false, Ordering::SeqCst);
 
         if let Err(e) = channel_mgr.wait(Ingest).await {
@@ -194,6 +179,8 @@ pub async fn ingest_server(
         if let Err(e) = error_reader_thread.await {
             error!(target: Target::file_mail(), channel = id; "{e:?}");
         };
+
+        trace!("Restart ingest server");
     }
 
     Ok(())

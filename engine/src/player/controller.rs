@@ -1,6 +1,6 @@
 use std::{
-    fmt, fmt, fs,
-    io::{self, Read},
+    fmt,
+    io::Read,
     path::Path,
     sync::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
@@ -8,14 +8,17 @@ use std::{
     },
 };
 
-use actix_web::web;
+use async_walkdir::{Filtering, WalkDir};
 use log::*;
 use m3u8_rs::Playlist;
 use serde::{Deserialize, Serialize};
 use sqlx::{Pool, Sqlite};
-use sysinfo::Disks;
-use tokio::{fs, io, process::Child, sync::Mutex};
-use walkdir::WalkDir;
+use tokio::{
+    fs, io,
+    process::{Child, ChildStdout},
+    sync::Mutex,
+};
+use tokio_stream::StreamExt;
 
 use crate::player::{
     output::{player, write_hls},
@@ -62,6 +65,7 @@ pub struct ChannelManager {
     pub decoder: Arc<Mutex<Option<Child>>>,
     pub encoder: Arc<Mutex<Option<Child>>>,
     pub ingest: Arc<Mutex<Option<Child>>>,
+    pub ingest_stdout: Arc<Mutex<Option<ChildStdout>>>,
     pub ingest_is_running: Arc<AtomicBool>,
     pub is_terminated: Arc<AtomicBool>,
     pub is_alive: Arc<AtomicBool>,
@@ -224,29 +228,26 @@ impl ChannelManager {
         Ok(())
     }
 
-    /// Wait for process to proper close.
-    /// This prevents orphaned/zombi processes in system
-    pub async fn wait(&self, unit: ProcessUnit) -> Result<(), ProcessError> {
-        match unit {
-            Decoder => {
-                if let Some(proc) = self.decoder.lock().await.as_mut() {
-                    proc.wait()
-                        .await
-                        .map_err(|e| ProcessError::Custom(format!("Decoder: {e}")))?;
-                }
-            }
-            Encoder => {
-                if let Some(proc) = self.encoder.lock().await.as_mut() {
-                    proc.wait()
-                        .await
-                        .map_err(|e| ProcessError::Custom(format!("Encoder: {e}")))?;
-                }
-            }
-            Ingest => {
-                if let Some(proc) = self.ingest.lock().await.as_mut() {
-                    proc.wait()
-                        .await
-                        .map_err(|e| ProcessError::Custom(format!("Ingest: {e}")))?;
+    async fn run_wait(
+        &self,
+        unit: ProcessUnit,
+        child: &Arc<Mutex<Option<Child>>>,
+    ) -> Result<(), ProcessError> {
+        if let Some(proc) = child.lock().await.as_mut() {
+            let mut counter = 0;
+            loop {
+                match proc.try_wait() {
+                    Ok(Some(_)) => break,
+                    Ok(None) => {
+                        // TODO: needs better handling
+                        if counter > 9 {
+                            break;
+                        }
+                        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+                        counter += 1;
+                    }
+                    Err(e) => return Err(ProcessError::Custom(format!("{unit}: {e}"))),
                 }
             }
         }
@@ -256,20 +257,20 @@ impl ChannelManager {
 
     /// Wait for process to proper close.
     /// This prevents orphaned/zombi processes in system
-    pub fn wait(&self, unit: ProcessUnit) -> Result<(), ProcessError> {
+    pub async fn wait(&self, unit: ProcessUnit) -> Result<(), ProcessError> {
         match unit {
-            Decoder => self.run_wait(unit, &self.decoder)?,
-            Encoder => self.run_wait(unit, &self.encoder)?,
-            Ingest => self.run_wait(unit, &self.ingest)?,
+            Decoder => self.run_wait(unit, &self.decoder).await?,
+            Encoder => self.run_wait(unit, &self.encoder).await?,
+            Ingest => self.run_wait(unit, &self.ingest).await?,
         }
 
-        thread::sleep(Duration::from_millis(50));
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
         Ok(())
     }
 
     pub async fn async_stop(&self) -> Result<(), ServiceError> {
-        let channel_id = self.channel.lock().unwrap().id;
+        let channel_id = self.channel.lock().await.id;
 
         if self.is_alive.load(Ordering::SeqCst) {
             debug!(target: Target::all(), channel = channel_id; "Deactivate playout and stop all child processes from channel: <yellow>{channel_id}</>");
@@ -372,7 +373,7 @@ async fn start_channel(manager: ChannelManager) -> Result<(), ProcessError> {
     let filler_list = manager.filler_list.clone();
     let channel_id = config.general.channel_id;
 
-    drain_hls_path(&config.channel.public)?;
+    drain_hls_path(&config.channel.public).await?;
 
     debug!(target: Target::all(), channel = channel_id; "Start ffplayout v{VERSION}, channel: <yellow>{channel_id}</>");
 
@@ -389,8 +390,8 @@ async fn start_channel(manager: ChannelManager) -> Result<(), ProcessError> {
     }
 }
 
-pub fn drain_hls_path(path: &Path) -> io::Result<()> {
-    let m3u8_files = find_m3u8_files(path)?;
+pub async fn drain_hls_path(path: &Path) -> io::Result<()> {
+    let m3u8_files = find_m3u8_files(path).await?;
     let mut pl_segments = vec![];
 
     for file in m3u8_files {
@@ -405,43 +406,69 @@ pub fn drain_hls_path(path: &Path) -> io::Result<()> {
         };
     }
 
-    delete_old_segments(path, &pl_segments)
+    delete_old_segments(path, &pl_segments).await
 }
 
 /// Recursively searches for all files with the .m3u8 extension in the specified path.
-fn find_m3u8_files(path: &Path) -> io::Result<Vec<String>> {
+async fn find_m3u8_files(path: &Path) -> io::Result<Vec<String>> {
     let mut m3u8_files = Vec::new();
 
-    for entry in WalkDir::new(path)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|e| e.path().is_file() && e.path().extension().map_or(false, |ext| ext == "m3u8"))
-    {
-        m3u8_files.push(entry.path().to_string_lossy().to_string());
+    let mut entries = WalkDir::new(path).filter(move |entry| async move {
+        if entry.path().is_file() && entry.path().extension().map_or(false, |ext| ext == "m3u8") {
+            return Filtering::Continue;
+        }
+
+        Filtering::IgnoreDir
+    });
+
+    loop {
+        match entries.next().await {
+            Some(Ok(entry)) => {
+                m3u8_files.push(entry.path().to_string_lossy().to_string());
+            }
+            Some(Err(e)) => {
+                error!(target: Target::file_mail(), "error: {e}");
+                break;
+            }
+            None => break,
+        }
     }
 
     Ok(m3u8_files)
 }
 
 /// Check if segment is in playlist, if not, delete it.
-fn delete_old_segments<P: AsRef<Path> + Clone + std::fmt::Debug>(
+async fn delete_old_segments<P: AsRef<Path> + Clone + std::fmt::Debug>(
     path: P,
     pl_segments: &[String],
 ) -> io::Result<()> {
-    for entry in WalkDir::new(path)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|e| {
-            e.path().is_file()
-                && e.path()
-                    .extension()
-                    .map_or(false, |ext| ext == "ts" || ext == "vtt")
-        })
-    {
-        let filename = entry.file_name().to_string_lossy().to_string();
+    let mut entries = WalkDir::new(path).filter(move |entry| async move {
+        if entry.path().is_file()
+            && entry
+                .path()
+                .extension()
+                .map_or(false, |ext| ext == "ts" || ext == "vtt")
+        {
+            return Filtering::Continue;
+        }
 
-        if !pl_segments.contains(&filename) {
-            fs::remove_file(entry.path())?;
+        Filtering::IgnoreDir
+    });
+
+    loop {
+        match entries.next().await {
+            Some(Ok(entry)) => {
+                let filename = entry.file_name().to_string_lossy().to_string();
+
+                if !pl_segments.contains(&filename) {
+                    fs::remove_file(entry.path()).await?;
+                }
+            }
+            Some(Err(e)) => {
+                error!(target: Target::file_mail(), "error: {e}");
+                break;
+            }
+            None => break,
         }
     }
 

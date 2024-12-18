@@ -162,7 +162,7 @@ pub async fn control_state(
                 handles::update_stat(conn, config.general.channel_id, Some(current_date), delta)
                     .await?;
 
-                if manager.stop(Decoder).is_err() {
+                if manager.stop(Decoder).await.is_err() {
                     return Err(ServiceError::InternalServerError);
                 };
 
@@ -191,7 +191,7 @@ pub async fn control_state(
                 handles::update_stat(conn, config.general.channel_id, Some(current_date), delta)
                     .await?;
 
-                if manager.stop(Decoder).is_err() {
+                if manager.stop(Decoder).await.is_err() {
                     return Err(ServiceError::InternalServerError);
                 };
 
@@ -214,7 +214,7 @@ pub async fn control_state(
 
             handles::update_stat(conn, config.general.channel_id, Some(current_date), 0.0).await?;
 
-            if manager.stop(Decoder).is_err() {
+            if manager.stop(Decoder).await.is_err() {
                 return Err(ServiceError::InternalServerError);
             };
 
