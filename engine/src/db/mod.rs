@@ -1,6 +1,6 @@
 use std::{
     borrow::Cow,
-    io::{stdin, stdout, Write},
+    io::{self, stdin, stdout, Write},
     path::Path,
     sync::{LazyLock, OnceLock},
 };
@@ -15,7 +15,7 @@ pub mod models;
 use crate::ARGS;
 use models::GlobalSettings;
 
-pub static DB_PATH: LazyLock<Result<Cow<'static, Path>, sqlx::Error>> = LazyLock::new(|| {
+pub static DB_PATH: LazyLock<Result<Cow<'static, Path>, io::Error>> = LazyLock::new(|| {
     const DEFAULT_DIR: &str = "/usr/share/ffplayout/db/";
     const DEFAULT_PATH: &str = "/usr/share/ffplayout/db/ffplayout.db";
     const ASSET_DIR: &str = "./assets";
@@ -53,9 +53,7 @@ pub static DB_PATH: LazyLock<Result<Cow<'static, Path>, sqlx::Error>> = LazyLock
     } else if let Some(p) = path.parent() {
         p.access(faccess::AccessMode::WRITE)?;
     } else {
-        return Err(
-            std::io::Error::new(std::io::ErrorKind::NotFound, "Database path not found").into(),
-        );
+        return Err(io::Error::other("Database path not found"));
     }
 
     info!("Database path: {}", path.display());
@@ -64,12 +62,12 @@ pub static DB_PATH: LazyLock<Result<Cow<'static, Path>, sqlx::Error>> = LazyLock
 });
 
 pub static GLOBAL_SETTINGS: OnceLock<GlobalSettings> = OnceLock::new();
-pub async fn db_pool() -> Result<Pool<Sqlite>, sqlx::Error> {
-    let db_path = DB_PATH.as_ref().unwrap();
+pub async fn db_pool() -> Result<Pool<Sqlite>, Box<dyn std::error::Error + Send + Sync>> {
+    let db_path = DB_PATH.as_ref()?;
     let db_path = db_path.to_string_lossy();
 
-    if !Sqlite::database_exists(&db_path).await.unwrap_or(false) {
-        Sqlite::create_database(&db_path).await.unwrap();
+    if !Sqlite::database_exists(&db_path).await? {
+        Sqlite::create_database(&db_path).await?;
     }
 
     let conn = SqlitePool::connect(&db_path).await?;
