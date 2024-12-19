@@ -54,9 +54,7 @@ fn thread_counter() -> usize {
 async fn main() -> std::io::Result<()> {
     let mail_queues = Arc::new(Mutex::new(vec![]));
 
-    let pool = db_pool()
-        .await
-        .map_err(io::Error::other)?;
+    let pool = db_pool().await.map_err(io::Error::other)?;
 
     if let Err(c) = run_args(&pool).await {
         exit(c);
