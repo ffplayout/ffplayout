@@ -1,7 +1,6 @@
 use std::fs;
 
 use sqlx::sqlite::SqlitePoolOptions;
-use tokio::runtime::Runtime;
 
 use ffplayout::db::handles;
 use ffplayout::player::{
@@ -13,7 +12,7 @@ use ffplayout::player::{
 use ffplayout::utils::config::{OutputMode::*, PlayoutConfig};
 use ffplayout::vec_strings;
 
-async fn prepare_config() -> (PlayoutConfig, ChannelManager) {
+async fn get_config() -> (PlayoutConfig, ChannelManager) {
     let pool = SqlitePoolOptions::new()
         .connect("sqlite::memory:")
         .await
@@ -38,13 +37,9 @@ async fn prepare_config() -> (PlayoutConfig, ChannelManager) {
     (config, manager)
 }
 
-fn get_config() -> (PlayoutConfig, ChannelManager) {
-    Runtime::new().unwrap().block_on(prepare_config())
-}
-
 #[tokio::test]
 async fn video_audio_input() {
-    let (mut config, manager) = get_config();
+    let (mut config, manager) = get_config().await;
 
     config.output.mode = Stream;
     config.processing.add_logo = true;
@@ -72,7 +67,7 @@ async fn video_audio_input() {
 
 #[tokio::test]
 async fn video_audio_custom_filter1_input() {
-    let (mut config, manager) = get_config();
+    let (mut config, manager) = get_config().await;
 
     config.output.mode = Stream;
     config.processing.add_logo = false;
@@ -98,7 +93,7 @@ async fn video_audio_custom_filter1_input() {
 
 #[tokio::test]
 async fn video_audio_custom_filter2_input() {
-    let (mut config, manager) = get_config();
+    let (mut config, manager) = get_config().await;
 
     config.output.mode = Stream;
     config.processing.add_logo = false;
@@ -126,7 +121,7 @@ async fn video_audio_custom_filter2_input() {
 
 #[tokio::test]
 async fn video_audio_custom_filter3_input() {
-    let (mut config, manager) = get_config();
+    let (mut config, manager) = get_config().await;
 
     config.output.mode = Stream;
     config.processing.add_logo = false;
@@ -153,7 +148,7 @@ async fn video_audio_custom_filter3_input() {
 
 #[tokio::test]
 async fn dual_audio_aevalsrc_input() {
-    let (mut config, manager) = get_config();
+    let (mut config, manager) = get_config().await;
 
     config.output.mode = Stream;
     config.processing.audio_tracks = 2;
@@ -180,7 +175,7 @@ async fn dual_audio_aevalsrc_input() {
 
 #[tokio::test]
 async fn dual_audio_input() {
-    let (mut config, manager) = get_config();
+    let (mut config, manager) = get_config().await;
 
     config.output.mode = Stream;
     config.processing.audio_tracks = 2;
@@ -206,7 +201,7 @@ async fn dual_audio_input() {
 
 #[tokio::test]
 async fn video_separate_audio_input() {
-    let (mut config, manager) = get_config();
+    let (mut config, manager) = get_config().await;
 
     config.output.mode = Stream;
     config.processing.audio_tracks = 1;
@@ -240,9 +235,9 @@ async fn video_separate_audio_input() {
     assert_eq!(media.filter.unwrap().map(), test_filter_map);
 }
 
-#[test]
-fn video_audio_stream() {
-    let (mut config, _) = get_config();
+#[tokio::test]
+async fn video_audio_stream() {
+    let (mut config, _) = get_config().await;
 
     config.output.mode = Stream;
     config.processing.add_logo = false;
@@ -302,7 +297,7 @@ fn video_audio_stream() {
 
 #[tokio::test]
 async fn video_audio_filter1_stream() {
-    let (mut config, _) = get_config();
+    let (mut config, _) = get_config().await;
 
     config.output.mode = Stream;
     config.processing.add_logo = false;
@@ -378,7 +373,7 @@ async fn video_audio_filter1_stream() {
 
 #[tokio::test]
 async fn video_audio_filter2_stream() {
-    let (mut config, _) = get_config();
+    let (mut config, _) = get_config().await;
 
     config.output.mode = Stream;
     config.processing.add_logo = false;
@@ -462,7 +457,7 @@ async fn video_audio_filter2_stream() {
 
 #[tokio::test]
 async fn video_audio_filter3_stream() {
-    let (mut config, _) = get_config();
+    let (mut config, _) = get_config().await;
 
     config.output.mode = Stream;
     config.processing.add_logo = false;
@@ -549,7 +544,7 @@ async fn video_audio_filter3_stream() {
 
 #[tokio::test]
 async fn video_audio_filter4_stream() {
-    let (mut config, _) = get_config();
+    let (mut config, _) = get_config().await;
 
     config.output.mode = Stream;
     config.processing.add_logo = false;
@@ -636,7 +631,7 @@ async fn video_audio_filter4_stream() {
 
 #[tokio::test]
 async fn video_dual_audio_stream() {
-    let (mut config, _) = get_config();
+    let (mut config, _) = get_config().await;
 
     config.output.mode = Stream;
     config.processing.add_logo = false;
@@ -708,7 +703,7 @@ async fn video_dual_audio_stream() {
 
 #[tokio::test]
 async fn video_dual_audio_filter_stream() {
-    let (mut config, _) = get_config();
+    let (mut config, _) = get_config().await;
 
     config.output.mode = Stream;
     config.processing.add_logo = false;
@@ -787,9 +782,9 @@ async fn video_dual_audio_filter_stream() {
     assert_eq!(enc_cmd, test_cmd);
 }
 
-#[test]
-fn video_audio_multi_stream() {
-    let (mut config, _) = get_config();
+#[tokio::test]
+async fn video_audio_multi_stream() {
+    let (mut config, _) = get_config().await;
 
     config.output.mode = Stream;
     config.processing.add_logo = false;
@@ -877,9 +872,9 @@ fn video_audio_multi_stream() {
     assert_eq!(enc_cmd, test_cmd);
 }
 
-#[test]
-fn video_dual_audio_multi_stream() {
-    let (mut config, _) = get_config();
+#[tokio::test]
+async fn video_dual_audio_multi_stream() {
+    let (mut config, _) = get_config().await;
 
     config.output.mode = Stream;
     config.processing.add_logo = false;
@@ -994,7 +989,7 @@ fn video_dual_audio_multi_stream() {
 
 #[tokio::test]
 async fn video_audio_text_multi_stream() {
-    let (mut config, _) = get_config();
+    let (mut config, _) = get_config().await;
 
     config.output.mode = Stream;
     config.processing.add_logo = false;
@@ -1108,7 +1103,7 @@ async fn video_audio_text_multi_stream() {
 
 #[tokio::test]
 async fn video_dual_audio_multi_filter_stream() {
-    let (mut config, _) = get_config();
+    let (mut config, _) = get_config().await;
 
     config.output.mode = Stream;
     config.processing.add_logo = false;
@@ -1238,7 +1233,7 @@ async fn video_dual_audio_multi_filter_stream() {
 
 #[tokio::test]
 async fn video_audio_text_filter_stream() {
-    let (mut config, _) = get_config();
+    let (mut config, _) = get_config().await;
 
     config.output.mode = Stream;
     config.processing.add_logo = false;
@@ -1361,7 +1356,7 @@ async fn video_audio_text_filter_stream() {
 
 #[tokio::test]
 async fn video_audio_hls() {
-    let (mut config, manager) = get_config();
+    let (mut config, manager) = get_config().await;
 
     config.output.mode = HLS;
     config.processing.add_logo = false;
@@ -1447,7 +1442,7 @@ async fn video_audio_hls() {
 
 #[tokio::test]
 async fn video_audio_sub_meta_hls() {
-    let (mut config, manager) = get_config();
+    let (mut config, manager) = get_config().await;
 
     config.output.mode = HLS;
     config.processing.add_logo = false;
@@ -1541,7 +1536,7 @@ async fn video_audio_sub_meta_hls() {
 
 #[tokio::test]
 async fn video_multi_audio_hls() {
-    let (mut config, manager) = get_config();
+    let (mut config, manager) = get_config().await;
 
     config.output.mode = HLS;
     config.processing.add_logo = false;
@@ -1630,7 +1625,7 @@ async fn video_multi_audio_hls() {
 
 #[tokio::test]
 async fn multi_video_audio_hls() {
-    let (mut config, manager) = get_config();
+    let (mut config, manager) = get_config().await;
 
     config.output.mode = HLS;
     config.processing.add_logo = false;
@@ -1744,7 +1739,7 @@ async fn multi_video_audio_hls() {
 
 #[tokio::test]
 async fn multi_video_multi_audio_hls() {
-    let (mut config, manager) = get_config();
+    let (mut config, manager) = get_config().await;
 
     config.output.mode = HLS;
     config.processing.add_logo = false;
