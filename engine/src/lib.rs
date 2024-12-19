@@ -18,7 +18,7 @@ use db::models::UserMeta;
 use utils::advanced_config::AdvancedConfig;
 use utils::args_parse::Args;
 
-pub static ARGS: LazyLock<Args> = LazyLock::new(|| Args::parse());
+pub static ARGS: LazyLock<Args> = LazyLock::new(Args::parse);
 pub static DISKS: LazyLock<Arc<Mutex<Disks>>> =
     LazyLock::new(|| Arc::new(Mutex::new(Disks::new_with_refreshed_list())));
 pub static NETWORKS: LazyLock<Arc<Mutex<Networks>>> =
