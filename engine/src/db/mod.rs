@@ -90,7 +90,7 @@ pub async fn db_drop() {
     if drop {
         let db_path = DB_PATH.as_ref().unwrap();
         match Sqlite::drop_database(&db_path.to_string_lossy()).await {
-            Ok(_) => println!("Successfully dropped DB"),
+            Ok(..) => println!("Successfully dropped DB"),
             Err(e) => eprintln!("{e}"),
         };
     };

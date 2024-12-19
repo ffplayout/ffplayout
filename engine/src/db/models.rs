@@ -32,7 +32,7 @@ impl GlobalSettings {
 
         match global_settings.await {
             Ok(g) => g,
-            Err(_) => GlobalSettings {
+            Err(_) => Self {
                 id: 0,
                 secret: None,
                 logs: String::new(),
@@ -84,7 +84,7 @@ pub struct User {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mail: Option<String>,
     pub username: String,
-    #[serde(skip_serializing, default = "empty_string")]
+    #[serde(skip_serializing, default = "String::new")]
     pub password: String,
     pub role_id: Option<i32>,
     // #[serde_as(as = "StringWithSeparator::<CommaSeparator, i32>")]
@@ -113,10 +113,6 @@ impl FromRow<'_, SqliteRow> for User {
     }
 }
 
-fn empty_string() -> String {
-    "".to_string()
-}
-
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct UserMeta {
     pub id: i32,
@@ -139,12 +135,7 @@ pub enum Role {
 
 impl Role {
     pub fn set_role(role: &str) -> Self {
-        match role {
-            "global_admin" => Role::GlobalAdmin,
-            "channel_admin" => Role::ChannelAdmin,
-            "user" => Role::User,
-            _ => Role::Guest,
-        }
+        role.parse().unwrap_or(Self::Guest)
     }
 }
 
@@ -178,7 +169,7 @@ where
 {
     fn decode(
         value: sqlx::sqlite::SqliteValueRef<'r>,
-    ) -> Result<Role, Box<dyn Error + 'static + Send + Sync>> {
+    ) -> Result<Self, Box<dyn Error + 'static + Send + Sync>> {
         let value = <&str as sqlx::decode::Decode<sqlx::Sqlite>>::decode(value)?;
 
         Ok(value.parse()?)

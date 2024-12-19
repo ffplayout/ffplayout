@@ -77,7 +77,7 @@ impl fmt::Display for SystemStat {
     }
 }
 
-pub fn stat(config: PlayoutConfig) -> SystemStat {
+pub fn stat(config: &PlayoutConfig) -> SystemStat {
     let mut disks = DISKS.lock().unwrap();
     let mut networks = NETWORKS.lock().unwrap();
     let mut sys = SYS.lock().unwrap();
@@ -86,13 +86,13 @@ pub fn stat(config: PlayoutConfig) -> SystemStat {
     let mut usage = 0.0;
     let mut interfaces = vec![];
 
-    for (name, ip) in network_interfaces.iter() {
+    for (name, ip) in &network_interfaces {
         if !ip.is_loopback()
             && !IGNORE_INTERFACES
                 .iter()
                 .any(|&prefix| name.starts_with(prefix))
         {
-            interfaces.push((name, ip))
+            interfaces.push((name, ip));
         }
     }
 
@@ -166,11 +166,11 @@ pub fn stat(config: PlayoutConfig) -> SystemStat {
 
     SystemStat {
         cpu,
-        storage,
         load,
         memory,
         network,
-        system,
+        storage,
         swap,
+        system,
     }
 }

@@ -322,11 +322,7 @@ impl Logging {
             ffmpeg_level: config.logging_ffmpeg_level.clone(),
             ingest_level: config.logging_ingest_level.clone(),
             detect_silence: config.logging_detect_silence,
-            ignore_lines: config
-                .logging_ignore
-                .split(';')
-                .map(|s| s.to_string())
-                .collect(),
+            ignore_lines: config.logging_ignore.split(';').map(String::from).collect(),
         }
     }
 }
@@ -471,7 +467,7 @@ impl Storage {
             extensions: config
                 .storage_extensions
                 .split(';')
-                .map(|s| s.to_string())
+                .map(String::from)
                 .collect(),
             shuffle: config.storage_shuffle,
             shared_storage,
@@ -660,7 +656,7 @@ impl PlayoutConfig {
         processing.logo_path = logo_path.to_string_lossy().to_string();
 
         if processing.audio_tracks < 1 {
-            processing.audio_tracks = 1
+            processing.audio_tracks = 1;
         }
 
         let mut process_cmd = vec_strings![];
@@ -738,7 +734,7 @@ impl PlayoutConfig {
 
             let is_tee_muxer = cmd.contains(&"tee".to_string());
 
-            for item in cmd.iter_mut() {
+            for item in &mut cmd {
                 if item.ends_with(".ts") || (item.ends_with(".m3u8") && item != "master.m3u8") {
                     if is_tee_muxer {
                         // Processes the `item` string to replace `.ts` and `.m3u8` filenames with their absolute paths.
@@ -797,9 +793,9 @@ impl PlayoutConfig {
         // when text overlay without text_from_filename is on, turn also the RPC server on,
         // to get text messages from it
         if text.add_text && !text.text_from_filename {
-            text.zmq_stream_socket = gen_tcp_socket(String::new());
+            text.zmq_stream_socket = gen_tcp_socket("");
             text.zmq_server_socket =
-                gen_tcp_socket(text.zmq_stream_socket.clone().unwrap_or_default());
+                gen_tcp_socket(&text.zmq_stream_socket.clone().unwrap_or_default());
             text.node_pos = Some(2);
         } else {
             text.zmq_stream_socket = None;

@@ -46,9 +46,9 @@ pub enum ProcessUnit {
 impl fmt::Display for ProcessUnit {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            ProcessUnit::Decoder => write!(f, "Decoder"),
-            ProcessUnit::Encoder => write!(f, "Encoder"),
-            ProcessUnit::Ingest => write!(f, "Ingest"),
+            Self::Decoder => write!(f, "Decoder"),
+            Self::Encoder => write!(f, "Encoder"),
+            Self::Ingest => write!(f, "Ingest"),
         }
     }
 }
@@ -129,9 +129,7 @@ impl ChannelManager {
             };
 
             thread::spawn(move || {
-                let mut run_endless = true;
-
-                while run_endless {
+                loop {
                     let run_count = self_clone.run_count.clone();
 
                     if let Err(e) = start_channel(self_clone.clone()) {
@@ -140,17 +138,16 @@ impl ChannelManager {
                     };
 
                     let active = self_clone.channel.lock().unwrap().active;
-
                     if !active {
-                        run_endless = false;
-                    } else {
-                        self_clone.run_count.fetch_add(1, Ordering::SeqCst);
-                        self_clone.is_alive.store(true, Ordering::SeqCst);
-                        self_clone.is_terminated.store(false, Ordering::SeqCst);
-                        self_clone.list_init.store(true, Ordering::SeqCst);
-
-                        thread::sleep(Duration::from_millis(250));
+                        break;
                     }
+
+                    self_clone.run_count.fetch_add(1, Ordering::SeqCst);
+                    self_clone.is_alive.store(true, Ordering::SeqCst);
+                    self_clone.is_terminated.store(false, Ordering::SeqCst);
+                    self_clone.list_init.store(true, Ordering::SeqCst);
+
+                    thread::sleep(Duration::from_millis(250));
                 }
 
                 trace!("Async start done");
@@ -278,7 +275,7 @@ impl ChannelManager {
 
             if let Err(e) = web::block(move || self_clone.stop(unit)).await? {
                 if !e.to_string().contains("exited process") {
-                    error!(target: Target::all(), channel = channel_id; "{e}")
+                    error!(target: Target::all(), channel = channel_id; "{e}");
                 }
             }
         }
@@ -302,7 +299,7 @@ impl ChannelManager {
         for unit in [Decoder, Encoder, Ingest] {
             if let Err(e) = self.stop(unit) {
                 if !e.to_string().contains("exited process") {
-                    error!(target: Target::all(), channel = channel_id; "{e}")
+                    error!(target: Target::all(), channel = channel_id; "{e}");
                 }
             }
         }
@@ -324,7 +321,7 @@ impl ChannelController {
     }
 
     pub fn get(&self, id: i32) -> Option<ChannelManager> {
-        for manager in self.channels.iter() {
+        for manager in &self.channels {
             if manager.channel.lock().unwrap().id == id {
                 return Some(manager.clone());
             }
@@ -396,7 +393,7 @@ fn find_m3u8_files(path: &Path) -> io::Result<Vec<String>> {
 
     for entry in WalkDir::new(path)
         .into_iter()
-        .filter_map(|e| e.ok())
+        .filter_map(Result::ok)
         .filter(|e| e.path().is_file() && e.path().extension().map_or(false, |ext| ext == "m3u8"))
     {
         m3u8_files.push(entry.path().to_string_lossy().to_string());
@@ -412,7 +409,7 @@ fn delete_old_segments<P: AsRef<Path> + Clone + std::fmt::Debug>(
 ) -> io::Result<()> {
     for entry in WalkDir::new(path)
         .into_iter()
-        .filter_map(|e| e.ok())
+        .filter_map(Result::ok)
         .filter(|e| {
             e.path().is_file()
                 && e.path()

@@ -135,7 +135,7 @@ fn check_media(
             sec_to_time(begin),
             node.source,
             error_list.join("\n")
-        )
+        );
     }
 
     error_list.clear();
@@ -207,7 +207,7 @@ pub fn validate_playlist(
                     "[Validation] Source at <yellow>{}</>, seems fine: <b><magenta>{}</></b>",
                     sec_to_time(begin),
                     item.source
-                )
+                );
             } else if let Ok(mut list) = current_list.try_lock() {
                 // Filter out same item in current playlist, then add the probe to it.
                 // Check also if duration differs with playlist value, log error if so and adjust that value.

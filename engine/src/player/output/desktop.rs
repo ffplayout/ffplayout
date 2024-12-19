@@ -27,7 +27,7 @@ pub fn output(config: &PlayoutConfig, log_format: &str) -> process::Child {
     ]);
 
     if let Some(mut cmd) = config.output.output_cmd.clone() {
-        if !cmd.iter().any(|i| {
+        if cmd.iter().any(|i| {
             [
                 "-c",
                 "-c:v",
@@ -43,9 +43,9 @@ pub fn output(config: &PlayoutConfig, log_format: &str) -> process::Child {
             ]
             .contains(&i.as_str())
         }) {
-            enc_cmd.append(&mut cmd);
-        } else {
             warn!(target: Target::file_mail(), channel = config.general.channel_id; "ffplay doesn't support given output parameters, they will be skipped!");
+        } else {
+            enc_cmd.append(&mut cmd);
         }
     }
 

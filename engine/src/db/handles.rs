@@ -96,7 +96,7 @@ pub async fn select_related_channels(
 
     let mut results: Vec<Channel> = sqlx::query_as(&query).fetch_all(conn).await?;
 
-    for result in results.iter_mut() {
+    for result in &mut results {
         result.utc_offset = local_utc_offset();
     }
 
@@ -383,7 +383,7 @@ pub async fn insert_user(conn: &Pool<Sqlite>, user: User) -> Result<(), ServiceE
     let password_hash = task::spawn_blocking(move || {
         let salt = SaltString::generate(&mut OsRng);
         let hash = Argon2::default()
-            .hash_password(user.password.clone().as_bytes(), &salt)
+            .hash_password(user.password.as_bytes(), &salt)
             .unwrap();
 
         hash.to_string()
@@ -413,7 +413,7 @@ pub async fn insert_or_update_user(conn: &Pool<Sqlite>, user: User) -> Result<()
     let password_hash = task::spawn_blocking(move || {
         let salt = SaltString::generate(&mut OsRng);
         let hash = Argon2::default()
-            .hash_password(user.password.clone().as_bytes(), &salt)
+            .hash_password(user.password.as_bytes(), &salt)
             .unwrap();
 
         hash.to_string()

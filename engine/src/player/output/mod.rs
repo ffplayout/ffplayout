@@ -198,7 +198,7 @@ pub fn player(manager: ChannelManager) -> Result<(), ProcessError> {
                     info!(target: Target::file_mail(), channel = id; "Switch from {} to live ingest", config.processing.mode);
 
                     if let Err(e) = manager.stop(Decoder) {
-                        error!(target: Target::file_mail(), channel = id; "{e}")
+                        error!(target: Target::file_mail(), channel = id; "{e}");
                     }
 
                     live_on = true;
@@ -243,7 +243,7 @@ pub fn player(manager: ChannelManager) -> Result<(), ProcessError> {
         }
 
         if let Err(e) = manager.wait(Decoder) {
-            error!(target: Target::file_mail(), channel = id; "{e}")
+            error!(target: Target::file_mail(), channel = id; "{e}");
         }
 
         if let Err(e) = error_decoder_thread.join() {

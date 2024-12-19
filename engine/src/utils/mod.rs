@@ -171,7 +171,7 @@ pub fn public_path() -> PathBuf {
         let public = PathBuf::from(p);
 
         public_path = if public.is_absolute() {
-            public.to_path_buf()
+            public
         } else {
             env::current_dir().unwrap_or_default().join(public)
         }
@@ -185,7 +185,7 @@ pub fn public_path() -> PathBuf {
 
 pub async fn read_log_file(channel_id: &i32, date: &str) -> Result<String, ServiceError> {
     let date_str = if date.is_empty() {
-        "".to_string()
+        String::new()
     } else {
         format!("_{date}")
     };
@@ -255,7 +255,7 @@ where
 }
 
 /// get a free tcp socket
-pub fn gen_tcp_socket(exclude_socket: String) -> Option<String> {
+pub fn gen_tcp_socket(exclude_socket: &str) -> Option<String> {
     for _ in 0..100 {
         let port = rand::thread_rng().gen_range(45321..54268);
         let socket = format!("127.0.0.1:{port}");
@@ -284,13 +284,13 @@ pub async fn copy_assets(storage_path: &Path) -> Result<(), std::io::Error> {
         let mut logo_source = Path::new("/usr/share/ffplayout/logo.png");
 
         if !dummy_source.is_file() {
-            dummy_source = Path::new("./assets/dummy.vtt")
+            dummy_source = Path::new("./assets/dummy.vtt");
         }
         if !font_source.is_file() {
-            font_source = Path::new("./assets/DejaVuSans.ttf")
+            font_source = Path::new("./assets/DejaVuSans.ttf");
         }
         if !logo_source.is_file() {
-            logo_source = Path::new("./assets/logo.png")
+            logo_source = Path::new("./assets/logo.png");
         }
 
         if !target.is_dir() {

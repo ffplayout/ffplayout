@@ -29,8 +29,8 @@ pub enum FilterType {
 impl fmt::Display for FilterType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            FilterType::Audio => write!(f, "a"),
-            FilterType::Video => write!(f, "v"),
+            Self::Audio => write!(f, "a"),
+            Self::Video => write!(f, "v"),
         }
     }
 }
@@ -91,11 +91,14 @@ impl Filters {
 
         if *last != track_nr {
             // start new filter chain
-            let mut selector = String::new();
-            let mut sep = String::new();
-            if !chain.is_empty() {
+            let selector;
+            let sep;
+            if chain.is_empty() {
+                selector = String::new();
+                sep = String::new();
+            } else {
                 selector = format!("[{filter_type}out{last}]");
-                sep = ";".to_string()
+                sep = ";".to_string();
             }
 
             chain.push_str(&selector);
@@ -116,7 +119,7 @@ impl Filters {
         } else if filter.starts_with(';') || filter.starts_with('[') {
             chain.push_str(filter);
         } else {
-            chain.push_str(&format!(",{filter}"))
+            chain.push_str(&format!(",{filter}"));
         }
     }
 
@@ -235,7 +238,7 @@ fn pad(aspect: f64, chain: &mut Filters, v_stream: &ffprobe::Stream, config: &Pl
             ),
         };
 
-        chain.add_filter(&pad, 0, Video)
+        chain.add_filter(&pad, 0, Video);
     }
 }
 
@@ -246,7 +249,7 @@ fn fps(fps: f64, chain: &mut Filters, config: &PlayoutConfig) {
             None => format!("fps={}", config.processing.fps),
         };
 
-        chain.add_filter(&fps_filter, 0, Video)
+        chain.add_filter(&fps_filter, 0, Video);
     }
 }
 
@@ -345,7 +348,7 @@ fn fade(
             if let Some(fade) = config.advanced.filter.afade_out.clone() {
                 fade_out = custom_format(&fade, &[node.out - node.seek - 1.0]);
             }
-        } else if let Some(fade) = config.advanced.filter.fade_out.clone().clone() {
+        } else if let Some(fade) = config.advanced.filter.fade_out.clone() {
             fade_out = custom_format(&fade, &[node.out - node.seek - 1.0]);
         };
 
@@ -388,7 +391,7 @@ fn overlay(node: &mut Media, chain: &mut Filters, config: &PlayoutConfig) {
 
             match config.advanced.filter.overlay_logo_fade_out.clone() {
                 Some(fade_out) => {
-                    logo_chain.push_str(&custom_format(&format!(",{fade_out}"), &[length]))
+                    logo_chain.push_str(&custom_format(&format!(",{fade_out}"), &[length]));
                 }
                 None => logo_chain.push_str(&format!(",fade=out:st={length}:d=1.0:alpha=1")),
             }
@@ -413,7 +416,7 @@ fn overlay(node: &mut Media, chain: &mut Filters, config: &PlayoutConfig) {
                 logo_chain.push_str(&custom_format(
                     &overlay,
                     &[&config.processing.logo_position],
-                ))
+                ));
             }
             None => logo_chain.push_str(&format!(
                 "[l];[v][l]overlay={}:shortest=1",
@@ -441,7 +444,7 @@ fn extend_video(node: &mut Media, chain: &mut Filters, config: &PlayoutConfig) {
                 None => format!("tpad=stop_mode=add:stop_duration={duration}"),
             };
 
-            chain.add_filter(&tpad, 0, Video)
+            chain.add_filter(&tpad, 0, Video);
         }
     }
 }
@@ -490,7 +493,7 @@ fn extend_audio(node: &mut Media, chain: &mut Filters, nr: i32, config: &Playout
                     None => format!("apad=whole_dur={}", node.out - node.seek),
                 };
 
-                chain.add_filter(&apad, nr, Audio)
+                chain.add_filter(&apad, nr, Audio);
             }
         }
     }
@@ -503,7 +506,7 @@ fn audio_volume(chain: &mut Filters, config: &PlayoutConfig, nr: i32) {
             None => format!("volume={}", config.processing.volume),
         };
 
-        chain.add_filter(&volume, nr, Audio)
+        chain.add_filter(&volume, nr, Audio);
     }
 }
 
@@ -536,7 +539,7 @@ pub fn split_filter(
         for i in 0..count {
             let link = format!("[{filter_type}out_{nr}_{i}]");
             if !out_link.contains(&link) {
-                out_link.push(link)
+                out_link.push(link);
             }
         }
 
@@ -560,7 +563,7 @@ fn process_output_filters(config: &PlayoutConfig, chain: &mut Filters, custom_fi
             if !chain.video_chain.is_empty() {
                 cf = re_v
                     .replace(&cf, &format!("{},", chain.video_chain))
-                    .to_string()
+                    .to_string();
             }
 
             if !chain.audio_chain.is_empty() {
@@ -575,7 +578,7 @@ fn process_output_filters(config: &PlayoutConfig, chain: &mut Filters, custom_fi
                     cf = cf.replace(
                         &format!("[0:a:{i}]"),
                         &format!("{},", &audio_split[i as usize]),
-                    )
+                    );
                 }
             }
 
@@ -584,7 +587,7 @@ fn process_output_filters(config: &PlayoutConfig, chain: &mut Filters, custom_fi
             custom_filter.to_string()
         };
 
-    chain.output_chain = vec_strings!["-filter_complex", filter]
+    chain.output_chain = vec_strings!["-filter_complex", filter];
 }
 
 fn custom(filter: &str, chain: &mut Filters, nr: i32, filter_type: FilterType) {
@@ -610,7 +613,7 @@ pub fn filter_chains(
         }
 
         if let Some(f) = config.output.output_filter.clone() {
-            process_output_filters(config, &mut filters, &f)
+            process_output_filters(config, &mut filters, &f);
         } else if config.output.output_count > 1 && !config.processing.audio_only {
             split_filter(&mut filters, config.output.output_count, 0, Video, config);
         }
@@ -668,10 +671,10 @@ pub fn filter_chains(
 
     if config.processing.audio_track_index == -1 {
         for i in 0..config.processing.audio_tracks {
-            audio_indexes.push(i)
+            audio_indexes.push(i);
         }
     } else {
-        audio_indexes.push(config.processing.audio_track_index)
+        audio_indexes.push(config.processing.audio_track_index);
     }
 
     if !config.processing.copy_audio {
@@ -704,12 +707,12 @@ pub fn filter_chains(
             custom(&list_af, &mut filters, i, Audio);
         }
     } else if config.processing.audio_track_index > -1 {
-        error!(target: Target::file_mail(), channel = config.general.channel_id; "Setting 'audio_track_index' other than '-1' is not allowed in audio copy mode!")
+        error!(target: Target::file_mail(), channel = config.general.channel_id; "Setting 'audio_track_index' other than '-1' is not allowed in audio copy mode!");
     }
 
     if config.output.mode == HLS {
         if let Some(f) = config.output.output_filter.clone() {
-            process_output_filters(config, &mut filters, &f)
+            process_output_filters(config, &mut filters, &f);
         }
     }
 
