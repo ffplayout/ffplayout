@@ -56,7 +56,7 @@ async fn main() -> std::io::Result<()> {
 
     let pool = db_pool()
         .await
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+        .map_err(io::Error::other)?;
 
     if let Err(c) = run_args(&pool).await {
         exit(c);

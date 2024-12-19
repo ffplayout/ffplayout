@@ -8,7 +8,6 @@ use std::{
 use std::os::unix::fs::MetadataExt;
 
 use chrono::{format::ParseErrorKind, prelude::*};
-use faccess::PathExt;
 use log::*;
 use path_clean::PathClean;
 use rand::Rng;
@@ -157,46 +156,6 @@ impl fmt::Display for TextFilter {
 
         write!(f, "{s}")
     }
-}
-
-pub fn db_path() -> Result<&'static str, Box<dyn std::error::Error>> {
-    if let Some(path) = ARGS.db.clone() {
-        let mut absolute_path = if path.is_absolute() {
-            path
-        } else {
-            env::current_dir()?.join(path)
-        }
-        .clean();
-
-        if absolute_path.is_dir() {
-            absolute_path = absolute_path.join("ffplayout.db");
-        }
-
-        if let Some(abs_path) = absolute_path.parent() {
-            if abs_path.writable() {
-                return Ok(Box::leak(
-                    absolute_path.to_string_lossy().to_string().into_boxed_str(),
-                ));
-            }
-
-            error!("Given database path is not writable!");
-        }
-    }
-
-    let sys_path = Path::new("/usr/share/ffplayout/db");
-    let mut db_path = "./ffplayout.db";
-
-    if sys_path.is_dir() && !sys_path.writable() {
-        error!("Path {} is not writable!", sys_path.display());
-    }
-
-    if sys_path.is_dir() && sys_path.writable() {
-        db_path = "/usr/share/ffplayout/db/ffplayout.db";
-    } else if Path::new("./assets").is_dir() {
-        db_path = "./assets/ffplayout.db";
-    }
-
-    Ok(db_path)
 }
 
 pub fn public_path() -> PathBuf {
