@@ -116,7 +116,7 @@ impl ChannelManager {
         *config = new_config;
     }
 
-    pub async fn async_start(&self) {
+    pub async fn start(&self) {
         if !self.is_alive.load(Ordering::SeqCst) {
             self.run_count.fetch_add(1, Ordering::SeqCst);
             self.is_alive.store(true, Ordering::SeqCst);
@@ -228,19 +228,22 @@ impl ChannelManager {
         Ok(())
     }
 
-    async fn run_wait(
-        &self,
-        unit: ProcessUnit,
-        child: &Arc<Mutex<Option<Child>>>,
-    ) -> Result<(), ProcessError> {
+    /// Wait for process to proper close.
+    /// This prevents orphaned/zombi processes in system
+    pub async fn wait(&self, unit: ProcessUnit) -> Result<(), ProcessError> {
+        let child = match unit {
+            Decoder => &self.decoder,
+            Encoder => &self.encoder,
+            Ingest => &self.ingest,
+        };
+
         if let Some(proc) = child.lock().await.as_mut() {
             let mut counter = 0;
             loop {
                 match proc.try_wait() {
                     Ok(Some(_)) => break,
                     Ok(None) => {
-                        // TODO: needs better handling
-                        if counter > 9 {
+                        if counter > 300 {
                             break;
                         }
                         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
@@ -252,41 +255,33 @@ impl ChannelManager {
             }
         }
 
-        Ok(())
-    }
-
-    /// Wait for process to proper close.
-    /// This prevents orphaned/zombi processes in system
-    pub async fn wait(&self, unit: ProcessUnit) -> Result<(), ProcessError> {
-        match unit {
-            Decoder => self.run_wait(unit, &self.decoder).await?,
-            Encoder => self.run_wait(unit, &self.encoder).await?,
-            Ingest => self.run_wait(unit, &self.ingest).await?,
-        }
-
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
         Ok(())
     }
 
-    pub async fn async_stop(&self) -> Result<(), ServiceError> {
+    /// No matter what is running, terminate them all.
+    pub async fn stop_all(&self, permanent: bool) -> Result<(), ServiceError> {
         let channel_id = self.channel.lock().await.id;
 
-        if self.is_alive.load(Ordering::SeqCst) {
-            debug!(target: Target::all(), channel = channel_id; "Deactivate playout and stop all child processes from channel: <yellow>{channel_id}</>");
+        if permanent {
+            let pool = self.db_pool.clone().unwrap();
+
+            if self.is_alive.load(Ordering::SeqCst) {
+                debug!(target: Target::all(), channel = channel_id; "Deactivate playout and stop all child processes from channel: <yellow>{channel_id}</>");
+            }
+
+            if let Err(e) = handles::update_player(&pool, channel_id, false).await {
+                error!(target: Target::all(), channel = channel_id; "Player status cannot be written: {e}");
+            };
+        } else {
+            debug!(target: Target::all(), channel = channel_id; "Stop all child processes from channel: <yellow>{channel_id}</>");
         }
 
         self.is_terminated.store(true, Ordering::SeqCst);
         self.is_alive.store(false, Ordering::SeqCst);
         self.ingest_is_running.store(false, Ordering::SeqCst);
         self.run_count.fetch_sub(1, Ordering::SeqCst);
-        let pool = self.db_pool.clone().unwrap();
-        let channel_id = self.channel.lock().await.id;
-        debug!(target: Target::all(), channel = channel_id; "Deactivate playout and stop all child processes from channel: <yellow>{channel_id}</>");
-
-        if let Err(e) = handles::update_player(&pool, channel_id, false).await {
-            error!(target: Target::all(), channel = channel_id; "Unable write to player status: {e}");
-        };
 
         for unit in [Decoder, Encoder, Ingest] {
             if let Err(e) = self.stop(unit).await {
@@ -297,29 +292,6 @@ impl ChannelManager {
         }
 
         Ok(())
-    }
-
-    /// No matter what is running, terminate them all.
-    pub async fn stop_all(&self) {
-        self.is_terminated.store(true, Ordering::SeqCst);
-        self.is_alive.store(false, Ordering::SeqCst);
-        self.ingest_is_running.store(false, Ordering::SeqCst);
-        self.run_count.fetch_sub(1, Ordering::SeqCst);
-        let channel_id = self.channel.lock().await.id;
-        debug!(target: Target::all(), channel = channel_id; "Stop all child processes from channel: <yellow>{channel_id}</>");
-
-        for unit in [Decoder, Encoder, Ingest] {
-            if let Err(e) = self.stop(unit).await {
-                if !e.to_string().contains("exited process") {
-                    error!(target: Target::all(), channel = channel_id; "{e}")
-                }
-            }
-            if let Err(e) = self.wait(unit).await {
-                if !e.to_string().contains("exited process") {
-                    error!(target: Target::all(), channel = channel_id; "{e}")
-                }
-            }
-        }
     }
 }
 
@@ -348,15 +320,20 @@ impl ChannelController {
     }
 
     pub async fn remove(&mut self, channel_id: i32) {
-        self.channels.retain(|manager| {
-            let channel_id = channel_id.clone();
-            tokio::task::block_in_place(move || {
-                tokio::runtime::Handle::current().block_on(async {
-                    let channel = manager.channel.lock().await;
-                    channel.id != channel_id
-                })
-            })
-        });
+        let mut indices = Vec::new();
+
+        for (i, manager) in self.channels.iter().enumerate() {
+            let channel = manager.channel.lock().await;
+            if channel.id == channel_id {
+                indices.push(i);
+            }
+        }
+
+        indices.reverse();
+
+        for i in indices {
+            self.channels.remove(i);
+        }
     }
 
     pub fn run_count(&self) -> usize {
@@ -367,7 +344,7 @@ impl ChannelController {
     }
 }
 
-async fn start_channel(manager: ChannelManager) -> Result<(), ProcessError> {
+async fn start_channel(manager: ChannelManager) -> Result<(), ServiceError> {
     let config = manager.config.lock().await.clone();
     let mode = config.output.mode.clone();
     let filler_list = manager.filler_list.clone();
@@ -378,9 +355,12 @@ async fn start_channel(manager: ChannelManager) -> Result<(), ProcessError> {
     debug!(target: Target::all(), channel = channel_id; "Start ffplayout v{VERSION}, channel: <yellow>{channel_id}</>");
 
     // Fill filler list, can also be a single file.
-    tokio::spawn(async move {
+    // INFO: Was running in a thread, but when it runs in a tokio task and
+    // after start a filler is needed, the first one will be ignored because the list is not filled.
+
+    if filler_list.lock().await.is_empty() {
         fill_filler_list(&config, Some(filler_list)).await;
-    });
+    }
 
     match mode {
         // write files/playlist to HLS m3u8 playlist

@@ -42,6 +42,14 @@ use ffplayout::utils::public_path;
 #[cfg(all(not(debug_assertions), feature = "embed_frontend"))]
 include!(concat!(env!("OUT_DIR"), "/generated.rs"));
 
+fn thread_counter() -> usize {
+    let available_threads = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(1);
+
+    (available_threads / 2).max(2)
+}
+
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     let mail_queues = Arc::new(Mt::new(vec![]));
@@ -77,7 +85,7 @@ async fn main() -> std::io::Result<()> {
             mail_queues.lock().unwrap().push(m_queue.clone());
 
             if channel.active {
-                manager.async_start().await;
+                manager.start().await;
             }
         }
 
@@ -92,7 +100,7 @@ async fn main() -> std::io::Result<()> {
             ))?;
         let controllers = web::Data::from(channel_controllers.clone());
         let auth_state = web::Data::new(SseAuthState {
-            uuids: tokio::sync::Mutex::new(HashSet::new()),
+            uuids: Mutex::new(HashSet::new()),
         });
         let broadcast_data = Broadcaster::create();
 
@@ -184,6 +192,7 @@ async fn main() -> std::io::Result<()> {
             web_app
         })
         .bind((addr, port))?
+        .workers(thread_counter())
         .run()
         .await?;
     } else if ARGS.drop_db {
@@ -259,7 +268,10 @@ async fn main() -> std::io::Result<()> {
 
     for channel_ctl in &channel_controllers.lock().await.channels {
         channel_ctl.channel.lock().await.active = false;
-        channel_ctl.stop_all().await;
+        channel_ctl
+            .stop_all(false)
+            .await
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
     }
 
     pool.close().await;

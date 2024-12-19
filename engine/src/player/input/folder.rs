@@ -51,7 +51,7 @@ pub async fn watchman(
                     let sources = Arc::clone(&sources);
                     let config = config.clone();
                     tokio::spawn(async move {
-                        let events: Vec<_> = events.iter().cloned().collect();
+                        let events: Vec<_> = events.to_vec();
                         for event in events {
                             match event.kind {
                                 Create(CreateKind::File)

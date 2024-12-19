@@ -980,19 +980,19 @@ pub async fn process_control(
         ProcessCtl::Start => {
             if !manager.is_alive.load(Ordering::SeqCst) {
                 manager.channel.lock().await.active = true;
-                manager.async_start().await;
+                manager.start().await;
             }
         }
         ProcessCtl::Stop => {
             manager.channel.lock().await.active = false;
-            manager.async_stop().await?;
+            manager.stop_all(true).await?;
         }
         ProcessCtl::Restart => {
-            manager.async_stop().await?;
-            tokio::time::sleep(tokio::time::Duration::from_millis(1500)).await;
+            manager.stop_all(false).await?;
+            tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
 
             if !manager.is_alive.load(Ordering::SeqCst) {
-                manager.async_start().await;
+                manager.start().await;
             }
         }
     }

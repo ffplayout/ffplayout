@@ -38,7 +38,7 @@ use crate::player::{
 };
 use crate::utils::{
     config::{OutputMode::*, PlayoutConfig, FFMPEG_IGNORE_ERRORS, FFMPEG_UNRECOVERABLE_ERRORS},
-    errors::ProcessError,
+    errors::{ProcessError, ServiceError},
     logging::Target,
     time_machine::time_now,
 };
@@ -49,7 +49,8 @@ use crate::vec_strings;
 /// Compare incoming stream name with expecting name, but ignore question mark.
 pub fn valid_stream(msg: &str) -> bool {
     if let Some((unexpected, expected)) = msg.split_once(',') {
-        let re = Regex::new(r".*Unexpected stream|expecting|[\s]+|\?$").unwrap();
+        let re = Regex::new(r".*Unexpected stream|App field don't match up|expecting|[\s]+|\?$")
+            .unwrap();
         let unexpected = re.replace_all(unexpected, "");
         let expected = re.replace_all(expected, "");
 
@@ -248,8 +249,8 @@ pub struct Media {
     #[serde(skip_serializing, skip_deserializing)]
     pub next_ad: bool,
 
-    #[serde(skip_serializing, skip_deserializing)]
-    pub process: Option<bool>,
+    #[serde(default, skip_serializing, skip_deserializing)]
+    pub skip: bool,
 
     #[serde(default, skip_serializing)]
     pub unit: ProcessUnit,
@@ -291,7 +292,7 @@ impl Media {
             probe_audio: None,
             last_ad: false,
             next_ad: false,
-            process: Some(true),
+            skip: false,
             unit: Decoder,
         }
     }
@@ -885,7 +886,7 @@ pub async fn stderr_reader(
     ignore: Vec<String>,
     suffix: ProcessUnit,
     manager: ChannelManager,
-) -> Result<(), ProcessError> {
+) -> Result<(), ServiceError> {
     let id = manager.channel.lock().await.id;
     let mut lines = buffer.lines();
 
@@ -920,7 +921,7 @@ pub async fn stderr_reader(
             {
                 error!(target: Target::file_mail(), channel = id; "Hit unrecoverable error!");
                 manager.channel.lock().await.active = false;
-                manager.stop_all().await;
+                manager.stop_all(false).await?;
             }
         }
     }

@@ -49,10 +49,8 @@ pub async fn source_generator(manager: ChannelManager) -> SourceIterator {
             let folder_source = FolderSource::new(&config, manager);
             let list_clone = current_list.clone();
 
-            // Spawn a thread to monitor folder for file changes.
-            tokio::spawn(
-                async move { watchman(config_clone, is_terminated.clone(), list_clone).await },
-            );
+            // Spawn a task to monitor folder for file changes.
+            tokio::spawn(watchman(config_clone, is_terminated.clone(), list_clone));
 
             SourceIterator::Folder(folder_source.await)
         }

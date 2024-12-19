@@ -496,3 +496,31 @@ pub fn log_line(line: &str, level: &str) {
         error!("<bright black>[Server]</> {}", line.replace("[fatal] ", ""))
     }
 }
+
+pub fn fmt_cmd(cmd: &[String]) -> String {
+    let mut formatted_cmd = Vec::new();
+    let mut quote_next = false;
+
+    for (i, arg) in cmd.iter().enumerate() {
+        if quote_next
+            || (i == cmd.len() - 1)
+            || ["ts", "m3u8"].contains(
+                &arg.rsplit('.')
+                    .next()
+                    .unwrap_or_default()
+                    .to_lowercase()
+                    .as_str(),
+            )
+        {
+            formatted_cmd.push(format!("\"{}\"", arg));
+            quote_next = false;
+        } else {
+            formatted_cmd.push(arg.to_string());
+            if ["-i", "-filter_complex", "-map", "-metadata"].contains(&arg.as_str()) {
+                quote_next = true;
+            }
+        }
+    }
+
+    formatted_cmd.join(" ")
+}

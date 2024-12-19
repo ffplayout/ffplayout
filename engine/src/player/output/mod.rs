@@ -6,7 +6,6 @@ use log::*;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter},
     process::Command,
-    sync::mpsc,
     time::{sleep, Duration},
 };
 
@@ -22,7 +21,12 @@ use crate::player::{
     input::{ingest_server, source_generator},
     utils::{sec_to_time, stderr_reader},
 };
-use crate::utils::{config::OutputMode::*, errors::ProcessError, logging::Target, task_runner};
+use crate::utils::{
+    config::OutputMode::*,
+    errors::ServiceError,
+    logging::{fmt_cmd, Target},
+    task_runner,
+};
 use crate::vec_strings;
 
 /// Player
@@ -34,18 +38,18 @@ use crate::vec_strings;
 /// for getting live feeds.
 /// When a live ingest arrive, it stops the current playing and switch to the live source.
 /// When ingest stops, it switch back to playlist/folder mode.
-pub async fn player(manager: ChannelManager) -> Result<(), ProcessError> {
+pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
     let config = manager.config.lock().await.clone();
     let id = config.general.channel_id;
     let config_clone = config.clone();
     let ff_log_format = format!("level+{}", config.logging.ffmpeg_level.to_lowercase());
     let ignore_enc = config.logging.ignore_lines.clone();
-    let mut buffer = vec![0; 65536];
-    let mut live_on = false;
     let playlist_init = manager.list_init.clone();
-
     let is_terminated = manager.is_terminated.clone();
     let ingest_is_running = manager.ingest_is_running.clone();
+    let mut buffer: [u8; 65088] = [0; 65088];
+    let mut live_on = false;
+    let mut error_count = 0;
 
     // get source iterator
     let mut node_sources = source_generator(manager.clone()).await;
@@ -68,22 +72,13 @@ pub async fn player(manager: ChannelManager) -> Result<(), ProcessError> {
     let error_encoder_task = tokio::spawn(stderr_reader(enc_err, ignore_enc, Encoder, enc_p_ctl));
 
     let channel_mgr_2 = manager.clone();
-    let mut ingest_receiver = None;
 
     // spawn a task for ffmpeg ingest server and create a channel for package sending
     if config.ingest.enable {
-        let (ingest_sender, rx) = mpsc::channel(96);
-        ingest_receiver = Some(rx);
-        tokio::spawn(ingest_server(config_clone, ingest_sender, channel_mgr_2));
+        tokio::spawn(ingest_server(config_clone, channel_mgr_2));
     }
 
-    drop(config);
-
-    let mut error_count = 0;
-
     'source_iter: while let Some(node) = node_sources.next().await {
-        let config = manager.config.lock().await.clone();
-
         *manager.current_media.lock().await = Some(node.clone());
         let ignore_dec = config.logging.ignore_lines.clone();
         let timer = tokio::time::Instant::now();
@@ -100,10 +95,10 @@ pub async fn player(manager: ChannelManager) -> Result<(), ProcessError> {
             None => break,
         };
 
-        if !node.process.unwrap() {
-            // process true/false differs from node.cmd = None in that way,
-            // that source is valid but to show for playing,
-            // so better skip it and jump to the next one.
+        if node.skip {
+            // skip is different from node.cmd = None.
+            // This source is valid, but too short to play,
+            // so better skip it and go to the next one.
             continue;
         }
 
@@ -165,8 +160,8 @@ pub async fn player(manager: ChannelManager) -> Result<(), ProcessError> {
         }
 
         debug!(target: Target::file_mail(), channel = id;
-            "Decoder CMD: <bright-blue>\"ffmpeg {}\"</>",
-            dec_cmd.join(" ")
+            "Decoder CMD: <bright-blue>ffmpeg {}</>",
+            fmt_cmd(&dec_cmd)
         );
 
         // create ffmpeg decoder instance, for reading the input files
@@ -198,17 +193,28 @@ pub async fn player(manager: ChannelManager) -> Result<(), ProcessError> {
                 if !live_on {
                     info!(target: Target::file_mail(), channel = id; "Switch from {} to live ingest", config.processing.mode);
 
+                    if let Err(e) = manager.stop(Decoder).await {
+                        error!(target: Target::file_mail(), channel = id; "{e}")
+                    }
+
                     live_on = true;
                     playlist_init.store(true, Ordering::SeqCst);
                 }
 
-                // TODO: ingest can hang and increase CPU usage
-
-                while let Ok(rx) = ingest_receiver.as_mut().unwrap().try_recv() {
-                    if let Err(e) = enc_writer.write_all(&rx.1[..rx.0]).await {
-                        error!(target: Target::file_mail(), channel = id; "Error from Ingest: {:?}", e);
-
-                        break 'source_iter;
+                let mut ingest_stdout_guard = manager.ingest_stdout.lock().await;
+                if let Some(ref mut ingest_stdout) = *ingest_stdout_guard {
+                    match ingest_stdout.read(&mut buffer[..]).await {
+                        Ok(0) => break, // EOF
+                        Ok(length) => {
+                            if let Err(e) = enc_writer.write_all(&buffer[..length]).await {
+                                error!(target: Target::file_mail(), channel = id; "Error writing to encoder: {e}");
+                                break;
+                            }
+                        }
+                        Err(e) => {
+                            error!(target: Target::file_mail(), channel = id; "R/W error from ingest to encoder pipe: {e:?}");
+                            break 'source_iter;
+                        }
                     };
                 }
             } else {
@@ -224,7 +230,7 @@ pub async fn player(manager: ChannelManager) -> Result<(), ProcessError> {
                     Ok(0) => break, // EOF
                     Ok(length) => {
                         if let Err(e) = enc_writer.write_all(&buffer[..length]).await {
-                            eprintln!("Error writing to encoder: {e}");
+                            error!(target: Target::file_mail(), channel = id; "Error writing to encoder: {e}");
                             break;
                         }
                     }
@@ -262,7 +268,7 @@ pub async fn player(manager: ChannelManager) -> Result<(), ProcessError> {
 
     sleep(Duration::from_secs(1)).await;
 
-    manager.stop_all().await;
+    manager.stop_all(false).await?;
 
     if let Err(e) = error_encoder_task.await {
         error!(target: Target::file_mail(), channel = id; "{e:?}");

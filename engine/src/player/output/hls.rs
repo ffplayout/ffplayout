@@ -42,11 +42,11 @@ use crate::{
             valid_stream, Media,
         },
     },
-    utils::{errors::ProcessError, logging::Target},
+    utils::{errors::ServiceError, logging::Target},
 };
 
 /// Ingest Server for HLS
-async fn ingest_to_hls_server(manager: ChannelManager) -> Result<(), ProcessError> {
+async fn ingest_to_hls_server(manager: ChannelManager) -> Result<(), ServiceError> {
     let config = manager.config.lock().await;
     let id = config.general.channel_id;
     let playlist_init = manager.list_init.clone();
@@ -83,7 +83,7 @@ async fn ingest_to_hls_server(manager: ChannelManager) -> Result<(), ProcessErro
     if let Some(url) = stream_input.iter().find(|s| s.contains("://")) {
         if !is_free_tcp_port(id, url) {
             manager.channel.lock().await.active = false;
-            manager.stop_all().await;
+            manager.stop_all(false).await?;
         } else {
             info!(target: Target::file_mail(), channel = id; "Start ingest server, listening on: <b><magenta>{url}</></b>");
         }
@@ -169,7 +169,7 @@ async fn ingest_to_hls_server(manager: ChannelManager) -> Result<(), ProcessErro
                 if error_count > 10 {
                     error!(target: Target::file_mail(), channel = id; "Reach fatal error count in ingest, terminate channel!");
                     manager.channel.lock().await.active = false;
-                    manager.stop_all().await;
+                    manager.stop_all(false).await?;
                     break;
                 }
             } else {
@@ -184,7 +184,7 @@ async fn ingest_to_hls_server(manager: ChannelManager) -> Result<(), ProcessErro
 /// HLS Writer
 ///
 /// Write with single ffmpeg instance directly to a HLS playlist.
-pub async fn write_hls(manager: ChannelManager) -> Result<(), ProcessError> {
+pub async fn write_hls(manager: ChannelManager) -> Result<(), ServiceError> {
     let config = manager.config.lock().await.clone();
     let id = config.general.channel_id;
     let current_media = manager.current_media.clone();
@@ -219,7 +219,7 @@ pub async fn write_hls(manager: ChannelManager) -> Result<(), ProcessError> {
             None => break,
         };
 
-        if !node.process.unwrap() {
+        if node.skip {
             continue;
         }
 
@@ -317,7 +317,7 @@ pub async fn write_hls(manager: ChannelManager) -> Result<(), ProcessError> {
 
     sleep(Duration::from_secs(1));
 
-    manager.stop_all().await;
+    manager.stop_all(false).await?;
 
     Ok(())
 }

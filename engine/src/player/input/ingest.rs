@@ -2,9 +2,8 @@ use std::{process::Stdio, sync::atomic::Ordering};
 
 use log::*;
 use tokio::{
-    io::{AsyncBufReadExt, AsyncReadExt, BufReader, ErrorKind},
+    io::{AsyncBufReadExt, BufReader},
     process::{ChildStderr, Command},
-    sync::mpsc::Sender,
 };
 
 use crate::utils::{
@@ -17,30 +16,41 @@ use crate::{
         controller::{ChannelManager, ProcessUnit::*},
         utils::{is_free_tcp_port, valid_stream, Media},
     },
-    utils::errors::ProcessError,
+    utils::{errors::ServiceError, logging::fmt_cmd},
 };
 
 async fn server_monitor(
     id: i32,
-    level: &str,
+    level: String,
     ignore: Vec<String>,
     buffer: BufReader<ChildStderr>,
     channel_mgr: ChannelManager,
-) -> Result<(), ProcessError> {
+) -> Result<(), ServiceError> {
+    let mut is_running = false;
+
     let mut lines = buffer.lines();
     while let Ok(Some(line)) = lines.next_line().await {
         if !FFMPEG_IGNORE_ERRORS.iter().any(|i| line.contains(*i))
             && !ignore.iter().any(|i| line.contains(i))
         {
-            log_line(&line, level);
+            log_line(&line, &level);
         }
 
-        if line.contains("rtmp") && line.contains("Unexpected stream") && !valid_stream(&line) {
+        if line.contains("rtmp")
+            && (line.contains("Unexpected stream") || line.contains("App field don't match up"))
+            && !valid_stream(&line)
+        {
             warn!(target: Target::file_mail(), channel = id; "Unexpected ingest stream: {line}");
 
             if let Err(e) = channel_mgr.stop(Ingest).await {
                 error!(target: Target::file_mail(), channel = id; "{e}");
             };
+
+            break;
+        } else if !is_running {
+            channel_mgr.ingest_is_running.store(true, Ordering::SeqCst);
+
+            is_running = true;
         }
 
         if FFMPEG_UNRECOVERABLE_ERRORS
@@ -49,7 +59,7 @@ async fn server_monitor(
         {
             error!(target: Target::file_mail(), channel = id; "Hit unrecoverable error!");
             channel_mgr.channel.lock().await.active = false;
-            channel_mgr.stop_all().await;
+            channel_mgr.stop_all(false).await?;
         }
     }
 
@@ -61,11 +71,9 @@ async fn server_monitor(
 /// Start ffmpeg in listen mode, and wait for input.
 pub async fn ingest_server(
     config: PlayoutConfig,
-    ingest_sender: Sender<(usize, [u8; 65088])>,
     channel_mgr: ChannelManager,
-) -> Result<(), ProcessError> {
+) -> Result<(), ServiceError> {
     let id = config.general.channel_id;
-    let mut buffer: [u8; 65088] = [0; 65088];
     let mut server_cmd = vec_strings!["-hide_banner", "-nostats", "-v", "level+info"];
     let stream_input = config.ingest.input_cmd.clone().unwrap();
     let mut dummy_media = Media::new(0, "Live Stream", false);
@@ -101,17 +109,15 @@ pub async fn ingest_server(
         server_cmd.append(&mut cmd);
     }
 
-    let mut is_running;
-
     debug!(target: Target::file_mail(), channel = id;
-        "Server CMD: <bright-blue>\"ffmpeg {}\"</>",
-        server_cmd.join(" ")
+        "Server CMD: <bright-blue>ffmpeg {}</>",
+        fmt_cmd(&server_cmd)
     );
 
     if let Some(url) = stream_input.iter().find(|s| s.contains("://")) {
         if !is_free_tcp_port(id, url) {
             channel_mgr.channel.lock().await.active = false;
-            channel_mgr.stop_all().await;
+            channel_mgr.stop_all(false).await?;
         } else {
             info!(target: Target::file_mail(), channel = id; "Start ingest server, listening on: <b><magenta>{url}</></b>");
         }
@@ -125,6 +131,7 @@ pub async fn ingest_server(
             .args(server_cmd.clone())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
+            .kill_on_drop(true)
             .spawn()
         {
             Err(e) => {
@@ -133,52 +140,18 @@ pub async fn ingest_server(
             }
             Ok(proc) => proc,
         };
-        let mut ingest_stdout = server_proc.stdout.take().unwrap();
+        let ingest_stdout = server_proc.stdout.take().unwrap();
         let server_err = BufReader::new(server_proc.stderr.take().unwrap());
-        let error_reader_thread =
-            tokio::spawn(
-                async move { server_monitor(id, &level, ignore, server_err, proc_ctl).await },
-            );
 
+        *channel_mgr.ingest_stdout.lock().await = Some(ingest_stdout);
         *channel_mgr.ingest.lock().await = Some(server_proc);
-        is_running = false;
 
-        loop {
-            match ingest_stdout.read(&mut buffer[..]).await {
-                Ok(0) => break,
-                Ok(length) => {
-                    if let Err(e) = ingest_sender.send((length, buffer)).await {
-                        error!(target: Target::file_mail(), channel = id; "Ingest server write error: {e:?}");
-
-                        is_terminated.store(true, Ordering::SeqCst);
-                        break;
-                    }
-                }
-                Err(e) if e.kind() == ErrorKind::WouldBlock => {
-                    continue;
-                }
-                Err(e) => {
-                    debug!(target: Target::file_mail(), channel = id; "Ingest server read {e:?}");
-                    break;
-                }
-            };
-
-            if !is_running {
-                ingest_is_running.store(true, Ordering::SeqCst);
-                is_running = true;
-            }
-        }
-
-        drop(ingest_stdout);
+        server_monitor(id, level, ignore, server_err, proc_ctl).await?;
         ingest_is_running.store(false, Ordering::SeqCst);
 
         if let Err(e) = channel_mgr.wait(Ingest).await {
             error!(target: Target::file_mail(), channel = id; "{e}")
         }
-
-        if let Err(e) = error_reader_thread.await {
-            error!(target: Target::file_mail(), channel = id; "{e:?}");
-        };
 
         trace!("Restart ingest server");
     }

@@ -7,7 +7,10 @@ use crate::player::{
     controller::ProcessUnit::*,
     utils::{prepare_output_cmd, Media},
 };
-use crate::utils::{config::PlayoutConfig, logging::Target};
+use crate::utils::{
+    config::PlayoutConfig,
+    logging::{fmt_cmd, Target},
+};
 use crate::vec_strings;
 
 /// Desktop Output
@@ -30,8 +33,8 @@ pub async fn output(config: &PlayoutConfig, log_format: &str) -> Child {
     let enc_cmd = prepare_output_cmd(config, enc_prefix, &media.filter);
 
     debug!(target: Target::file_mail(), channel = id;
-        "Encoder CMD: <bright-blue>\"ffmpeg {}\"</>",
-        enc_cmd.join(" ")
+        "Encoder CMD: <bright-blue>ffmpeg {}</>",
+        fmt_cmd(&enc_cmd)
     );
 
     let enc_proc = match Command::new("ffmpeg")

@@ -514,7 +514,7 @@ async fn timed_source(
     let (delta, total_delta) = get_delta(config, &node.begin.unwrap());
     let mut shifted_delta = delta;
     let mut new_node = node.clone();
-    new_node.process = Some(false);
+    new_node.skip = true;
 
     trace!(
         "Node - begin: {} | source: {}",
@@ -576,7 +576,7 @@ async fn timed_source(
         || config.playlist.infinit
     {
         // when we are in the 24 hour range, get the clip
-        new_node.process = Some(true);
+        new_node.skip = false;
         new_node = gen_source(config, node, manager, last_index).await;
     } else if total_delta <= 0.0 {
         info!(target: Target::file_mail(), channel = id; "Begin is over play time, skip: {}", node.source);
@@ -648,7 +648,7 @@ pub async fn gen_source(
         // } else {
         //     node.out = 1.2;
         // }
-        node.process = Some(false);
+        node.skip = true;
     }
 
     trace!("Clip new length: {duration}, duration: {}", node.duration);
@@ -866,7 +866,7 @@ async fn handle_list_end(
         warn!(target: Target::file_mail(), channel = config.general.channel_id; "Playlist is not long enough: <yellow>{total_delta:.2}</> seconds needed");
     }
 
-    node.process = Some(true);
+    node.skip = false;
 
     gen_source(config, node, manager, last_index).await
 }

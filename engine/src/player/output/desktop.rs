@@ -4,7 +4,10 @@ use log::*;
 use tokio::process::{Child, Command};
 
 use crate::player::filter::v_drawtext;
-use crate::utils::{config::PlayoutConfig, logging::Target};
+use crate::utils::{
+    config::PlayoutConfig,
+    logging::{fmt_cmd, Target},
+};
 use crate::vec_strings;
 
 /// Desktop Output
@@ -66,8 +69,8 @@ pub async fn output(config: &PlayoutConfig, log_format: &str) -> Child {
     enc_cmd.append(&mut enc_filter);
 
     debug!(target: Target::file_mail(), channel = config.general.channel_id;
-        "Encoder CMD: <bright-blue>\"ffplay {}\"</>",
-        enc_cmd.join(" ")
+        "Encoder CMD: <bright-blue>ffplay {}</>",
+        fmt_cmd(&enc_cmd)
     );
 
     let enc_proc = match Command::new("ffplay")

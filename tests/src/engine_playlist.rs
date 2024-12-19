@@ -44,18 +44,18 @@ fn get_config() -> (PlayoutConfig, ChannelManager) {
     Runtime::new().unwrap().block_on(prepare_config())
 }
 
-fn timed_stop(sec: u64, manager: ChannelManager) {
+async fn timed_stop(sec: u64, manager: ChannelManager) {
     sleep(Duration::from_secs(sec));
 
     println!("Timed stop of process");
 
-    manager.channel.lock().unwrap().active = false;
-    manager.stop_all();
+    manager.channel.lock().await.active = false;
+    manager.stop_all(false).await.unwrap();
 }
 
-#[test]
+#[tokio::test]
 #[ignore]
-fn test_gen_source() {
+async fn test_gen_source() {
     let (mut config, manager) = get_config();
 
     config.general.skip_validation = true;
@@ -71,37 +71,37 @@ fn test_gen_source() {
     config.storage.filler = "assets/media_filler/filler_0.mp4".into();
 
     let mut valid_source_with_probe = Media::new(0, "assets/media_mix/av_sync.mp4", true);
-    let valid_media = gen_source(&config, valid_source_with_probe.clone(), &manager, 100);
+    let valid_media = gen_source(&config, valid_source_with_probe.clone(), &manager, 100).await;
 
     assert_eq!(valid_source_with_probe.source, valid_media.source);
 
     let mut valid_source_without_probe = Media::new(0, "assets/media_mix/av_sync.mp4", false);
     valid_source_without_probe.duration = 30.0;
     valid_source_without_probe.out = 20.0;
-    let valid_media = gen_source(&config, valid_source_without_probe.clone(), &manager, 100);
+    let valid_media = gen_source(&config, valid_source_without_probe.clone(), &manager, 100).await;
 
     assert_eq!(valid_source_without_probe.source, valid_media.source);
     assert_eq!(valid_media.out, 20.0);
 
     valid_source_with_probe.out = 0.9;
 
-    let valid_media = gen_source(&config, valid_source_with_probe.clone(), &manager, 100);
+    let valid_media = gen_source(&config, valid_source_with_probe.clone(), &manager, 100).await;
 
-    assert_eq!(valid_media.process, Some(false));
+    assert!(valid_media.skip);
 
     let mut no_valid_source_with_probe = Media::new(0, "assets/media_mix/av_snc.mp4", true);
     no_valid_source_with_probe.duration = 30.0;
     no_valid_source_with_probe.out = 30.0;
 
-    let valid_media = gen_source(&config, no_valid_source_with_probe.clone(), &manager, 100);
+    let valid_media = gen_source(&config, no_valid_source_with_probe.clone(), &manager, 100).await;
 
     assert_eq!(valid_media.source, "color=c=#121212:s=1024x576:d=30");
 }
 
-#[test]
+#[tokio::test]
 #[serial]
 #[ignore]
-fn playlist_missing() {
+async fn playlist_missing() {
     let (mut config, manager) = get_config();
 
     config.general.skip_validation = true;
@@ -120,24 +120,24 @@ fn playlist_missing() {
     config.output.output_filter = None;
     config.output.output_cmd = Some(vec_strings!["-f", "null", "-"]);
 
-    manager.update_config(config);
+    manager.update_config(config).await;
     let manager_clone = manager.clone();
 
     set_mock_time(&Some("2023-02-07T23:59:45+01:00".to_string()));
 
-    thread::spawn(move || timed_stop(28, manager_clone));
+    tokio::spawn(timed_stop(28, manager_clone));
 
-    player(manager.clone()).unwrap();
+    player(manager.clone()).await.unwrap();
 
-    let playlist_date = &*manager.current_date.lock().unwrap();
+    let playlist_date = &*manager.current_date.lock().await;
 
     assert_eq!(playlist_date, "2023-02-08");
 }
 
-#[test]
+#[tokio::test]
 #[serial]
 #[ignore]
-fn playlist_next_missing() {
+async fn playlist_next_missing() {
     let (mut config, manager) = get_config();
 
     config.general.skip_validation = true;
@@ -156,24 +156,24 @@ fn playlist_next_missing() {
     config.output.output_filter = None;
     config.output.output_cmd = Some(vec_strings!["-f", "null", "-"]);
 
-    manager.update_config(config);
+    manager.update_config(config).await;
     let manager_clone = manager.clone();
 
     set_mock_time(&Some("2023-02-09T23:59:45+01:00".to_string()));
 
-    thread::spawn(move || timed_stop(28, manager_clone));
+    tokio::spawn(timed_stop(28, manager_clone));
 
-    player(manager.clone()).unwrap();
+    player(manager.clone()).await.unwrap();
 
-    let playlist_date = &*manager.current_date.lock().unwrap();
+    let playlist_date = &*manager.current_date.lock().await;
 
     assert_eq!(playlist_date, "2023-02-10");
 }
 
-#[test]
+#[tokio::test]
 #[serial]
 #[ignore]
-fn playlist_to_short() {
+async fn playlist_to_short() {
     let (mut config, manager) = get_config();
 
     config.general.skip_validation = true;
@@ -192,24 +192,24 @@ fn playlist_to_short() {
     config.output.output_filter = None;
     config.output.output_cmd = Some(vec_strings!["-f", "null", "-"]);
 
-    manager.update_config(config);
+    manager.update_config(config).await;
     let manager_clone = manager.clone();
 
     set_mock_time(&Some("2024-01-31T05:59:40+01:00".to_string()));
 
-    thread::spawn(move || timed_stop(28, manager_clone));
+    tokio::spawn(timed_stop(28, manager_clone));
 
-    player(manager.clone()).unwrap();
+    player(manager.clone()).await.unwrap();
 
-    let playlist_date = &*manager.current_date.lock().unwrap();
+    let playlist_date = &*manager.current_date.lock().await;
 
     assert_eq!(playlist_date, "2024-01-31");
 }
 
-#[test]
+#[tokio::test]
 #[serial]
 #[ignore]
-fn playlist_init_after_list_end() {
+async fn playlist_init_after_list_end() {
     let (mut config, manager) = get_config();
 
     config.general.skip_validation = true;
@@ -228,24 +228,24 @@ fn playlist_init_after_list_end() {
     config.output.output_filter = None;
     config.output.output_cmd = Some(vec_strings!["-f", "null", "-"]);
 
-    manager.update_config(config);
+    manager.update_config(config).await;
     let manager_clone = manager.clone();
 
     set_mock_time(&Some("2024-01-31T05:59:47+01:00".to_string()));
 
-    thread::spawn(move || timed_stop(28, manager_clone));
+    tokio::spawn(timed_stop(28, manager_clone));
 
-    player(manager.clone()).unwrap();
+    player(manager.clone()).await.unwrap();
 
-    let playlist_date = &*manager.current_date.lock().unwrap();
+    let playlist_date = &*manager.current_date.lock().await;
 
     assert_eq!(playlist_date, "2024-01-31");
 }
 
-#[test]
+#[tokio::test]
 #[serial]
 #[ignore]
-fn playlist_change_at_midnight() {
+async fn playlist_change_at_midnight() {
     let (mut config, manager) = get_config();
 
     config.general.skip_validation = true;
@@ -264,24 +264,24 @@ fn playlist_change_at_midnight() {
     config.output.output_filter = None;
     config.output.output_cmd = Some(vec_strings!["-f", "null", "-"]);
 
-    manager.update_config(config);
+    manager.update_config(config).await;
     let manager_clone = manager.clone();
 
     set_mock_time(&Some("2023-02-08T23:59:45+01:00".to_string()));
 
-    thread::spawn(move || timed_stop(28, manager_clone));
+    tokio::spawn(timed_stop(28, manager_clone));
 
-    player(manager.clone()).unwrap();
+    player(manager.clone()).await.unwrap();
 
-    let playlist_date = &*manager.current_date.lock().unwrap();
+    let playlist_date = &*manager.current_date.lock().await;
 
     assert_eq!(playlist_date, "2023-02-09");
 }
 
-#[test]
+#[tokio::test]
 #[serial]
 #[ignore]
-fn playlist_change_before_midnight() {
+async fn playlist_change_before_midnight() {
     let (mut config, manager) = get_config();
 
     config.general.skip_validation = true;
@@ -300,24 +300,24 @@ fn playlist_change_before_midnight() {
     config.output.output_filter = None;
     config.output.output_cmd = Some(vec_strings!["-f", "null", "-"]);
 
-    manager.update_config(config);
+    manager.update_config(config).await;
     let manager_clone = manager.clone();
 
     set_mock_time(&Some("2023-02-08T23:59:30+01:00".to_string()));
 
     thread::spawn(move || timed_stop(35, manager_clone));
 
-    player(manager.clone()).unwrap();
+    player(manager.clone()).await.unwrap();
 
-    let playlist_date = &*manager.current_date.lock().unwrap();
+    let playlist_date = &*manager.current_date.lock().await;
 
     assert_eq!(playlist_date, "2023-02-09");
 }
 
-#[test]
+#[tokio::test]
 #[serial]
 #[ignore]
-fn playlist_change_at_six() {
+async fn playlist_change_at_six() {
     let (mut config, manager) = get_config();
 
     config.general.skip_validation = true;
@@ -336,16 +336,16 @@ fn playlist_change_at_six() {
     config.output.output_filter = None;
     config.output.output_cmd = Some(vec_strings!["-f", "null", "-"]);
 
-    manager.update_config(config);
+    manager.update_config(config).await;
     let manager_clone = manager.clone();
 
     set_mock_time(&Some("2023-02-09T05:59:45+01:00".to_string()));
 
-    thread::spawn(move || timed_stop(28, manager_clone));
+    tokio::spawn(timed_stop(28, manager_clone));
 
-    player(manager.clone()).unwrap();
+    player(manager.clone()).await.unwrap();
 
-    let playlist_date = &*manager.current_date.lock().unwrap();
+    let playlist_date = &*manager.current_date.lock().await;
 
     assert_eq!(playlist_date, "2023-02-09");
 }

@@ -78,7 +78,7 @@ pub fn set_defaults(playlist: &mut JsonPlaylist) {
         item.index = Some(i);
         item.last_ad = false;
         item.next_ad = false;
-        item.process = Some(true);
+        item.skip = false;
         item.filter = None;
 
         let dur = item.out - item.seek;
