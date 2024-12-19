@@ -106,7 +106,7 @@ pub async fn send_message(
                     return Ok(data_map);
                 };
             } else if let Err(e) = manager.stop(Ingest) {
-                error!(target: Target::file_mail(), channel = id; "Ingest {e:?}")
+                error!(target: Target::file_mail(), channel = id; "Ingest {e:?}");
             }
         }
 

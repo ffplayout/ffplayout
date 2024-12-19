@@ -273,7 +273,7 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
         }
 
         if let Some(pl) = args.playlists {
-            global.playlists = pl
+            global.playlists = pl;
         } else {
             print!("Playlist path [{}]: ", global.playlists);
             stdout().flush().unwrap();

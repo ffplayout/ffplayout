@@ -110,11 +110,11 @@ pub fn ingest_server(
     );
 
     if let Some(url) = stream_input.iter().find(|s| s.contains("://")) {
-        if !is_free_tcp_port(id, url) {
+        if is_free_tcp_port(id, url) {
+            info!(target: Target::file_mail(), channel = id; "Start ingest server, listening on: <b><magenta>{url}</></b>");
+        } else {
             channel_mgr.channel.lock().unwrap().active = false;
             channel_mgr.stop_all();
-        } else {
-            info!(target: Target::file_mail(), channel = id; "Start ingest server, listening on: <b><magenta>{url}</></b>");
         }
     };
 
@@ -172,7 +172,7 @@ pub fn ingest_server(
         ingest_is_running.store(false, Ordering::SeqCst);
 
         if let Err(e) = channel_mgr.wait(Ingest) {
-            error!(target: Target::file_mail(), channel = id; "{e}")
+            error!(target: Target::file_mail(), channel = id; "{e}");
         }
 
         if let Err(e) = error_reader_thread.join() {

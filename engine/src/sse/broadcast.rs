@@ -45,11 +45,11 @@ struct BroadcasterInner {
 impl Broadcaster {
     /// Constructs new broadcaster and spawns ping loop.
     pub fn create() -> Arc<Self> {
-        let this = Arc::new(Broadcaster {
+        let this = Arc::new(Self {
             inner: Mutex::new(BroadcasterInner::default()),
         });
 
-        Broadcaster::spawn_ping(Arc::clone(&this));
+        Self::spawn_ping(Arc::clone(&this));
 
         this
     }
@@ -145,7 +145,7 @@ impl Broadcaster {
         for client in clients {
             if &client.endpoint == "system" {
                 let config = client.manager.config.lock().unwrap().clone();
-                if let Ok(stat) = web::block(move || system::stat(config.clone())).await {
+                if let Ok(stat) = web::block(move || system::stat(&config)).await {
                     let stat_string = stat.to_string();
                     let _ = client.sender.send(sse::Data::new(stat_string).into()).await;
                 };

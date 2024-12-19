@@ -146,7 +146,7 @@ pub fn generate_from_template(
 
             let mut file_list = WalkDir::new(path.clone())
                 .into_iter()
-                .flat_map(|e| e.ok())
+                .filter_map(Result::ok)
                 .filter(|f| f.path().is_file())
                 .filter(|f| include_file_extension(config, f.path()))
                 .map(|p| p.path().to_string_lossy().to_string())
@@ -181,7 +181,7 @@ pub fn generate_from_template(
         media_list.append(&mut timed_list);
     }
 
-    for item in media_list.iter_mut() {
+    for item in &mut media_list {
         item.index = Some(index);
 
         index += 1;
@@ -224,7 +224,7 @@ pub fn playlist_generator(manager: &ChannelManager) -> Result<Vec<JsonPlaylist>,
     }
 
     if date_range.contains(&"-".to_string()) && date_range.len() == 3 {
-        date_range = get_date_range(id, &date_range)
+        date_range = get_date_range(id, &date_range);
     }
 
     // gives an iterator with infinit length

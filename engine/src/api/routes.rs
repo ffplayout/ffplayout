@@ -174,7 +174,7 @@ pub async fn login(
             let pass_hash = user.password.clone();
             let cred_password = password.clone();
 
-            user.password = "".into();
+            user.password = String::new();
 
             let verified_password = web::block(move || {
                 let hash = PasswordHash::new(&pass_hash)?;
@@ -369,7 +369,7 @@ async fn add_user(
     data: web::Json<User>,
 ) -> Result<impl Responder, ServiceError> {
     match handles::insert_user(&pool, data.into_inner()).await {
-        Ok(_) => Ok("Add User Success"),
+        Ok(..) => Ok("Add User Success"),
         Err(e) => {
             error!("{e}");
             Err(ServiceError::InternalServerError)
@@ -482,7 +482,7 @@ async fn patch_channel(
         .lock()
         .unwrap()
         .get(*id)
-        .ok_or(format!("Channel {id} not found!"))?;
+        .ok_or_else(|| format!("Channel {id} not found!"))?;
     let mut data = data.into_inner();
 
     if !role.has_authority(&Role::GlobalAdmin) {
@@ -576,9 +576,7 @@ async fn get_advanced_config(
         .lock()
         .unwrap()
         .get(*id)
-        .ok_or(ServiceError::BadRequest(format!(
-            "Channel ({id}) not exists!"
-        )))?;
+        .ok_or_else(|| ServiceError::BadRequest(format!("Channel ({id}) not exists!")))?;
     let config = manager.config.lock().unwrap().advanced.clone();
 
     Ok(web::Json(config))
@@ -638,9 +636,7 @@ async fn get_playout_config(
         .lock()
         .unwrap()
         .get(*id)
-        .ok_or(ServiceError::BadRequest(format!(
-            "Channel ({id}) not exists!"
-        )))?;
+        .ok_or_else(|| ServiceError::BadRequest(format!("Channel ({id}) not exists!")))?;
     let config = manager.config.lock().unwrap().clone();
 
     Ok(web::Json(config))
@@ -970,9 +966,8 @@ pub async fn process_control(
 
             if manager.is_alive.load(Ordering::SeqCst) {
                 return Ok(web::Json("active"));
-            } else {
-                return Ok(web::Json("not running"));
             }
+            return Ok(web::Json("not running"));
         }
         ProcessCtl::Start => {
             if !manager.is_alive.load(Ordering::SeqCst) {
@@ -1481,7 +1476,7 @@ async fn get_program(
         before = chrono::Local
             .with_ymd_and_hms(after.year(), after.month(), after.day(), 23, 59, 59)
             .unwrap()
-            .naive_local()
+            .naive_local();
     }
 
     if start_sec > time_to_sec(&after.format("%H:%M:%S").to_string()) {
@@ -1568,7 +1563,7 @@ pub async fn get_system_stat(
     let manager = controllers.lock().unwrap().get(*id).unwrap();
     let config = manager.config.lock().unwrap().clone();
 
-    let stat = web::block(move || system::stat(config)).await?;
+    let stat = web::block(move || system::stat(&config)).await?;
 
     Ok(web::Json(stat))
 }

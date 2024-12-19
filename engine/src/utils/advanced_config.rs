@@ -256,7 +256,7 @@ impl AdvancedConfig {
                         "fade_out" => item.decor_mut().set_suffix(" # fade=out:st={}:d=1.0"),
                         "overlay_logo_scale" => item.decor_mut().set_suffix(" # scale={}"),
                         "overlay_logo_fade_in" => {
-                            item.decor_mut().set_suffix(" # fade=in:st=0:d=1.0:alpha=1")
+                            item.decor_mut().set_suffix(" # fade=in:st=0:d=1.0:alpha=1");
                         }
                         "overlay_logo_fade_out" => item
                             .decor_mut()
@@ -268,7 +268,7 @@ impl AdvancedConfig {
                             .decor_mut()
                             .set_suffix(" # tpad=stop_mode=add:stop_duration={}"),
                         "drawtext_from_file" => {
-                            item.decor_mut().set_suffix(" # drawtext=text='{}':{}{}")
+                            item.decor_mut().set_suffix(" # drawtext=text='{}':{}{}");
                         }
                         "drawtext_from_zmq" => item
                             .decor_mut()
