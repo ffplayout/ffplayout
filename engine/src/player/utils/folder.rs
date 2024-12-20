@@ -29,17 +29,16 @@ impl FolderSource {
         let mut media_list = vec![];
         let mut index: usize = 0;
 
-        debug!(target: Target::file_mail(), channel = id;
-            "generate: {:?}, paths: {:?}",
-            config.general.generate, config.storage.paths
-        );
-
-        if config.general.generate.is_some() && !config.storage.paths.is_empty() {
-            for path in &config.storage.paths {
-                path_list.push(path);
-            }
+        if !config.storage.paths.is_empty() && config.general.generate.is_some() {
+            path_list.extend(&config.storage.paths);
         } else {
             path_list.push(&config.channel.storage);
+        }
+
+        if let Some(dates) = &config.general.generate {
+            debug!(target: Target::file_mail(), channel = id;
+                "generate: {dates:?}, paths: {path_list:?}"
+            );
         }
 
         for path in &path_list {
@@ -55,7 +54,7 @@ impl FolderSource {
                         return Filtering::Continue;
                     }
 
-                    Filtering::IgnoreDir
+                    Filtering::Ignore
                 }
             });
 
@@ -203,7 +202,7 @@ pub async fn fill_filler_list(
                     return Filtering::Continue;
                 }
 
-                Filtering::IgnoreDir
+                Filtering::Ignore
             }
         });
 

@@ -1351,7 +1351,6 @@ dependencies = [
  "toml_edit",
  "ts-rs",
  "uuid",
- "walkdir",
  "zeromq",
 ]
 

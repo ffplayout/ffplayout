@@ -1,8 +1,3 @@
-use std::{
-    thread::{self, sleep},
-    time::Duration,
-};
-
 use serial_test::serial;
 use sqlx::sqlite::SqlitePoolOptions;
 use tokio::runtime::Runtime;
@@ -45,7 +40,7 @@ fn get_config() -> (PlayoutConfig, ChannelManager) {
 }
 
 async fn timed_stop(sec: u64, manager: ChannelManager) {
-    sleep(Duration::from_secs(sec));
+    tokio::time::sleep(tokio::time::Duration::from_secs(sec)).await;
 
     println!("Timed stop of process");
 
@@ -305,7 +300,7 @@ async fn playlist_change_before_midnight() {
 
     set_mock_time(&Some("2023-02-08T23:59:30+01:00".to_string()));
 
-    thread::spawn(move || timed_stop(35, manager_clone));
+    tokio::spawn(timed_stop(35, manager_clone));
 
     player(manager.clone()).await.unwrap();
 

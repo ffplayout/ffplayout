@@ -482,6 +482,7 @@ async fn patch_channel(
         .lock()
         .await
         .get(*id)
+        .await
         .ok_or_else(|| format!("Channel {id} not found!"))?;
     let mut data = data.into_inner();
 
@@ -576,8 +577,9 @@ async fn get_advanced_config(
         .lock()
         .await
         .get(*id)
+        .await
         .ok_or_else(|| ServiceError::BadRequest(format!("Channel ({id}) not exists!")))?;
-    let config = manager.config.lock().unwrap().advanced.clone();
+    let config = manager.config.lock().await.advanced.clone();
 
     Ok(web::Json(config))
 }
@@ -636,8 +638,9 @@ async fn get_playout_config(
         .lock()
         .await
         .get(*id)
+        .await
         .ok_or_else(|| ServiceError::BadRequest(format!("Channel ({id}) not exists!")))?;
-    let config = manager.config.lock().unwrap().clone();
+    let config = manager.config.lock().await.clone();
 
     Ok(web::Json(config))
 }

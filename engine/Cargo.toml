@@ -65,7 +65,6 @@ tokio-stream = "0.1"
 toml_edit = {version = "0.22", features = ["serde"]}
 ts-rs = { version = "10", features = ["chrono-impl", "no-serde-warnings"] }
 uuid = "1.8"
-walkdir = "2"
 zeromq = { version = "0.4", default-features = false, features = [
     "tokio-runtime",
     "tcp-transport",

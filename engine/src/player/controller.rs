@@ -145,15 +145,15 @@ impl ChannelManager {
                             error!("{e}");
                         };
 
-                        if !self_clone.channel.lock().await.active {
-                            run_endless = false;
-                        } else {
+                        if self_clone.channel.lock().await.active {
                             self_clone.run_count.fetch_add(1, Ordering::SeqCst);
                             self_clone.is_alive.store(true, Ordering::SeqCst);
                             self_clone.is_terminated.store(false, Ordering::SeqCst);
                             self_clone.list_init.store(true, Ordering::SeqCst);
 
                             tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
+                        } else {
+                            run_endless = false;
                         }
                     }
 
@@ -310,7 +310,7 @@ impl ChannelController {
     }
 
     pub async fn get(&self, id: i32) -> Option<ChannelManager> {
-        for manager in self.channels.iter() {
+        for manager in &self.channels {
             if manager.channel.lock().await.id == id {
                 return Some(manager.clone());
             }
@@ -398,7 +398,7 @@ async fn find_m3u8_files(path: &Path) -> io::Result<Vec<String>> {
             return Filtering::Continue;
         }
 
-        Filtering::IgnoreDir
+        Filtering::Ignore
     });
 
     loop {
@@ -432,7 +432,7 @@ async fn delete_old_segments<P: AsRef<Path> + Clone + std::fmt::Debug>(
             return Filtering::Continue;
         }
 
-        Filtering::IgnoreDir
+        Filtering::Ignore
     });
 
     loop {

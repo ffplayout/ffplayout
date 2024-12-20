@@ -17,12 +17,7 @@ out:
 
 */
 
-use std::{
-    process::Stdio,
-    sync::atomic::Ordering,
-    thread::{self, sleep},
-    time::{Duration, SystemTime},
-};
+use std::{process::Stdio, sync::atomic::Ordering, time::SystemTime};
 
 use async_iterator::Iterator;
 use log::*;
@@ -42,7 +37,10 @@ use crate::{
             valid_stream, Media,
         },
     },
-    utils::{errors::ServiceError, logging::Target},
+    utils::{
+        errors::ServiceError,
+        logging::{fmt_cmd, Target},
+    },
 };
 
 /// Ingest Server for HLS
@@ -85,7 +83,7 @@ async fn ingest_to_hls_server(manager: ChannelManager) -> Result<(), ServiceErro
             info!(target: Target::file_mail(), channel = id; "Start ingest server, listening on: <b><magenta>{url}</></b>");
         } else {
             manager.channel.lock().await.active = false;
-            manager.stop_all(false).await;
+            manager.stop_all(false).await?;
         }
     };
 
@@ -98,8 +96,8 @@ async fn ingest_to_hls_server(manager: ChannelManager) -> Result<(), ServiceErro
         let timer = SystemTime::now();
 
         debug!(target: Target::file_mail(), channel = id;
-            "Server CMD: <bright-blue>\"ffmpeg {}\"</>",
-            server_cmd.join(" ")
+            "Server CMD: <bright-blue>ffmpeg {}</>",
+            fmt_cmd(&server_cmd)
         );
 
         let proc_ctl = manager.clone();
@@ -199,7 +197,7 @@ pub async fn write_hls(manager: ChannelManager) -> Result<(), ServiceError> {
 
     // spawn a thread for ffmpeg ingest server and create a channel for package sending
     if config.ingest.enable {
-        thread::spawn(move || ingest_to_hls_server(channel_mgr_2));
+        tokio::spawn(ingest_to_hls_server(channel_mgr_2));
     }
 
     let mut error_count = 0;
@@ -233,7 +231,7 @@ pub async fn write_hls(manager: ChannelManager) -> Result<(), ServiceError> {
             if config.task.path.is_file() {
                 let channel_mgr_3 = manager.clone();
 
-                thread::spawn(move || task_runner::run(channel_mgr_3));
+                tokio::spawn(task_runner::run(channel_mgr_3));
             } else {
                 error!(target: Target::file_mail(), channel = id;
                     "<bright-blue>{:?}</> executable not exists!",
@@ -270,8 +268,8 @@ pub async fn write_hls(manager: ChannelManager) -> Result<(), ServiceError> {
         let dec_cmd = prepare_output_cmd(&config, dec_prefix, &node.filter);
 
         debug!(target: Target::file_mail(), channel = id;
-            "HLS writer CMD: <bright-blue>\"ffmpeg {}\"</>",
-            dec_cmd.join(" ")
+            "HLS writer CMD: <bright-blue>ffmpeg {}</>",
+            fmt_cmd(&dec_cmd)
         );
 
         let mut dec_proc = match Command::new("ffmpeg")
@@ -298,7 +296,7 @@ pub async fn write_hls(manager: ChannelManager) -> Result<(), ServiceError> {
         }
 
         while ingest_is_running.load(Ordering::SeqCst) {
-            sleep(Duration::from_secs(1));
+            tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
         }
 
         if let Ok(elapsed) = timer.elapsed() {
@@ -315,7 +313,7 @@ pub async fn write_hls(manager: ChannelManager) -> Result<(), ServiceError> {
         }
     }
 
-    sleep(Duration::from_secs(1));
+    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
 
     manager.stop_all(false).await?;
 

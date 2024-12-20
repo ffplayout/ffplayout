@@ -1,6 +1,5 @@
 use std::{
-    io::{BufRead, BufReader},
-    process::{Command, Stdio},
+    process::Stdio,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -10,7 +9,11 @@ use std::{
 
 use log::*;
 use regex::Regex;
-use tokio::sync::Mutex;
+use tokio::{
+    io::{AsyncBufReadExt, BufReader},
+    process::Command,
+    sync::Mutex,
+};
 
 use crate::player::filter::FilterType::Audio;
 use crate::player::utils::{
@@ -96,14 +99,13 @@ async fn check_media(
         .spawn()?;
 
     let enc_err = BufReader::new(enc_proc.stderr.take().unwrap());
+    let mut lines = enc_err.lines();
     let mut silence_start = 0.0;
     let mut silence_end = 0.0;
     let re_start = Regex::new(r"silence_start: ([0-9]+:)?([0-9.]+)")?;
     let re_end = Regex::new(r"silence_end: ([0-9]+:)?([0-9.]+)")?;
 
-    for line in enc_err.lines() {
-        let line = line?;
-
+    while let Some(line) = lines.next_line().await? {
         if !FFMPEG_IGNORE_ERRORS.iter().any(|i| line.contains(*i))
             && !config.logging.ignore_lines.iter().any(|i| line.contains(i))
             && (line.contains("[error]") || line.contains("[fatal]"))
@@ -141,7 +143,7 @@ async fn check_media(
 
     error_list.clear();
 
-    if let Err(e) = enc_proc.wait() {
+    if let Err(e) = enc_proc.wait().await {
         error!(target: Target::file_mail(), channel = id; "Validation process: {e:?}");
     }
 

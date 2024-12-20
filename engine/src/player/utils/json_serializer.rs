@@ -3,7 +3,6 @@ use std::{
     fs::File,
     path::Path,
     sync::{atomic::AtomicBool, Arc},
-    thread,
 };
 
 use log::*;
@@ -147,14 +146,12 @@ pub async fn read_json(
                     let list_clone = playlist.clone();
 
                     if !config.general.skip_validation {
-                        thread::spawn(move || {
-                            validate_playlist(
-                                config_clone,
-                                current_list,
-                                list_clone,
-                                is_terminated,
-                            );
-                        });
+                        tokio::spawn(validate_playlist(
+                            config_clone,
+                            current_list,
+                            list_clone,
+                            is_terminated,
+                        ));
                     }
 
                     set_defaults(&mut playlist);
@@ -191,9 +188,12 @@ pub async fn read_json(
         let list_clone = playlist.clone();
 
         if !config.general.skip_validation {
-            thread::spawn(move || {
-                validate_playlist(config_clone, current_list, list_clone, is_terminated);
-            });
+            tokio::spawn(validate_playlist(
+                config_clone,
+                current_list,
+                list_clone,
+                is_terminated,
+            ));
         }
 
         set_defaults(&mut playlist);

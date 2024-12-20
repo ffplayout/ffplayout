@@ -115,11 +115,11 @@ pub async fn ingest_server(
     );
 
     if let Some(url) = stream_input.iter().find(|s| s.contains("://")) {
-        if !is_free_tcp_port(id, url) {
+        if is_free_tcp_port(id, url) {
+            info!(target: Target::file_mail(), channel = id; "Start ingest server, listening on: <b><magenta>{url}</></b>");
+        } else {
             channel_mgr.channel.lock().await.active = false;
             channel_mgr.stop_all(false).await?;
-        } else {
-            info!(target: Target::file_mail(), channel = id; "Start ingest server, listening on: <b><magenta>{url}</></b>");
         }
     };
 

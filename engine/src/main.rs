@@ -4,6 +4,7 @@ use std::{
     io,
     process::exit,
     sync::{atomic::AtomicBool, Arc, Mutex as Mt},
+    thread,
 };
 
 use actix_web::{middleware::Logger, web, App, HttpServer};

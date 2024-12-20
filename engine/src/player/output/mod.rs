@@ -242,6 +242,8 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
             }
         }
 
+        drop(decoder_stdout);
+
         if let Err(e) = manager.wait(Decoder).await {
             error!(target: Target::file_mail(), channel = id; "{e}");
         }

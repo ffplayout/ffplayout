@@ -5,7 +5,6 @@ use std::{
         mpsc::channel,
         Arc,
     },
-    thread::sleep,
     time::Duration,
 };
 
@@ -37,10 +36,9 @@ pub async fn watchman(
         panic!("Folder path not exists: '{path:?}'");
     }
 
-    // let (tx, rx) = channel();
     let (tx, rx) = channel();
 
-    let mut debouncer = new_debouncer(Duration::from_secs(1), None, tx).unwrap();
+    let mut debouncer = new_debouncer(Duration::from_secs(3), None, tx).unwrap();
 
     debouncer.watch(path, RecursiveMode::Recursive).unwrap();
 
@@ -50,6 +48,7 @@ pub async fn watchman(
                 Ok(events) => {
                     let sources = Arc::clone(&sources);
                     let config = config.clone();
+
                     tokio::spawn(async move {
                         let events: Vec<_> = events.to_vec();
                         for event in events {
@@ -107,7 +106,7 @@ pub async fn watchman(
                                     }
                                 }
                                 _ => {
-                                    debug!(target: Target::file_mail(), channel = id; "Not tracked file event: {event:?}")
+                                    trace!("Not tracked file event: {event:?}");
                                 }
                             }
                         }
@@ -119,6 +118,6 @@ pub async fn watchman(
             }
         }
 
-        sleep(Duration::from_secs(3));
+        tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
     }
 }

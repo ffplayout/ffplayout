@@ -10,11 +10,12 @@ use std::{
 };
 
 use async_iterator::Iterator;
+use async_walkdir::{Filtering, WalkDir};
 use chrono::Timelike;
 use lexical_sort::{natural_lexical_cmp, StringSort};
 use log::*;
 use rand::{seq::SliceRandom, thread_rng, Rng};
-use walkdir::WalkDir;
+use tokio_stream::StreamExt;
 
 use crate::player::{
     controller::ChannelManager,
@@ -144,14 +145,34 @@ pub async fn generate_from_template(
 
         for path in source.paths {
             debug!("Search files in <b><magenta>{path:?}</></b>");
+            let mut file_list = vec![];
 
-            let mut file_list = WalkDir::new(path.clone())
-                .into_iter()
-                .filter_map(Result::ok)
-                .filter(|f| f.path().is_file())
-                .filter(|f| include_file_extension(config, f.path()))
-                .map(|p| p.path().to_string_lossy().to_string())
-                .collect::<Vec<String>>();
+            let config = config.clone();
+            let mut entries = WalkDir::new(path).filter(move |entry| {
+                let config = config.clone();
+                async move {
+                    if entry.path().is_file() && include_file_extension(&config, &entry.path()) {
+                        return Filtering::Continue;
+                    }
+
+                    Filtering::Ignore
+                }
+            });
+
+            loop {
+                match entries.next().await {
+                    Some(Ok(entry)) => {
+                        let file = entry.path().to_string_lossy().to_string();
+
+                        file_list.push(file);
+                    }
+                    Some(Err(e)) => {
+                        error!(target: Target::file_mail(), "error: {e}");
+                        break;
+                    }
+                    None => break,
+                }
+            }
 
             if !source.shuffle {
                 file_list.string_sort_unstable(natural_lexical_cmp);
