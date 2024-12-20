@@ -45,16 +45,17 @@ use crate::{
 
 /// Ingest Server for HLS
 async fn ingest_to_hls_server(manager: ChannelManager) -> Result<(), ServiceError> {
-    let config = manager.config.lock().await;
+    let config = manager.config.lock().await.clone();
     let id = config.general.channel_id;
     let playlist_init = manager.list_init.clone();
     let chain = manager.filter_chain.clone();
-    let mut error_count = 0;
-
-    let mut server_prefix = vec_strings!["-hide_banner", "-nostats", "-v", "level+info"];
     let stream_input = config.ingest.input_cmd.clone().unwrap();
+    let mut error_count = 0;
+    let mut server_prefix = vec_strings!["-hide_banner", "-nostats", "-v", "level+info"];
     let mut dummy_media = Media::new(0, "Live Stream", false);
+
     dummy_media.unit = Ingest;
+    dummy_media.add_filter(&config, &chain).await;
 
     let is_terminated = manager.is_terminated.clone();
     let ingest_is_running = manager.ingest_is_running.clone();
@@ -76,6 +77,7 @@ async fn ingest_to_hls_server(manager: ChannelManager) -> Result<(), ServiceErro
         }
     }
 
+    let server_cmd = prepare_output_cmd(&config, server_prefix.clone(), &dummy_media.filter);
     let mut is_running;
 
     if let Some(url) = stream_input.iter().find(|s| s.contains("://")) {
@@ -87,19 +89,13 @@ async fn ingest_to_hls_server(manager: ChannelManager) -> Result<(), ServiceErro
         }
     };
 
-    drop(config);
+    debug!(target: Target::file_mail(), channel = id;
+        "Server CMD: <bright-blue>ffmpeg {}</>",
+        fmt_cmd(&server_cmd)
+    );
 
     loop {
-        let config = manager.config.lock().await.clone();
-        dummy_media.add_filter(&config, &chain).await;
-        let server_cmd = prepare_output_cmd(&config, server_prefix.clone(), &dummy_media.filter);
         let timer = SystemTime::now();
-
-        debug!(target: Target::file_mail(), channel = id;
-            "Server CMD: <bright-blue>ffmpeg {}</>",
-            fmt_cmd(&server_cmd)
-        );
-
         let proc_ctl = manager.clone();
         let mut server_proc = match Command::new("ffmpeg")
             .args(server_cmd.clone())
@@ -119,15 +115,16 @@ async fn ingest_to_hls_server(manager: ChannelManager) -> Result<(), ServiceErro
 
         let mut lines = server_err.lines();
         while let Some(line) = lines.next_line().await? {
-            if line.contains("rtmp") && line.contains("Unexpected stream") && !valid_stream(&line) {
+            if line.contains("rtmp")
+                && (line.contains("Unexpected stream") || line.contains("App field don't match up"))
+                && !valid_stream(&line)
+            {
                 warn!(target: Target::file_mail(), channel = id; "Unexpected ingest stream: {line}");
 
                 if let Err(e) = proc_ctl.stop(Ingest).await {
                     error!(target: Target::file_mail(), channel = id; "{e}");
                 };
-            }
-
-            if !is_running && line.contains("Input #0") {
+            } else if !is_running && line.contains("Input #0") {
                 ingest_is_running.store(true, Ordering::SeqCst);
                 playlist_init.store(true, Ordering::SeqCst);
                 is_running = true;
