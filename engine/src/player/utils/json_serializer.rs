@@ -86,7 +86,7 @@ pub fn set_defaults(playlist: &mut JsonPlaylist) {
         length += dur;
     }
 
-    playlist.length = Some(length)
+    playlist.length = Some(length);
 }
 
 /// Read json playlist file, fills JsonPlaylist struct and set some extra values,
@@ -118,7 +118,7 @@ pub async fn read_json(
 
     if let Some(p) = path {
         Path::new(&p).clone_into(&mut playlist_path);
-        current_file = p
+        current_file = p;
     }
 
     if is_remote(&current_file) {
@@ -133,7 +133,7 @@ pub async fn read_json(
                         Ok(p) => p,
                         Err(e) => {
                             error!(target: Target::file_mail(), channel = id; "Could't read remote json playlist. {e:?}");
-                            JsonPlaylist::new(date.clone(), start_sec)
+                            JsonPlaylist::new(date, start_sec)
                         }
                     };
 
@@ -148,7 +148,12 @@ pub async fn read_json(
 
                     if !config.general.skip_validation {
                         thread::spawn(move || {
-                            validate_playlist(config_clone, current_list, list_clone, is_terminated)
+                            validate_playlist(
+                                config_clone,
+                                current_list,
+                                list_clone,
+                                is_terminated,
+                            );
                         });
                     }
 
@@ -176,7 +181,7 @@ pub async fn read_json(
 
         // catch empty program list
         if playlist.program.is_empty() {
-            playlist = JsonPlaylist::new(date, start_sec)
+            playlist = JsonPlaylist::new(date, start_sec);
         }
 
         playlist.path = Some(current_file);
@@ -187,7 +192,7 @@ pub async fn read_json(
 
         if !config.general.skip_validation {
             thread::spawn(move || {
-                validate_playlist(config_clone, current_list, list_clone, is_terminated)
+                validate_playlist(config_clone, current_list, list_clone, is_terminated);
             });
         }
 

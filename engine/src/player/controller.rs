@@ -48,9 +48,9 @@ pub enum ProcessUnit {
 impl fmt::Display for ProcessUnit {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            ProcessUnit::Decoder => write!(f, "Decoder"),
-            ProcessUnit::Encoder => write!(f, "Encoder"),
-            ProcessUnit::Ingest => write!(f, "Ingest"),
+            Self::Decoder => write!(f, "Decoder"),
+            Self::Encoder => write!(f, "Encoder"),
+            Self::Ingest => write!(f, "Ingest"),
         }
     }
 }
@@ -286,7 +286,7 @@ impl ChannelManager {
         for unit in [Decoder, Encoder, Ingest] {
             if let Err(e) = self.stop(unit).await {
                 if !e.to_string().contains("exited process") {
-                    error!(target: Target::all(), channel = channel_id; "{e}")
+                    error!(target: Target::all(), channel = channel_id; "{e}");
                 }
             }
         }

@@ -34,7 +34,7 @@ pub fn filter_node(id: i32, filter: &str) -> (String, String) {
     } else if filter.contains("[c_a_out]") {
         audio_filter = re.replace_all(filter, "").to_string();
     } else if !filter.is_empty() && filter != "~" {
-        error!(target: Target::file_mail(), channel = id; "Custom filter is not well formatted, use correct out link names (\"[c_v_out]\" and/or \"[c_a_out]\"). Filter skipped!")
+        error!(target: Target::file_mail(), channel = id; "Custom filter is not well formatted, use correct out link names (\"[c_v_out]\" and/or \"[c_a_out]\"). Filter skipped!");
     }
 
     (video_filter, audio_filter)

@@ -36,10 +36,10 @@ impl FolderSource {
 
         if config.general.generate.is_some() && !config.storage.paths.is_empty() {
             for path in &config.storage.paths {
-                path_list.push(path)
+                path_list.push(path);
             }
         } else {
-            path_list.push(&config.channel.storage)
+            path_list.push(&config.channel.storage);
         }
 
         for path in &path_list {
@@ -89,7 +89,7 @@ impl FolderSource {
             media_list.sort_by(|d1, d2| d1.source.cmp(&d2.source));
         }
 
-        for item in media_list.iter_mut() {
+        for item in &mut media_list {
             item.index = Some(index);
 
             index += 1;
@@ -153,8 +153,6 @@ impl async_iterator::Iterator for FolderSource {
                 .await;
             self.current_node.begin = Some(time_in_seconds());
             self.manager.current_index.fetch_add(1, Ordering::SeqCst);
-
-            Some(self.current_node.clone())
         } else {
             if config.storage.shuffle {
                 if config.general.generate.is_none() {
@@ -180,9 +178,9 @@ impl async_iterator::Iterator for FolderSource {
                 .await;
             self.current_node.begin = Some(time_in_seconds());
             self.manager.current_index.store(1, Ordering::SeqCst);
-
-            Some(self.current_node.clone())
         }
+
+        Some(self.current_node.clone())
     }
 }
 

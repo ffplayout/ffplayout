@@ -96,7 +96,7 @@ pub fn norm_abs_path(
 
     let path = &root_path.join(&source_relative);
 
-    Ok((path.to_path_buf(), path_suffix, source_relative))
+    Ok((path.clone(), path_suffix, source_relative))
 }
 
 /// File Browser
@@ -112,7 +112,7 @@ pub async fn browser(
     let mut channel_extensions = channel
         .extra_extensions
         .split(',')
-        .map(|e| e.to_string())
+        .map(Into::into)
         .collect::<Vec<String>>();
     let mut parent_folders = vec![];
     let mut extensions = config.storage.extensions.clone();
@@ -120,10 +120,10 @@ pub async fn browser(
 
     let (path, parent, path_component) = norm_abs_path(&config.channel.storage, &path_obj.source)?;
 
-    let parent_path = if !path_component.is_empty() {
-        path.parent().unwrap()
-    } else {
+    let parent_path = if path_component.is_empty() {
         &config.channel.storage
+    } else {
+        path.parent().unwrap()
     };
 
     let mut obj = PathObject::new(path_component, Some(parent));
@@ -175,7 +175,7 @@ pub async fn browser(
         } else if f_meta.is_file() && !path_obj.folders_only {
             if let Some(ext) = file_extension(&child.path()) {
                 if extensions.contains(&ext.to_string().to_lowercase()) {
-                    files.push(child.path())
+                    files.push(child.path());
                 }
             }
         }
@@ -191,7 +191,7 @@ pub async fn browser(
                 let mut duration = 0.0;
 
                 if let Some(dur) = probe.format.duration {
-                    duration = dur.parse().unwrap_or_default()
+                    duration = dur.parse().unwrap_or_default();
                 }
 
                 let video = VideoFile {
@@ -324,26 +324,20 @@ pub async fn remove_file_or_folder(
     }
 
     if source.is_dir() {
-        if recursive {
-            match fs::remove_dir_all(source).await {
-                Ok(_) => return Ok(()),
-                Err(e) => {
-                    error!("{e}");
-                    return Err(ServiceError::BadRequest(
-                        "Delete folder and its content failed!".into(),
-                    ));
-                }
-            };
+        let res = if recursive {
+            fs::remove_dir_all(source).await
         } else {
-            match fs::remove_dir(source).await {
-                Ok(_) => return Ok(()),
-                Err(e) => {
-                    error!("{e}");
-                    return Err(ServiceError::BadRequest(
-                        "Delete folder failed! (Folder must be empty)".into(),
-                    ));
-                }
-            };
+            fs::remove_dir(source).await
+        };
+
+        match res {
+            Ok(..) => return Ok(()),
+            Err(e) => {
+                error!("{e}");
+                return Err(ServiceError::BadRequest(
+                    "Delete folder failed! (Folder must be empty)".into(),
+                ));
+            }
         }
     }
 
@@ -398,10 +392,7 @@ pub async fn upload(
         };
         let filepath_clone = filepath.clone();
 
-        let _file_size = match filepath.metadata() {
-            Ok(metadata) => metadata.len(),
-            Err(_) => 0,
-        };
+        let _file_size = filepath.metadata().map(|m| m.len()).unwrap_or_default();
 
         // INFO: File exist check should be enough because file size and content length are different.
         // The error catching in the loop should normally prevent unfinished files from existing on disk.
@@ -424,7 +415,7 @@ pub async fn upload(
                     if e.to_string().contains("stream is incomplete") {
                         info!("Delete non finished file: {filepath:?}");
 
-                        tokio::fs::remove_file(filepath).await?
+                        tokio::fs::remove_file(filepath).await?;
                     }
 
                     return Err(e.into());

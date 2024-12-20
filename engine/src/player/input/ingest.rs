@@ -150,7 +150,7 @@ pub async fn ingest_server(
         ingest_is_running.store(false, Ordering::SeqCst);
 
         if let Err(e) = channel_mgr.wait(Ingest).await {
-            error!(target: Target::file_mail(), channel = id; "{e}")
+            error!(target: Target::file_mail(), channel = id; "{e}");
         }
 
         trace!("Restart ingest server");

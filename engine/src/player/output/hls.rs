@@ -81,11 +81,11 @@ async fn ingest_to_hls_server(manager: ChannelManager) -> Result<(), ServiceErro
     let mut is_running;
 
     if let Some(url) = stream_input.iter().find(|s| s.contains("://")) {
-        if !is_free_tcp_port(id, url) {
-            manager.channel.lock().await.active = false;
-            manager.stop_all(false).await?;
-        } else {
+        if is_free_tcp_port(id, url) {
             info!(target: Target::file_mail(), channel = id; "Start ingest server, listening on: <b><magenta>{url}</></b>");
+        } else {
+            manager.channel.lock().await.active = false;
+            manager.stop_all(false).await;
         }
     };
 
@@ -155,7 +155,7 @@ async fn ingest_to_hls_server(manager: ChannelManager) -> Result<(), ServiceErro
         ingest_is_running.store(false, Ordering::SeqCst);
 
         if let Err(e) = manager.wait(Ingest).await {
-            error!(target: Target::file_mail(), channel = id; "{e}")
+            error!(target: Target::file_mail(), channel = id; "{e}");
         }
 
         if is_terminated.load(Ordering::SeqCst) {
@@ -290,7 +290,7 @@ pub async fn write_hls(manager: ChannelManager) -> Result<(), ServiceError> {
         *manager.decoder.lock().await = Some(dec_proc);
 
         if let Err(e) = stderr_reader(dec_err, ignore, Decoder, manager.clone()).await {
-            error!(target: Target::file_mail(), channel = id; "{e:?}")
+            error!(target: Target::file_mail(), channel = id; "{e:?}");
         };
 
         if let Err(e) = manager.wait(Decoder).await {

@@ -194,7 +194,7 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
                     info!(target: Target::file_mail(), channel = id; "Switch from {} to live ingest", config.processing.mode);
 
                     if let Err(e) = manager.stop(Decoder).await {
-                        error!(target: Target::file_mail(), channel = id; "{e}")
+                        error!(target: Target::file_mail(), channel = id; "{e}");
                     }
 
                     live_on = true;
@@ -242,10 +242,8 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
             }
         }
 
-        drop(decoder_stdout);
-
         if let Err(e) = manager.wait(Decoder).await {
-            error!(target: Target::file_mail(), channel = id; "{e}")
+            error!(target: Target::file_mail(), channel = id; "{e}");
         }
 
         if let Err(e) = error_decoder_task.await {

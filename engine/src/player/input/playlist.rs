@@ -149,7 +149,7 @@ impl CurrentProgram {
 
         if node_index > 0 && node_index == last_index {
             if self.current_node.duration >= self.current_node.out {
-                duration = self.current_node.duration
+                duration = self.current_node.duration;
             }
 
             next_start += self.config.general.stop_threshold;
@@ -196,7 +196,7 @@ impl CurrentProgram {
                 .clone_from(&self.json_playlist.program);
             self.manager.current_index.store(0, Ordering::SeqCst);
         } else {
-            self.load_or_update_playlist(seek).await
+            self.load_or_update_playlist(seek).await;
         }
 
         next
@@ -249,7 +249,7 @@ impl CurrentProgram {
         let mut time_sec = time_in_seconds();
 
         if time_sec < self.start_sec {
-            time_sec += 86400.0 // self.config.playlist.length_sec.unwrap();
+            time_sec += 86400.0; // self.config.playlist.length_sec.unwrap();
         }
 
         time_sec
@@ -269,7 +269,7 @@ impl CurrentProgram {
             && self.json_playlist.length.unwrap() < 86400.0
             && time_sec > self.json_playlist.length.unwrap() + self.start_sec
         {
-            self.recalculate_begin(true).await
+            self.recalculate_begin(true).await;
         }
 
         for (i, item) in self.manager.current_list.lock().await.iter().enumerate() {
@@ -393,11 +393,10 @@ impl async_iterator::Iterator for CurrentProgram {
 
         if self.manager.list_init.load(Ordering::SeqCst) {
             trace!("Init playlist, from next iterator");
-            let mut init_clip_is_filler = false;
-
-            if self.json_playlist.path.is_some() {
-                init_clip_is_filler = self.init_clip().await;
-            }
+            let init_clip_is_filler = match self.json_playlist.path {
+                None => false,
+                Some(_) => self.init_clip().await,
+            };
 
             if self.manager.list_init.load(Ordering::SeqCst) && !init_clip_is_filler {
                 // On init load, playlist could be not long enough, or clips are not found
@@ -428,11 +427,7 @@ impl async_iterator::Iterator for CurrentProgram {
                 self.current_node =
                     gen_source(&self.config, media, &self.manager, last_index).await;
             }
-
-            return Some(self.current_node.clone());
-        }
-
-        if self.manager.current_index.load(Ordering::SeqCst)
+        } else if self.manager.current_index.load(Ordering::SeqCst)
             < self.manager.current_list.lock().await.len()
         {
             // get next clip from current playlist
@@ -446,7 +441,7 @@ impl async_iterator::Iterator for CurrentProgram {
             drop(node_list);
 
             if index == last_index {
-                is_last = true
+                is_last = true;
             }
 
             self.last_next_ad(&mut node).await;
@@ -455,8 +450,6 @@ impl async_iterator::Iterator for CurrentProgram {
                 timed_source(node, &self.config, is_last, &self.manager, last_index).await;
 
             self.manager.current_index.fetch_add(1, Ordering::SeqCst);
-
-            Some(self.current_node.clone())
         } else {
             let (_, total_delta) = get_delta(&self.config, &self.start_sec);
 
@@ -480,7 +473,7 @@ impl async_iterator::Iterator for CurrentProgram {
             drop(c_list);
 
             if self.config.playlist.infinit {
-                self.recalculate_begin(false).await
+                self.recalculate_begin(false).await;
             }
 
             self.manager.current_index.store(0, Ordering::SeqCst);
@@ -490,9 +483,9 @@ impl async_iterator::Iterator for CurrentProgram {
             self.current_node = gen_source(&self.config, first_node, &self.manager, 0).await;
 
             self.manager.current_index.store(1, Ordering::SeqCst);
-
-            Some(self.current_node.clone())
         }
+
+        Some(self.current_node.clone())
     }
 }
 
@@ -658,7 +651,7 @@ pub async fn gen_source(
             trace!("{e:?}");
         };
     } else {
-        trace!("Node has a probe...")
+        trace!("Node has a probe...");
     }
 
     // separate if condition, because of node.add_probe() in last condition
@@ -692,7 +685,7 @@ pub async fn gen_source(
         match manager.filler_list.try_lock() {
             Ok(list) => fillers = list.to_vec(),
             Err(e) => {
-                error!(target: Target::file_mail(), channel = config.general.channel_id; "Lock filler list error: {e}")
+                error!(target: Target::file_mail(), channel = config.general.channel_id; "Lock filler list error: {e}");
             }
         }
 
@@ -707,7 +700,7 @@ pub async fn gen_source(
 
             if index == fillers.len() - 1 {
                 // reset index for next round
-                manager.filler_index.store(0, Ordering::SeqCst)
+                manager.filler_index.store(0, Ordering::SeqCst);
             }
 
             if filler_media.probe.is_none() {
@@ -754,11 +747,7 @@ pub async fn gen_source(
                         .and_then(|d| d.parse::<f64>().ok())
                     {
                         // Create placeholder from config filler.
-                        let mut filler_out = filler_duration;
-
-                        if filler_duration > duration {
-                            filler_out = duration;
-                        }
+                        let filler_out = filler_duration.min(duration);
 
                         node.source = config
                             .storage

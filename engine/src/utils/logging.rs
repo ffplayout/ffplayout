@@ -77,7 +77,7 @@ struct MultiFileLogger {
 
 impl MultiFileLogger {
     pub fn new(log_path: PathBuf) -> Self {
-        MultiFileLogger {
+        Self {
             log_path,
             writers: Arc::new(Mutex::new(HashMap::new())),
         }
@@ -118,8 +118,7 @@ impl LogWriter for MultiFileLogger {
             record
                 .key_values()
                 .get("channel".into())
-                .unwrap_or(Value::null())
-                .to_i64()
+                .and_then(|v| Value::to_i64(&v))
                 .unwrap_or(0),
         )
         .unwrap_or(0);
@@ -158,8 +157,7 @@ impl LogWriter for LogMailer {
             record
                 .key_values()
                 .get("channel".into())
-                .unwrap_or(Value::null())
-                .to_i64()
+                .and_then(|v| Value::to_i64(&v))
                 .unwrap_or(0),
         )
         .unwrap_or(0);
@@ -183,7 +181,7 @@ impl LogWriter for LogMailer {
                     "[{}] [{:>5}] {}",
                     now.now().format("%Y-%m-%d %H:%M:%S"),
                     record.level(),
-                    msg.clone()
+                    msg
                 ));
                 raw_lines.push(msg);
 
@@ -281,7 +279,7 @@ fn console_formatter(w: &mut dyn Write, now: &mut DeferredNow, record: &Record) 
             log_line
         )
     } else {
-        write!(w, "{}", log_line)
+        write!(w, "{log_line}")
     }
 }
 
@@ -328,7 +326,7 @@ pub async fn send_mail(config: &Mail, msg: String) -> Result<(), ProcessError> {
         .recipient
         .split_terminator([',', ';', ' '])
         .filter(|s| s.contains('@'))
-        .map(|s| s.trim())
+        .map(str::trim)
         .collect::<Vec<&str>>();
 
     let mut message = Message::builder()
@@ -341,18 +339,14 @@ pub async fn send_mail(config: &Mail, msg: String) -> Result<(), ProcessError> {
     }
 
     let mail = message.body(msg)?;
+    let transporter = if config.starttls {
+        AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&config.smtp_server)?
+    } else {
+        AsyncSmtpTransport::<Tokio1Executor>::relay(&config.smtp_server)?
+    };
+
     let credentials = Credentials::new(config.sender_addr.clone(), config.sender_pass.clone());
-
-    let mut transporter =
-        AsyncSmtpTransport::<Tokio1Executor>::relay(config.smtp_server.clone().as_str());
-
-    if config.starttls {
-        transporter = AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(
-            config.smtp_server.clone().as_str(),
-        );
-    }
-
-    let mailer = transporter?.credentials(credentials).build();
+    let mailer = transporter.credentials(credentials).build();
 
     // Send the mail
     mailer.send(mail).await?;
@@ -426,19 +420,13 @@ pub fn mail_queue(mail_queues: Arc<Mutex<Vec<Arc<Mutex<MailQueue>>>>>) {
 /// - file logger
 /// - mail logger
 pub fn init_logging(mail_queues: Arc<Mutex<Vec<Arc<Mutex<MailQueue>>>>>) -> io::Result<()> {
-    let log_level = match ARGS
-        .log_level
-        .clone()
-        .unwrap_or("debug".to_string())
-        .to_lowercase()
-        .as_str()
-    {
-        "debug" => LevelFilter::Debug,
-        "error" => LevelFilter::Error,
-        "info" => LevelFilter::Info,
-        "trace" => LevelFilter::Trace,
-        "warn" => LevelFilter::Warn,
-        "off" => LevelFilter::Off,
+    let log_level = match ARGS.log_level.as_deref().map(str::to_lowercase).as_deref() {
+        Some("debug") => LevelFilter::Debug,
+        Some("error") => LevelFilter::Error,
+        Some("info") => LevelFilter::Info,
+        Some("trace") => LevelFilter::Trace,
+        Some("warn") => LevelFilter::Warn,
+        Some("off") => LevelFilter::Off,
         _ => LevelFilter::Debug,
     };
 
@@ -479,21 +467,21 @@ pub fn init_logging(mail_queues: Arc<Mutex<Vec<Arc<Mutex<MailQueue>>>>>) -> io::
 /// Format ingest and HLS logging output
 pub fn log_line(line: &str, level: &str) {
     if line.contains("[info]") && level.to_lowercase() == "info" {
-        info!("<bright black>[Server]</> {}", line.replace("[info] ", ""))
+        info!("<bright black>[Server]</> {}", line.replace("[info] ", ""));
     } else if line.contains("[warning]")
         && (level.to_lowercase() == "warning" || level.to_lowercase() == "info")
     {
         warn!(
             "<bright black>[Server]</> {}",
             line.replace("[warning] ", "")
-        )
+        );
     } else if line.contains("[error]")
         && !line.contains("Input/output error")
         && !line.contains("Broken pipe")
     {
         error!("<bright black>[Server]</> {}", line.replace("[error] ", ""));
     } else if line.contains("[fatal]") {
-        error!("<bright black>[Server]</> {}", line.replace("[fatal] ", ""))
+        error!("<bright black>[Server]</> {}", line.replace("[fatal] ", ""));
     }
 }
 
