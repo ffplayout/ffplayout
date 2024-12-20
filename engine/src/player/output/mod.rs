@@ -204,7 +204,7 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
                 let mut ingest_stdout_guard = manager.ingest_stdout.lock().await;
                 if let Some(ref mut ingest_stdout) = *ingest_stdout_guard {
                     match ingest_stdout.read(&mut buffer[..]).await {
-                        Ok(0) => break, // EOF
+                        Ok(0) => continue,
                         Ok(length) => {
                             if let Err(e) = enc_writer.write_all(&buffer[..length]).await {
                                 error!(target: Target::file_mail(), channel = id; "Error writing to encoder: {e}");
