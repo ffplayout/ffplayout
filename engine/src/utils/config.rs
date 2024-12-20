@@ -590,14 +590,6 @@ fn default_track_index() -> i32 {
     -1
 }
 
-// fn default_tracks() -> i32 {
-//     1
-// }
-
-// fn default_channels() -> u8 {
-//     2
-// }
-
 impl PlayoutConfig {
     pub async fn new(pool: &Pool<Sqlite>, channel_id: i32) -> Result<Self, ServiceError> {
         let global = handles::select_global(pool).await?;
@@ -733,6 +725,8 @@ impl PlayoutConfig {
             }
 
             let is_tee_muxer = cmd.contains(&"tee".to_string());
+            let re_ts = Regex::new(r"filename=(\S+?\.ts)").unwrap();
+            let re_m3 = Regex::new(r"\](\S+?\.m3u8)").unwrap();
 
             for item in &mut cmd {
                 if item.ends_with(".ts") || (item.ends_with(".m3u8") && item != "master.m3u8") {
@@ -744,8 +738,6 @@ impl PlayoutConfig {
                         // - For each identified filename, normalizes its path and checks if the parent directory exists.
                         // - Creates the parent directory if it does not exist.
                         // - Replaces the original filename in the `item` string with the normalized absolute path.
-                        let re_ts = Regex::new(r"filename=(\S+?\.ts)").unwrap();
-                        let re_m3 = Regex::new(r"\](\S+?\.m3u8)").unwrap();
 
                         for s in item.clone().split('|') {
                             if let Some(ts) = re_ts.captures(s).and_then(|p| p.get(1)) {

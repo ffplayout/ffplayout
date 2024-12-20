@@ -394,7 +394,7 @@ async fn find_m3u8_files(path: &Path) -> io::Result<Vec<String>> {
     let mut m3u8_files = Vec::new();
 
     let mut entries = WalkDir::new(path).filter(move |entry| async move {
-        if entry.path().is_file() && entry.path().extension().map_or(false, |ext| ext == "m3u8") {
+        if entry.path().is_file() && entry.path().extension().is_some_and(|ext| ext == "m3u8") {
             return Filtering::Continue;
         }
 
@@ -427,7 +427,7 @@ async fn delete_old_segments<P: AsRef<Path> + Clone + std::fmt::Debug>(
             && entry
                 .path()
                 .extension()
-                .map_or(false, |ext| ext == "ts" || ext == "vtt")
+                .is_some_and(|ext| ext == "ts" || ext == "vtt")
         {
             return Filtering::Continue;
         }
