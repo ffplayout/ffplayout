@@ -1240,7 +1240,6 @@ dependencies = [
  "nix",
  "notify",
  "notify-debouncer-full",
- "num-traits",
  "paris",
  "parking_lot",
  "path-clean",
