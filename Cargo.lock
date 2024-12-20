@@ -1256,7 +1256,6 @@ dependencies = [
  "sqlx",
  "static-files",
  "sysinfo",
- "time",
  "tokio",
  "tokio-stream",
  "toml_edit",
