@@ -69,11 +69,11 @@ pub fn import_file(
         playlist.program = existing_data.program;
     };
 
-    let mut msg = format!("Write playlist from {date} success!");
-
-    if file_exists {
-        msg = format!("Update playlist from {date} success!");
-    }
+    let msg = if file_exists {
+        format!("Update playlist from {date} success!")
+    } else {
+        format!("Write playlist from {date} success!")
+    };
 
     match json_writer(playlist_file, playlist) {
         Ok(_) => Ok(msg),

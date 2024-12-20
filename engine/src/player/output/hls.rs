@@ -77,11 +77,11 @@ fn ingest_to_hls_server(manager: ChannelManager) -> Result<(), ProcessError> {
     let mut is_running;
 
     if let Some(url) = stream_input.iter().find(|s| s.contains("://")) {
-        if !is_free_tcp_port(id, url) {
+        if is_free_tcp_port(id, url) {
+            info!(target: Target::file_mail(), channel = id; "Start ingest server, listening on: <b><magenta>{url}</></b>");
+        } else {
             manager.channel.lock().unwrap().active = false;
             manager.stop_all();
-        } else {
-            info!(target: Target::file_mail(), channel = id; "Start ingest server, listening on: <b><magenta>{url}</></b>");
         }
     };
 
@@ -152,7 +152,7 @@ fn ingest_to_hls_server(manager: ChannelManager) -> Result<(), ProcessError> {
         ingest_is_running.store(false, Ordering::SeqCst);
 
         if let Err(e) = manager.wait(Ingest) {
-            error!(target: Target::file_mail(), channel = id; "{e}")
+            error!(target: Target::file_mail(), channel = id; "{e}");
         }
 
         if is_terminated.load(Ordering::SeqCst) {
@@ -286,7 +286,7 @@ pub fn write_hls(manager: ChannelManager) -> Result<(), ProcessError> {
         *manager.decoder.lock().unwrap() = Some(dec_proc);
 
         if let Err(e) = stderr_reader(dec_err, ignore, Decoder, manager.clone()) {
-            error!(target: Target::file_mail(), channel = id; "{e:?}")
+            error!(target: Target::file_mail(), channel = id; "{e:?}");
         };
 
         if let Err(e) = manager.wait(Decoder) {

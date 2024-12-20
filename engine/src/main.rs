@@ -44,7 +44,7 @@ include!(concat!(env!("OUT_DIR"), "/generated.rs"));
 
 fn thread_counter() -> usize {
     let available_threads = thread::available_parallelism()
-        .map(|n| n.get())
+        .map(std::num::NonZero::get)
         .unwrap_or(1);
 
     (available_threads / 2).max(2)
@@ -74,7 +74,7 @@ async fn main() -> std::io::Result<()> {
             .await
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
 
-        for channel in channels.iter() {
+        for channel in &channels {
             let config = get_config(&pool, channel.id)
                 .await
                 .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
@@ -100,10 +100,12 @@ async fn main() -> std::io::Result<()> {
         let port = ip_port
             .get(1)
             .and_then(|p| p.parse::<u16>().ok())
-            .ok_or(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "<ADRESSE>:<PORT> needed! For example: 127.0.0.1:8787",
-            ))?;
+            .ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "<ADRESSE>:<PORT> needed! For example: 127.0.0.1:8787",
+                )
+            })?;
         let controllers = web::Data::from(channel_controllers.clone());
         let auth_state = web::Data::new(SseAuthState {
             uuids: tokio::sync::Mutex::new(HashSet::new()),
@@ -135,7 +137,7 @@ async fn main() -> std::io::Result<()> {
                 .service(login)
                 .service(
                     web::scope("/api")
-                        .wrap(auth.clone())
+                        .wrap(auth)
                         .service(add_user)
                         .service(get_user)
                         .service(get_by_name)

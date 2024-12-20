@@ -21,7 +21,7 @@ pub fn run(manager: ChannelManager) {
             }
         }
         Err(e) => {
-            error!("Couldn't spawn task runner: {e}")
+            error!("Couldn't spawn task runner: {e}");
         }
     }
 }

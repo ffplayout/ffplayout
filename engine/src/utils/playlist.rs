@@ -67,14 +67,11 @@ pub async fn write_playlist(
     }
 
     match json_writer(&playlist_path, json_data) {
-        Ok(_) => {
-            let mut msg = format!("Write playlist from {date} success!");
-
-            if file_exists {
-                msg = format!("Update playlist from {date} success!");
-            }
-
-            return Ok(msg);
+        Ok(..) if file_exists => {
+            return Ok(format!("Update playlist from {date} success!"));
+        }
+        Ok(..) => {
+            return Ok(format!("Write playlist from {date} success!"));
         }
         Err(e) => {
             error!("{e}");
@@ -88,7 +85,7 @@ pub fn generate_playlist(manager: ChannelManager) -> Result<JsonPlaylist, Servic
     let mut config = manager.config.lock().unwrap();
 
     if let Some(mut template) = config.general.template.take() {
-        for source in template.sources.iter_mut() {
+        for source in &mut template.sources {
             let mut paths = vec![];
 
             for path in &source.paths {
@@ -107,12 +104,12 @@ pub fn generate_playlist(manager: ChannelManager) -> Result<JsonPlaylist, Servic
 
     match playlist_generator(&manager) {
         Ok(playlists) => {
-            if !playlists.is_empty() {
-                Ok(playlists[0].clone())
-            } else {
+            if playlists.is_empty() {
                 Err(ServiceError::Conflict(
                     "The playlist could not be written, maybe it already exists!".into(),
                 ))
+            } else {
+                Ok(playlists[0].clone())
             }
         }
         Err(e) => {
@@ -134,7 +131,7 @@ pub async fn delete_playlist(config: &PlayoutConfig, date: &str) -> Result<Strin
 
     if playlist_path.is_file() {
         match fs::remove_file(playlist_path) {
-            Ok(_) => Ok(format!("Delete playlist from {date} success!")),
+            Ok(..) => Ok(format!("Delete playlist from {date} success!")),
             Err(e) => {
                 error!("{e}");
                 Err(ServiceError::InternalServerError)
