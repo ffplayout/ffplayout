@@ -3,7 +3,7 @@ use std::{
     fs::File,
     io,
     process::exit,
-    sync::{atomic::AtomicBool, Arc, Mutex as Mt},
+    sync::{atomic::AtomicBool, Arc},
     thread,
 };
 
@@ -53,7 +53,7 @@ fn thread_counter() -> usize {
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    let mail_queues = Arc::new(Mt::new(vec![]));
+    let mail_queues = Arc::new(Mutex::new(vec![]));
 
     let pool = db_pool().await.map_err(io::Error::other)?;
 
@@ -80,10 +80,10 @@ async fn main() -> std::io::Result<()> {
                 .await
                 .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
             let manager = ChannelManager::new(Some(pool.clone()), channel.clone(), config.clone());
-            let m_queue = Arc::new(Mt::new(MailQueue::new(channel.id, config.mail)));
+            let m_queue = Arc::new(Mutex::new(MailQueue::new(channel.id, config.mail)));
 
             channel_controllers.lock().await.add(manager.clone());
-            mail_queues.lock().unwrap().push(m_queue.clone());
+            mail_queues.lock().await.push(m_queue.clone());
 
             if channel.active {
                 manager.start().await;
@@ -102,6 +102,7 @@ async fn main() -> std::io::Result<()> {
                 )
             })?;
         let controllers = web::Data::from(channel_controllers.clone());
+        let queues = web::Data::from(mail_queues.clone());
         let auth_state = web::Data::new(SseAuthState {
             uuids: Mutex::new(HashSet::new()),
         });
@@ -113,8 +114,6 @@ async fn main() -> std::io::Result<()> {
 
         // no 'allow origin' here, give it to the reverse proxy
         HttpServer::new(move || {
-            let queues = mail_queues.clone();
-
             let auth = HttpAuthentication::bearer(validator);
             let db_pool = web::Data::new(db_clone.clone());
             // Customize logging format to get IP though proxies.
@@ -123,7 +122,7 @@ async fn main() -> std::io::Result<()> {
 
             let mut web_app = App::new()
                 .app_data(db_pool)
-                .app_data(web::Data::from(queues))
+                .app_data(queues.clone())
                 .app_data(controllers.clone())
                 .app_data(auth_state.clone())
                 .app_data(web::Data::from(Arc::clone(&broadcast_data)))
@@ -223,10 +222,10 @@ async fn main() -> std::io::Result<()> {
                     );
                     exit(1);
                 }
-                let m_queue = Arc::new(Mt::new(MailQueue::new(*channel_id, config.mail)));
+                let m_queue = Arc::new(Mutex::new(MailQueue::new(*channel_id, config.mail)));
 
                 channel_controllers.lock().await.add(manager.clone());
-                mail_queues.lock().unwrap().push(m_queue.clone());
+                mail_queues.lock().await.push(m_queue.clone());
 
                 manager.foreground_start(index).await;
             } else if ARGS.generate.is_some() {

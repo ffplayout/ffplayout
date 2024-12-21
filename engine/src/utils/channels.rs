@@ -63,19 +63,20 @@ pub async fn delete_channel(
     controllers: Arc<Mutex<ChannelController>>,
     queue: Arc<Mutex<Vec<Arc<Mutex<MailQueue>>>>>,
 ) -> Result<(), ServiceError> {
+    println!("1");
     let channel = handles::select_channel(conn, &id).await?;
     handles::delete_channel(conn, &channel.id).await?;
     controllers.lock().await.remove(id).await;
-
+    println!("2");
     let mut queue_guard = queue.lock().await;
     let mut new_queue = Vec::with_capacity(queue_guard.len());
-
+    println!("3");
     for q in queue_guard.iter() {
         if q.lock().await.id != id {
             new_queue.push(q.clone());
         }
     }
-
+    println!("4");
     *queue_guard = new_queue;
 
     map_global_admins(conn).await?;

@@ -3,7 +3,7 @@ use std::{
     env,
     io::{self, ErrorKind, Write},
     path::PathBuf,
-    sync::{Arc, Mutex},
+    sync::Arc,
     time::Duration,
 };
 
@@ -19,6 +19,7 @@ use lettre::{
 use log::{kv::Value, *};
 use paris::formatter::colorize_string;
 use regex::Regex;
+use tokio::sync::Mutex;
 
 use super::ARGS;
 
@@ -84,7 +85,7 @@ impl MultiFileLogger {
     }
 
     fn get_writer(&self, channel: i32) -> io::Result<Arc<Mutex<FileLogWriter>>> {
-        let mut writers = self.writers.lock().unwrap();
+        let mut writers = self.writers.blocking_lock();
         if let hash_map::Entry::Vacant(e) = writers.entry(channel) {
             let writer = FileLogWriter::builder(
                 FileSpec::default()
@@ -123,15 +124,15 @@ impl LogWriter for MultiFileLogger {
         )
         .unwrap_or(0);
         let writer = self.get_writer(channel);
-        let w = writer?.lock().unwrap().write(now, record);
+        let w = writer?.blocking_lock().write(now, record);
 
         w
     }
 
     fn flush(&self) -> io::Result<()> {
-        let writers = self.writers.lock().unwrap();
+        let writers = self.writers.blocking_lock();
         for writer in writers.values() {
-            writer.lock().unwrap().flush()?;
+            writer.blocking_lock().flush()?;
         }
         Ok(())
     }
@@ -162,38 +163,35 @@ impl LogWriter for LogMailer {
         )
         .unwrap_or(0);
 
-        let mut queues = self.mail_queues.lock().unwrap_or_else(|poisoned| {
-            error!("Queues mutex was poisoned");
-            poisoned.into_inner()
+        let message = record.args().to_string();
+        let level = record.level();
+        let mail_queues = self.mail_queues.clone();
+        let raw_lines = self.raw_lines.clone();
+        let now = now.now().format("%Y-%m-%d %H:%M:%S");
+
+        tokio::spawn(async move {
+            let mut queues = mail_queues.lock().await;
+
+            for queue in queues.iter_mut() {
+                let mut q_lock = queue.lock().await;
+
+                let msg = strip_tags(&message);
+                let mut raw_lines = raw_lines.lock().await;
+
+                if q_lock.id == id && q_lock.level_eq(level) && !raw_lines.contains(&msg) {
+                    q_lock.push(format!("[{now}] [{:>5}] {}", level, msg));
+                    raw_lines.push(msg);
+
+                    break;
+                }
+
+                if raw_lines.len() > 1000 {
+                    let last = raw_lines.pop().unwrap();
+                    raw_lines.clear();
+                    raw_lines.push(last);
+                }
+            }
         });
-
-        for queue in queues.iter_mut() {
-            let mut q_lock = queue.lock().unwrap_or_else(|poisoned| {
-                error!("Queue mutex was poisoned");
-                poisoned.into_inner()
-            });
-
-            let msg = strip_tags(&record.args().to_string());
-            let mut raw_lines = self.raw_lines.lock().unwrap();
-
-            if q_lock.id == id && q_lock.level_eq(record.level()) && !raw_lines.contains(&msg) {
-                q_lock.push(format!(
-                    "[{}] [{:>5}] {}",
-                    now.now().format("%Y-%m-%d %H:%M:%S"),
-                    record.level(),
-                    msg
-                ));
-                raw_lines.push(msg);
-
-                break;
-            }
-
-            if raw_lines.len() > 1000 {
-                let last = raw_lines.pop().unwrap();
-                raw_lines.clear();
-                raw_lines.push(last);
-            }
-        }
 
         Ok(())
     }
@@ -375,22 +373,12 @@ pub fn mail_queue(mail_queues: Arc<Mutex<Vec<Arc<Mutex<MailQueue>>>>>) {
             }
 
             {
-                let mut queues = match mail_queues.lock() {
-                    Ok(l) => l,
-                    Err(e) => {
-                        error!("Failed to lock mail_queues {e}");
-                        continue;
-                    }
-                };
+                let mut queues = mail_queues.lock().await;
 
                 // Process mail queues and send emails
                 for queue in queues.iter_mut() {
                     let interval = round_to_nearest_ten(counter as i64);
-                    let mut q_lock = queue.lock().unwrap_or_else(|poisoned| {
-                        error!("Queue mutex was poisoned");
-
-                        poisoned.into_inner()
-                    });
+                    let mut q_lock = queue.lock().await;
 
                     let expire = round_to_nearest_ten(q_lock.config.interval.max(30));
 

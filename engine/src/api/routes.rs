@@ -542,14 +542,10 @@ async fn remove_channel(
     controllers: web::Data<Mutex<ChannelController>>,
     queue: web::Data<Mutex<Vec<Arc<Mutex<MailQueue>>>>>,
 ) -> Result<impl Responder, ServiceError> {
-    if delete_channel(&pool, *id, controllers.into_inner(), queue.into_inner())
-        .await
-        .is_ok()
-    {
-        return Ok("Delete Channel Success");
-    }
+    println!("0");
+    delete_channel(&pool, *id, controllers.into_inner(), queue.into_inner()).await?;
 
-    Err(ServiceError::InternalServerError)
+    Ok(web::Json("Delete Channel Success"))
 }
 
 /// #### ffplayout Config
@@ -984,7 +980,7 @@ pub async fn process_control(
         }
         ProcessCtl::Restart => {
             manager.stop_all(false).await?;
-            tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+            tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
 
             if !manager.is_alive.load(Ordering::SeqCst) {
                 manager.start().await;
