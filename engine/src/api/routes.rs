@@ -1418,9 +1418,7 @@ async fn import_playlist(
 
     upload(&config, size, payload, &path, true).await?;
 
-    let response =
-        web::block(move || import_file(&config, &obj.date, Some(channel_name), &path_clone))
-            .await??;
+    let response = import_file(&config, &obj.date, Some(channel_name), &path_clone).await?;
 
     fs::remove_file(path).await?;
 

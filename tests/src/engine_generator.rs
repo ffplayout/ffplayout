@@ -45,13 +45,13 @@ fn get_config() -> (PlayoutConfig, ChannelManager) {
     Runtime::new().unwrap().block_on(prepare_config())
 }
 
-#[test]
-fn test_random_list() {
+#[tokio::test]
+async fn test_random_list() {
     let clip_list = vec![
-        Media::new(0, "./assets/media_mix/with_audio.mp4", true), // 30 seconds
-        Media::new(0, "./assets/media_mix/dual_audio.mp4", true), // 30 seconds
-        Media::new(0, "./assets/media_mix/av_sync.mp4", true),    // 30 seconds
-        Media::new(0, "./assets/media_mix/ad.mp4", true),         // 25 seconds
+        Media::new(0, "./assets/media_mix/with_audio.mp4", true).await, // 30 seconds
+        Media::new(0, "./assets/media_mix/dual_audio.mp4", true).await, // 30 seconds
+        Media::new(0, "./assets/media_mix/av_sync.mp4", true).await,    // 30 seconds
+        Media::new(0, "./assets/media_mix/ad.mp4", true).await,         // 25 seconds
     ];
 
     let r_list = random_list(clip_list.clone(), 200.0);
@@ -61,13 +61,13 @@ fn test_random_list() {
     assert!(r_duration >= 170.0);
 }
 
-#[test]
-fn test_ordered_list() {
+#[tokio::test]
+async fn test_ordered_list() {
     let clip_list = vec![
-        Media::new(0, "./assets/media_mix/with_audio.mp4", true), // 30 seconds
-        Media::new(0, "./assets/media_mix/dual_audio.mp4", true), // 30 seconds
-        Media::new(0, "./assets/media_mix/av_sync.mp4", true),    // 30 seconds
-        Media::new(0, "./assets/media_mix/ad.mp4", true),         // 25 seconds
+        Media::new(0, "./assets/media_mix/with_audio.mp4", true).await, // 30 seconds
+        Media::new(0, "./assets/media_mix/dual_audio.mp4", true).await, // 30 seconds
+        Media::new(0, "./assets/media_mix/av_sync.mp4", true).await,    // 30 seconds
+        Media::new(0, "./assets/media_mix/ad.mp4", true).await,         // 25 seconds
     ];
 
     let o_list = ordered_list(clip_list.clone(), 85.0);

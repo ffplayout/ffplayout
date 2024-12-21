@@ -90,7 +90,7 @@ impl ChannelManager {
             config: Arc::new(Mutex::new(config)),
             list_init: Arc::new(AtomicBool::new(true)),
             current_media: Arc::new(Mutex::new(None)),
-            current_list: Arc::new(Mutex::new(vec![Media::new(0, "", false)])),
+            current_list: Arc::new(Mutex::new(vec![Media::default()])),
             filler_list: Arc::new(Mutex::new(vec![])),
             current_index: Arc::new(AtomicUsize::new(0)),
             filler_index: Arc::new(AtomicUsize::new(0)),

@@ -15,7 +15,7 @@ use tokio::fs;
 use log::*;
 
 use crate::db::models::Channel;
-use crate::player::utils::{file_extension, MediaProbe};
+use crate::player::utils::{file_extension, probe::MediaProbe};
 use crate::utils::{config::PlayoutConfig, errors::ServiceError};
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -186,13 +186,9 @@ pub async fn browser(
     let mut media_files = vec![];
 
     for file in files {
-        match MediaProbe::new(file.to_string_lossy().as_ref()) {
+        match MediaProbe::new(file.to_string_lossy().as_ref()).await {
             Ok(probe) => {
-                let mut duration = 0.0;
-
-                if let Some(dur) = probe.format.duration {
-                    duration = dur.parse().unwrap_or_default();
-                }
+                let duration = probe.format.duration.unwrap_or_default();
 
                 let video = VideoFile {
                     name: file.file_name().unwrap().to_string_lossy().to_string(),

@@ -11,8 +11,8 @@ use std::{
 };
 
 use chrono::{prelude::*, TimeDelta};
-use ffprobe::{ffprobe, Stream as FFStream};
 use log::*;
+use probe::MediaProbe;
 use rand::prelude::*;
 use regex::Regex;
 use reqwest::header;
@@ -28,6 +28,7 @@ pub mod folder;
 pub mod import;
 pub mod json_serializer;
 pub mod json_validate;
+pub mod probe;
 
 use crate::player::{
     controller::{
@@ -38,7 +39,7 @@ use crate::player::{
 };
 use crate::utils::{
     config::{OutputMode::*, PlayoutConfig, FFMPEG_IGNORE_ERRORS, FFMPEG_UNRECOVERABLE_ERRORS},
-    errors::{ProcessError, ServiceError},
+    errors::ServiceError,
     logging::Target,
     time_machine::time_now,
 };
@@ -167,7 +168,7 @@ pub async fn get_data_map(manager: &ChannelManager) -> Map<String, Value> {
         .lock()
         .await
         .clone()
-        .unwrap_or_else(|| Media::new(0, "", false));
+        .unwrap_or_else(Media::default);
     let channel = manager.channel.lock().await.clone();
     let config = manager.config.lock().await.processing.clone();
     let ingest_is_running = manager.ingest_is_running.load(Ordering::SeqCst);
@@ -257,20 +258,15 @@ pub struct Media {
 }
 
 impl Media {
-    pub fn new(index: usize, src: &str, do_probe: bool) -> Self {
+    pub async fn new(index: usize, src: &str, do_probe: bool) -> Self {
         let mut duration = 0.0;
         let mut probe = None;
 
         if do_probe && (is_remote(src) || Path::new(src).is_file()) {
-            if let Ok(p) = MediaProbe::new(src) {
+            if let Ok(p) = MediaProbe::new(src).await {
                 probe = Some(p.clone());
 
-                duration = p
-                    .format
-                    .duration
-                    .unwrap_or_default()
-                    .parse()
-                    .unwrap_or_default();
+                duration = p.format.duration.unwrap_or_default();
             }
         }
 
@@ -297,18 +293,17 @@ impl Media {
         }
     }
 
-    pub fn add_probe(&mut self, check_audio: bool) -> Result<(), String> {
+    pub async fn add_probe(&mut self, check_audio: bool) -> Result<(), String> {
         let mut errors = vec![];
 
         if self.probe.is_none() {
-            match MediaProbe::new(&self.source) {
+            match MediaProbe::new(&self.source).await {
                 Ok(probe) => {
                     self.probe = Some(probe.clone());
 
                     if let Some(dur) = probe
                         .format
                         .duration
-                        .map(|d| d.parse().unwrap_or_default())
                         .filter(|d| !is_close(*d, self.duration, 0.5))
                     {
                         self.duration = dur;
@@ -322,16 +317,12 @@ impl Media {
             };
 
             if check_audio && Path::new(&self.audio).is_file() {
-                match MediaProbe::new(&self.audio) {
+                match MediaProbe::new(&self.audio).await {
                     Ok(probe) => {
                         self.probe_audio = Some(probe.clone());
 
-                        if !probe.audio_streams.is_empty() {
-                            self.duration_audio = probe.audio_streams[0]
-                                .duration
-                                .clone()
-                                .and_then(|d| d.parse::<f64>().ok())
-                                .unwrap_or_default();
+                        if !probe.audio.is_empty() {
+                            self.duration_audio = probe.audio[0].duration.unwrap_or_default();
                         }
                     }
                     Err(e) => errors.push(e.to_string()),
@@ -353,6 +344,32 @@ impl Media {
     ) {
         let mut node = self.clone();
         self.filter = Some(filter_chains(config, &mut node, filter_chain).await);
+    }
+}
+
+impl Default for Media {
+    fn default() -> Self {
+        Self {
+            begin: None,
+            index: Some(0),
+            title: None,
+            seek: 0.0,
+            out: 0.0,
+            duration: 0.0,
+            duration_audio: 0.0,
+            category: String::new(),
+            source: String::new(),
+            audio: String::new(),
+            cmd: Some(vec_strings!["-i", String::new()]),
+            filter: None,
+            custom_filter: String::new(),
+            probe: None,
+            probe_audio: None,
+            last_ad: false,
+            next_ad: false,
+            skip: false,
+            unit: Decoder,
+        }
     }
 }
 
@@ -381,55 +398,6 @@ where
 #[allow(clippy::trivially_copy_pass_by_ref)]
 fn is_empty_string(st: &String) -> bool {
     *st == String::new()
-}
-
-/// We use the ffprobe crate, but we map the metadata to our needs.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
-pub struct MediaProbe {
-    pub format: ffprobe::Format,
-    pub audio_streams: Vec<FFStream>,
-    pub video_streams: Vec<FFStream>,
-}
-
-impl MediaProbe {
-    pub fn new(input: &str) -> Result<Self, ProcessError> {
-        let probe = ffprobe(input);
-        let mut a_stream = vec![];
-        let mut v_stream = vec![];
-
-        match probe {
-            Ok(obj) => {
-                for stream in obj.streams {
-                    let cp_stream = stream.clone();
-
-                    if let Some(c_type) = cp_stream.codec_type {
-                        match c_type.as_str() {
-                            "audio" => a_stream.push(stream),
-                            "video" => v_stream.push(stream),
-                            _ => {}
-                        }
-                    } else {
-                        error!("No codec type found for stream: {stream:?}");
-                    }
-                }
-
-                Ok(Self {
-                    format: obj.format,
-                    audio_streams: a_stream,
-                    video_streams: v_stream,
-                })
-            }
-            Err(e) => {
-                if !Path::new(input).is_file() && !is_remote(input) {
-                    Err(ProcessError::Custom(format!(
-                        "File <b><magenta>{input}</></b> not exist!"
-                    )))
-                } else {
-                    Err(ProcessError::Ffprobe(e))
-                }
-            }
-        }
-    }
 }
 
 /// Calculate fps from rate/factor string

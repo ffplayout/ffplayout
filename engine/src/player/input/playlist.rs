@@ -15,8 +15,9 @@ use crate::player::{
     utils::{
         gen_dummy, get_delta, is_close, is_remote,
         json_serializer::{read_json, set_defaults},
-        loop_filler, loop_image, modified_time, seek_and_length, time_in_seconds, JsonPlaylist,
-        Media, MediaProbe,
+        loop_filler, loop_image, modified_time,
+        probe::MediaProbe,
+        seek_and_length, time_in_seconds, JsonPlaylist, Media,
     },
 };
 use crate::utils::{
@@ -57,7 +58,7 @@ impl CurrentProgram {
                 "1970-01-01".to_string(),
                 config.playlist.start_sec.unwrap(),
             ),
-            current_node: Media::new(0, "", false),
+            current_node: Media::default(),
             is_terminated,
             last_json_path: None,
             last_node_ad: false,
@@ -128,7 +129,7 @@ impl CurrentProgram {
             if self.json_playlist.path.is_none() {
                 trace!("missing playlist");
 
-                self.current_node = Media::new(0, "", false);
+                self.current_node = Media::default();
                 self.manager.list_init.store(true, Ordering::SeqCst);
                 self.manager.current_index.store(0, Ordering::SeqCst);
             }
@@ -328,7 +329,7 @@ impl CurrentProgram {
     async fn fill_end(&mut self, total_delta: f64) {
         // Fill end from playlist
         let index = self.manager.current_index.load(Ordering::SeqCst);
-        let mut media = Media::new(index, "", false);
+        let mut media = Media::new(index, "", false).await;
         media.begin = Some(time_in_seconds());
         media.duration = total_delta;
         media.out = total_delta;
@@ -417,7 +418,7 @@ impl async_iterator::Iterator for CurrentProgram {
                     last_index = length - 1;
                 }
 
-                let mut media = Media::new(length, "", false);
+                let mut media = Media::new(length, "", false).await;
                 media.begin = Some(current_time);
                 media.duration = total_delta;
                 media.out = total_delta;
@@ -647,7 +648,7 @@ pub async fn gen_source(
     trace!("Clip new length: {duration}, duration: {}", node.duration);
 
     if node.probe.is_none() && !node.source.is_empty() {
-        if let Err(e) = node.add_probe(true) {
+        if let Err(e) = node.add_probe(true).await {
             trace!("{e:?}");
         };
     } else {
@@ -704,7 +705,7 @@ pub async fn gen_source(
             }
 
             if filler_media.probe.is_none() {
-                if let Err(e) = filler_media.add_probe(false) {
+                if let Err(e) = filler_media.add_probe(false).await {
                     error!(target: Target::file_mail(), channel = config.general.channel_id; "{e:?}");
                 };
             }
@@ -720,7 +721,7 @@ pub async fn gen_source(
             node.cmd = Some(loop_filler(config, &node));
             node.probe = filler_media.probe;
         } else {
-            match MediaProbe::new(&config.storage.filler_path.to_string_lossy()) {
+            match MediaProbe::new(&config.storage.filler_path).await {
                 Ok(probe) => {
                     if config
                         .storage
@@ -740,12 +741,7 @@ pub async fn gen_source(
                             .to_string();
                         node.cmd = Some(loop_image(config, &node));
                         node.probe = Some(probe);
-                    } else if let Some(filler_duration) = probe
-                        .clone()
-                        .format
-                        .duration
-                        .and_then(|d| d.parse::<f64>().ok())
-                    {
+                    } else if let Some(filler_duration) = probe.clone().format.duration {
                         // Create placeholder from config filler.
                         let filler_out = filler_duration.min(duration);
 

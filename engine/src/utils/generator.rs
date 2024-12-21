@@ -38,7 +38,7 @@ pub fn random_list(clip_list: Vec<Media>, total_length: f64) -> Vec<Media> {
     let mut target_duration = 0.0;
     let clip_list_length = clip_list.len();
     let usage_limit = (total_length / sum_durations(&clip_list)).floor() + 1.0;
-    let mut last_clip = Media::new(0, "", false);
+    let mut last_clip = Media::default();
 
     while target_duration < total_length && max_attempts > 0 {
         let index = rand::thread_rng().gen_range(0..clip_list_length);
@@ -179,7 +179,7 @@ pub async fn generate_from_template(
             }
 
             for entry in file_list {
-                let media = Media::new(0, &entry, true);
+                let media = Media::new(0, &entry, true).await;
                 source_list.push(media);
             }
         }

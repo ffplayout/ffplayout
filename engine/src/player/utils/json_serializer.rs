@@ -38,11 +38,13 @@ pub struct JsonPlaylist {
 
 impl JsonPlaylist {
     pub fn new(date: String, start: f64) -> Self {
-        let mut media = Media::new(0, "", false);
-        media.begin = Some(start);
-        media.title = None;
-        media.duration = DUMMY_LEN;
-        media.out = DUMMY_LEN;
+        let media = Media {
+            begin: Some(start),
+            title: None,
+            duration: DUMMY_LEN,
+            out: DUMMY_LEN,
+            ..Media::default()
+        };
         Self {
             channel: "Channel 1".into(),
             date,

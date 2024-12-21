@@ -52,7 +52,7 @@ async fn ingest_to_hls_server(manager: ChannelManager) -> Result<(), ServiceErro
     let stream_input = config.ingest.input_cmd.clone().unwrap();
     let mut error_count = 0;
     let mut server_prefix = vec_strings!["-hide_banner", "-nostats", "-v", "level+info"];
-    let mut dummy_media = Media::new(0, "Live Stream", false);
+    let mut dummy_media = Media::new(0, "Live Stream", false).await;
 
     dummy_media.unit = Ingest;
     dummy_media.add_filter(&config, &chain).await;

@@ -188,13 +188,13 @@ pub async fn validate_playlist(
 
         if !is_remote(&item.source) {
             if item.audio.is_empty() {
-                if let Err(e) = item.add_probe(false) {
+                if let Err(e) = item.add_probe(false).await {
                     error!(target: Target::file_mail(), channel = id;
                         "[Validation] Error on position <yellow>{pos:0>3}</> <yellow>{}</>: {e}",
                         sec_to_time(begin)
                     );
                 }
-            } else if let Err(e) = item.add_probe(true) {
+            } else if let Err(e) = item.add_probe(true).await {
                 error!(target: Target::file_mail(), channel = id;
                     "[Validation] Error on position <yellow>{pos:0>3}</> <yellow>{}</>: {e}",
                     sec_to_time(begin)
@@ -218,9 +218,9 @@ pub async fn validate_playlist(
                     o.probe.clone_from(&item.probe);
 
                     if let Some(dur) =
-                        item.probe.as_ref().and_then(|f| f.format.duration.clone())
+                        item.probe.as_ref().and_then(|f| f.format.duration)
                     {
-                        let probe_duration = dur.parse().unwrap_or_default();
+                        let probe_duration = dur;
 
                         if !is_close(o.duration, probe_duration, 1.2) {
                             error!(target: Target::file_mail(), channel = id;

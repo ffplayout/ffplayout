@@ -62,7 +62,8 @@ pub async fn watchman(
                                     {
                                         let index = sources.lock().await.len();
                                         let media =
-                                            Media::new(index, &new_path.to_string_lossy(), false);
+                                            Media::new(index, &new_path.to_string_lossy(), false)
+                                                .await;
 
                                         sources.lock().await.push(media);
                                         info!(target: Target::file_mail(), channel = id; "Create new file: <b><magenta>{new_path:?}</></b>");
@@ -93,13 +94,15 @@ pub async fn watchman(
                                         .position(|x| *x.source == old_path.display().to_string())
                                     {
                                         let media =
-                                            Media::new(index, &new_path.to_string_lossy(), false);
+                                            Media::new(index, &new_path.to_string_lossy(), false)
+                                                .await;
                                         media_list[index] = media;
                                         info!(target: Target::file_mail(), channel = id; "Move file: <b><magenta>{old_path:?}</></b> to <b><magenta>{new_path:?}</></b>");
                                     } else if include_file_extension(&config, new_path) {
                                         let index = media_list.len();
                                         let media =
-                                            Media::new(index, &new_path.to_string_lossy(), false);
+                                            Media::new(index, &new_path.to_string_lossy(), false)
+                                                .await;
 
                                         media_list.push(media);
                                         info!(target: Target::file_mail(), channel = id; "Create new file: <b><magenta>{new_path:?}</></b>");

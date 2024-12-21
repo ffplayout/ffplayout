@@ -153,7 +153,7 @@ pub async fn control_state(
 
                 manager.current_index.fetch_sub(2, Ordering::SeqCst);
 
-                if let Err(e) = media.add_probe(false) {
+                if let Err(e) = media.add_probe(false).await {
                     error!(target: Target::file_mail(), channel = id; "{e:?}");
                 };
 
@@ -182,7 +182,7 @@ pub async fn control_state(
 
                 info!(target: Target::file_mail(), channel = id; "Move to next clip");
 
-                if let Err(e) = media.add_probe(false) {
+                if let Err(e) = media.add_probe(false).await {
                     error!(target: Target::file_mail(), channel = id; "{e:?}");
                 };
 

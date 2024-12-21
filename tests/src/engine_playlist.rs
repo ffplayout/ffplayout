@@ -65,12 +65,12 @@ async fn test_gen_source() {
     config.channel.playlists = "assets/playlists".into();
     config.storage.filler = "assets/media_filler/filler_0.mp4".into();
 
-    let mut valid_source_with_probe = Media::new(0, "assets/media_mix/av_sync.mp4", true);
+    let mut valid_source_with_probe = Media::new(0, "assets/media_mix/av_sync.mp4", true).await;
     let valid_media = gen_source(&config, valid_source_with_probe.clone(), &manager, 100).await;
 
     assert_eq!(valid_source_with_probe.source, valid_media.source);
 
-    let mut valid_source_without_probe = Media::new(0, "assets/media_mix/av_sync.mp4", false);
+    let mut valid_source_without_probe = Media::new(0, "assets/media_mix/av_sync.mp4", false).await;
     valid_source_without_probe.duration = 30.0;
     valid_source_without_probe.out = 20.0;
     let valid_media = gen_source(&config, valid_source_without_probe.clone(), &manager, 100).await;
@@ -84,7 +84,7 @@ async fn test_gen_source() {
 
     assert!(valid_media.skip);
 
-    let mut no_valid_source_with_probe = Media::new(0, "assets/media_mix/av_snc.mp4", true);
+    let mut no_valid_source_with_probe = Media::new(0, "assets/media_mix/av_snc.mp4", true).await;
     no_valid_source_with_probe.duration = 30.0;
     no_valid_source_with_probe.out = 30.0;
 

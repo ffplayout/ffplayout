@@ -61,7 +61,7 @@ impl FolderSource {
             loop {
                 match entries.next().await {
                     Some(Ok(entry)) => {
-                        let media = Media::new(0, &entry.path().to_string_lossy(), false);
+                        let media = Media::new(0, &entry.path().to_string_lossy(), false).await;
                         media_list.push(media);
                     }
                     Some(Err(e)) => {
@@ -98,7 +98,7 @@ impl FolderSource {
 
         Self {
             manager,
-            current_node: Media::new(0, "", false),
+            current_node: Media::default(),
         }
     }
 
@@ -107,7 +107,7 @@ impl FolderSource {
 
         Self {
             manager: manager.clone(),
-            current_node: Media::new(0, "", false),
+            current_node: Media::default(),
         }
     }
 
@@ -146,7 +146,7 @@ impl async_iterator::Iterator for FolderSource {
         {
             let i = self.manager.current_index.load(Ordering::SeqCst);
             self.current_node = self.manager.current_list.lock().await[i].clone();
-            let _ = self.current_node.add_probe(false).ok();
+            let _ = self.current_node.add_probe(false).await.ok();
             self.current_node
                 .add_filter(&config, &self.manager.filter_chain)
                 .await;
@@ -171,7 +171,7 @@ impl async_iterator::Iterator for FolderSource {
                 Some(m) => m.clone(),
                 None => return None,
             };
-            let _ = self.current_node.add_probe(false).ok();
+            let _ = self.current_node.add_probe(false).await.ok();
             self.current_node
                 .add_filter(&config, &self.manager.filter_chain)
                 .await;
@@ -209,10 +209,10 @@ pub async fn fill_filler_list(
         loop {
             match entries.next().await {
                 Some(Ok(entry)) => {
-                    let mut media = Media::new(index, &entry.path().to_string_lossy(), false);
+                    let mut media = Media::new(index, &entry.path().to_string_lossy(), false).await;
 
                     if fillers.is_none() {
-                        if let Err(e) = media.add_probe(false) {
+                        if let Err(e) = media.add_probe(false).await {
                             error!(target: Target::file_mail(), channel = id; "{e:?}");
                         };
                     }
@@ -245,10 +245,10 @@ pub async fn fill_filler_list(
             f.lock().await.clone_from(&filler_list);
         }
     } else if filler_path.is_file() {
-        let mut media = Media::new(0, &config.storage.filler_path.to_string_lossy(), false);
+        let mut media = Media::new(0, &config.storage.filler_path.to_string_lossy(), false).await;
 
         if fillers.is_none() {
-            if let Err(e) = media.add_probe(false) {
+            if let Err(e) = media.add_probe(false).await {
                 error!(target: Target::file_mail(), channel = id; "{e:?}");
             };
         }

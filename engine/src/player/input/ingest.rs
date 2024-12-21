@@ -76,7 +76,7 @@ pub async fn ingest_server(
     let id = config.general.channel_id;
     let mut server_cmd = vec_strings!["-hide_banner", "-nostats", "-v", "level+info"];
     let stream_input = config.ingest.input_cmd.clone().unwrap();
-    let mut dummy_media = Media::new(0, "Live Stream", false);
+    let mut dummy_media = Media::new(0, "Live Stream", false).await;
     dummy_media.unit = Ingest;
     dummy_media.add_filter(&config, &None).await;
     let is_terminated = channel_mgr.is_terminated.clone();

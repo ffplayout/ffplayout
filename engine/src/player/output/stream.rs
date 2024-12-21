@@ -17,7 +17,7 @@ use crate::vec_strings;
 ///
 /// Prepare the ffmpeg command for streaming output
 pub async fn output(config: &PlayoutConfig, log_format: &str) -> Child {
-    let mut media = Media::new(0, "", false);
+    let mut media = Media::default();
     let id = config.general.channel_id;
     media.unit = Encoder;
     media.add_filter(config, &None).await;
