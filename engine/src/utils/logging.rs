@@ -3,7 +3,7 @@ use std::{
     env,
     io::{self, ErrorKind, Write},
     path::PathBuf,
-    sync::Arc,
+    sync::{Arc, RwLock},
     time::Duration,
 };
 
@@ -11,6 +11,7 @@ use actix_web::rt::time::interval;
 use flexi_logger::{
     writers::{FileLogWriter, LogWriter},
     Age, Cleanup, Criterion, DeferredNow, FileSpec, Level, LogSpecification, Logger, Naming,
+    WriteMode,
 };
 use lettre::{
     message::header, transport::smtp::authentication::Credentials, AsyncSmtpTransport,
@@ -71,22 +72,25 @@ impl LogWriter for LogConsole {
     }
 }
 
-struct MultiFileLogger {
+pub struct MultiFileLogger {
     log_path: PathBuf,
-    writers: Arc<Mutex<HashMap<i32, Arc<Mutex<FileLogWriter>>>>>,
+    writers: RwLock<HashMap<i32, Arc<FileLogWriter>>>,
 }
 
 impl MultiFileLogger {
     pub fn new(log_path: PathBuf) -> Self {
         Self {
             log_path,
-            writers: Arc::new(Mutex::new(HashMap::new())),
+            writers: RwLock::new(HashMap::new()),
         }
     }
 
-    fn get_writer(&self, channel: i32) -> io::Result<Arc<Mutex<FileLogWriter>>> {
-        let mut writers = self.writers.blocking_lock();
-        if let hash_map::Entry::Vacant(e) = writers.entry(channel) {
+    fn get_writer(&self, channel: i32) -> io::Result<Arc<FileLogWriter>> {
+        // Lock the writers HashMap
+        let mut writers = self.writers.write().unwrap();
+
+        // Check if the writer already exists
+        if let hash_map::Entry::Vacant(entry) = writers.entry(channel) {
             let writer = FileLogWriter::builder(
                 FileSpec::default()
                     .suppress_timestamp()
@@ -106,10 +110,13 @@ impl MultiFileLogger {
             )
             .try_build()
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
-            e.insert(Arc::new(Mutex::new(writer)));
-        }
 
-        Ok(writers.get(&channel).unwrap().clone())
+            let arc_writer = Arc::new(writer);
+            entry.insert(arc_writer.clone());
+            Ok(arc_writer)
+        } else {
+            Ok(writers.get(&channel).unwrap().clone())
+        }
     }
 }
 
@@ -123,16 +130,15 @@ impl LogWriter for MultiFileLogger {
                 .unwrap_or(0),
         )
         .unwrap_or(0);
-        let writer = self.get_writer(channel);
-        let w = writer?.blocking_lock().write(now, record);
 
-        w
+        let writer = self.get_writer(channel)?;
+        writer.write(now, record)
     }
 
     fn flush(&self) -> io::Result<()> {
-        let writers = self.writers.blocking_lock();
+        let writers = self.writers.read().unwrap();
         for writer in writers.values() {
-            writer.blocking_lock().flush()?;
+            writer.flush()?;
         }
         Ok(())
     }
@@ -176,19 +182,19 @@ impl LogWriter for LogMailer {
                 let mut q_lock = queue.lock().await;
 
                 let msg = strip_tags(&message);
-                let mut raw_lines = raw_lines.lock().await;
+                let mut lines = raw_lines.lock().await;
 
-                if q_lock.id == id && q_lock.level_eq(level) && !raw_lines.contains(&msg) {
+                if q_lock.id == id && q_lock.level_eq(level) && !lines.contains(&msg) {
                     q_lock.push(format!("[{now}] [{:>5}] {}", level, msg));
-                    raw_lines.push(msg);
+                    lines.push(msg);
 
                     break;
                 }
 
-                if raw_lines.len() > 1000 {
-                    let last = raw_lines.pop().unwrap();
-                    raw_lines.clear();
-                    raw_lines.push(last);
+                if lines.len() > 1000 {
+                    let last = lines.pop().unwrap();
+                    lines.clear();
+                    lines.push(last);
                 }
             }
         });
@@ -407,7 +413,9 @@ pub fn mail_queue(mail_queues: Arc<Mutex<Vec<Arc<Mutex<MailQueue>>>>>) {
 /// - console logger
 /// - file logger
 /// - mail logger
-pub fn init_logging(mail_queues: Arc<Mutex<Vec<Arc<Mutex<MailQueue>>>>>) -> io::Result<()> {
+pub fn init_logging(
+    mail_queues: Arc<Mutex<Vec<Arc<Mutex<MailQueue>>>>>,
+) -> io::Result<flexi_logger::LoggerHandle> {
     let log_level = match ARGS.log_level.as_deref().map(str::to_lowercase).as_deref() {
         Some("debug") => LevelFilter::Debug,
         Some("error") => LevelFilter::Error,
@@ -441,7 +449,8 @@ pub fn init_logging(mail_queues: Arc<Mutex<Vec<Arc<Mutex<MailQueue>>>>>) -> io::
         .module("sqlx", LevelFilter::Error)
         .module("tokio", LevelFilter::Error);
 
-    Logger::with(builder.build())
+    let logger = Logger::with(builder.build())
+        .write_mode(WriteMode::Async)
         .format(console_formatter)
         .log_to_stderr()
         .add_writer("file", file_logger())
@@ -449,17 +458,18 @@ pub fn init_logging(mail_queues: Arc<Mutex<Vec<Arc<Mutex<MailQueue>>>>>) -> io::
         .start()
         .map_err(|e| io::Error::new(ErrorKind::Other, e.to_string()))?;
 
-    Ok(())
+    Ok(logger)
 }
 
 /// Format ingest and HLS logging output
-pub fn log_line(line: &str, level: &str) {
+pub fn log_line(id: i32, line: &str, level: &str) {
     if line.contains("[info]") && level.to_lowercase() == "info" {
-        info!("<bright black>[Server]</> {}", line.replace("[info] ", ""));
+        info!(target: Target::file_mail(), channel = id; "<bright black>[Server]</> {}", line.replace("[info] ", ""));
     } else if line.contains("[warning]")
         && (level.to_lowercase() == "warning" || level.to_lowercase() == "info")
     {
         warn!(
+            target: Target::file_mail(), channel = id;
             "<bright black>[Server]</> {}",
             line.replace("[warning] ", "")
         );
@@ -467,9 +477,9 @@ pub fn log_line(line: &str, level: &str) {
         && !line.contains("Input/output error")
         && !line.contains("Broken pipe")
     {
-        error!("<bright black>[Server]</> {}", line.replace("[error] ", ""));
+        error!(target: Target::file_mail(), channel = id; "<bright black>[Server]</> {}", line.replace("[error] ", ""));
     } else if line.contains("[fatal]") {
-        error!("<bright black>[Server]</> {}", line.replace("[fatal] ", ""));
+        error!(target: Target::file_mail(), channel = id; "<bright black>[Server]</> {}", line.replace("[fatal] ", ""));
     }
 }
 

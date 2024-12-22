@@ -30,7 +30,7 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "std"
 clap = { version = "4.3", features = ["derive", "env"] }
 derive_more = { version = "1", features = ["display"] }
 faccess = "0.2"
-flexi_logger = { version = "0.29", features = ["kv", "colors"] }
+flexi_logger = { version = "0.29", features = ["async", "colors", "kv"] }
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
 jsonwebtoken = "9"
 lettre = { version = "0.11", features = ["builder", "rustls-tls", "smtp-transport", "tokio1", "tokio1-rustls-tls"], default-features = false }

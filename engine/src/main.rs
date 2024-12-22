@@ -65,7 +65,8 @@ async fn main() -> std::io::Result<()> {
     init_globales(&pool)
         .await
         .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
-    init_logging(mail_queues.clone())?;
+    // LoggerHandle should be kept alive until the end
+    let _logger = init_logging(mail_queues.clone());
 
     let channel_controllers = Arc::new(Mutex::new(ChannelController::new()));
 

@@ -137,9 +137,9 @@ async fn ingest_to_hls_server(manager: ChannelManager) -> Result<(), ServiceErro
             }
 
             if ingest_is_running.load(Ordering::SeqCst) {
-                log_line(&line, &config.logging.ingest_level);
+                log_line(id, &line, &config.logging.ingest_level);
             } else {
-                log_line(&line, &config.logging.ffmpeg_level);
+                log_line(id, &line, &config.logging.ffmpeg_level);
             }
         }
 

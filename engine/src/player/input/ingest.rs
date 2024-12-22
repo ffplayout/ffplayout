@@ -33,7 +33,7 @@ async fn server_monitor(
         if !FFMPEG_IGNORE_ERRORS.iter().any(|i| line.contains(*i))
             && !ignore.iter().any(|i| line.contains(i))
         {
-            log_line(&line, &level);
+            log_line(id, &line, &level);
         }
 
         if line.contains("rtmp")
