@@ -1,16 +1,13 @@
-use std::{
-    io::Write,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
 use actix_multipart::Multipart;
-use actix_web::{web, HttpResponse};
+use actix_web::HttpResponse;
 use futures_util::TryStreamExt as _;
 use lexical_sort::{natural_lexical_cmp, PathSort};
 use rand::{distributions::Alphanumeric, Rng};
 use relative_path::RelativePath;
 use serde::{Deserialize, Serialize};
-use tokio::fs;
+use tokio::{fs, io::AsyncWriteExt};
 
 use log::*;
 
@@ -397,12 +394,12 @@ pub async fn upload(
             return Err(ServiceError::Conflict("Target already exists!".into()));
         }
 
-        let mut f = web::block(|| std::fs::File::create(filepath_clone)).await??;
+        let mut f = fs::File::create(filepath_clone).await?;
 
         loop {
             match field.try_next().await {
                 Ok(Some(chunk)) => {
-                    f = web::block(move || f.write_all(&chunk).map(|_| f)).await??;
+                    f = f.write_all(&chunk).await.map(|_| f)?;
                 }
 
                 Ok(None) => break,

@@ -65,7 +65,7 @@ pub async fn import_file(
 
     if playlist_file.is_file() {
         file_exists = true;
-        let mut existing_data = json_reader(playlist_file)?;
+        let mut existing_data = json_reader(playlist_file).await?;
         existing_data.program.append(&mut playlist.program);
 
         playlist.program = existing_data.program;
@@ -77,7 +77,7 @@ pub async fn import_file(
         format!("Write playlist from {date} success!")
     };
 
-    match json_writer(playlist_file, playlist) {
+    match json_writer(playlist_file, playlist).await {
         Ok(_) => Ok(msg),
         Err(e) => Err(Error::new(ErrorKind::Other, e)),
     }

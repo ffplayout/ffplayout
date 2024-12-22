@@ -1,6 +1,5 @@
 use std::{
     collections::HashSet,
-    fs::File,
     io,
     process::exit,
     sync::{atomic::AtomicBool, Arc},
@@ -17,7 +16,7 @@ use actix_files::Files;
 use actix_web_static_files::ResourceFiles;
 
 use log::*;
-use tokio::sync::Mutex;
+use tokio::{fs::File, io::AsyncReadExt, sync::Mutex};
 
 use ffplayout::{
     api::routes::*,
@@ -248,12 +247,16 @@ async fn main() -> std::io::Result<()> {
                         .with_extension("json");
                 }
 
-                let f = File::options()
+                let mut f = File::options()
                     .read(true)
                     .write(false)
-                    .open(&playlist_path)?;
+                    .open(&playlist_path)
+                    .await?;
 
-                let playlist: JsonPlaylist = serde_json::from_reader(f)?;
+                let mut contents = String::new();
+                f.read_to_string(&mut contents).await?;
+
+                let playlist: JsonPlaylist = serde_json::from_str(&contents)?;
 
                 validate_playlist(
                     config,

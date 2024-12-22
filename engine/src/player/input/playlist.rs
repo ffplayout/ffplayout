@@ -73,7 +73,7 @@ impl CurrentProgram {
 
         if let Some(path) = self.json_playlist.path.clone() {
             if (Path::new(&path).is_file() || is_remote(&path))
-                && self.json_playlist.modified != modified_time(&path)
+                && self.json_playlist.modified != modified_time(&path).await
             {
                 info!(target: Target::file_mail(), channel = self.id; "Reload playlist <b><magenta>{path}</></b>");
                 self.manager.list_init.store(true, Ordering::SeqCst);

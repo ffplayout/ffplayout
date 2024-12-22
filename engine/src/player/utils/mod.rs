@@ -1,7 +1,7 @@
 use std::{
     ffi::OsStr,
     fmt,
-    fs::{metadata, File},
+    fs::metadata,
     io::Error,
     net::TcpListener,
     path::{Path, PathBuf},
@@ -19,7 +19,8 @@ use reqwest::header;
 use serde::{de::Deserializer, Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use tokio::{
-    io::{AsyncBufReadExt, BufReader},
+    fs::File,
+    io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader},
     process::{ChildStderr, Command},
     sync::Mutex,
 };
@@ -411,20 +412,24 @@ pub fn fps_calc(r_frame_rate: &str, default: f64) -> f64 {
     default
 }
 
-pub fn json_reader(path: &PathBuf) -> Result<JsonPlaylist, Error> {
-    let f = File::options().read(true).write(false).open(path)?;
-    let p = serde_json::from_reader(f)?;
+pub async fn json_reader(path: &PathBuf) -> Result<JsonPlaylist, Error> {
+    let mut f = File::options().read(true).write(false).open(path).await?;
+    let mut contents = String::new();
+    f.read_to_string(&mut contents).await?;
+    let p = serde_json::from_str(&contents)?;
 
     Ok(p)
 }
 
-pub fn json_writer(path: &PathBuf, data: JsonPlaylist) -> Result<(), Error> {
-    let f = File::options()
+pub async fn json_writer(path: &PathBuf, data: JsonPlaylist) -> Result<(), Error> {
+    let mut f = File::options()
         .write(true)
         .truncate(true)
         .create(true)
-        .open(path)?;
-    serde_json::to_writer_pretty(f, &data)?;
+        .open(path)
+        .await?;
+    let contents = serde_json::to_string_pretty(&data)?;
+    f.write_all(contents.as_bytes()).await?;
 
     Ok(())
 }
@@ -472,9 +477,9 @@ pub fn time_from_header(headers: &header::HeaderMap) -> Option<DateTime<Local>> 
 }
 
 /// Get file modification time.
-pub fn modified_time(path: &str) -> Option<String> {
+pub async fn modified_time(path: &str) -> Option<String> {
     if is_remote(path) {
-        let response = reqwest::blocking::Client::new().head(path).send();
+        let response = reqwest::Client::new().head(path).send().await;
 
         if let Ok(resp) = response {
             if resp.status().is_success() {

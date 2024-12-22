@@ -1,6 +1,5 @@
 use std::{
     fmt,
-    io::Read,
     path::Path,
     sync::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
@@ -14,7 +13,8 @@ use m3u8_rs::Playlist;
 use serde::{Deserialize, Serialize};
 use sqlx::{Pool, Sqlite};
 use tokio::{
-    fs, io,
+    fs,
+    io::{self, AsyncReadExt},
     process::{Child, ChildStdout},
     sync::Mutex,
 };
@@ -375,9 +375,9 @@ pub async fn drain_hls_path(path: &Path) -> io::Result<()> {
     let mut pl_segments = vec![];
 
     for file in m3u8_files {
-        let mut file = std::fs::File::open(file).unwrap();
+        let mut file = fs::File::open(file).await?;
         let mut bytes: Vec<u8> = Vec::new();
-        file.read_to_end(&mut bytes).unwrap();
+        file.read_to_end(&mut bytes).await?;
 
         if let Ok(Playlist::MediaPlaylist(pl)) = m3u8_rs::parse_playlist_res(&bytes) {
             for segment in pl.segments {

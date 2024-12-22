@@ -23,7 +23,7 @@ pub async fn read_playlist(
         .join(date.clone())
         .with_extension("json");
 
-    match json_reader(&playlist_path) {
+    match json_reader(&playlist_path).await {
         Ok(p) => Ok(p),
         Err(e) => Err(ServiceError::NoContent(e.to_string())),
     }
@@ -58,7 +58,7 @@ pub async fn write_playlist(
 
     if playlist_path.is_file() {
         file_exists = true;
-        if let Ok(existing_data) = json_reader(&playlist_path) {
+        if let Ok(existing_data) = json_reader(&playlist_path).await {
             if json_data == existing_data {
                 return Err(ServiceError::Conflict(format!(
                     "Playlist from {date}, already exists!"
@@ -67,7 +67,7 @@ pub async fn write_playlist(
         }
     }
 
-    match json_writer(&playlist_path, json_data) {
+    match json_writer(&playlist_path, json_data).await {
         Ok(..) if file_exists => {
             return Ok(format!("Update playlist from {date} success!"));
         }
