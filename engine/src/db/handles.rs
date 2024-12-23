@@ -1,11 +1,10 @@
+use actix_web::web;
 use argon2::{
     password_hash::{rand_core::OsRng, SaltString},
     Argon2, PasswordHasher,
 };
-
 use rand::{distributions::Alphanumeric, Rng};
 use sqlx::{sqlite::SqliteQueryResult, Pool, Row, Sqlite};
-use tokio::task;
 
 use super::models::{AdvancedConfiguration, Configuration};
 use crate::db::models::{Channel, GlobalSettings, Role, TextPreset, User};
@@ -380,7 +379,7 @@ pub async fn select_users(conn: &Pool<Sqlite>) -> Result<Vec<User>, sqlx::Error>
 }
 
 pub async fn insert_user(conn: &Pool<Sqlite>, user: User) -> Result<(), ServiceError> {
-    let password_hash = task::spawn_blocking(move || {
+    let password_hash = web::block(move || {
         let salt = SaltString::generate(&mut OsRng);
         let hash = Argon2::default()
             .hash_password(user.password.as_bytes(), &salt)
@@ -410,7 +409,7 @@ pub async fn insert_user(conn: &Pool<Sqlite>, user: User) -> Result<(), ServiceE
 }
 
 pub async fn insert_or_update_user(conn: &Pool<Sqlite>, user: User) -> Result<(), ServiceError> {
-    let password_hash = task::spawn_blocking(move || {
+    let password_hash = web::block(move || {
         let salt = SaltString::generate(&mut OsRng);
         let hash = Argon2::default()
             .hash_password(user.password.as_bytes(), &salt)

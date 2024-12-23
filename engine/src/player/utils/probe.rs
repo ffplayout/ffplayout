@@ -2,7 +2,6 @@ use log::*;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DisplayFromStr};
 use tokio::process;
-use ts_rs::TS;
 
 use crate::player::utils::is_remote;
 use crate::utils::errors::ProcessError;
@@ -107,8 +106,7 @@ pub struct Format {
     pub bit_rate: Option<i64>,
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, TS)]
-#[ts(export, export_to = "backend.d.ts")]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 pub struct MediaFormat {
     pub duration: Option<f64>,
     pub nb_streams: i64,
@@ -125,8 +123,7 @@ impl MediaFormat {
     }
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, TS)]
-#[ts(export, export_to = "backend.d.ts")]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 pub struct AudioStream {
     pub channels: i64,
     pub codec_name: Option<String>,
@@ -145,8 +142,7 @@ impl AudioStream {
     }
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, TS)]
-#[ts(export, export_to = "backend.d.ts")]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 pub struct VideoStream {
     pub codec_name: Option<String>,
     pub aspect_ratio: Option<String>,

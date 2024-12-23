@@ -4,10 +4,7 @@
 ///
 /// The generator takes the files from storage, which are set in config.
 /// It also respect the shuffle/sort mode.
-use std::{
-    fs::{create_dir_all, write},
-    io::Error,
-};
+use std::io::Error;
 
 use async_iterator::Iterator;
 use async_walkdir::{Filtering, WalkDir};
@@ -15,6 +12,7 @@ use chrono::Timelike;
 use lexical_sort::{natural_lexical_cmp, StringSort};
 use log::*;
 use rand::{seq::SliceRandom, thread_rng, Rng};
+use tokio::fs;
 use tokio_stream::StreamExt;
 
 use crate::player::{
@@ -269,7 +267,7 @@ pub async fn playlist_generator(manager: &ChannelManager) -> Result<Vec<JsonPlay
         let mut length = 0.0;
         let mut round = 0;
 
-        create_dir_all(playlist_path)?;
+        fs::create_dir_all(playlist_path).await?;
 
         if playlist_file.is_file() {
             warn!(
@@ -326,7 +324,7 @@ pub async fn playlist_generator(manager: &ChannelManager) -> Result<Vec<JsonPlay
         }
 
         let json: String = serde_json::to_string_pretty(&playlist)?;
-        write(playlist_file, json)?;
+        fs::write(playlist_file, json).await?;
 
         playlists.push(playlist);
     }

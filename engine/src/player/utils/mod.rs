@@ -1,7 +1,6 @@
 use std::{
     ffi::OsStr,
     fmt,
-    fs::metadata,
     io::Error,
     net::TcpListener,
     path::{Path, PathBuf},
@@ -19,7 +18,7 @@ use reqwest::header;
 use serde::{de::Deserializer, Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use tokio::{
-    fs::File,
+    fs::{metadata, File},
     io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader},
     process::{ChildStderr, Command},
     sync::Mutex,
@@ -492,7 +491,10 @@ pub async fn modified_time(path: &str) -> Option<String> {
         return None;
     }
 
-    if let Ok(time) = metadata(path).and_then(|metadata| metadata.modified()) {
+    if let Ok(time) = metadata(path)
+        .await
+        .and_then(|metadata| metadata.modified())
+    {
         let date_time: DateTime<Local> = time.into();
         return Some(date_time.to_string());
     }

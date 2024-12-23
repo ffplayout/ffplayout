@@ -785,9 +785,9 @@ impl PlayoutConfig {
         // when text overlay without text_from_filename is on, turn also the RPC server on,
         // to get text messages from it
         if text.add_text && !text.text_from_filename {
-            text.zmq_stream_socket = gen_tcp_socket("");
+            text.zmq_stream_socket = gen_tcp_socket("").await;
             text.zmq_server_socket =
-                gen_tcp_socket(&text.zmq_stream_socket.clone().unwrap_or_default());
+                gen_tcp_socket(&text.zmq_stream_socket.clone().unwrap_or_default()).await;
             text.node_pos = Some(2);
         } else {
             text.zmq_stream_socket = None;
