@@ -1,15 +1,19 @@
 use std::{
-    io::{BufRead, BufReader},
-    process::{Command, Stdio},
+    process::Stdio,
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc, Mutex,
+        Arc,
     },
     time::Instant,
 };
 
 use log::*;
 use regex::Regex;
+use tokio::{
+    io::{AsyncBufReadExt, BufReader},
+    process::Command,
+    sync::Mutex,
+};
 
 use crate::player::filter::FilterType::Audio;
 use crate::player::utils::{
@@ -28,7 +32,7 @@ use crate::vec_strings;
 /// - Check if ffmpeg can read the file
 /// - Check if Metadata exists
 /// - Check if the file is not silent
-fn check_media(
+async fn check_media(
     mut node: Media,
     pos: usize,
     begin: f64,
@@ -70,7 +74,7 @@ fn check_media(
         node.cmd = Some(seek_and_length(&config, &mut node));
     }
 
-    node.add_filter(&config, &None);
+    node.add_filter(&config, &None).await;
 
     let mut filter = node.filter.unwrap_or_default();
 
@@ -95,14 +99,13 @@ fn check_media(
         .spawn()?;
 
     let enc_err = BufReader::new(enc_proc.stderr.take().unwrap());
+    let mut lines = enc_err.lines();
     let mut silence_start = 0.0;
     let mut silence_end = 0.0;
     let re_start = Regex::new(r"silence_start: ([0-9]+:)?([0-9.]+)")?;
     let re_end = Regex::new(r"silence_end: ([0-9]+:)?([0-9.]+)")?;
 
-    for line in enc_err.lines() {
-        let line = line?;
-
+    while let Some(line) = lines.next_line().await? {
         if !FFMPEG_IGNORE_ERRORS.iter().any(|i| line.contains(*i))
             && !config.logging.ignore_lines.iter().any(|i| line.contains(i))
             && (line.contains("[error]") || line.contains("[fatal]"))
@@ -140,7 +143,7 @@ fn check_media(
 
     error_list.clear();
 
-    if let Err(e) = enc_proc.wait() {
+    if let Err(e) = enc_proc.wait().await {
         error!(target: Target::file_mail(), channel = id; "Validation process: {e:?}");
     }
 
@@ -154,7 +157,7 @@ fn check_media(
 /// - total playtime fits target length from config
 ///
 /// This function we run in a thread, to don't block the main function.
-pub fn validate_playlist(
+pub async fn validate_playlist(
     mut config: PlayoutConfig,
     current_list: Arc<Mutex<Vec<Media>>>,
     mut playlist: JsonPlaylist,
@@ -185,13 +188,13 @@ pub fn validate_playlist(
 
         if !is_remote(&item.source) {
             if item.audio.is_empty() {
-                if let Err(e) = item.add_probe(false) {
+                if let Err(e) = item.add_probe(false).await {
                     error!(target: Target::file_mail(), channel = id;
                         "[Validation] Error on position <yellow>{pos:0>3}</> <yellow>{}</>: {e}",
                         sec_to_time(begin)
                     );
                 }
-            } else if let Err(e) = item.add_probe(true) {
+            } else if let Err(e) = item.add_probe(true).await {
                 error!(target: Target::file_mail(), channel = id;
                     "[Validation] Error on position <yellow>{pos:0>3}</> <yellow>{}</>: {e}",
                     sec_to_time(begin)
@@ -200,7 +203,7 @@ pub fn validate_playlist(
         }
 
         if item.probe.is_some() {
-            if let Err(e) = check_media(item.clone(), pos, begin, &config) {
+            if let Err(e) = check_media(item.clone(), pos, begin, &config).await {
                 error!(target: Target::file_mail(), channel = id; "{e}");
             } else if config.general.validate {
                 debug!(target: Target::file_mail(), channel = id;
@@ -215,9 +218,9 @@ pub fn validate_playlist(
                     o.probe.clone_from(&item.probe);
 
                     if let Some(dur) =
-                        item.probe.as_ref().and_then(|f| f.format.duration.clone())
+                        item.probe.as_ref().and_then(|f| f.format.duration)
                     {
-                        let probe_duration = dur.parse().unwrap_or_default();
+                        let probe_duration = dur;
 
                         if !is_close(o.duration, probe_duration, 1.2) {
                             error!(target: Target::file_mail(), channel = id;

@@ -1,18 +1,15 @@
-use std::{
-    fmt,
-    path::Path,
-    sync::{Arc, Mutex},
-};
+use std::{fmt, path::Path, sync::Arc};
 
 use log::*;
 use regex::Regex;
+use tokio::sync::Mutex;
 
 mod custom;
 pub mod v_drawtext;
 
 use crate::player::{
     controller::ProcessUnit::*,
-    utils::{custom_format, fps_calc, is_close, Media},
+    utils::{custom_format, fps_calc, is_close, probe::VideoStream, Media},
 };
 use crate::utils::{
     config::{OutputMode::*, PlayoutConfig},
@@ -202,7 +199,7 @@ fn deinterlace(field_order: &Option<String>, chain: &mut Filters, config: &Playo
     }
 }
 
-fn pad(aspect: f64, chain: &mut Filters, v_stream: &ffprobe::Stream, config: &PlayoutConfig) {
+fn pad(aspect: f64, chain: &mut Filters, v_stream: &VideoStream, config: &PlayoutConfig) {
     if !is_close(aspect, config.processing.aspect, 0.03) {
         let mut scale = String::new();
 
@@ -432,9 +429,8 @@ fn extend_video(node: &mut Media, chain: &mut Filters, config: &PlayoutConfig) {
     if let Some(video_duration) = node
         .probe
         .as_ref()
-        .and_then(|p| p.video_streams.first())
+        .and_then(|p| p.video.first())
         .and_then(|v| v.duration.as_ref())
-        .and_then(|v| v.parse::<f64>().ok())
     {
         if node.out - node.seek > video_duration - node.seek + 0.1 && node.duration >= node.out {
             let duration = (node.out - node.seek) - (video_duration - node.seek);
@@ -450,7 +446,7 @@ fn extend_video(node: &mut Media, chain: &mut Filters, config: &PlayoutConfig) {
 }
 
 /// add drawtext filter for lower thirds messages
-fn add_text(
+async fn add_text(
     node: &mut Media,
     chain: &mut Filters,
     config: &PlayoutConfig,
@@ -459,7 +455,7 @@ fn add_text(
     if config.text.add_text
         && (config.text.text_from_filename || config.output.mode == HLS || node.unit == Encoder)
     {
-        let filter = v_drawtext::filter_node(config, Some(node), filter_chain);
+        let filter = v_drawtext::filter_node(config, Some(node), filter_chain).await;
 
         chain.add_filter(&filter, 0, Video);
     }
@@ -482,9 +478,8 @@ fn extend_audio(node: &mut Media, chain: &mut Filters, nr: i32, config: &Playout
         if let Some(audio_duration) = node
             .probe
             .as_ref()
-            .and_then(|p| p.audio_streams.first())
-            .and_then(|a| a.duration.clone())
-            .and_then(|a| a.parse::<f64>().ok())
+            .and_then(|p| p.audio.first())
+            .and_then(|a| a.duration)
         {
             if node.out - node.seek > audio_duration - node.seek + 0.1 && node.duration >= node.out
             {
@@ -596,7 +591,7 @@ fn custom(filter: &str, chain: &mut Filters, nr: i32, filter_type: FilterType) {
     }
 }
 
-pub fn filter_chains(
+pub async fn filter_chains(
     config: &PlayoutConfig,
     node: &mut Media,
     filter_chain: &Option<Arc<Mutex<Vec<String>>>>,
@@ -609,7 +604,7 @@ pub fn filter_chains(
 
     if node.unit == Encoder {
         if !config.processing.audio_only {
-            add_text(node, &mut filters, config, filter_chain);
+            add_text(node, &mut filters, config, filter_chain).await;
         }
 
         if let Some(f) = config.output.output_filter.clone() {
@@ -627,9 +622,9 @@ pub fn filter_chains(
                 filters.audio_position = 1;
             }
 
-            if let Some(v_stream) = &probe.video_streams.first() {
-                let aspect = aspect_calc(&v_stream.display_aspect_ratio, config);
-                let frame_per_sec = fps_calc(&v_stream.r_frame_rate, 1.0);
+            if let Some(v_stream) = &probe.video.first() {
+                let aspect = aspect_calc(&v_stream.aspect_ratio, config);
+                let frame_per_sec = fps_calc(&v_stream.frame_rate, 1.0);
 
                 deinterlace(&v_stream.field_order, &mut filters, config);
                 pad(aspect, &mut filters, v_stream, config);
@@ -649,7 +644,7 @@ pub fn filter_chains(
             scale(None, None, 1.0, &mut filters, config);
         }
 
-        add_text(node, &mut filters, config, filter_chain);
+        add_text(node, &mut filters, config, filter_chain).await;
         fade(node, &mut filters, 0, Video, config);
         overlay(node, &mut filters, config);
     }
@@ -682,7 +677,7 @@ pub fn filter_chains(
             if node
                 .probe
                 .as_ref()
-                .and_then(|p| p.audio_streams.get(i as usize))
+                .and_then(|p| p.audio.get(i as usize))
                 .is_some()
                 || Path::new(&node.audio).is_file()
             {

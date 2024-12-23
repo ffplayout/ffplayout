@@ -1,6 +1,5 @@
 use std::{
     env, fmt,
-    net::TcpListener,
     path::{Path, PathBuf},
 };
 
@@ -12,7 +11,7 @@ use log::*;
 use path_clean::PathClean;
 use rand::Rng;
 use regex::Regex;
-use tokio::{fs, process::Command};
+use tokio::{fs, net::TcpListener, process::Command};
 
 use serde::{
     de::{self, Visitor},
@@ -255,12 +254,12 @@ where
 }
 
 /// get a free tcp socket
-pub fn gen_tcp_socket(exclude_socket: &str) -> Option<String> {
+pub async fn gen_tcp_socket(exclude_socket: &str) -> Option<String> {
     for _ in 0..100 {
         let port = rand::thread_rng().gen_range(45321..54268);
         let socket = format!("127.0.0.1:{port}");
 
-        if socket != exclude_socket && TcpListener::bind(("127.0.0.1", port)).is_ok() {
+        if socket != exclude_socket && TcpListener::bind(("127.0.0.1", port)).await.is_ok() {
             return Some(socket);
         }
     }

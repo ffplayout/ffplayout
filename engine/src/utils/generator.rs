@@ -4,16 +4,16 @@
 ///
 /// The generator takes the files from storage, which are set in config.
 /// It also respect the shuffle/sort mode.
-use std::{
-    fs::{create_dir_all, write},
-    io::Error,
-};
+use std::io::Error;
 
+use async_iterator::Iterator;
+use async_walkdir::{Filtering, WalkDir};
 use chrono::Timelike;
 use lexical_sort::{natural_lexical_cmp, StringSort};
 use log::*;
 use rand::{seq::SliceRandom, thread_rng, Rng};
-use walkdir::WalkDir;
+use tokio::fs;
+use tokio_stream::StreamExt;
 
 use crate::player::{
     controller::ChannelManager,
@@ -36,7 +36,7 @@ pub fn random_list(clip_list: Vec<Media>, total_length: f64) -> Vec<Media> {
     let mut target_duration = 0.0;
     let clip_list_length = clip_list.len();
     let usage_limit = (total_length / sum_durations(&clip_list)).floor() + 1.0;
-    let mut last_clip = Media::new(0, "", false);
+    let mut last_clip = Media::default();
 
     while target_duration < total_length && max_attempts > 0 {
         let index = rand::thread_rng().gen_range(0..clip_list_length);
@@ -94,8 +94,8 @@ pub fn ordered_list(clip_list: Vec<Media>, total_length: f64) -> Vec<Media> {
     ordered_clip_list
 }
 
-pub fn filler_list(config: &PlayoutConfig, total_length: f64) -> Vec<Media> {
-    let filler_list = fill_filler_list(config, None);
+pub async fn filler_list(config: &PlayoutConfig, total_length: f64) -> Vec<Media> {
+    let filler_list = fill_filler_list(config, None).await;
     let mut index = 0;
     let mut filler_clip_list: Vec<Media> = vec![];
     let mut target_duration = 0.0;
@@ -123,7 +123,7 @@ pub fn filler_list(config: &PlayoutConfig, total_length: f64) -> Vec<Media> {
     filler_clip_list
 }
 
-pub fn generate_from_template(
+pub async fn generate_from_template(
     config: &PlayoutConfig,
     manager: &ChannelManager,
     template: Template,
@@ -143,21 +143,41 @@ pub fn generate_from_template(
 
         for path in source.paths {
             debug!("Search files in <b><magenta>{path:?}</></b>");
+            let mut file_list = vec![];
 
-            let mut file_list = WalkDir::new(path.clone())
-                .into_iter()
-                .filter_map(Result::ok)
-                .filter(|f| f.path().is_file())
-                .filter(|f| include_file_extension(config, f.path()))
-                .map(|p| p.path().to_string_lossy().to_string())
-                .collect::<Vec<String>>();
+            let config = config.clone();
+            let mut entries = WalkDir::new(path).filter(move |entry| {
+                let config = config.clone();
+                async move {
+                    if entry.path().is_file() && include_file_extension(&config, &entry.path()) {
+                        return Filtering::Continue;
+                    }
+
+                    Filtering::Ignore
+                }
+            });
+
+            loop {
+                match entries.next().await {
+                    Some(Ok(entry)) => {
+                        let file = entry.path().to_string_lossy().to_string();
+
+                        file_list.push(file);
+                    }
+                    Some(Err(e)) => {
+                        error!(target: Target::file_mail(), "error: {e}");
+                        break;
+                    }
+                    None => break,
+                }
+            }
 
             if !source.shuffle {
                 file_list.string_sort_unstable(natural_lexical_cmp);
             }
 
             for entry in file_list {
-                let media = Media::new(0, &entry, true);
+                let media = Media::new(0, &entry, true).await;
                 source_list.push(media);
             }
         }
@@ -173,7 +193,7 @@ pub fn generate_from_template(
         let total_length = sum_durations(&timed_list);
 
         if duration > total_length {
-            let mut filler = filler_list(config, duration - total_length);
+            let mut filler = filler_list(config, duration - total_length).await;
 
             timed_list.append(&mut filler);
         }
@@ -187,14 +207,14 @@ pub fn generate_from_template(
         index += 1;
     }
 
-    FolderSource::from_list(manager, media_list)
+    FolderSource::from_list(manager, media_list).await
 }
 
 /// Generate playlists
-pub fn playlist_generator(manager: &ChannelManager) -> Result<Vec<JsonPlaylist>, Error> {
-    let config = manager.config.lock().unwrap().clone();
+pub async fn playlist_generator(manager: &ChannelManager) -> Result<Vec<JsonPlaylist>, Error> {
+    let config = manager.config.lock().await.clone();
     let id = config.general.channel_id;
-    let channel_name = manager.channel.lock().unwrap().name.clone();
+    let channel_name = manager.channel.lock().await.name.clone();
 
     let total_length = match config.playlist.length_sec {
         Some(length) => length,
@@ -228,15 +248,15 @@ pub fn playlist_generator(manager: &ChannelManager) -> Result<Vec<JsonPlaylist>,
     }
 
     // gives an iterator with infinit length
-    let folder_iter = if let Some(template) = &config.general.template {
+    let mut folder_iter = if let Some(template) = &config.general.template {
         from_template = true;
 
-        generate_from_template(&config, manager, template.clone())
+        generate_from_template(&config, manager, template.clone()).await
     } else {
-        FolderSource::new(&config, manager.clone())
+        FolderSource::new(&config, manager.clone()).await
     };
 
-    let list_length = manager.current_list.lock().unwrap().len();
+    let list_length = manager.current_list.lock().await.len();
 
     for date in date_range {
         let d: Vec<&str> = date.split('-').collect();
@@ -247,7 +267,7 @@ pub fn playlist_generator(manager: &ChannelManager) -> Result<Vec<JsonPlaylist>,
         let mut length = 0.0;
         let mut round = 0;
 
-        create_dir_all(playlist_path)?;
+        fs::create_dir_all(playlist_path).await?;
 
         if playlist_file.is_file() {
             warn!(
@@ -276,10 +296,10 @@ pub fn playlist_generator(manager: &ChannelManager) -> Result<Vec<JsonPlaylist>,
         };
 
         if from_template {
-            let media_list = manager.current_list.lock().unwrap();
+            let media_list = manager.current_list.lock().await;
             playlist.program = media_list.to_vec();
         } else {
-            for item in folder_iter.clone() {
+            while let Some(item) = folder_iter.next().await {
                 let duration = item.duration;
 
                 if total_length >= length + duration {
@@ -297,14 +317,14 @@ pub fn playlist_generator(manager: &ChannelManager) -> Result<Vec<JsonPlaylist>,
 
             if config.playlist.length_sec.unwrap() > list_duration {
                 let time_left = config.playlist.length_sec.unwrap() - list_duration;
-                let mut fillers = filler_list(&config, time_left);
+                let mut fillers = filler_list(&config, time_left).await;
 
                 playlist.program.append(&mut fillers);
             }
         }
 
         let json: String = serde_json::to_string_pretty(&playlist)?;
-        write(playlist_file, json)?;
+        fs::write(playlist_file, json).await?;
 
         playlists.push(playlist);
     }

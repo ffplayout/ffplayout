@@ -1,12 +1,12 @@
-use std::{
-    io::{prelude::*, BufReader, BufWriter, Read},
-    process::{Command, Stdio},
-    sync::{atomic::Ordering, mpsc::sync_channel},
-    thread::{self, sleep},
-    time::{Duration, SystemTime},
-};
+use std::{process::Stdio, sync::atomic::Ordering};
 
+use async_iterator::Iterator;
 use log::*;
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter},
+    process::Command,
+    time::{sleep, Duration},
+};
 
 mod desktop;
 mod hls;
@@ -20,7 +20,12 @@ use crate::player::{
     input::{ingest_server, source_generator},
     utils::{sec_to_time, stderr_reader},
 };
-use crate::utils::{config::OutputMode::*, errors::ProcessError, logging::Target, task_runner};
+use crate::utils::{
+    config::OutputMode::*,
+    errors::ServiceError,
+    logging::{fmt_cmd, Target},
+    task_runner,
+};
 use crate::vec_strings;
 
 /// Player
@@ -32,60 +37,50 @@ use crate::vec_strings;
 /// for getting live feeds.
 /// When a live ingest arrive, it stops the current playing and switch to the live source.
 /// When ingest stops, it switch back to playlist/folder mode.
-pub fn player(manager: ChannelManager) -> Result<(), ProcessError> {
-    let config = manager.config.lock()?.clone();
+pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
+    let config = manager.config.lock().await.clone();
     let id = config.general.channel_id;
     let config_clone = config.clone();
     let ff_log_format = format!("level+{}", config.logging.ffmpeg_level.to_lowercase());
     let ignore_enc = config.logging.ignore_lines.clone();
-    let mut buffer = [0; 65088];
-    let mut live_on = false;
     let playlist_init = manager.list_init.clone();
-
     let is_terminated = manager.is_terminated.clone();
     let ingest_is_running = manager.ingest_is_running.clone();
+    let mut buffer: [u8; 65088] = [0; 65088];
+    let mut live_on = false;
+    let mut error_count = 0;
 
     // get source iterator
-    let node_sources = source_generator(manager.clone());
+    let mut node_sources = source_generator(manager.clone()).await;
 
     // get ffmpeg output instance
     let mut enc_proc = match config.output.mode {
-        Desktop => desktop::output(&config, &ff_log_format),
-        Null => null::output(&config, &ff_log_format),
-        Stream => stream::output(&config, &ff_log_format),
+        Desktop => desktop::output(&config, &ff_log_format).await,
+        Null => null::output(&config, &ff_log_format).await,
+        Stream => stream::output(&config, &ff_log_format).await,
         _ => panic!("Output mode doesn't exists!"),
     };
 
     let mut enc_writer = BufWriter::new(enc_proc.stdin.take().unwrap());
     let enc_err = BufReader::new(enc_proc.stderr.take().unwrap());
 
-    *manager.encoder.lock().unwrap() = Some(enc_proc);
+    *manager.encoder.lock().await = Some(enc_proc);
     let enc_p_ctl = manager.clone();
 
-    // spawn a thread to log ffmpeg output error messages
-    let error_encoder_thread =
-        thread::spawn(move || stderr_reader(enc_err, ignore_enc, Encoder, enc_p_ctl));
+    // spawn a task to log ffmpeg output error messages
+    let error_encoder_task = tokio::spawn(stderr_reader(enc_err, ignore_enc, Encoder, enc_p_ctl));
 
     let channel_mgr_2 = manager.clone();
-    let mut ingest_receiver = None;
 
-    // spawn a thread for ffmpeg ingest server and create a channel for package sending
+    // spawn a task for ffmpeg ingest server and create a channel for package sending
     if config.ingest.enable {
-        let (ingest_sender, rx) = sync_channel(96);
-        ingest_receiver = Some(rx);
-        thread::spawn(move || ingest_server(config_clone, ingest_sender, channel_mgr_2));
+        tokio::spawn(ingest_server(config_clone, channel_mgr_2));
     }
 
-    drop(config);
-
-    let mut error_count = 0;
-
-    'source_iter: for node in node_sources {
-        let config = manager.config.lock()?.clone();
-
-        *manager.current_media.lock().unwrap() = Some(node.clone());
+    'source_iter: while let Some(node) = node_sources.next().await {
+        *manager.current_media.lock().await = Some(node.clone());
         let ignore_dec = config.logging.ignore_lines.clone();
-        let timer = SystemTime::now();
+        let timer = tokio::time::Instant::now();
 
         if is_terminated.load(Ordering::SeqCst) {
             debug!(target: Target::file_mail(), channel = id; "Playout is terminated, break out from source loop");
@@ -99,10 +94,10 @@ pub fn player(manager: ChannelManager) -> Result<(), ProcessError> {
             None => break,
         };
 
-        if !node.process.unwrap() {
-            // process true/false differs from node.cmd = None in that way,
-            // that source is valid but to show for playing,
-            // so better skip it and jump to the next one.
+        if node.skip {
+            // skip is different from node.cmd = None.
+            // This source is valid, but too short to play,
+            // so better skip it and go to the next one.
             continue;
         }
 
@@ -110,7 +105,7 @@ pub fn player(manager: ChannelManager) -> Result<(), ProcessError> {
             format!(
                 " ({}/{})",
                 node.index.unwrap() + 1,
-                manager.current_list.lock().unwrap().len()
+                manager.current_list.lock().await.len()
             )
         } else {
             String::new()
@@ -127,7 +122,7 @@ pub fn player(manager: ChannelManager) -> Result<(), ProcessError> {
             if config.task.path.is_file() {
                 let channel_mgr_3 = manager.clone();
 
-                thread::spawn(move || task_runner::run(channel_mgr_3));
+                tokio::spawn(task_runner::run(channel_mgr_3));
             } else {
                 error!(target: Target::file_mail(), channel = id;
                     "<bright-blue>{:?}</> executable not exists!",
@@ -164,8 +159,8 @@ pub fn player(manager: ChannelManager) -> Result<(), ProcessError> {
         }
 
         debug!(target: Target::file_mail(), channel = id;
-            "Decoder CMD: <bright-blue>\"ffmpeg {}\"</>",
-            dec_cmd.join(" ")
+            "Decoder CMD: <bright-blue>ffmpeg {}</>",
+            fmt_cmd(&dec_cmd)
         );
 
         // create ffmpeg decoder instance, for reading the input files
@@ -182,14 +177,14 @@ pub fn player(manager: ChannelManager) -> Result<(), ProcessError> {
             }
         };
 
-        let mut dec_reader = BufReader::new(dec_proc.stdout.take().unwrap());
+        let mut decoder_stdout = dec_proc.stdout.take().unwrap();
         let dec_err = BufReader::new(dec_proc.stderr.take().unwrap());
 
-        *manager.clone().decoder.lock().unwrap() = Some(dec_proc);
+        *manager.clone().decoder.lock().await = Some(dec_proc);
         let channel_mgr_c = manager.clone();
 
-        let error_decoder_thread =
-            thread::spawn(move || stderr_reader(dec_err, ignore_dec, Decoder, channel_mgr_c));
+        let error_decoder_task =
+            tokio::spawn(stderr_reader(dec_err, ignore_dec, Decoder, channel_mgr_c));
 
         loop {
             // when server is running, read from it
@@ -197,7 +192,7 @@ pub fn player(manager: ChannelManager) -> Result<(), ProcessError> {
                 if !live_on {
                     info!(target: Target::file_mail(), channel = id; "Switch from {} to live ingest", config.processing.mode);
 
-                    if let Err(e) = manager.stop(Decoder) {
+                    if let Err(e) = manager.stop(Decoder).await {
                         error!(target: Target::file_mail(), channel = id; "{e}");
                     }
 
@@ -205,15 +200,24 @@ pub fn player(manager: ChannelManager) -> Result<(), ProcessError> {
                     playlist_init.store(true, Ordering::SeqCst);
                 }
 
-                for rx in ingest_receiver.as_ref().unwrap().try_iter() {
-                    if let Err(e) = enc_writer.write(&rx.1[..rx.0]) {
-                        error!(target: Target::file_mail(), channel = id; "Error from Ingest: {:?}", e);
-
-                        break 'source_iter;
+                let mut ingest_stdout_guard = manager.ingest_stdout.lock().await;
+                if let Some(ref mut ingest_stdout) = *ingest_stdout_guard {
+                    match ingest_stdout.read(&mut buffer[..]).await {
+                        Ok(0) => continue,
+                        Ok(length) => {
+                            if let Err(e) = enc_writer.write_all(&buffer[..length]).await {
+                                error!(target: Target::file_mail(), channel = id; "Error writing to encoder: {e}");
+                                break;
+                            }
+                        }
+                        Err(e) => {
+                            error!(target: Target::file_mail(), channel = id; "R/W error from ingest to encoder pipe: {e:?}");
+                            break 'source_iter;
+                        }
                     };
                 }
-            // read from decoder instance
             } else {
+                // read from decoder instance
                 if live_on {
                     info!(target: Target::file_mail(), channel = id; "Switch from live ingest to {}", config.processing.mode);
 
@@ -221,56 +225,51 @@ pub fn player(manager: ChannelManager) -> Result<(), ProcessError> {
                     break;
                 }
 
-                let dec_bytes_len = match dec_reader.read(&mut buffer[..]) {
-                    Ok(length) => length,
+                match decoder_stdout.read(&mut buffer[..]).await {
+                    Ok(0) => break, // EOF
+                    Ok(length) => {
+                        if let Err(e) = enc_writer.write_all(&buffer[..length]).await {
+                            error!(target: Target::file_mail(), channel = id; "Error writing to encoder: {e}");
+                            break;
+                        }
+                    }
                     Err(e) => {
-                        error!(target: Target::file_mail(), channel = id; "Reading error from decoder: {e:?}");
-
+                        error!(target: Target::file_mail(), channel = id; "R/W error from decoder to encoder pipe: {e:?}");
                         break 'source_iter;
                     }
                 };
-
-                if dec_bytes_len > 0 {
-                    if let Err(e) = enc_writer.write(&buffer[..dec_bytes_len]) {
-                        error!(target: Target::file_mail(), channel = id; "Encoder write error: {}", e.kind());
-
-                        break 'source_iter;
-                    };
-                } else {
-                    break;
-                }
             }
         }
 
-        if let Err(e) = manager.wait(Decoder) {
+        drop(decoder_stdout);
+
+        if let Err(e) = manager.wait(Decoder).await {
             error!(target: Target::file_mail(), channel = id; "{e}");
         }
 
-        if let Err(e) = error_decoder_thread.join() {
+        if let Err(e) = error_decoder_task.await {
             error!(target: Target::file_mail(), channel = id; "{e:?}");
         };
 
-        if let Ok(elapsed) = timer.elapsed() {
-            if elapsed.as_millis() < 300 {
-                error_count += 1;
+        if timer.elapsed().as_millis() < 300 {
+            error_count += 1;
 
-                if error_count > 10 {
-                    error!(target: Target::file_mail(), channel = id; "Reach fatal error count, terminate channel!");
-                    break;
-                }
-            } else {
-                error_count = 0;
+            if error_count > 10 {
+                error!(target: Target::file_mail(), channel = id; "Reach fatal error count, terminate channel!");
+                break;
             }
+        } else {
+            error_count = 0;
         }
     }
 
     trace!("Out of source loop");
 
-    sleep(Duration::from_secs(1));
+    sleep(Duration::from_secs(1)).await;
 
-    manager.stop_all();
+    manager.stop_all(false).await?;
 
-    if let Err(e) = error_encoder_thread.join() {
+    if let Err(e) = error_encoder_task.await {
         error!(target: Target::file_mail(), channel = id; "{e:?}");
     };
 

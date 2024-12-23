@@ -1,21 +1,17 @@
-use std::{
-    io::Write,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
 use actix_multipart::Multipart;
-use actix_web::{web, HttpResponse};
+use actix_web::HttpResponse;
 use futures_util::TryStreamExt as _;
 use lexical_sort::{natural_lexical_cmp, PathSort};
+use log::*;
 use rand::{distributions::Alphanumeric, Rng};
 use relative_path::RelativePath;
 use serde::{Deserialize, Serialize};
-use tokio::fs;
-
-use log::*;
+use tokio::{fs, io::AsyncWriteExt};
 
 use crate::db::models::Channel;
-use crate::player::utils::{file_extension, MediaProbe};
+use crate::player::utils::{file_extension, probe::MediaProbe};
 use crate::utils::{config::PlayoutConfig, errors::ServiceError};
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -186,13 +182,9 @@ pub async fn browser(
     let mut media_files = vec![];
 
     for file in files {
-        match MediaProbe::new(file.to_string_lossy().as_ref()) {
+        match MediaProbe::new(file.to_string_lossy().as_ref()).await {
             Ok(probe) => {
-                let mut duration = 0.0;
-
-                if let Some(dur) = probe.format.duration {
-                    duration = dur.parse().unwrap_or_default();
-                }
+                let duration = probe.format.duration.unwrap_or_default();
 
                 let video = VideoFile {
                     name: file.file_name().unwrap().to_string_lossy().to_string(),
@@ -401,12 +393,12 @@ pub async fn upload(
             return Err(ServiceError::Conflict("Target already exists!".into()));
         }
 
-        let mut f = web::block(|| std::fs::File::create(filepath_clone)).await??;
+        let mut f = fs::File::create(filepath_clone).await?;
 
         loop {
             match field.try_next().await {
                 Ok(Some(chunk)) => {
-                    f = web::block(move || f.write_all(&chunk).map(|_| f)).await??;
+                    f = f.write_all(&chunk).await.map(|_| f)?;
                 }
 
                 Ok(None) => break,

@@ -1,12 +1,11 @@
-use serde::{Deserialize, Serialize};
 use std::{
-    fs::File,
     path::Path,
-    sync::{atomic::AtomicBool, Arc, Mutex},
-    thread,
+    sync::{atomic::AtomicBool, Arc},
 };
 
 use log::*;
+use serde::{Deserialize, Serialize};
+use tokio::{fs::File, io::AsyncReadExt, sync::Mutex};
 
 use crate::player::utils::{
     get_date, is_remote, json_validate::validate_playlist, modified_time, time_from_header, Media,
@@ -38,11 +37,13 @@ pub struct JsonPlaylist {
 
 impl JsonPlaylist {
     pub fn new(date: String, start: f64) -> Self {
-        let mut media = Media::new(0, "", false);
-        media.begin = Some(start);
-        media.title = None;
-        media.duration = DUMMY_LEN;
-        media.out = DUMMY_LEN;
+        let media = Media {
+            begin: Some(start),
+            title: None,
+            duration: DUMMY_LEN,
+            out: DUMMY_LEN,
+            ..Media::default()
+        };
         Self {
             channel: "Channel 1".into(),
             date,
@@ -77,7 +78,7 @@ pub fn set_defaults(playlist: &mut JsonPlaylist) {
         item.index = Some(i);
         item.last_ad = false;
         item.next_ad = false;
-        item.process = Some(true);
+        item.skip = false;
         item.filter = None;
 
         let dur = item.out - item.seek;
@@ -90,7 +91,7 @@ pub fn set_defaults(playlist: &mut JsonPlaylist) {
 
 /// Read json playlist file, fills JsonPlaylist struct and set some extra values,
 /// which we need to process.
-pub fn read_json(
+pub async fn read_json(
     config: &mut PlayoutConfig,
     current_list: Arc<Mutex<Vec<Media>>>,
     path: Option<String>,
@@ -121,13 +122,11 @@ pub fn read_json(
     }
 
     if is_remote(&current_file) {
-        let response = reqwest::blocking::Client::new().get(&current_file).send();
-
-        if let Ok(resp) = response {
+        if let Ok(resp) = reqwest::Client::new().get(&current_file).send().await {
             if resp.status().is_success() {
                 let headers = resp.headers().clone();
 
-                if let Ok(body) = resp.text() {
+                if let Ok(body) = resp.text().await {
                     let mut playlist: JsonPlaylist = match serde_json::from_str(&body) {
                         Ok(p) => p,
                         Err(e) => {
@@ -146,14 +145,12 @@ pub fn read_json(
                     let list_clone = playlist.clone();
 
                     if !config.general.skip_validation {
-                        thread::spawn(move || {
-                            validate_playlist(
-                                config_clone,
-                                current_list,
-                                list_clone,
-                                is_terminated,
-                            );
-                        });
+                        tokio::spawn(validate_playlist(
+                            config_clone,
+                            current_list,
+                            list_clone,
+                            is_terminated,
+                        ));
                     }
 
                     set_defaults(&mut playlist);
@@ -163,14 +160,19 @@ pub fn read_json(
             }
         }
     } else if playlist_path.is_file() {
-        let modified = modified_time(&current_file);
+        let modified = modified_time(&current_file).await;
 
-        let f = File::options()
+        let mut f = File::options()
             .read(true)
             .write(false)
             .open(&current_file)
-            .expect("Could not open json playlist file.");
-        let mut playlist: JsonPlaylist = match serde_json::from_reader(f) {
+            .await
+            .expect("Open json playlist file.");
+        let mut contents = String::new();
+        f.read_to_string(&mut contents)
+            .await
+            .expect("Read playlist content.");
+        let mut playlist: JsonPlaylist = match serde_json::from_str(&contents) {
             Ok(p) => p,
             Err(e) => {
                 error!(target: Target::file_mail(), channel = id; "Playlist file not readable! {e}");
@@ -190,9 +192,12 @@ pub fn read_json(
         let list_clone = playlist.clone();
 
         if !config.general.skip_validation {
-            thread::spawn(move || {
-                validate_playlist(config_clone, current_list, list_clone, is_terminated);
-            });
+            tokio::spawn(validate_playlist(
+                config_clone,
+                current_list,
+                list_clone,
+                is_terminated,
+            ));
         }
 
         set_defaults(&mut playlist);

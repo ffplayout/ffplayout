@@ -2,7 +2,8 @@ use std::io;
 
 use actix_web::{error::ResponseError, Error, HttpResponse};
 use derive_more::Display;
-use ffprobe::FfProbeError;
+
+use crate::player::utils::probe::FfProbeError;
 
 #[derive(Debug, Display)]
 pub enum ServiceError {
