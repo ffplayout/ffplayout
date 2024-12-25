@@ -18,6 +18,8 @@ use crate::db::models::Channel;
 use crate::player::utils::{file_extension, MediaProbe};
 use crate::utils::{config::PlayoutConfig, errors::ServiceError};
 
+use super::S3_INDICATOR;
+
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct PathObject {
     pub source: String,
@@ -118,23 +120,65 @@ pub async fn browser(
     let mut extensions = config.storage.extensions.clone();
     extensions.append(&mut channel_extensions);
 
-    let (path, parent, path_component) = norm_abs_path(&config.channel.storage, &path_obj.source)?;
+    if channel.storage.starts_with(S3_INDICATOR) {
+        // S3 Storage Browser
+        let s3_client = config.channel.s3_storage.as_ref().unwrap().client.clone();
+        let bucket: &str = config.channel.s3_storage.as_ref().unwrap().bucket.as_str();
+        let mut obj: PathObject = PathObject::new(path_obj.source.clone(), None);
 
-    let parent_path = if !path_component.is_empty() {
-        path.parent().unwrap()
+        let mut prefix = vec![];
+        let mut objects = vec![];
+
+        Ok(obj)
     } else {
-        &config.channel.storage
-    };
+        let (path, parent, path_component) =
+            norm_abs_path(&config.channel.storage, &path_obj.source)?;
 
-    let mut obj = PathObject::new(path_component, Some(parent));
-    obj.folders_only = path_obj.folders_only;
+        let parent_path = if !path_component.is_empty() {
+            path.parent().unwrap()
+        } else {
+            &config.channel.storage
+        };
 
-    if path != parent_path && !path_obj.folders_only {
-        let mut parents = fs::read_dir(&parent_path).await?;
+        let mut obj = PathObject::new(path_component, Some(parent));
+        obj.folders_only = path_obj.folders_only;
 
-        while let Some(child) = parents.next_entry().await? {
-            if child.metadata().await?.is_dir() {
-                parent_folders.push(
+        if path != parent_path && !path_obj.folders_only {
+            let mut parents = fs::read_dir(&parent_path).await?;
+
+            while let Some(child) = parents.next_entry().await? {
+                if child.metadata().await?.is_dir() {
+                    parent_folders.push(
+                        child
+                            .path()
+                            .file_name()
+                            .unwrap()
+                            .to_string_lossy()
+                            .to_string(),
+                    );
+                }
+            }
+
+            parent_folders.path_sort(natural_lexical_cmp);
+
+            obj.parent_folders = Some(parent_folders);
+        }
+
+        let mut paths_obj = fs::read_dir(path).await?;
+
+        let mut files = vec![];
+        let mut folders = vec![];
+
+        while let Some(child) = paths_obj.next_entry().await? {
+            let f_meta = child.metadata().await?;
+
+            // ignore hidden files/folders on unix
+            if child.path().to_string_lossy().to_string().contains("/.") {
+                continue;
+            }
+
+            if f_meta.is_dir() {
+                folders.push(
                     child
                         .path()
                         .file_name()
@@ -142,72 +186,43 @@ pub async fn browser(
                         .to_string_lossy()
                         .to_string(),
                 );
-            }
-        }
-
-        parent_folders.path_sort(natural_lexical_cmp);
-
-        obj.parent_folders = Some(parent_folders);
-    }
-
-    let mut paths_obj = fs::read_dir(path).await?;
-
-    let mut files = vec![];
-    let mut folders = vec![];
-
-    while let Some(child) = paths_obj.next_entry().await? {
-        let f_meta = child.metadata().await?;
-
-        // ignore hidden files/folders on unix
-        if child.path().to_string_lossy().to_string().contains("/.") {
-            continue;
-        }
-
-        if f_meta.is_dir() {
-            folders.push(
-                child
-                    .path()
-                    .file_name()
-                    .unwrap()
-                    .to_string_lossy()
-                    .to_string(),
-            );
-        } else if f_meta.is_file() && !path_obj.folders_only {
-            if let Some(ext) = file_extension(&child.path()) {
-                if extensions.contains(&ext.to_string().to_lowercase()) {
-                    files.push(child.path())
+            } else if f_meta.is_file() && !path_obj.folders_only {
+                if let Some(ext) = file_extension(&child.path()) {
+                    if extensions.contains(&ext.to_string().to_lowercase()) {
+                        files.push(child.path())
+                    }
                 }
             }
         }
-    }
 
-    folders.path_sort(natural_lexical_cmp);
-    files.path_sort(natural_lexical_cmp);
-    let mut media_files = vec![];
+        folders.path_sort(natural_lexical_cmp);
+        files.path_sort(natural_lexical_cmp);
+        let mut media_files = vec![];
 
-    for file in files {
-        match MediaProbe::new(file.to_string_lossy().as_ref()) {
-            Ok(probe) => {
-                let mut duration = 0.0;
+        for file in files {
+            match MediaProbe::new(file.to_string_lossy().as_ref()) {
+                Ok(probe) => {
+                    let mut duration = 0.0;
 
-                if let Some(dur) = probe.format.duration {
-                    duration = dur.parse().unwrap_or_default()
+                    if let Some(dur) = probe.format.duration {
+                        duration = dur.parse().unwrap_or_default()
+                    }
+
+                    let video = VideoFile {
+                        name: file.file_name().unwrap().to_string_lossy().to_string(),
+                        duration,
+                    };
+                    media_files.push(video);
                 }
+                Err(e) => error!("{e:?}"),
+            };
+        }
 
-                let video = VideoFile {
-                    name: file.file_name().unwrap().to_string_lossy().to_string(),
-                    duration,
-                };
-                media_files.push(video);
-            }
-            Err(e) => error!("{e:?}"),
-        };
+        obj.folders = Some(folders);
+        obj.files = Some(media_files);
+
+        Ok(obj)
     }
-
-    obj.folders = Some(folders);
-    obj.files = Some(media_files);
-
-    Ok(obj)
 }
 
 pub async fn create_directory(

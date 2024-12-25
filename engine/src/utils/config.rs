@@ -21,6 +21,9 @@ use crate::ARGS;
 
 use super::{errors::ServiceError, parse_s3_string, S3_INDICATOR};
 
+use aws_config as s3_conf;
+use aws_sdk_s3::{self as s3, config::Region, Client};
+
 pub const DUMMY_LEN: f64 = 60.0;
 pub const IMAGE_FORMAT: [&str; 21] = [
     "bmp", "dds", "dpx", "exr", "gif", "hdr", "j2k", "jpg", "jpeg", "pcx", "pfm", "pgm", "phm",
@@ -190,23 +193,60 @@ pub struct Channel {
     pub public: PathBuf,
     pub playlists: PathBuf,
     pub storage: PathBuf,
+    #[serde(skip_serializing, skip_deserializing)]
+    pub s3_storage: Option<S3>, // this is the added s3 storage part!
     pub shared: bool,
 }
 
 impl Channel {
-    pub fn new(config: &models::GlobalSettings, channel: models::Channel) -> Self {
-        // let mut storage = channel.storage.clone();
-        // if channel.storage.starts_with("s3://") {
-        //     let parsed_storage_path = parse_s3_string(&channel.storage).unwrap_err();
-        //     storage = format!("s3://");
-        // }
-
+    pub async fn new(config: &models::GlobalSettings, channel: models::Channel) -> Self {
         Self {
             logs: PathBuf::from(config.logs.clone()),
             public: PathBuf::from(channel.public.clone()),
             playlists: PathBuf::from(channel.playlists.clone()),
             storage: PathBuf::from(channel.storage.clone()),
+            s3_storage: if channel.storage.starts_with(S3_INDICATOR) {
+                Some(S3::new(PathBuf::from(channel.storage.clone())).await)
+            } else {
+                None
+            },
             shared: config.shared,
+        }
+    }
+}
+
+#[derive(Debug, Clone, TS)]
+pub struct S3 {
+    #[ts(skip)]
+    pub bucket: String,
+    #[ts(skip)]
+    pub client: Client,
+}
+
+impl S3 {
+    pub async fn new(path: PathBuf) -> Self {
+        let (credentials, bucket_name, endp_url) =
+            parse_s3_string(&path.to_str().unwrap()).unwrap();
+
+        let provider = credentials;
+        let shared_provider = s3::config::SharedCredentialsProvider::new(provider);
+        let config = aws_config::defaults(s3_conf::BehaviorVersion::latest())
+            .region(Region::new("None")) // Set a dummy region
+            .credentials_provider(shared_provider)
+            .load()
+            .await;
+
+        // Create the S3 config and set force_path_style
+        let s3_config = s3::config::Builder::from(&config)
+            .endpoint_url(endp_url)
+            .force_path_style(true)
+            .build();
+
+        let client = s3::Client::from_conf(s3_config); // Use the S3 config
+
+        Self {
+            bucket: bucket_name,
+            client,
         }
     }
 }
@@ -465,17 +505,6 @@ pub struct Storage {
     pub shuffle: bool,
     #[serde(skip_deserializing)]
     pub shared_storage: bool,
-    #[serde(skip_deserializing)]
-    pub s3_storage: Option<S3>,
-}
-
-#[derive(Debug, Default, Clone, Deserialize, Serialize, TS)]
-#[ts(export, export_to = "playout_config.d.ts")]
-pub struct S3 {
-    pub bucket_name: String,
-    pub endpoint_url: String,
-    pub access_key: String,
-    pub secret_key: String,
 }
 
 impl Storage {
@@ -492,17 +521,6 @@ impl Storage {
                 .collect(),
             shuffle: config.storage_shuffle,
             shared_storage,
-            s3_storage: {
-                if let Some(path_str) = path.to_str() {
-                    if path_str.starts_with(S3_INDICATOR) {
-                        Some(parse_s3_string(path_str).unwrap()) // to-do: error handling!
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            },
         }
     }
 }
@@ -637,7 +655,7 @@ impl PlayoutConfig {
         let config = handles::select_configuration(pool, channel_id).await?;
         let adv_config = handles::select_advanced_configuration(pool, channel_id).await?;
 
-        let channel = Channel::new(&global, channel);
+        let channel = Channel::new(&global, channel).await;
         let advanced = AdvancedConfig::new(adv_config);
         let general = General::new(&config);
         let mail = Mail::new(&global, &config);
