@@ -9,8 +9,7 @@ use actix_web_lab::{
     util::InfallibleStream,
 };
 
-use parking_lot::Mutex;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, Mutex};
 use tokio_stream::wrappers::ReceiverStream;
 
 use crate::player::{controller::ChannelManager, utils::get_data_map};
@@ -78,7 +77,7 @@ impl Broadcaster {
 
     /// Removes all non-responsive clients from broadcast list.
     async fn remove_stale_clients(&self) {
-        let clients = self.inner.lock().clients.clone();
+        let clients = self.inner.lock().await.clients.clone();
 
         let mut ok_clients = Vec::new();
 
@@ -93,7 +92,7 @@ impl Broadcaster {
             }
         }
 
-        self.inner.lock().clients = ok_clients;
+        self.inner.lock().await.clients = ok_clients;
     }
 
     /// Registers client with broadcaster, returning an SSE response body.
@@ -108,6 +107,7 @@ impl Broadcaster {
 
         self.inner
             .lock()
+            .await
             .clients
             .push(Client::new(manager, endpoint, tx));
 
@@ -116,7 +116,7 @@ impl Broadcaster {
 
     /// Broadcasts playout status to clients.
     pub async fn broadcast_playout(&self) {
-        let clients = self.inner.lock().clients.clone();
+        let clients = self.inner.lock().await.clients.clone();
 
         for client in clients.iter().filter(|client| client.endpoint == "playout") {
             let media_map = get_data_map(&client.manager).await;
@@ -140,7 +140,7 @@ impl Broadcaster {
 
     /// Broadcasts system status to clients.
     pub async fn broadcast_system(&self) {
-        let clients = self.inner.lock().clients.clone();
+        let clients = self.inner.lock().await.clients.clone();
 
         for client in clients {
             if &client.endpoint == "system" {
