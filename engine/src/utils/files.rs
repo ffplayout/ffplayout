@@ -122,17 +122,76 @@ pub async fn browser(
 
     if channel.storage.starts_with(S3_INDICATOR) {
         // S3 Storage Browser
+        let storage_replaced = &channel.storage.replace(S3_INDICATOR, "");
+        let normalize_storage = Path::new(&storage_replaced);
+        let (path, parent, path_component) = norm_abs_path(normalize_storage, &path_obj.source)?;
+
         let s3_client = config.channel.s3_storage.as_ref().unwrap().client.clone();
         let bucket: &str = config.channel.s3_storage.as_ref().unwrap().bucket.as_str();
-        let mut obj: PathObject = PathObject::new(path_obj.source.clone(), None);
 
-        let mut prefix = vec![];
-        let mut objects = vec![];
+        let mut response = config
+            .channel
+            .s3_storage
+            .as_ref()
+            .unwrap()
+            .client
+            .list_objects_v2()
+            .bucket(bucket.to_owned())
+            // .prefix("ins_media_01/ins_media_01_02/")
+            // .delimiter("/")
+            .into_paginator()
+            .send();
+
+        let mut contents = vec![];
+
+        while let Some(result) = response.next().await {
+            match result {
+                Ok(output) => {
+                    contents.extend(
+                        output
+                            .contents()
+                            .into_iter()
+                            .filter_map(|obj| obj.key().map(|k| k.to_string())),
+                    );
+                }
+                Err(err) => eprintln!("{err:?}"),
+            }
+        }
+
+        let mut obj = PathObject::new(path_component, Some(parent));
+        obj.folders_only = path_obj.folders_only;
+
+        parent_folders.path_sort(natural_lexical_cmp);
+        obj.parent_folders = Some(parent_folders);
+
+        obj.folders = Some(
+            contents
+                .clone()
+                .into_iter()
+                .filter(|f| f.ends_with('/'))
+                .map(|f| f.strip_suffix('/').unwrap().to_string())
+                .collect(),
+        );
+        obj.files = Some(
+            contents
+                .clone()
+                .into_iter()
+                .map(|f| VideoFile {
+                    name: f,
+                    duration: 0.0,
+                })
+                .collect(),
+        );
 
         Ok(obj)
     } else {
         let (path, parent, path_component) =
             norm_abs_path(&config.channel.storage, &path_obj.source)?;
+
+        println!(
+            "path: {:?}, parent: {:?}, path_component: {:?}\npath_obj: {:?}",
+            path, parent, path_component, path_obj
+        ); // DEBUG
 
         let parent_path = if !path_component.is_empty() {
             path.parent().unwrap()

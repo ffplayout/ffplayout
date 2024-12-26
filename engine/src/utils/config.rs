@@ -231,7 +231,7 @@ impl S3 {
         let provider = credentials;
         let shared_provider = s3::config::SharedCredentialsProvider::new(provider);
         let config = aws_config::defaults(s3_conf::BehaviorVersion::latest())
-            .region(Region::new("None")) // Set a dummy region
+            .region(Region::new("None")) // a dummy region
             .credentials_provider(shared_provider)
             .load()
             .await;
