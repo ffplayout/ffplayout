@@ -681,20 +681,18 @@ pub async fn gen_source(
             error!(target: Target::file_mail(), channel = config.general.channel_id; "Source not found: <b><magenta>{}</></b>", node.source);
         }
 
-        let mut fillers = vec![];
-
-        match manager.filler_list.try_lock() {
-            Ok(list) => fillers = list.to_vec(),
-            Err(e) => {
-                error!(target: Target::file_mail(), channel = config.general.channel_id; "Lock filler list error: {e}");
-            }
-        }
+        let fillers = manager.filler_list.lock().await;
 
         // Set list_init to true, to stay in sync.
         manager.list_init.store(true, Ordering::SeqCst);
 
         if config.storage.filler_path.is_dir() && !fillers.is_empty() {
-            let index = manager.filler_index.fetch_add(1, Ordering::SeqCst);
+            let mut index = manager.filler_index.fetch_add(1, Ordering::SeqCst);
+
+            if index > fillers.len() - 1 {
+                index = 0;
+            }
+
             let mut filler_media = fillers[index].clone();
 
             trace!("take filler: {}", filler_media.source);

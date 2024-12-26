@@ -38,37 +38,36 @@ use serde::{Deserialize, Serialize};
 use sqlx::{Pool, Sqlite};
 use tokio::{fs, sync::Mutex};
 
-use crate::db::models::Role;
-use crate::utils::{
-    channels::{create_channel, delete_channel},
-    config::{get_config, PlayoutConfig, Template},
-    control::{control_state, send_message, ControlParams, Process, ProcessCtl},
-    errors::ServiceError,
-    files::{
-        browser, create_directory, norm_abs_path, remove_file_or_folder, rename_file, upload,
-        MoveObject, PathObject,
-    },
-    naive_date_time_from_str,
-    playlist::{delete_playlist, generate_playlist, read_playlist, write_playlist},
-    public_path, read_log_file, system, TextFilter,
-};
 use crate::{
     api::auth::{create_jwt, Claims},
-    utils::advanced_config::AdvancedConfig,
-    vec_strings,
-};
-use crate::{
     db::{
         handles,
+        models::Role,
         models::{Channel, TextPreset, User, UserMeta},
     },
-    player::controller::ChannelController,
-};
-use crate::{
-    player::utils::{
-        get_data_map, get_date_range, import::import_file, sec_to_time, time_to_sec, JsonPlaylist,
+    player::{
+        controller::ChannelController,
+        utils::{
+            get_data_map, get_date_range, import::import_file, sec_to_time, time_to_sec,
+            JsonPlaylist,
+        },
     },
-    utils::logging::MailQueue,
+    utils::{
+        advanced_config::AdvancedConfig,
+        channels::{create_channel, delete_channel},
+        config::{get_config, PlayoutConfig, Template},
+        control::{control_state, send_message, ControlParams, Process, ProcessCtl},
+        errors::ServiceError,
+        files::{
+            browser, create_directory, norm_abs_path, remove_file_or_folder, rename_file, upload,
+            MoveObject, PathObject,
+        },
+        logging::MailQueue,
+        naive_date_time_from_str,
+        playlist::{delete_playlist, generate_playlist, read_playlist, write_playlist},
+        public_path, read_log_file, system, TextFilter,
+    },
+    vec_strings,
 };
 
 #[derive(Serialize)]
@@ -542,7 +541,6 @@ async fn remove_channel(
     controllers: web::Data<Mutex<ChannelController>>,
     queue: web::Data<Mutex<Vec<Arc<Mutex<MailQueue>>>>>,
 ) -> Result<impl Responder, ServiceError> {
-    println!("0");
     delete_channel(&pool, *id, controllers.into_inner(), queue.into_inner()).await?;
 
     Ok(web::Json("Delete Channel Success"))
