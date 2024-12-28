@@ -1,12 +1,11 @@
-use std::sync::{
-    atomic::Ordering,
-    {Arc, Mutex},
-};
+use std::sync::{atomic::Ordering, Arc};
 
+use async_walkdir::{Filtering, WalkDir};
 use lexical_sort::natural_lexical_cmp;
 use log::*;
-use rand::{seq::SliceRandom, thread_rng};
-use walkdir::WalkDir;
+use rand::{rngs::StdRng, seq::SliceRandom, SeedableRng};
+use tokio::sync::Mutex;
+use tokio_stream::StreamExt;
 
 use crate::player::{
     controller::ChannelManager,
@@ -24,23 +23,22 @@ pub struct FolderSource {
 }
 
 impl FolderSource {
-    pub fn new(config: &PlayoutConfig, manager: ChannelManager) -> Self {
+    pub async fn new(config: &PlayoutConfig, manager: ChannelManager) -> Self {
         let id = config.general.channel_id;
         let mut path_list = vec![];
         let mut media_list = vec![];
         let mut index: usize = 0;
 
-        debug!(target: Target::file_mail(), channel = id;
-            "generate: {:?}, paths: {:?}",
-            config.general.generate, config.storage.paths
-        );
-
-        if config.general.generate.is_some() && !config.storage.paths.is_empty() {
-            for path in &config.storage.paths {
-                path_list.push(path);
-            }
+        if !config.storage.paths.is_empty() && config.general.generate.is_some() {
+            path_list.extend(&config.storage.paths);
         } else {
             path_list.push(&config.channel.storage);
+        }
+
+        if let Some(dates) = &config.general.generate {
+            debug!(target: Target::file_mail(), channel = id;
+                "generate: {dates:?}, paths: {path_list:?}"
+            );
         }
 
         for path in &path_list {
@@ -48,14 +46,30 @@ impl FolderSource {
                 error!(target: Target::file_mail(), channel = id; "Path not exists: <b><magenta>{path:?}</></b>");
             }
 
-            for entry in WalkDir::new(path)
-                .into_iter()
-                .filter_map(Result::ok)
-                .filter(|f| f.path().is_file())
-                .filter(|f| include_file_extension(config, f.path()))
-            {
-                let media = Media::new(0, &entry.path().to_string_lossy(), false);
-                media_list.push(media);
+            let config = config.clone();
+            let mut entries = WalkDir::new(path).filter(move |entry| {
+                let config = config.clone();
+                async move {
+                    if entry.path().is_file() && include_file_extension(&config, &entry.path()) {
+                        return Filtering::Continue;
+                    }
+
+                    Filtering::Ignore
+                }
+            });
+
+            loop {
+                match entries.next().await {
+                    Some(Ok(entry)) => {
+                        let media = Media::new(0, &entry.path().to_string_lossy(), false).await;
+                        media_list.push(media);
+                    }
+                    Some(Err(e)) => {
+                        error!(target: Target::file_mail(), "error: {e}");
+                        break;
+                    }
+                    None => break,
+                }
             }
         }
 
@@ -68,7 +82,7 @@ impl FolderSource {
 
         if config.storage.shuffle {
             info!(target: Target::file_mail(), channel = id; "Shuffle files");
-            let mut rng = thread_rng();
+            let mut rng = StdRng::from_entropy();
             media_list.shuffle(&mut rng);
         } else {
             media_list.sort_by(|d1, d2| d1.source.cmp(&d2.source));
@@ -80,26 +94,26 @@ impl FolderSource {
             index += 1;
         }
 
-        *manager.current_list.lock().unwrap() = media_list;
+        *manager.current_list.lock().await = media_list;
 
         Self {
             manager,
-            current_node: Media::new(0, "", false),
+            current_node: Media::default(),
         }
     }
 
-    pub fn from_list(manager: &ChannelManager, list: Vec<Media>) -> Self {
-        *manager.current_list.lock().unwrap() = list;
+    pub async fn from_list(manager: &ChannelManager, list: Vec<Media>) -> Self {
+        *manager.current_list.lock().await = list;
 
         Self {
             manager: manager.clone(),
-            current_node: Media::new(0, "", false),
+            current_node: Media::default(),
         }
     }
 
-    fn shuffle(&mut self) {
-        let mut rng = thread_rng();
-        let mut nodes = self.manager.current_list.lock().unwrap();
+    async fn shuffle(&mut self) {
+        let mut rng = StdRng::from_entropy();
+        let mut nodes = self.manager.current_list.lock().await;
 
         nodes.shuffle(&mut rng);
 
@@ -108,8 +122,8 @@ impl FolderSource {
         }
     }
 
-    fn sort(&mut self) {
-        let mut nodes = self.manager.current_list.lock().unwrap();
+    async fn sort(&mut self) {
+        let mut nodes = self.manager.current_list.lock().await;
 
         nodes.sort_by(|d1, d2| d1.source.cmp(&d2.source));
 
@@ -120,21 +134,22 @@ impl FolderSource {
 }
 
 /// Create iterator for folder source
-impl Iterator for FolderSource {
+impl async_iterator::Iterator for FolderSource {
     type Item = Media;
 
-    fn next(&mut self) -> Option<Self::Item> {
-        let config = self.manager.config.lock().unwrap().clone();
+    async fn next(&mut self) -> Option<Self::Item> {
+        let config = self.manager.config.lock().await.clone();
         let id = config.general.id;
 
         if self.manager.current_index.load(Ordering::SeqCst)
-            < self.manager.current_list.lock().unwrap().len()
+            < self.manager.current_list.lock().await.len()
         {
             let i = self.manager.current_index.load(Ordering::SeqCst);
-            self.current_node = self.manager.current_list.lock().unwrap()[i].clone();
-            let _ = self.current_node.add_probe(false).ok();
+            self.current_node = self.manager.current_list.lock().await[i].clone();
+            let _ = self.current_node.add_probe(false).await.ok();
             self.current_node
-                .add_filter(&config, &self.manager.filter_chain);
+                .add_filter(&config, &self.manager.filter_chain)
+                .await;
             self.current_node.begin = Some(time_in_seconds());
             self.manager.current_index.fetch_add(1, Ordering::SeqCst);
         } else {
@@ -143,22 +158,23 @@ impl Iterator for FolderSource {
                     info!(target: Target::file_mail(), channel = id; "Shuffle files");
                 }
 
-                self.shuffle();
+                self.shuffle().await;
             } else {
                 if config.general.generate.is_none() {
                     info!(target: Target::file_mail(), channel = id; "Sort files");
                 }
 
-                self.sort();
+                self.sort().await;
             }
 
-            self.current_node = match self.manager.current_list.lock().unwrap().first() {
+            self.current_node = match self.manager.current_list.lock().await.first() {
                 Some(m) => m.clone(),
                 None => return None,
             };
-            let _ = self.current_node.add_probe(false).ok();
+            let _ = self.current_node.add_probe(false).await.ok();
             self.current_node
-                .add_filter(&config, &self.manager.filter_chain);
+                .add_filter(&config, &self.manager.filter_chain)
+                .await;
             self.current_node.begin = Some(time_in_seconds());
             self.manager.current_index.store(1, Ordering::SeqCst);
         }
@@ -167,7 +183,7 @@ impl Iterator for FolderSource {
     }
 }
 
-pub fn fill_filler_list(
+pub async fn fill_filler_list(
     config: &PlayoutConfig,
     fillers: Option<Arc<Mutex<Vec<Media>>>>,
 ) -> Vec<Media> {
@@ -176,26 +192,45 @@ pub fn fill_filler_list(
     let filler_path = &config.storage.filler_path;
 
     if filler_path.is_dir() {
-        for (index, entry) in WalkDir::new(&config.storage.filler_path)
-            .into_iter()
-            .filter_map(Result::ok)
-            .filter(|f| f.path().is_file())
-            .filter(|f| include_file_extension(config, f.path()))
-            .enumerate()
-        {
-            let mut media = Media::new(index, &entry.path().to_string_lossy(), false);
+        let config_clone = config.clone();
+        let mut index = 0;
 
-            if fillers.is_none() {
-                if let Err(e) = media.add_probe(false) {
-                    error!(target: Target::file_mail(), channel = id; "{e:?}");
-                };
+        let mut entries = WalkDir::new(&config_clone.storage.filler_path).filter(move |entry| {
+            let config = config_clone.clone();
+            async move {
+                if entry.path().is_file() && include_file_extension(&config, &entry.path()) {
+                    return Filtering::Continue;
+                }
+
+                Filtering::Ignore
             }
+        });
 
-            filler_list.push(media);
+        loop {
+            match entries.next().await {
+                Some(Ok(entry)) => {
+                    let mut media = Media::new(index, &entry.path().to_string_lossy(), false).await;
+
+                    if fillers.is_none() {
+                        if let Err(e) = media.add_probe(false).await {
+                            error!(target: Target::file_mail(), channel = id; "{e:?}");
+                        };
+                    }
+
+                    filler_list.push(media);
+
+                    index += 1;
+                }
+                Some(Err(e)) => {
+                    error!(target: Target::file_mail(), "error: {e}");
+                    break;
+                }
+                None => break,
+            }
         }
 
         if config.storage.shuffle {
-            let mut rng = thread_rng();
+            let mut rng = StdRng::from_entropy();
 
             filler_list.shuffle(&mut rng);
         } else {
@@ -207,13 +242,13 @@ pub fn fill_filler_list(
         }
 
         if let Some(f) = fillers.as_ref() {
-            f.lock().unwrap().clone_from(&filler_list);
+            f.lock().await.clone_from(&filler_list);
         }
     } else if filler_path.is_file() {
-        let mut media = Media::new(0, &config.storage.filler_path.to_string_lossy(), false);
+        let mut media = Media::new(0, &config.storage.filler_path.to_string_lossy(), false).await;
 
         if fillers.is_none() {
-            if let Err(e) = media.add_probe(false) {
+            if let Err(e) = media.add_probe(false).await {
                 error!(target: Target::file_mail(), channel = id; "{e:?}");
             };
         }
@@ -221,7 +256,7 @@ pub fn fill_filler_list(
         filler_list.push(media);
 
         if let Some(f) = fillers.as_ref() {
-            f.lock().unwrap().clone_from(&filler_list);
+            f.lock().await.clone_from(&filler_list);
         }
     }
 

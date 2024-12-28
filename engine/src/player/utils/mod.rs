@@ -1,28 +1,34 @@
 use std::{
     ffi::OsStr,
     fmt,
-    fs::{metadata, File},
-    io::{BufRead, BufReader, Error},
+    io::Error,
     net::TcpListener,
     path::{Path, PathBuf},
-    process::{exit, ChildStderr, Command, Stdio},
+    process::{exit, Stdio},
     str::FromStr,
-    sync::{atomic::Ordering, Arc, Mutex},
+    sync::{atomic::Ordering, Arc},
 };
 
 use chrono::{prelude::*, TimeDelta};
-use ffprobe::{ffprobe, Stream as FFStream};
 use log::*;
+use probe::MediaProbe;
 use rand::prelude::*;
 use regex::Regex;
 use reqwest::header;
 use serde::{de::Deserializer, Deserialize, Serialize};
 use serde_json::{json, Map, Value};
+use tokio::{
+    fs::{metadata, File},
+    io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader},
+    process::{ChildStderr, Command},
+    sync::Mutex,
+};
 
 pub mod folder;
 pub mod import;
 pub mod json_serializer;
 pub mod json_validate;
+pub mod probe;
 
 use crate::player::{
     controller::{
@@ -33,7 +39,7 @@ use crate::player::{
 };
 use crate::utils::{
     config::{OutputMode::*, PlayoutConfig, FFMPEG_IGNORE_ERRORS, FFMPEG_UNRECOVERABLE_ERRORS},
-    errors::ProcessError,
+    errors::ServiceError,
     logging::Target,
     time_machine::time_now,
 };
@@ -44,7 +50,8 @@ use crate::vec_strings;
 /// Compare incoming stream name with expecting name, but ignore question mark.
 pub fn valid_stream(msg: &str) -> bool {
     if let Some((unexpected, expected)) = msg.split_once(',') {
-        let re = Regex::new(r".*Unexpected stream|expecting|[\s]+|\?$").unwrap();
+        let re = Regex::new(r".*Unexpected stream|App field don't match up|expecting|[\s]+|\?$")
+            .unwrap();
         let unexpected = re.replace_all(unexpected, "");
         let expected = re.replace_all(expected, "");
 
@@ -155,15 +162,15 @@ pub fn get_media_map(media: Media) -> Value {
 }
 
 /// prepare json object for response
-pub fn get_data_map(manager: &ChannelManager) -> Map<String, Value> {
+pub async fn get_data_map(manager: &ChannelManager) -> Map<String, Value> {
     let media = manager
         .current_media
         .lock()
-        .unwrap()
+        .await
         .clone()
-        .unwrap_or_else(|| Media::new(0, "", false));
-    let channel = manager.channel.lock().unwrap().clone();
-    let config = manager.config.lock().unwrap().processing.clone();
+        .unwrap_or_else(Media::default);
+    let channel = manager.channel.lock().await.clone();
+    let config = manager.config.lock().await.processing.clone();
     let ingest_is_running = manager.ingest_is_running.load(Ordering::SeqCst);
 
     let mut data_map = Map::new();
@@ -243,28 +250,23 @@ pub struct Media {
     #[serde(skip_serializing, skip_deserializing)]
     pub next_ad: bool,
 
-    #[serde(skip_serializing, skip_deserializing)]
-    pub process: Option<bool>,
+    #[serde(default, skip_serializing, skip_deserializing)]
+    pub skip: bool,
 
     #[serde(default, skip_serializing)]
     pub unit: ProcessUnit,
 }
 
 impl Media {
-    pub fn new(index: usize, src: &str, do_probe: bool) -> Self {
+    pub async fn new(index: usize, src: &str, do_probe: bool) -> Self {
         let mut duration = 0.0;
         let mut probe = None;
 
         if do_probe && (is_remote(src) || Path::new(src).is_file()) {
-            if let Ok(p) = MediaProbe::new(src) {
+            if let Ok(p) = MediaProbe::new(src).await {
                 probe = Some(p.clone());
 
-                duration = p
-                    .format
-                    .duration
-                    .unwrap_or_default()
-                    .parse()
-                    .unwrap_or_default();
+                duration = p.format.duration.unwrap_or_default();
             }
         }
 
@@ -286,23 +288,22 @@ impl Media {
             probe_audio: None,
             last_ad: false,
             next_ad: false,
-            process: Some(true),
+            skip: false,
             unit: Decoder,
         }
     }
 
-    pub fn add_probe(&mut self, check_audio: bool) -> Result<(), String> {
+    pub async fn add_probe(&mut self, check_audio: bool) -> Result<(), String> {
         let mut errors = vec![];
 
         if self.probe.is_none() {
-            match MediaProbe::new(&self.source) {
+            match MediaProbe::new(&self.source).await {
                 Ok(probe) => {
                     self.probe = Some(probe.clone());
 
                     if let Some(dur) = probe
                         .format
                         .duration
-                        .map(|d| d.parse().unwrap_or_default())
                         .filter(|d| !is_close(*d, self.duration, 0.5))
                     {
                         self.duration = dur;
@@ -316,16 +317,12 @@ impl Media {
             };
 
             if check_audio && Path::new(&self.audio).is_file() {
-                match MediaProbe::new(&self.audio) {
+                match MediaProbe::new(&self.audio).await {
                     Ok(probe) => {
                         self.probe_audio = Some(probe.clone());
 
-                        if !probe.audio_streams.is_empty() {
-                            self.duration_audio = probe.audio_streams[0]
-                                .duration
-                                .clone()
-                                .and_then(|d| d.parse::<f64>().ok())
-                                .unwrap_or_default();
+                        if !probe.audio.is_empty() {
+                            self.duration_audio = probe.audio[0].duration.unwrap_or_default();
                         }
                     }
                     Err(e) => errors.push(e.to_string()),
@@ -340,13 +337,39 @@ impl Media {
         Ok(())
     }
 
-    pub fn add_filter(
+    pub async fn add_filter(
         &mut self,
         config: &PlayoutConfig,
         filter_chain: &Option<Arc<Mutex<Vec<String>>>>,
     ) {
         let mut node = self.clone();
-        self.filter = Some(filter_chains(config, &mut node, filter_chain));
+        self.filter = Some(filter_chains(config, &mut node, filter_chain).await);
+    }
+}
+
+impl Default for Media {
+    fn default() -> Self {
+        Self {
+            begin: None,
+            index: Some(0),
+            title: None,
+            seek: 0.0,
+            out: 0.0,
+            duration: 0.0,
+            duration_audio: 0.0,
+            category: String::new(),
+            source: String::new(),
+            audio: String::new(),
+            cmd: Some(vec_strings!["-i", String::new()]),
+            filter: None,
+            custom_filter: String::new(),
+            probe: None,
+            probe_audio: None,
+            last_ad: false,
+            next_ad: false,
+            skip: false,
+            unit: Decoder,
+        }
     }
 }
 
@@ -377,55 +400,6 @@ fn is_empty_string(st: &String) -> bool {
     *st == String::new()
 }
 
-/// We use the ffprobe crate, but we map the metadata to our needs.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
-pub struct MediaProbe {
-    pub format: ffprobe::Format,
-    pub audio_streams: Vec<FFStream>,
-    pub video_streams: Vec<FFStream>,
-}
-
-impl MediaProbe {
-    pub fn new(input: &str) -> Result<Self, ProcessError> {
-        let probe = ffprobe(input);
-        let mut a_stream = vec![];
-        let mut v_stream = vec![];
-
-        match probe {
-            Ok(obj) => {
-                for stream in obj.streams {
-                    let cp_stream = stream.clone();
-
-                    if let Some(c_type) = cp_stream.codec_type {
-                        match c_type.as_str() {
-                            "audio" => a_stream.push(stream),
-                            "video" => v_stream.push(stream),
-                            _ => {}
-                        }
-                    } else {
-                        error!("No codec type found for stream: {stream:?}");
-                    }
-                }
-
-                Ok(Self {
-                    format: obj.format,
-                    audio_streams: a_stream,
-                    video_streams: v_stream,
-                })
-            }
-            Err(e) => {
-                if !Path::new(input).is_file() && !is_remote(input) {
-                    Err(ProcessError::Custom(format!(
-                        "File <b><magenta>{input}</></b> not exist!"
-                    )))
-                } else {
-                    Err(ProcessError::Ffprobe(e))
-                }
-            }
-        }
-    }
-}
-
 /// Calculate fps from rate/factor string
 pub fn fps_calc(r_frame_rate: &str, default: f64) -> f64 {
     if let Some((r, f)) = r_frame_rate.split_once('/') {
@@ -437,20 +411,24 @@ pub fn fps_calc(r_frame_rate: &str, default: f64) -> f64 {
     default
 }
 
-pub fn json_reader(path: &PathBuf) -> Result<JsonPlaylist, Error> {
-    let f = File::options().read(true).write(false).open(path)?;
-    let p = serde_json::from_reader(f)?;
+pub async fn json_reader(path: &PathBuf) -> Result<JsonPlaylist, Error> {
+    let mut f = File::options().read(true).write(false).open(path).await?;
+    let mut contents = String::new();
+    f.read_to_string(&mut contents).await?;
+    let p = serde_json::from_str(&contents)?;
 
     Ok(p)
 }
 
-pub fn json_writer(path: &PathBuf, data: JsonPlaylist) -> Result<(), Error> {
-    let f = File::options()
+pub async fn json_writer(path: &PathBuf, data: JsonPlaylist) -> Result<(), Error> {
+    let mut f = File::options()
         .write(true)
         .truncate(true)
         .create(true)
-        .open(path)?;
-    serde_json::to_writer_pretty(f, &data)?;
+        .open(path)
+        .await?;
+    let contents = serde_json::to_string_pretty(&data)?;
+    f.write_all(contents.as_bytes()).await?;
 
     Ok(())
 }
@@ -498,9 +476,9 @@ pub fn time_from_header(headers: &header::HeaderMap) -> Option<DateTime<Local>> 
 }
 
 /// Get file modification time.
-pub fn modified_time(path: &str) -> Option<String> {
+pub async fn modified_time(path: &str) -> Option<String> {
     if is_remote(path) {
-        let response = reqwest::blocking::Client::new().head(path).send();
+        let response = reqwest::Client::new().head(path).send().await;
 
         if let Ok(resp) = response {
             if resp.status().is_success() {
@@ -513,7 +491,10 @@ pub fn modified_time(path: &str) -> Option<String> {
         return None;
     }
 
-    if let Ok(time) = metadata(path).and_then(|metadata| metadata.modified()) {
+    if let Ok(time) = metadata(path)
+        .await
+        .and_then(|metadata| metadata.modified())
+    {
         let date_time: DateTime<Local> = time.into();
         return Some(date_time.to_string());
     }
@@ -875,16 +856,16 @@ pub fn include_file_extension(config: &PlayoutConfig, file_path: &Path) -> bool 
 
 /// Read ffmpeg stderr decoder and encoder instance
 /// and log the output.
-pub fn stderr_reader(
-    buffer: BufReader<ChildStderr>,
+pub async fn stderr_reader(
+    buffer: tokio::io::BufReader<ChildStderr>,
     ignore: Vec<String>,
     suffix: ProcessUnit,
     manager: ChannelManager,
-) -> Result<(), ProcessError> {
-    let id = manager.channel.lock().unwrap().id;
-    for line in buffer.lines() {
-        let line = line?;
+) -> Result<(), ServiceError> {
+    let id = manager.channel.lock().await.id;
+    let mut lines = buffer.lines();
 
+    while let Some(line) = lines.next_line().await? {
         if FFMPEG_IGNORE_ERRORS.iter().any(|i| line.contains(*i))
             || ignore.iter().any(|i| line.contains(i))
         {
@@ -914,8 +895,8 @@ pub fn stderr_reader(
                     && !line.contains("failed to delete old segment"))
             {
                 error!(target: Target::file_mail(), channel = id; "Hit unrecoverable error!");
-                manager.channel.lock().unwrap().active = false;
-                manager.stop_all();
+                manager.channel.lock().await.active = false;
+                manager.stop_all(false).await?;
             }
         }
     }
@@ -924,14 +905,14 @@ pub fn stderr_reader(
 }
 
 /// Run program to test if it is in system.
-fn is_in_system(name: &str) -> Result<(), String> {
+async fn is_in_system(name: &str) -> Result<(), String> {
     match Command::new(name)
         .stderr(Stdio::null())
         .stdout(Stdio::null())
         .spawn()
     {
         Ok(mut proc) => {
-            if let Err(e) = proc.wait() {
+            if let Err(e) = proc.wait().await {
                 return Err(format!("{e}"));
             };
         }
@@ -941,7 +922,7 @@ fn is_in_system(name: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn ffmpeg_filter_and_libs(config: &mut PlayoutConfig) -> Result<(), String> {
+async fn ffmpeg_filter_and_libs(config: &mut PlayoutConfig) -> Result<(), String> {
     let id = config.general.channel_id;
     let ignore_flags = [
         "--enable-gpl",
@@ -970,7 +951,8 @@ fn ffmpeg_filter_and_libs(config: &mut PlayoutConfig) -> Result<(), String> {
 
     // stderr shows only the ffmpeg configuration
     // get codec library's
-    for line in err_buffer.lines().map_while(Result::ok) {
+    let mut lines = err_buffer.lines();
+    while let Ok(Some(line)) = lines.next_line().await {
         if line.contains("configuration:") {
             let configs = line.split_whitespace();
 
@@ -988,7 +970,8 @@ fn ffmpeg_filter_and_libs(config: &mut PlayoutConfig) -> Result<(), String> {
 
     // stdout shows filter from ffmpeg
     // get filters
-    for line in out_buffer.lines().map_while(Result::ok) {
+    let mut lines = out_buffer.lines();
+    while let Ok(Some(line)) = lines.next_line().await {
         if line.contains('>') {
             let filter_line = line.split_whitespace().collect::<Vec<_>>();
 
@@ -1001,7 +984,7 @@ fn ffmpeg_filter_and_libs(config: &mut PlayoutConfig) -> Result<(), String> {
         }
     }
 
-    if let Err(e) = ff_proc.wait() {
+    if let Err(e) = ff_proc.wait().await {
         error!(target: Target::file_mail(), channel = id; "{e}");
     };
 
@@ -1011,15 +994,15 @@ fn ffmpeg_filter_and_libs(config: &mut PlayoutConfig) -> Result<(), String> {
 /// Validate ffmpeg/ffprobe/ffplay.
 ///
 /// Check if they are in system and has all libs and codecs we need.
-pub fn validate_ffmpeg(config: &mut PlayoutConfig) -> Result<(), String> {
-    is_in_system("ffmpeg")?;
-    is_in_system("ffprobe")?;
+pub async fn validate_ffmpeg(config: &mut PlayoutConfig) -> Result<(), String> {
+    is_in_system("ffmpeg").await?;
+    is_in_system("ffprobe").await?;
 
     if config.output.mode == Desktop {
-        is_in_system("ffplay")?;
+        is_in_system("ffplay").await?;
     }
 
-    ffmpeg_filter_and_libs(config)?;
+    ffmpeg_filter_and_libs(config).await?;
 
     if config
         .output

@@ -1,10 +1,7 @@
-use std::{
-    ffi::OsStr,
-    path::Path,
-    sync::{Arc, Mutex},
-};
+use std::{ffi::OsStr, path::Path, sync::Arc};
 
 use regex::Regex;
+use tokio::sync::Mutex;
 
 use crate::player::{
     controller::ProcessUnit::*,
@@ -12,7 +9,7 @@ use crate::player::{
 };
 use crate::utils::config::PlayoutConfig;
 
-pub fn filter_node(
+pub async fn filter_node(
     config: &PlayoutConfig,
     node: Option<&Media>,
     filter_chain: &Option<Arc<Mutex<Vec<String>>>>,
@@ -56,7 +53,7 @@ pub fn filter_node(
         let mut filter_cmd = format!("text=''{font}");
 
         if let Some(chain) = filter_chain {
-            if let Some(link) = chain.lock().unwrap().iter().find(|&l| l.contains("text")) {
+            if let Some(link) = chain.lock().await.iter().find(|&l| l.contains("text")) {
                 filter_cmd = link.to_string();
             }
         }

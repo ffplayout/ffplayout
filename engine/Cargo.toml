@@ -24,12 +24,13 @@ actix-web-httpauth = "0.8"
 actix-web-lab = "0.23"
 actix-web-static-files = "4.0"
 argon2 = "0.5"
+async-iterator = "2.3"
+async-walkdir = "2"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
 clap = { version = "4.3", features = ["derive", "env"] }
 derive_more = { version = "1", features = ["display"] }
 faccess = "0.2"
-ffprobe = "0.4"
-flexi_logger = { version = "0.29", features = ["kv", "colors"] }
+flexi_logger = { version = "0.29", features = ["async", "colors", "kv"] }
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
 jsonwebtoken = "9"
 lettre = { version = "0.11", features = ["builder", "rustls-tls", "smtp-transport", "tokio1", "tokio1-rustls-tls"], default-features = false }
@@ -41,18 +42,18 @@ nix = { version = "0.29", features = ["user", "fs"] }
 notify = "7.0"
 notify-debouncer-full = { version = "*", default-features = false }
 paris = "1.5"
-parking_lot = "0.12"
 path-clean = "1.0"
 rand = "0.8"
 regex = "1"
 relative-path = "1.8"
-reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 rpassword = "7.2"
 sanitize-filename = "0.6"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_with = "3.8"
 shlex = "1.1"
+static-files = "0.2"
 sysinfo ={ version = "0.33", features = ["linux-netdevs", "linux-tmpfs"] }
 sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite"] }
 tokio = { version = "1.29", features = ["full"] }
@@ -60,7 +61,6 @@ tokio-stream = "0.1"
 toml_edit = {version = "0.22", features = ["serde"]}
 ts-rs = { version = "10", features = ["chrono-impl", "no-serde-warnings"] }
 uuid = "1.8"
-walkdir = "2"
 zeromq = { version = "0.4", default-features = false, features = [
     "tokio-runtime",
     "tcp-transport",

@@ -45,13 +45,13 @@ fn get_config() -> (PlayoutConfig, ChannelManager) {
     Runtime::new().unwrap().block_on(prepare_config())
 }
 
-#[test]
-fn test_random_list() {
+#[tokio::test]
+async fn test_random_list() {
     let clip_list = vec![
-        Media::new(0, "./assets/media_mix/with_audio.mp4", true), // 30 seconds
-        Media::new(0, "./assets/media_mix/dual_audio.mp4", true), // 30 seconds
-        Media::new(0, "./assets/media_mix/av_sync.mp4", true),    // 30 seconds
-        Media::new(0, "./assets/media_mix/ad.mp4", true),         // 25 seconds
+        Media::new(0, "./assets/media_mix/with_audio.mp4", true).await, // 30 seconds
+        Media::new(0, "./assets/media_mix/dual_audio.mp4", true).await, // 30 seconds
+        Media::new(0, "./assets/media_mix/av_sync.mp4", true).await,    // 30 seconds
+        Media::new(0, "./assets/media_mix/ad.mp4", true).await,         // 25 seconds
     ];
 
     let r_list = random_list(clip_list.clone(), 200.0);
@@ -61,13 +61,13 @@ fn test_random_list() {
     assert!(r_duration >= 170.0);
 }
 
-#[test]
-fn test_ordered_list() {
+#[tokio::test]
+async fn test_ordered_list() {
     let clip_list = vec![
-        Media::new(0, "./assets/media_mix/with_audio.mp4", true), // 30 seconds
-        Media::new(0, "./assets/media_mix/dual_audio.mp4", true), // 30 seconds
-        Media::new(0, "./assets/media_mix/av_sync.mp4", true),    // 30 seconds
-        Media::new(0, "./assets/media_mix/ad.mp4", true),         // 25 seconds
+        Media::new(0, "./assets/media_mix/with_audio.mp4", true).await, // 30 seconds
+        Media::new(0, "./assets/media_mix/dual_audio.mp4", true).await, // 30 seconds
+        Media::new(0, "./assets/media_mix/av_sync.mp4", true).await,    // 30 seconds
+        Media::new(0, "./assets/media_mix/ad.mp4", true).await,         // 25 seconds
     ];
 
     let o_list = ordered_list(clip_list.clone(), 85.0);
@@ -83,21 +83,21 @@ fn test_ordered_list() {
     assert_eq!(sum_durations(&o_list), 115.0);
 }
 
-#[test]
+#[tokio::test]
 #[ignore]
-fn test_filler_list() {
+async fn test_filler_list() {
     let (mut config, _) = get_config();
 
     config.storage.filler = "assets/".into();
 
-    let f_list = filler_list(&config, 2440.0);
+    let f_list = filler_list(&config, 2440.0).await;
 
     assert_eq!(sum_durations(&f_list), 2440.0);
 }
 
-#[test]
+#[tokio::test]
 #[ignore]
-fn test_generate_playlist_from_folder() {
+async fn test_generate_playlist_from_folder() {
     let (mut config, manager) = get_config();
 
     config.general.generate = Some(vec!["2023-09-11".to_string()]);
@@ -106,7 +106,7 @@ fn test_generate_playlist_from_folder() {
     config.playlist.length_sec = Some(86400.0);
     config.channel.playlists = "assets/playlists".into();
 
-    let playlist = generate_playlist(manager);
+    let playlist = generate_playlist(manager).await;
 
     assert!(playlist.is_ok());
 
@@ -124,9 +124,9 @@ fn test_generate_playlist_from_folder() {
     );
 }
 
-#[test]
+#[tokio::test]
 #[ignore]
-fn test_generate_playlist_from_template() {
+async fn test_generate_playlist_from_template() {
     let (mut config, manager) = get_config();
 
     config.general.generate = Some(vec!["2023-09-12".to_string()]);
@@ -151,7 +151,7 @@ fn test_generate_playlist_from_template() {
     config.playlist.length_sec = Some(86400.0);
     config.channel.playlists = "assets/playlists".into();
 
-    let playlist = generate_playlist(manager);
+    let playlist = generate_playlist(manager).await;
 
     assert!(playlist.is_ok());
 

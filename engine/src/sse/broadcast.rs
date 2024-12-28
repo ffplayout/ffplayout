@@ -9,8 +9,7 @@ use actix_web_lab::{
     util::InfallibleStream,
 };
 
-use parking_lot::Mutex;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, Mutex};
 use tokio_stream::wrappers::ReceiverStream;
 
 use crate::player::{controller::ChannelManager, utils::get_data_map};
@@ -78,7 +77,7 @@ impl Broadcaster {
 
     /// Removes all non-responsive clients from broadcast list.
     async fn remove_stale_clients(&self) {
-        let clients = self.inner.lock().clients.clone();
+        let clients = self.inner.lock().await.clients.clone();
 
         let mut ok_clients = Vec::new();
 
@@ -93,7 +92,7 @@ impl Broadcaster {
             }
         }
 
-        self.inner.lock().clients = ok_clients;
+        self.inner.lock().await.clients = ok_clients;
     }
 
     /// Registers client with broadcaster, returning an SSE response body.
@@ -108,6 +107,7 @@ impl Broadcaster {
 
         self.inner
             .lock()
+            .await
             .clients
             .push(Client::new(manager, endpoint, tx));
 
@@ -116,10 +116,10 @@ impl Broadcaster {
 
     /// Broadcasts playout status to clients.
     pub async fn broadcast_playout(&self) {
-        let clients = self.inner.lock().clients.clone();
+        let clients = self.inner.lock().await.clients.clone();
 
         for client in clients.iter().filter(|client| client.endpoint == "playout") {
-            let media_map = get_data_map(&client.manager);
+            let media_map = get_data_map(&client.manager).await;
 
             if client.manager.is_alive.load(Ordering::SeqCst) {
                 let _ = client
@@ -140,11 +140,11 @@ impl Broadcaster {
 
     /// Broadcasts system status to clients.
     pub async fn broadcast_system(&self) {
-        let clients = self.inner.lock().clients.clone();
+        let clients = self.inner.lock().await.clients.clone();
 
         for client in clients {
             if &client.endpoint == "system" {
-                let config = client.manager.config.lock().unwrap().clone();
+                let config = client.manager.config.lock().await.clone();
                 if let Ok(stat) = web::block(move || system::stat(&config)).await {
                     let stat_string = stat.to_string();
                     let _ = client.sender.send(sse::Data::new(stat_string).into()).await;
