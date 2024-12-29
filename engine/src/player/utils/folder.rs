@@ -150,7 +150,7 @@ impl async_iterator::Iterator for FolderSource {
             self.current_node
                 .add_filter(&config, &self.manager.filter_chain)
                 .await;
-            self.current_node.begin = Some(time_in_seconds());
+            self.current_node.begin = Some(time_in_seconds(&config.channel.timezone));
             self.manager.current_index.fetch_add(1, Ordering::SeqCst);
         } else {
             if config.storage.shuffle {
@@ -175,7 +175,7 @@ impl async_iterator::Iterator for FolderSource {
             self.current_node
                 .add_filter(&config, &self.manager.filter_chain)
                 .await;
-            self.current_node.begin = Some(time_in_seconds());
+            self.current_node.begin = Some(time_in_seconds(&config.channel.timezone));
             self.manager.current_index.store(1, Ordering::SeqCst);
         }
 

@@ -248,7 +248,7 @@ const playlistStore = usePlaylist()
 const { listDate, firstLoad } = storeToRefs(usePlaylist())
 
 const beforeDayStart = ref(false)
-const targetDate = ref($dayjs().utcOffset(configStore.utcOffset).format('YYYY-MM-DD'))
+const targetDate = ref($dayjs().tz(configStore.timezone).format('YYYY-MM-DD'))
 const playlistTable = ref()
 const editId = ref(-1)
 const textFile = ref()
@@ -290,7 +290,7 @@ useHead({
 })
 
 onBeforeMount(() => {
-    const currentTime = $dayjs().utcOffset(configStore.utcOffset)
+    const currentTime = $dayjs().tz(configStore.timezone)
 
     if (
         firstLoad.value &&

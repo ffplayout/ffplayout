@@ -29,6 +29,8 @@ use crate::utils::{
     config::Mail, errors::ProcessError, round_to_nearest_ten, time_machine::time_now,
 };
 
+const TIME_FORMAT: &str = "%Y-%m-%d %H:%M:%S%.6f%:z";
+
 #[derive(Debug)]
 pub struct Target;
 
@@ -268,18 +270,15 @@ fn console_formatter(w: &mut dyn Write, now: &mut DeferredNow, record: &Record) 
 
     if ARGS.log_timestamp {
         let time = if ARGS.fake_time.is_some() {
-            time_now()
+            time_now(&None).format(TIME_FORMAT)
         } else {
-            *now.now()
+            now.now().format(TIME_FORMAT)
         };
 
         write!(
             w,
             "{} {}",
-            colorize_string(format!(
-                "<bright black>[{}]</>",
-                time.format("%Y-%m-%d %H:%M:%S%.6f")
-            )),
+            colorize_string(format!("<bright black>[{time}]</>")),
             log_line
         )
     } else {
@@ -295,7 +294,7 @@ fn file_formatter(
     write!(
         w,
         "[{}] [{:>5}] {}",
-        now.now().format("%Y-%m-%d %H:%M:%S%.6f"),
+        now.now().format(TIME_FORMAT),
         record.level(),
         record.args()
     )

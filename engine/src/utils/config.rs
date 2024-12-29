@@ -5,6 +5,7 @@ use std::{
 };
 
 use chrono::NaiveTime;
+use chrono_tz::Tz;
 use flexi_logger::Level;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -191,6 +192,8 @@ pub struct Channel {
     pub playlists: PathBuf,
     pub storage: PathBuf,
     pub shared: bool,
+    #[ts(type = "string")]
+    pub timezone: Option<Tz>,
 }
 
 impl Channel {
@@ -201,6 +204,7 @@ impl Channel {
             playlists: PathBuf::from(channel.playlists.clone()),
             storage: PathBuf::from(channel.storage.clone()),
             shared: config.shared,
+            timezone: channel.timezone,
         }
     }
 }
@@ -630,10 +634,10 @@ impl PlayoutConfig {
         storage.filler = filler;
         storage.filler_path = filler_path;
 
-        playlist.start_sec = Some(time_to_sec(&playlist.day_start));
+        playlist.start_sec = Some(time_to_sec(&playlist.day_start, &channel.timezone));
 
         if playlist.length.contains(':') {
-            playlist.length_sec = Some(time_to_sec(&playlist.length));
+            playlist.length_sec = Some(time_to_sec(&playlist.length, &channel.timezone));
         } else {
             playlist.length_sec = Some(86400.0);
         }
@@ -923,7 +927,7 @@ pub async fn get_config(
 
     if let Some(start) = args.start {
         config.playlist.day_start.clone_from(&start);
-        config.playlist.start_sec = Some(time_to_sec(&start));
+        config.playlist.start_sec = Some(time_to_sec(&start, &config.channel.timezone));
     }
 
     if let Some(output) = args.output {

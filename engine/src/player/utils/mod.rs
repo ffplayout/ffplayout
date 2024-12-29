@@ -10,6 +10,7 @@ use std::{
 };
 
 use chrono::{prelude::*, TimeDelta};
+use chrono_tz::Tz;
 use log::*;
 use probe::MediaProbe;
 use rand::prelude::*;
@@ -174,7 +175,7 @@ pub async fn get_data_map(manager: &ChannelManager) -> Map<String, Value> {
     let ingest_is_running = manager.ingest_is_running.load(Ordering::SeqCst);
 
     let mut data_map = Map::new();
-    let current_time = time_in_seconds();
+    let current_time = time_in_seconds(&channel.timezone);
     let shift = channel.time_shift;
     let begin = media.begin.unwrap_or(0.0) - shift;
     let played_time = current_time - begin;
@@ -434,8 +435,8 @@ pub async fn json_writer(path: &PathBuf, data: JsonPlaylist) -> Result<(), Error
 }
 
 /// Get current time in seconds.
-pub fn time_in_seconds() -> f64 {
-    let local: DateTime<Local> = time_now();
+pub fn time_in_seconds(timezone: &Option<Tz>) -> f64 {
+    let local: DateTime<Tz> = time_now(timezone);
 
     (local.hour() * 3600 + local.minute() * 60 + local.second()) as f64
         + (local.nanosecond() as f64 / 1000000000.0)
@@ -445,16 +446,16 @@ pub fn time_in_seconds() -> f64 {
 ///
 /// - When time is before playlist start, get date from yesterday.
 /// - When given next_start is over target length (normally a full day), get date from tomorrow.
-pub fn get_date(seek: bool, start: f64, get_next: bool) -> String {
-    let local: DateTime<Local> = time_now();
+pub fn get_date(seek: bool, start: f64, get_next: bool, timezone: &Option<Tz>) -> String {
+    let local: DateTime<Tz> = time_now(timezone);
 
-    if seek && start > time_in_seconds() {
+    if seek && start > time_in_seconds(timezone) {
         return (local - TimeDelta::try_days(1).unwrap())
             .format("%Y-%m-%d")
             .to_string();
     }
 
-    if start == 0.0 && get_next && time_in_seconds() > 86397.9 {
+    if start == 0.0 && get_next && time_in_seconds(timezone) > 86397.9 {
         return (local + TimeDelta::try_days(1).unwrap())
             .format("%Y-%m-%d")
             .to_string();
@@ -503,9 +504,9 @@ pub async fn modified_time(path: &str) -> Option<String> {
 }
 
 /// Convert a formatted time string to seconds.
-pub fn time_to_sec(time_str: &str) -> f64 {
+pub fn time_to_sec(time_str: &str, timezone: &Option<Tz>) -> f64 {
     if matches!(time_str, "now" | "" | "none") || !time_str.contains(':') {
-        return time_in_seconds();
+        return time_in_seconds(timezone);
     }
 
     let mut t = time_str.split(':').filter_map(|n| f64::from_str(n).ok());
@@ -546,7 +547,7 @@ pub fn sum_durations(clip_list: &[Media]) -> f64 {
 ///
 /// We also get here the global delta between clip start and time when a new playlist should start.
 pub fn get_delta(config: &PlayoutConfig, begin: &f64) -> (f64, f64) {
-    let mut current_time = time_in_seconds();
+    let mut current_time = time_in_seconds(&config.channel.timezone);
     let start = config.playlist.start_sec.unwrap();
     let length = config.playlist.length_sec.unwrap_or(86400.0);
     let mut target_length = 86400.0;

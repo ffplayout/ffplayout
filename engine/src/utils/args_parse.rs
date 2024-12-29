@@ -127,6 +127,12 @@ pub struct Args {
     #[clap(long, env, help_heading = Some("General"), help = "Log to console")]
     pub log_to_console: bool,
 
+    #[clap(long, env, help_heading = Some("General"), help = "Keep log file for given days")]
+    pub log_backup_count: Option<usize>,
+
+    #[clap(long, env, help_heading = Some("General"), help = "Add timestamp to log line")]
+    pub log_timestamp: bool,
+
     #[clap(
         short,
         long,
@@ -172,12 +178,6 @@ pub struct Args {
 
     #[clap(short, long, help_heading = Some("Playout"), help = "Play folder content")]
     pub folder: Option<PathBuf>,
-
-    #[clap(long, env, help_heading = Some("Playout"), help = "Keep log file for given days")]
-    pub log_backup_count: Option<usize>,
-
-    #[clap(long, env, help_heading = Some("Playout"), help = "Add timestamp to log line")]
-    pub log_timestamp: bool,
 
     #[clap(short, long, help_heading = Some("Playout"), help = "Set output mode: desktop, hls, null, stream")]
     pub output: Option<OutputMode>,

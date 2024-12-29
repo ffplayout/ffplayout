@@ -108,7 +108,7 @@ impl ChannelManager {
         channel.active.clone_from(&other.active);
         channel.last_date.clone_from(&other.last_date);
         channel.time_shift.clone_from(&other.time_shift);
-        channel.utc_offset.clone_from(&other.utc_offset);
+        channel.timezone.clone_from(&other.timezone);
     }
 
     pub async fn update_config(&self, new_config: PlayoutConfig) {

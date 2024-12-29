@@ -118,7 +118,7 @@ async fn playlist_missing() {
     manager.update_config(config).await;
     let manager_clone = manager.clone();
 
-    set_mock_time(&Some("2023-02-07T23:59:45+01:00".to_string()));
+    set_mock_time(&Some("2023-02-07T23:59:45+01:00".to_string())).unwrap();
 
     tokio::spawn(timed_stop(28, manager_clone));
 
@@ -154,7 +154,7 @@ async fn playlist_next_missing() {
     manager.update_config(config).await;
     let manager_clone = manager.clone();
 
-    set_mock_time(&Some("2023-02-09T23:59:45+01:00".to_string()));
+    set_mock_time(&Some("2023-02-09T23:59:45+01:00".to_string())).unwrap();
 
     tokio::spawn(timed_stop(28, manager_clone));
 
@@ -190,7 +190,7 @@ async fn playlist_to_short() {
     manager.update_config(config).await;
     let manager_clone = manager.clone();
 
-    set_mock_time(&Some("2024-01-31T05:59:40+01:00".to_string()));
+    set_mock_time(&Some("2024-01-31T05:59:40+01:00".to_string())).unwrap();
 
     tokio::spawn(timed_stop(28, manager_clone));
 
@@ -226,7 +226,7 @@ async fn playlist_init_after_list_end() {
     manager.update_config(config).await;
     let manager_clone = manager.clone();
 
-    set_mock_time(&Some("2024-01-31T05:59:47+01:00".to_string()));
+    set_mock_time(&Some("2024-01-31T05:59:47+01:00".to_string())).unwrap();
 
     tokio::spawn(timed_stop(28, manager_clone));
 
@@ -262,7 +262,7 @@ async fn playlist_change_at_midnight() {
     manager.update_config(config).await;
     let manager_clone = manager.clone();
 
-    set_mock_time(&Some("2023-02-08T23:59:45+01:00".to_string()));
+    set_mock_time(&Some("2023-02-08T23:59:45+01:00".to_string())).unwrap();
 
     tokio::spawn(timed_stop(28, manager_clone));
 
@@ -298,7 +298,7 @@ async fn playlist_change_before_midnight() {
     manager.update_config(config).await;
     let manager_clone = manager.clone();
 
-    set_mock_time(&Some("2023-02-08T23:59:30+01:00".to_string()));
+    set_mock_time(&Some("2023-02-08T23:59:30+01:00".to_string())).unwrap();
 
     tokio::spawn(timed_stop(35, manager_clone));
 
@@ -334,7 +334,7 @@ async fn playlist_change_at_six() {
     manager.update_config(config).await;
     let manager_clone = manager.clone();
 
-    set_mock_time(&Some("2023-02-09T05:59:45+01:00".to_string()));
+    set_mock_time(&Some("2023-02-09T05:59:45+01:00".to_string())).unwrap();
 
     tokio::spawn(timed_stop(28, manager_clone));
 

@@ -60,7 +60,7 @@ async fn main() -> std::io::Result<()> {
         exit(c);
     }
 
-    set_mock_time(&ARGS.fake_time);
+    set_mock_time(&ARGS.fake_time)?;
 
     init_globales(&pool)
         .await
@@ -237,7 +237,7 @@ async fn main() -> std::io::Result<()> {
             } else if ARGS.validate {
                 let mut playlist_path = config.channel.playlists.clone();
                 let start_sec = config.playlist.start_sec.unwrap();
-                let date = get_date(false, start_sec, false);
+                let date = get_date(false, start_sec, false, &config.channel.timezone);
 
                 if playlist_path.is_dir() || is_remote(&playlist_path.to_string_lossy()) {
                     let d: Vec<&str> = date.split('-').collect();

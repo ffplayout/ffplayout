@@ -1,3 +1,4 @@
+import { timezone } from 'dayjs/plugin/timezone.js';
 import type { JwtPayload } from 'jwt-decode'
 import type { AdvancedConfig } from '~/types/advanced_config'
 import type { PlayoutConfig, Playlist as Ply } from '~/types/playout_config'
@@ -43,7 +44,7 @@ declare global {
         public: string
         playlists: string
         storage: string
-        uts_offset?: number
+        timezone?: string
     }
 
     interface User {

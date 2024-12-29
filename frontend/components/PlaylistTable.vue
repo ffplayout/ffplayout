@@ -138,7 +138,7 @@ const { processPlaylist, genUID } = playlistOperations()
 
 const playlistContainer = ref()
 const sortContainer = ref()
-const todayDate = ref($dayjs().utcOffset(configStore.utcOffset).format('YYYY-MM-DD'))
+const todayDate = ref($dayjs().tz(configStore.timezone).format('YYYY-MM-DD'))
 const { i } = storeToRefs(useConfig())
 const { currentIndex, listDate, playoutIsRunning, scrollToItem } = storeToRefs(usePlaylist())
 

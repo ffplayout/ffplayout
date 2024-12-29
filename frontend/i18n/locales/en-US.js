@@ -229,6 +229,7 @@ export default {
         playlistPath: 'Playlist Path',
         storagePath: 'Storage Path',
         sharedStorage: 'ffplayout runs inside a container, use the same storage root for all channels!',
+        timezone: 'Timezone',
     },
     user: {
         title: 'User Configuration',

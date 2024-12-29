@@ -1156,10 +1156,14 @@ pub async fn del_playlist(
 )]
 pub async fn get_log(
     id: web::Path<i32>,
+    // controllers: web::Data<Mutex<ChannelController>>,
     log: web::Query<DateObj>,
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
+    // let manager = controllers.lock().await.get(*id).await.unwrap();
+    // let timezone = manager.config.lock().await.channel.timezone;
+
     read_log_file(&id, &log.date).await
 }
 
@@ -1474,7 +1478,12 @@ async fn get_program(
             .naive_local();
     }
 
-    if start_sec > time_to_sec(&after.format("%H:%M:%S").to_string()) {
+    if start_sec
+        > time_to_sec(
+            &after.format("%H:%M:%S").to_string(),
+            &config.channel.timezone,
+        )
+    {
         days = 1;
     }
 

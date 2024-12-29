@@ -229,6 +229,7 @@ export default {
         playlistPath: 'Playlist Path',
         storagePath: 'Storage Path',
         sharedStorage: 'ffplayout работает внутри контейнера, используйте один и тот же корень хранилища для всех каналов!',
+        timezone: 'Timezone',
     },
     user: {
         title: 'Конфигурация пользователя',

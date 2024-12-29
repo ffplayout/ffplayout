@@ -71,6 +71,11 @@ impl From<std::io::Error> for ServiceError {
         Self::NoContent(err.to_string())
     }
 }
+impl From<chrono::ParseError> for ServiceError {
+    fn from(err: chrono::ParseError) -> Self {
+        Self::NoContent(err.to_string())
+    }
+}
 
 impl From<std::num::ParseIntError> for ServiceError {
     fn from(err: std::num::ParseIntError) -> Self {

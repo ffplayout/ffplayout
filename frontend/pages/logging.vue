@@ -35,7 +35,7 @@
         </div>
         <div class="px-3 inline-block h-[calc(100vh-140px)] text-[13px]">
             <div id="log-container" class="bg-base-300 whitespace-pre h-full font-mono overflow-auto p-3">
-                <div id="log-content" v-html="filterLogsBySeverity(formatLog(currentLog), errorLevel)" />
+                <div id="log-content" v-html="filterLogsBySeverity(formatLog(currentLog, configStore.timezone), errorLevel)" />
             </div>
         </div>
     </div>
@@ -59,7 +59,7 @@ const { $dayjs } = useNuxtApp()
 const authStore = useAuth()
 const configStore = useConfig()
 const currentLog = ref('')
-const listDate = ref($dayjs().utcOffset(configStore.utcOffset).format('YYYY-MM-DD'))
+const listDate = ref($dayjs().tz(configStore.timezone).format('YYYY-MM-DD'))
 const { formatLog } = stringFormatter()
 
 const levelCookie = useCookie('error_level', {
@@ -118,7 +118,7 @@ function filterLogsBySeverity(logString: string, minSeverity: string): string {
 async function getLog() {
     let date = listDate.value
 
-    if (date === $dayjs().utcOffset(configStore.utcOffset).format('YYYY-MM-DD')) {
+    if (date === $dayjs().tz(configStore.timezone).format('YYYY-MM-DD')) {
         date = ''
     }
 
@@ -141,7 +141,7 @@ async function getLog() {
 
 function downloadLog() {
     const file = new File(
-        [formatLog(currentLog.value).replace(/<\/?[^>]+(>|$)/g, '')],
+        [formatLog(currentLog.value, configStore.timezone).replace(/<\/?[^>]+(>|$)/g, '')],
         `playout_${listDate.value}.log`,
         {
             type: 'text/plain',

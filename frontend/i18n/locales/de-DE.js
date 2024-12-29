@@ -228,6 +228,7 @@ export default {
         playlistPath: 'Wiedergabelistenpfad',
         storagePath: 'Speicherpfad',
         sharedStorage: 'ffplayout läuft innerhalb eines Containers, verwenden Sie den gleichen Speicherstamm für alle Kanäle!',
+        timezone: 'Zeitzone',
     },
     user: {
         title: 'Benutzer-Konfiguration',

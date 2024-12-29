@@ -228,6 +228,7 @@ export default {
         playlistPath: 'Playlist Path',
         storagePath: 'Storage Path',
         sharedStorage: 'O ffplayout é executado dentro de um contêiner; use a mesma raiz de armazenamento para todos os canais!',
+        timezone: 'Timezone',
     },
     user: {
         title: 'Configuração de usuário',
