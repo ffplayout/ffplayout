@@ -8,6 +8,7 @@ use actix_web::{web, HttpResponse};
 use futures_util::TryStreamExt as _;
 use lexical_sort::{natural_lexical_cmp, PathSort};
 use rand::{distributions::Alphanumeric, Rng};
+use regex::Regex;
 use relative_path::RelativePath;
 use serde::{Deserialize, Serialize};
 use tokio::fs;
@@ -101,6 +102,24 @@ pub fn norm_abs_path(
     Ok((path.to_path_buf(), path_suffix, source_relative))
 }
 
+/// Prepares the raw input path for S3.
+///
+/// Ensures the path is valid for S3 configuration.
+pub fn s3_clean_path(input_path: &str) -> Result<String, ServiceError> {
+    let re = Regex::new("//+").unwrap(); // Matches one or more '/'
+    let none_redundant_path = re.replace_all(input_path, "/");
+    let clean_path = if !none_redundant_path.is_empty() && none_redundant_path != "/" {
+        if !input_path.ends_with("/") {
+            format!("{}/", none_redundant_path.trim_start_matches("/"))
+        } else {
+            none_redundant_path.trim_start_matches("/").to_string()
+        }
+    } else {
+        String::new()
+    };
+    Ok(clean_path)
+}
+
 /// File Browser
 ///
 /// Take input path and give file and folder list from it back.
@@ -122,62 +141,78 @@ pub async fn browser(
 
     if channel.storage.starts_with(S3_INDICATOR) {
         // S3 Storage Browser
-        let storage_replaced = &channel.storage.replace(S3_INDICATOR, "");
-        let normalize_storage = Path::new(&storage_replaced);
-        let (path, parent, path_component) = norm_abs_path(normalize_storage, &path_obj.source)?;
+        let bucket: &str = config.channel.s3_storage.as_ref().unwrap().bucket.as_str();
+        let path = path_obj.source.clone();
+
+        let parent_path = bucket;
 
         let s3_client = config.channel.s3_storage.as_ref().unwrap().client.clone();
-        let bucket: &str = config.channel.s3_storage.as_ref().unwrap().bucket.as_str();
 
-        let mut response = config
-            .channel
-            .s3_storage
-            .as_ref()
-            .unwrap()
-            .client
+        let mut obj = PathObject::new(path.clone(), Some(bucket.to_string()));
+        obj.folders_only = path_obj.folders_only;
+
+        let prefix = s3_clean_path(&path_obj.source)?;
+
+        println!("prefix: {}", prefix);
+
+        // if path != parent_path && !path_obj.folders_only {
+        //     let mut parents = fs::read_dir(&parent_path).await?;
+
+        //     while let Some(child) = parents.next_entry().await? {
+        //         if child.metadata().await?.is_dir() {
+        //             parent_folders.push(
+        //                 child
+        //                     .path()
+        //                     .file_name()
+        //                     .unwrap()
+        //                     .to_string_lossy()
+        //                     .to_string(),
+        //             );
+        //         }
+        //     }
+        //     parent_folders.path_sort(natural_lexical_cmp);
+
+        //     obj.parent_folders = Some(parent_folders);
+        // }
+
+        let delimiter = '/'; // should be a single character
+
+        let resp = s3_client
             .list_objects_v2()
-            .bucket(bucket.to_owned())
-            // .prefix("ins_media_01/ins_media_01_02/")
-            // .delimiter("/")
-            .into_paginator()
-            .send();
+            .bucket(bucket)
+            .prefix(&prefix)
+            .delimiter(delimiter)
+            .send()
+            .await
+            .map_err(|_e| ServiceError::InternalServerError)?;
 
-        let mut contents = vec![];
+        let mut folders: Vec<String> = vec![];
+        let mut files: Vec<String> = vec![];
 
-        while let Some(result) = response.next().await {
-            match result {
-                Ok(output) => {
-                    contents.extend(
-                        output
-                            .contents()
-                            .into_iter()
-                            .filter_map(|obj| obj.key().map(|k| k.to_string())),
-                    );
-                }
-                Err(err) => eprintln!("{err:?}"),
+        for prefix in resp.common_prefixes() {
+            if let Some(prefix) = prefix.prefix() {
+                let fldrs = prefix.split(delimiter).nth_back(1).unwrap_or(prefix);
+                folders.push(fldrs.to_string());
             }
         }
 
-        let mut obj = PathObject::new(path_component, Some(parent));
-        obj.folders_only = path_obj.folders_only;
+        for objs in resp.contents() {
+            if let Some(objs) = objs.key() {
+                let fls = objs.strip_prefix(&prefix).unwrap_or(objs);
+                files.push(fls.to_string());
+            }
+        }
 
-        parent_folders.path_sort(natural_lexical_cmp);
-        obj.parent_folders = Some(parent_folders);
+        files.path_sort(natural_lexical_cmp);
+        folders.path_sort(natural_lexical_cmp);
 
-        obj.folders = Some(
-            contents
-                .clone()
-                .into_iter()
-                .filter(|f| f.ends_with('/'))
-                .map(|f| f.strip_suffix('/').unwrap().to_string())
-                .collect(),
-        );
+        obj.folders = Some(folders);
         obj.files = Some(
-            contents
+            files
                 .clone()
                 .into_iter()
                 .map(|f| VideoFile {
-                    name: f,
+                    name: f.to_string(),
                     duration: 0.0,
                 })
                 .collect(),
@@ -185,14 +220,9 @@ pub async fn browser(
 
         Ok(obj)
     } else {
+        // Local Storage Browser
         let (path, parent, path_component) =
             norm_abs_path(&config.channel.storage, &path_obj.source)?;
-
-        println!(
-            "path: {:?}, parent: {:?}, path_component: {:?}\npath_obj: {:?}",
-            path, parent, path_component, path_obj
-        ); // DEBUG
-
         let parent_path = if !path_component.is_empty() {
             path.parent().unwrap()
         } else {
