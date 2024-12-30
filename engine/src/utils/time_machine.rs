@@ -3,6 +3,7 @@
 /// It is like a time machine where you can fake the time and make the hole program think it is running in the future or past.
 use std::{
     io,
+    str::FromStr,
     sync::{Arc, LazyLock, RwLock},
 };
 
@@ -41,7 +42,13 @@ pub fn time_now(timezone: &Option<Tz>) -> DateTime<Tz> {
 
     let tz = match timezone {
         Some(tz) => *tz,
-        None => Tz::UTC,
+        None => match iana_time_zone::get_timezone()
+            .ok()
+            .and_then(|t: String| Tz::from_str(&t).ok())
+        {
+            Some(tz) => tz,
+            None => Tz::UTC,
+        },
     };
 
     match DATE_TIME_DIFF.read().ok().and_then(|d| *d) {

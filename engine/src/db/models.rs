@@ -71,14 +71,15 @@ impl FromRow<'_, SqliteRow> for Channel {
     fn from_row(row: &SqliteRow) -> sqlx::Result<Self> {
         let mut timezone = None;
 
-        if let Ok(tz) = row
+        if let Some(tz) = row
             .try_get::<String, _>("timezone")
-            .and_then(|t: String| Tz::from_str(&t).map_err(|e| sqlx::Error::Decode(Box::new(e))))
+            .ok()
+            .and_then(|t: String| Tz::from_str(&t).ok())
         {
             timezone = Some(tz);
-        } else if let Ok(tz) = iana_time_zone::get_timezone()
-            .map_err(|e| sqlx::Error::Decode(Box::new(e)))
-            .and_then(|t: String| Tz::from_str(&t).map_err(|e| sqlx::Error::Decode(Box::new(e))))
+        } else if let Some(tz) = iana_time_zone::get_timezone()
+            .ok()
+            .and_then(|t: String| Tz::from_str(&t).ok())
         {
             timezone = Some(tz);
         }
