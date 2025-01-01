@@ -1,25 +1,39 @@
 use std::{
+    borrow::BorrowMut,
     io::Write,
     path::{Path, PathBuf},
 };
 
 use actix_multipart::Multipart;
 use actix_web::{web, HttpResponse};
-use futures_util::TryStreamExt as _;
+use futures_util::{StreamExt, TryStreamExt as _};
 use lexical_sort::{natural_lexical_cmp, PathSort};
 use rand::{distributions::Alphanumeric, Rng};
 use regex::Regex;
 use relative_path::RelativePath;
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 use tokio::fs;
 
 use log::*;
 
 use crate::db::models::Channel;
 use crate::player::utils::{file_extension, MediaProbe};
-use crate::utils::{config::PlayoutConfig, errors::ServiceError};
+use crate::utils::{config::PlayoutConfig, errors::ServiceError, s3_utils};
 
 use super::S3_INDICATOR;
+
+const CHUNK_SIZE: u64 = 1024 * 1024 * 5;
+const MAX_CHUNKS: u64 = 10000;
+
+use aws_sdk_s3::{
+    error::SdkError,
+    operation::create_multipart_upload::CreateMultipartUploadOutput,
+    presigning::PresigningConfig,
+    primitives::ByteStream,
+    types::{CompletedMultipartUpload, CompletedPart},
+    Client,
+};
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct PathObject {
@@ -105,19 +119,60 @@ pub fn norm_abs_path(
 /// Prepares the raw input path for S3.
 ///
 /// Ensures the path is valid for S3 configuration.
-pub fn s3_clean_path(input_path: &str) -> Result<String, ServiceError> {
-    let re = Regex::new("//+").unwrap(); // Matches one or more '/'
-    let none_redundant_path = re.replace_all(input_path, "/");
-    let clean_path = if !none_redundant_path.is_empty() && none_redundant_path != "/" {
-        if !input_path.ends_with("/") {
-            format!("{}/", none_redundant_path.trim_start_matches("/"))
+pub fn s3_path(input_path: &str) -> Result<(String, String), ServiceError> {
+    fn s3_clean_path(input_path: &str) -> Result<String, ServiceError> {
+        let re = Regex::new("//+").unwrap(); // Matches one or more '/'
+        let none_redundant_path = re.replace_all(input_path, "/");
+        let clean_path = if !none_redundant_path.is_empty() && none_redundant_path != "/" {
+            if !input_path.ends_with("/") {
+                format!("{}/", none_redundant_path.trim_start_matches("/"))
+            } else {
+                none_redundant_path.trim_start_matches("/").to_string()
+            }
         } else {
-            none_redundant_path.trim_start_matches("/").to_string()
-        }
-    } else {
-        String::new()
-    };
-    Ok(clean_path)
+            String::new()
+        };
+        Ok(clean_path)
+    }
+    let clean_path = s3_clean_path(input_path)?;
+    let clean_parent_path = s3_clean_path(&format!(
+        "{}/",
+        clean_path
+            .rsplit('/')
+            .skip(2)
+            .collect::<Vec<&str>>()
+            .iter()
+            .rev()
+            .cloned()
+            .collect::<Vec<&str>>()
+            .join("/")
+    ))?;
+
+    Ok((clean_path, clean_parent_path))
+}
+
+/// Prepares the raw input path for S3.
+///
+/// Generates a presigned URL that provides temporary access to an S3 object.
+async fn get_s3_object(
+    client: &Client,
+    bucket: &str,
+    object: &str,
+    expires_in: u64,
+) -> Result<String, ServiceError> {
+    let expires_in = Duration::from_secs(expires_in);
+    let presigned_request = client
+        .get_object()
+        .bucket(bucket)
+        .key(object)
+        .presigned(
+            PresigningConfig::expires_in(expires_in)
+                .map_err(|_e| ServiceError::InternalServerError)?,
+        )
+        .await
+        .map_err(|_e| ServiceError::InternalServerError)?;
+
+    Ok(presigned_request.uri().to_string())
 }
 
 /// File Browser
@@ -144,40 +199,39 @@ pub async fn browser(
         let bucket: &str = config.channel.s3_storage.as_ref().unwrap().bucket.as_str();
         let path = path_obj.source.clone();
 
-        let parent_path = bucket;
+        let delimiter = '/'; // should be a single character
+        let (prefix, parent_path) = s3_path(&path_obj.source)?;
 
         let s3_client = config.channel.s3_storage.as_ref().unwrap().client.clone();
 
         let mut obj = PathObject::new(path.clone(), Some(bucket.to_string()));
         obj.folders_only = path_obj.folders_only;
 
-        let prefix = s3_clean_path(&path_obj.source)?;
+        if (path != parent_path && !path_obj.folders_only)
+            || (!path.is_empty() && (parent_path.is_empty() || parent_path == "/"))
+        // to-do: fix! this cause a bug that occur when you click back on root path after searching in sub folders
+        {
+            let childs_resp = s3_client
+                .list_objects_v2()
+                .bucket(bucket)
+                .prefix(&parent_path)
+                .delimiter(delimiter)
+                .send()
+                .await
+                .map_err(|_e| ServiceError::InternalServerError)?;
 
-        println!("prefix: {}", prefix);
+            for prefix in childs_resp.common_prefixes() {
+                if let Some(prefix) = prefix.prefix() {
+                    let child = prefix.split(delimiter).nth_back(1).unwrap_or(prefix);
+                    parent_folders.push(child.to_string());
+                }
+            }
+            parent_folders.path_sort(natural_lexical_cmp);
 
-        // if path != parent_path && !path_obj.folders_only {
-        //     let mut parents = fs::read_dir(&parent_path).await?;
+            obj.parent_folders = Some(parent_folders);
+        }
 
-        //     while let Some(child) = parents.next_entry().await? {
-        //         if child.metadata().await?.is_dir() {
-        //             parent_folders.push(
-        //                 child
-        //                     .path()
-        //                     .file_name()
-        //                     .unwrap()
-        //                     .to_string_lossy()
-        //                     .to_string(),
-        //             );
-        //         }
-        //     }
-        //     parent_folders.path_sort(natural_lexical_cmp);
-
-        //     obj.parent_folders = Some(parent_folders);
-        // }
-
-        let delimiter = '/'; // should be a single character
-
-        let resp = s3_client
+        let list_resp = s3_client
             .list_objects_v2()
             .bucket(bucket)
             .prefix(&prefix)
@@ -189,14 +243,14 @@ pub async fn browser(
         let mut folders: Vec<String> = vec![];
         let mut files: Vec<String> = vec![];
 
-        for prefix in resp.common_prefixes() {
+        for prefix in list_resp.common_prefixes() {
             if let Some(prefix) = prefix.prefix() {
                 let fldrs = prefix.split(delimiter).nth_back(1).unwrap_or(prefix);
                 folders.push(fldrs.to_string());
             }
         }
 
-        for objs in resp.contents() {
+        for objs in list_resp.contents() {
             if let Some(objs) = objs.key() {
                 let fls = objs.strip_prefix(&prefix).unwrap_or(objs);
                 files.push(fls.to_string());
@@ -206,17 +260,36 @@ pub async fn browser(
         files.path_sort(natural_lexical_cmp);
         folders.path_sort(natural_lexical_cmp);
 
+        let mut media_files = vec![];
+
+        for file in files {
+            let s3file_presigned_url = get_s3_object(
+                &s3_client,
+                bucket,
+                &file,
+                config.playlist.length_sec.unwrap_or(3600.0 * 24.0) as u64,
+            )
+            .await?;
+            match MediaProbe::new(s3file_presigned_url.as_ref()) {
+                Ok(probe) => {
+                    let mut duration = 0.0;
+
+                    if let Some(dur) = probe.format.duration {
+                        duration = dur.parse().unwrap_or_default()
+                    }
+
+                    let video = VideoFile {
+                        name: file.to_string(),
+                        duration,
+                    };
+                    media_files.push(video);
+                }
+                Err(e) => error!("{e:?}"),
+            };
+        }
+
         obj.folders = Some(folders);
-        obj.files = Some(
-            files
-                .clone()
-                .into_iter()
-                .map(|f| VideoFile {
-                    name: f.to_string(),
-                    duration: 0.0,
-                })
-                .collect(),
-        );
+        obj.files = Some(media_files);
 
         Ok(obj)
     } else {
@@ -228,13 +301,10 @@ pub async fn browser(
         } else {
             &config.channel.storage
         };
-
         let mut obj = PathObject::new(path_component, Some(parent));
         obj.folders_only = path_obj.folders_only;
-
         if path != parent_path && !path_obj.folders_only {
             let mut parents = fs::read_dir(&parent_path).await?;
-
             while let Some(child) = parents.next_entry().await? {
                 if child.metadata().await?.is_dir() {
                     parent_folders.push(
@@ -316,18 +386,39 @@ pub async fn browser(
 
 pub async fn create_directory(
     config: &PlayoutConfig,
+    channel: &Channel,
     path_obj: &PathObject,
 ) -> Result<HttpResponse, ServiceError> {
-    let (path, _, _) = norm_abs_path(&config.channel.storage, &path_obj.source)?;
+    if channel.storage.starts_with(S3_INDICATOR) {
+        // S3 Storage
+        let bucket: &str = config.channel.s3_storage.as_ref().unwrap().bucket.as_str();
 
-    if let Err(e) = fs::create_dir_all(&path).await {
-        return Err(ServiceError::BadRequest(e.to_string()));
+        let (folder_name, _) = s3_path(&path_obj.source)?;
+        let txt_file_name = format!("{}null.txt", folder_name); // it should be made to validate the new folder's existence
+        let s3_client = config.channel.s3_storage.as_ref().unwrap().client.clone();
+
+        let body = aws_sdk_s3::primitives::ByteStream::from(Vec::new()); // to not consume bytes!
+        s3_client
+            .put_object()
+            .bucket(bucket)
+            .key(&txt_file_name)
+            .body(body)
+            .send()
+            .await
+            .map_err(|_e| ServiceError::InternalServerError)?;
+    } else {
+        // local storage
+        let (path, _, _) = norm_abs_path(&config.channel.storage, &path_obj.source)?;
+
+        if let Err(e) = fs::create_dir_all(&path).await {
+            return Err(ServiceError::BadRequest(e.to_string()));
+        }
+
+        info!(
+            "create folder: <b><magenta>{}</></b>",
+            path.to_string_lossy()
+        );
     }
-
-    info!(
-        "create folder: <b><magenta>{}</></b>",
-        path.to_string_lossy()
-    );
 
     Ok(HttpResponse::Ok().into())
 }
@@ -476,62 +567,165 @@ async fn valid_path(config: &PlayoutConfig, path: &str) -> Result<PathBuf, Servi
 
 pub async fn upload(
     config: &PlayoutConfig,
+    channel: Option<&Channel>,
     _size: u64,
     mut payload: Multipart,
     path: &Path,
     abs_path: bool,
 ) -> Result<HttpResponse, ServiceError> {
-    while let Some(mut field) = payload.try_next().await? {
-        let content_disposition = field.content_disposition().ok_or("No content")?;
-        debug!("{content_disposition}");
-        let rand_string: String = rand::thread_rng()
-            .sample_iter(&Alphanumeric)
-            .take(20)
-            .map(char::from)
-            .collect();
-        let filename = content_disposition
-            .get_filename()
-            .map_or_else(|| rand_string.to_string(), sanitize_filename::sanitize);
+    if channel.unwrap().storage.starts_with(S3_INDICATOR) {
+        // S3 multipart-upload
+        let mut upload_id: Option<String> = None;
+        let mut key: Option<String> = None;
+        let bucket: &str = config.channel.s3_storage.as_ref().unwrap().bucket.as_str();
+        let (path, _) = s3_path(&path.to_string_lossy())?;
+        let s3_client = config.channel.s3_storage.as_ref().unwrap().client.clone();
+        let mut completed_parts: Vec<CompletedPart> = Vec::new();
+        let mut part_number = 1;
+        while let Some(mut field) = payload.try_next().await? {
+            let content_disposition = field
+                .content_disposition()
+                .ok_or("No content disposition")?;
+            debug!("{content_disposition}");
 
-        let filepath = if abs_path {
-            path.to_path_buf()
-        } else {
-            valid_path(config, &path.to_string_lossy())
-                .await?
-                .join(filename)
-        };
-        let filepath_clone = filepath.clone();
+            let rand_string: String = rand::thread_rng()
+                .sample_iter(&Alphanumeric)
+                .take(20)
+                .map(char::from)
+                .collect();
 
-        let _file_size = match filepath.metadata() {
-            Ok(metadata) => metadata.len(),
-            Err(_) => 0,
-        };
+            let filename = content_disposition
+                .get_filename()
+                .map_or_else(|| rand_string.to_string(), sanitize_filename::sanitize);
 
-        // INFO: File exist check should be enough because file size and content length are different.
-        // The error catching in the loop should normally prevent unfinished files from existing on disk.
-        // If this is not enough, a second check can be implemented: is_close(file_size as i64, size as i64, 1000)
-        if filepath.is_file() {
-            return Err(ServiceError::Conflict("Target already exists!".into()));
+            let filepath = format!("{path}{filename}");
+
+            if upload_id.is_none() {
+                let create_multipart_upload_output = s3_client
+                    .create_multipart_upload()
+                    .bucket(bucket)
+                    .key(&filepath)
+                    .send()
+                    .await;
+
+                match create_multipart_upload_output {
+                    Ok(output) => {
+                        upload_id = output.upload_id().map(|id| id.to_string());
+                        key = Some(filepath);
+                    }
+                    Err(_e) => return Err(ServiceError::InternalServerError),
+                }
+            }
+
+            let mut f = web::block(|| std::io::Cursor::new(Vec::new())).await?; // In-memory "file"
+
+            loop {
+                match field.try_next().await {
+                    Ok(Some(chunk)) => {
+                        f = web::block(move || f.write_all(&chunk).map(|_| f)).await??;
+                    }
+                    Ok(None) => break,
+                    Err(e) => {
+                        if e.to_string().contains("stream is incomplete") {
+                            info!("Incomplete stream for part, continuing multipart upload: {e}");
+                        }
+                        return Err(e.into()); // Propagate error
+                    }
+                }
+            }
+            let body_bytes = actix_web::web::Bytes::from(f.into_inner());
+
+            let upload_part_output = s3_client
+                .upload_part()
+                .bucket(bucket)
+                .key(key.as_ref().unwrap())
+                .upload_id(upload_id.as_ref().unwrap())
+                .part_number(part_number)
+                .body(body_bytes.into())
+                .send()
+                .await;
+
+            match upload_part_output {
+                Ok(output) => {
+                    completed_parts.push(
+                        CompletedPart::builder()
+                            .e_tag(output.e_tag().unwrap())
+                            .part_number(part_number)
+                            .build(),
+                    );
+                    part_number += 1;
+                }
+                Err(_e) => return Err(ServiceError::InternalServerError),
+            }
         }
 
-        let mut f = web::block(|| std::fs::File::create(filepath_clone)).await??;
+        // Complete multipart upload (same as before)
+        let completed_multipart_upload = CompletedMultipartUpload::builder()
+            .set_parts(Some(completed_parts))
+            .build();
 
-        loop {
-            match field.try_next().await {
-                Ok(Some(chunk)) => {
-                    f = web::block(move || f.write_all(&chunk).map(|_| f)).await??;
-                }
+        s3_client // final part
+            .complete_multipart_upload()
+            .bucket(bucket)
+            .key(key.as_ref().unwrap())
+            .upload_id(upload_id.as_ref().unwrap())
+            .multipart_upload(completed_multipart_upload)
+            .send()
+            .await
+            .map_err(|e| ServiceError::Conflict(e.to_string()))?;
+    } else {
+        // local storage upload
+        while let Some(mut field) = payload.try_next().await? {
+            let content_disposition = field.content_disposition().ok_or("No content")?;
+            debug!("{content_disposition}");
+            let rand_string: String = rand::thread_rng()
+                .sample_iter(&Alphanumeric)
+                .take(20)
+                .map(char::from)
+                .collect();
+            let filename = content_disposition
+                .get_filename()
+                .map_or_else(|| rand_string.to_string(), sanitize_filename::sanitize);
+            let filepath = if abs_path {
+                path.to_path_buf()
+            } else {
+                valid_path(config, &path.to_string_lossy())
+                    .await?
+                    .join(filename)
+            };
+            let filepath_clone = filepath.clone();
 
-                Ok(None) => break,
+            let _file_size = match filepath.metadata() {
+                Ok(metadata) => metadata.len(),
+                Err(_) => 0,
+            };
 
-                Err(e) => {
-                    if e.to_string().contains("stream is incomplete") {
-                        info!("Delete non finished file: {filepath:?}");
+            // INFO: File exist check should be enough because file size and content length are different.
+            // The error catching in the loop should normally prevent unfinished files from existing on disk.
+            // If this is not enough, a second check can be implemented: is_close(file_size as i64, size as i64, 1000)
+            if filepath.is_file() {
+                return Err(ServiceError::Conflict("Target already exists!".into()));
+            }
 
-                        tokio::fs::remove_file(filepath).await?
+            let mut f = web::block(|| std::fs::File::create(filepath_clone)).await??;
+
+            loop {
+                match field.try_next().await {
+                    Ok(Some(chunk)) => {
+                        f = web::block(move || f.write_all(&chunk).map(|_| f)).await??;
                     }
 
-                    return Err(e.into());
+                    Ok(None) => break,
+
+                    Err(e) => {
+                        if e.to_string().contains("stream is incomplete") {
+                            info!("Delete non finished file: {filepath:?}");
+
+                            tokio::fs::remove_file(filepath).await?
+                        }
+
+                        return Err(e.into());
+                    }
                 }
             }
         }

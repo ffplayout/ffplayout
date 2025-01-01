@@ -41,7 +41,6 @@ use crate::db::models::GlobalSettings;
 use crate::player::utils::time_to_sec;
 use crate::utils::{errors::ServiceError, logging::log_file_path};
 use crate::ARGS;
-use serde_json::json;
 
 pub const S3_INDICATOR: &str = "s3://";
 

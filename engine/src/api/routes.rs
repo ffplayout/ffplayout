@@ -1223,9 +1223,10 @@ pub async fn add_dir(
     user: web::ReqData<UserMeta>,
 ) -> Result<HttpResponse, ServiceError> {
     let manager = controllers.lock().unwrap().get(*id).unwrap();
+    let channel = manager.channel.lock().unwrap().clone();
     let config = manager.config.lock().unwrap().clone();
 
-    create_directory(&config, &data.into_inner()).await
+    create_directory(&config, &channel, &data.into_inner()).await
 }
 
 /// **Rename File**
@@ -1308,6 +1309,7 @@ async fn save_file(
     user: web::ReqData<UserMeta>,
 ) -> Result<HttpResponse, ServiceError> {
     let manager = controllers.lock().unwrap().get(*id).unwrap();
+    let channel = manager.channel.lock().unwrap().clone();
     let config = manager.config.lock().unwrap().clone();
 
     let size: u64 = req
@@ -1317,7 +1319,7 @@ async fn save_file(
         .and_then(|cls| cls.parse().ok())
         .unwrap_or(0);
 
-    upload(&config, size, payload, &obj.path, false).await
+    upload(&config, Some(&channel), size, payload, &obj.path, false).await
 }
 
 /// **Get File**
@@ -1423,7 +1425,7 @@ async fn import_playlist(
         .and_then(|cls| cls.parse().ok())
         .unwrap_or(0);
 
-    upload(&config, size, payload, &path, true).await?;
+    upload(&config, None, size, payload, &path, true).await?;
 
     let response =
         web::block(move || import_file(&config, &obj.date, Some(channel_name), &path_clone))
