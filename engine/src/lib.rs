@@ -1,4 +1,7 @@
-use std::sync::{Arc, Mutex};
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+};
 
 use actix_web::{dev::ServiceRequest, Error, HttpMessage};
 use actix_web_grants::authorities::AttachAuthorities;
@@ -26,6 +29,12 @@ lazy_static! {
     pub static ref NETWORKS: Arc<Mutex<Networks>> =
         Arc::new(Mutex::new(Networks::new_with_refreshed_list()));
     pub static ref SYS: Arc<Mutex<System>> = Arc::new(Mutex::new(System::new_all()));
+}
+
+pub type SharedDurationData = Arc<Mutex<HashMap<String, f64>>>;
+
+pub fn create_shared_dur_data() -> SharedDurationData {
+    Arc::new(Mutex::new(HashMap::new()))
 }
 
 pub async fn validator(

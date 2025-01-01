@@ -5,10 +5,7 @@ use std::{
 };
 
 #[cfg(target_family = "unix")]
-use std::{
-    io::{Error, ErrorKind},
-    os::unix::fs::MetadataExt,
-};
+use std::os::unix::fs::MetadataExt;
 
 use chrono::{format::ParseErrorKind, prelude::*};
 use faccess::PathExt;
@@ -33,6 +30,7 @@ pub mod files;
 pub mod generator;
 pub mod logging;
 pub mod playlist;
+pub mod s3_utils;
 pub mod system;
 pub mod task_runner;
 pub mod time_machine;
@@ -41,8 +39,6 @@ use crate::db::models::GlobalSettings;
 use crate::player::utils::time_to_sec;
 use crate::utils::{errors::ServiceError, logging::log_file_path};
 use crate::ARGS;
-
-pub const S3_INDICATOR: &str = "s3://";
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct TextFilter {
@@ -394,41 +390,4 @@ pub async fn is_running_in_container() -> bool {
     }
 
     false
-}
-
-pub fn parse_s3_string(
-    // to_do: maybe should change the snippet to get better understanding
-    s3_str: &str,
-) -> Result<(aws_sdk_s3::config::Credentials, String, String), std::io::Error> {
-    // Define the regex pattern for /: delimiter
-    // The pattern : s3://{bucket_name}/:{endpoint_url}/:{access_key}/:{secret_key}
-    let pattern = format!(r"{}([^/]+)/:(.*?)/:([^/]+)/:([^/]+)", S3_INDICATOR);
-
-    let re = Regex::new(&pattern)
-        .map_err(|_| Error::new(ErrorKind::InvalidInput, "Failed to compile regex"))?;
-
-    // Match the input string against the regex
-    if let Some(captures) = re.captures(s3_str) {
-        let access_key = captures[3].to_string();
-        let secret_key = captures[4].to_string();
-        let mut endpoint = captures[2].to_string();
-
-        if !endpoint.starts_with("http://") && !endpoint.starts_with("https://") {
-            endpoint = format!("http://{}", endpoint);
-        }
-
-        Ok((
-            aws_sdk_s3::config::Credentials::new(access_key, secret_key, None, None, "None"), // Credential
-            captures[1].to_string(), // bucket-name
-            endpoint,                // endpoint-url
-        ))
-    } else {
-        Err(Error::new(
-            ErrorKind::InvalidInput,
-            format!(
-                "Input S3 string does not match the expected format: {}",
-                s3_str
-            ),
-        ))
-    }
 }

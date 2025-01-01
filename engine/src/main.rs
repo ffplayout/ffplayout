@@ -20,6 +20,7 @@ use log::*;
 
 use ffplayout::{
     api::routes::*,
+    create_shared_dur_data,
     db::{db_drop, db_pool, handles, models::init_globales},
     player::{
         controller::{ChannelController, ChannelManager},
@@ -53,6 +54,7 @@ fn thread_counter() -> usize {
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     let mail_queues = Arc::new(Mutex::new(vec![]));
+    let shared_duration = create_shared_dur_data();
 
     let pool = db_pool()
         .await
@@ -126,6 +128,7 @@ async fn main() -> std::io::Result<()> {
                 .exclude_regex(r"/_nuxt/*");
 
             let mut web_app = App::new()
+                .app_data(web::Data::new(shared_duration.clone())) // to-do: find proper define type
                 .app_data(db_pool)
                 .app_data(web::Data::from(queues))
                 .app_data(controllers.clone())

@@ -19,7 +19,10 @@ use crate::vec_strings;
 use crate::AdvancedConfig;
 use crate::ARGS;
 
-use super::{errors::ServiceError, parse_s3_string, S3_INDICATOR};
+use super::{
+    errors::ServiceError,
+    s3_utils::{s3_parse_string, S3_INDICATOR},
+};
 
 use aws_config as s3_conf;
 use aws_sdk_s3::{self as s3, config::Region, Client};
@@ -226,7 +229,7 @@ pub struct S3 {
 impl S3 {
     pub async fn new(path: PathBuf) -> Self {
         let (credentials, bucket_name, endp_url) =
-            parse_s3_string(&path.to_str().unwrap()).unwrap();
+            s3_parse_string(&path.to_str().unwrap()).unwrap();
 
         let provider = credentials;
         let shared_provider = s3::config::SharedCredentialsProvider::new(provider);

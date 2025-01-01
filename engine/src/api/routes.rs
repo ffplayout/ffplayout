@@ -52,6 +52,7 @@ use crate::utils::{
     playlist::{delete_playlist, generate_playlist, read_playlist, write_playlist},
     public_path, read_log_file, system, TextFilter,
 };
+use crate::SharedDurationData;
 use crate::{
     api::auth::{create_jwt, Claims},
     utils::advanced_config::AdvancedConfig,
@@ -1192,12 +1193,14 @@ pub async fn file_browser(
     controllers: web::Data<Mutex<ChannelController>>,
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
+    durations: web::Data<SharedDurationData>,
 ) -> Result<impl Responder, ServiceError> {
     let manager = controllers.lock().unwrap().get(*id).unwrap();
     let channel = manager.channel.lock().unwrap().clone();
     let config = manager.config.lock().unwrap().clone();
+    let dur = durations.lock().unwrap();
 
-    match browser(&config, &channel, &data.into_inner()).await {
+    match browser(&config, &channel, &data.into_inner(), &dur).await {
         Ok(obj) => Ok(web::Json(obj)),
         Err(e) => Err(e),
     }

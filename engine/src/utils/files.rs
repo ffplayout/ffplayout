@@ -1,18 +1,16 @@
 use std::{
-    borrow::BorrowMut,
     io::Write,
     path::{Path, PathBuf},
 };
 
 use actix_multipart::Multipart;
 use actix_web::{web, HttpResponse};
-use futures_util::{StreamExt, TryStreamExt as _};
+use futures_util::TryStreamExt as _;
 use lexical_sort::{natural_lexical_cmp, PathSort};
 use rand::{distributions::Alphanumeric, Rng};
-use regex::Regex;
 use relative_path::RelativePath;
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
+use std::collections::HashMap;
 use tokio::fs;
 
 use log::*;
@@ -21,19 +19,7 @@ use crate::db::models::Channel;
 use crate::player::utils::{file_extension, MediaProbe};
 use crate::utils::{config::PlayoutConfig, errors::ServiceError, s3_utils};
 
-use super::S3_INDICATOR;
-
-const CHUNK_SIZE: u64 = 1024 * 1024 * 5;
-const MAX_CHUNKS: u64 = 10000;
-
-use aws_sdk_s3::{
-    error::SdkError,
-    operation::create_multipart_upload::CreateMultipartUploadOutput,
-    presigning::PresigningConfig,
-    primitives::ByteStream,
-    types::{CompletedMultipartUpload, CompletedPart},
-    Client,
-};
+use super::s3_utils::S3_INDICATOR;
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct PathObject {
@@ -116,74 +102,17 @@ pub fn norm_abs_path(
     Ok((path.to_path_buf(), path_suffix, source_relative))
 }
 
-/// Prepares the raw input path for S3.
-///
-/// Ensures the path is valid for S3 configuration.
-pub fn s3_path(input_path: &str) -> Result<(String, String), ServiceError> {
-    fn s3_clean_path(input_path: &str) -> Result<String, ServiceError> {
-        let re = Regex::new("//+").unwrap(); // Matches one or more '/'
-        let none_redundant_path = re.replace_all(input_path, "/");
-        let clean_path = if !none_redundant_path.is_empty() && none_redundant_path != "/" {
-            if !input_path.ends_with("/") {
-                format!("{}/", none_redundant_path.trim_start_matches("/"))
-            } else {
-                none_redundant_path.trim_start_matches("/").to_string()
-            }
-        } else {
-            String::new()
-        };
-        Ok(clean_path)
-    }
-    let clean_path = s3_clean_path(input_path)?;
-    let clean_parent_path = s3_clean_path(&format!(
-        "{}/",
-        clean_path
-            .rsplit('/')
-            .skip(2)
-            .collect::<Vec<&str>>()
-            .iter()
-            .rev()
-            .cloned()
-            .collect::<Vec<&str>>()
-            .join("/")
-    ))?;
-
-    Ok((clean_path, clean_parent_path))
-}
-
-/// Prepares the raw input path for S3.
-///
-/// Generates a presigned URL that provides temporary access to an S3 object.
-async fn get_s3_object(
-    client: &Client,
-    bucket: &str,
-    object: &str,
-    expires_in: u64,
-) -> Result<String, ServiceError> {
-    let expires_in = Duration::from_secs(expires_in);
-    let presigned_request = client
-        .get_object()
-        .bucket(bucket)
-        .key(object)
-        .presigned(
-            PresigningConfig::expires_in(expires_in)
-                .map_err(|_e| ServiceError::InternalServerError)?,
-        )
-        .await
-        .map_err(|_e| ServiceError::InternalServerError)?;
-
-    Ok(presigned_request.uri().to_string())
-}
-
 /// File Browser
 ///
 /// Take input path and give file and folder list from it back.
 /// Input should be a relative path segment, but when it is a absolut path, the norm_abs_path function
 /// will take care, that user can not break out from given storage path in config.
 pub async fn browser(
+    // to-do: review and fix path!
     config: &PlayoutConfig,
     channel: &Channel,
     path_obj: &PathObject,
+    duration: &HashMap<String, f64>,
 ) -> Result<PathObject, ServiceError> {
     let mut channel_extensions = channel
         .extra_extensions
@@ -196,11 +125,12 @@ pub async fn browser(
 
     if channel.storage.starts_with(S3_INDICATOR) {
         // S3 Storage Browser
+        let mut s3_url_dur_hm = duration.clone();
         let bucket: &str = config.channel.s3_storage.as_ref().unwrap().bucket.as_str();
         let path = path_obj.source.clone();
 
         let delimiter = '/'; // should be a single character
-        let (prefix, parent_path) = s3_path(&path_obj.source)?;
+        let (prefix, parent_path) = s3_utils::s3_path(&path_obj.source)?;
 
         let s3_client = config.channel.s3_storage.as_ref().unwrap().client.clone();
 
@@ -252,7 +182,7 @@ pub async fn browser(
 
         for objs in list_resp.contents() {
             if let Some(objs) = objs.key() {
-                let fls = objs.strip_prefix(&prefix).unwrap_or(objs);
+                let fls = objs.strip_prefix(&bucket).unwrap_or(objs); // to-do: maybe no needed!
                 files.push(fls.to_string());
             }
         }
@@ -263,29 +193,37 @@ pub async fn browser(
         let mut media_files = vec![];
 
         for file in files {
-            let s3file_presigned_url = get_s3_object(
+            let s3file_presigned_url = s3_utils::s3_get_object(
                 &s3_client,
                 bucket,
                 &file,
-                config.playlist.length_sec.unwrap_or(3600.0 * 24.0) as u64,
+                config.playlist.length_sec.unwrap_or(3600.0 * 24.0) as u64, // 24h as default
             )
             .await?;
-            match MediaProbe::new(s3file_presigned_url.as_ref()) {
-                Ok(probe) => {
-                    let mut duration = 0.0;
+            let name = file.strip_prefix(&prefix).unwrap_or(&file).to_string();
+            if let Some(stored_dur) = s3_url_dur_hm.get(&s3file_presigned_url) {
+                let video = VideoFile {
+                    name,
+                    duration: *stored_dur,
+                };
+                media_files.push(video);
+            } else {
+                match MediaProbe::new(&s3file_presigned_url.as_ref()) {
+                    Ok(probe) => {
+                        let mut duration = 0.0;
 
-                    if let Some(dur) = probe.format.duration {
-                        duration = dur.parse().unwrap_or_default()
+                        if let Some(dur) = probe.format.duration {
+                            duration = dur.parse().unwrap_or_default();
+                            s3_url_dur_hm.insert(s3file_presigned_url, duration);
+                            // Store presigned-url(key) and duration(value) in a hashmap
+                        }
+
+                        let video = VideoFile { name, duration };
+                        media_files.push(video);
                     }
-
-                    let video = VideoFile {
-                        name: file.to_string(),
-                        duration,
-                    };
-                    media_files.push(video);
-                }
-                Err(e) => error!("{e:?}"),
-            };
+                    Err(e) => error!("{e:?}"),
+                };
+            }
         }
 
         obj.folders = Some(folders);
@@ -393,7 +331,7 @@ pub async fn create_directory(
         // S3 Storage
         let bucket: &str = config.channel.s3_storage.as_ref().unwrap().bucket.as_str();
 
-        let (folder_name, _) = s3_path(&path_obj.source)?;
+        let (folder_name, _) = s3_utils::s3_path(&path_obj.source)?;
         let txt_file_name = format!("{}null.txt", folder_name); // it should be made to validate the new folder's existence
         let s3_client = config.channel.s3_storage.as_ref().unwrap().client.clone();
 
@@ -575,104 +513,18 @@ pub async fn upload(
 ) -> Result<HttpResponse, ServiceError> {
     if channel.unwrap().storage.starts_with(S3_INDICATOR) {
         // S3 multipart-upload
-        let mut upload_id: Option<String> = None;
-        let mut key: Option<String> = None;
-        let bucket: &str = config.channel.s3_storage.as_ref().unwrap().bucket.as_str();
-        let (path, _) = s3_path(&path.to_string_lossy())?;
+        let bucket = config.channel.s3_storage.as_ref().unwrap().bucket.as_str();
         let s3_client = config.channel.s3_storage.as_ref().unwrap().client.clone();
-        let mut completed_parts: Vec<CompletedPart> = Vec::new();
-        let mut part_number = 1;
-        while let Some(mut field) = payload.try_next().await? {
-            let content_disposition = field
-                .content_disposition()
-                .ok_or("No content disposition")?;
-            debug!("{content_disposition}");
+        let (path_str, _) = s3_utils::s3_path(&path.to_string_lossy())
+            .map_err(|_| ServiceError::InternalServerError)?;
 
-            let rand_string: String = rand::thread_rng()
-                .sample_iter(&Alphanumeric)
-                .take(20)
-                .map(char::from)
-                .collect();
-
-            let filename = content_disposition
-                .get_filename()
-                .map_or_else(|| rand_string.to_string(), sanitize_filename::sanitize);
-
-            let filepath = format!("{path}{filename}");
-
-            if upload_id.is_none() {
-                let create_multipart_upload_output = s3_client
-                    .create_multipart_upload()
-                    .bucket(bucket)
-                    .key(&filepath)
-                    .send()
-                    .await;
-
-                match create_multipart_upload_output {
-                    Ok(output) => {
-                        upload_id = output.upload_id().map(|id| id.to_string());
-                        key = Some(filepath);
-                    }
-                    Err(_e) => return Err(ServiceError::InternalServerError),
-                }
-            }
-
-            let mut f = web::block(|| std::io::Cursor::new(Vec::new())).await?; // In-memory "file"
-
-            loop {
-                match field.try_next().await {
-                    Ok(Some(chunk)) => {
-                        f = web::block(move || f.write_all(&chunk).map(|_| f)).await??;
-                    }
-                    Ok(None) => break,
-                    Err(e) => {
-                        if e.to_string().contains("stream is incomplete") {
-                            info!("Incomplete stream for part, continuing multipart upload: {e}");
-                        }
-                        return Err(e.into()); // Propagate error
-                    }
-                }
-            }
-            let body_bytes = actix_web::web::Bytes::from(f.into_inner());
-
-            let upload_part_output = s3_client
-                .upload_part()
-                .bucket(bucket)
-                .key(key.as_ref().unwrap())
-                .upload_id(upload_id.as_ref().unwrap())
-                .part_number(part_number)
-                .body(body_bytes.into())
-                .send()
-                .await;
-
-            match upload_part_output {
-                Ok(output) => {
-                    completed_parts.push(
-                        CompletedPart::builder()
-                            .e_tag(output.e_tag().unwrap())
-                            .part_number(part_number)
-                            .build(),
-                    );
-                    part_number += 1;
-                }
-                Err(_e) => return Err(ServiceError::InternalServerError),
+        match s3_utils::s3_upload_multipart(payload, bucket, &path_str, s3_client).await {
+            Ok(_) => Ok(HttpResponse::Ok().into()),
+            Err(err) => {
+                error!("S3 upload failed: {}", err);
+                return Err(ServiceError::Conflict("Target already exists!".into()));
             }
         }
-
-        // Complete multipart upload (same as before)
-        let completed_multipart_upload = CompletedMultipartUpload::builder()
-            .set_parts(Some(completed_parts))
-            .build();
-
-        s3_client // final part
-            .complete_multipart_upload()
-            .bucket(bucket)
-            .key(key.as_ref().unwrap())
-            .upload_id(upload_id.as_ref().unwrap())
-            .multipart_upload(completed_multipart_upload)
-            .send()
-            .await
-            .map_err(|e| ServiceError::Conflict(e.to_string()))?;
     } else {
         // local storage upload
         while let Some(mut field) = payload.try_next().await? {
@@ -729,7 +581,6 @@ pub async fn upload(
                 }
             }
         }
+        Ok(HttpResponse::Ok().into())
     }
-
-    Ok(HttpResponse::Ok().into())
 }
