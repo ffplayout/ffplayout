@@ -330,16 +330,15 @@ pub async fn create_directory(
     if channel.storage.starts_with(S3_INDICATOR) {
         // S3 Storage
         let bucket: &str = config.channel.s3_storage.as_ref().unwrap().bucket.as_str();
-
         let (folder_name, _) = s3_utils::s3_path(&path_obj.source)?;
-        let txt_file_name = format!("{}null.txt", folder_name); // it should be made to validate the new folder's existence
+        let none_file = format!("{}.ignore", folder_name); // it should be made to validate the new folder's existence
         let s3_client = config.channel.s3_storage.as_ref().unwrap().client.clone();
 
         let body = aws_sdk_s3::primitives::ByteStream::from(Vec::new()); // to not consume bytes!
         s3_client
             .put_object()
             .bucket(bucket)
-            .key(&txt_file_name)
+            .key(&none_file)
             .body(body)
             .send()
             .await
@@ -347,11 +346,9 @@ pub async fn create_directory(
     } else {
         // local storage
         let (path, _, _) = norm_abs_path(&config.channel.storage, &path_obj.source)?;
-
         if let Err(e) = fs::create_dir_all(&path).await {
             return Err(ServiceError::BadRequest(e.to_string()));
         }
-
         info!(
             "create folder: <b><magenta>{}</></b>",
             path.to_string_lossy()
@@ -414,83 +411,134 @@ async fn rename(source: &PathBuf, target: &PathBuf) -> Result<MoveObject, Servic
 
 pub async fn rename_file(
     config: &PlayoutConfig,
+    channel: &Channel,
     move_object: &MoveObject,
 ) -> Result<MoveObject, ServiceError> {
-    let (source_path, _, _) = norm_abs_path(&config.channel.storage, &move_object.source)?;
-    let (mut target_path, _, _) = norm_abs_path(&config.channel.storage, &move_object.target)?;
+    if channel.storage.starts_with(S3_INDICATOR) {
+        let bucket: &str = config.channel.s3_storage.as_ref().unwrap().bucket.as_str();
+        let s3_client = config.channel.s3_storage.as_ref().unwrap().client.clone();
+        let source_name = &move_object
+            .source
+            .rsplit('/')
+            .into_iter()
+            .nth(0)
+            .unwrap_or(&move_object.source);
+        let target_name = &move_object
+            .target
+            .rsplit('/')
+            .into_iter()
+            .nth(0)
+            .unwrap_or(&move_object.source);
+        // println!(
+        //     "\n\n\nsource name: {}\ntarget name: {}\n\n\n",
+        //     source_name, target_name
+        // );
+        if !s3_utils::s3_is_prefix(&move_object.source, bucket, &s3_client).await? {
+            s3_utils::s3_rename_object(
+                &move_object.source,
+                &move_object.target,
+                bucket,
+                &s3_client,
+            )
+            .await?;
+        }
 
-    if !source_path.exists() {
-        return Err(ServiceError::BadRequest("Source file not exist!".into()));
+        Ok(MoveObject {
+            source: source_name.to_string(),
+            target: target_name.to_string(),
+        })
+    } else {
+        let (source_path, _, _) = norm_abs_path(&config.channel.storage, &move_object.source)?;
+        let (mut target_path, _, _) = norm_abs_path(&config.channel.storage, &move_object.target)?;
+
+        if !source_path.exists() {
+            return Err(ServiceError::BadRequest("Source file not exist!".into()));
+        }
+
+        if (source_path.is_dir() || source_path.is_file())
+            && source_path.parent() == Some(&target_path)
+        {
+            return rename(&source_path, &target_path).await;
+        }
+
+        if target_path.is_dir() {
+            target_path = target_path.join(source_path.file_name().unwrap());
+        }
+
+        if target_path.is_file() {
+            return Err(ServiceError::BadRequest(
+                "Target file already exists!".into(),
+            ));
+        }
+
+        if source_path.is_file() && target_path.parent().is_some() {
+            return rename(&source_path, &target_path).await;
+        }
+
+        Err(ServiceError::InternalServerError)
     }
-
-    if (source_path.is_dir() || source_path.is_file()) && source_path.parent() == Some(&target_path)
-    {
-        return rename(&source_path, &target_path).await;
-    }
-
-    if target_path.is_dir() {
-        target_path = target_path.join(source_path.file_name().unwrap());
-    }
-
-    if target_path.is_file() {
-        return Err(ServiceError::BadRequest(
-            "Target file already exists!".into(),
-        ));
-    }
-
-    if source_path.is_file() && target_path.parent().is_some() {
-        return rename(&source_path, &target_path).await;
-    }
-
-    Err(ServiceError::InternalServerError)
 }
 
 pub async fn remove_file_or_folder(
     config: &PlayoutConfig,
+    channel: &Channel,
     source_path: &str,
     recursive: bool,
 ) -> Result<(), ServiceError> {
-    let (source, _, _) = norm_abs_path(&config.channel.storage, source_path)?;
+    if channel.storage.starts_with(S3_INDICATOR) {
+        let bucket: &str = config.channel.s3_storage.as_ref().unwrap().bucket.as_str();
+        let (clean_path, _) = s3_utils::s3_path(source_path)?;
+        let s3_client = config.channel.s3_storage.as_ref().unwrap().client.clone();
 
-    if !source.exists() {
-        return Err(ServiceError::BadRequest("Source does not exists!".into()));
-    }
-
-    if source.is_dir() {
-        if recursive {
-            match fs::remove_dir_all(source).await {
-                Ok(_) => return Ok(()),
-                Err(e) => {
-                    error!("{e}");
-                    return Err(ServiceError::BadRequest(
-                        "Delete folder and its content failed!".into(),
-                    ));
-                }
-            };
+        if s3_utils::s3_is_prefix(&clean_path, bucket, &s3_client).await? {
+            s3_utils::s3_delete_prefix(&clean_path, &bucket, &s3_client, recursive).await?
         } else {
-            match fs::remove_dir(source).await {
+            s3_utils::s3_delete_object(&clean_path, &bucket, &s3_client).await?
+        }
+        Ok(())
+    } else {
+        let (source, _, _) = norm_abs_path(&config.channel.storage, source_path)?;
+
+        if !source.exists() {
+            return Err(ServiceError::BadRequest("Source does not exists!".into()));
+        }
+
+        if source.is_dir() {
+            if recursive {
+                match fs::remove_dir_all(source).await {
+                    Ok(_) => return Ok(()),
+                    Err(e) => {
+                        error!("{e}");
+                        return Err(ServiceError::BadRequest(
+                            "Delete folder and its content failed!".into(),
+                        ));
+                    }
+                };
+            } else {
+                match fs::remove_dir(source).await {
+                    Ok(_) => return Ok(()),
+                    Err(e) => {
+                        error!("{e}");
+                        return Err(ServiceError::BadRequest(
+                            "Delete folder failed! (Folder must be empty)".into(),
+                        ));
+                    }
+                };
+            }
+        }
+
+        if source.is_file() {
+            match fs::remove_file(source).await {
                 Ok(_) => return Ok(()),
                 Err(e) => {
                     error!("{e}");
-                    return Err(ServiceError::BadRequest(
-                        "Delete folder failed! (Folder must be empty)".into(),
-                    ));
+                    return Err(ServiceError::BadRequest("Delete file failed!".into()));
                 }
             };
         }
-    }
 
-    if source.is_file() {
-        match fs::remove_file(source).await {
-            Ok(_) => return Ok(()),
-            Err(e) => {
-                error!("{e}");
-                return Err(ServiceError::BadRequest("Delete file failed!".into()));
-            }
-        };
+        Err(ServiceError::InternalServerError)
     }
-
-    Err(ServiceError::InternalServerError)
 }
 
 async fn valid_path(config: &PlayoutConfig, path: &str) -> Result<PathBuf, ServiceError> {

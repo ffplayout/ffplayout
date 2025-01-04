@@ -1252,9 +1252,10 @@ pub async fn move_rename(
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
     let manager = controllers.lock().unwrap().get(*id).unwrap();
+    let channel = manager.channel.lock().unwrap().clone();
     let config = manager.config.lock().unwrap().clone();
 
-    match rename_file(&config, &data.into_inner()).await {
+    match rename_file(&config, &channel, &data.into_inner()).await {
         Ok(obj) => Ok(web::Json(obj)),
         Err(e) => Err(e),
     }
@@ -1280,10 +1281,11 @@ pub async fn remove(
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
     let manager = controllers.lock().unwrap().get(*id).unwrap();
+    let channel = manager.channel.lock().unwrap().clone();
     let config = manager.config.lock().unwrap().clone();
     let recursive = data.recursive;
 
-    match remove_file_or_folder(&config, &data.into_inner().source, recursive).await {
+    match remove_file_or_folder(&config, &channel, &data.into_inner().source, recursive).await {
         Ok(obj) => Ok(web::Json(obj)),
         Err(e) => Err(e),
     }

@@ -112,7 +112,7 @@ pub async fn s3_get_object(
                 .map_err(|_| ServiceError::InternalServerError)?,
         )
         .await
-        .map_err(|_| ServiceError::InternalServerError)?;
+        .map_err(|e| ServiceError::BadRequest(format!("Invalid S3 config!: {}", e).into()))?;
 
     Ok(presigned_request.uri().to_string())
 }
@@ -223,4 +223,147 @@ pub async fn s3_upload_multipart(
     }
 
     Ok(())
+}
+
+pub async fn s3_delete_prefix(
+    source_path: &str,
+    bucket: &str,
+    s3_client: &Client,
+    recursive: bool,
+) -> Result<(), ServiceError> {
+    let (clean_path, parent_path) = s3_path(source_path)?;
+    let delimiter = '/';
+    let parent_list_resp = s3_client // list of objects and prefix in parent path
+        .list_objects_v2()
+        .bucket(bucket)
+        .prefix(&parent_path)
+        .delimiter(delimiter)
+        .send()
+        .await
+        .map_err(|e| ServiceError::BadRequest(format!("Invalid S3 config!: {}", e).into()))?;
+    for prefix in parent_list_resp.common_prefixes() {
+        // detele prefix
+        if let Some(prefix) = prefix.prefix() {
+            if prefix == source_path {
+                if recursive {
+                    // recursive deleting
+                    let target_fld_list_resp = s3_client
+                        .list_objects_v2()
+                        .bucket(bucket)
+                        .prefix(&clean_path)
+                        .send()
+                        .await
+                        .map_err(|_| ServiceError::InternalServerError)?;
+                    for objs in target_fld_list_resp.contents() {
+                        if let Some(obj) = objs.key() {
+                            s3_client
+                                .delete_object()
+                                .bucket(bucket)
+                                .key(obj)
+                                .send()
+                                .await
+                                .map_err(|_| {
+                                    ServiceError::BadRequest("Source does not exists!".into())
+                                })?;
+                        }
+                    }
+                } else {
+                    // non-recursive deleting
+                    let target_fld_list_resp = s3_client
+                        .list_objects_v2()
+                        .bucket(bucket)
+                        .prefix(&clean_path)
+                        .delimiter(delimiter)
+                        .send()
+                        .await
+                        .map_err(|_e| ServiceError::InternalServerError)?;
+                    for objs in target_fld_list_resp.contents() {
+                        if let Some(obj) = objs.key() {
+                            s3_client
+                                .delete_object()
+                                .bucket(bucket)
+                                .key(obj)
+                                .send()
+                                .await
+                                .map_err(|_| {
+                                    ServiceError::BadRequest("Source does not exists!".into())
+                                })?;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+pub async fn s3_delete_object(
+    source_path: &str,
+    bucket: &str,
+    s3_client: &Client,
+) -> Result<(), ServiceError> {
+    let (clean_path, _) = s3_path(source_path)?;
+    let obj_path = clean_path.rsplit_once('/').unwrap_or((&clean_path, "")).0;
+    s3_client
+        .delete_object()
+        .bucket(bucket)
+        .key(obj_path)
+        .send()
+        .await
+        .map_err(|e| ServiceError::Conflict(format!("Failed to remove object!: {}", e).into()))?;
+    Ok(())
+}
+
+pub async fn s3_copy_object(
+    source_object: &str,
+    destination_object: &str,
+    bucket: &str,
+    client: &aws_sdk_s3::Client,
+) -> Result<(), ServiceError> {
+    let source_key = format!("{bucket}/{source_object}");
+    client
+        .copy_object()
+        .copy_source(&source_key)
+        .bucket(bucket)
+        .key(destination_object)
+        .send()
+        .await
+        .map_err(|e| ServiceError::Conflict(format!("Failed to copy object!: {}", e).into()))?;
+    Ok(())
+}
+pub async fn s3_rename_object(
+    source_object: &str,
+    destination_object: &str,
+    bucket: &str,
+    client: &aws_sdk_s3::Client,
+) -> Result<(), ServiceError> {
+    s3_copy_object(&source_object, &destination_object, bucket, client).await?;
+    s3_delete_object(&source_object, bucket, client).await?;
+    Ok(())
+}
+
+pub async fn s3_is_prefix(
+    path: &str,
+    bucket: &str,
+    s3_client: &Client,
+) -> Result<bool, ServiceError> {
+    let mut is_prefix = false;
+    let (clean_path, parent_path) = s3_path(path)?;
+    let delimiter = '/';
+    let parent_list_resp = s3_client // list of objects and prefix in parent path
+        .list_objects_v2()
+        .bucket(bucket)
+        .prefix(&parent_path)
+        .delimiter(delimiter)
+        .send()
+        .await
+        .map_err(|e| ServiceError::BadRequest(format!("Invalid S3 config!: {}", e).into()))?;
+    for prefix in parent_list_resp.common_prefixes() {
+        if let Some(prefix) = prefix.prefix() {
+            if prefix == clean_path {
+                is_prefix = true;
+            }
+        }
+    }
+    Ok(is_prefix)
 }
