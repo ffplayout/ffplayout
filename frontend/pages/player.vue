@@ -137,7 +137,7 @@
         </GenericModal>
 
         <GenericModal :show="showSourceModal" :title="t('player.addEdit')" :modal-action="processSource">
-            <div>
+            <div class="lg:w-96">
                 <label class="form-control w-auto mt-auto">
                     <div class="label">
                         <span class="label-text">{{ t('player.title') }}</span>
@@ -192,16 +192,34 @@
                     <input v-model="newSource.custom_filter" type="text" class="input input-sm input-bordered w-auto" />
                 </label>
 
-                <div class="form-control">
-                    <label class="cursor-pointer label">
-                        <span class="label-text">{{ t('player.ad') }}</span>
+                <div class="form-control mt-2">
+                    <label class="cursor-pointer label justify-normal">
                         <input
                             type="checkbox"
                             class="checkbox checkbox-sm"
                             :checked="newSource.category === 'advertisement'"
                             @click="isAd"
                         />
+                        <span class="label-text ps-4">{{ t('player.ad') }}</span>
                     </label>
+                </div>
+
+                <div class="form-control">
+                    <div class="label">
+                        <span class="label-text">Split Count</span>
+                    </div>
+                    <input
+                        v-model="splitCount"
+                        type="number"
+                        min="0"
+                        step="1"
+                        class="input input-sm input-bordered w-24"
+                        @change="splitClip"
+                    />
+                </div>
+
+                <div v-for="time in splitTimes" :key="time.id" class="form-control mt-2">
+                    <TimePicker v-model="time.val" />
                 </div>
             </div>
         </GenericModal>
@@ -264,6 +282,8 @@ const previewName = ref('')
 const previewUrl = ref('')
 const previewOpt = ref()
 const isVideo = ref(false)
+const splitCount = ref(0)
+const splitTimes = ref<SplitTime[]>([])
 
 const newSource = ref({
     begin: 0,
@@ -374,11 +394,48 @@ function setPreviewData(path: string) {
     }
 }
 
+function splitClip() {
+    splitTimes.value = []
+    for (let i = 0; i < splitCount.value; i++) {
+        splitTimes.value.push({ id: i, val: (newSource.value.out / (splitCount.value + 1)) * (i + 1) })
+    }
+}
+
+function splitSource(pos: number) {
+    for (let i = 0; i < splitTimes.value.length; i++) {
+        let source = cloneDeep(newSource.value)
+        source.out = splitTimes.value[i].val
+
+        if (i > 0) {
+            source.in = splitTimes.value[i - 1].val
+        }
+
+        if (pos === -1) {
+            playlistStore.playlist.push(source)
+        } else if (i === 0) {
+            playlistStore.playlist[pos] = source
+        } else {
+            playlistStore.playlist.splice(pos + i, 0, source)
+        }
+    }
+
+    let source = cloneDeep(newSource.value)
+    source.in = splitTimes.value[splitCount.value - 1].val
+
+    if (pos === -1) {
+        playlistStore.playlist.push(source)
+    } else {
+        playlistStore.playlist.splice(pos + splitCount.value, 0, source)
+    }
+}
+
 function processSource(process: boolean) {
     showSourceModal.value = false
 
     if (process) {
-        if (editId.value === -1) {
+        if (splitCount.value > 0) {
+            splitSource(editId.value)
+        } else if (editId.value === -1) {
             playlistStore.playlist.push(newSource.value)
         } else {
             playlistStore.playlist[editId.value] = newSource.value
@@ -401,6 +458,9 @@ function processSource(process: boolean) {
         audio: '',
         uid: genUID(),
     }
+
+    splitCount.value = 0
+    splitTimes.value = []
 }
 
 function editPlaylistItem(i: number) {

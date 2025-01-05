@@ -501,7 +501,15 @@ pub fn fmt_cmd(cmd: &[String]) -> String {
             quote_next = false;
         } else {
             formatted_cmd.push(arg.to_string());
-            if ["-i", "-filter_complex", "-map", "-metadata"].contains(&arg.as_str()) {
+            if [
+                "-i",
+                "-filter_complex",
+                "-map",
+                "-metadata",
+                "-var_stream_map",
+            ]
+            .contains(&arg.as_str())
+            {
                 quote_next = true;
             }
         }

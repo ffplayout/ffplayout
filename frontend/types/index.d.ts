@@ -154,4 +154,9 @@ declare global {
         shift: number
         title?: string
     }
+
+    interface SplitTime {
+        id: number
+        val: number
+    }
 }
