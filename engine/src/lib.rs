@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
     sync::{Arc, Mutex},
 };
 
@@ -35,25 +35,35 @@ lazy_static! {
 pub type SharedDurationData = Arc<Mutex<HashMap<String, f64>>>;
 
 struct SharedDur {
-    dur_data: SharedDurationData,
-    limit_size: u64,
+    dur_map: SharedDurationData,
+    queue: Arc<Mutex<VecDeque<String>>>,
+    limit_size: usize,
 }
 
 impl SharedDur {
-    pub fn create(limit: u64) -> Self {
+    pub fn create(limit: usize) -> Self {
         Self {
-            dur_data: Arc::new(Mutex::new(HashMap::new())),
+            dur_map: Arc::new(Mutex::new(HashMap::with_capacity(limit))),
+            queue: Arc::new(Mutex::new(VecDeque::with_capacity(limit))),
             limit_size: limit,
         }
     }
 
-    pub fn add_item(&self, key: String, value: f64) {
-        let mut map = self.dur_data.lock().unwrap();
-        if map.len() <= self.limit_size as usize {
-            map.insert(key, value);
-            map
-        } else {
+    pub fn add_item(&self, key: String, value: f64) -> Result<(), &'static str> { / // to-do: check the FIFO algorithm
+        // insert item with FIFO algorithm
+        let mut map = self.dur_map.lock().unwrap();
+        let mut queue = self.queue.lock().unwrap();
+
+        if map.len() >= self.limit_size {
+            if let Some(oldest_key) = queue.pop_front() {
+                map.remove(&oldest_key);
+                // println!("Evicted key: {:?}", oldest_key);
+            }
         }
+        map.insert(key.clone(), value);
+        queue.push_back(key);
+
+        Ok(())
     }
 }
 
