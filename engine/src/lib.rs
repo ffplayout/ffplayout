@@ -8,6 +8,7 @@ use actix_web_grants::authorities::AttachAuthorities;
 use actix_web_httpauth::extractors::bearer::BearerAuth;
 use clap::Parser;
 use lazy_static::lazy_static;
+use log::kv::Source;
 use sysinfo::{Disks, Networks, System};
 
 pub mod api;
@@ -19,8 +20,8 @@ pub mod utils;
 
 use api::auth;
 use db::models::UserMeta;
-use utils::advanced_config::AdvancedConfig;
 use utils::args_parse::Args;
+use utils::{advanced_config::AdvancedConfig, errors::ServiceError};
 
 lazy_static! {
     pub static ref ARGS: Args = Args::parse();
@@ -33,8 +34,27 @@ lazy_static! {
 
 pub type SharedDurationData = Arc<Mutex<HashMap<String, f64>>>;
 
-pub fn create_shared_dur_data() -> SharedDurationData {
-    Arc::new(Mutex::new(HashMap::new()))
+struct SharedDur {
+    dur_data: SharedDurationData,
+    limit_size: u64,
+}
+
+impl SharedDur {
+    pub fn create(limit: u64) -> Self {
+        Self {
+            dur_data: Arc::new(Mutex::new(HashMap::new())),
+            limit_size: limit,
+        }
+    }
+
+    pub fn add_item(&self, key: String, value: f64) {
+        let mut map = self.dur_data.lock().unwrap();
+        if map.len() <= self.limit_size as usize {
+            map.insert(key, value);
+            map
+        } else {
+        }
+    }
 }
 
 pub async fn validator(

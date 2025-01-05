@@ -1,6 +1,7 @@
 use actix_multipart::Multipart;
 use actix_web::web;
 use futures_util::TryStreamExt as _;
+use lexical_sort::{natural_lexical_cmp, PathSort};
 use rand::{distributions::Alphanumeric, Rng};
 use regex::Regex;
 use std::io::Write;
@@ -11,13 +12,19 @@ use std::{
 
 use log::*;
 
+use super::{
+    config::PlayoutConfig,
+    errors::ServiceError,
+    files::{MoveObject, PathObject, VideoFile},
+};
+use crate::SharedDurationData;
+
+use crate::player::utils::MediaProbe;
 use aws_sdk_s3::{
     presigning::PresigningConfig,
     types::{CompletedMultipartUpload, CompletedPart},
     Client,
 };
-
-use super::errors::ServiceError;
 
 pub const S3_INDICATOR: &str = "s3://";
 
@@ -93,6 +100,120 @@ pub fn s3_path(input_path: &str) -> Result<(String, String), ServiceError> {
     Ok((clean_path, clean_parent_path))
 }
 
+pub async fn s3_browser(
+    config: &PlayoutConfig,
+    path_obj: &PathObject,
+    parent_folders: &mut Vec<String>,
+    extensions: Vec<String>,
+    duration: web::Data<SharedDurationData>,
+) -> Result<PathObject, ServiceError> {
+    let mut s3_url_dur = duration.lock().unwrap();
+    let bucket: &str = config.channel.s3_storage.as_ref().unwrap().bucket.as_str();
+    let path = path_obj.source.clone();
+    let delimiter = '/'; // should be a single character
+    let (prefix, parent_path) = s3_path(&path_obj.source)?;
+    let s3_client = config.channel.s3_storage.as_ref().unwrap().client.clone();
+    let mut obj = PathObject::new(path.clone(), Some(bucket.to_string()));
+    obj.folders_only = path_obj.folders_only;
+
+    if (path != parent_path && !path_obj.folders_only)
+        || (!path.is_empty() && (parent_path.is_empty() || parent_path == "/"))
+    // to-do: fix! this cause a bug that occur when you click back on root path after searching in sub folders
+    {
+        let childs_resp = s3_client
+            .list_objects_v2()
+            .bucket(bucket)
+            .prefix(&parent_path)
+            .delimiter(delimiter)
+            .send()
+            .await
+            .map_err(|_e| ServiceError::InternalServerError)?;
+
+        for prefix in childs_resp.common_prefixes() {
+            if let Some(prefix) = prefix.prefix() {
+                let child = prefix.split(delimiter).nth_back(1).unwrap_or(prefix);
+                parent_folders.push(child.to_string());
+            }
+        }
+        parent_folders.path_sort(natural_lexical_cmp);
+
+        obj.parent_folders = Some((*parent_folders).clone());
+    }
+
+    let list_resp = s3_client
+        .list_objects_v2()
+        .bucket(bucket)
+        .prefix(&prefix)
+        .delimiter(delimiter)
+        .send()
+        .await
+        .map_err(|_| ServiceError::InternalServerError)?;
+
+    let mut folders: Vec<String> = vec![];
+    let mut files: Vec<String> = vec![];
+
+    for prefix in list_resp.common_prefixes() {
+        if let Some(prefix) = prefix.prefix() {
+            let fldrs = prefix.split(delimiter).nth_back(1).unwrap_or(prefix);
+            folders.push(fldrs.to_string());
+        }
+    }
+
+    for objs in list_resp.contents() {
+        if let Some(obj) = objs.key() {
+            if s3_obj_extension_checker(obj, &extensions) {
+                let fls = obj.strip_prefix(&bucket).unwrap_or(obj); // to-do: maybe no needed!
+                files.push(fls.to_string());
+            }
+        }
+    }
+
+    files.path_sort(natural_lexical_cmp);
+    folders.path_sort(natural_lexical_cmp);
+
+    let mut media_files = vec![];
+
+    for file in files {
+        let s3file_presigned_url = s3_get_object(
+            &s3_client,
+            bucket,
+            &file,
+            config.playlist.length_sec.unwrap_or(3600.0 * 24.0) as u64, // 24h as default
+        )
+        .await?;
+        let name = file.strip_prefix(&prefix).unwrap_or(&file).to_string();
+        if let Some(stored_dur) = s3_url_dur.get(&s3file_presigned_url) {
+            let video = VideoFile {
+                name,
+                duration: *stored_dur,
+            };
+            media_files.push(video);
+        } else {
+            match MediaProbe::new(&s3file_presigned_url.as_ref()) {
+                Ok(probe) => {
+                    let mut vid_dur = 0.0;
+
+                    if let Some(dur) = probe.format.duration {
+                        vid_dur = dur.parse().unwrap_or_default();
+                        s3_url_dur.insert(s3file_presigned_url, vid_dur); // Store presigned-url(key) and duration(value) in a hashmap
+                    }
+
+                    let video = VideoFile {
+                        name,
+                        duration: vid_dur,
+                    };
+                    media_files.push(video);
+                }
+                Err(e) => error!("{e:?}"),
+            };
+        }
+    }
+
+    obj.folders = Some(folders);
+    obj.files = Some(media_files);
+    Ok(obj)
+}
+
 /// Prepares the raw input path for S3.
 ///
 /// Generates a presigned URL that provides temporary access to an S3 object.
@@ -127,7 +248,6 @@ pub async fn s3_upload_multipart(
     let mut key: Option<String> = None;
     let mut completed_parts: Vec<CompletedPart> = Vec::new();
     let mut part_number = 1;
-
     let mut s3_upload_permit = false;
 
     while let Some(mut field) = payload.try_next().await.map_err(|e| e.to_string())? {
@@ -366,4 +486,25 @@ pub async fn s3_is_prefix(
         }
     }
     Ok(is_prefix)
+}
+
+pub fn s3_rename(source_path: &str, target_path: &str) -> Result<MoveObject, ServiceError> {
+    let source_name = &source_path
+        .rsplit('/')
+        .into_iter()
+        .nth(0)
+        .unwrap_or(&source_path);
+    let target_name = &target_path
+        .rsplit('/')
+        .into_iter()
+        .nth(0)
+        .unwrap_or(&target_path);
+    Ok(MoveObject {
+        source: source_name.to_string(),
+        target: target_name.to_string(),
+    })
+}
+
+fn s3_obj_extension_checker(obj_name: &str, extensions: &Vec<String>) -> bool {
+    extensions.iter().any(|ext| obj_name.ends_with(ext))
 }

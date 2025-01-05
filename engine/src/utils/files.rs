@@ -3,6 +3,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use crate::SharedDurationData;
 use actix_multipart::Multipart;
 use actix_web::{web, HttpResponse};
 use futures_util::TryStreamExt as _;
@@ -10,7 +11,6 @@ use lexical_sort::{natural_lexical_cmp, PathSort};
 use rand::{distributions::Alphanumeric, Rng};
 use relative_path::RelativePath;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use tokio::fs;
 
 use log::*;
@@ -24,10 +24,10 @@ use super::s3_utils::S3_INDICATOR;
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct PathObject {
     pub source: String,
-    parent: Option<String>,
-    parent_folders: Option<Vec<String>>,
-    folders: Option<Vec<String>>,
-    files: Option<Vec<VideoFile>>,
+    pub parent: Option<String>,              // to use in s3_utils
+    pub parent_folders: Option<Vec<String>>, // to use in s3_utils
+    pub folders: Option<Vec<String>>,        // to use in s3_utils
+    pub files: Option<Vec<VideoFile>>,       // to use in s3_utils
     #[serde(default)]
     pub folders_only: bool,
     #[serde(default)]
@@ -35,7 +35,7 @@ pub struct PathObject {
 }
 
 impl PathObject {
-    fn new(source: String, parent: Option<String>) -> Self {
+    pub fn new(source: String, parent: Option<String>) -> Self {
         Self {
             source,
             parent,
@@ -50,14 +50,14 @@ impl PathObject {
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct MoveObject {
-    source: String,
-    target: String,
+    pub source: String,
+    pub target: String,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct VideoFile {
-    name: String,
-    duration: f64,
+    pub name: String,
+    pub duration: f64,
 }
 
 /// Normalize absolut path
@@ -112,7 +112,7 @@ pub async fn browser(
     config: &PlayoutConfig,
     channel: &Channel,
     path_obj: &PathObject,
-    duration: &HashMap<String, f64>,
+    duration: web::Data<SharedDurationData>,
 ) -> Result<PathObject, ServiceError> {
     let mut channel_extensions = channel
         .extra_extensions
@@ -122,114 +122,14 @@ pub async fn browser(
     let mut parent_folders = vec![];
     let mut extensions = config.storage.extensions.clone();
     extensions.append(&mut channel_extensions);
-
     if channel.storage.starts_with(S3_INDICATOR) {
         // S3 Storage Browser
-        let mut s3_url_dur_hm = duration.clone();
-        let bucket: &str = config.channel.s3_storage.as_ref().unwrap().bucket.as_str();
-        let path = path_obj.source.clone();
-
-        let delimiter = '/'; // should be a single character
-        let (prefix, parent_path) = s3_utils::s3_path(&path_obj.source)?;
-
-        let s3_client = config.channel.s3_storage.as_ref().unwrap().client.clone();
-
-        let mut obj = PathObject::new(path.clone(), Some(bucket.to_string()));
-        obj.folders_only = path_obj.folders_only;
-
-        if (path != parent_path && !path_obj.folders_only)
-            || (!path.is_empty() && (parent_path.is_empty() || parent_path == "/"))
-        // to-do: fix! this cause a bug that occur when you click back on root path after searching in sub folders
-        {
-            let childs_resp = s3_client
-                .list_objects_v2()
-                .bucket(bucket)
-                .prefix(&parent_path)
-                .delimiter(delimiter)
-                .send()
-                .await
-                .map_err(|_e| ServiceError::InternalServerError)?;
-
-            for prefix in childs_resp.common_prefixes() {
-                if let Some(prefix) = prefix.prefix() {
-                    let child = prefix.split(delimiter).nth_back(1).unwrap_or(prefix);
-                    parent_folders.push(child.to_string());
-                }
-            }
-            parent_folders.path_sort(natural_lexical_cmp);
-
-            obj.parent_folders = Some(parent_folders);
-        }
-
-        let list_resp = s3_client
-            .list_objects_v2()
-            .bucket(bucket)
-            .prefix(&prefix)
-            .delimiter(delimiter)
-            .send()
+        match s3_utils::s3_browser(config, path_obj, &mut parent_folders, extensions, duration)
             .await
-            .map_err(|_e| ServiceError::InternalServerError)?;
-
-        let mut folders: Vec<String> = vec![];
-        let mut files: Vec<String> = vec![];
-
-        for prefix in list_resp.common_prefixes() {
-            if let Some(prefix) = prefix.prefix() {
-                let fldrs = prefix.split(delimiter).nth_back(1).unwrap_or(prefix);
-                folders.push(fldrs.to_string());
-            }
+        {
+            Ok(obj) => Ok(obj),
+            Err(e) => Err(e),
         }
-
-        for objs in list_resp.contents() {
-            if let Some(objs) = objs.key() {
-                let fls = objs.strip_prefix(&bucket).unwrap_or(objs); // to-do: maybe no needed!
-                files.push(fls.to_string());
-            }
-        }
-
-        files.path_sort(natural_lexical_cmp);
-        folders.path_sort(natural_lexical_cmp);
-
-        let mut media_files = vec![];
-
-        for file in files {
-            let s3file_presigned_url = s3_utils::s3_get_object(
-                &s3_client,
-                bucket,
-                &file,
-                config.playlist.length_sec.unwrap_or(3600.0 * 24.0) as u64, // 24h as default
-            )
-            .await?;
-            let name = file.strip_prefix(&prefix).unwrap_or(&file).to_string();
-            if let Some(stored_dur) = s3_url_dur_hm.get(&s3file_presigned_url) {
-                let video = VideoFile {
-                    name,
-                    duration: *stored_dur,
-                };
-                media_files.push(video);
-            } else {
-                match MediaProbe::new(&s3file_presigned_url.as_ref()) {
-                    Ok(probe) => {
-                        let mut duration = 0.0;
-
-                        if let Some(dur) = probe.format.duration {
-                            duration = dur.parse().unwrap_or_default();
-                            s3_url_dur_hm.insert(s3file_presigned_url, duration);
-                            // Store presigned-url(key) and duration(value) in a hashmap
-                        }
-
-                        let video = VideoFile { name, duration };
-                        media_files.push(video);
-                    }
-                    Err(e) => error!("{e:?}"),
-                };
-            }
-        }
-
-        obj.folders = Some(folders);
-        obj.files = Some(media_files);
-
-        Ok(obj)
     } else {
         // Local Storage Browser
         let (path, parent, path_component) =
@@ -417,22 +317,7 @@ pub async fn rename_file(
     if channel.storage.starts_with(S3_INDICATOR) {
         let bucket: &str = config.channel.s3_storage.as_ref().unwrap().bucket.as_str();
         let s3_client = config.channel.s3_storage.as_ref().unwrap().client.clone();
-        let source_name = &move_object
-            .source
-            .rsplit('/')
-            .into_iter()
-            .nth(0)
-            .unwrap_or(&move_object.source);
-        let target_name = &move_object
-            .target
-            .rsplit('/')
-            .into_iter()
-            .nth(0)
-            .unwrap_or(&move_object.source);
-        // println!(
-        //     "\n\n\nsource name: {}\ntarget name: {}\n\n\n",
-        //     source_name, target_name
-        // );
+        let obj_names = s3_utils::s3_rename(&move_object.source, &move_object.target).unwrap();
         if !s3_utils::s3_is_prefix(&move_object.source, bucket, &s3_client).await? {
             s3_utils::s3_rename_object(
                 &move_object.source,
@@ -444,8 +329,8 @@ pub async fn rename_file(
         }
 
         Ok(MoveObject {
-            source: source_name.to_string(),
-            target: target_name.to_string(),
+            source: obj_names.source.to_string(),
+            target: obj_names.target.to_string(),
         })
     } else {
         let (source_path, _, _) = norm_abs_path(&config.channel.storage, &move_object.source)?;

@@ -1198,9 +1198,8 @@ pub async fn file_browser(
     let manager = controllers.lock().unwrap().get(*id).unwrap();
     let channel = manager.channel.lock().unwrap().clone();
     let config = manager.config.lock().unwrap().clone();
-    let dur = durations.lock().unwrap();
 
-    match browser(&config, &channel, &data.into_inner(), &dur).await {
+    match browser(&config, &channel, &data.into_inner(), durations).await {
         Ok(obj) => Ok(web::Json(obj)),
         Err(e) => Err(e),
     }
