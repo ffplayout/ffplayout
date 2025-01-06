@@ -204,9 +204,13 @@
                     </label>
                 </div>
 
+                <hr class="h-px my-2 bg-base-content/20 border-0" />
+
+                <h4 class="font-bold">{{ t('player.splitVideo') }}</h4>
+
                 <div class="form-control">
                     <div class="label">
-                        <span class="label-text">Split Count</span>
+                        <span class="label-text">{{ t('player.cuts') }}</span>
                     </div>
                     <input
                         v-model="splitCount"

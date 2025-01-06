@@ -89,6 +89,8 @@ export default {
         infinitInfo: 'O playout é executado no modo infinito. Nenhuma informação baseada em tempo é possível',
         generateDone: 'Gerar lista de reprodução concluída...',
         dateYesterday: 'A hora atual é anterior à hora de início da lista de reprodução!',
+        splitVideo: 'Split Video',
+        cuts: 'Cuts',
     },
     media: {
         notExists: 'O armazenamento não existe!',

@@ -89,6 +89,8 @@ export default {
         infinitInfo: 'Воспроизведение работает в бесконечном режиме. Никакая информация, основанная на времени, невозможна.',
         generateDone: 'Генерация плейлиста завершена...',
         dateYesterday: 'Current time is before the playlist start time!',
+        splitVideo: 'Split Video',
+        cuts: 'Cuts',
     },
     media: {
         notExists: 'Папки не существует!',

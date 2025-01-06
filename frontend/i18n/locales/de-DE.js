@@ -89,6 +89,8 @@ export default {
         infinitInfo: 'Die Wiedergabe läuft im unendlichen Modus. Es sind keine zeitbasierten Informationen möglich.',
         generateDone: 'Wiedergabeliste generieren erledigt...',
         dateYesterday: 'Aktuelle Uhrzeit liegt vor der Playlist-Startzeit!',
+        splitVideo: 'Video aufteilen',
+        cuts: 'Schnitte',
     },
     media: {
         notExists: 'Speicher existiert nicht!',
