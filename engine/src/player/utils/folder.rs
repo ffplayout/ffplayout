@@ -65,7 +65,7 @@ impl FolderSource {
                         media_list.push(media);
                     }
                     Some(Err(e)) => {
-                        error!(target: Target::file_mail(), "error: {e}");
+                        error!(target: Target::file_mail(), channel = id; "error: {e}");
                         break;
                     }
                     None => break,
