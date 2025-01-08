@@ -20,7 +20,7 @@ use crate::db::models::Channel;
 use crate::player::utils::{file_extension, MediaProbe};
 use crate::utils::{config::PlayoutConfig, errors::ServiceError, s3_utils};
 
-use super::s3_utils::S3_INDICATOR;
+use crate::utils::s3_utils::S3Ext;
 
 #[derive(Debug, Clone, Default)]
 pub struct DurationMap {
@@ -158,7 +158,7 @@ pub async fn browser(
         .collect::<Vec<String>>();
     let mut extensions = config.storage.extensions.clone();
     extensions.append(&mut channel_extensions);
-    if channel.storage.starts_with(S3_INDICATOR) {
+    if channel.storage.is_s3() {
         // S3 Storage Browser
         match s3_utils::s3_browser(config, path_obj, extensions, duration).await {
             Ok(obj) => Ok(obj),
@@ -262,7 +262,7 @@ pub async fn create_directory(
     channel: &Channel,
     path_obj: &PathObject,
 ) -> Result<HttpResponse, ServiceError> {
-    if channel.storage.starts_with(S3_INDICATOR) {
+    if channel.storage.is_s3() {
         // S3 Storage
         let bucket: &str = config.channel.s3_storage.as_ref().unwrap().bucket.as_str();
         let (folder_name, _) = s3_utils::s3_path(&path_obj.source)?;
@@ -349,7 +349,7 @@ pub async fn rename_file(
     channel: &Channel,
     move_object: &MoveObject,
 ) -> Result<MoveObject, ServiceError> {
-    if channel.storage.starts_with(S3_INDICATOR) {
+    if channel.storage.is_s3() {
         let bucket: &str = config.channel.s3_storage.as_ref().unwrap().bucket.as_str();
         let s3_client = config.channel.s3_storage.as_ref().unwrap().client.clone();
         let obj_names = s3_utils::s3_rename(&move_object.source, &move_object.target).unwrap();
@@ -405,7 +405,7 @@ pub async fn remove_file_or_folder(
     source_path: &str,
     recursive: bool,
 ) -> Result<(), ServiceError> {
-    if channel.storage.starts_with(S3_INDICATOR) {
+    if channel.storage.is_s3() {
         let bucket: &str = config.channel.s3_storage.as_ref().unwrap().bucket.as_str();
         let (clean_path, _) = s3_utils::s3_path(source_path)?;
         let s3_client = config.channel.s3_storage.as_ref().unwrap().client.clone();
@@ -479,7 +479,7 @@ pub async fn upload(
     path: &Path,
     abs_path: bool,
 ) -> Result<HttpResponse, ServiceError> {
-    if channel.unwrap().storage.starts_with(S3_INDICATOR) {
+    if channel.unwrap().storage.is_s3() {
         // S3 multipart-upload
         let bucket = config.channel.s3_storage.as_ref().unwrap().bucket.as_str();
         let s3_client = config.channel.s3_storage.as_ref().unwrap().client.clone();

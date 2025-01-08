@@ -72,7 +72,8 @@ use crate::{
     utils::logging::MailQueue,
 };
 
-use crate::utils::s3_utils::{S3_DEFAULT_PRESIGNEDURL_EXP, S3_INDICATOR};
+use crate::utils::s3_utils::S3Ext;
+use crate::utils::s3_utils::S3_DEFAULT_PRESIGNEDURL_EXP;
 
 #[derive(Serialize)]
 struct UserObj<T> {
@@ -1055,21 +1056,22 @@ pub async fn save_playlist(
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
     let manager = controllers.lock().unwrap().get(*id).unwrap();
-    let channel = manager.channel.lock().unwrap().clone();
     let config = manager.config.lock().unwrap().clone();
     let mut playlist_data = data.into_inner(); // Take ownership
-    let storage = &channel.storage;
+    let storage = &config.channel.storage.to_string_lossy().to_string();
+
     println!("\nstorage: {}\n", storage); // DEBUG
 
-    if storage.starts_with(S3_INDICATOR) {
+    if storage.is_s3() {
         for media in playlist_data.program.iter_mut() {
-            println!("\nraw path: {}\n", &media.source); // DEBUG
             let clean_path = media
                 .source
-                .strip_prefix(storage)
+                .strip_prefix("s3:/media01/:localhost:9000/:123minio/:123minoi/")
                 .unwrap_or_default()
                 .to_string();
+            println!("edited_path: {}\n", &clean_path); // DEBUG
             media.source = clean_path;
+            println!("media_src: {}\n", &media.source); // DEBUG
         }
     }
 
@@ -1366,7 +1368,7 @@ async fn get_file(
     let storage = config.channel.storage.clone();
     let file_path = req.match_info().query("filename");
 
-    if storage.starts_with(S3_INDICATOR) {
+    if storage.is_s3() {
         let bucket: &str = config.channel.s3_storage.as_ref().unwrap().bucket.as_str();
         let s3_obj_key = file_path.strip_prefix(bucket).unwrap_or(&file_path);
         let s3_client = config.channel.s3_storage.as_ref().unwrap().client.clone();

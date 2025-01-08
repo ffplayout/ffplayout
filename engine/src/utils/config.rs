@@ -20,11 +20,9 @@ use crate::vec_strings;
 use crate::AdvancedConfig;
 use crate::ARGS;
 
-use super::{
-    errors::ServiceError,
-    s3_utils::{s3_parse_string, S3_INDICATOR},
-};
+use super::{errors::ServiceError, s3_utils::s3_parse_string};
 
+use crate::utils::s3_utils::S3Ext;
 use aws_config as s3_conf;
 use aws_sdk_s3::{self as s3, config::Region, Client};
 
@@ -209,7 +207,7 @@ impl Channel {
             public: PathBuf::from(channel.public.clone()),
             playlists: PathBuf::from(channel.playlists.clone()),
             storage: PathBuf::from(channel.storage.clone()),
-            s3_storage: if channel.storage.starts_with(S3_INDICATOR) {
+            s3_storage: if channel.storage.is_s3() {
                 Some(S3::new(PathBuf::from(channel.storage.clone())).await)
             } else {
                 None
@@ -673,7 +671,7 @@ impl PlayoutConfig {
 
         let mut in_use_storage = channel.storage.clone();
 
-        if !channel.storage.starts_with(S3_INDICATOR) {
+        if !channel.storage.is_s3() {
             info!("Local storage path detected");
             if !channel.storage.is_dir() {
                 tokio::fs::create_dir_all(&in_use_storage)
@@ -699,7 +697,7 @@ impl PlayoutConfig {
 
         let mut filler_path = PathBuf::from(&config.storage_filler);
         let mut filler = config.storage_filler.clone();
-        if !channel.storage.starts_with(S3_INDICATOR) {
+        if !channel.storage.is_s3() {
             (filler_path, _, filler) = norm_abs_path(&in_use_storage, &config.storage_filler)?;
         }
 
@@ -716,7 +714,7 @@ impl PlayoutConfig {
 
         let mut logo_path = PathBuf::from(&processing.logo);
         let mut logo = processing.logo.clone();
-        if !channel.storage.starts_with(S3_INDICATOR) {
+        if !channel.storage.is_s3() {
             (logo_path, _, logo) = norm_abs_path(&in_use_storage, &processing.logo)?;
         }
 

@@ -5,6 +5,7 @@ use lexical_sort::{natural_lexical_cmp, PathSort};
 use rand::{distributions::Alphanumeric, Rng};
 use regex::Regex;
 use std::io::Write;
+use std::path::PathBuf;
 use std::{
     io::{Error, ErrorKind},
     time::Duration,
@@ -27,6 +28,27 @@ use aws_sdk_s3::{
 
 pub const S3_INDICATOR: &str = "s3://";
 pub const S3_DEFAULT_PRESIGNEDURL_EXP: f64 = 3600.0 * 24.0;
+
+pub trait S3Ext {
+    // to-do : check if its unessential!
+    fn is_s3(&self) -> bool;
+}
+
+impl S3Ext for String {
+    fn is_s3(&self) -> bool {
+        self.starts_with(S3_INDICATOR)
+    }
+}
+impl S3Ext for &str {
+    fn is_s3(&self) -> bool {
+        self.starts_with(S3_INDICATOR)
+    }
+}
+impl S3Ext for PathBuf {
+    fn is_s3(&self) -> bool {
+        self.starts_with(S3_INDICATOR)
+    }
+}
 
 pub fn s3_parse_string(
     // to_do: maybe should change the snippet to get better understanding

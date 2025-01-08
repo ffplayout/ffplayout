@@ -30,7 +30,6 @@ pub struct GlobalSettings {
 impl GlobalSettings {
     pub async fn new(conn: &Pool<Sqlite>) -> Self {
         let global_settings = handles::select_global(conn);
-
         match global_settings.await {
             Ok(g) => g,
             Err(_) => GlobalSettings {
