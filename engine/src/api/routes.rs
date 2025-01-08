@@ -38,7 +38,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::{Pool, Sqlite};
 use tokio::fs;
 
-use crate::db::models::Role;
+use crate::utils::files::SharedState;
 use crate::utils::{
     channels::{create_channel, delete_channel},
     config::{get_config, PlayoutConfig, Template},
@@ -52,12 +52,12 @@ use crate::utils::{
     playlist::{delete_playlist, generate_playlist, read_playlist, write_playlist},
     public_path, read_log_file, system, TextFilter,
 };
-use crate::SharedDurationData;
 use crate::{
     api::auth::{create_jwt, Claims},
     utils::advanced_config::AdvancedConfig,
     vec_strings,
 };
+use crate::{db::models::Role, utils::s3_utils};
 use crate::{
     db::{
         handles,
@@ -71,6 +71,8 @@ use crate::{
     },
     utils::logging::MailQueue,
 };
+
+use crate::utils::s3_utils::{S3_DEFAULT_PRESIGNEDURL_EXP, S3_INDICATOR};
 
 #[derive(Serialize)]
 struct UserObj<T> {
@@ -1045,6 +1047,7 @@ pub async fn get_playlist(
     expr = "user.channels.contains(&*id) || role.has_authority(&Role::GlobalAdmin)"
 )]
 pub async fn save_playlist(
+    // to-do: look at this!!!!
     id: web::Path<i32>,
     data: web::Json<JsonPlaylist>,
     controllers: web::Data<Mutex<ChannelController>>,
@@ -1052,9 +1055,25 @@ pub async fn save_playlist(
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
     let manager = controllers.lock().unwrap().get(*id).unwrap();
+    let channel = manager.channel.lock().unwrap().clone();
     let config = manager.config.lock().unwrap().clone();
+    let mut playlist_data = data.into_inner(); // Take ownership
+    let storage = &channel.storage;
+    println!("\nstorage: {}\n", storage); // DEBUG
 
-    match write_playlist(&config, data.into_inner()).await {
+    if storage.starts_with(S3_INDICATOR) {
+        for media in playlist_data.program.iter_mut() {
+            println!("\nraw path: {}\n", &media.source); // DEBUG
+            let clean_path = media
+                .source
+                .strip_prefix(storage)
+                .unwrap_or_default()
+                .to_string();
+            media.source = clean_path;
+        }
+    }
+
+    match write_playlist(&config, playlist_data).await {
         Ok(res) => Ok(web::Json(res)),
         Err(e) => Err(e),
     }
@@ -1085,6 +1104,7 @@ pub async fn save_playlist(
     expr = "user.channels.contains(&params.0) || role.has_authority(&Role::GlobalAdmin)"
 )]
 pub async fn gen_playlist(
+    // to-do: look at this!!!!
     params: web::Path<(i32, String)>,
     data: Option<web::Json<PathsObj>>,
     controllers: web::Data<Mutex<ChannelController>>,
@@ -1193,7 +1213,7 @@ pub async fn file_browser(
     controllers: web::Data<Mutex<ChannelController>>,
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
-    durations: web::Data<SharedDurationData>,
+    durations: web::Data<SharedState>,
 ) -> Result<impl Responder, ServiceError> {
     let manager = controllers.lock().unwrap().get(*id).unwrap();
     let channel = manager.channel.lock().unwrap().clone();
@@ -1337,21 +1357,42 @@ async fn save_file(
 async fn get_file(
     req: HttpRequest,
     controllers: web::Data<Mutex<ChannelController>>,
-) -> Result<actix_files::NamedFile, ServiceError> {
+    // ) -> Result<actix_files::NamedFile, ServiceError> {
+) -> Result<HttpResponse, ServiceError> {
     let id: i32 = req.match_info().query("id").parse()?;
     let manager = controllers.lock().unwrap().get(id).unwrap();
     let config = manager.config.lock().unwrap();
+
     let storage = config.channel.storage.clone();
     let file_path = req.match_info().query("filename");
-    let (path, _, _) = norm_abs_path(&storage, file_path)?;
-    let file = actix_files::NamedFile::open(path)?;
 
-    Ok(file
-        .use_last_modified(true)
-        .set_content_disposition(ContentDisposition {
-            disposition: DispositionType::Attachment,
-            parameters: vec![],
-        }))
+    if storage.starts_with(S3_INDICATOR) {
+        let bucket: &str = config.channel.s3_storage.as_ref().unwrap().bucket.as_str();
+        let s3_obj_key = file_path.strip_prefix(bucket).unwrap_or(&file_path);
+        let s3_client = config.channel.s3_storage.as_ref().unwrap().client.clone();
+        let expires_in = config
+            .playlist
+            .length_sec
+            .unwrap_or(S3_DEFAULT_PRESIGNEDURL_EXP) as u64;
+
+        let s3_obj_url =
+            s3_utils::s3_get_object(&s3_client, bucket, &s3_obj_key, expires_in).await?;
+
+        // Redirect to the pre-signed S3 URL
+        Ok(HttpResponse::build(StatusCode::FOUND)
+            .append_header(("Location", s3_obj_url))
+            .finish())
+    } else {
+        let (path, _, _) = norm_abs_path(&storage, file_path)?;
+        let file = actix_files::NamedFile::open(&path)?.use_last_modified(true);
+        let response = file
+            .set_content_disposition(ContentDisposition {
+                disposition: DispositionType::Attachment,
+                parameters: vec![],
+            })
+            .into_response(&req);
+        Ok(response)
+    }
 }
 
 /// **Get Public**

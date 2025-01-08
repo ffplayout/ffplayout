@@ -267,7 +267,6 @@ impl Media {
                     .unwrap_or_default();
             }
         }
-
         Self {
             begin: None,
             index: Some(index),

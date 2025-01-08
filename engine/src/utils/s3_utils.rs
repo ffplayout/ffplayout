@@ -12,13 +12,12 @@ use std::{
 
 use log::*;
 
+use super::files::SharedState;
 use super::{
     config::PlayoutConfig,
     errors::ServiceError,
     files::{MoveObject, PathObject, VideoFile},
 };
-use crate::SharedDurationData;
-
 use crate::player::utils::MediaProbe;
 use aws_sdk_s3::{
     presigning::PresigningConfig,
@@ -27,6 +26,7 @@ use aws_sdk_s3::{
 };
 
 pub const S3_INDICATOR: &str = "s3://";
+pub const S3_DEFAULT_PRESIGNEDURL_EXP: f64 = 3600.0 * 24.0;
 
 pub fn s3_parse_string(
     // to_do: maybe should change the snippet to get better understanding
@@ -103,11 +103,13 @@ pub fn s3_path(input_path: &str) -> Result<(String, String), ServiceError> {
 pub async fn s3_browser(
     config: &PlayoutConfig,
     path_obj: &PathObject,
-    parent_folders: &mut Vec<String>,
     extensions: Vec<String>,
-    duration: web::Data<SharedDurationData>,
+    duration: web::Data<SharedState>,
 ) -> Result<PathObject, ServiceError> {
-    let mut s3_url_dur = duration.lock().unwrap();
+    let mut parent_folders = vec![];
+    let mut s3_obj_dur = duration
+        .lock()
+        .map_err(|e| ServiceError::Conflict(format!("Invalid S3 config!: {}", e).into()))?;
     let bucket: &str = config.channel.s3_storage.as_ref().unwrap().bucket.as_str();
     let path = path_obj.source.clone();
     let delimiter = '/'; // should be a single character
@@ -116,8 +118,8 @@ pub async fn s3_browser(
     let mut obj = PathObject::new(path.clone(), Some(bucket.to_string()));
     obj.folders_only = path_obj.folders_only;
 
-    if (path != parent_path && !path_obj.folders_only)
-        || (!path.is_empty() && (parent_path.is_empty() || parent_path == "/"))
+    if (prefix != parent_path && !path_obj.folders_only)
+        || (!prefix.is_empty() && (parent_path.is_empty()))
     // to-do: fix! this cause a bug that occur when you click back on root path after searching in sub folders
     {
         let childs_resp = s3_client
@@ -131,13 +133,13 @@ pub async fn s3_browser(
 
         for prefix in childs_resp.common_prefixes() {
             if let Some(prefix) = prefix.prefix() {
-                let child = prefix.split(delimiter).nth_back(1).unwrap_or(prefix);
+                let child = prefix.split(delimiter).nth_back(1).unwrap_or("");
                 parent_folders.push(child.to_string());
             }
         }
         parent_folders.path_sort(natural_lexical_cmp);
 
-        obj.parent_folders = Some((*parent_folders).clone());
+        obj.parent_folders = Some(parent_folders);
     }
 
     let list_resp = s3_client
@@ -178,14 +180,17 @@ pub async fn s3_browser(
             &s3_client,
             bucket,
             &file,
-            config.playlist.length_sec.unwrap_or(3600.0 * 24.0) as u64, // 24h as default
+            config
+                .playlist
+                .length_sec
+                .unwrap_or(S3_DEFAULT_PRESIGNEDURL_EXP) as u64, // 24h as default
         )
         .await?;
         let name = file.strip_prefix(&prefix).unwrap_or(&file).to_string();
-        if let Some(stored_dur) = s3_url_dur.get(&s3file_presigned_url) {
+        if let Some(stored_dur) = s3_obj_dur.get_obj(&file) {
             let video = VideoFile {
                 name,
-                duration: *stored_dur,
+                duration: stored_dur,
             };
             media_files.push(video);
         } else {
@@ -195,7 +200,8 @@ pub async fn s3_browser(
 
                     if let Some(dur) = probe.format.duration {
                         vid_dur = dur.parse().unwrap_or_default();
-                        s3_url_dur.insert(s3file_presigned_url, vid_dur); // Store presigned-url(key) and duration(value) in a hashmap
+                        s3_obj_dur.add_obj(file, vid_dur)?;
+                        // Store file address(key) and file duration(value) in a hashmap
                     }
 
                     let video = VideoFile {
@@ -220,14 +226,14 @@ pub async fn s3_browser(
 pub async fn s3_get_object(
     client: &Client,
     bucket: &str,
-    object: &str,
+    object_key: &str,
     expires_in: u64,
 ) -> Result<String, ServiceError> {
     let expires_in = Duration::from_secs(expires_in);
     let presigned_request = client
         .get_object()
         .bucket(bucket)
-        .key(object)
+        .key(object_key)
         .presigned(
             PresigningConfig::expires_in(expires_in)
                 .map_err(|_| ServiceError::InternalServerError)?,

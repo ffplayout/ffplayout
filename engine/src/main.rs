@@ -20,7 +20,6 @@ use log::*;
 
 use ffplayout::{
     api::routes::*,
-    create_shared_dur_data,
     db::{db_drop, db_pool, handles, models::init_globales},
     player::{
         controller::{ChannelController, ChannelManager},
@@ -30,6 +29,7 @@ use ffplayout::{
     utils::{
         args_parse::run_args,
         config::get_config,
+        files::DurationMap,
         logging::{init_logging, MailQueue},
         playlist::generate_playlist,
         time_machine::set_mock_time,
@@ -54,7 +54,7 @@ fn thread_counter() -> usize {
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     let mail_queues = Arc::new(Mutex::new(vec![]));
-    let shared_duration = create_shared_dur_data(5000); // to-do: parse the limitation form flag arguments
+    let shared_duration = Arc::new(Mutex::new(DurationMap::create(1000)));
 
     let pool = db_pool()
         .await
@@ -120,7 +120,6 @@ async fn main() -> std::io::Result<()> {
         // no 'allow origin' here, give it to the reverse proxy
         HttpServer::new(move || {
             let queues = mail_queues.clone();
-            let shrd_dur = shared_duration.clone();
 
             let auth = HttpAuthentication::bearer(validator);
             let db_pool = web::Data::new(db_clone.clone());
@@ -134,7 +133,7 @@ async fn main() -> std::io::Result<()> {
                 .app_data(controllers.clone())
                 .app_data(auth_state.clone())
                 .app_data(web::Data::from(Arc::clone(&broadcast_data)))
-                .app_data(web::Data::new(shrd_dur)) // to-do: find proper define type
+                .app_data(web::Data::new(shared_duration.clone())) // to-do: find proper define type
                 .wrap(logger)
                 .service(login)
                 .service(

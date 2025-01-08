@@ -6,6 +6,7 @@ use std::{
 
 use chrono::NaiveTime;
 use flexi_logger::Level;
+use log::info;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use shlex::split;
@@ -670,13 +671,23 @@ impl PlayoutConfig {
         let task = Task::new(&config);
         let mut output = Output::new(&config);
 
-        if !channel.storage.is_dir() {
-            tokio::fs::create_dir_all(&channel.storage)
-                .await
-                .unwrap_or_else(|_| panic!("Can't create storage folder: {:#?}", channel.storage));
+        let mut in_use_storage = channel.storage.clone();
+
+        if !channel.storage.starts_with(S3_INDICATOR) {
+            info!("Local storage path detected");
+            if !channel.storage.is_dir() {
+                tokio::fs::create_dir_all(&in_use_storage)
+                    .await
+                    .unwrap_or_else(|_| {
+                        panic!("Can't create storage folder: {:#?}", in_use_storage)
+                    });
+            }
+        } else {
+            info!("S3 storage path detected");
+            in_use_storage = PathBuf::new();
         }
 
-        let mut storage = Storage::new(&config, channel.storage.clone(), channel.shared);
+        let mut storage = Storage::new(&config, in_use_storage.clone(), channel.shared);
 
         if !channel.playlists.is_dir() {
             tokio::fs::create_dir_all(&channel.playlists).await?;
@@ -686,7 +697,11 @@ impl PlayoutConfig {
             tokio::fs::create_dir_all(&channel.logs).await?;
         }
 
-        let (filler_path, _, filler) = norm_abs_path(&channel.storage, &config.storage_filler)?;
+        let mut filler_path = PathBuf::from(&config.storage_filler);
+        let mut filler = config.storage_filler.clone();
+        if !channel.storage.starts_with(S3_INDICATOR) {
+            (filler_path, _, filler) = norm_abs_path(&in_use_storage, &config.storage_filler)?;
+        }
 
         storage.filler = filler;
         storage.filler_path = filler_path;
@@ -699,7 +714,11 @@ impl PlayoutConfig {
             playlist.length_sec = Some(86400.0);
         }
 
-        let (logo_path, _, logo) = norm_abs_path(&channel.storage, &processing.logo)?;
+        let mut logo_path = PathBuf::from(&processing.logo);
+        let mut logo = processing.logo.clone();
+        if !channel.storage.starts_with(S3_INDICATOR) {
+            (logo_path, _, logo) = norm_abs_path(&in_use_storage, &processing.logo)?;
+        }
 
         if processing.add_logo && !logo_path.is_file() {
             processing.add_logo = false;
@@ -856,7 +875,7 @@ impl PlayoutConfig {
             text.node_pos = None;
         }
 
-        let (font_path, _, font) = norm_abs_path(&channel.storage, &text.font)?;
+        let (font_path, _, font) = norm_abs_path(&in_use_storage, &text.font)?;
         text.font = font;
         text.font_path = font_path.to_string_lossy().to_string();
 
@@ -971,6 +990,7 @@ pub async fn get_config(
 
     if let Some(paths) = args.paths {
         config.storage.paths = paths;
+        println!("\nconfig_storage_paths: {:?}", &config.storage.paths); // DEBUG
     }
 
     if let Some(playlist) = args.playlists {
@@ -979,6 +999,8 @@ pub async fn get_config(
 
     if let Some(folder) = args.folder {
         config.channel.storage = folder;
+        println!("\nconfig_channel_storage: {:?}", &config.channel.storage); // DEBUG
+
         config.processing.mode = ProcessMode::Folder;
     }
 

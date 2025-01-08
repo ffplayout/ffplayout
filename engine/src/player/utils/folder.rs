@@ -1,7 +1,4 @@
-use std::sync::{
-    atomic::Ordering,
-    {Arc, Mutex},
-};
+use std::sync::{atomic::Ordering, Arc, Mutex};
 
 use lexical_sort::natural_lexical_cmp;
 use log::*;
@@ -29,7 +26,6 @@ impl FolderSource {
         let mut path_list = vec![];
         let mut media_list = vec![];
         let mut index: usize = 0;
-
         debug!(target: Target::file_mail(), channel = id;
             "generate: {:?}, paths: {:?}",
             config.general.generate, config.storage.paths

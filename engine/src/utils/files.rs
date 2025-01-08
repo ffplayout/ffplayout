@@ -1,9 +1,10 @@
 use std::{
+    collections::{HashMap, VecDeque},
     io::Write,
     path::{Path, PathBuf},
+    sync::{Arc, Mutex},
 };
 
-use crate::SharedDurationData;
 use actix_multipart::Multipart;
 use actix_web::{web, HttpResponse};
 use futures_util::TryStreamExt as _;
@@ -20,6 +21,42 @@ use crate::player::utils::{file_extension, MediaProbe};
 use crate::utils::{config::PlayoutConfig, errors::ServiceError, s3_utils};
 
 use super::s3_utils::S3_INDICATOR;
+
+#[derive(Debug, Clone, Default)]
+pub struct DurationMap {
+    pub dur_map: HashMap<String, f64>,
+    queue: VecDeque<String>,
+    limit: usize,
+}
+
+pub type SharedState = Arc<Mutex<DurationMap>>;
+
+impl DurationMap {
+    pub fn create(limit: usize) -> Self {
+        Self {
+            dur_map: HashMap::with_capacity(limit),
+            queue: VecDeque::with_capacity(limit),
+            limit,
+        }
+    }
+
+    pub fn add_obj(&mut self, key: String, value: f64) -> Result<(), &'static str> {
+        // insert item with FIFO algorithm
+
+        if self.dur_map.len() >= self.limit {
+            if let Some(oldest_key) = self.queue.pop_front() {
+                self.dur_map.remove(&oldest_key.clone());
+            }
+        }
+        self.dur_map.insert(key.clone(), value);
+        self.queue.push_back(key);
+        Ok(())
+    }
+
+    pub fn get_obj(&self, key: &str) -> Option<f64> {
+        self.dur_map.get(key).copied()
+    }
+}
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct PathObject {
@@ -112,26 +149,24 @@ pub async fn browser(
     config: &PlayoutConfig,
     channel: &Channel,
     path_obj: &PathObject,
-    duration: web::Data<SharedDurationData>,
+    duration: web::Data<SharedState>,
 ) -> Result<PathObject, ServiceError> {
     let mut channel_extensions = channel
         .extra_extensions
         .split(',')
         .map(|e| e.to_string())
         .collect::<Vec<String>>();
-    let mut parent_folders = vec![];
     let mut extensions = config.storage.extensions.clone();
     extensions.append(&mut channel_extensions);
     if channel.storage.starts_with(S3_INDICATOR) {
         // S3 Storage Browser
-        match s3_utils::s3_browser(config, path_obj, &mut parent_folders, extensions, duration)
-            .await
-        {
+        match s3_utils::s3_browser(config, path_obj, extensions, duration).await {
             Ok(obj) => Ok(obj),
             Err(e) => Err(e),
         }
     } else {
         // Local Storage Browser
+        let mut parent_folders = vec![];
         let (path, parent, path_component) =
             norm_abs_path(&config.channel.storage, &path_obj.source)?;
         let parent_path = if !path_component.is_empty() {

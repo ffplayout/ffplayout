@@ -63,6 +63,7 @@ pub async fn init_globales(conn: &Pool<Sqlite>) {
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize, sqlx::FromRow)]
 pub struct Channel {
+    // to-do : consider s3 in this model
     #[serde(default = "default_id", skip_deserializing)]
     pub id: i32,
     pub name: String,

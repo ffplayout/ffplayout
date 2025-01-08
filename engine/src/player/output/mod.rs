@@ -84,6 +84,7 @@ pub fn player(manager: ChannelManager) -> Result<(), ProcessError> {
         let config = manager.config.lock()?.clone();
 
         *manager.current_media.lock().unwrap() = Some(node.clone());
+
         let ignore_dec = config.logging.ignore_lines.clone();
         let timer = SystemTime::now();
 
