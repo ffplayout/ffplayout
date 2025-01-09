@@ -213,12 +213,12 @@ fn global_user(args: &mut Args) {
     }
 
     if args.mail.is_none() {
-        print!("Mail: ");
+        print!("Email: ");
         stdout().flush().unwrap();
 
         stdin()
             .read_line(&mut mail)
-            .expect("Did not enter a correct name?");
+            .expect("Did not enter a correct email?");
 
         args.mail = Some(mail.trim().to_string());
     }
