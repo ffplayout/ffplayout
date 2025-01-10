@@ -120,7 +120,7 @@ pub struct Args {
         long,
         env,
         help_heading = Some("General"),
-        help = "Override logging level: trace, debug, println, warn, eprintln"
+        help = "Override logging level: trace, debug, info, warn, error"
     )]
     pub log_level: Option<String>,
 
