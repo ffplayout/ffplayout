@@ -73,11 +73,12 @@ pub async fn update_global(
 
 pub async fn select_channel(conn: &Pool<Sqlite>, id: &i32) -> Result<Channel, sqlx::Error> {
     let query = "SELECT * FROM channels WHERE id = $1";
-    let mut result: Channel = sqlx::query_as(query).bind(id).fetch_one(conn).await?;
+    let row = sqlx::query(query).bind(id).fetch_one(conn).await?;
+    let mut channel = Channel::from_row_async(&row).await?;
 
-    result.utc_offset = local_utc_offset();
+    channel.utc_offset = local_utc_offset();
 
-    Ok(result)
+    Ok(channel)
 }
 
 pub async fn select_related_channels(
@@ -94,7 +95,15 @@ pub async fn select_related_channels(
         None => "SELECT * FROM channels ORDER BY id ASC;".to_string(),
     };
 
-    let mut results: Vec<Channel> = sqlx::query_as(&query).fetch_all(conn).await?;
+    // let mut results: Vec<Channel> = sqlx::query_as(&query).fetch_all(conn).await?;
+
+    let rows = sqlx::query(&query).fetch_all(conn).await?;
+
+    let mut results = Vec::new();
+    for row in rows {
+        let channel = Channel::from_row_async(&row).await?;
+        results.push(channel);
+    }
 
     for result in results.iter_mut() {
         result.utc_offset = local_utc_offset();
@@ -132,7 +141,7 @@ pub async fn update_channel(
         .bind(channel.extra_extensions)
         .bind(channel.public)
         .bind(channel.playlists)
-        .bind(channel.storage)
+        .bind(channel.storage.baked_path)
         .execute(conn)
         .await
 }
@@ -175,14 +184,18 @@ pub async fn insert_channel(conn: &Pool<Sqlite>, channel: Channel) -> Result<Cha
         .bind(channel.extra_extensions)
         .bind(channel.public)
         .bind(channel.playlists)
-        .bind(channel.storage)
+        .bind(channel.storage.baked_path)
         .execute(conn)
         .await?;
 
-    sqlx::query_as("SELECT * FROM channels WHERE id = $1")
+    let row = sqlx::query("SELECT * FROM channels WHERE id = $1")
         .bind(result.last_insert_rowid())
         .fetch_one(conn)
-        .await
+        .await?;
+
+    let channel = Channel::from_row_async(&row).await;
+
+    channel
 }
 
 pub async fn delete_channel(

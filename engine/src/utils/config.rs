@@ -20,11 +20,9 @@ use crate::vec_strings;
 use crate::AdvancedConfig;
 use crate::ARGS;
 
-use super::{errors::ServiceError, s3_utils::s3_parse_string};
+use super::errors::ServiceError;
 
-use crate::utils::s3_utils::S3Ext;
-use aws_config as s3_conf;
-use aws_sdk_s3::{self as s3, config::Region, Client};
+use aws_sdk_s3::Client;
 
 pub const DUMMY_LEN: f64 = 60.0;
 pub const IMAGE_FORMAT: [&str; 21] = [
@@ -206,9 +204,12 @@ impl Channel {
             logs: PathBuf::from(config.logs.clone()),
             public: PathBuf::from(channel.public.clone()),
             playlists: PathBuf::from(channel.playlists.clone()),
-            storage: PathBuf::from(channel.storage.clone()),
+            storage: PathBuf::from(channel.storage.baked_path.clone()),
             s3_storage: if channel.storage.is_s3() {
-                Some(S3::new(PathBuf::from(channel.storage.clone())).await)
+                Some(S3 {
+                    bucket: channel.storage.get_s3_bucket().unwrap(),
+                    client: channel.storage.get_s3_client().unwrap(),
+                })
             } else {
                 None
             },
@@ -223,34 +224,6 @@ pub struct S3 {
     pub bucket: String,
     #[ts(skip)]
     pub client: Client,
-}
-
-impl S3 {
-    pub async fn new(path: PathBuf) -> Self {
-        let (credentials, bucket_name, endp_url) =
-            s3_parse_string(&path.to_str().unwrap()).unwrap();
-
-        let provider = credentials;
-        let shared_provider = s3::config::SharedCredentialsProvider::new(provider);
-        let config = aws_config::defaults(s3_conf::BehaviorVersion::latest())
-            .region(Region::new("None")) // a dummy region
-            .credentials_provider(shared_provider)
-            .load()
-            .await;
-
-        // Create the S3 config and set force_path_style
-        let s3_config = s3::config::Builder::from(&config)
-            .endpoint_url(endp_url)
-            .force_path_style(true)
-            .build();
-
-        let client = s3::Client::from_conf(s3_config); // Use the S3 config
-
-        Self {
-            bucket: bucket_name,
-            client,
-        }
-    }
 }
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize, TS)]
@@ -671,7 +644,7 @@ impl PlayoutConfig {
 
         let mut in_use_storage = channel.storage.clone();
 
-        if !channel.storage.is_s3() {
+        if !channel.s3_storage.is_some() {
             info!("Local storage path detected");
             if !channel.storage.is_dir() {
                 tokio::fs::create_dir_all(&in_use_storage)
@@ -697,7 +670,7 @@ impl PlayoutConfig {
 
         let mut filler_path = PathBuf::from(&config.storage_filler);
         let mut filler = config.storage_filler.clone();
-        if !channel.storage.is_s3() {
+        if !channel.s3_storage.is_some() {
             (filler_path, _, filler) = norm_abs_path(&in_use_storage, &config.storage_filler)?;
         }
 
@@ -714,7 +687,7 @@ impl PlayoutConfig {
 
         let mut logo_path = PathBuf::from(&processing.logo);
         let mut logo = processing.logo.clone();
-        if !channel.storage.is_s3() {
+        if !channel.s3_storage.is_some() {
             (logo_path, _, logo) = norm_abs_path(&in_use_storage, &processing.logo)?;
         }
 

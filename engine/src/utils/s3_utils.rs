@@ -15,11 +15,10 @@ use log::*;
 
 use super::files::SharedState;
 use super::{
-    config::PlayoutConfig,
     errors::ServiceError,
     files::{MoveObject, PathObject, VideoFile},
 };
-use crate::player::utils::MediaProbe;
+use crate::{db::models::Channel, player::utils::MediaProbe};
 use aws_sdk_s3::{
     presigning::PresigningConfig,
     types::{CompletedMultipartUpload, CompletedPart},
@@ -31,21 +30,21 @@ pub const S3_DEFAULT_PRESIGNEDURL_EXP: f64 = 3600.0 * 24.0;
 
 pub trait S3Ext {
     // to-do : check if its unessential!
-    fn is_s3(&self) -> bool;
+    fn parse_is_s3(&self) -> bool;
 }
 
 impl S3Ext for String {
-    fn is_s3(&self) -> bool {
+    fn parse_is_s3(&self) -> bool {
         self.starts_with(S3_INDICATOR)
     }
 }
 impl S3Ext for &str {
-    fn is_s3(&self) -> bool {
+    fn parse_is_s3(&self) -> bool {
         self.starts_with(S3_INDICATOR)
     }
 }
 impl S3Ext for PathBuf {
-    fn is_s3(&self) -> bool {
+    fn parse_is_s3(&self) -> bool {
         self.starts_with(S3_INDICATOR)
     }
 }
@@ -123,7 +122,7 @@ pub fn s3_path(input_path: &str) -> Result<(String, String), ServiceError> {
 }
 
 pub async fn s3_browser(
-    config: &PlayoutConfig,
+    channel: &Channel,
     path_obj: &PathObject,
     extensions: Vec<String>,
     duration: web::Data<SharedState>,
@@ -132,12 +131,12 @@ pub async fn s3_browser(
     let mut s3_obj_dur = duration
         .lock()
         .map_err(|e| ServiceError::Conflict(format!("Invalid S3 config!: {}", e).into()))?;
-    let bucket: &str = config.channel.s3_storage.as_ref().unwrap().bucket.as_str();
+    let bucket = &channel.storage.get_s3_bucket().unwrap();
     let path = path_obj.source.clone();
     let delimiter = '/'; // should be a single character
     let (prefix, parent_path) = s3_path(&path_obj.source)?;
-    let s3_client = config.channel.s3_storage.as_ref().unwrap().client.clone();
-    let mut obj = PathObject::new(path.clone(), Some(bucket.to_string()));
+    let s3_client = channel.storage.get_s3_client().unwrap();
+    let mut obj = PathObject::new(path.clone(), Some(bucket.clone()));
     obj.folders_only = path_obj.folders_only;
 
     if (prefix != parent_path && !path_obj.folders_only)
@@ -186,7 +185,7 @@ pub async fn s3_browser(
     for objs in list_resp.contents() {
         if let Some(obj) = objs.key() {
             if s3_obj_extension_checker(obj, &extensions) {
-                let fls = obj.strip_prefix(&bucket).unwrap_or(obj); // to-do: maybe no needed!
+                let fls = obj.strip_prefix(bucket).unwrap_or(obj); // to-do: maybe no needed!
                 files.push(fls.to_string());
             }
         }
@@ -202,10 +201,7 @@ pub async fn s3_browser(
             &s3_client,
             bucket,
             &file,
-            config
-                .playlist
-                .length_sec
-                .unwrap_or(S3_DEFAULT_PRESIGNEDURL_EXP) as u64, // 24h as default
+            S3_DEFAULT_PRESIGNEDURL_EXP as u64, // to-do: may need extract from playlist-secs
         )
         .await?;
         let name = file.strip_prefix(&prefix).unwrap_or(&file).to_string();

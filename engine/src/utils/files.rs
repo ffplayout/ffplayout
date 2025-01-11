@@ -20,8 +20,6 @@ use crate::db::models::Channel;
 use crate::player::utils::{file_extension, MediaProbe};
 use crate::utils::{config::PlayoutConfig, errors::ServiceError, s3_utils};
 
-use crate::utils::s3_utils::S3Ext;
-
 #[derive(Debug, Clone, Default)]
 pub struct DurationMap {
     pub dur_map: HashMap<String, f64>,
@@ -160,7 +158,7 @@ pub async fn browser(
     extensions.append(&mut channel_extensions);
     if channel.storage.is_s3() {
         // S3 Storage Browser
-        match s3_utils::s3_browser(config, path_obj, extensions, duration).await {
+        match s3_utils::s3_browser(channel, path_obj, extensions, duration).await {
             Ok(obj) => Ok(obj),
             Err(e) => Err(e),
         }

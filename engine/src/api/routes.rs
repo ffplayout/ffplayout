@@ -72,7 +72,6 @@ use crate::{
     utils::logging::MailQueue,
 };
 
-use crate::utils::s3_utils::S3Ext;
 use crate::utils::s3_utils::S3_DEFAULT_PRESIGNEDURL_EXP;
 
 #[derive(Serialize)]
@@ -673,7 +672,7 @@ async fn update_playout_config(
 ) -> Result<impl Responder, ServiceError> {
     let manager = controllers.lock().unwrap().get(*id).unwrap();
     let p = manager.channel.lock().unwrap().storage.clone();
-    let storage = Path::new(&p);
+    let storage = Path::new(&p.baked_path);
     let config_id = manager.config.lock().unwrap().general.id;
 
     let (_, _, logo) = norm_abs_path(storage, &data.processing.logo)?;
@@ -980,6 +979,7 @@ pub async fn process_control(
             }
         }
         ProcessCtl::Start => {
+            // to-do : here is process of start streaming
             if !manager.is_alive.load(Ordering::SeqCst) {
                 manager.channel.lock().unwrap().active = true;
                 manager.async_start().await;
@@ -1058,15 +1058,13 @@ pub async fn save_playlist(
     let manager = controllers.lock().unwrap().get(*id).unwrap();
     let config = manager.config.lock().unwrap().clone();
     let mut playlist_data = data.into_inner(); // Take ownership
-    let storage = &config.channel.storage.to_string_lossy().to_string();
+    let s3_strg = &config.channel.s3_storage;
 
-    println!("\nstorage: {}\n", storage); // DEBUG
-
-    if storage.is_s3() {
+    if s3_strg.is_some() {
         for media in playlist_data.program.iter_mut() {
             let clean_path = media
                 .source
-                .strip_prefix("s3:/media01/:localhost:9000/:123minio/:123minoi/")
+                .strip_prefix("undefined/") // to-do: change this!
                 .unwrap_or_default()
                 .to_string();
             println!("edited_path: {}\n", &clean_path); // DEBUG
@@ -1367,15 +1365,11 @@ async fn get_file(
 
     let storage = config.channel.storage.clone();
     let file_path = req.match_info().query("filename");
-
-    if storage.is_s3() {
+    if config.channel.s3_storage.is_some() {
         let bucket: &str = config.channel.s3_storage.as_ref().unwrap().bucket.as_str();
         let s3_obj_key = file_path.strip_prefix(bucket).unwrap_or(&file_path);
         let s3_client = config.channel.s3_storage.as_ref().unwrap().client.clone();
-        let expires_in = config
-            .playlist
-            .length_sec
-            .unwrap_or(S3_DEFAULT_PRESIGNEDURL_EXP) as u64;
+        let expires_in = S3_DEFAULT_PRESIGNEDURL_EXP as u64;
 
         let s3_obj_url =
             s3_utils::s3_get_object(&s3_client, bucket, &s3_obj_key, expires_in).await?;
