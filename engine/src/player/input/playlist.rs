@@ -138,7 +138,10 @@ impl CurrentProgram {
 
     // Check if day is past and it is time for a new playlist.
     async fn check_for_playlist(&mut self, seek: bool) -> bool {
-        let (delta, total_delta) = get_delta(&self.config, &time_in_seconds());
+        let (delta, total_delta) = get_delta(
+            &self.config,
+            &time_in_seconds(&self.config.channel.timezone),
+        );
         let mut next = false;
 
         let mut duration = self.current_node.out;
@@ -247,7 +250,7 @@ impl CurrentProgram {
     // Get current time and when we are before start time,
     // we add full seconds of a day to it.
     fn get_current_time(&mut self) -> f64 {
-        let mut time_sec = time_in_seconds();
+        let mut time_sec = time_in_seconds(&self.config.channel.timezone);
 
         if time_sec < self.start_sec {
             time_sec += 86400.0; // self.config.playlist.length_sec.unwrap();
@@ -330,7 +333,7 @@ impl CurrentProgram {
         // Fill end from playlist
         let index = self.manager.current_index.load(Ordering::SeqCst);
         let mut media = Media::new(index, "", false).await;
-        media.begin = Some(time_in_seconds());
+        media.begin = Some(time_in_seconds(&self.config.channel.timezone));
         media.duration = total_delta;
         media.out = total_delta;
 
@@ -355,7 +358,7 @@ impl CurrentProgram {
     async fn recalculate_begin(&mut self, extend: bool) {
         debug!(target: Target::file_mail(), channel = self.id; "Infinit playlist reaches end, recalculate clip begins. Extend: <yellow>{extend}</>");
 
-        let mut time_sec = time_in_seconds();
+        let mut time_sec = time_in_seconds(&self.config.channel.timezone);
 
         if extend {
             // Calculate the elapsed time since the playlist start
@@ -404,7 +407,7 @@ impl async_iterator::Iterator for CurrentProgram {
                 // so we fill the gap with a dummy.
                 trace!("Init clip is no filler");
 
-                let mut current_time = time_in_seconds();
+                let mut current_time = time_in_seconds(&self.config.channel.timezone);
                 let (_, total_delta) = get_delta(&self.config, &current_time);
 
                 if self.start_sec > current_time {

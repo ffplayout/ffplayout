@@ -103,7 +103,7 @@ pub async fn read_json(
     let config_clone = config.clone();
     let mut playlist_path = config.channel.playlists.clone();
     let start_sec = config.playlist.start_sec.unwrap();
-    let date = get_date(seek, start_sec, get_next);
+    let date = get_date(seek, start_sec, get_next, &config.channel.timezone);
 
     if playlist_path.is_dir() || is_remote(&config.channel.playlists.to_string_lossy()) {
         let d: Vec<&str> = date.split('-').collect();

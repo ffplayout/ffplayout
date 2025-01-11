@@ -1,5 +1,6 @@
 use std::{error::Error, fmt, str::FromStr};
 
+use chrono_tz::Tz;
 use regex::Regex;
 use serde::{
     de::{self, Visitor},
@@ -49,7 +50,7 @@ impl GlobalSettings {
     }
 }
 
-#[derive(Clone, Debug, Default, Deserialize, Serialize, sqlx::FromRow)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct Channel {
     #[serde(default = "default_id", skip_deserializing)]
     pub id: i32,
@@ -62,14 +63,41 @@ pub struct Channel {
     pub storage: String,
     pub last_date: Option<String>,
     pub time_shift: f64,
-    // not in use currently
-    #[sqlx(default)]
-    #[serde(default, skip_serializing)]
-    pub timezone: Option<String>,
-
-    #[sqlx(default)]
     #[serde(default)]
-    pub utc_offset: i32,
+    pub timezone: Option<Tz>,
+}
+
+impl FromRow<'_, SqliteRow> for Channel {
+    fn from_row(row: &SqliteRow) -> sqlx::Result<Self> {
+        let mut timezone = None;
+
+        if let Some(tz) = row
+            .try_get::<String, _>("timezone")
+            .ok()
+            .and_then(|t: String| Tz::from_str(&t).ok())
+        {
+            timezone = Some(tz);
+        } else if let Some(tz) = iana_time_zone::get_timezone()
+            .ok()
+            .and_then(|t: String| Tz::from_str(&t).ok())
+        {
+            timezone = Some(tz);
+        }
+
+        Ok(Self {
+            id: row.try_get("id").unwrap_or_default(),
+            name: row.try_get("name").unwrap_or_default(),
+            preview_url: row.try_get("preview_url").unwrap_or_default(),
+            extra_extensions: row.try_get("extra_extensions").unwrap_or_default(),
+            active: row.try_get("active").unwrap_or_default(),
+            public: row.try_get("public").unwrap_or_default(),
+            playlists: row.try_get("playlists").unwrap_or_default(),
+            storage: row.try_get("storage").unwrap_or_default(),
+            last_date: row.try_get("last_date").unwrap_or_default(),
+            time_shift: row.try_get("time_shift").unwrap_or_default(),
+            timezone,
+        })
+    }
 }
 
 fn default_id() -> i32 {

@@ -10,7 +10,7 @@ use super::models::{AdvancedConfiguration, Configuration};
 use crate::db::models::{Channel, GlobalSettings, Role, TextPreset, User};
 use crate::utils::{
     advanced_config::AdvancedConfig, config::PlayoutConfig, errors::ServiceError,
-    is_running_in_container, local_utc_offset,
+    is_running_in_container,
 };
 
 pub async fn db_migrate(conn: &Pool<Sqlite>) -> Result<(), Box<dyn std::error::Error>> {
@@ -72,11 +72,8 @@ pub async fn update_global(
 
 pub async fn select_channel(conn: &Pool<Sqlite>, id: &i32) -> Result<Channel, sqlx::Error> {
     let query = "SELECT * FROM channels WHERE id = $1";
-    let mut result: Channel = sqlx::query_as(query).bind(id).fetch_one(conn).await?;
 
-    result.utc_offset = local_utc_offset();
-
-    Ok(result)
+    sqlx::query_as(query).bind(id).fetch_one(conn).await
 }
 
 pub async fn select_related_channels(
@@ -93,13 +90,7 @@ pub async fn select_related_channels(
         None => "SELECT * FROM channels ORDER BY id ASC;".to_string(),
     };
 
-    let mut results: Vec<Channel> = sqlx::query_as(&query).fetch_all(conn).await?;
-
-    for result in &mut results {
-        result.utc_offset = local_utc_offset();
-    }
-
-    Ok(results)
+    sqlx::query_as(&query).fetch_all(conn).await
 }
 
 pub async fn delete_user_channel(
@@ -122,7 +113,7 @@ pub async fn update_channel(
     channel: Channel,
 ) -> Result<SqliteQueryResult, sqlx::Error> {
     let query =
-        "UPDATE channels SET name = $2, preview_url = $3, extra_extensions = $4, public = $5, playlists = $6, storage = $7 WHERE id = $1";
+        "UPDATE channels SET name = $2, preview_url = $3, extra_extensions = $4, public = $5, playlists = $6, storage = $7, timezone = $8 WHERE id = $1";
 
     sqlx::query(query)
         .bind(id)
@@ -132,6 +123,7 @@ pub async fn update_channel(
         .bind(channel.public)
         .bind(channel.playlists)
         .bind(channel.storage)
+        .bind(channel.timezone.map(|tz| tz.to_string()))
         .execute(conn)
         .await
 }

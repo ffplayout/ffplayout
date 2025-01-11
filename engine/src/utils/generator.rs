@@ -220,7 +220,7 @@ pub async fn playlist_generator(manager: &ChannelManager) -> Result<Vec<JsonPlay
         Some(length) => length,
         None => {
             if config.playlist.length.contains(':') {
-                time_to_sec(&config.playlist.length)
+                time_to_sec(&config.playlist.length, &config.channel.timezone)
             } else {
                 86400.0
             }

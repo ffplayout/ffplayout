@@ -89,9 +89,20 @@
                         @keyup="isChanged"
                     />
                 </label>
+
+                <label class="form-control w-full mt-5">
+                    <div class="label">
+                        <span class="label-text">{{ t('config.timezone') }}</span>
+                    </div>
+                    <select v-model="channel.timezone" class="select select-md select-bordered w-full max-w-xs" @change="isChanged">
+                        <option v-for="zone in Intl.supportedValuesOf('timeZone')" :key="zone" :value="zone">
+                            {{ zone }}
+                        </option>
+                    </select>
+                </label>
             </template>
 
-            <div v-if="authStore.role !== 'User'" class="my-4 flex gap-1">
+            <div v-if="authStore.role !== 'User'" class="my-5 flex gap-1">
                 <button class="btn" :class="saved ? 'btn-primary' : 'btn-error'" @click="addUpdateChannel()">
                     {{ t('config.save') }}
                 </button>
@@ -113,6 +124,7 @@
 </template>
 
 <script setup lang="ts">
+import dayjs from 'dayjs'
 import { cloneDeep, isEqual } from 'lodash-es'
 
 const { t } = useI18n()
@@ -157,21 +169,23 @@ function newChannel() {
     channel.value.public = `${rmId(channel.value.public)}/${channel.value.id}`
     channel.value.playlists = `${rmId(channel.value.playlists)}/${channel.value.id}`
     channel.value.storage = `${rmId(channel.value.storage)}/${channel.value.id}`
+    channel.value.timezone = dayjs.tz.guess()
 
     saved.value = false
 }
 
 async function addNewChannel() {
-    await $fetch<Channel>('/api/channel/', {
+    await $fetch('/api/channel/', {
         method: 'POST',
         headers: { ...configStore.contentType, ...authStore.authHeader },
         body: JSON.stringify(channel.value),
     })
-        .then((chl: Channel) => {
+        .then((chl) => {
             i.value = channel.value.id - 1
-            configStore.channels.push(cloneDeep(chl))
-            configStore.channelsRaw.push(chl)
+            configStore.channels.push(cloneDeep(chl as Channel))
+            configStore.channelsRaw.push(chl as Channel)
             configStore.configCount = configStore.channels.length
+            configStore.timezone = channel.value.timezone || 'UTC'
 
             indexStore.msgAlert('success', t('config.updateChannelSuccess'), 2)
         })
@@ -190,6 +204,7 @@ async function updateChannel() {
             for (let i = 0; i < configStore.channels.length; i++) {
                 if (configStore.channels[i].id === channel.value.id) {
                     configStore.channels[i] = cloneDeep(channel.value)
+                    configStore.timezone = channel.value.timezone || 'UTC'
                     break
                 }
             }

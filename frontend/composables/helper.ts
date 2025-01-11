@@ -1,3 +1,9 @@
+import dayjs from 'dayjs'
+import utc from 'dayjs/plugin/utc'
+import timezone from 'dayjs/plugin/timezone'
+dayjs.extend(utc)
+dayjs.extend(timezone)
+
 export const stringFormatter = () => {
     function fileSize(bytes: number | undefined, dp = 2) {
         if (!bytes) {
@@ -22,13 +28,19 @@ export const stringFormatter = () => {
         return bytes.toFixed(dp) + ' ' + units[u]
     }
 
-    function formatLog(text: string): string {
+    function formatLog(text: string, timezone: string): string {
         return text
             .replace(/<yellow>(.*?)<\/>/g, '<span class="log-number">$1</span>')
             .replace(/<b><magenta>(.*?)<\/><\/b>/g, '<span class="log-addr">$1</span>')
             .replace(/<bright-blue>(.*?)<\/>/g, '<span class="log-cmd">$1</span>')
             .replace(/\x1B\[90m(.*?)\x1B\[0m/g, '<span class="log-debug">$1</span>')
-            .replace(/(\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}.[\d]+\])/g, '<span class="log-time">$1</span>')
+            .replace(
+                /\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})(\.\d+)?([+-]\d{2}:\d{2})\]/g,
+                (_, dateTime, nano = '', offset) => {
+                    const formatted = dayjs(`${dateTime}${offset}`).tz(timezone).format('YYYY-MM-DD HH:mm:ss')
+                    return `<span class="log-time">[${formatted}${nano}]</span>`
+                }
+            )
             .replace(/\[ INFO\]/g, '<span class="log-info">[ INFO]</span>')
             .replace(/\[ WARN\]/g, '<span class="log-warning">[ WARN]</span>')
             .replace(/\[ERROR\]/g, '<span class="log-error">[ERROR]</span>')
@@ -167,12 +179,12 @@ export const stringFormatter = () => {
         return null
     }
 
-    function dir_file(path: string): {dir: string, file: string} {
+    function dir_file(path: string): { dir: string; file: string } {
         const index = path.lastIndexOf('/')
         const dir = path.substring(0, index + 1) || '/'
         const file = path.substring(index + 1)
 
-        return {dir, file}
+        return { dir, file }
     }
 
     return {

@@ -89,6 +89,8 @@ export default {
         infinitInfo: 'Воспроизведение работает в бесконечном режиме. Никакая информация, основанная на времени, невозможна.',
         generateDone: 'Генерация плейлиста завершена...',
         dateYesterday: 'Current time is before the playlist start time!',
+        splitVideo: 'Split Video',
+        cuts: 'Cuts',
     },
     media: {
         notExists: 'Папки не существует!',
@@ -229,6 +231,7 @@ export default {
         playlistPath: 'Playlist Path',
         storagePath: 'Storage Path',
         sharedStorage: 'ffplayout работает внутри контейнера, используйте один и тот же корень хранилища для всех каналов!',
+        timezone: 'Timezone',
     },
     user: {
         title: 'Конфигурация пользователя',

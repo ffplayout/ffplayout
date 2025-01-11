@@ -120,12 +120,18 @@ pub struct Args {
         long,
         env,
         help_heading = Some("General"),
-        help = "Override logging level: trace, debug, println, warn, eprintln"
+        help = "Override logging level: trace, debug, info, warn, error"
     )]
     pub log_level: Option<String>,
 
     #[clap(long, env, help_heading = Some("General"), help = "Log to console")]
     pub log_to_console: bool,
+
+    #[clap(long, env, help_heading = Some("General"), help = "Keep log file for given days")]
+    pub log_backup_count: Option<usize>,
+
+    #[clap(long, env, help_heading = Some("General"), help = "Add timestamp to log line")]
+    pub log_timestamp: bool,
 
     #[clap(
         short,
@@ -173,12 +179,6 @@ pub struct Args {
     #[clap(short, long, help_heading = Some("Playout"), help = "Play folder content")]
     pub folder: Option<PathBuf>,
 
-    #[clap(long, env, help_heading = Some("Playout"), help = "Keep log file for given days")]
-    pub log_backup_count: Option<usize>,
-
-    #[clap(long, env, help_heading = Some("Playout"), help = "Add timestamp to log line")]
-    pub log_timestamp: bool,
-
     #[clap(short, long, help_heading = Some("Playout"), help = "Set output mode: desktop, hls, null, stream")]
     pub output: Option<OutputMode>,
 
@@ -213,12 +213,12 @@ fn global_user(args: &mut Args) {
     }
 
     if args.mail.is_none() {
-        print!("Mail: ");
+        print!("Email: ");
         stdout().flush().unwrap();
 
         stdin()
             .read_line(&mut mail)
-            .expect("Did not enter a correct name?");
+            .expect("Did not enter a correct email?");
 
         args.mail = Some(mail.trim().to_string());
     }

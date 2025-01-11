@@ -27,11 +27,13 @@ argon2 = "0.5"
 async-iterator = "2.3"
 async-walkdir = "2"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
+chrono-tz = { version = "0.10", features = ["serde"] }
 clap = { version = "4.3", features = ["derive", "env"] }
 derive_more = { version = "1", features = ["display"] }
 faccess = "0.2"
 flexi_logger = { version = "0.29", features = ["async", "colors", "kv"] }
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
+iana-time-zone = "0.1"
 jsonwebtoken = "9"
 lettre = { version = "0.11", features = ["builder", "rustls-tls", "smtp-transport", "tokio1", "tokio1-rustls-tls"], default-features = false }
 lexical-sort = "0.3"

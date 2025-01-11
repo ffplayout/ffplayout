@@ -313,7 +313,7 @@ function timeRemaining() {
 
 async function clock() {
     async function setTime(resolve: any) {
-        timeStr.value = $dayjs().utcOffset(configStore.utcOffset).format('HH:mm:ss')
+        timeStr.value = $dayjs().tz(configStore.timezone).format('HH:mm:ss')
         timer.value = setTimeout(() => setTime(resolve), 1000)
     }
     return new Promise((resolve) => setTime(resolve))

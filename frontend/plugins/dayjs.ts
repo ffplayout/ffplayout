@@ -21,6 +21,16 @@ declare module '@vue/runtime-core' {
     }
 }
 
+declare module 'dayjs' {
+    interface Dayjs {
+        tz(timezone?: string): Dayjs
+    }
+
+    interface DayjsTimezone {
+        (date?: ConfigType, timezone?: string): Dayjs
+    }
+}
+
 export default defineNuxtPlugin((nuxtApp) => {
     dayjs.extend(customParseFormat)
     dayjs.extend(LocalizedFormat)
