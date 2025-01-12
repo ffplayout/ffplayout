@@ -405,7 +405,6 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
         channel.public = global.public;
         channel.playlists = global.playlists;
         channel.storage.baked_path = global.storage;
-
         let mut storage_path = PathBuf::from(channel.storage.baked_path.clone());
 
         if global.shared {

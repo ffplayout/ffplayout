@@ -214,6 +214,7 @@ pub fn write_hls(manager: ChannelManager) -> Result<(), ProcessError> {
             Some(cmd) => cmd.clone(),
             None => break,
         };
+        println!("\n__cmd__: {:?}\n", &cmd); // DEBUG
 
         if !node.process.unwrap() {
             continue;
@@ -261,7 +262,6 @@ pub fn write_hls(manager: ChannelManager) -> Result<(), ProcessError> {
         }
 
         dec_prefix.append(&mut vec_strings!["-readrate", read_rate]);
-
         dec_prefix.append(&mut cmd);
         let dec_cmd = prepare_output_cmd(&config, dec_prefix, &node.filter);
 

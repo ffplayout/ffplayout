@@ -177,7 +177,7 @@ pub fn read_json(
         if playlist.program.is_empty() {
             playlist = JsonPlaylist::new(date, start_sec)
         }
-        playlist.path = Some(current_file);
+        playlist.path = Some(current_file); 
         playlist.start_sec = Some(start_sec);
         playlist.modified = modified;
 

@@ -8,19 +8,22 @@ use std::{
 
 use log::*;
 
-use crate::db::handles;
-use crate::player::{
-    controller::ChannelManager,
-    utils::{
-        gen_dummy, get_delta, is_close, is_remote,
-        json_serializer::{read_json, set_defaults},
-        loop_filler, loop_image, modified_time, seek_and_length, time_in_seconds, JsonPlaylist,
-        Media, MediaProbe,
-    },
-};
 use crate::utils::{
     config::{PlayoutConfig, IMAGE_FORMAT},
     logging::Target,
+};
+use crate::{db::handles, utils};
+use crate::{
+    player::{
+        controller::ChannelManager,
+        utils::{
+            gen_dummy, get_delta, is_close, is_remote,
+            json_serializer::{read_json, set_defaults},
+            loop_filler, loop_image, modified_time, seek_and_length, time_in_seconds, JsonPlaylist,
+            Media, MediaProbe,
+        },
+    },
+    utils::s3_utils::S3_DEFAULT_PRESIGNEDURL_EXP,
 };
 
 /// Struct for current playlist.
@@ -620,11 +623,30 @@ fn duplicate_for_seek_and_loop(node: &mut Media, current_list: &Arc<Mutex<Vec<Me
 
 /// Generate the source CMD, or when clip not exist, get a dummy.
 pub fn gen_source(
+    // to-do : this is the desired loc of implementing the cmd
     config: &PlayoutConfig,
     mut node: Media,
     manager: &ChannelManager,
     last_index: usize,
 ) -> Media {
+    if config.channel.s3_storage.is_some() {
+        // to-do : implementation of the s3 presigned-url
+        let cloned_source = node.source.clone();
+        let s3_str = config.channel.s3_storage.as_ref().unwrap().clone();
+        let bucket = &s3_str.bucket;
+        let client = &s3_str.client;
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let presigned_url = rt
+            .block_on(utils::s3_utils::s3_get_object(
+                client,
+                bucket,
+                &cloned_source,
+                S3_DEFAULT_PRESIGNEDURL_EXP as u64,
+            ))
+            .unwrap();
+        node.source = presigned_url;
+    }
+
     let node_index = node.index.unwrap_or_default();
     let mut duration = node.out - node.seek;
 
@@ -644,7 +666,6 @@ pub fn gen_source(
     }
 
     trace!("Clip new length: {duration}, duration: {}", node.duration);
-
     if node.probe.is_none() && !node.source.is_empty() {
         if let Err(e) = node.add_probe(true) {
             trace!("{e:?}");

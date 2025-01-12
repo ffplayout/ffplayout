@@ -251,12 +251,12 @@ pub struct Media {
 }
 
 impl Media {
-    // tp-do : this is the place to input media file address for ffmpeg!  finally:)
     pub fn new(index: usize, src: &str, do_probe: bool) -> Self {
         let mut duration = 0.0;
         let mut probe = None;
 
         if do_probe && (is_remote(src) || Path::new(src).is_file()) {
+            // to-do : this is the place to input media file address for ffmpeg
             if let Ok(p) = MediaProbe::new(src) {
                 probe = Some(p.clone());
 

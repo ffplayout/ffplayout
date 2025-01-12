@@ -475,6 +475,7 @@ async fn get_all_channels(
     expr = "user.channels.contains(&*id) || role.has_authority(&Role::GlobalAdmin)"
 )]
 async fn patch_channel(
+    // to-do : change the function to update when you switch from s3 to local or vice versa
     pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
     data: web::Json<Channel>,
@@ -491,7 +492,6 @@ async fn patch_channel(
 
     if !role.has_authority(&Role::GlobalAdmin) {
         let channel = handles::select_channel(&pool, &id).await?;
-
         data.public = channel.public;
         data.playlists = channel.playlists;
         data.storage = channel.storage;
@@ -1057,23 +1057,8 @@ pub async fn save_playlist(
 ) -> Result<impl Responder, ServiceError> {
     let manager = controllers.lock().unwrap().get(*id).unwrap();
     let config = manager.config.lock().unwrap().clone();
-    let mut playlist_data = data.into_inner(); // Take ownership
-    let s3_strg = &config.channel.s3_storage;
 
-    if s3_strg.is_some() {
-        for media in playlist_data.program.iter_mut() {
-            let clean_path = media
-                .source
-                .strip_prefix("undefined/") // to-do: change this!
-                .unwrap_or_default()
-                .to_string();
-            println!("edited_path: {}\n", &clean_path); // DEBUG
-            media.source = clean_path;
-            println!("media_src: {}\n", &media.source); // DEBUG
-        }
-    }
-
-    match write_playlist(&config, playlist_data).await {
+    match write_playlist(&config, data.into_inner()).await {
         Ok(res) => Ok(web::Json(res)),
         Err(e) => Err(e),
     }
@@ -1566,7 +1551,6 @@ async fn get_program(
                 Some(t) => t[1].to_string(),
                 None => item.source,
             };
-
             let p_item = ProgramItem {
                 source,
                 start: start.format("%Y-%m-%d %H:%M:%S%.3f%:z").to_string(),

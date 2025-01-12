@@ -961,7 +961,6 @@ pub async fn get_config(
 
     if let Some(paths) = args.paths {
         config.storage.paths = paths;
-        println!("\nconfig_storage_paths: {:?}", &config.storage.paths); // DEBUG
     }
 
     if let Some(playlist) = args.playlists {
@@ -970,7 +969,6 @@ pub async fn get_config(
 
     if let Some(folder) = args.folder {
         config.channel.storage = folder;
-        println!("\nconfig_channel_storage: {:?}", &config.channel.storage); // DEBUG
 
         config.processing.mode = ProcessMode::Folder;
     }

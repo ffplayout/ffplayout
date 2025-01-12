@@ -45,7 +45,7 @@ pub fn import_file(
     let playlist_path = playlist_root.join(year).join(month);
     let playlist_file = &playlist_path.join(format!("{date}.json"));
 
-    create_dir_all(playlist_path)?;
+    create_dir_all(&playlist_path)?;
 
     for line in reader.lines() {
         let line = line?;

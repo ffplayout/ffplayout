@@ -74,7 +74,7 @@ pub struct Channel {
     pub active: bool,
     pub public: String,
     pub playlists: String,
-    #[serde(default, skip_serializing)]
+    #[serde(default, with = "storage_desreializer")]
     pub storage: Storage,
     pub last_date: Option<String>,
     pub time_shift: f64,
@@ -109,16 +109,12 @@ impl Channel {
     }
 }
 
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[derive(Debug, Default, Clone)]
 pub struct Storage {
     raw_path: String,
-    #[serde(default, skip_serializing, skip_deserializing)]
     pub baked_path: String,
-    #[serde(default, skip_serializing, skip_deserializing)]
     is_s3: bool,
-    #[serde(default, skip_serializing, skip_deserializing)]
     bucket_name: Option<String>,
-    #[serde(default, skip_serializing, skip_deserializing)]
     s3_client: Option<Client>,
 }
 
@@ -178,6 +174,29 @@ impl Storage {
 impl fmt::Display for Storage {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.baked_path)
+    }
+}
+
+mod storage_desreializer {
+    use super::Storage;
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S>(storage: &Storage, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&storage.baked_path)
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Storage, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let baked_path = String::deserialize(deserializer)?;
+        Ok(Storage {
+            baked_path,
+            ..Default::default()
+        })
     }
 }
 
