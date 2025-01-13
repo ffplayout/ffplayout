@@ -13,7 +13,11 @@ use crate::utils::config::PlayoutConfig;
 use crate::{db::handles, utils::s3_utils::S3Ext};
 
 use aws_config as s3_conf;
-use aws_sdk_s3::{self as s3, config::Region, Client};
+use aws_sdk_s3::{
+    self as s3,
+    config::{Credentials, Region},
+    Client,
+};
 
 #[derive(Clone, Default, Debug, Deserialize, Serialize, sqlx::FromRow)]
 pub struct GlobalSettings {
@@ -111,10 +115,11 @@ impl Channel {
 
 #[derive(Debug, Default, Clone)]
 pub struct Storage {
-    raw_path: String,
     pub baked_path: String,
     is_s3: bool,
-    bucket_name: Option<String>,
+    s3_bucket: Option<String>,
+    s3_credentials: Option<Credentials>,
+    s3_endpoint_url: Option<String>,
     s3_client: Option<Client>,
 }
 
@@ -123,15 +128,15 @@ impl Storage {
         // Check if path is S3 and parse details if applicable
         let mut baked_path = path.to_string();
         let is_s3 = path.parse_is_s3();
-        let mut bucket_name = None;
-        let mut s3_client = None;
 
         if is_s3 {
             baked_path = String::new();
             let (credentials, bucket, endpoint_url) =
                 crate::utils::s3_utils::s3_parse_string(path)?;
 
-            bucket_name = Some(bucket);
+            let s3_bucket = Some(bucket);
+            let s3_credentials = Some(credentials.clone());
+            let s3_endpoint_url = Some(endpoint_url.clone());
 
             // Create AWS shared credentials provider
             let shared_provider = s3::config::SharedCredentialsProvider::new(credentials);
@@ -146,15 +151,25 @@ impl Storage {
                 .endpoint_url(endpoint_url)
                 .force_path_style(true)
                 .build();
-            s3_client = Some(s3::Client::from_conf(s3_config));
+            let s3_client = Some(s3::Client::from_conf(s3_config));
+
+            return Ok(Self {
+                baked_path,
+                is_s3,
+                s3_bucket,
+                s3_credentials,
+                s3_endpoint_url,
+                s3_client,
+            });
         }
 
         Ok(Self {
-            raw_path: path.to_string(),
             baked_path,
-            is_s3,
-            bucket_name,
-            s3_client,
+            is_s3: false,
+            s3_bucket: None,
+            s3_credentials: None,
+            s3_endpoint_url: None,
+            s3_client: None,
         })
     }
 
@@ -167,7 +182,15 @@ impl Storage {
     }
 
     pub fn get_s3_bucket(&self) -> Option<String> {
-        self.bucket_name.clone()
+        self.s3_bucket.clone()
+    }
+
+    pub fn get_s3_credentials(&self) -> Option<Credentials> {
+        self.s3_credentials.clone()
+    }
+
+    pub fn get_s3_endpointurl(&self) -> Option<String> {
+        self.s3_endpoint_url.clone()
     }
 }
 
