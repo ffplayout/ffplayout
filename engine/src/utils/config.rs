@@ -204,7 +204,7 @@ impl Channel {
             logs: PathBuf::from(config.logs.clone()),
             public: PathBuf::from(channel.public.clone()),
             playlists: PathBuf::from(channel.playlists.clone()),
-            storage: PathBuf::from(channel.storage.baked_path.clone()),
+            storage: PathBuf::from(channel.storage.cleaned_path.clone()),
             s3_storage: if channel.storage.is_s3() {
                 Some(S3 {
                     bucket: channel.storage.get_s3_bucket().unwrap(),

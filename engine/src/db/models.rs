@@ -115,7 +115,7 @@ impl Channel {
 
 #[derive(Debug, Default, Clone)]
 pub struct Storage {
-    pub baked_path: String,
+    pub cleaned_path: String,
     is_s3: bool,
     s3_bucket: Option<String>,
     s3_credentials: Option<Credentials>,
@@ -154,7 +154,7 @@ impl Storage {
             let s3_client = Some(s3::Client::from_conf(s3_config));
 
             return Ok(Self {
-                baked_path,
+                cleaned_path: baked_path,
                 is_s3,
                 s3_bucket,
                 s3_credentials,
@@ -164,7 +164,7 @@ impl Storage {
         }
 
         Ok(Self {
-            baked_path,
+            cleaned_path: baked_path,
             is_s3: false,
             s3_bucket: None,
             s3_credentials: None,
@@ -196,7 +196,7 @@ impl Storage {
 
 impl fmt::Display for Storage {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.baked_path)
+        write!(f, "{}", self.cleaned_path)
     }
 }
 
@@ -208,7 +208,7 @@ mod storage_desreializer {
     where
         S: Serializer,
     {
-        serializer.serialize_str(&storage.baked_path)
+        serializer.serialize_str(&storage.cleaned_path)
     }
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<Storage, D::Error>
@@ -217,7 +217,7 @@ mod storage_desreializer {
     {
         let baked_path = String::deserialize(deserializer)?;
         Ok(Storage {
-            baked_path,
+            cleaned_path: baked_path,
             ..Default::default()
         })
     }

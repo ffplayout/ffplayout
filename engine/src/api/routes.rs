@@ -672,7 +672,7 @@ async fn update_playout_config(
 ) -> Result<impl Responder, ServiceError> {
     let manager = controllers.lock().unwrap().get(*id).unwrap();
     let p = manager.channel.lock().unwrap().storage.clone();
-    let storage = Path::new(&p.baked_path);
+    let storage = Path::new(&p.cleaned_path);
     let config_id = manager.config.lock().unwrap().general.id;
 
     let (_, _, logo) = norm_abs_path(storage, &data.processing.logo)?;

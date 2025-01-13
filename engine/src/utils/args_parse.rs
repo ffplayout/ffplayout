@@ -404,8 +404,8 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
         let mut channel = handles::select_channel(pool, &1).await.unwrap();
         channel.public = global.public;
         channel.playlists = global.playlists;
-        channel.storage.baked_path = global.storage;
-        let mut storage_path = PathBuf::from(channel.storage.baked_path.clone());
+        channel.storage.cleaned_path = global.storage;
+        let mut storage_path = PathBuf::from(channel.storage.cleaned_path.clone());
 
         if global.shared {
             storage_path = storage_path.join("1");
@@ -418,7 +418,7 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
                 .join("1")
                 .to_string_lossy()
                 .to_string();
-            channel.storage.baked_path = storage_path.to_string_lossy().to_string();
+            channel.storage.cleaned_path = storage_path.to_string_lossy().to_string();
         };
 
         if let Err(e) = copy_assets(&storage_path).await {
