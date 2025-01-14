@@ -643,7 +643,7 @@ pub fn gen_source(
                 &cloned_source,
                 S3_DEFAULT_PRESIGNEDURL_EXP as u64,
             ))
-            .unwrap();
+            .unwrap_or_default();
         node.source = presigned_url;
     }
 

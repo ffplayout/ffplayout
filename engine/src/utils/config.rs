@@ -643,7 +643,7 @@ impl PlayoutConfig {
         let mut output = Output::new(&config);
 
         let mut in_use_storage = channel.storage.clone();
-
+        println!("\nin use storage: {:?}", in_use_storage); //DEBUG
         if !channel.s3_storage.is_some() {
             info!("Local storage path detected");
             if !channel.storage.is_dir() {

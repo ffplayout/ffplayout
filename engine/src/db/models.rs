@@ -78,7 +78,7 @@ pub struct Channel {
     pub active: bool,
     pub public: String,
     pub playlists: String,
-    #[serde(default, with = "storage_desreializer")]
+    #[serde(with = "storage_serde")]
     pub storage: Storage,
     pub last_date: Option<String>,
     pub time_shift: f64,
@@ -115,6 +115,7 @@ impl Channel {
 
 #[derive(Debug, Default, Clone)]
 pub struct Storage {
+    pub raw_path: String,
     pub cleaned_path: String,
     is_s3: bool,
     s3_bucket: Option<String>,
@@ -125,12 +126,10 @@ pub struct Storage {
 
 impl Storage {
     pub async fn new(path: &str) -> sqlx::Result<Self> {
-        // Check if path is S3 and parse details if applicable
-        let mut baked_path = path.to_string();
+        let raw_path = path.to_string();
         let is_s3 = path.parse_is_s3();
-
+        println!("\npath: {}, is_s3: {}", path, is_s3); // DEBUG
         if is_s3 {
-            baked_path = String::new();
             let (credentials, bucket, endpoint_url) =
                 crate::utils::s3_utils::s3_parse_string(path)?;
 
@@ -152,9 +151,9 @@ impl Storage {
                 .force_path_style(true)
                 .build();
             let s3_client = Some(s3::Client::from_conf(s3_config));
-
             return Ok(Self {
-                cleaned_path: baked_path,
+                raw_path,
+                cleaned_path: String::new(),
                 is_s3,
                 s3_bucket,
                 s3_credentials,
@@ -164,7 +163,8 @@ impl Storage {
         }
 
         Ok(Self {
-            cleaned_path: baked_path,
+            raw_path: raw_path.clone(),
+            cleaned_path: raw_path,
             is_s3: false,
             s3_bucket: None,
             s3_credentials: None,
@@ -200,7 +200,9 @@ impl fmt::Display for Storage {
     }
 }
 
-mod storage_desreializer {
+mod storage_serde {
+    use crate::utils::s3_utils::S3Ext;
+
     use super::Storage;
     use serde::{Deserialize, Deserializer, Serializer};
 
@@ -208,16 +210,18 @@ mod storage_desreializer {
     where
         S: Serializer,
     {
-        serializer.serialize_str(&storage.cleaned_path)
+        serializer.serialize_str(&storage.raw_path)
     }
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<Storage, D::Error>
     where
         D: Deserializer<'de>,
     {
-        let baked_path = String::deserialize(deserializer)?;
+        let raw_path = String::deserialize(deserializer)?;
+        let cleaned_path = if raw_path.parse_is_s3(){String::new()} else {raw_path.clone()};
         Ok(Storage {
-            cleaned_path: baked_path,
+            raw_path,
+            cleaned_path,
             ..Default::default()
         })
     }

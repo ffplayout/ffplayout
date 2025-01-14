@@ -141,7 +141,7 @@ pub async fn update_channel(
         .bind(channel.extra_extensions)
         .bind(channel.public)
         .bind(channel.playlists)
-        .bind(channel.storage.cleaned_path)
+        .bind(channel.storage.raw_path)
         .execute(conn)
         .await
 }
