@@ -74,10 +74,10 @@ pub struct Args {
     #[clap(long, env, help_heading = Some("Initial Setup / General"), help = "Path to public files, also HLS playlists")]
     pub public: Option<String>,
 
-    #[clap(long, help_heading = Some("Initial Setup / Playlist"), help = "Path to playlist, or playlist root folder.")]
+    #[clap(long, help_heading = Some("Initial Setup / Playlist"), help = "Path to playlist, or playlist root folder")]
     pub playlists: Option<String>,
 
-    #[clap(long, help_heading = Some("General"), help = "Add or update a global admin use")]
+    #[clap(long, help_heading = Some("General"), help = "Add or update a global admin user")]
     pub user_set: bool,
 
     #[clap(long, env, help_heading = Some("General"), help = "Path to database file")]
@@ -107,7 +107,7 @@ pub struct Args {
     )]
     pub import_advanced: Option<PathBuf>,
 
-    #[clap(long, help_heading = Some("General"), help = "import channel configuration from file.")]
+    #[clap(long, help_heading = Some("General"), help = "Import channel configuration from file")]
     pub import_config: Option<PathBuf>,
 
     #[clap(long, help_heading = Some("General"), help = "List available channel ids")]
@@ -143,7 +143,7 @@ pub struct Args {
     )]
     pub channel: Option<Vec<i32>>,
 
-    #[clap(long, hide = true, help = "set fake time (for debugging)")]
+    #[clap(long, hide = true, help = "Set fake time (for debugging)")]
     pub fake_time: Option<String>,
 
     #[clap(
@@ -386,7 +386,7 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
             stdout().flush().unwrap();
             stdin()
                 .read_line(&mut mail_starttls)
-                .expect("Did not enter a yes or no?");
+                .expect("Did not enter yes or no?");
 
             if !mail_starttls.trim().is_empty() {
                 global.mail_starttls = mail_starttls.trim().to_lowercase().starts_with('y');
