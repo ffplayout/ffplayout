@@ -599,7 +599,12 @@ async fn update_advanced_config(
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    let manager = controllers.lock().await.get(*id).await.unwrap();
+    let manager = controllers
+        .lock()
+        .await
+        .get(*id)
+        .await
+        .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
 
     handles::update_advanced_configuration(&pool, *id, data.clone()).await?;
     let new_config = get_config(&pool, *id).await?;
@@ -661,7 +666,12 @@ async fn update_playout_config(
     user: web::ReqData<UserMeta>,
     mail_queues: web::Data<Mutex<Vec<Arc<Mutex<MailQueue>>>>>,
 ) -> Result<impl Responder, ServiceError> {
-    let manager = controllers.lock().await.get(*id).await.unwrap();
+    let manager = controllers
+        .lock()
+        .await
+        .get(*id)
+        .await
+        .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
     let p = manager.channel.lock().await.storage.clone();
     let storage = Path::new(&p);
     let config_id = manager.config.lock().await.general.id;
@@ -842,7 +852,12 @@ pub async fn send_text_message(
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    let manager = controllers.lock().await.get(*id).await.unwrap();
+    let manager = controllers
+        .lock()
+        .await
+        .get(*id)
+        .await
+        .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
 
     match send_message(manager, data.into_inner()).await {
         Ok(res) => Ok(web::Json(res)),
@@ -874,7 +889,12 @@ pub async fn control_playout(
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    let manager = controllers.lock().await.get(*id).await.unwrap();
+    let manager = controllers
+        .lock()
+        .await
+        .get(*id)
+        .await
+        .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
 
     if manager.is_processing.load(Ordering::SeqCst) {
         return Err(ServiceError::Conflict(
@@ -930,7 +950,12 @@ pub async fn media_current(
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    let manager = controllers.lock().await.get(*id).await.unwrap();
+    let manager = controllers
+        .lock()
+        .await
+        .get(*id)
+        .await
+        .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
     let media_map = get_data_map(&manager).await;
 
     Ok(web::Json(media_map))
@@ -962,7 +987,12 @@ pub async fn process_control(
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    let manager = controllers.lock().await.get(*id).await.unwrap();
+    let manager = controllers
+        .lock()
+        .await
+        .get(*id)
+        .await
+        .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
     manager.list_init.store(true, Ordering::SeqCst);
 
     if manager.is_processing.load(Ordering::SeqCst) {
@@ -1028,7 +1058,12 @@ pub async fn get_playlist(
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    let manager = controllers.lock().await.get(*id).await.unwrap();
+    let manager = controllers
+        .lock()
+        .await
+        .get(*id)
+        .await
+        .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
     let config = manager.config.lock().await.clone();
 
     match read_playlist(&config, obj.date.clone()).await {
@@ -1057,7 +1092,12 @@ pub async fn save_playlist(
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    let manager = controllers.lock().await.get(*id).await.unwrap();
+    let manager = controllers
+        .lock()
+        .await
+        .get(*id)
+        .await
+        .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
     let config = manager.config.lock().await.clone();
 
     match write_playlist(&config, data.into_inner()).await {
@@ -1177,7 +1217,7 @@ pub async fn get_log(
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    // let manager = controllers.lock().await.get(*id).await.unwrap();
+    // let manager = controllers.lock().await.get(*id).await.ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
     // let timezone = manager.config.lock().await.channel.timezone;
 
     read_log_file(&id, &log.date).await
@@ -1204,7 +1244,12 @@ pub async fn file_browser(
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    let manager = controllers.lock().await.get(*id).await.unwrap();
+    let manager = controllers
+        .lock()
+        .await
+        .get(*id)
+        .await
+        .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
     let channel = manager.channel.lock().await.clone();
     let config = manager.config.lock().await.clone();
 
@@ -1233,7 +1278,12 @@ pub async fn add_dir(
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<HttpResponse, ServiceError> {
-    let manager = controllers.lock().await.get(*id).await.unwrap();
+    let manager = controllers
+        .lock()
+        .await
+        .get(*id)
+        .await
+        .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
     let config = manager.config.lock().await.clone();
 
     create_directory(&config, &data.into_inner()).await
@@ -1258,7 +1308,12 @@ pub async fn move_rename(
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    let manager = controllers.lock().await.get(*id).await.unwrap();
+    let manager = controllers
+        .lock()
+        .await
+        .get(*id)
+        .await
+        .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
     let config = manager.config.lock().await.clone();
 
     match rename_file(&config, &data.into_inner()).await {
@@ -1286,7 +1341,12 @@ pub async fn remove(
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    let manager = controllers.lock().await.get(*id).await.unwrap();
+    let manager = controllers
+        .lock()
+        .await
+        .get(*id)
+        .await
+        .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
     let config = manager.config.lock().await.clone();
     let recursive = data.recursive;
 
@@ -1318,7 +1378,12 @@ async fn save_file(
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<HttpResponse, ServiceError> {
-    let manager = controllers.lock().await.get(*id).await.unwrap();
+    let manager = controllers
+        .lock()
+        .await
+        .get(*id)
+        .await
+        .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
     let config = manager.config.lock().await.clone();
 
     let size: u64 = req
@@ -1421,7 +1486,12 @@ async fn import_playlist(
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<HttpResponse, ServiceError> {
-    let manager = controllers.lock().await.get(*id).await.unwrap();
+    let manager = controllers
+        .lock()
+        .await
+        .get(*id)
+        .await
+        .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
     let channel_name = manager.channel.lock().await.name.clone();
     let config = manager.config.lock().await.clone();
     let file = obj.file.file_name().unwrap_or_default();
@@ -1478,7 +1548,12 @@ async fn get_program(
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    let manager = controllers.lock().await.get(*id).await.unwrap();
+    let manager = controllers
+        .lock()
+        .await
+        .get(*id)
+        .await
+        .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
     let config = manager.config.lock().await.clone();
     let id = config.general.channel_id;
     let start_sec = config.playlist.start_sec.unwrap();
@@ -1580,7 +1655,12 @@ pub async fn get_system_stat(
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    let manager = controllers.lock().await.get(*id).await.unwrap();
+    let manager = controllers
+        .lock()
+        .await
+        .get(*id)
+        .await
+        .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
     let config = manager.config.lock().await.clone();
 
     let stat = web::block(move || system::stat(&config)).await?;

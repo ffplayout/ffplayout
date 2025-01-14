@@ -44,11 +44,11 @@ export default {
     control: {
         noClip: 'Es wird kein Clip abgespielt',
         ingest: 'Live-Übertragung',
-        start: 'Playout-Dienst starten',
+        start: 'Playout starten',
         last: 'Zum letzten Clip springen',
-        stop: 'Playout-Dienst stoppen',
+        stop: 'Playout stoppen',
         reset: 'Playout-Zustand zurücksetzen',
-        restart: 'Playout-Dienst neu starten',
+        restart: 'Playout neu starten',
         next: 'Zum nächsten Clip springen',
     },
     player: {
