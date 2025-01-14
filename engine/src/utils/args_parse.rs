@@ -1,13 +1,10 @@
-use std::{
-    io::{stdin, stdout, Write},
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
 #[cfg(target_family = "unix")]
 use std::os::unix::fs::MetadataExt;
 
 use clap::Parser;
-use rpassword::read_password;
+use inquire::{Confirm, CustomType, Password, PasswordDisplayMode, Text};
 use sqlx::{Pool, Sqlite};
 
 #[cfg(target_family = "unix")]
@@ -57,16 +54,19 @@ pub struct Args {
     pub storage: Option<String>,
 
     #[clap(long, env, help_heading = Some("Initial Setup"), help = "SMTP server for system mails")]
-    pub mail_smtp: Option<String>,
+    pub smtp_server: Option<String>,
 
-    #[clap(long, env, help_heading = Some("Initial Setup"), help = "Mail user for system mails")]
-    pub mail_user: Option<String>,
+    #[clap(long, env, help_heading = Some("Initial Setup"), help = "SMTP user for system mails")]
+    pub smtp_user: Option<String>,
 
-    #[clap(long, env, help_heading = Some("Initial Setup"), help = "Mail password for system mails")]
-    pub mail_password: Option<String>,
+    #[clap(long, env, help_heading = Some("Initial Setup"), help = "SMTP password for system mails")]
+    pub smtp_password: Option<String>,
 
-    #[clap(long, env, help_heading = Some("Initial Setup"), help = "Use TLS for system mails")]
-    pub mail_starttls: bool,
+    #[clap(long, env, help_heading = Some("Initial Setup"), help = "Use TLS for system SMTP")]
+    pub smtp_starttls: bool,
+
+    #[clap(long, env, help_heading = Some("Initial Setup"), help = "SMTP port for system mail")]
+    pub smtp_port: Option<u16>,
 
     #[clap(long, env, help_heading = Some("Initial Setup / General"), help = "Logging path")]
     pub logs: Option<String>,
@@ -190,38 +190,27 @@ pub struct Args {
 }
 
 fn global_user(args: &mut Args) {
-    let mut user = String::new();
-    let mut mail = String::new();
-
     if args.username.is_none() {
-        print!("Global admin: ");
-        stdout().flush().unwrap();
-
-        stdin()
-            .read_line(&mut user)
-            .expect("Did not enter a correct name?");
-
-        args.username = Some(user.trim().to_string());
+        args.username = Text::new("Username:").prompt().ok();
     }
 
     if args.password.is_none() {
-        print!("Password: ");
-        stdout().flush().unwrap();
-        let password = read_password();
-
-        args.password = password.ok();
+        args.password = Password::new("Password:")
+            .with_display_mode(PasswordDisplayMode::Masked)
+            .prompt()
+            .ok();
     }
 
     if args.mail.is_none() {
-        print!("Email: ");
-        stdout().flush().unwrap();
-
-        stdin()
-            .read_line(&mut mail)
-            .expect("Did not enter a correct email?");
-
-        args.mail = Some(mail.trim().to_string());
+        args.mail = Text::new("Email:").prompt().ok();
     }
+}
+
+fn clean_input(input: &str) -> String {
+    input
+        .trim()
+        .trim_matches(|c| c == '"' || c == '\'')
+        .to_string()
 }
 
 pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
@@ -241,14 +230,6 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
 
     if args.init {
         let check_user = handles::select_users(pool).await;
-
-        let mut storage = String::new();
-        let mut playlist = String::new();
-        let mut logging = String::new();
-        let mut public = String::new();
-        let mut mail_smtp = String::new();
-        let mut mail_user = String::new();
-        let mut mail_starttls = String::new();
         let mut global = handles::select_global(pool).await.map_err(|_| 1)?;
 
         if check_user.unwrap_or_default().is_empty() {
@@ -258,139 +239,93 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
         if let Some(st) = args.storage {
             global.storage = st;
         } else {
-            print!("Storage path [{}]: ", global.storage);
-            stdout().flush().unwrap();
-            stdin()
-                .read_line(&mut storage)
-                .expect("Did not enter a correct path?");
-
-            if !storage.trim().is_empty() {
-                global.storage = storage
-                    .trim()
-                    .trim_matches(|c| c == '"' || c == '\'')
-                    .to_string();
-            }
+            global.storage = Text::new("Storage path:")
+                .with_default(&global.storage)
+                .with_formatter(&clean_input)
+                .prompt()
+                .unwrap_or(global.storage);
         }
 
         if let Some(pl) = args.playlists {
             global.playlists = pl;
         } else {
-            print!("Playlist path [{}]: ", global.playlists);
-            stdout().flush().unwrap();
-            stdin()
-                .read_line(&mut playlist)
-                .expect("Did not enter a correct path?");
-
-            if !playlist.trim().is_empty() {
-                global.playlists = playlist
-                    .trim()
-                    .trim_matches(|c| c == '"' || c == '\'')
-                    .to_string();
-            }
+            global.playlists = Text::new("Playlist path:")
+                .with_default(&global.playlists)
+                .with_formatter(&clean_input)
+                .prompt()
+                .unwrap_or(global.playlists);
         }
 
         if let Some(lp) = args.logs {
             global.logs = lp;
         } else {
-            print!("Logging path [{}]: ", global.logs);
-            stdout().flush().unwrap();
-            stdin()
-                .read_line(&mut logging)
-                .expect("Did not enter a correct path?");
-
-            if !logging.trim().is_empty() {
-                global.logs = logging
-                    .trim()
-                    .trim_matches(|c| c == '"' || c == '\'')
-                    .to_string();
-            }
+            global.logs = Text::new("Logging path:")
+                .with_default(&global.logs)
+                .with_formatter(&clean_input)
+                .prompt()
+                .unwrap_or(global.logs);
         }
 
         if let Some(p) = args.public {
             global.public = p;
         } else {
-            print!("Public (HLS) path [{}]: ", global.public);
-            stdout().flush().unwrap();
-            stdin()
-                .read_line(&mut public)
-                .expect("Did not enter a correct path?");
+            global.public = Text::new("Public (HLS) path:")
+                .with_default(&global.public)
+                .with_formatter(&clean_input)
+                .prompt()
+                .unwrap_or(global.public);
+        }
 
-            if !public.trim().is_empty() {
-                global.public = public
-                    .trim()
-                    .trim_matches(|c| c == '"' || c == '\'')
-                    .to_string();
+        if let Some(smtp) = args.smtp_server {
+            global.smtp_server = smtp;
+        } else {
+            global.smtp_server = Text::new("SMTP server:")
+                .with_default(&global.smtp_server)
+                .with_formatter(&clean_input)
+                .prompt()
+                .unwrap_or(global.smtp_server);
+        }
+
+        if let Some(user) = args.smtp_user {
+            global.smtp_user = user;
+        } else {
+            global.smtp_user = Text::new("SMTP user:")
+                .with_default(&global.smtp_user)
+                .with_formatter(&clean_input)
+                .prompt()
+                .unwrap_or(global.smtp_user);
+        }
+
+        if let Some(pass) = args.smtp_password {
+            global.smtp_password = pass;
+        } else {
+            let pass = Password::new("SMTP password:")
+                .with_help_message("Hit enter to use existing one")
+                .with_display_mode(PasswordDisplayMode::Masked)
+                .prompt()
+                .unwrap_or(global.smtp_password.clone());
+
+            if !pass.is_empty() {
+                global.smtp_password = pass;
             }
         }
 
-        if let Some(smtp) = args.mail_smtp {
-            global.mail_smtp = smtp;
+        if args.smtp_starttls {
+            global.smtp_starttls = true;
         } else {
-            print!("SMTP server [{}]: ", global.mail_smtp);
-            stdout().flush().unwrap();
-            stdin()
-                .read_line(&mut mail_smtp)
-                .expect("Did not enter a correct SMTP server?");
-
-            if !mail_smtp.trim().is_empty() {
-                global.mail_smtp = mail_smtp
-                    .trim()
-                    .trim_matches(|c| c == '"' || c == '\'')
-                    .to_string();
-            }
+            global.smtp_starttls = Confirm::new("SMTP use TLS")
+                .with_default(false)
+                .prompt()
+                .unwrap_or(false);
         }
 
-        if let Some(user) = args.mail_user {
-            global.mail_user = user;
+        if let Some(port) = args.smtp_port {
+            global.smtp_port = port;
         } else {
-            print!("SMTP user [{}]: ", global.mail_user);
-            stdout().flush().unwrap();
-            stdin()
-                .read_line(&mut mail_user)
-                .expect("Did not enter a correct SMTP user?");
-
-            if !mail_user.trim().is_empty() {
-                global.mail_user = mail_user
-                    .trim()
-                    .trim_matches(|c| c == '"' || c == '\'')
-                    .to_string();
-            }
-        }
-
-        if let Some(pass) = args.mail_password {
-            global.mail_password = pass;
-        } else {
-            print!(
-                "SMTP password [{}]: ",
-                if global.mail_password.is_empty() {
-                    ""
-                } else {
-                    "********"
-                }
-            );
-            stdout().flush().unwrap();
-            let password = read_password().unwrap_or_default();
-
-            if !password.trim().is_empty() {
-                global.mail_password = password.trim().to_string();
-            }
-        }
-
-        if args.mail_starttls {
-            global.mail_starttls = true;
-        } else {
-            print!(
-                "SMTP use TLS [{}]: ",
-                if global.mail_starttls { "yes" } else { "no" }
-            );
-            stdout().flush().unwrap();
-            stdin()
-                .read_line(&mut mail_starttls)
-                .expect("Did not enter yes or no?");
-
-            if !mail_starttls.trim().is_empty() {
-                global.mail_starttls = mail_starttls.trim().to_lowercase().starts_with('y');
-            }
+            global.smtp_port = CustomType::<u16>::new("SMTP port:")
+                .with_default(global.smtp_port)
+                .prompt()
+                .unwrap_or(global.smtp_port);
         }
 
         if let Err(e) = handles::update_global(pool, global.clone()).await {

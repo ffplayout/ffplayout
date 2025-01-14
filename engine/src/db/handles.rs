@@ -44,7 +44,7 @@ pub async fn db_migrate(conn: &Pool<Sqlite>) -> Result<(), Box<dyn std::error::E
 
 pub async fn select_global(conn: &Pool<Sqlite>) -> Result<GlobalSettings, sqlx::Error> {
     let query =
-        "SELECT id, secret, logs, playlists, public, storage, shared, mail_smtp, mail_user, mail_password, mail_starttls FROM global WHERE id = 1";
+        "SELECT id, secret, logs, playlists, public, storage, shared, smtp_server, smtp_user, smtp_password, smtp_starttls, smtp_port FROM global WHERE id = 1";
 
     sqlx::query_as(query).fetch_one(conn).await
 }
@@ -54,7 +54,7 @@ pub async fn update_global(
     global: GlobalSettings,
 ) -> Result<SqliteQueryResult, sqlx::Error> {
     let query = "UPDATE global SET logs = $2, playlists = $3, public = $4, storage = $5,
-            mail_smtp = $6, mail_user = $7, mail_password = $8, mail_starttls = $9  WHERE id = 1";
+            smtp_server = $6, smtp_user = $7, smtp_password = $8, smtp_starttls = $9, smtp_port = $10  WHERE id = 1";
 
     sqlx::query(query)
         .bind(global.id)
@@ -62,10 +62,11 @@ pub async fn update_global(
         .bind(global.playlists)
         .bind(global.public)
         .bind(global.storage)
-        .bind(global.mail_smtp)
-        .bind(global.mail_user)
-        .bind(global.mail_password)
-        .bind(global.mail_starttls)
+        .bind(global.smtp_server)
+        .bind(global.smtp_user)
+        .bind(global.smtp_password)
+        .bind(global.smtp_starttls)
+        .bind(global.smtp_port)
         .execute(conn)
         .await
 }

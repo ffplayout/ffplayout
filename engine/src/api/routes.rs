@@ -645,6 +645,7 @@ async fn get_playout_config(
 /// curl -X PUT http://127.0.0.1:8787/api/playout/config/1 -H "Content-Type: application/json" \
 /// -d { <CONFIG DATA> } -H 'Authorization: Bearer <TOKEN>'
 /// ```
+#[allow(clippy::too_many_arguments)]
 #[put("/playout/config/{id}")]
 #[protect(
     any("Role::GlobalAdmin", "Role::ChannelAdmin"),
@@ -658,6 +659,7 @@ async fn update_playout_config(
     controllers: web::Data<Mutex<ChannelController>>,
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
+    mail_queues: web::Data<Mutex<Vec<Arc<Mutex<MailQueue>>>>>,
 ) -> Result<impl Responder, ServiceError> {
     let manager = controllers.lock().await.get(*id).await.unwrap();
     let p = manager.channel.lock().await.storage.clone();
@@ -674,6 +676,20 @@ async fn update_playout_config(
 
     handles::update_configuration(&pool, config_id, data.clone()).await?;
     let new_config = get_config(&pool, *id).await?;
+    let mut queues = mail_queues.lock().await;
+
+    for queue in queues.iter_mut() {
+        let mut queue_lock = queue.lock().await;
+
+        if queue_lock.id == *id {
+            if queue_lock.config.recipient != new_config.mail.recipient {
+                queue_lock.clear_raw();
+            }
+
+            queue_lock.update(new_config.mail.clone());
+            break;
+        }
+    }
 
     manager.update_config(new_config).await;
 

@@ -148,15 +148,11 @@ impl LogWriter for MultiFileLogger {
 
 pub struct LogMailer {
     pub mail_queues: Arc<Mutex<Vec<Arc<Mutex<MailQueue>>>>>,
-    raw_lines: Arc<Mutex<Vec<String>>>,
 }
 
 impl LogMailer {
     pub fn new(mail_queues: Arc<Mutex<Vec<Arc<Mutex<MailQueue>>>>>) -> Self {
-        Self {
-            mail_queues,
-            raw_lines: Arc::new(Mutex::new(vec![])),
-        }
+        Self { mail_queues }
     }
 }
 
@@ -174,7 +170,6 @@ impl LogWriter for LogMailer {
         let message = record.args().to_string();
         let level = record.level();
         let mail_queues = self.mail_queues.clone();
-        let raw_lines = self.raw_lines.clone();
         let now = now.now().format("%Y-%m-%d %H:%M:%S");
 
         tokio::spawn(async move {
@@ -184,19 +179,18 @@ impl LogWriter for LogMailer {
                 let mut q_lock = queue.lock().await;
 
                 let msg = strip_tags(&message);
-                let mut lines = raw_lines.lock().await;
 
-                if q_lock.id == id && q_lock.level_eq(level) && !lines.contains(&msg) {
+                if q_lock.id == id && q_lock.level_eq(level) && !q_lock.raw_lines.contains(&msg) {
+                    q_lock.push_raw(msg.clone());
                     q_lock.push(format!("[{now}] [{:>5}] {}", level, msg));
-                    lines.push(msg);
 
                     break;
                 }
 
-                if lines.len() > 1000 {
-                    let last = lines.pop().unwrap();
-                    lines.clear();
-                    lines.push(last);
+                if q_lock.raw_lines.len() > 1000 {
+                    let last = q_lock.raw_lines.pop().unwrap();
+                    q_lock.clear_raw();
+                    q_lock.push_raw(last);
                 }
             }
         });
@@ -213,6 +207,7 @@ pub struct MailQueue {
     pub id: i32,
     pub config: Mail,
     pub lines: Vec<String>,
+    pub raw_lines: Vec<String>,
 }
 
 impl MailQueue {
@@ -221,6 +216,7 @@ impl MailQueue {
             id,
             config,
             lines: vec![],
+            raw_lines: vec![],
         }
     }
 
@@ -236,8 +232,16 @@ impl MailQueue {
         self.lines.clear();
     }
 
+    pub fn clear_raw(&mut self) {
+        self.raw_lines.clear();
+    }
+
     pub fn push(&mut self, line: String) {
         self.lines.push(line);
+    }
+
+    pub fn push_raw(&mut self, line: String) {
+        self.raw_lines.push(line);
     }
 
     fn text(&self) -> String {
@@ -333,7 +337,7 @@ pub async fn send_mail(config: &Mail, msg: String) -> Result<(), ProcessError> {
         .collect::<Vec<&str>>();
 
     let mut message = Message::builder()
-        .from(config.sender_addr.parse()?)
+        .from(config.smtp_user.parse()?)
         .subject(&config.subject)
         .header(header::ContentType::TEXT_PLAIN);
 
@@ -342,13 +346,14 @@ pub async fn send_mail(config: &Mail, msg: String) -> Result<(), ProcessError> {
     }
 
     let mail = message.body(msg)?;
-    let transporter = if config.starttls {
+    let transporter = if config.smtp_starttls {
         AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&config.smtp_server)?
+            .port(config.smtp_port)
     } else {
-        AsyncSmtpTransport::<Tokio1Executor>::relay(&config.smtp_server)?
+        AsyncSmtpTransport::<Tokio1Executor>::relay(&config.smtp_server)?.port(config.smtp_port)
     };
 
-    let credentials = Credentials::new(config.sender_addr.clone(), config.sender_pass.clone());
+    let credentials = Credentials::new(config.smtp_user.clone(), config.smtp_password.clone());
     let mailer = transporter.credentials(credentials).build();
 
     // Send the mail
