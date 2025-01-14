@@ -44,6 +44,7 @@
                         <input
                             v-model="configStore.playout.mail.subject"
                             type="text"
+                            name="subject"
                             class="input input-sm input-bordered w-full max-w-lg"
                         />
                     </label>
@@ -54,6 +55,7 @@
                         <input
                             v-model="configStore.playout.mail.recipient"
                             type="text"
+                            name="recipient"
                             class="input input-sm input-bordered w-full max-w-lg"
                         />
                     </label>
@@ -258,6 +260,7 @@
                     <input
                         v-model="configStore.playout.processing.logo"
                         type="text"
+                        name="logo"
                         class="input input-sm input-bordered w-full max-w-lg"
                     />
                     <div class="label">
@@ -286,6 +289,7 @@
                     <input
                         v-model="configStore.playout.processing.logo_scale"
                         type="text"
+                        name="logo_scale"
                         class="input input-sm input-bordered w-full max-w-md"
                     />
                     <div class="label">
@@ -301,6 +305,7 @@
                     <input
                         v-model="configStore.playout.processing.logo_position"
                         type="text"
+                        name="logo_position"
                         class="input input-sm input-bordered w-full max-w-md"
                     />
                     <div class="label">
@@ -415,6 +420,7 @@
                     <input
                         v-model="configStore.playout.processing.vtt_dummy"
                         type="text"
+                        name="vtt_dummy"
                         class="input input-sm input-bordered w-full max-w-lg"
                     />
                     <div class="label">
@@ -483,6 +489,7 @@
                     <input
                         v-model="configStore.playout.playlist.day_start"
                         type="text"
+                        name="day_start"
                         class="input input-sm input-bordered w-full max-w-xs"
                         pattern="([01]?[0-9]|2[0-4]):[0-5][0-9]:[0-5][0-9]"
                     />
@@ -497,6 +504,7 @@
                     <input
                         v-model="configStore.playout.playlist.length"
                         type="text"
+                        name="length"
                         class="input input-sm input-bordered w-full max-w-xs"
                         pattern="([01]?[0-9]|2[0-4]):[0-5][0-9]:[0-5][0-9]"
                     />
@@ -549,6 +557,7 @@
                     <input
                         v-model="extensions"
                         type="text"
+                        name="extensions"
                         class="input input-sm input-bordered w-full max-w-lg"
                     />
                     <div class="label">
@@ -596,6 +605,7 @@
                     <input
                         v-model="configStore.playout.text.font"
                         type="text"
+                        name="font"
                         class="input input-sm input-bordered w-full max-w-lg"
                     />
                     <div class="label">
@@ -624,6 +634,7 @@
                     <input
                         v-model="configStore.playout.text.style"
                         type="text"
+                        name="style"
                         class="input input-sm input-bordered w-full truncate"
                     />
                     <div class="label">
@@ -637,6 +648,7 @@
                     <input
                         v-model="configStore.playout.text.regex"
                         type="text"
+                        name="regex"
                         class="input input-sm input-bordered w-full max-w-lg"
                     />
                     <div class="label">

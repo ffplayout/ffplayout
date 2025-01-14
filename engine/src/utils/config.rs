@@ -266,13 +266,16 @@ pub struct Mail {
     pub smtp_server: String,
     #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
-    pub starttls: bool,
+    pub smtp_starttls: bool,
     #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
-    pub sender_addr: String,
+    pub smtp_user: String,
     #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
-    pub sender_pass: String,
+    pub smtp_password: String,
+    #[ts(skip)]
+    #[serde(skip_serializing, skip_deserializing)]
+    pub smtp_port: u16,
     pub recipient: String,
     #[ts(type = "string")]
     pub mail_level: Level,
@@ -282,12 +285,13 @@ pub struct Mail {
 impl Mail {
     fn new(global: &models::GlobalSettings, config: &models::Configuration) -> Self {
         Self {
-            show: !global.mail_password.is_empty() && global.mail_smtp != "mail.example.org",
+            show: !global.smtp_password.is_empty() && global.smtp_server != "mail.example.org",
             subject: config.mail_subject.clone(),
-            smtp_server: global.mail_smtp.clone(),
-            starttls: global.mail_starttls,
-            sender_addr: global.mail_user.clone(),
-            sender_pass: global.mail_password.clone(),
+            smtp_server: global.smtp_server.clone(),
+            smtp_starttls: global.smtp_starttls,
+            smtp_user: global.smtp_user.clone(),
+            smtp_password: global.smtp_password.clone(),
+            smtp_port: global.smtp_port,
             recipient: config.mail_recipient.clone(),
             mail_level: string_to_log_level(config.mail_level.clone()),
             interval: config.mail_interval,
@@ -301,9 +305,10 @@ impl Default for Mail {
             show: false,
             subject: String::default(),
             smtp_server: String::default(),
-            starttls: bool::default(),
-            sender_addr: String::default(),
-            sender_pass: String::default(),
+            smtp_starttls: bool::default(),
+            smtp_user: String::default(),
+            smtp_password: String::default(),
+            smtp_port: 465,
             recipient: String::default(),
             mail_level: Level::Debug,
             interval: i64::default(),
@@ -944,20 +949,24 @@ pub async fn get_config(
         config.processing.volume = volume;
     }
 
-    if let Some(mail_smtp) = args.mail_smtp {
-        config.mail.smtp_server = mail_smtp;
+    if let Some(smtp_server) = args.smtp_server {
+        config.mail.smtp_server = smtp_server;
     }
 
-    if let Some(mail_user) = args.mail_user {
-        config.mail.sender_addr = mail_user;
+    if let Some(smtp_user) = args.smtp_user {
+        config.mail.smtp_user = smtp_user;
     }
 
-    if let Some(mail_password) = args.mail_password {
-        config.mail.sender_pass = mail_password;
+    if let Some(smtp_password) = args.smtp_password {
+        config.mail.smtp_password = smtp_password;
     }
 
-    if args.mail_starttls {
-        config.mail.starttls = true;
+    if args.smtp_starttls {
+        config.mail.smtp_starttls = true;
+    }
+
+    if let Some(smtp_port) = args.smtp_port {
+        config.mail.smtp_port = smtp_port;
     }
 
     Ok(config)

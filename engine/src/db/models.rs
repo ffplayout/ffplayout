@@ -21,10 +21,11 @@ pub struct GlobalSettings {
     pub public: String,
     pub storage: String,
     pub shared: bool,
-    pub mail_smtp: String,
-    pub mail_user: String,
-    pub mail_password: String,
-    pub mail_starttls: bool,
+    pub smtp_server: String,
+    pub smtp_user: String,
+    pub smtp_password: String,
+    pub smtp_starttls: bool,
+    pub smtp_port: u16,
 }
 
 impl GlobalSettings {
@@ -41,10 +42,11 @@ impl GlobalSettings {
                 public: String::new(),
                 storage: String::new(),
                 shared: false,
-                mail_smtp: String::new(),
-                mail_user: String::new(),
-                mail_password: String::new(),
-                mail_starttls: false,
+                smtp_server: String::new(),
+                smtp_user: String::new(),
+                smtp_password: String::new(),
+                smtp_starttls: false,
+                smtp_port: 465,
             },
         }
     }
