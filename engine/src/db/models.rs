@@ -284,6 +284,7 @@ impl UserMeta {
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Role {
     GlobalAdmin,
     ChannelAdmin,

@@ -7,7 +7,6 @@ use std::{
     time::Duration,
 };
 
-use actix_web::rt::time::interval;
 use flexi_logger::{
     writers::{FileLogWriter, LogWriter},
     Age, Cleanup, Criterion, DeferredNow, FileSpec, Level, LogSpecification, Logger, Naming,
@@ -20,7 +19,7 @@ use lettre::{
 use log::{kv::Value, *};
 use paris::formatter::colorize_string;
 use regex::Regex;
-use tokio::sync::Mutex;
+use tokio::{sync::Mutex, time::interval};
 
 use super::ARGS;
 
@@ -366,7 +365,7 @@ pub async fn send_mail(config: &Mail, msg: String) -> Result<(), ProcessError> {
 ///
 /// Check every give seconds for messages and send them.
 pub fn mail_queue(mail_queues: Arc<Mutex<Vec<Arc<Mutex<MailQueue>>>>>) {
-    actix_web::rt::spawn(async move {
+    tokio::spawn(async move {
         let sec = 10;
         let mut interval = interval(Duration::from_secs(sec));
         let mut counter = 0;

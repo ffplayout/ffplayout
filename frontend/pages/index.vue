@@ -105,8 +105,6 @@ const showLoginError = ref(false)
 const formUsername = ref('')
 const formPassword = ref('')
 
-authStore.inspectToken()
-
 async function login() {
     try {
         const status = await authStore.obtainToken(formUsername.value, formPassword.value)

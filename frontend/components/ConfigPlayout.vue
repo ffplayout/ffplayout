@@ -733,20 +733,17 @@
     <GenericModal
         :title="t('config.restartTile')"
         :text="t('config.restartText')"
-        :show="showModal"
-        :modal-action="restart"
+        :show="configStore.showRestartModal"
+        :modal-action="configStore.restart"
     />
 </template>
 
 <script setup lang="ts">
-const config = useRuntimeConfig()
 const { t } = useI18n()
 
 const authStore = useAuth()
 const configStore = useConfig()
 const indexStore = useIndex()
-
-const showModal = ref(false)
 
 const logLevels = ['INFO', 'WARNING', 'ERROR']
 const processingMode = ['folder', 'playlist']
@@ -788,7 +785,7 @@ async function onSubmitPlayout() {
         })
             .then(async (response: any) => {
                 if (response === 'active') {
-                    showModal.value = true
+                    configStore.showRestartModal = true
                 }
 
                 await configStore.getPlayoutConfig()
@@ -799,21 +796,5 @@ async function onSubmitPlayout() {
     } else {
         indexStore.msgAlert('error', t('config.updatePlayoutFailed'), 2)
     }
-}
-
-async function restart(res: boolean) {
-    if (res) {
-        const channel = configStore.channels[configStore.i].id
-
-        await $fetch(`/api/control/${channel}/process/`, {
-            method: 'POST',
-            headers: { ...configStore.contentType, ...authStore.authHeader },
-            body: JSON.stringify({ command: 'restart' }),
-        }).catch((e) => {
-            indexStore.msgAlert('error', e.data, 3)
-        })
-    }
-
-    showModal.value = false
 }
 </script>

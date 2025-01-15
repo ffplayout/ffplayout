@@ -4652,7 +4652,6 @@ dependencies = [
 name = "tests"
 version = "0.25.0-alpha2"
 dependencies = [
- "actix-rt",
  "actix-test",
  "actix-web",
  "chrono",

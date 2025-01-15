@@ -46,7 +46,7 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
     let playlist_init = manager.list_init.clone();
     let is_terminated = manager.is_terminated.clone();
     let ingest_is_running = manager.ingest_is_running.clone();
-    let mut buffer: [u8; 65088] = [0; 65088];
+    let mut buffer = vec![0u8; 64 * 1024];
     let mut live_on = false;
     let mut error_count = 0;
 
@@ -89,8 +89,8 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
 
         trace!("Decoder CMD: {:?}", node.cmd);
 
-        let mut cmd = match &node.cmd {
-            Some(cmd) => cmd.clone(),
+        let mut cmd = match node.cmd {
+            Some(cmd) => cmd,
             None => break,
         };
 
@@ -154,8 +154,8 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
             dec_cmd.append(&mut vec_strings!("-map", format!("{i}:s"), "-c:s", "copy"));
         }
 
-        if let Some(mut cmd) = config.processing.cmd.clone() {
-            dec_cmd.append(&mut cmd);
+        if let Some(cmd) = &config.processing.cmd {
+            dec_cmd.extend_from_slice(cmd);
         }
 
         debug!(target: Target::file_mail(), channel = id;
@@ -204,8 +204,8 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
                 if let Some(ref mut ingest_stdout) = *ingest_stdout_guard {
                     match ingest_stdout.read(&mut buffer[..]).await {
                         Ok(0) => continue,
-                        Ok(length) => {
-                            if let Err(e) = enc_writer.write_all(&buffer[..length]).await {
+                        Ok(n) => {
+                            if let Err(e) = enc_writer.write_all(&buffer[..n]).await {
                                 error!(target: Target::file_mail(), channel = id; "Error writing to encoder: {e}");
                                 break;
                             }
@@ -227,8 +227,8 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
 
                 match decoder_stdout.read(&mut buffer[..]).await {
                     Ok(0) => break, // EOF
-                    Ok(length) => {
-                        if let Err(e) = enc_writer.write_all(&buffer[..length]).await {
+                    Ok(n) => {
+                        if let Err(e) = enc_writer.write_all(&buffer[..n]).await {
                             error!(target: Target::file_mail(), channel = id; "Error writing to encoder: {e}");
                             break;
                         }

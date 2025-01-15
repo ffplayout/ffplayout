@@ -51,7 +51,7 @@ fn thread_counter() -> usize {
     (available_threads / 2).max(2)
 }
 
-#[actix_web::main]
+#[tokio::main]
 async fn main() -> std::io::Result<()> {
     let mail_queues = Arc::new(Mutex::new(vec![]));
     let shared_duration = Arc::new(Mutex::new(DurationMap::create(1000)));
@@ -130,7 +130,7 @@ async fn main() -> std::io::Result<()> {
                 .app_data(web::Data::from(Arc::clone(&broadcast_data)))
                 .app_data(web::Data::new(shared_duration.clone())) // to-do: find proper define type
                 .wrap(logger)
-                .service(login)
+                .service(web::scope("/auth").service(login).service(refresh))
                 .service(
                     web::scope("/api")
                         .wrap(auth)

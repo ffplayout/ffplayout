@@ -2,7 +2,7 @@
     <div v-if="channel" class="w-full max-w-[800px]">
         <h2 class="pt-3 text-3xl">{{ t('config.channelConf') }} ({{ channel.id }})</h2>
         <div class="w-full flex justify-end my-4">
-            <button v-if="authStore.role === 'GlobalAdmin'" class="btn btn-sm btn-primary" @click="newChannel()">
+            <button v-if="authStore.role === 'global_admin'" class="btn btn-sm btn-primary" @click="newChannel()">
                 {{ t('config.addChannel') }}
             </button>
         </div>
@@ -17,7 +17,7 @@
                     placeholder="Type here"
                     class="input input-bordered w-full !bg-base-100"
                     @keyup="isChanged"
-                    :disabled="authStore.role === 'User'"
+                    :disabled="authStore.role === 'user'"
                 />
             </label>
 
@@ -30,7 +30,7 @@
                     type="text"
                     class="input input-bordered w-full !bg-base-100"
                     @keyup="isChanged"
-                    :disabled="authStore.role === 'User'"
+                    :disabled="authStore.role === 'user'"
                 />
             </label>
 
@@ -43,11 +43,11 @@
                     type="text"
                     class="input input-bordered w-full !bg-base-100"
                     @keyup="isChanged"
-                    :disabled="authStore.role === 'User'"
+                    :disabled="authStore.role === 'user'"
                 />
             </label>
 
-            <template v-if="authStore.role === 'GlobalAdmin'">
+            <template v-if="authStore.role === 'global_admin'">
                 <div class="mt-7 font-bold h-3">
                     <p v-if="configStore.playout.storage.shared_storage">
                         <SvgIcon name="warning" classes="inline mr-2" />
@@ -94,7 +94,11 @@
                     <div class="label">
                         <span class="label-text">{{ t('config.timezone') }}</span>
                     </div>
-                    <select v-model="channel.timezone" class="select select-md select-bordered w-full max-w-xs" @change="isChanged">
+                    <select
+                        v-model="channel.timezone"
+                        class="select select-md select-bordered w-full max-w-xs"
+                        @change="isChanged"
+                    >
                         <option v-for="zone in Intl.supportedValuesOf('timeZone')" :key="zone" :value="zone">
                             {{ zone }}
                         </option>
@@ -102,13 +106,13 @@
                 </label>
             </template>
 
-            <div v-if="authStore.role !== 'User'" class="my-5 flex gap-1">
+            <div v-if="authStore.role !== 'user'" class="my-5 flex gap-1">
                 <button class="btn" :class="saved ? 'btn-primary' : 'btn-error'" @click="addUpdateChannel()">
                     {{ t('config.save') }}
                 </button>
                 <button
                     v-if="
-                        authStore.role === 'GlobalAdmin' && configStore.channels.length > 1 && channel.id > 1 && saved
+                        authStore.role === 'global_admin' && configStore.channels.length > 1 && channel.id > 1 && saved
                     "
                     class="btn btn-primary"
                     @click="deleteChannel()"
@@ -120,6 +124,12 @@
                 </button>
             </div>
         </div>
+        <GenericModal
+            :title="t('config.restartTile')"
+            :text="t('config.restartText')"
+            :show="configStore.showRestartModal"
+            :modal-action="configStore.restart"
+        />
     </div>
 </template>
 
@@ -201,6 +211,9 @@ async function updateChannel() {
         body: JSON.stringify(channel.value),
     })
         .then(() => {
+            const oldTimezone = configStore.timezone
+            const currentTimezone = channel.value.timezone
+
             for (let i = 0; i < configStore.channels.length; i++) {
                 if (configStore.channels[i].id === channel.value.id) {
                     configStore.channels[i] = cloneDeep(channel.value)
@@ -214,6 +227,13 @@ async function updateChannel() {
                     configStore.channelsRaw[i] = cloneDeep(channel.value)
                     break
                 }
+            }
+
+            channel.value = cloneDeep(configStore.channels[i.value])
+            channelOrig.value = cloneDeep(configStore.channels[i.value])
+
+            if (oldTimezone !== currentTimezone) {
+                configStore.showRestartModal = true
             }
 
             indexStore.msgAlert('success', t('config.updateChannelSuccess'), 2)
@@ -236,7 +256,7 @@ async function addUpdateChannel() {
             await updateChannel()
         }
 
-        if (authStore.role === 'GlobalAdmin') {
+        if (authStore.role === 'global_admin') {
             await configStore.getAdvancedConfig()
         }
 
@@ -264,7 +284,7 @@ async function deleteChannel() {
 
     i.value = configStore.i - 1
 
-    if (authStore.role === 'GlobalAdmin') {
+    if (authStore.role === 'global_admin') {
         await configStore.getAdvancedConfig()
     }
 
