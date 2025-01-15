@@ -44,11 +44,11 @@ export default {
     control: {
         noClip: 'На данный момент ни один файл не воспроизводится',
         ingest: 'Прямой эфир/Перехват эфира',
-        start: 'Запустить Playout Service',
+        start: 'Запустить Playout',
         last: 'Переключить на предыдущий файл',
-        stop: 'Остановить Playout Service',
+        stop: 'Остановить Playout',
         reset: 'Сбросить Playout State',
-        restart: 'Перезапустить Playout Service',
+        restart: 'Перезапустить Playout',
         next: 'Переключить на следующий файл',
     },
     player: {

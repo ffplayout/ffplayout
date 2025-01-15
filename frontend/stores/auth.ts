@@ -5,6 +5,7 @@ export const useAuth = defineStore('auth', {
     state: () => ({
         isLogin: false,
         jwtToken: '',
+        jwtRefresh: '',
         authHeader: {},
         channelID: 0,
         role: '',
@@ -13,23 +14,35 @@ export const useAuth = defineStore('auth', {
 
     getters: {},
     actions: {
-        updateToken(token: string) {
-            const cookie = useCookie('token', {
+        updateToken(token: string, refresh: string) {
+            const cookieToken = useCookie('token', {
                 path: '/',
                 maxAge: 60 * 60 * 24 * 365,
                 sameSite: 'lax',
             })
 
-            cookie.value = token
+            const cookieRefresh = useCookie('refresh', {
+                path: '/',
+                maxAge: 60 * 60 * 24 * 365,
+                sameSite: 'lax',
+            })
+
+            cookieToken.value = token
+            cookieRefresh.value = refresh
             this.jwtToken = token
+            this.jwtRefresh = refresh
             this.authHeader = { Authorization: `Bearer ${token}` }
         },
 
         removeToken() {
-            const cookie = useCookie('token')
-            cookie.value = null
+            const token = useCookie('token')
+            const refresh = useCookie('refresh')
+            token.value = null
+            refresh.value = null
+
             this.isLogin = false
             this.jwtToken = ''
+            this.jwtRefresh = ''
             this.authHeader = {}
         },
 
@@ -40,18 +53,18 @@ export const useAuth = defineStore('auth', {
                 password,
             }
 
-            await $fetch('/auth/login/', {
+            await $fetch<Token>('/auth/login/', {
                 method: 'POST',
                 body: JSON.stringify(payload),
                 async onResponse(data: any) {
                     code = data.response.status
                 },
             })
-                .then((response: any) => {
-                    this.updateToken(response.user?.token)
-                    const decodedToken = jwtDecode<JwtPayloadExt>(response.user?.token)
+                .then((response: Token) => {
+                    this.updateToken(response.access, response.refresh)
+                    const decodedToken = jwtDecode<JwtPayloadExt>(response.access)
                     this.isLogin = true
-                    this.channelID = decodedToken.channel
+                    this.channelID = decodedToken.channels[0]
                     this.role = decodedToken.role
                 })
                 .catch((e) => {
@@ -77,25 +90,47 @@ export const useAuth = defineStore('auth', {
                 })
         },
 
-        inspectToken() {
-            const token = useCookie('token').value
+        async refreshToken() {
+            await $fetch('/auth/refresh/', {
+                method: 'POST',
+                headers: new Headers([['content-type', 'application/json;charset=UTF-8']]),
+                body: JSON.stringify({ refresh: this.jwtRefresh }),
+            }).then((response: any) => {
+                if (response.access) {
+                    this.updateToken(response.access, this.jwtRefresh)
+                    this.isLogin = true
+                }
+            })
+        },
 
-            if (token) {
-                this.updateToken(token)
+        async inspectToken() {
+            const token = useCookie('token').value
+            const refresh = useCookie('refresh').value
+
+            if (token && refresh) {
+                this.jwtToken = token
+                this.jwtRefresh = refresh
+                this.authHeader = { Authorization: `Bearer ${token}` }
+
                 const decodedToken = jwtDecode<JwtPayloadExt>(token)
+                const decodedRefresh = jwtDecode<JwtPayloadExt>(refresh)
                 const timestamp = Date.now() / 1000
                 const expireToken = decodedToken.exp
-                this.channelID = decodedToken.channel
+                const expireRefresh = decodedRefresh.exp || 0
+
+                this.channelID = decodedToken.channels[0]
                 this.role = decodedToken.role
 
                 if (expireToken && this.jwtToken && expireToken - timestamp > 15) {
                     this.isLogin = true
+                } else if (expireRefresh && expireRefresh - timestamp > 0) {
+                    await this.refreshToken()
                 } else {
                     // Prompt user to re-login.
-                    this.isLogin = false
+                    this.removeToken()
                 }
             } else {
-                this.isLogin = false
+                this.removeToken()
             }
         },
     },

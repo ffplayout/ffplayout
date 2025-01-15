@@ -1,5 +1,4 @@
 use actix_web::{get, web, App, Error, HttpResponse, Responder};
-// use actix_web_httpauth::extractors::bearer::BearerAuth;
 
 use serde_json::json;
 use sqlx::{sqlite::SqlitePoolOptions, Pool, Sqlite};
@@ -51,7 +50,7 @@ async fn get_handler() -> Result<impl Responder, Error> {
     Ok(HttpResponse::Ok())
 }
 
-#[actix_rt::test]
+#[actix_web::test]
 async fn test_get() {
     let srv = actix_test::start(|| App::new().service(get_handler));
 
@@ -61,7 +60,7 @@ async fn test_get() {
     assert!(res.status().is_success());
 }
 
-#[actix_rt::test]
+#[actix_web::test]
 async fn test_login() {
     let (_, _, pool) = prepare_config().await;
 
@@ -69,7 +68,9 @@ async fn test_login() {
 
     let srv = actix_test::start(move || {
         let db_pool = web::Data::new(pool.clone());
-        App::new().app_data(db_pool).service(login)
+        App::new()
+            .app_data(db_pool)
+            .service(web::scope("/auth").service(login))
     });
 
     let payload = json!({"username": "admin", "password": "admin"});

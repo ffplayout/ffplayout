@@ -9,7 +9,7 @@
                 {{ t('config.channel') }}
             </button>
             <button
-                v-if="authStore.role === 'GlobalAdmin'"
+                v-if="authStore.role === 'global_admin'"
                 class="join-item btn btn-sm btn-primary duration-500"
                 :class="activeConf === 2 && 'btn-secondary'"
                 @click="activeConf = 2"
@@ -17,7 +17,7 @@
                 Advanced
             </button>
             <button
-                v-if="authStore.role !== 'User'"
+                v-if="authStore.role !== 'user'"
                 class="join-item btn btn-sm btn-primary mt-1 duration-500"
                 :class="activeConf === 3 && 'btn-secondary'"
                 @click="activeConf = 3"
