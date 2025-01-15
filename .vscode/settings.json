@@ -12,6 +12,8 @@
     "prettier.singleQuote": true,
     "rust-analyzer.cargo.target": null,
     "rust-analyzer.checkOnSave": true,
+    "rust-analyzer.check.overrideCommand": null,
+    "rust-analyzer.check.command": "clippy",
     "rust-analyzer.cargo.buildScripts.overrideCommand": null,
     "rust-analyzer.rustfmt.overrideCommand": null,
     "rust-analyzer.inlayHints.chainingHints.enable": false,

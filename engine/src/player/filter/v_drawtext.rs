@@ -1,10 +1,7 @@
-use std::{
-    ffi::OsStr,
-    path::Path,
-    sync::{Arc, Mutex},
-};
+use std::{ffi::OsStr, path::Path, sync::Arc};
 
 use regex::Regex;
+use tokio::sync::Mutex;
 
 use crate::player::{
     controller::ProcessUnit::*,
@@ -12,17 +9,17 @@ use crate::player::{
 };
 use crate::utils::config::PlayoutConfig;
 
-pub fn filter_node(
+pub async fn filter_node(
     config: &PlayoutConfig,
     node: Option<&Media>,
     filter_chain: &Option<Arc<Mutex<Vec<String>>>>,
 ) -> String {
     let mut filter = String::new();
-    let mut font = String::new();
-
-    if Path::new(&config.text.font_path).is_file() {
-        font = format!(":fontfile='{}'", config.text.font_path)
-    }
+    let font = if Path::new(&config.text.font_path).is_file() {
+        format!(":fontfile='{}'", config.text.font_path)
+    } else {
+        String::new()
+    };
 
     let zmq_socket = match node.map(|n| n.unit) {
         Some(Ingest) => config.text.zmq_server_socket.clone(),
@@ -30,10 +27,10 @@ pub fn filter_node(
     };
 
     if config.text.text_from_filename && node.is_some() {
-        let source = node.unwrap_or(&Media::new(0, "", false)).source.clone();
+        let source = node.map_or("", |n| &n.source);
         let text = match Regex::new(&config.text.regex)
             .ok()
-            .and_then(|r| r.captures(&source))
+            .and_then(|r| r.captures(source))
         {
             Some(t) => t[1].to_string(),
             None => Path::new(&source)
@@ -56,7 +53,7 @@ pub fn filter_node(
         let mut filter_cmd = format!("text=''{font}");
 
         if let Some(chain) = filter_chain {
-            if let Some(link) = chain.lock().unwrap().iter().find(|&l| l.contains("text")) {
+            if let Some(link) = chain.lock().await.iter().find(|&l| l.contains("text")) {
                 filter_cmd = link.to_string();
             }
         }

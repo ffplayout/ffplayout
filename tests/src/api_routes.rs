@@ -5,10 +5,7 @@ use serde_json::json;
 use sqlx::{sqlite::SqlitePoolOptions, Pool, Sqlite};
 
 use ffplayout::api::routes::login;
-use ffplayout::db::{
-    handles,
-    models::{init_globales, User},
-};
+use ffplayout::db::{handles, init_globales, models::User};
 use ffplayout::player::controller::ChannelManager;
 use ffplayout::utils::config::PlayoutConfig;
 // use ffplayout::validator;
@@ -68,7 +65,7 @@ async fn test_get() {
 async fn test_login() {
     let (_, _, pool) = prepare_config().await;
 
-    init_globales(&pool).await;
+    init_globales(&pool).await.unwrap();
 
     let srv = actix_test::start(move || {
         let db_pool = web::Data::new(pool.clone());

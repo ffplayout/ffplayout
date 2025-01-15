@@ -1,11 +1,8 @@
-use std::{
-    io,
-    path::PathBuf,
-    sync::{Arc, Mutex},
-};
+use std::{path::PathBuf, sync::Arc};
 
 use log::*;
 use sqlx::{Pool, Sqlite};
+use tokio::sync::Mutex;
 
 use super::logging::MailQueue;
 use crate::db::{handles, models::Channel};
@@ -52,14 +49,8 @@ pub async fn create_channel(
         error!("{e}");
     };
 
-    controllers
-        .lock()
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?
-        .add(manager);
-
-    if let Ok(mut mqs) = queue.lock() {
-        mqs.push(m_queue.clone());
-    }
+    controllers.lock().await.add(manager);
+    queue.lock().await.push(m_queue.clone());
 
     map_global_admins(conn).await?;
 
@@ -74,15 +65,17 @@ pub async fn delete_channel(
 ) -> Result<(), ServiceError> {
     let channel = handles::select_channel(conn, &id).await?;
     handles::delete_channel(conn, &channel.id).await?;
+    controllers.lock().await.remove(id).await;
+    let mut queue_guard = queue.lock().await;
+    let mut new_queue = Vec::with_capacity(queue_guard.len());
 
-    controllers
-        .lock()
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?
-        .remove(id);
-
-    if let Ok(mut mqs) = queue.lock() {
-        mqs.retain(|q| q.lock().unwrap().id != id);
+    for q in queue_guard.iter() {
+        if q.lock().await.id != id {
+            new_queue.push(q.clone());
+        }
     }
+
+    *queue_guard = new_queue;
 
     map_global_admins(conn).await?;
 

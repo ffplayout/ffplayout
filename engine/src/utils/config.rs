@@ -5,6 +5,7 @@ use std::{
 };
 
 use chrono::NaiveTime;
+use chrono_tz::Tz;
 use flexi_logger::Level;
 use log::info;
 use regex::Regex;
@@ -197,13 +198,12 @@ pub struct Channel {
     #[serde(skip_serializing, skip_deserializing)]
     pub s3_storage: Option<S3>, // this is the added s3 storage part!
     pub shared: bool,
+    #[ts(type = "string")]
+    pub timezone: Option<Tz>,
 }
 
 impl Channel {
     pub async fn new(config: &models::GlobalSettings, channel: models::Channel) -> Self {
-        println!("\noriginal_path: {}", &channel.storage.original_path); // DEBUG
-        println!("\ncleaned_path_inConf: {}", &channel.storage.cleaned_path); // DEBUG
-
         Self {
             logs: PathBuf::from(config.logs.clone()),
             public: PathBuf::from(channel.public.clone()),
@@ -227,14 +227,15 @@ impl Channel {
                             .endpoint_url(channel.storage.get_s3_endpointurl().unwrap())
                             .force_path_style(true)
                             .build();
-                        let s3_client = s3::Client::from_conf(s3_config);
-                        s3_client
+
+                        s3::Client::from_conf(s3_config)
                     },
                 })
             } else {
                 None
             },
             shared: config.shared,
+            timezone: channel.timezone,
         }
     }
 }
@@ -304,13 +305,16 @@ pub struct Mail {
     pub smtp_server: String,
     #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
-    pub starttls: bool,
+    pub smtp_starttls: bool,
     #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
-    pub sender_addr: String,
+    pub smtp_user: String,
     #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
-    pub sender_pass: String,
+    pub smtp_password: String,
+    #[ts(skip)]
+    #[serde(skip_serializing, skip_deserializing)]
+    pub smtp_port: u16,
     pub recipient: String,
     #[ts(type = "string")]
     pub mail_level: Level,
@@ -320,12 +324,13 @@ pub struct Mail {
 impl Mail {
     fn new(global: &models::GlobalSettings, config: &models::Configuration) -> Self {
         Self {
-            show: !global.mail_password.is_empty() && global.mail_smtp != "mail.example.org",
+            show: !global.smtp_password.is_empty() && global.smtp_server != "mail.example.org",
             subject: config.mail_subject.clone(),
-            smtp_server: global.mail_smtp.clone(),
-            starttls: global.mail_starttls,
-            sender_addr: global.mail_user.clone(),
-            sender_pass: global.mail_password.clone(),
+            smtp_server: global.smtp_server.clone(),
+            smtp_starttls: global.smtp_starttls,
+            smtp_user: global.smtp_user.clone(),
+            smtp_password: global.smtp_password.clone(),
+            smtp_port: global.smtp_port,
             recipient: config.mail_recipient.clone(),
             mail_level: string_to_log_level(config.mail_level.clone()),
             interval: config.mail_interval,
@@ -339,9 +344,10 @@ impl Default for Mail {
             show: false,
             subject: String::default(),
             smtp_server: String::default(),
-            starttls: bool::default(),
-            sender_addr: String::default(),
-            sender_pass: String::default(),
+            smtp_starttls: bool::default(),
+            smtp_user: String::default(),
+            smtp_password: String::default(),
+            smtp_port: 465,
             recipient: String::default(),
             mail_level: Level::Debug,
             interval: i64::default(),
@@ -364,11 +370,7 @@ impl Logging {
             ffmpeg_level: config.logging_ffmpeg_level.clone(),
             ingest_level: config.logging_ingest_level.clone(),
             detect_silence: config.logging_detect_silence,
-            ignore_lines: config
-                .logging_ignore
-                .split(';')
-                .map(|s| s.to_string())
-                .collect(),
+            ignore_lines: config.logging_ignore.split(';').map(String::from).collect(),
         }
     }
 }
@@ -513,7 +515,7 @@ impl Storage {
             extensions: config
                 .storage_extensions
                 .split(';')
-                .map(|s| s.to_string())
+                .map(String::from)
                 .collect(),
             shuffle: config.storage_shuffle,
             shared_storage,
@@ -636,14 +638,6 @@ fn default_track_index() -> i32 {
     -1
 }
 
-// fn default_tracks() -> i32 {
-//     1
-// }
-
-// fn default_channels() -> u8 {
-//     2
-// }
-
 impl PlayoutConfig {
     pub async fn new(pool: &Pool<Sqlite>, channel_id: i32) -> Result<Self, ServiceError> {
         let global = handles::select_global(pool).await?;
@@ -665,7 +659,10 @@ impl PlayoutConfig {
 
         let mut in_use_storage = channel.storage.clone();
 
-        if !channel.s3_storage.is_some() {
+        if channel.s3_storage.is_some() {
+            info!("S3 storage path detected");
+            in_use_storage = PathBuf::new();
+        } else {
             info!("Local storage path detected");
             if !channel.storage.is_dir() {
                 tokio::fs::create_dir_all(&in_use_storage)
@@ -674,11 +671,7 @@ impl PlayoutConfig {
                         panic!("Can't create storage folder: {:#?}", in_use_storage)
                     });
             }
-        } else {
-            info!("S3 storage path detected");
-            in_use_storage = PathBuf::new();
         }
-        println!("\nin_use_storage: {:?}", &in_use_storage); // DEBUG
         let mut storage = Storage::new(&config, in_use_storage.clone(), channel.shared);
 
         if !channel.playlists.is_dir() {
@@ -691,24 +684,24 @@ impl PlayoutConfig {
 
         let mut filler_path = PathBuf::from(&config.storage_filler);
         let mut filler = config.storage_filler.clone();
-        if !channel.s3_storage.is_some() {
+        if channel.s3_storage.is_none() {
             (filler_path, _, filler) = norm_abs_path(&in_use_storage, &config.storage_filler)?;
         }
 
         storage.filler = filler;
         storage.filler_path = filler_path;
 
-        playlist.start_sec = Some(time_to_sec(&playlist.day_start));
+        playlist.start_sec = Some(time_to_sec(&playlist.day_start, &channel.timezone));
 
         if playlist.length.contains(':') {
-            playlist.length_sec = Some(time_to_sec(&playlist.length));
+            playlist.length_sec = Some(time_to_sec(&playlist.length, &channel.timezone));
         } else {
             playlist.length_sec = Some(86400.0);
         }
 
         let mut logo_path = PathBuf::from(&processing.logo);
         let mut logo = processing.logo.clone();
-        if !channel.s3_storage.is_some() {
+        if channel.s3_storage.is_none() {
             (logo_path, _, logo) = norm_abs_path(&in_use_storage, &processing.logo)?;
         }
 
@@ -720,7 +713,7 @@ impl PlayoutConfig {
         processing.logo_path = logo_path.to_string_lossy().to_string();
 
         if processing.audio_tracks < 1 {
-            processing.audio_tracks = 1
+            processing.audio_tracks = 1;
         }
 
         let mut process_cmd = vec_strings![];
@@ -797,8 +790,10 @@ impl PlayoutConfig {
             }
 
             let is_tee_muxer = cmd.contains(&"tee".to_string());
+            let re_ts = Regex::new(r"filename=(\S+?\.ts)").unwrap();
+            let re_m3 = Regex::new(r"\](\S+?\.m3u8)").unwrap();
 
-            for item in cmd.iter_mut() {
+            for item in &mut cmd {
                 if item.ends_with(".ts") || (item.ends_with(".m3u8") && item != "master.m3u8") {
                     if is_tee_muxer {
                         // Processes the `item` string to replace `.ts` and `.m3u8` filenames with their absolute paths.
@@ -808,8 +803,6 @@ impl PlayoutConfig {
                         // - For each identified filename, normalizes its path and checks if the parent directory exists.
                         // - Creates the parent directory if it does not exist.
                         // - Replaces the original filename in the `item` string with the normalized absolute path.
-                        let re_ts = Regex::new(r"filename=(\S+?\.ts)").unwrap();
-                        let re_m3 = Regex::new(r"\](\S+?\.m3u8)").unwrap();
 
                         for s in item.clone().split('|') {
                             if let Some(ts) = re_ts.captures(s).and_then(|p| p.get(1)) {
@@ -857,9 +850,9 @@ impl PlayoutConfig {
         // when text overlay without text_from_filename is on, turn also the RPC server on,
         // to get text messages from it
         if text.add_text && !text.text_from_filename {
-            text.zmq_stream_socket = gen_tcp_socket(String::new());
+            text.zmq_stream_socket = gen_tcp_socket("").await;
             text.zmq_server_socket =
-                gen_tcp_socket(text.zmq_stream_socket.clone().unwrap_or_default());
+                gen_tcp_socket(&text.zmq_stream_socket.clone().unwrap_or_default()).await;
             text.node_pos = Some(2);
         } else {
             text.zmq_stream_socket = None;
@@ -996,7 +989,7 @@ pub async fn get_config(
 
     if let Some(start) = args.start {
         config.playlist.day_start.clone_from(&start);
-        config.playlist.start_sec = Some(time_to_sec(&start));
+        config.playlist.start_sec = Some(time_to_sec(&start, &config.channel.timezone));
     }
 
     if let Some(output) = args.output {
@@ -1013,20 +1006,24 @@ pub async fn get_config(
         config.processing.volume = volume;
     }
 
-    if let Some(mail_smtp) = args.mail_smtp {
-        config.mail.smtp_server = mail_smtp;
+    if let Some(smtp_server) = args.smtp_server {
+        config.mail.smtp_server = smtp_server;
     }
 
-    if let Some(mail_user) = args.mail_user {
-        config.mail.sender_addr = mail_user;
+    if let Some(smtp_user) = args.smtp_user {
+        config.mail.smtp_user = smtp_user;
     }
 
-    if let Some(mail_password) = args.mail_password {
-        config.mail.sender_pass = mail_password;
+    if let Some(smtp_password) = args.smtp_password {
+        config.mail.smtp_password = smtp_password;
     }
 
-    if args.mail_starttls {
-        config.mail.starttls = true;
+    if args.smtp_starttls {
+        config.mail.smtp_starttls = true;
+    }
+
+    if let Some(smtp_port) = args.smtp_port {
+        config.mail.smtp_port = smtp_port;
     }
 
     Ok(config)

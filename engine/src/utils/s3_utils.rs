@@ -18,7 +18,7 @@ use super::{
     errors::ServiceError,
     files::{MoveObject, PathObject, VideoFile},
 };
-use crate::{player::utils::MediaProbe, utils::config::PlayoutConfig};
+use crate::{player::utils::probe::MediaProbe, utils::config::PlayoutConfig};
 use aws_sdk_s3::{
     presigning::PresigningConfig,
     types::{CompletedMultipartUpload, CompletedPart},
@@ -94,10 +94,10 @@ pub fn s3_path(input_path: &str) -> Result<(String, String), ServiceError> {
         let re = Regex::new("//+").unwrap(); // Matches one or more '/'
         let none_redundant_path = re.replace_all(input_path, "/");
         let clean_path = if !none_redundant_path.is_empty() && none_redundant_path != "/" {
-            if !input_path.ends_with("/") {
-                format!("{}/", none_redundant_path.trim_start_matches("/"))
-            } else {
+            if input_path.ends_with("/") {
                 none_redundant_path.trim_start_matches("/").to_string()
+            } else {
+                format!("{}/", none_redundant_path.trim_start_matches("/"))
             }
         } else {
             String::new()
@@ -130,7 +130,7 @@ pub async fn s3_browser(
     let mut parent_folders = vec![];
     let mut s3_obj_dur = duration
         .lock()
-        .map_err(|e| ServiceError::Conflict(format!("Invalid S3 config!: {}", e).into()))?;
+        .map_err(|e| ServiceError::Conflict(format!("Invalid S3 config!: {}", e)))?;
     let bucket = &config.channel.s3_storage.as_ref().unwrap().bucket;
     let path = path_obj.source.clone();
     let delimiter = '/'; // should be a single character
@@ -198,7 +198,7 @@ pub async fn s3_browser(
 
     for file in files {
         let s3file_presigned_url = s3_get_object(
-            &s3_client,
+            s3_client,
             bucket,
             &file,
             S3_DEFAULT_PRESIGNEDURL_EXP as u64, // to-do: may need extract from playlist-secs
@@ -212,20 +212,12 @@ pub async fn s3_browser(
             };
             media_files.push(video);
         } else {
-            match MediaProbe::new(&s3file_presigned_url.as_ref()) {
+            match MediaProbe::new(&s3file_presigned_url).await {
                 Ok(probe) => {
-                    let mut vid_dur = 0.0;
+                    let duration = probe.format.duration.unwrap_or_default();
+                    s3_obj_dur.add_obj(file, duration)?; // Store file address(key) and file duration(value) in a hashmap
 
-                    if let Some(dur) = probe.format.duration {
-                        vid_dur = dur.parse().unwrap_or_default();
-                        s3_obj_dur.add_obj(file, vid_dur)?;
-                        // Store file address(key) and file duration(value) in a hashmap
-                    }
-
-                    let video = VideoFile {
-                        name,
-                        duration: vid_dur,
-                    };
+                    let video = VideoFile { name, duration };
                     media_files.push(video);
                 }
                 Err(e) => error!("{e:?}"),
@@ -257,7 +249,7 @@ pub async fn s3_get_object(
                 .map_err(|_| ServiceError::InternalServerError)?,
         )
         .await
-        .map_err(|e| ServiceError::BadRequest(format!("Invalid S3 config!: {}", e).into()))?;
+        .map_err(|e| ServiceError::BadRequest(format!("Invalid S3 config!: {}", e)))?;
 
     Ok(presigned_request.uri().to_string())
 }
@@ -384,7 +376,7 @@ pub async fn s3_delete_prefix(
         .delimiter(delimiter)
         .send()
         .await
-        .map_err(|e| ServiceError::BadRequest(format!("Invalid S3 config!: {}", e).into()))?;
+        .map_err(|e| ServiceError::BadRequest(format!("Invalid S3 config!: {}", e)))?;
     for prefix in parent_list_resp.common_prefixes() {
         // detele prefix
         if let Some(prefix) = prefix.prefix() {
@@ -454,7 +446,7 @@ pub async fn s3_delete_object(
         .key(obj_path)
         .send()
         .await
-        .map_err(|e| ServiceError::Conflict(format!("Failed to remove object!: {}", e).into()))?;
+        .map_err(|e| ServiceError::Conflict(format!("Failed to remove object!: {}", e)))?;
     Ok(())
 }
 
@@ -472,7 +464,7 @@ pub async fn s3_copy_object(
         .key(destination_object)
         .send()
         .await
-        .map_err(|e| ServiceError::Conflict(format!("Failed to copy object!: {}", e).into()))?;
+        .map_err(|e| ServiceError::Conflict(format!("Failed to copy object!: {}", e)))?;
     Ok(())
 }
 pub async fn s3_rename_object(
@@ -481,8 +473,8 @@ pub async fn s3_rename_object(
     bucket: &str,
     client: &aws_sdk_s3::Client,
 ) -> Result<(), ServiceError> {
-    s3_copy_object(&source_object, &destination_object, bucket, client).await?;
-    s3_delete_object(&source_object, bucket, client).await?;
+    s3_copy_object(source_object, destination_object, bucket, client).await?;
+    s3_delete_object(source_object, bucket, client).await?;
     Ok(())
 }
 
@@ -501,7 +493,7 @@ pub async fn s3_is_prefix(
         .delimiter(delimiter)
         .send()
         .await
-        .map_err(|e| ServiceError::BadRequest(format!("Invalid S3 config!: {}", e).into()))?;
+        .map_err(|e| ServiceError::BadRequest(format!("Invalid S3 config!: {}", e)))?;
     for prefix in parent_list_resp.common_prefixes() {
         if let Some(prefix) = prefix.prefix() {
             if prefix == clean_path {
@@ -513,22 +505,15 @@ pub async fn s3_is_prefix(
 }
 
 pub fn s3_rename(source_path: &str, target_path: &str) -> Result<MoveObject, ServiceError> {
-    let source_name = &source_path
-        .rsplit('/')
-        .into_iter()
-        .nth(0)
-        .unwrap_or(&source_path);
-    let target_name = &target_path
-        .rsplit('/')
-        .into_iter()
-        .nth(0)
-        .unwrap_or(&target_path);
+    let source_name = source_path.rsplit('/').next().unwrap_or(source_path);
+    let target_name = target_path.rsplit('/').next().unwrap_or(target_path);
+
     Ok(MoveObject {
         source: source_name.to_string(),
         target: target_name.to_string(),
     })
 }
 
-fn s3_obj_extension_checker(obj_name: &str, extensions: &Vec<String>) -> bool {
+fn s3_obj_extension_checker(obj_name: &str, extensions: &[String]) -> bool {
     extensions.iter().any(|ext| obj_name.ends_with(ext))
 }

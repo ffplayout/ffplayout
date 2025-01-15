@@ -66,6 +66,12 @@ module.exports = {
             },
         },
     },
+    safelist: [
+        'alert-success',
+        'alert-warning',
+        'alert-info',
+        'alert-error',
+    ],
     daisyui: {
         themes: [
             {

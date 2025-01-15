@@ -1,6 +1,5 @@
 use std::{
     env, fmt,
-    net::TcpListener,
     path::{Path, PathBuf},
 };
 
@@ -8,12 +7,11 @@ use std::{
 use std::os::unix::fs::MetadataExt;
 
 use chrono::{format::ParseErrorKind, prelude::*};
-use faccess::PathExt;
 use log::*;
 use path_clean::PathClean;
 use rand::Rng;
 use regex::Regex;
-use tokio::{fs, process::Command};
+use tokio::{fs, net::TcpListener, process::Command};
 
 use serde::{
     de::{self, Visitor},
@@ -35,7 +33,7 @@ pub mod system;
 pub mod task_runner;
 pub mod time_machine;
 
-use crate::db::models::GlobalSettings;
+use crate::db::GLOBAL_SETTINGS;
 use crate::player::utils::time_to_sec;
 use crate::utils::{errors::ServiceError, logging::log_file_path};
 use crate::ARGS;
@@ -68,7 +66,7 @@ where
 {
     struct StringOrNumberVisitor;
 
-    impl<'de> Visitor<'de> for StringOrNumberVisitor {
+    impl Visitor<'_> for StringOrNumberVisitor {
         type Value = Option<String>;
 
         fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -160,48 +158,8 @@ impl fmt::Display for TextFilter {
     }
 }
 
-pub fn db_path() -> Result<&'static str, Box<dyn std::error::Error>> {
-    if let Some(path) = ARGS.db.clone() {
-        let mut absolute_path = if path.is_absolute() {
-            path
-        } else {
-            env::current_dir()?.join(path)
-        }
-        .clean();
-
-        if absolute_path.is_dir() {
-            absolute_path = absolute_path.join("ffplayout.db");
-        }
-
-        if let Some(abs_path) = absolute_path.parent() {
-            if abs_path.writable() {
-                return Ok(Box::leak(
-                    absolute_path.to_string_lossy().to_string().into_boxed_str(),
-                ));
-            }
-
-            error!("Given database path is not writable!");
-        }
-    }
-
-    let sys_path = Path::new("/usr/share/ffplayout/db");
-    let mut db_path = "./ffplayout.db";
-
-    if sys_path.is_dir() && !sys_path.writable() {
-        error!("Path {} is not writable!", sys_path.display());
-    }
-
-    if sys_path.is_dir() && sys_path.writable() {
-        db_path = "/usr/share/ffplayout/db/ffplayout.db";
-    } else if Path::new("./assets").is_dir() {
-        db_path = "./assets/ffplayout.db";
-    }
-
-    Ok(db_path)
-}
-
 pub fn public_path() -> PathBuf {
-    let config = GlobalSettings::global();
+    let config = GLOBAL_SETTINGS.get().unwrap();
     let dev_path = env::current_dir()
         .unwrap_or_default()
         .join("frontend/.output/public/");
@@ -213,7 +171,7 @@ pub fn public_path() -> PathBuf {
         let public = PathBuf::from(p);
 
         public_path = if public.is_absolute() {
-            public.to_path_buf()
+            public
         } else {
             env::current_dir().unwrap_or_default().join(public)
         }
@@ -225,9 +183,69 @@ pub fn public_path() -> PathBuf {
     public_path
 }
 
-pub async fn read_log_file(channel_id: &i32, date: &str) -> Result<String, ServiceError> {
+// INFO: in case we want to provide a array of formatted strings
+// pub fn format_log_line(line: &str, timezone: Option<Tz>) -> String {
+//     let re = Regex::new(r"^\[(.*?)\]").unwrap();
+
+//     let mut log = Regex::new(r"<yellow>(.*?)</>")
+//         .unwrap()
+//         .replace_all(line, r#"<span class="log-number">$1</span>"#)
+//         .into_owned();
+
+//     log = Regex::new(r"<b><magenta>(.*?)</></b>")
+//         .unwrap()
+//         .replace_all(&log, r#"<span class="log-addr">$1</span>"#)
+//         .into_owned();
+
+//     log = Regex::new(r"<bright-blue>(.*?)</>")
+//         .unwrap()
+//         .replace_all(&log, r#"<span class="log-cmd">$1</span>"#)
+//         .into_owned();
+
+//     log = Regex::new(r"\x1B\[90m(.*?)\x1B\[0m")
+//         .unwrap()
+//         .replace_all(&log, r#"<span class="log-debug">$1</span>"#)
+//         .into_owned();
+
+//     log = re
+//         .replace(&log, |caps: &regex::Captures| {
+//             if let Some(timecode) = caps.get(1).map(|m| m.as_str()) {
+//                 let parsed: DateTime<FixedOffset> = timecode.parse().unwrap();
+//                 let dt = match timezone {
+//                     Some(tz) => parsed.with_timezone(&tz),
+//                     None => parsed.with_timezone(&Tz::UTC),
+//                 };
+
+//                 format!(
+//                     "<span class=\"log-time\">[{}]</span>",
+//                     dt.format("%Y-%m-%d %H:%M:%S%.6f")
+//                 )
+//             } else {
+//                 caps[0].to_string()
+//             }
+//         })
+//         .replace("[ INFO]", "<span class=\"log-info\">[ INFO]</span>")
+//         .replace("[ WARN]", "<span class=\"log-warning\">[ WARN]</span>")
+//         .replace("[ERROR]", "<span class=\"log-error\">[ERROR]</span>")
+//         .replace("[DEBUG]", "<span class=\"log-debug\">[DEBUG]</span>")
+//         .replace("[Decoder]", "<span class=\"log-decoder\">[Decoder]</span>")
+//         .replace("[Encoder]", "<span class=\"log-encoder\">[Encoder]</span>")
+//         .replace("[Server]", "<span class=\"log-server\">[Server]</span>")
+//         .replace(
+//             "[Validator]",
+//             "<span class=\"log-server\">[Validator]</span>",
+//         );
+
+//     log
+// }
+
+pub async fn read_log_file(
+    channel_id: &i32,
+    // _timezone: Option<Tz>,
+    date: &str,
+) -> Result<String, ServiceError> {
     let date_str = if date.is_empty() {
-        "".to_string()
+        String::new()
     } else {
         format!("_{date}")
     };
@@ -242,6 +260,9 @@ pub async fn read_log_file(channel_id: &i32, date: &str) -> Result<String, Servi
         format!("The log file is larger ({}) than the hard limit of 5MB, the probability is very high that something is wrong with the playout.\nCheck this on the server with `less {log_path:?}`.", sizeof_fmt(file_size))
     } else {
         fs::read_to_string(log_path).await?
+        // .lines()
+        // .map(|line| format_log_line(line, timezone))
+        // .collect::<Vec<_>>();
     };
 
     Ok(log_content)
@@ -297,12 +318,12 @@ where
 }
 
 /// get a free tcp socket
-pub fn gen_tcp_socket(exclude_socket: String) -> Option<String> {
+pub async fn gen_tcp_socket(exclude_socket: &str) -> Option<String> {
     for _ in 0..100 {
         let port = rand::thread_rng().gen_range(45321..54268);
         let socket = format!("127.0.0.1:{port}");
 
-        if socket != exclude_socket && TcpListener::bind(("127.0.0.1", port)).is_ok() {
+        if socket != exclude_socket && TcpListener::bind(("127.0.0.1", port)).await.is_ok() {
             return Some(socket);
         }
     }
@@ -327,13 +348,13 @@ pub async fn copy_assets(storage_path: &Path) -> Result<(), std::io::Error> {
         let mut logo_source = Path::new("/usr/share/ffplayout/logo.png");
 
         if !dummy_source.is_file() {
-            dummy_source = Path::new("./assets/dummy.vtt")
+            dummy_source = Path::new("./assets/dummy.vtt");
         }
         if !font_source.is_file() {
-            font_source = Path::new("./assets/DejaVuSans.ttf")
+            font_source = Path::new("./assets/DejaVuSans.ttf");
         }
         if !logo_source.is_file() {
-            logo_source = Path::new("./assets/logo.png")
+            logo_source = Path::new("./assets/logo.png");
         }
 
         if !target.is_dir() {

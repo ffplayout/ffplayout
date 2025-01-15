@@ -1,6 +1,6 @@
 use std::{error::Error, fmt, str::FromStr};
 
-use once_cell::sync::OnceCell;
+use chrono_tz::Tz;
 use regex::Regex;
 use serde::{
     de::{self, Visitor},
@@ -23,10 +23,11 @@ pub struct GlobalSettings {
     pub public: String,
     pub storage: String,
     pub shared: bool,
-    pub mail_smtp: String,
-    pub mail_user: String,
-    pub mail_password: String,
-    pub mail_starttls: bool,
+    pub smtp_server: String,
+    pub smtp_user: String,
+    pub smtp_password: String,
+    pub smtp_starttls: bool,
+    pub smtp_port: u16,
 }
 
 impl GlobalSettings {
@@ -34,7 +35,7 @@ impl GlobalSettings {
         let global_settings = handles::select_global(conn);
         match global_settings.await {
             Ok(g) => g,
-            Err(_) => GlobalSettings {
+            Err(_) => Self {
                 id: 0,
                 secret: None,
                 logs: String::new(),
@@ -42,24 +43,14 @@ impl GlobalSettings {
                 public: String::new(),
                 storage: String::new(),
                 shared: false,
-                mail_smtp: String::new(),
-                mail_user: String::new(),
-                mail_password: String::new(),
-                mail_starttls: false,
+                smtp_server: String::new(),
+                smtp_user: String::new(),
+                smtp_password: String::new(),
+                smtp_starttls: false,
+                smtp_port: 465,
             },
         }
     }
-
-    pub fn global() -> &'static GlobalSettings {
-        INSTANCE.get().expect("Config is not initialized")
-    }
-}
-
-static INSTANCE: OnceCell<GlobalSettings> = OnceCell::new();
-
-pub async fn init_globales(conn: &Pool<Sqlite>) {
-    let config = GlobalSettings::new(conn).await;
-    INSTANCE.set(config).unwrap();
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -77,17 +68,28 @@ pub struct Channel {
     pub storage: Storage,
     pub last_date: Option<String>,
     pub time_shift: f64,
-    // not in use currently
-    #[serde(default, skip_serializing)]
-    pub timezone: Option<String>,
-
     #[serde(default)]
-    pub utc_offset: i32,
+    pub timezone: Option<Tz>,
 }
 
 // New async function for deserialization, as `from_row` can't be async
 impl Channel {
     pub async fn from_row_async(row: &SqliteRow) -> sqlx::Result<Self> {
+        let mut timezone = None;
+
+        if let Some(tz) = row
+            .try_get::<String, _>("timezone")
+            .ok()
+            .and_then(|t: String| Tz::from_str(&t).ok())
+        {
+            timezone = Some(tz);
+        } else if let Some(tz) = iana_time_zone::get_timezone()
+            .ok()
+            .and_then(|t: String| Tz::from_str(&t).ok())
+        {
+            timezone = Some(tz);
+        }
+
         let original_path: String = row.try_get("storage").unwrap_or_default(); // Assuming `storage` is a string field
         let storage = Storage::new(&original_path).await?; // Use async `Storage::new`
 
@@ -102,8 +104,7 @@ impl Channel {
             storage,
             last_date: row.try_get("last_date").unwrap_or_default(),
             time_shift: row.try_get("time_shift").unwrap_or_default(),
-            timezone: row.try_get("timezone").unwrap_or_default(),
-            utc_offset: row.try_get("utc_offset").unwrap_or_default(),
+            timezone,
         })
     }
 }
@@ -241,7 +242,7 @@ pub struct User {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mail: Option<String>,
     pub username: String,
-    #[serde(skip_serializing, default = "empty_string")]
+    #[serde(skip_serializing, default = "String::new")]
     pub password: String,
     pub role_id: Option<i32>,
     // #[serde_as(as = "StringWithSeparator::<CommaSeparator, i32>")]
@@ -270,10 +271,6 @@ impl FromRow<'_, SqliteRow> for User {
     }
 }
 
-fn empty_string() -> String {
-    "".to_string()
-}
-
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct UserMeta {
     pub id: i32,
@@ -296,12 +293,7 @@ pub enum Role {
 
 impl Role {
     pub fn set_role(role: &str) -> Self {
-        match role {
-            "global_admin" => Role::GlobalAdmin,
-            "channel_admin" => Role::ChannelAdmin,
-            "user" => Role::User,
-            _ => Role::Guest,
-        }
+        role.parse().unwrap_or(Self::Guest)
     }
 }
 
@@ -335,7 +327,7 @@ where
 {
     fn decode(
         value: sqlx::sqlite::SqliteValueRef<'r>,
-    ) -> Result<Role, Box<dyn Error + 'static + Send + Sync>> {
+    ) -> Result<Self, Box<dyn Error + 'static + Send + Sync>> {
         let value = <&str as sqlx::decode::Decode<sqlx::Sqlite>>::decode(value)?;
 
         Ok(value.parse()?)
@@ -383,7 +375,7 @@ where
 {
     struct StringOrNumberVisitor;
 
-    impl<'de> Visitor<'de> for StringOrNumberVisitor {
+    impl Visitor<'_> for StringOrNumberVisitor {
         type Value = String;
 
         fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {

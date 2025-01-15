@@ -1,15 +1,19 @@
-use std::process::{self, Command, Stdio};
+use std::process::Stdio;
 
 use log::*;
+use tokio::process::{Child, Command};
 
 use crate::player::filter::v_drawtext;
-use crate::utils::{config::PlayoutConfig, logging::Target};
+use crate::utils::{
+    config::PlayoutConfig,
+    logging::{fmt_cmd, Target},
+};
 use crate::vec_strings;
 
 /// Desktop Output
 ///
 /// Instead of streaming, we run a ffplay instance and play on desktop.
-pub fn output(config: &PlayoutConfig, log_format: &str) -> process::Child {
+pub async fn output(config: &PlayoutConfig, log_format: &str) -> Child {
     let mut enc_filter: Vec<String> = vec![];
 
     let mut enc_cmd = vec_strings!["-hide_banner", "-nostats", "-v", log_format];
@@ -27,7 +31,7 @@ pub fn output(config: &PlayoutConfig, log_format: &str) -> process::Child {
     ]);
 
     if let Some(mut cmd) = config.output.output_cmd.clone() {
-        if !cmd.iter().any(|i| {
+        if cmd.iter().any(|i| {
             [
                 "-c",
                 "-c:v",
@@ -43,9 +47,9 @@ pub fn output(config: &PlayoutConfig, log_format: &str) -> process::Child {
             ]
             .contains(&i.as_str())
         }) {
-            enc_cmd.append(&mut cmd);
-        } else {
             warn!(target: Target::file_mail(), channel = config.general.channel_id; "ffplay doesn't support given output parameters, they will be skipped!");
+        } else {
+            enc_cmd.append(&mut cmd);
         }
     }
 
@@ -57,7 +61,7 @@ pub fn output(config: &PlayoutConfig, log_format: &str) -> process::Child {
             );
 
             let mut filter: String = "null,".to_string();
-            filter.push_str(v_drawtext::filter_node(config, None, &None).as_str());
+            filter.push_str(v_drawtext::filter_node(config, None, &None).await.as_str());
             enc_filter = vec!["-vf".to_string(), filter];
         }
     }
@@ -65,8 +69,8 @@ pub fn output(config: &PlayoutConfig, log_format: &str) -> process::Child {
     enc_cmd.append(&mut enc_filter);
 
     debug!(target: Target::file_mail(), channel = config.general.channel_id;
-        "Encoder CMD: <bright-blue>\"ffplay {}\"</>",
-        enc_cmd.join(" ")
+        "Encoder CMD: <bright-blue>ffplay {}</>",
+        fmt_cmd(&enc_cmd)
     );
 
     let enc_proc = match Command::new("ffplay")

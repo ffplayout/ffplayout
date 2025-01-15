@@ -1,27 +1,29 @@
-use std::process::Command;
-
 use log::*;
+use tokio::process::Command;
 
 use crate::player::utils::get_data_map;
 
 use crate::player::controller::ChannelManager;
 
-pub fn run(manager: ChannelManager) {
-    let task_path = manager.config.lock().unwrap().task.path.clone();
+pub async fn run(manager: ChannelManager) {
+    let task_path = manager.config.lock().await.task.path.clone();
 
-    let obj = serde_json::to_string(&get_data_map(&manager)).unwrap();
+    let obj = serde_json::to_string(&get_data_map(&manager).await).unwrap();
     trace!("Run task: {obj}");
 
     match Command::new(task_path).arg(obj).spawn() {
         Ok(mut c) => {
-            let status = c.wait().expect("Error in waiting for the task process!");
+            let status = c
+                .wait()
+                .await
+                .expect("Error in waiting for the task process!");
 
             if !status.success() {
                 error!("Process stops with error.");
             }
         }
         Err(e) => {
-            error!("Couldn't spawn task runner: {e}")
+            error!("Couldn't spawn task runner: {e}");
         }
     }
 }

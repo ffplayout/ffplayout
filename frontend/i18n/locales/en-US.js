@@ -89,6 +89,8 @@ export default {
         infinitInfo: 'Playout runs in infinite mode. No time based information is possible.',
         generateDone: 'Generate Playlist done...',
         dateYesterday: 'Current time is before the playlist start time!',
+        splitVideo: 'Split Video',
+        cuts: 'Cuts',
     },
     media: {
         notExists: 'Storage not exist!',
@@ -229,6 +231,7 @@ export default {
         playlistPath: 'Playlist Path',
         storagePath: 'Storage Path',
         sharedStorage: 'ffplayout runs inside a container, use the same storage root for all channels!',
+        timezone: 'Timezone',
     },
     user: {
         title: 'User Configuration',

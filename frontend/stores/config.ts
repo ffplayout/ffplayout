@@ -14,7 +14,7 @@ export const useConfig = defineStore('config', {
         playout: {} as PlayoutConfigExt,
         currentUser: 0,
         configUser: {} as User,
-        utcOffset: 0,
+        timezone: 'UTC',
         onetimeInfo: true,
         showPlayer: true,
     }),
@@ -69,7 +69,7 @@ export const useConfig = defineStore('config', {
                         throw new Error('User not found')
                     }
 
-                    this.utcOffset = objs[0].utc_offset
+                    this.timezone = objs[0].timezone
                     this.channels = objs
                     this.channelsRaw = cloneDeep(objs)
                     this.configCount = objs.length
@@ -88,7 +88,6 @@ export const useConfig = defineStore('config', {
                             public: '',
                             playlists: '',
                             storage: '',
-                            uts_offset: 0,
                         },
                     ]
 

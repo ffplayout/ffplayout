@@ -89,6 +89,8 @@ export default {
         infinitInfo: 'O playout é executado no modo infinito. Nenhuma informação baseada em tempo é possível',
         generateDone: 'Gerar lista de reprodução concluída...',
         dateYesterday: 'A hora atual é anterior à hora de início da lista de reprodução!',
+        splitVideo: 'Split Video',
+        cuts: 'Cuts',
     },
     media: {
         notExists: 'O armazenamento não existe!',
@@ -228,6 +230,7 @@ export default {
         playlistPath: 'Playlist Path',
         storagePath: 'Storage Path',
         sharedStorage: 'O ffplayout é executado dentro de um contêiner; use a mesma raiz de armazenamento para todos os canais!',
+        timezone: 'Timezone',
     },
     user: {
         title: 'Configuração de usuário',

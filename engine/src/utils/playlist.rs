@@ -1,6 +1,7 @@
-use std::{fs, path::PathBuf};
+use std::path::PathBuf;
 
 use log::*;
+use tokio::fs;
 
 use crate::player::controller::ChannelManager;
 use crate::player::utils::{json_reader, json_writer, JsonPlaylist};
@@ -22,7 +23,7 @@ pub async fn read_playlist(
         .join(date.clone())
         .with_extension("json");
 
-    match json_reader(&playlist_path) {
+    match json_reader(&playlist_path).await {
         Ok(p) => Ok(p),
         Err(e) => Err(ServiceError::NoContent(e.to_string())),
     }
@@ -52,12 +53,12 @@ pub async fn write_playlist(
     let mut file_exists = false;
 
     if let Some(p) = playlist_path.parent() {
-        fs::create_dir_all(p)?;
+        fs::create_dir_all(p).await?;
     }
 
     if playlist_path.is_file() {
         file_exists = true;
-        if let Ok(existing_data) = json_reader(&playlist_path) {
+        if let Ok(existing_data) = json_reader(&playlist_path).await {
             if json_data == existing_data {
                 return Err(ServiceError::Conflict(format!(
                     "Playlist from {date}, already exists!"
@@ -66,15 +67,12 @@ pub async fn write_playlist(
         }
     }
 
-    match json_writer(&playlist_path, json_data) {
-        Ok(_) => {
-            let mut msg = format!("Write playlist from {date} success!");
-
-            if file_exists {
-                msg = format!("Update playlist from {date} success!");
-            }
-
-            return Ok(msg);
+    match json_writer(&playlist_path, json_data).await {
+        Ok(..) if file_exists => {
+            return Ok(format!("Update playlist from {date} success!"));
+        }
+        Ok(..) => {
+            return Ok(format!("Write playlist from {date} success!"));
         }
         Err(e) => {
             error!("{e}");
@@ -84,11 +82,11 @@ pub async fn write_playlist(
     Err(ServiceError::InternalServerError)
 }
 
-pub fn generate_playlist(manager: ChannelManager) -> Result<JsonPlaylist, ServiceError> {
-    let mut config = manager.config.lock().unwrap();
+pub async fn generate_playlist(manager: ChannelManager) -> Result<JsonPlaylist, ServiceError> {
+    let mut config = manager.config.lock().await;
 
     if let Some(mut template) = config.general.template.take() {
-        for source in template.sources.iter_mut() {
+        for source in &mut template.sources {
             let mut paths = vec![];
 
             for path in &source.paths {
@@ -105,14 +103,14 @@ pub fn generate_playlist(manager: ChannelManager) -> Result<JsonPlaylist, Servic
 
     drop(config);
 
-    match playlist_generator(&manager) {
+    match playlist_generator(&manager).await {
         Ok(playlists) => {
-            if !playlists.is_empty() {
-                Ok(playlists[0].clone())
-            } else {
+            if playlists.is_empty() {
                 Err(ServiceError::Conflict(
                     "The playlist could not be written, maybe it already exists!".into(),
                 ))
+            } else {
+                Ok(playlists[0].clone())
             }
         }
         Err(e) => {
@@ -133,8 +131,8 @@ pub async fn delete_playlist(config: &PlayoutConfig, date: &str) -> Result<Strin
         .with_extension("json");
 
     if playlist_path.is_file() {
-        match fs::remove_file(playlist_path) {
-            Ok(_) => Ok(format!("Delete playlist from {date} success!")),
+        match fs::remove_file(playlist_path).await {
+            Ok(..) => Ok(format!("Delete playlist from {date} success!")),
             Err(e) => {
                 error!("{e}");
                 Err(ServiceError::InternalServerError)

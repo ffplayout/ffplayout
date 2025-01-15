@@ -1,0 +1,71 @@
+name: Release
+on:
+  release:
+    types: [released]
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macOS-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
+        with:
+          node-version: 20
+      - name: Set up Rust
+        run: |
+          rustup update stable
+
+      - name: Build on Windows
+        if: ${{ matrix.os == 'windows-latest' }}
+        run: |
+          cargo build --release
+          cp ./target/release/ffplayout.exe .
+          tar -a -c --exclude=*.service -f "ffplayout-${{ github.ref_name }}_x86_64-pc-windows-msvc.zip" assets docker docs LICENSE README.md CHANGELOG.md ffplayout.exe
+          del ffplayout.exe
+
+      - name: Build on macOS
+        if: ${{ matrix.os == 'macOS-latest' }}
+        run: |
+          rustup target add x86_64-apple-darwin
+          rustup target add aarch64-apple-darwin
+          cargo build --release --target=x86_64-apple-darwin
+          cargo build --release --target=aarch64-apple-darwin
+          cp ./target/x86_64-apple-darwin/release/ffplayout .
+          zip -r "ffplayout-${{ github.ref_name }}_x86_64-apple-darwin.zip" assets docker docs LICENSE README.md CHANGELOG.md ffplayout -x *.db -x *.db-shm -x *.db-wal -x *.service
+          rm -f ffplayout
+          cp ./target/aarch64-apple-darwin/release/ffplayout .
+          zip -r "ffplayout-${{ github.ref_name }}_aarch64-apple-darwin.zip" assets docker docs LICENSE README.md CHANGELOG.md ffplayout -x *.db -x *.db-shm -x *.db-wal -x *.service
+          rm -f ffplayout
+
+      - name: Build on Linux
+        if: ${{ matrix.os == 'ubuntu-latest' }}
+        run: |
+          sudo apt-get update
+          sudo apt-get -y install musl musl-dev musl-tools pandoc gcc-aarch64-linux-gnu g++-aarch64-linux-gnu libc6-dev-arm64-cross
+          rustup target add x86_64-unknown-linux-musl
+          rustup target add aarch64-unknown-linux-gnu
+          ./scripts/man_create.sh
+          cargo install --version 2.0.4 cargo-deb
+          cargo install --version 0.15.2 cargo-generate-rpm
+          cargo build --release --target=x86_64-unknown-linux-musl
+          cargo build --release --target=aarch64-unknown-linux-gnu
+          tar --transform 's/\.\/target\/.*\///g' -czvf "ffplayout-${{ github.ref_name }}_x86_64-unknown-linux-musl.tar.gz" --exclude='*.db' --exclude='*.db-shm' --exclude='*.db-wal' assets docker docs LICENSE README.md CHANGELOG.md ./target/x86_64-unknown-linux-musl/release/ffplayout
+          cargo deb --no-build --target=x86_64-unknown-linux-musl -p ffplayout --manifest-path=engine/Cargo.toml -o ffplayout_${{ github.ref_name }}-1_amd64.deb
+          cargo generate-rpm --target=x86_64-unknown-linux-musl -p engine -o ffplayout-${{ github.ref_name }}-1.x86_64.rpm
+          sed -i "s/x86_64-unknown-linux-musl/aarch64-unknown-linux-gnu/g" docker/*Dockerfile
+          tar --transform 's/\.\/target\/.*\///g' -czvf "ffplayout-${{ github.ref_name }}_aarch64-unknown-linux-gnu.tar.gz" --exclude='*.db' --exclude='*.db-shm' --exclude='*.db-wal' assets docker docs LICENSE README.md CHANGELOG.md ./target/aarch64-unknown-linux-gnu/release/ffplayout
+          cargo deb --no-build --target=aarch64-unknown-linux-gnu --variant=arm64 -p ffplayout --manifest-path=engine/Cargo.toml -o ffplayout_${{ github.ref_name }}-1_arm64.deb
+
+
+      - name: Upload Release Assets
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: ffplayout*
+          tag: ${{ github.ref }}
+          overwrite: true
+          file_glob: true

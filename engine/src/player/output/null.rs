@@ -1,22 +1,26 @@
-use std::process::{self, Command, Stdio};
+use std::process::Stdio;
 
 use log::*;
+use tokio::process::{Child, Command};
 
 use crate::player::{
     controller::ProcessUnit::*,
     utils::{prepare_output_cmd, Media},
 };
-use crate::utils::{config::PlayoutConfig, logging::Target};
+use crate::utils::{
+    config::PlayoutConfig,
+    logging::{fmt_cmd, Target},
+};
 use crate::vec_strings;
 
 /// Desktop Output
 ///
 /// Instead of streaming, we run a ffplay instance and play on desktop.
-pub fn output(config: &PlayoutConfig, log_format: &str) -> process::Child {
-    let mut media = Media::new(0, "", false);
+pub async fn output(config: &PlayoutConfig, log_format: &str) -> Child {
+    let mut media = Media::default();
     let id = config.general.channel_id;
     media.unit = Encoder;
-    media.add_filter(config, &None);
+    media.add_filter(config, &None).await;
 
     let mut enc_prefix = vec_strings!["-hide_banner", "-nostats", "-v", log_format];
 
@@ -29,8 +33,8 @@ pub fn output(config: &PlayoutConfig, log_format: &str) -> process::Child {
     let enc_cmd = prepare_output_cmd(config, enc_prefix, &media.filter);
 
     debug!(target: Target::file_mail(), channel = id;
-        "Encoder CMD: <bright-blue>\"ffmpeg {}\"</>",
-        enc_cmd.join(" ")
+        "Encoder CMD: <bright-blue>ffmpeg {}</>",
+        fmt_cmd(&enc_cmd)
     );
 
     let enc_proc = match Command::new("ffmpeg")

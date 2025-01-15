@@ -1,17 +1,16 @@
+use actix_web::web;
 use argon2::{
     password_hash::{rand_core::OsRng, SaltString},
     Argon2, PasswordHasher,
 };
-
 use rand::{distributions::Alphanumeric, Rng};
 use sqlx::{sqlite::SqliteQueryResult, Pool, Row, Sqlite};
-use tokio::task;
 
 use super::models::{AdvancedConfiguration, Configuration};
 use crate::db::models::{Channel, GlobalSettings, Role, TextPreset, User};
 use crate::utils::{
-    advanced_config::AdvancedConfig, config::PlayoutConfig, is_running_in_container,
-    local_utc_offset,
+    advanced_config::AdvancedConfig, config::PlayoutConfig, errors::ServiceError,
+    is_running_in_container,
 };
 
 pub async fn db_migrate(conn: &Pool<Sqlite>) -> Result<(), Box<dyn std::error::Error>> {
@@ -45,7 +44,7 @@ pub async fn db_migrate(conn: &Pool<Sqlite>) -> Result<(), Box<dyn std::error::E
 
 pub async fn select_global(conn: &Pool<Sqlite>) -> Result<GlobalSettings, sqlx::Error> {
     let query =
-        "SELECT id, secret, logs, playlists, public, storage, shared, mail_smtp, mail_user, mail_password, mail_starttls FROM global WHERE id = 1";
+        "SELECT id, secret, logs, playlists, public, storage, shared, smtp_server, smtp_user, smtp_password, smtp_starttls, smtp_port FROM global WHERE id = 1";
 
     sqlx::query_as(query).fetch_one(conn).await
 }
@@ -55,7 +54,7 @@ pub async fn update_global(
     global: GlobalSettings,
 ) -> Result<SqliteQueryResult, sqlx::Error> {
     let query = "UPDATE global SET logs = $2, playlists = $3, public = $4, storage = $5,
-            mail_smtp = $6, mail_user = $7, mail_password = $8, mail_starttls = $9  WHERE id = 1";
+            smtp_server = $6, smtp_user = $7, smtp_password = $8, smtp_starttls = $9, smtp_port = $10  WHERE id = 1";
 
     sqlx::query(query)
         .bind(global.id)
@@ -63,10 +62,11 @@ pub async fn update_global(
         .bind(global.playlists)
         .bind(global.public)
         .bind(global.storage)
-        .bind(global.mail_smtp)
-        .bind(global.mail_user)
-        .bind(global.mail_password)
-        .bind(global.mail_starttls)
+        .bind(global.smtp_server)
+        .bind(global.smtp_user)
+        .bind(global.smtp_password)
+        .bind(global.smtp_starttls)
+        .bind(global.smtp_port)
         .execute(conn)
         .await
 }
@@ -74,9 +74,7 @@ pub async fn update_global(
 pub async fn select_channel(conn: &Pool<Sqlite>, id: &i32) -> Result<Channel, sqlx::Error> {
     let query = "SELECT * FROM channels WHERE id = $1";
     let row = sqlx::query(query).bind(id).fetch_one(conn).await?;
-    let mut channel = Channel::from_row_async(&row).await?;
-
-    channel.utc_offset = local_utc_offset();
+    let channel = Channel::from_row_async(&row).await?;
 
     Ok(channel)
 }
@@ -105,10 +103,6 @@ pub async fn select_related_channels(
         results.push(channel);
     }
 
-    for result in results.iter_mut() {
-        result.utc_offset = local_utc_offset();
-    }
-
     Ok(results)
 }
 
@@ -132,7 +126,7 @@ pub async fn update_channel(
     channel: Channel,
 ) -> Result<SqliteQueryResult, sqlx::Error> {
     let query =
-        "UPDATE channels SET name = $2, preview_url = $3, extra_extensions = $4, public = $5, playlists = $6, storage = $7 WHERE id = $1";
+        "UPDATE channels SET name = $2, preview_url = $3, extra_extensions = $4, public = $5, playlists = $6, storage = $7, timezone = $8 WHERE id = $1";
 
     sqlx::query(query)
         .bind(id)
@@ -142,6 +136,7 @@ pub async fn update_channel(
         .bind(channel.public)
         .bind(channel.playlists)
         .bind(channel.storage.original_path)
+        .bind(channel.timezone.map(|tz| tz.to_string()))
         .execute(conn)
         .await
 }
@@ -193,9 +188,9 @@ pub async fn insert_channel(conn: &Pool<Sqlite>, channel: Channel) -> Result<Cha
         .fetch_one(conn)
         .await?;
 
-    let channel = Channel::from_row_async(&row).await;
+    let channel = Channel::from_row_async(&row).await?;
 
-    channel
+    Ok(channel)
 }
 
 pub async fn delete_channel(
@@ -392,17 +387,16 @@ pub async fn select_users(conn: &Pool<Sqlite>) -> Result<Vec<User>, sqlx::Error>
     sqlx::query_as(query).fetch_all(conn).await
 }
 
-pub async fn insert_user(conn: &Pool<Sqlite>, user: User) -> Result<(), sqlx::Error> {
-    let password_hash = task::spawn_blocking(move || {
+pub async fn insert_user(conn: &Pool<Sqlite>, user: User) -> Result<(), ServiceError> {
+    let password_hash = web::block(move || {
         let salt = SaltString::generate(&mut OsRng);
         let hash = Argon2::default()
-            .hash_password(user.password.clone().as_bytes(), &salt)
+            .hash_password(user.password.as_bytes(), &salt)
             .unwrap();
 
         hash.to_string()
     })
-    .await
-    .unwrap();
+    .await?;
 
     let query =
         "INSERT INTO user (mail, username, password, role_id) VALUES($1, $2, $3, $4) RETURNING id";
@@ -423,17 +417,16 @@ pub async fn insert_user(conn: &Pool<Sqlite>, user: User) -> Result<(), sqlx::Er
     Ok(())
 }
 
-pub async fn insert_or_update_user(conn: &Pool<Sqlite>, user: User) -> Result<(), sqlx::Error> {
-    let password_hash = task::spawn_blocking(move || {
+pub async fn insert_or_update_user(conn: &Pool<Sqlite>, user: User) -> Result<(), ServiceError> {
+    let password_hash = web::block(move || {
         let salt = SaltString::generate(&mut OsRng);
         let hash = Argon2::default()
-            .hash_password(user.password.clone().as_bytes(), &salt)
+            .hash_password(user.password.as_bytes(), &salt)
             .unwrap();
 
         hash.to_string()
     })
-    .await
-    .unwrap();
+    .await?;
 
     let query = "INSERT INTO user (mail, username, password, role_id) VALUES($1, $2, $3, $4)
             ON CONFLICT(username) DO UPDATE SET

@@ -1,8 +1,7 @@
-use std::sync::Mutex;
-
 use actix_web::{get, post, web, Responder};
 use actix_web_grants::proc_macro::protect;
 use serde::{Deserialize, Serialize};
+use tokio::sync::Mutex;
 
 use super::{check_uuid, prune_uuids, SseAuthState, UuidData};
 use crate::db::models::Role;
@@ -80,7 +79,7 @@ async fn event_stream(
 
     check_uuid(&mut uuids, user.uuid.as_str())?;
 
-    let manager = controllers.lock().unwrap().get(*id).unwrap();
+    let manager = controllers.lock().await.get(*id).await.unwrap();
 
     Ok(broadcaster
         .new_client(manager.clone(), user.endpoint.clone())

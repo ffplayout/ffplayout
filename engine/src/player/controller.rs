@@ -1,22 +1,24 @@
 use std::{
-    fmt, fs,
-    io::{self, Read},
+    fmt,
     path::Path,
-    process::Child,
     sync::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
-        Arc, Mutex,
+        Arc,
     },
-    thread,
-    time::Duration,
 };
 
-use actix_web::web;
+use async_walkdir::{Filtering, WalkDir};
 use log::*;
 use m3u8_rs::Playlist;
 use serde::{Deserialize, Serialize};
 use sqlx::{Pool, Sqlite};
-use walkdir::WalkDir;
+use tokio::{
+    fs,
+    io::{self, AsyncReadExt},
+    process::{Child, ChildStdout},
+    sync::Mutex,
+};
+use tokio_stream::StreamExt;
 
 use crate::player::{
     output::{player, write_hls},
@@ -46,9 +48,9 @@ pub enum ProcessUnit {
 impl fmt::Display for ProcessUnit {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            ProcessUnit::Decoder => write!(f, "Decoder"),
-            ProcessUnit::Encoder => write!(f, "Encoder"),
-            ProcessUnit::Ingest => write!(f, "Ingest"),
+            Self::Decoder => write!(f, "Decoder"),
+            Self::Encoder => write!(f, "Encoder"),
+            Self::Ingest => write!(f, "Ingest"),
         }
     }
 }
@@ -63,6 +65,7 @@ pub struct ChannelManager {
     pub decoder: Arc<Mutex<Option<Child>>>,
     pub encoder: Arc<Mutex<Option<Child>>>,
     pub ingest: Arc<Mutex<Option<Child>>>,
+    pub ingest_stdout: Arc<Mutex<Option<ChildStdout>>>,
     pub ingest_is_running: Arc<AtomicBool>,
     pub is_terminated: Arc<AtomicBool>,
     pub is_alive: Arc<AtomicBool>,
@@ -87,7 +90,7 @@ impl ChannelManager {
             config: Arc::new(Mutex::new(config)),
             list_init: Arc::new(AtomicBool::new(true)),
             current_media: Arc::new(Mutex::new(None)),
-            current_list: Arc::new(Mutex::new(vec![Media::new(0, "", false)])),
+            current_list: Arc::new(Mutex::new(vec![Media::default()])),
             filler_list: Arc::new(Mutex::new(vec![])),
             current_index: Arc::new(AtomicUsize::new(0)),
             filler_index: Arc::new(AtomicUsize::new(0)),
@@ -96,8 +99,8 @@ impl ChannelManager {
         }
     }
 
-    pub fn update_channel(self, other: &Channel) {
-        let mut channel = self.channel.lock().unwrap();
+    pub async fn update_channel(self, other: &Channel) {
+        let mut channel = self.channel.lock().await;
 
         channel.name.clone_from(&other.name);
         channel.preview_url.clone_from(&other.preview_url);
@@ -105,15 +108,15 @@ impl ChannelManager {
         channel.active.clone_from(&other.active);
         channel.last_date.clone_from(&other.last_date);
         channel.time_shift.clone_from(&other.time_shift);
-        channel.utc_offset.clone_from(&other.utc_offset);
+        channel.timezone.clone_from(&other.timezone);
     }
 
-    pub fn update_config(&self, new_config: PlayoutConfig) {
-        let mut config = self.config.lock().unwrap();
+    pub async fn update_config(&self, new_config: PlayoutConfig) {
+        let mut config = self.config.lock().await;
         *config = new_config;
     }
 
-    pub async fn async_start(&self) {
+    pub async fn start(&self) {
         if !self.is_alive.load(Ordering::SeqCst) {
             self.run_count.fetch_add(1, Ordering::SeqCst);
             self.is_alive.store(true, Ordering::SeqCst);
@@ -122,38 +125,40 @@ impl ChannelManager {
 
             let pool_clone = self.db_pool.clone().unwrap();
             let self_clone = self.clone();
-            let channel_id = self.channel.lock().unwrap().id;
+            let channel_id = self.channel.lock().await.id;
 
             if let Err(e) = handles::update_player(&pool_clone, channel_id, true).await {
                 error!(target: Target::all(), channel = channel_id; "Unable write to player status: {e}");
             };
 
-            thread::spawn(move || {
-                let mut run_endless = true;
+            tokio::spawn({
+                let self_clone = self_clone.clone();
+                async move {
+                    let mut run_endless = true;
 
-                while run_endless {
-                    let run_count = self_clone.run_count.clone();
+                    while run_endless {
+                        let run_count = self_clone.run_count.clone();
+                        let self_clone2 = self_clone.clone();
 
-                    if let Err(e) = start_channel(self_clone.clone()) {
-                        run_count.fetch_sub(1, Ordering::SeqCst);
-                        error!("{e}");
-                    };
+                        if let Err(e) = start_channel(self_clone2).await {
+                            run_count.fetch_sub(1, Ordering::SeqCst);
+                            error!("{e}");
+                        };
 
-                    let active = self_clone.channel.lock().unwrap().active;
+                        if self_clone.channel.lock().await.active {
+                            self_clone.run_count.fetch_add(1, Ordering::SeqCst);
+                            self_clone.is_alive.store(true, Ordering::SeqCst);
+                            self_clone.is_terminated.store(false, Ordering::SeqCst);
+                            self_clone.list_init.store(true, Ordering::SeqCst);
 
-                    if !active {
-                        run_endless = false;
-                    } else {
-                        self_clone.run_count.fetch_add(1, Ordering::SeqCst);
-                        self_clone.is_alive.store(true, Ordering::SeqCst);
-                        self_clone.is_terminated.store(false, Ordering::SeqCst);
-                        self_clone.list_init.store(true, Ordering::SeqCst);
-
-                        thread::sleep(Duration::from_millis(250));
+                            tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
+                        } else {
+                            run_endless = false;
+                        }
                     }
-                }
 
-                trace!("Async start done");
+                    trace!("Async start done");
+                }
             });
         }
     }
@@ -167,28 +172,24 @@ impl ChannelManager {
 
             let pool_clone = self.db_pool.clone().unwrap();
             let self_clone = self.clone();
-            let channel_id = self.channel.lock().unwrap().id;
+            let channel_id = self.channel.lock().await.id;
 
             if let Err(e) = handles::update_player(&pool_clone, channel_id, true).await {
                 error!(target: Target::all(), channel = channel_id; "Unable write to player status: {e}");
             };
 
-            if index + 1 == ARGS.channels.clone().unwrap_or_default().len() {
+            if index + 1 == ARGS.channel.clone().unwrap_or_default().len() {
                 let run_count = self_clone.run_count.clone();
 
-                tokio::task::spawn_blocking(move || {
-                    if let Err(e) = start_channel(self_clone) {
-                        run_count.fetch_sub(1, Ordering::SeqCst);
-                        error!("{e}");
-                    }
-                })
-                .await
-                .unwrap();
+                if let Err(e) = start_channel(self_clone).await {
+                    run_count.fetch_sub(1, Ordering::SeqCst);
+                    error!("{e}");
+                }
             } else {
-                thread::spawn(move || {
+                tokio::spawn(async move {
                     let run_count = self_clone.run_count.clone();
 
-                    if let Err(e) = start_channel(self_clone) {
+                    if let Err(e) = start_channel(self_clone).await {
                         run_count.fetch_sub(1, Ordering::SeqCst);
                         error!("{e}");
                     };
@@ -197,100 +198,83 @@ impl ChannelManager {
         }
     }
 
-    pub fn stop(&self, unit: ProcessUnit) -> Result<(), ProcessError> {
+    pub async fn stop(&self, unit: ProcessUnit) -> Result<(), ProcessError> {
         match unit {
             Decoder => {
-                if let Some(proc) = self.decoder.lock()?.as_mut() {
+                if let Some(proc) = self.decoder.lock().await.as_mut() {
                     proc.kill()
+                        .await
                         .map_err(|e| ProcessError::Custom(format!("Decoder: {e}")))?;
                 }
             }
             Encoder => {
-                if let Some(proc) = self.encoder.lock()?.as_mut() {
+                if let Some(proc) = self.encoder.lock().await.as_mut() {
                     proc.kill()
+                        .await
                         .map_err(|e| ProcessError::Custom(format!("Encoder: {e}")))?;
                 }
             }
             Ingest => {
-                if let Some(proc) = self.ingest.lock()?.as_mut() {
+                if let Some(proc) = self.ingest.lock().await.as_mut() {
                     proc.kill()
+                        .await
                         .map_err(|e| ProcessError::Custom(format!("Ingest: {e}")))?;
                 }
             }
         }
 
-        self.wait(unit)?;
-
-        Ok(())
-    }
-
-    fn run_wait(
-        &self,
-        unit: ProcessUnit,
-        child: &Arc<Mutex<Option<Child>>>,
-    ) -> Result<(), ProcessError> {
-        if let Some(proc) = child.lock().unwrap().as_mut() {
-            loop {
-                match proc.try_wait() {
-                    Ok(Some(_)) => break,
-                    Ok(None) => thread::sleep(Duration::from_millis(10)),
-                    Err(e) => return Err(ProcessError::Custom(format!("{unit}: {e}"))),
-                }
-            }
-        }
+        self.wait(unit).await?;
 
         Ok(())
     }
 
     /// Wait for process to proper close.
     /// This prevents orphaned/zombi processes in system
-    pub fn wait(&self, unit: ProcessUnit) -> Result<(), ProcessError> {
-        match unit {
-            Decoder => self.run_wait(unit, &self.decoder)?,
-            Encoder => self.run_wait(unit, &self.encoder)?,
-            Ingest => self.run_wait(unit, &self.ingest)?,
-        }
-
-        thread::sleep(Duration::from_millis(50));
-
-        Ok(())
-    }
-
-    pub async fn async_stop(&self) -> Result<(), ServiceError> {
-        let channel_id = self.channel.lock().unwrap().id;
-
-        if self.is_alive.load(Ordering::SeqCst) {
-            debug!(target: Target::all(), channel = channel_id; "Deactivate playout and stop all child processes from channel: <yellow>{channel_id}</>");
-        }
-
-        self.is_terminated.store(true, Ordering::SeqCst);
-        self.is_alive.store(false, Ordering::SeqCst);
-        self.ingest_is_running.store(false, Ordering::SeqCst);
-        self.run_count.fetch_sub(1, Ordering::SeqCst);
-        let pool = self.db_pool.clone().unwrap();
-
-        if let Err(e) = handles::update_player(&pool, channel_id, false).await {
-            error!(target: Target::all(), channel = channel_id; "Unable write to player status: {e}");
+    pub async fn wait(&self, unit: ProcessUnit) -> Result<(), ProcessError> {
+        let child = match unit {
+            Decoder => &self.decoder,
+            Encoder => &self.encoder,
+            Ingest => &self.ingest,
         };
 
-        for unit in [Decoder, Encoder, Ingest] {
-            let self_clone = self.clone();
+        if let Some(proc) = child.lock().await.as_mut() {
+            let mut counter = 0;
+            loop {
+                match proc.try_wait() {
+                    Ok(Some(_)) => break,
+                    Ok(None) => {
+                        if counter > 300 {
+                            break;
+                        }
+                        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
-            if let Err(e) = web::block(move || self_clone.stop(unit)).await? {
-                if !e.to_string().contains("exited process") {
-                    error!(target: Target::all(), channel = channel_id; "{e}")
+                        counter += 1;
+                    }
+                    Err(e) => return Err(ProcessError::Custom(format!("{unit}: {e}"))),
                 }
             }
         }
+
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
         Ok(())
     }
 
     /// No matter what is running, terminate them all.
-    pub fn stop_all(&self) {
-        let channel_id = self.channel.lock().unwrap().id;
+    pub async fn stop_all(&self, permanent: bool) -> Result<(), ServiceError> {
+        let channel_id = self.channel.lock().await.id;
 
-        if self.is_alive.load(Ordering::SeqCst) {
+        if permanent {
+            let pool = self.db_pool.clone().unwrap();
+
+            if self.is_alive.load(Ordering::SeqCst) {
+                debug!(target: Target::all(), channel = channel_id; "Deactivate playout and stop all child processes from channel: <yellow>{channel_id}</>");
+            }
+
+            if let Err(e) = handles::update_player(&pool, channel_id, false).await {
+                error!(target: Target::all(), channel = channel_id; "Player status cannot be written: {e}");
+            };
+        } else {
             debug!(target: Target::all(), channel = channel_id; "Stop all child processes from channel: <yellow>{channel_id}</>");
         }
 
@@ -300,12 +284,14 @@ impl ChannelManager {
         self.run_count.fetch_sub(1, Ordering::SeqCst);
 
         for unit in [Decoder, Encoder, Ingest] {
-            if let Err(e) = self.stop(unit) {
+            if let Err(e) = self.stop(unit).await {
                 if !e.to_string().contains("exited process") {
-                    error!(target: Target::all(), channel = channel_id; "{e}")
+                    error!(target: Target::all(), channel = channel_id; "{e}");
                 }
             }
         }
+
+        Ok(())
     }
 }
 
@@ -323,9 +309,9 @@ impl ChannelController {
         self.channels.push(manager);
     }
 
-    pub fn get(&self, id: i32) -> Option<ChannelManager> {
-        for manager in self.channels.iter() {
-            if manager.channel.lock().unwrap().id == id {
+    pub async fn get(&self, id: i32) -> Option<ChannelManager> {
+        for manager in &self.channels {
+            if manager.channel.lock().await.id == id {
                 return Some(manager.clone());
             }
         }
@@ -333,11 +319,21 @@ impl ChannelController {
         None
     }
 
-    pub fn remove(&mut self, channel_id: i32) {
-        self.channels.retain(|manager| {
-            let channel = manager.channel.lock().unwrap();
-            channel.id != channel_id
-        });
+    pub async fn remove(&mut self, channel_id: i32) {
+        let mut indices = Vec::new();
+
+        for (i, manager) in self.channels.iter().enumerate() {
+            let channel = manager.channel.lock().await;
+            if channel.id == channel_id {
+                indices.push(i);
+            }
+        }
+
+        indices.reverse();
+
+        for i in indices {
+            self.channels.remove(i);
+        }
     }
 
     pub fn run_count(&self) -> usize {
@@ -348,37 +344,40 @@ impl ChannelController {
     }
 }
 
-pub fn start_channel(manager: ChannelManager) -> Result<(), ProcessError> {
-    let config = manager.config.lock()?.clone();
+async fn start_channel(manager: ChannelManager) -> Result<(), ServiceError> {
+    let config = manager.config.lock().await.clone();
     let mode = config.output.mode.clone();
     let filler_list = manager.filler_list.clone();
     let channel_id = config.general.channel_id;
 
-    drain_hls_path(&config.channel.public)?;
+    drain_hls_path(&config.channel.public).await?;
 
     debug!(target: Target::all(), channel = channel_id; "Start ffplayout v{VERSION}, channel: <yellow>{channel_id}</>");
 
     // Fill filler list, can also be a single file.
-    thread::spawn(move || {
-        fill_filler_list(&config, Some(filler_list));
-    });
+    // INFO: Was running in a thread, but when it runs in a tokio task and
+    // after start a filler is needed, the first one will be ignored because the list is not filled.
+
+    if filler_list.lock().await.is_empty() {
+        fill_filler_list(&config, Some(filler_list)).await;
+    }
 
     match mode {
         // write files/playlist to HLS m3u8 playlist
-        HLS => write_hls(manager),
+        HLS => write_hls(manager).await,
         // play on desktop or stream to a remote target
-        _ => player(manager),
+        _ => player(manager).await,
     }
 }
 
-pub fn drain_hls_path(path: &Path) -> io::Result<()> {
-    let m3u8_files = find_m3u8_files(path)?;
+pub async fn drain_hls_path(path: &Path) -> io::Result<()> {
+    let m3u8_files = find_m3u8_files(path).await?;
     let mut pl_segments = vec![];
 
     for file in m3u8_files {
-        let mut file = std::fs::File::open(file).unwrap();
+        let mut file = fs::File::open(file).await?;
         let mut bytes: Vec<u8> = Vec::new();
-        file.read_to_end(&mut bytes).unwrap();
+        file.read_to_end(&mut bytes).await?;
 
         if let Ok(Playlist::MediaPlaylist(pl)) = m3u8_rs::parse_playlist_res(&bytes) {
             for segment in pl.segments {
@@ -387,43 +386,69 @@ pub fn drain_hls_path(path: &Path) -> io::Result<()> {
         };
     }
 
-    delete_old_segments(path, &pl_segments)
+    delete_old_segments(path, &pl_segments).await
 }
 
 /// Recursively searches for all files with the .m3u8 extension in the specified path.
-fn find_m3u8_files(path: &Path) -> io::Result<Vec<String>> {
+async fn find_m3u8_files(path: &Path) -> io::Result<Vec<String>> {
     let mut m3u8_files = Vec::new();
 
-    for entry in WalkDir::new(path)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|e| e.path().is_file() && e.path().extension().map_or(false, |ext| ext == "m3u8"))
-    {
-        m3u8_files.push(entry.path().to_string_lossy().to_string());
+    let mut entries = WalkDir::new(path).filter(move |entry| async move {
+        if entry.path().is_file() && entry.path().extension().is_some_and(|ext| ext == "m3u8") {
+            return Filtering::Continue;
+        }
+
+        Filtering::Ignore
+    });
+
+    loop {
+        match entries.next().await {
+            Some(Ok(entry)) => {
+                m3u8_files.push(entry.path().to_string_lossy().to_string());
+            }
+            Some(Err(e)) => {
+                error!(target: Target::file_mail(), "error: {e}");
+                break;
+            }
+            None => break,
+        }
     }
 
     Ok(m3u8_files)
 }
 
 /// Check if segment is in playlist, if not, delete it.
-fn delete_old_segments<P: AsRef<Path> + Clone + std::fmt::Debug>(
+async fn delete_old_segments<P: AsRef<Path> + Clone + std::fmt::Debug>(
     path: P,
     pl_segments: &[String],
 ) -> io::Result<()> {
-    for entry in WalkDir::new(path)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|e| {
-            e.path().is_file()
-                && e.path()
-                    .extension()
-                    .map_or(false, |ext| ext == "ts" || ext == "vtt")
-        })
-    {
-        let filename = entry.file_name().to_string_lossy().to_string();
+    let mut entries = WalkDir::new(path).filter(move |entry| async move {
+        if entry.path().is_file()
+            && entry
+                .path()
+                .extension()
+                .is_some_and(|ext| ext == "ts" || ext == "vtt")
+        {
+            return Filtering::Continue;
+        }
 
-        if !pl_segments.contains(&filename) {
-            fs::remove_file(entry.path())?;
+        Filtering::Ignore
+    });
+
+    loop {
+        match entries.next().await {
+            Some(Ok(entry)) => {
+                let filename = entry.file_name().to_string_lossy().to_string();
+
+                if !pl_segments.contains(&filename) {
+                    fs::remove_file(entry.path()).await?;
+                }
+            }
+            Some(Err(e)) => {
+                error!(target: Target::file_mail(), "error: {e}");
+                break;
+            }
+            None => break,
         }
     }
 

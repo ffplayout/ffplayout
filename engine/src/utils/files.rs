@@ -1,6 +1,5 @@
 use std::{
     collections::{HashMap, VecDeque},
-    io::Write,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
@@ -9,15 +8,14 @@ use actix_multipart::Multipart;
 use actix_web::{web, HttpResponse};
 use futures_util::TryStreamExt as _;
 use lexical_sort::{natural_lexical_cmp, PathSort};
+use log::*;
 use rand::{distributions::Alphanumeric, Rng};
 use relative_path::RelativePath;
 use serde::{Deserialize, Serialize};
-use tokio::fs;
-
-use log::*;
+use tokio::{fs, io::AsyncWriteExt};
 
 use crate::db::models::Channel;
-use crate::player::utils::{file_extension, MediaProbe};
+use crate::player::utils::{file_extension, probe::MediaProbe};
 use crate::utils::{config::PlayoutConfig, errors::ServiceError, s3_utils};
 
 #[derive(Debug, Clone, Default)]
@@ -134,7 +132,7 @@ pub fn norm_abs_path(
 
     let path = &root_path.join(&source_relative);
 
-    Ok((path.to_path_buf(), path_suffix, source_relative))
+    Ok((path.clone(), path_suffix, source_relative))
 }
 
 /// File Browser
@@ -152,11 +150,11 @@ pub async fn browser(
     let mut channel_extensions = channel
         .extra_extensions
         .split(',')
-        .map(|e| e.to_string())
+        .map(Into::into)
         .collect::<Vec<String>>();
     let mut extensions = config.storage.extensions.clone();
     extensions.append(&mut channel_extensions);
-    if channel.storage.is_s3() {
+    if config.channel.s3_storage.is_some() {
         // S3 Storage Browser
         match s3_utils::s3_browser(config, path_obj, extensions, duration).await {
             Ok(obj) => Ok(obj),
@@ -219,7 +217,7 @@ pub async fn browser(
             } else if f_meta.is_file() && !path_obj.folders_only {
                 if let Some(ext) = file_extension(&child.path()) {
                     if extensions.contains(&ext.to_string().to_lowercase()) {
-                        files.push(child.path())
+                        files.push(child.path());
                     }
                 }
             }
@@ -230,13 +228,9 @@ pub async fn browser(
         let mut media_files = vec![];
 
         for file in files {
-            match MediaProbe::new(file.to_string_lossy().as_ref()) {
+            match MediaProbe::new(file.to_string_lossy().as_ref()).await {
                 Ok(probe) => {
-                    let mut duration = 0.0;
-
-                    if let Some(dur) = probe.format.duration {
-                        duration = dur.parse().unwrap_or_default()
-                    }
+                    let duration = probe.format.duration.unwrap_or_default();
 
                     let video = VideoFile {
                         name: file.file_name().unwrap().to_string_lossy().to_string(),
@@ -257,10 +251,9 @@ pub async fn browser(
 
 pub async fn create_directory(
     config: &PlayoutConfig,
-    channel: &Channel,
     path_obj: &PathObject,
 ) -> Result<HttpResponse, ServiceError> {
-    if channel.storage.is_s3() {
+    if config.channel.s3_storage.is_some() {
         // S3 Storage
         let bucket: &str = config.channel.s3_storage.as_ref().unwrap().bucket.as_str();
         let (folder_name, _) = s3_utils::s3_path(&path_obj.source)?;
@@ -301,7 +294,7 @@ async fn copy_and_delete(source: &PathBuf, target: &PathBuf) -> Result<MoveObjec
                 ));
             };
 
-            return Ok(MoveObject {
+            Ok(MoveObject {
                 source: source
                     .file_name()
                     .unwrap_or_default()
@@ -312,7 +305,7 @@ async fn copy_and_delete(source: &PathBuf, target: &PathBuf) -> Result<MoveObjec
                     .unwrap_or_default()
                     .to_string_lossy()
                     .to_string(),
-            });
+            })
         }
         Err(e) => {
             error!("{e}");
@@ -344,10 +337,9 @@ async fn rename(source: &PathBuf, target: &PathBuf) -> Result<MoveObject, Servic
 
 pub async fn rename_file(
     config: &PlayoutConfig,
-    channel: &Channel,
     move_object: &MoveObject,
 ) -> Result<MoveObject, ServiceError> {
-    if channel.storage.is_s3() {
+    if config.channel.s3_storage.is_some() {
         let bucket: &str = config.channel.s3_storage.as_ref().unwrap().bucket.as_str();
         let s3_client = config.channel.s3_storage.as_ref().unwrap().client.clone();
         let obj_names = s3_utils::s3_rename(&move_object.source, &move_object.target).unwrap();
@@ -399,19 +391,18 @@ pub async fn rename_file(
 
 pub async fn remove_file_or_folder(
     config: &PlayoutConfig,
-    channel: &Channel,
     source_path: &str,
     recursive: bool,
 ) -> Result<(), ServiceError> {
-    if channel.storage.is_s3() {
+    if config.channel.s3_storage.is_some() {
         let bucket: &str = config.channel.s3_storage.as_ref().unwrap().bucket.as_str();
         let (clean_path, _) = s3_utils::s3_path(source_path)?;
         let s3_client = config.channel.s3_storage.as_ref().unwrap().client.clone();
 
         if s3_utils::s3_is_prefix(&clean_path, bucket, &s3_client).await? {
-            s3_utils::s3_delete_prefix(&clean_path, &bucket, &s3_client, recursive).await?
+            s3_utils::s3_delete_prefix(&clean_path, bucket, &s3_client, recursive).await?;
         } else {
-            s3_utils::s3_delete_object(&clean_path, &bucket, &s3_client).await?
+            s3_utils::s3_delete_object(&clean_path, bucket, &s3_client).await?;
         }
         Ok(())
     } else {
@@ -422,26 +413,20 @@ pub async fn remove_file_or_folder(
         }
 
         if source.is_dir() {
-            if recursive {
-                match fs::remove_dir_all(source).await {
-                    Ok(_) => return Ok(()),
-                    Err(e) => {
-                        error!("{e}");
-                        return Err(ServiceError::BadRequest(
-                            "Delete folder and its content failed!".into(),
-                        ));
-                    }
-                };
+            let res = if recursive {
+                fs::remove_dir_all(source).await
             } else {
-                match fs::remove_dir(source).await {
-                    Ok(_) => return Ok(()),
-                    Err(e) => {
-                        error!("{e}");
-                        return Err(ServiceError::BadRequest(
-                            "Delete folder failed! (Folder must be empty)".into(),
-                        ));
-                    }
-                };
+                fs::remove_dir(source).await
+            };
+
+            match res {
+                Ok(..) => return Ok(()),
+                Err(e) => {
+                    error!("{e}");
+                    return Err(ServiceError::BadRequest(
+                        "Delete folder failed! (Folder must be empty)".into(),
+                    ));
+                }
             }
         }
 
@@ -471,13 +456,12 @@ async fn valid_path(config: &PlayoutConfig, path: &str) -> Result<PathBuf, Servi
 
 pub async fn upload(
     config: &PlayoutConfig,
-    channel: Option<&Channel>,
     _size: u64,
     mut payload: Multipart,
     path: &Path,
     abs_path: bool,
 ) -> Result<HttpResponse, ServiceError> {
-    if channel.unwrap().storage.is_s3() {
+    if config.channel.s3_storage.is_some() {
         // S3 multipart-upload
         let bucket = config.channel.s3_storage.as_ref().unwrap().bucket.as_str();
         let s3_client = config.channel.s3_storage.as_ref().unwrap().client.clone();
@@ -488,7 +472,7 @@ pub async fn upload(
             Ok(_) => Ok(HttpResponse::Ok().into()),
             Err(err) => {
                 error!("S3 upload failed: {}", err);
-                return Err(ServiceError::Conflict("Target already exists!".into()));
+                Err(ServiceError::Conflict("Target already exists!".into()))
             }
         }
     } else {
@@ -513,10 +497,7 @@ pub async fn upload(
             };
             let filepath_clone = filepath.clone();
 
-            let _file_size = match filepath.metadata() {
-                Ok(metadata) => metadata.len(),
-                Err(_) => 0,
-            };
+            let _file_size = filepath.metadata().map(|m| m.len()).unwrap_or_default();
 
             // INFO: File exist check should be enough because file size and content length are different.
             // The error catching in the loop should normally prevent unfinished files from existing on disk.
@@ -525,12 +506,12 @@ pub async fn upload(
                 return Err(ServiceError::Conflict("Target already exists!".into()));
             }
 
-            let mut f = web::block(|| std::fs::File::create(filepath_clone)).await??;
+            let mut f = fs::File::create(filepath_clone).await?;
 
             loop {
                 match field.try_next().await {
                     Ok(Some(chunk)) => {
-                        f = web::block(move || f.write_all(&chunk).map(|_| f)).await??;
+                        f = f.write_all(&chunk).await.map(|_| f)?;
                     }
 
                     Ok(None) => break,
@@ -539,7 +520,7 @@ pub async fn upload(
                         if e.to_string().contains("stream is incomplete") {
                             info!("Delete non finished file: {filepath:?}");
 
-                            tokio::fs::remove_file(filepath).await?
+                            tokio::fs::remove_file(filepath).await?;
                         }
 
                         return Err(e.into());
