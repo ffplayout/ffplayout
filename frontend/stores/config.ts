@@ -17,6 +17,7 @@ export const useConfig = defineStore('config', {
         timezone: 'UTC',
         onetimeInfo: true,
         showPlayer: true,
+        showRestartModal: false,
     }),
 
     getters: {},
@@ -209,5 +210,23 @@ export const useConfig = defineStore('config', {
 
             return update
         },
+
+        async restart(res: boolean) {
+            if (res) {
+                const authStore = useAuth()
+                const indexStore = useIndex()
+                const channel = this.channels[this.i].id
+
+                await $fetch(`/api/control/${channel}/process/`, {
+                    method: 'POST',
+                    headers: { ...this.contentType, ...authStore.authHeader },
+                    body: JSON.stringify({ command: 'restart' }),
+                }).catch((e) => {
+                    indexStore.msgAlert('error', e.data, 3)
+                })
+            }
+
+            this.showRestartModal = false
+        }
     },
 })

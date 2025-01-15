@@ -94,7 +94,11 @@
                     <div class="label">
                         <span class="label-text">{{ t('config.timezone') }}</span>
                     </div>
-                    <select v-model="channel.timezone" class="select select-md select-bordered w-full max-w-xs" @change="isChanged">
+                    <select
+                        v-model="channel.timezone"
+                        class="select select-md select-bordered w-full max-w-xs"
+                        @change="isChanged"
+                    >
                         <option v-for="zone in Intl.supportedValuesOf('timeZone')" :key="zone" :value="zone">
                             {{ zone }}
                         </option>
@@ -120,6 +124,12 @@
                 </button>
             </div>
         </div>
+        <GenericModal
+            :title="t('config.restartTile')"
+            :text="t('config.restartText')"
+            :show="configStore.showRestartModal"
+            :modal-action="configStore.restart"
+        />
     </div>
 </template>
 
@@ -201,6 +211,9 @@ async function updateChannel() {
         body: JSON.stringify(channel.value),
     })
         .then(() => {
+            const oldTimezone = configStore.timezone
+            const currentTimezone = channel.value.timezone
+
             for (let i = 0; i < configStore.channels.length; i++) {
                 if (configStore.channels[i].id === channel.value.id) {
                     configStore.channels[i] = cloneDeep(channel.value)
@@ -214,6 +227,13 @@ async function updateChannel() {
                     configStore.channelsRaw[i] = cloneDeep(channel.value)
                     break
                 }
+            }
+
+            channel.value = cloneDeep(configStore.channels[i.value])
+            channelOrig.value = cloneDeep(configStore.channels[i.value])
+
+            if (oldTimezone !== currentTimezone) {
+                configStore.showRestartModal = true
             }
 
             indexStore.msgAlert('success', t('config.updateChannelSuccess'), 2)

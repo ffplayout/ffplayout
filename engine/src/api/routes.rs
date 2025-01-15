@@ -493,9 +493,11 @@ async fn patch_channel(
         data.storage = channel.storage;
     }
 
-    handles::update_channel(&pool, *id, data).await?;
+    handles::update_channel(&pool, *id, data.clone()).await?;
     let new_config = get_config(&pool, *id).await?;
+
     manager.update_config(new_config).await;
+    manager.update_channel(&data).await;
 
     Ok("Update Success")
 }
