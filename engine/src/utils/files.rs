@@ -158,7 +158,7 @@ pub async fn browser(
     extensions.append(&mut channel_extensions);
     if channel.storage.is_s3() {
         // S3 Storage Browser
-        match s3_utils::s3_browser(channel, path_obj, extensions, duration).await {
+        match s3_utils::s3_browser(config, path_obj, extensions, duration).await {
             Ok(obj) => Ok(obj),
             Err(e) => Err(e),
         }

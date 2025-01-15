@@ -12,12 +12,7 @@ use sqlx::{sqlite::SqliteRow, FromRow, Pool, Row, Sqlite};
 use crate::utils::config::PlayoutConfig;
 use crate::{db::handles, utils::s3_utils::S3Ext};
 
-use aws_config as s3_conf;
-use aws_sdk_s3::{
-    self as s3,
-    config::{Credentials, Region},
-    Client,
-};
+use aws_sdk_s3::config::Credentials;
 
 #[derive(Clone, Default, Debug, Deserialize, Serialize, sqlx::FromRow)]
 pub struct GlobalSettings {
@@ -93,8 +88,8 @@ pub struct Channel {
 // New async function for deserialization, as `from_row` can't be async
 impl Channel {
     pub async fn from_row_async(row: &SqliteRow) -> sqlx::Result<Self> {
-        let storage_path: String = row.try_get("storage").unwrap_or_default(); // Assuming `storage` is a string field
-        let storage = Storage::new(&storage_path).await?; // Use async `Storage::new`
+        let original_path: String = row.try_get("storage").unwrap_or_default(); // Assuming `storage` is a string field
+        let storage = Storage::new(&original_path).await?; // Use async `Storage::new`
 
         Ok(Self {
             id: row.try_get("id").unwrap_or_default(),
@@ -115,20 +110,18 @@ impl Channel {
 
 #[derive(Debug, Default, Clone)]
 pub struct Storage {
-    pub raw_path: String,
+    pub original_path: String,
     pub cleaned_path: String,
     is_s3: bool,
     s3_bucket: Option<String>,
     s3_credentials: Option<Credentials>,
     s3_endpoint_url: Option<String>,
-    s3_client: Option<Client>,
 }
 
 impl Storage {
     pub async fn new(path: &str) -> sqlx::Result<Self> {
         let raw_path = path.to_string();
         let is_s3 = path.parse_is_s3();
-        println!("\npath: {}, is_s3: {}", path, is_s3); // DEBUG
         if is_s3 {
             let (credentials, bucket, endpoint_url) =
                 crate::utils::s3_utils::s3_parse_string(path)?;
@@ -137,48 +130,28 @@ impl Storage {
             let s3_credentials = Some(credentials.clone());
             let s3_endpoint_url = Some(endpoint_url.clone());
 
-            // Create AWS shared credentials provider
-            let shared_provider = s3::config::SharedCredentialsProvider::new(credentials);
-            let config = s3_conf::from_env()
-                .region(Region::new("us-east-1")) // Dummy default region, replace if needed
-                .credentials_provider(shared_provider)
-                .load()
-                .await;
-
-            // Configure the S3 client with forced path style
-            let s3_config = s3::config::Builder::from(&config)
-                .endpoint_url(endpoint_url)
-                .force_path_style(true)
-                .build();
-            let s3_client = Some(s3::Client::from_conf(s3_config));
             return Ok(Self {
-                raw_path,
+                original_path: raw_path,
                 cleaned_path: String::new(),
                 is_s3,
                 s3_bucket,
                 s3_credentials,
                 s3_endpoint_url,
-                s3_client,
             });
         }
 
         Ok(Self {
-            raw_path: raw_path.clone(),
+            original_path: raw_path.clone(),
             cleaned_path: raw_path,
             is_s3: false,
             s3_bucket: None,
             s3_credentials: None,
             s3_endpoint_url: None,
-            s3_client: None,
         })
     }
 
     pub fn is_s3(&self) -> bool {
         self.is_s3
-    }
-
-    pub fn get_s3_client(&self) -> Option<Client> {
-        self.s3_client.clone()
     }
 
     pub fn get_s3_bucket(&self) -> Option<String> {
@@ -210,7 +183,7 @@ mod storage_serde {
     where
         S: Serializer,
     {
-        serializer.serialize_str(&storage.raw_path)
+        serializer.serialize_str(&storage.cleaned_path)
     }
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<Storage, D::Error>
@@ -218,11 +191,32 @@ mod storage_serde {
         D: Deserializer<'de>,
     {
         let raw_path = String::deserialize(deserializer)?;
-        let cleaned_path = if raw_path.parse_is_s3(){String::new()} else {raw_path.clone()};
+
+        if raw_path.parse_is_s3() {
+            match crate::utils::s3_utils::s3_parse_string(&raw_path) {
+                Ok((credentials, bucket, endpoint_url)) => {
+                    return Ok(Storage {
+                        original_path: raw_path,
+                        cleaned_path: String::new(),
+                        is_s3: true,
+                        s3_bucket: Some(bucket),
+                        s3_credentials: Some(credentials),
+                        s3_endpoint_url: Some(endpoint_url),
+                    });
+                }
+                Err(e) => {
+                    panic!("Failed to parse S3 string: {:?}", e);
+                }
+            }
+        }
+
         Ok(Storage {
-            raw_path,
-            cleaned_path,
-            ..Default::default()
+            original_path: raw_path.clone(),
+            cleaned_path: raw_path,
+            is_s3: false,
+            s3_bucket: None,
+            s3_credentials: None,
+            s3_endpoint_url: None,
         })
     }
 }

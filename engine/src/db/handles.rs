@@ -141,7 +141,7 @@ pub async fn update_channel(
         .bind(channel.extra_extensions)
         .bind(channel.public)
         .bind(channel.playlists)
-        .bind(channel.storage.raw_path)
+        .bind(channel.storage.original_path)
         .execute(conn)
         .await
 }
@@ -184,7 +184,7 @@ pub async fn insert_channel(conn: &Pool<Sqlite>, channel: Channel) -> Result<Cha
         .bind(channel.extra_extensions)
         .bind(channel.public)
         .bind(channel.playlists)
-        .bind(channel.storage.cleaned_path)
+        .bind(channel.storage.original_path)
         .execute(conn)
         .await?;
 

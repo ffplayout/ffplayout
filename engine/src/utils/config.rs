@@ -22,7 +22,8 @@ use crate::ARGS;
 
 use super::errors::ServiceError;
 
-use aws_sdk_s3::Client;
+use aws_config as s3_conf;
+use aws_sdk_s3::{self as s3, config::Region, Client};
 
 pub const DUMMY_LEN: f64 = 60.0;
 pub const IMAGE_FORMAT: [&str; 21] = [
@@ -200,6 +201,9 @@ pub struct Channel {
 
 impl Channel {
     pub async fn new(config: &models::GlobalSettings, channel: models::Channel) -> Self {
+        println!("\noriginal_path: {}", &channel.storage.original_path); // DEBUG
+        println!("\ncleaned_path_inConf: {}", &channel.storage.cleaned_path); // DEBUG
+
         Self {
             logs: PathBuf::from(config.logs.clone()),
             public: PathBuf::from(channel.public.clone()),
@@ -208,7 +212,24 @@ impl Channel {
             s3_storage: if channel.storage.is_s3() {
                 Some(S3 {
                     bucket: channel.storage.get_s3_bucket().unwrap(),
-                    client: channel.storage.get_s3_client().unwrap(),
+                    client: {
+                        let shared_provider = s3::config::SharedCredentialsProvider::new(
+                            channel.storage.get_s3_credentials().unwrap(),
+                        );
+                        let config = s3_conf::from_env()
+                            .region(Region::new("us-east-1")) // Dummy default region, replace if needed
+                            .credentials_provider(shared_provider)
+                            .load()
+                            .await;
+
+                        // Configure the S3 client with forced path style
+                        let s3_config = s3::config::Builder::from(&config)
+                            .endpoint_url(channel.storage.get_s3_endpointurl().unwrap())
+                            .force_path_style(true)
+                            .build();
+                        let s3_client = s3::Client::from_conf(s3_config);
+                        s3_client
+                    },
                 })
             } else {
                 None
@@ -643,7 +664,7 @@ impl PlayoutConfig {
         let mut output = Output::new(&config);
 
         let mut in_use_storage = channel.storage.clone();
-        println!("\nin use storage: {:?}", in_use_storage); //DEBUG
+
         if !channel.s3_storage.is_some() {
             info!("Local storage path detected");
             if !channel.storage.is_dir() {
@@ -657,7 +678,7 @@ impl PlayoutConfig {
             info!("S3 storage path detected");
             in_use_storage = PathBuf::new();
         }
-
+        println!("\nin_use_storage: {:?}", &in_use_storage); // DEBUG
         let mut storage = Storage::new(&config, in_use_storage.clone(), channel.shared);
 
         if !channel.playlists.is_dir() {

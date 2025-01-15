@@ -1099,6 +1099,7 @@ pub async fn gen_playlist(
     let manager = controllers.lock().unwrap().get(params.0).unwrap();
     manager.config.lock().unwrap().general.generate = Some(vec![params.1.clone()]);
     let storage = manager.config.lock().unwrap().channel.storage.clone();
+    println!("\nin_genPlaylist_STORAGE: {:?}", &storage); // DEBUG
 
     if let Some(obj) = data {
         if let Some(paths) = &obj.paths {
