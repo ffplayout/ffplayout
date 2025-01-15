@@ -3,13 +3,16 @@ use std::{
     time::Duration,
 };
 
-use actix_web::{rt::time::interval, web};
+use actix_web::web;
 use actix_web_lab::{
     sse::{self, Sse},
     util::InfallibleStream,
 };
 
-use tokio::sync::{mpsc, Mutex};
+use tokio::{
+    sync::{mpsc, Mutex},
+    time::interval,
+};
 use tokio_stream::wrappers::ReceiverStream;
 
 use crate::player::{controller::ChannelManager, utils::get_data_map};
@@ -56,7 +59,7 @@ impl Broadcaster {
     /// Pings clients every 10 seconds to see if they are alive and remove them from the broadcast
     /// list if not.
     fn spawn_ping(this: Arc<Self>) {
-        actix_web::rt::spawn(async move {
+        tokio::spawn(async move {
             let mut interval = interval(Duration::from_secs(1));
             let mut counter = 0;
 

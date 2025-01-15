@@ -18,17 +18,14 @@ use actix_files;
 use actix_multipart::Multipart;
 use actix_web::{
     delete, get,
-    http::{
-        header::{ContentDisposition, DispositionType},
-        StatusCode,
-    },
+    http::header::{ContentDisposition, DispositionType},
     patch, post, put, web, HttpRequest, HttpResponse, Responder,
 };
 use actix_web_grants::{authorities::AuthDetails, proc_macro::protect};
 
 use argon2::{
-    password_hash::{rand_core::OsRng, PasswordHash, SaltString},
-    Argon2, PasswordHasher, PasswordVerifier,
+    password_hash::{rand_core::OsRng, SaltString},
+    Argon2, PasswordHasher,
 };
 use chrono::{DateTime, Datelike, Local, NaiveDateTime, TimeDelta, TimeZone, Utc};
 use log::*;
@@ -39,7 +36,7 @@ use sqlx::{Pool, Sqlite};
 use tokio::{fs, sync::Mutex};
 
 use crate::{
-    api::auth::{create_jwt, Claims},
+    api::auth::{self, Credentials, TokenRefreshRequest},
     db::{
         handles,
         models::Role,
@@ -69,12 +66,6 @@ use crate::{
     },
     vec_strings,
 };
-
-#[derive(Serialize)]
-struct UserObj<T> {
-    message: String,
-    user: Option<T>,
-}
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct DateObj {
@@ -152,76 +143,37 @@ struct ProgramItem {
 ///
 /// ```JSON
 /// {
-///     "id": 1,
-///     "mail": "user@example.org",
-///     "username": "<USER>",
-///     "token": "<TOKEN>"
+///     "access": "<ACCESS TOKEN>",
+///     "refresh": "<REFRESH TOKEN>"
 /// }
 /// ```
-#[post("/auth/login/")]
+#[post("/login/")]
 pub async fn login(
     pool: web::Data<Pool<Sqlite>>,
-    credentials: web::Json<User>,
+    credentials: web::Json<Credentials>,
 ) -> Result<impl Responder, ServiceError> {
-    let username = credentials.username.clone();
-    let password = credentials.password.clone();
+    auth::authorize(&pool.into_inner(), credentials.into_inner()).await
+}
 
-    match handles::select_login(&pool, &username).await {
-        Ok(mut user) => {
-            let role = handles::select_role(&pool, &user.role_id.unwrap_or_default()).await?;
-
-            let pass_hash = user.password.clone();
-            let cred_password = password.clone();
-
-            user.password = String::new();
-
-            let verified_password = web::block(move || {
-                let hash = PasswordHash::new(&pass_hash)?;
-                Argon2::default().verify_password(cred_password.as_bytes(), &hash)
-            })
-            .await?;
-
-            if verified_password.is_ok() {
-                let claims = Claims::new(
-                    user.id,
-                    user.channel_ids.clone().unwrap_or_default(),
-                    username.clone(),
-                    role.clone(),
-                );
-
-                if let Ok(token) = create_jwt(claims).await {
-                    user.token = Some(token);
-                };
-
-                info!("user {} login, with role: {role}", username);
-
-                Ok(web::Json(UserObj {
-                    message: "login correct!".into(),
-                    user: Some(user),
-                })
-                .customize()
-                .with_status(StatusCode::OK))
-            } else {
-                error!("Wrong password for {username}!");
-
-                Ok(web::Json(UserObj {
-                    message: "Wrong password!".into(),
-                    user: None,
-                })
-                .customize()
-                .with_status(StatusCode::FORBIDDEN))
-            }
-        }
-        Err(e) => {
-            error!("Login {username} failed! {e}");
-            Ok(web::Json(UserObj {
-                message: format!("Login {username} failed!"),
-                user: None,
-            })
-            .customize()
-            .with_status(StatusCode::BAD_REQUEST))
-        }
-    }
+/// **Refresh token**
+///
+/// ```BASH
+/// curl -X POST http://127.0.0.1:8787/auth/refresh/ -H "Content-Type: application/json" \
+/// -d '{ "refresh": "REFRESH TOKEN>" }'
+/// ```
+/// **Response:**
+///
+/// ```JSON
+/// {
+///     "access": "<ACCESS TOKEN>",
+/// }
+/// ```
+#[post("/refresh/")]
+pub async fn refresh(
+    pool: web::Data<Pool<Sqlite>>,
+    data: web::Json<TokenRefreshRequest>,
+) -> Result<impl Responder, ServiceError> {
+    auth::refresh(&pool.into_inner(), data.into_inner()).await
 }
 
 /// From here on all request **must** contain the authorization header:\

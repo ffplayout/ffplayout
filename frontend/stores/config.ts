@@ -24,8 +24,7 @@ export const useConfig = defineStore('config', {
     actions: {
         async configInit() {
             const authStore = useAuth()
-
-            authStore.inspectToken()
+            await authStore.inspectToken()
 
             if (authStore.isLogin) {
                 await authStore.obtainUuid()
@@ -33,7 +32,7 @@ export const useConfig = defineStore('config', {
                     await this.getPlayoutConfig()
                     await this.getUserConfig()
 
-                    if (authStore.role === 'GlobalAdmin') {
+                    if (authStore.role === 'global_admin') {
                         await this.getAdvancedConfig()
                     }
                 })

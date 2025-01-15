@@ -50,7 +50,7 @@ fn thread_counter() -> usize {
     (available_threads / 2).max(2)
 }
 
-#[actix_web::main]
+#[tokio::main]
 async fn main() -> std::io::Result<()> {
     let mail_queues = Arc::new(Mutex::new(vec![]));
 
@@ -127,7 +127,7 @@ async fn main() -> std::io::Result<()> {
                 .app_data(auth_state.clone())
                 .app_data(web::Data::from(Arc::clone(&broadcast_data)))
                 .wrap(logger)
-                .service(login)
+                .service(web::scope("/auth").service(login).service(refresh))
                 .service(
                     web::scope("/api")
                         .wrap(auth)

@@ -8,7 +8,7 @@ export {}
 declare global {
     interface JwtPayloadExt extends JwtPayload {
         id: number
-        channel: number
+        channels: number[]
         role: string
     }
 
@@ -21,15 +21,9 @@ declare global {
         playlist: PlaylistExt
     }
 
-    interface LoginObj {
-        message: string
-        status: number
-        user?: {
-            id: number
-            mail: string
-            username: string
-            token
-        }
+    interface Token {
+        access: string
+        refresh: string
     }
 
     interface DataAuth {
