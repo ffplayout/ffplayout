@@ -165,10 +165,10 @@ pub async fn browser(
         let mut parent_folders = vec![];
         let (path, parent, path_component) =
             norm_abs_path(&config.channel.storage, &path_obj.source)?;
-        let parent_path = if !path_component.is_empty() {
-            path.parent().unwrap()
-        } else {
+        let parent_path = if path_component.is_empty() {
             &config.channel.storage
+        } else {
+            path.parent().unwrap()
         };
         let mut obj = PathObject::new(path_component, Some(parent));
         obj.folders_only = path_obj.folders_only;
