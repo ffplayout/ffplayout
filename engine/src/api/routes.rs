@@ -286,7 +286,7 @@ async fn update_user(
             argon
         })
         .await?
-        .unwrap();
+        .map_err(|e| ServiceError::Conflict(e.to_string()))?;
 
         fields.push_str(&format!("password = '{password_hash}'"));
     }
