@@ -35,7 +35,6 @@ use serde::{Deserialize, Serialize};
 use sqlx::{Pool, Sqlite};
 use tokio::{fs, sync::Mutex};
 
-use crate::utils::s3_utils;
 use crate::{
     api::auth::{self, Credentials, TokenRefreshRequest},
     db::{
@@ -56,7 +55,7 @@ use crate::{
         config::{get_config, PlayoutConfig, Template},
         control::{control_state, send_message, ControlParams, Process, ProcessCtl},
         errors::ServiceError,
-        files::SharedState,
+        files::MediaMap, s3_utils,
         files::{
             browser, create_directory, norm_abs_path, remove_file_or_folder, rename_file, upload,
             MoveObject, PathObject,
@@ -1204,7 +1203,7 @@ pub async fn file_browser(
     controllers: web::Data<Mutex<ChannelController>>,
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
-    durations: web::Data<SharedState>,
+    durations: web::Data<MediaMap>,
 ) -> Result<impl Responder, ServiceError> {
     let manager = controllers
         .lock()
@@ -1269,6 +1268,7 @@ pub async fn move_rename(
     controllers: web::Data<Mutex<ChannelController>>,
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
+    duration: web::Data<MediaMap>,
 ) -> Result<impl Responder, ServiceError> {
     let manager = controllers
         .lock()
@@ -1278,7 +1278,7 @@ pub async fn move_rename(
         .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
     let config = manager.config.lock().await.clone();
 
-    match rename_file(&config, &data.into_inner()).await {
+    match rename_file(&config, &data.into_inner(), duration).await {
         Ok(obj) => Ok(web::Json(obj)),
         Err(e) => Err(e),
     }
@@ -1302,6 +1302,7 @@ pub async fn remove(
     controllers: web::Data<Mutex<ChannelController>>,
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
+    duration: web::Data<MediaMap>,
 ) -> Result<impl Responder, ServiceError> {
     let manager = controllers
         .lock()
@@ -1312,7 +1313,7 @@ pub async fn remove(
     let config = manager.config.lock().await.clone();
     let recursive = data.recursive;
 
-    match remove_file_or_folder(&config, &data.into_inner().source, recursive).await {
+    match remove_file_or_folder(&config, &data.into_inner().source, recursive, duration).await {
         Ok(obj) => Ok(web::Json(obj)),
         Err(e) => Err(e),
     }

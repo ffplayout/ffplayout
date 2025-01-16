@@ -13,7 +13,7 @@ use std::{
 
 use log::*;
 
-use super::files::SharedState;
+use super::files::MediaMap;
 use super::{
     errors::ServiceError,
     files::{MoveObject, PathObject, VideoFile},
@@ -125,12 +125,13 @@ pub async fn s3_browser(
     config: &PlayoutConfig,
     path_obj: &PathObject,
     extensions: Vec<String>,
-    duration: web::Data<SharedState>,
+    duration: web::Data<MediaMap>,
 ) -> Result<PathObject, ServiceError> {
     let mut parent_folders = vec![];
-    let mut s3_obj_dur = duration
-        .lock()
-        .map_err(|e| ServiceError::Conflict(format!("Invalid S3 config!: {}", e)))?;
+    // let mut s3_obj_dur = duration
+    //     .lock()
+    //     .map_err(|e| ServiceError::Conflict(format!("Invalid S3 config!: {}", e)))?;
+    let s3_obj_dur = duration;
     let bucket = &config.channel.s3_storage.as_ref().unwrap().bucket;
     let path = path_obj.source.clone();
     let delimiter = '/'; // should be a single character
@@ -437,6 +438,7 @@ pub async fn s3_delete_object(
     source_path: &str,
     bucket: &str,
     s3_client: &Client,
+    duration: web::Data<MediaMap>,
 ) -> Result<(), ServiceError> {
     let (clean_path, _) = s3_path(source_path)?;
     let obj_path = clean_path.rsplit_once('/').unwrap_or((&clean_path, "")).0;
@@ -447,6 +449,8 @@ pub async fn s3_delete_object(
         .send()
         .await
         .map_err(|e| ServiceError::Conflict(format!("Failed to remove object!: {}", e)))?;
+    
+    duration.remove_obj(obj_path)?;
     Ok(())
 }
 
@@ -472,9 +476,10 @@ pub async fn s3_rename_object(
     destination_object: &str,
     bucket: &str,
     client: &aws_sdk_s3::Client,
+    duration: web::Data<MediaMap>,
 ) -> Result<(), ServiceError> {
     s3_copy_object(source_object, destination_object, bucket, client).await?;
-    s3_delete_object(source_object, bucket, client).await?;
+    s3_delete_object(source_object, bucket, client, duration).await?;
     Ok(())
 }
 
@@ -504,10 +509,11 @@ pub async fn s3_is_prefix(
     Ok(is_prefix)
 }
 
-pub fn s3_rename(source_path: &str, target_path: &str) -> Result<MoveObject, ServiceError> {
+pub fn s3_rename(source_path: &str, target_path: &str, duration: web::Data<MediaMap>) -> Result<MoveObject, ServiceError> {
     let source_name = source_path.rsplit('/').next().unwrap_or(source_path);
     let target_name = target_path.rsplit('/').next().unwrap_or(target_path);
-
+    duration.update_obj(source_path, target_path)?;
+    
     Ok(MoveObject {
         source: source_name.to_string(),
         target: target_name.to_string(),

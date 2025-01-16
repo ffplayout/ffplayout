@@ -630,16 +630,15 @@ pub async fn gen_source(
         let s3_str = config.channel.s3_storage.as_ref().unwrap().clone();
         let bucket = &s3_str.bucket;
         let client = &s3_str.client;
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        let presigned_url = rt
-            .block_on(s3_utils::s3_get_object(
+        if let Ok(presigned_url) = s3_utils::s3_get_object(
                 client,
                 bucket,
                 &cloned_source,
-                S3_DEFAULT_PRESIGNEDURL_EXP as u64,
-            ))
-            .unwrap_or_default();
-        node.source = presigned_url;
+                S3_DEFAULT_PRESIGNEDURL_EXP as u64).await{
+                    node.source = presigned_url;
+                } else {
+                    panic!("Couldn't generate presigned-url for current media!") // to-do : handle the else condition
+                }
     }
 
     let node_index = node.index.unwrap_or_default();

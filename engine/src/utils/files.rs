@@ -1,7 +1,7 @@
 use std::{
     collections::{HashMap, VecDeque},
     path::{Path, PathBuf},
-    sync::{Arc, Mutex},
+    sync::Mutex,
 };
 
 use actix_multipart::Multipart;
@@ -18,40 +18,65 @@ use crate::db::models::Channel;
 use crate::player::utils::{file_extension, probe::MediaProbe};
 use crate::utils::{config::PlayoutConfig, errors::ServiceError, s3_utils};
 
-#[derive(Debug, Clone, Default)]
-pub struct DurationMap {
-    pub dur_map: HashMap<String, f64>,
-    queue: VecDeque<String>,
+#[derive(Debug, Default)]
+pub struct MediaMap {
+    pub video_duration_data: Mutex<HashMap<String, f64>>,
+    queue: Mutex<VecDeque<String>>,
     limit: usize,
 }
 
-pub type SharedState = Arc<Mutex<DurationMap>>;
-
-impl DurationMap {
+impl MediaMap {
     pub fn create(limit: usize) -> Self {
         Self {
-            dur_map: HashMap::with_capacity(limit),
-            queue: VecDeque::with_capacity(limit),
+            video_duration_data: Mutex::new(HashMap::with_capacity(limit)),
+            queue: Mutex::new(VecDeque::with_capacity(limit)),
             limit,
         }
     }
 
-    pub fn add_obj(&mut self, key: String, value: f64) -> Result<(), &'static str> {
+    pub fn add_obj(&self, key: String, value: f64) -> Result<(), &'static str> {
         // insert item with FIFO algorithm
-
-        if self.dur_map.len() >= self.limit {
-            if let Some(oldest_key) = self.queue.pop_front() {
-                self.dur_map.remove(&oldest_key.clone());
+        let mut media_duration = self.video_duration_data.lock().unwrap();
+        let mut queue = self.queue.lock().unwrap();
+        if media_duration.len() >= self.limit {
+            if let Some(oldest_key) = queue.pop_front() {
+                media_duration.remove(&oldest_key.clone());
             }
         }
-        self.dur_map.insert(key.clone(), value);
-        self.queue.push_back(key);
+        media_duration.insert(key.clone(), value);
+        queue.push_back(key);
         Ok(())
     }
 
     pub fn get_obj(&self, key: &str) -> Option<f64> {
-        self.dur_map.get(key).copied()
+        let media_duration = self.video_duration_data.lock().unwrap();
+        media_duration.get(key).copied()
     }
+
+    pub fn remove_obj(&self, key: &str) -> Result<(), &'static str> {
+        let mut media_duration = self.video_duration_data.lock().unwrap();
+        let mut queue = self.queue.lock().unwrap();  
+        media_duration.remove(key);
+        if let Some(index) = queue.iter().position(|x| x == key) {
+            queue.remove(index);
+        } 
+    Ok(())
+    }
+
+    pub fn update_obj(&self, old_key: &str, new_key: &str) -> Result<(), &'static str> {
+        let mut media_duration = self.video_duration_data.lock().unwrap();
+        let mut queue = self.queue.lock().unwrap();  
+
+        if let Some(value) = media_duration.remove(old_key) {
+            self.add_obj(new_key.to_string(), value)?;
+        };
+        if let Some(index) = queue.iter().position(|x| x == old_key) {
+            queue[index] = new_key.to_string();
+        } 
+
+        Ok(())
+    }
+
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -145,7 +170,7 @@ pub async fn browser(
     config: &PlayoutConfig,
     channel: &Channel,
     path_obj: &PathObject,
-    duration: web::Data<SharedState>,
+    duration: web::Data<MediaMap>,
 ) -> Result<PathObject, ServiceError> {
     let mut channel_extensions = channel
         .extra_extensions
@@ -314,7 +339,8 @@ async fn copy_and_delete(source: &PathBuf, target: &PathBuf) -> Result<MoveObjec
     }
 }
 
-async fn rename(source: &PathBuf, target: &PathBuf) -> Result<MoveObject, ServiceError> {
+async fn rename(source: &PathBuf, target: &PathBuf, duration: web::Data<MediaMap>) -> Result<MoveObject, ServiceError> {
+    duration.update_obj(source.to_string_lossy().as_ref(), target.to_string_lossy().as_ref())?;
     match fs::rename(source, target).await {
         Ok(_) => Ok(MoveObject {
             source: source
@@ -338,17 +364,19 @@ async fn rename(source: &PathBuf, target: &PathBuf) -> Result<MoveObject, Servic
 pub async fn rename_file(
     config: &PlayoutConfig,
     move_object: &MoveObject,
+    duration: web::Data<MediaMap>,
 ) -> Result<MoveObject, ServiceError> {
     if config.channel.s3_storage.is_some() {
         let bucket: &str = config.channel.s3_storage.as_ref().unwrap().bucket.as_str();
         let s3_client = config.channel.s3_storage.as_ref().unwrap().client.clone();
-        let obj_names = s3_utils::s3_rename(&move_object.source, &move_object.target).unwrap();
+        let obj_names = s3_utils::s3_rename(&move_object.source, &move_object.target, duration.clone()).unwrap();
         if !s3_utils::s3_is_prefix(&move_object.source, bucket, &s3_client).await? {
             s3_utils::s3_rename_object(
                 &move_object.source,
                 &move_object.target,
                 bucket,
                 &s3_client,
+                duration
             )
             .await?;
         }
@@ -368,7 +396,7 @@ pub async fn rename_file(
         if (source_path.is_dir() || source_path.is_file())
             && source_path.parent() == Some(&target_path)
         {
-            return rename(&source_path, &target_path).await;
+            return rename(&source_path, &target_path, duration).await;
         }
 
         if target_path.is_dir() {
@@ -382,7 +410,7 @@ pub async fn rename_file(
         }
 
         if source_path.is_file() && target_path.parent().is_some() {
-            return rename(&source_path, &target_path).await;
+            return rename(&source_path, &target_path, duration).await;
         }
 
         Err(ServiceError::InternalServerError)
@@ -393,6 +421,7 @@ pub async fn remove_file_or_folder(
     config: &PlayoutConfig,
     source_path: &str,
     recursive: bool,
+    duration: web::Data<MediaMap>,
 ) -> Result<(), ServiceError> {
     if config.channel.s3_storage.is_some() {
         let bucket: &str = config.channel.s3_storage.as_ref().unwrap().bucket.as_str();
@@ -402,7 +431,7 @@ pub async fn remove_file_or_folder(
         if s3_utils::s3_is_prefix(&clean_path, bucket, &s3_client).await? {
             s3_utils::s3_delete_prefix(&clean_path, bucket, &s3_client, recursive).await?;
         } else {
-            s3_utils::s3_delete_object(&clean_path, bucket, &s3_client).await?;
+            s3_utils::s3_delete_object(&clean_path, bucket, &s3_client, duration).await?;
         }
         Ok(())
     } else {

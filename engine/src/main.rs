@@ -29,7 +29,7 @@ use ffplayout::{
     utils::{
         args_parse::run_args,
         config::get_config,
-        files::DurationMap,
+        files::MediaMap,
         logging::{init_logging, MailQueue},
         playlist::generate_playlist,
         time_machine::set_mock_time,
@@ -54,7 +54,7 @@ fn thread_counter() -> usize {
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
     let mail_queues = Arc::new(Mutex::new(vec![]));
-    let shared_duration = Arc::new(Mutex::new(DurationMap::create(1000)));
+    let shared_duration = web::Data::new(MediaMap::create(1000));
 
     let pool = db_pool().await.map_err(io::Error::other)?;
 
@@ -127,8 +127,8 @@ async fn main() -> std::io::Result<()> {
                 .app_data(queues.clone())
                 .app_data(controllers.clone())
                 .app_data(auth_state.clone())
+                .app_data(shared_duration.clone()) // to-do: find proper define type
                 .app_data(web::Data::from(Arc::clone(&broadcast_data)))
-                .app_data(web::Data::new(shared_duration.clone())) // to-do: find proper define type
                 .wrap(logger)
                 .service(web::scope("/auth").service(login).service(refresh))
                 .service(
