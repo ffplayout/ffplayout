@@ -48,7 +48,6 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
     let ingest_is_running = manager.ingest_is_running.clone();
     let mut buffer = vec![0u8; 64 * 1024];
     let mut live_on = false;
-    let mut error_count = 0;
 
     // get source iterator
     let mut node_sources = source_generator(manager.clone()).await;
@@ -77,10 +76,9 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
         tokio::spawn(ingest_server(config_clone, channel_mgr_2));
     }
 
-    'source_iter: while let Some(node) = node_sources.next().await {
+    while let Some(node) = node_sources.next().await {
         *manager.current_media.lock().await = Some(node.clone());
         let ignore_dec = config.logging.ignore_lines.clone();
-        let timer = tokio::time::Instant::now();
 
         if is_terminated.load(Ordering::SeqCst) {
             debug!(target: Target::file_mail(), channel = id; "Playout is terminated, break out from source loop");
@@ -164,18 +162,11 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
         );
 
         // create ffmpeg decoder instance, for reading the input files
-        let mut dec_proc = match Command::new("ffmpeg")
+        let mut dec_proc = Command::new("ffmpeg")
             .args(dec_cmd)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .spawn()
-        {
-            Ok(proc) => proc,
-            Err(e) => {
-                error!(target: Target::file_mail(), channel = id; "couldn't spawn decoder process: {e}");
-                panic!("couldn't spawn decoder process: {e}")
-            }
-        };
+            .spawn()?;
 
         let mut decoder_stdout = dec_proc.stdout.take().unwrap();
         let dec_err = BufReader::new(dec_proc.stderr.take().unwrap());
@@ -187,34 +178,25 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
             tokio::spawn(stderr_reader(dec_err, ignore_dec, Decoder, channel_mgr_c));
 
         loop {
-            // when server is running, read from it
             if ingest_is_running.load(Ordering::SeqCst) {
+                // read from ingest server instance
                 if !live_on {
                     info!(target: Target::file_mail(), channel = id; "Switch from {} to live ingest", config.processing.mode);
 
-                    if let Err(e) = manager.stop(Decoder).await {
-                        error!(target: Target::file_mail(), channel = id; "{e}");
-                    }
-
+                    manager.stop(Decoder).await?;
                     live_on = true;
                     playlist_init.store(true, Ordering::SeqCst);
                 }
 
                 let mut ingest_stdout_guard = manager.ingest_stdout.lock().await;
                 if let Some(ref mut ingest_stdout) = *ingest_stdout_guard {
-                    match ingest_stdout.read(&mut buffer[..]).await {
-                        Ok(0) => continue,
-                        Ok(n) => {
-                            if let Err(e) = enc_writer.write_all(&buffer[..n]).await {
-                                error!(target: Target::file_mail(), channel = id; "Error writing to encoder: {e}");
-                                break;
-                            }
-                        }
-                        Err(e) => {
-                            error!(target: Target::file_mail(), channel = id; "R/W error from ingest to encoder pipe: {e:?}");
-                            break 'source_iter;
-                        }
-                    };
+                    let num = ingest_stdout.read(&mut buffer[..]).await?;
+
+                    if num == 0 {
+                        break;
+                    }
+
+                    enc_writer.write_all(&buffer[..num]).await?;
                 }
             } else {
                 // read from decoder instance
@@ -225,42 +207,20 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
                     break;
                 }
 
-                match decoder_stdout.read(&mut buffer[..]).await {
-                    Ok(0) => break, // EOF
-                    Ok(n) => {
-                        if let Err(e) = enc_writer.write_all(&buffer[..n]).await {
-                            error!(target: Target::file_mail(), channel = id; "Error writing to encoder: {e}");
-                            break;
-                        }
-                    }
-                    Err(e) => {
-                        error!(target: Target::file_mail(), channel = id; "R/W error from decoder to encoder pipe: {e:?}");
-                        break 'source_iter;
-                    }
-                };
+                let num = decoder_stdout.read(&mut buffer[..]).await?;
+
+                if num == 0 {
+                    break;
+                }
+
+                enc_writer.write_all(&buffer[..num]).await?;
             }
         }
 
         drop(decoder_stdout);
 
-        if let Err(e) = manager.wait(Decoder).await {
-            error!(target: Target::file_mail(), channel = id; "{e}");
-        }
-
-        if let Err(e) = error_decoder_task.await {
-            error!(target: Target::file_mail(), channel = id; "{e:?}");
-        };
-
-        if timer.elapsed().as_millis() < 300 {
-            error_count += 1;
-
-            if error_count > 10 {
-                error!(target: Target::file_mail(), channel = id; "Reach fatal error count, terminate channel!");
-                break;
-            }
-        } else {
-            error_count = 0;
-        }
+        manager.wait(Decoder).await?;
+        error_decoder_task.await??;
     }
 
     trace!("Out of source loop");
@@ -268,10 +228,7 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
     sleep(Duration::from_secs(1)).await;
 
     manager.stop_all(false).await?;
-
-    if let Err(e) = error_encoder_task.await {
-        error!(target: Target::file_mail(), channel = id; "{e:?}");
-    };
+    error_encoder_task.await??;
 
     Ok(())
 }

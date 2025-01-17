@@ -1,5 +1,5 @@
 use std::{
-    fmt,
+    cmp, fmt,
     path::Path,
     sync::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
@@ -17,6 +17,7 @@ use tokio::{
     io::{self, AsyncReadExt},
     process::{Child, ChildStdout},
     sync::Mutex,
+    time::{sleep, Duration, Instant},
 };
 use tokio_stream::StreamExt;
 
@@ -26,7 +27,7 @@ use crate::player::{
 };
 use crate::utils::{
     config::{OutputMode::*, PlayoutConfig},
-    errors::{ProcessError, ServiceError},
+    errors::ServiceError,
 };
 use crate::ARGS;
 use crate::{
@@ -78,7 +79,6 @@ pub struct ChannelManager {
     pub filler_list: Arc<Mutex<Vec<Media>>>,
     pub current_index: Arc<AtomicUsize>,
     pub filler_index: Arc<AtomicUsize>,
-    pub run_count: Arc<AtomicUsize>,
 }
 
 impl ChannelManager {
@@ -94,7 +94,6 @@ impl ChannelManager {
             filler_list: Arc::new(Mutex::new(vec![])),
             current_index: Arc::new(AtomicUsize::new(0)),
             filler_index: Arc::new(AtomicUsize::new(0)),
-            run_count: Arc::new(AtomicUsize::new(0)),
             ..Default::default()
         }
     }
@@ -116,109 +115,104 @@ impl ChannelManager {
         *config = new_config;
     }
 
-    pub async fn start(&self) {
-        if !self.is_alive.load(Ordering::SeqCst) {
-            self.run_count.fetch_add(1, Ordering::SeqCst);
-            self.is_alive.store(true, Ordering::SeqCst);
-            self.is_terminated.store(false, Ordering::SeqCst);
-            self.list_init.store(true, Ordering::SeqCst);
+    pub async fn start(&self) -> Result<(), ServiceError> {
+        if self.is_alive.swap(true, Ordering::SeqCst) {
+            return Ok(()); // runs already, don't start multiple instances
+        }
 
-            let pool_clone = self.db_pool.clone().unwrap();
-            let self_clone = self.clone();
-            let channel_id = self.channel.lock().await.id;
+        let pool_clone = self.db_pool.clone().unwrap();
+        let self_clone = self.clone();
+        let channel_id = self.channel.lock().await.id;
 
-            if let Err(e) = handles::update_player(&pool_clone, channel_id, true).await {
-                error!(target: Target::all(), channel = channel_id; "Unable write to player status: {e}");
-            };
+        handles::update_player(&pool_clone, channel_id, true).await?;
 
-            tokio::spawn({
-                let self_clone = self_clone.clone();
-                async move {
-                    let mut run_endless = true;
+        tokio::spawn(async move {
+            const MAX_DELAY: Duration = Duration::from_secs(30);
+            let mut elapsed = Duration::from_secs(5);
+            let mut retry_delay = Duration::from_millis(500);
 
-                    while run_endless {
-                        let run_count = self_clone.run_count.clone();
-                        let self_clone2 = self_clone.clone();
+            while self_clone.channel.lock().await.active {
+                self_clone.is_alive.store(true, Ordering::SeqCst);
+                self_clone.is_terminated.store(false, Ordering::SeqCst);
+                self_clone.list_init.store(true, Ordering::SeqCst);
 
-                        if let Err(e) = start_channel(self_clone2).await {
-                            run_count.fetch_sub(1, Ordering::SeqCst);
-                            error!("{e}");
-                        };
+                let timer = Instant::now();
 
-                        if self_clone.channel.lock().await.active {
-                            self_clone.run_count.fetch_add(1, Ordering::SeqCst);
-                            self_clone.is_alive.store(true, Ordering::SeqCst);
-                            self_clone.is_terminated.store(false, Ordering::SeqCst);
-                            self_clone.list_init.store(true, Ordering::SeqCst);
-
-                            tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
-                        } else {
-                            run_endless = false;
-                        }
+                if let Err(e) = run_channel(self_clone.clone()).await {
+                    if let Err(e) = self_clone.stop_all(false).await {
+                        error!(target: Target::all(), channel = channel_id; "Failed to stop channel <yellow>{channel_id}</>: {e}");
+                        break;
                     }
 
-                    trace!("Async start done");
+                    if timer.elapsed() < elapsed {
+                        elapsed += retry_delay;
+                        retry_delay = cmp::min(retry_delay * 2, MAX_DELAY);
+                    } else {
+                        elapsed = Duration::from_secs(5);
+                        retry_delay = Duration::from_secs(1);
+                    }
+
+                    error!(target: Target::all(), channel = channel_id; "Run channel <yellow>{channel_id}</> failed: {e} | retry in <yellow>{}</> seconds", retry_delay.as_secs());
+
+                    sleep(retry_delay).await;
                 }
+            }
+
+            trace!("Async start done");
+        });
+
+        Ok(())
+    }
+
+    pub async fn foreground_start(&self, index: usize) -> Result<(), ServiceError> {
+        if self.is_alive.swap(true, Ordering::SeqCst) {
+            return Ok(()); // runs already, don't start multiple instances
+        }
+
+        self.is_alive.store(true, Ordering::SeqCst);
+        self.is_terminated.store(false, Ordering::SeqCst);
+        self.list_init.store(true, Ordering::SeqCst);
+
+        let pool_clone = self.db_pool.clone().unwrap();
+        let self_clone = self.clone();
+        let channel_id = self.channel.lock().await.id;
+
+        handles::update_player(&pool_clone, channel_id, true).await?;
+
+        if index + 1 == ARGS.channel.clone().unwrap_or_default().len() {
+            run_channel(self_clone).await?;
+        } else {
+            tokio::spawn(async move {
+                if let Err(e) = run_channel(self_clone).await {
+                    error!(target: Target::all(), channel = channel_id; "Run channel <yellow>{channel_id}</> failed: {e}");
+                };
             });
         }
+
+        Ok(())
     }
 
-    pub async fn foreground_start(&self, index: usize) {
-        if !self.is_alive.load(Ordering::SeqCst) {
-            self.run_count.fetch_add(1, Ordering::SeqCst);
-            self.is_alive.store(true, Ordering::SeqCst);
-            self.is_terminated.store(false, Ordering::SeqCst);
-            self.list_init.store(true, Ordering::SeqCst);
-
-            let pool_clone = self.db_pool.clone().unwrap();
-            let self_clone = self.clone();
-            let channel_id = self.channel.lock().await.id;
-
-            if let Err(e) = handles::update_player(&pool_clone, channel_id, true).await {
-                error!(target: Target::all(), channel = channel_id; "Unable write to player status: {e}");
-            };
-
-            if index + 1 == ARGS.channel.clone().unwrap_or_default().len() {
-                let run_count = self_clone.run_count.clone();
-
-                if let Err(e) = start_channel(self_clone).await {
-                    run_count.fetch_sub(1, Ordering::SeqCst);
-                    error!("{e}");
-                }
-            } else {
-                tokio::spawn(async move {
-                    let run_count = self_clone.run_count.clone();
-
-                    if let Err(e) = start_channel(self_clone).await {
-                        run_count.fetch_sub(1, Ordering::SeqCst);
-                        error!("{e}");
-                    };
-                });
-            }
-        }
-    }
-
-    pub async fn stop(&self, unit: ProcessUnit) -> Result<(), ProcessError> {
+    pub async fn stop(&self, unit: ProcessUnit) -> Result<(), ServiceError> {
         match unit {
             Decoder => {
                 if let Some(proc) = self.decoder.lock().await.as_mut() {
                     proc.kill()
                         .await
-                        .map_err(|e| ProcessError::Custom(format!("Decoder: {e}")))?;
+                        .map_err(|e| ServiceError::Conflict(format!("Decoder: {e}")))?;
                 }
             }
             Encoder => {
                 if let Some(proc) = self.encoder.lock().await.as_mut() {
                     proc.kill()
                         .await
-                        .map_err(|e| ProcessError::Custom(format!("Encoder: {e}")))?;
+                        .map_err(|e| ServiceError::Conflict(format!("Encoder: {e}")))?;
                 }
             }
             Ingest => {
                 if let Some(proc) = self.ingest.lock().await.as_mut() {
                     proc.kill()
                         .await
-                        .map_err(|e| ProcessError::Custom(format!("Ingest: {e}")))?;
+                        .map_err(|e| ServiceError::Conflict(format!("Ingest: {e}")))?;
                 }
             }
         }
@@ -230,7 +224,7 @@ impl ChannelManager {
 
     /// Wait for process to proper close.
     /// This prevents orphaned/zombi processes in system
-    pub async fn wait(&self, unit: ProcessUnit) -> Result<(), ProcessError> {
+    pub async fn wait(&self, unit: ProcessUnit) -> Result<(), ServiceError> {
         let child = match unit {
             Decoder => &self.decoder,
             Encoder => &self.encoder,
@@ -250,7 +244,7 @@ impl ChannelManager {
 
                         counter += 1;
                     }
-                    Err(e) => return Err(ProcessError::Custom(format!("{unit}: {e}"))),
+                    Err(e) => return Err(ServiceError::Conflict(format!("{unit}: {e}"))),
                 }
             }
         }
@@ -281,7 +275,6 @@ impl ChannelManager {
         self.is_terminated.store(true, Ordering::SeqCst);
         self.is_alive.store(false, Ordering::SeqCst);
         self.ingest_is_running.store(false, Ordering::SeqCst);
-        self.run_count.fetch_sub(1, Ordering::SeqCst);
 
         for unit in [Decoder, Encoder, Ingest] {
             if let Err(e) = self.stop(unit).await {
@@ -344,7 +337,7 @@ impl ChannelController {
     }
 }
 
-async fn start_channel(manager: ChannelManager) -> Result<(), ServiceError> {
+async fn run_channel(manager: ChannelManager) -> Result<(), ServiceError> {
     let config = manager.config.lock().await.clone();
     let mode = config.output.mode.clone();
     let filler_list = manager.filler_list.clone();

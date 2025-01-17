@@ -969,7 +969,7 @@ pub async fn process_control(
         ProcessCtl::Start => {
             if !manager.is_alive.load(Ordering::SeqCst) {
                 manager.channel.lock().await.active = true;
-                manager.start().await;
+                manager.start().await?;
             }
         }
         ProcessCtl::Stop => {
@@ -981,7 +981,7 @@ pub async fn process_control(
             tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
 
             if !manager.is_alive.load(Ordering::SeqCst) {
-                manager.start().await;
+                manager.start().await?;
             }
         }
     }
