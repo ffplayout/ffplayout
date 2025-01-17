@@ -1,6 +1,5 @@
 use serial_test::serial;
 use sqlx::sqlite::SqlitePoolOptions;
-use tokio::runtime::Runtime;
 
 use ffplayout::db::handles;
 use ffplayout::player::output::player;
@@ -35,10 +34,6 @@ async fn prepare_config() -> (PlayoutConfig, ChannelManager) {
     (config, manager)
 }
 
-fn get_config() -> (PlayoutConfig, ChannelManager) {
-    Runtime::new().unwrap().block_on(prepare_config())
-}
-
 async fn timed_stop(sec: u64, manager: ChannelManager) {
     tokio::time::sleep(tokio::time::Duration::from_secs(sec)).await;
 
@@ -51,7 +46,7 @@ async fn timed_stop(sec: u64, manager: ChannelManager) {
 #[tokio::test]
 #[ignore]
 async fn test_gen_source() {
-    let (mut config, manager) = get_config();
+    let (mut config, manager) = prepare_config().await;
 
     config.general.skip_validation = true;
     config.mail.recipient = "".into();
@@ -97,7 +92,7 @@ async fn test_gen_source() {
 #[serial]
 #[ignore]
 async fn playlist_missing() {
-    let (mut config, manager) = get_config();
+    let (mut config, manager) = prepare_config().await;
 
     config.general.skip_validation = true;
     config.mail.recipient = "".into();
@@ -133,7 +128,7 @@ async fn playlist_missing() {
 #[serial]
 #[ignore]
 async fn playlist_next_missing() {
-    let (mut config, manager) = get_config();
+    let (mut config, manager) = prepare_config().await;
 
     config.general.skip_validation = true;
     config.mail.recipient = "".into();
@@ -169,7 +164,7 @@ async fn playlist_next_missing() {
 #[serial]
 #[ignore]
 async fn playlist_to_short() {
-    let (mut config, manager) = get_config();
+    let (mut config, manager) = prepare_config().await;
 
     config.general.skip_validation = true;
     config.mail.recipient = "".into();
@@ -205,7 +200,7 @@ async fn playlist_to_short() {
 #[serial]
 #[ignore]
 async fn playlist_init_after_list_end() {
-    let (mut config, manager) = get_config();
+    let (mut config, manager) = prepare_config().await;
 
     config.general.skip_validation = true;
     config.mail.recipient = "".into();
@@ -241,7 +236,7 @@ async fn playlist_init_after_list_end() {
 #[serial]
 #[ignore]
 async fn playlist_change_at_midnight() {
-    let (mut config, manager) = get_config();
+    let (mut config, manager) = prepare_config().await;
 
     config.general.skip_validation = true;
     config.mail.recipient = "".into();
@@ -277,7 +272,7 @@ async fn playlist_change_at_midnight() {
 #[serial]
 #[ignore]
 async fn playlist_change_before_midnight() {
-    let (mut config, manager) = get_config();
+    let (mut config, manager) = prepare_config().await;
 
     config.general.skip_validation = true;
     config.mail.recipient = "".into();
@@ -313,7 +308,7 @@ async fn playlist_change_before_midnight() {
 #[serial]
 #[ignore]
 async fn playlist_change_at_six() {
-    let (mut config, manager) = get_config();
+    let (mut config, manager) = prepare_config().await;
 
     config.general.skip_validation = true;
     config.mail.recipient = "".into();

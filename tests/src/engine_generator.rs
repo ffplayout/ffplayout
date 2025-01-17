@@ -5,7 +5,6 @@ use std::{
 
 use chrono::NaiveTime;
 use sqlx::sqlite::SqlitePoolOptions;
-use tokio::runtime::Runtime;
 
 use ffplayout::db::handles;
 use ffplayout::player::{controller::ChannelManager, utils::*};
@@ -39,10 +38,6 @@ async fn prepare_config() -> (PlayoutConfig, ChannelManager) {
     let manager = ChannelManager::new(Some(pool), channel, config.clone());
 
     (config, manager)
-}
-
-fn get_config() -> (PlayoutConfig, ChannelManager) {
-    Runtime::new().unwrap().block_on(prepare_config())
 }
 
 #[tokio::test]
@@ -86,7 +81,7 @@ async fn test_ordered_list() {
 #[tokio::test]
 #[ignore]
 async fn test_filler_list() {
-    let (mut config, _) = get_config();
+    let (mut config, _) = prepare_config().await;
 
     config.storage.filler = "assets/".into();
 
@@ -98,7 +93,7 @@ async fn test_filler_list() {
 #[tokio::test]
 #[ignore]
 async fn test_generate_playlist_from_folder() {
-    let (mut config, manager) = get_config();
+    let (mut config, manager) = prepare_config().await;
 
     config.general.generate = Some(vec!["2023-09-11".to_string()]);
     config.processing.mode = Playlist;
@@ -127,7 +122,7 @@ async fn test_generate_playlist_from_folder() {
 #[tokio::test]
 #[ignore]
 async fn test_generate_playlist_from_template() {
-    let (mut config, manager) = get_config();
+    let (mut config, manager) = prepare_config().await;
 
     config.general.generate = Some(vec!["2023-09-12".to_string()]);
     config.general.template = Some(Template {

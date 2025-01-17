@@ -139,17 +139,17 @@ impl From<&str> for ServiceError {
 
 #[derive(Debug, Display)]
 pub enum ProcessError {
-    #[display("Failed to spawn ffmpeg/ffprobe. {}", _0)]
+    #[display("Failed to spawn ffmpeg/ffprobe. {_0}")]
     CommandSpawn(io::Error),
-    #[display("{}", _0)]
+    #[display("{_0}")]
     Custom(String),
-    #[display("IO error: {}", _0)]
+    #[display("IO error: {_0}")]
     IO(io::Error),
-    #[display("{}", _0)]
-    Ffprobe(FfProbeError),
-    #[display("Regex compile error {}", _0)]
+    #[display("{_0}")]
+    Ffprobe(String),
+    #[display("Regex compile error {_0}")]
     Regex(String),
-    #[display("Thread error {}", _0)]
+    #[display("Thread error {_0}")]
     Thread(String),
 }
 
@@ -161,7 +161,7 @@ impl From<std::io::Error> for ProcessError {
 
 impl From<FfProbeError> for ProcessError {
     fn from(err: FfProbeError) -> Self {
-        Self::Ffprobe(err)
+        Self::Ffprobe(err.to_string())
     }
 }
 
