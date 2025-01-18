@@ -186,7 +186,7 @@ pub async fn validate_playlist(
 
         let pos = index + 1;
 
-        if !is_remote(&item.source) {
+        if !is_remote(&item.source) && config.channel.s3_storage.is_none() {
             if item.audio.is_empty() {
                 if let Err(e) = item.add_probe(false).await {
                     error!(target: Target::file_mail(), channel = id;
