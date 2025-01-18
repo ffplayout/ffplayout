@@ -8,7 +8,6 @@ use actix_web_lab::{
     sse::{self, Sse},
     util::InfallibleStream,
 };
-
 use tokio::{
     sync::{mpsc, Mutex},
     time::interval,
@@ -16,17 +15,18 @@ use tokio::{
 use tokio_stream::wrappers::ReceiverStream;
 
 use crate::player::{controller::ChannelManager, utils::get_data_map};
+use crate::sse::Endpoint;
 use crate::utils::system;
 
 #[derive(Debug, Clone)]
 struct Client {
     manager: ChannelManager,
-    endpoint: String,
+    endpoint: Endpoint,
     sender: mpsc::Sender<sse::Event>,
 }
 
 impl Client {
-    fn new(manager: ChannelManager, endpoint: String, sender: mpsc::Sender<sse::Event>) -> Self {
+    fn new(manager: ChannelManager, endpoint: Endpoint, sender: mpsc::Sender<sse::Event>) -> Self {
         Self {
             manager,
             endpoint,
@@ -70,8 +70,7 @@ impl Broadcaster {
                     this.remove_stale_clients().await;
                 }
 
-                this.broadcast_playout().await;
-                this.broadcast_system().await;
+                this.broadcast().await;
 
                 counter = (counter + 1) % 61;
             }
@@ -80,78 +79,71 @@ impl Broadcaster {
 
     /// Removes all non-responsive clients from broadcast list.
     async fn remove_stale_clients(&self) {
-        let clients = self.inner.lock().await.clients.clone();
+        let mut inner = self.inner.lock().await;
 
-        let mut ok_clients = Vec::new();
-
-        for client in clients {
-            if client
+        inner.clients.retain(|client| {
+            client
                 .sender
-                .send(sse::Event::Comment("ping".into()))
-                .await
+                .try_send(sse::Event::Comment("ping".into()))
                 .is_ok()
-            {
-                ok_clients.push(client.clone());
-            }
-        }
-
-        self.inner.lock().await.clients = ok_clients;
+        });
     }
 
     /// Registers client with broadcaster, returning an SSE response body.
     pub async fn new_client(
         &self,
         manager: ChannelManager,
-        endpoint: String,
+        endpoint: Endpoint,
     ) -> Sse<InfallibleStream<ReceiverStream<sse::Event>>> {
         let (tx, rx) = mpsc::channel(10);
 
         tx.send(sse::Data::new("connected").into()).await.unwrap();
 
-        self.inner
-            .lock()
-            .await
-            .clients
-            .push(Client::new(manager, endpoint, tx));
+        let client = Client::new(manager, endpoint, tx);
+        self.inner.lock().await.clients.push(client);
 
         Sse::from_infallible_receiver(rx)
     }
 
-    /// Broadcasts playout status to clients.
-    pub async fn broadcast_playout(&self) {
+    pub async fn broadcast(&self) {
         let clients = self.inner.lock().await.clients.clone();
+        let mut playout_stat = None;
+        let mut system_stat = None;
 
-        for client in clients.iter().filter(|client| client.endpoint == "playout") {
+        if let Some(client) = clients
+            .iter()
+            .find(|c| matches!(c.endpoint, Endpoint::Playout))
+        {
             let media_map = get_data_map(&client.manager).await;
-
-            if client.manager.is_alive.load(Ordering::SeqCst) {
-                let _ = client
-                    .sender
-                    .send(
-                        sse::Data::new(serde_json::to_string(&media_map).unwrap_or_default())
-                            .into(),
-                    )
-                    .await;
+            playout_stat = if client.manager.is_alive.load(Ordering::SeqCst) {
+                serde_json::to_string(&media_map).ok()
             } else {
-                let _ = client
-                    .sender
-                    .send(sse::Data::new("not running").into())
-                    .await;
+                Some("not running".to_string())
+            };
+        }
+
+        if let Some(client) = clients
+            .iter()
+            .find(|c| matches!(c.endpoint, Endpoint::System))
+        {
+            let config = client.manager.config.lock().await.clone();
+            if let Ok(s) = web::block(move || system::stat(&config)).await {
+                system_stat = Some(s.to_string());
             }
         }
-    }
-
-    /// Broadcasts system status to clients.
-    pub async fn broadcast_system(&self) {
-        let clients = self.inner.lock().await.clients.clone();
 
         for client in clients {
-            if &client.endpoint == "system" {
-                let config = client.manager.config.lock().await.clone();
-                if let Ok(stat) = web::block(move || system::stat(&config)).await {
-                    let stat_string = stat.to_string();
-                    let _ = client.sender.send(sse::Data::new(stat_string).into()).await;
-                };
+            match client.endpoint {
+                Endpoint::Playout => {
+                    if let Some(ref pl) = playout_stat {
+                        let _ = client.sender.send(sse::Data::new(pl.clone()).into()).await;
+                    }
+                }
+                Endpoint::System => {
+                    if let Some(ref sy) = system_stat {
+                        let _ = client.sender.send(sse::Data::new(sy.clone()).into()).await;
+                    }
+                }
             }
         }
     }

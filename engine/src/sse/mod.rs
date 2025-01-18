@@ -1,8 +1,11 @@
 use std::{
     collections::HashSet,
+    fmt,
+    str::FromStr,
     time::{Duration, SystemTime},
 };
 
+use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
@@ -10,6 +13,40 @@ use crate::utils::errors::ServiceError;
 
 pub mod broadcast;
 pub mod routes;
+
+#[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Endpoint {
+    Playout,
+    System,
+}
+
+impl Default for Endpoint {
+    fn default() -> Self {
+        Self::System
+    }
+}
+
+impl FromStr for Endpoint {
+    type Err = String;
+
+    fn from_str(input: &str) -> Result<Self, Self::Err> {
+        match input {
+            "playout" => Ok(Self::Playout),
+            "system" => Ok(Self::System),
+            _ => Err("Missing endpoint".to_string()),
+        }
+    }
+}
+
+impl fmt::Display for Endpoint {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            Self::Playout => write!(f, "playout"),
+            Self::System => write!(f, "system"),
+        }
+    }
+}
 
 #[derive(Debug, Eq, Hash, PartialEq, Clone, Copy)]
 pub struct UuidData {

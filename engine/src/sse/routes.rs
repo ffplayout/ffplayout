@@ -6,18 +6,18 @@ use tokio::sync::Mutex;
 use super::{check_uuid, prune_uuids, SseAuthState, UuidData};
 use crate::db::models::Role;
 use crate::player::controller::ChannelController;
-use crate::sse::broadcast::Broadcaster;
+use crate::sse::{broadcast::Broadcaster, Endpoint};
 use crate::utils::errors::ServiceError;
 
 #[derive(Deserialize, Serialize)]
 struct User {
     #[serde(default, skip_serializing)]
-    endpoint: String,
+    endpoint: Endpoint,
     uuid: String,
 }
 
 impl User {
-    fn new(endpoint: String, uuid: String) -> Self {
+    fn new(endpoint: Endpoint, uuid: String) -> Self {
         Self { endpoint, uuid }
     }
 }
@@ -35,7 +35,7 @@ impl User {
 async fn generate_uuid(data: web::Data<SseAuthState>) -> Result<impl Responder, ServiceError> {
     let mut uuids = data.uuids.lock().await;
     let new_uuid = UuidData::new();
-    let user_auth = User::new(String::new(), new_uuid.uuid.to_string());
+    let user_auth = User::new(Endpoint::default(), new_uuid.uuid.to_string());
 
     prune_uuids(&mut uuids);
 
