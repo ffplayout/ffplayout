@@ -107,41 +107,29 @@ impl Broadcaster {
 
     pub async fn broadcast(&self) {
         let clients = self.inner.lock().await.clients.clone();
-        let mut playout_stat = None;
-        let mut system_stat = None;
 
-        if let Some(client) = clients
-            .iter()
-            .find(|c| matches!(c.endpoint, Endpoint::Playout))
-        {
-            let media_map = get_data_map(&client.manager).await;
-            playout_stat = if client.manager.is_alive.load(Ordering::SeqCst) {
-                serde_json::to_string(&media_map).ok()
-            } else {
-                Some("not running".to_string())
-            };
-        }
-
-        if let Some(client) = clients
-            .iter()
-            .find(|c| matches!(c.endpoint, Endpoint::System))
-        {
-            let config = client.manager.config.lock().await.clone();
-            if let Ok(s) = web::block(move || system::stat(&config)).await {
-                system_stat = Some(s.to_string());
-            }
-        }
-
+        // every client needs its own stats
         for client in clients {
             match client.endpoint {
                 Endpoint::Playout => {
-                    if let Some(ref pl) = playout_stat {
-                        let _ = client.sender.send(sse::Data::new(pl.clone()).into()).await;
-                    }
+                    let media_map = get_data_map(&client.manager).await;
+
+                    let message = if client.manager.is_alive.load(Ordering::SeqCst) {
+                        serde_json::to_string(&media_map).unwrap_or_default()
+                    } else {
+                        "not running".to_string()
+                    };
+
+                    let _ = client.sender.send(sse::Data::new(message).into()).await;
                 }
                 Endpoint::System => {
-                    if let Some(ref sy) = system_stat {
-                        let _ = client.sender.send(sse::Data::new(sy.clone()).into()).await;
+                    let config = client.manager.config.lock().await.clone();
+
+                    if let Ok(stat) = web::block(move || system::stat(&config)).await {
+                        let _ = client
+                            .sender
+                            .send(sse::Data::new(stat.to_string()).into())
+                            .await;
                     }
                 }
             }
