@@ -547,14 +547,7 @@ async fn timed_source(
                 manager.channel.lock().await.time_shift = time_shift + shifted_delta;
 
                 if let Err(e) =
-                    tokio::runtime::Runtime::new()
-                        .unwrap()
-                        .block_on(handles::update_stat(
-                            &db_pool,
-                            id,
-                            None,
-                            time_shift + shifted_delta,
-                        ))
+                    handles::update_stat(&db_pool, id, None, time_shift + shifted_delta).await
                 {
                     error!(target: Target::file_mail(), channel = id; "Unable to write status: {e}");
                 };

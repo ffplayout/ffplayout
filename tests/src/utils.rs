@@ -1,5 +1,4 @@
 use sqlx::sqlite::SqlitePoolOptions;
-use tokio::runtime::Runtime;
 
 use chrono::prelude::*;
 use serial_test::serial;
@@ -34,10 +33,6 @@ async fn prepare_config() -> (PlayoutConfig, ChannelManager) {
     let manager = ChannelManager::new(Some(pool), channel, config.clone());
 
     (config, manager)
-}
-
-fn get_config() -> (PlayoutConfig, ChannelManager) {
-    Runtime::new().unwrap().block_on(prepare_config())
 }
 
 #[test]
@@ -78,11 +73,11 @@ fn get_date_tomorrow() {
     assert_eq!("2022-05-21".to_string(), date);
 }
 
-#[test]
+#[actix_web::test]
 #[serial]
 #[ignore]
-fn test_delta() {
-    let (mut config, _) = get_config();
+async fn test_delta() {
+    let (mut config, _) = prepare_config().await;
 
     config.mail.recipient = "".into();
     config.processing.mode = Playlist;

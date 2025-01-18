@@ -289,7 +289,7 @@ async fn update_user(
             argon
         })
         .await?
-        .unwrap();
+        .map_err(|e| ServiceError::Conflict(e.to_string()))?;
 
         fields.push_str(&format!("password = '{password_hash}'"));
     }
@@ -973,7 +973,7 @@ pub async fn process_control(
             // to-do : here is process of start streaming
             if !manager.is_alive.load(Ordering::SeqCst) {
                 manager.channel.lock().await.active = true;
-                manager.start().await;
+                manager.start().await?;
             }
         }
         ProcessCtl::Stop => {
@@ -985,7 +985,7 @@ pub async fn process_control(
             tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
 
             if !manager.is_alive.load(Ordering::SeqCst) {
-                manager.start().await;
+                manager.start().await?;
             }
         }
     }

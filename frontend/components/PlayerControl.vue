@@ -74,7 +74,7 @@
                                 {{ secToHMS(playlistStore.current.out) }}
 
                                 <template v-if="playlistStore.shift !== 0">
-                                    | <strong>{{ t('player.shift') }}:</strong> {{ secToHMS(playlistStore.shift) }} |
+                                    | <strong>{{ t('player.shift') }}:</strong> {{ secToHMS(playlistStore.shift) }}
                                 </template>
                             </div>
                             <div class="h-1/4 content-center leading-5 text-sm md:text-base">

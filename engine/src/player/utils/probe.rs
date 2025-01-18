@@ -3,7 +3,6 @@ use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DisplayFromStr};
 use tokio::process;
 
-use crate::player::utils::is_remote;
 use crate::utils::errors::ProcessError;
 
 pub async fn ffprobe(path: impl AsRef<std::path::Path>) -> Result<FfProbe, FfProbeError> {
@@ -17,7 +16,7 @@ pub async fn ffprobe_config(path: impl AsRef<std::path::Path>) -> Result<FfProbe
 
     cmd.args([
         "-v",
-        "quiet",
+        "error",
         "-show_format",
         "-show_streams",
         "-print_format",
@@ -54,9 +53,9 @@ impl std::fmt::Display for FfProbeError {
             FfProbeError::Status(o) => {
                 write!(
                     f,
-                    "ffprobe exited with status code {}: {}",
+                    "ffprobe exited with {} <b><magenta>{}</></b>",
                     o.status,
-                    String::from_utf8_lossy(&o.stderr)
+                    String::from_utf8_lossy(&o.stderr).trim()
                 )
             }
             FfProbeError::Deserialize(e) => e.fmt(f),
@@ -182,43 +181,29 @@ impl MediaProbe {
     pub async fn new(
         input: impl AsRef<std::path::Path> + std::marker::Copy,
     ) -> Result<Self, ProcessError> {
-        let probe = ffprobe(input).await;
         let mut a_stream = vec![];
         let mut v_stream = vec![];
 
-        match probe {
-            Ok(obj) => {
-                for stream in obj.streams {
-                    let cp_stream = stream.clone();
+        let probe = ffprobe(input).await?;
+        for stream in probe.streams {
+            let cp_stream = stream.clone();
 
-                    if let Some(c_type) = cp_stream.codec_type {
-                        match c_type.as_str() {
-                            "audio" => a_stream.push(AudioStream::new(stream)),
-                            "video" => v_stream.push(VideoStream::new(stream)),
-                            _ => {}
-                        }
-                    } else {
-                        error!("No codec type found for stream: {stream:?}");
-                    }
+            if let Some(c_type) = cp_stream.codec_type {
+                match c_type.as_str() {
+                    "audio" => a_stream.push(AudioStream::new(stream)),
+                    "video" => v_stream.push(VideoStream::new(stream)),
+                    _ => {}
                 }
-
-                Ok(Self {
-                    format: MediaFormat::new(obj.format),
-                    audio: a_stream,
-                    video: v_stream,
-                })
-            }
-            Err(e) => {
-                if !input.as_ref().is_file() && !is_remote(&input.as_ref().to_string_lossy()) {
-                    Err(ProcessError::Custom(format!(
-                        "File <b><magenta>{}</></b> not exist!",
-                        input.as_ref().to_string_lossy()
-                    )))
-                } else {
-                    Err(ProcessError::Ffprobe(e))
-                }
+            } else {
+                error!("No codec type found for stream: {stream:?}");
             }
         }
+
+        Ok(Self {
+            format: MediaFormat::new(probe.format),
+            audio: a_stream,
+            video: v_stream,
+        })
     }
 
     pub fn format_duration(self) -> f64 {

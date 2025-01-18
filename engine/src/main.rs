@@ -88,7 +88,10 @@ async fn main() -> std::io::Result<()> {
             mail_queues.lock().await.push(m_queue.clone());
 
             if channel.active {
-                manager.start().await;
+                manager
+                    .start()
+                    .await
+                    .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
             }
         }
 
@@ -230,7 +233,10 @@ async fn main() -> std::io::Result<()> {
                 channel_controllers.lock().await.add(manager.clone());
                 mail_queues.lock().await.push(m_queue.clone());
 
-                manager.foreground_start(index).await;
+                manager
+                    .foreground_start(index)
+                    .await
+                    .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
             } else if ARGS.generate.is_some() {
                 // run a simple playlist generator and save them to disk
                 if let Err(e) = generate_playlist(manager).await {
