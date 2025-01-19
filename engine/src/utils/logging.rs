@@ -435,6 +435,7 @@ pub fn init_logging(
     let mut builder = LogSpecification::builder();
     builder
         .default(log_level)
+        .module("aws", LevelFilter::Info)
         .module("actix", LevelFilter::Info)
         .module("actix_files", LevelFilter::Info)
         .module("actix_web", LevelFilter::Info)
