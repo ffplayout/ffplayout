@@ -1,11 +1,12 @@
 use std::{
     borrow::Cow,
-    io::{self, stdin, stdout, Write},
+    io,
     path::Path,
     sync::{LazyLock, OnceLock},
 };
 
 use faccess::PathExt;
+use inquire::Confirm;
 use log::*;
 use sqlx::{migrate::MigrateDatabase, Pool, Sqlite, SqlitePool};
 
@@ -76,16 +77,10 @@ pub async fn db_pool() -> Result<Pool<Sqlite>, Box<dyn std::error::Error + Send 
 }
 
 pub async fn db_drop() {
-    let mut drop_answer = String::new();
-
-    print!("Drop Database [Y/n]: ");
-    stdout().flush().unwrap();
-
-    stdin()
-        .read_line(&mut drop_answer)
-        .expect("Did not enter a yes or no?");
-
-    let drop = drop_answer.trim().to_lowercase().starts_with('y');
+    let drop = Confirm::new("Drop Database: ")
+        .with_default(false)
+        .prompt()
+        .unwrap_or(false);
 
     if drop {
         let db_path = DB_PATH.as_ref().unwrap();

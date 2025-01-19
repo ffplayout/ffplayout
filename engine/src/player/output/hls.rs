@@ -57,8 +57,8 @@ async fn ingest_to_hls_server(manager: ChannelManager) -> Result<(), ServiceErro
     dummy_media.unit = Ingest;
     dummy_media.add_filter(&config, &chain).await;
 
-    let is_terminated = manager.is_terminated.clone();
-    let ingest_is_running = manager.ingest_is_running.clone();
+    let is_alive = manager.is_alive.clone();
+    let ingest_is_alive = manager.ingest_is_alive.clone();
 
     if let Some(ingest_input_cmd) = &config.advanced.ingest.input_cmd {
         server_prefix.append(&mut ingest_input_cmd.clone());
@@ -125,7 +125,7 @@ async fn ingest_to_hls_server(manager: ChannelManager) -> Result<(), ServiceErro
                     error!(target: Target::file_mail(), channel = id; "{e}");
                 };
             } else if !is_running && line.contains("Input #0") {
-                ingest_is_running.store(true, Ordering::SeqCst);
+                ingest_is_alive.store(true, Ordering::SeqCst);
                 playlist_init.store(true, Ordering::SeqCst);
                 is_running = true;
 
@@ -136,24 +136,24 @@ async fn ingest_to_hls_server(manager: ChannelManager) -> Result<(), ServiceErro
                 }
             }
 
-            if ingest_is_running.load(Ordering::SeqCst) {
+            if ingest_is_alive.load(Ordering::SeqCst) {
                 log_line(id, &line, &config.logging.ingest_level);
             } else {
                 log_line(id, &line, &config.logging.ffmpeg_level);
             }
         }
 
-        if ingest_is_running.load(Ordering::SeqCst) {
+        if ingest_is_alive.load(Ordering::SeqCst) {
             info!(target: Target::file_mail(), channel = id; "Switch from live ingest to {}", config.processing.mode);
         }
 
-        ingest_is_running.store(false, Ordering::SeqCst);
+        ingest_is_alive.store(false, Ordering::SeqCst);
 
         if let Err(e) = manager.wait(Ingest).await {
             error!(target: Target::file_mail(), channel = id; "{e}");
         }
 
-        if is_terminated.load(Ordering::SeqCst) {
+        if !is_alive.load(Ordering::SeqCst) {
             break;
         }
 
@@ -183,12 +183,12 @@ pub async fn write_hls(manager: ChannelManager) -> Result<(), ServiceError> {
     let config = manager.config.lock().await.clone();
     let id = config.general.channel_id;
     let current_media = manager.current_media.clone();
-    let is_terminated = manager.is_terminated.clone();
+    let is_alive = manager.is_alive.clone();
 
     let ff_log_format = format!("level+{}", config.logging.ffmpeg_level.to_lowercase());
 
     let channel_mgr_2 = manager.clone();
-    let ingest_is_running = manager.ingest_is_running.clone();
+    let ingest_is_alive = manager.ingest_is_alive.clone();
 
     let get_source = source_generator(manager.clone());
 
@@ -205,7 +205,7 @@ pub async fn write_hls(manager: ChannelManager) -> Result<(), ServiceError> {
         let ignore = config.logging.ignore_lines.clone();
         let timer = SystemTime::now();
 
-        if is_terminated.load(Ordering::SeqCst) {
+        if !is_alive.load(Ordering::SeqCst) {
             break;
         }
 
@@ -292,7 +292,7 @@ pub async fn write_hls(manager: ChannelManager) -> Result<(), ServiceError> {
             error!(target: Target::file_mail(), channel = id; "{e}");
         }
 
-        while ingest_is_running.load(Ordering::SeqCst) {
+        while ingest_is_alive.load(Ordering::SeqCst) {
             tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
         }
 

@@ -37,7 +37,7 @@ pub struct CurrentProgram {
     length_sec: f64,
     json_playlist: JsonPlaylist,
     current_node: Media,
-    is_terminated: Arc<AtomicBool>,
+    is_alive: Arc<AtomicBool>,
     last_json_path: Option<String>,
     last_node_ad: bool,
 }
@@ -46,7 +46,7 @@ pub struct CurrentProgram {
 impl CurrentProgram {
     pub async fn new(manager: ChannelManager) -> Self {
         let config = manager.config.lock().await.clone();
-        let is_terminated = manager.is_terminated.clone();
+        let is_alive = manager.is_alive.clone();
 
         Self {
             id: config.general.channel_id,
@@ -59,7 +59,7 @@ impl CurrentProgram {
                 config.playlist.start_sec.unwrap(),
             ),
             current_node: Media::default(),
-            is_terminated,
+            is_alive,
             last_json_path: None,
             last_node_ad: false,
         }
@@ -89,7 +89,7 @@ impl CurrentProgram {
                 &mut self.config,
                 self.manager.current_list.clone(),
                 self.json_playlist.path.clone(),
-                self.is_terminated.clone(),
+                self.is_alive.clone(),
                 seek,
                 false,
             )
@@ -180,7 +180,7 @@ impl CurrentProgram {
                 &mut self.config,
                 self.manager.current_list.clone(),
                 None,
-                self.is_terminated.clone(),
+                self.is_alive.clone(),
                 false,
                 true,
             )

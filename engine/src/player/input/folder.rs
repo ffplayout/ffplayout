@@ -25,7 +25,7 @@ use crate::utils::{config::PlayoutConfig, logging::Target};
 /// This makes it possible, to play infinitely and and always new files to it.
 pub async fn watchman(
     config: PlayoutConfig,
-    is_terminated: Arc<AtomicBool>,
+    is_alive: Arc<AtomicBool>,
     sources: Arc<Mutex<Vec<Media>>>,
 ) {
     let id = config.general.channel_id;
@@ -42,7 +42,7 @@ pub async fn watchman(
 
     debouncer.watch(path, RecursiveMode::Recursive).unwrap();
 
-    while !is_terminated.load(Ordering::SeqCst) {
+    while is_alive.load(Ordering::SeqCst) {
         if let Ok(result) = rx.try_recv() {
             match result {
                 Ok(events) => {
