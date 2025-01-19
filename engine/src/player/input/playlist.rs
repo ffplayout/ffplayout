@@ -624,14 +624,17 @@ pub async fn gen_source(
         let bucket = &s3_str.bucket;
         let client = &s3_str.client;
         if let Ok(presigned_url) = s3_utils::s3_get_object(
-                client,
-                bucket,
-                &cloned_source,
-                S3_DEFAULT_PRESIGNEDURL_EXP as u64).await{
-                    node.source = presigned_url;
-                } else {
-                    panic!("Couldn't generate presigned-url for current media!") // to-do : handle the else condition
-                }
+            client,
+            bucket,
+            &cloned_source,
+            S3_DEFAULT_PRESIGNEDURL_EXP as u64,
+        )
+        .await
+        {
+            node.source = presigned_url;
+        } else {
+            panic!("Couldn't generate presigned-url for current media!") // to-do : handle the else condition
+        }
     }
 
     let node_index = node.index.unwrap_or_default();
@@ -687,6 +690,7 @@ pub async fn gen_source(
             node.cmd = Some(seek_and_length(config, &mut node));
         }
     } else {
+        // to-do: add s3 filler config 
         trace!("clip index: {node_index} | last index: {last_index}");
 
         // Last index is the index from the last item from the node list.

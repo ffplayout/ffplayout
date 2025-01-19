@@ -21,10 +21,9 @@ use crate::vec_strings;
 use crate::AdvancedConfig;
 use crate::ARGS;
 
-use super::errors::ServiceError;
+use super::{errors::ServiceError, s3_utils};
 
-use aws_config as s3_conf;
-use aws_sdk_s3::{self as s3, config::Region, Client};
+use aws_sdk_s3::Client;
 
 pub const DUMMY_LEN: f64 = 60.0;
 pub const IMAGE_FORMAT: [&str; 21] = [
@@ -212,24 +211,7 @@ impl Channel {
             s3_storage: if channel.storage.is_s3() {
                 Some(S3 {
                     bucket: channel.storage.get_s3_bucket().unwrap(),
-                    client: {
-                        let shared_provider = s3::config::SharedCredentialsProvider::new(
-                            channel.storage.get_s3_credentials().unwrap(),
-                        );
-                        let config = s3_conf::from_env()
-                            .region(Region::new("us-east-1")) // Dummy default region, replace if needed
-                            .credentials_provider(shared_provider)
-                            .load()
-                            .await;
-
-                        // Configure the S3 client with forced path style
-                        let s3_config = s3::config::Builder::from(&config)
-                            .endpoint_url(channel.storage.get_s3_endpointurl().unwrap())
-                            .force_path_style(true)
-                            .build();
-
-                        s3::Client::from_conf(s3_config)
-                    },
+                    client: { s3_utils::s3_initialize_client(&channel).await },
                 })
             } else {
                 None
