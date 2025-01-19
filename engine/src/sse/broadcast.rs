@@ -9,7 +9,10 @@ use actix_web_lab::{
     util::InfallibleStream,
 };
 use tokio::{
-    sync::{mpsc, Mutex},
+    sync::{
+        mpsc::{self, error::SendError},
+        Mutex,
+    },
     time::interval,
 };
 use tokio_stream::wrappers::ReceiverStream;
@@ -61,31 +64,12 @@ impl Broadcaster {
     fn spawn_ping(this: Arc<Self>) {
         tokio::spawn(async move {
             let mut interval = interval(Duration::from_secs(1));
-            let mut counter = 0;
 
             loop {
                 interval.tick().await;
 
-                if counter % 10 == 0 {
-                    this.remove_stale_clients().await;
-                }
-
                 this.broadcast().await;
-
-                counter = (counter + 1) % 61;
             }
-        });
-    }
-
-    /// Removes all non-responsive clients from broadcast list.
-    async fn remove_stale_clients(&self) {
-        let mut inner = self.inner.lock().await;
-
-        inner.clients.retain(|client| {
-            client
-                .sender
-                .try_send(sse::Event::Comment("ping".into()))
-                .is_ok()
         });
     }
 
@@ -106,10 +90,13 @@ impl Broadcaster {
     }
 
     pub async fn broadcast(&self) {
-        let clients = self.inner.lock().await.clients.clone();
+        let mut inner = self.inner.lock().await;
+        let mut failed_clients = Vec::new();
 
         // every client needs its own stats
-        for client in clients {
+        for (index, client) in inner.clients.iter().enumerate() {
+            let mut sender_result = Err(SendError(sse::Event::Comment("closed".into())));
+
             match client.endpoint {
                 Endpoint::Playout => {
                     let media_map = get_data_map(&client.manager).await;
@@ -120,19 +107,27 @@ impl Broadcaster {
                         "not running".to_string()
                     };
 
-                    let _ = client.sender.send(sse::Data::new(message).into()).await;
+                    sender_result = client.sender.send(sse::Data::new(message).into()).await;
                 }
                 Endpoint::System => {
                     let config = client.manager.config.lock().await.clone();
 
                     if let Ok(stat) = web::block(move || system::stat(&config)).await {
-                        let _ = client
+                        sender_result = client
                             .sender
                             .send(sse::Data::new(stat.to_string()).into())
                             .await;
                     }
                 }
             }
+
+            if sender_result.is_err() {
+                failed_clients.push(index);
+            }
+        }
+
+        for &index in failed_clients.iter().rev() {
+            inner.clients.remove(index);
         }
     }
 }
