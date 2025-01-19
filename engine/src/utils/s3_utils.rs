@@ -18,7 +18,8 @@ use super::{
     errors::ServiceError,
     files::{MoveObject, PathObject, VideoFile},
 };
-use crate::{player::utils::probe::MediaProbe, utils::config::PlayoutConfig};
+use crate::{db::models, player::utils::probe::MediaProbe, utils::config::PlayoutConfig};
+use aws_config::Region;
 use aws_sdk_s3::{
     presigning::PresigningConfig,
     types::{CompletedMultipartUpload, CompletedPart},
@@ -49,12 +50,77 @@ impl S3Ext for PathBuf {
     }
 }
 
+/// **S3 Client Initializer**
+///
+/// Initializes an S3 client using credentials and endpoint details from a `Channel`.
+///
+/// ## Parameters
+/// - **`channel: &models::Channel`**: Source of S3 configuration.
+///
+/// ## Returns
+/// - **`aws_sdk_s3::Client`**: Configured S3 client.
+pub async fn s3_initialize_client(channel: &models::Channel) -> Client {
+    let shared_provider = aws_sdk_s3::config::SharedCredentialsProvider::new(
+        channel.storage.get_s3_credentials().unwrap(),
+    );
+    let config = aws_config::from_env()
+        .region(Region::new("us-east-1")) // Dummy default region, replace if needed!
+        .credentials_provider(shared_provider)
+        .load()
+        .await;
+
+    let s3_config = aws_sdk_s3::config::Builder::from(&config)
+        .endpoint_url(channel.storage.get_s3_endpointurl().unwrap())
+        .force_path_style(true)
+        .build();
+
+    aws_sdk_s3::Client::from_conf(s3_config)
+}
+
+/// **S3 String Parser**
+///
+/// ## Purpose
+/// Parses S3 configuration details from a provided string, extracting the bucket name, endpoint URL, and AWS credentials.
+///
+/// ## Input Format
+/// The input string must follow this format:
+/// `s3://{bucket_name}/:{endpoint_url}/:{access_key}/:{secret_key}`
+///
+/// - **`bucket_name`**: The name of the S3 bucket.
+/// - **`endpoint_url`**: The URL of the S3 endpoint. If missing `http://` or `https://`, `http://` is automatically added.
+/// - **`access_key`**: The AWS or S3 access key.
+/// - **`secret_key`**: The AWS or S3 secret key.
+///
+/// ## Example
+/// ```rust
+/// let s3_string = "s3://my_bucket/:http://example.com/:my_access_key/:my_secret_key";
+/// match s3_parse_string(s3_string) {
+///     Ok((credentials, bucket_name, endpoint_url)) => {
+///         assert_eq!(bucket_name, "my_bucket");
+///         assert_eq!(endpoint_url, "http://example.com");
+///         assert_eq!(credentials.access_key_id(), "my_access_key");
+///     }
+///     Err(e) => eprintln!("Error: {}", e),
+/// }
+/// ```
+///
+/// ## Returns
+/// A `Result` containing:
+/// - **`aws_sdk_s3::config::Credentials`**: AWS credentials.
+/// - **`String`**: The S3 bucket name.
+/// - **`String`**: The endpoint URL.
+///
+/// Returns an error if the string does not match the expected format.
+///
+/// ## Errors
+/// - Returns `std::io::Error` if the input is invalid.
+///
+/// ## Use Case
+/// Use this function to parse S3 configurations from strings, such as environment variables or config files.
 pub fn s3_parse_string(
     // to_do: maybe should change the snippet to get better understanding
     s3_str: &str,
 ) -> Result<(aws_sdk_s3::config::Credentials, String, String), std::io::Error> {
-    // Define the regex pattern for /: delimiter
-    // The pattern : s3://{bucket_name}/:{endpoint_url}/:{access_key}/:{secret_key}
     let pattern = format!(r"{}([^/]+)/:(.*?)/:([^/]+)/:([^/]+)", S3_INDICATOR);
 
     let re = Regex::new(&pattern)
@@ -86,9 +152,21 @@ pub fn s3_parse_string(
     }
 }
 
-/// Prepares the raw input path for S3.
+/// **S3 Path Preparer**
 ///
-/// Ensures the path is valid for S3 configuration.
+/// Cleans and validates an input path for S3 compatibility, ensuring proper formatting.
+///
+/// ## Parameters
+/// - **`input_path: &str`**: The raw input path to be processed.
+///
+/// ## Returns
+/// - **`Result<(String, String), ServiceError>`**:
+///   - **`clean_path`**: The sanitized path.
+///   - **`clean_parent_path`**: The sanitized parent path.
+///
+/// ## Notes
+/// - Removes redundant slashes and ensures the path ends with a `/` where appropriate.
+/// - Returns an empty string for invalid or empty paths.
 pub fn s3_path(input_path: &str) -> Result<(String, String), ServiceError> {
     fn s3_clean_path(input_path: &str) -> Result<String, ServiceError> {
         let re = Regex::new("//+").unwrap(); // Matches one or more '/'
@@ -121,6 +199,36 @@ pub fn s3_path(input_path: &str) -> Result<(String, String), ServiceError> {
     Ok((clean_path, clean_parent_path))
 }
 
+/// **Generate Presigned URL for S3 Object**
+///
+/// Creates a presigned URL that provides temporary access to an S3 object.
+///
+/// ## Returns
+/// - **`Result<String, ServiceError>`**: The presigned URL if successful, or an error.
+///
+/// ## Notes
+/// - The URL will be valid for the specified duration.
+pub async fn s3_get_object(
+    client: &Client,
+    bucket: &str,
+    object_key: &str,
+    expires_in: u64,
+) -> Result<String, ServiceError> {
+    let expires_in = Duration::from_secs(expires_in);
+    let presigned_request = client
+        .get_object()
+        .bucket(bucket)
+        .key(object_key)
+        .presigned(
+            PresigningConfig::expires_in(expires_in)
+                .map_err(|_| ServiceError::InternalServerError)?,
+        )
+        .await
+        .map_err(|e| ServiceError::BadRequest(format!("Invalid S3 config!: {}", e)))?;
+
+    Ok(presigned_request.uri().to_string())
+}
+
 pub async fn s3_browser(
     config: &PlayoutConfig,
     path_obj: &PathObject,
@@ -142,7 +250,6 @@ pub async fn s3_browser(
 
     if (prefix != parent_path && !path_obj.folders_only)
         || (!prefix.is_empty() && (parent_path.is_empty()))
-    // to-do: fix! this cause a bug that occur when you click back on root path after searching in sub folders
     {
         let childs_resp = s3_client
             .list_objects_v2()
@@ -231,30 +338,6 @@ pub async fn s3_browser(
     Ok(obj)
 }
 
-/// Prepares the raw input path for S3.
-///
-/// Generates a presigned URL that provides temporary access to an S3 object.
-pub async fn s3_get_object(
-    client: &Client,
-    bucket: &str,
-    object_key: &str,
-    expires_in: u64,
-) -> Result<String, ServiceError> {
-    let expires_in = Duration::from_secs(expires_in);
-    let presigned_request = client
-        .get_object()
-        .bucket(bucket)
-        .key(object_key)
-        .presigned(
-            PresigningConfig::expires_in(expires_in)
-                .map_err(|_| ServiceError::InternalServerError)?,
-        )
-        .await
-        .map_err(|e| ServiceError::BadRequest(format!("Invalid S3 config!: {}", e)))?;
-
-    Ok(presigned_request.uri().to_string())
-}
-
 pub async fn s3_upload_multipart(
     mut payload: Multipart,
     bucket: &str,
@@ -315,7 +398,7 @@ pub async fn s3_upload_multipart(
                     if e.to_string().contains("stream is incomplete") {
                         info!("Incomplete stream for part, continuing multipart upload: {e}");
 
-                        tokio::fs::remove_file(filepath).await?
+                        tokio::fs::remove_file(filepath).await?;
                     }
 
                     return Err(e.into());
@@ -449,7 +532,7 @@ pub async fn s3_delete_object(
         .send()
         .await
         .map_err(|e| ServiceError::Conflict(format!("Failed to remove object!: {}", e)))?;
-    
+
     duration.remove_obj(obj_path)?;
     Ok(())
 }
@@ -483,6 +566,15 @@ pub async fn s3_rename_object(
     Ok(())
 }
 
+/// **Check if Path is an S3 Prefix**
+///
+/// Checks if the given path corresponds to a prefix in the specified S3 bucket.
+///
+/// ## Returns
+/// - **`Result<bool, ServiceError>`**: `true` if the path is a prefix, `false` otherwise, or an error.
+///
+/// ## Notes
+/// - Uses S3's `list_objects_v2` to check for common prefixes matching the path.
 pub async fn s3_is_prefix(
     path: &str,
     bucket: &str,
@@ -509,11 +601,15 @@ pub async fn s3_is_prefix(
     Ok(is_prefix)
 }
 
-pub fn s3_rename(source_path: &str, target_path: &str, duration: web::Data<MediaMap>) -> Result<MoveObject, ServiceError> {
+pub fn s3_rename(
+    source_path: &str,
+    target_path: &str,
+    duration: web::Data<MediaMap>,
+) -> Result<MoveObject, ServiceError> {
     let source_name = source_path.rsplit('/').next().unwrap_or(source_path);
     let target_name = target_path.rsplit('/').next().unwrap_or(target_path);
     duration.update_obj(source_path, target_path)?;
-    
+
     Ok(MoveObject {
         source: source_name.to_string(),
         target: target_name.to_string(),
