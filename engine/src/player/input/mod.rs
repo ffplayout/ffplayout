@@ -34,7 +34,7 @@ impl async_iterator::Iterator for SourceIterator {
 pub async fn source_generator(manager: ChannelManager) -> SourceIterator {
     let config = manager.config.lock().await.clone();
     let id = config.general.channel_id;
-    let is_terminated = manager.is_terminated.clone();
+    let is_alive = manager.is_alive.clone();
     let current_list = manager.current_list.clone();
 
     match config.processing.mode {
@@ -50,7 +50,7 @@ pub async fn source_generator(manager: ChannelManager) -> SourceIterator {
             let list_clone = current_list.clone();
 
             // Spawn a task to monitor folder for file changes.
-            tokio::spawn(watchman(config_clone, is_terminated.clone(), list_clone));
+            tokio::spawn(watchman(config_clone, is_alive.clone(), list_clone));
 
             SourceIterator::Folder(folder_source.await)
         }

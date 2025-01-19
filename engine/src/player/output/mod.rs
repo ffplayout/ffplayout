@@ -44,8 +44,8 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
     let ff_log_format = format!("level+{}", config.logging.ffmpeg_level.to_lowercase());
     let ignore_enc = config.logging.ignore_lines.clone();
     let playlist_init = manager.list_init.clone();
-    let is_terminated = manager.is_terminated.clone();
-    let ingest_is_running = manager.ingest_is_running.clone();
+    let is_alive = manager.is_alive.clone();
+    let ingest_is_alive = manager.ingest_is_alive.clone();
     let mut buffer = vec![0u8; 64 * 1024];
     let mut live_on = false;
 
@@ -54,9 +54,9 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
 
     // get ffmpeg output instance
     let mut enc_proc = match config.output.mode {
-        Desktop => desktop::output(&config, &ff_log_format).await,
-        Null => null::output(&config, &ff_log_format).await,
-        Stream => stream::output(&config, &ff_log_format).await,
+        Desktop => desktop::output(&config, &ff_log_format).await?,
+        Null => null::output(&config, &ff_log_format).await?,
+        Stream => stream::output(&config, &ff_log_format).await?,
         _ => panic!("Output mode doesn't exists!"),
     };
 
@@ -72,16 +72,18 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
     let channel_mgr_2 = manager.clone();
 
     // spawn a task for ffmpeg ingest server and create a channel for package sending
-    if config.ingest.enable {
-        tokio::spawn(ingest_server(config_clone, channel_mgr_2));
-    }
+    let ingest_srv = if config.ingest.enable {
+        Some(tokio::spawn(ingest_server(config_clone, channel_mgr_2)))
+    } else {
+        None
+    };
 
     while let Some(node) = node_sources.next().await {
         *manager.current_media.lock().await = Some(node.clone());
         let ignore_dec = config.logging.ignore_lines.clone();
 
-        if is_terminated.load(Ordering::SeqCst) {
-            debug!(target: Target::file_mail(), channel = id; "Playout is terminated, break out from source loop");
+        if !is_alive.load(Ordering::SeqCst) {
+            debug!(target: Target::file_mail(), channel = id; "Playout is stopped, break out from source loop");
             break;
         }
 
@@ -178,7 +180,7 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
             tokio::spawn(stderr_reader(dec_err, ignore_dec, Decoder, channel_mgr_c));
 
         loop {
-            if ingest_is_running.load(Ordering::SeqCst) {
+            if ingest_is_alive.load(Ordering::SeqCst) {
                 // read from ingest server instance
                 if !live_on {
                     info!(target: Target::file_mail(), channel = id; "Switch from {} to live ingest", config.processing.mode);
@@ -226,6 +228,10 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
     trace!("Out of source loop");
 
     sleep(Duration::from_secs(1)).await;
+
+    if let Some(ingest) = ingest_srv {
+        ingest.await??;
+    }
 
     manager.stop_all(false).await?;
     error_encoder_task.await??;

@@ -6,7 +6,6 @@ use serde::{
     de::{self, Visitor},
     Deserialize, Serialize,
 };
-// use serde_with::{formats::CommaSeparator, serde_as, StringWithSeparator};
 use sqlx::{sqlite::SqliteRow, FromRow, Pool, Row, Sqlite};
 
 use crate::db::handles;
@@ -106,7 +105,6 @@ fn default_id() -> i32 {
     1
 }
 
-// #[serde_as]
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct User {
     #[serde(skip_deserializing)]
@@ -117,7 +115,6 @@ pub struct User {
     #[serde(skip_serializing, default = "String::new")]
     pub password: String,
     pub role_id: Option<i32>,
-    // #[serde_as(as = "StringWithSeparator::<CommaSeparator, i32>")]
     pub channel_ids: Option<Vec<i32>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub token: Option<String>,
@@ -155,12 +152,13 @@ impl UserMeta {
     }
 }
 
-#[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Eq, Hash, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Role {
     GlobalAdmin,
     ChannelAdmin,
     User,
+    #[default]
     Guest,
 }
 

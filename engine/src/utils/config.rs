@@ -54,11 +54,12 @@ pub const FFMPEG_UNRECOVERABLE_ERRORS: [&str; 6] = [
     "Unrecognized option",
 ];
 
-#[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize, TS)]
+#[derive(Debug, Clone, Default, Eq, PartialEq, Deserialize, Serialize, TS)]
 #[ts(export, export_to = "playout_config.d.ts")]
 #[serde(rename_all = "lowercase")]
 pub enum OutputMode {
     Desktop,
+    #[default]
     HLS,
     Null,
     Stream,
@@ -72,12 +73,6 @@ impl OutputMode {
             "stream" => Self::Stream,
             _ => Self::HLS,
         }
-    }
-}
-
-impl Default for OutputMode {
-    fn default() -> Self {
-        Self::HLS
     }
 }
 
@@ -849,12 +844,6 @@ impl PlayoutConfig {
         Ok(())
     }
 }
-
-// impl Default for PlayoutConfig {
-//     fn default() -> Self {
-//         Self::new(1)
-//     }
-// }
 
 /// When custom_filter contains loudnorm filter use a different audio encoder,
 /// s302m has higher quality, but is experimental

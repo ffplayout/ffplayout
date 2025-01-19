@@ -67,8 +67,7 @@ pub struct ChannelManager {
     pub encoder: Arc<Mutex<Option<Child>>>,
     pub ingest: Arc<Mutex<Option<Child>>>,
     pub ingest_stdout: Arc<Mutex<Option<ChildStdout>>>,
-    pub ingest_is_running: Arc<AtomicBool>,
-    pub is_terminated: Arc<AtomicBool>,
+    pub ingest_is_alive: Arc<AtomicBool>,
     pub is_alive: Arc<AtomicBool>,
     pub is_processing: Arc<AtomicBool>,
     pub filter_chain: Option<Arc<Mutex<Vec<String>>>>,
@@ -127,13 +126,12 @@ impl ChannelManager {
         handles::update_player(&pool_clone, channel_id, true).await?;
 
         tokio::spawn(async move {
-            const MAX_DELAY: Duration = Duration::from_secs(30);
+            const MAX_DELAY: Duration = Duration::from_secs(180);
             let mut elapsed = Duration::from_secs(5);
             let mut retry_delay = Duration::from_millis(500);
 
             while self_clone.channel.lock().await.active {
                 self_clone.is_alive.store(true, Ordering::SeqCst);
-                self_clone.is_terminated.store(false, Ordering::SeqCst);
                 self_clone.list_init.store(true, Ordering::SeqCst);
 
                 let timer = Instant::now();
@@ -170,7 +168,6 @@ impl ChannelManager {
         }
 
         self.is_alive.store(true, Ordering::SeqCst);
-        self.is_terminated.store(false, Ordering::SeqCst);
         self.list_init.store(true, Ordering::SeqCst);
 
         let pool_clone = self.db_pool.clone().unwrap();
@@ -272,9 +269,8 @@ impl ChannelManager {
             debug!(target: Target::all(), channel = channel_id; "Stop all child processes from channel: <yellow>{channel_id}</>");
         }
 
-        self.is_terminated.store(true, Ordering::SeqCst);
         self.is_alive.store(false, Ordering::SeqCst);
-        self.ingest_is_running.store(false, Ordering::SeqCst);
+        self.ingest_is_alive.store(false, Ordering::SeqCst);
 
         for unit in [Decoder, Encoder, Ingest] {
             if let Err(e) = self.stop(unit).await {

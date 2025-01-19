@@ -14,17 +14,12 @@ use crate::utils::errors::ServiceError;
 pub mod broadcast;
 pub mod routes;
 
-#[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Endpoint {
     Playout,
+    #[default]
     System,
-}
-
-impl Default for Endpoint {
-    fn default() -> Self {
-        Self::System
-    }
 }
 
 impl FromStr for Endpoint {

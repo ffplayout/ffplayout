@@ -182,67 +182,7 @@ pub fn public_path() -> PathBuf {
     public_path
 }
 
-// INFO: in case we want to provide a array of formatted strings
-// pub fn format_log_line(line: &str, timezone: Option<Tz>) -> String {
-//     let re = Regex::new(r"^\[(.*?)\]").unwrap();
-
-//     let mut log = Regex::new(r"<yellow>(.*?)</>")
-//         .unwrap()
-//         .replace_all(line, r#"<span class="log-number">$1</span>"#)
-//         .into_owned();
-
-//     log = Regex::new(r"<b><magenta>(.*?)</></b>")
-//         .unwrap()
-//         .replace_all(&log, r#"<span class="log-addr">$1</span>"#)
-//         .into_owned();
-
-//     log = Regex::new(r"<bright-blue>(.*?)</>")
-//         .unwrap()
-//         .replace_all(&log, r#"<span class="log-cmd">$1</span>"#)
-//         .into_owned();
-
-//     log = Regex::new(r"\x1B\[90m(.*?)\x1B\[0m")
-//         .unwrap()
-//         .replace_all(&log, r#"<span class="log-debug">$1</span>"#)
-//         .into_owned();
-
-//     log = re
-//         .replace(&log, |caps: &regex::Captures| {
-//             if let Some(timecode) = caps.get(1).map(|m| m.as_str()) {
-//                 let parsed: DateTime<FixedOffset> = timecode.parse().unwrap();
-//                 let dt = match timezone {
-//                     Some(tz) => parsed.with_timezone(&tz),
-//                     None => parsed.with_timezone(&Tz::UTC),
-//                 };
-
-//                 format!(
-//                     "<span class=\"log-time\">[{}]</span>",
-//                     dt.format("%Y-%m-%d %H:%M:%S%.6f")
-//                 )
-//             } else {
-//                 caps[0].to_string()
-//             }
-//         })
-//         .replace("[ INFO]", "<span class=\"log-info\">[ INFO]</span>")
-//         .replace("[ WARN]", "<span class=\"log-warning\">[ WARN]</span>")
-//         .replace("[ERROR]", "<span class=\"log-error\">[ERROR]</span>")
-//         .replace("[DEBUG]", "<span class=\"log-debug\">[DEBUG]</span>")
-//         .replace("[Decoder]", "<span class=\"log-decoder\">[Decoder]</span>")
-//         .replace("[Encoder]", "<span class=\"log-encoder\">[Encoder]</span>")
-//         .replace("[Server]", "<span class=\"log-server\">[Server]</span>")
-//         .replace(
-//             "[Validator]",
-//             "<span class=\"log-server\">[Validator]</span>",
-//         );
-
-//     log
-// }
-
-pub async fn read_log_file(
-    channel_id: &i32,
-    // _timezone: Option<Tz>,
-    date: &str,
-) -> Result<String, ServiceError> {
+pub async fn read_log_file(channel_id: &i32, date: &str) -> Result<String, ServiceError> {
     let date_str = if date.is_empty() {
         String::new()
     } else {
@@ -259,9 +199,6 @@ pub async fn read_log_file(
         format!("The log file is larger ({}) than the hard limit of 5MB, the probability is very high that something is wrong with the playout.\nCheck this on the server with `less {log_path:?}`.", sizeof_fmt(file_size))
     } else {
         fs::read_to_string(log_path).await?
-        // .lines()
-        // .map(|line| format_log_line(line, timezone))
-        // .collect::<Vec<_>>();
     };
 
     Ok(log_content)

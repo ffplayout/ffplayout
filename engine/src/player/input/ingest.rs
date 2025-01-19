@@ -48,7 +48,7 @@ async fn server_monitor(
 
             break;
         } else if !is_running {
-            channel_mgr.ingest_is_running.store(true, Ordering::SeqCst);
+            channel_mgr.ingest_is_alive.store(true, Ordering::SeqCst);
 
             is_running = true;
         }
@@ -79,8 +79,8 @@ pub async fn ingest_server(
     let mut dummy_media = Media::new(0, "Live Stream", false).await;
     dummy_media.unit = Ingest;
     dummy_media.add_filter(&config, &None).await;
-    let is_terminated = channel_mgr.is_terminated.clone();
-    let ingest_is_running = channel_mgr.ingest_is_running.clone();
+    let is_alive = channel_mgr.is_alive.clone();
+    let ingest_is_alive = channel_mgr.ingest_is_alive.clone();
     let vtt_dummy = config
         .channel
         .storage
@@ -115,15 +115,25 @@ pub async fn ingest_server(
     );
 
     if let Some(url) = stream_input.iter().find(|s| s.contains("://")) {
-        if is_free_tcp_port(id, url) {
-            info!(target: Target::file_mail(), channel = id; "Start ingest server, listening on: <b><magenta>{url}</></b>");
-        } else {
+        let mut attempts = 0;
+
+        while attempts < 5 {
+            if is_free_tcp_port(id, url) {
+                info!(target: Target::file_mail(), channel = id; "Start ingest server, listening on: <b><magenta>{url}</></b>");
+                break;
+            }
+
+            attempts += 1;
+            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+        }
+
+        if attempts == 5 {
             channel_mgr.channel.lock().await.active = false;
             channel_mgr.stop_all(false).await?;
         }
     };
 
-    while !is_terminated.load(Ordering::SeqCst) {
+    while is_alive.load(Ordering::SeqCst) {
         let proc_ctl = channel_mgr.clone();
         let level = config.logging.ingest_level.clone();
         let ignore = config.logging.ignore_lines.clone();
@@ -147,7 +157,7 @@ pub async fn ingest_server(
         *channel_mgr.ingest.lock().await = Some(server_proc);
 
         server_monitor(id, level, ignore, server_err, proc_ctl).await?;
-        ingest_is_running.store(false, Ordering::SeqCst);
+        ingest_is_alive.store(false, Ordering::SeqCst);
 
         if let Err(e) = channel_mgr.wait(Ingest).await {
             error!(target: Target::file_mail(), channel = id; "{e}");

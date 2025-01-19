@@ -68,11 +68,12 @@ pub async fn write_playlist(
     }
 
     match json_writer(&playlist_path, json_data).await {
-        Ok(..) if file_exists => {
-            return Ok(format!("Update playlist from {date} success!"));
-        }
         Ok(..) => {
-            return Ok(format!("Write playlist from {date} success!"));
+            return if file_exists {
+                Ok(format!("Update playlist from {date} success!"))
+            } else {
+                Ok(format!("Write playlist from {date} success!"))
+            };
         }
         Err(e) => {
             error!("{e}");

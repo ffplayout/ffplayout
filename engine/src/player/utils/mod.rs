@@ -172,7 +172,7 @@ pub async fn get_data_map(manager: &ChannelManager) -> Map<String, Value> {
         .unwrap_or_else(Media::default);
     let channel = manager.channel.lock().await.clone();
     let config = manager.config.lock().await.processing.clone();
-    let ingest_is_running = manager.ingest_is_running.load(Ordering::SeqCst);
+    let ingest_is_alive = manager.ingest_is_alive.load(Ordering::SeqCst);
 
     let mut data_map = Map::new();
     let current_time = time_in_seconds(&channel.timezone);
@@ -181,7 +181,7 @@ pub async fn get_data_map(manager: &ChannelManager) -> Map<String, Value> {
     let played_time = current_time - begin;
 
     data_map.insert("index".to_string(), json!(media.index));
-    data_map.insert("ingest".to_string(), json!(ingest_is_running));
+    data_map.insert("ingest".to_string(), json!(ingest_is_alive));
     data_map.insert("mode".to_string(), json!(config.mode));
     data_map.insert(
         "shift".to_string(),

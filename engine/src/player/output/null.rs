@@ -3,26 +3,30 @@ use std::process::Stdio;
 use log::*;
 use tokio::process::{Child, Command};
 
-use crate::player::{
-    controller::ProcessUnit::*,
-    utils::{prepare_output_cmd, Media},
-};
 use crate::utils::{
     config::PlayoutConfig,
     logging::{fmt_cmd, Target},
 };
 use crate::vec_strings;
+use crate::{
+    player::{
+        controller::ProcessUnit::*,
+        utils::{prepare_output_cmd, Media},
+    },
+    utils::errors::ServiceError,
+};
 
 /// Desktop Output
 ///
 /// Instead of streaming, we run a ffplay instance and play on desktop.
-pub async fn output(config: &PlayoutConfig, log_format: &str) -> Child {
-    let mut media = Media::default();
+pub async fn output(config: &PlayoutConfig, log_format: &str) -> Result<Child, ServiceError> {
     let id = config.general.channel_id;
-    media.unit = Encoder;
-    media.add_filter(config, &None).await;
-
     let mut enc_prefix = vec_strings!["-hide_banner", "-nostats", "-v", log_format];
+    let mut media = Media {
+        unit: Encoder,
+        ..Default::default()
+    };
+    media.add_filter(config, &None).await;
 
     if let Some(input_cmd) = &config.advanced.encoder.input_cmd {
         enc_prefix.append(&mut input_cmd.clone());
@@ -37,18 +41,11 @@ pub async fn output(config: &PlayoutConfig, log_format: &str) -> Child {
         fmt_cmd(&enc_cmd)
     );
 
-    let enc_proc = match Command::new("ffmpeg")
+    let child = Command::new("ffmpeg")
         .args(enc_cmd)
         .stdin(Stdio::piped())
         .stderr(Stdio::piped())
-        .spawn()
-    {
-        Err(e) => {
-            error!(target: Target::file_mail(), channel = id; "couldn't spawn encoder process: {e}");
-            panic!("couldn't spawn encoder process: {e}")
-        }
-        Ok(proc) => proc,
-    };
+        .spawn()?;
 
-    enc_proc
+    Ok(child)
 }
