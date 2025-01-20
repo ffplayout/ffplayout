@@ -71,14 +71,15 @@ async fn main() -> Result<(), ProcessError> {
             let config = get_config(&pool, channel.id).await?;
             let m_queue = Arc::new(Mutex::new(MailQueue::new(channel.id, config.mail.clone())));
             let channel_active = channel.active;
-            let manager = ChannelManager::new(Some(pool.clone()), channel, config);
+            let manager = ChannelManager::new(pool.clone(), channel, config);
 
-            channel_controllers.lock().await.add(manager.clone());
-            mail_queues.lock().await.push(m_queue.clone());
+            mail_queues.lock().await.push(m_queue);
 
             if channel_active {
                 manager.start().await?;
             }
+
+            channel_controllers.lock().await.add(manager);
         }
 
         let (addr, port) = conn
@@ -192,7 +193,7 @@ async fn main() -> Result<(), ProcessError> {
         for (index, channel_id) in channel.iter().enumerate() {
             let config = get_config(&pool, *channel_id).await?;
             let channel = handles::select_channel(&pool, channel_id).await?;
-            let manager = ChannelManager::new(Some(pool.clone()), channel.clone(), config.clone());
+            let manager = ChannelManager::new(pool.clone(), channel.clone(), config.clone());
 
             if ARGS.foreground {
                 if ARGS.channel.is_none() {

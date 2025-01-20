@@ -47,7 +47,7 @@ pub async fn create_channel(
     };
 
     let m_queue = Arc::new(Mutex::new(MailQueue::new(channel.id, config.mail.clone())));
-    let manager = ChannelManager::new(Some(conn.clone()), channel.clone(), config);
+    let manager = ChannelManager::new(conn.clone(), channel.clone(), config);
 
     controllers.lock().await.add(manager);
     queue.lock().await.push(m_queue.clone());

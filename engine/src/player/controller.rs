@@ -58,9 +58,9 @@ impl fmt::Display for ProcessUnit {
 
 use ProcessUnit::*;
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct ChannelManager {
-    pub db_pool: Option<Pool<Sqlite>>,
+    pub db_pool: Pool<Sqlite>,
     pub config: Arc<Mutex<PlayoutConfig>>,
     pub channel: Arc<Mutex<Channel>>,
     pub decoder: Arc<Mutex<Option<Child>>>,
@@ -81,7 +81,7 @@ pub struct ChannelManager {
 }
 
 impl ChannelManager {
-    pub fn new(db_pool: Option<Pool<Sqlite>>, channel: Channel, config: PlayoutConfig) -> Self {
+    pub fn new(db_pool: Pool<Sqlite>, channel: Channel, config: PlayoutConfig) -> Self {
         Self {
             db_pool,
             is_alive: Arc::new(AtomicBool::new(false)),
@@ -93,7 +93,14 @@ impl ChannelManager {
             filler_list: Arc::new(Mutex::new(vec![])),
             current_index: Arc::new(AtomicUsize::new(0)),
             filler_index: Arc::new(AtomicUsize::new(0)),
-            ..Default::default()
+            decoder: Arc::new(Mutex::new(None)),
+            encoder: Arc::new(Mutex::new(None)),
+            ingest: Arc::new(Mutex::new(None)),
+            ingest_stdout: Arc::new(Mutex::new(None)),
+            ingest_is_alive: Arc::new(AtomicBool::new(false)),
+            is_processing: Arc::new(AtomicBool::new(false)),
+            filter_chain: None,
+            current_date: Arc::new(Mutex::new(String::new())),
         }
     }
 
@@ -119,11 +126,10 @@ impl ChannelManager {
             return Ok(()); // runs already, don't start multiple instances
         }
 
-        let pool_clone = self.db_pool.clone().unwrap();
         let self_clone = self.clone();
         let channel_id = self.channel.lock().await.id;
 
-        handles::update_player(&pool_clone, channel_id, true).await?;
+        handles::update_player(&self.db_pool, channel_id, true).await?;
 
         tokio::spawn(async move {
             const MAX_DELAY: Duration = Duration::from_secs(180);
@@ -170,11 +176,10 @@ impl ChannelManager {
         self.is_alive.store(true, Ordering::SeqCst);
         self.list_init.store(true, Ordering::SeqCst);
 
-        let pool_clone = self.db_pool.clone().unwrap();
         let self_clone = self.clone();
         let channel_id = self.channel.lock().await.id;
 
-        handles::update_player(&pool_clone, channel_id, true).await?;
+        handles::update_player(&self.db_pool, channel_id, true).await?;
 
         if index + 1 == ARGS.channel.clone().unwrap_or_default().len() {
             run_channel(self_clone).await?;
@@ -256,13 +261,11 @@ impl ChannelManager {
         let channel_id = self.channel.lock().await.id;
 
         if permanent {
-            let pool = self.db_pool.clone().unwrap();
-
             if self.is_alive.load(Ordering::SeqCst) {
                 debug!(target: Target::all(), channel = channel_id; "Deactivate playout and stop all child processes from channel: <yellow>{channel_id}</>");
             }
 
-            if let Err(e) = handles::update_player(&pool, channel_id, false).await {
+            if let Err(e) = handles::update_player(&self.db_pool, channel_id, false).await {
                 error!(target: Target::all(), channel = channel_id; "Player status cannot be written: {e}");
             };
         } else {
