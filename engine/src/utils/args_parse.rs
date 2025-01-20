@@ -21,6 +21,8 @@ use crate::utils::{
 };
 use crate::ARGS;
 
+use super::errors::ProcessError;
+
 #[derive(Parser, Debug, Default, Clone)]
 #[clap(version,
     about = "ffplayout - 24/7 broadcasting solution",
@@ -213,24 +215,20 @@ fn clean_input(input: &str) -> String {
         .to_string()
 }
 
-pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
+pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), ProcessError> {
     let mut args = ARGS.clone();
 
     if !args.dump_advanced && !args.dump_config && !args.drop_db {
-        if let Err(e) = handles::db_migrate(pool).await {
-            panic!("{e}");
-        };
+        handles::db_migrate(pool).await?;
     }
 
     let channels = handles::select_related_channels(pool, None)
         .await
         .unwrap_or(vec![Channel::default()]);
 
-    let mut error_code = -1;
-
     if args.init {
         let check_user = handles::select_users(pool).await;
-        let mut global = handles::select_global(pool).await.map_err(|_| 1)?;
+        let mut global = handles::select_global(pool).await?;
 
         if check_user.unwrap_or_default().is_empty() {
             global_user(&mut args);
@@ -242,8 +240,7 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
             global.storage = Text::new("Storage path:")
                 .with_default(&global.storage)
                 .with_formatter(&clean_input)
-                .prompt()
-                .unwrap_or(global.storage);
+                .prompt()?;
         }
 
         if let Some(pl) = args.playlists {
@@ -252,8 +249,7 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
             global.playlists = Text::new("Playlist path:")
                 .with_default(&global.playlists)
                 .with_formatter(&clean_input)
-                .prompt()
-                .unwrap_or(global.playlists);
+                .prompt()?;
         }
 
         if let Some(lp) = args.logs {
@@ -262,8 +258,7 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
             global.logs = Text::new("Logging path:")
                 .with_default(&global.logs)
                 .with_formatter(&clean_input)
-                .prompt()
-                .unwrap_or(global.logs);
+                .prompt()?;
         }
 
         if let Some(p) = args.public {
@@ -272,8 +267,7 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
             global.public = Text::new("Public (HLS) path:")
                 .with_default(&global.public)
                 .with_formatter(&clean_input)
-                .prompt()
-                .unwrap_or(global.public);
+                .prompt()?;
         }
 
         if let Some(smtp) = args.smtp_server {
@@ -282,8 +276,7 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
             global.smtp_server = Text::new("SMTP server:")
                 .with_default(&global.smtp_server)
                 .with_formatter(&clean_input)
-                .prompt()
-                .unwrap_or(global.smtp_server);
+                .prompt()?;
         }
 
         if let Some(user) = args.smtp_user {
@@ -292,8 +285,7 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
             global.smtp_user = Text::new("SMTP user:")
                 .with_default(&global.smtp_user)
                 .with_formatter(&clean_input)
-                .prompt()
-                .unwrap_or(global.smtp_user);
+                .prompt()?;
         }
 
         if let Some(pass) = args.smtp_password {
@@ -302,8 +294,7 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
             let pass = Password::new("SMTP password:")
                 .with_help_message("Hit enter to use existing one")
                 .with_display_mode(PasswordDisplayMode::Masked)
-                .prompt()
-                .unwrap_or(global.smtp_password.clone());
+                .prompt()?;
 
             if !pass.is_empty() {
                 global.smtp_password = pass;
@@ -313,10 +304,7 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
         if args.smtp_starttls {
             global.smtp_starttls = true;
         } else {
-            global.smtp_starttls = Confirm::new("SMTP use TLS")
-                .with_default(false)
-                .prompt()
-                .unwrap_or(false);
+            global.smtp_starttls = Confirm::new("SMTP use TLS").with_default(false).prompt()?;
         }
 
         if let Some(port) = args.smtp_port {
@@ -324,16 +312,12 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
         } else {
             global.smtp_port = CustomType::<u16>::new("SMTP port:")
                 .with_default(global.smtp_port)
-                .prompt()
-                .unwrap_or(global.smtp_port);
+                .prompt()?;
         }
 
-        if let Err(e) = handles::update_global(pool, global.clone()).await {
-            eprintln!("{e}");
-            error_code = 1;
-        };
+        handles::update_global(pool, global.clone()).await?;
 
-        let mut channel = handles::select_channel(pool, &1).await.unwrap();
+        let mut channel = handles::select_channel(pool, &1).await?;
         channel.public = global.public;
         channel.playlists = global.playlists;
         channel.storage = global.storage;
@@ -358,7 +342,7 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
             eprintln!("{e}");
         };
 
-        handles::update_channel(pool, 1, channel).await.unwrap();
+        handles::update_channel(pool, 1, channel).await?;
 
         #[cfg(target_family = "unix")]
         {
@@ -371,8 +355,6 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
     }
 
     if let Some(username) = args.username {
-        error_code = 0;
-
         let chl: Vec<i32> = channels.clone().iter().map(|c| c.id).collect();
 
         let ff_user = User {
@@ -385,10 +367,7 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
             token: None,
         };
 
-        if let Err(e) = handles::insert_or_update_user(pool, ff_user).await {
-            eprintln!("{e}");
-            error_code = 1;
-        };
+        handles::insert_or_update_user(pool, ff_user).await?;
 
         println!("Create/update global admin user \"{username}\" done...");
     }
@@ -406,27 +385,20 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
                 .collect::<Vec<String>>()
                 .join("\n")
         );
-
-        error_code = 0;
     }
 
     if ARGS.dump_advanced {
         if let Some(channel) = &ARGS.channel {
             for id in channel {
                 match AdvancedConfig::dump(pool, *id).await {
-                    Ok(_) => {
-                        println!("Dump config to: advanced_{id}.toml");
-                        error_code = 0;
-                    }
-                    Err(e) => {
-                        eprintln!("Dump config: {e}");
-                        error_code = 1;
-                    }
+                    Ok(_) => println!("Dump config to: advanced_{id}.toml"),
+                    Err(e) => return Err(ProcessError::Custom(format!("Dump config: {e}"))),
                 };
             }
         } else {
-            eprintln!("Channel ID(s) needed! Use `--channel 1 ...`");
-            error_code = 1;
+            return Err(ProcessError::Custom(
+                "Channel ID(s) needed! Use `--channel 1 ...`".to_string(),
+            ));
         }
     }
 
@@ -434,19 +406,14 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
         if let Some(channel) = &ARGS.channel {
             for id in channel {
                 match PlayoutConfig::dump(pool, *id).await {
-                    Ok(_) => {
-                        println!("Dump config to: ffplayout_{id}.toml");
-                        error_code = 0;
-                    }
-                    Err(e) => {
-                        eprintln!("Dump config: {e}");
-                        error_code = 1;
-                    }
+                    Ok(_) => println!("Dump config to: ffplayout_{id}.toml"),
+                    Err(e) => return Err(ProcessError::Custom(format!("Dump config: {e}"))),
                 };
             }
         } else {
-            eprintln!("Channel ID(s) needed! Use `--channel 1 ...`");
-            error_code = 1;
+            return Err(ProcessError::Custom(
+                "Channel ID(s) needed! Use `--channel 1 ...`".to_string(),
+            ));
         }
     }
 
@@ -454,19 +421,14 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
         if let Some(channel) = &ARGS.channel {
             for id in channel {
                 match AdvancedConfig::import(pool, *id, path).await {
-                    Ok(_) => {
-                        println!("Import config done...");
-                        error_code = 0;
-                    }
-                    Err(e) => {
-                        eprintln!("{e}");
-                        error_code = 1;
-                    }
+                    Ok(_) => println!("Import config done..."),
+                    Err(e) => return Err(ProcessError::Custom(format!("{e}"))),
                 };
             }
         } else {
-            eprintln!("Channel ID(s) needed! Use `--channel 1 ...`");
-            error_code = 1;
+            return Err(ProcessError::Custom(
+                "Channel ID(s) needed! Use `--channel 1 ...`".to_string(),
+            ));
         }
     }
 
@@ -474,27 +436,18 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), i32> {
         if let Some(channel) = &ARGS.channel {
             for id in channel {
                 match PlayoutConfig::import(pool, *id, path).await {
-                    Ok(_) => {
-                        println!("Import config done...");
-                        error_code = 0;
-                    }
-                    Err(e) => {
-                        eprintln!("{e}");
-                        error_code = 1;
-                    }
+                    Ok(_) => println!("Import config done..."),
+                    Err(e) => return Err(ProcessError::Custom(format!("{e}"))),
                 };
             }
         } else {
-            eprintln!("Channel ID(s) needed! Use `--channel 1 ...`");
-            error_code = 1;
+            return Err(ProcessError::Custom(
+                "Channel ID(s) needed! Use `--channel 1 ...`".to_string(),
+            ));
         }
     }
 
-    if error_code > -1 {
-        Err(error_code)
-    } else {
-        Ok(())
-    }
+    Ok(())
 }
 
 #[cfg(target_family = "unix")]

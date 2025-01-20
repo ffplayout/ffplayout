@@ -34,7 +34,7 @@ impl ResponseError for ServiceError {
     fn error_response(&self) -> HttpResponse {
         match self {
             Self::InternalServerError => {
-                HttpResponse::InternalServerError().json("Internal Server Error. Please try later.")
+                HttpResponse::InternalServerError().json("Internal Server Error.")
             }
             Self::BadRequest(ref message) => HttpResponse::BadRequest().json(message),
             Self::Conflict(ref message) => HttpResponse::Conflict().json(message),
@@ -137,25 +137,35 @@ impl From<&str> for ServiceError {
     }
 }
 
+impl From<ProcessError> for ServiceError {
+    fn from(err: ProcessError) -> Self {
+        Self::BadRequest(err.to_string())
+    }
+}
+
 #[derive(Debug, Display)]
 pub enum ProcessError {
     #[display("Failed to spawn command: {_0}")]
     CommandSpawn(io::Error),
     #[display("{_0}")]
     Custom(String),
+    #[display("DB error: {_0}")]
+    DB(String),
+    #[display("Input error: {_0}")]
+    Input(String),
     #[display("IO error: {_0}")]
-    IO(io::Error),
+    IO(String),
     #[display("{_0}")]
     Ffprobe(String),
+    #[display("Mail error: {_0}")]
+    Mail(String),
     #[display("Regex compile error {_0}")]
     Regex(String),
-    #[display("Thread error {_0}")]
-    Thread(String),
 }
 
 impl From<std::io::Error> for ProcessError {
     fn from(err: std::io::Error) -> Self {
-        Self::IO(err)
+        Self::IO(err.to_string())
     }
 }
 
@@ -167,25 +177,19 @@ impl From<FfProbeError> for ProcessError {
 
 impl From<lettre::address::AddressError> for ProcessError {
     fn from(err: lettre::address::AddressError) -> Self {
-        Self::Custom(err.to_string())
+        Self::Mail(err.to_string())
     }
 }
 
 impl From<lettre::transport::smtp::Error> for ProcessError {
     fn from(err: lettre::transport::smtp::Error) -> Self {
-        Self::Custom(err.to_string())
+        Self::Mail(err.to_string())
     }
 }
 
 impl From<lettre::error::Error> for ProcessError {
     fn from(err: lettre::error::Error) -> Self {
-        Self::Custom(err.to_string())
-    }
-}
-
-impl<T> From<std::sync::PoisonError<T>> for ProcessError {
-    fn from(err: std::sync::PoisonError<T>) -> Self {
-        Self::Custom(err.to_string())
+        Self::Mail(err.to_string())
     }
 }
 
@@ -201,8 +205,32 @@ impl From<serde_json::Error> for ProcessError {
     }
 }
 
-impl From<Box<dyn std::any::Any + std::marker::Send>> for ProcessError {
-    fn from(err: Box<dyn std::any::Any + std::marker::Send>) -> Self {
-        Self::Thread(format!("{err:?}"))
+impl From<sqlx::Error> for ProcessError {
+    fn from(err: sqlx::Error) -> Self {
+        Self::DB(err.to_string())
+    }
+}
+
+impl From<sqlx::migrate::MigrateError> for ProcessError {
+    fn from(err: sqlx::migrate::MigrateError) -> Self {
+        Self::DB(err.to_string())
+    }
+}
+
+impl From<&str> for ProcessError {
+    fn from(err: &str) -> Self {
+        Self::Custom(err.to_string())
+    }
+}
+
+impl From<inquire::InquireError> for ProcessError {
+    fn from(err: inquire::InquireError) -> Self {
+        Self::Input(err.to_string())
+    }
+}
+
+impl From<ServiceError> for ProcessError {
+    fn from(err: ServiceError) -> Self {
+        Self::Custom(err.to_string())
     }
 }
