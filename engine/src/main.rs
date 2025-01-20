@@ -93,17 +93,14 @@ async fn main() -> std::io::Result<()> {
             }
         }
 
-        let ip_port = conn.split(':').collect::<Vec<&str>>();
-        let addr = ip_port[0];
-        let port = ip_port
-            .get(1)
-            .and_then(|p| p.parse::<u16>().ok())
-            .ok_or_else(|| {
-                io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    "<ADRESSE>:<PORT> needed! For example: 127.0.0.1:8787",
-                )
-            })?;
+        let (addr, port) = conn
+            .split_once(':')
+            .map(|(a, p)| (a, p.parse::<u16>().ok()))
+            .and_then(|(a, p)| p.map(|p| (a, p)))
+            .ok_or(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "<ADRESSE>:<PORT> needed! For example: 127.0.0.1:8787",
+            ))?;
         let controllers = web::Data::from(channel_controllers.clone());
         let queues = web::Data::from(mail_queues.clone());
         let auth_state = web::Data::new(SseAuthState {

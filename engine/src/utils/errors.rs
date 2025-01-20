@@ -139,7 +139,7 @@ impl From<&str> for ServiceError {
 
 #[derive(Debug, Display)]
 pub enum ProcessError {
-    #[display("Failed to spawn ffmpeg/ffprobe. {_0}")]
+    #[display("Failed to spawn command: {_0}")]
     CommandSpawn(io::Error),
     #[display("{_0}")]
     Custom(String),
