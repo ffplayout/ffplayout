@@ -21,7 +21,7 @@ custom_filter: "loudnorm=I=-18:TP=-1.5:LRA=11[c_a_out]"
 This filter should be used in preference to the loudnorm filter.
 
 ```YAML
-dynaudnorm=f=200:g=15,acompressor=threshold=0.2:ratio=4:attack=20:release=250:knee=2.5,alimiter=level_in=1.0:limit=0.9:level_out=0.95:release=50[c_a_out]
+custom_filter: "dynaudnorm=f=200:g=15,acompressor=threshold=0.2:ratio=4:attack=20:release=250:knee=2.5,alimiter=level_in=1.0:limit=0.9:level_out=0.95:release=50[c_a_out]"
 ```
 
 #### Add lower third:
