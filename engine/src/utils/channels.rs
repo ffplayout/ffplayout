@@ -50,7 +50,7 @@ pub async fn create_channel(
     let manager = ChannelManager::new(conn.clone(), channel.clone(), config);
 
     controllers.lock().await.add(manager);
-    queue.lock().await.push(m_queue.clone());
+    queue.lock().await.push(m_queue);
 
     map_global_admins(conn).await?;
 

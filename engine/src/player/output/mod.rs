@@ -184,10 +184,10 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
                 // read from ingest server instance
                 if !live_on {
                     info!(target: Target::file_mail(), channel = id; "Switch from {} to live ingest", config.processing.mode);
+                    playlist_init.store(true, Ordering::SeqCst);
 
                     manager.stop(Decoder).await?;
                     live_on = true;
-                    playlist_init.store(true, Ordering::SeqCst);
                 }
 
                 let mut ingest_stdout_guard = manager.ingest_stdout.lock().await;
@@ -229,11 +229,12 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
 
     sleep(Duration::from_secs(1)).await;
 
+    manager.stop_all(false).await?;
+
     if let Some(ingest) = ingest_srv {
         ingest.await??;
     }
 
-    manager.stop_all(false).await?;
     error_encoder_task.await??;
 
     Ok(())

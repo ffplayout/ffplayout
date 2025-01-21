@@ -162,7 +162,8 @@ impl CurrentProgram {
         next_start += duration;
 
         trace!(
-            "delta: {delta} | total_delta: {total_delta}, index: {node_index}, last index: {last_index} \n        next_start: {next_start} | length_sec: {} | source {}",
+            "delta: {delta} | total_delta: {total_delta}, index: {node_index}, last index: {last_index}, init: {} \n        next_start: {next_start} | length_sec: {} | source {}",
+            self.manager.list_init.load(Ordering::SeqCst),
             self.length_sec,
             self.current_node.source
         );
