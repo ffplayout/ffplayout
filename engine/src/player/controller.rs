@@ -289,20 +289,20 @@ impl ChannelManager {
 
 #[derive(Clone, Debug, Default)]
 pub struct ChannelController {
-    pub channels: Vec<ChannelManager>,
+    pub managers: Vec<ChannelManager>,
 }
 
 impl ChannelController {
     pub fn new() -> Self {
-        Self { channels: vec![] }
+        Self { managers: vec![] }
     }
 
     pub fn add(&mut self, manager: ChannelManager) {
-        self.channels.push(manager);
+        self.managers.push(manager);
     }
 
     pub async fn get(&self, id: i32) -> Option<ChannelManager> {
-        for manager in &self.channels {
+        for manager in &self.managers {
             if manager.channel.lock().await.id == id {
                 return Some(manager.clone());
             }
@@ -314,7 +314,7 @@ impl ChannelController {
     pub async fn remove(&mut self, channel_id: i32) {
         let mut indices = Vec::new();
 
-        for (i, manager) in self.channels.iter().enumerate() {
+        for (i, manager) in self.managers.iter().enumerate() {
             let channel = manager.channel.lock().await;
             if channel.id == channel_id {
                 indices.push(i);
@@ -324,12 +324,12 @@ impl ChannelController {
         indices.reverse();
 
         for i in indices {
-            self.channels.remove(i);
+            self.managers.remove(i);
         }
     }
 
     pub fn run_count(&self) -> usize {
-        self.channels
+        self.managers
             .iter()
             .filter(|manager| manager.is_alive.load(Ordering::SeqCst))
             .count()

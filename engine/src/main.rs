@@ -1,6 +1,5 @@
 use std::{
     collections::HashSet,
-    process::exit,
     sync::{atomic::AtomicBool, Arc},
     thread,
 };
@@ -56,6 +55,11 @@ async fn main() -> Result<(), ProcessError> {
     let pool = db_pool().await?;
 
     run_args(&pool).await?;
+
+    if ARGS.init {
+        return Ok(());
+    }
+
     set_mock_time(&ARGS.fake_time)?;
     init_globales(&pool).await?;
 
@@ -187,25 +191,17 @@ async fn main() -> Result<(), ProcessError> {
         .await?;
     } else if ARGS.drop_db {
         db_drop().await;
-    } else {
-        let channel = ARGS.channel.clone().unwrap_or_else(|| vec![1]);
-
-        for (index, channel_id) in channel.iter().enumerate() {
+    } else if let Some(channel_ids) = &ARGS.channel {
+        for (index, channel_id) in channel_ids.iter().enumerate() {
             let config = get_config(&pool, *channel_id).await?;
             let channel = handles::select_channel(&pool, channel_id).await?;
-            let manager = ChannelManager::new(pool.clone(), channel.clone(), config.clone());
+            let manager = ChannelManager::new(pool.clone(), channel, config.clone());
 
             if ARGS.foreground {
-                if ARGS.channel.is_none() {
-                    error!(
-                        "Foreground mode needs at least 1 channel, run with `--channel (1 2 ...)`"
-                    );
-                    exit(1);
-                }
                 let m_queue = Arc::new(Mutex::new(MailQueue::new(*channel_id, config.mail)));
 
                 channel_controllers.lock().await.add(manager.clone());
-                mail_queues.lock().await.push(m_queue.clone());
+                mail_queues.lock().await.push(m_queue);
 
                 manager.foreground_start(index).await?;
             } else if ARGS.generate.is_some() {
@@ -243,15 +239,21 @@ async fn main() -> Result<(), ProcessError> {
                     Arc::new(AtomicBool::new(false)),
                 )
                 .await;
-            } else if !ARGS.init {
-                error!("Run ffplayout with parameters! Run ffplayout -h for more information.");
             }
         }
+    } else {
+        error!(
+            "Run ffplayout with correct parameters! For example:
+            -l 127.0.0.1
+            --channel 1 2 --foreground
+            --channel 1 --generate 2025-01-20 - 2025-01-25
+        Run ffplayout -h for more information."
+        );
     }
 
-    for channel_ctl in &channel_controllers.lock().await.channels {
-        channel_ctl.channel.lock().await.active = false;
-        channel_ctl.stop_all(false).await?;
+    for manager in &channel_controllers.lock().await.managers {
+        manager.channel.lock().await.active = false;
+        manager.stop_all(false).await?;
     }
 
     pool.close().await;
