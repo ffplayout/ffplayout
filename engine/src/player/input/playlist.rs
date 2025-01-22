@@ -162,7 +162,8 @@ impl CurrentProgram {
         next_start += duration;
 
         trace!(
-            "delta: {delta} | total_delta: {total_delta}, index: {node_index}, last index: {last_index} \n        next_start: {next_start} | length_sec: {} | source {}",
+            "delta: {delta} | total_delta: {total_delta}, index: {node_index}, last index: {last_index}, init: {} \n        next_start: {next_start} | length_sec: {} | source {}",
+            self.manager.list_init.load(Ordering::SeqCst),
             self.length_sec,
             self.current_node.source
         );
@@ -221,10 +222,14 @@ impl CurrentProgram {
             .last_date
             .clone_from(&Some(date.clone()));
         self.manager.channel.lock().await.time_shift = 0.0;
-        let db_pool = self.manager.db_pool.clone().unwrap();
 
-        if let Err(e) =
-            handles::update_stat(&db_pool, self.config.general.channel_id, Some(date), 0.0).await
+        if let Err(e) = handles::update_stat(
+            &self.manager.db_pool,
+            self.config.general.channel_id,
+            Some(date),
+            0.0,
+        )
+        .await
         {
             error!(target: Target::file_mail(), channel = self.id; "Unable to write status: {e}");
         };
@@ -398,8 +403,8 @@ impl async_iterator::Iterator for CurrentProgram {
         if self.manager.list_init.load(Ordering::SeqCst) {
             trace!("Init playlist, from next iterator");
             let init_clip_is_filler = match self.json_playlist.path {
-                None => false,
                 Some(_) => self.init_clip().await,
+                None => false,
             };
 
             if self.manager.list_init.load(Ordering::SeqCst) && !init_clip_is_filler {
@@ -542,11 +547,11 @@ async fn timed_source(
                     "A time change seemed to have occurred, apply time shift: <yellow>{shifted_delta:.3}</> seconds."
                 );
 
-                let db_pool = manager.db_pool.clone().unwrap();
                 manager.channel.lock().await.time_shift = time_shift + shifted_delta;
 
                 if let Err(e) =
-                    handles::update_stat(&db_pool, id, None, time_shift + shifted_delta).await
+                    handles::update_stat(&manager.db_pool, id, None, time_shift + shifted_delta)
+                        .await
                 {
                     error!(target: Target::file_mail(), channel = id; "Unable to write status: {e}");
                 };

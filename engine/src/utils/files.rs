@@ -10,9 +10,8 @@ use relative_path::RelativePath;
 use serde::{Deserialize, Serialize};
 use tokio::{fs, io::AsyncWriteExt};
 
-use crate::db::models::Channel;
 use crate::player::utils::{file_extension, probe::MediaProbe};
-use crate::utils::{config::PlayoutConfig, errors::ServiceError};
+use crate::utils::errors::ServiceError;
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct PathObject {
@@ -101,23 +100,15 @@ pub fn norm_abs_path(
 /// Input should be a relative path segment, but when it is a absolut path, the norm_abs_path function
 /// will take care, that user can not break out from given storage path in config.
 pub async fn browser(
-    config: &PlayoutConfig,
-    channel: &Channel,
+    storage: &Path,
+    extensions: Vec<String>,
     path_obj: &PathObject,
 ) -> Result<PathObject, ServiceError> {
-    let mut channel_extensions = channel
-        .extra_extensions
-        .split(',')
-        .map(Into::into)
-        .collect::<Vec<String>>();
+    let (path, parent, path_component) = norm_abs_path(storage, &path_obj.source)?;
     let mut parent_folders = vec![];
-    let mut extensions = config.storage.extensions.clone();
-    extensions.append(&mut channel_extensions);
-
-    let (path, parent, path_component) = norm_abs_path(&config.channel.storage, &path_obj.source)?;
 
     let parent_path = if path_component.is_empty() {
-        &config.channel.storage
+        storage
     } else {
         path.parent().unwrap()
     };
@@ -203,10 +194,10 @@ pub async fn browser(
 }
 
 pub async fn create_directory(
-    config: &PlayoutConfig,
+    storage: &Path,
     path_obj: &PathObject,
 ) -> Result<HttpResponse, ServiceError> {
-    let (path, _, _) = norm_abs_path(&config.channel.storage, &path_obj.source)?;
+    let (path, _, _) = norm_abs_path(storage, &path_obj.source)?;
 
     if let Err(e) = fs::create_dir_all(&path).await {
         return Err(ServiceError::BadRequest(e.to_string()));
@@ -272,11 +263,11 @@ async fn rename(source: &PathBuf, target: &PathBuf) -> Result<MoveObject, Servic
 }
 
 pub async fn rename_file(
-    config: &PlayoutConfig,
+    storage: &Path,
     move_object: &MoveObject,
 ) -> Result<MoveObject, ServiceError> {
-    let (source_path, _, _) = norm_abs_path(&config.channel.storage, &move_object.source)?;
-    let (mut target_path, _, _) = norm_abs_path(&config.channel.storage, &move_object.target)?;
+    let (source_path, _, _) = norm_abs_path(storage, &move_object.source)?;
+    let (mut target_path, _, _) = norm_abs_path(storage, &move_object.target)?;
 
     if !source_path.exists() {
         return Err(ServiceError::BadRequest("Source file not exist!".into()));
@@ -305,11 +296,11 @@ pub async fn rename_file(
 }
 
 pub async fn remove_file_or_folder(
-    config: &PlayoutConfig,
+    storage: &Path,
     source_path: &str,
     recursive: bool,
 ) -> Result<(), ServiceError> {
-    let (source, _, _) = norm_abs_path(&config.channel.storage, source_path)?;
+    let (source, _, _) = norm_abs_path(storage, source_path)?;
 
     if !source.exists() {
         return Err(ServiceError::BadRequest("Source does not exists!".into()));
@@ -346,8 +337,8 @@ pub async fn remove_file_or_folder(
     Err(ServiceError::InternalServerError)
 }
 
-async fn valid_path(config: &PlayoutConfig, path: &str) -> Result<PathBuf, ServiceError> {
-    let (test_path, _, _) = norm_abs_path(&config.channel.storage, path)?;
+async fn valid_path(storage: &Path, path: &str) -> Result<PathBuf, ServiceError> {
+    let (test_path, _, _) = norm_abs_path(storage, path)?;
 
     if !test_path.is_dir() {
         return Err(ServiceError::BadRequest("Target folder not exists!".into()));
@@ -357,7 +348,7 @@ async fn valid_path(config: &PlayoutConfig, path: &str) -> Result<PathBuf, Servi
 }
 
 pub async fn upload(
-    config: &PlayoutConfig,
+    storage: &Path,
     _size: u64,
     mut payload: Multipart,
     path: &Path,
@@ -378,7 +369,7 @@ pub async fn upload(
         let filepath = if abs_path {
             path.to_path_buf()
         } else {
-            valid_path(config, &path.to_string_lossy())
+            valid_path(storage, &path.to_string_lossy())
                 .await?
                 .join(filename)
         };

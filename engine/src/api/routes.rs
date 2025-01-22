@@ -39,8 +39,7 @@ use crate::{
     api::auth::{self, Credentials, TokenRefreshRequest},
     db::{
         handles,
-        models::Role,
-        models::{Channel, TextPreset, User, UserMeta},
+        models::{Channel, Role, TextPreset, User, UserMeta},
     },
     player::{
         controller::ChannelController,
@@ -560,7 +559,7 @@ async fn update_advanced_config(
         .await
         .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
 
-    handles::update_advanced_configuration(&pool, *id, data.clone()).await?;
+    handles::update_advanced_configuration(&pool, *id, data.into_inner()).await?;
     let new_config = get_config(&pool, *id).await?;
 
     manager.update_config(new_config).await;
@@ -638,7 +637,7 @@ async fn update_playout_config(
     data.storage.filler = filler;
     data.text.font = font;
 
-    handles::update_configuration(&pool, config_id, data.clone()).await?;
+    handles::update_configuration(&pool, config_id, data.into_inner()).await?;
     let new_config = get_config(&pool, *id).await?;
     let mut queues = mail_queues.lock().await;
 
@@ -1091,8 +1090,14 @@ pub async fn gen_playlist(
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    let manager = controllers.lock().await.get(params.0).await.unwrap();
-    manager.config.lock().await.general.generate = Some(vec![params.1.clone()]);
+    let (id, date) = params.into_inner();
+    let manager = controllers
+        .lock()
+        .await
+        .get(id)
+        .await
+        .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
+    manager.config.lock().await.general.generate = Some(vec![date.clone()]);
     let storage = manager.config.lock().await.channel.storage.clone();
 
     if let Some(obj) = data {
@@ -1141,10 +1146,16 @@ pub async fn del_playlist(
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    let manager = controllers.lock().await.get(params.0).await.unwrap();
+    let (id, date) = params.into_inner();
+    let manager = controllers
+        .lock()
+        .await
+        .get(id)
+        .await
+        .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
     let config = manager.config.lock().await.clone();
 
-    match delete_playlist(&config, &params.1).await {
+    match delete_playlist(&config, &date).await {
         Ok(m) => Ok(web::Json(m)),
         Err(e) => Err(e),
     }
@@ -1166,14 +1177,10 @@ pub async fn del_playlist(
 )]
 pub async fn get_log(
     id: web::Path<i32>,
-    // controllers: web::Data<Mutex<ChannelController>>,
     log: web::Query<DateObj>,
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    // let manager = controllers.lock().await.get(*id).await.ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
-    // let timezone = manager.config.lock().await.channel.timezone;
-
     read_log_file(&id, &log.date).await
 }
 
@@ -1204,10 +1211,18 @@ pub async fn file_browser(
         .get(*id)
         .await
         .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
-    let channel = manager.channel.lock().await.clone();
-    let config = manager.config.lock().await.clone();
+    let channel_extensions = manager.channel.lock().await.extra_extensions.clone();
+    let storage = manager.config.lock().await.channel.storage.clean();
+    let mut extensions = manager.config.lock().await.storage.extensions.clone();
 
-    match browser(&config, &channel, &data.into_inner()).await {
+    let mut extra_extensions = channel_extensions
+        .split(',')
+        .map(Into::into)
+        .collect::<Vec<String>>();
+
+    extensions.append(&mut extra_extensions);
+
+    match browser(&storage, extensions, &data.into_inner()).await {
         Ok(obj) => Ok(web::Json(obj)),
         Err(e) => Err(e),
     }
@@ -1238,9 +1253,9 @@ pub async fn add_dir(
         .get(*id)
         .await
         .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
-    let config = manager.config.lock().await.clone();
+    let storage = manager.config.lock().await.channel.storage.clone();
 
-    create_directory(&config, &data.into_inner()).await
+    create_directory(&storage, &data.into_inner()).await
 }
 
 /// **Rename File**
@@ -1268,9 +1283,9 @@ pub async fn move_rename(
         .get(*id)
         .await
         .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
-    let config = manager.config.lock().await.clone();
+    let storage = manager.config.lock().await.channel.storage.clone();
 
-    match rename_file(&config, &data.into_inner()).await {
+    match rename_file(&storage, &data.into_inner()).await {
         Ok(obj) => Ok(web::Json(obj)),
         Err(e) => Err(e),
     }
@@ -1301,10 +1316,10 @@ pub async fn remove(
         .get(*id)
         .await
         .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
-    let config = manager.config.lock().await.clone();
+    let storage = manager.config.lock().await.channel.storage.clone();
     let recursive = data.recursive;
 
-    match remove_file_or_folder(&config, &data.into_inner().source, recursive).await {
+    match remove_file_or_folder(&storage, &data.into_inner().source, recursive).await {
         Ok(obj) => Ok(web::Json(obj)),
         Err(e) => Err(e),
     }
@@ -1338,7 +1353,7 @@ async fn save_file(
         .get(*id)
         .await
         .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
-    let config = manager.config.lock().await.clone();
+    let storage = manager.config.lock().await.channel.storage.clone();
 
     let size: u64 = req
         .headers()
@@ -1347,7 +1362,7 @@ async fn save_file(
         .and_then(|cls| cls.parse().ok())
         .unwrap_or(0);
 
-    upload(&config, size, payload, &obj.path, false).await
+    upload(&storage, size, payload, &obj.path, false).await
 }
 
 /// **Get File**
@@ -1363,7 +1378,12 @@ async fn get_file(
     controllers: web::Data<Mutex<ChannelController>>,
 ) -> Result<actix_files::NamedFile, ServiceError> {
     let id: i32 = req.match_info().query("id").parse()?;
-    let manager = controllers.lock().await.get(id).await.unwrap();
+    let manager = controllers
+        .lock()
+        .await
+        .get(id)
+        .await
+        .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
     let config = manager.config.lock().await;
     let storage = config.channel.storage.clone();
     let file_path = req.match_info().query("filename");
@@ -1396,7 +1416,12 @@ async fn get_public(
         || file_stem.ends_with(".m3u8")
         || file_stem.ends_with(".vtt")
     {
-        let manager = controllers.lock().await.get(id).await.unwrap();
+        let manager = controllers
+            .lock()
+            .await
+            .get(id)
+            .await
+            .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
         let config = manager.config.lock().await;
         config.channel.public.join(public)
     } else {
@@ -1447,7 +1472,8 @@ async fn import_playlist(
         .await
         .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
     let channel_name = manager.channel.lock().await.name.clone();
-    let config = manager.config.lock().await.clone();
+    let storage = manager.config.lock().await.channel.storage.clone();
+    let playlists = manager.config.lock().await.channel.playlists.clone();
     let file = obj.file.file_name().unwrap_or_default();
     let path = env::temp_dir().join(file);
     let path_clone = path.clone();
@@ -1458,9 +1484,9 @@ async fn import_playlist(
         .and_then(|cls| cls.parse().ok())
         .unwrap_or(0);
 
-    upload(&config, size, payload, &path, true).await?;
+    upload(&storage, size, payload, &path, true).await?;
 
-    let response = import_file(&config, &obj.date, Some(channel_name), &path_clone).await?;
+    let response = import_file(&playlists, &obj.date, Some(channel_name), &path_clone).await?;
 
     fs::remove_file(path).await?;
 

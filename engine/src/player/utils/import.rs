@@ -9,12 +9,10 @@ use tokio::{
     io::{AsyncBufReadExt, BufReader},
 };
 
-use crate::player::utils::{
-    json_reader, json_serializer::JsonPlaylist, json_writer, Media, PlayoutConfig,
-};
+use crate::player::utils::{json_reader, json_serializer::JsonPlaylist, json_writer, Media};
 
 pub async fn import_file(
-    config: &PlayoutConfig,
+    playlist_root: &Path,
     date: &str,
     channel_name: Option<String>,
     path: &Path,
@@ -31,13 +29,12 @@ pub async fn import_file(
         program: vec![],
     };
 
-    let playlist_root = &config.channel.playlists;
     if !playlist_root.is_dir() {
         return Err(Error::new(
             ErrorKind::Other,
             format!(
                 "Playlist folder <b><magenta>{:?}</></b> not exists!",
-                config.channel.playlists,
+                playlist_root,
             ),
         ));
     }

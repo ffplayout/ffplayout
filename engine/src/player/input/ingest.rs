@@ -24,7 +24,7 @@ async fn server_monitor(
     level: String,
     ignore: Vec<String>,
     buffer: BufReader<ChildStderr>,
-    channel_mgr: ChannelManager,
+    manager: ChannelManager,
 ) -> Result<(), ServiceError> {
     let mut is_running = false;
 
@@ -42,13 +42,13 @@ async fn server_monitor(
         {
             warn!(target: Target::file_mail(), channel = id; "Unexpected ingest stream: {line}");
 
-            if let Err(e) = channel_mgr.stop(Ingest).await {
+            if let Err(e) = manager.stop(Ingest).await {
                 error!(target: Target::file_mail(), channel = id; "{e}");
             };
 
             break;
         } else if !is_running {
-            channel_mgr.ingest_is_alive.store(true, Ordering::SeqCst);
+            manager.ingest_is_alive.store(true, Ordering::SeqCst);
 
             is_running = true;
         }
@@ -58,8 +58,8 @@ async fn server_monitor(
             .any(|i| line.contains(*i))
         {
             error!(target: Target::file_mail(), channel = id; "Hit unrecoverable error!");
-            channel_mgr.channel.lock().await.active = false;
-            channel_mgr.stop_all(false).await?;
+            manager.channel.lock().await.active = false;
+            manager.stop_all(false).await?;
         }
     }
 
@@ -71,7 +71,7 @@ async fn server_monitor(
 /// Start ffmpeg in listen mode, and wait for input.
 pub async fn ingest_server(
     config: PlayoutConfig,
-    channel_mgr: ChannelManager,
+    manager: ChannelManager,
 ) -> Result<(), ServiceError> {
     let id = config.general.channel_id;
     let mut server_cmd = vec_strings!["-hide_banner", "-nostats", "-v", "level+info"];
@@ -79,8 +79,8 @@ pub async fn ingest_server(
     let mut dummy_media = Media::new(0, "Live Stream", false).await;
     dummy_media.unit = Ingest;
     dummy_media.add_filter(&config, &None).await;
-    let is_alive = channel_mgr.is_alive.clone();
-    let ingest_is_alive = channel_mgr.ingest_is_alive.clone();
+    let is_alive = manager.is_alive.clone();
+    let ingest_is_alive = manager.ingest_is_alive.clone();
     let vtt_dummy = config
         .channel
         .storage
@@ -128,13 +128,13 @@ pub async fn ingest_server(
         }
 
         if attempts == 5 {
-            channel_mgr.channel.lock().await.active = false;
-            channel_mgr.stop_all(false).await?;
+            manager.channel.lock().await.active = false;
+            manager.stop_all(false).await?;
         }
     };
 
     while is_alive.load(Ordering::SeqCst) {
-        let proc_ctl = channel_mgr.clone();
+        let proc_ctl = manager.clone();
         let level = config.logging.ingest_level.clone();
         let ignore = config.logging.ignore_lines.clone();
         let mut server_proc = match Command::new("ffmpeg")
@@ -153,13 +153,13 @@ pub async fn ingest_server(
         let ingest_stdout = server_proc.stdout.take().unwrap();
         let server_err = BufReader::new(server_proc.stderr.take().unwrap());
 
-        *channel_mgr.ingest_stdout.lock().await = Some(ingest_stdout);
-        *channel_mgr.ingest.lock().await = Some(server_proc);
+        *manager.ingest_stdout.lock().await = Some(ingest_stdout);
+        *manager.ingest.lock().await = Some(server_proc);
 
         server_monitor(id, level, ignore, server_err, proc_ctl).await?;
         ingest_is_alive.store(false, Ordering::SeqCst);
 
-        if let Err(e) = channel_mgr.wait(Ingest).await {
+        if let Err(e) = manager.wait(Ingest).await {
             error!(target: Target::file_mail(), channel = id; "{e}");
         }
 
