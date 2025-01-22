@@ -1,3 +1,4 @@
+use std::path::Path;
 use std::sync::{atomic::Ordering, Arc};
 
 use async_walkdir::{Filtering, WalkDir};
@@ -7,11 +8,15 @@ use rand::{rngs::StdRng, seq::SliceRandom, SeedableRng};
 use tokio::sync::Mutex;
 use tokio_stream::StreamExt;
 
-use crate::player::{
-    controller::ChannelManager,
-    utils::{include_file_extension, time_in_seconds, Media, PlayoutConfig},
-};
 use crate::utils::logging::Target;
+use crate::utils::s3_utils::S3_DEFAULT_PRESIGNEDURL_EXP;
+use crate::{
+    player::{
+        controller::ChannelManager,
+        utils::{include_file_extension, time_in_seconds, Media, PlayoutConfig},
+    },
+    utils::s3_utils,
+};
 
 /// Folder Sources
 ///
@@ -29,7 +34,9 @@ impl FolderSource {
         let mut media_list = vec![];
         let mut index: usize = 0;
 
-        if !config.storage.paths.is_empty() && config.general.generate.is_some() {
+        let is_s3 = config.channel.s3_storage.is_some();
+
+        if !is_s3 && !config.storage.paths.is_empty() && config.general.generate.is_some() {
             path_list.extend(&config.storage.paths);
         } else {
             path_list.push(&config.channel.storage);
@@ -42,33 +49,72 @@ impl FolderSource {
         }
 
         for path in &path_list {
-            if !path.is_dir() {
+            if !path.is_dir() && config.channel.s3_storage.is_none() {
                 error!(target: Target::file_mail(), channel = id; "Path not exists: <b><magenta>{path:?}</></b>");
             }
 
             let config = config.clone();
-            let mut entries = WalkDir::new(path).filter(move |entry| {
-                let config = config.clone();
-                async move {
-                    if entry.path().is_file() && include_file_extension(&config, &entry.path()) {
-                        return Filtering::Continue;
-                    }
 
-                    Filtering::Ignore
+            if is_s3 {
+                let bucket = &config.channel.s3_storage.as_ref().unwrap().bucket;
+                let client = &config.channel.s3_storage.as_ref().unwrap().client;
+                let mut list_resp = client
+                    .list_objects_v2()
+                    .bucket(bucket.to_owned())
+                    .prefix(path.to_string_lossy())
+                    .into_paginator()
+                    .send();
+
+                while let Some(result) = list_resp.next().await {
+                    match result {
+                        Ok(output) => {
+                            for object in output.contents() {
+                                let obj_path = object.key().unwrap_or("unknown");
+                                if include_file_extension(&config, Path::new(obj_path)) {
+                                    let presigned_url = s3_utils::s3_get_object(
+                                        client,
+                                        bucket,
+                                        obj_path,
+                                        S3_DEFAULT_PRESIGNEDURL_EXP as u64,
+                                    )
+                                    .await
+                                    .unwrap_or("unknown".to_string());
+                                    let media = Media::new(0, &presigned_url, false).await;
+                                    media_list.push(media);
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            error!(target: Target::file_mail(), channel = id; "error: {e}");
+                            break;
+                        }
+                    }
                 }
-            });
+            } else {
+                let mut entries = WalkDir::new(path).filter(move |entry| {
+                    let config = config.clone();
+                    async move {
+                        if entry.path().is_file() && include_file_extension(&config, &entry.path())
+                        {
+                            return Filtering::Continue;
+                        }
 
-            loop {
-                match entries.next().await {
-                    Some(Ok(entry)) => {
-                        let media = Media::new(0, &entry.path().to_string_lossy(), false).await;
-                        media_list.push(media);
+                        Filtering::Ignore
                     }
-                    Some(Err(e)) => {
-                        error!(target: Target::file_mail(), channel = id; "error: {e}");
-                        break;
+                });
+
+                loop {
+                    match entries.next().await {
+                        Some(Ok(entry)) => {
+                            let media = Media::new(0, &entry.path().to_string_lossy(), false).await;
+                            media_list.push(media);
+                        }
+                        Some(Err(e)) => {
+                            error!(target: Target::file_mail(), channel = id; "error: {e}");
+                            break;
+                        }
+                        None => break,
                     }
-                    None => break,
                 }
             }
         }
@@ -191,7 +237,95 @@ pub async fn fill_filler_list(
     let mut filler_list = vec![];
     let filler_path = &config.storage.filler_path;
 
-    if filler_path.is_dir() {
+    if let Some(s3_conf) = config.channel.s3_storage.as_ref() {
+        let bucket = &s3_conf.bucket;
+        let client = &s3_conf.client;
+        let mut index = 0;
+
+        if s3_utils::s3_is_prefix(filler_path.to_str().unwrap(), bucket, client)
+            .await
+            .unwrap_or(false)
+        {
+            let mut obj_list_resp = client
+                .list_objects_v2()
+                .bucket(bucket)
+                .prefix(filler_path.to_str().unwrap())
+                .into_paginator()
+                .send();
+
+            while let Some(result) = obj_list_resp.next().await {
+                match result {
+                    Ok(output) => {
+                        for object in output.contents() {
+                            let obj_key = object.key().unwrap_or("Unknown");
+                            let presigned_url = s3_utils::s3_get_object(
+                                client,
+                                bucket,
+                                obj_key,
+                                S3_DEFAULT_PRESIGNEDURL_EXP as u64,
+                            )
+                            .await
+                            .unwrap_or(obj_key.to_string());
+                            if include_file_extension(config, Path::new(obj_key)) {
+                                let mut media = Media::new(index, &presigned_url, false).await;
+                                if fillers.is_none() {
+                                    if let Err(e) = media.add_probe(false).await {
+                                        error!(target: Target::file_mail(), channel = id; "{e:?}");
+                                    };
+                                }
+                                filler_list.push(media);
+                                index += 1;
+                            }
+                        }
+                    }
+                    Err(err) => {
+                        error!("{err:?}");
+                    }
+                }
+            }
+            if config.storage.shuffle {
+                let mut rng = StdRng::from_entropy();
+
+                filler_list.shuffle(&mut rng);
+            } else {
+                filler_list.sort_by(|d1, d2| natural_lexical_cmp(&d1.source, &d2.source));
+            }
+
+            for (index, item) in filler_list.iter_mut().enumerate() {
+                item.index = Some(index);
+            }
+
+            if let Some(f) = fillers.as_ref() {
+                f.lock().await.clone_from(&filler_list);
+            }
+        } else
+        // if s3_utils::s3_is_object(filler_path.to_str().unwrap(), bucket, client)
+        //     .await
+        //     .unwrap_or(false)
+        {
+            let presigned_url = s3_utils::s3_get_object(
+                client,
+                bucket,
+                filler_path.to_str().unwrap(),
+                S3_DEFAULT_PRESIGNEDURL_EXP as u64,
+            )
+            .await
+            .unwrap_or(filler_path.to_string_lossy().to_string());
+            let mut media = Media::new(0, &presigned_url, false).await;
+
+            if fillers.is_none() {
+                if let Err(e) = media.add_probe(false).await {
+                    error!(target: Target::file_mail(), channel = id; "{e:?}");
+                };
+            }
+
+            filler_list.push(media);
+
+            if let Some(f) = fillers.as_ref() {
+                f.lock().await.clone_from(&filler_list);
+            }
+        }
+    } else if filler_path.is_dir() {
         let config_clone = config.clone();
         let mut index = 0;
 

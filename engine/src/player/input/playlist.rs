@@ -617,23 +617,30 @@ pub async fn gen_source(
     manager: &ChannelManager,
     last_index: usize,
 ) -> Media {
+    let mut bucket_name = None;
+    let mut s3_client = None;
     if config.channel.s3_storage.is_some() {
         // to-do : implementation of the s3 presigned-url
         let cloned_source = node.source.clone();
         let s3_str = config.channel.s3_storage.as_ref().unwrap().clone();
-        let bucket = &s3_str.bucket;
-        let client = &s3_str.client;
+        let bucket = s3_str.bucket;
+        let client = s3_str.client;
+        bucket_name = Some(bucket.clone());
+        s3_client = Some(client.clone());
         if let Ok(presigned_url) = s3_utils::s3_get_object(
-            client,
-            bucket,
+            &client,
+            &bucket,
             &cloned_source,
             S3_DEFAULT_PRESIGNEDURL_EXP as u64,
         )
         .await
         {
             node.source = presigned_url;
-        } else {
-            panic!("Couldn't generate presigned-url for current media!") // to-do : handle the else condition
+        } else if !cloned_source.is_empty() {
+            error!(
+                "Couldn't generate presigned-url for current media path: '{}'",
+                &cloned_source
+            );
         }
     }
 
@@ -690,20 +697,29 @@ pub async fn gen_source(
             node.cmd = Some(seek_and_length(config, &mut node));
         }
     } else {
-        // to-do: add s3 filler config 
+        // to-do: add s3 filler config
         trace!("clip index: {node_index} | last index: {last_index}");
 
         // Last index is the index from the last item from the node list.
         if node_index < last_index {
             error!(target: Target::file_mail(), channel = config.general.channel_id; "Source not found: <b><magenta>{}</></b>", node.source);
         }
-
         let fillers = manager.filler_list.lock().await;
 
         // Set list_init to true, to stay in sync.
         manager.list_init.store(true, Ordering::SeqCst);
 
-        if config.storage.filler_path.is_dir() && !fillers.is_empty() {
+        if (config.storage.filler_path.is_dir()
+            || (if let (Some(bucket), Some(client)) = (bucket_name.as_ref(), s3_client.as_ref()) {
+                // check if it's a prefix in a s3 storage or not!
+                s3_utils::s3_is_prefix(config.storage.filler_path.to_str().unwrap(), bucket, client)
+                    .await
+                    .unwrap_or(false)
+            } else {
+                false
+            }))
+            && !fillers.is_empty()
+        {
             let mut index = manager.filler_index.fetch_add(1, Ordering::SeqCst);
 
             if index > fillers.len() - 1 {
@@ -736,7 +752,22 @@ pub async fn gen_source(
             node.cmd = Some(loop_filler(config, &node));
             node.probe = filler_media.probe;
         } else {
-            match MediaProbe::new(&config.storage.filler_path).await {
+            let mut file_path = config.storage.filler_path.to_string_lossy().to_string(); // for Not s3 storage cases
+            if let (Some(bucket), Some(client)) = (bucket_name.as_ref(), s3_client.as_ref()) {
+                s3_utils::s3_is_object(&file_path, bucket, client)
+                    .await
+                    .unwrap_or(false);
+                file_path = s3_utils::s3_get_object(
+                    client,
+                    bucket,
+                    &file_path,
+                    S3_DEFAULT_PRESIGNEDURL_EXP as u64,
+                )
+                .await
+                .unwrap_or(file_path.to_string());
+            }
+
+            match MediaProbe::new(&file_path).await {
                 Ok(probe) => {
                     if config
                         .storage
@@ -748,24 +779,14 @@ pub async fn gen_source(
                         .filter(|c| IMAGE_FORMAT.contains(&c.as_str()))
                         .is_some()
                     {
-                        node.source = config
-                            .storage
-                            .filler_path
-                            .clone()
-                            .to_string_lossy()
-                            .to_string();
+                        node.source = file_path.clone();
                         node.cmd = Some(loop_image(config, &node));
                         node.probe = Some(probe);
                     } else if let Some(filler_duration) = probe.clone().format.duration {
                         // Create placeholder from config filler.
                         let filler_out = filler_duration.min(duration);
 
-                        node.source = config
-                            .storage
-                            .filler_path
-                            .clone()
-                            .to_string_lossy()
-                            .to_string();
+                        node.source = file_path.clone();
                         node.seek = 0.0;
                         node.out = filler_out;
                         node.duration = filler_duration;

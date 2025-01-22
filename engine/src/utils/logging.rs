@@ -435,7 +435,9 @@ pub fn init_logging(
     let mut builder = LogSpecification::builder();
     builder
         .default(log_level)
-        .module("aws", LevelFilter::Info)
+        .module("aws", LevelFilter::Info) // for aws
+        .module("tracing::span", LevelFilter::Info) // for aws
+        .module("ffplayout::utils::s3_utils", LevelFilter::Info) // for aws
         .module("actix", LevelFilter::Info)
         .module("actix_files", LevelFilter::Info)
         .module("actix_web", LevelFilter::Info)

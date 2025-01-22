@@ -18,8 +18,11 @@ use actix_files;
 use actix_multipart::Multipart;
 use actix_web::{
     delete, get,
-    http::{StatusCode, header::{ContentDisposition, DispositionType}},
-    patch, post, put, web, HttpRequest, HttpResponse, Responder
+    http::{
+        header::{ContentDisposition, DispositionType},
+        StatusCode,
+    },
+    patch, post, put, web, HttpRequest, HttpResponse, Responder,
 };
 use actix_web_grants::{authorities::AuthDetails, proc_macro::protect};
 
@@ -55,7 +58,7 @@ use crate::{
         config::{get_config, PlayoutConfig, Template},
         control::{control_state, send_message, ControlParams, Process, ProcessCtl},
         errors::ServiceError,
-        files::MediaMap, s3_utils,
+        files::MediaMap,
         files::{
             browser, create_directory, norm_abs_path, remove_file_or_folder, rename_file, upload,
             MoveObject, PathObject,
@@ -63,7 +66,7 @@ use crate::{
         logging::MailQueue,
         naive_date_time_from_str,
         playlist::{delete_playlist, generate_playlist, read_playlist, write_playlist},
-        public_path, read_log_file, system, TextFilter,
+        public_path, read_log_file, s3_utils, system, TextFilter,
     },
     vec_strings,
 };
@@ -633,9 +636,14 @@ async fn update_playout_config(
     let storage = Path::new(&p.cleaned_path);
     let config_id = manager.config.lock().await.general.id;
 
-    let (_, _, logo) = norm_abs_path(storage, &data.processing.logo)?;
-    let (_, _, filler) = norm_abs_path(storage, &data.storage.filler)?;
-    let (_, _, font) = norm_abs_path(storage, &data.text.font)?;
+    let mut logo = String::from(&data.processing.logo);
+    let mut filler = String::from(&data.storage.filler);
+    let mut font = String::from(&data.text.font);
+    if !p.is_s3() {
+        (_, _, logo) = norm_abs_path(storage, &data.processing.logo)?;
+        (_, _, filler) = norm_abs_path(storage, &data.storage.filler)?;
+        (_, _, font) = norm_abs_path(storage, &data.text.font)?;
+    }
 
     data.processing.logo = logo;
     data.storage.filler = filler;

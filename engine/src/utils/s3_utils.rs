@@ -601,6 +601,42 @@ pub async fn s3_is_prefix(
     Ok(is_prefix)
 }
 
+/// **Check if Path is an S3 Object**
+///
+/// Verifies whether the given path corresponds to an object in the specified S3 bucket.
+///
+/// ## Returns
+/// - **`Result<bool, ServiceError>`**: `true` if the path is an object, `false` otherwise, or an error.
+///
+/// ## Notes
+/// - Uses S3's `head_object` to check for the existence of the object at the specified path.
+/// - Returns an error if the bucket or S3 client is misconfigured, or if an unexpected error occurs.
+pub async fn s3_is_object(
+    path: &str,
+    bucket: &str,
+    s3_client: &Client,
+) -> Result<bool, ServiceError> {
+    let mut is_object = false;
+    let (clean_path, parent_path) = s3_path(path)?;
+    let delimiter = '/';
+    let parent_list_resp = s3_client // list of objects and prefix in parent path
+        .list_objects_v2()
+        .bucket(bucket)
+        .prefix(&parent_path)
+        .delimiter(delimiter)
+        .send()
+        .await
+        .map_err(|e| ServiceError::BadRequest(format!("Invalid S3 config!: {}", e)))?;
+    for object in parent_list_resp.contents() {
+        if let Some(prefix) = object.key() {
+            if prefix == clean_path {
+                is_object = true;
+            }
+        }
+    }
+    Ok(is_object)
+}
+
 pub fn s3_rename(
     source_path: &str,
     target_path: &str,
@@ -619,3 +655,5 @@ pub fn s3_rename(
 fn s3_obj_extension_checker(obj_name: &str, extensions: &[String]) -> bool {
     extensions.iter().any(|ext| obj_name.ends_with(ext))
 }
+
+

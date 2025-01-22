@@ -585,9 +585,10 @@ pub fn loop_image(config: &PlayoutConfig, node: &Media) -> Vec<String> {
     let duration = node.out - node.seek;
     let mut source_cmd: Vec<String> = vec_strings!["-loop", "1", "-i", node.source.clone()];
 
+    let src_inf_log = node.source.split_once('?').unwrap_or((&node.source, "")).0;
     info!(
         "Loop image <b><magenta>{}</></b>, total duration: <yellow>{duration:.2}</>",
-        node.source
+        src_inf_log
     );
 
     if Path::new(&node.audio).is_file() {
@@ -634,7 +635,8 @@ pub fn loop_filler(config: &PlayoutConfig, node: &Media) -> Vec<String> {
     let mut source_cmd = vec![];
 
     if loop_count > 1 {
-        info!("Loop <b><magenta>{}</></b> <yellow>{loop_count}</> times, total duration: <yellow>{:.2}</>", node.source, node.out);
+        let src_inf_log = node.source.split_once('?').unwrap_or((&node.source, "")).0;
+        info!("Loop <b><magenta>{}</></b> <yellow>{loop_count}</> times, total duration: <yellow>{:.2}</>", src_inf_log, node.out);
 
         source_cmd.append(&mut vec_strings!["-stream_loop", loop_count]);
     }
@@ -685,7 +687,8 @@ pub fn seek_and_length(config: &PlayoutConfig, node: &mut Media) -> Vec<String> 
     }
 
     if loop_count > 1 {
-        info!("Loop <b><magenta>{}</></b> <yellow>{loop_count}</> times, total duration: <yellow>{:.2}</>", node.source, node.out);
+        let src_inf_log = node.source.split_once('?').unwrap_or((&node.source, "")).0;
+        info!("Loop <b><magenta>{}</></b> <yellow>{loop_count}</> times, total duration: <yellow>{:.2}</>", src_inf_log, node.out);
 
         source_cmd.append(&mut vec_strings!["-stream_loop", loop_count]);
     }

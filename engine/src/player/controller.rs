@@ -352,7 +352,7 @@ async fn run_channel(manager: ChannelManager) -> Result<(), ServiceError> {
     // after start a filler is needed, the first one will be ignored because the list is not filled.
 
     if filler_list.lock().await.is_empty() {
-        fill_filler_list(&config, Some(filler_list)).await;
+        fill_filler_list(&config, Some(filler_list.clone())).await;
     }
 
     match mode {

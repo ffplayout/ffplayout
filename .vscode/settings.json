@@ -94,5 +94,8 @@
         "uuids",
         "webm",
         "zerolatency"
-    ]
+    ],
+    "lldb.showDisassembly": "auto",
+    "lldb.dereferencePointers": true,
+    "lldb.consoleMode": "evaluate"
 }
