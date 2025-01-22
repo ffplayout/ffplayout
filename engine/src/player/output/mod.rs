@@ -195,7 +195,7 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
                     let num = ingest_stdout.read(&mut buffer[..]).await?;
 
                     if num == 0 {
-                        break;
+                        continue;
                     }
 
                     enc_writer.write_all(&buffer[..num]).await?;

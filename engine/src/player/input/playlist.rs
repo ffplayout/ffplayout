@@ -403,8 +403,8 @@ impl async_iterator::Iterator for CurrentProgram {
         if self.manager.list_init.load(Ordering::SeqCst) {
             trace!("Init playlist, from next iterator");
             let init_clip_is_filler = match self.json_playlist.path {
-                None => false,
                 Some(_) => self.init_clip().await,
+                None => false,
             };
 
             if self.manager.list_init.load(Ordering::SeqCst) && !init_clip_is_filler {
