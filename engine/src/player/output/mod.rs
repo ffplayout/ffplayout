@@ -4,16 +4,13 @@ use async_iterator::Iterator;
 use log::*;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter},
-    process::Command,
-    time::{sleep, Duration},
+    process::{ChildStdin, Command},
 };
 
 mod desktop;
 mod hls;
 mod null;
 mod stream;
-
-pub use hls::write_hls;
 
 use crate::player::{
     controller::{ChannelManager, ProcessUnit::*},
@@ -28,21 +25,13 @@ use crate::utils::{
 };
 use crate::vec_strings;
 
-/// Player
-///
-/// Here we create the input file loop, from playlist, or folder source.
-/// Then we read the stdout from the reader ffmpeg instance
-/// and write it to the stdin from the streamer ffmpeg instance.
-/// If it is configured we also fire up a ffmpeg ingest server instance,
-/// for getting live feeds.
-/// When a live ingest arrive, it stops the current playing and switch to the live source.
-/// When ingest stops, it switch back to playlist/folder mode.
-pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
+async fn play(
+    manager: ChannelManager,
+    mut enc_writer: BufWriter<ChildStdin>,
+    ff_log_format: &str,
+) -> Result<(), ServiceError> {
     let config = manager.config.lock().await.clone();
     let id = config.general.channel_id;
-    let config_clone = config.clone();
-    let ff_log_format = format!("level+{}", config.logging.ffmpeg_level.to_lowercase());
-    let ignore_enc = config.logging.ignore_lines.clone();
     let playlist_init = manager.list_init.clone();
     let is_alive = manager.is_alive.clone();
     let ingest_is_alive = manager.ingest_is_alive.clone();
@@ -51,32 +40,6 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
 
     // get source iterator
     let mut node_sources = source_generator(manager.clone()).await;
-
-    // get ffmpeg output instance
-    let mut enc_proc = match config.output.mode {
-        Desktop => desktop::output(&config, &ff_log_format).await?,
-        Null => null::output(&config, &ff_log_format).await?,
-        Stream => stream::output(&config, &ff_log_format).await?,
-        _ => panic!("Output mode doesn't exists!"),
-    };
-
-    let mut enc_writer = BufWriter::new(enc_proc.stdin.take().unwrap());
-    let enc_err = BufReader::new(enc_proc.stderr.take().unwrap());
-
-    *manager.encoder.lock().await = Some(enc_proc);
-    let enc_p_ctl = manager.clone();
-
-    // spawn a task to log ffmpeg output error messages
-    let error_encoder_task = tokio::spawn(stderr_reader(enc_err, ignore_enc, Encoder, enc_p_ctl));
-
-    let channel_mgr_2 = manager.clone();
-
-    // spawn a task for ffmpeg ingest server and create a channel for package sending
-    let ingest_srv = if config.ingest.enable {
-        Some(tokio::spawn(ingest_server(config_clone, channel_mgr_2)))
-    } else {
-        None
-    };
 
     while let Some(node) = node_sources.next().await {
         *manager.current_media.lock().await = Some(node.clone());
@@ -174,10 +137,8 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
         let dec_err = BufReader::new(dec_proc.stderr.take().unwrap());
 
         *manager.clone().decoder.lock().await = Some(dec_proc);
-        let channel_mgr_c = manager.clone();
 
-        let error_decoder_task =
-            tokio::spawn(stderr_reader(dec_err, ignore_dec, Decoder, channel_mgr_c));
+        let error_decoder_task = tokio::spawn(stderr_reader(dec_err, ignore_dec, Decoder, id));
 
         loop {
             if ingest_is_alive.load(Ordering::SeqCst) {
@@ -225,17 +186,71 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
         error_decoder_task.await??;
     }
 
-    trace!("Out of source loop");
+    Ok(())
+}
 
-    sleep(Duration::from_secs(1)).await;
+/// Player
+///
+/// Here we create the input file loop, from playlist, or folder source.
+/// Then we read the stdout from the reader ffmpeg instance
+/// and write it to the stdin from the streamer ffmpeg instance.
+/// If it is configured we also fire up a ffmpeg ingest server instance,
+/// for getting live feeds.
+/// When a live ingest arrive, it stops the current playing and switch to the live source.
+/// When ingest stops, it switch back to playlist/folder mode.
+pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
+    let config = manager.config.lock().await.clone();
+    let config_clone = config.clone();
+    let ff_log_format = format!("level+{}", config.logging.ffmpeg_level.to_lowercase());
+    let ignore_enc = config.logging.ignore_lines.clone();
+    let channel_id = config.general.channel_id;
 
-    manager.stop_all(false).await?;
+    if config.output.mode == HLS {
+        hls::writer(&manager, &ff_log_format).await?;
+        manager.stop_all(false).await?;
 
-    if let Some(ingest) = ingest_srv {
-        ingest.await??;
+        return Ok(());
     }
 
-    error_encoder_task.await??;
+    // get ffmpeg output instance
+    let mut enc_proc = match config.output.mode {
+        Desktop => desktop::output(&config, &ff_log_format).await?,
+        Null => null::output(&config, &ff_log_format).await?,
+        Stream => stream::output(&config, &ff_log_format).await?,
+        _ => panic!("Output mode doesn't exists!"),
+    };
+
+    let enc_err = BufReader::new(enc_proc.stderr.take().unwrap());
+    let enc_writer = BufWriter::new(enc_proc.stdin.take().unwrap());
+
+    *manager.encoder.lock().await = Some(enc_proc);
+    let mgr_clone2 = manager.clone();
+
+    // spawn a task to log ffmpeg output error messages
+    let handle_enc_stderr = tokio::spawn(stderr_reader(enc_err, ignore_enc, Encoder, channel_id));
+
+    // spawn a task for ffmpeg ingest server and create a channel for package sending
+    let handle_ingest = if config.ingest.enable {
+        Some(tokio::spawn(ingest_server(config_clone, mgr_clone2)))
+    } else {
+        None
+    };
+
+    tokio::select! {
+        result = handle_enc_stderr => {
+            result??;
+        }
+
+        result = async { if let Some(f) = handle_ingest { f.await? } else { Ok(()) } }, if handle_ingest.is_some() => {
+            result?;
+        }
+
+        result = play(manager.clone(), enc_writer, &ff_log_format) => {
+            result?;
+        }
+    }
+
+    trace!("Out of source loop");
 
     Ok(())
 }
