@@ -241,7 +241,13 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
             result??;
         }
 
-        result = async { if let Some(f) = handle_ingest { f.await? } else { Ok(()) } }, if handle_ingest.is_some() => {
+        result = async {
+            if let Some(f) = handle_ingest {
+                f.await?
+            } else {
+                Ok(())
+            }
+        }, if handle_ingest.is_some() => {
             result?;
         }
 
