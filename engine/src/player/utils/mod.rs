@@ -861,9 +861,8 @@ pub async fn stderr_reader(
     buffer: tokio::io::BufReader<ChildStderr>,
     ignore: Vec<String>,
     suffix: ProcessUnit,
-    manager: ChannelManager,
+    channel_id: i32,
 ) -> Result<(), ServiceError> {
-    let id = manager.channel.lock().await.id;
     let mut lines = buffer.lines();
 
     while let Some(line) = lines.next_line().await? {
@@ -874,17 +873,17 @@ pub async fn stderr_reader(
         }
 
         if line.contains("[info]") {
-            info!(target: Target::file_mail(), channel = id;
+            info!(target: Target::file_mail(), channel = channel_id;
                 "<bright black>[{suffix}]</> {}",
                 line.replace("[info] ", "")
             );
         } else if line.contains("[warning]") {
-            warn!(target: Target::file_mail(), channel = id;
+            warn!(target: Target::file_mail(), channel = channel_id;
                 "<bright black>[{suffix}]</> {}",
                 line.replace("[warning] ", "")
             );
         } else if line.contains("[error]") || line.contains("[fatal]") {
-            error!(target: Target::file_mail(), channel = id;
+            error!(target: Target::file_mail(), channel = channel_id;
                 "<bright black>[{suffix}]</> {}",
                 line.replace("[error] ", "").replace("[fatal] ", "")
             );
@@ -895,9 +894,9 @@ pub async fn stderr_reader(
                 || (line.contains("No such file or directory")
                     && !line.contains("failed to delete old segment"))
             {
-                error!(target: Target::file_mail(), channel = id; "Hit unrecoverable error!");
-                manager.channel.lock().await.active = false;
-                manager.stop_all(false).await?;
+                return Err(ServiceError::Conflict(
+                    "Hit unrecoverable error!".to_string(),
+                ));
             }
         }
     }

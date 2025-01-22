@@ -115,41 +115,35 @@ pub async fn ingest_server(
     );
 
     if let Some(url) = stream_input.iter().find(|s| s.contains("://")) {
-        let mut attempts = 0;
-
-        while attempts < 5 {
+        for num in 0..5 {
             if is_free_tcp_port(id, url) {
-                info!(target: Target::file_mail(), channel = id; "Start ingest server, listening on: <b><magenta>{url}</></b>");
                 break;
             }
 
-            attempts += 1;
-            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+            if num >= 4 {
+                manager.channel.lock().await.active = false;
+
+                return Err(ServiceError::Conflict(
+                    "Can't run ingest server!".to_string(),
+                ));
+            }
+
+            tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
         }
 
-        if attempts == 5 {
-            manager.channel.lock().await.active = false;
-            manager.stop_all(false).await?;
-        }
+        info!(target: Target::file_mail(), channel = id; "Start ingest server, listening on: <b><magenta>{url}</></b>");
     };
 
     while is_alive.load(Ordering::SeqCst) {
         let proc_ctl = manager.clone();
         let level = config.logging.ingest_level.clone();
         let ignore = config.logging.ignore_lines.clone();
-        let mut server_proc = match Command::new("ffmpeg")
+        let mut server_proc = Command::new("ffmpeg")
             .args(server_cmd.clone())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .kill_on_drop(true)
-            .spawn()
-        {
-            Err(e) => {
-                error!(target: Target::file_mail(), channel = id; "couldn't spawn ingest server: {e}");
-                panic!("couldn't spawn ingest server: {e}")
-            }
-            Ok(proc) => proc,
-        };
+            .spawn()?;
         let ingest_stdout = server_proc.stdout.take().unwrap();
         let server_err = BufReader::new(server_proc.stderr.take().unwrap());
 
@@ -159,9 +153,7 @@ pub async fn ingest_server(
         server_monitor(id, level, ignore, server_err, proc_ctl).await?;
         ingest_is_alive.store(false, Ordering::SeqCst);
 
-        if let Err(e) = manager.wait(Ingest).await {
-            error!(target: Target::file_mail(), channel = id; "{e}");
-        }
+        manager.wait(Ingest).await?;
 
         trace!("Restart ingest server");
     }

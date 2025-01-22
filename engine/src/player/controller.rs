@@ -22,13 +22,10 @@ use tokio::{
 use tokio_stream::StreamExt;
 
 use crate::player::{
-    output::{player, write_hls},
+    output::player,
     utils::{folder::fill_filler_list, Media},
 };
-use crate::utils::{
-    config::{OutputMode::*, PlayoutConfig},
-    errors::ServiceError,
-};
+use crate::utils::{config::PlayoutConfig, errors::ServiceError};
 use crate::ARGS;
 use crate::{
     db::{handles, models::Channel},
@@ -143,6 +140,13 @@ impl ChannelManager {
                 let timer = Instant::now();
 
                 if let Err(e) = run_channel(self_clone.clone()).await {
+                    trace!(
+                        "Runtime has {} active tasks",
+                        tokio::runtime::Handle::current()
+                            .metrics()
+                            .num_alive_tasks()
+                    );
+
                     if let Err(e) = self_clone.stop_all(false).await {
                         error!(target: Target::all(), channel = channel_id; "Failed to stop channel <yellow>{channel_id}</>: {e}");
                         break;
@@ -156,7 +160,13 @@ impl ChannelManager {
                         retry_delay = Duration::from_secs(1);
                     }
 
-                    error!(target: Target::all(), channel = channel_id; "Run channel <yellow>{channel_id}</> failed: {e} | retry in <yellow>{}</> seconds", retry_delay.as_secs());
+                    let retry_msg = if self_clone.channel.lock().await.active {
+                        format!("Retry in <yellow>{}</> seconds", retry_delay.as_secs())
+                    } else {
+                        "Stop playout!".to_string()
+                    };
+
+                    error!(target: Target::all(), channel = channel_id; "Run channel <yellow>{channel_id}</> failed: {e} | {retry_msg}");
 
                     sleep(retry_delay).await;
                 }
@@ -338,7 +348,6 @@ impl ChannelController {
 
 async fn run_channel(manager: ChannelManager) -> Result<(), ServiceError> {
     let config = manager.config.lock().await.clone();
-    let mode = config.output.mode.clone();
     let filler_list = manager.filler_list.clone();
     let channel_id = config.general.channel_id;
 
@@ -354,12 +363,7 @@ async fn run_channel(manager: ChannelManager) -> Result<(), ServiceError> {
         fill_filler_list(&config, Some(filler_list)).await;
     }
 
-    match mode {
-        // write files/playlist to HLS m3u8 playlist
-        HLS => write_hls(manager).await,
-        // play on desktop or stream to a remote target
-        _ => player(manager).await,
-    }
+    player(manager).await
 }
 
 pub async fn drain_hls_path(path: &Path) -> io::Result<()> {
