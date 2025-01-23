@@ -24,7 +24,6 @@ actix-web-httpauth = "0.8"
 actix-web-lab = "0.23"
 actix-web-static-files = "4.0"
 argon2 = "0.5"
-async-iterator = "2.3"
 async-walkdir = "2"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
 chrono-tz = { version = "0.10", features = ["serde"] }

@@ -2,12 +2,11 @@ use serial_test::serial;
 use sqlx::sqlite::SqlitePoolOptions;
 
 use ffplayout::db::handles;
-use ffplayout::player::output::player;
-use ffplayout::player::{controller::ChannelManager, input::playlist::gen_source, utils::Media};
-use ffplayout::utils::config::OutputMode::Null;
+use ffplayout::player::controller::ChannelManager;
 use ffplayout::utils::config::{PlayoutConfig, ProcessMode::Playlist};
 use ffplayout::utils::time_machine::set_mock_time;
 use ffplayout::vec_strings;
+use ffplayout::{player::output::player, utils::config::OutputMode::Null};
 
 async fn prepare_config() -> (PlayoutConfig, ChannelManager) {
     let pool = SqlitePoolOptions::new()
@@ -41,51 +40,6 @@ async fn timed_stop(sec: u64, manager: ChannelManager) {
 
     manager.channel.lock().await.active = false;
     manager.stop_all(false).await.unwrap();
-}
-
-#[tokio::test]
-#[ignore]
-async fn test_gen_source() {
-    let (mut config, manager) = prepare_config().await;
-
-    config.general.skip_validation = true;
-    config.mail.recipient = "".into();
-    config.processing.mode = Playlist;
-    config.ingest.enable = false;
-    config.text.add_text = false;
-    config.playlist.day_start = "00:00:00".into();
-    config.playlist.start_sec = Some(0.0);
-    config.playlist.length = "24:00:00".into();
-    config.playlist.length_sec = Some(86400.0);
-    config.channel.playlists = "assets/playlists".into();
-    config.storage.filler = "assets/media_filler/filler_0.mp4".into();
-
-    let mut valid_source_with_probe = Media::new(0, "assets/media_mix/av_sync.mp4", true).await;
-    let valid_media = gen_source(&config, valid_source_with_probe.clone(), &manager, 100).await;
-
-    assert_eq!(valid_source_with_probe.source, valid_media.source);
-
-    let mut valid_source_without_probe = Media::new(0, "assets/media_mix/av_sync.mp4", false).await;
-    valid_source_without_probe.duration = 30.0;
-    valid_source_without_probe.out = 20.0;
-    let valid_media = gen_source(&config, valid_source_without_probe.clone(), &manager, 100).await;
-
-    assert_eq!(valid_source_without_probe.source, valid_media.source);
-    assert_eq!(valid_media.out, 20.0);
-
-    valid_source_with_probe.out = 0.9;
-
-    let valid_media = gen_source(&config, valid_source_with_probe.clone(), &manager, 100).await;
-
-    assert!(valid_media.skip);
-
-    let mut no_valid_source_with_probe = Media::new(0, "assets/media_mix/av_snc.mp4", true).await;
-    no_valid_source_with_probe.duration = 30.0;
-    no_valid_source_with_probe.out = 30.0;
-
-    let valid_media = gen_source(&config, no_valid_source_with_probe.clone(), &manager, 100).await;
-
-    assert_eq!(valid_media.source, "color=c=#121212:s=1024x576:d=30");
 }
 
 #[tokio::test]

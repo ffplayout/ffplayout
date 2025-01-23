@@ -19,7 +19,6 @@ out:
 
 use std::{process::Stdio, sync::atomic::Ordering};
 
-use async_iterator::Iterator;
 use log::*;
 use tokio::{
     io::{AsyncBufReadExt, BufReader},

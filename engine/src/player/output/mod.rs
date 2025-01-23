@@ -1,6 +1,5 @@
 use std::{process::Stdio, sync::atomic::Ordering};
 
-use async_iterator::Iterator;
 use log::*;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter},

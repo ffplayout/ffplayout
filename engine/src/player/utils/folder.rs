@@ -134,10 +134,8 @@ impl FolderSource {
 }
 
 /// Create iterator for folder source
-impl async_iterator::Iterator for FolderSource {
-    type Item = Media;
-
-    async fn next(&mut self) -> Option<Self::Item> {
+impl FolderSource {
+    pub async fn next(&mut self) -> Option<Media> {
         let config = self.manager.config.lock().await.clone();
         let id = config.general.id;
 

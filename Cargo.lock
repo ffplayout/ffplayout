@@ -571,12 +571,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "async-iterator"
-version = "2.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "742b2f12ff517f144b6181d24f3f2481b503e05650ee79feec1f090048089f88"
-
-[[package]]
 name = "async-lock"
 version = "3.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1364,7 +1358,6 @@ dependencies = [
  "actix-web-lab",
  "actix-web-static-files",
  "argon2",
- "async-iterator",
  "async-walkdir",
  "chrono",
  "chrono-tz",

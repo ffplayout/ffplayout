@@ -223,7 +223,7 @@ pub async fn control_state(
     }
 
     manager.channel.lock().await.time_shift = shift;
-    handles::update_stat(conn, id, Some(current_date), shift).await?;
+    handles::update_stat(conn, id, &Some(current_date), shift).await?;
     manager.stop(Decoder).await?;
 
     Ok(data_map)
