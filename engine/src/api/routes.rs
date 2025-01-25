@@ -427,7 +427,6 @@ async fn get_all_channels(
     expr = "user.channels.contains(&*id) || role.has_authority(&Role::GlobalAdmin)"
 )]
 async fn patch_channel(
-    // to-do : change the function to update when you switch from s3 to local or vice versa
     pool: web::Data<Pool<Sqlite>>,
     id: web::Path<i32>,
     data: web::Json<Channel>,
@@ -977,7 +976,6 @@ pub async fn process_control(
             return Ok(web::Json("not running"));
         }
         ProcessCtl::Start => {
-            // to-do : here is process of start streaming
             if !manager.is_alive.load(Ordering::SeqCst) {
                 manager.channel.lock().await.active = true;
                 manager.start().await?;
@@ -1051,7 +1049,6 @@ pub async fn get_playlist(
     expr = "user.channels.contains(&*id) || role.has_authority(&Role::GlobalAdmin)"
 )]
 pub async fn save_playlist(
-    // to-do: look at this!!!!
     id: web::Path<i32>,
     data: web::Json<JsonPlaylist>,
     controllers: web::Data<Mutex<ChannelController>>,
@@ -1097,7 +1094,6 @@ pub async fn save_playlist(
     expr = "user.channels.contains(&params.0) || role.has_authority(&Role::GlobalAdmin)"
 )]
 pub async fn gen_playlist(
-    // to-do: look at this!!!!
     params: web::Path<(i32, String)>,
     data: Option<web::Json<PathsObj>>,
     controllers: web::Data<Mutex<ChannelController>>,

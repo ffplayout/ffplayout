@@ -277,7 +277,6 @@ pub fn round_to_nearest_ten(num: i64) -> i64 {
 }
 
 pub async fn copy_assets(storage_path: &Path) -> Result<(), std::io::Error> {
-    // to-do : handle it for s3!
     if storage_path.is_dir() {
         let target = storage_path.join("00-assets");
         let mut dummy_source = Path::new("/usr/share/ffplayout/dummy.vtt");

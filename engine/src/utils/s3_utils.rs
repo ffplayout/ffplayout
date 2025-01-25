@@ -30,7 +30,6 @@ pub const S3_INDICATOR: &str = "s3://";
 pub const S3_DEFAULT_PRESIGNEDURL_EXP: f64 = 3600.0 * 24.0;
 
 pub trait S3Ext {
-    // to-do : check if its unessential!
     fn parse_is_s3(&self) -> bool;
 }
 
@@ -236,9 +235,6 @@ pub async fn s3_browser(
     duration: web::Data<MediaMap>,
 ) -> Result<PathObject, ServiceError> {
     let mut parent_folders = vec![];
-    // let mut s3_obj_dur = duration
-    //     .lock()
-    //     .map_err(|e| ServiceError::Conflict(format!("Invalid S3 config!: {}", e)))?;
     let s3_obj_dur = duration;
     let bucket = &s3_storage.as_ref().unwrap().bucket;
     let path = path_obj.source.clone();
@@ -293,7 +289,7 @@ pub async fn s3_browser(
     for objs in list_resp.contents() {
         if let Some(obj) = objs.key() {
             if s3_obj_extension_checker(obj, &extensions) {
-                let fls = obj.strip_prefix(bucket).unwrap_or(obj); // to-do: maybe no needed!
+                let fls = obj.strip_prefix(bucket).unwrap_or(obj);
                 files.push(fls.to_string());
             }
         }
@@ -305,13 +301,8 @@ pub async fn s3_browser(
     let mut media_files = vec![];
 
     for file in files {
-        let s3file_presigned_url = s3_get_object(
-            s3_client,
-            bucket,
-            &file,
-            S3_DEFAULT_PRESIGNEDURL_EXP as u64, // to-do: may need extract from playlist-secs
-        )
-        .await?;
+        let s3file_presigned_url =
+            s3_get_object(s3_client, bucket, &file, S3_DEFAULT_PRESIGNEDURL_EXP as u64).await?;
         let name = file.strip_prefix(&prefix).unwrap_or(&file).to_string();
         if let Some(stored_dur) = s3_obj_dur.get_obj(&file) {
             let video = VideoFile {
@@ -379,7 +370,9 @@ pub async fn s3_upload_multipart(
 
             upload_id = create_multipart_upload_output
                 .upload_id()
-                .map(|id| id.to_string());
+                .map(ToString::to_string);
+            // .map(|id| id.to_string());
+
             key = Some(filepath.clone());
         }
         let mut f = web::block(|| std::io::Cursor::new(Vec::new()))

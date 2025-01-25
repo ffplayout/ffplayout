@@ -625,7 +625,6 @@ pub async fn gen_source(
     let mut bucket_name = None;
     let mut s3_client = None;
     if config.channel.s3_storage.is_some() {
-        // to-do : implementation of the s3 presigned-url
         let cloned_source = node.source.clone();
         let s3_str = config.channel.s3_storage.as_ref().unwrap().clone();
         let bucket = s3_str.bucket;
@@ -702,7 +701,6 @@ pub async fn gen_source(
             node.cmd = Some(seek_and_length(config, &mut node));
         }
     } else {
-        // to-do: add s3 filler config
         trace!("clip index: {node_index} | last index: {last_index}");
 
         // Last index is the index from the last item from the node list.
