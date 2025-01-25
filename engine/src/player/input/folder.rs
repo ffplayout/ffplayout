@@ -54,7 +54,7 @@ pub async fn watchman(
             .into_paginator()
             .send();
 
-        while !is_terminated.load(Ordering::SeqCst) {
+        while is_alive.load(Ordering::SeqCst) {
             while let Some(result) = list_resp.next().await {
                 match result {
                     Ok(object) => {
@@ -108,12 +108,12 @@ pub async fn watchman(
 
         debouncer.watch(path, RecursiveMode::Recursive).unwrap();
 
-    while is_alive.load(Ordering::SeqCst) {
-        if let Ok(result) = rx.try_recv() {
-            match result {
-                Ok(events) => {
-                    let sources = Arc::clone(&sources);
-                    let config = config.clone();
+        while is_alive.load(Ordering::SeqCst) {
+            if let Ok(result) = rx.try_recv() {
+                match result {
+                    Ok(events) => {
+                        let sources = Arc::clone(&sources);
+                        let config = config.clone();
 
                         tokio::spawn(async move {
                             let events: Vec<_> = events.to_vec();

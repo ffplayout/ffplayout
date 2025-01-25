@@ -79,12 +79,10 @@ pub async fn update_global(
 
 pub async fn select_channel(conn: &Pool<Sqlite>, id: &i32) -> Result<Channel, ProcessError> {
     const QUERY: &str = "SELECT * FROM channels WHERE id = $1";
-    let row = sqlx::query(query).bind(id).fetch_one(conn).await?;
+    let row = sqlx::query(QUERY).bind(id).fetch_one(conn).await?;
     let channel = Channel::from_row_async(&row).await?;
 
-    let result = sqlx::query_as(QUERY).bind(id).fetch_one(conn).await?;
-
-    Ok(result)
+    Ok(channel)
 }
 
 pub async fn select_related_channels(
@@ -100,10 +98,6 @@ pub async fn select_related_channels(
         ),
         None => "SELECT * FROM channels ORDER BY id ASC;".to_string(),
     };
-
-    // let mut results: Vec<Channel> = let result = sqlx::query_as(&query).fetch_all(conn).await?;
-
-    Ok(result)?;
 
     let rows = sqlx::query(&query).fetch_all(conn).await?;
 

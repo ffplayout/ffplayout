@@ -119,7 +119,7 @@ async fn main() -> Result<(), ProcessError> {
                 .app_data(queues.clone())
                 .app_data(controllers.clone())
                 .app_data(auth_state.clone())
-                .app_data(shared_duration.clone()) // to-do: find proper define type
+                .app_data(shared_duration.clone()) 
                 .app_data(web::Data::from(Arc::clone(&broadcast_data)))
                 .wrap(logger)
                 .service(web::scope("/auth").service(login).service(refresh))

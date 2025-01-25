@@ -18,7 +18,7 @@ use super::{
     errors::ServiceError,
     files::{MoveObject, PathObject, VideoFile},
 };
-use crate::{db::models, player::utils::probe::MediaProbe, utils::config::PlayoutConfig};
+use crate::{db::models, player::utils::probe::MediaProbe, utils::config::S3};
 use aws_config::Region;
 use aws_sdk_s3::{
     presigning::PresigningConfig,
@@ -230,7 +230,7 @@ pub async fn s3_get_object(
 }
 
 pub async fn s3_browser(
-    config: &PlayoutConfig,
+    s3_storage: &Option<S3>,
     path_obj: &PathObject,
     extensions: Vec<String>,
     duration: web::Data<MediaMap>,
@@ -240,11 +240,11 @@ pub async fn s3_browser(
     //     .lock()
     //     .map_err(|e| ServiceError::Conflict(format!("Invalid S3 config!: {}", e)))?;
     let s3_obj_dur = duration;
-    let bucket = &config.channel.s3_storage.as_ref().unwrap().bucket;
+    let bucket = &s3_storage.as_ref().unwrap().bucket;
     let path = path_obj.source.clone();
     let delimiter = '/'; // should be a single character
     let (prefix, parent_path) = s3_path(&path_obj.source)?;
-    let s3_client = &config.channel.s3_storage.as_ref().unwrap().client;
+    let s3_client = &s3_storage.as_ref().unwrap().client;
     let mut obj = PathObject::new(path.clone(), Some(bucket.clone()));
     obj.folders_only = path_obj.folders_only;
 
@@ -287,6 +287,7 @@ pub async fn s3_browser(
         if let Some(prefix) = prefix.prefix() {
             let fldrs = prefix.split(delimiter).nth_back(1).unwrap_or(prefix);
             folders.push(fldrs.to_string());
+            // folders.push(prefix.to_string());
         }
     }
 
@@ -655,5 +656,3 @@ pub fn s3_rename(
 fn s3_obj_extension_checker(obj_name: &str, extensions: &[String]) -> bool {
     extensions.iter().any(|ext| obj_name.ends_with(ext))
 }
-
-

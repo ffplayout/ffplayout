@@ -17,7 +17,7 @@
             "sourceLanguages": [
                 "rust"
             ],
-            "preLaunchTask": "rust: cargo build",
+            // "preLaunchTask": "rust: cargo build",
         },
         {   
             "name": "Config Setter - S3 Storage",
@@ -33,7 +33,9 @@
                 "-m",
                 "contact@example.com",
                 "--storage",
-                "s3://media01/:localhost:9000/:123minio/:123minoi",
+                // "s3://media01/:localhost:9000/:123minio/:123minoi", // mine
+                // "s3://worker/:hotconvert1.localdomain:9000/:WvLdvFlf4Utxx0UZ/:AQSYGjqnGCojB0eBDU8HJA0GVEGZfvyV", // for hotconvert
+                "s3://aparat-music/:192.168.21.20:8084/:homer/:donuts", // for filimo
                 "--playlists",
                 "./playlists",
                 "--public",

@@ -15,7 +15,67 @@ use serde::{Deserialize, Serialize};
 use tokio::{fs, io::AsyncWriteExt};
 
 use crate::player::utils::{file_extension, probe::MediaProbe};
-use crate::utils::{config::PlayoutConfig, errors::ServiceError};
+use crate::utils::{config::S3, errors::ServiceError, s3_utils};
+
+#[derive(Debug, Default)]
+pub struct MediaMap {
+    pub video_duration_data: Mutex<HashMap<String, f64>>,
+    queue: Mutex<VecDeque<String>>,
+    limit: usize,
+}
+
+impl MediaMap {
+    pub fn create(limit: usize) -> Self {
+        Self {
+            video_duration_data: Mutex::new(HashMap::with_capacity(limit)),
+            queue: Mutex::new(VecDeque::with_capacity(limit)),
+            limit,
+        }
+    }
+
+    pub fn add_obj(&self, key: String, value: f64) -> Result<(), &'static str> {
+        // insert item with FIFO algorithm
+        let mut media_duration = self.video_duration_data.lock().unwrap();
+        let mut queue = self.queue.lock().unwrap();
+        if media_duration.len() >= self.limit {
+            if let Some(oldest_key) = queue.pop_front() {
+                media_duration.remove(&oldest_key.clone());
+            }
+        }
+        media_duration.insert(key.clone(), value);
+        queue.push_back(key);
+        Ok(())
+    }
+
+    pub fn get_obj(&self, key: &str) -> Option<f64> {
+        let media_duration = self.video_duration_data.lock().unwrap();
+        media_duration.get(key).copied()
+    }
+
+    pub fn remove_obj(&self, key: &str) -> Result<(), &'static str> {
+        let mut media_duration = self.video_duration_data.lock().unwrap();
+        let mut queue = self.queue.lock().unwrap();
+        media_duration.remove(key);
+        if let Some(index) = queue.iter().position(|x| x == key) {
+            queue.remove(index);
+        }
+        Ok(())
+    }
+
+    pub fn update_obj(&self, old_key: &str, new_key: &str) -> Result<(), &'static str> {
+        let mut media_duration = self.video_duration_data.lock().unwrap();
+        let mut queue = self.queue.lock().unwrap();
+
+        if let Some(value) = media_duration.remove(old_key) {
+            self.add_obj(new_key.to_string(), value)?;
+        };
+        if let Some(index) = queue.iter().position(|x| x == old_key) {
+            queue[index] = new_key.to_string();
+        }
+
+        Ok(())
+    }
+}
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct PathObject {
@@ -105,33 +165,33 @@ pub fn norm_abs_path(
 /// will take care, that user can not break out from given storage path in config.
 pub async fn browser(
     storage: &Path,
+    s3_storage: &Option<S3>,
     extensions: Vec<String>,
     path_obj: &PathObject,
     duration: web::Data<MediaMap>,
 ) -> Result<PathObject, ServiceError> {
-    if config.channel.s3_storage.is_some() {
+    if s3_storage.is_some() {
         // S3 Storage Browser
-        match s3_utils::s3_browser(config, path_obj, extensions, duration).await {
+        match s3_utils::s3_browser(s3_storage, path_obj, extensions, duration).await {
             Ok(obj) => Ok(obj),
             Err(e) => Err(e),
         }
-    else {
-
+    } else {
         let (path, parent, path_component) = norm_abs_path(storage, &path_obj.source)?;
         let mut parent_folders = vec![];
-    
+
         let parent_path = if path_component.is_empty() {
             storage
         } else {
             path.parent().unwrap()
         };
-    
+
         let mut obj = PathObject::new(path_component, Some(parent));
         obj.folders_only = path_obj.folders_only;
-    
+
         if path != parent_path && !path_obj.folders_only {
             let mut parents = fs::read_dir(&parent_path).await?;
-    
+
             while let Some(child) = parents.next_entry().await? {
                 if child.metadata().await?.is_dir() {
                     parent_folders.push(
@@ -144,80 +204,80 @@ pub async fn browser(
                     );
                 }
             }
-    
-                parent_folders.path_sort(natural_lexical_cmp);
-    
-                obj.parent_folders = Some(parent_folders);
-            }
-    
-            let mut paths_obj = fs::read_dir(path).await?;
-    
-            let mut files = vec![];
-            let mut folders = vec![];
-    
-            while let Some(child) = paths_obj.next_entry().await? {
-                let f_meta = child.metadata().await?;
-    
-                // ignore hidden files/folders on unix
-                if child.path().to_string_lossy().to_string().contains("/.") {
-                    continue;
-                }
-    
-                if f_meta.is_dir() {
-                    folders.push(
-                        child
-                            .path()
-                            .file_name()
-                            .unwrap()
-                            .to_string_lossy()
-                            .to_string(),
-                    );
-                } else if f_meta.is_file() && !path_obj.folders_only {
-                    if let Some(ext) = file_extension(&child.path()) {
-                        if extensions.contains(&ext.to_string().to_lowercase()) {
-                            files.push(child.path());
-                        }
-                    }
-                }
-            }
-    
-            folders.path_sort(natural_lexical_cmp);
-            files.path_sort(natural_lexical_cmp);
-            let mut media_files = vec![];
-    
-            for file in files {
-                match MediaProbe::new(file.to_string_lossy().as_ref()).await {
-                    Ok(probe) => {
-                        let duration = probe.format.duration.unwrap_or_default();
-    
-                        let video = VideoFile {
-                            name: file.file_name().unwrap().to_string_lossy().to_string(),
-                            duration,
-                        };
-                        media_files.push(video);
-                    }
-                    Err(e) => error!("{e:?}"),
-                };
-            }
-    
-            obj.folders = Some(folders);
-            obj.files = Some(media_files);
-    
-            Ok(obj)
+
+            parent_folders.path_sort(natural_lexical_cmp);
+
+            obj.parent_folders = Some(parent_folders);
         }
+
+        let mut paths_obj = fs::read_dir(path).await?;
+
+        let mut files = vec![];
+        let mut folders = vec![];
+
+        while let Some(child) = paths_obj.next_entry().await? {
+            let f_meta = child.metadata().await?;
+
+            // ignore hidden files/folders on unix
+            if child.path().to_string_lossy().to_string().contains("/.") {
+                continue;
+            }
+
+            if f_meta.is_dir() {
+                folders.push(
+                    child
+                        .path()
+                        .file_name()
+                        .unwrap()
+                        .to_string_lossy()
+                        .to_string(),
+                );
+            } else if f_meta.is_file() && !path_obj.folders_only {
+                if let Some(ext) = file_extension(&child.path()) {
+                    if extensions.contains(&ext.to_string().to_lowercase()) {
+                        files.push(child.path());
+                    }
+                }
+            }
+        }
+
+        folders.path_sort(natural_lexical_cmp);
+        files.path_sort(natural_lexical_cmp);
+        let mut media_files = vec![];
+
+        for file in files {
+            match MediaProbe::new(file.to_string_lossy().as_ref()).await {
+                Ok(probe) => {
+                    let duration = probe.format.duration.unwrap_or_default();
+
+                    let video = VideoFile {
+                        name: file.file_name().unwrap().to_string_lossy().to_string(),
+                        duration,
+                    };
+                    media_files.push(video);
+                }
+                Err(e) => error!("{e:?}"),
+            };
+        }
+
+        obj.folders = Some(folders);
+        obj.files = Some(media_files);
+
+        Ok(obj)
     }
 }
 
 pub async fn create_directory(
     storage: &Path,
+    s3_storage: &Option<S3>,
     path_obj: &PathObject,
 ) -> Result<HttpResponse, ServiceError> {
-    if config.channel.s3_storage.is_some() {
+    if s3_storage.is_some() {
         // S3 Storage
-        let bucket: &str = config.channel.s3_storage.as_ref().unwrap().bucket.as_str();
+        let bucket: &str = s3_storage.as_ref().unwrap().bucket.as_str();
         let (folder_name, _) = s3_utils::s3_path(&path_obj.source)?;
         let none_file = format!("{}.ignore", folder_name); // it should be made to validate the new folder's existence
-        let s3_client = config.channel.s3_storage.as_ref().unwrap().client.clone();
+        let s3_client = s3_storage.as_ref().unwrap().client.clone();
 
         let body = aws_sdk_s3::primitives::ByteStream::from(Vec::new()); // to not consume bytes!
         s3_client
@@ -273,8 +333,15 @@ async fn copy_and_delete(source: &PathBuf, target: &PathBuf) -> Result<MoveObjec
     }
 }
 
-async fn rename(source: &PathBuf, target: &PathBuf, duration: web::Data<MediaMap>) -> Result<MoveObject, ServiceError> {
-    duration.update_obj(source.to_string_lossy().as_ref(), target.to_string_lossy().as_ref())?;
+async fn rename(
+    source: &PathBuf,
+    target: &PathBuf,
+    duration: web::Data<MediaMap>,
+) -> Result<MoveObject, ServiceError> {
+    duration.update_obj(
+        source.to_string_lossy().as_ref(),
+        target.to_string_lossy().as_ref(),
+    )?;
     match fs::rename(source, target).await {
         Ok(_) => Ok(MoveObject {
             source: source
@@ -297,20 +364,23 @@ async fn rename(source: &PathBuf, target: &PathBuf, duration: web::Data<MediaMap
 
 pub async fn rename_file(
     storage: &Path,
+    s3_storage: &Option<S3>,
     move_object: &MoveObject,
     duration: web::Data<MediaMap>,
 ) -> Result<MoveObject, ServiceError> {
-    if config.channel.s3_storage.is_some() {
-        let bucket: &str = config.channel.s3_storage.as_ref().unwrap().bucket.as_str();
-        let s3_client = config.channel.s3_storage.as_ref().unwrap().client.clone();
-        let obj_names = s3_utils::s3_rename(&move_object.source, &move_object.target, duration.clone()).unwrap();
+    if s3_storage.is_some() {
+        let bucket: &str = s3_storage.as_ref().unwrap().bucket.as_str();
+        let s3_client = s3_storage.as_ref().unwrap().client.clone();
+        let obj_names =
+            s3_utils::s3_rename(&move_object.source, &move_object.target, duration.clone())
+                .unwrap();
         if !s3_utils::s3_is_prefix(&move_object.source, bucket, &s3_client).await? {
             s3_utils::s3_rename_object(
                 &move_object.source,
                 &move_object.target,
                 bucket,
                 &s3_client,
-                duration
+                duration,
             )
             .await?;
         }
@@ -353,14 +423,15 @@ pub async fn rename_file(
 
 pub async fn remove_file_or_folder(
     storage: &Path,
+    s3_storage: &Option<S3>,
     source_path: &str,
     recursive: bool,
     duration: web::Data<MediaMap>,
 ) -> Result<(), ServiceError> {
-    if config.channel.s3_storage.is_some() {
-        let bucket: &str = config.channel.s3_storage.as_ref().unwrap().bucket.as_str();
+    if s3_storage.is_some() {
+        let bucket: &str = s3_storage.as_ref().unwrap().bucket.as_str();
         let (clean_path, _) = s3_utils::s3_path(source_path)?;
-        let s3_client = config.channel.s3_storage.as_ref().unwrap().client.clone();
+        let s3_client = s3_storage.as_ref().unwrap().client.clone();
 
         if s3_utils::s3_is_prefix(&clean_path, bucket, &s3_client).await? {
             s3_utils::s3_delete_prefix(&clean_path, bucket, &s3_client, recursive).await?;
@@ -419,15 +490,16 @@ async fn valid_path(storage: &Path, path: &str) -> Result<PathBuf, ServiceError>
 
 pub async fn upload(
     storage: &Path,
+    s3_storage: &Option<S3>,
     _size: u64,
     mut payload: Multipart,
     path: &Path,
     abs_path: bool,
 ) -> Result<HttpResponse, ServiceError> {
-    if config.channel.s3_storage.is_some() {
+    if s3_storage.is_some() {
         // S3 multipart-upload
-        let bucket = config.channel.s3_storage.as_ref().unwrap().bucket.as_str();
-        let s3_client = config.channel.s3_storage.as_ref().unwrap().client.clone();
+        let bucket = s3_storage.as_ref().unwrap().bucket.as_str();
+        let s3_client = s3_storage.as_ref().unwrap().client.clone();
         let (path_str, _) = s3_utils::s3_path(&path.to_string_lossy())
             .map_err(|_| ServiceError::InternalServerError)?;
 

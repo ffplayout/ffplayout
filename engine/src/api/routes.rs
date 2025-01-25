@@ -1228,6 +1228,7 @@ pub async fn file_browser(
         .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
     let channel_extensions = manager.channel.lock().await.extra_extensions.clone();
     let storage = manager.config.lock().await.channel.storage.clean();
+    let s3_storage = manager.config.lock().await.channel.s3_storage.clone();
     let mut extensions = manager.config.lock().await.storage.extensions.clone();
 
     let mut extra_extensions = channel_extensions
@@ -1237,7 +1238,15 @@ pub async fn file_browser(
 
     extensions.append(&mut extra_extensions);
 
-    match browser(&storage, extensions, &data.into_inner()).await {
+    match browser(
+        &storage,
+        &s3_storage,
+        extensions,
+        &data.into_inner(),
+        durations,
+    )
+    .await
+    {
         Ok(obj) => Ok(web::Json(obj)),
         Err(e) => Err(e),
     }
@@ -1269,8 +1278,9 @@ pub async fn add_dir(
         .await
         .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
     let storage = manager.config.lock().await.channel.storage.clone();
+    let s3_storage = manager.config.lock().await.channel.s3_storage.clone();
 
-    create_directory(&storage, &data.into_inner()).await
+    create_directory(&storage, &s3_storage, &data.into_inner()).await
 }
 
 /// **Rename File**
@@ -1300,8 +1310,9 @@ pub async fn move_rename(
         .await
         .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
     let storage = manager.config.lock().await.channel.storage.clone();
+    let s3_storage = manager.config.lock().await.channel.s3_storage.clone();
 
-    match rename_file(&storage, &data.into_inner(), duration).await {
+    match rename_file(&storage, &s3_storage, &data.into_inner(), duration).await {
         Ok(obj) => Ok(web::Json(obj)),
         Err(e) => Err(e),
     }
@@ -1334,9 +1345,18 @@ pub async fn remove(
         .await
         .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
     let storage = manager.config.lock().await.channel.storage.clone();
+    let s3_storage = manager.config.lock().await.channel.s3_storage.clone();
     let recursive = data.recursive;
 
-    match remove_file_or_folder(&storage, &data.into_inner().source, recursive, duration).await {
+    match remove_file_or_folder(
+        &storage,
+        &s3_storage,
+        &data.into_inner().source,
+        recursive,
+        duration,
+    )
+    .await
+    {
         Ok(obj) => Ok(web::Json(obj)),
         Err(e) => Err(e),
     }
@@ -1371,6 +1391,7 @@ async fn save_file(
         .await
         .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
     let storage = manager.config.lock().await.channel.storage.clone();
+    let s3_storage = manager.config.lock().await.channel.s3_storage.clone();
 
     let size: u64 = req
         .headers()
@@ -1379,7 +1400,7 @@ async fn save_file(
         .and_then(|cls| cls.parse().ok())
         .unwrap_or(0);
 
-    upload(&storage, size, payload, &obj.path, false).await
+    upload(&storage, &s3_storage, size, payload, &obj.path, false).await
 }
 
 /// **Get File**
@@ -1506,6 +1527,7 @@ async fn import_playlist(
         .await
         .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
     let channel_name = manager.channel.lock().await.name.clone();
+    let s3_storage = manager.config.lock().await.channel.s3_storage.clone();
     let storage = manager.config.lock().await.channel.storage.clone();
     let playlists = manager.config.lock().await.channel.playlists.clone();
     let file = obj.file.file_name().unwrap_or_default();
@@ -1518,7 +1540,7 @@ async fn import_playlist(
         .and_then(|cls| cls.parse().ok())
         .unwrap_or(0);
 
-    upload(&storage, size, payload, &path, true).await?;
+    upload(&storage, &s3_storage, size, payload, &path, true).await?;
 
     let response = import_file(&playlists, &obj.date, Some(channel_name), &path_clone).await?;
 
