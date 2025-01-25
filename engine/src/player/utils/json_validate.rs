@@ -161,7 +161,7 @@ pub async fn validate_playlist(
     mut config: PlayoutConfig,
     current_list: Arc<Mutex<Vec<Media>>>,
     mut playlist: JsonPlaylist,
-    is_terminated: Arc<AtomicBool>,
+    is_alive: Arc<AtomicBool>,
 ) {
     let id = config.general.channel_id;
     let date = playlist.date;
@@ -180,7 +180,7 @@ pub async fn validate_playlist(
     let timer = Instant::now();
 
     for (index, item) in playlist.program.iter_mut().enumerate() {
-        if is_terminated.load(Ordering::SeqCst) {
+        if !is_alive.load(Ordering::SeqCst) {
             return;
         }
 

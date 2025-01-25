@@ -1,18 +1,19 @@
 use std::{
     borrow::Cow,
-    io::{self, stdin, stdout, Write},
+    io,
     path::Path,
     sync::{LazyLock, OnceLock},
 };
 
 use faccess::PathExt;
+use inquire::Confirm;
 use log::*;
 use sqlx::{migrate::MigrateDatabase, Pool, Sqlite, SqlitePool};
 
 pub mod handles;
 pub mod models;
 
-use crate::ARGS;
+use crate::{utils::errors::ProcessError, ARGS};
 use models::GlobalSettings;
 
 pub static DB_PATH: LazyLock<Result<Cow<'static, Path>, io::Error>> = LazyLock::new(|| {
@@ -62,8 +63,10 @@ pub static DB_PATH: LazyLock<Result<Cow<'static, Path>, io::Error>> = LazyLock::
 });
 
 pub static GLOBAL_SETTINGS: OnceLock<GlobalSettings> = OnceLock::new();
-pub async fn db_pool() -> Result<Pool<Sqlite>, Box<dyn std::error::Error + Send + Sync>> {
-    let db_path = DB_PATH.as_ref()?;
+pub async fn db_pool() -> Result<Pool<Sqlite>, ProcessError> {
+    let db_path = DB_PATH
+        .as_ref()
+        .map_err(|e| ProcessError::IO(e.to_string()))?;
     let db_path = db_path.to_string_lossy();
 
     if !Sqlite::database_exists(&db_path).await? {
@@ -76,16 +79,10 @@ pub async fn db_pool() -> Result<Pool<Sqlite>, Box<dyn std::error::Error + Send 
 }
 
 pub async fn db_drop() {
-    let mut drop_answer = String::new();
-
-    print!("Drop Database [Y/n]: ");
-    stdout().flush().unwrap();
-
-    stdin()
-        .read_line(&mut drop_answer)
-        .expect("Did not enter a yes or no?");
-
-    let drop = drop_answer.trim().to_lowercase().starts_with('y');
+    let drop = Confirm::new("Drop Database: ")
+        .with_default(false)
+        .prompt()
+        .unwrap_or(false);
 
     if drop {
         let db_path = DB_PATH.as_ref().unwrap();
@@ -96,7 +93,7 @@ pub async fn db_drop() {
     };
 }
 
-pub async fn init_globales(conn: &Pool<Sqlite>) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn init_globales(conn: &Pool<Sqlite>) -> Result<(), ProcessError> {
     let config = GlobalSettings::new(conn).await;
     GLOBAL_SETTINGS
         .set(config)

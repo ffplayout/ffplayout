@@ -4,6 +4,7 @@ use log::*;
 use tokio::process::{Child, Command};
 
 use crate::player::filter::v_drawtext;
+use crate::utils::errors::ServiceError;
 use crate::utils::{
     config::PlayoutConfig,
     logging::{fmt_cmd, Target},
@@ -13,9 +14,8 @@ use crate::vec_strings;
 /// Desktop Output
 ///
 /// Instead of streaming, we run a ffplay instance and play on desktop.
-pub async fn output(config: &PlayoutConfig, log_format: &str) -> Child {
+pub async fn output(config: &PlayoutConfig, log_format: &str) -> Result<Child, ServiceError> {
     let mut enc_filter: Vec<String> = vec![];
-
     let mut enc_cmd = vec_strings!["-hide_banner", "-nostats", "-v", log_format];
 
     if let Some(encoder_input_cmd) = &config.advanced.encoder.input_cmd {
@@ -73,18 +73,11 @@ pub async fn output(config: &PlayoutConfig, log_format: &str) -> Child {
         fmt_cmd(&enc_cmd)
     );
 
-    let enc_proc = match Command::new("ffplay")
+    let child = Command::new("ffplay")
         .args(enc_cmd)
         .stdin(Stdio::piped())
         .stderr(Stdio::piped())
-        .spawn()
-    {
-        Err(e) => {
-            error!(target: Target::file_mail(), channel = config.general.channel_id; "couldn't spawn encoder process: {e}");
-            panic!("couldn't spawn encoder process: {e}")
-        }
-        Ok(proc) => proc,
-    };
+        .spawn()?;
 
-    enc_proc
+    Ok(child)
 }

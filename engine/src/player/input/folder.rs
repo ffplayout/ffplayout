@@ -28,7 +28,7 @@ use crate::{
 /// This makes it possible, to play infinitely and and always new files to it.
 pub async fn watchman(
     config: PlayoutConfig,
-    is_terminated: Arc<AtomicBool>,
+    is_alive: Arc<AtomicBool>,
     sources: Arc<Mutex<Vec<Media>>>,
 ) {
     let (bucket, s3_client, is_s3) = if let Some(s3_storage) = &config.channel.s3_storage {
@@ -108,12 +108,12 @@ pub async fn watchman(
 
         debouncer.watch(path, RecursiveMode::Recursive).unwrap();
 
-        while !is_terminated.load(Ordering::SeqCst) {
-            if let Ok(result) = rx.try_recv() {
-                match result {
-                    Ok(events) => {
-                        let sources = Arc::clone(&sources);
-                        let config = config.clone();
+    while is_alive.load(Ordering::SeqCst) {
+        if let Ok(result) = rx.try_recv() {
+            match result {
+                Ok(events) => {
+                    let sources = Arc::clone(&sources);
+                    let config = config.clone();
 
                         tokio::spawn(async move {
                             let events: Vec<_> = events.to_vec();

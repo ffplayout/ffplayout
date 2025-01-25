@@ -14,70 +14,8 @@ use relative_path::RelativePath;
 use serde::{Deserialize, Serialize};
 use tokio::{fs, io::AsyncWriteExt};
 
-use crate::db::models::Channel;
 use crate::player::utils::{file_extension, probe::MediaProbe};
-use crate::utils::{config::PlayoutConfig, errors::ServiceError, s3_utils};
-
-#[derive(Debug, Default)]
-pub struct MediaMap {
-    pub video_duration_data: Mutex<HashMap<String, f64>>,
-    queue: Mutex<VecDeque<String>>,
-    limit: usize,
-}
-
-impl MediaMap {
-    pub fn create(limit: usize) -> Self {
-        Self {
-            video_duration_data: Mutex::new(HashMap::with_capacity(limit)),
-            queue: Mutex::new(VecDeque::with_capacity(limit)),
-            limit,
-        }
-    }
-
-    pub fn add_obj(&self, key: String, value: f64) -> Result<(), &'static str> {
-        // insert item with FIFO algorithm
-        let mut media_duration = self.video_duration_data.lock().unwrap();
-        let mut queue = self.queue.lock().unwrap();
-        if media_duration.len() >= self.limit {
-            if let Some(oldest_key) = queue.pop_front() {
-                media_duration.remove(&oldest_key.clone());
-            }
-        }
-        media_duration.insert(key.clone(), value);
-        queue.push_back(key);
-        Ok(())
-    }
-
-    pub fn get_obj(&self, key: &str) -> Option<f64> {
-        let media_duration = self.video_duration_data.lock().unwrap();
-        media_duration.get(key).copied()
-    }
-
-    pub fn remove_obj(&self, key: &str) -> Result<(), &'static str> {
-        let mut media_duration = self.video_duration_data.lock().unwrap();
-        let mut queue = self.queue.lock().unwrap();  
-        media_duration.remove(key);
-        if let Some(index) = queue.iter().position(|x| x == key) {
-            queue.remove(index);
-        } 
-    Ok(())
-    }
-
-    pub fn update_obj(&self, old_key: &str, new_key: &str) -> Result<(), &'static str> {
-        let mut media_duration = self.video_duration_data.lock().unwrap();
-        let mut queue = self.queue.lock().unwrap();  
-
-        if let Some(value) = media_duration.remove(old_key) {
-            self.add_obj(new_key.to_string(), value)?;
-        };
-        if let Some(index) = queue.iter().position(|x| x == old_key) {
-            queue[index] = new_key.to_string();
-        } 
-
-        Ok(())
-    }
-
-}
+use crate::utils::{config::PlayoutConfig, errors::ServiceError};
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct PathObject {
@@ -166,39 +104,34 @@ pub fn norm_abs_path(
 /// Input should be a relative path segment, but when it is a absolut path, the norm_abs_path function
 /// will take care, that user can not break out from given storage path in config.
 pub async fn browser(
-    // to-do: review and fix path!
-    config: &PlayoutConfig,
-    channel: &Channel,
+    storage: &Path,
+    extensions: Vec<String>,
     path_obj: &PathObject,
     duration: web::Data<MediaMap>,
 ) -> Result<PathObject, ServiceError> {
-    let mut channel_extensions = channel
-        .extra_extensions
-        .split(',')
-        .map(Into::into)
-        .collect::<Vec<String>>();
-    let mut extensions = config.storage.extensions.clone();
-    extensions.append(&mut channel_extensions);
     if config.channel.s3_storage.is_some() {
         // S3 Storage Browser
         match s3_utils::s3_browser(config, path_obj, extensions, duration).await {
             Ok(obj) => Ok(obj),
             Err(e) => Err(e),
         }
-    } else {
-        // Local Storage Browser
+    else {
+
+        let (path, parent, path_component) = norm_abs_path(storage, &path_obj.source)?;
         let mut parent_folders = vec![];
-        let (path, parent, path_component) =
-            norm_abs_path(&config.channel.storage, &path_obj.source)?;
+    
         let parent_path = if path_component.is_empty() {
-            &config.channel.storage
+            storage
         } else {
             path.parent().unwrap()
         };
+    
         let mut obj = PathObject::new(path_component, Some(parent));
         obj.folders_only = path_obj.folders_only;
+    
         if path != parent_path && !path_obj.folders_only {
             let mut parents = fs::read_dir(&parent_path).await?;
+    
             while let Some(child) = parents.next_entry().await? {
                 if child.metadata().await?.is_dir() {
                     parent_folders.push(
@@ -211,71 +144,72 @@ pub async fn browser(
                     );
                 }
             }
-
-            parent_folders.path_sort(natural_lexical_cmp);
-
-            obj.parent_folders = Some(parent_folders);
-        }
-
-        let mut paths_obj = fs::read_dir(path).await?;
-
-        let mut files = vec![];
-        let mut folders = vec![];
-
-        while let Some(child) = paths_obj.next_entry().await? {
-            let f_meta = child.metadata().await?;
-
-            // ignore hidden files/folders on unix
-            if child.path().to_string_lossy().to_string().contains("/.") {
-                continue;
+    
+                parent_folders.path_sort(natural_lexical_cmp);
+    
+                obj.parent_folders = Some(parent_folders);
             }
-
-            if f_meta.is_dir() {
-                folders.push(
-                    child
-                        .path()
-                        .file_name()
-                        .unwrap()
-                        .to_string_lossy()
-                        .to_string(),
-                );
-            } else if f_meta.is_file() && !path_obj.folders_only {
-                if let Some(ext) = file_extension(&child.path()) {
-                    if extensions.contains(&ext.to_string().to_lowercase()) {
-                        files.push(child.path());
+    
+            let mut paths_obj = fs::read_dir(path).await?;
+    
+            let mut files = vec![];
+            let mut folders = vec![];
+    
+            while let Some(child) = paths_obj.next_entry().await? {
+                let f_meta = child.metadata().await?;
+    
+                // ignore hidden files/folders on unix
+                if child.path().to_string_lossy().to_string().contains("/.") {
+                    continue;
+                }
+    
+                if f_meta.is_dir() {
+                    folders.push(
+                        child
+                            .path()
+                            .file_name()
+                            .unwrap()
+                            .to_string_lossy()
+                            .to_string(),
+                    );
+                } else if f_meta.is_file() && !path_obj.folders_only {
+                    if let Some(ext) = file_extension(&child.path()) {
+                        if extensions.contains(&ext.to_string().to_lowercase()) {
+                            files.push(child.path());
+                        }
                     }
                 }
             }
+    
+            folders.path_sort(natural_lexical_cmp);
+            files.path_sort(natural_lexical_cmp);
+            let mut media_files = vec![];
+    
+            for file in files {
+                match MediaProbe::new(file.to_string_lossy().as_ref()).await {
+                    Ok(probe) => {
+                        let duration = probe.format.duration.unwrap_or_default();
+    
+                        let video = VideoFile {
+                            name: file.file_name().unwrap().to_string_lossy().to_string(),
+                            duration,
+                        };
+                        media_files.push(video);
+                    }
+                    Err(e) => error!("{e:?}"),
+                };
+            }
+    
+            obj.folders = Some(folders);
+            obj.files = Some(media_files);
+    
+            Ok(obj)
         }
-
-        folders.path_sort(natural_lexical_cmp);
-        files.path_sort(natural_lexical_cmp);
-        let mut media_files = vec![];
-
-        for file in files {
-            match MediaProbe::new(file.to_string_lossy().as_ref()).await {
-                Ok(probe) => {
-                    let duration = probe.format.duration.unwrap_or_default();
-
-                    let video = VideoFile {
-                        name: file.file_name().unwrap().to_string_lossy().to_string(),
-                        duration,
-                    };
-                    media_files.push(video);
-                }
-                Err(e) => error!("{e:?}"),
-            };
-        }
-
-        obj.folders = Some(folders);
-        obj.files = Some(media_files);
-
-        Ok(obj)
     }
 }
 
 pub async fn create_directory(
-    config: &PlayoutConfig,
+    storage: &Path,
     path_obj: &PathObject,
 ) -> Result<HttpResponse, ServiceError> {
     if config.channel.s3_storage.is_some() {
@@ -296,7 +230,7 @@ pub async fn create_directory(
             .map_err(|_e| ServiceError::InternalServerError)?;
     } else {
         // local storage
-        let (path, _, _) = norm_abs_path(&config.channel.storage, &path_obj.source)?;
+        let (path, _, _) = norm_abs_path(storage, &path_obj.source)?;
         if let Err(e) = fs::create_dir_all(&path).await {
             return Err(ServiceError::BadRequest(e.to_string()));
         }
@@ -362,7 +296,7 @@ async fn rename(source: &PathBuf, target: &PathBuf, duration: web::Data<MediaMap
 }
 
 pub async fn rename_file(
-    config: &PlayoutConfig,
+    storage: &Path,
     move_object: &MoveObject,
     duration: web::Data<MediaMap>,
 ) -> Result<MoveObject, ServiceError> {
@@ -386,8 +320,8 @@ pub async fn rename_file(
             target: obj_names.target.to_string(),
         })
     } else {
-        let (source_path, _, _) = norm_abs_path(&config.channel.storage, &move_object.source)?;
-        let (mut target_path, _, _) = norm_abs_path(&config.channel.storage, &move_object.target)?;
+        let (source_path, _, _) = norm_abs_path(storage, &move_object.source)?;
+        let (mut target_path, _, _) = norm_abs_path(storage, &move_object.target)?;
 
         if !source_path.exists() {
             return Err(ServiceError::BadRequest("Source file not exist!".into()));
@@ -418,7 +352,7 @@ pub async fn rename_file(
 }
 
 pub async fn remove_file_or_folder(
-    config: &PlayoutConfig,
+    storage: &Path,
     source_path: &str,
     recursive: bool,
     duration: web::Data<MediaMap>,
@@ -435,7 +369,7 @@ pub async fn remove_file_or_folder(
         }
         Ok(())
     } else {
-        let (source, _, _) = norm_abs_path(&config.channel.storage, source_path)?;
+        let (source, _, _) = norm_abs_path(storage, source_path)?;
 
         if !source.exists() {
             return Err(ServiceError::BadRequest("Source does not exists!".into()));
@@ -473,8 +407,8 @@ pub async fn remove_file_or_folder(
     }
 }
 
-async fn valid_path(config: &PlayoutConfig, path: &str) -> Result<PathBuf, ServiceError> {
-    let (test_path, _, _) = norm_abs_path(&config.channel.storage, path)?;
+async fn valid_path(storage: &Path, path: &str) -> Result<PathBuf, ServiceError> {
+    let (test_path, _, _) = norm_abs_path(storage, path)?;
 
     if !test_path.is_dir() {
         return Err(ServiceError::BadRequest("Target folder not exists!".into()));
@@ -484,7 +418,7 @@ async fn valid_path(config: &PlayoutConfig, path: &str) -> Result<PathBuf, Servi
 }
 
 pub async fn upload(
-    config: &PlayoutConfig,
+    storage: &Path,
     _size: u64,
     mut payload: Multipart,
     path: &Path,
@@ -520,7 +454,7 @@ pub async fn upload(
             let filepath = if abs_path {
                 path.to_path_buf()
             } else {
-                valid_path(config, &path.to_string_lossy())
+                valid_path(storage, &path.to_string_lossy())
                     .await?
                     .join(filename)
             };

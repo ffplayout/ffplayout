@@ -343,7 +343,7 @@ const controlProcess = throttle(async (state: string) => {
         .catch((e) => {
             indexStore.msgAlert('error', e.data, 3)
         })
-}, 800)
+}, 2000)
 
 const controlPlayout = throttle(async (state: string) => {
     /*
@@ -361,5 +361,5 @@ const controlPlayout = throttle(async (state: string) => {
     }).catch((e) => {
         indexStore.msgAlert('error', e.data, 3)
     })
-}, 800)
+}, 1000)
 </script>

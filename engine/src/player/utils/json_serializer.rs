@@ -95,7 +95,7 @@ pub async fn read_json(
     config: &mut PlayoutConfig,
     current_list: Arc<Mutex<Vec<Media>>>,
     path: Option<String>,
-    is_terminated: Arc<AtomicBool>,
+    is_alive: Arc<AtomicBool>,
     seek: bool,
     get_next: bool,
 ) -> JsonPlaylist {
@@ -149,7 +149,7 @@ pub async fn read_json(
                             config_clone,
                             current_list,
                             list_clone,
-                            is_terminated,
+                            is_alive,
                         ));
                     }
 
@@ -195,7 +195,7 @@ pub async fn read_json(
                 config_clone,
                 current_list,
                 list_clone,
-                is_terminated,
+                is_alive,
             ));
         }
 

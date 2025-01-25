@@ -21,7 +21,7 @@ struct TextParams {
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct ControlParams {
-    pub control: String,
+    pub control: PlayerCtl,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -29,9 +29,10 @@ struct MediaParams {
     media: String,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+#[derive(Debug, Default, Serialize, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum ProcessCtl {
+    #[default]
     Status,
     Start,
     Stop,
@@ -59,6 +60,38 @@ impl fmt::Display for ProcessCtl {
             Self::Start => write!(f, "start"),
             Self::Stop => write!(f, "stop"),
             Self::Restart => write!(f, "restart"),
+        }
+    }
+}
+
+#[derive(Debug, Default, Serialize, Deserialize, Clone, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum PlayerCtl {
+    Back,
+    Next,
+    #[default]
+    Reset,
+}
+
+impl FromStr for PlayerCtl {
+    type Err = String;
+
+    fn from_str(input: &str) -> Result<Self, Self::Err> {
+        match input.to_lowercase().as_str() {
+            "back" => Ok(Self::Back),
+            "next" => Ok(Self::Next),
+            "reset" => Ok(Self::Reset),
+            _ => Err(format!("Command '{input}' not found!")),
+        }
+    }
+}
+
+impl fmt::Display for PlayerCtl {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            Self::Back => write!(f, "back"),
+            Self::Next => write!(f, "next"),
+            Self::Reset => write!(f, "reset"),
         }
     }
 }
@@ -93,7 +126,7 @@ pub async fn send_message(
         }
 
         if config.output.mode == HLS {
-            if manager.ingest_is_running.load(Ordering::SeqCst) {
+            if manager.ingest_is_alive.load(Ordering::SeqCst) {
                 let filter_server = format!("drawtext@dyntext reinit {filter}");
 
                 if let Ok(reply) = zmq_send(
@@ -110,7 +143,7 @@ pub async fn send_message(
             }
         }
 
-        if config.output.mode != HLS || !manager.ingest_is_running.load(Ordering::SeqCst) {
+        if config.output.mode != HLS || !manager.ingest_is_alive.load(Ordering::SeqCst) {
             let filter_stream = format!("drawtext@dyntext reinit {filter}");
 
             if let Ok(reply) = zmq_send(
@@ -133,21 +166,21 @@ pub async fn send_message(
 pub async fn control_state(
     conn: &Pool<Sqlite>,
     manager: &ChannelManager,
-    command: &str,
+    command: &PlayerCtl,
 ) -> Result<Map<String, Value>, ServiceError> {
     let config = manager.config.lock().await.clone();
     let id = config.general.channel_id;
     let current_date = manager.current_date.lock().await.clone();
     let current_list = manager.current_list.lock().await.clone();
-    let mut date = manager.current_date.lock().await.clone();
     let index = manager.current_index.load(Ordering::SeqCst);
+    let mut data_map = Map::new();
+    let mut shift = 0.0;
 
     match command {
-        "back" => {
+        PlayerCtl::Back => {
             if index > 1 && current_list.len() > 1 {
-                let mut data_map = Map::new();
                 let mut media = current_list[index - 2].clone();
-                let (delta, _) = get_delta(&config, &media.begin.unwrap_or(0.0));
+                (shift, _) = get_delta(&config, &media.begin.unwrap_or(0.0));
 
                 info!(target: Target::file_mail(), channel = id; "Move to last clip");
 
@@ -157,28 +190,16 @@ pub async fn control_state(
                     error!(target: Target::file_mail(), channel = id; "{e:?}");
                 };
 
-                manager.channel.lock().await.time_shift = delta;
-                date.clone_from(&current_date);
-                handles::update_stat(conn, config.general.channel_id, Some(current_date), delta)
-                    .await?;
-
-                if manager.stop(Decoder).await.is_err() {
-                    return Err(ServiceError::InternalServerError);
-                };
-
                 data_map.insert("operation".to_string(), json!("move_to_last"));
-                data_map.insert("shifted_seconds".to_string(), json!(delta));
+                data_map.insert("shifted_seconds".to_string(), json!(shift));
                 data_map.insert("media".to_string(), get_media_map(media));
-
-                return Ok(data_map);
             }
         }
 
-        "next" => {
+        PlayerCtl::Next => {
             if index < current_list.len() {
-                let mut data_map = Map::new();
                 let mut media = current_list[index].clone();
-                let (delta, _) = get_delta(&config, &media.begin.unwrap_or(0.0));
+                (shift, _) = get_delta(&config, &media.begin.unwrap_or(0.0));
 
                 info!(target: Target::file_mail(), channel = id; "Move to next clip");
 
@@ -186,49 +207,24 @@ pub async fn control_state(
                     error!(target: Target::file_mail(), channel = id; "{e:?}");
                 };
 
-                manager.channel.lock().await.time_shift = delta;
-                date.clone_from(&current_date);
-                handles::update_stat(conn, config.general.channel_id, Some(current_date), delta)
-                    .await?;
-
-                if manager.stop(Decoder).await.is_err() {
-                    return Err(ServiceError::InternalServerError);
-                };
-
                 data_map.insert("operation".to_string(), json!("move_to_next"));
-                data_map.insert("shifted_seconds".to_string(), json!(delta));
+                data_map.insert("shifted_seconds".to_string(), json!(shift));
                 data_map.insert("media".to_string(), get_media_map(media));
-
-                return Ok(data_map);
             }
         }
 
-        "reset" => {
-            let mut data_map = Map::new();
-
+        PlayerCtl::Reset => {
             info!(target: Target::file_mail(), channel = id; "Reset playout to original state");
 
-            manager.channel.lock().await.time_shift = 0.0;
-            date.clone_from(&current_date);
             manager.list_init.store(true, Ordering::SeqCst);
 
-            handles::update_stat(conn, config.general.channel_id, Some(current_date), 0.0).await?;
-
-            if manager.stop(Decoder).await.is_err() {
-                return Err(ServiceError::InternalServerError);
-            };
-
             data_map.insert("operation".to_string(), json!("reset_playout_state"));
-
-            return Ok(data_map);
-        }
-
-        _ => {
-            return Err(ServiceError::ServiceUnavailable(
-                "Command not found!".to_string(),
-            ))
         }
     }
 
-    Ok(Map::new())
+    manager.channel.lock().await.time_shift = shift;
+    handles::update_stat(conn, id, Some(current_date), shift).await?;
+    manager.stop(Decoder).await?;
+
+    Ok(data_map)
 }
