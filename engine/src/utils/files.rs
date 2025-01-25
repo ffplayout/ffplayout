@@ -249,7 +249,7 @@ pub async fn browser(
         for file in files {
             if let Some(stored_dur) = vid_duration.get_obj(file.to_string_lossy().as_ref()) {
                 let video = VideoFile {
-                    name: file.to_string_lossy().as_ref().to_string(),
+                    name: file.file_name().unwrap().to_string_lossy().to_string(),
                     duration: stored_dur,
                 };
                 media_files.push(video);
