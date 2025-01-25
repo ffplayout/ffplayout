@@ -246,18 +246,26 @@ pub async fn browser(
         let mut media_files = vec![];
 
         for file in files {
-            match MediaProbe::new(file.to_string_lossy().as_ref()).await {
-                Ok(probe) => {
-                    let duration = probe.format.duration.unwrap_or_default();
+            if let Some(stored_dur) = duration.get_obj(&file.to_string_lossy()) {
+                let video = VideoFile {
+                    name: file.to_string_lossy().as_ref().to_string(),
+                    duration: stored_dur,
+                };
+                media_files.push(video);
+            } else {
+                match MediaProbe::new(file.to_string_lossy().as_ref()).await {
+                    Ok(probe) => {
+                        let duration = probe.format.duration.unwrap_or_default();
 
-                    let video = VideoFile {
-                        name: file.file_name().unwrap().to_string_lossy().to_string(),
-                        duration,
-                    };
-                    media_files.push(video);
-                }
-                Err(e) => error!("{e:?}"),
-            };
+                        let video = VideoFile {
+                            name: file.file_name().unwrap().to_string_lossy().to_string(),
+                            duration,
+                        };
+                        media_files.push(video);
+                    }
+                    Err(e) => error!("{e:?}"),
+                };
+            }
         }
 
         obj.folders = Some(folders);
@@ -465,8 +473,11 @@ pub async fn remove_file_or_folder(
         }
 
         if source.is_file() {
-            match fs::remove_file(source).await {
-                Ok(_) => return Ok(()),
+            match fs::remove_file(source.clone()).await {
+                Ok(_) => {
+                    duration.remove_obj(&source.to_string_lossy())?;
+                    return Ok(());
+                }
                 Err(e) => {
                     error!("{e}");
                     return Err(ServiceError::BadRequest("Delete file failed!".into()));
