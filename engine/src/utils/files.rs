@@ -179,6 +179,7 @@ pub async fn browser(
     } else {
         let (path, parent, path_component) = norm_abs_path(storage, &path_obj.source)?;
         let mut parent_folders = vec![];
+        let vid_duration = duration;
 
         let parent_path = if path_component.is_empty() {
             storage
@@ -246,7 +247,7 @@ pub async fn browser(
         let mut media_files = vec![];
 
         for file in files {
-            if let Some(stored_dur) = duration.get_obj(&file.to_string_lossy()) {
+            if let Some(stored_dur) = vid_duration.get_obj(file.to_string_lossy().as_ref()) {
                 let video = VideoFile {
                     name: file.to_string_lossy().as_ref().to_string(),
                     duration: stored_dur,
@@ -256,6 +257,8 @@ pub async fn browser(
                 match MediaProbe::new(file.to_string_lossy().as_ref()).await {
                     Ok(probe) => {
                         let duration = probe.format.duration.unwrap_or_default();
+                        vid_duration
+                            .add_obj(file.to_string_lossy().as_ref().to_string(), duration)?; // Store file address(as key) and file duration(as value) in a hashmap
 
                         let video = VideoFile {
                             name: file.file_name().unwrap().to_string_lossy().to_string(),

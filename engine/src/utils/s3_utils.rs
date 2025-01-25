@@ -287,7 +287,6 @@ pub async fn s3_browser(
         if let Some(prefix) = prefix.prefix() {
             let fldrs = prefix.split(delimiter).nth_back(1).unwrap_or(prefix);
             folders.push(fldrs.to_string());
-            // folders.push(prefix.to_string());
         }
     }
 
@@ -324,7 +323,7 @@ pub async fn s3_browser(
             match MediaProbe::new(&s3file_presigned_url).await {
                 Ok(probe) => {
                     let duration = probe.format.duration.unwrap_or_default();
-                    s3_obj_dur.add_obj(file, duration)?; // Store file address(key) and file duration(value) in a hashmap
+                    s3_obj_dur.add_obj(file, duration)?; // Store file address(as key) and file duration(as value) in a hashmap
 
                     let video = VideoFile { name, duration };
                     media_files.push(video);
