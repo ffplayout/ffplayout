@@ -145,9 +145,6 @@ pub struct Args {
     )]
     pub channel: Option<Vec<i32>>,
 
-    #[clap(long, hide = true, help = "Set fake time (for debugging)")]
-    pub fake_time: Option<String>,
-
     #[clap(
         short,
         long,
@@ -189,6 +186,12 @@ pub struct Args {
 
     #[clap(long, help_heading = Some("Playout"), help = "Skip validation process")]
     pub skip_validation: bool,
+
+    #[clap(long, hide = true, help = "Set fake time (for debugging)")]
+    pub fake_time: Option<String>,
+
+    #[clap(long, hide = true, help = "Send a test email (for debugging)")]
+    pub test_mail: bool,
 }
 
 fn global_user(args: &mut Args) {

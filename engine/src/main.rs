@@ -28,7 +28,8 @@ use ffplayout::{
         args_parse::run_args,
         config::get_config,
         errors::ProcessError,
-        logging::{init_logging, MailQueue},
+        logging::init_logging,
+        mail::{self, MailQueue},
         playlist::generate_playlist,
         time_machine::set_mock_time,
     },
@@ -239,6 +240,8 @@ async fn main() -> Result<(), ProcessError> {
                     Arc::new(AtomicBool::new(false)),
                 )
                 .await;
+            } else if ARGS.test_mail {
+                mail::send_mail(&config.mail, "This is just a test email...".to_string()).await?;
             }
         }
     } else {

@@ -510,7 +510,7 @@ impl CurrentProgram {
         let node_index = node.index.unwrap_or_default();
         let duration = node.out - node.seek;
 
-        if duration < 1.0 {
+        if node.duration > 0.0 && duration < 1.0 {
             warn!(
                 target: Target::file_mail(), channel = self.channel_id;
                 "Skip clip that is less then one second long (<yellow>{duration:.3}</>)."
@@ -532,14 +532,12 @@ impl CurrentProgram {
             node.skip = true;
         }
 
-        trace!("Clip new length: {duration}, duration: {}", node.duration);
+        trace!("Clip length: {duration}, duration: {}", node.duration);
 
         if node.probe.is_none() && !node.source.is_empty() {
             if let Err(e) = node.add_probe(true).await {
                 trace!("{e:?}");
             };
-        } else {
-            trace!("Node has a probe...");
         }
 
         // separate if condition, because of node.add_probe() in last condition
@@ -595,7 +593,7 @@ impl CurrentProgram {
                     };
                 }
 
-                if filler_media.duration > duration {
+                if node.duration > 0.0 && filler_media.duration > duration {
                     filler_media.out = duration;
                 }
 
@@ -612,10 +610,8 @@ impl CurrentProgram {
                             .config
                             .storage
                             .filler_path
-                            .to_string_lossy()
-                            .to_string()
-                            .rsplit_once('.')
-                            .map(|(_, e)| e.to_lowercase())
+                            .extension()
+                            .map(|e| e.to_string_lossy().to_lowercase())
                             .filter(|c| IMAGE_FORMAT.contains(&c.as_str()))
                             .is_some()
                         {
@@ -630,7 +626,11 @@ impl CurrentProgram {
                             node.probe = Some(probe);
                         } else if let Some(filler_duration) = probe.clone().format.duration {
                             // Create placeholder from config filler.
-                            let filler_out = filler_duration.min(duration);
+                            let filler_out = if node.duration == 0.0 {
+                                filler_duration
+                            } else {
+                                filler_duration.min(duration)
+                            };
 
                             node.source = self
                                 .config
@@ -657,7 +657,7 @@ impl CurrentProgram {
 
                         let mut dummy_duration = 60.0;
 
-                        if dummy_duration > duration {
+                        if node.duration > 0.0 && dummy_duration > duration {
                             dummy_duration = duration;
                         }
 

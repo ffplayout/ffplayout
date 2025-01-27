@@ -58,7 +58,7 @@ use crate::{
             browser, create_directory, norm_abs_path, remove_file_or_folder, rename_file, upload,
             MoveObject, PathObject,
         },
-        logging::MailQueue,
+        mail::MailQueue,
         naive_date_time_from_str,
         playlist::{delete_playlist, generate_playlist, read_playlist, write_playlist},
         public_path, read_log_file, system, TextFilter,
