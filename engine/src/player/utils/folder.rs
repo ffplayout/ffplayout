@@ -1,6 +1,6 @@
 use std::sync::{atomic::Ordering, Arc};
 
-use async_walkdir::{Filtering, WalkDir};
+use async_walkdir::WalkDir;
 use lexical_sort::natural_lexical_cmp;
 use log::*;
 use rand::{rngs::StdRng, seq::SliceRandom, SeedableRng};
@@ -46,29 +46,12 @@ impl FolderSource {
                 error!(target: Target::file_mail(), channel = id; "Path not exists: <b><magenta>{path:?}</></b>");
             }
 
-            let config = config.clone();
-            let mut entries = WalkDir::new(path).filter(move |entry| {
-                let config = config.clone();
-                async move {
-                    if entry.path().is_file() && include_file_extension(&config, &entry.path()) {
-                        return Filtering::Continue;
-                    }
+            let mut entries = WalkDir::new(path);
 
-                    Filtering::Ignore
-                }
-            });
-
-            loop {
-                match entries.next().await {
-                    Some(Ok(entry)) => {
-                        let media = Media::new(0, &entry.path().to_string_lossy(), false).await;
-                        media_list.push(media);
-                    }
-                    Some(Err(e)) => {
-                        error!(target: Target::file_mail(), channel = id; "error: {e}");
-                        break;
-                    }
-                    None => break,
+            while let Some(Ok(entry)) = entries.next().await {
+                if entry.path().is_file() && include_file_extension(config, &entry.path()) {
+                    let media = Media::new(0, &entry.path().to_string_lossy(), false).await;
+                    media_list.push(media);
                 }
             }
         }
@@ -192,38 +175,20 @@ pub async fn fill_filler_list(
     if filler_path.is_dir() {
         let config_clone = config.clone();
         let mut index = 0;
+        let mut entries = WalkDir::new(&config_clone.storage.filler_path);
 
-        let mut entries = WalkDir::new(&config_clone.storage.filler_path).filter(move |entry| {
-            let config = config_clone.clone();
-            async move {
-                if entry.path().is_file() && include_file_extension(&config, &entry.path()) {
-                    return Filtering::Continue;
+        while let Some(Ok(entry)) = entries.next().await {
+            if entry.path().is_file() && include_file_extension(config, &entry.path()) {
+                let mut media = Media::new(index, &entry.path().to_string_lossy(), false).await;
+
+                if fillers.is_none() {
+                    if let Err(e) = media.add_probe(false).await {
+                        error!(target: Target::file_mail(), channel = id; "{e:?}");
+                    };
                 }
 
-                Filtering::Ignore
-            }
-        });
-
-        loop {
-            match entries.next().await {
-                Some(Ok(entry)) => {
-                    let mut media = Media::new(index, &entry.path().to_string_lossy(), false).await;
-
-                    if fillers.is_none() {
-                        if let Err(e) = media.add_probe(false).await {
-                            error!(target: Target::file_mail(), channel = id; "{e:?}");
-                        };
-                    }
-
-                    filler_list.push(media);
-
-                    index += 1;
-                }
-                Some(Err(e)) => {
-                    error!(target: Target::file_mail(), "error: {e}");
-                    break;
-                }
-                None => break,
+                filler_list.push(media);
+                index += 1;
             }
         }
 

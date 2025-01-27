@@ -6,7 +6,7 @@
 /// It also respect the shuffle/sort mode.
 use std::io::Error;
 
-use async_walkdir::{Filtering, WalkDir};
+use async_walkdir::WalkDir;
 use chrono::Timelike;
 use lexical_sort::{natural_lexical_cmp, StringSort};
 use log::*;
@@ -143,31 +143,13 @@ pub async fn generate_from_template(
         for path in source.paths {
             debug!("Search files in <b><magenta>{path:?}</></b>");
             let mut file_list = vec![];
+            let mut entries = WalkDir::new(path);
 
-            let config = config.clone();
-            let mut entries = WalkDir::new(path).filter(move |entry| {
-                let config = config.clone();
-                async move {
-                    if entry.path().is_file() && include_file_extension(&config, &entry.path()) {
-                        return Filtering::Continue;
-                    }
+            while let Some(Ok(entry)) = entries.next().await {
+                if entry.path().is_file() && include_file_extension(config, &entry.path()) {
+                    let file = entry.path().to_string_lossy().to_string();
 
-                    Filtering::Ignore
-                }
-            });
-
-            loop {
-                match entries.next().await {
-                    Some(Ok(entry)) => {
-                        let file = entry.path().to_string_lossy().to_string();
-
-                        file_list.push(file);
-                    }
-                    Some(Err(e)) => {
-                        error!(target: Target::file_mail(), "error: {e}");
-                        break;
-                    }
-                    None => break,
+                    file_list.push(file);
                 }
             }
 

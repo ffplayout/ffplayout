@@ -7,7 +7,7 @@ use std::{
     },
 };
 
-use async_walkdir::{Filtering, WalkDir};
+use async_walkdir::WalkDir;
 use log::*;
 use m3u8_rs::Playlist;
 use serde::{Deserialize, Serialize};
@@ -388,25 +388,11 @@ pub async fn drain_hls_path(path: &Path) -> io::Result<()> {
 /// Recursively searches for all files with the .m3u8 extension in the specified path.
 async fn find_m3u8_files(path: &Path) -> io::Result<Vec<String>> {
     let mut m3u8_files = Vec::new();
+    let mut entries = WalkDir::new(path);
 
-    let mut entries = WalkDir::new(path).filter(move |entry| async move {
+    while let Some(Ok(entry)) = entries.next().await {
         if entry.path().is_file() && entry.path().extension().is_some_and(|ext| ext == "m3u8") {
-            return Filtering::Continue;
-        }
-
-        Filtering::Ignore
-    });
-
-    loop {
-        match entries.next().await {
-            Some(Ok(entry)) => {
-                m3u8_files.push(entry.path().to_string_lossy().to_string());
-            }
-            Some(Err(e)) => {
-                error!(target: Target::file_mail(), "error: {e}");
-                break;
-            }
-            None => break,
+            m3u8_files.push(entry.path().to_string_lossy().to_string());
         }
     }
 
@@ -418,33 +404,20 @@ async fn delete_old_segments<P: AsRef<Path> + Clone + std::fmt::Debug>(
     path: P,
     pl_segments: &[String],
 ) -> io::Result<()> {
-    let mut entries = WalkDir::new(path).filter(move |entry| async move {
+    let mut entries = WalkDir::new(path);
+
+    while let Some(Ok(entry)) = entries.next().await {
         if entry.path().is_file()
             && entry
                 .path()
                 .extension()
                 .is_some_and(|ext| ext == "ts" || ext == "vtt")
         {
-            return Filtering::Continue;
-        }
+            let filename = entry.file_name().to_string_lossy().to_string();
 
-        Filtering::Ignore
-    });
-
-    loop {
-        match entries.next().await {
-            Some(Ok(entry)) => {
-                let filename = entry.file_name().to_string_lossy().to_string();
-
-                if !pl_segments.contains(&filename) {
-                    fs::remove_file(entry.path()).await?;
-                }
+            if !pl_segments.contains(&filename) {
+                fs::remove_file(entry.path()).await?;
             }
-            Some(Err(e)) => {
-                error!(target: Target::file_mail(), "error: {e}");
-                break;
-            }
-            None => break,
         }
     }
 
