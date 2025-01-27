@@ -101,7 +101,7 @@ async fn main() -> Result<(), ProcessError> {
         });
         let broadcast_data = Broadcaster::create();
 
-        info!("Running ffplayout API, listen on http://{conn}");
+        info!("Running ffplayout, listen on http://{conn}");
 
         let db_clone = pool.clone();
 
