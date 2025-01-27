@@ -6,7 +6,6 @@
 /// It also respect the shuffle/sort mode.
 use std::io::Error;
 
-use async_iterator::Iterator;
 use async_walkdir::{Filtering, WalkDir};
 use chrono::Timelike;
 use lexical_sort::{natural_lexical_cmp, StringSort};

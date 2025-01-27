@@ -140,13 +140,6 @@ impl ChannelManager {
                 let timer = Instant::now();
 
                 if let Err(e) = run_channel(self_clone.clone()).await {
-                    trace!(
-                        "Runtime has {} active tasks",
-                        tokio::runtime::Handle::current()
-                            .metrics()
-                            .num_alive_tasks()
-                    );
-
                     if let Err(e) = self_clone.stop_all(false).await {
                         error!(target: Target::all(), channel = channel_id; "Failed to stop channel <yellow>{channel_id}</>: {e}");
                         break;
@@ -167,6 +160,13 @@ impl ChannelManager {
                     };
 
                     error!(target: Target::all(), channel = channel_id; "Run channel <yellow>{channel_id}</> failed: {e} | {retry_msg}");
+
+                    trace!(
+                        "Runtime has <yellow>{}</> active tasks",
+                        tokio::runtime::Handle::current()
+                            .metrics()
+                            .num_alive_tasks()
+                    );
 
                     sleep(retry_delay).await;
                 }

@@ -5,9 +5,7 @@ use sqlx::sqlite::SqlitePoolOptions;
 use ffplayout::db::handles;
 use ffplayout::player::{
     controller::{ChannelManager, ProcessUnit::*},
-    input::playlist::gen_source,
-    utils::prepare_output_cmd,
-    utils::Media,
+    utils::{prepare_output_cmd, seek_and_length, Media},
 };
 use ffplayout::utils::config::{OutputMode::*, PlayoutConfig};
 use ffplayout::vec_strings;
@@ -39,15 +37,15 @@ async fn get_config() -> (PlayoutConfig, ChannelManager) {
 
 #[tokio::test]
 async fn video_audio_input() {
-    let (mut config, manager) = get_config().await;
+    let (mut config, _) = get_config().await;
 
     config.output.mode = Stream;
     config.processing.add_logo = true;
     let logo_path = fs::canonicalize("./assets/logo.png").unwrap();
     config.processing.logo_path = logo_path.to_string_lossy().to_string();
 
-    let media_obj = Media::new(0, "./assets/media_mix/with_audio.mp4", true).await;
-    let media = gen_source(&config, media_obj, &manager, 1).await;
+    let mut media = Media::new(0, "./assets/media_mix/with_audio.mp4", true).await;
+    media.add_filter(&config, &None).await;
 
     let test_filter_cmd =
         vec_strings![
@@ -67,14 +65,14 @@ async fn video_audio_input() {
 
 #[tokio::test]
 async fn video_audio_custom_filter1_input() {
-    let (mut config, manager) = get_config().await;
+    let (mut config, _) = get_config().await;
 
     config.output.mode = Stream;
     config.processing.add_logo = false;
     config.processing.custom_filter = "[0:v]gblur=2[c_v_out];[0:a]volume=0.2[c_a_out]".to_string();
 
-    let media_obj = Media::new(0, "./assets/media_mix/with_audio.mp4", true).await;
-    let media = gen_source(&config, media_obj, &manager, 1).await;
+    let mut media = Media::new(0, "./assets/media_mix/with_audio.mp4", true).await;
+    media.add_filter(&config, &None).await;
 
     let test_filter_cmd = vec_strings![
         "-filter_complex",
@@ -93,7 +91,7 @@ async fn video_audio_custom_filter1_input() {
 
 #[tokio::test]
 async fn video_audio_custom_filter2_input() {
-    let (mut config, manager) = get_config().await;
+    let (mut config, _) = get_config().await;
 
     config.output.mode = Stream;
     config.processing.add_logo = false;
@@ -101,8 +99,8 @@ async fn video_audio_custom_filter2_input() {
         "[0:v]null[v];movie=logo.png[l];[v][l]overlay[c_v_out];[0:a]volume=0.2[c_a_out]"
             .to_string();
 
-    let media_obj = Media::new(0, "./assets/media_mix/with_audio.mp4", true).await;
-    let media = gen_source(&config, media_obj, &manager, 1).await;
+    let mut media = Media::new(0, "./assets/media_mix/with_audio.mp4", true).await;
+    media.add_filter(&config, &None).await;
 
     let test_filter_cmd = vec_strings![
         "-filter_complex",
@@ -121,15 +119,15 @@ async fn video_audio_custom_filter2_input() {
 
 #[tokio::test]
 async fn video_audio_custom_filter3_input() {
-    let (mut config, manager) = get_config().await;
+    let (mut config, _) = get_config().await;
 
     config.output.mode = Stream;
     config.processing.add_logo = false;
     config.processing.custom_filter =
         "[v_in];movie=logo.png[l];[v_in][l]overlay[c_v_out];[0:a]volume=0.2[c_a_out]".to_string();
 
-    let media_obj = Media::new(0, "./assets/media_mix/with_audio.mp4", true).await;
-    let media = gen_source(&config, media_obj, &manager, 1).await;
+    let mut media = Media::new(0, "./assets/media_mix/with_audio.mp4", true).await;
+    media.add_filter(&config, &None).await;
 
     let test_filter_cmd = vec_strings![
         "-filter_complex",
@@ -148,14 +146,14 @@ async fn video_audio_custom_filter3_input() {
 
 #[tokio::test]
 async fn dual_audio_aevalsrc_input() {
-    let (mut config, manager) = get_config().await;
+    let (mut config, _) = get_config().await;
 
     config.output.mode = Stream;
     config.processing.audio_tracks = 2;
     config.processing.add_logo = false;
 
-    let media_obj = Media::new(0, "./assets/media_mix/with_audio.mp4", true).await;
-    let media = gen_source(&config, media_obj, &manager, 1).await;
+    let mut media = Media::new(0, "./assets/media_mix/with_audio.mp4", true).await;
+    media.add_filter(&config, &None).await;
 
     let test_filter_cmd =
         vec_strings![
@@ -175,14 +173,14 @@ async fn dual_audio_aevalsrc_input() {
 
 #[tokio::test]
 async fn dual_audio_input() {
-    let (mut config, manager) = get_config().await;
+    let (mut config, _) = get_config().await;
 
     config.output.mode = Stream;
     config.processing.audio_tracks = 2;
     config.processing.add_logo = false;
 
-    let media_obj = Media::new(0, "./assets/media_mix/dual_audio.mp4", true).await;
-    let media = gen_source(&config, media_obj, &manager, 1).await;
+    let mut media = Media::new(0, "./assets/media_mix/dual_audio.mp4", true).await;
+    media.add_filter(&config, &None).await;
 
     let test_filter_cmd = vec_strings![
         "-filter_complex",
@@ -201,15 +199,16 @@ async fn dual_audio_input() {
 
 #[tokio::test]
 async fn video_separate_audio_input() {
-    let (mut config, manager) = get_config().await;
+    let (mut config, _) = get_config().await;
 
     config.output.mode = Stream;
     config.processing.audio_tracks = 1;
     config.processing.add_logo = false;
 
-    let mut media_obj = Media::new(0, "./assets/media_mix/no_audio.mp4", true).await;
-    media_obj.audio = "./assets/media_mix/audio.mp3".to_string();
-    let media = gen_source(&config, media_obj, &manager, 1).await;
+    let mut media = Media::new(0, "./assets/media_mix/no_audio.mp4", true).await;
+    media.audio = "./assets/media_mix/audio.mp3".to_string();
+    media.cmd = Some(seek_and_length(&config, &mut media));
+    media.add_filter(&config, &None).await;
 
     let test_filter_cmd = vec_strings![
         "-filter_complex",
@@ -1374,7 +1373,7 @@ async fn video_audio_text_filter_stream() {
 
 #[tokio::test]
 async fn video_audio_hls() {
-    let (mut config, manager) = get_config().await;
+    let (mut config, _) = get_config().await;
 
     config.output.mode = HLS;
     config.processing.add_logo = false;
@@ -1403,8 +1402,8 @@ async fn video_audio_hls() {
         "/usr/share/ffplayout/public/live/stream.m3u8"
     ]);
 
-    let media_obj = Media::new(0, "./assets/media_mix/with_audio.mp4", true).await;
-    let media = gen_source(&config, media_obj, &manager, 1).await;
+    let mut media = Media::new(0, "./assets/media_mix/with_audio.mp4", true).await;
+    media.add_filter(&config, &None).await;
 
     let enc_prefix = vec_strings![
         "-hide_banner",
@@ -1460,7 +1459,7 @@ async fn video_audio_hls() {
 
 #[tokio::test]
 async fn video_audio_sub_meta_hls() {
-    let (mut config, manager) = get_config().await;
+    let (mut config, _) = get_config().await;
 
     config.output.mode = HLS;
     config.processing.add_logo = false;
@@ -1493,8 +1492,8 @@ async fn video_audio_sub_meta_hls() {
         "/usr/share/ffplayout/public/live/stream.m3u8"
     ]);
 
-    let media_obj = Media::new(0, "./assets/media_mix/with_audio.mp4", true).await;
-    let media = gen_source(&config, media_obj, &manager, 1).await;
+    let mut media = Media::new(0, "./assets/media_mix/with_audio.mp4", true).await;
+    media.add_filter(&config, &None).await;
 
     let enc_prefix = vec_strings![
         "-hide_banner",
@@ -1554,7 +1553,7 @@ async fn video_audio_sub_meta_hls() {
 
 #[tokio::test]
 async fn video_multi_audio_hls() {
-    let (mut config, manager) = get_config().await;
+    let (mut config, _) = get_config().await;
 
     config.output.mode = HLS;
     config.processing.add_logo = false;
@@ -1584,8 +1583,8 @@ async fn video_multi_audio_hls() {
         "/usr/share/ffplayout/public/live/stream.m3u8"
     ]);
 
-    let media_obj = Media::new(0, "./assets/media_mix/dual_audio.mp4", true).await;
-    let media = gen_source(&config, media_obj, &manager, 1).await;
+    let mut media = Media::new(0, "./assets/media_mix/dual_audio.mp4", true).await;
+    media.add_filter(&config, &None).await;
 
     let enc_prefix = vec_strings![
         "-hide_banner",
@@ -1643,7 +1642,7 @@ async fn video_multi_audio_hls() {
 
 #[tokio::test]
 async fn multi_video_audio_hls() {
-    let (mut config, manager) = get_config().await;
+    let (mut config, _) = get_config().await;
 
     config.output.mode = HLS;
     config.processing.add_logo = false;
@@ -1690,8 +1689,8 @@ async fn multi_video_audio_hls() {
         "/usr/share/ffplayout/public/live/stream_%v.m3u8"
     ]);
 
-    let media_obj = Media::new(0, "./assets/media_mix/with_audio.mp4", true).await;
-    let media = gen_source(&config, media_obj, &manager, 1).await;
+    let mut media = Media::new(0, "./assets/media_mix/with_audio.mp4", true).await;
+    media.add_filter(&config, &None).await;
 
     let enc_prefix = vec_strings![
         "-hide_banner",
@@ -1757,7 +1756,7 @@ async fn multi_video_audio_hls() {
 
 #[tokio::test]
 async fn multi_video_multi_audio_hls() {
-    let (mut config, manager) = get_config().await;
+    let (mut config, _) = get_config().await;
 
     config.output.mode = HLS;
     config.processing.add_logo = false;
@@ -1807,8 +1806,8 @@ async fn multi_video_multi_audio_hls() {
         "/usr/share/ffplayout/public/live/stream_%v.m3u8"
     ]);
 
-    let media_obj = Media::new(0, "./assets/media_mix/dual_audio.mp4", true).await;
-    let media = gen_source(&config, media_obj, &manager, 1).await;
+    let mut media = Media::new(0, "./assets/media_mix/dual_audio.mp4", true).await;
+    media.add_filter(&config, &None).await;
 
     let enc_prefix = vec_strings![
         "-hide_banner",

@@ -146,7 +146,7 @@ pub async fn update_channel(
 pub async fn update_stat(
     conn: &Pool<Sqlite>,
     id: i32,
-    last_date: Option<String>,
+    last_date: &Option<String>,
     time_shift: f64,
 ) -> Result<SqliteQueryResult, ProcessError> {
     let query = match last_date {

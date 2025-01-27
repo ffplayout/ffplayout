@@ -1,6 +1,5 @@
 use std::{process::Stdio, sync::atomic::Ordering};
 
-use async_iterator::Iterator;
 use log::*;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter},
@@ -241,7 +240,13 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
             result??;
         }
 
-        result = async { if let Some(f) = handle_ingest { f.await? } else { Ok(()) } }, if handle_ingest.is_some() => {
+        result = async {
+            if let Some(f) = handle_ingest {
+                f.await?
+            } else {
+                Ok(())
+            }
+        }, if handle_ingest.is_some() => {
             result?;
         }
 

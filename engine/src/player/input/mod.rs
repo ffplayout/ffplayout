@@ -19,10 +19,8 @@ pub enum SourceIterator {
     Playlist(CurrentProgram),
 }
 
-impl async_iterator::Iterator for SourceIterator {
-    type Item = Media;
-
-    async fn next(&mut self) -> Option<Self::Item> {
+impl SourceIterator {
+    pub async fn next(&mut self) -> Option<Media> {
         match self {
             SourceIterator::Folder(folder_source) => folder_source.next().await,
             SourceIterator::Playlist(program) => program.next().await,

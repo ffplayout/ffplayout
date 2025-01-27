@@ -4,10 +4,9 @@ use log::*;
 use sqlx::{Pool, Sqlite};
 use tokio::sync::Mutex;
 
-use super::logging::MailQueue;
 use crate::db::{handles, models::Channel};
 use crate::player::controller::{ChannelController, ChannelManager};
-use crate::utils::{config::get_config, copy_assets, errors::ServiceError};
+use crate::utils::{config::get_config, copy_assets, errors::ServiceError, mail::MailQueue};
 
 async fn map_global_admins(conn: &Pool<Sqlite>) -> Result<(), ServiceError> {
     let channels = handles::select_related_channels(conn, None).await?;
