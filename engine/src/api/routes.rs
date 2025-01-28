@@ -41,6 +41,7 @@ use crate::{
         handles,
         models::{Channel, Role, TextPreset, User, UserMeta},
     },
+    file::{norm_abs_path, MoveObject, PathObject},
     player::{
         controller::ChannelController,
         utils::{
@@ -54,10 +55,6 @@ use crate::{
         config::{get_config, PlayoutConfig, Template},
         control::{control_state, send_message, ControlParams, Process, ProcessCtl},
         errors::ServiceError,
-        files::{
-            browser, create_directory, norm_abs_path, remove_file_or_folder, rename_file, upload,
-            MoveObject, PathObject,
-        },
         mail::MailQueue,
         naive_date_time_from_str,
         playlist::{delete_playlist, generate_playlist, read_playlist, write_playlist},
@@ -433,7 +430,7 @@ async fn patch_channel(
         .await
         .get(*id)
         .await
-        .ok_or_else(|| format!("Channel {id} not found!"))?;
+        .ok_or_else(|| ServiceError::BadRequest(format!("Channel {id} not found!")))?;
     let mut data = data.into_inner();
 
     if !role.has_authority(&Role::GlobalAdmin) {
@@ -1211,18 +1208,9 @@ pub async fn file_browser(
         .get(*id)
         .await
         .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
-    let channel_extensions = manager.channel.lock().await.extra_extensions.clone();
-    let storage = manager.config.lock().await.channel.storage.clean();
-    let mut extensions = manager.config.lock().await.storage.extensions.clone();
+    let storage = manager.storage.lock().await.clone();
 
-    let mut extra_extensions = channel_extensions
-        .split(',')
-        .map(Into::into)
-        .collect::<Vec<String>>();
-
-    extensions.append(&mut extra_extensions);
-
-    match browser(&storage, extensions, &data.into_inner()).await {
+    match storage.browser(&data.into_inner()).await {
         Ok(obj) => Ok(web::Json(obj)),
         Err(e) => Err(e),
     }
@@ -1253,9 +1241,11 @@ pub async fn add_dir(
         .get(*id)
         .await
         .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
-    let storage = manager.config.lock().await.channel.storage.clone();
+    let storage = manager.storage.lock().await;
 
-    create_directory(&storage, &data.into_inner()).await
+    storage.mkdir(&data.into_inner()).await?;
+
+    Ok(HttpResponse::Ok().into())
 }
 
 /// **Rename File**
@@ -1283,9 +1273,9 @@ pub async fn move_rename(
         .get(*id)
         .await
         .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
-    let storage = manager.config.lock().await.channel.storage.clone();
+    let storage = manager.storage.lock().await;
 
-    match rename_file(&storage, &data.into_inner()).await {
+    match storage.rename(&data.into_inner()).await {
         Ok(obj) => Ok(web::Json(obj)),
         Err(e) => Err(e),
     }
@@ -1316,10 +1306,10 @@ pub async fn remove(
         .get(*id)
         .await
         .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
-    let storage = manager.config.lock().await.channel.storage.clone();
+    let storage = manager.storage.lock().await;
     let recursive = data.recursive;
 
-    match remove_file_or_folder(&storage, &data.into_inner().source, recursive).await {
+    match storage.remove(&data.into_inner().source, recursive).await {
         Ok(obj) => Ok(web::Json(obj)),
         Err(e) => Err(e),
     }
@@ -1340,7 +1330,7 @@ pub async fn remove(
 )]
 async fn save_file(
     id: web::Path<i32>,
-    req: HttpRequest,
+    _req: HttpRequest,
     payload: Multipart,
     obj: web::Query<FileObj>,
     controllers: web::Data<Mutex<ChannelController>>,
@@ -1353,16 +1343,18 @@ async fn save_file(
         .get(*id)
         .await
         .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
-    let storage = manager.config.lock().await.channel.storage.clone();
+    let storage = manager.storage.lock().await.clone();
 
-    let size: u64 = req
-        .headers()
-        .get("content-length")
-        .and_then(|cl| cl.to_str().ok())
-        .and_then(|cls| cls.parse().ok())
-        .unwrap_or(0);
+    // let size: u64 = req
+    //     .headers()
+    //     .get("content-length")
+    //     .and_then(|cl| cl.to_str().ok())
+    //     .and_then(|cls| cls.parse().ok())
+    //     .unwrap_or(0);
 
-    upload(&storage, size, payload, &obj.path, false).await
+    storage.upload(payload, &obj.path, false).await?;
+
+    Ok(HttpResponse::Ok().into())
 }
 
 /// **Get File**
@@ -1449,7 +1441,6 @@ async fn get_public(
 /// curl -X PUT http://127.0.0.1:8787/api/file/1/import/ -H 'Authorization: Bearer <TOKEN>'
 /// -F "file=@list.m3u"
 /// ```
-#[allow(clippy::too_many_arguments)]
 #[put("/file/{id}/import/")]
 #[protect(
     any("Role::GlobalAdmin", "Role::ChannelAdmin", "Role::User"),
@@ -1458,7 +1449,6 @@ async fn get_public(
 )]
 async fn import_playlist(
     id: web::Path<i32>,
-    req: HttpRequest,
     payload: Multipart,
     obj: web::Query<ImportObj>,
     controllers: web::Data<Mutex<ChannelController>>,
@@ -1472,19 +1462,13 @@ async fn import_playlist(
         .await
         .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
     let channel_name = manager.channel.lock().await.name.clone();
-    let storage = manager.config.lock().await.channel.storage.clone();
     let playlists = manager.config.lock().await.channel.playlists.clone();
+    let storage = manager.storage.lock().await;
     let file = obj.file.file_name().unwrap_or_default();
     let path = env::temp_dir().join(file);
     let path_clone = path.clone();
-    let size: u64 = req
-        .headers()
-        .get("content-length")
-        .and_then(|cl| cl.to_str().ok())
-        .and_then(|cls| cls.parse().ok())
-        .unwrap_or(0);
 
-    upload(&storage, size, payload, &path, true).await?;
+    storage.upload(payload, &path, true).await?;
 
     let response = import_file(&playlists, &obj.date, Some(channel_name), &path_clone).await?;
 

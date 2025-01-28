@@ -128,7 +128,7 @@ pub async fn ingest_server(
                 ));
             }
 
-            tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+            tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
         }
 
         info!(target: Target::file_mail(), channel = id; "Start ingest server, listening on: <b><magenta>{url}</></b>");

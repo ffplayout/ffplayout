@@ -16,11 +16,9 @@ use tokio_stream::StreamExt;
 
 use crate::player::{
     controller::ChannelManager,
+    input::folder::{fill_filler_list, FolderSource},
     utils::{
-        folder::{fill_filler_list, FolderSource},
-        get_date_range, include_file_extension,
-        json_serializer::JsonPlaylist,
-        sum_durations, Media,
+        get_date_range, include_file_extension, json_serializer::JsonPlaylist, sum_durations, Media,
     },
 };
 use crate::utils::{

@@ -1,21 +1,19 @@
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    sync::{atomic::AtomicBool, Arc},
+};
 
+use actix_multipart::Multipart;
 use relative_path::RelativePath;
 use serde::{Deserialize, Serialize};
+use tokio::sync::Mutex;
 
 mod local;
 mod s3;
+mod watcher;
 
-use crate::utils::{errors::ServiceError, system::Load};
-
-enum StorageType {
-    Local,
-    S3,
-}
-enum StorageBackend {
-    Local(local::LocalStorage),
-    S3(s3::S3Storage),
-}
+use crate::player::utils::Media;
+use crate::utils::{config::PlayoutConfig, errors::ServiceError};
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct PathObject {
@@ -56,15 +54,103 @@ pub struct VideoFile {
     duration: f64,
 }
 
-trait Storage {
-    async fn browser(&self, path_obj: &PathObject) -> Result<PathObject, ServiceError>;
-    async fn create_directory(&self, path_obj: &PathObject) -> Result<(), ServiceError>;
-    async fn rename(&self, move_object: &MoveObject) -> Result<MoveObject, ServiceError>;
-    async fn remove(&self, source_path: &str, recursive: bool) -> Result<(), ServiceError>;
-    async fn upload(&self, source_path: &str, recursive: bool) -> Result<(), ServiceError>;
+#[derive(Clone, Debug)]
+pub enum StorageType {
+    Local,
+    S3,
 }
 
-fn create_storage(
+#[derive(Clone, Debug)]
+pub enum StorageBackend {
+    Local(local::LocalStorage),
+    S3(s3::S3Storage),
+}
+
+impl StorageBackend {
+    pub async fn browser(&self, path_obj: &PathObject) -> Result<PathObject, ServiceError> {
+        match self {
+            StorageBackend::Local(storage) => storage.browser(path_obj).await,
+            StorageBackend::S3(storage) => storage.browser(path_obj).await,
+        }
+    }
+
+    pub async fn mkdir(&self, path_obj: &PathObject) -> Result<(), ServiceError> {
+        match self {
+            StorageBackend::Local(storage) => storage.mkdir(path_obj).await,
+            StorageBackend::S3(storage) => storage.mkdir(path_obj).await,
+        }
+    }
+
+    pub async fn rename(&self, move_object: &MoveObject) -> Result<MoveObject, ServiceError> {
+        match self {
+            StorageBackend::Local(storage) => storage.rename(move_object).await,
+            StorageBackend::S3(storage) => storage.rename(move_object).await,
+        }
+    }
+
+    pub async fn remove(&self, source_path: &str, recursive: bool) -> Result<(), ServiceError> {
+        match self {
+            StorageBackend::Local(storage) => storage.remove(source_path, recursive).await,
+            StorageBackend::S3(storage) => storage.remove(source_path, recursive).await,
+        }
+    }
+
+    pub async fn upload(
+        &self,
+        payload: Multipart,
+        path: &Path,
+        is_abs: bool,
+    ) -> Result<(), ServiceError> {
+        match self {
+            StorageBackend::Local(storage) => storage.upload(payload, path, is_abs).await,
+            StorageBackend::S3(storage) => storage.upload(payload, path, is_abs).await,
+        }
+    }
+
+    pub async fn watchman(
+        &mut self,
+        config: PlayoutConfig,
+        is_alive: Arc<AtomicBool>,
+        sources: Arc<Mutex<Vec<Media>>>,
+    ) {
+        match self {
+            StorageBackend::Local(storage) => storage.watchman(config, is_alive, sources).await,
+            StorageBackend::S3(storage) => storage.watchman(config, is_alive, sources).await,
+        }
+    }
+
+    pub async fn stop_watch(&mut self) {
+        match self {
+            StorageBackend::Local(storage) => storage.stop_watch().await,
+            StorageBackend::S3(storage) => storage.stop_watch().await,
+        }
+    }
+}
+
+trait Storage {
+    async fn browser(&self, path_obj: &PathObject) -> Result<PathObject, ServiceError>;
+    async fn mkdir(&self, path_obj: &PathObject) -> Result<(), ServiceError>;
+    async fn rename(&self, move_object: &MoveObject) -> Result<MoveObject, ServiceError>;
+    async fn remove(&self, source_path: &str, recursive: bool) -> Result<(), ServiceError>;
+    async fn upload(&self, data: Multipart, path: &Path, is_abs: bool) -> Result<(), ServiceError>;
+    async fn watchman(
+        &mut self,
+        config: PlayoutConfig,
+        is_alive: Arc<AtomicBool>,
+        sources: Arc<Mutex<Vec<Media>>>,
+    );
+    async fn stop_watch(&mut self);
+}
+
+pub fn select_storage_type(path: &Path) -> StorageType {
+    if path.starts_with("s3://") {
+        return StorageType::S3;
+    }
+
+    StorageType::Local
+}
+
+pub fn init_storage(
     storage_type: StorageType,
     root: PathBuf,
     extensions: Vec<String>,

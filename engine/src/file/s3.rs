@@ -1,15 +1,16 @@
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    sync::{atomic::AtomicBool, Arc},
+};
 
-use lexical_sort::{natural_lexical_cmp, PathSort};
-use log::*;
-use serde::{Deserialize, Serialize};
-use tokio::{fs, io::AsyncWriteExt};
+use actix_multipart::Multipart;
+use tokio::sync::Mutex;
 
-use crate::utils::errors::ServiceError;
+use crate::file::{MoveObject, PathObject, Storage};
+use crate::player::utils::Media;
+use crate::utils::{config::PlayoutConfig, errors::ServiceError};
 
-use crate::file::{norm_abs_path, MoveObject, PathObject, Storage, VideoFile};
-use crate::player::utils::{file_extension, probe::MediaProbe};
-
+#[derive(Clone, Debug)]
 pub struct S3Storage {
     pub root: PathBuf,
     pub extensions: Vec<String>,
@@ -22,20 +23,34 @@ impl S3Storage {
 }
 
 impl Storage for S3Storage {
-    async fn browser(&self, path_obj: &PathObject) -> Result<PathObject, ServiceError> {
+    async fn browser(&self, _path_obj: &PathObject) -> Result<PathObject, ServiceError> {
         Ok(PathObject::default())
     }
 
-    async fn create_directory(&self, path_obj: &PathObject) -> Result<(), ServiceError> {
+    async fn mkdir(&self, _path_obj: &PathObject) -> Result<(), ServiceError> {
         Ok(())
     }
-    async fn rename(&self, move_object: &MoveObject) -> Result<MoveObject, ServiceError> {
+    async fn rename(&self, _move_object: &MoveObject) -> Result<MoveObject, ServiceError> {
         Ok(MoveObject::default())
     }
-    async fn remove(&self, source_path: &str, recursive: bool) -> Result<(), ServiceError> {
+    async fn remove(&self, _source_path: &str, _recursive: bool) -> Result<(), ServiceError> {
         Ok(())
     }
-    async fn upload(&self, source_path: &str, recursive: bool) -> Result<(), ServiceError> {
+    async fn upload(
+        &self,
+        _data: Multipart,
+        _path: &Path,
+        _is_abs: bool,
+    ) -> Result<(), ServiceError> {
         Ok(())
     }
+    async fn watchman(
+        &mut self,
+        _config: PlayoutConfig,
+        _is_alive: Arc<AtomicBool>,
+        _sources: Arc<Mutex<Vec<Media>>>,
+    ) {
+    }
+
+    async fn stop_watch(&mut self) {}
 }

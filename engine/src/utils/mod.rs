@@ -24,7 +24,6 @@ pub mod channels;
 pub mod config;
 pub mod control;
 pub mod errors;
-pub mod files;
 pub mod generator;
 pub mod logging;
 pub mod mail;

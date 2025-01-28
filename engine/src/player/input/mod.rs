@@ -4,14 +4,10 @@ pub mod folder;
 pub mod ingest;
 pub mod playlist;
 
-pub use folder::watchman;
 pub use ingest::ingest_server;
 pub use playlist::CurrentProgram;
 
-use crate::player::{
-    controller::ChannelManager,
-    utils::{folder::FolderSource, Media},
-};
+use crate::player::{controller::ChannelManager, input::folder::FolderSource, utils::Media};
 use crate::utils::{config::ProcessMode::*, logging::Target};
 
 pub enum SourceIterator {
@@ -38,16 +34,15 @@ pub async fn source_generator(manager: ChannelManager) -> SourceIterator {
     match config.processing.mode {
         Folder => {
             info!(target: Target::file_mail(), channel = id; "Playout in folder mode");
-            debug!(target: Target::file_mail(), channel = id;
-                "Monitor folder: <b><magenta>{:?}</></b>",
-                config.channel.storage
-            );
-
             let config_clone = config.clone();
-            let folder_source = FolderSource::new(&config, manager);
 
             // Spawn a task to monitor folder for file changes.
-            tokio::spawn(watchman(config_clone, is_alive, current_list));
+            {
+                let mut storage = manager.storage.lock().await;
+                storage.watchman(config_clone, is_alive, current_list).await;
+            }
+
+            let folder_source = FolderSource::new(&config, manager);
 
             SourceIterator::Folder(folder_source.await)
         }

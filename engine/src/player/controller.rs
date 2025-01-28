@@ -21,15 +21,15 @@ use tokio::{
 };
 use tokio_stream::StreamExt;
 
-use crate::player::{
-    output::player,
-    utils::{folder::fill_filler_list, Media},
-};
 use crate::utils::{config::PlayoutConfig, errors::ServiceError};
 use crate::ARGS;
 use crate::{
     db::{handles, models::Channel},
     utils::logging::Target,
+};
+use crate::{
+    file::{init_storage, select_storage_type, StorageBackend},
+    player::{input::folder::fill_filler_list, output::player, utils::Media},
 };
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -75,10 +75,27 @@ pub struct ChannelManager {
     pub filler_list: Arc<Mutex<Vec<Media>>>,
     pub current_index: Arc<AtomicUsize>,
     pub filler_index: Arc<AtomicUsize>,
+    pub storage: Arc<Mutex<StorageBackend>>,
 }
 
 impl ChannelManager {
     pub fn new(db_pool: Pool<Sqlite>, channel: Channel, config: PlayoutConfig) -> Self {
+        let s_type = select_storage_type(&config.channel.storage);
+        let channel_extensions = channel.extra_extensions.clone();
+        let mut extensions = config.storage.extensions.clone();
+        let mut extra_extensions = channel_extensions
+            .split(',')
+            .map(Into::into)
+            .collect::<Vec<String>>();
+
+        extensions.append(&mut extra_extensions);
+
+        let storage = Arc::new(Mutex::new(init_storage(
+            s_type,
+            config.channel.storage.clone(),
+            extensions,
+        )));
+
         Self {
             db_pool,
             is_alive: Arc::new(AtomicBool::new(false)),
@@ -98,6 +115,7 @@ impl ChannelManager {
             is_processing: Arc::new(AtomicBool::new(false)),
             filter_chain: None,
             current_date: Arc::new(Mutex::new(String::new())),
+            storage,
         }
     }
 
@@ -111,6 +129,20 @@ impl ChannelManager {
         channel.last_date.clone_from(&other.last_date);
         channel.time_shift.clone_from(&other.time_shift);
         channel.timezone.clone_from(&other.timezone);
+
+        let s_path = Path::new(&channel.storage);
+        let s_type = select_storage_type(s_path);
+        let channel_extensions = channel.extra_extensions.clone();
+        let mut extensions = self.config.lock().await.storage.extensions.clone();
+        let mut extra_extensions = channel_extensions
+            .split(',')
+            .map(Into::into)
+            .collect::<Vec<String>>();
+
+        extensions.append(&mut extra_extensions);
+        let mut storage = self.storage.lock().await;
+
+        *storage = init_storage(s_type, s_path.to_path_buf(), extensions);
     }
 
     pub async fn update_config(&self, new_config: PlayoutConfig) {
@@ -205,6 +237,8 @@ impl ChannelManager {
     }
 
     pub async fn stop(&self, unit: ProcessUnit) -> Result<(), ServiceError> {
+        self.storage.lock().await.stop_watch().await;
+
         match unit {
             Decoder => {
                 if let Some(proc) = self.decoder.lock().await.as_mut() {

@@ -3,12 +3,10 @@ use std::path::PathBuf;
 use log::*;
 use tokio::fs;
 
+use crate::file::norm_abs_path;
 use crate::player::controller::ChannelManager;
 use crate::player::utils::{json_reader, json_writer, JsonPlaylist};
-use crate::utils::{
-    config::PlayoutConfig, errors::ServiceError, files::norm_abs_path,
-    generator::playlist_generator,
-};
+use crate::utils::{config::PlayoutConfig, errors::ServiceError, generator::playlist_generator};
 
 pub async fn read_playlist(
     config: &PlayoutConfig,
