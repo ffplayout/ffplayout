@@ -80,9 +80,11 @@ async fn ingest_writer(manager: ChannelManager) -> Result<(), ServiceError> {
 
     if let Some(url) = stream_input.iter().find(|s| s.contains("://")) {
         for num in 0..5 {
-            if is_free_tcp_port(id, url) {
+            if is_free_tcp_port(url) {
                 break;
             }
+
+            error!(target: Target::file_mail(), channel = id; "Address <b><magenta>{url}</></b> already in use!");
 
             if num >= 4 {
                 manager.channel.lock().await.active = false;
@@ -124,7 +126,7 @@ async fn ingest_writer(manager: ChannelManager) -> Result<(), ServiceError> {
             {
                 warn!(target: Target::file_mail(), channel = id; "Unexpected ingest stream: {line}");
 
-                manager.stop(Ingest).await?;
+                manager.stop(Ingest).await;
             } else if !is_running && line.contains("Input #0") {
                 level = &config.logging.ingest_level;
                 ingest_is_alive.store(true, Ordering::SeqCst);
@@ -133,7 +135,7 @@ async fn ingest_writer(manager: ChannelManager) -> Result<(), ServiceError> {
 
                 info!(target: Target::file_mail(), channel = id; "Switch from {} to live ingest", config.processing.mode);
 
-                manager.stop(Decoder).await?;
+                manager.stop(Decoder).await;
             }
 
             log_line(id, &line, level);
@@ -145,7 +147,7 @@ async fn ingest_writer(manager: ChannelManager) -> Result<(), ServiceError> {
 
         ingest_is_alive.store(false, Ordering::SeqCst);
 
-        manager.wait(Ingest).await?;
+        manager.wait(Ingest).await;
 
         if !is_alive.load(Ordering::SeqCst) {
             break;
@@ -235,6 +237,7 @@ async fn write(manager: &ChannelManager, ff_log_format: &str) -> Result<(), Serv
 
         let mut dec_proc = Command::new("ffmpeg")
             .args(dec_cmd)
+            .kill_on_drop(true)
             .stderr(Stdio::piped())
             .spawn()?;
 
@@ -243,7 +246,7 @@ async fn write(manager: &ChannelManager, ff_log_format: &str) -> Result<(), Serv
 
         stderr_reader(dec_err, ignore, Decoder, id).await?;
 
-        manager.wait(Decoder).await?;
+        manager.wait(Decoder).await;
 
         while ingest_is_alive.load(Ordering::SeqCst) {
             tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;

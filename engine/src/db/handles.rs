@@ -3,7 +3,7 @@ use argon2::{
     password_hash::{rand_core::OsRng, SaltString},
     Argon2, PasswordHasher,
 };
-use rand::{distributions::Alphanumeric, Rng};
+use rand::{distr::Alphanumeric, Rng};
 use sqlx::{sqlite::SqliteQueryResult, Pool, Row, Sqlite};
 
 use super::models::{AdvancedConfiguration, Configuration};
@@ -19,7 +19,7 @@ pub async fn db_migrate(conn: &Pool<Sqlite>) -> Result<(), ProcessError> {
     sqlx::migrate!("../migrations").run(conn).await?;
 
     if select_global(conn).await.is_err() {
-        let secret: String = rand::thread_rng()
+        let secret: String = rand::rng()
             .sample_iter(&Alphanumeric)
             .take(80)
             .map(char::from)

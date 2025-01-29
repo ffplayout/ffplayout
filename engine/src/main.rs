@@ -256,7 +256,7 @@ async fn main() -> Result<(), ProcessError> {
 
     for manager in &channel_controllers.lock().await.managers {
         manager.channel.lock().await.active = false;
-        manager.stop_all(false).await?;
+        manager.stop_all(false).await;
     }
 
     pool.close().await;

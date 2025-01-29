@@ -118,7 +118,6 @@ pub async fn send_message(
     let filter = message.to_string();
     let mut data_map = Map::new();
     let config = manager.config.lock().await.clone();
-    let id = config.general.channel_id;
 
     if config.text.zmq_stream_socket.is_some() {
         if let Some(clips_filter) = manager.filter_chain.clone() {
@@ -138,8 +137,8 @@ pub async fn send_message(
                     data_map.insert("message".to_string(), json!(reply));
                     return Ok(data_map);
                 };
-            } else if let Err(e) = manager.stop(Ingest).await {
-                error!(target: Target::file_mail(), channel = id; "Ingest {e:?}");
+            } else {
+                manager.stop(Ingest).await;
             }
         }
 
@@ -224,7 +223,7 @@ pub async fn control_state(
 
     manager.channel.lock().await.time_shift = shift;
     handles::update_stat(conn, id, &Some(current_date), shift).await?;
-    manager.stop(Decoder).await?;
+    manager.stop(Decoder).await;
 
     Ok(data_map)
 }

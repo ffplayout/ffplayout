@@ -43,6 +43,7 @@ pub async fn output(config: &PlayoutConfig, log_format: &str) -> Result<Child, S
 
     let child = Command::new("ffmpeg")
         .args(enc_cmd)
+        .kill_on_drop(true)
         .stdin(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()?;

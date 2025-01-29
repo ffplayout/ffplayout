@@ -39,7 +39,7 @@ async fn timed_stop(sec: u64, manager: ChannelManager) {
     println!("Timed stop of process");
 
     manager.channel.lock().await.active = false;
-    manager.stop_all(false).await.unwrap();
+    manager.stop_all(false).await;
 }
 
 #[tokio::test]

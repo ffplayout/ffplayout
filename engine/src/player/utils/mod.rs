@@ -25,7 +25,6 @@ use tokio::{
     sync::Mutex,
 };
 
-pub mod folder;
 pub mod import;
 pub mod json_serializer;
 pub mod json_validate;
@@ -936,6 +935,7 @@ async fn ffmpeg_filter_and_libs(config: &mut PlayoutConfig) -> Result<(), String
 
     let mut ff_proc = match Command::new("ffmpeg")
         .args(["-filters"])
+        .kill_on_drop(true)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -1045,7 +1045,7 @@ pub async fn validate_ffmpeg(config: &mut PlayoutConfig) -> Result<(), String> {
 /// get a free tcp socket
 pub fn gen_tcp_socket(exclude_socket: String) -> Option<String> {
     for _ in 0..100 {
-        let port = rand::thread_rng().gen_range(45321..54268);
+        let port = rand::rng().random_range(45321..54268);
         let socket = format!("127.0.0.1:{port}");
 
         if socket != exclude_socket && TcpListener::bind(("127.0.0.1", port)).is_ok() {
@@ -1057,7 +1057,7 @@ pub fn gen_tcp_socket(exclude_socket: String) -> Option<String> {
 }
 
 /// check if tcp port is free
-pub fn is_free_tcp_port(id: i32, url: &str) -> bool {
+pub fn is_free_tcp_port(url: &str) -> bool {
     let re = Regex::new(r"^[\w]+://([^/]+)").unwrap();
     let mut addr = url.to_string();
 
@@ -1075,8 +1075,6 @@ pub fn is_free_tcp_port(id: i32, url: &str) -> bool {
             return true;
         }
     };
-
-    error!(target: Target::file_mail(), channel = id; "Address <b><magenta>{addr}</></b> already in use!");
 
     false
 }

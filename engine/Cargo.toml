@@ -45,7 +45,7 @@ notify = "8.0"
 notify-debouncer-full = { version = "*", default-features = false }
 paris = "1.5"
 path-clean = "1.0"
-rand = "0.8"
+rand = "0.9"
 regex = "1"
 relative-path = "1.8"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }

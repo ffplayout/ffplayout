@@ -8,6 +8,7 @@ use sysinfo::{Disks, Networks, System};
 
 pub mod api;
 pub mod db;
+pub mod file;
 pub mod macros;
 pub mod player;
 pub mod sse;
