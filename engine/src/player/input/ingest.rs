@@ -42,9 +42,7 @@ async fn server_monitor(
         {
             warn!(target: Target::file_mail(), channel = id; "Unexpected ingest stream: {line}");
 
-            if let Err(e) = manager.stop(Ingest).await {
-                error!(target: Target::file_mail(), channel = id; "{e}");
-            };
+            manager.stop(Ingest).await;
 
             break;
         } else if !is_running {
@@ -59,7 +57,7 @@ async fn server_monitor(
         {
             error!(target: Target::file_mail(), channel = id; "Hit unrecoverable error!");
             manager.channel.lock().await.active = false;
-            manager.stop_all(false).await?;
+            manager.stop_all(false).await;
         }
     }
 
@@ -116,9 +114,11 @@ pub async fn ingest_server(
 
     if let Some(url) = stream_input.iter().find(|s| s.contains("://")) {
         for num in 0..5 {
-            if is_free_tcp_port(id, url) {
+            if is_free_tcp_port(url) {
                 break;
             }
+
+            error!(target: Target::file_mail(), channel = id; "Address <b><magenta>{url}</></b> already in use!");
 
             if num >= 4 {
                 manager.channel.lock().await.active = false;
@@ -140,9 +140,9 @@ pub async fn ingest_server(
         let ignore = config.logging.ignore_lines.clone();
         let mut server_proc = Command::new("ffmpeg")
             .args(server_cmd.clone())
+            .kill_on_drop(true)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .kill_on_drop(true)
             .spawn()?;
         let ingest_stdout = server_proc.stdout.take().unwrap();
         let server_err = BufReader::new(server_proc.stderr.take().unwrap());
@@ -153,7 +153,7 @@ pub async fn ingest_server(
         server_monitor(id, level, ignore, server_err, proc_ctl).await?;
         ingest_is_alive.store(false, Ordering::SeqCst);
 
-        manager.wait(Ingest).await?;
+        manager.wait(Ingest).await;
 
         trace!("Restart ingest server");
     }

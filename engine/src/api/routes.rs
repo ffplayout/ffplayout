@@ -970,13 +970,13 @@ pub async fn process_control(
         }
         ProcessCtl::Stop => {
             manager.channel.lock().await.active = false;
-            manager.stop_all(true).await?;
+            manager.stop_all(true).await;
         }
         ProcessCtl::Restart => {
             manager.channel.lock().await.active = false;
-            manager.stop_all(false).await?;
+            manager.stop_all(false).await;
 
-            tokio::time::sleep(tokio::time::Duration::from_millis(1500)).await;
+            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
             manager.channel.lock().await.active = true;
             manager.start().await?;

@@ -95,6 +95,7 @@ async fn check_media(
 
     let mut enc_proc = Command::new("ffmpeg")
         .args(dec_cmd)
+        .kill_on_drop(true)
         .stderr(Stdio::piped())
         .spawn()?;
 

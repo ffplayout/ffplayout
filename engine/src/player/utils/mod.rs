@@ -935,6 +935,7 @@ async fn ffmpeg_filter_and_libs(config: &mut PlayoutConfig) -> Result<(), String
 
     let mut ff_proc = match Command::new("ffmpeg")
         .args(["-filters"])
+        .kill_on_drop(true)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -1056,7 +1057,7 @@ pub fn gen_tcp_socket(exclude_socket: String) -> Option<String> {
 }
 
 /// check if tcp port is free
-pub fn is_free_tcp_port(id: i32, url: &str) -> bool {
+pub fn is_free_tcp_port(url: &str) -> bool {
     let re = Regex::new(r"^[\w]+://([^/]+)").unwrap();
     let mut addr = url.to_string();
 
@@ -1074,8 +1075,6 @@ pub fn is_free_tcp_port(id: i32, url: &str) -> bool {
             return true;
         }
     };
-
-    error!(target: Target::file_mail(), channel = id; "Address <b><magenta>{addr}</></b> already in use!");
 
     false
 }

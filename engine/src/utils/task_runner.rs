@@ -11,7 +11,7 @@ pub async fn run(manager: ChannelManager) {
     let obj = serde_json::to_string(&get_data_map(&manager).await).unwrap();
     trace!("Run task: {obj}");
 
-    match Command::new(task_path).arg(obj).spawn() {
+    match Command::new(task_path).arg(obj).kill_on_drop(true).spawn() {
         Ok(mut c) => {
             let status = c
                 .wait()

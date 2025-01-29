@@ -128,6 +128,7 @@ async fn play(
         // create ffmpeg decoder instance, for reading the input files
         let mut dec_proc = Command::new("ffmpeg")
             .args(dec_cmd)
+            .kill_on_drop(true)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()?;
@@ -146,7 +147,7 @@ async fn play(
                     info!(target: Target::file_mail(), channel = id; "Switch from {} to live ingest", config.processing.mode);
                     playlist_init.store(true, Ordering::SeqCst);
 
-                    manager.stop(Decoder).await?;
+                    manager.stop(Decoder).await;
                     live_on = true;
                 }
 
@@ -181,7 +182,7 @@ async fn play(
 
         drop(decoder_stdout);
 
-        manager.wait(Decoder).await?;
+        manager.wait(Decoder).await;
         error_decoder_task.await??;
     }
 
@@ -206,7 +207,7 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
 
     if config.output.mode == HLS {
         hls::writer(&manager, &ff_log_format).await?;
-        manager.stop_all(false).await?;
+        manager.stop_all(false).await;
 
         return Ok(());
     }

@@ -57,6 +57,7 @@ use ProcessUnit::*;
 
 #[derive(Clone, Debug)]
 pub struct ChannelManager {
+    pub id: i32,
     pub db_pool: Pool<Sqlite>,
     pub config: Arc<Mutex<PlayoutConfig>>,
     pub channel: Arc<Mutex<Channel>>,
@@ -97,6 +98,7 @@ impl ChannelManager {
         )));
 
         Self {
+            id: channel.id,
             db_pool,
             is_alive: Arc::new(AtomicBool::new(false)),
             channel: Arc::new(Mutex::new(channel)),
@@ -172,8 +174,9 @@ impl ChannelManager {
                 let timer = Instant::now();
 
                 if let Err(e) = run_channel(self_clone.clone()).await {
-                    if let Err(e) = self_clone.stop_all(false).await {
-                        error!(target: Target::all(), channel = channel_id; "Failed to stop channel <yellow>{channel_id}</>: {e}");
+                    self_clone.stop_all(false).await;
+
+                    if !self_clone.channel.lock().await.active {
                         break;
                     }
 
@@ -185,11 +188,8 @@ impl ChannelManager {
                         retry_delay = Duration::from_secs(1);
                     }
 
-                    let retry_msg = if self_clone.channel.lock().await.active {
-                        format!("Retry in <yellow>{}</> seconds", retry_delay.as_secs())
-                    } else {
-                        "Stop playout!".to_string()
-                    };
+                    let retry_msg =
+                        format!("Retry in <yellow>{}</> seconds", retry_delay.as_secs());
 
                     error!(target: Target::all(), channel = channel_id; "Run channel <yellow>{channel_id}</> failed: {e} | {retry_msg}");
 
@@ -236,41 +236,29 @@ impl ChannelManager {
         Ok(())
     }
 
-    pub async fn stop(&self, unit: ProcessUnit) -> Result<(), ServiceError> {
+    pub async fn stop(&self, unit: ProcessUnit) {
         self.storage.lock().await.stop_watch().await;
 
-        match unit {
-            Decoder => {
-                if let Some(proc) = self.decoder.lock().await.as_mut() {
-                    proc.kill()
-                        .await
-                        .map_err(|e| ServiceError::Conflict(format!("Decoder: {e}")))?;
-                }
-            }
-            Encoder => {
-                if let Some(proc) = self.encoder.lock().await.as_mut() {
-                    proc.kill()
-                        .await
-                        .map_err(|e| ServiceError::Conflict(format!("Encoder: {e}")))?;
-                }
-            }
-            Ingest => {
-                if let Some(proc) = self.ingest.lock().await.as_mut() {
-                    proc.kill()
-                        .await
-                        .map_err(|e| ServiceError::Conflict(format!("Ingest: {e}")))?;
+        let child = match unit {
+            Decoder => &self.decoder,
+            Encoder => &self.encoder,
+            Ingest => &self.ingest,
+        };
+
+        if let Some(p) = child.lock().await.as_mut() {
+            if let Err(e) = p.kill().await {
+                if !e.to_string().contains("exited process") {
+                    error!("Failed to kill {unit} process: {e}");
                 }
             }
         }
 
-        self.wait(unit).await?;
-
-        Ok(())
+        self.wait(unit).await;
     }
 
     /// Wait for process to proper close.
     /// This prevents orphaned/zombi processes in system
-    pub async fn wait(&self, unit: ProcessUnit) -> Result<(), ServiceError> {
+    pub async fn wait(&self, unit: ProcessUnit) {
         let child = match unit {
             Decoder => &self.decoder,
             Encoder => &self.encoder,
@@ -281,7 +269,9 @@ impl ChannelManager {
             let mut counter = 0;
             loop {
                 match proc.try_wait() {
-                    Ok(Some(_)) => break,
+                    Ok(Some(_)) => {
+                        break;
+                    }
                     Ok(None) => {
                         if counter > 300 {
                             break;
@@ -290,18 +280,22 @@ impl ChannelManager {
 
                         counter += 1;
                     }
-                    Err(e) => return Err(ServiceError::Conflict(format!("{unit}: {e}"))),
+                    Err(e) => {
+                        if !e.to_string().contains("exited process") {
+                            error!(target: Target::all(), channel = self.id; "{unit}: {e}");
+                        }
+                    }
                 }
             }
         }
 
-        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+        *child.lock().await = None;
 
-        Ok(())
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
     }
 
     /// No matter what is running, terminate them all.
-    pub async fn stop_all(&self, permanent: bool) -> Result<(), ServiceError> {
+    pub async fn stop_all(&self, permanent: bool) {
         let channel_id = self.channel.lock().await.id;
 
         if permanent {
@@ -320,14 +314,8 @@ impl ChannelManager {
         self.ingest_is_alive.store(false, Ordering::SeqCst);
 
         for unit in [Decoder, Encoder, Ingest] {
-            if let Err(e) = self.stop(unit).await {
-                if !e.to_string().contains("exited process") {
-                    error!(target: Target::all(), channel = channel_id; "{e}");
-                }
-            }
+            self.stop(unit).await;
         }
-
-        Ok(())
     }
 }
 
