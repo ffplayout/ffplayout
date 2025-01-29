@@ -7,7 +7,7 @@ use actix_multipart::Multipart;
 use futures_util::TryStreamExt as _;
 use lexical_sort::{natural_lexical_cmp, PathSort};
 use log::*;
-use rand::{distributions::Alphanumeric, Rng};
+use rand::{distr::Alphanumeric, Rng};
 use tokio::{fs, io::AsyncWriteExt, sync::Mutex, task::JoinHandle};
 
 use crate::file::{norm_abs_path, watcher::watch, MoveObject, PathObject, Storage, VideoFile};
@@ -229,7 +229,7 @@ impl Storage for LocalStorage {
         while let Some(mut field) = data.try_next().await? {
             let content_disposition = field.content_disposition().ok_or("No content")?;
             debug!("{content_disposition}");
-            let rand_string: String = rand::thread_rng()
+            let rand_string: String = rand::rng()
                 .sample_iter(&Alphanumeric)
                 .take(20)
                 .map(char::from)

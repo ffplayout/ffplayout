@@ -1045,7 +1045,7 @@ pub async fn validate_ffmpeg(config: &mut PlayoutConfig) -> Result<(), String> {
 /// get a free tcp socket
 pub fn gen_tcp_socket(exclude_socket: String) -> Option<String> {
     for _ in 0..100 {
-        let port = rand::thread_rng().gen_range(45321..54268);
+        let port = rand::rng().random_range(45321..54268);
         let socket = format!("127.0.0.1:{port}");
 
         if socket != exclude_socket && TcpListener::bind(("127.0.0.1", port)).is_ok() {

@@ -10,7 +10,7 @@ use async_walkdir::WalkDir;
 use chrono::Timelike;
 use lexical_sort::{natural_lexical_cmp, StringSort};
 use log::*;
-use rand::{seq::SliceRandom, thread_rng, Rng};
+use rand::{rng, seq::SliceRandom, Rng};
 use tokio::fs;
 use tokio_stream::StreamExt;
 
@@ -36,7 +36,7 @@ pub fn random_list(clip_list: Vec<Media>, total_length: f64) -> Vec<Media> {
     let mut last_clip = Media::default();
 
     while target_duration < total_length && max_attempts > 0 {
-        let index = rand::thread_rng().gen_range(0..clip_list_length);
+        let index = rand::rng().random_range(0..clip_list_length);
         let selected_clip = clip_list[index].clone();
         let selected_clip_count = randomized_clip_list
             .iter()
@@ -126,7 +126,7 @@ pub async fn generate_from_template(
     template: Template,
 ) -> FolderSource {
     let mut media_list = vec![];
-    let mut rng = thread_rng();
+    let mut rng = rng();
     let mut index: usize = 0;
     let id = config.general.channel_id;
 

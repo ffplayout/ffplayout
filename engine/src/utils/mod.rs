@@ -256,7 +256,7 @@ where
 /// get a free tcp socket
 pub async fn gen_tcp_socket(exclude_socket: &str) -> Option<String> {
     for _ in 0..100 {
-        let port = rand::thread_rng().gen_range(45321..54268);
+        let port = rand::rng().random_range(45321..54268);
         let socket = format!("127.0.0.1:{port}");
 
         if socket != exclude_socket && TcpListener::bind(("127.0.0.1", port)).await.is_ok() {

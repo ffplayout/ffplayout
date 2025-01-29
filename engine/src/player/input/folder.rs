@@ -65,7 +65,7 @@ impl FolderSource {
 
         if config.storage.shuffle {
             info!(target: Target::file_mail(), channel = id; "Shuffle files");
-            let mut rng = StdRng::from_entropy();
+            let mut rng = StdRng::from_os_rng();
             media_list.shuffle(&mut rng);
         } else {
             media_list.sort_by(|d1, d2| d1.source.cmp(&d2.source));
@@ -95,7 +95,7 @@ impl FolderSource {
     }
 
     async fn shuffle(&mut self) {
-        let mut rng = StdRng::from_entropy();
+        let mut rng = StdRng::from_os_rng();
         let mut nodes = self.manager.current_list.lock().await;
 
         nodes.shuffle(&mut rng);
@@ -193,7 +193,7 @@ pub async fn fill_filler_list(
         }
 
         if config.storage.shuffle {
-            let mut rng = StdRng::from_entropy();
+            let mut rng = StdRng::from_os_rng();
 
             filler_list.shuffle(&mut rng);
         } else {
