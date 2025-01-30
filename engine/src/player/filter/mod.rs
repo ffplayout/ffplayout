@@ -9,7 +9,7 @@ pub mod v_drawtext;
 
 use crate::player::{
     controller::ProcessUnit::*,
-    utils::{custom_format, fps_calc, fraction, is_close, Media},
+    utils::{calc_aspect, custom_format, fps_calc, fraction, is_close, Media},
 };
 use crate::utils::{
     config::{OutputMode::*, PlayoutConfig},
@@ -347,54 +347,6 @@ fn scale(config: &PlayoutConfig, chain: &mut Filters, width: Option<i64>, height
     } else {
         chain.add_filter("null", 0, Video);
     }
-
-    // width: i64, height: i64
-    // if let (Some(w), Some(h)) = (width, height) {
-    //     if w != config.processing.width || h != config.processing.height {
-    //         let scale = match config.advanced.filter.scale.clone() {
-    //             Some(scale) => custom_format(
-    //                 &scale,
-    //                 &[&config.processing.width, &config.processing.height],
-    //             ),
-    //             None => format!(
-    //                 "scale={}:{}",
-    //                 config.processing.width, config.processing.height
-    //             ),
-    //         };
-
-    //         chain.add_filter(&scale, 0, Video);
-    //     } else {
-    //         chain.add_filter("null", 0, Video);
-    //     }
-
-    //     if !is_close(aspect, config.processing.aspect, 0.03) {
-    //         let dar = match config.advanced.filter.set_dar.clone() {
-    //             Some(set_dar) => custom_format(&set_dar, &[&config.processing.aspect]),
-    //             None => format!("setdar=dar={}", config.processing.aspect),
-    //         };
-
-    //         chain.add_filter(&dar, 0, Video);
-    //     }
-    // } else {
-    //     let scale = match config.advanced.filter.scale.clone() {
-    //         Some(scale) => custom_format(
-    //             &scale,
-    //             &[&config.processing.width, &config.processing.height],
-    //         ),
-    //         None => format!(
-    //             "scale={}:{}",
-    //             config.processing.width, config.processing.height
-    //         ),
-    //     };
-    //     chain.add_filter(&scale, 0, Video);
-
-    //     let dar = match config.advanced.filter.set_dar.clone() {
-    //         Some(set_dar) => custom_format(&set_dar, &[&config.processing.aspect]),
-    //         None => format!("setdar=dar={}", config.processing.aspect),
-    //     };
-
-    //     chain.add_filter(&dar, 0, Video);
-    // }
 }
 
 fn setdar(config: &PlayoutConfig, chain: &mut Filters, aspect: f64) {
@@ -598,19 +550,6 @@ fn audio_volume(config: &PlayoutConfig, chain: &mut Filters, nr: i32) {
     }
 }
 
-fn aspect_calc(config: &PlayoutConfig, aspect_string: &Option<String>) -> f64 {
-    let mut source_aspect = config.processing.aspect;
-
-    if let Some(aspect) = aspect_string {
-        let aspect_vec: Vec<&str> = aspect.split(':').collect();
-        let w = aspect_vec[0].parse::<f64>().unwrap();
-        let h = aspect_vec[1].parse::<f64>().unwrap();
-        source_aspect = w / h;
-    }
-
-    source_aspect
-}
-
 pub fn split_filter(config: &PlayoutConfig, chain: &mut Filters, nr: i32, filter_type: FilterType) {
     let count = config.output.output_count;
 
@@ -712,7 +651,7 @@ pub async fn filter_chains(
             }
 
             if let Some(v_stream) = &probe.video.first() {
-                let aspect = aspect_calc(config, &v_stream.aspect_ratio);
+                let aspect = calc_aspect(config, &v_stream.aspect_ratio);
                 let frame_per_sec = fps_calc(&v_stream.frame_rate, 1.0);
 
                 deinterlace(config, &mut filters, &v_stream.field_order);
