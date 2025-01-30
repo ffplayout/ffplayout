@@ -564,6 +564,42 @@ async fn update_advanced_config(
     Ok(web::Json("Update success"))
 }
 
+/// **Add Advanced Config**
+///
+/// ```BASH
+/// curl -X POST http://127.0.0.1:8787/api/playout/advanced/1 -H "Content-Type: application/json" \
+/// -d { <CONFIG DATA> } -H 'Authorization: Bearer <TOKEN>'
+/// ```
+#[post("/playout/advanced/{id}/")]
+#[protect(
+    "Role::GlobalAdmin",
+    "Role::ChannelAdmin",
+    ty = "Role",
+    expr = "user.channels.contains(&*id) || role.has_authority(&Role::GlobalAdmin)"
+)]
+async fn add_advanced_config(
+    pool: web::Data<Pool<Sqlite>>,
+    id: web::Path<i32>,
+    data: web::Json<AdvancedConfig>,
+    controllers: web::Data<Mutex<ChannelController>>,
+    role: AuthDetails<Role>,
+    user: web::ReqData<UserMeta>,
+) -> Result<impl Responder, ServiceError> {
+    let manager = controllers
+        .lock()
+        .await
+        .get(*id)
+        .await
+        .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
+
+    handles::insert_advanced_configuration(&pool, *id, data.into_inner()).await?;
+    let new_config = get_config(&pool, *id).await?;
+
+    manager.update_config(new_config).await;
+
+    Ok(web::Json("Update success"))
+}
+
 /// **Get Config**
 ///
 /// ```BASH

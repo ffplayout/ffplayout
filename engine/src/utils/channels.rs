@@ -36,7 +36,6 @@ pub async fn create_channel(
 
     handles::new_channel_presets(conn, channel.id).await?;
     handles::update_channel(conn, channel.id, channel.clone()).await?;
-    handles::insert_advanced_configuration(conn, channel.id).await?;
     handles::insert_configuration(conn, channel.id, OUTPUT_PARM).await?;
 
     let config = get_config(conn, channel.id).await?;

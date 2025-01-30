@@ -1163,3 +1163,31 @@ pub fn custom_format<T: fmt::Display>(template: &str, args: &[T]) -> String {
 
     filled_template
 }
+
+fn gcd(a: u32, b: u32) -> u32 {
+    if b == 0 {
+        a
+    } else {
+        gcd(b, a % b)
+    }
+}
+
+pub fn fraction(d: f64, max_denominator: u32) -> (u32, u32) {
+    let mut best_numerator = 1;
+    let mut best_denominator = 1;
+    let mut min_error = f64::MAX;
+
+    for denominator in 1..=max_denominator {
+        let numerator = (d * denominator as f64).round() as u32;
+        let error = (d - (numerator as f64 / denominator as f64)).abs();
+
+        if error < min_error {
+            best_numerator = numerator;
+            best_denominator = denominator;
+            min_error = error;
+        }
+    }
+
+    let divisor = gcd(best_numerator, best_denominator);
+    (best_numerator / divisor, best_denominator / divisor)
+}

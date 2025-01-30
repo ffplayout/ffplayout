@@ -7,6 +7,17 @@
             class="mt-10 grid md:grid-cols-[180px_auto] gap-5"
             @submit.prevent="onSubmitAdvanced"
         >
+            <div class="text-xl pt-3 md:text-right">Name:</div>
+            <div>
+                <label class="form-control w-full mt-4">
+                    <input
+                        v-model="configStore.advanced.name"
+                        type="text"
+                        name="input_param"
+                        class="input input-sm input-bordered w-full max-w-64"
+                    />
+                </label>
+            </div>
             <div class="text-xl pt-3 md:text-right">{{ t('advanced.decoder') }}:</div>
             <div class="md:pt-4">
                 <label class="form-control mb-2">
@@ -96,38 +107,6 @@
                 </label>
                 <label class="form-control w-full mt-2">
                     <div class="label">
-                        <span class="label-text !text-md font-bold">Pad Scaling Width</span>
-                    </div>
-                    <input
-                        v-model="configStore.advanced.filter.pad_scale_w"
-                        type="text"
-                        name="pad_scale_w"
-                        class="input input-sm input-bordered w-full"
-                    />
-                    <div class="label">
-                        <span class="text-sm text-base-content/80">
-                            Default: <span class="select-text cursor-text">scale={}:-1 </span></span
-                        >
-                    </div>
-                </label>
-                <label class="form-control w-full mt-2">
-                    <div class="label">
-                        <span class="label-text !text-md font-bold">Pad Scaling Height</span>
-                    </div>
-                    <input
-                        v-model="configStore.advanced.filter.pad_scale_h"
-                        type="text"
-                        name="pad_scale_h"
-                        class="input input-sm input-bordered w-full"
-                    />
-                    <div class="label">
-                        <span class="text-sm text-base-content/80">
-                            Default: <span class="select-text cursor-text">scale=-1:{} </span></span
-                        >
-                    </div>
-                </label>
-                <label class="form-control w-full mt-2">
-                    <div class="label">
                         <span class="label-text !text-md font-bold">Pad Video</span>
                     </div>
                     <input
@@ -139,9 +118,9 @@
                     <div class="label">
                         <span class="text-sm text-base-content/80">
                             Default:
-                            <span class="select-text cursor-text"
-                                >pad=max(iw\\,ih*({0}/{1})):ow/({0}/{1}):(ow-iw)/2:(oh-ih)/2</span
-                            >
+                            <span class="select-text cursor-text">
+                                pad='ih*{}/{}:ih:(ow-iw)/2:(oh-ih)/2'
+                            </span>
                         </span>
                     </div>
                 </label>
@@ -237,8 +216,11 @@
                     />
                     <div class="label">
                         <span class="text-sm text-base-content/80">
-                            Default: <span class="select-text cursor-text">null[v];movie={}:loop=0,setpts=N/(FRAME_RATE*TB),format=rgba,colorchannelmixer=aa={}</span></span
-                        >
+                            Default:
+                            <span class="select-text cursor-text">
+                                movie={}:loop=0,setpts=N/(FRAME_RATE*TB),format=rgba,colorchannelmixer=aa={}
+                            </span>
+                        </span>
                     </div>
                 </label>
                 <label class="form-control w-full mt-2">
@@ -301,7 +283,7 @@
                     />
                     <div class="label">
                         <span class="text-sm text-base-content/80">
-                            Default: <span class="select-text cursor-text">null[l];[v][l]overlay={}:shortest=1</span>
+                            Default: <span class="select-text cursor-text">overlay={}:shortest=1</span>
                         </span>
                     </div>
                 </label>
@@ -382,8 +364,8 @@
                     />
                     <div class="label">
                         <span class="text-sm text-base-content/80">
-                            Default: <span class="select-text cursor-text">afade=in:st=0:d=0.5 </span></span
-                        >
+                            Default: <span class="select-text cursor-text">afade=in:st=0:d=0.5 </span>
+                        </span>
                     </div>
                 </label>
                 <label class="form-control w-full mt-2">
@@ -398,8 +380,8 @@
                     />
                     <div class="label">
                         <span class="text-sm text-base-content/80">
-                            Default: <span class="select-text cursor-text">afade=out:st={}:d=1.0 </span></span
-                        >
+                            Default: <span class="select-text cursor-text">afade=out:st={}:d=1.0 </span>
+                        </span>
                     </div>
                 </label>
                 <label class="form-control w-full mt-2">
@@ -414,8 +396,8 @@
                     />
                     <div class="label">
                         <span class="text-sm text-base-content/80">
-                            Default: <span class="select-text cursor-text">apad=whole_dur={} </span></span
-                        >
+                            Default: <span class="select-text cursor-text">apad=whole_dur={} </span>
+                        </span>
                     </div>
                 </label>
                 <label class="form-control w-full mt-2">
@@ -430,8 +412,8 @@
                     />
                     <div class="label">
                         <span class="text-sm text-base-content/80">
-                            Default: <span class="select-text cursor-text">volume={} </span></span
-                        >
+                            Default: <span class="select-text cursor-text">volume={} </span>
+                        </span>
                     </div>
                 </label>
                 <label class="form-control w-full mt-2">
@@ -446,8 +428,8 @@
                     />
                     <div class="label">
                         <span class="text-sm text-base-content/80">
-                            Default: <span class="select-text cursor-text">split={}{} </span></span
-                        >
+                            Default: <span class="select-text cursor-text">split={}{} </span>
+                        </span>
                     </div>
                 </label>
             </div>
