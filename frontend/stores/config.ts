@@ -157,13 +157,23 @@ export const useConfig = defineStore('config', {
             const authStore = useAuth()
             const channel = this.channels[this.i].id
 
-            const update = await fetch(`/api/playout/advanced/${channel}`, {
-                method: 'PUT',
-                headers: { ...this.contentType, ...authStore.authHeader },
-                body: JSON.stringify(this.advanced),
-            })
+            if (this.advanced?.id > 0) {
+                const update = await fetch(`/api/playout/advanced/${channel}`, {
+                    method: 'PUT',
+                    headers: { ...this.contentType, ...authStore.authHeader },
+                    body: JSON.stringify(this.advanced),
+                })
 
-            return update
+                return update
+            } else {
+                const update = await fetch(`/api/playout/advanced/${channel}/`, {
+                    method: 'POST',
+                    headers: { ...this.contentType, ...authStore.authHeader },
+                    body: JSON.stringify(this.advanced),
+                })
+
+                return update
+            }
         },
 
         async getUserConfig() {
@@ -226,6 +236,6 @@ export const useConfig = defineStore('config', {
             }
 
             this.showRestartModal = false
-        }
+        },
     },
 })

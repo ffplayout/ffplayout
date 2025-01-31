@@ -6,7 +6,10 @@ use tokio::sync::Mutex;
 
 use crate::db::{handles, models::Channel};
 use crate::player::controller::{ChannelController, ChannelManager};
-use crate::utils::{config::get_config, copy_assets, errors::ServiceError, mail::MailQueue};
+use crate::utils::{
+    advanced_config::AdvancedConfig, config::get_config, copy_assets, errors::ServiceError,
+    mail::MailQueue,
+};
 
 async fn map_global_admins(conn: &Pool<Sqlite>) -> Result<(), ServiceError> {
     let channels = handles::select_related_channels(conn, None).await?;
@@ -36,6 +39,15 @@ pub async fn create_channel(
 
     handles::new_channel_presets(conn, channel.id).await?;
     handles::update_channel(conn, channel.id, channel.clone()).await?;
+    handles::insert_advanced_configuration(
+        conn,
+        channel.id,
+        AdvancedConfig {
+            name: Some("None".to_string()),
+            ..Default::default()
+        },
+    )
+    .await?;
     handles::insert_configuration(conn, channel.id, OUTPUT_PARM).await?;
 
     let config = get_config(conn, channel.id).await?;

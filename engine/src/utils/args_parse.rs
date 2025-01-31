@@ -393,9 +393,8 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), ProcessError> {
     if ARGS.dump_advanced {
         if let Some(channel) = &ARGS.channel {
             for id in channel {
-                match AdvancedConfig::dump(pool, *id).await {
-                    Ok(_) => println!("Dump config to: advanced_{id}.toml"),
-                    Err(e) => return Err(ProcessError::Custom(format!("Dump config: {e}"))),
+                if let Err(e) = AdvancedConfig::dump(pool, *id).await {
+                    return Err(ProcessError::Custom(format!("Dump config: {e}")));
                 };
             }
         } else {

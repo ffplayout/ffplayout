@@ -131,6 +131,8 @@ async fn main() -> Result<(), ProcessError> {
                         .service(remove_user)
                         .service(add_advanced_config)
                         .service(get_advanced_config)
+                        .service(get_related_advanced_config)
+                        .service(remove_related_advanced_config)
                         .service(update_advanced_config)
                         .service(get_playout_config)
                         .service(update_playout_config)

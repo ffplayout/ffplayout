@@ -241,11 +241,9 @@ impl AdvancedConfig {
                     if let Some(item) = filter.get_mut(*key).and_then(|o| o.as_value_mut()) {
                         match *key {
                             "deinterlace" => item.decor_mut().set_suffix(" # yadif=0:-1:0"),
-                            "pad_scale_w" => item.decor_mut().set_suffix(" # scale={}:-1"),
-                            "pad_scale_h" => item.decor_mut().set_suffix(" # scale=-1:{}"),
-                            "pad_video" => item.decor_mut().set_suffix(
-                                " # pad=max(iw\\,ih*({0}/{1})):ow/({0}/{1}):(ow-iw)/2:(oh-ih)/2",
-                            ),
+                            "pad_video" => item
+                                .decor_mut()
+                                .set_suffix(" # pad='ih*{}/{}:ih:(ow-iw)/2:(oh-ih)/2'"),
                             "fps" => item.decor_mut().set_suffix(" # fps={}"),
                             "scale" => item.decor_mut().set_suffix(" # scale={}:{}"),
                             "set_dar" => item.decor_mut().set_suffix(" # setdar=dar={}"),
@@ -258,9 +256,9 @@ impl AdvancedConfig {
                             "overlay_logo_fade_out" => item
                                 .decor_mut()
                                 .set_suffix(" # fade=out:st={}:d=1.0:alpha=1"),
-                            "overlay_logo" => item
-                                .decor_mut()
-                                .set_suffix(" # null[l];[v][l]overlay={}:shortest=1"),
+                            "overlay_logo" => {
+                                item.decor_mut().set_suffix(" # overlay={}:shortest=1");
+                            }
                             "tpad" => item
                                 .decor_mut()
                                 .set_suffix(" # tpad=stop_mode=add:stop_duration={}"),
@@ -289,6 +287,8 @@ impl AdvancedConfig {
                 doc.to_string(),
             )
             .await?;
+
+            println!("Dump advanced config to: advanced_{id}_{}.toml", config.id);
         }
 
         Ok(())
@@ -308,5 +308,29 @@ impl AdvancedConfig {
         }
 
         Ok(())
+    }
+
+    pub fn is_empty_filter(&self) -> bool {
+        self.filter.aevalsrc.is_none()
+            && self.filter.afade_in.is_none()
+            && self.filter.afade_out.is_none()
+            && self.filter.apad.is_none()
+            && self.filter.deinterlace.is_none()
+            && self.filter.drawtext_from_file.is_none()
+            && self.filter.drawtext_from_zmq.is_none()
+            && self.filter.fade_in.is_none()
+            && self.filter.fade_out.is_none()
+            && self.filter.fps.is_none()
+            && self.filter.logo.is_none()
+            && self.filter.overlay_logo.is_none()
+            && self.filter.overlay_logo_fade_in.is_none()
+            && self.filter.overlay_logo_fade_out.is_none()
+            && self.filter.overlay_logo_scale.is_none()
+            && self.filter.pad_video.is_none()
+            && self.filter.scale.is_none()
+            && self.filter.set_dar.is_none()
+            && self.filter.split.is_none()
+            && self.filter.tpad.is_none()
+            && self.filter.volume.is_none()
     }
 }

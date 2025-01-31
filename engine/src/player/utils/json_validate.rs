@@ -86,7 +86,7 @@ async fn check_media(
             .to_string();
     }
 
-    filter.add_filter("silencedetect=n=-30dB", 0, Audio);
+    filter.add("silencedetect=n=-30dB", 0, Audio);
 
     dec_cmd.append(&mut node.cmd.unwrap_or_default());
     dec_cmd.append(&mut filter.cmd());

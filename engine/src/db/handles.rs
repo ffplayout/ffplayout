@@ -39,6 +39,16 @@ pub async fn db_migrate(conn: &Pool<Sqlite>) -> Result<(), ProcessError> {
             .bind(shared)
             .execute(conn)
             .await?;
+
+        insert_advanced_configuration(
+            conn,
+            1,
+            AdvancedConfig {
+                name: Some("None".to_string()),
+                ..Default::default()
+            },
+        )
+        .await?;
     }
 
     Ok(())
@@ -325,9 +335,9 @@ pub async fn insert_advanced_configuration(
             filter_overlay_logo_fade_out, filter_overlay_logo, filter_tpad, filter_drawtext_from_file,
             filter_drawtext_from_zmq, filter_aevalsrc, filter_afade_in, filter_afade_out, filter_apad,
             filter_volume, filter_split, name)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27) RETURNING id";
+            VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27) RETURNING id";
 
-    const QUERY_UPDATE: &str = "UPDATE channels SET advanced_id = $1 WHERE id = $2)";
+    const QUERY_UPDATE: &str = "UPDATE channels SET advanced_id = $2 WHERE id = $1";
 
     let advanced_id: i32 = sqlx::query(QUERY_INSERT)
         .bind(channel_id)
@@ -362,8 +372,8 @@ pub async fn insert_advanced_configuration(
         .get("id");
 
     sqlx::query(QUERY_UPDATE)
-        .bind(advanced_id)
         .bind(channel_id)
+        .bind(advanced_id)
         .execute(conn)
         .await?;
 
@@ -381,8 +391,8 @@ pub async fn update_advanced_configuration(
         filter_overlay_logo_scale = $14, filter_overlay_logo_fade_in = $15, filter_overlay_logo_fade_out = $16,
         filter_overlay_logo = $17, filter_tpad = $18, filter_drawtext_from_file = $19, filter_drawtext_from_zmq = $20,
         filter_aevalsrc = $21, filter_afade_in = $22, filter_afade_out = $23, filter_apad = $24, filter_volume = $25, filter_split = $26, name = $27
-        WHERE channel_id = $1";
-    const QUERY_CHL: &str = "UPDATE channels set advanced_id = $2 WHERE id = $1";
+        WHERE id = $1";
+    const QUERY_CHL: &str = "UPDATE channels set advanced_id = $2 WHERE id = $1;";
 
     sqlx::query(QUERY_ADV)
         .bind(config.id)
@@ -448,9 +458,20 @@ pub async fn select_related_advanced_configuration(
     conn: &Pool<Sqlite>,
     channel: i32,
 ) -> Result<Vec<AdvancedConfiguration>, ProcessError> {
-    const QUERY: &str = "SELECT * FROM advanced_configurations WHERE channel_id = $1";
+    const QUERY: &str = "SELECT * FROM advanced_configurations WHERE channel_id = $1;";
 
     let result = sqlx::query_as(QUERY).bind(channel).fetch_all(conn).await?;
+
+    Ok(result)
+}
+
+pub async fn delete_advanced_configuration(
+    conn: &Pool<Sqlite>,
+    id: i32,
+) -> Result<SqliteQueryResult, ProcessError> {
+    const QUERY: &str = "DELETE FROM advanced_configurations WHERE id = $1;";
+
+    let result = sqlx::query(QUERY).bind(id).execute(conn).await?;
 
     Ok(result)
 }

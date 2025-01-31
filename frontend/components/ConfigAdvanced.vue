@@ -2,6 +2,34 @@
     <div class="max-w-[1200px] xs:pe-8">
         <h2 class="pt-3 text-3xl">{{ t('advanced.title') }}</h2>
         <p class="mt-5 font-bold text-orange-500">{{ t('advanced.warning') }}</p>
+        <div>
+            <label class="form-control w-full max-w-xs mt-2">
+                <div class="label">
+                    <span class="label-text !text-md font-bold">Preset</span>
+                </div>
+                <div class="flex-none join">
+                    <select v-model="configStore.advanced" class="join-item select select-sm select-bordered w-full">
+                        <option v-for="config in relatedConfigs" :key="config.id" :value="config">
+                            {{ config.name }}
+                        </option>
+                    </select>
+                    <button
+                        class="join-item btn btn-sm btn-primary select-bordered"
+                        title="Add preset"
+                        @click="addAdvancedConfig()"
+                    >
+                        <i class="bi-plus-lg" />
+                    </button>
+                    <button
+                        class="join-item btn btn-sm btn-primary select-bordered"
+                        title="Delete preset"
+                        @click="removeAdvancedConfig()"
+                    >
+                        <i class="bi-x-lg" />
+                    </button>
+                </div>
+            </label>
+        </div>
         <form
             v-if="configStore.advanced"
             class="mt-10 grid md:grid-cols-[180px_auto] gap-5"
@@ -51,7 +79,7 @@
                             Default:
                             <span class="select-text cursor-text">
                                 -c:v mpeg2video -g 1 -b:v 57600k -minrate 57600k -maxrate 57600k -bufsize 28800k
-                                -mpegts_flags initial_discontinuity
+                                -c:a s302m -strict -2 -sample_fmt s16 -ar 48000 -ac 2
                             </span>
                         </span>
                     </div>
@@ -118,9 +146,7 @@
                     <div class="label">
                         <span class="text-sm text-base-content/80">
                             Default:
-                            <span class="select-text cursor-text">
-                                pad='ih*{}/{}:ih:(ow-iw)/2:(oh-ih)/2'
-                            </span>
+                            <span class="select-text cursor-text"> pad='ih*{}/{}:ih:(ow-iw)/2:(oh-ih)/2' </span>
                         </span>
                     </div>
                 </label>
@@ -467,6 +493,9 @@
 </template>
 
 <script setup lang="ts">
+import { cloneDeep } from 'lodash-es'
+import type { AdvancedConfig } from '~/types/advanced_config'
+
 const { t } = useI18n()
 
 const authStore = useAuth()
@@ -474,17 +503,100 @@ const configStore = useConfig()
 const indexStore = useIndex()
 
 const showModal = ref(false)
+const relatedConfigs = ref<AdvancedConfig[]>([])
+
+const newConfig = {
+    id: 0,
+    name: null,
+    decoder: {
+        input_param: '',
+        output_param: '',
+    },
+    encoder: {
+        input_param: '',
+    },
+    filter: {
+        deinterlace: '',
+        pad_scale_w: '',
+        pad_scale_h: '',
+        pad_video: '',
+        fps: '',
+        scale: '',
+        set_dar: '',
+        fade_in: '',
+        fade_out: '',
+        logo: '',
+        overlay_logo_scale: '',
+        overlay_logo_fade_in: '',
+        overlay_logo_fade_out: '',
+        overlay_logo: '',
+        tpad: '',
+        drawtext_from_file: '',
+        drawtext_from_zmq: '',
+        aevalsrc: '',
+        afade_in: '',
+        afade_out: '',
+        apad: '',
+        volume: '',
+        split: '',
+    },
+    ingest: {
+        input_param: '',
+    },
+}
+
+onBeforeMount(async () => {
+    await fetchRelatedConfigs()
+})
+
+async function fetchRelatedConfigs() {
+    const id = configStore.channels[configStore.i].id
+
+    await $fetch(`/api/playout/advanced/${id}/`, {
+        method: 'GET',
+        headers: { ...configStore.contentType, ...authStore.authHeader },
+    })
+        .then((response: any) => {
+            relatedConfigs.value = response
+        })
+        .catch((e) => {
+            indexStore.msgAlert('error', e, 3)
+        })
+}
+
+function addAdvancedConfig() {
+    configStore.advanced = cloneDeep(newConfig)
+}
+
+async function removeAdvancedConfig() {
+    const id = configStore.channels[configStore.i].id
+
+    await $fetch(`/api/playout/advanced/${id}/${configStore.advanced.id}`, {
+        method: 'DELETE',
+        headers: { ...configStore.contentType, ...authStore.authHeader },
+    })
+        .then(() => {
+            relatedConfigs.value = relatedConfigs.value.filter(config => config.id !== configStore.advanced.id)
+            configStore.advanced = cloneDeep(newConfig)
+        })
+        .catch((e) => {
+            indexStore.msgAlert('error', e, 3)
+        })
+}
 
 async function onSubmitAdvanced() {
     const update = await configStore.setAdvancedConfig()
     configStore.onetimeInfo = true
 
     if (update.status === 200) {
+        if (!relatedConfigs.value.some(config => config.id === configStore.advanced.id)) {
+            relatedConfigs.value.push(cloneDeep(configStore.advanced))
+        }
         indexStore.msgAlert('success', t('advanced.updateSuccess'), 2)
 
-        const channel = configStore.channels[configStore.i].id
+        const id = configStore.channels[configStore.i].id
 
-        await $fetch(`/api/control/${channel}/process/`, {
+        await $fetch(`/api/control/${id}/process/`, {
             method: 'POST',
             headers: { ...configStore.contentType, ...authStore.authHeader },
             body: JSON.stringify({ command: 'status' }),
