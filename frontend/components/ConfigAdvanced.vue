@@ -78,8 +78,8 @@
                         <span class="text-sm text-base-content/80">
                             Default:
                             <span class="select-text cursor-text">
-                                -c:v mpeg2video -g 1 -b:v 57600k -minrate 57600k -maxrate 57600k -bufsize 28800k
-                                -c:a s302m -strict -2 -sample_fmt s16 -ar 48000 -ac 2
+                                -c:v mpeg2video -g 1 -b:v 57600k -minrate 57600k -maxrate 57600k -bufsize 28800k -c:a
+                                s302m -strict -2 -sample_fmt s16 -ar 48000 -ac 2
                             </span>
                         </span>
                     </div>
@@ -575,8 +575,8 @@ async function removeAdvancedConfig() {
         method: 'DELETE',
         headers: { ...configStore.contentType, ...authStore.authHeader },
     })
-        .then(() => {
-            relatedConfigs.value = relatedConfigs.value.filter(config => config.id !== configStore.advanced.id)
+        .then(async () => {
+            await fetchRelatedConfigs()
             configStore.advanced = cloneDeep(newConfig)
         })
         .catch((e) => {
@@ -589,12 +589,10 @@ async function onSubmitAdvanced() {
     configStore.onetimeInfo = true
 
     if (update.status === 200) {
-        if (!relatedConfigs.value.some(config => config.id === configStore.advanced.id)) {
-            relatedConfigs.value.push(cloneDeep(configStore.advanced))
-        }
+        const id = configStore.channels[configStore.i].id
         indexStore.msgAlert('success', t('advanced.updateSuccess'), 2)
 
-        const id = configStore.channels[configStore.i].id
+        await fetchRelatedConfigs()
 
         await $fetch(`/api/control/${id}/process/`, {
             method: 'POST',

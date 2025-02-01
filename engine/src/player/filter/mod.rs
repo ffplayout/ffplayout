@@ -41,8 +41,6 @@ pub struct Filters {
     hw_context: bool,
     a_chain: Vec<String>,
     v_chain: Vec<String>,
-    a_selectors: Vec<String>,
-    v_selectors: Vec<String>,
     pub audio_chain: String,
     pub video_chain: String,
     pub output_chain: Vec<String>,
@@ -71,8 +69,6 @@ impl Filters {
             hw_context: hw,
             a_chain: vec![],
             v_chain: vec![],
-            a_selectors: vec![],
-            v_selectors: vec![],
             audio_chain: String::new(),
             video_chain: String::new(),
             output_chain: vec![],
@@ -90,130 +86,139 @@ impl Filters {
     }
 
     pub fn add(&mut self, filter: &str, track_nr: i32, filter_type: FilterType) {
-        let (map, chain, selectors, position, last) = match filter_type {
+        let (map, chain, position, last) = match filter_type {
             Audio => (
                 &mut self.audio_map,
                 &mut self.a_chain,
-                &mut self.a_selectors,
                 self.audio_position,
                 &mut self.audio_last,
             ),
             Video => (
                 &mut self.video_map,
                 &mut self.v_chain,
-                &mut self.v_selectors,
                 self.video_position,
                 &mut self.video_last,
             ),
         };
 
-        if *last != track_nr {
-            selectors.push(format!("[{position}:{filter_type}:{track_nr}]"));
+        if *last == track_nr {
+            chain.push(filter.to_string());
+        } else {
+            // start new filter chain
+            let (selector, sep) = if chain.is_empty() {
+                (String::new(), String::new())
+            } else {
+                (format!("[{filter_type}out{last}]"), ";".to_string())
+            };
+            let mut chain_start = String::new();
+
+            chain_start.push_str(&selector);
+
+            if filter.starts_with("aevalsrc") || filter.starts_with("movie") {
+                chain_start.push_str(&sep);
+            } else {
+                // build audio/video selector like [0:a:0]
+                chain_start.push_str(&format!("{sep}[{position}:{filter_type}:{track_nr}]"));
+            }
+
+            if self.hw_context && !is_hw(filter) && filter_type == Video {
+                chain_start.push_str("hwdownload,format=nv12,");
+            }
+
+            chain_start.push_str(filter);
+
+            chain.push(chain_start);
 
             *last = track_nr;
             let m = format!("[{filter_type}out{track_nr}]");
             map.push(m.clone());
             self.output_map.append(&mut vec_strings!["-map", m]);
         }
-
-        chain.push(filter.to_string());
     }
 
-    pub fn cmd(&mut self) -> Vec<String> {
-        let mut a_chain = String::new();
-        let mut v_chain = String::new();
-        let mut cmd = vec![];
-
+    fn build(&mut self) {
         for (i, filter) in self.a_chain.iter().enumerate() {
-            if i == 0 && !filter.starts_with("aevalsrc=") {
-                let f = if self.a_selectors.is_empty() {
-                    "[0:a:0]".to_string()
-                } else {
-                    self.a_selectors.remove(0)
-                };
-                a_chain.push_str(&f);
-            } else if i > 0 && i < self.a_chain.len() {
-                a_chain.push(',');
+            if i > 0 && i < self.a_chain.len() && !filter.starts_with("[") {
+                self.audio_chain.push(',');
             }
 
-            a_chain.push_str(filter);
+            self.audio_chain.push_str(filter);
         }
 
         for (i, filter) in self.v_chain.iter().enumerate() {
-            if i == 0 && !filter.starts_with("movie=") {
-                v_chain.push_str(&self.v_selectors.remove(0));
-
-                if self.hw_context && !is_hw(filter) {
-                    v_chain.push_str("hwdownload,format=nv12,");
-                }
-            } else if filter.starts_with("movie=") {
-                if i == 0 {
-                    v_chain.push_str("[0:v:0]null");
-
-                    if self.hw_context {
-                        v_chain.push_str("hwdownload,format=nv12,");
-                    }
-                } else if self.hw_context
-                    && !last_is_hw(&v_chain)
+            if filter.starts_with("movie=") {
+                if self.hw_context
+                    && !last_is_hw(&self.video_chain)
                     && !self.config.advanced.is_empty_filter()
                 {
                     let hw_up = hw_upload_str(&self.config);
 
-                    v_chain.push(',');
-                    v_chain.push_str(&hw_up);
+                    self.video_chain.push(',');
+                    self.video_chain.push_str(&hw_up);
                 }
-                v_chain.push_str("[v];");
+                self.video_chain.push_str("[v];");
             } else if filter.starts_with("overlay") {
-                let hw_up = hw_upload(&self.config, &v_chain, filter);
+                let hw_up = hw_upload(&self.config, &self.video_chain, filter);
 
                 if !hw_up.is_empty() {
-                    v_chain.push(',');
-                    v_chain.push_str(&hw_up);
+                    self.video_chain.push(',');
+                    self.video_chain.push_str(&hw_up);
                 }
 
-                v_chain.push_str("[l];[v][l]");
-            } else if i > 0 && i < self.v_chain.len() {
-                v_chain.push(',');
+                self.video_chain.push_str("[l];[v][l]");
+            } else if i > 0 && i < self.v_chain.len() && !filter.starts_with("[") {
+                self.video_chain.push(',');
 
-                let hw_dl = hw_download(&v_chain, filter);
-                let hw_ul = hw_upload(&self.config, &v_chain, filter);
+                let hw_dl = hw_download(&self.video_chain, filter);
+                let hw_ul = hw_upload(&self.config, &self.video_chain, filter);
 
                 if (!hw_dl.is_empty() || !hw_ul.is_empty())
                     && !filter.starts_with("movie=")
                     && !filter.starts_with("overlay")
                 {
-                    v_chain.push_str(&hw_dl);
-                    v_chain.push_str(&hw_ul);
-                    v_chain.push(',');
+                    self.video_chain.push_str(&hw_dl);
+                    self.video_chain.push_str(&hw_ul);
+                    self.video_chain.push(',');
                 }
             }
 
-            v_chain.push_str(filter);
+            self.video_chain.push_str(filter);
+        }
+    }
+
+    pub fn cmd(&mut self) -> Vec<String> {
+        if !self.output_chain.is_empty() {
+            return self.output_chain.clone();
         }
 
-        if self.audio_last >= 0 && !a_chain.ends_with(']') {
-            a_chain.push_str(&format!("[aout{}]", self.audio_last));
+        let mut cmd = vec![];
+
+        if self.audio_last >= 0 && !self.audio_chain.ends_with(']') {
+            self.audio_chain
+                .push_str(&format!("[aout{}]", self.audio_last));
         }
 
-        if self.video_last >= 0 && !v_chain.ends_with(']') {
-            if self.hw_context && !last_is_hw(&v_chain) {
+        if self.video_last >= 0 && !self.video_chain.is_empty() && !self.video_chain.ends_with(']')
+        {
+            if self.hw_context && !last_is_hw(&self.video_chain) {
                 let hw_up = hw_upload_str(&self.config);
 
-                v_chain.push_str(",format=nv12,");
-                v_chain.push_str(&hw_up);
+                self.video_chain.push_str(",format=nv12,");
+                self.video_chain.push_str(&hw_up);
             }
 
-            v_chain.push_str(&format!("[vout{}]", self.video_last));
+            self.video_chain
+                .push_str(&format!("[vout{}]", self.video_last));
         }
 
-        let mut f_chain = v_chain;
+        let mut f_chain = self.video_chain.clone();
 
-        if !a_chain.is_empty() {
+        if !self.audio_chain.is_empty() {
             if !f_chain.is_empty() {
                 f_chain.push(';');
             }
 
-            f_chain.push_str(&a_chain);
+            f_chain.push_str(&self.audio_chain);
         }
 
         if !f_chain.is_empty() {
@@ -667,9 +672,13 @@ pub async fn filter_chains(
         }
 
         if let Some(f) = config.output.output_filter.clone() {
+            filters.build();
             process_output_filters(config, &mut filters, &f);
         } else if config.output.output_count > 1 && !config.processing.audio_only {
             split_filter(config, &mut filters, 0, Video);
+            filters.build();
+        } else {
+            filters.build();
         }
 
         return filters;
@@ -758,6 +767,8 @@ pub async fn filter_chains(
     } else if config.processing.audio_track_index > -1 {
         error!(target: Target::file_mail(), channel = config.general.channel_id; "Setting 'audio_track_index' other than '-1' is not allowed in audio copy mode!");
     }
+
+    filters.build();
 
     if config.output.mode == HLS {
         if let Some(f) = config.output.output_filter.clone() {
