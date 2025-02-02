@@ -43,7 +43,7 @@ async fn simple_filtering() {
     let mut media = Media::new(0, "./assets/media_mix/with_audio.mp4", true).await;
     media.add_filter(&config, &None).await;
 
-    let f = media.filter.unwrap().cmd();
+    let _f = media.filter.unwrap().cmd();
 
-    println!("{f:?}");
+    // println!("{f:?}");
 }

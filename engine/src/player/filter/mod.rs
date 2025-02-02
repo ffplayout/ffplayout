@@ -115,6 +115,9 @@ impl Filters {
             chain_start.push_str(&selector);
 
             if filter.starts_with("aevalsrc") || filter.starts_with("movie") {
+                if filter_type == Video && chain.is_empty() {
+                    chain.push(format!("[{position}:{filter_type}:{track_nr}]null"));
+                }
                 chain_start.push_str(&sep);
             } else {
                 // build audio/video selector like [0:a:0]
@@ -612,38 +615,37 @@ pub fn split_filter(config: &PlayoutConfig, chain: &mut Filters, nr: i32, filter
 }
 
 /// Process output filter chain and add new filters to existing ones.
-fn process_output_filters(config: &PlayoutConfig, chain: &mut Filters, custom_filter: &str) {
+fn process_output_filters(config: &PlayoutConfig, chain: &mut Filters, output_filter: &str) {
     let filter =
         if (config.text.add_text && !config.text.text_from_filename) || config.output.mode == HLS {
             let re_v = Regex::new(r"\[[0:]+[v^\[]+([:0]+)?\]").unwrap(); // match video filter input link
             let _re_a = Regex::new(r"\[[0:]+[a^\[]+([:0]+)?\]").unwrap(); // match audio filter input link
-            let mut cf = custom_filter.to_string();
+            let re_a_out = Regex::new(r"\[aout[0-9]+\];?").unwrap(); // match audio output link
+            let mut o_filter = output_filter.to_string();
 
-            if !chain.video_chain.is_empty() {
-                cf = re_v
-                    .replace(&cf, &format!("{},", chain.video_chain))
-                    .to_string();
+            if let Some(first) = chain.v_chain.first() {
+                o_filter = re_v.replace(&o_filter, &format!("{},", first)).to_string();
             }
 
-            if !chain.audio_chain.is_empty() {
+            if !chain.a_chain.is_empty() {
                 let audio_split = chain
-                    .audio_chain
-                    .split(';')
-                    .enumerate()
-                    .map(|(i, p)| p.replace(&format!("[aout{i}]"), ""))
+                    .a_chain
+                    .iter()
+                    .filter(|f| f.contains("0:a") || f.contains("1:a"))
+                    .map(|p| re_a_out.replace(p, "").to_string())
                     .collect::<Vec<String>>();
 
                 for i in 0..config.processing.audio_tracks {
-                    cf = cf.replace(
+                    o_filter = o_filter.replace(
                         &format!("[0:a:{i}]"),
                         &format!("{},", &audio_split[i as usize]),
                     );
                 }
             }
 
-            cf
+            o_filter
         } else {
-            custom_filter.to_string()
+            output_filter.to_string()
         };
 
     chain.output_chain = vec_strings!["-filter_complex", filter];
@@ -672,14 +674,12 @@ pub async fn filter_chains(
         }
 
         if let Some(f) = config.output.output_filter.clone() {
-            filters.build();
             process_output_filters(config, &mut filters, &f);
         } else if config.output.output_count > 1 && !config.processing.audio_only {
             split_filter(config, &mut filters, 0, Video);
-            filters.build();
-        } else {
-            filters.build();
         }
+
+        filters.build();
 
         return filters;
     }
@@ -768,13 +768,13 @@ pub async fn filter_chains(
         error!(target: Target::file_mail(), channel = config.general.channel_id; "Setting 'audio_track_index' other than '-1' is not allowed in audio copy mode!");
     }
 
-    filters.build();
-
     if config.output.mode == HLS {
         if let Some(f) = config.output.output_filter.clone() {
             process_output_filters(config, &mut filters, &f);
         }
     }
+
+    filters.build();
 
     filters
 }

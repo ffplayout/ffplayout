@@ -46,8 +46,9 @@ pub const FFMPEG_IGNORE_ERRORS: [&str; 13] = [
     "frame size not set",
 ];
 
-pub const FFMPEG_UNRECOVERABLE_ERRORS: [&str; 8] = [
+pub const FFMPEG_UNRECOVERABLE_ERRORS: [&str; 9] = [
     "Address already in use",
+    "Device creation failed",
     "Invalid argument",
     "Numerical result",
     "No such filter",
