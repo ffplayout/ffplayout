@@ -2,11 +2,50 @@
     <div class="max-w-[1200px] xs:pe-8">
         <h2 class="pt-3 text-3xl">{{ t('advanced.title') }}</h2>
         <p class="mt-5 font-bold text-orange-500">{{ t('advanced.warning') }}</p>
+        <div>
+            <label class="form-control w-full max-w-xs mt-2">
+                <div class="label">
+                    <span class="label-text !text-md font-bold">Preset</span>
+                </div>
+                <div class="flex-none join">
+                    <select v-model="configStore.advanced" class="join-item select select-sm select-bordered w-full">
+                        <option v-for="config in relatedConfigs" :key="config.id" :value="config">
+                            {{ config.name }}
+                        </option>
+                    </select>
+                    <button
+                        class="join-item btn btn-sm btn-primary select-bordered"
+                        title="Add preset"
+                        @click="addAdvancedConfig()"
+                    >
+                        <i class="bi-plus-lg" />
+                    </button>
+                    <button
+                        class="join-item btn btn-sm btn-primary select-bordered"
+                        title="Delete preset"
+                        @click="removeAdvancedConfig()"
+                    >
+                        <i class="bi-x-lg" />
+                    </button>
+                </div>
+            </label>
+        </div>
         <form
             v-if="configStore.advanced"
             class="mt-10 grid md:grid-cols-[180px_auto] gap-5"
             @submit.prevent="onSubmitAdvanced"
         >
+            <div class="text-xl pt-3 md:text-right">Name:</div>
+            <div>
+                <label class="form-control w-full mt-4">
+                    <input
+                        v-model="configStore.advanced.name"
+                        type="text"
+                        name="input_param"
+                        class="input input-sm input-bordered w-full max-w-64"
+                    />
+                </label>
+            </div>
             <div class="text-xl pt-3 md:text-right">{{ t('advanced.decoder') }}:</div>
             <div class="md:pt-4">
                 <label class="form-control mb-2">
@@ -39,8 +78,8 @@
                         <span class="text-sm text-base-content/80">
                             Default:
                             <span class="select-text cursor-text">
-                                -c:v mpeg2video -g 1 -b:v 57600k -minrate 57600k -maxrate 57600k -bufsize 28800k
-                                -mpegts_flags initial_discontinuity
+                                -c:v mpeg2video -g 1 -b:v 57600k -minrate 57600k -maxrate 57600k -bufsize 28800k -c:a
+                                s302m -strict -2 -sample_fmt s16 -ar 48000 -ac 2
                             </span>
                         </span>
                     </div>
@@ -96,38 +135,6 @@
                 </label>
                 <label class="form-control w-full mt-2">
                     <div class="label">
-                        <span class="label-text !text-md font-bold">Pad Scaling Width</span>
-                    </div>
-                    <input
-                        v-model="configStore.advanced.filter.pad_scale_w"
-                        type="text"
-                        name="pad_scale_w"
-                        class="input input-sm input-bordered w-full"
-                    />
-                    <div class="label">
-                        <span class="text-sm text-base-content/80">
-                            Default: <span class="select-text cursor-text">scale={}:-1 </span></span
-                        >
-                    </div>
-                </label>
-                <label class="form-control w-full mt-2">
-                    <div class="label">
-                        <span class="label-text !text-md font-bold">Pad Scaling Height</span>
-                    </div>
-                    <input
-                        v-model="configStore.advanced.filter.pad_scale_h"
-                        type="text"
-                        name="pad_scale_h"
-                        class="input input-sm input-bordered w-full"
-                    />
-                    <div class="label">
-                        <span class="text-sm text-base-content/80">
-                            Default: <span class="select-text cursor-text">scale=-1:{} </span></span
-                        >
-                    </div>
-                </label>
-                <label class="form-control w-full mt-2">
-                    <div class="label">
                         <span class="label-text !text-md font-bold">Pad Video</span>
                     </div>
                     <input
@@ -139,9 +146,7 @@
                     <div class="label">
                         <span class="text-sm text-base-content/80">
                             Default:
-                            <span class="select-text cursor-text"
-                                >pad=max(iw\\,ih*({0}/{1})):ow/({0}/{1}):(ow-iw)/2:(oh-ih)/2</span
-                            >
+                            <span class="select-text cursor-text"> pad='ih*{}/{}:ih:(ow-iw)/2:(oh-ih)/2' </span>
                         </span>
                     </div>
                 </label>
@@ -237,8 +242,11 @@
                     />
                     <div class="label">
                         <span class="text-sm text-base-content/80">
-                            Default: <span class="select-text cursor-text">null[v];movie={}:loop=0,setpts=N/(FRAME_RATE*TB),format=rgba,colorchannelmixer=aa={}</span></span
-                        >
+                            Default:
+                            <span class="select-text cursor-text">
+                                movie={}:loop=0,setpts=N/(FRAME_RATE*TB),format=rgba,colorchannelmixer=aa={}
+                            </span>
+                        </span>
                     </div>
                 </label>
                 <label class="form-control w-full mt-2">
@@ -301,7 +309,7 @@
                     />
                     <div class="label">
                         <span class="text-sm text-base-content/80">
-                            Default: <span class="select-text cursor-text">null[l];[v][l]overlay={}:shortest=1</span>
+                            Default: <span class="select-text cursor-text">overlay={}:shortest=1</span>
                         </span>
                     </div>
                 </label>
@@ -382,8 +390,8 @@
                     />
                     <div class="label">
                         <span class="text-sm text-base-content/80">
-                            Default: <span class="select-text cursor-text">afade=in:st=0:d=0.5 </span></span
-                        >
+                            Default: <span class="select-text cursor-text">afade=in:st=0:d=0.5 </span>
+                        </span>
                     </div>
                 </label>
                 <label class="form-control w-full mt-2">
@@ -398,8 +406,8 @@
                     />
                     <div class="label">
                         <span class="text-sm text-base-content/80">
-                            Default: <span class="select-text cursor-text">afade=out:st={}:d=1.0 </span></span
-                        >
+                            Default: <span class="select-text cursor-text">afade=out:st={}:d=1.0 </span>
+                        </span>
                     </div>
                 </label>
                 <label class="form-control w-full mt-2">
@@ -414,8 +422,8 @@
                     />
                     <div class="label">
                         <span class="text-sm text-base-content/80">
-                            Default: <span class="select-text cursor-text">apad=whole_dur={} </span></span
-                        >
+                            Default: <span class="select-text cursor-text">apad=whole_dur={} </span>
+                        </span>
                     </div>
                 </label>
                 <label class="form-control w-full mt-2">
@@ -430,8 +438,8 @@
                     />
                     <div class="label">
                         <span class="text-sm text-base-content/80">
-                            Default: <span class="select-text cursor-text">volume={} </span></span
-                        >
+                            Default: <span class="select-text cursor-text">volume={} </span>
+                        </span>
                     </div>
                 </label>
                 <label class="form-control w-full mt-2">
@@ -446,8 +454,8 @@
                     />
                     <div class="label">
                         <span class="text-sm text-base-content/80">
-                            Default: <span class="select-text cursor-text">split={}{} </span></span
-                        >
+                            Default: <span class="select-text cursor-text">split={}{} </span>
+                        </span>
                     </div>
                 </label>
             </div>
@@ -485,6 +493,9 @@
 </template>
 
 <script setup lang="ts">
+import { cloneDeep } from 'lodash-es'
+import type { AdvancedConfig } from '~/types/advanced_config'
+
 const { t } = useI18n()
 
 const authStore = useAuth()
@@ -492,17 +503,98 @@ const configStore = useConfig()
 const indexStore = useIndex()
 
 const showModal = ref(false)
+const relatedConfigs = ref<AdvancedConfig[]>([])
+
+const newConfig = {
+    id: 0,
+    name: null,
+    decoder: {
+        input_param: '',
+        output_param: '',
+    },
+    encoder: {
+        input_param: '',
+    },
+    filter: {
+        deinterlace: '',
+        pad_scale_w: '',
+        pad_scale_h: '',
+        pad_video: '',
+        fps: '',
+        scale: '',
+        set_dar: '',
+        fade_in: '',
+        fade_out: '',
+        logo: '',
+        overlay_logo_scale: '',
+        overlay_logo_fade_in: '',
+        overlay_logo_fade_out: '',
+        overlay_logo: '',
+        tpad: '',
+        drawtext_from_file: '',
+        drawtext_from_zmq: '',
+        aevalsrc: '',
+        afade_in: '',
+        afade_out: '',
+        apad: '',
+        volume: '',
+        split: '',
+    },
+    ingest: {
+        input_param: '',
+    },
+}
+
+onBeforeMount(async () => {
+    await fetchRelatedConfigs()
+})
+
+async function fetchRelatedConfigs() {
+    const id = configStore.channels[configStore.i].id
+
+    await $fetch(`/api/playout/advanced/${id}/`, {
+        method: 'GET',
+        headers: { ...configStore.contentType, ...authStore.authHeader },
+    })
+        .then((response: any) => {
+            relatedConfigs.value = response
+        })
+        .catch((e) => {
+            indexStore.msgAlert('error', e, 3)
+        })
+}
+
+function addAdvancedConfig() {
+    configStore.advanced = cloneDeep(newConfig)
+}
+
+async function removeAdvancedConfig() {
+    const id = configStore.channels[configStore.i].id
+
+    await $fetch(`/api/playout/advanced/${id}/${configStore.advanced.id}`, {
+        method: 'DELETE',
+        headers: { ...configStore.contentType, ...authStore.authHeader },
+    })
+        .then(async () => {
+            await fetchRelatedConfigs()
+            configStore.advanced = cloneDeep(newConfig)
+        })
+        .catch((e) => {
+            indexStore.msgAlert('error', e, 3)
+        })
+}
 
 async function onSubmitAdvanced() {
     const update = await configStore.setAdvancedConfig()
     configStore.onetimeInfo = true
 
     if (update.status === 200) {
+        const id = configStore.channels[configStore.i].id
         indexStore.msgAlert('success', t('advanced.updateSuccess'), 2)
 
-        const channel = configStore.channels[configStore.i].id
+        await fetchRelatedConfigs()
 
-        await $fetch(`/api/control/${channel}/process/`, {
+        await $fetch(`/api/control/${id}/process/`, {
             method: 'POST',
             headers: { ...configStore.contentType, ...authStore.authHeader },
             body: JSON.stringify({ command: 'status' }),

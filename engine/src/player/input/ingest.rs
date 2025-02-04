@@ -45,7 +45,7 @@ async fn server_monitor(
             manager.stop(Ingest).await;
 
             break;
-        } else if !is_running {
+        } else if !is_running && line.contains("Input #0") {
             manager.ingest_is_alive.store(true, Ordering::SeqCst);
 
             is_running = true;

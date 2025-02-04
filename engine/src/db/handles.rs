@@ -9,11 +9,30 @@ use sqlx::{sqlite::SqliteQueryResult, Pool, Row, Sqlite};
 use super::models::{AdvancedConfiguration, Configuration};
 use crate::db::models::{Channel, GlobalSettings, Role, TextPreset, User};
 use crate::utils::{
-    advanced_config::AdvancedConfig,
+    advanced_config::{AdvancedConfig, DecoderConfig, FilterConfig, IngestConfig},
     config::PlayoutConfig,
     errors::{ProcessError, ServiceError},
     is_running_in_container,
 };
+
+pub const NVIDIA_NAME: &str = "Nvidia";
+pub const NVIDIA_INPUT: &str =
+    "-thread_queue_size 1024 -hwaccel_device 0 -hwaccel cuvid -hwaccel_output_format cuda";
+pub const NVIDIA_DECODER_OUTPUT: &str = "-c:v h264_nvenc -preset p2 -tune ll -b:v 50000k -minrate 50000k -maxrate 50000k -bufsize 25000k -c:a s302m -strict -2 -sample_fmt s16 -ar 48000 -ac 2";
+pub const NVIDIA_FILTER_DEINTERLACE: &str = "yadif_cuda=0:-1:0";
+pub const NVIDIA_FILTER_SCALE: &str = "scale_cuda={}:{}:format=yuv420p";
+pub const NVIDIA_FILTER_LOGO_SCALE: &str = "null";
+pub const NVIDIA_FILTER_OVERLAY: &str = "overlay_cuda={}:shortest=1";
+
+pub const QSV_NAME: &str = "QSV";
+pub const QSV_INPUT: &str =
+    "-hwaccel qsv -init_hw_device qsv=hw -filter_hw_device hw -hwaccel_output_format qsv";
+pub const QSV_DECODER_OUTPUT: &str = "-c:v mpeg2_qsv -g 1 -b:v 50000k -minrate 50000k -maxrate 50000k -bufsize 25000k -c:a s302m -strict -2 -sample_fmt s16 -ar 48000 -ac 2";
+pub const QSV_FILTER_DEINTERLACE: &str = "deinterlace_qsv";
+pub const QSV_FILTER_FPS: &str = "vpp_qsv=framerate=25";
+pub const QSV_FILTER_SCALE: &str = "scale_qsv={}:{}";
+pub const QSV_FILTER_LOGO_SCALE: &str = "scale_qsv={}";
+pub const QSV_FILTER_OVERLAY: &str = "overlay_qsv={}:shortest=1";
 
 pub async fn db_migrate(conn: &Pool<Sqlite>) -> Result<(), ProcessError> {
     sqlx::migrate!("../migrations").run(conn).await?;
@@ -39,6 +58,61 @@ pub async fn db_migrate(conn: &Pool<Sqlite>) -> Result<(), ProcessError> {
             .bind(shared)
             .execute(conn)
             .await?;
+
+        insert_advanced_configuration(
+            conn,
+            1,
+            Some(1),
+            AdvancedConfig {
+                name: Some(NVIDIA_NAME.to_string()),
+                decoder: DecoderConfig {
+                    input_param: Some(NVIDIA_INPUT.to_string()),
+                    output_param: Some(NVIDIA_DECODER_OUTPUT.to_string()),
+                    ..Default::default()
+                },
+                ingest: IngestConfig {
+                    input_param: Some(NVIDIA_INPUT.to_string()),
+                    ..Default::default()
+                },
+                filter: FilterConfig {
+                    deinterlace: Some(NVIDIA_FILTER_DEINTERLACE.to_string()),
+                    scale: Some(NVIDIA_FILTER_SCALE.to_string()),
+                    overlay_logo_scale: Some(NVIDIA_FILTER_LOGO_SCALE.to_string()),
+                    overlay_logo: Some(NVIDIA_FILTER_OVERLAY.to_string()),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+        )
+        .await?;
+
+        insert_advanced_configuration(
+            conn,
+            1,
+            Some(1),
+            AdvancedConfig {
+                name: Some(QSV_NAME.to_string()),
+                decoder: DecoderConfig {
+                    input_param: Some(QSV_INPUT.to_string()),
+                    output_param: Some(QSV_DECODER_OUTPUT.to_string()),
+                    ..Default::default()
+                },
+                ingest: IngestConfig {
+                    input_param: Some(QSV_INPUT.to_string()),
+                    ..Default::default()
+                },
+                filter: FilterConfig {
+                    deinterlace: Some(QSV_FILTER_DEINTERLACE.to_string()),
+                    fps: Some(QSV_FILTER_FPS.to_string()),
+                    scale: Some(QSV_FILTER_SCALE.to_string()),
+                    overlay_logo_scale: Some(QSV_FILTER_LOGO_SCALE.to_string()),
+                    overlay_logo: Some(QSV_FILTER_OVERLAY.to_string()),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+        )
+        .await?;
     }
 
     Ok(())
@@ -91,7 +165,8 @@ pub async fn select_related_channels(
 ) -> Result<Vec<Channel>, ProcessError> {
     let query = match user_id {
         Some(id) => format!(
-            "SELECT c.id, c.name, c.preview_url, c.extra_extensions, c.active, c.public, c.playlists, c.storage, c.last_date, c.time_shift, c.timezone FROM channels c
+            "SELECT c.id, c.name, c.preview_url, c.extra_extensions, c.active, c.public, c.playlists,
+            c.storage, c.last_date, c.time_shift, c.timezone, c.advanced_id FROM channels c
                 left join user_channels uc on uc.channel_id = c.id
                 left join user u on u.id = uc.user_id
              WHERE u.id = {id} ORDER BY c.id ASC;"
@@ -255,7 +330,7 @@ pub async fn update_configuration(
     id: i32,
     config: PlayoutConfig,
 ) -> Result<SqliteQueryResult, ProcessError> {
-    const QUERY: &str = "UPDATE configurations SET general_stop_threshold = $2, mail_subject = $3, mail_recipient = $4, mail_level = $5, mail_interval = $6, logging_ffmpeg_level = $7, logging_ingest_level = $8, logging_detect_silence = $9, logging_ignore = $10, processing_mode = $11, processing_audio_only = $12, processing_copy_audio = $13, processing_copy_video = $14, processing_width = $15, processing_height = $16, processing_aspect = $17, processing_fps = $18, processing_add_logo = $19, processing_logo = $20, processing_logo_scale = $21, processing_logo_opacity = $22, processing_logo_position = $23, processing_audio_tracks = $24, processing_audio_track_index = $25, processing_audio_channels = $26, processing_volume = $27, processing_filter = $28, processing_vtt_enable = $29, processing_vtt_dummy = $30, ingest_enable = $31, ingest_param = $32, ingest_filter = $33, playlist_day_start = $34, playlist_length = $35, playlist_infinit = $36, storage_filler = $37, storage_extensions = $38, storage_shuffle = $39, text_add = $40, text_from_filename = $41, text_font = $42, text_style = $43, text_regex = $44, task_enable = $45, task_path = $46, output_mode = $47, output_param = $48 WHERE id = $1";
+    const QUERY: &str = "UPDATE configurations SET general_stop_threshold = $2, mail_subject = $3, mail_recipient = $4, mail_level = $5, mail_interval = $6, logging_ffmpeg_level = $7, logging_ingest_level = $8, logging_detect_silence = $9, logging_ignore = $10, processing_mode = $11, processing_audio_only = $12, processing_copy_audio = $13, processing_copy_video = $14, processing_width = $15, processing_height = $16, processing_aspect = $17, processing_fps = $18, processing_add_logo = $19, processing_logo = $20, processing_logo_scale = $21, processing_logo_opacity = $22, processing_logo_position = $23, processing_audio_tracks = $24, processing_audio_track_index = $25, processing_audio_channels = $26, processing_volume = $27, processing_filter = $28, processing_override_filter = $29, processing_vtt_enable = $30, processing_vtt_dummy = $31, ingest_enable = $32, ingest_param = $33, ingest_filter = $34, playlist_day_start = $35, playlist_length = $36, playlist_infinit = $37, storage_filler = $38, storage_extensions = $39, storage_shuffle = $40, text_add = $41, text_from_filename = $42, text_font = $43, text_style = $44, text_regex = $45, task_enable = $46, task_path = $47, output_mode = $48, output_param = $49 WHERE id = $1";
 
     let result = sqlx::query(QUERY)
         .bind(id)
@@ -286,6 +361,7 @@ pub async fn update_configuration(
         .bind(config.processing.audio_channels)
         .bind(config.processing.volume)
         .bind(config.processing.custom_filter)
+        .bind(config.processing.override_filter)
         .bind(config.processing.vtt_enable)
         .bind(config.processing.vtt_dummy)
         .bind(config.ingest.enable)
@@ -315,30 +391,27 @@ pub async fn update_configuration(
 pub async fn insert_advanced_configuration(
     conn: &Pool<Sqlite>,
     channel_id: i32,
-) -> Result<SqliteQueryResult, ProcessError> {
-    const QUERY: &str = "INSERT INTO advanced_configurations (channel_id) VALUES($1)";
-
-    let result = sqlx::query(QUERY).bind(channel_id).execute(conn).await?;
-
-    Ok(result)
-}
-
-pub async fn update_advanced_configuration(
-    conn: &Pool<Sqlite>,
-    channel_id: i32,
+    adv_id: Option<i32>,
     config: AdvancedConfig,
-) -> Result<SqliteQueryResult, ProcessError> {
-    const QUERY: &str = "UPDATE advanced_configurations SET decoder_input_param = $2, decoder_output_param = $3, encoder_input_param = $4, ingest_input_param = $5, filter_deinterlace = $6, filter_pad_scale_w = $7, filter_pad_scale_h = $8, filter_pad_video = $9, filter_fps = $10, filter_scale = $11, filter_set_dar = $12, filter_fade_in = $13, filter_fade_out = $14, filter_logo = $15, filter_overlay_logo_scale = $16, filter_overlay_logo_fade_in = $17, filter_overlay_logo_fade_out = $18, filter_overlay_logo = $19, filter_tpad = $20, filter_drawtext_from_file = $21, filter_drawtext_from_zmq = $22, filter_aevalsrc = $23, filter_afade_in = $24, filter_afade_out = $25, filter_apad = $26, filter_volume = $27, filter_split = $28 WHERE channel_id = $1";
+) -> Result<i32, ProcessError> {
+    const QUERY_INSERT: &str =
+        "INSERT INTO advanced_configurations (channel_id, decoder_input_param, decoder_output_param, encoder_input_param,
+            ingest_input_param, filter_deinterlace, filter_pad_video, filter_fps, filter_scale, filter_set_dar,
+            filter_fade_in, filter_fade_out, filter_logo, filter_overlay_logo_scale, filter_overlay_logo_fade_in,
+            filter_overlay_logo_fade_out, filter_overlay_logo, filter_tpad, filter_drawtext_from_file,
+            filter_drawtext_from_zmq, filter_aevalsrc, filter_afade_in, filter_afade_out, filter_apad,
+            filter_volume, filter_split, name)
+            VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27) RETURNING id";
 
-    let result = sqlx::query(QUERY)
+    const QUERY_UPDATE: &str = "UPDATE channels SET advanced_id = $2 WHERE id = $1";
+
+    let advanced_id: i32 = sqlx::query(QUERY_INSERT)
         .bind(channel_id)
         .bind(config.decoder.input_param)
         .bind(config.decoder.output_param)
         .bind(config.encoder.input_param)
         .bind(config.ingest.input_param)
         .bind(config.filter.deinterlace)
-        .bind(config.filter.pad_scale_w)
-        .bind(config.filter.pad_scale_h)
         .bind(config.filter.pad_video)
         .bind(config.filter.fps)
         .bind(config.filter.scale)
@@ -359,19 +432,114 @@ pub async fn update_advanced_configuration(
         .bind(config.filter.apad)
         .bind(config.filter.volume)
         .bind(config.filter.split)
+        .bind(config.name)
+        .fetch_one(conn)
+        .await?
+        .get("id");
+
+    let a_id = adv_id.unwrap_or(advanced_id);
+
+    sqlx::query(QUERY_UPDATE)
+        .bind(channel_id)
+        .bind(a_id)
         .execute(conn)
         .await?;
 
-    Ok(result)
+    Ok(advanced_id)
+}
+
+pub async fn update_advanced_configuration(
+    conn: &Pool<Sqlite>,
+    id: i32,
+    config: AdvancedConfig,
+) -> Result<(), ProcessError> {
+    const QUERY_ADV: &str = "UPDATE advanced_configurations SET decoder_input_param = $2, decoder_output_param = $3,
+        encoder_input_param = $4, ingest_input_param = $5, filter_deinterlace = $6, filter_pad_video = $7, filter_fps = $8,
+        filter_scale = $9, filter_set_dar = $10, filter_fade_in = $11, filter_fade_out = $12, filter_logo = $13,
+        filter_overlay_logo_scale = $14, filter_overlay_logo_fade_in = $15, filter_overlay_logo_fade_out = $16,
+        filter_overlay_logo = $17, filter_tpad = $18, filter_drawtext_from_file = $19, filter_drawtext_from_zmq = $20,
+        filter_aevalsrc = $21, filter_afade_in = $22, filter_afade_out = $23, filter_apad = $24, filter_volume = $25, filter_split = $26, name = $27
+        WHERE id = $1";
+    const QUERY_CHL: &str = "UPDATE channels set advanced_id = $2 WHERE id = $1;";
+
+    sqlx::query(QUERY_ADV)
+        .bind(config.id)
+        .bind(config.decoder.input_param)
+        .bind(config.decoder.output_param)
+        .bind(config.encoder.input_param)
+        .bind(config.ingest.input_param)
+        .bind(config.filter.deinterlace)
+        .bind(config.filter.pad_video)
+        .bind(config.filter.fps)
+        .bind(config.filter.scale)
+        .bind(config.filter.set_dar)
+        .bind(config.filter.fade_in)
+        .bind(config.filter.fade_out)
+        .bind(config.filter.logo)
+        .bind(config.filter.overlay_logo_scale)
+        .bind(config.filter.overlay_logo_fade_in)
+        .bind(config.filter.overlay_logo_fade_out)
+        .bind(config.filter.overlay_logo)
+        .bind(config.filter.tpad)
+        .bind(config.filter.drawtext_from_file)
+        .bind(config.filter.drawtext_from_zmq)
+        .bind(config.filter.aevalsrc)
+        .bind(config.filter.afade_in)
+        .bind(config.filter.afade_out)
+        .bind(config.filter.apad)
+        .bind(config.filter.volume)
+        .bind(config.filter.split)
+        .bind(config.name)
+        .execute(conn)
+        .await?;
+
+    sqlx::query(QUERY_CHL)
+        .bind(id)
+        .bind(config.id)
+        .execute(conn)
+        .await?;
+
+    Ok(())
 }
 
 pub async fn select_advanced_configuration(
     conn: &Pool<Sqlite>,
     channel: i32,
 ) -> Result<AdvancedConfiguration, ProcessError> {
-    const QUERY: &str = "SELECT * FROM advanced_configurations WHERE channel_id = $1";
+    const QUERY: &str = "SELECT adv.id, adv.channel_id, adv.decoder_input_param, adv.decoder_output_param, adv.encoder_input_param,
+        adv.ingest_input_param, adv.filter_deinterlace, adv.filter_pad_video, adv.filter_fps,adv.filter_scale, adv.filter_set_dar,
+        adv.filter_fade_in, adv.filter_fade_out, adv.filter_overlay_logo_scale, adv.filter_overlay_logo_fade_in, adv.filter_overlay_logo_fade_out,
+        adv.filter_overlay_logo, adv.filter_tpad, adv.filter_drawtext_from_file, adv.filter_drawtext_from_zmq, adv.filter_aevalsrc,
+        adv.filter_afade_in, adv.filter_afade_out, adv.filter_apad, adv.filter_volume, adv.filter_split, adv.filter_logo, adv.name
+        FROM advanced_configurations adv left join channels ch on ch.advanced_id = adv.id WHERE ch.id = $1";
 
-    let result = sqlx::query_as(QUERY).bind(channel).fetch_one(conn).await?;
+    let result = sqlx::query_as(QUERY)
+        .bind(channel)
+        .fetch_optional(conn)
+        .await?
+        .unwrap_or_default();
+
+    Ok(result)
+}
+
+pub async fn select_related_advanced_configuration(
+    conn: &Pool<Sqlite>,
+    channel: i32,
+) -> Result<Vec<AdvancedConfiguration>, ProcessError> {
+    const QUERY: &str = "SELECT * FROM advanced_configurations WHERE channel_id = $1;";
+
+    let result = sqlx::query_as(QUERY).bind(channel).fetch_all(conn).await?;
+
+    Ok(result)
+}
+
+pub async fn delete_advanced_configuration(
+    conn: &Pool<Sqlite>,
+    id: i32,
+) -> Result<SqliteQueryResult, ProcessError> {
+    const QUERY: &str = "DELETE FROM advanced_configurations WHERE id = $1;";
+
+    let result = sqlx::query(QUERY).bind(id).execute(conn).await?;
 
     Ok(result)
 }

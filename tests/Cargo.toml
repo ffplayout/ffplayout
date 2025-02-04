@@ -38,5 +38,9 @@ name = "engine_cmd"
 path = "src/engine_cmd.rs"
 
 [[test]]
+name = "engine_filter"
+path = "src/engine_filter.rs"
+
+[[test]]
 name = "engine_generator"
 path = "src/engine_generator.rs"

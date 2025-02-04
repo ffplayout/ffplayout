@@ -46,13 +46,16 @@ pub const FFMPEG_IGNORE_ERRORS: [&str; 13] = [
     "frame size not set",
 ];
 
-pub const FFMPEG_UNRECOVERABLE_ERRORS: [&str; 6] = [
+pub const FFMPEG_UNRECOVERABLE_ERRORS: [&str; 9] = [
     "Address already in use",
+    "Device creation failed",
     "Invalid argument",
     "Numerical result",
+    "No such filter",
     "Error initializing complex filters",
     "Error while decoding stream #0:0: Invalid data found when processing input",
     "Unrecognized option",
+    "Option not found",
 ];
 
 #[derive(Debug, Clone, Default, Eq, PartialEq, Deserialize, Serialize, TS)]
@@ -357,6 +360,7 @@ pub struct Processing {
     pub audio_channels: u8,
     pub volume: f64,
     pub custom_filter: String,
+    pub override_filter: bool,
     #[serde(default)]
     pub vtt_enable: bool,
     #[serde(default)]
@@ -388,6 +392,7 @@ impl Processing {
             audio_channels: config.processing_audio_channels,
             volume: config.processing_volume,
             custom_filter: config.processing_filter.clone(),
+            override_filter: config.processing_override_filter,
             vtt_enable: config.processing_vtt_enable,
             vtt_dummy: config.processing_vtt_dummy.clone(),
             cmd: None,
@@ -951,7 +956,7 @@ pub async fn get_config(
         config.mail.smtp_password = smtp_password;
     }
 
-    if args.smtp_starttls {
+    if args.smtp_starttls.is_some_and(|v| &v == "true") {
         config.mail.smtp_starttls = true;
     }
 

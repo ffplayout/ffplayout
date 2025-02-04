@@ -66,6 +66,8 @@ pub struct Channel {
     pub time_shift: f64,
     #[serde(default)]
     pub timezone: Option<Tz>,
+    #[serde(default)]
+    pub advanced_id: Option<i32>,
 }
 
 impl FromRow<'_, SqliteRow> for Channel {
@@ -97,6 +99,7 @@ impl FromRow<'_, SqliteRow> for Channel {
             last_date: row.try_get("last_date").unwrap_or_default(),
             time_shift: row.try_get("time_shift").unwrap_or_default(),
             timezone,
+            advanced_id: row.try_get("advanced_id").unwrap_or_default(),
         })
     }
 }
@@ -315,6 +318,8 @@ pub struct Configuration {
     #[serde(default)]
     pub processing_filter: String,
     #[serde(default)]
+    pub processing_override_filter: bool,
+    #[serde(default)]
     pub processing_vtt_enable: bool,
     #[serde(default)]
     pub processing_vtt_dummy: Option<String>,
@@ -377,6 +382,7 @@ impl Configuration {
             processing_audio_channels: config.processing.audio_channels,
             processing_volume: config.processing.volume,
             processing_filter: config.processing.custom_filter,
+            processing_override_filter: config.processing.override_filter,
             processing_vtt_enable: config.processing.vtt_enable,
             processing_vtt_dummy: config.processing.vtt_dummy,
             ingest_enable: config.ingest.enable,
@@ -413,7 +419,7 @@ fn default_channels() -> u8 {
     2
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, sqlx::FromRow)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize, sqlx::FromRow)]
 pub struct AdvancedConfiguration {
     pub id: i32,
     pub channel_id: i32,
@@ -422,8 +428,6 @@ pub struct AdvancedConfiguration {
     pub encoder_input_param: Option<String>,
     pub ingest_input_param: Option<String>,
     pub filter_deinterlace: Option<String>,
-    pub filter_pad_scale_w: Option<String>,
-    pub filter_pad_scale_h: Option<String>,
     pub filter_pad_video: Option<String>,
     pub filter_fps: Option<String>,
     pub filter_scale: Option<String>,
@@ -444,4 +448,5 @@ pub struct AdvancedConfiguration {
     pub filter_apad: Option<String>,
     pub filter_volume: Option<String>,
     pub filter_split: Option<String>,
+    pub name: Option<String>,
 }

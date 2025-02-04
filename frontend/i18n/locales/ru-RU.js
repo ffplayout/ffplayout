@@ -199,6 +199,7 @@ export default {
         processingAudioIndex: 'Which audio line to use, -1 for all.',
         processingAudioChannels: 'Set the audio channel count, if audio has more channels than stereo.',
         processingCustomFilter: 'Add custom filters to the processing. The filter outputs must end with [c_v_out] for video filters and [c_a_out] for audio filters.',
+        processingOverrideFilter: 'Attention: This option overwrites all standard filters, i.e. automatic format correction no longer takes place, the command must be structured as follows: -filter_complex [0:v]fps=25,scale=1280:-1[vout];[0:a:0]volume=0.5[aout] -map [vout] -map [aout]',
         processingVTTEnable: 'VTT can only be used in HLS mode and only if there are *.vtt files with the same name as the video file.',
         processingVTTDummy: 'A placeholder is needed if there is no vtt file.',
         ingestHelp: `Run a server for an ingest stream. This stream will override the normal streaming until it is finished. There is only a very simple authentication mechanism, which checks if the stream name is correct.`,
