@@ -462,8 +462,6 @@ fn overlay(config: &PlayoutConfig, chain: &mut Filters, node: &mut Media) {
             .replace('\\', "/")
             .replace(':', "\\\\:");
 
-        // chain.add("null[v];", 0, Video);
-
         let movie = match &config.advanced.filter.logo {
             Some(logo) => {
                 custom_format(logo, &[logo_path, config.processing.logo_opacity.to_string()])
