@@ -396,6 +396,21 @@
                         }}</span>
                     </div>
                 </label>
+                <label class="form-control w-full flex-row mt-0">
+                    <input
+                        v-model="configStore.playout.processing.override_filter"
+                        type="checkbox"
+                        class="checkbox checkbox-sm me-1 mt-2"
+                    />
+                    <div class="label">
+                        <span class="label-text !text-md font-bold">Override custom Filter</span>
+                    </div>
+                </label>
+                <div v-if="configStore.playout.processing.override_filter" class="label py-0">
+                    <span class="text-sm select-text font-bold text-orange-500">{{
+                        t('config.processingOverrideFilter')
+                    }}</span>
+                </div>
                 <label class="form-control w-full mt-2">
                     <div class="flex flex-row">
                         <input
@@ -756,7 +771,7 @@ const extensions = computed({
 
     set(value: string) {
         configStore.playout.storage.extensions = value.replaceAll(' ', '').split(/,|;/)
-    }
+    },
 })
 
 const formatIgnoreLines = computed({

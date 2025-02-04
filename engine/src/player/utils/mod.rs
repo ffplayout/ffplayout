@@ -100,10 +100,7 @@ pub fn prepare_output_cmd(
                 if filter.video_out_link.len() > count
                     && !output_params.contains(&"-map".to_string())
                 {
-                    new_params.append(&mut vec_strings![
-                        "-map",
-                        filter.video_out_link[count].clone()
-                    ]);
+                    new_params.append(&mut vec_strings!["-map", filter.video_out_link[count]]);
 
                     for i in 0..config.processing.audio_tracks {
                         new_params.append(&mut vec_strings!["-map", format!("0:a:{i}")]);

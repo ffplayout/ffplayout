@@ -28,7 +28,7 @@ async-walkdir = "2"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
 chrono-tz = { version = "0.10", features = ["serde"] }
 clap = { version = "4.3", features = ["derive", "env"] }
-derive_more = { version = "1", features = ["display"] }
+derive_more = { version = "2", features = ["display"] }
 faccess = "0.2"
 flexi_logger = { version = "0.29", features = ["async", "colors", "kv"] }
 futures-util = { version = "0.3", default-features = false, features = ["std"] }

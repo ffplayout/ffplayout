@@ -318,6 +318,8 @@ pub struct Configuration {
     #[serde(default)]
     pub processing_filter: String,
     #[serde(default)]
+    pub processing_override_filter: bool,
+    #[serde(default)]
     pub processing_vtt_enable: bool,
     #[serde(default)]
     pub processing_vtt_dummy: Option<String>,
@@ -380,6 +382,7 @@ impl Configuration {
             processing_audio_channels: config.processing.audio_channels,
             processing_volume: config.processing.volume,
             processing_filter: config.processing.custom_filter,
+            processing_override_filter: config.processing.override_filter,
             processing_vtt_enable: config.processing.vtt_enable,
             processing_vtt_dummy: config.processing.vtt_dummy,
             ingest_enable: config.ingest.enable,

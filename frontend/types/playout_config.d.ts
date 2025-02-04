@@ -23,7 +23,7 @@ export type PlayoutConfig = { general: General, mail: Mail, logging: Logging, pr
 
 export type ProcessMode = "folder" | "playlist";
 
-export type Processing = { mode: ProcessMode, audio_only: boolean, copy_audio: boolean, copy_video: boolean, width: bigint, height: bigint, aspect: number, fps: number, add_logo: boolean, logo: string, logo_scale: string, logo_opacity: number, logo_position: string, audio_tracks: number, audio_track_index: number, audio_channels: number, volume: number, custom_filter: string, vtt_enable: boolean, vtt_dummy: string | null, };
+export type Processing = { mode: ProcessMode, audio_only: boolean, copy_audio: boolean, copy_video: boolean, width: bigint, height: bigint, aspect: number, fps: number, add_logo: boolean, logo: string, logo_scale: string, logo_opacity: number, logo_position: string, audio_tracks: number, audio_track_index: number, audio_channels: number, volume: number, custom_filter: string, override_filter: boolean, vtt_enable: boolean, vtt_dummy: string | null, };
 
 export type Storage = { filler: string, extensions: Array<string>, shuffle: boolean, shared_storage: boolean, };
 

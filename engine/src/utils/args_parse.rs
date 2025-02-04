@@ -64,8 +64,8 @@ pub struct Args {
     #[clap(long, env, help_heading = Some("Initial Setup"), help = "SMTP password for system mails")]
     pub smtp_password: Option<String>,
 
-    #[clap(long, env, help_heading = Some("Initial Setup"), help = "Use TLS for system SMTP")]
-    pub smtp_starttls: bool,
+    #[clap(long, env, help_heading = Some("Initial Setup"), help = "Use TLS for system SMTP", value_name = "TRUE/FALSE")]
+    pub smtp_starttls: Option<String>,
 
     #[clap(long, env, help_heading = Some("Initial Setup"), help = "SMTP port for system mail")]
     pub smtp_port: Option<u16>,
@@ -304,11 +304,26 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), ProcessError> {
             }
         }
 
-        if args.smtp_starttls {
-            global.smtp_starttls = true;
-        } else {
-            global.smtp_starttls = Confirm::new("SMTP use TLS").with_default(false).prompt()?;
+        match args.smtp_starttls {
+            Some(val) => match val.to_lowercase().as_str() {
+                "true" => global.smtp_starttls = true,
+                "false" => global.smtp_starttls = false,
+                _ => {
+                    return Err(ProcessError::Input(
+                        "--smtp-starttls accept true or false".to_string(),
+                    ))
+                }
+            },
+            None => {
+                global.smtp_starttls = Confirm::new("SMTP use TLS").with_default(false).prompt()?;
+            }
         }
+
+        // if args.smtp_starttls {
+        //     global.smtp_starttls = true;
+        // } else {
+        //     global.smtp_starttls = Confirm::new("SMTP use TLS").with_default(false).prompt()?;
+        // }
 
         if let Some(port) = args.smtp_port {
             global.smtp_port = port;

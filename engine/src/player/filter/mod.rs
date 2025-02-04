@@ -2,6 +2,7 @@ use std::{fmt, path::Path, sync::Arc};
 
 use log::*;
 use regex::Regex;
+use shlex::split;
 use tokio::sync::Mutex;
 
 mod custom;
@@ -233,6 +234,10 @@ impl Filters {
     }
 
     pub fn map(&mut self) -> Vec<String> {
+        if !self.output_chain.is_empty() && self.config.processing.override_filter {
+            return vec![];
+        }
+
         let mut o_map = self.output_map.clone();
 
         if self.video_last == -1 && !self.config.processing.audio_only {
@@ -663,6 +668,17 @@ pub async fn filter_chains(
     filter_chain: &Option<Arc<Mutex<Vec<String>>>>,
 ) -> Filters {
     let mut filters = Filters::new(config.clone(), 0);
+
+    if config.processing.override_filter {
+        //override hole filtering
+        if node.unit == Ingest && !config.ingest.custom_filter.is_empty() {
+            filters.output_chain = split(&config.ingest.custom_filter).unwrap_or_default();
+        } else {
+            filters.output_chain = split(&config.processing.custom_filter).unwrap_or_default();
+        }
+
+        return filters;
+    }
 
     if node.source.contains("color=c=") {
         filters.audio_position = 1;

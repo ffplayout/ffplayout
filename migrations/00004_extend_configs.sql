@@ -1,3 +1,4 @@
+ALTER TABLE configurations ADD processing_override_filter INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE channels ADD advanced_id INTEGER REFERENCES advanced_configurations (id) ON UPDATE CASCADE ON DELETE SET DEFAULT;
 
 ALTER TABLE advanced_configurations
@@ -8,9 +9,7 @@ DROP filter_pad_scale_h;
 
 ALTER TABLE advanced_configurations ADD name TEXT;
 
-INSERT INTO
-    advanced_configurations DEFAULT
-VALUES;
+UPDATE advanced_configurations SET name = 'None';
 
 INSERT INTO
     advanced_configurations (
@@ -32,7 +31,7 @@ VALUES
         '-thread_queue_size 1024 -hwaccel_device 0 -hwaccel cuvid -hwaccel_output_format cuda',
         'yadif_cuda=0:-1:0',
         'scale_cuda={}:{}:format=yuv420p',
-        'scale_cuda={}',
+        'null',
         'overlay_cuda={}:shortest=1',
         'Nvidia'
     );
