@@ -125,7 +125,12 @@ impl Filters {
                 chain_start.push_str(&format!("{sep}[{position}:{filter_type}:{track_nr}]"));
             }
 
-            if self.hw_context && !is_hw(filter) && filter_type == Video {
+            if self.hw_context
+                && !is_hw(filter)
+                && !filter.contains("hwdownload")
+                && !filter.contains("hwupload")
+                && filter_type == Video
+            {
                 chain_start.push_str("hwdownload,format=nv12,");
             }
 
@@ -294,7 +299,13 @@ fn last_is_hw(chain: &str) -> bool {
 fn hw_download(chain: &str, f: &str) -> String {
     let mut filter = String::new();
 
-    if last_is_hw(chain) && !is_hw(f) && !f.starts_with("null[") && !f.starts_with("[") {
+    if last_is_hw(chain)
+        && !is_hw(f)
+        && !f.starts_with("null[")
+        && !f.starts_with("[")
+        && !f.contains("hwdownload")
+        && !f.contains("hwupload")
+    {
         filter = "hwdownload".to_string();
 
         if !chain.contains("_cuda") {
@@ -322,7 +333,7 @@ fn hw_upload_str(config: &PlayoutConfig) -> String {
 fn hw_upload(config: &PlayoutConfig, chain: &str, f: &str) -> String {
     let mut filter = String::new();
 
-    if !last_is_hw(chain) && is_hw(f) {
+    if !last_is_hw(chain) && is_hw(f) && !f.contains("hwdownload") && !f.contains("hwupload") {
         filter = hw_upload_str(config);
     }
 
