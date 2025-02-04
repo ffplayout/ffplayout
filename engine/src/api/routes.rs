@@ -668,7 +668,7 @@ async fn add_advanced_config(
         .await
         .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
 
-    handles::insert_advanced_configuration(&pool, *id, data.into_inner()).await?;
+    handles::insert_advanced_configuration(&pool, *id, None, data.into_inner()).await?;
     let new_config = get_config(&pool, *id).await?;
 
     manager.update_config(new_config).await;

@@ -9,11 +9,30 @@ use sqlx::{sqlite::SqliteQueryResult, Pool, Row, Sqlite};
 use super::models::{AdvancedConfiguration, Configuration};
 use crate::db::models::{Channel, GlobalSettings, Role, TextPreset, User};
 use crate::utils::{
-    advanced_config::AdvancedConfig,
+    advanced_config::{AdvancedConfig, DecoderConfig, FilterConfig, IngestConfig},
     config::PlayoutConfig,
     errors::{ProcessError, ServiceError},
     is_running_in_container,
 };
+
+pub const NVIDIA_NAME: &str = "Nvidia";
+pub const NVIDIA_INPUT: &str =
+    "-thread_queue_size 1024 -hwaccel_device 0 -hwaccel cuvid -hwaccel_output_format cuda";
+pub const NVIDIA_DECODER_OUTPUT: &str = "-c:v h264_nvenc -preset p2 -tune ll -b:v 50000k -minrate 50000k -maxrate 50000k -bufsize 25000k -c:a s302m -strict -2 -sample_fmt s16 -ar 48000 -ac 2";
+pub const NVIDIA_FILTER_DEINTERLACE: &str = "yadif_cuda=0:-1:0";
+pub const NVIDIA_FILTER_SCALE: &str = "scale_cuda={}:{}:format=yuv420p";
+pub const NVIDIA_FILTER_LOGO_SCALE: &str = "null";
+pub const NVIDIA_FILTER_OVERLAY: &str = "overlay_cuda={}:shortest=1";
+
+pub const QSV_NAME: &str = "QSV";
+pub const QSV_INPUT: &str =
+    "-hwaccel qsv -init_hw_device qsv=hw -filter_hw_device hw -hwaccel_output_format qsv";
+pub const QSV_DECODER_OUTPUT: &str = "-c:v mpeg2_qsv -g 1 -b:v 50000k -minrate 50000k -maxrate 50000k -bufsize 25000k -c:a s302m -strict -2 -sample_fmt s16 -ar 48000 -ac 2";
+pub const QSV_FILTER_DEINTERLACE: &str = "deinterlace_qsv";
+pub const QSV_FILTER_FPS: &str = "vpp_qsv=framerate=25";
+pub const QSV_FILTER_SCALE: &str = "scale_qsv={}:{}";
+pub const QSV_FILTER_LOGO_SCALE: &str = "scale_qsv={}";
+pub const QSV_FILTER_OVERLAY: &str = "overlay_qsv={}:shortest=1";
 
 pub async fn db_migrate(conn: &Pool<Sqlite>) -> Result<(), ProcessError> {
     sqlx::migrate!("../migrations").run(conn).await?;
@@ -39,6 +58,61 @@ pub async fn db_migrate(conn: &Pool<Sqlite>) -> Result<(), ProcessError> {
             .bind(shared)
             .execute(conn)
             .await?;
+
+        insert_advanced_configuration(
+            conn,
+            1,
+            Some(1),
+            AdvancedConfig {
+                name: Some(NVIDIA_NAME.to_string()),
+                decoder: DecoderConfig {
+                    input_param: Some(NVIDIA_INPUT.to_string()),
+                    output_param: Some(NVIDIA_DECODER_OUTPUT.to_string()),
+                    ..Default::default()
+                },
+                ingest: IngestConfig {
+                    input_param: Some(NVIDIA_INPUT.to_string()),
+                    ..Default::default()
+                },
+                filter: FilterConfig {
+                    deinterlace: Some(NVIDIA_FILTER_DEINTERLACE.to_string()),
+                    scale: Some(NVIDIA_FILTER_SCALE.to_string()),
+                    overlay_logo_scale: Some(NVIDIA_FILTER_LOGO_SCALE.to_string()),
+                    overlay_logo: Some(NVIDIA_FILTER_OVERLAY.to_string()),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+        )
+        .await?;
+
+        insert_advanced_configuration(
+            conn,
+            1,
+            Some(1),
+            AdvancedConfig {
+                name: Some(QSV_NAME.to_string()),
+                decoder: DecoderConfig {
+                    input_param: Some(QSV_INPUT.to_string()),
+                    output_param: Some(QSV_DECODER_OUTPUT.to_string()),
+                    ..Default::default()
+                },
+                ingest: IngestConfig {
+                    input_param: Some(QSV_INPUT.to_string()),
+                    ..Default::default()
+                },
+                filter: FilterConfig {
+                    deinterlace: Some(QSV_FILTER_DEINTERLACE.to_string()),
+                    fps: Some(QSV_FILTER_FPS.to_string()),
+                    scale: Some(QSV_FILTER_SCALE.to_string()),
+                    overlay_logo_scale: Some(QSV_FILTER_LOGO_SCALE.to_string()),
+                    overlay_logo: Some(QSV_FILTER_OVERLAY.to_string()),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+        )
+        .await?;
     }
 
     Ok(())
@@ -317,8 +391,9 @@ pub async fn update_configuration(
 pub async fn insert_advanced_configuration(
     conn: &Pool<Sqlite>,
     channel_id: i32,
+    adv_id: Option<i32>,
     config: AdvancedConfig,
-) -> Result<(), ProcessError> {
+) -> Result<i32, ProcessError> {
     const QUERY_INSERT: &str =
         "INSERT INTO advanced_configurations (channel_id, decoder_input_param, decoder_output_param, encoder_input_param,
             ingest_input_param, filter_deinterlace, filter_pad_video, filter_fps, filter_scale, filter_set_dar,
@@ -362,13 +437,15 @@ pub async fn insert_advanced_configuration(
         .await?
         .get("id");
 
+    let a_id = adv_id.unwrap_or(advanced_id);
+
     sqlx::query(QUERY_UPDATE)
         .bind(channel_id)
-        .bind(advanced_id)
+        .bind(a_id)
         .execute(conn)
         .await?;
 
-    Ok(())
+    Ok(advanced_id)
 }
 
 pub async fn update_advanced_configuration(

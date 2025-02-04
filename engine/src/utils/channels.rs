@@ -4,10 +4,16 @@ use log::*;
 use sqlx::{Pool, Sqlite};
 use tokio::sync::Mutex;
 
-use crate::db::{handles, models::Channel};
+use crate::db::{
+    handles::{self, *},
+    models::Channel,
+};
 use crate::player::controller::{ChannelController, ChannelManager};
 use crate::utils::{
-    advanced_config::AdvancedConfig, config::get_config, copy_assets, errors::ServiceError,
+    advanced_config::{AdvancedConfig, DecoderConfig, FilterConfig, IngestConfig},
+    config::get_config,
+    copy_assets,
+    errors::ServiceError,
     mail::MailQueue,
 };
 
@@ -39,9 +45,10 @@ pub async fn create_channel(
 
     handles::new_channel_presets(conn, channel.id).await?;
     handles::update_channel(conn, channel.id, channel.clone()).await?;
-    handles::insert_advanced_configuration(
+    let adv_id = handles::insert_advanced_configuration(
         conn,
         channel.id,
+        None,
         AdvancedConfig {
             name: Some("None".to_string()),
             ..Default::default()
@@ -49,6 +56,59 @@ pub async fn create_channel(
     )
     .await?;
     handles::insert_configuration(conn, channel.id, OUTPUT_PARM).await?;
+    handles::insert_advanced_configuration(
+        conn,
+        channel.id,
+        Some(adv_id),
+        AdvancedConfig {
+            name: Some(NVIDIA_NAME.to_string()),
+            decoder: DecoderConfig {
+                input_param: Some(NVIDIA_INPUT.to_string()),
+                output_param: Some(NVIDIA_DECODER_OUTPUT.to_string()),
+                ..Default::default()
+            },
+            ingest: IngestConfig {
+                input_param: Some(NVIDIA_INPUT.to_string()),
+                ..Default::default()
+            },
+            filter: FilterConfig {
+                deinterlace: Some(NVIDIA_FILTER_DEINTERLACE.to_string()),
+                scale: Some(NVIDIA_FILTER_SCALE.to_string()),
+                overlay_logo_scale: Some(NVIDIA_FILTER_LOGO_SCALE.to_string()),
+                overlay_logo: Some(NVIDIA_FILTER_OVERLAY.to_string()),
+                ..Default::default()
+            },
+            ..Default::default()
+        },
+    )
+    .await?;
+    handles::insert_advanced_configuration(
+        conn,
+        channel.id,
+        Some(adv_id),
+        AdvancedConfig {
+            name: Some(QSV_NAME.to_string()),
+            decoder: DecoderConfig {
+                input_param: Some(QSV_INPUT.to_string()),
+                output_param: Some(QSV_DECODER_OUTPUT.to_string()),
+                ..Default::default()
+            },
+            ingest: IngestConfig {
+                input_param: Some(QSV_INPUT.to_string()),
+                ..Default::default()
+            },
+            filter: FilterConfig {
+                deinterlace: Some(QSV_FILTER_DEINTERLACE.to_string()),
+                fps: Some(QSV_FILTER_FPS.to_string()),
+                scale: Some(QSV_FILTER_SCALE.to_string()),
+                overlay_logo_scale: Some(QSV_FILTER_LOGO_SCALE.to_string()),
+                overlay_logo: Some(QSV_FILTER_OVERLAY.to_string()),
+                ..Default::default()
+            },
+            ..Default::default()
+        },
+    )
+    .await?;
 
     let config = get_config(conn, channel.id).await?;
 

@@ -14,6 +14,7 @@
                 <input
                     v-model="channel.name"
                     type="text"
+                    name="name"
                     placeholder="Type here"
                     class="input input-bordered w-full !bg-base-100"
                     @keyup="isChanged"
@@ -28,6 +29,7 @@
                 <input
                     v-model="channel.preview_url"
                     type="text"
+                    name="preview_url"
                     class="input input-bordered w-full !bg-base-100"
                     @keyup="isChanged"
                     :disabled="authStore.role === 'user'"
@@ -41,6 +43,7 @@
                 <input
                     v-model="channel.extra_extensions"
                     type="text"
+                    name="extra_extensions"
                     class="input input-bordered w-full !bg-base-100"
                     @keyup="isChanged"
                     :disabled="authStore.role === 'user'"
@@ -61,6 +64,7 @@
                     <input
                         v-model="channel.public"
                         type="text"
+                        name="public"
                         class="input input-bordered w-full"
                         @keyup="isChanged"
                     />
@@ -73,6 +77,7 @@
                     <input
                         v-model="channel.playlists"
                         type="text"
+                        name="playlists"
                         class="input input-bordered w-full"
                         @keyup="isChanged"
                     />
@@ -85,6 +90,7 @@
                     <input
                         v-model="channel.storage"
                         type="text"
+                        name="storage"
                         class="input input-bordered w-full"
                         @keyup="isChanged"
                     />
