@@ -59,6 +59,6 @@ VALUES
         'vpp_qsv=framerate=25',
         'scale_qsv={}:{}',
         'scale_qsv={}',
-        'overlay_qsv={}:shortest=1,format=nv12',
+        'overlay_qsv={}:shortest=1,vpp_qsv=format=nv12',
         'QSV'
     );
