@@ -4,15 +4,17 @@ use std::{
 };
 
 use actix_multipart::Multipart;
-use futures_util::TryStreamExt as _;
+use async_walkdir::WalkDir;
+// use futures_util::TryStreamExt as _;
 use lexical_sort::{natural_lexical_cmp, PathSort};
 use log::*;
-use rand::{distr::Alphanumeric, Rng};
+use rand::{distr::Alphanumeric, rngs::StdRng, seq::SliceRandom, Rng, SeedableRng};
 use tokio::{fs, io::AsyncWriteExt, sync::Mutex, task::JoinHandle};
+use tokio_stream::StreamExt;
 
 use crate::file::{norm_abs_path, watcher::watch, MoveObject, PathObject, Storage, VideoFile};
-use crate::player::utils::{file_extension, probe::MediaProbe, Media};
-use crate::utils::{config::PlayoutConfig, errors::ServiceError};
+use crate::player::utils::{file_extension, include_file_extension, probe::MediaProbe, Media};
+use crate::utils::{config::PlayoutConfig, errors::ServiceError, logging::Target};
 
 #[derive(Clone, Debug)]
 pub struct LocalStorage {
@@ -295,6 +297,70 @@ impl Storage for LocalStorage {
         if let Some(handler) = watch_handler.as_mut() {
             handler.abort();
         }
+    }
+
+    async fn fill_filler_list(
+        &mut self,
+        config: &PlayoutConfig,
+        fillers: Option<Arc<Mutex<Vec<Media>>>>,
+    ) -> Vec<Media> {
+        let id = config.general.channel_id;
+        let mut filler_list = vec![];
+        let filler_path = &config.storage.filler_path;
+
+        if filler_path.is_dir() {
+            let config_clone = config.clone();
+            let mut index = 0;
+            let mut entries = WalkDir::new(&config_clone.storage.filler_path);
+
+            while let Some(Ok(entry)) = entries.next().await {
+                if entry.path().is_file() && include_file_extension(config, &entry.path()) {
+                    let mut media = Media::new(index, &entry.path().to_string_lossy(), false).await;
+
+                    if fillers.is_none() {
+                        if let Err(e) = media.add_probe(false).await {
+                            error!(target: Target::file_mail(), channel = id; "{e:?}");
+                        };
+                    }
+
+                    filler_list.push(media);
+                    index += 1;
+                }
+            }
+
+            if config.storage.shuffle {
+                let mut rng = StdRng::from_os_rng();
+
+                filler_list.shuffle(&mut rng);
+            } else {
+                filler_list.sort_by(|d1, d2| natural_lexical_cmp(&d1.source, &d2.source));
+            }
+
+            for (index, item) in filler_list.iter_mut().enumerate() {
+                item.index = Some(index);
+            }
+
+            if let Some(f) = fillers.as_ref() {
+                f.lock().await.clone_from(&filler_list);
+            }
+        } else if filler_path.is_file() {
+            let mut media =
+                Media::new(0, &config.storage.filler_path.to_string_lossy(), false).await;
+
+            if fillers.is_none() {
+                if let Err(e) = media.add_probe(false).await {
+                    error!(target: Target::file_mail(), channel = id; "{e:?}");
+                };
+            }
+
+            filler_list.push(media);
+
+            if let Some(f) = fillers.as_ref() {
+                f.lock().await.clone_from(&filler_list);
+            }
+        }
+
+        filler_list
     }
 }
 

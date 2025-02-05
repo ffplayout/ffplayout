@@ -81,11 +81,11 @@ async fn test_ordered_list() {
 #[tokio::test]
 #[ignore]
 async fn test_filler_list() {
-    let (mut config, _) = prepare_config().await;
+    let (mut config, manager) = prepare_config().await;
 
     config.storage.filler = "assets/".into();
 
-    let f_list = filler_list(&config, 2440.0).await;
+    let f_list = filler_list(&config, &manager, 2440.0).await;
 
     assert_eq!(sum_durations(&f_list), 2440.0);
 }

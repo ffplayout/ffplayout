@@ -53,4 +53,12 @@ impl Storage for S3Storage {
     }
 
     async fn stop_watch(&mut self) {}
+
+    async fn fill_filler_list(
+        &mut self,
+        _config: &PlayoutConfig,
+        _fillers: Option<Arc<Mutex<Vec<Media>>>>,
+    ) -> Vec<Media> {
+        vec![]
+    }
 }

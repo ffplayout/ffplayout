@@ -125,6 +125,17 @@ impl StorageBackend {
             StorageBackend::S3(storage) => storage.stop_watch().await,
         }
     }
+
+    pub async fn fill_filler_list(
+        &mut self,
+        config: &PlayoutConfig,
+        fillers: Option<Arc<Mutex<Vec<Media>>>>,
+    ) -> Vec<Media> {
+        match self {
+            StorageBackend::Local(storage) => storage.fill_filler_list(config, fillers).await,
+            StorageBackend::S3(storage) => storage.fill_filler_list(config, fillers).await,
+        }
+    }
 }
 
 trait Storage {
@@ -140,6 +151,11 @@ trait Storage {
         sources: Arc<Mutex<Vec<Media>>>,
     );
     async fn stop_watch(&mut self);
+    async fn fill_filler_list(
+        &mut self,
+        config: &PlayoutConfig,
+        fillers: Option<Arc<Mutex<Vec<Media>>>>,
+    ) -> Vec<Media>;
 }
 
 pub fn select_storage_type(path: &Path) -> StorageType {

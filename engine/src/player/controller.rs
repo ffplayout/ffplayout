@@ -29,7 +29,7 @@ use crate::{
 };
 use crate::{
     file::{init_storage, select_storage_type, StorageBackend},
-    player::{input::folder::fill_filler_list, output::player, utils::Media},
+    player::{output::player, utils::Media},
 };
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -382,7 +382,12 @@ async fn run_channel(manager: ChannelManager) -> Result<(), ServiceError> {
     // after start a filler is needed, the first one will be ignored because the list is not filled.
 
     if filler_list.lock().await.is_empty() {
-        fill_filler_list(&config, Some(filler_list)).await;
+        manager
+            .storage
+            .lock()
+            .await
+            .fill_filler_list(&config, Some(filler_list))
+            .await;
     }
 
     player(manager).await

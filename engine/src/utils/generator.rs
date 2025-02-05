@@ -16,7 +16,7 @@ use tokio_stream::StreamExt;
 
 use crate::player::{
     controller::ChannelManager,
-    input::folder::{fill_filler_list, FolderSource},
+    input::folder::FolderSource,
     utils::{
         get_date_range, include_file_extension, json_serializer::JsonPlaylist, sum_durations, Media,
     },
@@ -91,8 +91,17 @@ pub fn ordered_list(clip_list: Vec<Media>, total_length: f64) -> Vec<Media> {
     ordered_clip_list
 }
 
-pub async fn filler_list(config: &PlayoutConfig, total_length: f64) -> Vec<Media> {
-    let filler_list = fill_filler_list(config, None).await;
+pub async fn filler_list(
+    config: &PlayoutConfig,
+    manager: &ChannelManager,
+    total_length: f64,
+) -> Vec<Media> {
+    let filler_list = manager
+        .storage
+        .lock()
+        .await
+        .fill_filler_list(config, None)
+        .await;
     let mut index = 0;
     let mut filler_clip_list: Vec<Media> = vec![];
     let mut target_duration = 0.0;
@@ -172,7 +181,7 @@ pub async fn generate_from_template(
         let total_length = sum_durations(&timed_list);
 
         if duration > total_length {
-            let mut filler = filler_list(config, duration - total_length).await;
+            let mut filler = filler_list(config, manager, duration - total_length).await;
 
             timed_list.append(&mut filler);
         }
@@ -296,7 +305,7 @@ pub async fn playlist_generator(manager: &ChannelManager) -> Result<Vec<JsonPlay
 
             if config.playlist.length_sec.unwrap() > list_duration {
                 let time_left = config.playlist.length_sec.unwrap() - list_duration;
-                let mut fillers = filler_list(&config, time_left).await;
+                let mut fillers = filler_list(&config, manager, time_left).await;
 
                 playlist.program.append(&mut fillers);
             }
