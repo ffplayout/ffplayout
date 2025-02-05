@@ -4,10 +4,7 @@ use log::*;
 use sqlx::{Pool, Sqlite};
 use tokio::sync::Mutex;
 
-use crate::db::{
-    handles::{self, *},
-    models::Channel,
-};
+use crate::db::{handles, models::Channel};
 use crate::player::controller::{ChannelController, ChannelManager};
 use crate::utils::{
     advanced_config::{AdvancedConfig, DecoderConfig, FilterConfig, IngestConfig},
@@ -33,14 +30,33 @@ async fn map_global_admins(conn: &Pool<Sqlite>) -> Result<(), ServiceError> {
     Ok(())
 }
 
+const NVIDIA_NAME: &str = "Nvidia";
+const NVIDIA_INPUT: &str =
+    "-thread_queue_size 1024 -hwaccel_device 0 -hwaccel cuvid -hwaccel_output_format cuda";
+const NVIDIA_DECODER_OUTPUT: &str = "-c:v h264_nvenc -preset p2 -tune ll -b:v 50000k -minrate 50000k -maxrate 50000k -bufsize 25000k -c:a s302m -strict -2 -sample_fmt s16 -ar 48000 -ac 2";
+const NVIDIA_FILTER_DEINTERLACE: &str = "yadif_cuda=0:-1:0";
+const NVIDIA_FILTER_SCALE: &str = "scale_cuda={}:{}:format=yuv420p";
+const NVIDIA_FILTER_LOGO_SCALE: &str = "null";
+const NVIDIA_FILTER_OVERLAY: &str = "overlay_cuda={}:shortest=1";
+
+const QSV_NAME: &str = "QSV";
+const QSV_INPUT: &str =
+    "-hwaccel qsv -init_hw_device qsv=hw -filter_hw_device hw -hwaccel_output_format qsv";
+const QSV_DECODER_OUTPUT: &str = "-c:v mpeg2_qsv -g 1 -b:v 50000k -minrate 50000k -maxrate 50000k -bufsize 25000k -c:a s302m -strict -2 -sample_fmt s16 -ar 48000 -ac 2";
+const QSV_FILTER_DEINTERLACE: &str = "deinterlace_qsv";
+const QSV_FILTER_FPS: &str = "vpp_qsv=framerate=25";
+const QSV_FILTER_SCALE: &str = "scale_qsv={}:{}";
+const QSV_FILTER_LOGO_SCALE: &str = "scale_qsv={}";
+const QSV_FILTER_OVERLAY: &str = "overlay_qsv={}:shortest=1";
+
+const OUTPUT_PARM: &str = "-c:v libx264 -crf 23 -x264-params keyint=50:min-keyint=25:scenecut=-1 -maxrate 1300k -bufsize 2600k -preset faster -tune zerolatency -profile:v Main -level 3.1 -c:a aac -ar 44100 -b:a 128k -flags +cgop -f hls -hls_time 6 -hls_list_size 600 -hls_flags append_list+delete_segments+omit_endlist -hls_segment_filename live/stream-%d.ts live/stream.m3u8";
+
 pub async fn create_channel(
     conn: &Pool<Sqlite>,
     controllers: Arc<Mutex<ChannelController>>,
     queue: Arc<Mutex<Vec<Arc<Mutex<MailQueue>>>>>,
     target_channel: Channel,
 ) -> Result<Channel, ServiceError> {
-    const OUTPUT_PARM: &str = "-c:v libx264 -crf 23 -x264-params keyint=50:min-keyint=25:scenecut=-1 -maxrate 1300k -bufsize 2600k -preset faster -tune zerolatency -profile:v Main -level 3.1 -c:a aac -ar 44100 -b:a 128k -flags +cgop -f hls -hls_time 6 -hls_list_size 600 -hls_flags append_list+delete_segments+omit_endlist -hls_segment_filename live/stream-%d.ts live/stream.m3u8";
-
     let channel = handles::insert_channel(conn, target_channel).await?;
 
     handles::new_channel_presets(conn, channel.id).await?;

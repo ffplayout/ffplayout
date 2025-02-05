@@ -111,10 +111,7 @@
                         The filters are mainly there to transform audio and video into the correct format, but also to
                         place text and logo over the video, create in/out fade etc.<br />
 
-                        If curly brackets are included in the default values, these must be adopted.<br />
-
-                        If a filter is not compatible and you know that it is not absolutely necessary to use it, add
-                        null/anull.
+                        If curly brackets are included in the default values, these must be adopted.
                     </div>
                 </label>
                 <label class="form-control w-full mt-2">
