@@ -9,7 +9,7 @@ use tokio::sync::Mutex;
 use tokio_stream::StreamExt;
 
 use crate::utils::logging::Target;
-use crate::utils::s3_utils::S3_DEFAULT_PRESIGNEDURL_EXP;
+use crate::utils::s3_utils::{S3_DEFAULT_PRESIGNEDURL_EXP, S3_MAX_KEYS};
 use crate::{
     player::{
         controller::ChannelManager,
@@ -62,6 +62,7 @@ impl FolderSource {
                     .list_objects_v2()
                     .bucket(bucket.to_owned())
                     .prefix(path.to_string_lossy())
+                    .max_keys(S3_MAX_KEYS)
                     .into_paginator()
                     .send();
 
@@ -250,6 +251,7 @@ pub async fn fill_filler_list(
                 .list_objects_v2()
                 .bucket(bucket)
                 .prefix(filler_path.to_str().unwrap())
+                .max_keys(S3_MAX_KEYS)
                 .into_paginator()
                 .send();
 

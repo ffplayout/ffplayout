@@ -28,6 +28,7 @@ use aws_sdk_s3::{
 
 pub const S3_INDICATOR: &str = "s3://";
 pub const S3_DEFAULT_PRESIGNEDURL_EXP: f64 = 3600.0 * 24.0;
+pub const S3_MAX_KEYS: i32 = 50000;
 
 pub trait S3Ext {
     fn parse_is_s3(&self) -> bool;
@@ -252,6 +253,7 @@ pub async fn s3_browser(
             .bucket(bucket)
             .prefix(&parent_path)
             .delimiter(delimiter)
+            .max_keys(S3_MAX_KEYS)
             .send()
             .await
             .map_err(|_e| ServiceError::InternalServerError)?;
@@ -272,6 +274,7 @@ pub async fn s3_browser(
         .bucket(bucket)
         .prefix(&prefix)
         .delimiter(delimiter)
+        .max_keys(S3_MAX_KEYS)
         .send()
         .await
         .map_err(|_| ServiceError::InternalServerError)?;
@@ -451,6 +454,7 @@ pub async fn s3_delete_prefix(
         .bucket(bucket)
         .prefix(&parent_path)
         .delimiter(delimiter)
+        .max_keys(S3_MAX_KEYS)
         .send()
         .await
         .map_err(|e| ServiceError::BadRequest(format!("Invalid S3 config!: {}", e)))?;
@@ -464,6 +468,7 @@ pub async fn s3_delete_prefix(
                         .list_objects_v2()
                         .bucket(bucket)
                         .prefix(&clean_path)
+                        .max_keys(S3_MAX_KEYS)
                         .send()
                         .await
                         .map_err(|_| ServiceError::InternalServerError)?;
@@ -487,6 +492,7 @@ pub async fn s3_delete_prefix(
                         .bucket(bucket)
                         .prefix(&clean_path)
                         .delimiter(delimiter)
+                        .max_keys(S3_MAX_KEYS)
                         .send()
                         .await
                         .map_err(|_e| ServiceError::InternalServerError)?;
@@ -581,6 +587,7 @@ pub async fn s3_is_prefix(
         .bucket(bucket)
         .prefix(&parent_path)
         .delimiter(delimiter)
+        .max_keys(S3_MAX_KEYS)
         .send()
         .await
         .map_err(|e| ServiceError::BadRequest(format!("Invalid S3 config!: {}", e)))?;
@@ -617,6 +624,7 @@ pub async fn s3_is_object(
         .bucket(bucket)
         .prefix(&parent_path)
         .delimiter(delimiter)
+        .max_keys(S3_MAX_KEYS)
         .send()
         .await
         .map_err(|e| ServiceError::BadRequest(format!("Invalid S3 config!: {}", e)))?;

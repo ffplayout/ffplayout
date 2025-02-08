@@ -17,7 +17,7 @@ use notify::{
 use notify_debouncer_full::new_debouncer;
 use tokio::sync::Mutex;
 
-use crate::utils::{config::PlayoutConfig, logging::Target, s3_utils};
+use crate::utils::{config::PlayoutConfig, logging::Target, s3_utils::{self, S3_MAX_KEYS}};
 use crate::{
     player::utils::{include_file_extension, Media},
     utils::s3_utils::S3_DEFAULT_PRESIGNEDURL_EXP,
@@ -51,6 +51,7 @@ pub async fn watchman(
             .list_objects_v2()
             .bucket(bucket.clone().unwrap())
             .prefix(path.to_string_lossy())
+            .max_keys(S3_MAX_KEYS)
             .into_paginator()
             .send();
 
