@@ -69,7 +69,7 @@ zeromq = { version = "0.4", default-features = false, features = [
 ] }
 
 aws-config = { version = "1.5.13", features = ["behavior-version-latest"] }
-aws-sdk-s3 = "1.68.0"
+aws-sdk-s3 = "1.74.0"
 
 
 [build-dependencies]
