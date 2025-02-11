@@ -3,9 +3,6 @@ use std::{
     path::{Path, PathBuf},
 };
 
-#[cfg(target_family = "unix")]
-use std::os::unix::fs::MetadataExt;
-
 use chrono::{format::ParseErrorKind, prelude::*};
 use log::*;
 use path_clean::PathClean;
@@ -273,64 +270,6 @@ pub fn round_to_nearest_ten(num: i64) -> i64 {
     } else {
         (num / 10) * 10
     }
-}
-
-pub async fn copy_assets(storage_path: &Path) -> Result<(), std::io::Error> {
-    if storage_path.is_dir() {
-        let target = storage_path.join("00-assets");
-        let mut dummy_source = Path::new("/usr/share/ffplayout/dummy.vtt");
-        let mut font_source = Path::new("/usr/share/ffplayout/DejaVuSans.ttf");
-        let mut logo_source = Path::new("/usr/share/ffplayout/logo.png");
-
-        if !dummy_source.is_file() {
-            dummy_source = Path::new("./assets/dummy.vtt");
-        }
-        if !font_source.is_file() {
-            font_source = Path::new("./assets/DejaVuSans.ttf");
-        }
-        if !logo_source.is_file() {
-            logo_source = Path::new("./assets/logo.png");
-        }
-
-        if !target.is_dir() {
-            let dummy_target = target.join("dummy.vtt");
-            let font_target = target.join("DejaVuSans.ttf");
-            let logo_target = target.join("logo.png");
-
-            fs::create_dir_all(&target).await?;
-            fs::copy(&dummy_source, &dummy_target).await?;
-            fs::copy(&font_source, &font_target).await?;
-            fs::copy(&logo_source, &logo_target).await?;
-
-            #[cfg(target_family = "unix")]
-            {
-                let uid = nix::unistd::Uid::current();
-                let parent_owner = storage_path.metadata().unwrap().uid();
-
-                if uid.is_root() && uid.to_string() != parent_owner.to_string() {
-                    let user = nix::unistd::User::from_uid(parent_owner.into())
-                        .unwrap_or_default()
-                        .unwrap();
-
-                    nix::unistd::chown(&target, Some(user.uid), Some(user.gid))?;
-
-                    if dummy_target.is_file() {
-                        nix::unistd::chown(&dummy_target, Some(user.uid), Some(user.gid))?;
-                    }
-                    if font_target.is_file() {
-                        nix::unistd::chown(&font_target, Some(user.uid), Some(user.gid))?;
-                    }
-                    if logo_target.is_file() {
-                        nix::unistd::chown(&logo_target, Some(user.uid), Some(user.gid))?;
-                    }
-                }
-            }
-        }
-    } else {
-        error!("Storage path {storage_path:?} not exists!");
-    }
-
-    Ok(())
 }
 
 /// Combined function to check if the program is running inside a container.

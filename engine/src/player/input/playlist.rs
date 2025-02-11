@@ -571,7 +571,14 @@ impl CurrentProgram {
             // Set list_init to true, to stay in sync.
             self.manager.list_init.store(true, Ordering::SeqCst);
 
-            if self.config.storage.filler_path.is_dir() && !fillers.is_empty() {
+            if self
+                .manager
+                .storage
+                .lock()
+                .await
+                .is_dir(&self.config.storage.filler_path)
+                && !fillers.is_empty()
+            {
                 let mut index = self.manager.filler_index.fetch_add(1, Ordering::SeqCst);
 
                 if index > fillers.len() - 1 {

@@ -80,7 +80,7 @@ pub struct ChannelManager {
 }
 
 impl ChannelManager {
-    pub fn new(db_pool: Pool<Sqlite>, channel: Channel, config: PlayoutConfig) -> Self {
+    pub async fn new(db_pool: Pool<Sqlite>, channel: Channel, config: PlayoutConfig) -> Self {
         let s_type = select_storage_type(&config.channel.storage);
         let channel_extensions = channel.extra_extensions.clone();
         let mut extensions = config.storage.extensions.clone();
@@ -91,11 +91,9 @@ impl ChannelManager {
 
         extensions.append(&mut extra_extensions);
 
-        let storage = Arc::new(Mutex::new(init_storage(
-            s_type,
-            config.channel.storage.clone(),
-            extensions,
-        )));
+        let storage = Arc::new(Mutex::new(
+            init_storage(s_type, config.channel.storage.clone(), extensions).await,
+        ));
 
         Self {
             id: channel.id,
@@ -144,7 +142,7 @@ impl ChannelManager {
         extensions.append(&mut extra_extensions);
         let mut storage = self.storage.lock().await;
 
-        *storage = init_storage(s_type, s_path.to_path_buf(), extensions);
+        *storage = init_storage(s_type, s_path.to_path_buf(), extensions).await;
     }
 
     pub async fn update_config(&self, new_config: PlayoutConfig) {

@@ -136,6 +136,27 @@ impl StorageBackend {
             StorageBackend::S3(storage) => storage.fill_filler_list(config, fillers).await,
         }
     }
+
+    pub async fn copy_assets(&self) -> Result<(), std::io::Error> {
+        match self {
+            StorageBackend::Local(storage) => storage.copy_assets().await,
+            StorageBackend::S3(storage) => storage.copy_assets().await,
+        }
+    }
+
+    pub fn is_dir<P: AsRef<Path>>(&self, input: P) -> bool {
+        match self {
+            StorageBackend::Local(storage) => storage.is_dir(input),
+            StorageBackend::S3(storage) => storage.is_dir(input),
+        }
+    }
+
+    pub fn is_file<P: AsRef<Path>>(&self, input: P) -> bool {
+        match self {
+            StorageBackend::Local(storage) => storage.is_file(input),
+            StorageBackend::S3(storage) => storage.is_file(input),
+        }
+    }
 }
 
 trait Storage {
@@ -156,23 +177,30 @@ trait Storage {
         config: &PlayoutConfig,
         fillers: Option<Arc<Mutex<Vec<Media>>>>,
     ) -> Vec<Media>;
+    async fn copy_assets(&self) -> Result<(), std::io::Error>;
+    fn is_dir<P: AsRef<Path>>(&self, input: P) -> bool;
+    fn is_file<P: AsRef<Path>>(&self, input: P) -> bool;
 }
 
-pub fn select_storage_type(path: &Path) -> StorageType {
-    if path.starts_with("s3://") {
+pub fn select_storage_type<S: AsRef<std::ffi::OsStr>>(path: S) -> StorageType {
+    let path_str = path.as_ref().to_string_lossy().to_lowercase();
+
+    if path_str.starts_with("s3://") {
         return StorageType::S3;
     }
 
     StorageType::Local
 }
 
-pub fn init_storage(
+pub async fn init_storage(
     storage_type: StorageType,
     root: PathBuf,
     extensions: Vec<String>,
 ) -> StorageBackend {
     match storage_type {
-        StorageType::Local => StorageBackend::Local(local::LocalStorage::new(root, extensions)),
+        StorageType::Local => {
+            StorageBackend::Local(local::LocalStorage::new(root, extensions).await)
+        }
         StorageType::S3 => StorageBackend::S3(s3::S3Storage::new(root, extensions)),
     }
 }

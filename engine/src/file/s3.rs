@@ -61,4 +61,16 @@ impl Storage for S3Storage {
     ) -> Vec<Media> {
         vec![]
     }
+
+    async fn copy_assets(&self) -> Result<(), std::io::Error> {
+        Ok(())
+    }
+
+    fn is_dir<P: AsRef<Path>>(&self, _input: P) -> bool {
+        false
+    }
+
+    fn is_file<P: AsRef<Path>>(&self, _input: P) -> bool {
+        false
+    }
 }

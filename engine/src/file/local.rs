@@ -3,6 +3,9 @@ use std::{
     sync::{atomic::AtomicBool, Arc},
 };
 
+#[cfg(target_family = "unix")]
+use std::os::unix::fs::MetadataExt;
+
 use actix_multipart::Multipart;
 use async_walkdir::WalkDir;
 // use futures_util::TryStreamExt as _;
@@ -24,7 +27,13 @@ pub struct LocalStorage {
 }
 
 impl LocalStorage {
-    pub fn new(root: PathBuf, extensions: Vec<String>) -> Self {
+    pub async fn new(root: PathBuf, extensions: Vec<String>) -> Self {
+        if !root.is_dir() {
+            fs::create_dir_all(&root)
+                .await
+                .unwrap_or_else(|_| panic!("Can't create storage folder: {root:?}"));
+        }
+
         Self {
             root,
             extensions,
@@ -361,6 +370,72 @@ impl Storage for LocalStorage {
         }
 
         filler_list
+    }
+
+    async fn copy_assets(&self) -> Result<(), std::io::Error> {
+        if self.root.is_dir() {
+            let target = self.root.join("00-assets");
+            let mut dummy_source = Path::new("/usr/share/ffplayout/dummy.vtt");
+            let mut font_source = Path::new("/usr/share/ffplayout/DejaVuSans.ttf");
+            let mut logo_source = Path::new("/usr/share/ffplayout/logo.png");
+
+            if !dummy_source.is_file() {
+                dummy_source = Path::new("./assets/dummy.vtt");
+            }
+            if !font_source.is_file() {
+                font_source = Path::new("./assets/DejaVuSans.ttf");
+            }
+            if !logo_source.is_file() {
+                logo_source = Path::new("./assets/logo.png");
+            }
+
+            if !target.is_dir() {
+                let dummy_target = target.join("dummy.vtt");
+                let font_target = target.join("DejaVuSans.ttf");
+                let logo_target = target.join("logo.png");
+
+                fs::create_dir_all(&target).await?;
+                fs::copy(&dummy_source, &dummy_target).await?;
+                fs::copy(&font_source, &font_target).await?;
+                fs::copy(&logo_source, &logo_target).await?;
+
+                #[cfg(target_family = "unix")]
+                {
+                    let uid = nix::unistd::Uid::current();
+                    let parent_owner = self.root.metadata().unwrap().uid();
+
+                    if uid.is_root() && uid.to_string() != parent_owner.to_string() {
+                        let user = nix::unistd::User::from_uid(parent_owner.into())
+                            .unwrap_or_default()
+                            .unwrap();
+
+                        nix::unistd::chown(&target, Some(user.uid), Some(user.gid))?;
+
+                        if dummy_target.is_file() {
+                            nix::unistd::chown(&dummy_target, Some(user.uid), Some(user.gid))?;
+                        }
+                        if font_target.is_file() {
+                            nix::unistd::chown(&font_target, Some(user.uid), Some(user.gid))?;
+                        }
+                        if logo_target.is_file() {
+                            nix::unistd::chown(&logo_target, Some(user.uid), Some(user.gid))?;
+                        }
+                    }
+                }
+            }
+        } else {
+            error!("Storage path {:?} not exists!", self.root);
+        }
+
+        Ok(())
+    }
+
+    fn is_dir<P: AsRef<Path>>(&self, input: P) -> bool {
+        input.as_ref().is_dir()
+    }
+
+    fn is_file<P: AsRef<Path>>(&self, input: P) -> bool {
+        input.as_ref().is_file()
     }
 }
 
