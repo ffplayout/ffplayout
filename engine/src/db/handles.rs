@@ -15,8 +15,9 @@ use crate::utils::{
     is_running_in_container,
 };
 
-pub async fn db_migrate(conn: &Pool<Sqlite>) -> Result<(), ProcessError> {
+pub async fn db_migrate(conn: &Pool<Sqlite>) -> Result<bool, ProcessError> {
     sqlx::migrate!("../migrations").run(conn).await?;
+    let mut init = false;
 
     if select_global(conn).await.is_err() {
         let secret: String = rand::rng()
@@ -39,9 +40,11 @@ pub async fn db_migrate(conn: &Pool<Sqlite>) -> Result<(), ProcessError> {
             .bind(shared)
             .execute(conn)
             .await?;
+
+        init = true;
     }
 
-    Ok(())
+    Ok(init)
 }
 
 pub async fn select_global(conn: &Pool<Sqlite>) -> Result<GlobalSettings, ProcessError> {

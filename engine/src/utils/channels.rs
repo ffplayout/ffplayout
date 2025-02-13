@@ -1,4 +1,4 @@
-use std::{path::PathBuf, sync::Arc};
+use std::sync::Arc;
 
 use log::*;
 use sqlx::{Pool, Sqlite};
@@ -9,7 +9,6 @@ use crate::player::controller::{ChannelController, ChannelManager};
 use crate::utils::{
     advanced_config::{AdvancedConfig, DecoderConfig, FilterConfig, IngestConfig},
     config::get_config,
-    copy_assets,
     errors::ServiceError,
     mail::MailQueue,
 };
@@ -128,12 +127,12 @@ pub async fn create_channel(
 
     let config = get_config(conn, channel.id).await?;
 
-    if let Err(e) = copy_assets(&PathBuf::from(&config.storage.path)).await {
+    let m_queue = Arc::new(Mutex::new(MailQueue::new(channel.id, config.mail.clone())));
+    let manager = ChannelManager::new(conn.clone(), channel.clone(), config).await;
+
+    if let Err(e) = manager.storage.lock().await.copy_assets().await {
         error!("{e}");
     };
-
-    let m_queue = Arc::new(Mutex::new(MailQueue::new(channel.id, config.mail.clone())));
-    let manager = ChannelManager::new(conn.clone(), channel.clone(), config);
 
     controllers.lock().await.add(manager);
     queue.lock().await.push(m_queue);

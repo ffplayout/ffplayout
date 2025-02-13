@@ -17,7 +17,6 @@ use crate::db::{
 use crate::utils::{
     advanced_config::AdvancedConfig,
     config::{OutputMode, PlayoutConfig},
-    copy_assets,
 };
 use crate::ARGS;
 
@@ -218,11 +217,12 @@ fn clean_input(input: &str) -> String {
         .to_string()
 }
 
-pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), ProcessError> {
+pub async fn init_args(pool: &Pool<Sqlite>) -> Result<bool, ProcessError> {
     let mut args = ARGS.clone();
+    let mut init = false;
 
     if !args.dump_advanced && !args.dump_config && !args.drop_db {
-        handles::db_migrate(pool).await?;
+        init = handles::db_migrate(pool).await?;
     }
 
     let channels = handles::select_related_channels(pool, None)
@@ -356,10 +356,6 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), ProcessError> {
             channel.storage = storage_path.to_string_lossy().to_string();
         };
 
-        if let Err(e) = copy_assets(&storage_path).await {
-            eprintln!("{e}");
-        };
-
         handles::update_channel(pool, 1, channel).await?;
 
         #[cfg(target_family = "unix")]
@@ -464,7 +460,7 @@ pub async fn run_args(pool: &Pool<Sqlite>) -> Result<(), ProcessError> {
         }
     }
 
-    Ok(())
+    Ok(init)
 }
 
 #[cfg(target_family = "unix")]

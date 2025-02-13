@@ -1,10 +1,9 @@
-use std::sync::{atomic::Ordering, Arc};
+use std::sync::atomic::Ordering;
 
 use async_walkdir::WalkDir;
-use lexical_sort::natural_lexical_cmp;
+
 use log::*;
 use rand::{rngs::StdRng, seq::SliceRandom, SeedableRng};
-use tokio::sync::Mutex;
 use tokio_stream::StreamExt;
 
 use crate::player::{
@@ -162,66 +161,4 @@ impl FolderSource {
 
         Some(self.current_node.clone())
     }
-}
-
-pub async fn fill_filler_list(
-    config: &PlayoutConfig,
-    fillers: Option<Arc<Mutex<Vec<Media>>>>,
-) -> Vec<Media> {
-    let id = config.general.channel_id;
-    let mut filler_list = vec![];
-    let filler_path = &config.storage.filler_path;
-
-    if filler_path.is_dir() {
-        let config_clone = config.clone();
-        let mut index = 0;
-        let mut entries = WalkDir::new(&config_clone.storage.filler_path);
-
-        while let Some(Ok(entry)) = entries.next().await {
-            if entry.path().is_file() && include_file_extension(config, &entry.path()) {
-                let mut media = Media::new(index, &entry.path().to_string_lossy(), false).await;
-
-                if fillers.is_none() {
-                    if let Err(e) = media.add_probe(false).await {
-                        error!(target: Target::file_mail(), channel = id; "{e:?}");
-                    };
-                }
-
-                filler_list.push(media);
-                index += 1;
-            }
-        }
-
-        if config.storage.shuffle {
-            let mut rng = StdRng::from_os_rng();
-
-            filler_list.shuffle(&mut rng);
-        } else {
-            filler_list.sort_by(|d1, d2| natural_lexical_cmp(&d1.source, &d2.source));
-        }
-
-        for (index, item) in filler_list.iter_mut().enumerate() {
-            item.index = Some(index);
-        }
-
-        if let Some(f) = fillers.as_ref() {
-            f.lock().await.clone_from(&filler_list);
-        }
-    } else if filler_path.is_file() {
-        let mut media = Media::new(0, &config.storage.filler_path.to_string_lossy(), false).await;
-
-        if fillers.is_none() {
-            if let Err(e) = media.add_probe(false).await {
-                error!(target: Target::file_mail(), channel = id; "{e:?}");
-            };
-        }
-
-        filler_list.push(media);
-
-        if let Some(f) = fillers.as_ref() {
-            f.lock().await.clone_from(&filler_list);
-        }
-    }
-
-    filler_list
 }

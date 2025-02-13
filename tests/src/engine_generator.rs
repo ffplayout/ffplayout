@@ -35,7 +35,7 @@ async fn prepare_config() -> (PlayoutConfig, ChannelManager) {
 
     let config = PlayoutConfig::new(&pool, 1).await.unwrap();
     let channel = handles::select_channel(&pool, &1).await.unwrap();
-    let manager = ChannelManager::new(pool, channel, config.clone());
+    let manager = ChannelManager::new(pool, channel, config.clone()).await;
 
     (config, manager)
 }
@@ -81,11 +81,11 @@ async fn test_ordered_list() {
 #[tokio::test]
 #[ignore]
 async fn test_filler_list() {
-    let (mut config, _) = prepare_config().await;
+    let (mut config, manager) = prepare_config().await;
 
     config.storage.filler = "assets/".into();
 
-    let f_list = filler_list(&config, 2440.0).await;
+    let f_list = filler_list(&config, &manager, 2440.0).await;
 
     assert_eq!(sum_durations(&f_list), 2440.0);
 }

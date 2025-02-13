@@ -618,21 +618,14 @@ impl PlayoutConfig {
         let mut text = Text::new(&config);
         let task = Task::new(&config);
         let mut output = Output::new(&config);
-
-        if !channel.storage.is_dir() {
-            tokio::fs::create_dir_all(&channel.storage)
-                .await
-                .unwrap_or_else(|_| panic!("Can't create storage folder: {:#?}", channel.storage));
-        }
-
         let mut storage = Storage::new(&config, channel.storage.clone(), channel.shared);
 
         if !channel.playlists.is_dir() {
-            tokio::fs::create_dir_all(&channel.playlists).await?;
+            fs::create_dir_all(&channel.playlists).await?;
         }
 
         if !channel.logs.is_dir() {
-            tokio::fs::create_dir_all(&channel.logs).await?;
+            fs::create_dir_all(&channel.logs).await?;
         }
 
         let (filler_path, _, filler) = norm_abs_path(&channel.storage, &config.storage_filler)?;

@@ -25,7 +25,7 @@ use ffplayout::{
     },
     sse::{broadcast::Broadcaster, routes::*, SseAuthState},
     utils::{
-        args_parse::run_args,
+        args_parse::init_args,
         config::get_config,
         errors::ProcessError,
         logging::init_logging,
@@ -55,7 +55,7 @@ async fn main() -> Result<(), ProcessError> {
     let mail_queues = Arc::new(Mutex::new(vec![]));
     let pool = db_pool().await?;
 
-    run_args(&pool).await?;
+    let mut init = init_args(&pool).await?;
 
     if ARGS.init {
         return Ok(());
@@ -76,7 +76,15 @@ async fn main() -> Result<(), ProcessError> {
             let config = get_config(&pool, channel.id).await?;
             let m_queue = Arc::new(Mutex::new(MailQueue::new(channel.id, config.mail.clone())));
             let channel_active = channel.active;
-            let manager = ChannelManager::new(pool.clone(), channel, config);
+            let manager = ChannelManager::new(pool.clone(), channel, config).await;
+
+            if init {
+                if let Err(e) = manager.storage.lock().await.copy_assets().await {
+                    error!("{e}");
+                };
+
+                init = false;
+            }
 
             mail_queues.lock().await.push(m_queue);
 
@@ -199,7 +207,7 @@ async fn main() -> Result<(), ProcessError> {
         for (index, channel_id) in channel_ids.iter().enumerate() {
             let config = get_config(&pool, *channel_id).await?;
             let channel = handles::select_channel(&pool, channel_id).await?;
-            let manager = ChannelManager::new(pool.clone(), channel, config.clone());
+            let manager = ChannelManager::new(pool.clone(), channel, config.clone()).await;
 
             if ARGS.foreground {
                 let m_queue = Arc::new(Mutex::new(MailQueue::new(*channel_id, config.mail)));

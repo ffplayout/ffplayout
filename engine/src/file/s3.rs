@@ -53,4 +53,24 @@ impl Storage for S3Storage {
     }
 
     async fn stop_watch(&mut self) {}
+
+    async fn fill_filler_list(
+        &mut self,
+        _config: &PlayoutConfig,
+        _fillers: Option<Arc<Mutex<Vec<Media>>>>,
+    ) -> Vec<Media> {
+        vec![]
+    }
+
+    async fn copy_assets(&self) -> Result<(), std::io::Error> {
+        Ok(())
+    }
+
+    fn is_dir<P: AsRef<Path>>(&self, _input: P) -> bool {
+        false
+    }
+
+    fn is_file<P: AsRef<Path>>(&self, _input: P) -> bool {
+        false
+    }
 }

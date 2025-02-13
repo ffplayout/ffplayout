@@ -75,10 +75,6 @@ pub fn prepare_output_cmd(
     let mut new_params = vec![];
     let mut count = 0;
     let re_v = Regex::new(r"\[?0:v(:0)?\]?").unwrap();
-    let vtt_dummy = config
-        .channel
-        .storage
-        .join(config.processing.vtt_dummy.clone().unwrap_or_default());
 
     if let Some(mut filter) = filters.clone() {
         for (i, param) in output_params.iter().enumerate() {
@@ -128,7 +124,7 @@ pub fn prepare_output_cmd(
         }
     }
 
-    if config.processing.vtt_enable && vtt_dummy.is_file() {
+    if config.processing.vtt_enable {
         let i = cmd.iter().filter(|&n| n == "-i").count().saturating_sub(1);
 
         cmd.append(&mut vec_strings!("-map", format!("{i}:s?")));
