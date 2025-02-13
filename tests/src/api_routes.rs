@@ -40,7 +40,7 @@ async fn prepare_config() -> (PlayoutConfig, ChannelManager, Pool<Sqlite>) {
 
     let config = PlayoutConfig::new(&pool, 1).await.unwrap();
     let channel = handles::select_channel(&pool, &1).await.unwrap();
-    let manager = ChannelManager::new(pool.clone(), channel, config.clone());
+    let manager = ChannelManager::new(pool.clone(), channel, config.clone()).await;
 
     (config, manager, pool)
 }
