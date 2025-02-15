@@ -51,7 +51,7 @@ pub async fn watchman(
             .list_objects_v2()
             .bucket(bucket.clone().unwrap())
             .prefix(path.to_string_lossy())
-            .max_keys(S3_MAX_KEYS)
+            // .max_keys(S3_MAX_KEYS)
             .into_paginator()
             .send();
 

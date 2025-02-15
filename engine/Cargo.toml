@@ -68,7 +68,7 @@ zeromq = { version = "0.4", default-features = false, features = [
     "tcp-transport",
 ] }
 
-aws-config = { version = "1.5.13", features = ["behavior-version-latest"] }
+aws-config = { version = "1.5.16", features = ["behavior-version-latest"] }
 aws-sdk-s3 = "1.74.0"
 
 

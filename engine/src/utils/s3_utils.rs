@@ -64,7 +64,7 @@ pub async fn s3_initialize_client(channel: &models::Channel) -> Client {
         channel.storage.get_s3_credentials().unwrap(),
     );
     let config = aws_config::from_env()
-        .region(Region::new("us-east-1")) // Dummy default region, replace if needed!
+        .region(Region::new("")) // Dummy default region, replace if needed!
         .credentials_provider(shared_provider)
         .load()
         .await;
@@ -253,10 +253,10 @@ pub async fn s3_browser(
             .bucket(bucket)
             .prefix(&parent_path)
             .delimiter(delimiter)
-            .max_keys(S3_MAX_KEYS)
+            // .max_keys(S3_MAX_KEYS)
             .send()
             .await
-            .map_err(|_e| ServiceError::InternalServerError)?;
+            .map_err(|e| ServiceError::Conflict(format!("S3 error: {}", e)))?;
 
         for prefix in childs_resp.common_prefixes() {
             if let Some(prefix) = prefix.prefix() {
@@ -274,10 +274,10 @@ pub async fn s3_browser(
         .bucket(bucket)
         .prefix(&prefix)
         .delimiter(delimiter)
-        .max_keys(S3_MAX_KEYS)
+        // .max_keys(S3_MAX_KEYS)
         .send()
         .await
-        .map_err(|_| ServiceError::InternalServerError)?;
+        .map_err(|e| ServiceError::Conflict(format!("S3 error: {}", e)))?;
 
     let mut folders: Vec<String> = vec![];
     let mut files: Vec<String> = vec![];
@@ -454,7 +454,7 @@ pub async fn s3_delete_prefix(
         .bucket(bucket)
         .prefix(&parent_path)
         .delimiter(delimiter)
-        .max_keys(S3_MAX_KEYS)
+        // .max_keys(S3_MAX_KEYS)
         .send()
         .await
         .map_err(|e| ServiceError::BadRequest(format!("Invalid S3 config!: {}", e)))?;
@@ -468,7 +468,7 @@ pub async fn s3_delete_prefix(
                         .list_objects_v2()
                         .bucket(bucket)
                         .prefix(&clean_path)
-                        .max_keys(S3_MAX_KEYS)
+                        // .max_keys(S3_MAX_KEYS)
                         .send()
                         .await
                         .map_err(|_| ServiceError::InternalServerError)?;
@@ -492,7 +492,7 @@ pub async fn s3_delete_prefix(
                         .bucket(bucket)
                         .prefix(&clean_path)
                         .delimiter(delimiter)
-                        .max_keys(S3_MAX_KEYS)
+                        // .max_keys(S3_MAX_KEYS)
                         .send()
                         .await
                         .map_err(|_e| ServiceError::InternalServerError)?;
@@ -587,7 +587,7 @@ pub async fn s3_is_prefix(
         .bucket(bucket)
         .prefix(&parent_path)
         .delimiter(delimiter)
-        .max_keys(S3_MAX_KEYS)
+        // .max_keys(S3_MAX_KEYS)
         .send()
         .await
         .map_err(|e| ServiceError::BadRequest(format!("Invalid S3 config!: {}", e)))?;
@@ -624,7 +624,7 @@ pub async fn s3_is_object(
         .bucket(bucket)
         .prefix(&parent_path)
         .delimiter(delimiter)
-        .max_keys(S3_MAX_KEYS)
+        // .max_keys(S3_MAX_KEYS)
         .send()
         .await
         .map_err(|e| ServiceError::BadRequest(format!("Invalid S3 config!: {}", e)))?;

@@ -631,17 +631,17 @@ async fn update_playout_config(
         .await
         .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
     let p = manager.channel.lock().await.storage.clone();
-    let storage = Path::new(&p.cleaned_path);
+    // let storage = Path::new(&p.cleaned_path);
     let config_id = manager.config.lock().await.general.id;
 
-    let mut logo = String::from(&data.processing.logo);
-    let mut filler = String::from(&data.storage.filler);
-    let mut font = String::from(&data.text.font);
-    if !p.is_s3() {
-        (_, _, logo) = norm_abs_path(storage, &data.processing.logo)?;
-        (_, _, filler) = norm_abs_path(storage, &data.storage.filler)?;
-        (_, _, font) = norm_abs_path(storage, &data.text.font)?;
-    }
+    let logo = String::from(&data.processing.logo);
+    let filler = String::from(&data.storage.filler);
+    let font = String::from(&data.text.font);
+
+    // i commented these because we want to handle the assets with abs path
+    // (_, _, logo) = norm_abs_path(storage, &data.processing.logo)?;
+    // (_, _, filler) = norm_abs_path(storage, &data.storage.filler)?;
+    // (_, _, font) = norm_abs_path(storage, &data.text.font)?;
 
     data.processing.logo = logo;
     data.storage.filler = filler;

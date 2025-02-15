@@ -255,7 +255,9 @@
                 </label>
                 <label class="form-control w-full mt-2">
                     <div class="label">
-                        <span class="label-text !text-md font-bold">Logo</span>
+                        <span class="label-text !text-md font-bold">
+                            Logo <span class="font-normal">(use abs path!)</span>
+                        </span>
                     </div>
                     <input
                         v-model="configStore.playout.processing.logo"
@@ -538,7 +540,9 @@
                 </label>
                 <label class="form-control w-full">
                     <div class="label">
-                        <span class="label-text text-base font-bold">Filler</span>
+                        <span class="label-text text-base font-bold">
+                            Filler <span class="font-normal">(use abs path!)</span>
+                        </span>
                     </div>
                     <input
                         v-model="configStore.playout.storage.filler"
@@ -600,7 +604,9 @@
                 </label>
                 <label class="form-control w-full">
                     <div class="label">
-                        <span class="label-text text-base font-bold">Font</span>
+                        <span class="label-text text-base font-bold">
+                            Font <span class="font-normal">(use abs path!)</span>
+                        </span>
                     </div>
                     <input
                         v-model="configStore.playout.text.font"
@@ -756,7 +762,7 @@ const extensions = computed({
 
     set(value: string) {
         configStore.playout.storage.extensions = value.replaceAll(' ', '').split(/,|;/)
-    }
+    },
 })
 
 const formatIgnoreLines = computed({
