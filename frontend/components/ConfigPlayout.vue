@@ -506,7 +506,7 @@
                         type="text"
                         name="day_start"
                         class="input input-sm input-bordered w-full max-w-xs"
-                        pattern="([01]?[0-9]|2[0-4]):[0-5][0-9]:[0-5][0-9]"
+                        pattern="(([01]?[0-9]|2[0-4]):[0-5][0-9]:[0-5][0-9]|now|none)"
                     />
                     <div class="label">
                         <span class="text-sm select-text text-base-content/80">{{ t('config.playlistDayStart') }}</span>

@@ -100,7 +100,7 @@ pub async fn ingest_server(
     }
 
     if config.processing.vtt_enable && vtt_dummy.is_file() {
-        server_cmd.append(&mut vec_strings!("-map", "1:s"));
+        server_cmd.append(&mut vec_strings!("-map", "1:s", "-c:s", "copy"));
     }
 
     if let Some(mut cmd) = config.processing.cmd {

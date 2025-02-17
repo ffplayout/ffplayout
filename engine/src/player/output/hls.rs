@@ -42,6 +42,18 @@ use crate::{
     },
 };
 
+fn insert_readrate(args: &mut Vec<String>, rate: f64) {
+    let mut i = 0;
+    while i < args.len() {
+        if args[i] == "-i" {
+            args.insert(i, rate.to_string());
+            args.insert(i, "-readrate".to_string());
+            i += 2;
+        }
+        i += 1;
+    }
+}
+
 /// Ingest Server for HLS
 async fn ingest_writer(manager: ChannelManager) -> Result<(), ServiceError> {
     let config = manager.config.lock().await.clone();
@@ -225,7 +237,7 @@ async fn write(manager: &ChannelManager, ff_log_format: &str) -> Result<(), Serv
             }
         }
 
-        dec_prefix.append(&mut vec_strings!["-readrate", read_rate]);
+        insert_readrate(&mut cmd, read_rate);
 
         dec_prefix.append(&mut cmd);
         let dec_cmd = prepare_output_cmd(&config, dec_prefix, &node.filter);
