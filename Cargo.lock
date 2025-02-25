@@ -1363,7 +1363,7 @@ checksum = "37909eebbb50d72f9059c3b6d82c0463f2ff062c9e95845c43a6c9c0355411be"
 
 [[package]]
 name = "ffplayout"
-version = "0.25.0-alpha7"
+version = "0.25.0-beta1"
 dependencies = [
  "actix-files",
  "actix-multipart",
@@ -3978,7 +3978,7 @@ dependencies = [
 
 [[package]]
 name = "tests"
-version = "0.25.0-alpha7"
+version = "0.25.0-beta1"
 dependencies = [
  "actix-test",
  "actix-web",
