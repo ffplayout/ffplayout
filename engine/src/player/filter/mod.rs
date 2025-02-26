@@ -247,14 +247,14 @@ impl Filters {
                 .output
                 .output_cmd
                 .as_ref()
-                .is_some_and(|p| p.contains(&"-map".to_string()))
+                .is_some_and(|p| p.iter().filter(|&n| *n == "-map").count() > 1)
                 && self.config.output.mode == HLS)
             || (self
                 .config
                 .output
                 .output_cmd
                 .as_ref()
-                .is_some_and(|p| p.contains(&"-map".to_string()))
+                .is_some_and(|p| p.iter().filter(|&n| *n == "-map").count() > 1)
                 && self.unit == Encoder)
         {
             return vec![];
@@ -648,13 +648,12 @@ pub fn split_filter(config: &PlayoutConfig, chain: &mut Filters, nr: i32, filter
 /// Process output filter chain and add new filters to existing ones.
 fn process_output_filters(config: &PlayoutConfig, chain: &mut Filters, output_filter: &str) {
     let re_v = Regex::new(r"\[[0:]+[v^\[]+([:0]+)?\]").unwrap(); // match video filter input link
-    let re_a = Regex::new(r"\[[0:]+[a^\[]+([:0]+)?\]").unwrap(); // match audio filter input link
+    let re_a = Regex::new(r"\[[0:]+[a^\[]+([:0-9]+)?\]").unwrap(); // match audio filter input link
     let re_split = Regex::new(r"\[\d+:a(?::\d+)?\]").unwrap(); // match audio selector for split
     let re_a_out = Regex::new(r"\[aout[0-9]+\];?").unwrap(); // match audio output link
     let mut v_filter_full = String::new();
     let mut v_filter = String::new();
     let mut a_filter_full = String::new();
-    let mut a_filter = String::new();
 
     if let Some(mat) = re_split.find(output_filter) {
         let split_index = mat.start();
@@ -662,14 +661,10 @@ fn process_output_filters(config: &PlayoutConfig, chain: &mut Filters, output_fi
         v_filter_full = v_part.trim_end_matches(';').to_string();
         a_filter_full = a_part.to_string();
         v_filter = re_v.replace(&v_filter_full, "").to_string();
-        a_filter = re_a.replace(&a_filter_full, "").to_string();
     } else if !output_filter.is_empty() {
         v_filter_full = output_filter.to_string();
         v_filter = re_v.replace(&v_filter_full, "").to_string();
     }
-
-    println!("v_filter:        {:?}", v_filter);
-    println!("a_filter:        {:?}", a_filter);
 
     if let Some(last) = chain.v_chain.last_mut() {
         *last = format!("{last},{v_filter}");
@@ -680,13 +675,18 @@ fn process_output_filters(config: &PlayoutConfig, chain: &mut Filters, output_fi
     if chain.a_chain.is_empty() && !a_filter_full.is_empty() {
         chain.a_chain.push(a_filter_full);
     } else if !chain.a_chain.is_empty() {
+        // find multiple audio tracks and split them
+        // ["[0:a:0]anull", "[aout0];[0:a:1]anull"] become: ["[0:a:0]anull", "[0:a:1]anull"]
         let audio_split = chain
             .a_chain
             .iter()
-            .filter(|f| f.contains("0:a") || f.contains("1:a"))
+            .filter(|f| re_a.find(f).is_some())
             .map(|p| re_a_out.replace(p, "").to_string())
             .collect::<Vec<String>>();
 
+        // replace output output filter with mixed ones from audio_split
+        // [0:a:0]asplit=2[a_0_1][a_0_2];[0:a:1]asplit=2[a_1_1][a_1_2] become:
+        // [0:a:0]anull,asplit=2[a_0_1][a_0_2];[0:a:1]anull,asplit=2[a_1_1][a_1_2]
         for i in 0..config.processing.audio_tracks {
             a_filter_full = a_filter_full.replace(
                 &format!("[0:a:{i}]"),
@@ -694,14 +694,8 @@ fn process_output_filters(config: &PlayoutConfig, chain: &mut Filters, output_fi
             );
         }
 
-        if let Some(last) = chain.a_chain.last_mut() {
-            *last = format!("{last},{a_filter}");
-        }
+        chain.a_chain = vec![a_filter_full];
     }
-
-    println!("output_filter: {:?}", output_filter);
-    println!("v_chain:       {:?}", chain.v_chain);
-    println!("a_chain:       {:?}", chain.a_chain);
 }
 
 fn custom(filter: &str, chain: &mut Filters, nr: i32, filter_type: FilterType) {
