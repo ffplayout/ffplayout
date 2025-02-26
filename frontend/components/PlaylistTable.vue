@@ -274,8 +274,8 @@ function addClip(event: any) {
         begin: 0,
         source: sourcePath,
         in: 0,
-        out: mediaStore.folderTree.files[o].duration,
-        duration: mediaStore.folderTree.files[o].duration,
+        out: mediaStore.folderTree.files[o].duration || 10,
+        duration: mediaStore.folderTree.files[o].duration || 10,
     })
 
     processPlaylist(listDate.value, playlistStore.playlist, false)

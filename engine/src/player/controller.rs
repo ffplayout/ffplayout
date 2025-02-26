@@ -28,7 +28,7 @@ use crate::{
     utils::logging::Target,
 };
 use crate::{
-    file::{init_storage, select_storage_type, StorageBackend},
+    file::{init_storage, local::LocalStorage},
     player::{output::player, utils::Media},
 };
 
@@ -76,12 +76,11 @@ pub struct ChannelManager {
     pub filler_list: Arc<Mutex<Vec<Media>>>,
     pub current_index: Arc<AtomicUsize>,
     pub filler_index: Arc<AtomicUsize>,
-    pub storage: Arc<Mutex<StorageBackend>>,
+    pub storage: Arc<Mutex<LocalStorage>>,
 }
 
 impl ChannelManager {
     pub async fn new(db_pool: Pool<Sqlite>, channel: Channel, config: PlayoutConfig) -> Self {
-        let s_type = select_storage_type(&config.channel.storage);
         let channel_extensions = channel.extra_extensions.clone();
         let mut extensions = config.storage.extensions.clone();
         let mut extra_extensions = channel_extensions
@@ -92,7 +91,7 @@ impl ChannelManager {
         extensions.append(&mut extra_extensions);
 
         let storage = Arc::new(Mutex::new(
-            init_storage(s_type, config.channel.storage.clone(), extensions).await,
+            init_storage(config.channel.storage.clone(), extensions).await,
         ));
 
         Self {
@@ -131,7 +130,6 @@ impl ChannelManager {
         channel.timezone.clone_from(&other.timezone);
 
         let s_path = Path::new(&channel.storage);
-        let s_type = select_storage_type(s_path);
         let channel_extensions = channel.extra_extensions.clone();
         let mut extensions = self.config.lock().await.storage.extensions.clone();
         let mut extra_extensions = channel_extensions
@@ -142,7 +140,7 @@ impl ChannelManager {
         extensions.append(&mut extra_extensions);
         let mut storage = self.storage.lock().await;
 
-        *storage = init_storage(s_type, s_path.to_path_buf(), extensions).await;
+        *storage = init_storage(s_path.to_path_buf(), extensions).await;
     }
 
     pub async fn update_config(&self, new_config: PlayoutConfig) {

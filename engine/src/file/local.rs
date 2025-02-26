@@ -15,7 +15,7 @@ use rand::{distr::Alphanumeric, rngs::StdRng, seq::SliceRandom, Rng, SeedableRng
 use tokio::{fs, io::AsyncWriteExt, sync::Mutex, task::JoinHandle};
 use tokio_stream::StreamExt;
 
-use crate::file::{norm_abs_path, watcher::watch, MoveObject, PathObject, Storage, VideoFile};
+use crate::file::{norm_abs_path, watcher::watch, MoveObject, PathObject, VideoFile};
 use crate::player::utils::{file_extension, include_file_extension, probe::MediaProbe, Media};
 use crate::utils::{config::PlayoutConfig, errors::ServiceError, logging::Target};
 
@@ -56,8 +56,8 @@ impl Drop for LocalStorage {
     }
 }
 
-impl Storage for LocalStorage {
-    async fn browser(&self, path_obj: &PathObject) -> Result<PathObject, ServiceError> {
+impl LocalStorage {
+    pub async fn browser(&self, path_obj: &PathObject) -> Result<PathObject, ServiceError> {
         let (path, parent, path_component) = norm_abs_path(&self.root, &path_obj.source)?;
         let mut parent_folders = vec![];
 
@@ -147,7 +147,7 @@ impl Storage for LocalStorage {
         Ok(obj)
     }
 
-    async fn mkdir(&self, path_obj: &PathObject) -> Result<(), ServiceError> {
+    pub async fn mkdir(&self, path_obj: &PathObject) -> Result<(), ServiceError> {
         let (path, _, _) = norm_abs_path(&self.root, &path_obj.source)?;
 
         if let Err(e) = fs::create_dir_all(&path).await {
@@ -162,7 +162,7 @@ impl Storage for LocalStorage {
         Ok(())
     }
 
-    async fn rename(&self, move_object: &MoveObject) -> Result<MoveObject, ServiceError> {
+    pub async fn rename(&self, move_object: &MoveObject) -> Result<MoveObject, ServiceError> {
         let (source_path, _, _) = norm_abs_path(&self.root, &move_object.source)?;
         let (mut target_path, _, _) = norm_abs_path(&self.root, &move_object.target)?;
 
@@ -193,7 +193,7 @@ impl Storage for LocalStorage {
         Err(ServiceError::InternalServerError)
     }
 
-    async fn remove(&self, source_path: &str, recursive: bool) -> Result<(), ServiceError> {
+    pub async fn remove(&self, source_path: &str, recursive: bool) -> Result<(), ServiceError> {
         let (source, _, _) = norm_abs_path(&self.root, source_path)?;
 
         if !source.exists() {
@@ -231,7 +231,7 @@ impl Storage for LocalStorage {
         Err(ServiceError::InternalServerError)
     }
 
-    async fn upload(
+    pub async fn upload(
         &self,
         mut data: Multipart,
         path: &Path,
@@ -289,7 +289,7 @@ impl Storage for LocalStorage {
         Ok(())
     }
 
-    async fn watchman(
+    pub async fn watchman(
         &mut self,
         config: PlayoutConfig,
         is_alive: Arc<AtomicBool>,
@@ -300,7 +300,7 @@ impl Storage for LocalStorage {
         }))));
     }
 
-    async fn stop_watch(&mut self) {
+    pub async fn stop_watch(&mut self) {
         let mut watch_handler = self.watch_handler.lock().await;
 
         if let Some(handler) = watch_handler.as_mut() {
@@ -308,7 +308,7 @@ impl Storage for LocalStorage {
         }
     }
 
-    async fn fill_filler_list(
+    pub async fn fill_filler_list(
         &mut self,
         config: &PlayoutConfig,
         fillers: Option<Arc<Mutex<Vec<Media>>>>,
@@ -372,7 +372,7 @@ impl Storage for LocalStorage {
         filler_list
     }
 
-    async fn copy_assets(&self) -> Result<(), std::io::Error> {
+    pub async fn copy_assets(&self) -> Result<(), std::io::Error> {
         if self.root.is_dir() {
             let target = self.root.join("00-assets");
             let mut dummy_source = Path::new("/usr/share/ffplayout/dummy.vtt");
@@ -428,14 +428,6 @@ impl Storage for LocalStorage {
         }
 
         Ok(())
-    }
-
-    fn is_dir<P: AsRef<Path>>(&self, input: P) -> bool {
-        input.as_ref().is_dir()
-    }
-
-    fn is_file<P: AsRef<Path>>(&self, input: P) -> bool {
-        input.as_ref().is_file()
     }
 }
 
