@@ -36,14 +36,12 @@ impl ResponseError for ServiceError {
             Self::InternalServerError => {
                 HttpResponse::InternalServerError().json("Internal Server Error.")
             }
-            Self::BadRequest(ref message) => HttpResponse::BadRequest().json(message),
-            Self::Conflict(ref message) => HttpResponse::Conflict().json(message),
-            Self::Forbidden(ref message) => HttpResponse::Forbidden().json(message),
-            Self::Unauthorized(ref message) => HttpResponse::Unauthorized().json(message),
-            Self::NoContent(ref message) => HttpResponse::NoContent().json(message),
-            Self::ServiceUnavailable(ref message) => {
-                HttpResponse::ServiceUnavailable().json(message)
-            }
+            Self::BadRequest(message) => HttpResponse::BadRequest().json(message),
+            Self::Conflict(message) => HttpResponse::Conflict().json(message),
+            Self::Forbidden(message) => HttpResponse::Forbidden().json(message),
+            Self::Unauthorized(message) => HttpResponse::Unauthorized().json(message),
+            Self::NoContent(message) => HttpResponse::NoContent().json(message),
+            Self::ServiceUnavailable(message) => HttpResponse::ServiceUnavailable().json(message),
         }
     }
 }

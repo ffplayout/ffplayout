@@ -731,11 +731,12 @@ pub fn seek_and_length(config: &PlayoutConfig, node: &mut Media) -> Vec<String> 
                 source_cmd.append(&mut vec_strings!["-stream_loop", loop_count]);
             }
 
-            source_cmd.append(&mut vec_strings!["-i", vtt_path]);
-
-            if source_cmd.contains(&"-t".to_string()) {
-                source_cmd.append(&mut vec_strings!["-t", node.out - node.seek]);
-            }
+            source_cmd.append(&mut vec_strings![
+                "-i",
+                vtt_path,
+                "-t",
+                node.out - node.seek
+            ]);
         }
     }
 
