@@ -120,9 +120,9 @@ pub async fn ingest_server(
 
             error!(target: Target::file_mail(), channel = id; "Address <b><magenta>{url}</></b> already in use!");
 
-            if num >= 4 {
-                manager.channel.lock().await.active = false;
+            manager.stop(Ingest).await;
 
+            if num >= 4 {
                 return Err(ServiceError::Conflict(
                     "Can't run ingest server!".to_string(),
                 ));
