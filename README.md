@@ -123,4 +123,4 @@ If you are in playlist mode and move backwards or forwards in time, the time shi
 
 ## Note
 This project includes the DejaVu font, which are licensed under the [Bitstream Vera Fonts License](/assets/FONT_LICENSE.txt).
-ve.com/ffplayout/backers.svg?width=800&button=true)](https://opencollective.com/ffplayout)
+
