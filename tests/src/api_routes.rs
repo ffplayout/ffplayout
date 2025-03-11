@@ -89,5 +89,5 @@ async fn test_login() {
 
     let res = srv.post("/auth/login/").send_json(&payload).await.unwrap();
 
-    assert_eq!(res.status().as_u16(), 400);
+    assert_eq!(res.status().as_u16(), 403);
 }

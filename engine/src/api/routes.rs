@@ -148,7 +148,13 @@ pub async fn login(
     pool: web::Data<Pool<Sqlite>>,
     credentials: web::Json<Credentials>,
 ) -> Result<impl Responder, ServiceError> {
-    auth::authorize(&pool.into_inner(), credentials.into_inner()).await
+    match auth::authorize(&pool.into_inner(), credentials.into_inner()).await {
+        Ok((resp, status)) => Ok(web::Json(resp).customize().with_status(status)),
+        Err(e) => {
+            error!("{e}");
+            Err(ServiceError::InternalServerError)
+        }
+    }
 }
 
 /// **Refresh token**
@@ -169,7 +175,13 @@ pub async fn refresh(
     pool: web::Data<Pool<Sqlite>>,
     data: web::Json<TokenRefreshRequest>,
 ) -> Result<impl Responder, ServiceError> {
-    auth::refresh(&pool.into_inner(), data.into_inner()).await
+    match auth::refresh(&pool.into_inner(), data.into_inner()).await {
+        Ok((resp, status)) => Ok(web::Json(resp).customize().with_status(status)),
+        Err(e) => {
+            error!("{e}");
+            Err(ServiceError::InternalServerError)
+        }
+    }
 }
 
 /// From here on all request **must** contain the authorization header:\

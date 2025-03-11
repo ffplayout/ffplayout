@@ -233,6 +233,8 @@ async fn main() -> Result<(), ProcessError> {
                         .with_extension("json");
                 }
 
+                debug!("Read: <b><magenta>{playlist_path:?}</></b>");
+
                 let mut f = File::options()
                     .read(true)
                     .write(false)
@@ -248,7 +250,7 @@ async fn main() -> Result<(), ProcessError> {
                     config,
                     Arc::new(Mutex::new(Vec::new())),
                     playlist,
-                    Arc::new(AtomicBool::new(false)),
+                    Arc::new(AtomicBool::new(true)),
                 )
                 .await;
             } else if ARGS.test_mail {

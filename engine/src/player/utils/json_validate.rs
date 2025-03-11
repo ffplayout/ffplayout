@@ -1,4 +1,5 @@
 use std::{
+    path::Path,
     process::Stdio,
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -10,6 +11,7 @@ use std::{
 use log::*;
 use regex::Regex;
 use tokio::{
+    fs::File,
     io::{AsyncBufReadExt, BufReader},
     process::Command,
     sync::Mutex,
@@ -17,7 +19,7 @@ use tokio::{
 
 use crate::player::filter::FilterType::Audio;
 use crate::player::utils::{
-    is_close, is_remote, loop_image, sec_to_time, seek_and_length, JsonPlaylist, Media,
+    is_close, is_remote, loop_image, sec_to_time, seek_and_length, time_to_sec, JsonPlaylist, Media,
 };
 use crate::utils::{
     config::{OutputMode::Null, PlayoutConfig, FFMPEG_IGNORE_ERRORS, IMAGE_FORMAT},
@@ -151,6 +153,46 @@ async fn check_media(
     Ok(())
 }
 
+/// Validate Webvtt.
+///
+/// - Check if duration matches with video duration
+async fn check_vtt(source: &str, duration: f64, channel_id: i32) -> Result<(), ProcessError> {
+    let vtt_path = Path::new(source).with_extension("vtt");
+
+    if vtt_path.is_file() {
+        let file = File::open(&vtt_path).await?;
+        let reader = BufReader::new(file);
+
+        let mut last_timestamp = None;
+        let mut lines = reader.lines();
+
+        while let Some(line) = lines.next_line().await? {
+            if let Some((_start, end)) = line.split_once(" --> ") {
+                last_timestamp = Some(end.trim().to_string());
+            }
+        }
+
+        if let Some(time) = last_timestamp {
+            let timestamp = if time.chars().filter(|&c| c == ':').count() == 1 {
+                format!("00:{time}")
+            } else {
+                time
+            };
+
+            let last_sec = time_to_sec(&timestamp, &None);
+
+            if last_sec > duration {
+                error!(target: Target::file_mail(), channel = channel_id;
+                    "[Validation] Webvtt (<b><magenta>{vtt_path:?}</></b>) is longer, <yellow>{timestamp}</> versus <yellow>{}</> video duration.",
+                    sec_to_time(duration)
+                );
+            }
+        }
+    }
+
+    Ok(())
+}
+
 /// Validate a given playlist, to check if:
 ///
 /// - the source files are existing
@@ -238,6 +280,12 @@ pub async fn validate_playlist(
                         o.duration_audio = item.duration_audio;
                     }
                 });
+            }
+
+            if config.processing.vtt_enable {
+                if let Err(e) = check_vtt(&item.source, item.duration, id).await {
+                    error!(target: Target::file_mail(), channel = id; "{e}");
+                }
             }
         }
 

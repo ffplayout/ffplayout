@@ -40,9 +40,8 @@ export default defineNuxtConfig({
                     content: 'width=device-width, initial-scale=1',
                 },
                 {
-                    hid: 'description',
                     name: 'description',
-                    content: 'Frontend for ffplayout, the 24/7 Rust and playlist based streaming solution.',
+                    content: 'Frontend for ffplayout, the 24/7 streaming solution.',
                 },
             ],
             link: [
