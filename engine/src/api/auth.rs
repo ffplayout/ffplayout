@@ -76,6 +76,15 @@ pub async fn authorize(
 
     match handles::select_login(pool, &username).await {
         Ok(mut user) => {
+            if user.username.is_empty() {
+                return Ok((
+                    serde_json::json!({
+                        "detail": "Incorrect credentials!",
+                    }),
+                    StatusCode::FORBIDDEN,
+                ));
+            }
+
             let role = handles::select_role(pool, &user.role_id.unwrap_or_default()).await?;
 
             let pass_hash = user.password.clone();
