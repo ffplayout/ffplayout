@@ -112,3 +112,13 @@ npm run preview
 ```
 
 Check out the [deployment documentation](https://nuxt.com/docs/getting-started/deployment) for more information.
+
+## Run ffplayout in development mode
+
+1. initialize database: `cargo run -- -i`
+2. run backend: `cargo run -- -l 127.0.0.1:8787`
+3. in second terminal:
+    1. `cd frontend`
+    2. install packages: `npm i`
+    3. run frontend: `npm run dev`
+4. in browser navigate to: `127.0.0.1:3000`

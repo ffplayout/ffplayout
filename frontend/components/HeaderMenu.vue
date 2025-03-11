@@ -119,7 +119,6 @@
 const colorMode = useColorMode()
 const { t } = useI18n()
 const localePath = useLocalePath()
-const route = useRoute()
 const router = useRouter()
 
 const authStore = useAuth()
