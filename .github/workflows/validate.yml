@@ -2,7 +2,6 @@ name: Validate
 on: [push, pull_request]
 jobs:
   build:
-    if: github.repository == 'ffplayout/ffplayout'
     strategy:
       matrix:
         os: [ubuntu-latest, macOS-latest, windows-latest]
