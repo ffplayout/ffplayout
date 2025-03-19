@@ -96,7 +96,7 @@ async fn ingest_writer(manager: ChannelManager) -> Result<(), ServiceError> {
                 break;
             }
 
-            error!(target: Target::file_mail(), channel = id; "Address <b><magenta>{url}</></b> already in use!");
+            error!(target: Target::file_mail(), channel = id; "Address <span class=\"log-addr\">{url}</span> already in use!");
 
             manager.stop(Ingest).await;
 
@@ -109,11 +109,11 @@ async fn ingest_writer(manager: ChannelManager) -> Result<(), ServiceError> {
             tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
         }
 
-        info!(target: Target::file_mail(), channel = id; "Start ingest server, listening on: <b><magenta>{url}</></b>");
+        info!(target: Target::file_mail(), channel = id; "Start ingest server, listening on: <span class=\"log-addr\">{url}</span>");
     };
 
     debug!(target: Target::file_mail(), channel = id;
-        "Server CMD: <bright-blue>ffmpeg {}</>",
+        "Server CMD: <span class=\"log-cmd\">ffmpeg {}</span>",
         fmt_cmd(&server_cmd)
     );
 
@@ -197,7 +197,7 @@ async fn write(manager: &ChannelManager, ff_log_format: &str) -> Result<(), Serv
         }
 
         info!(target: Target::file_mail(), channel = id;
-            "Play for <yellow>{}</>: <b><magenta>{}</></b>",
+            "Play for <span class=\"log-number\">{}</span>: <span class=\"log-addr\">{}</span>",
             sec_to_time(node.out - node.seek),
             node.source
         );
@@ -209,7 +209,7 @@ async fn write(manager: &ChannelManager, ff_log_format: &str) -> Result<(), Serv
                 tokio::spawn(task_runner::run(manager3));
             } else {
                 error!(target: Target::file_mail(), channel = id;
-                    "<bright-blue>{:?}</> executable not exists!",
+                    "<span class=\"log-cmd\">{:?}</span> executable not exists!",
                     config.task.path
                 );
             }
@@ -243,7 +243,7 @@ async fn write(manager: &ChannelManager, ff_log_format: &str) -> Result<(), Serv
         let dec_cmd = prepare_output_cmd(&config, dec_prefix, &node.filter);
 
         debug!(target: Target::file_mail(), channel = id;
-            "HLS writer CMD: <bright-blue>ffmpeg {}</>",
+            "HLS writer CMD: <span class=\"log-cmd\">ffmpeg {}</span>",
             fmt_cmd(&dec_cmd)
         );
 

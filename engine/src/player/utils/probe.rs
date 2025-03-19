@@ -53,7 +53,7 @@ impl std::fmt::Display for FfProbeError {
             FfProbeError::Status(o) => {
                 write!(
                     f,
-                    "ffprobe exited with {} <b><magenta>{}</></b>",
+                    "ffprobe exited with {} <span class=\"log-addr\">{}</span>",
                     o.status,
                     String::from_utf8_lossy(&o.stderr).trim()
                 )

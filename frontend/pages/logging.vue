@@ -162,7 +162,7 @@ function downloadLog() {
 </script>
 
 <style>
-.log-time {
+.log-gray {
     color: #666864;
 }
 
@@ -179,19 +179,19 @@ function downloadLog() {
     color: var(--my-blue);
 }
 
-.log-info {
+.level-info {
     color: var(--my-green);
 }
 
-.log-warning {
+.level-warning {
     color: #ff8700;
 }
 
-.log-error {
+.level-error {
     color: #d32828;
 }
 
-.log-debug {
+.level-debug {
     color: #6e99c7;
 }
 
@@ -204,6 +204,10 @@ function downloadLog() {
 }
 
 .log-server {
+    color: #23cbdd;
+}
+
+.log-validate {
     color: #23cbdd;
 }
 </style>

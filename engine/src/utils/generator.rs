@@ -145,10 +145,10 @@ pub async fn generate_from_template(
             + (source.duration.minute() as f64 * 60.0)
             + source.duration.second() as f64;
 
-        debug!(target: Target::all(), channel = id; "Generating playlist block with <yellow>{duration:.2}</> seconds length");
+        debug!(target: Target::all(), channel = id; "Generating playlist block with <span class=\"log-number\">{duration:.2}</span> seconds length");
 
         for path in source.paths {
-            debug!("Search files in <b><magenta>{path:?}</></b>");
+            debug!("Search files in <span class=\"log-addr\">{path:?}</span>");
             let mut file_list = vec![];
             let mut entries = WalkDir::new(path);
 
@@ -222,7 +222,7 @@ pub async fn playlist_generator(manager: &ChannelManager) -> Result<Vec<JsonPlay
     if !playlist_root.is_dir() {
         error!(
             target: Target::all(), channel = id;
-            "Playlist folder <b><magenta>{:?}</></b> not exists!",
+            "Playlist folder <span class=\"log-addr\">{:?}</span> not exists!",
             config.channel.playlists
         );
     }
@@ -260,7 +260,7 @@ pub async fn playlist_generator(manager: &ChannelManager) -> Result<Vec<JsonPlay
         if playlist_file.is_file() {
             warn!(
                 target: Target::all(), channel = id;
-                "Playlist exists, skip: <b><magenta>{}</></b>",
+                "Playlist exists, skip: <span class=\"log-addr\">{}</span>",
                 playlist_file.display()
             );
 
@@ -269,7 +269,7 @@ pub async fn playlist_generator(manager: &ChannelManager) -> Result<Vec<JsonPlay
 
         info!(
             target: Target::all(), channel = id;
-            "Generate playlist: <b><magenta>{}</></b>",
+            "Generate playlist: <span class=\"log-addr\">{}</span>",
             playlist_file.display()
         );
 

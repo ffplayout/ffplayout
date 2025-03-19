@@ -74,7 +74,7 @@ async fn play(
         };
 
         info!(target: Target::file_mail(), channel = id;
-            "Play for <yellow>{}</>{c_index}: <b><magenta>{}  {}</></b>",
+            "Play for <span class=\"log-number\">{}</span>{c_index}: <span class=\"log-addr\">{}  {}</span>",
             sec_to_time(node.out - node.seek),
             node.source,
             node.audio
@@ -87,7 +87,7 @@ async fn play(
                 tokio::spawn(task_runner::run(channel_mgr_3));
             } else {
                 error!(target: Target::file_mail(), channel = id;
-                    "<bright-blue>{:?}</> executable not exists!",
+                    "<span class=\"log-cmd\">{:?}</span> executable not exists!",
                     config.task.path
                 );
             }
@@ -121,7 +121,7 @@ async fn play(
         }
 
         debug!(target: Target::file_mail(), channel = id;
-            "Decoder CMD: <bright-blue>ffmpeg {}</>",
+            "Decoder CMD: <span class=\"log-cmd\">ffmpeg {}</span>",
             fmt_cmd(&dec_cmd)
         );
 

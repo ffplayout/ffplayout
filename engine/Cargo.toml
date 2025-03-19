@@ -43,7 +43,6 @@ m3u8-rs = "6"
 nix = { version = "0.29", features = ["user", "fs"] }
 notify = "8.0"
 notify-debouncer-full = { version = "*", default-features = false }
-paris = "1.5"
 path-clean = "1.0"
 rand = "0.9"
 regex = "1"

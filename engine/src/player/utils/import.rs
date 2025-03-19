@@ -33,7 +33,7 @@ pub async fn import_file(
         return Err(Error::new(
             ErrorKind::Other,
             format!(
-                "Playlist folder <b><magenta>{:?}</></b> not exists!",
+                "Playlist folder <span class=\"log-addr\">{:?}</span> not exists!",
                 playlist_root,
             ),
         ));

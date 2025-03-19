@@ -35,14 +35,14 @@
             class="mt-10 grid md:grid-cols-[180px_auto] gap-5"
             @submit.prevent="onSubmitAdvanced"
         >
-            <div class="text-xl pt-3 md:text-right">Name:</div>
+            <div class="text-xl md:text-right">Name:</div>
             <div>
-                <label class="form-control w-full mt-4">
+                <label class="form-control w-full">
                     <input
                         v-model="configStore.advanced.name"
                         type="text"
                         name="input_param"
-                        class="input input-sm input-bordered w-full max-w-64"
+                        class="input input-sm input-bordered w-full xs:max-w-64"
                     />
                 </label>
             </div>
@@ -77,7 +77,7 @@
                     <div class="label">
                         <span class="text-sm text-base-content/80">
                             Default:
-                            <span class="select-text cursor-text">
+                            <span class="select-text cursor-text break-all">
                                 -c:v mpeg2video -g 1 -b:v 57600k -minrate 57600k -maxrate 57600k -bufsize 28800k -c:a
                                 s302m -strict -2 -sample_fmt s16 -ar 48000 -ac 2
                             </span>
@@ -126,7 +126,7 @@
                     />
                     <div class="label">
                         <span class="text-sm text-base-content/80"
-                            >Default: <span class="select-text cursor-text">yadif=0:-1:0 </span></span
+                            >Default: <span class="select-text cursor-text break-all">yadif=0:-1:0 </span></span
                         >
                     </div>
                 </label>
@@ -143,7 +143,7 @@
                     <div class="label">
                         <span class="text-sm text-base-content/80">
                             Default:
-                            <span class="select-text cursor-text"> pad='ih*{}/{}:ih:(ow-iw)/2:(oh-ih)/2' </span>
+                            <span class="select-text cursor-text break-all"> pad='ih*{}/{}:ih:(ow-iw)/2:(oh-ih)/2' </span>
                         </span>
                     </div>
                 </label>
@@ -159,11 +159,11 @@
                     />
                     <div class="label">
                         <span class="text-sm text-base-content/80">
-                            Default: <span class="select-text cursor-text">fps={} </span></span
+                            Default: <span class="select-text cursor-text break-all">fps={} </span></span
                         >
                     </div>
                 </label>
-                <label class="form-control w-full mt-2">
+               <label class="form-control w-full mt-2">
                     <div class="label">
                         <span class="label-text !text-md font-bold">Scale</span>
                     </div>
@@ -175,7 +175,7 @@
                     />
                     <div class="label">
                         <span class="text-sm text-base-content/80">
-                            Default: <span class="select-text cursor-text">scale={}:{} </span></span
+                            Default: <span class="select-text cursor-text break-all">scale={}:{} </span></span
                         >
                     </div>
                 </label>
@@ -191,7 +191,7 @@
                     />
                     <div class="label">
                         <span class="text-sm text-base-content/80">
-                            Default: <span class="select-text cursor-text">setdar=dar={} </span></span
+                            Default: <span class="select-text cursor-text break-all">setdar=dar={} </span></span
                         >
                     </div>
                 </label>
@@ -207,7 +207,7 @@
                     />
                     <div class="label">
                         <span class="text-sm text-base-content/80">
-                            Default: <span class="select-text cursor-text">fade=in:st=0:d=0.5 </span></span
+                            Default: <span class="select-text cursor-text break-all">fade=in:st=0:d=0.5 </span></span
                         >
                     </div>
                 </label>
@@ -223,7 +223,7 @@
                     />
                     <div class="label">
                         <span class="text-sm text-base-content/80">
-                            Default: <span class="select-text cursor-text">fade=out:st={}:d=1.0 </span></span
+                            Default: <span class="select-text cursor-text break-all">fade=out:st={}:d=1.0 </span></span
                         >
                     </div>
                 </label>
@@ -240,7 +240,7 @@
                     <div class="label">
                         <span class="text-sm text-base-content/80">
                             Default:
-                            <span class="select-text cursor-text">
+                            <span class="select-text cursor-text break-all">
                                 movie={}:loop=0,setpts=N/(FRAME_RATE*TB),format=rgba,colorchannelmixer=aa={}
                             </span>
                         </span>
@@ -258,7 +258,7 @@
                     />
                     <div class="label">
                         <span class="text-sm text-base-content/80">
-                            Default: <span class="select-text cursor-text">scale={}</span></span
+                            Default: <span class="select-text cursor-text break-all">scale={}</span></span
                         >
                     </div>
                 </label>
@@ -274,7 +274,7 @@
                     />
                     <div class="label">
                         <span class="text-sm text-base-content/80">
-                            Default: <span class="select-text cursor-text">fade=in:st=0:d=1.0:alpha=1</span>
+                            Default: <span class="select-text cursor-text break-all">fade=in:st=0:d=1.0:alpha=1</span>
                         </span>
                     </div>
                 </label>
@@ -290,7 +290,7 @@
                     />
                     <div class="label">
                         <span class="text-sm text-base-content/80">
-                            Default: <span class="select-text cursor-text">fade=out:st={}:d=1.0:alpha=1</span>
+                            Default: <span class="select-text cursor-text break-all">fade=out:st={}:d=1.0:alpha=1</span>
                         </span>
                     </div>
                 </label>
@@ -306,7 +306,7 @@
                     />
                     <div class="label">
                         <span class="text-sm text-base-content/80">
-                            Default: <span class="select-text cursor-text">overlay={}:shortest=1</span>
+                            Default: <span class="select-text cursor-text break-all">overlay={}:shortest=1</span>
                         </span>
                     </div>
                 </label>
@@ -322,7 +322,7 @@
                     />
                     <div class="label">
                         <span class="text-sm text-base-content/80">
-                            Default: <span class="select-text cursor-text">tpad=stop_mode=add:stop_duration={}</span>
+                            Default: <span class="select-text cursor-text break-all">tpad=stop_mode=add:stop_duration={}</span>
                         </span>
                     </div>
                 </label>
@@ -338,7 +338,7 @@
                     />
                     <div class="label">
                         <span class="text-sm text-base-content/80">
-                            Default: <span class="select-text cursor-text">drawtext=text='{}':{}{} </span></span
+                            Default: <span class="select-text cursor-text break-all">drawtext=text='{}':{}{} </span></span
                         >
                     </div>
                 </label>
@@ -355,7 +355,7 @@
                     <div class="label">
                         <span class="text-sm text-base-content/80">
                             Default:
-                            <span class="select-text cursor-text">zmq=b=tcp\\\\://'{}',drawtext@dyntext={}</span>
+                            <span class="select-text cursor-text break-all">zmq=b=tcp\\\\://'{}',drawtext@dyntext={}</span>
                         </span>
                     </div>
                 </label>
@@ -387,7 +387,7 @@
                     />
                     <div class="label">
                         <span class="text-sm text-base-content/80">
-                            Default: <span class="select-text cursor-text">afade=in:st=0:d=0.5 </span>
+                            Default: <span class="select-text cursor-text break-all">afade=in:st=0:d=0.5 </span>
                         </span>
                     </div>
                 </label>
@@ -403,7 +403,7 @@
                     />
                     <div class="label">
                         <span class="text-sm text-base-content/80">
-                            Default: <span class="select-text cursor-text">afade=out:st={}:d=1.0 </span>
+                            Default: <span class="select-text cursor-text break-all">afade=out:st={}:d=1.0 </span>
                         </span>
                     </div>
                 </label>
@@ -419,7 +419,7 @@
                     />
                     <div class="label">
                         <span class="text-sm text-base-content/80">
-                            Default: <span class="select-text cursor-text">apad=whole_dur={} </span>
+                            Default: <span class="select-text cursor-text break-all">apad=whole_dur={} </span>
                         </span>
                     </div>
                 </label>
@@ -435,7 +435,7 @@
                     />
                     <div class="label">
                         <span class="text-sm text-base-content/80">
-                            Default: <span class="select-text cursor-text">volume={} </span>
+                            Default: <span class="select-text cursor-text break-all">volume={} </span>
                         </span>
                     </div>
                 </label>
@@ -451,7 +451,7 @@
                     />
                     <div class="label">
                         <span class="text-sm text-base-content/80">
-                            Default: <span class="select-text cursor-text">split={}{} </span>
+                            Default: <span class="select-text cursor-text break-all">split={}{} </span>
                         </span>
                     </div>
                 </label>

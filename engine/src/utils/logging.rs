@@ -13,7 +13,6 @@ use flexi_logger::{
 };
 
 use log::{kv::Value, *};
-use paris::formatter::colorize_string;
 use regex::Regex;
 use tokio::sync::Mutex;
 
@@ -203,19 +202,86 @@ fn strip_tags(input: &str) -> String {
     re.replace_all(input, "").to_string()
 }
 
-fn console_formatter(w: &mut dyn Write, now: &mut DeferredNow, record: &Record) -> io::Result<()> {
-    let log_line = match record.level() {
-        Level::Debug => colorize_string(format!("<bright-blue>[DEBUG]</> {}", record.args())),
-        Level::Error => colorize_string(format!("<bright-red>[ERROR]</> {}", record.args())),
-        Level::Info => colorize_string(format!("<bright-green>[ INFO]</> {}", record.args())),
-        Level::Trace => colorize_string(format!(
-            "<bright-yellow>[TRACE]</> {}:{} {}",
+fn format_level(record: &Record) -> String {
+    match record.level() {
+        Level::Trace => format!(
+            "<span class=\"level-trace\">[TRACE]</span> {}:{} {}",
             record.file().unwrap_or_default(),
             record.line().unwrap_or_default(),
             record.args()
-        )),
-        Level::Warn => colorize_string(format!("<yellow>[ WARN]</> {}", record.args())),
-    };
+        ),
+        Level::Debug => format!(
+            "<span class=\"level-debug\">[DEBUG]</span> {}",
+            record.args()
+        ),
+        Level::Info => format!(
+            "<span class=\"level-info\">[ INFO]</span> {}",
+            record.args()
+        ),
+        Level::Warn => format!(
+            "<span class=\"level-warning\">[ WARN]</span> {}",
+            record.args()
+        ),
+        Level::Error => format!(
+            "<span class=\"level-error\">[ERROR]</span> {}",
+            record.args()
+        ),
+    }
+}
+
+fn html_to_ansi(input: &str) -> String {
+    let mut output = input.to_string();
+
+    let replacements = vec![
+        (
+            r#"<span class="level-trace">([^<]+)</span>"#,
+            "\x1b[93m$1\x1b[0m",
+        ), // level bright yellow
+        (
+            r#"<span class="level-debug">([^<]+)</span>"#,
+            "\x1b[94m$1\x1b[0m",
+        ), // level bright blue
+        (
+            r#"<span class="level-info">([^<]+)</span>"#,
+            "\x1b[92m$1\x1b[0m",
+        ), // level green
+        (
+            r#"<span class="level-warning">([^<]+)</span>"#,
+            "\x1b[33m$1\x1b[0m",
+        ), // level yellow
+        (
+            r#"<span class="level-error">([^<]+)</span>"#,
+            "\x1b[31m$1\x1b[0m",
+        ), // level red
+        // text and number formatting
+        (
+            r#"<span class="log-gray">([^<]+)</span>"#,
+            "\x1b[90m$1\x1b[0m",
+        ), // bright black
+        (
+            r#"<span class="log-addr">([^<]+)</span>"#,
+            "\x1b[1;35m$1\x1b[0m",
+        ), // bold magenta
+        (
+            r#"<span class="log-cmd">([^<]+)</span>"#,
+            "\x1b[94m$1\x1b[0m",
+        ), // bright blue
+        (
+            r#"<span class="log-number">([^<]+)</span>"#,
+            "\x1b[33m$1\x1b[0m",
+        ), // yellow
+    ];
+
+    for (pattern, replacement) in replacements {
+        let re = Regex::new(pattern).unwrap();
+        output = re.replace_all(&output, replacement).to_string();
+    }
+
+    output
+}
+
+fn console_formatter(w: &mut dyn Write, now: &mut DeferredNow, record: &Record) -> io::Result<()> {
+    let log_line = html_to_ansi(&format_level(record));
 
     if ARGS.log_timestamp {
         let time = if ARGS.fake_time.is_some() {
@@ -227,7 +293,7 @@ fn console_formatter(w: &mut dyn Write, now: &mut DeferredNow, record: &Record) 
         write!(
             w,
             "{} {}",
-            colorize_string(format!("<bright black>[{time}]</>")),
+            html_to_ansi(&format!("<span class=\"log-gray\">[{time}]</span>")),
             log_line
         )
     } else {
@@ -240,13 +306,13 @@ fn file_formatter(
     now: &mut DeferredNow,
     record: &Record,
 ) -> std::io::Result<()> {
-    write!(
-        w,
-        "[{}] [{:>5}] {}",
-        now.now().format(TIME_FORMAT),
-        record.level(),
-        record.args()
-    )
+    let time = format!(
+        "<span class=\"log-gray\">[{}]</span>",
+        now.now().format(TIME_FORMAT)
+    );
+    let log_line = format_level(record);
+
+    write!(w, "{time} {log_line}")
 }
 
 pub fn log_file_path() -> PathBuf {
@@ -328,22 +394,22 @@ pub fn init_logging(
 /// Format ingest and HLS logging output
 pub fn log_line(id: i32, line: &str, level: &str) {
     if line.contains("[info]") && level.to_lowercase() == "info" {
-        info!(target: Target::file_mail(), channel = id; "<bright black>[Server]</> {}", line.replace("[info] ", ""));
+        info!(target: Target::file_mail(), channel = id; "<span class=\"log-gray\">[Server]</span> {}", line.replace("[info] ", ""));
     } else if line.contains("[warning]")
         && (level.to_lowercase() == "warning" || level.to_lowercase() == "info")
     {
         warn!(
             target: Target::file_mail(), channel = id;
-            "<bright black>[Server]</> {}",
+            "<span class=\"log-gray\">[Server]</span> {}",
             line.replace("[warning] ", "")
         );
     } else if line.contains("[error]")
         && !line.contains("Input/output error")
         && !line.contains("Broken pipe")
     {
-        error!(target: Target::file_mail(), channel = id; "<bright black>[Server]</> {}", line.replace("[error] ", ""));
+        error!(target: Target::file_mail(), channel = id; "<span class=\"log-gray\">[Server]</span> {}", line.replace("[error] ", ""));
     } else if line.contains("[fatal]") {
-        error!(target: Target::file_mail(), channel = id; "<bright black>[Server]</> {}", line.replace("[fatal] ", ""));
+        error!(target: Target::file_mail(), channel = id; "<span class=\"log-gray\">[Server]</span> {}", line.replace("[fatal] ", ""));
     }
 }
 

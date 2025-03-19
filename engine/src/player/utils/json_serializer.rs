@@ -205,7 +205,7 @@ pub async fn read_json(
         return playlist;
     }
 
-    error!(target: Target::file_mail(), channel = id; "Playlist <b><magenta>{current_file}</></b> not exist!");
+    error!(target: Target::file_mail(), channel = id; "Playlist <span class=\"log-addr\">{current_file}</span> not exist!");
 
     JsonPlaylist::new(date, start_sec)
 }

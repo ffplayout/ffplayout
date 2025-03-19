@@ -233,7 +233,7 @@ async fn main() -> Result<(), ProcessError> {
                         .with_extension("json");
                 }
 
-                debug!("Read: <b><magenta>{playlist_path:?}</></b>");
+                debug!("Read: <span class=\"log-addr\">{playlist_path:?}</span>");
 
                 let mut f = File::options()
                     .read(true)

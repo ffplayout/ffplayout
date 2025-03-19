@@ -37,7 +37,7 @@ pub async fn watch(
     }
 
     debug!(target: Target::file_mail(), channel = id;
-        "Monitor folder: <b><magenta>{:?}</></b>",
+        "Monitor folder: <span class=\"log-addr\">{:?}</span>",
         config.channel.storage
     );
 
@@ -61,7 +61,7 @@ pub async fn watch(
                                         Media::new(index, &new_path.to_string_lossy(), false).await;
 
                                     sources.lock().await.push(media);
-                                    info!(target: Target::file_mail(), channel = id; "Create new file: <b><magenta>{new_path:?}</></b>");
+                                    info!(target: Target::file_mail(), channel = id; "Create new file: <span class=\"log-addr\">{new_path:?}</span>");
                                 }
                             }
                             Remove(RemoveKind::File)
@@ -74,7 +74,7 @@ pub async fn watch(
                                         .lock()
                                         .await
                                         .retain(|x| x.source != old_path.to_string_lossy());
-                                    info!(target: Target::file_mail(), channel = id; "Remove file: <b><magenta>{old_path:?}</></b>");
+                                    info!(target: Target::file_mail(), channel = id; "Remove file: <span class=\"log-addr\">{old_path:?}</span>");
                                 }
                             }
                             Modify(ModifyKind::Name(RenameMode::Both)) => {
@@ -90,14 +90,14 @@ pub async fn watch(
                                     let media =
                                         Media::new(index, &new_path.to_string_lossy(), false).await;
                                     media_list[index] = media;
-                                    info!(target: Target::file_mail(), channel = id; "Move file: <b><magenta>{old_path:?}</></b> to <b><magenta>{new_path:?}</></b>");
+                                    info!(target: Target::file_mail(), channel = id; "Move file: <span class=\"log-addr\">{old_path:?}</span> to <span class=\"log-addr\">{new_path:?}</span>");
                                 } else if include_file_extension(&config, new_path) {
                                     let index = media_list.len();
                                     let media =
                                         Media::new(index, &new_path.to_string_lossy(), false).await;
 
                                     media_list.push(media);
-                                    info!(target: Target::file_mail(), channel = id; "Create new file: <b><magenta>{new_path:?}</></b>");
+                                    info!(target: Target::file_mail(), channel = id; "Create new file: <span class=\"log-addr\">{new_path:?}</span>");
                                 }
                             }
                             _ => {

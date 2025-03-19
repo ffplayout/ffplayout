@@ -30,25 +30,13 @@ export const stringFormatter = () => {
 
     function formatLog(text: string, timezone: string): string {
         return text
-            .replace(/<yellow>(.*?)<\/>/g, '<span class="log-number">$1</span>')
-            .replace(/<b><magenta>(.*?)<\/><\/b>/g, '<span class="log-addr">$1</span>')
-            .replace(/<bright-blue>(.*?)<\/>/g, '<span class="log-cmd">$1</span>')
-            .replace(/\x1B\[90m(.*?)\x1B\[0m/g, '<span class="log-debug">$1</span>')
             .replace(
                 /\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})(\.\d+)?([+-]\d{2}:\d{2})\]/g,
                 (_, dateTime, nano = '', offset) => {
                     const formatted = dayjs(`${dateTime}${offset}`).tz(timezone).format('YYYY-MM-DD HH:mm:ss')
-                    return `<span class="log-time">[${formatted}${nano}]</span>`
+                    return `${formatted}${nano}`
                 }
             )
-            .replace(/\[ INFO\]/g, '<span class="log-info">[ INFO]</span>')
-            .replace(/\[ WARN\]/g, '<span class="log-warning">[ WARN]</span>')
-            .replace(/\[ERROR\]/g, '<span class="log-error">[ERROR]</span>')
-            .replace(/\[DEBUG\]/g, '<span class="log-debug">[DEBUG]</span>')
-            .replace(/\[Decoder\]/g, '<span class="log-decoder">[Decoder]</span>')
-            .replace(/\[Encoder\]/g, '<span class="log-encoder">[Encoder]</span>')
-            .replace(/\[Server\]/g, '<span class="log-server">[Server]</span>')
-            .replace(/\[Validator\]/g, '<span class="log-server">[Validator]</span>')
     }
 
     function timeToSeconds(time: string): number {

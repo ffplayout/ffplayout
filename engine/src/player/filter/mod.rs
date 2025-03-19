@@ -805,7 +805,7 @@ pub async fn filter_chains(
                 extend_audio(config, &mut filters, node, i);
             } else if node.unit == Decoder && !node.source.contains("color=c=") {
                 error!(target: Target::file_mail(), channel = config.general.channel_id;
-                    "Missing audio track (id {i}) from <b><magenta>{}</></b>",
+                    "Missing audio track (id {i}) from <span class=\"log-addr\">{}</span>",
                     node.source
                 );
 

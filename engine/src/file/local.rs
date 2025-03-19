@@ -155,7 +155,7 @@ impl LocalStorage {
         }
 
         info!(
-            "create folder: <b><magenta>{}</></b>",
+            "create folder: <span class=\"log-addr\">{}</span>",
             path.to_string_lossy()
         );
 

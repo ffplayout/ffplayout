@@ -579,7 +579,7 @@ pub fn loop_image(config: &PlayoutConfig, node: &Media) -> Vec<String> {
     let mut source_cmd: Vec<String> = vec_strings!["-loop", "1", "-i", node.source.clone()];
 
     info!(
-        "Loop image <b><magenta>{}</></b>, total duration: <yellow>{duration:.2}</>",
+        "Loop image <span class=\"log-addr\">{}</span>, total duration: <span class=\"log-number\">{duration:.2}</span>",
         node.source
     );
 
@@ -627,7 +627,7 @@ pub fn loop_filler(config: &PlayoutConfig, node: &Media) -> Vec<String> {
     let mut source_cmd = vec![];
 
     if loop_count > 1 {
-        info!("Loop <b><magenta>{}</></b> <yellow>{loop_count}</> times, total duration: <yellow>{:.2}</>", node.source, node.out);
+        info!("Loop <span class=\"log-addr\">{}</span> <span class=\"log-number\">{loop_count}</span> times, total duration: <span class=\"log-number\">{:.2}</span>", node.source, node.out);
 
         source_cmd.append(&mut vec_strings!["-stream_loop", loop_count]);
     }
@@ -678,7 +678,7 @@ pub fn seek_and_length(config: &PlayoutConfig, node: &mut Media) -> Vec<String> 
     }
 
     if loop_count > 1 {
-        info!("Loop <b><magenta>{}</></b> <yellow>{loop_count}</> times, total duration: <yellow>{:.2}</>", node.source, node.out);
+        info!("Loop <span class=\"log-addr\">{}</span> <span class=\"log-number\">{loop_count}</span> times, total duration: <span class=\"log-number\">{:.2}</span>", node.source, node.out);
 
         source_cmd.append(&mut vec_strings!["-stream_loop", loop_count]);
     }
@@ -724,7 +724,7 @@ pub fn seek_and_length(config: &PlayoutConfig, node: &mut Media) -> Vec<String> 
         } else if vtt_dummy.is_file() {
             Some(vtt_dummy.to_string_lossy())
         } else {
-            error!("<b><magenta>{:?}</></b> not found!", vtt_dummy);
+            error!("<span class=\"log-addr\">{:?}</span> not found!", vtt_dummy);
             None
         } {
             if vtt_file.is_file() && loop_count > 1 {
@@ -870,17 +870,17 @@ pub async fn stderr_reader(
 
         if line.contains("[info]") {
             info!(target: Target::file_mail(), channel = channel_id;
-                "<bright black>[{suffix}]</> {}",
+                "<span class=\"log-gray\">[{suffix}]</span> {}",
                 line.replace("[info] ", "")
             );
         } else if line.contains("[warning]") {
             warn!(target: Target::file_mail(), channel = channel_id;
-                "<bright black>[{suffix}]</> {}",
+                "<span class=\"log-gray\">[{suffix}]</span> {}",
                 line.replace("[warning] ", "")
             );
         } else if line.contains("[error]") || line.contains("[fatal]") {
             error!(target: Target::file_mail(), channel = channel_id;
-                "<bright black>[{suffix}]</> {}",
+                "<span class=\"log-gray\">[{suffix}]</span> {}",
                 line.replace("[error] ", "").replace("[fatal] ", "")
             );
 
@@ -1083,7 +1083,7 @@ pub fn get_date_range(id: i32, date_range: &[String]) -> Vec<String> {
     let start = match NaiveDate::parse_from_str(&date_range[0], "%Y-%m-%d") {
         Ok(s) => s,
         Err(_) => {
-            error!(target: Target::file_mail(), channel = id; "date format error in: <yellow>{:?}</>", date_range[0]);
+            error!(target: Target::file_mail(), channel = id; "date format error in: <span class=\"log-number\">{:?}</span>", date_range[0]);
             exit(1);
         }
     };
@@ -1091,7 +1091,7 @@ pub fn get_date_range(id: i32, date_range: &[String]) -> Vec<String> {
     let end = match NaiveDate::parse_from_str(&date_range[2], "%Y-%m-%d") {
         Ok(e) => e,
         Err(_) => {
-            error!(target: Target::file_mail(), channel = id; "date format error in: <yellow>{:?}</>", date_range[2]);
+            error!(target: Target::file_mail(), channel = id; "date format error in: <span class=\"log-number\">{:?}</span>", date_range[2]);
             exit(1);
         }
     };
