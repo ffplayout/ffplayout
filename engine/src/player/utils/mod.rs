@@ -918,7 +918,7 @@ async fn is_in_system(name: &str) -> Result<(), String> {
     Ok(())
 }
 
-async fn ffmpeg_filter_and_libs(config: &mut PlayoutConfig) -> Result<(), String> {
+async fn ffmpeg_info(config: &mut PlayoutConfig) -> Result<(), String> {
     let id = config.general.channel_id;
     let ignore_flags = [
         "--enable-gpl",
@@ -985,6 +985,36 @@ async fn ffmpeg_filter_and_libs(config: &mut PlayoutConfig) -> Result<(), String
         error!(target: Target::file_mail(), channel = id; "{e}");
     };
 
+    let mut ff_proc = match Command::new("ffmpeg")
+        .args(["-h", "long", "-hide_banner"])
+        .kill_on_drop(true)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+    {
+        Err(e) => {
+            return Err(format!("couldn't spawn ffmpeg process: {e}"));
+        }
+        Ok(proc) => proc,
+    };
+
+    let out_buffer = BufReader::new(ff_proc.stdout.take().unwrap());
+
+    // stdout shows options from ffmpeg
+    // get options
+    let mut lines = out_buffer.lines();
+    while let Ok(Some(line)) = lines.next_line().await {
+        if line.starts_with('-') {
+            if let Some((opt, _)) = line.split_once([' ', '[']) {
+                config.general.ffmpeg_options.push(opt.to_string());
+            }
+        }
+    }
+
+    if let Err(e) = ff_proc.wait().await {
+        error!(target: Target::file_mail(), channel = id; "{e}");
+    };
+
     Ok(())
 }
 
@@ -999,7 +1029,7 @@ pub async fn validate_ffmpeg(config: &mut PlayoutConfig) -> Result<(), String> {
         is_in_system("ffplay").await?;
     }
 
-    ffmpeg_filter_and_libs(config).await?;
+    ffmpeg_info(config).await?;
 
     if config
         .output

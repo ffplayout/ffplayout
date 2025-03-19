@@ -16,6 +16,7 @@ use ts_rs::TS;
 
 use crate::db::{handles, models};
 use crate::file::norm_abs_path;
+use crate::player::utils::validate_ffmpeg;
 use crate::utils::{gen_tcp_socket, time_to_sec};
 use crate::vec_strings;
 use crate::AdvancedConfig;
@@ -229,6 +230,9 @@ pub struct General {
     pub ffmpeg_libs: Vec<String>,
     #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
+    pub ffmpeg_options: Vec<String>,
+    #[ts(skip)]
+    #[serde(skip_serializing, skip_deserializing)]
     pub template: Option<Template>,
     #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
@@ -247,6 +251,7 @@ impl General {
             generate: None,
             ffmpeg_filters: vec![],
             ffmpeg_libs: vec![],
+            ffmpeg_options: vec![],
             template: None,
             skip_validation: false,
             validate: false,
@@ -883,6 +888,9 @@ pub async fn get_config(
     channel_id: i32,
 ) -> Result<PlayoutConfig, ServiceError> {
     let mut config = PlayoutConfig::new(pool, channel_id).await?;
+
+    validate_ffmpeg(&mut config).await?;
+
     let args = ARGS.clone();
 
     config.general.generate = args.generate;

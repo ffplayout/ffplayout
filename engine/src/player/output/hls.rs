@@ -42,14 +42,22 @@ use crate::{
     },
 };
 
-fn insert_readrate(args: &mut Vec<String>, rate: f64) {
+fn insert_readrate(options: &[String], args: &mut Vec<String>, rate: f64) {
     let mut i = 0;
     while i < args.len() {
         if args[i] == "-i" {
             args.insert(i, rate.to_string());
             args.insert(i, "-readrate".to_string());
+
+            if options.contains(&"-readrate_catchup".to_string()) {
+                args.insert(i, 1.5.to_string());
+                args.insert(i, "-readrate_catchup".to_string());
+                i += 2;
+            }
+
             i += 2;
         }
+
         i += 1;
     }
 }
@@ -237,7 +245,7 @@ async fn write(manager: &ChannelManager, ff_log_format: &str) -> Result<(), Serv
             }
         }
 
-        insert_readrate(&mut cmd, read_rate);
+        insert_readrate(&config.general.ffmpeg_options, &mut cmd, read_rate);
 
         dec_prefix.append(&mut cmd);
         let dec_cmd = prepare_output_cmd(&config, dec_prefix, &node.filter);
