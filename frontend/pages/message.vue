@@ -6,7 +6,7 @@
                     <div class="grow xs:max-w-72">
                         <select
                             v-model="selected"
-                            class="select select-sm select-bordered w-full"
+                            class="select select-sm w-full"
                             @change="onChange($event)"
                         >
                             <option v-for="item in presets" :key="item.name">{{ item.name }}</option>
@@ -54,7 +54,7 @@
                                     </div>
                                     <input
                                         v-model="form.x"
-                                        class="input input-sm input-bordered w-full"
+                                        class="input input-sm w-full"
                                         type="text"
                                         placeholder="X"
                                         required
@@ -69,7 +69,7 @@
                                     </div>
                                     <input
                                         v-model="form.y"
-                                        class="input input-sm input-bordered w-full"
+                                        class="input input-sm w-full"
                                         type="text"
                                         placeholder="Y"
                                         required
@@ -85,7 +85,7 @@
                                     <input
                                         v-model="form.showBox"
                                         type="checkbox"
-                                        class="checkbox checkbox-xs rounded-sm"
+                                        class="checkbox checkbox-xs rounded-xs"
                                     />
                                 </label>
                             </div>
@@ -97,7 +97,7 @@
                                 <input
                                     v-model="form.boxColor"
                                     type="color"
-                                    class="input input-sm input-bordered w-full p-1"
+                                    class="input input-sm w-full p-1"
                                     required
                                 />
                             </label>
@@ -112,7 +112,7 @@
                                 min="0"
                                 max="1"
                                 step="0.01"
-                                class="input input-sm input-bordered w-full"
+                                class="input input-sm w-full"
                                 required
                             />
                         </label>
@@ -126,7 +126,7 @@
                                 <input
                                     v-model="form.fontSize"
                                     type="number"
-                                    class="input input-sm input-bordered w-full"
+                                    class="input input-sm w-full"
                                     required
                                 />
                             </label>
@@ -138,7 +138,7 @@
                                 <input
                                     v-model="form.fontColor"
                                     type="color"
-                                    class="input input-sm input-bordered w-full p-1"
+                                    class="input input-sm w-full p-1"
                                     required
                                 />
                             </label>
@@ -151,7 +151,7 @@
                                 <input
                                     v-model="form.fontSpacing"
                                     type="number"
-                                    class="input input-sm input-bordered w-full"
+                                    class="input input-sm w-full"
                                     required
                                 />
                             </label>
@@ -162,7 +162,7 @@
                                 <input
                                     v-model="form.fontAlpha"
                                     type="number"
-                                    class="input input-sm input-bordered w-full"
+                                    class="input input-sm w-full"
                                     min="0"
                                     max="1"
                                     step="0.01"
@@ -179,7 +179,7 @@
                                 <input
                                     v-model="form.overallAlpha"
                                     type="text"
-                                    class="input input-sm input-bordered w-full"
+                                    class="input input-sm w-full"
                                     required
                                 />
                             </label>
@@ -190,7 +190,7 @@
                                 <input
                                     v-model="form.border"
                                     type="number"
-                                    class="input input-sm input-bordered w-full"
+                                    class="input input-sm w-full"
                                     required
                                 />
                             </label>
@@ -209,7 +209,7 @@
                 <div class="label">
                     <span class="label-text">{{ t('message.name') }}</span>
                 </div>
-                <input v-model="newPresetName" type="text" class="input input-bordered w-full" />
+                <input v-model="newPresetName" type="text" class="input w-full" />
             </label>
         </GenericModal>
 

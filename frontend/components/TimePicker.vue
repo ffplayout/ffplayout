@@ -1,5 +1,5 @@
 <template>
-    <div id="timeField" class="input input-sm input-bordered flex px-3 py-0">
+    <div id="timeField" class="input input-sm flex px-3 py-0">
         <div class="grow">
             <input
                 ref="timeInput"

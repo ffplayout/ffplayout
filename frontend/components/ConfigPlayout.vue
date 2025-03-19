@@ -21,7 +21,7 @@
                         v-model="configStore.playout.general.stop_threshold"
                         type="number"
                         min="3"
-                        class="input input-sm input-bordered w-full max-w-36"
+                        class="input input-sm w-full max-w-36"
                     />
                     <div class="label">
                         <span class="text-sm select-text text-base-content/80">{{ t('config.stopThreshold') }}</span>
@@ -45,7 +45,7 @@
                             v-model="configStore.playout.mail.subject"
                             type="text"
                             name="subject"
-                            class="input input-sm input-bordered w-full max-w-lg"
+                            class="input input-sm w-full max-w-lg"
                         />
                     </label>
                     <label class="form-control w-full mt-2">
@@ -56,7 +56,7 @@
                             v-model="configStore.playout.mail.recipient"
                             type="text"
                             name="recipient"
-                            class="input input-sm input-bordered w-full max-w-lg"
+                            class="input input-sm w-full max-w-lg"
                         />
                     </label>
                     <label class="form-control w-full mt-2">
@@ -65,7 +65,7 @@
                         </div>
                         <select
                             v-model="configStore.playout.mail.mail_level"
-                            class="select select-sm select-bordered w-full max-w-xs"
+                            class="select select-sm w-full max-w-xs"
                         >
                             <option v-for="level in logLevels" :key="level" :value="level">{{ level }}</option>
                         </select>
@@ -79,7 +79,7 @@
                             type="number"
                             min="30"
                             step="10"
-                            class="input input-sm input-bordered w-full max-w-36"
+                            class="input input-sm w-full max-w-36"
                         />
                         <div class="label">
                             <span class="text-sm select-text text-base-content/80">{{ t('config.mailInterval') }}</span>
@@ -101,7 +101,7 @@
                     </div>
                     <select
                         v-model="configStore.playout.logging.ffmpeg_level"
-                        class="select select-sm select-bordered w-full max-w-xs"
+                        class="select select-sm w-full max-w-xs"
                     >
                         <option v-for="level in logLevels" :key="level" :value="level">{{ level }}</option>
                     </select>
@@ -112,7 +112,7 @@
                     </div>
                     <select
                         v-model="configStore.playout.logging.ingest_level"
-                        class="select select-sm select-bordered w-full max-w-xs"
+                        class="select select-sm w-full max-w-xs"
                     >
                         <option v-for="level in logLevels" :key="level" :value="level">{{ level }}</option>
                     </select>
@@ -139,7 +139,7 @@
                     <input
                         v-model="formatIgnoreLines"
                         type="text"
-                        class="input input-sm input-bordered w-full truncate"
+                        class="input input-sm w-full truncate"
                     />
                     <div class="label">
                         <span class="text-sm select-text text-base-content/80">{{ t('config.logIgnore') }}</span>
@@ -160,7 +160,7 @@
                     </div>
                     <select
                         v-model="configStore.playout.processing.mode"
-                        class="select select-sm select-bordered w-full max-w-xs"
+                        class="select select-sm w-full max-w-xs"
                     >
                         <option v-for="mode in processingMode" :key="mode" :value="mode">{{ mode }}</option>
                     </select>
@@ -204,7 +204,7 @@
                         type="number"
                         min="-1"
                         step="1"
-                        class="input input-sm input-bordered w-full max-w-36"
+                        class="input input-sm w-full max-w-36"
                     />
                 </label>
                 <label class="form-control w-full mt-2">
@@ -216,7 +216,7 @@
                         type="number"
                         min="-1"
                         step="1"
-                        class="input input-sm input-bordered w-full max-w-36"
+                        class="input input-sm w-full max-w-36"
                     />
                 </label>
                 <label class="form-control w-full mt-2">
@@ -228,7 +228,7 @@
                         type="number"
                         min="1"
                         step="0.001"
-                        class="input input-sm input-bordered w-full max-w-36"
+                        class="input input-sm w-full max-w-36"
                     />
                 </label>
                 <label class="form-control w-full mt-2">
@@ -240,7 +240,7 @@
                         type="number"
                         min="1"
                         step="0.01"
-                        class="input input-sm input-bordered w-full max-w-36"
+                        class="input input-sm w-full max-w-36"
                     />
                 </label>
                 <label class="form-control w-full flex-row mt-2">
@@ -261,7 +261,7 @@
                         v-model="configStore.playout.processing.logo"
                         type="text"
                         name="logo"
-                        class="input input-sm input-bordered w-full max-w-lg"
+                        class="input input-sm w-full max-w-lg"
                     />
                     <div class="label">
                         <span class="text-sm select-text text-base-content/80">{{
@@ -279,7 +279,7 @@
                         min="0"
                         max="1"
                         step="0.01"
-                        class="input input-sm input-bordered w-full max-w-36"
+                        class="input input-sm w-full max-w-36"
                     />
                 </label>
                 <label class="form-control w-full mt-2">
@@ -290,7 +290,7 @@
                         v-model="configStore.playout.processing.logo_scale"
                         type="text"
                         name="logo_scale"
-                        class="input input-sm input-bordered w-full max-w-md"
+                        class="input input-sm w-full max-w-md"
                     />
                     <div class="label">
                         <span class="text-sm select-text text-base-content/80">{{
@@ -306,7 +306,7 @@
                         v-model="configStore.playout.processing.logo_position"
                         type="text"
                         name="logo_position"
-                        class="input input-sm input-bordered w-full max-w-md"
+                        class="input input-sm w-full max-w-md"
                     />
                     <div class="label">
                         <span class="text-sm select-text text-base-content/80">{{
@@ -324,7 +324,7 @@
                         min="1"
                         max="255"
                         step="1"
-                        class="input input-sm input-bordered w-full max-w-36"
+                        class="input input-sm w-full max-w-36"
                     />
                     <div class="label">
                         <span class="text-sm select-text text-base-content/80">{{
@@ -342,7 +342,7 @@
                         min="-1"
                         max="255"
                         step="1"
-                        class="input input-sm input-bordered w-full max-w-36"
+                        class="input input-sm w-full max-w-36"
                     />
                     <div class="label">
                         <span class="text-sm select-text text-base-content/80">{{
@@ -360,7 +360,7 @@
                         min="1"
                         max="255"
                         step="1"
-                        class="input input-sm input-bordered w-full max-w-36"
+                        class="input input-sm w-full max-w-36"
                     />
                     <div class="label">
                         <span class="text-sm select-text text-base-content/80">{{
@@ -378,7 +378,7 @@
                         min="0"
                         max="1"
                         step="0.001"
-                        class="input input-sm input-bordered w-full max-w-36"
+                        class="input input-sm w-full max-w-36"
                     />
                 </label>
                 <label class="form-control w-full mt-2">
@@ -436,7 +436,7 @@
                         v-model="configStore.playout.processing.vtt_dummy"
                         type="text"
                         name="vtt_dummy"
-                        class="input input-sm input-bordered w-full max-w-lg"
+                        class="input input-sm w-full max-w-lg"
                     />
                     <div class="label">
                         <span class="text-sm select-text text-base-content/80">{{
@@ -470,7 +470,7 @@
                     <input
                         v-model="configStore.playout.ingest.input_param"
                         type="text"
-                        class="input input-sm input-bordered w-full max-w-lg"
+                        class="input input-sm w-full max-w-lg"
                     />
                 </label>
                 <label class="form-control w-full mt-2">
@@ -505,7 +505,7 @@
                         v-model="configStore.playout.playlist.day_start"
                         type="text"
                         name="day_start"
-                        class="input input-sm input-bordered w-full max-w-xs"
+                        class="input input-sm w-full max-w-xs"
                         pattern="(([01]?[0-9]|2[0-4]):[0-5][0-9]:[0-5][0-9]|now|none)"
                     />
                     <div class="label">
@@ -520,7 +520,7 @@
                         v-model="configStore.playout.playlist.length"
                         type="text"
                         name="length"
-                        class="input input-sm input-bordered w-full max-w-xs"
+                        class="input input-sm w-full max-w-xs"
                         pattern="([01]?[0-9]|2[0-4]):[0-5][0-9]:[0-5][0-9]"
                     />
                     <div class="label">
@@ -559,7 +559,7 @@
                         v-model="configStore.playout.storage.filler"
                         type="text"
                         name="filler"
-                        class="input input-sm input-bordered w-full max-w-lg"
+                        class="input input-sm w-full max-w-lg"
                     />
                     <div class="label">
                         <span class="text-sm select-text text-base-content/80">{{ t('config.storageFiller') }}</span>
@@ -573,7 +573,7 @@
                         v-model="extensions"
                         type="text"
                         name="extensions"
-                        class="input input-sm input-bordered w-full max-w-lg"
+                        class="input input-sm w-full max-w-lg"
                     />
                     <div class="label">
                         <span class="text-sm select-text text-base-content/80">{{ t('config.storageExtension') }}</span>
@@ -621,7 +621,7 @@
                         v-model="configStore.playout.text.font"
                         type="text"
                         name="font"
-                        class="input input-sm input-bordered w-full max-w-lg"
+                        class="input input-sm w-full max-w-lg"
                     />
                     <div class="label">
                         <span class="text-sm select-text text-base-content/80">{{ t('config.textFont') }}</span>
@@ -650,7 +650,7 @@
                         v-model="configStore.playout.text.style"
                         type="text"
                         name="style"
-                        class="input input-sm input-bordered w-full truncate"
+                        class="input input-sm w-full truncate"
                     />
                     <div class="label">
                         <span class="text-sm select-text text-base-content/80">{{ t('config.textStyle') }}</span>
@@ -664,7 +664,7 @@
                         v-model="configStore.playout.text.regex"
                         type="text"
                         name="regex"
-                        class="input input-sm input-bordered w-full max-w-lg"
+                        class="input input-sm w-full max-w-lg"
                     />
                     <div class="label">
                         <span class="text-sm select-text text-base-content/80">{{ t('config.textRegex') }}</span>
@@ -697,7 +697,7 @@
                         v-model="configStore.playout.task.path"
                         type="text"
                         name="task_path"
-                        class="input input-sm input-bordered w-full max-w-lg"
+                        class="input input-sm w-full max-w-lg"
                     />
                     <div class="label">
                         <span class="text-sm select-text text-base-content/80">{{ t('config.taskPath') }}</span>
@@ -718,7 +718,7 @@
                     </div>
                     <select
                         v-model="configStore.playout.output.mode"
-                        class="select select-sm select-bordered w-full max-w-xs"
+                        class="select select-sm w-full max-w-xs"
                     >
                         <option v-for="mode in outputMode" :key="mode" :value="mode">{{ mode }}</option>
                     </select>

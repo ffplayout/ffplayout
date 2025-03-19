@@ -2,7 +2,7 @@
     <div class="w-full">
         <div class="grid grid-cols-1 md:grid-cols-[auto_512px] xl:grid-cols-[512px_auto_450px]">
             <div class="order-1 p-1">
-                <div class="bg-base-100 w-full h-full rounded shadow flex items-center p-2">
+                <div class="bg-base-100 w-full h-full rounded-sm shadow-sm flex items-center p-2">
                     <div class="w-full aspect-video">
                         <video v-if="streamExtension === 'flv'" ref="httpStreamFlv" controls />
                         <VideoPlayer
@@ -33,7 +33,7 @@
             >
                 <div class="col-span-1 p-1">
                     <div
-                        class="w-full h-full bg-base-100 rounded font-['DigitalNumbers'] p-6 text-3xl md:text-2xl 2xl:text-5xl 4xl:text-7xl tracking-tighter flex justify-center items-center shadow"
+                        class="w-full h-full bg-base-100 rounded-sm font-['DigitalNumbers'] p-6 text-3xl md:text-2xl 2xl:text-5xl 4xl:text-7xl tracking-tighter flex justify-center items-center shadow"
                     >
                         {{ timeStr }}
                     </div>
@@ -41,14 +41,14 @@
 
                 <div class="col-span-1 p-1 min-h-[50%]">
                     <div
-                        class="w-full h-full bg-base-100 rounded font-['DigitalNumbers'] p-6 text-3xl md:text-2xl 2xl:text-5xl 4xl:text-7xl tracking-tighter flex justify-center items-center shadow"
+                        class="w-full h-full bg-base-100 rounded-sm font-['DigitalNumbers'] p-6 text-3xl md:text-2xl 2xl:text-5xl 4xl:text-7xl tracking-tighter flex justify-center items-center shadow"
                     >
                         {{ secToHMS(timeRemaining()) }}
                     </div>
                 </div>
 
                 <div class="col-span-1 xs:col-span-2 p-1">
-                    <div class="w-full h-full bg-base-100 rounded flex items-center px-3 py-2 xl:py-1 shadow">
+                    <div class="w-full h-full bg-base-100 rounded-sm flex items-center px-3 py-2 xl:py-1 shadow">
                         <div class="w-full h-full flex flex-col content-center">
                             <div v-if="playlistStore.ingestRuns" class="h-1/4 font-bold truncate leading-5">
                                 {{ t('control.ingest') }}
@@ -105,7 +105,7 @@
             </div>
 
             <div class="order-2 xl:order-3 p-1">
-                <div class="bg-base-100 h-full flex justify-center rounded shadow">
+                <div class="bg-base-100 h-full flex justify-center rounded-sm shadow">
                     <div class="w-full h-full grid grid-cols-3">
                         <div class="text-center">
                             <div class="w-full h-1/2 aspect-square p-2">

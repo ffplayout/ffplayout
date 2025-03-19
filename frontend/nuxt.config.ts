@@ -1,3 +1,5 @@
+import tailwindcss from "@tailwindcss/vite"
+
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
     devServer: {
@@ -17,11 +19,11 @@ export default defineNuxtConfig({
         },
     },
 
-    runtimeConfig: {
-        public: {
-            buildExperimental: process.env.NUXT_BUILD_EXPERIMENTAL,
-        },
-    },
+    // runtimeConfig: {
+    //     public: {
+    //         buildExperimental: process.env.NUXT_BUILD_EXPERIMENTAL,
+    //     },
+    // },
 
     ignore: ['**/public/tv-media**', '**/public/Videos**', '**/public/live**', '**/public/home**'],
     ssr: false,
@@ -57,13 +59,12 @@ export default defineNuxtConfig({
     modules: [
         '@nuxt/eslint',
         '@nuxtjs/color-mode',
-        '@nuxtjs/tailwindcss',
         '@nuxtjs/i18n',
         '@pinia/nuxt',
         '@vueuse/nuxt',
     ],
 
-    css: ['@/assets/scss/main.scss'],
+    css: ['@/assets/css/main.css'],
 
     colorMode: {
         preference: 'dark', // default value of $colorMode.preference
@@ -157,6 +158,9 @@ export default defineNuxtConfig({
                 },
             },
         },
+        plugins: [
+            tailwindcss(),
+        ],
     },
 
     experimental: {

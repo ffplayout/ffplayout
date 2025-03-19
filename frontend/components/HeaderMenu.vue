@@ -13,7 +13,7 @@
                 <summary class="btn btn-ghost 2sm:hidden" @click="clickMenu()" @blur="blurMenu()">
                     <SvgIcon name="burger" classes="w-5 h-5" />
                 </summary>
-                <ul class="menu menu-sm dropdown-content mt-1 z-[1] p-2 shadow bg-base-100 rounded-box w-52">
+                <ul class="menu menu-sm dropdown-content mt-1 z-[1] p-2 shadow-sm bg-base-100 rounded-box w-52">
                     <template v-for="item in menuItems" :key="item.name">
                         <li
                             v-if="

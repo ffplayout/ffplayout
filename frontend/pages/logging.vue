@@ -2,7 +2,7 @@
     <div class="w-full flex flex-col">
         <div class="flex justify-end p-3 h-14">
             <div class="join">
-                <select v-model="errorLevel" class="join-item select select-sm select-bordered w-full max-w-xs">
+                <select v-model="errorLevel" class="join-item select select-sm w-full max-w-xs">
                     <option
                         v-for="(index, value) in indexStore.severityLevels"
                         :key="index"
@@ -22,7 +22,7 @@
                     auto-apply
                     :locale="locale"
                     :dark="colorMode.value === 'dark'"
-                    :ui="{ input: 'join-item input !input-sm !input-bordered !w-[170px] text-right !pe-3' }"
+                    :ui="{ input: 'join-item input !input-sm !!w-[170px] text-right !pe-3' }"
                     required
                 />
                 <button class="btn btn-sm btn-primary join-item" :title="t('log.reload')" @click="getLog()">

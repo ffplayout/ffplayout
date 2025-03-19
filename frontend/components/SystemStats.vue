@@ -1,5 +1,5 @@
 <template>
-    <div class="grid grid-cols-1 xs:grid-cols-2 border-4 rounded-md border-primary text-left shadow min-w-[320px] md:min-w-[728px] max-w-[960px] mt-5">
+    <div class="grid grid-cols-1 xs:grid-cols-2 border-4 rounded-md border-primary text-left shadow-sm min-w-[320px] md:min-w-[728px] max-w-[960px] mt-5">
         <div class="p-4 bg-base-100">
             <span class="text-3xl">{{ sysStat.system.name }} {{ sysStat.system.version }}</span>
             <span v-if="sysStat.system.kernel">
@@ -84,7 +84,7 @@
                 </div>
             </div>
         </div>
-        <div v-else class="col-6 bg-primary p-2 border" />
+        <div v-else class="p-4 border border-primary" />
     </div>
 </template>
 <script setup lang="ts">

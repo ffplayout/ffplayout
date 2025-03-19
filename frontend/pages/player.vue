@@ -23,7 +23,7 @@
                     auto-apply
                     :locale="locale"
                     :dark="colorMode.value === 'dark'"
-                    :ui="{ input: 'input input-sm !input-bordered !w-[300px] text-right !pe-3' }"
+                    :ui="{ input: 'input input-sm !!w-[300px] text-right !pe-3' }"
                     required
                     @update:model-value=";(beforeDayStart = false), (firstLoad = false)"
                 />
@@ -32,7 +32,7 @@
         <div class="p-1 min-h-[260px] h-[calc(100vh-800px)] xl:h-[calc(100vh-480px)]">
             <splitpanes
                 v-if="configStore.playout.processing.mode === 'playlist'"
-                class="border border-my-gray rounded shadow"
+                class="border border-my-gray rounded-sm shadow"
             >
                 <pane
                     v-if="width > 739"
@@ -47,7 +47,7 @@
                     <PlaylistTable ref="playlistTable" :edit-item="editPlaylistItem" :preview="setPreviewData" />
                 </pane>
             </splitpanes>
-            <div v-else class="h-full border border-b-2 border-my-gray rounded shadow">
+            <div v-else class="h-full border border-b-2 border-my-gray rounded-sm shadow">
                 <MediaBrowser :preview="setPreviewData" />
             </div>
         </div>
@@ -131,7 +131,7 @@
                 auto-apply
                 :locale="locale"
                 :dark="colorMode.value === 'dark'"
-                :ui="{ input: 'input input-sm !input-bordered !w-[full text-right !pe-3' }"
+                :ui="{ input: 'input input-sm !!w-[full text-right !pe-3' }"
                 required
             />
         </GenericModal>
@@ -142,7 +142,7 @@
                     <div class="label">
                         <span class="label-text">{{ t('player.title') }}</span>
                     </div>
-                    <input v-model.number="newSource.title" type="text" class="input input-sm input-bordered w-auto" />
+                    <input v-model.number="newSource.title" type="text" class="input input-sm w-auto" />
                 </label>
 
                 <label class="form-control w-auto mt-auto">
@@ -173,7 +173,7 @@
                     <input
                         v-model="newSource.source"
                         type="text"
-                        class="input input-sm input-bordered w-auto"
+                        class="input input-sm w-auto"
                         :disabled="newSource.source.includes(configStore.channels[configStore.i].storage)"
                     />
                 </label>
@@ -182,14 +182,14 @@
                     <div class="label">
                         <span class="label-text">{{ t('player.audio') }}</span>
                     </div>
-                    <input v-model="newSource.audio" type="text" class="input input-sm input-bordered w-auto" />
+                    <input v-model="newSource.audio" type="text" class="input input-sm w-auto" />
                 </label>
 
                 <label class="form-control w-auto mt-auto">
                     <div class="label">
                         <span class="label-text">{{ t('player.customFilter') }}</span>
                     </div>
-                    <input v-model="newSource.custom_filter" type="text" class="input input-sm input-bordered w-auto" />
+                    <input v-model="newSource.custom_filter" type="text" class="input input-sm w-auto" />
                 </label>
 
                 <div class="form-control mt-2">
@@ -217,7 +217,7 @@
                         type="number"
                         min="0"
                         step="1"
-                        class="input input-sm input-bordered w-24"
+                        class="input input-sm w-24"
                         @change="splitClip"
                     />
                 </div>
@@ -231,7 +231,7 @@
         <GenericModal :show="showImportModal" :title="t('player.import')" :modal-action="importPlaylist">
             <input
                 type="file"
-                class="file-input file-input-sm file-input-bordered w-full"
+                class="file-input file-input-sm w-full"
                 multiple
                 @change="onFileChange"
             />

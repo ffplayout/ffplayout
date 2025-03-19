@@ -1,4 +1,71 @@
 @import 'bootstrap-icons/font/bootstrap-icons.css';
+@import 'tailwindcss';
+@plugin "daisyui";
+
+@config "../../tailwind.config.ts";
+
+@plugin "daisyui/theme" {
+    name: 'light';
+    default: false;
+    color-scheme: light;
+
+    --color-primary: #e0e0e0;
+    --color-base-content: #222222;
+    --color-secondary: #c7c7c7;
+    --color-accent: #f28c1b;
+    --color-base-100: #ffffff;
+    --color-base-200: #f2f5f7;
+    --color-base-300: #e5e6e6;
+    --color-neutral: #2b3440;
+    --color-neutral-focus: #343232;
+    --color-info: #0000ff;
+    --color-success: #008000;
+    --color-warning: #f28c1b;
+    --color-error: #ff3c00;
+    --base-100: #ffffff;
+    --base-200: #f2f5f7;
+    --base-300: #e5e6e6;
+    --my-accent: #f28c1b;
+    --my-gray: #888888;
+    --my-purple: #701a75;
+    --my-yellow: #bea203;
+    --my-blue: #436e9c;
+    --my-green: #68b31e;
+}
+
+@plugin "daisyui/theme" {
+    name: 'dark';
+    default: true;
+    color-scheme: dark;
+
+    --color-primary: #3b3b3b;
+    --color-base-content: #dfdfdf;
+    --color-secondary: #d3d3d3;
+    --color-accent: #f28c1b;
+    --color-base-100: #313131;
+    --color-base-200: #222222;
+    --color-base-300: #1c1c1c;
+    --color-neutral: #272626;
+    --color-neutral-focus: #343232;
+    --color-info: #0000ff;
+    --color-success: #008000;
+    --color-warning: #f28c1b;
+    --color-error: #ff3c00;
+    --base-100: #313131;
+    --base-200: #222222;
+    --base-300: #1c1c1c;
+    --my-accent: #f28c1b;
+    --my-gray: #919191;
+    --my-purple: #ad7fa8;
+    --my-yellow: #e2c317;
+    --my-blue: #6c95c2;
+    --my-green: #8ae234;
+}
+
+@theme {
+    --font-body: 'Source Sans Pro', 'Segoe UI', 'Helvetica Neue', 'Arial', 'sans-serif';
+    --default-font-family: 'Source Sans Pro', 'Segoe UI', 'Helvetica Neue', 'Arial', 'sans-serif';
+}
 
 #__nuxt,
 #__nuxt > div,

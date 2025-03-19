@@ -20,6 +20,9 @@
     "rust-analyzer.inlayHints.parameterHints.enable": false,
     "rust-analyzer.inlayHints.typeHints.enable": false,
     "rust-analyzer.diagnostics.disabled": ["unresolved-proc-macro"],
+    "files.associations": {
+        "*.css": "tailwindcss"
+    },
     "[dockercompose]": {
         "editor.defaultFormatter": "esbenp.prettier-vscode"
     },

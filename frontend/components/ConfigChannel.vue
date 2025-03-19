@@ -16,7 +16,7 @@
                     type="text"
                     name="name"
                     placeholder="Type here"
-                    class="input input-bordered w-full !bg-base-100"
+                    class="input w-full !bg-base-100"
                     @keyup="isChanged"
                     :disabled="authStore.role === 'user'"
                 />
@@ -30,7 +30,7 @@
                     v-model="channel.preview_url"
                     type="text"
                     name="preview_url"
-                    class="input input-bordered w-full !bg-base-100"
+                    class="input w-full !bg-base-100"
                     @keyup="isChanged"
                     :disabled="authStore.role === 'user'"
                 />
@@ -44,7 +44,7 @@
                     v-model="channel.extra_extensions"
                     type="text"
                     name="extra_extensions"
-                    class="input input-bordered w-full !bg-base-100"
+                    class="input w-full !bg-base-100"
                     @keyup="isChanged"
                     :disabled="authStore.role === 'user'"
                 />
@@ -65,7 +65,7 @@
                         v-model="channel.public"
                         type="text"
                         name="public"
-                        class="input input-bordered w-full"
+                        class="input w-full"
                         @keyup="isChanged"
                     />
                 </label>
@@ -78,7 +78,7 @@
                         v-model="channel.playlists"
                         type="text"
                         name="playlists"
-                        class="input input-bordered w-full"
+                        class="input w-full"
                         @keyup="isChanged"
                     />
                 </label>
@@ -91,7 +91,7 @@
                         v-model="channel.storage"
                         type="text"
                         name="storage"
-                        class="input input-bordered w-full"
+                        class="input w-full"
                         @keyup="isChanged"
                     />
                 </label>
@@ -102,7 +102,7 @@
                     </div>
                     <select
                         v-model="channel.timezone"
-                        class="select select-md select-bordered w-full max-w-xs"
+                        class="select select-md w-full max-w-xs"
                         @change="isChanged"
                     >
                         <option v-for="zone in Intl.supportedValuesOf('timeZone')" :key="zone" :value="zone">

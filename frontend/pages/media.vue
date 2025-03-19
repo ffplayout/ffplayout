@@ -26,7 +26,7 @@
                 <div v-if="mediaStore.isLoading" class="w-full h-full absolute z-10 flex justify-center bg-base-100/70">
                     <span class="loading loading-spinner loading-lg" />
                 </div>
-                <splitpanes :horizontal="horizontal" class="h-full border border-my-gray rounded shadow">
+                <splitpanes :horizontal="horizontal" class="h-full border border-my-gray rounded-sm shadow">
                     <pane
                         min-size="14"
                         max-size="80"
@@ -264,7 +264,7 @@
                 <div class="label">
                     <span class="label-text">{{ t('media.newFile') }}</span>
                 </div>
-                <input v-model="renameNewName" type="text" class="input input-bordered w-full" />
+                <input v-model="renameNewName" type="text" class="input w-full" />
             </label>
         </GenericModal>
 
@@ -273,7 +273,7 @@
                 <div class="label">
                     <span class="label-text">{{ t('media.foldername') }}</span>
                 </div>
-                <input v-model="folderName.name" type="text" class="input input-bordered w-full" />
+                <input v-model="folderName.name" type="text" class="input w-full" />
             </label>
         </GenericModal>
 
@@ -282,7 +282,7 @@
                 <input
                     ref="fileInputName"
                     type="file"
-                    class="file-input file-input-bordered w-full"
+                    class="file-input w-full"
                     :accept="extensions"
                     multiple
                     @change="onFileChange"
@@ -307,7 +307,7 @@
                     <div class="label">
                         <span class="label-text">{{ t('media.uploading') }}:</span>
                     </div>
-                    <input v-model="uploadTask" type="text" class="input input-sm input-bordered w-full" disabled />
+                    <input v-model="uploadTask" type="text" class="input input-sm w-full" disabled />
                 </label>
             </div>
         </GenericModal>

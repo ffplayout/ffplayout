@@ -2,7 +2,7 @@
     <div class="w-full max-w-[800px] xs:pe-8">
         <h2 class="pt-3 text-3xl">{{ t('user.title') }}</h2>
         <div v-if="authStore.role === 'global_admin'" class="w-full join max-w-md mt-10">
-            <select v-model="selected" class="join-item select select-bordered w-full" @change="onChange($event)">
+            <select v-model="selected" class="join-item select w-full" @change="onChange($event)">
                 <option v-for="item in users" :key="item.username" :value="item.id">{{ item.username }}</option>
             </select>
             <button
@@ -28,7 +28,7 @@
                 <input
                     v-model="configStore.configUser.username"
                     type="text"
-                    class="input input-bordered w-full !bg-base-100"
+                    class="input w-full !bg-base-100"
                     disabled
                 />
             </label>
@@ -37,21 +37,21 @@
                 <div class="label">
                     <span class="label-text">{{ t('user.mail') }}</span>
                 </div>
-                <input v-model="configStore.configUser.mail" type="email" class="input input-bordered w-full" />
+                <input v-model="configStore.configUser.mail" type="email" class="input w-full" />
             </label>
 
             <label class="form-control w-full max-w-md mt-3">
                 <div class="label">
                     <span class="label-text">{{ t('user.newPass') }}</span>
                 </div>
-                <input v-model="newPass" type="password" class="input input-bordered w-full" />
+                <input v-model="newPass" type="password" class="input w-full" />
             </label>
 
             <label class="form-control w-full max-w-md mt-3">
                 <div class="label">
                     <span class="label-text">{{ t('user.confirmPass') }}</span>
                 </div>
-                <input v-model="confirmPass" type="password" class="input input-bordered w-full" />
+                <input v-model="confirmPass" type="password" class="input w-full" />
             </label>
 
             <div v-if="authStore.role === 'global_admin'" class="form-control w-full max-w-md mt-5">
@@ -80,28 +80,28 @@
                 <div class="label">
                     <span class="label-text">{{ t('user.name') }}</span>
                 </div>
-                <input v-model="user.username" name="username" type="text" class="input input-bordered w-full" />
+                <input v-model="user.username" name="username" type="text" class="input w-full" />
             </label>
 
             <label class="form-control w-full mt-3">
                 <div class="label">
                     <span class="label-text">{{ t('user.mail') }}</span>
                 </div>
-                <input v-model="user.mail" name="mail" type="email" class="input input-bordered w-full" />
+                <input v-model="user.mail" name="mail" type="email" class="input w-full" />
             </label>
 
             <label class="form-control w-full mt-3">
                 <div class="label">
                     <span class="label-text">{{ t('user.password') }}</span>
                 </div>
-                <input v-model="user.password" type="password" class="input input-bordered w-full" />
+                <input v-model="user.password" type="password" class="input w-full" />
             </label>
 
             <label class="form-control w-full mt-3">
                 <div class="label">
                     <span class="label-text">{{ t('user.confirmPass') }}</span>
                 </div>
-                <input v-model="user.confirm" type="password" class="input input-bordered w-full" />
+                <input v-model="user.confirm" type="password" class="input w-full" />
             </label>
 
             <div class="form-control mt-5">

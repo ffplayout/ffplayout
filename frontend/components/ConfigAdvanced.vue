@@ -8,7 +8,7 @@
                     <span class="label-text !text-md font-bold">Preset</span>
                 </div>
                 <div class="flex-none join">
-                    <select v-model="configStore.advanced" class="join-item select select-sm select-bordered w-full">
+                    <select v-model="configStore.advanced" class="join-item select select-sm w-full">
                         <option v-for="config in relatedConfigs" :key="config.id" :value="config">
                             {{ config.name }}
                         </option>
@@ -42,7 +42,7 @@
                         v-model="configStore.advanced.name"
                         type="text"
                         name="input_param"
-                        class="input input-sm input-bordered w-full xs:max-w-64"
+                        class="input input-sm w-full xs:max-w-64"
                     />
                 </label>
             </div>
@@ -61,7 +61,7 @@
                         v-model="configStore.advanced.decoder.input_param"
                         type="text"
                         name="input_param"
-                        class="input input-sm input-bordered w-full"
+                        class="input input-sm w-full"
                     />
                 </label>
                 <label class="form-control w-full mt-2">
@@ -72,7 +72,7 @@
                         v-model="configStore.advanced.decoder.output_param"
                         type="text"
                         name="output_param"
-                        class="input input-sm input-bordered w-full"
+                        class="input input-sm w-full"
                     />
                     <div class="label">
                         <span class="text-sm text-base-content/80">
@@ -99,7 +99,7 @@
                         v-model="configStore.advanced.encoder.input_param"
                         type="text"
                         name="input_param"
-                        class="input input-sm input-bordered w-full"
+                        class="input input-sm w-full"
                     />
                 </label>
             </div>
@@ -122,7 +122,7 @@
                         v-model="configStore.advanced.filter.deinterlace"
                         type="text"
                         name="deinterlace"
-                        class="input input-sm input-bordered w-full"
+                        class="input input-sm w-full"
                     />
                     <div class="label">
                         <span class="text-sm text-base-content/80"
@@ -138,7 +138,7 @@
                         v-model="configStore.advanced.filter.pad_video"
                         type="text"
                         name="pad_video"
-                        class="input input-sm input-bordered w-full"
+                        class="input input-sm w-full"
                     />
                     <div class="label">
                         <span class="text-sm text-base-content/80">
@@ -155,7 +155,7 @@
                         v-model="configStore.advanced.filter.fps"
                         type="text"
                         name="fps"
-                        class="input input-sm input-bordered w-full"
+                        class="input input-sm w-full"
                     />
                     <div class="label">
                         <span class="text-sm text-base-content/80">
@@ -171,7 +171,7 @@
                         v-model="configStore.advanced.filter.scale"
                         type="text"
                         name="scale"
-                        class="input input-sm input-bordered w-full"
+                        class="input input-sm w-full"
                     />
                     <div class="label">
                         <span class="text-sm text-base-content/80">
@@ -187,7 +187,7 @@
                         v-model="configStore.advanced.filter.set_dar"
                         type="text"
                         name="set_dar"
-                        class="input input-sm input-bordered w-full"
+                        class="input input-sm w-full"
                     />
                     <div class="label">
                         <span class="text-sm text-base-content/80">
@@ -203,7 +203,7 @@
                         v-model="configStore.advanced.filter.fade_in"
                         type="text"
                         name="fade_in"
-                        class="input input-sm input-bordered w-full"
+                        class="input input-sm w-full"
                     />
                     <div class="label">
                         <span class="text-sm text-base-content/80">
@@ -219,7 +219,7 @@
                         v-model="configStore.advanced.filter.fade_out"
                         type="text"
                         name="fade_out"
-                        class="input input-sm input-bordered w-full"
+                        class="input input-sm w-full"
                     />
                     <div class="label">
                         <span class="text-sm text-base-content/80">
@@ -235,7 +235,7 @@
                         v-model="configStore.advanced.filter.logo"
                         type="text"
                         name="logo"
-                        class="input input-sm input-bordered w-full"
+                        class="input input-sm w-full"
                     />
                     <div class="label">
                         <span class="text-sm text-base-content/80">
@@ -254,7 +254,7 @@
                         v-model="configStore.advanced.filter.overlay_logo_scale"
                         type="text"
                         name="overlay_logo_scale"
-                        class="input input-sm input-bordered w-full"
+                        class="input input-sm w-full"
                     />
                     <div class="label">
                         <span class="text-sm text-base-content/80">
@@ -270,7 +270,7 @@
                         v-model="configStore.advanced.filter.overlay_logo_fade_in"
                         type="text"
                         name="overlay_logo_fade_in"
-                        class="input input-sm input-bordered w-full"
+                        class="input input-sm w-full"
                     />
                     <div class="label">
                         <span class="text-sm text-base-content/80">
@@ -286,7 +286,7 @@
                         v-model="configStore.advanced.filter.overlay_logo_fade_out"
                         type="text"
                         name="overlay_logo_fade_out"
-                        class="input input-sm input-bordered w-full"
+                        class="input input-sm w-full"
                     />
                     <div class="label">
                         <span class="text-sm text-base-content/80">
@@ -302,7 +302,7 @@
                         v-model="configStore.advanced.filter.overlay_logo"
                         type="text"
                         name="overlay_logo"
-                        class="input input-sm input-bordered w-full"
+                        class="input input-sm w-full"
                     />
                     <div class="label">
                         <span class="text-sm text-base-content/80">
@@ -318,7 +318,7 @@
                         v-model="configStore.advanced.filter.tpad"
                         type="text"
                         name="tpad"
-                        class="input input-sm input-bordered w-full"
+                        class="input input-sm w-full"
                     />
                     <div class="label">
                         <span class="text-sm text-base-content/80">
@@ -334,7 +334,7 @@
                         v-model="configStore.advanced.filter.drawtext_from_file"
                         type="text"
                         name="drawtext_from_file"
-                        class="input input-sm input-bordered w-full"
+                        class="input input-sm w-full"
                     />
                     <div class="label">
                         <span class="text-sm text-base-content/80">
@@ -350,7 +350,7 @@
                         v-model="configStore.advanced.filter.drawtext_from_zmq"
                         type="text"
                         name="drawtext_from_zmq"
-                        class="input input-sm input-bordered w-full"
+                        class="input input-sm w-full"
                     />
                     <div class="label">
                         <span class="text-sm text-base-content/80">
@@ -367,7 +367,7 @@
                         v-model="configStore.advanced.filter.aevalsrc"
                         type="text"
                         name="aevalsrc"
-                        class="input input-sm input-bordered w-full"
+                        class="input input-sm w-full"
                     />
                     <div class="label">
                         <span class="text-sm text-base-content/80 break-all">
@@ -383,7 +383,7 @@
                         v-model="configStore.advanced.filter.afade_in"
                         type="text"
                         name="afade_in"
-                        class="input input-sm input-bordered w-full"
+                        class="input input-sm w-full"
                     />
                     <div class="label">
                         <span class="text-sm text-base-content/80">
@@ -399,7 +399,7 @@
                         v-model="configStore.advanced.filter.afade_out"
                         type="text"
                         name="afade_out"
-                        class="input input-sm input-bordered w-full"
+                        class="input input-sm w-full"
                     />
                     <div class="label">
                         <span class="text-sm text-base-content/80">
@@ -415,7 +415,7 @@
                         v-model="configStore.advanced.filter.apad"
                         type="text"
                         name="apad"
-                        class="input input-sm input-bordered w-full"
+                        class="input input-sm w-full"
                     />
                     <div class="label">
                         <span class="text-sm text-base-content/80">
@@ -431,7 +431,7 @@
                         v-model="configStore.advanced.filter.volume"
                         type="text"
                         name="volume"
-                        class="input input-sm input-bordered w-full"
+                        class="input input-sm w-full"
                     />
                     <div class="label">
                         <span class="text-sm text-base-content/80">
@@ -447,7 +447,7 @@
                         v-model="configStore.advanced.filter.split"
                         type="text"
                         name="split"
-                        class="input input-sm input-bordered w-full"
+                        class="input input-sm w-full"
                     />
                     <div class="label">
                         <span class="text-sm text-base-content/80">
@@ -470,7 +470,7 @@
                         v-model="configStore.advanced.ingest.input_param"
                         type="text"
                         name="input_param"
-                        class="input input-sm input-bordered w-full"
+                        class="input input-sm w-full"
                     />
                 </label>
             </div>
