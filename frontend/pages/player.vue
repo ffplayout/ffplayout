@@ -138,89 +138,72 @@
 
         <GenericModal :show="showSourceModal" :title="t('player.addEdit')" :modal-action="processSource">
             <div class="lg:w-96">
-                <label class="form-control w-auto mt-auto">
-                    <div class="label">
-                        <span class="label-text">{{ t('player.title') }}</span>
-                    </div>
-                    <input v-model.number="newSource.title" type="text" class="input input-sm w-auto" />
-                </label>
-
-                <label class="form-control w-auto mt-auto">
-                    <div class="label">
-                        <span class="label-text">{{ t('player.duration') }}</span>
-                    </div>
+                <fieldset class="fieldset">
+                    <legend class="fieldset-legend">{{ t('player.title') }}</legend>
+                    <input v-model="newSource.title" type="text" name="source" class="input input-sm w-full" />
+                </fieldset>
+                <fieldset class="fieldset">
+                    <legend class="fieldset-legend">{{ t('player.duration') }}</legend>
                     <TimePicker v-model="newSource.duration" />
-                </label>
-
-                <label class="form-control w-auto mt-auto">
-                    <div class="label">
-                        <span class="label-text">{{ t('player.in') }}</span>
-                    </div>
+                </fieldset>
+                <fieldset class="fieldset">
+                    <legend class="fieldset-legend">{{ t('player.in') }}</legend>
                     <TimePicker v-model="newSource.in" />
-                </label>
-
-                <label class="form-control w-auto mt-auto">
-                    <div class="label">
-                        <span class="label-text">{{ t('player.out') }}</span>
-                    </div>
+                </fieldset>
+                <fieldset class="fieldset">
+                    <legend class="fieldset-legend">{{ t('player.out') }}</legend>
                     <TimePicker v-model="newSource.out" />
-                </label>
-
-                <label class="form-control w-auto mt-auto">
-                    <div class="label">
-                        <span class="label-text">{{ t('player.file') }}</span>
-                    </div>
+                </fieldset>
+                <fieldset class="fieldset">
+                    <legend class="fieldset-legend">{{ t('player.file') }}</legend>
                     <input
                         v-model="newSource.source"
                         type="text"
-                        class="input input-sm w-auto"
+                        name="source"
+                        class="input input-sm w-full"
                         :disabled="newSource.source.includes(configStore.channels[configStore.i].storage)"
                     />
-                </label>
-
-                <label class="form-control w-auto mt-auto">
-                    <div class="label">
-                        <span class="label-text">{{ t('player.audio') }}</span>
-                    </div>
-                    <input v-model="newSource.audio" type="text" class="input input-sm w-auto" />
-                </label>
-
-                <label class="form-control w-auto mt-auto">
-                    <div class="label">
-                        <span class="label-text">{{ t('player.customFilter') }}</span>
-                    </div>
-                    <input v-model="newSource.custom_filter" type="text" class="input input-sm w-auto" />
-                </label>
-
-                <div class="form-control mt-2">
-                    <label class="cursor-pointer label justify-normal">
+                </fieldset>
+                <fieldset class="fieldset">
+                    <legend class="fieldset-legend">{{ t('player.audio') }}</legend>
+                    <input v-model="newSource.audio" type="text" name="audio" class="input input-sm w-full" />
+                </fieldset>
+                <fieldset class="fieldset">
+                    <legend class="fieldset-legend">{{ t('player.customFilter') }}</legend>
+                    <input
+                        v-model="newSource.custom_filter"
+                        type="text"
+                        name="custom_filter"
+                        class="input input-sm w-full"
+                    />
+                </fieldset>
+                <fieldset class="fieldset mt-2 rounded-box w-full">
+                    <label class="fieldset-label text-base-content">
                         <input
-                            type="checkbox"
-                            class="checkbox checkbox-sm"
                             :checked="newSource.category === 'advertisement'"
                             @click="isAd"
+                            type="checkbox"
+                            class="checkbox"
                         />
-                        <span class="label-text ps-4">{{ t('player.ad') }}</span>
+                        {{ t('player.ad') }}
                     </label>
-                </div>
+                </fieldset>
 
                 <hr class="h-px my-2 bg-base-content/20 border-0" />
 
                 <h4 class="font-bold">{{ t('player.splitVideo') }}</h4>
 
-                <div class="form-control">
-                    <div class="label">
-                        <span class="label-text">{{ t('player.cuts') }}</span>
-                    </div>
+                <fieldset class="fieldset">
+                    <legend class="fieldset-legend">{{ t('player.cuts') }}</legend>
                     <input
-                        v-model="splitCount"
+                         v-model="splitCount"
                         type="number"
                         min="0"
                         step="1"
-                        class="input input-sm w-24"
+                        class="input input-sm w-full"
                         @change="splitClip"
                     />
-                </div>
+                </fieldset>
 
                 <div v-for="time in splitTimes" :key="time.id" class="form-control mt-2">
                     <TimePicker v-model="time.val" />
@@ -229,12 +212,7 @@
         </GenericModal>
 
         <GenericModal :show="showImportModal" :title="t('player.import')" :modal-action="importPlaylist">
-            <input
-                type="file"
-                class="file-input file-input-sm w-full"
-                multiple
-                @change="onFileChange"
-            />
+            <input type="file" class="file-input file-input-sm w-full" multiple @change="onFileChange" />
         </GenericModal>
 
         <GenericModal :show="showDeleteModal" title="Delete Program" :modal-action="deletePlaylist">

@@ -13,20 +13,18 @@
                         {{ t('config.generalHelp') }}
                     </div>
                 </label>
-                <label class="form-control w-full mt-2">
-                    <div class="label">
-                        <span class="label-text !text-md font-bold">Stop Threshold</span>
-                    </div>
+                <fieldset class="fieldset">
+                    <legend class="fieldset-legend">Stop Threshold</legend>
                     <input
                         v-model="configStore.playout.general.stop_threshold"
                         type="number"
                         min="3"
                         class="input input-sm w-full max-w-36"
                     />
-                    <div class="label">
-                        <span class="text-sm select-text text-base-content/80">{{ t('config.stopThreshold') }}</span>
-                    </div>
-                </label>
+                    <p class="fieldset-label items-baseline">
+                        {{ t('config.stopThreshold') }}
+                    </p>
+                </fieldset>
             </div>
 
             <template v-if="configStore.playout.mail.show">
@@ -37,43 +35,32 @@
                             {{ t('config.mailHelp') }}
                         </div>
                     </label>
-                    <label class="form-control w-full mt-2">
-                        <div class="label">
-                            <span class="label-text !text-md font-bold">Subject</span>
-                        </div>
+                    <fieldset class="fieldset">
+                        <legend class="fieldset-legend">Subject</legend>
                         <input
                             v-model="configStore.playout.mail.subject"
                             type="text"
                             name="subject"
                             class="input input-sm w-full max-w-lg"
                         />
-                    </label>
-                    <label class="form-control w-full mt-2">
-                        <div class="label">
-                            <span class="label-text !text-md font-bold">Recipient</span>
-                        </div>
+                    </fieldset>
+                    <fieldset class="fieldset">
+                        <legend class="fieldset-legend">Recipient</legend>
                         <input
                             v-model="configStore.playout.mail.recipient"
                             type="text"
                             name="recipient"
                             class="input input-sm w-full max-w-lg"
                         />
-                    </label>
-                    <label class="form-control w-full mt-2">
-                        <div class="label">
-                            <span class="label-text !text-md font-bold">Mail Level</span>
-                        </div>
-                        <select
-                            v-model="configStore.playout.mail.mail_level"
-                            class="select select-sm w-full max-w-xs"
-                        >
+                    </fieldset>
+                    <fieldset class="fieldset">
+                        <legend class="fieldset-legend">Mail Level</legend>
+                        <select v-model="configStore.playout.mail.mail_level" class="select select-sm w-full max-w-xs">
                             <option v-for="level in logLevels" :key="level" :value="level">{{ level }}</option>
                         </select>
-                    </label>
-                    <label class="form-control w-full mt-2">
-                        <div class="label">
-                            <span class="label-text !text-md font-bold">Interval</span>
-                        </div>
+                    </fieldset>
+                    <fieldset class="fieldset">
+                        <legend class="fieldset-legend">Interval</legend>
                         <input
                             v-model="configStore.playout.mail.interval"
                             type="number"
@@ -81,10 +68,8 @@
                             step="10"
                             class="input input-sm w-full max-w-36"
                         />
-                        <div class="label">
-                            <span class="text-sm select-text text-base-content/80">{{ t('config.mailInterval') }}</span>
-                        </div>
-                    </label>
+                        <p class="fieldset-label items-baseline">{{ t('config.mailInterval') }}</p>
+                    </fieldset>
                 </div>
             </template>
 
@@ -95,56 +80,30 @@
                         {{ t('config.logHelp') }}
                     </div>
                 </label>
-                <label class="form-control w-full mt-2">
-                    <div class="label">
-                        <span class="label-text !text-md font-bold">ffmpeg Level</span>
-                    </div>
-                    <select
-                        v-model="configStore.playout.logging.ffmpeg_level"
-                        class="select select-sm w-full max-w-xs"
-                    >
+                <fieldset class="fieldset">
+                    <legend class="fieldset-legend">ffmpeg Level</legend>
+                    <select v-model="configStore.playout.logging.ffmpeg_level" class="select select-sm w-full max-w-xs">
                         <option v-for="level in logLevels" :key="level" :value="level">{{ level }}</option>
                     </select>
-                </label>
-                <label class="form-control w-full mt-2">
-                    <div class="label">
-                        <span class="label-text !text-md font-bold">Ingest Level</span>
-                    </div>
-                    <select
-                        v-model="configStore.playout.logging.ingest_level"
-                        class="select select-sm w-full max-w-xs"
-                    >
+                </fieldset>
+                <fieldset class="fieldset">
+                    <legend class="fieldset-legend">Ingest Level</legend>
+                    <select v-model="configStore.playout.logging.ingest_level" class="select select-sm w-full max-w-xs">
                         <option v-for="level in logLevels" :key="level" :value="level">{{ level }}</option>
                     </select>
-                </label>
-                <label class="form-control w-full mt-2">
-                    <div class="flex flex-row">
-                        <input
-                            v-model="configStore.playout.logging.detect_silence"
-                            type="checkbox"
-                            class="checkbox checkbox-sm me-1 mt-2"
-                        />
-                        <div class="label">
-                            <span class="label-text !text-md font-bold">Detect Silence</span>
-                        </div>
-                    </div>
-                    <div class="label py-0">
-                        <span class="text-sm select-text text-base-content/80">{{ t('config.logDetect') }}</span>
-                    </div>
-                </label>
-                <label class="form-control w-full mt-2">
-                    <div class="label">
-                        <span class="label-text !text-md font-bold">Ignore Lines</span>
-                    </div>
-                    <input
-                        v-model="formatIgnoreLines"
-                        type="text"
-                        class="input input-sm w-full truncate"
-                    />
-                    <div class="label">
-                        <span class="text-sm select-text text-base-content/80">{{ t('config.logIgnore') }}</span>
-                    </div>
-                </label>
+                </fieldset>
+                <fieldset class="fieldset mt-2 rounded-box w-full">
+                    <label class="fieldset-label text-base-content">
+                        <input v-model="configStore.playout.logging.detect_silence" type="checkbox" class="checkbox" />
+                        Detect Silence
+                    </label>
+                    <p class="fieldset-label items-baseline">{{ t('config.logDetect') }}</p>
+                </fieldset>
+                <fieldset class="fieldset">
+                    <legend class="fieldset-legend">Ignore Lines</legend>
+                    <input v-model="formatIgnoreLines" type="text" class="input input-sm w-full max-w-full truncate" />
+                    <p class="fieldset-label items-baseline">{{ t('config.logIgnore') }}</p>
+                </fieldset>
             </div>
 
             <div class="text-xl pt-3 md:text-right">{{ t('config.processing') }}:</div>
@@ -154,51 +113,34 @@
                         {{ t('config.processingHelp') }}
                     </div>
                 </label>
-                <label class="form-control w-full mt-2">
-                    <div class="label">
-                        <span class="label-text !text-md font-bold">Mode</span>
-                    </div>
-                    <select
-                        v-model="configStore.playout.processing.mode"
-                        class="select select-sm w-full max-w-xs"
-                    >
+                <fieldset class="fieldset">
+                    <legend class="fieldset-legend">Mode</legend>
+                    <select v-model="configStore.playout.processing.mode" class="select select-sm w-full max-w-xs">
                         <option v-for="mode in processingMode" :key="mode" :value="mode">{{ mode }}</option>
                     </select>
-                </label>
-                <label class="form-control w-full flex-row mt-2">
-                    <input
-                        v-model="configStore.playout.processing.audio_only"
-                        type="checkbox"
-                        class="checkbox checkbox-sm me-1 mt-2"
-                    />
-                    <div class="label">
-                        <span class="label-text !text-md font-bold">Audio Only</span>
-                    </div>
-                </label>
-                <label class="form-control w-full flex-row mt-2">
-                    <input
-                        v-model="configStore.playout.processing.copy_audio"
-                        type="checkbox"
-                        class="checkbox checkbox-sm me-1 mt-2"
-                    />
-                    <div class="label">
-                        <span class="label-text !text-md font-bold">Copy Audio</span>
-                    </div>
-                </label>
-                <label class="form-control w-full flex-row mt-2">
-                    <input
-                        v-model="configStore.playout.processing.copy_video"
-                        type="checkbox"
-                        class="checkbox checkbox-sm me-1 mt-2"
-                    />
-                    <div class="label">
-                        <span class="label-text !text-md font-bold">Copy Video</span>
-                    </div>
-                </label>
-                <label class="form-control w-full mt-2">
-                    <div class="label">
-                        <span class="label-text !text-md font-bold">Width</span>
-                    </div>
+                </fieldset>
+
+                <fieldset class="fieldset mt-2 rounded-box w-full">
+                    <label class="fieldset-label text-base-content">
+                        <input v-model="configStore.playout.processing.audio_only" type="checkbox" class="checkbox" />
+                        Audio Only
+                    </label>
+                </fieldset>
+                <fieldset class="fieldset mt-2 rounded-box w-full">
+                    <label class="fieldset-label text-base-content">
+                        <input v-model="configStore.playout.processing.copy_audio" type="checkbox" class="checkbox" />
+                        Copy Audio
+                    </label>
+                </fieldset>
+                <fieldset class="fieldset mt-2 rounded-box w-full">
+                    <label class="fieldset-label text-base-content">
+                        <input v-model="configStore.playout.processing.copy_video" type="checkbox" class="checkbox" />
+                        Copy Video
+                    </label>
+                </fieldset>
+
+                <fieldset class="fieldset">
+                    <legend class="fieldset-legend">Width</legend>
                     <input
                         v-model="configStore.playout.processing.width"
                         type="number"
@@ -206,11 +148,9 @@
                         step="1"
                         class="input input-sm w-full max-w-36"
                     />
-                </label>
-                <label class="form-control w-full mt-2">
-                    <div class="label">
-                        <span class="label-text !text-md font-bold">Height</span>
-                    </div>
+                </fieldset>
+                <fieldset class="fieldset">
+                    <legend class="fieldset-legend">Height</legend>
                     <input
                         v-model="configStore.playout.processing.height"
                         type="number"
@@ -218,11 +158,9 @@
                         step="1"
                         class="input input-sm w-full max-w-36"
                     />
-                </label>
-                <label class="form-control w-full mt-2">
-                    <div class="label">
-                        <span class="label-text !text-md font-bold">Aspect</span>
-                    </div>
+                </fieldset>
+                <fieldset class="fieldset">
+                    <legend class="fieldset-legend">Aspect</legend>
                     <input
                         v-model="configStore.playout.processing.aspect"
                         type="number"
@@ -230,11 +168,9 @@
                         step="0.001"
                         class="input input-sm w-full max-w-36"
                     />
-                </label>
-                <label class="form-control w-full mt-2">
-                    <div class="label">
-                        <span class="label-text !text-md font-bold">FPS</span>
-                    </div>
+                </fieldset>
+                <fieldset class="fieldset">
+                    <legend class="fieldset-legend">FPS</legend>
                     <input
                         v-model="configStore.playout.processing.fps"
                         type="number"
@@ -242,37 +178,27 @@
                         step="0.01"
                         class="input input-sm w-full max-w-36"
                     />
-                </label>
-                <label class="form-control w-full flex-row mt-2">
-                    <input
-                        v-model="configStore.playout.processing.add_logo"
-                        type="checkbox"
-                        class="checkbox checkbox-sm me-1 mt-2"
-                    />
-                    <div class="label">
-                        <span class="label-text !text-md font-bold">Add Logo</span>
-                    </div>
-                </label>
-                <label class="form-control w-full mt-2">
-                    <div class="label">
-                        <span class="label-text !text-md font-bold">Logo</span>
-                    </div>
+                </fieldset>
+
+                <fieldset class="fieldset mt-2 rounded-box w-full">
+                    <label class="fieldset-label text-base-content">
+                        <input v-model="configStore.playout.processing.add_logo" type="checkbox" class="checkbox" />
+                        Add Logo
+                    </label>
+                </fieldset>
+
+                <fieldset class="fieldset">
+                    <legend class="fieldset-legend">Logo</legend>
                     <input
                         v-model="configStore.playout.processing.logo"
                         type="text"
                         name="logo"
                         class="input input-sm w-full max-w-lg"
                     />
-                    <div class="label">
-                        <span class="text-sm select-text text-base-content/80">{{
-                            t('config.processingLogoPath')
-                        }}</span>
-                    </div>
-                </label>
-                <label class="form-control w-full mt-2">
-                    <div class="label">
-                        <span class="label-text !text-md font-bold">Logo Opacity</span>
-                    </div>
+                    <p class="fieldset-label items-baseline">{{ t('config.processingLogoPath') }}</p>
+                </fieldset>
+                <fieldset class="fieldset">
+                    <legend class="fieldset-legend">Logo Opacity</legend>
                     <input
                         v-model="configStore.playout.processing.logo_opacity"
                         type="number"
@@ -281,43 +207,29 @@
                         step="0.01"
                         class="input input-sm w-full max-w-36"
                     />
-                </label>
-                <label class="form-control w-full mt-2">
-                    <div class="label">
-                        <span class="label-text !text-md font-bold">Logo Scale</span>
-                    </div>
+                </fieldset>
+                <fieldset class="fieldset">
+                    <legend class="fieldset-legend">Logo Scale</legend>
                     <input
                         v-model="configStore.playout.processing.logo_scale"
                         type="text"
                         name="logo_scale"
                         class="input input-sm w-full max-w-md"
                     />
-                    <div class="label">
-                        <span class="text-sm select-text text-base-content/80">{{
-                            t('config.processingLogoScale')
-                        }}</span>
-                    </div>
-                </label>
-                <label class="form-control w-full mt-2">
-                    <div class="label">
-                        <span class="label-text !text-md font-bold">Logo Position</span>
-                    </div>
+                    <p class="fieldset-label items-baseline">{{ t('config.processingLogoScale') }}</p>
+                </fieldset>
+                <fieldset class="fieldset">
+                    <legend class="fieldset-legend">Logo Position</legend>
                     <input
                         v-model="configStore.playout.processing.logo_position"
                         type="text"
                         name="logo_position"
                         class="input input-sm w-full max-w-md"
                     />
-                    <div class="label">
-                        <span class="text-sm select-text text-base-content/80">{{
-                            t('config.processingLogoPosition')
-                        }}</span>
-                    </div>
-                </label>
-                <label class="form-control w-full mt-2">
-                    <div class="label">
-                        <span class="label-text !text-md font-bold">Audio Tracks</span>
-                    </div>
+                    <p class="fieldset-label items-baseline">{{ t('config.processingLogoPosition') }}</p>
+                </fieldset>
+                <fieldset class="fieldset">
+                    <legend class="fieldset-legend">Audio Tracks</legend>
                     <input
                         v-model="configStore.playout.processing.audio_tracks"
                         type="number"
@@ -326,16 +238,10 @@
                         step="1"
                         class="input input-sm w-full max-w-36"
                     />
-                    <div class="label">
-                        <span class="text-sm select-text text-base-content/80">{{
-                            t('config.processingAudioTracks')
-                        }}</span>
-                    </div>
-                </label>
-                <label class="form-control w-full mt-2">
-                    <div class="label">
-                        <span class="label-text !text-md font-bold">Audio Track Index</span>
-                    </div>
+                    <p class="fieldset-label items-baseline">{{ t('config.processingAudioTracks') }}</p>
+                </fieldset>
+                <fieldset class="fieldset">
+                    <legend class="fieldset-legend">Audio Track Index</legend>
                     <input
                         v-model="configStore.playout.processing.audio_track_index"
                         type="number"
@@ -344,16 +250,10 @@
                         step="1"
                         class="input input-sm w-full max-w-36"
                     />
-                    <div class="label">
-                        <span class="text-sm select-text text-base-content/80">{{
-                            t('config.processingAudioIndex')
-                        }}</span>
-                    </div>
-                </label>
-                <label class="form-control w-full mt-2">
-                    <div class="label">
-                        <span class="label-text !text-md font-bold">Audio Channels</span>
-                    </div>
+                    <p class="fieldset-label items-baseline">{{ t('config.processingAudioIndex') }}</p>
+                </fieldset>
+                <fieldset class="fieldset">
+                    <legend class="fieldset-legend">Audio Channels</legend>
                     <input
                         v-model="configStore.playout.processing.audio_channels"
                         type="number"
@@ -362,16 +262,10 @@
                         step="1"
                         class="input input-sm w-full max-w-36"
                     />
-                    <div class="label">
-                        <span class="text-sm select-text text-base-content/80">{{
-                            t('config.processingAudioChannels')
-                        }}</span>
-                    </div>
-                </label>
-                <label class="form-control w-full mt-2">
-                    <div class="label">
-                        <span class="label-text !text-md font-bold">Volumen</span>
-                    </div>
+                    <p class="fieldset-label items-baseline">{{ t('config.processingAudioChannels') }}</p>
+                </fieldset>
+                <fieldset class="fieldset">
+                    <legend class="fieldset-legend">Volumen</legend>
                     <input
                         v-model="configStore.playout.processing.volume"
                         type="number"
@@ -380,70 +274,54 @@
                         step="0.001"
                         class="input input-sm w-full max-w-36"
                     />
-                </label>
-                <label class="form-control w-full mt-2">
-                    <div class="label">
-                        <span class="label-text !text-md font-bold">Custom Filter</span>
-                    </div>
+                </fieldset>
+
+                <fieldset class="fieldset">
+                    <legend class="fieldset-legend">Custom Filter</legend>
                     <textarea
                         v-model="configStore.playout.processing.custom_filter"
-                        class="textarea textarea-bordered"
+                        class="textarea textarea-bordered w-full"
                         rows="3"
                     />
-                    <div class="label">
-                        <span class="text-sm select-text text-base-content/80">{{
-                            t('config.processingCustomFilter')
-                        }}</span>
-                    </div>
-                </label>
-                <label class="form-control w-full flex-row mt-0">
-                    <input
-                        v-model="configStore.playout.processing.override_filter"
-                        type="checkbox"
-                        class="checkbox checkbox-sm me-1 mt-2"
-                    />
-                    <div class="label">
-                        <span class="label-text !text-md font-bold">Override custom Filter</span>
-                    </div>
-                </label>
-                <div v-if="configStore.playout.processing.override_filter" class="label py-0">
-                    <span class="text-sm select-text font-bold text-orange-500">{{
-                        t('config.processingOverrideFilter')
-                    }}</span>
-                </div>
-                <label class="form-control w-full mt-2">
-                    <div class="flex flex-row">
+                    <p class="fieldset-label items-baseline">{{ t('config.processingCustomFilter') }}</p>
+                </fieldset>
+
+                <fieldset class="fieldset mt-2 rounded-box w-full">
+                    <label class="fieldset-label text-base-content">
                         <input
-                            v-model="configStore.playout.processing.vtt_enable"
+                            v-model="configStore.playout.processing.override_filter"
                             type="checkbox"
-                            class="checkbox checkbox-sm me-1 mt-2"
+                            class="checkbox"
                         />
-                        <div class="label">
-                            <span class="label-text !text-md font-bold">Enable VTT</span>
-                        </div>
-                    </div>
-                    <div class="label py-0">
-                        <span class="text-sm select-text text-base-content/80">{{
-                            t('config.processingVTTEnable')
-                        }}</span>
-                    </div>
-                </label>
-                <label class="form-control w-full mt-2">
-                    <div class="label">
-                        <span class="label-text !text-md font-bold">VTT Dummy</span>
-                    </div>
+                        Override custom Filter
+                    </label>
+                    <p class="fieldset-label items-baseline">{{ t('config.processingVTTEnable') }}</p>
+                </fieldset>
+
+                <div v-if="configStore.playout.processing.override_filter" class="w-full py-0">
+                    <span class="text-sm select-text font-bold text-orange-500">
+                        {{ t('config.processingOverrideFilter') }}
+                    </span>
+                </div>
+
+                <fieldset class="fieldset mt-2 rounded-box w-full">
+                    <label class="fieldset-label text-base-content">
+                        <input v-model="configStore.playout.processing.vtt_enable" type="checkbox" class="checkbox" />
+                        Enable VTT
+                    </label>
+                    <p class="fieldset-label items-baseline">{{ t('config.processingVTTEnable') }}</p>
+                </fieldset>
+
+                <fieldset class="fieldset">
+                    <legend class="fieldset-legend">VTT Dummy</legend>
                     <input
                         v-model="configStore.playout.processing.vtt_dummy"
                         type="text"
                         name="vtt_dummy"
                         class="input input-sm w-full max-w-lg"
                     />
-                    <div class="label">
-                        <span class="text-sm select-text text-base-content/80">{{
-                            t('config.processingVTTDummy')
-                        }}</span>
-                    </div>
-                </label>
+                    <p class="fieldset-label items-baseline">{{ t('config.processingVTTDummy') }}</p>
+                </fieldset>
             </div>
 
             <div class="text-xl pt-3 md:text-right">{{ t('config.ingest') }}:</div>
@@ -453,41 +331,30 @@
                         {{ t('config.ingestHelp') }}
                     </div>
                 </label>
-                <label class="form-control w-full flex-row mt-2">
-                    <input
-                        v-model="configStore.playout.ingest.enable"
-                        type="checkbox"
-                        class="checkbox checkbox-sm me-1 mt-2"
-                    />
-                    <div class="label">
-                        <span class="label-text !text-md font-bold">Enable</span>
-                    </div>
-                </label>
-                <label class="form-control w-full mt-2">
-                    <div class="label">
-                        <span class="label-text !text-md font-bold">Input Param</span>
-                    </div>
+
+                <fieldset class="fieldset mt-2 rounded-box w-full">
+                    <label class="fieldset-label text-base-content">
+                        <input v-model="configStore.playout.ingest.enable" type="checkbox" class="checkbox" />
+                        Enable
+                    </label>
+                </fieldset>
+                <fieldset class="fieldset">
+                    <legend class="fieldset-legend">Input Param</legend>
                     <input
                         v-model="configStore.playout.ingest.input_param"
                         type="text"
                         class="input input-sm w-full max-w-lg"
                     />
-                </label>
-                <label class="form-control w-full mt-2">
-                    <div class="label">
-                        <span class="label-text !text-md font-bold">Custom Filter</span>
-                    </div>
+                </fieldset>
+                <fieldset class="fieldset">
+                    <legend class="fieldset-legend">Custom Filter</legend>
                     <textarea
                         v-model="configStore.playout.ingest.custom_filter"
-                        class="textarea textarea-bordered"
+                        class="textarea textarea-bordered w-full"
                         rows="3"
                     />
-                    <div class="label">
-                        <span class="text-sm select-text text-base-content/80">{{
-                            t('config.ingestCustomFilter')
-                        }}</span>
-                    </div>
-                </label>
+                    <p class="fieldset-label items-baseline">{{ t('config.ingestCustomFilter') }}</p>
+                </fieldset>
             </div>
 
             <div class="text-xl pt-3 md:text-right">{{ t('config.playlist') }}:</div>
@@ -497,10 +364,8 @@
                         {{ t('config.playlistHelp') }}
                     </div>
                 </label>
-                <label class="form-control w-full">
-                    <div class="label">
-                        <span class="label-text text-base font-bold">Day Start</span>
-                    </div>
+                <fieldset class="fieldset">
+                    <legend class="fieldset-legend">Day Start</legend>
                     <input
                         v-model="configStore.playout.playlist.day_start"
                         type="text"
@@ -508,14 +373,10 @@
                         class="input input-sm w-full max-w-xs"
                         pattern="(([01]?[0-9]|2[0-4]):[0-5][0-9]:[0-5][0-9]|now|none)"
                     />
-                    <div class="label">
-                        <span class="text-sm select-text text-base-content/80">{{ t('config.playlistDayStart') }}</span>
-                    </div>
-                </label>
-                <label class="form-control w-full">
-                    <div class="label">
-                        <span class="label-text text-base font-bold">Length</span>
-                    </div>
+                    <p class="fieldset-label items-baseline">{{ t('config.playlistDayStart') }}</p>
+                </fieldset>
+                <fieldset class="fieldset">
+                    <legend class="fieldset-legend">Length</legend>
                     <input
                         v-model="configStore.playout.playlist.length"
                         type="text"
@@ -523,25 +384,15 @@
                         class="input input-sm w-full max-w-xs"
                         pattern="([01]?[0-9]|2[0-4]):[0-5][0-9]:[0-5][0-9]"
                     />
-                    <div class="label">
-                        <span class="text-sm select-text text-base-content/80">{{ t('config.playlistLength') }}</span>
-                    </div>
-                </label>
-                <label class="form-control w-full mt-2">
-                    <div class="flex flex-row">
-                        <input
-                            v-model="configStore.playout.playlist.infinit"
-                            type="checkbox"
-                            class="checkbox checkbox-sm me-1 mt-2"
-                        />
-                        <div class="label">
-                            <span class="label-text !text-md font-bold">Infinit</span>
-                        </div>
-                    </div>
-                    <div class="label py-0">
-                        <span class="text-sm select-text text-base-content/80">{{ t('config.playlistInfinit') }}</span>
-                    </div>
-                </label>
+                    <p class="fieldset-label items-baseline">{{ t('config.playlistLength') }}</p>
+                </fieldset>
+                <fieldset class="fieldset mt-2 rounded-box w-full">
+                    <label class="fieldset-label text-base-content">
+                        <input v-model="configStore.playout.playlist.infinit" type="checkbox" class="checkbox" />
+                        Infinit
+                    </label>
+                    <p class="fieldset-label items-baseline">{{ t('config.playlistInfinit') }}</p>
+                </fieldset>
             </div>
 
             <div class="text-xl pt-3 md:text-right">{{ t('config.storage') }}:</div>
@@ -551,49 +402,28 @@
                         {{ t('config.storageHelp') }}
                     </div>
                 </label>
-                <label class="form-control w-full">
-                    <div class="label">
-                        <span class="label-text text-base font-bold">Filler</span>
-                    </div>
+                <fieldset class="fieldset">
+                    <legend class="fieldset-legend">Filler</legend>
                     <input
                         v-model="configStore.playout.storage.filler"
                         type="text"
                         name="filler"
                         class="input input-sm w-full max-w-lg"
                     />
-                    <div class="label">
-                        <span class="text-sm select-text text-base-content/80">{{ t('config.storageFiller') }}</span>
-                    </div>
-                </label>
-                <label class="form-control w-full">
-                    <div class="label">
-                        <span class="label-text text-base font-bold">Extensions</span>
-                    </div>
-                    <input
-                        v-model="extensions"
-                        type="text"
-                        name="extensions"
-                        class="input input-sm w-full max-w-lg"
-                    />
-                    <div class="label">
-                        <span class="text-sm select-text text-base-content/80">{{ t('config.storageExtension') }}</span>
-                    </div>
-                </label>
-                <label class="form-control w-full mt-2">
-                    <div class="flex flex-row">
-                        <input
-                            v-model="configStore.playout.storage.shuffle"
-                            type="checkbox"
-                            class="checkbox checkbox-sm me-1 mt-2"
-                        />
-                        <div class="label">
-                            <span class="label-text !text-md font-bold">Shuffle</span>
-                        </div>
-                    </div>
-                    <div class="label py-0">
-                        <span class="text-sm select-text text-base-content/80">{{ t('config.storageShuffle') }}</span>
-                    </div>
-                </label>
+                    <p class="fieldset-label items-baseline">{{ t('config.storageFiller') }}</p>
+                </fieldset>
+                <fieldset class="fieldset">
+                    <legend class="fieldset-legend">Extensions</legend>
+                    <input v-model="extensions" type="text" name="extensions" class="input input-sm w-full max-w-lg" />
+                    <p class="fieldset-label items-baseline">{{ t('config.storageExtension') }}</p>
+                </fieldset>
+                <fieldset class="fieldset mt-2 rounded-box w-full">
+                    <label class="fieldset-label text-base-content">
+                        <input v-model="configStore.playout.storage.shuffle" type="checkbox" class="checkbox" />
+                        Shuffle
+                    </label>
+                    <p class="fieldset-label items-baseline">{{ t('config.storageShuffle') }}</p>
+                </fieldset>
             </div>
 
             <div class="text-xl pt-3 md:text-right">{{ t('config.text') }}:</div>
@@ -603,20 +433,14 @@
                         {{ t('config.textHelp') }}
                     </div>
                 </label>
-                <label class="form-control w-full flex-row mt-2">
-                    <input
-                        v-model="configStore.playout.text.add_text"
-                        type="checkbox"
-                        class="checkbox checkbox-sm me-1 mt-2"
-                    />
-                    <div class="label">
-                        <span class="label-text !text-md font-bold">Add Text</span>
-                    </div>
-                </label>
-                <label class="form-control w-full">
-                    <div class="label">
-                        <span class="label-text text-base font-bold">Font</span>
-                    </div>
+                <fieldset class="fieldset mt-2 rounded-box w-full">
+                    <label class="fieldset-label text-base-content">
+                        <input v-model="configStore.playout.text.add_text" type="checkbox" class="checkbox" />
+                        Add Text
+                    </label>
+                </fieldset>
+                <fieldset class="fieldset">
+                    <legend class="fieldset-legend">Font</legend>
                     <input
                         v-model="configStore.playout.text.font"
                         type="text"
@@ -626,50 +450,36 @@
                     <div class="label">
                         <span class="text-sm select-text text-base-content/80">{{ t('config.textFont') }}</span>
                     </div>
-                </label>
-                <label class="form-control w-full mt-2">
-                    <div class="flex flex-row">
-                        <input
-                            v-model="configStore.playout.text.text_from_filename"
-                            type="checkbox"
-                            class="checkbox checkbox-sm me-1 mt-2"
-                        />
-                        <div class="label">
-                            <span class="label-text !text-md font-bold">Text from File</span>
-                        </div>
-                    </div>
-                    <div class="label py-0">
-                        <span class="text-sm select-text text-base-content/80">{{ t('config.textFromFile') }}</span>
-                    </div>
-                </label>
-                <label class="form-control w-full">
-                    <div class="label">
-                        <span class="label-text text-base font-bold">Style</span>
-                    </div>
+                </fieldset>
+
+                <fieldset class="fieldset mt-2 rounded-box w-full">
+                    <label class="fieldset-label text-base-content">
+                        <input v-model="configStore.playout.text.text_from_filename" type="checkbox" class="checkbox" />
+                        Text from File
+                    </label>
+                    <p class="fieldset-label items-baseline">{{ t('config.textFromFile') }}</p>
+                </fieldset>
+
+                <fieldset class="fieldset">
+                    <legend class="fieldset-legend">Style</legend>
                     <input
                         v-model="configStore.playout.text.style"
                         type="text"
                         name="style"
                         class="input input-sm w-full truncate"
                     />
-                    <div class="label">
-                        <span class="text-sm select-text text-base-content/80">{{ t('config.textStyle') }}</span>
-                    </div>
-                </label>
-                <label class="form-control w-full">
-                    <div class="label">
-                        <span class="label-text text-base font-bold">Regex</span>
-                    </div>
+                    <p class="fieldset-label items-baseline">{{ t('config.textStyle') }}</p>
+                </fieldset>
+                <fieldset class="fieldset">
+                    <legend class="fieldset-legend">Regex</legend>
                     <input
                         v-model="configStore.playout.text.regex"
                         type="text"
                         name="regex"
                         class="input input-sm w-full max-w-lg"
                     />
-                    <div class="label">
-                        <span class="text-sm select-text text-base-content/80">{{ t('config.textRegex') }}</span>
-                    </div>
-                </label>
+                    <p class="fieldset-label items-baseline">{{ t('config.textRegex') }}</p>
+                </fieldset>
             </div>
 
             <div class="text-xl pt-3 md:text-right">{{ t('config.task') }}:</div>
@@ -679,30 +489,24 @@
                         {{ t('config.taskHelp') }}
                     </div>
                 </label>
-                <label class="form-control w-full flex-row mt-2">
-                    <input
-                        v-model="configStore.playout.task.enable"
-                        type="checkbox"
-                        class="checkbox checkbox-sm me-1 mt-2"
-                    />
-                    <div class="label">
-                        <span class="label-text !text-md font-bold">Enable</span>
-                    </div>
-                </label>
-                <label class="form-control w-full">
-                    <div class="label">
-                        <span class="label-text text-base font-bold">Path</span>
-                    </div>
+
+                <fieldset class="fieldset mt-2 rounded-box w-full">
+                    <label class="fieldset-label text-base-content">
+                        <input v-model="configStore.playout.task.enable" type="checkbox" class="checkbox" />
+                        Enable
+                    </label>
+                </fieldset>
+
+                <fieldset class="fieldset">
+                    <legend class="fieldset-legend">Path</legend>
                     <input
                         v-model="configStore.playout.task.path"
                         type="text"
                         name="task_path"
                         class="input input-sm w-full max-w-lg"
                     />
-                    <div class="label">
-                        <span class="text-sm select-text text-base-content/80">{{ t('config.taskPath') }}</span>
-                    </div>
-                </label>
+                    <p class="fieldset-label items-baseline">{{ t('config.taskPath') }}</p>
+                </fieldset>
             </div>
 
             <div class="text-xl pt-3 md:text-right">{{ t('config.output') }}:</div>
@@ -712,32 +516,21 @@
                         {{ t('config.outputHelp') }}
                     </div>
                 </label>
-                <label class="form-control w-full mt-2">
-                    <div class="label">
-                        <span class="label-text !text-md font-bold">Mode</span>
-                    </div>
-                    <select
-                        v-model="configStore.playout.output.mode"
-                        class="select select-sm w-full max-w-xs"
-                    >
+                <fieldset class="fieldset">
+                    <legend class="fieldset-legend">Mode</legend>
+                    <select v-model="configStore.playout.output.mode" class="select select-sm w-full max-w-xs">
                         <option v-for="mode in outputMode" :key="mode" :value="mode">{{ mode }}</option>
                     </select>
-                </label>
-                <label class="form-control w-full mt-2">
-                    <div class="label">
-                        <span class="label-text !text-md font-bold">Output Parameter</span>
-                    </div>
+                </fieldset>
+                <fieldset class="fieldset">
+                    <legend class="fieldset-legend">Output Parameter</legend>
                     <textarea
                         v-model="configStore.playout.output.output_param"
-                        class="textarea textarea-bordered"
+                        class="textarea textarea-bordered w-full"
                         rows="6"
                     />
-                    <div class="label">
-                        <span class="text-sm select-text text-base-content/80">
-                            {{ t('config.outputParam') }}
-                        </span>
-                    </div>
-                </label>
+                    <p class="fieldset-label items-baseline">{{ t('config.outputParam') }}</p>
+                </fieldset>
             </div>
             <div class="mt-5 mb-10">
                 <button class="btn btn-primary" type="submit">{{ t('config.save') }}</button>

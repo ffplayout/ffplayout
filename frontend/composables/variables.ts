@@ -1,10 +1,10 @@
 export const useVariables = () => {
     const multiSelectClasses = {
-        container: 'relative border border-base-content/20 w-full h-auto flex items-center justify-end px-0 min-h-[32px]',
+        container: 'relative bg-base-100 border border-base-content/20 w-full h-auto flex items-center justify-end px-0 min-h-[32px] rounded',
         containerDisabled: '[&>div]:cursor-default !bg-base-100 [&>div>div]:pr-2',
         containerOpen: 'rounded-b-none',
         containerOpenTop: 'rounded-t-none',
-        containerActive: 'ring-3 ring-green-500/30',
+        containerActive: 'ring-3 ring-primary',
         wrapper: 'relative mx-auto w-full flex items-center justify-end box-border cursor-pointer outline-hidden',
         singleLabel:
             'flex items-center h-full max-w-full absolute left-0 top-0 pointer-events-none bg-transparent leading-snug pl-3.5 pr-16 box-border rtl:left-auto rtl:right-0 rtl:pl-0 rtl:pr-3.5',

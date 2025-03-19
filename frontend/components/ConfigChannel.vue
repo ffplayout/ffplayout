@@ -6,100 +6,86 @@
                 {{ t('config.addChannel') }}
             </button>
         </div>
-        <div class="w-full">
-            <label class="form-control w-full">
-                <div class="label">
-                    <span class="label-text">{{ t('config.name') }}</span>
-                </div>
+        <div class="w-full flex flex-col gap-1">
+           <fieldset class="fieldset">
+                <legend class="fieldset-legend">{{ t('config.name') }}</legend>
                 <input
                     v-model="channel.name"
                     type="text"
                     name="name"
                     placeholder="Type here"
-                    class="input w-full !bg-base-100"
+                    class="input w-full focus:border-base-content/30 focus:outline-base-content/30"
                     @keyup="isChanged"
                     :disabled="authStore.role === 'user'"
                 />
-            </label>
+            </fieldset>
 
-            <label class="form-control w-full mt-5">
-                <div class="label">
-                    <span class="label-text">{{ t('config.previewUrl') }}</span>
-                </div>
+            <fieldset class="fieldset">
+                <legend class="fieldset-legend">{{ t('config.previewUrl') }}</legend>
                 <input
                     v-model="channel.preview_url"
                     type="text"
                     name="preview_url"
-                    class="input w-full !bg-base-100"
+                    class="input w-full focus:border-base-content/30 focus:outline-base-content/30"
                     @keyup="isChanged"
                     :disabled="authStore.role === 'user'"
                 />
-            </label>
+            </fieldset>
 
-            <label class="form-control w-full mt-5">
-                <div class="label">
-                    <span class="label-text">{{ t('config.extensions') }}</span>
-                </div>
+            <fieldset class="fieldset">
+                <legend class="fieldset-legend">{{ t('config.extensions') }}</legend>
                 <input
                     v-model="channel.extra_extensions"
                     type="text"
                     name="extra_extensions"
-                    class="input w-full !bg-base-100"
+                    class="input w-full focus:border-base-content/30 focus:outline-base-content/30"
                     @keyup="isChanged"
                     :disabled="authStore.role === 'user'"
                 />
-            </label>
+            </fieldset>
 
             <template v-if="authStore.role === 'global_admin'">
-                <div class="mt-7 font-bold h-3">
-                    <p v-if="configStore.playout.storage.shared_storage">
+                <div v-if="configStore.playout.storage.shared_storage" class="font-bold h-3 mt-3">
+                    <p>
                         <SvgIcon name="warning" classes="inline mr-2" />
                         <span>{{ t('config.sharedStorage') }}</span>
                     </p>
                 </div>
-                <label class="form-control w-full mt-3">
-                    <div class="label">
-                        <span class="label-text">{{ t('config.publicPath') }}</span>
-                    </div>
+                <fieldset class="fieldset">
+                    <legend class="fieldset-legend">{{ t('config.publicPath') }}</legend>
                     <input
                         v-model="channel.public"
                         type="text"
                         name="public"
-                        class="input w-full"
+                        class="input w-full focus:border-base-content/30 focus:outline-base-content/30"
                         @keyup="isChanged"
                     />
-                </label>
+                </fieldset>
 
-                <label class="form-control w-full mt-5">
-                    <div class="label">
-                        <span class="label-text">{{ t('config.playlistPath') }}</span>
-                    </div>
+                <fieldset class="fieldset">
+                    <legend class="fieldset-legend">{{ t('config.playlistPath') }}</legend>
                     <input
                         v-model="channel.playlists"
                         type="text"
                         name="playlists"
-                        class="input w-full"
+                        class="input w-full focus:border-base-content/30 focus:outline-base-content/30"
                         @keyup="isChanged"
                     />
-                </label>
+                </fieldset>
 
-                <label class="form-control w-full mt-5">
-                    <div class="label">
-                        <span class="label-text">{{ t('config.storagePath') }}</span>
-                    </div>
+                <fieldset class="fieldset">
+                    <legend class="fieldset-legend">{{ t('config.storagePath') }}</legend>
                     <input
                         v-model="channel.storage"
                         type="text"
                         name="storage"
-                        class="input w-full"
+                        class="input w-full focus:border-base-content/30 focus:outline-base-content/30"
                         @keyup="isChanged"
                     />
-                </label>
+                </fieldset>
 
-                <label class="form-control w-full mt-5">
-                    <div class="label">
-                        <span class="label-text">{{ t('config.timezone') }}</span>
-                    </div>
+                <fieldset class="fieldset">
+                    <legend class="fieldset-legend">{{ t('config.timezone') }}</legend>
                     <select
                         v-model="channel.timezone"
                         class="select select-md w-full max-w-xs"
@@ -109,7 +95,7 @@
                             {{ zone }}
                         </option>
                     </select>
-                </label>
+                </fieldset>
             </template>
 
             <div v-if="authStore.role !== 'user'" class="my-5 flex gap-1">

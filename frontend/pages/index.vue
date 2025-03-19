@@ -1,39 +1,36 @@
 <template>
     <div class="w-full min-h-screen xs:h-full flex justify-center items-center">
-        <div
-            v-if="authStore.isLogin"
-            class="flex flex-col justify-center items-center w-full p-5"
-        >
+        <div v-if="authStore.isLogin" class="flex flex-col justify-center items-center w-full p-5">
             <div class="max-w-[1024px]">
                 <SystemStats v-if="configStore.channels.length > 0" />
             </div>
 
             <div class="w-full flex flex-wrap justify-center gap-1 md:gap-0 md:join mt-5">
-                <NuxtLink :to="localePath({ name: 'player' })" class="btn bg-base-100 hover:bg-base-100/70 join-item px-2">
+                <NuxtLink :to="localePath({ name: 'player' })" class="btn btn-primary join-item px-2">
                     {{ t('button.player') }}
                 </NuxtLink>
-                <NuxtLink :to="localePath({ name: 'media' })" class="btn bg-base-100 hover:bg-base-100/70 join-item px-2">
+                <NuxtLink :to="localePath({ name: 'media' })" class="btn btn-primary join-item px-2">
                     {{ t('button.media') }}
                 </NuxtLink>
                 <NuxtLink
                     v-if="configStore.playout?.text?.add_text && !configStore.playout?.text?.text_from_filename"
                     :to="localePath({ name: 'message' })"
-                    class="btn bg-base-100 hover:bg-base-100/70 join-item px-2"
+                    class="btn btn-primary join-item px-2"
                 >
                     {{ t('button.message') }}
                 </NuxtLink>
-                <NuxtLink :to="localePath({ name: 'logging' })" class="btn bg-base-100 hover:bg-base-100/70 join-item px-2">
+                <NuxtLink :to="localePath({ name: 'logging' })" class="btn btn-primary join-item px-2">
                     {{ t('button.logging') }}
                 </NuxtLink>
-                <NuxtLink :to="localePath({ name: 'configure' })" class="btn bg-base-100 hover:bg-base-100/70 join-item px-2">
+                <NuxtLink :to="localePath({ name: 'configure' })" class="btn btn-primary join-item px-2">
                     {{ t('button.configure') }}
                 </NuxtLink>
-                <button class="btn bg-base-100 hover:bg-base-100/70 join-item px-2" @click="logout()">
+                <button class="btn btn-primary join-item px-2" @click="logout()">
                     {{ t('button.logout') }}
                 </button>
                 <select
                     v-model="selectedLang"
-                    class="select select-neutral bg-base-100 hover:bg-base-100/70 join-item max-w-46 ps-2"
+                    class="select select-primary join-item max-w-46 ps-2"
                     @change="changeLang(selectedLang)"
                 >
                     <option v-for="(loc, index) in locales" :key="index" :value="/* @ts-ignore */ loc.code">
@@ -43,7 +40,7 @@
                         }}
                     </option>
                 </select>
-                <label class="join-item btn bg-base-100 hover:bg-base-100/70 swap swap-rotate me-2">
+                <label class="join-item btn btn-primary swap swap-rotate me-2">
                     <input type="checkbox" :checked="indexStore.darkMode" @change="toggleDarkTheme" />
                     <SvgIcon name="swap-on" classes="w-5 h-5" />
                     <SvgIcon name="swap-off" classes="w-5 h-5" />
@@ -59,7 +56,7 @@
                     type="text"
                     name="username"
                     :placeholder="t('input.username')"
-                    class="input w-full"
+                    class="input w-full focus:border-base-content/30 focus:outline-base-content/30"
                     required
                 />
 
@@ -68,7 +65,7 @@
                     type="password"
                     name="passwort"
                     :placeholder="t('input.password')"
-                    class="input w-full mt-5"
+                    class="input w-full mt-5 focus:border-base-content/30 focus:outline-base-content/30"
                     required
                 />
 

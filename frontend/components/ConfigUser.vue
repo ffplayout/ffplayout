@@ -21,38 +21,29 @@
             </button>
         </div>
         <form v-if="configStore.configUser" class="mt-5" @submit.prevent="onSubmitUser">
-            <label class="form-control w-full max-w-md">
-                <div class="label">
-                    <span class="label-text">{{ t('user.name') }}</span>
-                </div>
+            <fieldset class="fieldset">
+                <legend class="fieldset-legend">{{ t('user.name') }}</legend>
                 <input
                     v-model="configStore.configUser.username"
                     type="text"
+                    name="username"
                     class="input w-full !bg-base-100"
                     disabled
                 />
-            </label>
+            </fieldset>
 
-            <label class="form-control w-full max-w-md mt-3">
-                <div class="label">
-                    <span class="label-text">{{ t('user.mail') }}</span>
-                </div>
-                <input v-model="configStore.configUser.mail" type="email" class="input w-full" />
-            </label>
-
-            <label class="form-control w-full max-w-md mt-3">
-                <div class="label">
-                    <span class="label-text">{{ t('user.newPass') }}</span>
-                </div>
-                <input v-model="newPass" type="password" class="input w-full" />
-            </label>
-
-            <label class="form-control w-full max-w-md mt-3">
-                <div class="label">
-                    <span class="label-text">{{ t('user.confirmPass') }}</span>
-                </div>
-                <input v-model="confirmPass" type="password" class="input w-full" />
-            </label>
+            <fieldset class="fieldset">
+                <legend class="fieldset-legend">{{ t('user.mail') }}</legend>
+                <input v-model="configStore.configUser.mail" type="email" name="mail" class="input w-full" />
+            </fieldset>
+            <fieldset class="fieldset">
+                <legend class="fieldset-legend">{{ t('user.newPass') }}</legend>
+                <input v-model="newPass" type="password" name="password" class="input w-full" />
+            </fieldset>
+            <fieldset class="fieldset">
+                <legend class="fieldset-legend">{{ t('user.confirmPass') }}</legend>
+                <input v-model="confirmPass" type="password" name="password" class="input w-full" />
+            </fieldset>
 
             <div v-if="authStore.role === 'global_admin'" class="form-control w-full max-w-md mt-5">
                 <Multiselect
@@ -76,33 +67,22 @@
 
     <GenericModal :show="showUserModal" title="Add user" :modal-action="addUser">
         <div class="w-full max-w-[500px] h-[490px]">
-            <label class="form-control w-full">
-                <div class="label">
-                    <span class="label-text">{{ t('user.name') }}</span>
-                </div>
-                <input v-model="user.username" name="username" type="text" class="input w-full" />
-            </label>
-
-            <label class="form-control w-full mt-3">
-                <div class="label">
-                    <span class="label-text">{{ t('user.mail') }}</span>
-                </div>
-                <input v-model="user.mail" name="mail" type="email" class="input w-full" />
-            </label>
-
-            <label class="form-control w-full mt-3">
-                <div class="label">
-                    <span class="label-text">{{ t('user.password') }}</span>
-                </div>
-                <input v-model="user.password" type="password" class="input w-full" />
-            </label>
-
-            <label class="form-control w-full mt-3">
-                <div class="label">
-                    <span class="label-text">{{ t('user.confirmPass') }}</span>
-                </div>
-                <input v-model="user.confirm" type="password" class="input w-full" />
-            </label>
+            <fieldset class="fieldset">
+                <legend class="fieldset-legend">{{ t('user.name') }}</legend>
+                <input v-model="user.username" type="text" name="username" class="input w-full" />
+            </fieldset>
+            <fieldset class="fieldset">
+                <legend class="fieldset-legend">{{ t('user.mail') }}</legend>
+                <input v-model="user.mail" type="email" name="username" class="input w-full" />
+            </fieldset>
+            <fieldset class="fieldset">
+                <legend class="fieldset-legend">{{ t('user.password') }}</legend>
+                <input v-model="user.password" type="password" name="password" class="input w-full" />
+            </fieldset>
+            <fieldset class="fieldset">
+                <legend class="fieldset-legend">{{ t('user.confirmPass') }}</legend>
+                <input v-model="user.confirm" type="password" name="password" class="input w-full" />
+            </fieldset>
 
             <div class="form-control mt-5">
                 <Multiselect
@@ -117,12 +97,12 @@
                 />
             </div>
 
-            <div class="form-control mt-3">
-                <label class="label cursor-pointer w-1/2">
-                    <span class="label-text">{{ t('user.admin') }}</span>
+            <fieldset class="fieldset mt-2 rounded-box w-full">
+                <label class="fieldset-label text-base-content">
                     <input v-model.number="user.admin" type="checkbox" class="checkbox" />
+                    {{ t('user.admin') }}
                 </label>
-            </div>
+            </fieldset>
         </div>
     </GenericModal>
 </template>

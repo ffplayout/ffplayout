@@ -10,6 +10,7 @@
     color-scheme: light;
 
     --color-primary: #e0e0e0;
+    --color-primary-content: #222222;
     --color-base-content: #222222;
     --color-secondary: #c7c7c7;
     --color-accent: #f28c1b;
@@ -39,6 +40,7 @@
     color-scheme: dark;
 
     --color-primary: #3b3b3b;
+    --color-primary-content: #dfdfdf;
     --color-base-content: #dfdfdf;
     --color-secondary: #d3d3d3;
     --color-accent: #f28c1b;
@@ -65,6 +67,17 @@
 @theme {
     --font-body: 'Source Sans Pro', 'Segoe UI', 'Helvetica Neue', 'Arial', 'sans-serif';
     --default-font-family: 'Source Sans Pro', 'Segoe UI', 'Helvetica Neue', 'Arial', 'sans-serif';
+}
+
+.input, .select, .textarea {
+    &:focus,
+    &:focus-within {
+        --input-color: var(--color-primary);
+        box-shadow: 0 1px color-mix(in oklab, var(--input-color) calc(var(--depth) * 10%), #0000);
+        outline: 2px solid var(--input-color);
+        outline-offset: 2px;
+        isolation: isolate;
+    }
 }
 
 #__nuxt,
