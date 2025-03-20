@@ -71,7 +71,7 @@
     --default-font-family: 'Source Sans Pro', 'Segoe UI', 'Helvetica Neue', 'Arial', 'sans-serif';
 }
 
-.input, .select, .textarea {
+input, .input, .select, .textarea {
     &:focus,
     &:focus-within {
         --input-color: var(--my-glow);

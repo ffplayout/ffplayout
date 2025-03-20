@@ -8,7 +8,7 @@
             <div class="font-bold text-lg">{{ t('player.generateProgram') }}</div>
 
             <div class="h-[calc(100%-95px)] mt-3">
-                <div role="tablist" class="tabs tabs-bordered">
+                <div role="tablist" class="tabs tabs-border">
                     <input
                         type="radio"
                         name="my_tabs_2"

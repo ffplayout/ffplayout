@@ -38,7 +38,7 @@
                 <form class="my-6 w-full" @submit.prevent="submitMessage">
                     <textarea
                         v-model="form.text"
-                        class="textarea textarea-bordered w-full"
+                        class="textarea w-full"
                         rows="6"
                         :placeholder="t('message.placeholder')"
                     />

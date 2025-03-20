@@ -280,7 +280,7 @@
                     <legend class="fieldset-legend">Custom Filter</legend>
                     <textarea
                         v-model="configStore.playout.processing.custom_filter"
-                        class="textarea textarea-bordered w-full"
+                        class="textarea w-full"
                         rows="3"
                     />
                     <p class="fieldset-label items-baseline">{{ t('config.processingCustomFilter') }}</p>
@@ -350,7 +350,7 @@
                     <legend class="fieldset-legend">Custom Filter</legend>
                     <textarea
                         v-model="configStore.playout.ingest.custom_filter"
-                        class="textarea textarea-bordered w-full"
+                        class="textarea w-full"
                         rows="3"
                     />
                     <p class="fieldset-label items-baseline">{{ t('config.ingestCustomFilter') }}</p>
@@ -526,7 +526,7 @@
                     <legend class="fieldset-legend">Output Parameter</legend>
                     <textarea
                         v-model="configStore.playout.output.output_param"
-                        class="textarea textarea-bordered w-full"
+                        class="textarea w-full"
                         rows="6"
                     />
                     <p class="fieldset-label items-baseline">{{ t('config.outputParam') }}</p>

@@ -14,7 +14,7 @@ use crate::player::utils::{
 use crate::utils::{config::DUMMY_LEN, logging::Target};
 
 /// This is our main playlist object, it holds all necessary information for the current day.
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Default, Serialize, Deserialize, Clone)]
 pub struct JsonPlaylist {
     #[serde(default = "default_channel")]
     pub channel: String,

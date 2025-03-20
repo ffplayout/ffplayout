@@ -6,14 +6,14 @@
                 <option v-for="item in users" :key="item.username" :value="item.id">{{ item.username }}</option>
             </select>
             <button
-                class="join-item btn btn-primary select-bordered"
+                class="join-item btn btn-primary"
                 title="Add new User"
                 @click="showUserModal = true"
             >
                 <i class="bi-plus-lg" />
             </button>
             <button
-                class="join-item btn btn-primary select-bordered"
+                class="join-item btn btn-primary"
                 title="Delete selected user"
                 @click="deleteUser()"
             >

@@ -17,14 +17,14 @@
                         </option>
                     </select>
                     <button
-                        class="join-item btn btn-sm btn-primary select-bordered"
+                        class="join-item btn btn-sm btn-primary"
                         title="Add preset"
                         @click="addAdvancedConfig()"
                     >
                         <i class="bi-plus-lg" />
                     </button>
                     <button
-                        class="join-item btn btn-sm btn-primary select-bordered"
+                        class="join-item btn btn-sm btn-primary"
                         title="Delete preset"
                         @click="removeAdvancedConfig()"
                     >

@@ -629,10 +629,17 @@ pub fn loop_filler(config: &PlayoutConfig, node: &Media) -> Vec<String> {
     if loop_count > 1 {
         info!("Loop <span class=\"log-addr\">{}</span> <span class=\"log-number\">{loop_count}</span> times, total duration: <span class=\"log-number\">{:.2}</span>", node.source, node.out);
 
-        source_cmd.append(&mut vec_strings!["-stream_loop", loop_count]);
+        source_cmd.append(&mut vec_strings![
+            "-stream_loop",
+            loop_count,
+            "-i",
+            node.source,
+            "-t",
+            node.out
+        ]);
+    } else {
+        source_cmd.append(&mut vec_strings!["-i", node.source]);
     }
-
-    source_cmd.append(&mut vec_strings!["-i", node.source, "-t", node.out]);
 
     if config.processing.vtt_enable {
         let vtt_file = Path::new(&node.source).with_extension("vtt");
@@ -678,7 +685,10 @@ pub fn seek_and_length(config: &PlayoutConfig, node: &mut Media) -> Vec<String> 
     }
 
     if loop_count > 1 {
-        info!("Loop <span class=\"log-addr\">{}</span> <span class=\"log-number\">{loop_count}</span> times, total duration: <span class=\"log-number\">{:.2}</span>", node.source, node.out);
+        info!(
+            "Loop <span class=\"log-addr\">{}</span> <span class=\"log-number\">{loop_count}</span> times, total duration: <span class=\"log-number\">{:.2}</span>",
+            node.source, node.out
+        );
 
         source_cmd.append(&mut vec_strings!["-stream_loop", loop_count]);
     }
