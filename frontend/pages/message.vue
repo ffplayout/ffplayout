@@ -2,110 +2,73 @@
     <div>
         <div class="flex flex-col items-center pt-10 px-8">
             <div class="mt-2 w-full max-w-4xl">
-                <div class="flex flex-col xs:flex-row w-full gap-4">
+                <div class="flex flex-col xs:flex-row w-full join">
                     <div class="grow xs:max-w-72">
                         <select
                             v-model="selected"
-                            class="select select-sm w-full"
+                            class="select select-primary select-sm w-full"
                             @change="onChange($event)"
                         >
                             <option v-for="item in presets" :key="item.name">{{ item.name }}</option>
                         </select>
                     </div>
-                    <div class="join">
-                        <button
-                            class="btn btn-sm join-item btn-primary"
-                            :title="t('message.savePreset')"
-                            @click="savePreset()"
-                        >
-                            <i class="bi-cloud-upload" />
-                        </button>
-                        <button
-                            class="btn btn-sm join-item btn-primary"
-                            :title="t('message.newPreset')"
-                            @click="showCreateModal = true"
-                        >
-                            <i class="bi-file-plus" />
-                        </button>
-                        <button
-                            class="btn btn-sm join-item btn-primary"
-                            :title="t('message.delPreset')"
-                            @click="showDeleteModal = true"
-                        >
-                            <i class="bi-file-minus" />
-                        </button>
-                    </div>
+                    <button
+                        class="btn btn-sm join-item btn-primary"
+                        :title="t('message.savePreset')"
+                        @click="savePreset()"
+                    >
+                        <i class="bi-cloud-upload" />
+                    </button>
+                    <button
+                        class="btn btn-sm join-item btn-primary"
+                        :title="t('message.newPreset')"
+                        @click="showCreateModal = true"
+                    >
+                        <i class="bi-file-plus" />
+                    </button>
+                    <button
+                        class="btn btn-sm join-item btn-primary"
+                        :title="t('message.delPreset')"
+                        @click="showDeleteModal = true"
+                    >
+                        <i class="bi-file-minus" />
+                    </button>
                 </div>
 
                 <form class="my-6 w-full" @submit.prevent="submitMessage">
                     <textarea
                         v-model="form.text"
                         class="textarea textarea-bordered w-full"
-                        rows="4"
+                        rows="6"
                         :placeholder="t('message.placeholder')"
                     />
 
                     <div class="mt-2 grid xs:grid-cols-[auto_150px_150px] gap-4">
                         <div class="grow">
-                            <div class="form-control">
-                                <label class="cursor-pointer p-0">
-                                    <div class="label">
-                                        <span class="label-text">{{ t('message.xAxis') }}</span>
-                                    </div>
-                                    <input
-                                        v-model="form.x"
-                                        class="input input-sm w-full"
-                                        type="text"
-                                        placeholder="X"
-                                        required
-                                    />
-                                </label>
-                            </div>
-
-                            <div class="form-control">
-                                <label class="cursor-pointer p-0">
-                                    <div class="label">
-                                        <span class="label-text">{{ t('message.yAxis') }}</span>
-                                    </div>
-                                    <input
-                                        v-model="form.y"
-                                        class="input input-sm w-full"
-                                        type="text"
-                                        placeholder="Y"
-                                        required
-                                    />
-                                </label>
-                            </div>
+                            <fieldset class="fieldset">
+                                <legend class="fieldset-legend">{{ t('message.xAxis') }}</legend>
+                                <input v-model="form.x" type="text" name="x" class="input input-sm w-full" />
+                            </fieldset>
+                            <fieldset class="fieldset">
+                                <legend class="fieldset-legend">{{ t('message.yAxis') }}</legend>
+                                <input v-model="form.y" type="text" name="y" class="input input-sm w-full" />
+                            </fieldset>
                         </div>
 
-                        <div class="xs:mt-10">
-                            <div class="form-control">
-                                <label class="label cursor-pointer p-0">
-                                    <span class="label-text">{{ t('message.showBox') }}</span>
-                                    <input
-                                        v-model="form.showBox"
-                                        type="checkbox"
-                                        class="checkbox checkbox-xs rounded-xs"
-                                    />
+                        <div class="xs:mt-8.5">
+                            <fieldset class="fieldset rounded-box w-full">
+                                <label class="fieldset-label text-base-content">
+                                    <input v-model="form.showBox" type="checkbox" class="checkbox" />
+                                    {{ t('message.showBox') }}
                                 </label>
-                            </div>
-
-                            <label class="mt-2 form-control w-full">
-                                <div class="label">
-                                    <span class="label-text">{{ t('message.boxColor') }}</span>
-                                </div>
-                                <input
-                                    v-model="form.boxColor"
-                                    type="color"
-                                    class="input input-sm w-full p-1"
-                                    required
-                                />
-                            </label>
+                            </fieldset>
+                            <fieldset class="fieldset mt-1">
+                                <legend class="fieldset-legend">{{ t('message.boxColor') }}</legend>
+                                <input v-model="form.boxColor" type="color" class="input input-sm w-full cursor-pointer" />
+                            </fieldset>
                         </div>
-                        <label class="form-control w-full xs:mt-[68px]">
-                            <div class="label">
-                                <span class="label-text">{{ t('message.boxAlpha') }}</span>
-                            </div>
+                        <fieldset class="fieldset mt-1 xs:mt-[70px]">
+                            <legend class="fieldset-legend">{{ t('message.boxAlpha') }}</legend>
                             <input
                                 v-model="form.boxAlpha"
                                 type="number"
@@ -115,85 +78,65 @@
                                 class="input input-sm w-full"
                                 required
                             />
-                        </label>
+                        </fieldset>
                     </div>
                     <div class="grid xs:grid-cols-[150px_150px_auto] gap-4 mt-2">
                         <div>
-                            <label class="form-control w-full">
-                                <div class="label">
-                                    <span class="label-text">{{ t('message.size') }}</span>
-                                </div>
+                            <fieldset class="fieldset">
+                                <legend class="fieldset-legend">{{ t('message.size') }}</legend>
                                 <input
                                     v-model="form.fontSize"
                                     type="number"
+                                    min="0"
                                     class="input input-sm w-full"
                                     required
                                 />
-                            </label>
-
-                            <label class="form-control w-full mt-2">
-                                <div class="label">
-                                    <span class="label-text">{{ t('message.fontColor') }}</span>
-                                </div>
-                                <input
-                                    v-model="form.fontColor"
-                                    type="color"
-                                    class="input input-sm w-full p-1"
-                                    required
-                                />
-                            </label>
+                            </fieldset>
+                            <fieldset class="fieldset">
+                                <legend class="fieldset-legend">{{ t('message.fontColor') }}</legend>
+                                <input v-model="form.fontColor" type="color" class="input input-sm w-full cursor-pointer" />
+                            </fieldset>
                         </div>
                         <div>
-                            <label class="form-control w-full">
-                                <div class="label">
-                                    <span class="label-text">{{ t('message.spacing') }}</span>
-                                </div>
+                            <fieldset class="fieldset">
+                                <legend class="fieldset-legend">{{ t('message.spacing') }}</legend>
                                 <input
                                     v-model="form.fontSpacing"
                                     type="number"
+                                    min="0"
                                     class="input input-sm w-full"
                                     required
                                 />
-                            </label>
-                            <label class="form-control w-full mt-2">
-                                <div class="label">
-                                    <span class="label-text">{{ t('message.fontAlpha') }}</span>
-                                </div>
+                            </fieldset>
+                            <fieldset class="fieldset">
+                                <legend class="fieldset-legend">{{ t('message.fontAlpha') }}</legend>
                                 <input
                                     v-model="form.fontAlpha"
                                     type="number"
-                                    class="input input-sm w-full"
                                     min="0"
                                     max="1"
                                     step="0.01"
+                                    class="input input-sm w-full"
                                     required
                                 />
-                            </label>
+                            </fieldset>
                         </div>
 
                         <div class="grow">
-                            <label class="form-control w-full">
-                                <div class="label">
-                                    <span class="label-text">{{ t('message.overallAlpha') }}</span>
-                                </div>
-                                <input
-                                    v-model="form.overallAlpha"
-                                    type="text"
-                                    class="input input-sm w-full"
-                                    required
-                                />
-                            </label>
-                            <label class="form-control w-full xs:max-w-[150px] mt-2">
-                                <div class="label">
-                                    <span class="label-text">{{ t('message.borderWidth') }}</span>
-                                </div>
+                            <fieldset class="fieldset">
+                                <legend class="fieldset-legend">{{ t('message.overallAlpha') }}</legend>
+                                <input v-model="form.overallAlpha" type="text" name="overall_alpha" class="input input-sm w-full" required />
+                            </fieldset>
+                            <fieldset class="fieldset">
+                                <legend class="fieldset-legend">{{ t('message.borderWidth') }}</legend>
                                 <input
                                     v-model="form.border"
                                     type="number"
+                                    min="0"
                                     class="input input-sm w-full"
                                     required
                                 />
-                            </label>
+                            </fieldset>
                         </div>
                     </div>
 
@@ -205,12 +148,10 @@
         </div>
 
         <GenericModal :show="showCreateModal" :title="t('message.newPreset')" :modal-action="createNewPreset">
-            <label class="form-control w-full">
-                <div class="label">
-                    <span class="label-text">{{ t('message.name') }}</span>
-                </div>
-                <input v-model="newPresetName" type="text" class="input w-full" />
-            </label>
+            <fieldset class="fieldset">
+                <legend class="fieldset-legend">{{ t('message.name') }}</legend>
+                <input v-model="newPresetName" type="text" name="overall_alpha" class="input input-sm w-full" required />
+            </fieldset>
         </GenericModal>
 
         <GenericModal

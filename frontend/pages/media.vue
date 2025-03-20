@@ -70,7 +70,7 @@
 
                                             <td class="px-2 py-1.5 text-center">
                                                 <button
-                                                    class="opacity-30 hover:opacity-100"
+                                                    class="opacity-30 hover:opacity-100 cursor-pointer"
                                                     @click="
                                                         ;(showDeleteModal = true),
                                                             (deleteName = `/${parent(mediaStore.folderTree.source)}/${
@@ -125,7 +125,7 @@
                                         </td>
                                         <td class="ps-2 pe-[14px] py-1.5 text-right">
                                             <button
-                                                class="opacity-30 hover:opacity-100"
+                                                class="opacity-30 hover:opacity-100 cursor-pointer"
                                                 @click="
                                                     ;(showDeleteModal = true),
                                                         (deleteName =
@@ -163,7 +163,7 @@
                                         </td>
                                         <td class="px-2 py-1.5 flex">
                                             <button
-                                                class="w-7"
+                                                class="w-7 cursor-pointer"
                                                 @click=";(showPreviewModal = true), setPreviewData(element.name)"
                                             >
                                                 <i class="bi-play-fill" />
@@ -172,7 +172,7 @@
                                             <div class="inline-block w-[82px]">{{ toMin(element.duration) }}</div>
 
                                             <button
-                                                class="w-7"
+                                                class="w-7 cursor-pointer"
                                                 @click="
                                                     ;(showRenameModal = true),
                                                         setRenameValues(
@@ -187,7 +187,7 @@
                                             </button>
 
                                             <button
-                                                class="w-7 opacity-30 hover:opacity-100"
+                                                class="w-7 opacity-30 hover:opacity-100 cursor-pointer"
                                                 @click="
                                                     ;(showDeleteModal = true),
                                                         (deleteName =
@@ -237,12 +237,19 @@
             :modal-action="deleteFileOrFolder"
         >
             <div>
-                <input class="input input-sm w-full" type="text" :value="dir_file(deleteName).file" disabled />
+                <input
+                    class="input input-sm w-full !text-base-content/80"
+                    type="text"
+                    :value="dir_file(deleteName).file"
+                    disabled
+                />
                 <div v-if="!extensionsArr.some((suffix) => deleteName.endsWith(suffix))" class="form-control mt-3">
-                    <label class="label cursor-pointer w-1/4">
-                        <input v-model="recursive" type="checkbox" class="checkbox checkbox-sm checkbox-warning" />
-                        <span class="label-text">{{ t('media.recursive') }}</span>
-                    </label>
+                    <fieldset class="fieldset rounded-box w-full">
+                        <label class="fieldset-label text-base-content">
+                            <input v-model="recursive" type="checkbox" class="checkbox checkbox-accent" />
+                            {{ t('media.recursive') }}
+                        </label>
+                    </fieldset>
                 </div>
             </div>
         </GenericModal>
@@ -260,21 +267,17 @@
         </GenericModal>
 
         <GenericModal :show="showRenameModal" :title="t('media.rename')" :modal-action="renameFile">
-            <label class="form-control w-full max-w-md">
-                <div class="label">
-                    <span class="label-text">{{ t('media.newFile') }}</span>
-                </div>
-                <input v-model="renameNewName" type="text" class="input w-full" />
-            </label>
+            <fieldset class="fieldset">
+                <legend class="fieldset-legend">{{ t('media.newFile') }}</legend>
+                <input v-model="renameNewName" type="text" class="input input-sm w-full" />
+            </fieldset>
         </GenericModal>
 
         <GenericModal :show="showCreateModal" :title="t('media.createFolder')" :modal-action="createFolder">
-            <label class="form-control w-full max-w-md">
-                <div class="label">
-                    <span class="label-text">{{ t('media.foldername') }}</span>
-                </div>
-                <input v-model="folderName.name" type="text" class="input w-full" />
-            </label>
+            <fieldset class="fieldset">
+                <legend class="fieldset-legend">{{ t('media.foldername') }}</legend>
+                <input v-model="folderName.name" type="text" class="input input-sm w-full" />
+            </fieldset>
         </GenericModal>
 
         <GenericModal :show="showUploadModal" :title="t('media.upload')" :modal-action="uploadFiles">
@@ -288,27 +291,27 @@
                     @change="onFileChange"
                 />
 
-                <label class="form-control w-full mt-3">
-                    <div class="label">
-                        <span class="label-text">{{ t('media.current') }}:</span>
-                    </div>
+                <fieldset class="fieldset">
+                    <legend class="fieldset-legend">{{ t('media.current') }}:</legend>
                     <progress class="progress progress-accent" :value="currentProgress" max="100" />
-                </label>
+                </fieldset>
 
-                <label class="form-control w-full mt-1">
-                    <div class="label">
-                        <span class="label-text"
-                            >{{ t('media.overall') }} ({{ currentNumber }}/{{ inputFiles.length }}):</span
-                        >
-                    </div>
+                <fieldset class="fieldset">
+                    <legend class="fieldset-legend">
+                        {{ t('media.overall') }} ({{ currentNumber }}/{{ inputFiles.length }}):
+                    </legend>
                     <progress class="progress progress-accent" :value="overallProgress" max="100" />
-                </label>
-                <label class="form-control w-full mt-1">
-                    <div class="label">
-                        <span class="label-text">{{ t('media.uploading') }}:</span>
-                    </div>
-                    <input v-model="uploadTask" type="text" class="input input-sm w-full" disabled />
-                </label>
+                </fieldset>
+
+                <fieldset class="fieldset">
+                    <legend class="fieldset-legend">{{ t('media.uploading') }}</legend>
+                    <input
+                        v-model="uploadTask"
+                        type="text"
+                        class="input input-sm w-full text-base-content/70"
+                        disabled
+                    />
+                </fieldset>
             </div>
         </GenericModal>
     </div>

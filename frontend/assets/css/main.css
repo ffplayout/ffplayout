@@ -20,13 +20,14 @@
     --color-neutral: #2b3440;
     --color-neutral-focus: #343232;
     --color-info: #0000ff;
-    --color-success: #008000;
+    --color-success: #00d390;
     --color-warning: #f28c1b;
     --color-error: #ff3c00;
     --base-100: #ffffff;
     --base-200: #f2f5f7;
     --base-300: #e5e6e6;
     --my-accent: #f28c1b;
+    --my-glow: #c0c0c0;
     --my-gray: #888888;
     --my-purple: #701a75;
     --my-yellow: #bea203;
@@ -50,13 +51,14 @@
     --color-neutral: #272626;
     --color-neutral-focus: #343232;
     --color-info: #0000ff;
-    --color-success: #008000;
+    --color-success: #00d390;
     --color-warning: #f28c1b;
     --color-error: #ff3c00;
     --base-100: #313131;
     --base-200: #222222;
     --base-300: #1c1c1c;
     --my-accent: #f28c1b;
+    --my-glow: #5d5d5d;
     --my-gray: #919191;
     --my-purple: #ad7fa8;
     --my-yellow: #e2c317;
@@ -72,7 +74,7 @@
 .input, .select, .textarea {
     &:focus,
     &:focus-within {
-        --input-color: var(--color-primary);
+        --input-color: var(--my-glow);
         box-shadow: 0 1px color-mix(in oklab, var(--input-color) calc(var(--depth) * 10%), #0000);
         outline: 2px solid var(--input-color);
         outline-offset: 2px;

@@ -1,4 +1,4 @@
-import tailwindcss from "@tailwindcss/vite"
+import tailwindcss from '@tailwindcss/vite'
 
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
@@ -7,28 +7,24 @@ export default defineNuxtConfig({
         host: '127.0.0.1', // default: localhost
     },
 
+    devtools: { enabled: false },
+
     nitro: {
         devProxy: {
             '/api': { target: 'http://127.0.0.1:8787/api' },
             '/auth': { target: 'http://127.0.0.1:8787/auth' },
             '/data': { target: 'http://127.0.0.1:8787/data' },
-            '/live': { target: 'http://127.0.0.1:8787/live' },
-            '/1/live': { target: 'http://127.0.0.1:8787/1/live' },
+            // '/live': { target: 'http://127.0.0.1:8787/live' },
+            // '/1/live': { target: 'http://127.0.0.1:8787/1/live' },
             '/file': { target: 'http://127.0.0.1:8787/file' },
-            '/hls': { target: 'http://127.0.0.1:8787/hls' },
+            // '/hls': { target: 'http://127.0.0.1:8787/hls' },
         },
     },
-
-    // runtimeConfig: {
-    //     public: {
-    //         buildExperimental: process.env.NUXT_BUILD_EXPERIMENTAL,
-    //     },
-    // },
 
     ignore: ['**/public/tv-media**', '**/public/Videos**', '**/public/live**', '**/public/home**'],
     ssr: false,
 
-    // debug: true,
+    // debug: false,
 
     app: {
         head: {
@@ -56,13 +52,7 @@ export default defineNuxtConfig({
         },
     },
 
-    modules: [
-        '@nuxt/eslint',
-        '@nuxtjs/color-mode',
-        '@nuxtjs/i18n',
-        '@pinia/nuxt',
-        '@vueuse/nuxt',
-    ],
+    modules: ['@nuxt/eslint', '@nuxtjs/color-mode', '@nuxtjs/i18n', '@pinia/nuxt', '@vueuse/nuxt'],
 
     css: ['@/assets/css/main.css'],
 
@@ -82,21 +72,25 @@ export default defineNuxtConfig({
         locales: [
             {
                 code: 'de',
+                language: 'de-DE',
                 name: 'Deutsch',
                 file: 'de-DE.js',
             },
             {
                 code: 'en',
+                language: 'en-US',
                 name: 'English',
                 file: 'en-US.js',
             },
             {
                 code: 'pt-br',
+                language: 'pt-BR',
                 name: 'Português (BR)',
                 file: 'pt-BR.js',
             },
             {
                 code: 'ru',
+                language: 'ru-RU',
                 name: 'Русский язык (RU)',
                 file: 'ru-RU.js',
             },
@@ -138,7 +132,6 @@ export default defineNuxtConfig({
             useCookie: true,
             alwaysRedirect: true,
         },
-        // debug: true,
         langDir: 'locales',
         defaultLocale: 'en',
 
@@ -151,21 +144,12 @@ export default defineNuxtConfig({
         build: {
             chunkSizeWarningLimit: 800000,
         },
-        css: {
-            preprocessorOptions: {
-                scss: {
-                    silenceDeprecations: ['legacy-js-api'],
-                },
-            },
-        },
-        plugins: [
-            tailwindcss(),
-        ],
+        plugins: [tailwindcss()],
     },
 
     experimental: {
         payloadExtraction: false,
     },
 
-    compatibilityDate: '2025-01-15',
+    compatibilityDate: '2025-03-20',
 })

@@ -1,5 +1,5 @@
 <template>
-    <div class="w-full xs:pe-8">
+    <div class="max-w-[1200px] xs:pe-8">
         <h2 class="pt-3 text-3xl">{{ t('advanced.title') }}</h2>
         <p class="mt-5 font-bold text-orange-500">{{ t('advanced.warning') }}</p>
         <div class="mt-4">

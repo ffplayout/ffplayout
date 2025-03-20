@@ -1,9 +1,7 @@
 <template>
     <div class="w-full min-h-screen xs:h-full flex justify-center items-center">
         <div v-if="authStore.isLogin" class="flex flex-col justify-center items-center w-full p-5">
-            <div class="max-w-[1024px]">
-                <SystemStats v-if="configStore.channels.length > 0" />
-            </div>
+            <SystemStats v-if="configStore.channels.length > 0" />
 
             <div class="w-full flex flex-wrap justify-center gap-1 md:gap-0 md:join mt-5">
                 <NuxtLink :to="localePath({ name: 'player' })" class="btn btn-primary join-item px-2">
@@ -28,19 +26,17 @@
                 <button class="btn btn-primary join-item px-2" @click="logout()">
                     {{ t('button.logout') }}
                 </button>
-                <select
-                    v-model="selectedLang"
-                    class="select select-primary join-item max-w-46 ps-2"
-                    @change="changeLang(selectedLang)"
-                >
-                    <option v-for="(loc, index) in locales" :key="index" :value="/* @ts-ignore */ loc.code">
-                        {{
-                            /* @ts-ignore */
-                            loc.name
-                        }}
-                    </option>
-                </select>
-                <label class="join-item btn btn-primary swap swap-rotate me-2">
+                <div class="dropdown">
+                    <div tabindex="0" role="button" class="btn btn-primary bg-primary/70 px-2 join-item">{{ selectedLang?.name }}</div>
+                    <ul tabindex="0" class="dropdown-content menu bg-base-100 rounded-box z-1 w-52 p-2 shadow-sm">
+                        <li v-for="lang in locales" :key="lang.short" :title="lang.long">
+                            <button class="px-1 py-2 rounded" @click="changeLang(lang)">
+                                {{ lang.name }}
+                            </button>
+                        </li>
+                    </ul>
+                </div>
+                <label class="join-item btn btn-primary swap swap-rotate">
                     <input type="checkbox" :checked="indexStore.darkMode" @change="toggleDarkTheme" />
                     <SvgIcon name="swap-on" classes="w-5 h-5" />
                     <SvgIcon name="swap-off" classes="w-5 h-5" />
@@ -63,7 +59,7 @@
                 <input
                     v-model="formPassword"
                     type="password"
-                    name="passwort"
+                    name="password"
                     :placeholder="t('input.password')"
                     class="input w-full mt-5 focus:border-base-content/30 focus:outline-base-content/30"
                     required
@@ -102,11 +98,17 @@ const authStore = useAuth()
 const configStore = useConfig()
 const indexStore = useIndex()
 
-const selectedLang = ref(locale)
+const selectedLang = ref()
 const formError = ref('')
 const showLoginError = ref(false)
 const formUsername = ref('')
 const formPassword = ref('')
+
+const langCookie = useCookie('i18n_redirected')
+
+onMounted(() => {
+    selectedLang.value = locales.value.find((loc: any) => loc.code === locale.value)
+})
 
 async function login() {
     try {
@@ -149,10 +151,11 @@ async function logout() {
     }
 }
 
-async function changeLang(code: any) {
-    const path = switchLocalePath(code)
-    const cookie = useCookie('i18n_redirected')
-    cookie.value = code
+async function changeLang(lang: any) {
+    const path = switchLocalePath(lang.code)
+
+    selectedLang.value = lang
+    langCookie.value = lang.code
 
     router.push(path)
 }

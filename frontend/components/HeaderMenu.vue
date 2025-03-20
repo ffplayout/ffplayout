@@ -197,7 +197,7 @@ function toggleDarkTheme() {
     }
 }
 </script>
-<style lang="scss" scoped>
+<style scoped>
 .is-active > span::after {
     background: var(--my-accent);
     position: relative;
