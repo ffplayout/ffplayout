@@ -1,7 +1,5 @@
 <template>
-    <div
-        class="z-50 fixed inset-0 flex justify-center bg-black/30 overflow-auto py-5"
-    >
+    <div class="z-50 fixed inset-0 flex justify-center bg-black/30 overflow-auto py-5">
         <div
             class="relative flex flex-col bg-base-100 w-[800px] min-w-[300px] max-w-[90vw] h-[680px] my-auto rounded-md p-5 shadow-xl"
         >
@@ -129,19 +127,22 @@
                                 class="h-[475px] border border-my-gray rounded-sm grid bg-base-300 m-1"
                                 :class="width < 740 ? 'grid-cols-1' : 'grid-cols-[300px_auto]'"
                             >
-                                <Sortable
-                                    :list="mediaStore.folderList.folders"
-                                    :options="templateBrowserSortOptions"
-                                    item-key="uid"
-                                    class="overflow-auto py-1 border-my-gray"
+                                <VirtualList
+                                    id="genSource"
+                                    v-model="mediaStore.folderList.folders"
+                                    class="h-full py-1 border-my-gray"
+                                    :group="genGroup"
+                                    :data-key="'uid'"
                                     :class="width < 740 ? 'h-[240px] border-b' : 'border-e'"
-                                    tag="ul"
+                                    chosen-class="cursor-grabbing"
+                                    wrap-tag="ul"
+                                    :sortable="false"
                                 >
-                                    <template #item="{ element, index }">
+                                    <template #item="{ record, index }">
                                         <li
                                             :id="`adv_folder_${index}`"
-                                            :key="element.uid"
-                                            class="even:bg-base-200 draggable px-2 w-full"
+                                            :key="record.uid"
+                                            class="even:bg-base-200 cursor-grabbing px-2 w-full"
                                         >
                                             <button
                                                 class="w-full truncate text-left"
@@ -149,7 +150,7 @@
                                                     ;[
                                                         (selectedFolders = []),
                                                         mediaStore.getTree(
-                                                            `/${mediaStore.folderList.source}/${element.name}`.replace(
+                                                            `/${mediaStore.folderList.source}/${record.name}`.replace(
                                                                 /\/[/]+/g,
                                                                 '/'
                                                             ),
@@ -159,18 +160,20 @@
                                                 "
                                             >
                                                 <i class="bi-folder-fill" />
-                                                {{ element.name }}
+                                                {{ record.name }}
                                             </button>
                                         </li>
                                     </template>
-                                </Sortable>
+                                </VirtualList>
                                 <ul class="overflow-auto px-1 pb-1">
                                     <li
                                         v-for="item in template.sources"
                                         :key="item.start"
                                         class="flex flex-col gap-1 justify-center items-center border border-my-gray rounded-sm mt-1 p-1"
                                     >
-                                        <div class="flex flex-wrap xs:grid xs:grid-cols-[58px_64px_67px_64px_67px] xs:join">
+                                        <div
+                                            class="flex flex-wrap xs:grid xs:grid-cols-[58px_64px_67px_64px_67px] xs:join"
+                                        >
                                             <div
                                                 class="input input-sm join-item px-1 text-center bg-base-200 leading-7"
                                             >
@@ -184,7 +187,7 @@
                                             <div
                                                 class="input input-sm join-item px-1 text-center bg-base-200 leading-7"
                                             >
-                                            {{ t('player.duration') }}:
+                                                {{ t('player.duration') }}:
                                             </div>
                                             <input
                                                 v-model="item.duration"
@@ -200,26 +203,26 @@
                                             </button>
                                         </div>
 
-                                        <Sortable
-                                            :list="item.paths"
-                                            item-key="index"
+                                        <VirtualList
+                                            v-model="item.paths"
+                                            :group="targetGroup"
+                                            :data-key="'index'"
                                             class="w-full border border-my-gray rounded"
                                             :style="`height: ${item.paths ? item.paths.length * 23 + 31 : 300}px`"
-                                            tag="ul"
-                                            :options="templateTargetSortOptions"
-                                            @add="addFolderToTemplate($event, item)"
+                                            wrap-tag="ul"
+                                            @drop="addFolderToTemplate($event, item)"
                                         >
-                                            <template #item="{ element, index }">
+                                            <template #item="{ record, index }">
                                                 <li
-                                                    :id="`path_${index}`"
+                                                    :id="`path-${index}`"
                                                     :key="index"
-                                                    class="draggable grabbing py-0 even:bg-base-200 px-2"
+                                                    class="py-0 even:bg-base-200 px-2"
                                                 >
                                                     <i class="bi-folder-fill" />
-                                                    {{ element.split(/[\\/]+/).pop() }}
+                                                    {{ (!record?.name) && record?.split(/[\\/]+/).pop() }}
                                                 </li>
                                             </template>
-                                        </Sortable>
+                                        </VirtualList>
 
                                         <div class="w-full flex justify-end">
                                             <button
@@ -277,7 +280,10 @@ const indexStore = useIndex()
 const mediaStore = useMedia()
 const playlistStore = usePlaylist()
 
-const { processPlaylist } = playlistOperations()
+const { processPlaylist, genUID } = playlistOperations()
+
+const genGroup = ref({ name: 'genGroup', pull: 'clone', put: false })
+const targetGroup = ref({ name: 'genGroup', pull: true, put: true })
 
 const prop = defineProps({
     close: {
@@ -308,16 +314,6 @@ const template = ref({
     ],
 } as Template)
 
-const templateBrowserSortOptions = {
-    group: { name: 'folder', pull: 'clone', put: false },
-    sort: false,
-}
-const templateTargetSortOptions = {
-    group: 'folder',
-    animation: 100,
-    handle: '.grabbing',
-}
-
 function setSelectedFolder(event: any, folder: string) {
     if (event.target.checked) {
         selectedFolders.value.push(folder)
@@ -342,17 +338,18 @@ function resetCheckboxes() {
 }
 
 function addFolderToTemplate(event: any, item: TemplateItem) {
-    const o = event.oldIndex
     const n = event.newIndex
 
-    event.item.remove()
+    if (event.event.from.id === 'genSource') {
+        const media = event.item
+        const storagePath = configStore.channels[configStore.i].storage
+        const navPath = mediaStore.folderCrumbs[mediaStore.folderCrumbs.length - 1].path
+        const sourcePath = `${storagePath}/${navPath}/${media.name}`.replace(/\/[/]+/g, '/')
+        const uid = genUID()
 
-    const storagePath = configStore.channels[configStore.i].storage
-    const navPath = mediaStore.folderCrumbs[mediaStore.folderCrumbs.length - 1].path
-    const sourcePath = `${storagePath}/${navPath}/${mediaStore.folderList.folders[o].name}`.replace(/\/[/]+/g, '/')
-
-    if (!item.paths.includes(sourcePath)) {
-        item.paths.splice(n, 0, sourcePath)
+        if (!item.paths.includes(sourcePath)) {
+            item.paths[n] = sourcePath
+        }
     }
 }
 

@@ -4,7 +4,7 @@
     </div>
     <div class="bg-base-100 border-b border-my-gray">
         <div v-if="mediaStore.folderTree.parent && mediaStore.crumbs">
-            <nav class="breadcrumbs px-2">
+            <nav class="breadcrumbs px-2 py-[6px]">
                 <ul>
                     <li v-for="(crumb, index) in mediaStore.crumbs" :key="index">
                         <button
@@ -25,52 +25,85 @@
         </div>
     </div>
 
-    <div class="w-full h-[calc(100%-40px)] overflow-auto">
-        <div
-            v-for="folder in mediaStore.folderTree.folders"
-            :key="folder.uid"
-            class="flex px-2 py-[2px] bg-base-200"
-        >
-            <button class="truncate" @click="mediaStore.getTree(`/${mediaStore.folderTree.source}/${folder.name}`)">
+    <div class="w-full h-[calc(100%-40px)]">
+        <!-- <div v-for="folder in mediaStore.folderTree.folders" :key="folder.uid" class="flex px-2 py-[2px] bg-base-200">
+            <button
+                class="truncate cursor-pointer"
+                @click="mediaStore.getTree(`/${mediaStore.folderTree.source}/${folder.name}`)"
+            >
                 <i class="bi-folder-fill" />
                 {{ folder.name }}
             </button>
-        </div>
-        <table class="w-full table table-zebra table-fixed">
-            <Sortable :list="mediaStore.folderTree.files" :options="browserSortOptions" item-key="name" tag="tbody">
-                <template #item="{ element, index }">
-                    <tr
-                        :id="`file-${index}`"
-                        :key="element.name"
-                        class="w-full border-b border-t border-base-content/20"
-                        :class="{ 'grabbing cursor-grab': width > 739 && configStore.playout.processing.mode === 'playlist' }"
+        </div> -->
+        <VirtualList
+            id="mediaList"
+            v-model="mediaStore.folderTree.files"
+            class="w-full h-full"
+            :handle="'.handle'"
+            :group="dragGroup"
+            :data-key="'name'"
+            ghost-class="sortable-ghost"
+            wrap-tag="ul"
+            wrap-class="h-full list-none text-sm"
+            chosen-class="cursor-grabbing"
+            placeholder-class="media-placeholder"
+            :animation="50"
+            :sortable="false"
+        >
+            <template #header>
+                <ul class="border border-base-content/20 list-none text-sm">
+                    <li
+                        v-for="folder in mediaStore.folderTree.folders"
+                        :key="folder.uid"
+                        class="grid grid-cols-[30px_auto] even:bg-base-200 py-0.5 items-center cursor-pointer"
+                        @click="mediaStore.getTree(`/${mediaStore.folderTree.source}/${folder.name}`)"
                     >
-                        <td class="ps-2 py-1 w-[20px]" :class="{'timeHidden': configStore.playout.playlist.infinit}">
-                            <i v-if="mediaType(element.name) === 'audio'" class="bi-music-note-beamed" />
-                            <i v-else-if="mediaType(element.name) === 'video'" class="bi-film" />
-                            <i v-else-if="mediaType(element.name) === 'image'" class="bi-file-earmark-image" />
-                            <i v-else class="bi-file-binary" />
-                        </td>
-                        <td class="px-[1px] py-1 truncate">
-                            {{ element.name }}
-                        </td>
-                        <td class="px-1 py-1 w-[30px] text-center leading-3">
-                            <button @click="preview(element.name)">
-                                <i class="bi-play-fill" />
-                            </button>
-                        </td>
-                        <td class="px-0 py-1 w-[65px] text-nowrap">
-                            {{ secToHMS(element.duration) }}
-                        </td>
-                        <td class="py-1 hidden">00:00:00</td>
-                        <td class="py-1 hidden">{{ secToHMS(element.duration) }}</td>
-                        <td class="py-1 hidden">&nbsp;</td>
-                        <td class="py-1 hidden">&nbsp;</td>
-                        <td class="py-1 hidden">&nbsp;</td>
-                    </tr>
-                </template>
-            </Sortable>
-        </table>
+                        <div class="px-2">
+                            <i class="bi-folder-fill" />
+                        </div>
+                        <div class="truncate pe-1">
+                            {{ folder.name }}
+                        </div>
+                    </li>
+                </ul>
+            </template>
+            <template #item="{ record, index }">
+                <li
+                    :id="`file-${index}`"
+                    :key="record.name"
+                    class="grid grid-cols-[30px_auto_32px_62px] border border-base-content/20 py-1.5 items-center"
+                    :class="(mediaStore.folderTree.folders.length % 2 === 0) ? 'even:bg-base-200' : 'odd:bg-base-200'"
+                >
+                    <div class="px-2" :class="{ timeHidden: configStore.playout.playlist.infinit }">
+                        <i v-if="mediaType(record.name) === 'audio'" class="bi-music-note-beamed" />
+                        <i v-else-if="mediaType(record.name) === 'video'" class="bi-film" />
+                        <i v-else-if="mediaType(record.name) === 'image'" class="bi-file-earmark-image" />
+                        <i v-else class="bi-file-binary" />
+                    </div>
+                    <div
+                        class="truncate"
+                        :class="{
+                            'handle cursor-grab': width > 739 && configStore.playout.processing.mode === 'playlist',
+                        }"
+                    >
+                        {{ record.name }}
+                    </div>
+                    <div class="text-center leading-3">
+                        <button class="cursor-pointer" @click="preview(record.name)">
+                            <i class="bi-play-fill" />
+                        </button>
+                    </div>
+                    <div class="text-nowrap">
+                        {{ secToHMS(record.duration) }}
+                    </div>
+                    <div class="hidden">00:00:00</div>
+                    <div class="hidden">{{ secToHMS(record.duration) }}</div>
+                    <div class="hidden">&nbsp;</div>
+                    <div class="hidden">&nbsp;</div>
+                    <div class="hidden">&nbsp;</div>
+                </li>
+            </template>
+        </VirtualList>
     </div>
 </template>
 <script setup lang="ts">
@@ -81,11 +114,7 @@ const configStore = useConfig()
 const mediaStore = useMedia()
 const { i } = storeToRefs(useConfig())
 
-const browserSortOptions = {
-    group: { name: 'playlist', pull: 'clone', put: false },
-    handle: '.grabbing',
-    sort: false,
-}
+const dragGroup = ref({ name: 'dragGroup', pull: 'clone', put: false })
 
 defineProps({
     preview: {

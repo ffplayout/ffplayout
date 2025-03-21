@@ -27,10 +27,10 @@
     "mpegts.js": "^1.8.0",
     "nuxt": "3.16.1",
     "pinia": "^3.0.1",
-    "sortablejs-vue3": "^1.2.11",
     "splitpanes": "^4.0.3",
     "tailwindcss": "^4.0.14",
-    "video.js": "^8.22.0"
+    "video.js": "^8.22.0",
+    "vue-virtual-draglist": "^3.3.8"
   },
   "devDependencies": {
     "@nuxt/eslint": "^1.2.0",

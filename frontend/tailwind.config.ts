@@ -15,16 +15,13 @@ export default {
                 sans: ['Source Sans Pro', 'Segoe UI', 'Helvetica Neue', 'Arial', 'sans-serif'],
             },
             fontSize: {
-                xxs: '10px',
                 sm: '14px',
                 base: '15px',
                 lg: '20px',
                 xl: '24px',
             },
             screens: {
-                xxs: '374px',
                 xs: '500px',
-                '2xs': '739px',
                 '2sm': '825px',
                 '2md': '876px',
                 '4xl': { min: '1971px' },
@@ -34,10 +31,5 @@ export default {
             },
         },
     },
-    safelist: [
-        'alert-success',
-        'alert-warning',
-        'alert-info',
-        'alert-error',
-    ],
+    safelist: ['alert-success', 'alert-warning', 'alert-info', 'alert-error'],
 }

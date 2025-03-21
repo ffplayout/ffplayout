@@ -1,126 +1,121 @@
 <template>
-    <div
-        id="playlist-container"
-        ref="playlistContainer"
-        class="relative w-full h-full !bg-base-300 rounded-e overflow-auto"
-    >
+    <div class="relative w-full h-full !bg-base-300 rounded-e">
         <div v-if="playlistStore.isLoading" class="w-full h-full absolute z-2 flex justify-center bg-base-100/70">
             <span class="loading loading-spinner loading-lg" />
         </div>
-        <table class="table table-zebra table-fixed">
-            <thead class="top-0 sticky z-2">
-                <tr class="bg-base-100 rounded-tr-lg">
-                    <th v-if="!configStore.playout.playlist.infinit" class="w-[85px] p-0 text-left">
-                        <div class="border-b border-my-gray px-4 py-3">
-                            {{ t('player.start') }}
-                        </div>
-                    </th>
-                    <th class="w-full p-0 text-left">
-                        <div class="border-b border-my-gray px-4 py-3">
-                            {{ t('player.file') }}
-                        </div>
-                    </th>
-                    <th class="w-[85px] p-0 text-center">
-                        <div class="border-b border-my-gray px-4 py-3">
-                            {{ t('player.play') }}
-                        </div>
-                    </th>
-                    <th class="w-[85px] p-0 text-center hidden 2xs:table-cell">
-                        <div class="border-b border-my-gray px-4 py-3">
-                            {{ t('player.duration') }}
-                        </div>
-                    </th>
-                    <th class="w-[85px] p-0 text-center hidden xl:table-cell">
-                        <div class="border-b border-my-gray px-4 py-3">
-                            {{ t('player.in') }}
-                        </div>
-                    </th>
-                    <th class="w-[85px] p-0 text-center hidden xl:table-cell">
-                        <div class="border-b border-my-gray px-4 py-3">
-                            {{ t('player.out') }}
-                        </div>
-                    </th>
-                    <th class="w-[85px] p-0 text-center hidden xl:table-cell justify-center">
-                        <div class="border-b border-my-gray px-4 py-3">
-                            {{ t('player.ad') }}
-                        </div>
-                    </th>
-                    <th class="w-[85px] p-0 text-center">
-                        <div class="border-b border-my-gray px-4 py-3">
-                            {{ t('player.edit') }}
-                        </div>
-                    </th>
-                    <th class="w-[85px] p-0 text-center hidden 2xs:table-cell justify-center">
-                        <div class="border-b border-my-gray px-4 py-3">
-                            {{ t('player.delete') }}
-                        </div>
-                    </th>
-                </tr>
-            </thead>
 
-            <Sortable
+        <div
+            class="grid grid-cols-[85px_auto_85px_85px] 2md:grid-cols-[85px_auto_85px_85px_85px_85px_85px_85px_85px] bg-base-100 border-b border-my-gray rounded-tr-lg py-2 text-sm font-bold text-base-content/70"
+        >
+            <div v-if="!configStore.playout.playlist.infinit" class="px-3">
+                {{ t('player.start') }}
+            </div>
+            <div>
+                {{ t('player.file') }}
+            </div>
+            <div class="px-2 text-center">
+                {{ t('player.play') }}
+            </div>
+            <div class="px-2 hidden 2md:block text-center">
+                {{ t('player.duration') }}
+            </div>
+            <div class="px-2 hidden 2md:block text-center">
+                {{ t('player.in') }}
+            </div>
+            <div class="px-2 hidden 2md:block text-center">
+                {{ t('player.out') }}
+            </div>
+            <div class="px-2 hidden 2md:block text-center">
+                {{ t('player.ad') }}
+            </div>
+            <div class="px-2 text-center">
+                {{ t('player.edit') }}
+            </div>
+            <div class="px-2 hidden 2md:block text-center">
+                {{ t('player.delete') }}
+            </div>
+        </div>
+
+        <div id="playlist-container" ref="playlistContainer" class="h-[calc(100%-35px)]">
+            <VirtualList
                 id="sort-container"
                 ref="sortContainer"
-                :list="playlistStore.playlist"
-                item-key="uid"
-                tag="tbody"
-                :options="playlistSortOptions"
-                @add="addClip"
-                @start="addBG"
-                @end="moveItemInArray"
+                v-model="playlistStore.playlist"
+                :group="dragGroup"
+                class="h-full"
+                :handle="'.handle'"
+                :data-key="'uid'"
+                chosen-class="cursor-grabbing"
+                ghost-class="sortable-ghost"
+                placeholder-class="sortable-ghost"
+                wrap-tag="ul"
+                wrap-class="relative list-none text-sm"
+                :tableMode="false"
+                :animation="100"
+                @drop="dropItem"
+                @drag="addBG"
             >
-                <template #item="{ element, index }">
-                    <tr
-                        :id="`clip-${index}`"
-                        :key="element.uid"
-                        class="draggable border-t border-b border-base-content/20 duration-1000 transition-all"
+                <template #header>
+                    <div v-if="playlistStore.playlist.length === 0" class="is-empty relative">
+                        <div class="absolute text-8xl text-base-content/40 text-center w-full mt-10">
+                            <i class="bi-box-arrow-in-down" />
+                        </div>
+                    </div>
+                </template>
+                <template #item="{ record, index }">
+                    <li
+                        :id="record.uid"
+                        :key="record.uid"
+                        class="grid grid-cols-[85px_auto_85px_85px] 2md:grid-cols-[85px_auto_85px_85px_85px_85px_85px_85px_85px] odd:bg-base-200 border border-base-content/20 duration-500 transition-colors py-2"
                         :class="{
                             '!bg-lime-500/30':
                                 playlistStore.playoutIsRunning && listDate === todayDate && index === currentIndex,
-                            '!bg-amber-600/40': element.overtime,
-                            'text-base-content/60': element.category === 'advertisement',
+                            '!bg-amber-600/40': record.overtime,
+                            'text-base-content/60': record.category === 'advertisement',
                         }"
                     >
-                        <td v-if="!configStore.playout.playlist.infinit" class="ps-4 py-2 text-left">
-                            {{ secondsToTime(element.begin) }}
-                        </td>
-                        <td class="py-2 text-left truncate" :class="{ 'grabbing cursor-grab': width > 768 }">
-                            {{ element.title || filename(element.source) }}
-                        </td>
-                        <td class="py-2 text-center hover:text-base-content/70">
-                            <button @click="preview(element.source)">
+                        <div v-if="!configStore.playout.playlist.infinit" class="px-3 text-left">
+                            {{ secondsToTime(record.begin) }}
+                        </div>
+                        <div class="text-left truncate" :class="{ 'handle cursor-grab': width > 768 }">
+                            {{ record.title || filename(record.source) }}
+                        </div>
+                        <div class="text-center hover:text-base-content/70">
+                            <button class="cursor-pointer" @click="preview(record.source)">
                                 <i class="bi-play-fill" />
                             </button>
-                        </td>
-                        <td class="py-2 text-center hidden 2xs:table-cell">{{ secToHMS(element.duration) }}</td>
-                        <td class="py-2 text-center hidden xl:table-cell">
-                            {{ secToHMS(element.in) }}
-                        </td>
-                        <td class="py-2 text-center hidden xl:table-cell">
-                            {{ secToHMS(element.out) }}
-                        </td>
-                        <td class="py-2 text-center hidden xl:table-cell leading-3">
+                        </div>
+                        <div class="text-center hidden 2md:block">{{ secToHMS(record.duration) }}</div>
+                        <div class="text-center hidden 2md:block">
+                            {{ secToHMS(record.in) }}
+                        </div>
+                        <div class="text-center hidden 2md:block">
+                            {{ secToHMS(record.out) }}
+                        </div>
+                        <div class="text-center hidden 2md:block leading-3">
                             <input
                                 class="checkbox checkbox-xs rounded"
                                 type="checkbox"
-                                :checked="element.category && element.category === 'advertisement' ? true : false"
-                                @change="setCategory($event, element)"
+                                :checked="record.category && record.category === 'advertisement' ? true : false"
+                                @change="setCategory($event, record)"
                             />
-                        </td>
-                        <td class="py-2 text-center hover:text-base-content/70">
-                            <button @click="editItem(index)">
+                        </div>
+                        <div class="text-center hover:text-base-content/70">
+                            <button class="cursor-pointer" @click="editItem(index)">
                                 <i class="bi-pencil-square" />
                             </button>
-                        </td>
-                        <td class="py-2 text-center hidden 2xs:table-cell justify-center hover:text-base-content/70">
-                            <button @click="deletePlaylistItem(index)">
+                        </div>
+                        <div
+                            class="text-center hidden 2md:block justify-center text-base-content/80 hover:text-base-content/60"
+                        >
+                            <button class="cursor-pointer" @click="deletePlaylistItem(index)">
                                 <i class="bi-x-circle-fill" />
                             </button>
-                        </td>
-                    </tr>
+                        </div>
+                    </li>
                 </template>
-            </Sortable>
-        </table>
+            </VirtualList>
+        </div>
     </div>
 </template>
 <script setup lang="ts">
@@ -142,11 +137,7 @@ const todayDate = ref($dayjs().tz(configStore.timezone).format('YYYY-MM-DD'))
 const { i } = storeToRefs(useConfig())
 const { currentIndex, listDate, playoutIsRunning, scrollToItem } = storeToRefs(usePlaylist())
 
-const playlistSortOptions = {
-    group: 'playlist',
-    animation: 100,
-    handle: '.grabbing',
-}
+const dragGroup = ref({ name: 'dragGroup', pull: true, put: true })
 
 defineProps({
     editItem: {
@@ -186,37 +177,11 @@ watch([playoutIsRunning, scrollToItem], () => {
 })
 
 defineExpose({
-    classSwitcher,
     getPlaylist,
 })
 
 function scrollTo(index: number) {
-    const child = document.getElementById(`clip-${index}`)
-    const parent = document.getElementById('playlist-container')
-
-    if (child && parent) {
-        const topPos = child.offsetTop
-        parent.scrollTop = topPos - 50
-    }
-}
-
-function classSwitcher() {
-    if (playlistStore.playlist.length === 0) {
-        sortContainer.value?.sortable.el.classList.add('is-empty')
-    } else {
-        const lastItem = playlistStore.playlist[playlistStore.playlist.length - 1]
-
-        if (
-            configStore.playout.playlist.startInSec + configStore.playout.playlist.lengthInSec >
-                lastItem.begin + lastItem.out - lastItem.in ||
-            configStore.playout.playlist.infinit
-        ) {
-            sortContainer.value?.sortable.el.classList.add('add-space')
-        } else {
-            sortContainer.value?.sortable.el.classList.remove('add-space')
-        }
-        sortContainer.value?.sortable.el.classList.remove('is-empty')
-    }
+    sortContainer.value.scrollToIndex(index)
 }
 
 async function getPlaylist() {
@@ -230,8 +195,6 @@ async function getPlaylist() {
     } else {
         scrollTo(0)
     }
-
-    classSwitcher()
 }
 
 function setCategory(event: any, item: PlaylistItem) {
@@ -242,123 +205,111 @@ function setCategory(event: any, item: PlaylistItem) {
     }
 }
 
-function addBG(obj: any) {
-    if (obj.item) {
-        obj.item.classList.add('!bg-fuchsia-900/30')
+function addBG(item: any) {
+    if (item.event?.target) {
+        item.event?.target.classList.add('!bg-fuchsia-900/30')
     } else {
-        obj?.classList?.add('!bg-fuchsia-900/30')
+        item.classList?.add('!bg-fuchsia-900/30')
     }
 }
 
 function removeBG(item: any) {
     setTimeout(() => {
-        item?.classList?.remove('!bg-fuchsia-900/30')
-    }, 100)
+        item.classList?.remove('!bg-fuchsia-900/30')
+    }, 1000)
 }
 
-function addClip(event: any) {
-    const o = event.oldIndex
-    const n = event.newIndex
-    const uid = genUID()
+function dropItem(event: any) {
+    const nIndex = event.newIndex
 
-    event.item?.remove()
+    if (event.event.from.id === 'mediaList') {
+        const media = event.item
+        const storagePath = configStore.channels[configStore.i].storage
+        const sourcePath = `${storagePath}/${mediaStore.folderTree.source}/${media.name}`.replace(/\/[/]+/g, '/')
+        const uid = genUID()
 
-    const storagePath = configStore.channels[configStore.i].storage
-    const sourcePath = `${storagePath}/${mediaStore.folderTree.source}/${mediaStore.folderTree.files[o].name}`.replace(
-        /\/[/]+/g,
-        '/'
-    )
+        const mediaObject = {
+            uid,
+            begin: 0,
+            source: sourcePath,
+            in: 0,
+            out: media.duration || 10,
+            duration: media.duration || 10,
+        }
 
-    playlistStore.playlist.splice(n, 0, {
-        uid,
-        begin: 0,
-        source: sourcePath,
-        in: 0,
-        out: mediaStore.folderTree.files[o].duration || 10,
-        duration: mediaStore.folderTree.files[o].duration || 10,
-    })
+        playlistStore.playlist[nIndex] = mediaObject
+
+        nextTick(() => {
+            const newNode = document.getElementById(uid)
+            addBG(newNode)
+            removeBG(newNode)
+        })
+    }
 
     processPlaylist(listDate.value, playlistStore.playlist, false)
-    classSwitcher()
 
     nextTick(() => {
-        const newNode = document.getElementById(`clip-${n}`)
-        addBG(newNode)
-        removeBG(newNode)
+        removeBG(event.event.node)
 
-        if (n > playlistStore.playlist.length - 3) {
-            playlistContainer.value.scroll({ top: playlistContainer.value.scrollHeight, behavior: 'smooth' })
+        if (nIndex > playlistStore.playlist.length - 4) {
+            sortContainer.value.scrollToBottom()
         }
     })
-}
-
-function moveItemInArray(event: any) {
-    playlistStore.playlist.splice(event.newIndex, 0, playlistStore.playlist.splice(event.oldIndex, 1)[0])
-
-    processPlaylist(listDate.value, playlistStore.playlist, false)
-
-    removeBG(event.item)
 }
 
 function deletePlaylistItem(index: number) {
     playlistStore.playlist.splice(index, 1)
 
     processPlaylist(listDate.value, playlistStore.playlist, false)
-    classSwitcher()
 }
 </script>
 <style>
-#sort-container.is-empty:not(:has(.sortable-ghost)):after {
-    content: '\f1bc';
-    font-family: 'bootstrap-icons';
-    opacity: 0.3;
-    font-size: 50px;
-    width: 100%;
-    height: 210px;
-    display: flex;
-    position: absolute;
-    justify-content: center;
-    align-items: center;
-}
-
-#sort-container.add-space:after {
-    content: ' ';
-    width: 100%;
-    height: 37px;
-    display: flex;
-    position: absolute;
-}
-
 #sort-container .timeHidden {
     display: none !important;
 }
 
 /*
-    format dragging element
+    format dragging elements
 */
-#playlist-container .sortable-ghost {
+.media-placeholder,
+.sortable-ghost {
     background-color: #701a754b !important;
     min-height: 37px !important;
     height: 37px !important;
 }
 
-#playlist-container .sortable-ghost td {
-    padding-left: 1rem;
-    padding-right: 1rem;
-    padding-top: 0.5rem;
-    padding-bottom: 0.5rem;
+#playlist-container .media-placeholder div:nth-child(1)::after {
+    content: '00:00:00';
+    padding-left: 4px;
 }
 
-#playlist-container .sortable-ghost td:nth-last-child(3),
-#playlist-container .sortable-ghost td:nth-last-child(-n + 1) {
-    display: table-cell !important;
+#playlist-container .media-placeholder div:nth-child(1) i {
+    display: none;
 }
 
-@media (min-width: 1280px) {
-    #playlist-container .sortable-ghost td:nth-last-child(5),
-    #playlist-container .sortable-ghost td:nth-last-child(4),
-    #playlist-container .sortable-ghost td:nth-last-child(-n + 2) {
-        display: table-cell !important;
+#playlist-container .media-placeholder div:nth-child(4),
+#playlist-container .media-placeholder div:nth-child(5),
+#playlist-container .media-placeholder div:nth-child(6) {
+    padding-left: 18px;
+}
+
+#playlist-container .media-placeholder {
+    grid-template-columns: 85px auto 85px 85px;
+}
+
+@media (max-width: 875px) {
+    #playlist-container .media-placeholder div:nth-child(4) {
+        display: none;
+    }
+}
+
+@media (min-width: 876px) {
+    #playlist-container .media-placeholder {
+        grid-template-columns: 85px auto 85px 85px 85px 85px 85px 85px 85px;
+    }
+
+    #playlist-container .media-placeholder div {
+        display: block;
     }
 }
 </style>
