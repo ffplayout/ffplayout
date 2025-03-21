@@ -279,7 +279,13 @@ impl CurrentProgram {
         }
 
         for (i, item) in self.manager.current_list.lock().await.iter().enumerate() {
-            if item.begin.unwrap() + item.out - item.seek > time_sec {
+            if item
+                .begin
+                .unwrap_or(self.config.playlist.start_sec.unwrap_or_default())
+                + item.out
+                - item.seek
+                > time_sec
+            {
                 self.manager.list_init.store(false, Ordering::SeqCst);
                 self.manager.current_index.store(i, Ordering::SeqCst);
 
