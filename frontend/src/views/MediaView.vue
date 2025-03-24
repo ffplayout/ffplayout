@@ -26,7 +26,7 @@
                 <div v-if="mediaStore.isLoading" class="w-full h-full absolute z-10 flex justify-center bg-base-100/70">
                     <span class="loading loading-spinner loading-lg" />
                 </div>
-                <splitpanes :horizontal="horizontal" class="h-full border border-my-gray rounded-sm shadow">
+                <Splitpanes :horizontal="horizontal" class="h-full border border-my-gray rounded-sm shadow">
                     <pane
                         min-size="14"
                         max-size="80"
@@ -94,7 +94,7 @@
                             </table>
                         </div>
                     </pane>
-                    <pane class="h-full !bg-base-300" :class="horizontal ? 'rounded-b' : 'rounded-e'">
+                    <Pane class="h-full !bg-base-300" :class="horizontal ? 'rounded-b' : 'rounded-e'">
                         <div class="relative h-full overflow-y-auto">
                             <table
                                 v-if="mediaStore.folderTree.parent"
@@ -204,8 +204,8 @@
                                 </tbody>
                             </table>
                         </div>
-                    </pane>
-                </splitpanes>
+                    </Pane>
+                </Splitpanes>
             </div>
 
             <div class="flex justify-end py-4 pe-2">
@@ -318,7 +318,22 @@
 </template>
 
 <script setup lang="ts">
+// @ts-ignore
+import { Splitpanes, Pane } from 'splitpanes'
+
+import { ref, onMounted, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { storeToRefs } from 'pinia'
+import { useWindowSize } from '@vueuse/core'
+
+import { useAuth } from '@/stores/auth'
+import { useIndex } from '@/stores/index'
+import { useConfig } from '@/stores/config'
+import { useMedia } from '@/stores/media'
+
+import { stringFormatter } from '../composables/helper'
+
+// const { Splitpanes, Pane } = splitpanes
 
 const { t } = useI18n()
 const { width } = useWindowSize({ initialWidth: 800 })
@@ -328,10 +343,6 @@ const indexStore = useIndex()
 const mediaStore = useMedia()
 const { toMin, mediaType, filename, parent, dir_file } = stringFormatter()
 const { i } = storeToRefs(useConfig())
-
-useHead({
-    title: `${t('button.media')} | ffplayout`,
-})
 
 const horizontal = ref(false)
 const deleteName = ref('')
@@ -359,6 +370,8 @@ const overallProgress = ref(0)
 const currentProgress = ref(0)
 const lastPath = ref('')
 const xhr = ref(new XMLHttpRequest())
+
+document.title = `${t('button.media')} | ffplayout`
 
 onMounted(async () => {
     let config_extensions = configStore.playout.storage.extensions
@@ -586,7 +599,7 @@ async function createFolder(create: boolean) {
             return
         }
 
-        await $fetch(`/api/file/${configStore.channels[configStore.i].id}/create-folder/`, {
+        await fetch(`/api/file/${configStore.channels[configStore.i].id}/create-folder/`, {
             method: 'POST',
             headers: { ...configStore.contentType, ...authStore.authHeader },
             body: JSON.stringify({ source: path }),

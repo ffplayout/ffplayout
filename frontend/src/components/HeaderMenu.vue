@@ -1,6 +1,6 @@
 <template>
     <div class="navbar bg-base-100 min-h-[52px] p-0 shadow-md">
-        <RouterLink class="navbar-brand min-w-[46px] p-2" :to="home">
+        <RouterLink class="navbar-brand min-w-[46px] p-2" to="/">
             <img src="../assets/images/ffplayout-small.png" class="img-fluid" alt="Logo" width="30" height="30" />
         </RouterLink>
         <div class="navbar-end w-1/5 grow">
@@ -116,7 +116,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 
@@ -126,7 +126,7 @@ import { useAuth } from '@/stores/auth'
 import { useIndex } from '@/stores/index'
 import { useConfig } from '@/stores/config'
 
-const { locale, t } = useI18n()
+const { t } = useI18n()
 const router = useRouter()
 
 const authStore = useAuth()
@@ -136,10 +136,8 @@ const indexStore = useIndex()
 const menuDropdown = ref()
 const isOpen = ref(false)
 
-const home = computed(() => (locale.value === 'en-US' ? '/' : `/${locale.value}/`))
-
 const menuItems = ref([
-    { label: 'home', name: t('button.home'), link: home },
+    { label: 'home', name: t('button.home'), link: '/' },
     { label: 'player', name: t('button.player'), link: '/player' },
     { label: 'media', name: t('button.media'), link: '/media' },
     { label: 'message', name: t('button.message'), link: '/message' },
@@ -183,7 +181,7 @@ function closeDropdown($event: any) {
 
 function logout() {
     authStore.removeToken()
-    router.push(home.value)
+    router.push('/')
 }
 
 function selectChannel(index: number) {

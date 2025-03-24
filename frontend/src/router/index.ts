@@ -1,8 +1,9 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { i18n } from '../locales/i18n'
+// import { i18n } from '../i18n'
 import HomeView from '../views/HomeView.vue'
 
 import { useAuth } from '@/stores/auth'
+import { useConfig } from '@/stores/config'
 
 const router = createRouter({
     history: createWebHistory(import.meta.env.BASE_URL),
@@ -42,11 +43,13 @@ const router = createRouter({
 
 router.beforeEach(async (to, from, next) => {
     const auth = useAuth()
-    await auth.inspectToken()
+    const configStore = useConfig()
+
+    await configStore.configInit()
 
     if (!auth.isLogin && !String(to.name).includes('home')) {
-        const loc = i18n.locale.value === 'en-US' ? '' : `${i18n.locale.value}/`
-        next(`/${loc}`)
+        // const loc = i18n.locale.value === 'en-US' ? '' : `${i18n.locale.value}/`
+        next('/')
     } else {
         next()
     }

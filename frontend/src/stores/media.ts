@@ -1,5 +1,12 @@
 import { defineStore } from 'pinia'
 
+import { useAuth } from "./auth";
+import { useIndex } from "./index";
+import { useConfig } from "./config";
+import { i18n } from '../i18n';
+
+import { playlistOperations } from "../composables/helper"
+
 const { genUID } = playlistOperations()
 
 export const useMedia = defineStore('media', {
@@ -19,7 +26,6 @@ export const useMedia = defineStore('media', {
                 this.isLoading = true
             }
 
-            const { $i18n } = useNuxtApp()
             const authStore = useAuth()
             const configStore = useConfig()
             const indexStore = useIndex()
@@ -36,7 +42,7 @@ export const useMedia = defineStore('media', {
                     if (response.status === 200) {
                         return response.json()
                     } else {
-                        indexStore.msgAlert('error', $i18n.t('media.notExists'), 3)
+                        indexStore.msgAlert('error', i18n.t('media.notExists'), 3)
 
                         return {
                             source: '',

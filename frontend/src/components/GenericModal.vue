@@ -30,6 +30,7 @@
     </div>
 </template>
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 const { t } = useI18n()
 
 const props = defineProps({
@@ -57,13 +58,5 @@ const props = defineProps({
     },
 })
 
-useHead({
-    bodyAttrs: {
-        class: computed(() => {
-            if (props.show) return 'overflow-hidden'
-
-            return ''
-        }),
-    },
-})
+document.body.style.overflow = props.show ? 'hidden' : ''
 </script>

@@ -3,7 +3,7 @@ import './assets/main.css'
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 
-import i18nInstance from './locales/i18n.ts'
+import i18nInstance from './i18n.ts'
 
 import App from './App.vue'
 import router from './router/index.ts'

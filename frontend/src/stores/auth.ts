@@ -1,129 +1,134 @@
-import { defineStore } from "pinia";
-import { jwtDecode } from "jwt-decode";
+import { defineStore } from 'pinia'
+import { jwtDecode } from 'jwt-decode'
 
-export const useAuth = defineStore("auth", {
+export const useAuth = defineStore('auth', {
     state: () => ({
         isLogin: false,
-        jwtToken: "",
-        jwtRefresh: "",
+        jwtToken: '',
+        jwtRefresh: '',
         authHeader: {},
-        role: "",
+        role: '',
         uuid: null as null | string,
     }),
 
     getters: {},
     actions: {
         updateToken(token: string, refresh: string) {
-            localStorage.setItem("token", token);
-            localStorage.setItem("refresh", refresh);
+            localStorage.setItem('token', token)
+            localStorage.setItem('refresh', refresh)
 
-            this.jwtToken = token;
-            this.jwtRefresh = refresh;
-            this.authHeader = { Authorization: `Bearer ${token}` };
+            this.jwtToken = token
+            this.jwtRefresh = refresh
+            this.authHeader = { Authorization: `Bearer ${token}` }
         },
 
         removeToken() {
-            localStorage.removeItem("token");
-            localStorage.removeItem("refresh");
+            localStorage.removeItem('token')
+            localStorage.removeItem('refresh')
 
-            this.isLogin = false;
-            this.jwtToken = "";
-            this.jwtRefresh = "";
-            this.authHeader = {};
+            this.isLogin = false
+            this.jwtToken = ''
+            this.jwtRefresh = ''
+            this.authHeader = {}
         },
 
         async obtainToken(username: string, password: string) {
-            let code = 0;
+            let code = 400
             const payload = {
                 username,
                 password,
-            };
+            }
 
-            await fetch("/auth/login/", {
-                method: "POST",
-                headers: new Headers([["content-type", "application/json;charset=UTF-8"]]),
+            await fetch('/auth/login/', {
+                method: 'POST',
+                headers: new Headers([['content-type', 'application/json;charset=UTF-8']]),
                 body: JSON.stringify(payload),
             })
                 .then((resp) => {
-                    code = resp.status;
-                    return resp.json();
+                    code = resp.status
+
+                    if (code === 200) {
+                        return resp.json()
+                    }
                 })
                 .then((response: Token) => {
-                    this.updateToken(response.access, response.refresh);
-                    const decodedToken = jwtDecode<JwtPayloadExt>(response.access);
-                    this.isLogin = true;
-                    this.role = decodedToken.role;
+                    if (response?.access) {
+                        this.updateToken(response.access, response.refresh)
+                        const decodedToken = jwtDecode<JwtPayloadExt>(response.access)
+                        this.isLogin = true
+                        this.role = decodedToken.role
+                    }
                 })
                 .catch((e) => {
-                    code = e.status;
-                });
+                    code = typeof e.status === 'number' ? e.status : code
+                })
 
-            return code;
+            return code
         },
 
         async obtainUuid() {
-            await fetch("/api/generate-uuid", {
-                method: "POST",
+            await fetch('/api/generate-uuid', {
+                method: 'POST',
                 headers: this.authHeader,
             })
                 .then((resp) => resp.json())
                 .then((response: any) => {
-                    this.uuid = response.uuid;
+                    this.uuid = response.uuid
                 })
                 .catch((e) => {
                     if (e.status === 401) {
-                        this.removeToken();
+                        this.removeToken()
                     }
-                    this.uuid = null;
-                });
+                    this.uuid = null
+                })
         },
 
         async refreshToken() {
-            await fetch("/auth/refresh/", {
-                method: "POST",
-                headers: new Headers([["content-type", "application/json;charset=UTF-8"]]),
+            await fetch('/auth/refresh/', {
+                method: 'POST',
+                headers: new Headers([['content-type', 'application/json;charset=UTF-8']]),
                 body: JSON.stringify({ refresh: this.jwtRefresh }),
             })
                 .then((resp) => resp.json())
                 .then((response: any) => {
                     if (response.access) {
-                        this.updateToken(response.access, this.jwtRefresh);
-                        this.isLogin = true;
+                        this.updateToken(response.access, this.jwtRefresh)
+                        this.isLogin = true
                     }
                 })
                 .catch(() => {
-                    this.removeToken();
-                });
+                    this.removeToken()
+                })
         },
 
         async inspectToken() {
-            const token = localStorage.getItem("token");
-            const refresh = localStorage.getItem("refresh");
+            const token = localStorage.getItem('token')
+            const refresh = localStorage.getItem('refresh')
 
             if (token && refresh) {
-                this.jwtToken = token;
-                this.jwtRefresh = refresh;
-                this.authHeader = { Authorization: `Bearer ${token}` };
+                this.jwtToken = token
+                this.jwtRefresh = refresh
+                this.authHeader = { Authorization: `Bearer ${token}` }
 
-                const decodedToken = jwtDecode<JwtPayloadExt>(token);
-                const decodedRefresh = jwtDecode<JwtPayloadExt>(refresh);
-                const timestamp = Date.now() / 1000;
-                const expireToken = decodedToken.exp;
-                const expireRefresh = decodedRefresh.exp || 0;
+                const decodedToken = jwtDecode<JwtPayloadExt>(token)
+                const decodedRefresh = jwtDecode<JwtPayloadExt>(refresh)
+                const timestamp = Date.now() / 1000
+                const expireToken = decodedToken.exp
+                const expireRefresh = decodedRefresh.exp || 0
 
-                this.role = decodedToken.role;
+                this.role = decodedToken.role
 
                 if (expireToken && this.jwtToken && expireToken - timestamp > 15) {
-                    this.isLogin = true;
+                    this.isLogin = true
                 } else if (expireRefresh && expireRefresh - timestamp > 0) {
-                    await this.refreshToken();
+                    await this.refreshToken()
                 } else {
                     // Prompt user to re-login.
-                    this.removeToken();
+                    this.removeToken()
                 }
             } else {
-                this.removeToken();
+                this.removeToken()
             }
         },
     },
-});
+})

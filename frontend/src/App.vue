@@ -12,29 +12,24 @@
     </div>
 </template>
 <script setup lang="ts">
-import { onBeforeMount } from 'vue'
 import { RouterView, useRoute } from 'vue-router'
+import { useI18n } from 'vue-i18n'
+
 import { useAuth } from '@/stores/auth'
 import { useIndex } from '@/stores/index'
-import { useConfig } from '@/stores/config'
 
 import AlertMsg from '@/components/AlertMsg.vue'
 import HeaderMenu from '@/components/HeaderMenu.vue'
 
+const { locale } = useI18n()
 const authStore = useAuth()
 const indexStore = useIndex()
-const configStore = useConfig()
 const route = useRoute()
 
-configStore.configInit()
+const language = localStorage.getItem('language')
+const theme = localStorage.getItem('theme')
 
-onBeforeMount(() => {
-    const theme = localStorage.getItem('theme')
-    document.documentElement.setAttribute('data-theme', theme || 'dark')
-
-    indexStore.darkMode = !theme || theme === 'dark'
-
-})
-
+locale.value = language || 'en-US'
+document.documentElement.setAttribute('data-theme', theme || 'dark')
+indexStore.darkMode = !theme || theme === 'dark'
 </script>
-

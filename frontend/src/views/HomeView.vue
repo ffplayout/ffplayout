@@ -27,11 +27,13 @@
                     {{ t('button.logout') }}
                 </button>
                 <div class="dropdown">
-                    <div tabindex="0" role="button" class="btn btn-primary bg-primary/70 px-2 join-item">{{ selectedLang?.name }}</div>
+                    <div tabindex="0" role="button" class="btn btn-primary bg-primary/70 px-2 join-item">
+                        {{ selectedLang?.name }}
+                    </div>
                     <ul tabindex="0" class="dropdown-content menu bg-base-100 rounded-box z-1 w-52 p-2 shadow-sm">
-                        <li v-for="lang in availableLocales" :key="lang" :title="lang">
+                        <li v-for="lang in locales" :key="lang.code" :title="lang.name">
                             <button class="px-1 py-2 rounded" @click="changeLang(lang)">
-                                {{ lang }}
+                                {{ lang.name }}
                             </button>
                         </li>
                     </ul>
@@ -88,9 +90,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from "vue"
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { useI18n } from "vue-i18n"
+import { useI18n } from 'vue-i18n'
+
+import { locales } from '../i18n'
+
 import { useAuth } from '@/stores/auth'
 import { useIndex } from '@/stores/index'
 import { useConfig } from '@/stores/config'
@@ -98,7 +103,7 @@ import { useConfig } from '@/stores/config'
 import SvgIcon from '@/components/SvgIcon.vue'
 import SystemStats from '@/components/SystemStats.vue'
 
-const { availableLocales, locale, t } = useI18n()
+const { locale, t } = useI18n()
 // const localePath = useLocalePath()
 // const switchLocalePath = useSwitchLocalePath()
 const router = useRouter()
@@ -116,7 +121,7 @@ const formPassword = ref('')
 // const langCookie = useCookie('i18n_redirected')
 
 onMounted(() => {
-    selectedLang.value = availableLocales.find((loc: string) => loc === locale.value)
+    selectedLang.value = locales.find((loc: any) => loc.language === locale.value)
 })
 
 async function login() {
@@ -163,8 +168,8 @@ async function logout() {
 }
 
 async function changeLang(lang: any) {
-
     selectedLang.value = lang
-    langCookie.value = lang.code
+    locale.value = lang.language
+    localStorage.setItem('language', lang.language)
 }
 </script>
