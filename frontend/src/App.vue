@@ -47,6 +47,7 @@ indexStore.darkMode = preferDark()
 
 useHead({
     htmlAttrs: {
+        lang: computed(() => locale.value),
         'data-theme': computed(() => (indexStore.darkMode ? 'dark' : 'light')),
     },
 })

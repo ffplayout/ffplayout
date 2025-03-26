@@ -90,10 +90,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { useHead } from '@unhead/vue'
 
 import { locales } from '../i18n'
 
@@ -120,12 +119,6 @@ const formUsername = ref('')
 const formPassword = ref('')
 
 // const langCookie = useCookie('i18n_redirected')
-
-useHead({
-    htmlAttrs: {
-        lang: computed(() => locale.value),
-    },
-})
 
 onMounted(() => {
     selectedLang.value = locales.find((loc: any) => loc.code === locale.value)

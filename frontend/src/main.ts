@@ -15,7 +15,7 @@ const head = createHead({
     init: [
         {
             title: 'ffplayout',
-            titleTemplate: '%s | ffplayout',
+            // titleTemplate: '%s | ffplayout',
             htmlAttrs: { lang: 'en' },
         },
     ],

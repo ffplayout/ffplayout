@@ -81,10 +81,10 @@ const indexStore = useIndex()
 
 useHead({
     title: computed(() => t('button.logging')),
+    titleTemplate: '%s | ffplayout',
 })
 
 const { i } = storeToRefs(useConfig())
-
 const authStore = useAuth()
 const configStore = useConfig()
 const currentLog = ref('')
