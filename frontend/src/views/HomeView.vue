@@ -90,9 +90,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import { useHead } from '@unhead/vue'
 
 import { locales } from '../i18n'
 
@@ -120,8 +121,14 @@ const formPassword = ref('')
 
 // const langCookie = useCookie('i18n_redirected')
 
+useHead({
+    htmlAttrs: {
+        lang: computed(() => locale.value),
+    },
+})
+
 onMounted(() => {
-    selectedLang.value = locales.find((loc: any) => loc.language === locale.value)
+    selectedLang.value = locales.find((loc: any) => loc.code === locale.value)
 })
 
 async function login() {
@@ -152,10 +159,10 @@ function toggleTheme() {
 
     if (indexStore.darkMode) {
         localStorage.setItem('theme', 'dark')
-        document.documentElement.setAttribute('data-theme', 'dark')
+        // document.documentElement.setAttribute('data-theme', 'dark')
     } else {
         localStorage.setItem('theme', 'light')
-        document.documentElement.setAttribute('data-theme', 'light')
+        // document.documentElement.setAttribute('data-theme', 'light')
     }
 }
 
@@ -169,7 +176,7 @@ async function logout() {
 
 async function changeLang(lang: any) {
     selectedLang.value = lang
-    locale.value = lang.language
-    localStorage.setItem('language', lang.language)
+    locale.value = lang.code
+    localStorage.setItem('language', lang.code)
 }
 </script>

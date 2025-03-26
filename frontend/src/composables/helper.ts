@@ -4,6 +4,8 @@ import timezone from 'dayjs/plugin/timezone'
 dayjs.extend(utc)
 dayjs.extend(timezone)
 
+import { useConfig } from '@/stores/config'
+
 export const stringFormatter = () => {
     function fileSize(bytes: number | undefined, dp = 2) {
         if (!bytes) {

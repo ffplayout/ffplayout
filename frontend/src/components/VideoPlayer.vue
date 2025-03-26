@@ -12,8 +12,11 @@
 </template>
 
 <script setup lang="ts">
+import { ref, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import videojs from 'video.js'
 import 'video.js/dist/video-js.css'
+
+import { useConfig } from '@/stores/config'
 
 const configStore = useConfig()
 

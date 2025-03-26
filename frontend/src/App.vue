@@ -12,8 +12,10 @@
     </div>
 </template>
 <script setup lang="ts">
+import { computed } from 'vue'
 import { RouterView, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import { useHead } from '@unhead/vue'
 
 import { useAuth } from '@/stores/auth'
 import { useIndex } from '@/stores/index'
@@ -27,9 +29,25 @@ const indexStore = useIndex()
 const route = useRoute()
 
 const language = localStorage.getItem('language')
+
+locale.value = language || 'en'
+
+const darkThemeMq = window.matchMedia('(prefers-color-scheme: dark)')
 const theme = localStorage.getItem('theme')
 
-locale.value = language || 'en-US'
-document.documentElement.setAttribute('data-theme', theme || 'dark')
-indexStore.darkMode = !theme || theme === 'dark'
+const preferDark = () => {
+    if ((theme && theme === 'dark') || (!theme && darkThemeMq.matches)) {
+        return true
+    } else {
+        return false
+    }
+}
+
+indexStore.darkMode = preferDark()
+
+useHead({
+    htmlAttrs: {
+        'data-theme': computed(() => (indexStore.darkMode ? 'dark' : 'light')),
+    },
+})
 </script>

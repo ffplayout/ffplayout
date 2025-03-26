@@ -2,7 +2,7 @@
     <div class="w-full flex flex-col">
         <div class="flex justify-end p-3 h-14">
             <div class="join">
-                <select v-model="errorLevel" class="join-item select select-sm w-full max-w-xs">
+                <select v-model="errorLevel" class="join-item select select-sm w-24">
                     <option
                         v-for="(index, value) in indexStore.severityLevels"
                         :key="index"
@@ -20,9 +20,10 @@
                     :format="calendarFormat"
                     model-type="yyyy-MM-dd"
                     auto-apply
+                    class="max-w-[170px]"
                     :locale="locale"
-                    :dark="colorMode.value === 'dark'"
-                    :ui="{ input: 'join-item input !input-sm !!w-[170px] text-right !pe-3' }"
+                    :dark="indexStore.darkMode"
+                    :ui="{ input: 'join-item input !input-sm !max-w-[170px] text-right !pe-3' }"
                     required
                 />
                 <button class="btn btn-sm btn-primary join-item" :title="t('log.reload')" @click="getLog()">
@@ -34,49 +35,63 @@
             </div>
         </div>
         <div class="px-3 inline-block h-[calc(100vh-140px)] text-[13px]">
-            <div id="log-container" class="bg-base-300 whitespace-pre h-full font-mono overflow-auto p-3">
-                <div id="log-content" v-html="filterLogsBySeverity(formatLog(currentLog, configStore.timezone), errorLevel)" />
+            <div id="log-container" class="bg-base-300 h-full font-mono overflow-auto p-3">
+                <div
+                    id="log-content"
+                    class="whitespace-pre"
+                    v-html="filterLogsBySeverity(formatLog(currentLog, configStore.timezone), errorLevel)"
+                />
             </div>
         </div>
     </div>
 </template>
 
 <script setup lang="ts">
+import dayjs from 'dayjs'
+import customParseFormat from 'dayjs/plugin/customParseFormat.js'
+import LocalizedFormat from 'dayjs/plugin/localizedFormat.js'
+import timezone from 'dayjs/plugin/timezone.js'
+import utc from 'dayjs/plugin/utc.js'
+import { computed, nextTick, ref, onMounted, watch } from 'vue'
 import { storeToRefs } from 'pinia'
+import { useI18n } from 'vue-i18n'
+import { useHead } from '@unhead/vue'
+import VueDatePicker from '@vuepic/vue-datepicker'
+import '@vuepic/vue-datepicker/dist/main.css'
 
-const colorMode = useColorMode()
+import 'dayjs/locale/de'
+import 'dayjs/locale/en'
+import 'dayjs/locale/es'
+import 'dayjs/locale/pt-br'
+import 'dayjs/locale/ru'
+
+dayjs.extend(customParseFormat)
+dayjs.extend(LocalizedFormat)
+dayjs.extend(timezone)
+dayjs.extend(utc)
+
+import { useAuth } from '@/stores/auth'
+import { useConfig } from '@/stores/config'
+import { useIndex } from '@/stores/index'
+
+import { stringFormatter } from '../composables/helper'
+
 const { locale, t } = useI18n()
-
 const indexStore = useIndex()
 
 useHead({
-    title: `${t('button.logging')} | ffplayout`,
+    title: computed(() => t('button.logging')),
 })
 
 const { i } = storeToRefs(useConfig())
 
-const { $dayjs } = useNuxtApp()
 const authStore = useAuth()
 const configStore = useConfig()
 const currentLog = ref('')
-const listDate = ref($dayjs().tz(configStore.timezone).format('YYYY-MM-DD'))
+const listDate = ref(dayjs().tz(configStore.timezone).format('YYYY-MM-DD'))
 const { formatLog } = stringFormatter()
 
-const levelCookie = useCookie('error_level', {
-    path: '/',
-    maxAge: 60 * 60 * 24 * 365,
-    sameSite: 'lax',
-})
-
-const errorLevel = computed({
-    get() {
-        return levelCookie.value || 'INFO'
-    },
-
-    set(value) {
-        levelCookie.value = value
-    },
-})
+const errorLevel = ref(localStorage.getItem('error_level') || 'INFO')
 
 onMounted(async () => {
     await getLog()
@@ -86,8 +101,12 @@ watch([listDate, i], () => {
     getLog()
 })
 
+watch(errorLevel, (newValue) => {
+    localStorage.setItem('error_level', newValue)
+})
+
 const calendarFormat = (date: Date) => {
-    return $dayjs(date).locale(locale.value).format('ddd L')
+    return dayjs(date).locale(locale.value).format('ddd L')
 }
 
 function scrollTo() {
@@ -118,7 +137,7 @@ function filterLogsBySeverity(logString: string, minSeverity: string): string {
 async function getLog() {
     let date = listDate.value
 
-    if (date === $dayjs().tz(configStore.timezone).format('YYYY-MM-DD')) {
+    if (date === dayjs().tz(configStore.timezone).format('YYYY-MM-DD')) {
         date = ''
     }
 
@@ -126,7 +145,12 @@ async function getLog() {
         method: 'GET',
         headers: authStore.authHeader,
     })
-        .then((response) => response.text())
+        .then((response) => {
+            if (!response.ok) {
+                throw new Error(`HTTP error! Status: ${response.status}`) // Löst catch aus
+            }
+            return response.text()
+        })
         .then((data) => {
             currentLog.value = data
 

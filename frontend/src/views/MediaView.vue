@@ -331,6 +331,9 @@ import { useIndex } from '@/stores/index'
 import { useConfig } from '@/stores/config'
 import { useMedia } from '@/stores/media'
 
+import GenericModal from '@/components/GenericModal.vue'
+import VideoPlayer from '@/components/VideoPlayer.vue'
+
 import { stringFormatter } from '../composables/helper'
 
 // const { Splitpanes, Pane } = splitpanes

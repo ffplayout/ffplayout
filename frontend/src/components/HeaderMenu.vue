@@ -145,9 +145,6 @@ const menuItems = ref([
     { label: 'configure', name: t('button.configure'), link: '/configure' },
 ])
 
-const theme = localStorage.getItem('theme')
-indexStore.darkMode = !theme || theme === 'dark'
-
 function closeMenu() {
     setTimeout(() => {
         isOpen.value = false
