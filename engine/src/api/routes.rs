@@ -49,6 +49,7 @@ use crate::{
             JsonPlaylist,
         },
     },
+    sse::broadcast::Broadcaster,
     utils::{
         advanced_config::AdvancedConfig,
         channels::{create_channel, delete_channel},
@@ -58,7 +59,7 @@ use crate::{
         mail::MailQueue,
         naive_date_time_from_str,
         playlist::{delete_playlist, generate_playlist, read_playlist, write_playlist},
-        public_path, read_log_file, system, TextFilter,
+        public_path, read_log_file, TextFilter,
     },
     vec_strings,
 };
@@ -1740,6 +1741,7 @@ async fn get_program(
 )]
 pub async fn get_system_stat(
     id: web::Path<i32>,
+    broadcaster: web::Data<Broadcaster>,
     controllers: web::Data<Mutex<ChannelController>>,
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
@@ -1752,7 +1754,7 @@ pub async fn get_system_stat(
         .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
     let config = manager.config.lock().await.clone();
 
-    let stat = web::block(move || system::stat(&config)).await?;
+    let stat = broadcaster.system.stat(&config).await;
 
     Ok(web::Json(stat))
 }
