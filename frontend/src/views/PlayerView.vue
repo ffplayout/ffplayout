@@ -22,7 +22,7 @@
                     model-type="yyyy-MM-dd"
                     auto-apply
                     :locale="locale"
-                    :dark="colorMode.value === 'dark'"
+                    :dark="indexStore.darkMode"
                     :ui="{ input: 'input input-sm !!w-[300px] text-right !pe-3' }"
                     required
                     @update:model-value=";(beforeDayStart = false), (firstLoad = false)"
@@ -30,11 +30,11 @@
             </div>
         </div>
         <div class="p-1 min-h-[260px] h-[calc(100vh-800px)] xl:h-[calc(100vh-480px)]">
-            <splitpanes
+            <Splitpanes
                 v-if="configStore.playout.processing.mode === 'playlist'"
                 class="border border-my-gray rounded-sm shadow"
             >
-                <pane
+                <Pane
                     v-if="width > 739"
                     class="relative h-full !bg-base-300 rounded-s"
                     min-size="0"
@@ -42,11 +42,11 @@
                     size="20"
                 >
                     <MediaBrowser :preview="setPreviewData" />
-                </pane>
+                </Pane>
                 <pane>
                     <PlaylistTable ref="playlistTable" :edit-item="editPlaylistItem" :preview="setPreviewData" />
                 </pane>
-            </splitpanes>
+            </Splitpanes>
             <div v-else class="h-full border border-b-2 border-my-gray rounded-sm shadow">
                 <MediaBrowser :preview="setPreviewData" />
             </div>
@@ -130,7 +130,7 @@
                 model-type="yyyy-MM-dd"
                 auto-apply
                 :locale="locale"
-                :dark="colorMode.value === 'dark'"
+                :dark="indexStore.darkMode"
                 :ui="{ input: 'input input-sm !!w-[full text-right !pe-3' }"
                 required
             />
@@ -196,7 +196,7 @@
                 <fieldset class="fieldset">
                     <legend class="fieldset-legend">{{ t('player.cuts') }}</legend>
                     <input
-                         v-model="splitCount"
+                        v-model="splitCount"
                         type="number"
                         min="0"
                         step="1"
@@ -230,11 +230,49 @@
 </template>
 
 <script setup lang="ts">
-import { cloneDeep } from 'lodash-es'
+import dayjs from 'dayjs'
+import customParseFormat from 'dayjs/plugin/customParseFormat.js'
+import LocalizedFormat from 'dayjs/plugin/localizedFormat.js'
+import timezone from 'dayjs/plugin/timezone.js'
+import utc from 'dayjs/plugin/utc.js'
+import 'dayjs/locale/de'
+import 'dayjs/locale/en'
+import 'dayjs/locale/es'
+import 'dayjs/locale/pt-br'
+import 'dayjs/locale/ru'
 
-const colorMode = useColorMode()
+import VueDatePicker from '@vuepic/vue-datepicker'
+import '@vuepic/vue-datepicker/dist/main.css'
+
+// @ts-ignore
+import { Splitpanes, Pane } from 'splitpanes'
+
+import { computed, ref, onBeforeMount } from 'vue'
+import { cloneDeep } from 'lodash-es'
+import { useI18n } from 'vue-i18n'
+import { useWindowSize } from '@vueuse/core'
+import { storeToRefs } from 'pinia'
+import { useHead } from '@unhead/vue'
+
+dayjs.extend(customParseFormat)
+dayjs.extend(LocalizedFormat)
+dayjs.extend(timezone)
+dayjs.extend(utc)
+
+import PlayerControl from '@/components/PlayerControl.vue'
+import MediaBrowser from '@/components/MediaBrowser.vue'
+import PlaylistTable from '@/components/PlaylistTable.vue'
+import GenericModal from '@/components/GenericModal.vue'
+import PlaylistGenerator from '@/components/PlaylistGenerator.vue'
+
+import { stringFormatter, playlistOperations } from '@/composables/helper'
+import { useAuth } from '@/stores/auth'
+import { useIndex } from '@/stores/index'
+import { useConfig } from '@/stores/config'
+import { useMedia } from '@/stores/media'
+import { usePlaylist } from '@/stores/playlist'
+
 const { locale, t } = useI18n()
-const { $dayjs } = useNuxtApp()
 const { width } = useWindowSize({ initialWidth: 800 })
 const { mediaType } = stringFormatter()
 const { processPlaylist, genUID } = playlistOperations()
@@ -248,7 +286,7 @@ const playlistStore = usePlaylist()
 const { listDate, firstLoad } = storeToRefs(usePlaylist())
 
 const beforeDayStart = ref(false)
-const targetDate = ref($dayjs().tz(configStore.timezone).format('YYYY-MM-DD'))
+const targetDate = ref(dayjs().tz(configStore.timezone).format('YYYY-MM-DD'))
 const playlistTable = ref()
 const editId = ref(-1)
 const textFile = ref()
@@ -292,7 +330,7 @@ useHead({
 })
 
 onBeforeMount(() => {
-    const currentTime = $dayjs().tz(configStore.timezone)
+    const currentTime = dayjs().tz(configStore.timezone)
 
     if (
         firstLoad.value &&
@@ -300,7 +338,7 @@ onBeforeMount(() => {
         currentTime.format('HH:mm:ss') > '00:00:00' &&
         currentTime.format('HH:mm:ss') < configStore.playout.playlist.day_start
     ) {
-        listDate.value = $dayjs(playlistStore.listDate).subtract(1, 'day').format('YYYY-MM-DD')
+        listDate.value = dayjs(playlistStore.listDate).subtract(1, 'day').format('YYYY-MM-DD')
         beforeDayStart.value = true
     }
 
@@ -311,7 +349,7 @@ onBeforeMount(() => {
 })
 
 const calendarFormat = (date: Date) => {
-    return $dayjs(date).locale(locale.value).format('dddd - LL')
+    return dayjs(date).locale(locale.value).format('dddd - LL')
 }
 
 function closeGenerator() {
@@ -512,7 +550,7 @@ async function importPlaylist(imp: boolean) {
         formData.append(textFile.value[0].name, textFile.value[0])
 
         playlistStore.isLoading = true
-        await $fetch(
+        await fetch(
             `/api/file/${configStore.channels[configStore.i].id}/import/?file=${textFile.value[0].name}&date=${
                 listDate.value
             }`,
@@ -522,6 +560,13 @@ async function importPlaylist(imp: boolean) {
                 body: formData,
             }
         )
+            .then(async (response) => {
+                if (!response.ok) {
+                    throw new Error(await response.text())
+                }
+
+                return response.json()
+            })
             .then(async (response) => {
                 indexStore.msgAlert('success', String(response), 2)
                 await playlistStore.getPlaylist(listDate.value)
@@ -546,7 +591,7 @@ async function savePlaylist(save: boolean) {
 
         const saveList = processPlaylist(listDate.value, cloneDeep(playlistStore.playlist), true)
 
-        await $fetch(`/api/playlist/${configStore.channels[configStore.i].id}/`, {
+        await fetch(`/api/playlist/${configStore.channels[configStore.i].id}/`, {
             method: 'POST',
             headers: { ...configStore.contentType, ...authStore.authHeader },
             body: JSON.stringify({
@@ -555,6 +600,13 @@ async function savePlaylist(save: boolean) {
                 program: saveList,
             }),
         })
+            .then(async (response) => {
+                if (!response.ok) {
+                    throw new Error(await response.text())
+                }
+
+                return response.json()
+            })
             .then((response: any) => {
                 playlistTable.value.classSwitcher()
                 indexStore.msgAlert('success', response, 2)
@@ -573,7 +625,7 @@ async function deletePlaylist(del: boolean) {
     showDeleteModal.value = false
 
     if (del) {
-        await $fetch(`/api/playlist/${configStore.channels[configStore.i].id}/${listDate.value}`, {
+        await fetch(`/api/playlist/${configStore.channels[configStore.i].id}/${listDate.value}`, {
             method: 'DELETE',
             headers: { ...configStore.contentType, ...authStore.authHeader },
         }).then(() => {

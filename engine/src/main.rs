@@ -118,8 +118,7 @@ async fn main() -> Result<(), ProcessError> {
             let auth = HttpAuthentication::bearer(validator);
             let db_pool = web::Data::new(db_clone.clone());
             // Customize logging format to get IP though proxies.
-            let logger = Logger::new("%{r}a \"%r\" %s %b \"%{Referer}i\" \"%{User-Agent}i\" %T")
-                .exclude_regex(r"/_nuxt/*");
+            let logger = Logger::new("%{r}a \"%r\" %s %b \"%{Referer}i\" \"%{User-Agent}i\" %T");
 
             let mut web_app = App::new()
                 .app_data(db_pool)

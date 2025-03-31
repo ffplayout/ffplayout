@@ -180,12 +180,39 @@
 </template>
 
 <script setup lang="ts">
-import { throttle } from 'lodash-es'
-import { storeToRefs } from 'pinia'
+import dayjs from 'dayjs'
+import customParseFormat from 'dayjs/plugin/customParseFormat.js'
+import LocalizedFormat from 'dayjs/plugin/localizedFormat.js'
+import timezone from 'dayjs/plugin/timezone.js'
+import utc from 'dayjs/plugin/utc.js'
 import mpegts from 'mpegts.js'
 
+import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { throttle } from 'lodash-es'
+import { storeToRefs } from 'pinia'
+import { useEventSource } from '@vueuse/core'
+
+import { stringFormatter } from '@/composables/helper'
+import { useAuth } from '@/stores/auth'
+import { useIndex } from '@/stores/index'
+import { useConfig } from '@/stores/config'
+import { usePlaylist } from '@/stores/playlist'
+
+import 'dayjs/locale/de'
+import 'dayjs/locale/en'
+import 'dayjs/locale/es'
+import 'dayjs/locale/pt-br'
+import 'dayjs/locale/ru'
+
+dayjs.extend(customParseFormat)
+dayjs.extend(LocalizedFormat)
+dayjs.extend(timezone)
+dayjs.extend(utc)
+
+import VideoPlayer from '@/components/VideoPlayer.vue'
+
 const { t } = useI18n()
-const { $dayjs } = useNuxtApp()
 const authStore = useAuth()
 const configStore = useConfig()
 const indexStore = useIndex()
@@ -313,7 +340,7 @@ function timeRemaining() {
 
 async function clock() {
     async function setTime(resolve: any) {
-        timeStr.value = $dayjs().tz(configStore.timezone).format('HH:mm:ss')
+        timeStr.value = dayjs().tz(configStore.timezone).format('HH:mm:ss')
         timer.value = setTimeout(() => setTime(resolve), 1000)
     }
     return new Promise((resolve) => setTime(resolve))
@@ -330,7 +357,7 @@ const controlProcess = throttle(async (state: string) => {
         Control playout (start, stop, restart)
     */
     const channel = configStore.channels[configStore.i].id
-    await $fetch(`/api/control/${channel}/process/`, {
+    await fetch(`/api/control/${channel}/process/`, {
         method: 'POST',
         headers: { ...configStore.contentType, ...authStore.authHeader },
         body: JSON.stringify({ command: state }),
@@ -354,7 +381,7 @@ const controlPlayout = throttle(async (state: string) => {
     */
     const channel = configStore.channels[configStore.i].id
 
-    await $fetch(`/api/control/${channel}/playout/`, {
+    await fetch(`/api/control/${channel}/playout/`, {
         method: 'POST',
         headers: { ...configStore.contentType, ...authStore.authHeader },
         body: JSON.stringify({ control: state }),

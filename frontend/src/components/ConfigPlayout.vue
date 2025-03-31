@@ -278,11 +278,7 @@
 
                 <fieldset class="fieldset">
                     <legend class="fieldset-legend">Custom Filter</legend>
-                    <textarea
-                        v-model="configStore.playout.processing.custom_filter"
-                        class="textarea w-full"
-                        rows="3"
-                    />
+                    <textarea v-model="configStore.playout.processing.custom_filter" class="textarea w-full" rows="3" />
                     <p class="fieldset-label items-baseline">{{ t('config.processingCustomFilter') }}</p>
                 </fieldset>
 
@@ -348,11 +344,7 @@
                 </fieldset>
                 <fieldset class="fieldset">
                     <legend class="fieldset-legend">Custom Filter</legend>
-                    <textarea
-                        v-model="configStore.playout.ingest.custom_filter"
-                        class="textarea w-full"
-                        rows="3"
-                    />
+                    <textarea v-model="configStore.playout.ingest.custom_filter" class="textarea w-full" rows="3" />
                     <p class="fieldset-label items-baseline">{{ t('config.ingestCustomFilter') }}</p>
                 </fieldset>
             </div>
@@ -524,11 +516,7 @@
                 </fieldset>
                 <fieldset class="fieldset">
                     <legend class="fieldset-legend">Output Parameter</legend>
-                    <textarea
-                        v-model="configStore.playout.output.output_param"
-                        class="textarea w-full"
-                        rows="6"
-                    />
+                    <textarea v-model="configStore.playout.output.output_param" class="textarea w-full" rows="6" />
                     <p class="fieldset-label items-baseline">{{ t('config.outputParam') }}</p>
                 </fieldset>
             </div>
@@ -547,8 +535,16 @@
 </template>
 
 <script setup lang="ts">
-const { t } = useI18n()
+import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 
+import GenericModal from '@/components/GenericModal.vue'
+
+import { useAuth } from '@/stores/auth'
+import { useIndex } from '@/stores/index'
+import { useConfig } from '@/stores/config'
+
+const { t } = useI18n()
 const authStore = useAuth()
 const configStore = useConfig()
 const indexStore = useIndex()
@@ -563,7 +559,7 @@ const extensions = computed({
     },
 
     set(value: string) {
-        configStore.playout.storage.extensions = value.replaceAll(' ', '').split(/,|;/)
+        configStore.playout.storage.extensions = value.replace(' ', '').split(/,|;/)
     },
 })
 
@@ -586,12 +582,20 @@ async function onSubmitPlayout() {
 
         const channel = configStore.channels[configStore.i].id
 
-        await $fetch(`/api/control/${channel}/process/`, {
+        await fetch(`/api/control/${channel}/process/`, {
             method: 'POST',
             headers: { ...configStore.contentType, ...authStore.authHeader },
             body: JSON.stringify({ command: 'status' }),
         })
+            .then(async (response) => {
+                if (!response.ok) {
+                    throw new Error(await response.text())
+                }
+
+                return response.json()
+            })
             .then(async (response: any) => {
+                console.log('response', response)
                 if (response === 'active') {
                     configStore.showRestartModal = true
                 }

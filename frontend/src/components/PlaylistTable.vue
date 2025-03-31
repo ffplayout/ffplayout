@@ -119,12 +119,36 @@
     </div>
 </template>
 <script setup lang="ts">
+import dayjs from 'dayjs'
+import customParseFormat from 'dayjs/plugin/customParseFormat.js'
+import LocalizedFormat from 'dayjs/plugin/localizedFormat.js'
+import timezone from 'dayjs/plugin/timezone.js'
+import utc from 'dayjs/plugin/utc.js'
+import 'dayjs/locale/de'
+import 'dayjs/locale/en'
+import 'dayjs/locale/es'
+import 'dayjs/locale/pt-br'
+import 'dayjs/locale/ru'
+
+import VirtualList from 'vue-virtual-draglist'
+
+import { ref, nextTick, onMounted, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { useWindowSize, until } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
 
-const { t } = useI18n()
-const { $dayjs } = useNuxtApp()
-const { width } = useWindowSize({ initialWidth: 800 })
+dayjs.extend(customParseFormat)
+dayjs.extend(LocalizedFormat)
+dayjs.extend(timezone)
+dayjs.extend(utc)
 
+import { stringFormatter, playlistOperations } from '@/composables/helper'
+import { useConfig } from '@/stores/config'
+import { useMedia } from '@/stores/media'
+import { usePlaylist } from '@/stores/playlist'
+
+const { t } = useI18n()
+const { width } = useWindowSize({ initialWidth: 800 })
 const configStore = useConfig()
 const mediaStore = useMedia()
 const playlistStore = usePlaylist()
@@ -133,7 +157,7 @@ const { processPlaylist, genUID } = playlistOperations()
 
 const playlistContainer = ref()
 const sortContainer = ref()
-const todayDate = ref($dayjs().tz(configStore.timezone).format('YYYY-MM-DD'))
+const todayDate = ref(dayjs().tz(configStore.timezone).format('YYYY-MM-DD'))
 const { i } = storeToRefs(useConfig())
 const { currentIndex, listDate, playoutIsRunning, scrollToItem } = storeToRefs(usePlaylist())
 

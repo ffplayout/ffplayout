@@ -91,7 +91,7 @@ pnpm install --shamefully-hoist
 
 ## Development Server
 
-Start the development server on http://localhost:3000
+Start the development server on http://127.0.0.1:5757
 
 ```bash
 npm run dev
@@ -105,13 +105,7 @@ Build the application for production:
 npm run build
 ```
 
-Locally preview production build:
-
-```bash
-npm run preview
-```
-
-Check out the [deployment documentation](https://nuxt.com/docs/getting-started/deployment) for more information.
+Check out the [deployment documentation](https://vuejs.org/guide/quick-start.html) for more information.
 
 ## Run ffplayout in development mode
 

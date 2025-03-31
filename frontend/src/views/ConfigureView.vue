@@ -55,12 +55,22 @@
 </template>
 
 <script setup lang="ts">
-const { t } = useI18n()
+import { computed, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { useHead } from '@unhead/vue'
 
+import ConfigChannel from '@/components/ConfigChannel.vue'
+import ConfigAdvanced from '@/components/ConfigAdvanced.vue'
+import ConfigPlayout from '@/components/ConfigPlayout.vue'
+import ConfigUser from '@/components/ConfigUser.vue'
+
+import { useAuth } from '@/stores/auth'
+
+const { t } = useI18n()
 const authStore = useAuth()
 
 useHead({
-    title: `${t('button.configure')} | ffplayout`,
+    title: computed(() => t('button.configure'))
 })
 
 const activeConf = ref(1)

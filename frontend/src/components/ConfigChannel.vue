@@ -126,11 +126,18 @@
 </template>
 
 <script setup lang="ts">
+import { ref, onMounted, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { storeToRefs } from 'pinia'
 import dayjs from 'dayjs'
 import { cloneDeep, isEqual } from 'lodash-es'
 
-const { t } = useI18n()
+import { useAuth } from '@/stores/auth'
+import { useIndex } from '@/stores/index'
+import { useConfig } from '@/stores/config'
+import { useMedia } from '@/stores/media'
 
+const { t } = useI18n()
 const authStore = useAuth()
 const configStore = useConfig()
 const mediaStore = useMedia()
@@ -177,11 +184,18 @@ function newChannel() {
 }
 
 async function addNewChannel() {
-    await $fetch('/api/channel/', {
+    await fetch('/api/channel/', {
         method: 'POST',
         headers: { ...configStore.contentType, ...authStore.authHeader },
         body: JSON.stringify(channel.value),
     })
+        .then(async (response) => {
+            if (!response.ok) {
+                throw new Error(await response.text())
+            }
+
+            return response.json()
+        })
         .then((chl) => {
             i.value = channel.value.id - 1
             configStore.channels.push(cloneDeep(chl as Channel))

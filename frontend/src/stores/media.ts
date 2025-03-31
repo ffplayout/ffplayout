@@ -1,11 +1,11 @@
 import { defineStore } from 'pinia'
 
-import { useAuth } from "./auth";
-import { useIndex } from "./index";
-import { useConfig } from "./config";
-import { i18n } from '../i18n';
+import { useAuth } from './auth'
+import { useIndex } from './index'
+import { useConfig } from './config'
+import { i18n } from '@/i18n'
 
-import { playlistOperations } from "../composables/helper"
+import { playlistOperations } from '../composables/helper'
 
 const { genUID } = playlistOperations()
 

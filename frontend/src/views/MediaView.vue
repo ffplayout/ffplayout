@@ -27,7 +27,7 @@
                     <span class="loading loading-spinner loading-lg" />
                 </div>
                 <Splitpanes :horizontal="horizontal" class="h-full border border-my-gray rounded-sm shadow">
-                    <pane
+                    <Pane
                         min-size="14"
                         max-size="80"
                         size="20"
@@ -93,7 +93,7 @@
                                 </tbody>
                             </table>
                         </div>
-                    </pane>
+                    </Pane>
                     <Pane class="h-full !bg-base-300" :class="horizontal ? 'rounded-b' : 'rounded-e'">
                         <div class="relative h-full overflow-y-auto">
                             <table
@@ -321,10 +321,11 @@
 // @ts-ignore
 import { Splitpanes, Pane } from 'splitpanes'
 
-import { ref, onMounted, watch } from 'vue'
+import { computed, ref, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { storeToRefs } from 'pinia'
 import { useWindowSize } from '@vueuse/core'
+import { useHead } from '@unhead/vue'
 
 import { useAuth } from '@/stores/auth'
 import { useIndex } from '@/stores/index'
@@ -334,9 +335,7 @@ import { useMedia } from '@/stores/media'
 import GenericModal from '@/components/GenericModal.vue'
 import VideoPlayer from '@/components/VideoPlayer.vue'
 
-import { stringFormatter } from '../composables/helper'
-
-// const { Splitpanes, Pane } = splitpanes
+import { stringFormatter } from '@/composables/helper'
 
 const { t } = useI18n()
 const { width } = useWindowSize({ initialWidth: 800 })
@@ -393,6 +392,10 @@ onMounted(async () => {
     if (!mediaStore.folderTree.parent || !mediaStore.currentPath) {
         await mediaStore.getTree('')
     }
+})
+
+useHead({
+    title: computed(() => t('button.media')),
 })
 
 watch([width], () => {

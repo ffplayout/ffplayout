@@ -92,15 +92,13 @@ import { ref, onBeforeUnmount, watch } from "vue"
 import { useI18n } from "vue-i18n"
 import { useEventSource } from '@vueuse/core'
 
-import { stringFormatter } from "../composables/helper"
+import { stringFormatter } from "@/composables/helper"
 import { useAuth } from '@/stores/auth'
 import { useIndex } from '@/stores/index'
 import { useConfig } from '@/stores/config'
 
-
 const { fileSize } = stringFormatter()
 const { t } = useI18n()
-
 const authStore = useAuth()
 const configStore = useConfig()
 const indexStore = useIndex()

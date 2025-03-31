@@ -219,7 +219,7 @@
                                                     class="py-0 even:bg-base-200 px-2"
                                                 >
                                                     <i class="bi-folder-fill" />
-                                                    {{ (!record?.name) && record?.split(/[\\/]+/).pop() }}
+                                                    {{ !record?.name && record?.split(/[\\/]+/).pop() }}
                                                 </li>
                                             </template>
                                         </VirtualList>
@@ -270,9 +270,21 @@
     </div>
 </template>
 <script setup lang="ts">
-const { $dayjs } = useNuxtApp()
-const { t } = useI18n()
+import VirtualList from 'vue-virtual-draglist'
+import dayjs from 'dayjs'
 
+import { ref } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { useWindowSize } from '@vueuse/core'
+
+import { playlistOperations } from '@/composables/helper'
+import { useAuth } from '@/stores/auth'
+import { useIndex } from '@/stores/index'
+import { useConfig } from '@/stores/config'
+import { useMedia } from '@/stores/media'
+import { usePlaylist } from '@/stores/playlist'
+
+const { t } = useI18n()
 const { width } = useWindowSize({ initialWidth: 800 })
 const authStore = useAuth()
 const configStore = useConfig()
@@ -365,11 +377,11 @@ function removeTemplate(item: TemplateItem) {
 
 function addTemplate() {
     const last = template.value.sources[template.value.sources.length - 1]
-    let start = $dayjs('2000-01-01T00:00:00')
+    let start = dayjs('2000-01-01T00:00:00')
 
     if (last) {
-        const t = $dayjs(`2000-01-01T${last.duration}`)
-        start = $dayjs(`2000-01-01T${last.start}`)
+        const t = dayjs(`2000-01-01T${last.duration}`)
+        start = dayjs(`2000-01-01T${last.start}`)
             .add(t.hour(), 'hour')
             .add(t.minute(), 'minute')
             .add(t.second(), 'second')
@@ -399,11 +411,18 @@ async function generatePlaylist() {
         }
     }
 
-    await $fetch(`/api/playlist/${configStore.channels[configStore.i].id}/generate/${playlistStore.listDate}`, {
+    await fetch(`/api/playlist/${configStore.channels[configStore.i].id}/generate/${playlistStore.listDate}`, {
         method: 'POST',
         headers: { ...configStore.contentType, ...authStore.authHeader },
-        body,
+        body: JSON.stringify(body),
     })
+        .then(async (response) => {
+            if (!response.ok) {
+                throw new Error(await response.text())
+            }
+
+            return response.json()
+        })
         .then((response: any) => {
             playlistStore.playlist = processPlaylist(playlistStore.listDate, response.program, false)
             prop.switchClass()

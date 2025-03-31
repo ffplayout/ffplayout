@@ -164,6 +164,18 @@
 </template>
 
 <script setup lang="ts">
+import { computed, ref, nextTick, onMounted, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { storeToRefs } from 'pinia'
+import { useHead } from '@unhead/vue'
+
+import GenericModal from '@/components/GenericModal.vue'
+
+import { stringFormatter } from '@/composables/helper'
+import { useAuth } from '@/stores/auth'
+import { useIndex } from '@/stores/index'
+import { useConfig } from '@/stores/config'
+
 const { t } = useI18n()
 const authStore = useAuth()
 const configStore = useConfig()
@@ -172,7 +184,7 @@ const { i } = storeToRefs(useConfig())
 const { numberToHex, hexToNumber } = stringFormatter()
 
 useHead({
-    title: 'Messages | ffplayout',
+    title: computed(() => t('button.message')),
 })
 
 interface PresetName {

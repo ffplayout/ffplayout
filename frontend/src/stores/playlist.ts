@@ -5,6 +5,12 @@ import timezone from 'dayjs/plugin/timezone.js'
 
 import { defineStore } from 'pinia'
 
+import { i18n } from '@/i18n'
+import { playlistOperations } from '@/composables/helper'
+import { useAuth } from '@/stores/auth'
+import { useIndex } from '@/stores/index'
+import { useConfig } from '@/stores/config'
+
 dayjs.extend(utc)
 dayjs.extend(timezone)
 
@@ -30,16 +36,22 @@ export const usePlaylist = defineStore('playlist', {
     getters: {},
     actions: {
         async getPlaylist(date: string) {
-            const { $i18n } = useNuxtApp()
             const authStore = useAuth()
             const configStore = useConfig()
             const indexStore = useIndex()
             const channel = configStore.channels[configStore.i].id
 
-            await $fetch<Playlist>(`/api/playlist/${channel}?date=${date}`, {
+            await fetch(`/api/playlist/${channel}?date=${date}`, {
                 method: 'GET',
                 headers: authStore.authHeader,
             })
+                .then(async (response) => {
+                    if (!response.ok) {
+                        throw new Error(await response.text())
+                    }
+
+                    return response.json()
+                })
                 .then((data: Playlist) => {
                     if (data.program) {
                         const programData = processPlaylist(date, data.program, false)
@@ -53,7 +65,7 @@ export const usePlaylist = defineStore('playlist', {
                                 return isEqual(omit(a, ['uid']), omit(b, ['uid']))
                             }).length > 0
                         ) {
-                            indexStore.msgAlert('warning', $i18n.t('player.unsavedProgram'), 3)
+                            indexStore.msgAlert('warning', i18n.t('player.unsavedProgram'), 3)
                         } else {
                             this.playlist = programData ?? []
                         }
@@ -67,7 +79,7 @@ export const usePlaylist = defineStore('playlist', {
                         this.playlist.length > 0 &&
                         this.playlist[0].date === date
                     ) {
-                        indexStore.msgAlert('warning', $i18n.t('player.unsavedProgram'), 3)
+                        indexStore.msgAlert('warning', i18n.t('player.unsavedProgram'), 3)
                     } else {
                         this.playlist = []
                     }

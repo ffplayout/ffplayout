@@ -70,18 +70,16 @@ dayjs.extend(LocalizedFormat)
 dayjs.extend(timezone)
 dayjs.extend(utc)
 
+import { stringFormatter } from '@/composables/helper'
 import { useAuth } from '@/stores/auth'
 import { useConfig } from '@/stores/config'
 import { useIndex } from '@/stores/index'
-
-import { stringFormatter } from '../composables/helper'
 
 const { locale, t } = useI18n()
 const indexStore = useIndex()
 
 useHead({
     title: computed(() => t('button.logging')),
-    titleTemplate: '%s | ffplayout',
 })
 
 const { i } = storeToRefs(useConfig())
@@ -145,9 +143,9 @@ async function getLog() {
         method: 'GET',
         headers: authStore.authHeader,
     })
-        .then((response) => {
+        .then(async (response) => {
             if (!response.ok) {
-                throw new Error(`HTTP error! Status: ${response.status}`) // Löst catch aus
+                throw new Error(await response.text())
             }
             return response.text()
         })

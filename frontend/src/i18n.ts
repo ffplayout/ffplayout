@@ -34,7 +34,7 @@ const instance = createI18n({
     messages: {
         'de': deDE,
         'en': enUS,
-        'pt-BR': ptBR,
+        'pt-br': ptBR,
         'ru': ruRU,
     },
 })

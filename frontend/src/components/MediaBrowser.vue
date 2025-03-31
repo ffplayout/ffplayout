@@ -26,15 +26,6 @@
     </div>
 
     <div class="w-full h-[calc(100%-40px)]">
-        <!-- <div v-for="folder in mediaStore.folderTree.folders" :key="folder.uid" class="flex px-2 py-[2px] bg-base-200">
-            <button
-                class="truncate cursor-pointer"
-                @click="mediaStore.getTree(`/${mediaStore.folderTree.source}/${folder.name}`)"
-            >
-                <i class="bi-folder-fill" />
-                {{ folder.name }}
-            </button>
-        </div> -->
         <VirtualList
             id="mediaList"
             v-model="mediaStore.folderTree.files"
@@ -107,6 +98,16 @@
     </div>
 </template>
 <script setup lang="ts">
+import VirtualList from 'vue-virtual-draglist'
+
+import { ref, onMounted, watch } from 'vue'
+import { useWindowSize } from '@vueuse/core'
+import { storeToRefs } from 'pinia'
+
+import { stringFormatter } from '@/composables/helper'
+import { useConfig } from '@/stores/config'
+import { useMedia } from '@/stores/media'
+
 const { width } = useWindowSize({ initialWidth: 800 })
 const { secToHMS, mediaType } = stringFormatter()
 

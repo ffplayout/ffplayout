@@ -90,11 +90,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useHead } from '@unhead/vue'
 
-import { locales } from '../i18n'
+import { locales } from '@/i18n'
 
 import { useAuth } from '@/stores/auth'
 import { useIndex } from '@/stores/index'
@@ -104,10 +104,6 @@ import SvgIcon from '@/components/SvgIcon.vue'
 import SystemStats from '@/components/SystemStats.vue'
 
 const { locale, t } = useI18n()
-// const localePath = useLocalePath()
-// const switchLocalePath = useSwitchLocalePath()
-const router = useRouter()
-
 const authStore = useAuth()
 const configStore = useConfig()
 const indexStore = useIndex()
@@ -118,10 +114,12 @@ const showLoginError = ref(false)
 const formUsername = ref('')
 const formPassword = ref('')
 
-// const langCookie = useCookie('i18n_redirected')
-
 onMounted(() => {
     selectedLang.value = locales.find((loc: any) => loc.code === locale.value)
+})
+
+useHead({
+    title: computed(() => (authStore.isLogin ? 'System' : 'Login'))
 })
 
 async function login() {

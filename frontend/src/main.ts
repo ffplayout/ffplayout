@@ -14,8 +14,8 @@ const app = createApp(App)
 const head = createHead({
     init: [
         {
-            title: 'ffplayout',
-            // titleTemplate: '%s | ffplayout',
+            title: 'System',
+            titleTemplate: '%s | ffplayout',
             htmlAttrs: { lang: 'en' },
         },
     ],

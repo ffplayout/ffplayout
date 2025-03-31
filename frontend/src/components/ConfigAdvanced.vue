@@ -16,11 +16,7 @@
                             {{ config.name }}
                         </option>
                     </select>
-                    <button
-                        class="join-item btn btn-sm btn-primary"
-                        title="Add preset"
-                        @click="addAdvancedConfig()"
-                    >
+                    <button class="join-item btn btn-sm btn-primary" title="Add preset" @click="addAdvancedConfig()">
                         <i class="bi-plus-lg" />
                     </button>
                     <button
@@ -166,7 +162,9 @@
                         name="fade_in"
                         class="input input-sm w-full"
                     />
-                    <p class="fieldset-label items-baseline"><span class="font-bold">Default: </span>fade=in:st=0:d=0.5</p>
+                    <p class="fieldset-label items-baseline">
+                        <span class="font-bold">Default: </span>fade=in:st=0:d=0.5
+                    </p>
                 </fieldset>
                 <fieldset class="fieldset">
                     <legend class="fieldset-legend">Fade Out</legend>
@@ -176,7 +174,9 @@
                         name="fade_out"
                         class="input input-sm w-full"
                     />
-                    <p class="fieldset-label items-baseline"><span class="font-bold">Default: </span>fade=out:st={}:d=1.0</p>
+                    <p class="fieldset-label items-baseline">
+                        <span class="font-bold">Default: </span>fade=out:st={}:d=1.0
+                    </p>
                 </fieldset>
                 <fieldset class="fieldset">
                     <legend class="fieldset-legend">Logo</legend>
@@ -186,7 +186,12 @@
                         name="logo"
                         class="input input-sm w-full"
                     />
-                    <p class="fieldset-label items-baseline"><span class="font-bold">Default: </span><span class="break-all">movie={}:loop=0,setpts=N/(FRAME_RATE*TB),format=rgba,colorchannelmixer=aa={}</span></p>
+                    <p class="fieldset-label items-baseline">
+                        <span class="font-bold">Default: </span>
+                        <span class="break-all">
+                            movie={}:loop=0,setpts=N/(FRAME_RATE*TB),format=rgba,colorchannelmixer=aa={}
+                        </span>
+                    </p>
                 </fieldset>
                 <fieldset class="fieldset">
                     <legend class="fieldset-legend">Logo Scale</legend>
@@ -206,7 +211,9 @@
                         name="overlay_logo_fade_in"
                         class="input input-sm w-full"
                     />
-                    <p class="fieldset-label items-baseline"><span class="font-bold">Default: </span>fade=in:st=0:d=1.0:alpha=1</p>
+                    <p class="fieldset-label items-baseline">
+                        <span class="font-bold">Default: </span>fade=in:st=0:d=1.0:alpha=1
+                    </p>
                 </fieldset>
                 <fieldset class="fieldset">
                     <legend class="fieldset-legend">Logo Fade Out</legend>
@@ -216,7 +223,9 @@
                         name="overlay_logo_fade_out"
                         class="input input-sm w-full"
                     />
-                    <p class="fieldset-label items-baseline"><span class="font-bold">Default: </span>fade=out:st={}:d=1.0:alpha=1</p>
+                    <p class="fieldset-label items-baseline">
+                        <span class="font-bold">Default: </span>fade=out:st={}:d=1.0:alpha=1
+                    </p>
                 </fieldset>
                 <fieldset class="fieldset">
                     <legend class="fieldset-legend">Logo Overlay</legend>
@@ -226,7 +235,9 @@
                         name="overlay_logo"
                         class="input input-sm w-full"
                     />
-                    <p class="fieldset-label items-baseline"><span class="font-bold">Default: </span>overlay={}:shortest=1</p>
+                    <p class="fieldset-label items-baseline">
+                        <span class="font-bold">Default: </span>overlay={}:shortest=1
+                    </p>
                 </fieldset>
                 <fieldset class="fieldset">
                     <legend class="fieldset-legend">TPad</legend>
@@ -248,7 +259,9 @@
                         name="drawtext_from_file"
                         class="input input-sm w-full"
                     />
-                    <p class="fieldset-label items-baseline"><span class="font-bold">Default: </span>drawtext=text='{}':{}{}</p>
+                    <p class="fieldset-label items-baseline">
+                        <span class="font-bold">Default: </span>drawtext=text='{}':{}{}
+                    </p>
                 </fieldset>
                 <fieldset class="fieldset">
                     <legend class="fieldset-legend">Drawtext from ZMQ</legend>
@@ -276,7 +289,7 @@
                         <span class="break-all">aevalsrc=0:channel_layout=stereo:duration={}:sample_rate=48000</span>
                     </p>
                 </fieldset>
-               <fieldset class="fieldset">
+                <fieldset class="fieldset">
                     <legend class="fieldset-legend">Audio Fade In</legend>
                     <input
                         v-model="configStore.advanced.filter.afade_in"
@@ -284,7 +297,9 @@
                         name="afade_in"
                         class="input input-sm w-full"
                     />
-                    <p class="fieldset-label items-baseline"><span class="font-bold">Default: </span>afade=in:st=0:d=0.5</p>
+                    <p class="fieldset-label items-baseline">
+                        <span class="font-bold">Default: </span>afade=in:st=0:d=0.5
+                    </p>
                 </fieldset>
                 <fieldset class="fieldset">
                     <legend class="fieldset-legend">Audio Fade Out</legend>
@@ -294,7 +309,9 @@
                         name="afade_out"
                         class="input input-sm w-full"
                     />
-                    <p class="fieldset-label items-baseline"><span class="font-bold">Default: </span>afade=out:st={}:d=1.0</p>
+                    <p class="fieldset-label items-baseline">
+                        <span class="font-bold">Default: </span>afade=out:st={}:d=1.0
+                    </p>
                 </fieldset>
                 <fieldset class="fieldset">
                     <legend class="fieldset-legend">Audio Pad</legend>
@@ -304,7 +321,9 @@
                         name="apad"
                         class="input input-sm w-full"
                     />
-                    <p class="fieldset-label items-baseline"><span class="font-bold">Default: </span>apad=whole_dur={}</p>
+                    <p class="fieldset-label items-baseline">
+                        <span class="font-bold">Default: </span>apad=whole_dur={}
+                    </p>
                 </fieldset>
                 <fieldset class="fieldset">
                     <legend class="fieldset-legend">Volumen</legend>
@@ -359,11 +378,18 @@
 </template>
 
 <script setup lang="ts">
+import { ref, onBeforeMount } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { cloneDeep } from 'lodash-es'
-import type { AdvancedConfig } from '~/types/advanced_config'
+import type { AdvancedConfig } from '@/types/advanced_config'
+
+import GenericModal from '@/components/GenericModal.vue'
+
+import { useAuth } from '@/stores/auth'
+import { useIndex } from '@/stores/index'
+import { useConfig } from '@/stores/config'
 
 const { t } = useI18n()
-
 const authStore = useAuth()
 const configStore = useConfig()
 const indexStore = useIndex()
@@ -418,10 +444,17 @@ onBeforeMount(async () => {
 async function fetchRelatedConfigs() {
     const id = configStore.channels[configStore.i].id
 
-    await $fetch(`/api/playout/advanced/${id}/`, {
+    await fetch(`/api/playout/advanced/${id}/`, {
         method: 'GET',
         headers: { ...configStore.contentType, ...authStore.authHeader },
     })
+        .then(async (response) => {
+            if (!response.ok) {
+                throw new Error(await response.text())
+            }
+
+            return response.json()
+        })
         .then((response: any) => {
             relatedConfigs.value = response
         })
@@ -437,7 +470,7 @@ function addAdvancedConfig() {
 async function removeAdvancedConfig() {
     const id = configStore.channels[configStore.i].id
 
-    await $fetch(`/api/playout/advanced/${id}/${configStore.advanced.id}`, {
+    await fetch(`/api/playout/advanced/${id}/${configStore.advanced.id}`, {
         method: 'DELETE',
         headers: { ...configStore.contentType, ...authStore.authHeader },
     })
@@ -460,11 +493,19 @@ async function onSubmitAdvanced() {
 
         await fetchRelatedConfigs()
 
-        await $fetch(`/api/control/${id}/process/`, {
+        await fetch(`/api/control/${id}/process/`, {
             method: 'POST',
             headers: { ...configStore.contentType, ...authStore.authHeader },
             body: JSON.stringify({ command: 'status' }),
-        }).then((response: any) => {
+        })
+        .then(async (response) => {
+            if (!response.ok) {
+                throw new Error(await response.text())
+            }
+
+            return response.json()
+        })
+        .then((response: any) => {
             if (response === 'active') {
                 showModal.value = true
             }
@@ -478,7 +519,7 @@ async function restart(res: boolean) {
     if (res) {
         const channel = configStore.channels[configStore.i].id
 
-        await $fetch(`/api/control/${channel}/process/`, {
+        await fetch(`/api/control/${channel}/process/`, {
             method: 'POST',
             headers: { ...configStore.contentType, ...authStore.authHeader },
             body: JSON.stringify({ command: 'restart' }),

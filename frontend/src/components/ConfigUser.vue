@@ -108,9 +108,16 @@
 </template>
 
 <script setup lang="ts">
+import { ref, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+import { useVariables } from '@/composables/variables'
+import { useAuth } from '@/stores/auth'
+import { useIndex } from '@/stores/index'
+import { useConfig } from '@/stores/config'
+
 const { t } = useI18n()
 const { multiSelectClasses } = useVariables()
-
 const authStore = useAuth()
 const configStore = useConfig()
 const indexStore = useIndex()
