@@ -7,10 +7,14 @@ import tailwindcss from '@tailwindcss/vite'
 
 // https://vite.dev/config/
 export default defineConfig({
+    build: {
+        chunkSizeWarningLimit: 1600,
+    },
+    root: './frontend',
     plugins: [tailwindcss(), vue(), vueDevTools()],
     resolve: {
         alias: {
-            '@': fileURLToPath(new URL('./src', import.meta.url)),
+            '@': fileURLToPath(new URL('./frontend/src', import.meta.url)),
         },
     },
     server: {

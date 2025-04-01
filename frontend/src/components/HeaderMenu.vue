@@ -5,9 +5,14 @@
         </RouterLink>
         <div class="navbar-end w-1/5 grow">
             <label class="swap swap-rotate me-2 2sm:hidden">
-                <input type="checkbox" :checked="indexStore.darkMode" @change="toggleTheme" />
-                <SvgIcon name="swap-on" classes="w-5 h-5" />
-                <SvgIcon name="swap-off" classes="w-5 h-5" />
+                <input
+                    type="checkbox"
+                    :checked="indexStore.darkMode"
+                    class="focus-within:!outline-0"
+                    @change="toggleTheme"
+                />
+                <i class="swap-on bi bi-brightness-high text-[18px]"></i>
+                <i class="swap-off bi bi-moon text-[18px]"></i>
             </label>
             <details ref="menuDropdown" tabindex="0" class="dropdown dropdown-end z-50">
                 <summary class="btn btn-ghost 2sm:hidden" @click="clickMenu()" @blur="blurMenu()">
@@ -20,7 +25,7 @@
                                 item.label !== 'message' ||
                                 (configStore.playout?.text?.add_text && !configStore.playout?.text?.text_from_filename)
                             "
-                            class="bg-base-100 rounded-md"
+                            class="bg-base-100 rounded-md py-1"
                         >
                             <RouterLink
                                 :to="item.link"
@@ -34,10 +39,10 @@
                             </RouterLink>
                         </li>
                     </template>
-                    <li v-if="configStore.channels.length > 1">
+                    <li v-if="configStore.channels.length > 1" class="bg-base-100 rounded-md py-1">
                         <details tabindex="0" @focusout="closeDropdown">
                             <summary>
-                                <div class="h-[19px] text-base">
+                                <div class="h-[19px] text-base cursor-pointer">
                                     <span> {{ configStore.channels[configStore.i].name }} </span>
                                 </div>
                             </summary>
@@ -53,8 +58,25 @@
                         </details>
                     </li>
                     <li class="bg-base-100 rounded-md">
-                        <button class="h-[27px] text-base" exactActiveClass="is-active" @click="logout()">
-                            {{ t('button.logout') }}
+                        <RouterLink
+                            to="/configure"
+                            class="h-[27px] leading-5"
+                            active-class="is-active"
+                            :title="t('button.configure')"
+                        >
+                            <span>
+                                <i class="bi bi-gear text-[17px]" />
+                            </span>
+                        </RouterLink>
+                    </li>
+                    <li class="bg-base-100 rounded-md">
+                        <button
+                            class="h-[27px] text-base cursor-pointer"
+                            exactActiveClass="is-active"
+                            @click="logout()"
+                            :title="t('button.logout')"
+                        >
+                            <i class="bi bi-power text-[18px]" />
                         </button>
                     </li>
                 </ul>
@@ -85,7 +107,7 @@
                 <li v-if="configStore.channels.length > 1">
                     <details tabindex="0" @focusout="closeDropdown">
                         <summary>
-                            <div class="h-[19px] text-base">
+                            <div class="h-[19px] text-base cursor-pointer">
                                 <span> {{ configStore.channels[configStore.i].name }} </span>
                             </div>
                         </summary>
@@ -99,16 +121,33 @@
                     </details>
                 </li>
                 <li class="bg-base-100 rounded-md p-0">
-                    <button class="h-[27px] pt-[4px] text-base" @click="logout()">
-                        {{ t('button.logout') }}
-                    </button>
+                    <RouterLink
+                        to="/configure"
+                        class="h-[27px] leading-5"
+                        active-class="is-active"
+                        :title="t('button.configure')"
+                    >
+                        <span>
+                            <i class="bi bi-gear text-[17px]" />
+                        </span>
+                    </RouterLink>
                 </li>
                 <li class="p-0">
-                    <label class="swap swap-rotate">
-                        <input type="checkbox" :checked="indexStore.darkMode" @change="toggleTheme" />
-                        <SvgIcon name="swap-on" classes="w-5 h-5" />
-                        <SvgIcon name="swap-off" classes="w-5 h-5" />
+                    <label class="swap swap-rotate h-[27px] leading-5">
+                        <input
+                            type="checkbox"
+                            :checked="indexStore.darkMode"
+                            @change="toggleTheme"
+                            class="focus-within:!outline-0"
+                        />
+                        <i class="swap-on bi bi-brightness-high text-[18px]"></i>
+                        <i class="swap-off bi bi-moon text-[18px]"></i>
                     </label>
+                </li>
+                <li class="bg-base-100 rounded-md p-0">
+                    <button class="h-[27px] leading-5 cursor-pointer" @click="logout()" :title="t('button.logout')">
+                        <i class="bi bi-power text-[18px]" />
+                    </button>
                 </li>
             </ul>
         </div>
@@ -142,7 +181,6 @@ const menuItems = ref([
     { label: 'media', name: t('button.media'), link: '/media' },
     { label: 'message', name: t('button.message'), link: '/message' },
     { label: 'logging', name: t('button.logging'), link: '/logging' },
-    { label: 'configure', name: t('button.configure'), link: '/configure' },
 ])
 
 function closeMenu() {

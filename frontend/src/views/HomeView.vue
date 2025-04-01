@@ -20,14 +20,8 @@
                 <RouterLink to="/logging" class="btn btn-primary join-item px-2">
                     {{ t('button.logging') }}
                 </RouterLink>
-                <RouterLink to="/configure" class="btn btn-primary join-item px-2">
-                    {{ t('button.configure') }}
-                </RouterLink>
-                <button class="btn btn-primary join-item px-2" @click="logout()">
-                    {{ t('button.logout') }}
-                </button>
                 <div class="dropdown">
-                    <div tabindex="0" role="button" class="btn btn-primary bg-primary/70 px-2 join-item">
+                    <div tabindex="0" role="button" class="btn btn-primary bg-primary/50 px-2 join-item">
                         {{ selectedLang?.name }}
                     </div>
                     <ul tabindex="0" class="dropdown-content menu bg-base-100 rounded-box z-1 w-52 p-2 shadow-sm">
@@ -38,11 +32,23 @@
                         </li>
                     </ul>
                 </div>
-                <label class="join-item btn btn-primary swap swap-rotate">
-                    <input type="checkbox" :checked="indexStore.darkMode" @change="toggleTheme" />
-                    <SvgIcon name="swap-on" classes="w-5 h-5" />
-                    <SvgIcon name="swap-off" classes="w-5 h-5" />
+
+                <RouterLink to="/configure" class="btn btn-primary join-item px-2" :title="t('button.configure')">
+                    <i class="bi bi-gear text-[17px]" />
+                </RouterLink>
+                <label class="join-item btn btn-primary swap swap-rotate px-2">
+                    <input
+                        type="checkbox"
+                        :checked="indexStore.darkMode"
+                        class="focus-within:!outline-0"
+                        @change="toggleTheme"
+                    />
+                    <i class="swap-on bi bi-brightness-high text-[18px]"></i>
+                    <i class="swap-off bi bi-moon text-[18px]"></i>
                 </label>
+                <button class="btn btn-primary join-item px-2" @click="logout()" :title="t('button.logout')">
+                    <i class="bi bi-power text-[18px]" />
+                </button>
             </div>
         </div>
         <div v-else class="w-96 min-w-full flex flex-col justify-center items-center px-4">
@@ -119,7 +125,7 @@ onMounted(() => {
 })
 
 useHead({
-    title: computed(() => (authStore.isLogin ? 'System' : 'Login'))
+    title: computed(() => (authStore.isLogin ? 'System' : 'Login')),
 })
 
 async function login() {

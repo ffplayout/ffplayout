@@ -264,6 +264,7 @@ import MediaBrowser from '@/components/MediaBrowser.vue'
 import PlaylistTable from '@/components/PlaylistTable.vue'
 import GenericModal from '@/components/GenericModal.vue'
 import PlaylistGenerator from '@/components/PlaylistGenerator.vue'
+import VideoPlayer from '@/components/VideoPlayer.vue'
 
 import { stringFormatter, playlistOperations } from '@/composables/helper'
 import { useAuth } from '@/stores/auth'
