@@ -1,6 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 // import { i18n } from '../i18n'
-import HomeView from '../views/HomeView.vue'
+import HomeView from '@/views/HomeView.vue'
 
 import { useAuth } from '@/stores/auth'
 import { useConfig } from '@/stores/config'
@@ -16,27 +16,27 @@ const router = createRouter({
         {
             path: '/player',
             name: 'player',
-            component: () => import('../views/PlayerView.vue'),
+            component: () => import('@/views/PlayerView.vue'),
         },
         {
             path: '/media',
             name: 'media',
-            component: () => import('../views/MediaView.vue'),
+            component: () => import('@/views/MediaView.vue'),
         },
         {
             path: '/message',
             name: 'message',
-            component: () => import('../views/MessageView.vue'),
+            component: () => import('@/views/MessageView.vue'),
         },
         {
             path: '/logging',
             name: 'logging',
-            component: () => import('../views/LoggingView.vue'),
+            component: () => import('@/views/LoggingView.vue'),
         },
         {
             path: '/configure',
             name: 'configure',
-            component: () => import('../views/ConfigureView.vue'),
+            component: () => import('@/views/ConfigureView.vue'),
         },
     ],
 })
