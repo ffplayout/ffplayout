@@ -64,7 +64,7 @@ async fn main() -> Result<(), ProcessError> {
     set_mock_time(&ARGS.fake_time)?;
     init_globales(&pool).await?;
 
-    // LoggerHandle should be kept alive until the end
+    // logger handle should be kept alive until the end
     let _logger = init_logging(mail_queues.clone());
 
     let channel_controllers = Arc::new(Mutex::new(ChannelController::new()));
