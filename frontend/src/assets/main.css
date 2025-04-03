@@ -72,7 +72,10 @@
     --default-font-family: 'Source Sans Pro', 'Segoe UI', 'Helvetica Neue', 'Arial', 'sans-serif';
 }
 
-input, .input, .select, .textarea {
+input,
+.input,
+.select,
+.textarea {
     &:focus,
     &:focus-within {
         --input-color: var(--my-glow);
@@ -82,7 +85,6 @@ input, .input, .select, .textarea {
         isolation: isolate;
     }
 }
-
 
 @font-face {
     font-family: 'DigitalNumbers';
