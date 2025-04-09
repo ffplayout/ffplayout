@@ -84,7 +84,7 @@ suggests = "ffmpeg"
 copyright = "Copyright (c) 2024, Jonathan Baecker. All rights reserved."
 assets = [
     [
-        "../target/x86_64-unknown-linux-musl/release/ffplayout",
+        "target/release/ffplayout",
         "/usr/bin/",
         "755",
     ],
@@ -135,7 +135,7 @@ systemd-units = { enable = true, unit-scripts = "../assets" }
 [package.metadata.deb.variants.arm64]
 assets = [
     [
-        "../target/aarch64-unknown-linux-gnu/release/ffplayout",
+        "target/release/ffplayout",
         "/usr/bin/",
         "755",
     ],
