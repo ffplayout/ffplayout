@@ -413,7 +413,7 @@ impl CurrentProgram {
             node.seek + total_delta
         } else {
             if node.duration > total_delta {
-                warn!(target: Target::file_mail(), channel = self.channel_id; "Adjust clip duration to: <span class=\"log-number\">{total_delta:.2}</span>");
+                info!(target: Target::file_mail(), channel = self.channel_id; "Adjust clip duration to: <span class=\"log-number\">{total_delta:.2}</span>");
             }
 
             total_delta
