@@ -32,7 +32,7 @@
         <div class="p-1 min-h-[260px] h-[calc(100vh-800px)] xl:h-[calc(100vh-480px)]">
             <Splitpanes
                 v-if="configStore.playout.processing.mode === 'playlist'"
-                class="border border-my-gray rounded-sm shadow"
+                class="border border-base-content/30 rounded-sm shadow"
             >
                 <Pane
                     v-if="width > 739"
@@ -47,7 +47,7 @@
                     <PlaylistTable ref="playlistTable" :edit-item="editPlaylistItem" :preview="setPreviewData" />
                 </pane>
             </Splitpanes>
-            <div v-else class="h-full border border-b-2 border-my-gray rounded-sm shadow">
+            <div v-else class="h-full border border-b-2 border-base-content/30 rounded-sm shadow">
                 <MediaBrowser :preview="setPreviewData" />
             </div>
         </div>
@@ -224,7 +224,6 @@
         <PlaylistGenerator
             v-if="showPlaylistGenerator"
             :close="closeGenerator"
-            :switch-class="playlistTable.classSwitcher"
         />
     </div>
 </template>
@@ -265,6 +264,7 @@ import PlaylistTable from '@/components/PlaylistTable.vue'
 import GenericModal from '@/components/GenericModal.vue'
 import PlaylistGenerator from '@/components/PlaylistGenerator.vue'
 import VideoPlayer from '@/components/VideoPlayer.vue'
+import TimePicker from '@/components/TimePicker.vue'
 import SvgIcon from '@/components/SvgIcon.vue'
 
 import { stringFormatter, playlistOperations } from '@/composables/helper'
@@ -464,7 +464,6 @@ function processSource(process: boolean) {
         }
 
         processPlaylist(listDate.value, playlistStore.playlist, false)
-        playlistTable.value.classSwitcher()
     }
 
     editId.value = -1
@@ -572,7 +571,6 @@ async function importPlaylist(imp: boolean) {
             .then(async (response) => {
                 indexStore.msgAlert('success', String(response), 2)
                 await playlistStore.getPlaylist(listDate.value)
-                playlistTable.value.classSwitcher()
             })
             .catch((e: string) => {
                 indexStore.msgAlert('error', e, 4)
@@ -610,7 +608,6 @@ async function savePlaylist(save: boolean) {
                 return response.json()
             })
             .then((response: any) => {
-                playlistTable.value.classSwitcher()
                 indexStore.msgAlert('success', response, 2)
             })
             .catch((e: any) => {
@@ -632,7 +629,6 @@ async function deletePlaylist(del: boolean) {
             headers: { ...configStore.contentType, ...authStore.authHeader },
         }).then(() => {
             playlistStore.playlist = []
-            playlistTable.value.classSwitcher()
             indexStore.msgAlert('warning', t('player.deleteSuccess'), 2)
         })
     }

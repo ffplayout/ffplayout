@@ -1,9 +1,9 @@
 <template>
-    <div>
+    <div class="h-full">
         <div v-if="mediaStore.isLoading" class="h-full w-full absolute z-10 flex justify-center bg-base-100/70">
             <span class="loading loading-spinner loading-lg" />
         </div>
-        <div class="bg-base-100 border-b border-my-gray">
+        <div class="bg-base-100 border-b border-base-content/30">
             <div v-if="mediaStore.folderTree.parent && mediaStore.crumbs">
                 <nav class="breadcrumbs px-2 py-[6px]">
                     <ul>

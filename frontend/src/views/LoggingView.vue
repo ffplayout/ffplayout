@@ -206,11 +206,11 @@ function downloadLog() {
 }
 
 .level-warning {
-    color: #ff8700;
+    color: var(--color-warning);
 }
 
 .level-error {
-    color: #d32828;
+    color: var(--color-error);
 }
 
 .level-debug {

@@ -38,7 +38,7 @@
                                 </nav>
                             </div>
 
-                            <ul class="h-[475px] border border-my-gray rounded-sm overflow-auto bg-base-300 m-1 py-1">
+                            <ul class="h-[475px] border border-base-content/30 rounded-sm overflow-auto bg-base-300 m-1 py-1">
                                 <li
                                     v-for="folder in mediaStore.folderList.folders"
                                     :key="folder.uid"
@@ -124,13 +124,13 @@
                                 </div>
                             </div>
                             <div
-                                class="h-[475px] border border-my-gray rounded-sm grid bg-base-300 m-1"
+                                class="h-[475px] border border-base-content/30 rounded-sm grid bg-base-300 m-1"
                                 :class="width < 740 ? 'grid-cols-1' : 'grid-cols-[300px_auto]'"
                             >
                                 <VirtualList
                                     id="genSource"
                                     v-model="mediaStore.folderList.folders"
-                                    class="h-full py-1 border-my-gray"
+                                    class="h-full py-1 border-base-content/30"
                                     :group="genGroup"
                                     :data-key="'uid'"
                                     :class="width < 740 ? 'h-[240px] border-b' : 'border-e'"
@@ -138,9 +138,9 @@
                                     wrap-tag="ul"
                                     :sortable="false"
                                 >
-                                    <template #item="{ record, index }">
+                                    <template #item="{ record }">
                                         <li
-                                            :id="`adv_folder_${index}`"
+                                            :id="`folder-${record.uid}`"
                                             :key="record.uid"
                                             class="even:bg-base-200 cursor-grabbing px-2 w-full"
                                         >
@@ -169,7 +169,7 @@
                                     <li
                                         v-for="item in template.sources"
                                         :key="item.start"
-                                        class="flex flex-col gap-1 justify-center items-center border border-my-gray rounded-sm mt-1 p-1"
+                                        class="flex flex-col gap-1 justify-center items-center border border-base-content/30 rounded-sm mt-1 p-1"
                                     >
                                         <div
                                             class="flex flex-wrap xs:grid xs:grid-cols-[58px_64px_67px_64px_67px] xs:join"
@@ -206,20 +206,20 @@
                                         <VirtualList
                                             v-model="item.paths"
                                             :group="targetGroup"
-                                            :data-key="'index'"
-                                            class="w-full border border-my-gray rounded"
+                                            :data-key="'uid'"
+                                            class="w-full border border-base-content/30 rounded"
                                             :style="`height: ${item.paths ? item.paths.length * 23 + 31 : 300}px`"
                                             wrap-tag="ul"
-                                            @drop="addFolderToTemplate($event, item)"
+                                            @drop="addFolderToTemplate"
                                         >
-                                            <template #item="{ record, index }">
+                                            <template #item="{ record }">
                                                 <li
-                                                    :id="`path-${index}`"
-                                                    :key="index"
+                                                    :id="`path-${record.uid}`"
+                                                    :key="record.uid"
                                                     class="py-0 even:bg-base-200 px-2"
                                                 >
                                                     <i class="bi-folder-fill" />
-                                                    {{ !record?.name && record?.split(/[\\/]+/).pop() }}
+                                                    {{ record?.name }}
                                                 </li>
                                             </template>
                                         </VirtualList>
@@ -273,9 +273,10 @@
 import VirtualList from 'vue-virtual-draglist'
 import dayjs from 'dayjs'
 
-import { ref } from 'vue'
+import { ref, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useWindowSize } from '@vueuse/core'
+import { filter, isEqual, map } from 'lodash-es'
 
 import { playlistOperations } from '@/composables/helper'
 import { useAuth } from '@/stores/auth'
@@ -292,19 +293,13 @@ const indexStore = useIndex()
 const mediaStore = useMedia()
 const playlistStore = usePlaylist()
 
-const { processPlaylist, genUID } = playlistOperations()
+const { processPlaylist } = playlistOperations()
 
 const genGroup = ref({ name: 'genGroup', pull: 'clone', put: false })
 const targetGroup = ref({ name: 'genGroup', pull: true, put: true })
 
-const prop = defineProps({
+defineProps({
     close: {
-        type: Function,
-        default() {
-            return ''
-        },
-    },
-    switchClass: {
         type: Function,
         default() {
             return ''
@@ -349,20 +344,20 @@ function resetCheckboxes() {
     }
 }
 
-function addFolderToTemplate(event: any, item: TemplateItem) {
+function addFolderToTemplate(event: any) {
     const n = event.newIndex
 
-    if (event.event.from.id === 'genSource') {
-        const media = event.item
-        const storagePath = configStore.channels[configStore.i].storage
-        const navPath = mediaStore.folderCrumbs[mediaStore.folderCrumbs.length - 1].path
-        const sourcePath = `${storagePath}/${navPath}/${media.name}`.replace(/\/[/]+/g, '/')
-        const uid = genUID()
+    const media = event.item
+    const storagePath = configStore.channels[configStore.i].storage
+    const navPath = mediaStore.folderCrumbs[mediaStore.folderCrumbs.length - 1].path
+    const sourcePath = `${storagePath}/${navPath}/${media.name}`.replace(/\/[/]+/g, '/')
+    event.item.path = sourcePath
 
-        if (!item.paths.includes(sourcePath)) {
-            item.paths[n] = sourcePath
+    nextTick(() => {
+        if (filter(event.list, (item) => isEqual(item, event.item)).length > 1) {
+            event.list.splice(n, 1)
         }
-    }
+    })
 }
 
 function resetTemplate() {
@@ -404,6 +399,7 @@ async function generatePlaylist() {
     }
 
     if (advancedGenerator.value) {
+        template.value.sources.forEach((item) => (item.paths = map(item.paths, 'path')))
         if (body) {
             body.template = template.value
         } else {
@@ -425,7 +421,6 @@ async function generatePlaylist() {
         })
         .then((response: any) => {
             playlistStore.playlist = processPlaylist(playlistStore.listDate, response.program, false)
-            prop.switchClass()
             indexStore.msgAlert('success', t('player.generateDone'), 2)
         })
         .catch((e: any) => {

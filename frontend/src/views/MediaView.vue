@@ -26,7 +26,7 @@
                 <div v-if="mediaStore.isLoading" class="w-full h-full absolute z-10 flex justify-center bg-base-100/70">
                     <span class="loading loading-spinner loading-lg" />
                 </div>
-                <Splitpanes :horizontal="horizontal" class="h-full border border-my-gray rounded-sm shadow">
+                <Splitpanes :horizontal="horizontal" class="h-full border border-base-content/30 rounded-sm shadow">
                     <Pane
                         min-size="14"
                         max-size="80"

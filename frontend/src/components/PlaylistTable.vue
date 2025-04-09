@@ -5,7 +5,7 @@
         </div>
 
         <div
-            class="grid grid-cols-[85px_auto_85px_85px] 2md:grid-cols-[85px_auto_85px_85px_85px_85px_85px_85px_85px] bg-base-100 border-b border-my-gray rounded-tr-lg py-2 text-sm font-bold text-base-content/70"
+            class="grid grid-cols-[85px_auto_85px_85px] 2md:grid-cols-[85px_auto_85px_85px_85px_85px_85px_85px_85px] bg-base-100 border-b border-base-content/30 rounded-tr-lg py-2 text-sm font-bold text-base-content/70"
         >
             <div v-if="!configStore.playout.playlist.infinit" class="px-3">
                 {{ t('player.start') }}

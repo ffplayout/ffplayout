@@ -66,7 +66,7 @@
     </div>
 
     <GenericModal :show="showUserModal" title="Add user" :modal-action="addUser">
-        <div class="w-full max-w-[500px] h-[490px]">
+        <div class="w-full max-w-[500px] h-[360px]">
             <fieldset class="fieldset">
                 <legend class="fieldset-legend">{{ t('user.name') }}</legend>
                 <input v-model="user.username" type="text" name="username" class="input w-full" />
@@ -115,6 +115,8 @@ import { useVariables } from '@/composables/variables'
 import { useAuth } from '@/stores/auth'
 import { useIndex } from '@/stores/index'
 import { useConfig } from '@/stores/config'
+
+import GenericModal from '@/components/GenericModal.vue'
 
 const { t } = useI18n()
 const { multiSelectClasses } = useVariables()
