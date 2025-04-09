@@ -32,7 +32,6 @@
                         </li>
                     </ul>
                 </div>
-
                 <RouterLink to="/configure" class="btn btn-primary join-item px-2" :title="t('button.configure')">
                     <i class="bi bi-gear text-[17px]" />
                 </RouterLink>
