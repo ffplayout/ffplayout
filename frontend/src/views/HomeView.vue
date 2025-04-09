@@ -47,7 +47,7 @@
                     <i class="swap-off bi bi-moon text-[18px]"></i>
                 </label>
                 <button class="btn btn-primary join-item px-2" @click="logout()" :title="t('button.logout')">
-                    <i class="bi bi-power text-[18px]" />
+                    <i class="bi bi-door-closed text-[18px]" />
                 </button>
             </div>
         </div>

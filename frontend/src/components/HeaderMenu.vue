@@ -76,7 +76,7 @@
                             @click="logout()"
                             :title="t('button.logout')"
                         >
-                            <i class="bi bi-power text-[18px]" />
+                            <i class="bi bi-door-closed text-[18px]" />
                         </button>
                     </li>
                 </ul>
@@ -146,7 +146,7 @@
                 </li>
                 <li class="bg-base-100 rounded-md p-0">
                     <button class="h-[27px] leading-5 cursor-pointer" @click="logout()" :title="t('button.logout')">
-                        <i class="bi bi-power text-[18px]" />
+                        <i class="bi bi-door-closed text-[18px]" />
                     </button>
                 </li>
             </ul>
