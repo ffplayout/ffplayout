@@ -38,7 +38,7 @@
                 :data-key="'name'"
                 ghost-class="sortable-ghost"
                 wrap-tag="ul"
-                wrap-class="h-full list-none text-sm"
+                wrap-class="list-none text-sm"
                 chosen-class="cursor-grabbing"
                 placeholder-class="media-placeholder"
                 :animation="50"
@@ -49,7 +49,7 @@
                         <li
                             v-for="folder in mediaStore.folderTree.folders"
                             :key="folder.uid"
-                            class="grid grid-cols-[30px_auto] even:bg-base-200 py-0.5 items-center cursor-pointer"
+                            class="grid grid-cols-[30px_auto] even:bg-base-200 py-1.5 items-center cursor-pointer"
                             @click="mediaStore.getTree(`/${mediaStore.folderTree.source}/${folder.name}`)"
                         >
                             <div class="px-2">
