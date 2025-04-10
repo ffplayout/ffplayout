@@ -291,7 +291,7 @@
                         />
                         Override custom Filter
                     </label>
-                    <p class="fieldset-label items-baseline">{{ t('config.processingVTTEnable') }}</p>
+                    <p class="fieldset-label items-baseline">{{ t('config.processingOverrideFilter') }}</p>
                 </fieldset>
 
                 <div v-if="configStore.playout.processing.override_filter" class="w-full py-0">
