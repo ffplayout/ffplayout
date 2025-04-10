@@ -122,22 +122,24 @@
 
 .splitpanes--horizontal > .splitpanes__splitter {
     position: relative;
-    border-top: 1px solid var(--my-gray);
-    border-bottom: 1px solid var(--my-gray);
+    border-top: 1px solid var(--color-base-content);
+    border-bottom: 1px solid var(--color-base-content);
+    opacity: 0.4;
     height: 6px !important;
 }
 
 .splitpanes--vertical > .splitpanes__splitter {
     position: relative;
-    border-left: 1px solid var(--my-gray);
-    border-right: 1px solid var(--my-gray);
+    border-left: 1px solid var(--color-base-content);
+    border-right: 1px solid var(--color-base-content);
+    opacity: 0.4;
     width: 6px !important;
 }
 
 .splitpanes--horizontal > .splitpanes__splitter::before {
     content: '';
     position: absolute;
-    background-color: var(--my-gray);
+    background-color: var(--color-base-content);
     transform: translateY(-50%);
     top: 50%;
     left: 50%;
@@ -150,7 +152,7 @@
 .splitpanes--vertical > .splitpanes__splitter::before {
     content: '';
     position: absolute;
-    background-color: var(--my-gray);
+    background-color: var(--color-base-content);
     transform: translateY(-50%);
     top: 50%;
     left: 50%;
@@ -176,8 +178,8 @@ multiselect customization
     mask-repeat: no-repeat;
     -webkit-mask-size: contain;
     mask-size: contain;
-    background-color: var(--my-gray);
-    opacity: 1 !important;
+    background-color: var(--color-base-content);
+    opacity: 0.5 !important;
 }
 
 .multiselect-clear-icon {
@@ -190,8 +192,8 @@ multiselect customization
     mask-repeat: no-repeat;
     -webkit-mask-size: contain;
     mask-size: contain;
-    background-color: var(--my-gray);
-    opacity: 1 !important;
+    background-color: var(--color-base-content);
+    opacity: 0.5 !important;
     transition: 0.3s;
 }
 
@@ -205,8 +207,8 @@ multiselect customization
     mask-repeat: no-repeat;
     -webkit-mask-size: contain;
     mask-size: contain;
-    background-color: var(--my-gray);
-    opacity: 1 !important;
+    background-color: var(--color-base-content);
+    opacity: 0.5 !important;
     transition: 0.3s;
 }
 
@@ -223,7 +225,7 @@ multiselect customization
     mask-repeat: no-repeat;
     -webkit-mask-size: contain;
     mask-size: contain;
-    background-color: var(--my-gray);
-    opacity: 1 !important;
+    background-color: var(--color-base-content);
+    opacity: 0.5 !important;
     transition: 0.3s;
 }

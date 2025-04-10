@@ -45,7 +45,7 @@
                 :sortable="false"
             >
                 <template #header>
-                    <ul class="border border-base-content/20 list-none text-sm">
+                    <ul class="border-b border-base-content/20 list-none text-sm">
                         <li
                             v-for="folder in mediaStore.folderTree.folders"
                             :key="folder.uid"
@@ -65,7 +65,7 @@
                     <li
                         :id="`file-${index}`"
                         :key="record.name"
-                        class="grid grid-cols-[30px_auto_32px_62px] border border-base-content/20 py-1.5 items-center"
+                        class="grid grid-cols-[30px_auto_32px_62px] border-b border-base-content/20 py-1.5 items-center"
                         :class="mediaStore.folderTree.folders.length % 2 === 0 ? 'even:bg-base-200' : 'odd:bg-base-200'"
                     >
                         <div class="px-2" :class="{ timeHidden: configStore.playout.playlist.infinit }">

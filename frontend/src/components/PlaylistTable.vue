@@ -66,7 +66,7 @@
                     <li
                         :id="record.uid"
                         :key="record.uid"
-                        class="grid grid-cols-[85px_auto_85px_85px] 2md:grid-cols-[85px_auto_85px_85px_85px_85px_85px_85px_85px] odd:bg-base-200 border border-base-content/20 duration-500 transition-colors py-2"
+                        class="grid grid-cols-[85px_auto_85px_85px] 2md:grid-cols-[85px_auto_85px_85px_85px_85px_85px_85px_85px] odd:bg-base-200 border-b border-base-content/20 duration-500 transition-colors py-2"
                         :class="{
                             '!bg-lime-500/30':
                                 playlistStore.playoutIsRunning && listDate === todayDate && index === currentIndex,

@@ -116,6 +116,8 @@ import { useAuth } from '@/stores/auth'
 import { useIndex } from '@/stores/index'
 import { useConfig } from '@/stores/config'
 
+import Multiselect from '@vueform/multiselect'
+
 import GenericModal from '@/components/GenericModal.vue'
 
 const { t } = useI18n()
