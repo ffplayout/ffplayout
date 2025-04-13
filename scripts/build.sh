@@ -6,12 +6,7 @@ target=$1
 if [[ -n $target ]]; then
     targets=($target)
 else
-    # x86_64-unknown-linux-musl combined with tokio may slow down or cause problems with async pipes
-    # is just an observation due to packet loss/damage in the ffmpeg pipe (engine/player/output/mod.rs -> play())
-    # for future investigation:
-    # https://news.ycombinator.com/item?id=38616023
-    # https://www.tweag.io/blog/2023-08-10-rust-static-link-with-mimalloc/
-    targets=("x86_64-unknown-linux-gnu" "aarch64-unknown-linux-gnu" "x86_64-pc-windows-gnu" "x86_64-apple-darwin" "aarch64-apple-darwin")
+    targets=("x86_64-unknown-linux-musl" "aarch64-unknown-linux-gnu" "x86_64-pc-windows-gnu" "x86_64-apple-darwin" "aarch64-apple-darwin")
 fi
 
 IFS="= "
@@ -51,9 +46,9 @@ for target in "${targets[@]}"; do
     echo ""
 done
 
-if [[ "${#targets[@]}" == "5" ]] || [[ $targets == "x86_64-unknown-linux-gnu" ]]; then
-    cargo deb --no-build --target=x86_64-unknown-linux-gnu -p ffplayout --manifest-path=engine/Cargo.toml -o ffplayout_${version}-1_amd64.deb
-    cargo generate-rpm --target=x86_64-unknown-linux-gnu -p engine -o ffplayout-${version}-1.x86_64.rpm
+if [[ "${#targets[@]}" == "5" ]] || [[ $targets == "x86_64-unknown-linux-musl" ]]; then
+    cargo deb --no-build --target=x86_64-unknown-linux-musl -p ffplayout --manifest-path=engine/Cargo.toml -o ffplayout_${version}-1_amd64.deb
+    cargo generate-rpm --target=x86_64-unknown-linux-musl -p engine -o ffplayout-${version}-1.x86_64.rpm
 fi
 
 if [[ "${#targets[@]}" == "5" ]] || [[ $targets == "aarch64-unknown-linux-gnu" ]]; then

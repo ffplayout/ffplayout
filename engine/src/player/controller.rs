@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::{Pool, Sqlite};
 use tokio::{
     fs,
-    io::{self, AsyncReadExt},
+    io::{self, AsyncReadExt, BufReader},
     process::{Child, ChildStdout},
     sync::Mutex,
     time::{sleep, Duration, Instant},
@@ -64,7 +64,7 @@ pub struct ChannelManager {
     pub decoder: Arc<Mutex<Option<Child>>>,
     pub encoder: Arc<Mutex<Option<Child>>>,
     pub ingest: Arc<Mutex<Option<Child>>>,
-    pub ingest_stdout: Arc<Mutex<Option<ChildStdout>>>,
+    pub ingest_reader: Arc<Mutex<Option<BufReader<ChildStdout>>>>,
     pub ingest_is_alive: Arc<AtomicBool>,
     pub is_alive: Arc<AtomicBool>,
     pub is_processing: Arc<AtomicBool>,
@@ -109,7 +109,7 @@ impl ChannelManager {
             decoder: Arc::new(Mutex::new(None)),
             encoder: Arc::new(Mutex::new(None)),
             ingest: Arc::new(Mutex::new(None)),
-            ingest_stdout: Arc::new(Mutex::new(None)),
+            ingest_reader: Arc::new(Mutex::new(None)),
             ingest_is_alive: Arc::new(AtomicBool::new(false)),
             is_processing: Arc::new(AtomicBool::new(false)),
             filter_chain: None,

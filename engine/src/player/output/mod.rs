@@ -133,7 +133,8 @@ async fn play(
             .stderr(Stdio::piped())
             .spawn()?;
 
-        let mut decoder_stdout = dec_proc.stdout.take().unwrap();
+        let mut ingest_reader = manager.ingest_reader.lock().await;
+        let mut decoder_stdout = BufReader::with_capacity(65088, dec_proc.stdout.take().unwrap());
         let dec_err = BufReader::new(dec_proc.stderr.take().unwrap());
 
         *manager.clone().decoder.lock().await = Some(dec_proc);
@@ -151,9 +152,8 @@ async fn play(
                     live_on = true;
                 }
 
-                let mut ingest_stdout_guard = manager.ingest_stdout.lock().await;
-                if let Some(ref mut ingest_stdout) = *ingest_stdout_guard {
-                    let num = ingest_stdout.read(&mut buffer[..]).await?;
+                if let Some(ref mut ingest_stdout) = *ingest_reader {
+                    let num = ingest_stdout.read(&mut buffer).await?;
 
                     if num == 0 {
                         continue;
@@ -170,7 +170,7 @@ async fn play(
                     break;
                 }
 
-                let num = decoder_stdout.read(&mut buffer[..]).await?;
+                let num = decoder_stdout.read(&mut buffer).await?;
 
                 if num == 0 {
                     break;
@@ -179,6 +179,8 @@ async fn play(
                 enc_writer.write_all(&buffer[..num]).await?;
             }
         }
+
+        enc_writer.flush().await?;
 
         drop(decoder_stdout);
 
@@ -205,23 +207,21 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
     let ignore_enc = config.logging.ignore_lines.clone();
     let channel_id = config.general.channel_id;
 
-    if config.output.mode == HLS {
-        hls::writer(&manager, &ff_log_format).await?;
-        manager.stop_all(false).await;
-
-        return Ok(());
-    }
-
     // get ffmpeg output instance
     let mut enc_proc = match config.output.mode {
         Desktop => desktop::output(&config, &ff_log_format).await?,
         Null => null::output(&config, &ff_log_format).await?,
         Stream => stream::output(&config, &ff_log_format).await?,
-        _ => panic!("Output mode doesn't exists!"),
+        HLS => {
+            hls::writer(&manager, &ff_log_format).await?;
+            manager.stop_all(false).await;
+
+            return Ok(());
+        }
     };
 
     let enc_err = BufReader::new(enc_proc.stderr.take().unwrap());
-    let enc_writer = BufWriter::new(enc_proc.stdin.take().unwrap());
+    let enc_writer = BufWriter::with_capacity(65088, enc_proc.stdin.take().unwrap());
 
     *manager.encoder.lock().await = Some(enc_proc);
     let mgr_clone2 = manager.clone();
