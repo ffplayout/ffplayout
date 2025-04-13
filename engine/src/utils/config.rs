@@ -31,7 +31,7 @@ pub const IMAGE_FORMAT: [&str; 21] = [
 ];
 
 // Some well known errors can be safely ignore
-pub const FFMPEG_IGNORE_ERRORS: [&str; 13] = [
+pub const FFMPEG_IGNORE_ERRORS: [&str; 14] = [
     "ac-tex damaged",
     "codec s302m, is muxed as a private data stream",
     "corrupt decoded frame in stream",
@@ -45,6 +45,7 @@ pub const FFMPEG_IGNORE_ERRORS: [&str; 13] = [
     "timestamp discontinuity",
     "Warning MVs not available",
     "frame size not set",
+    "Error parsing Opus packet header.",
 ];
 
 pub const FFMPEG_UNRECOVERABLE_ERRORS: [&str; 9] = [
