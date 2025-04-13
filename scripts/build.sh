@@ -7,7 +7,7 @@ if [[ -n $target ]]; then
     targets=($target)
 else
     # x86_64-unknown-linux-musl combined with tokio may slow down or cause problems with async pipes
-    # is just an observation due to packet loss/damage in the ffmpeg pipe (engine/player/output/mod.rs -> play)
+    # is just an observation due to packet loss/damage in the ffmpeg pipe (engine/player/output/mod.rs -> play())
     # for future investigation:
     # https://news.ycombinator.com/item?id=38616023
     # https://www.tweag.io/blog/2023-08-10-rust-static-link-with-mimalloc/
