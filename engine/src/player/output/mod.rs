@@ -2,7 +2,7 @@ use std::{process::Stdio, sync::atomic::Ordering};
 
 use log::*;
 use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter},
+    io::{AsyncReadExt, AsyncWriteExt, BufReader},
     process::{ChildStdin, Command},
 };
 
@@ -26,7 +26,7 @@ use crate::vec_strings;
 
 async fn play(
     manager: ChannelManager,
-    mut enc_writer: BufWriter<ChildStdin>,
+    mut enc_writer: ChildStdin,
     ff_log_format: &str,
 ) -> Result<(), ServiceError> {
     let config = manager.config.lock().await.clone();
@@ -34,7 +34,7 @@ async fn play(
     let playlist_init = manager.list_init.clone();
     let is_alive = manager.is_alive.clone();
     let ingest_is_alive = manager.ingest_is_alive.clone();
-    let mut buffer = [0; 65088];
+    let mut buffer = vec![0u8; 65088];
     let mut live_on = false;
 
     // get source iterator
@@ -133,8 +133,7 @@ async fn play(
             .stderr(Stdio::piped())
             .spawn()?;
 
-        let mut ingest_reader = manager.ingest_reader.lock().await;
-        let mut decoder_stdout = BufReader::with_capacity(65088, dec_proc.stdout.take().unwrap());
+        let mut decoder_stdout = dec_proc.stdout.take().unwrap();
         let dec_err = BufReader::new(dec_proc.stderr.take().unwrap());
 
         *manager.clone().decoder.lock().await = Some(dec_proc);
@@ -152,8 +151,9 @@ async fn play(
                     live_on = true;
                 }
 
-                if let Some(ref mut ingest_stdout) = *ingest_reader {
-                    let num = ingest_stdout.read(&mut buffer).await?;
+                let mut ingest_reader_guard = manager.ingest_reader.lock().await;
+                if let Some(ref mut ingest_stdout) = *ingest_reader_guard {
+                    let num = ingest_stdout.read(&mut buffer[..]).await?;
 
                     if num == 0 {
                         continue;
@@ -170,7 +170,7 @@ async fn play(
                     break;
                 }
 
-                let num = decoder_stdout.read(&mut buffer).await?;
+                let num = decoder_stdout.read(&mut buffer[..]).await?;
 
                 if num == 0 {
                     break;
@@ -179,8 +179,6 @@ async fn play(
                 enc_writer.write_all(&buffer[..num]).await?;
             }
         }
-
-        enc_writer.flush().await?;
 
         drop(decoder_stdout);
 
@@ -221,7 +219,7 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
     };
 
     let enc_err = BufReader::new(enc_proc.stderr.take().unwrap());
-    let enc_writer = BufWriter::with_capacity(65088, enc_proc.stdin.take().unwrap());
+    let enc_writer = enc_proc.stdin.take().unwrap();
 
     *manager.encoder.lock().await = Some(enc_proc);
     let mgr_clone2 = manager.clone();
@@ -229,7 +227,7 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
     // spawn a task to log ffmpeg output error messages
     let handle_enc_stderr = tokio::spawn(stderr_reader(enc_err, ignore_enc, Encoder, channel_id));
 
-    // spawn a task for ffmpeg ingest server and create a channel for package sending
+    // spawn a task for a ffmpeg ingest server
     let handle_ingest = if config.ingest.enable {
         Some(tokio::spawn(ingest_server(config_clone, mgr_clone2)))
     } else {
@@ -251,7 +249,7 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
             result?;
         }
 
-        result = play(manager.clone(), enc_writer, &ff_log_format) => {
+        result = play(manager, enc_writer, &ff_log_format) => {
             result?;
         }
     }

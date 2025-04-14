@@ -1,4 +1,5 @@
 use std::{
+    collections::VecDeque,
     ffi::OsStr,
     fmt,
     io::Error,
@@ -573,6 +574,31 @@ pub fn get_delta(config: &PlayoutConfig, begin: &f64) -> (f64, f64) {
     (current_delta, total_delta)
 }
 
+pub fn insert_readrate(
+    options: &[String],
+    args: &mut Vec<String>,
+    rate: f64,
+    catchup: Option<f64>,
+) {
+    let mut i = 0;
+    while i < args.len() {
+        if args[i] == "-i" {
+            args.insert(i, rate.to_string());
+            args.insert(i, "-readrate".to_string());
+
+            if options.contains(&"-readrate_catchup".to_string()) {
+                args.insert(i, catchup.unwrap_or(1.5).to_string());
+                args.insert(i, "-readrate_catchup".to_string());
+                i += 2;
+            }
+
+            i += 2;
+        }
+
+        i += 1;
+    }
+}
+
 /// Loop image until target duration is reached.
 pub fn loop_image(config: &PlayoutConfig, node: &Media) -> Vec<String> {
     let duration = node.out - node.seek;
@@ -861,6 +887,72 @@ pub fn include_file_extension(config: &PlayoutConfig, file_path: &Path) -> bool 
     include
 }
 
+struct LogDedup {
+    last_messages: VecDeque<String>,
+    last_repeated_message: Option<String>,
+    repeat_count: usize,
+    suffix: ProcessUnit,
+    channel_id: i32,
+}
+
+impl LogDedup {
+    fn new(suffix: ProcessUnit, channel_id: i32) -> Self {
+        Self {
+            last_messages: VecDeque::with_capacity(2),
+            last_repeated_message: None,
+            repeat_count: 0,
+            suffix,
+            channel_id,
+        }
+    }
+
+    fn log(&mut self, msg: &str) -> Result<(), ServiceError> {
+        if self.last_messages.contains(&msg.to_string()) {
+            self.repeat_count += 1;
+
+            if self.last_repeated_message.is_none() {
+                self.last_repeated_message = Some(msg.to_string());
+            }
+        } else {
+            if self.repeat_count > 1 {
+                if let Some(prev) = &self.last_repeated_message {
+                    let result = format!(
+                        "{prev} (repeated <span class=\"log-number\">{}x</span>)",
+                        self.repeat_count + 1
+                    );
+                    stderr_log(&result, self.suffix, self.channel_id)?;
+                }
+            }
+
+            self.repeat_count = 0;
+            self.last_repeated_message = None;
+
+            if self.last_messages.len() == 2 {
+                self.last_messages.pop_front();
+            }
+            self.last_messages.push_back(msg.to_string());
+
+            stderr_log(msg, self.suffix, self.channel_id)?;
+        }
+
+        Ok(())
+    }
+
+    fn flush(&mut self) -> Result<(), ServiceError> {
+        if self.repeat_count > 0 {
+            if let Some(prev) = self.last_messages.back() {
+                let result = format!(
+                    "{prev} (repeated <span class=\"log-number\">{}x</span>)",
+                    self.repeat_count + 1
+                );
+                stderr_log(&result, self.suffix, self.channel_id)?;
+            }
+        }
+
+        Ok(())
+    }
+}
+
 /// Read ffmpeg stderr decoder and encoder instance
 /// and log the output.
 pub async fn stderr_reader(
@@ -870,6 +962,7 @@ pub async fn stderr_reader(
     channel_id: i32,
 ) -> Result<(), ServiceError> {
     let mut lines = buffer.lines();
+    let mut debup = LogDedup::new(suffix, channel_id);
 
     while let Some(line) = lines.next_line().await? {
         if FFMPEG_IGNORE_ERRORS.iter().any(|i| line.contains(*i))
@@ -878,32 +971,40 @@ pub async fn stderr_reader(
             continue;
         }
 
-        if line.contains("[info]") {
-            info!(target: Target::file_mail(), channel = channel_id;
-                "<span class=\"log-gray\">[{suffix}]</span> {}",
-                line.replace("[info] ", "")
-            );
-        } else if line.contains("[warning]") {
-            warn!(target: Target::file_mail(), channel = channel_id;
-                "<span class=\"log-gray\">[{suffix}]</span> {}",
-                line.replace("[warning] ", "")
-            );
-        } else if line.contains("[error]") || line.contains("[fatal]") {
-            error!(target: Target::file_mail(), channel = channel_id;
-                "<span class=\"log-gray\">[{suffix}]</span> {}",
-                line.replace("[error] ", "").replace("[fatal] ", "")
-            );
+        debup.log(&line)?;
+    }
 
-            if FFMPEG_UNRECOVERABLE_ERRORS
-                .iter()
-                .any(|i| line.contains(*i))
-                || (line.contains("No such file or directory")
-                    && !line.contains("failed to delete old segment"))
-            {
-                return Err(ServiceError::Conflict(
-                    "Hit unrecoverable error!".to_string(),
-                ));
-            }
+    debup.flush()?;
+
+    Ok(())
+}
+
+fn stderr_log(line: &str, suffix: ProcessUnit, channel_id: i32) -> Result<(), ServiceError> {
+    if line.contains("[info]") {
+        info!(target: Target::file_mail(), channel = channel_id;
+            "<span class=\"log-gray\">[{suffix}]</span> {}",
+            line.replace("[info] ", "")
+        );
+    } else if line.contains("[warning]") {
+        warn!(target: Target::file_mail(), channel = channel_id;
+            "<span class=\"log-gray\">[{suffix}]</span> {}",
+            line.replace("[warning] ", "")
+        );
+    } else if line.contains("[error]") || line.contains("[fatal]") {
+        error!(target: Target::file_mail(), channel = channel_id;
+            "<span class=\"log-gray\">[{suffix}]</span> {}",
+            line.replace("[error] ", "").replace("[fatal] ", "")
+        );
+
+        if FFMPEG_UNRECOVERABLE_ERRORS
+            .iter()
+            .any(|i| line.contains(*i))
+            || (line.contains("No such file or directory")
+                && !line.contains("failed to delete old segment"))
+        {
+            return Err(ServiceError::Conflict(
+                "Hit unrecoverable error!".to_string(),
+            ));
         }
     }
 

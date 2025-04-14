@@ -144,7 +144,7 @@ pub async fn ingest_server(
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()?;
-        let ingest_stdout = BufReader::with_capacity(65088, server_proc.stdout.take().unwrap());
+        let ingest_stdout = server_proc.stdout.take().unwrap();
         let server_err = BufReader::new(server_proc.stderr.take().unwrap());
 
         *manager.ingest_reader.lock().await = Some(ingest_stdout);

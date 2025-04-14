@@ -1,5 +1,8 @@
-use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter};
-use tokio::process::Command;
+use std::{
+    io::{Read, Write},
+    process::Command,
+};
+
 use tokio::time::Instant;
 
 #[tokio::main]
@@ -33,8 +36,7 @@ async fn main() {
         .spawn()
         .unwrap();
 
-    let stdout = ffmpeg_in.stdout.take().expect("failed to open stdout");
-    let mut reader = BufReader::with_capacity(65088, stdout);
+    let mut stdout = ffmpeg_in.stdout.take().expect("failed to open stdout");
 
     let mut ffmpeg_out = Command::new("ffmpeg")
         .args([
@@ -59,10 +61,7 @@ async fn main() {
         .spawn()
         .unwrap();
 
-    let mut writer = BufWriter::with_capacity(
-        65088,
-        ffmpeg_out.stdin.take().expect("failed to open stdin"),
-    );
+    let mut writer = ffmpeg_out.stdin.take().expect("failed to open stdin");
 
     let mut buffer = vec![0u8; 64 * 1024];
     let mut total = 0;
@@ -72,18 +71,18 @@ async fn main() {
     let start = Instant::now();
 
     loop {
-        let n = reader.read(&mut buffer).await.unwrap();
+        let n = stdout.read(&mut buffer[..]).unwrap();
         if n == 0 {
             break;
         }
 
-        writer.write_all(&buffer[..n]).await.unwrap();
+        writer.write_all(&buffer[..n]).unwrap();
         total += n;
     }
 
     let duration = start.elapsed();
 
-    writer.flush().await.unwrap();
+    writer.flush().unwrap();
     println!(
         "✅ Transferred {} bytes (~{:.2} MB) in {:.2} seconds",
         total,
@@ -91,6 +90,7 @@ async fn main() {
         duration.as_secs_f64()
     );
 
-    ffmpeg_out.kill().await.unwrap();
-    ffmpeg_out.wait().await.unwrap();
+    ffmpeg_in.wait().unwrap();
+    ffmpeg_out.kill().unwrap();
+    ffmpeg_out.wait().unwrap();
 }

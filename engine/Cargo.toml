@@ -186,7 +186,7 @@ assets = [
 name = "ffplayout"
 license = "GPL-3.0"
 assets = [
-    { source = "../target/x86_64-unknown-linux-gnu/release/ffplayout", dest = "/usr/bin/ffplayout", mode = "755" },
+    { source = "../target/x86_64-unknown-linux-musl/release/ffplayout", dest = "/usr/bin/ffplayout", mode = "755" },
     { source = "../assets/ffplayout.service", dest = "/lib/systemd/system/ffplayout.service", mode = "644" },
     { source = "../README.md", dest = "/usr/share/doc/ffplayout/README", mode = "644" },
     { source = "../assets/ffplayout.1.gz", dest = "/usr/share/man/man1/ffplayout.1.gz", mode = "644", doc = true },
