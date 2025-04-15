@@ -34,7 +34,7 @@ async fn play(
     let playlist_init = manager.list_init.clone();
     let is_alive = manager.is_alive.clone();
     let ingest_is_alive = manager.ingest_is_alive.clone();
-    let mut buffer = vec![0u8; 65088];
+    let mut buffer = vec![0u8; 8 * 1024];
     let mut live_on = false;
 
     // get source iterator
