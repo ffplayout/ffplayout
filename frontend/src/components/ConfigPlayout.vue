@@ -595,7 +595,6 @@ async function onSubmitPlayout() {
                 return response.json()
             })
             .then(async (response: any) => {
-                console.log('response', response)
                 if (response === 'active') {
                     configStore.showRestartModal = true
                 }
