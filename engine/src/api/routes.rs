@@ -28,6 +28,7 @@ use argon2::{
     Argon2, PasswordHasher,
 };
 use chrono::{DateTime, Datelike, Local, NaiveDateTime, TimeDelta, TimeZone, Utc};
+use chrono_tz::Tz;
 use log::*;
 use path_clean::PathClean;
 use regex::Regex;
@@ -68,6 +69,16 @@ use crate::{
 pub struct DateObj {
     #[serde(default)]
     date: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct LogReq {
+    #[serde(default)]
+    date: String,
+    #[serde(default)]
+    timezone: Tz,
+    #[serde(default)]
+    download: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -1300,11 +1311,11 @@ pub async fn del_playlist(
 )]
 pub async fn get_log(
     id: web::Path<i32>,
-    log: web::Query<DateObj>,
+    log: web::Query<LogReq>,
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    read_log_file(&id, &log.date).await
+    read_log_file(&id, &log.date, log.timezone, log.download).await
 }
 
 /// ### File Operations

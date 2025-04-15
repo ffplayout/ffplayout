@@ -1,11 +1,13 @@
 use std::{
-    collections::{hash_map, HashMap},
+    collections::{hash_map, HashMap, VecDeque},
     env,
     io::{self, ErrorKind, Write},
     path::PathBuf,
     sync::{Arc, RwLock},
 };
 
+use chrono::{DateTime, FixedOffset};
+use chrono_tz::Tz;
 use flexi_logger::{
     writers::{FileLogWriter, LogWriter},
     Age, Cleanup, Criterion, DeferredNow, FileSpec, Level, LogSpecification, Logger, Naming,
@@ -13,16 +15,20 @@ use flexi_logger::{
 };
 
 use log::{kv::Value, *};
-use regex::Regex;
+use regex::{Captures, Regex};
 use tokio::sync::Mutex;
 
 use super::ARGS;
 
 use crate::db::GLOBAL_SETTINGS;
 use crate::utils::{
+    config::FFMPEG_UNRECOVERABLE_ERRORS,
     mail::{mail_queue, MailQueue},
     time_machine::time_now,
+    ServiceError,
 };
+
+use crate::player::controller::ProcessUnit;
 
 const TIME_FORMAT: &str = "%Y-%m-%d %H:%M:%S%.6f%:z";
 
@@ -280,6 +286,33 @@ fn html_to_ansi(input: &str) -> String {
     output
 }
 
+pub fn remove_html(input: &str) -> String {
+    let tag_re = Regex::new(r"<[^>]*>").unwrap();
+    let space_re = Regex::new(r"\s{2,}").unwrap();
+
+    let no_tags = tag_re.replace_all(input, "");
+    let cleaned = space_re.replace_all(&no_tags, " ");
+
+    cleaned.to_string()
+}
+
+pub fn timestamps_to_timezone(input: &str, target_tz: Tz) -> String {
+    let re = Regex::new(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d+)?[+-]\d{2}:\d{2}").unwrap();
+
+    re.replace_all(input, |caps: &Captures| {
+        let ts_str = &caps[0];
+        match ts_str.parse::<DateTime<FixedOffset>>() {
+            Ok(original_dt) => {
+                let converted = original_dt.with_timezone(&target_tz);
+
+                converted.format("%Y-%m-%d %H:%M:%S%.6f").to_string()
+            }
+            Err(_) => ts_str.to_string(),
+        }
+    })
+    .to_string()
+}
+
 fn console_formatter(w: &mut dyn Write, now: &mut DeferredNow, record: &Record) -> io::Result<()> {
     let log_line = html_to_ansi(&format_level(record));
 
@@ -447,4 +480,91 @@ pub fn fmt_cmd(cmd: &[String]) -> String {
     }
 
     formatted_cmd.join(" ")
+}
+
+/// Deduplicate log lines
+/// This struct is used for ffmpeg logging because it can happen that too many repeated lines are written in a very short time.
+pub struct LogDedup {
+    repeat_counts: HashMap<String, usize>,
+    seen_recently: VecDeque<String>,
+    suffix: ProcessUnit,
+    channel_id: i32,
+}
+
+impl LogDedup {
+    pub fn new(suffix: ProcessUnit, channel_id: i32) -> Self {
+        Self {
+            repeat_counts: HashMap::new(),
+            seen_recently: VecDeque::with_capacity(5),
+            suffix,
+            channel_id,
+        }
+    }
+
+    pub fn log(&mut self, msg: &str) -> Result<(), ServiceError> {
+        if self.seen_recently.contains(&msg.to_string()) {
+            *self.repeat_counts.entry(msg.to_string()).or_insert(1) += 1;
+
+            return Ok(());
+        }
+
+        for (msg, count) in self.repeat_counts.drain() {
+            if count > 1 {
+                let result = format!("{msg} (repeated <span class=\"log-number\">{count}x</span>)");
+                stderr_log(&result, self.suffix, self.channel_id)?;
+            }
+        }
+
+        stderr_log(msg, self.suffix, self.channel_id)?;
+
+        if self.seen_recently.len() == 5 {
+            self.seen_recently.pop_front();
+        }
+        self.seen_recently.push_back(msg.to_string());
+
+        Ok(())
+    }
+
+    pub fn flush(&mut self) -> Result<(), ServiceError> {
+        for (msg, count) in self.repeat_counts.drain() {
+            if count > 1 {
+                let result = format!("{msg} (repeated <span class=\"log-number\">{count}x</span>)");
+                stderr_log(&result, self.suffix, self.channel_id)?;
+            }
+        }
+
+        Ok(())
+    }
+}
+
+pub fn stderr_log(line: &str, suffix: ProcessUnit, channel_id: i32) -> Result<(), ServiceError> {
+    if line.contains("[info]") {
+        info!(target: Target::file_mail(), channel = channel_id;
+            "<span class=\"log-gray\">[{suffix}]</span> {}",
+            line.replace("[info] ", "")
+        );
+    } else if line.contains("[warning]") {
+        warn!(target: Target::file_mail(), channel = channel_id;
+            "<span class=\"log-gray\">[{suffix}]</span> {}",
+            line.replace("[warning] ", "")
+        );
+    } else if line.contains("[error]") || line.contains("[fatal]") {
+        error!(target: Target::file_mail(), channel = channel_id;
+            "<span class=\"log-gray\">[{suffix}]</span> {}",
+            line.replace("[error] ", "").replace("[fatal] ", "")
+        );
+
+        if FFMPEG_UNRECOVERABLE_ERRORS
+            .iter()
+            .any(|i| line.contains(*i))
+            || (line.contains("No such file or directory")
+                && !line.contains("failed to delete old segment"))
+        {
+            return Err(ServiceError::Conflict(
+                "Hit unrecoverable error!".to_string(),
+            ));
+        }
+    }
+
+    Ok(())
 }

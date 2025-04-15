@@ -39,7 +39,7 @@
                 <div
                     id="log-content"
                     class="whitespace-pre"
-                    v-html="filterLogsBySeverity(formatLog(currentLog, configStore.timezone), errorLevel)"
+                    v-html="filterLogsBySeverity(currentLog, errorLevel)"
                 />
             </div>
         </div>
@@ -70,7 +70,6 @@ dayjs.extend(LocalizedFormat)
 dayjs.extend(timezone)
 dayjs.extend(utc)
 
-import { stringFormatter } from '@/composables/helper'
 import { useAuth } from '@/stores/auth'
 import { useConfig } from '@/stores/config'
 import { useIndex } from '@/stores/index'
@@ -87,7 +86,6 @@ const authStore = useAuth()
 const configStore = useConfig()
 const currentLog = ref('')
 const listDate = ref(dayjs().tz(configStore.timezone).format('YYYY-MM-DD'))
-const { formatLog } = stringFormatter()
 
 const errorLevel = ref(localStorage.getItem('error_level') || 'INFO')
 
@@ -139,7 +137,7 @@ async function getLog() {
         date = ''
     }
 
-    await fetch(`/api/log/${configStore.channels[configStore.i].id}?date=${date}`, {
+    await fetch(`/api/log/${configStore.channels[configStore.i].id}?date=${date}&timezone=${encodeURIComponent(configStore.timezone)}`, {
         method: 'GET',
         headers: authStore.authHeader,
     })
@@ -161,25 +159,38 @@ async function getLog() {
         })
 }
 
-function downloadLog() {
-    const file = new File(
-        [formatLog(currentLog.value, configStore.timezone).replace(/<\/?[^>]+(>|$)/g, '')],
-        `playout_${listDate.value}.log`,
-        {
-            type: 'text/plain',
-        }
-    )
+async function downloadLog() {
+    let date = listDate.value
+    let channel_id = configStore.channels[configStore.i].id
 
+    if (date === dayjs().tz(configStore.timezone).format('YYYY-MM-DD')) {
+        date = ''
+    }
+
+    const response = await fetch(`/api/log/${channel_id}?date=${date}&timezone=${encodeURIComponent(configStore.timezone)}&download=true`, {
+        method: 'GET',
+        headers: authStore.authHeader,
+    })
+
+    if (!response.ok) {
+        indexStore.msgAlert('error', await response.text(), 7)
+        return
+    }
+
+    if (date) {
+        date = `_${date}`
+    }
+
+    const blob = await response.blob()
+    const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
-    const url = URL.createObjectURL(file)
 
     link.href = url
-    link.download = file.name
+    link.download = `ffplayout_${channel_id}${date}.log`
     document.body.appendChild(link)
     link.click()
-
     document.body.removeChild(link)
-    window.URL.revokeObjectURL(url)
+    URL.revokeObjectURL(url)
 }
 </script>
 

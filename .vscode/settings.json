@@ -56,6 +56,7 @@
         "actix",
         "aevalsrc",
         "afade",
+        "ansi",
         "anull",
         "apad",
         "asplit",

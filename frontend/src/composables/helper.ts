@@ -30,17 +30,6 @@ export const stringFormatter = () => {
         return bytes.toFixed(dp) + ' ' + units[u]
     }
 
-    function formatLog(text: string, timezone: string): string {
-        return text
-            .replace(
-                /\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})(\.\d+)?([+-]\d{2}:\d{2})\]/g,
-                (_, dateTime, nano = '', offset) => {
-                    const formatted = dayjs(`${dateTime}${offset}`).tz(timezone).format('YYYY-MM-DD HH:mm:ss')
-                    return `${formatted}${nano}`
-                }
-            )
-    }
-
     function timeToSeconds(time: string): number {
         const t = time.split(':')
         return parseInt(t[0]) * 3600 + parseInt(t[1]) * 60 + parseInt(t[2])
@@ -179,7 +168,6 @@ export const stringFormatter = () => {
 
     return {
         fileSize,
-        formatLog,
         timeToSeconds,
         secToHMS,
         numberToHex,
