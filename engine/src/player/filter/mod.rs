@@ -266,7 +266,7 @@ impl Filters {
             let v_map = "0:v".to_string();
 
             if !o_map.contains(&v_map) {
-                o_map.append(&mut vec_strings!["-map", v_map]);
+                o_map.splice(0..0, vec_strings!["-map", v_map]);
             };
         }
 

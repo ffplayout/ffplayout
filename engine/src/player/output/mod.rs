@@ -34,7 +34,7 @@ async fn play(
     let playlist_init = manager.list_init.clone();
     let is_alive = manager.is_alive.clone();
     let ingest_is_alive = manager.ingest_is_alive.clone();
-    let mut buffer = vec![0u8; 4 * 1024];
+    let mut buffer = vec![0u8; 4096];
     let mut live_on = false;
 
     // get source iterator
@@ -159,15 +159,7 @@ async fn play(
                         continue;
                     }
 
-                    let nw = enc_writer.write(&buffer[..num]).await?;
-
-                    if num != nw {
-                        error!(
-                            "Not all ingest bytes are written: {:.3} KB read but {:.3} KB written",
-                            num as f64 / 1024.0,
-                            nw as f64 / 1024.0,
-                        );
-                    }
+                    enc_writer.write_all(&buffer[..num]).await?;
                 }
             } else {
                 // read from decoder instance
@@ -184,15 +176,7 @@ async fn play(
                     break;
                 }
 
-                let nw = enc_writer.write(&buffer[..num]).await?;
-
-                if num != nw {
-                    error!(
-                        "Not all encoder bytes are written: {:.3} KB read but {:.3} KB written",
-                        num as f64 / 1024.0,
-                        nw as f64 / 1024.0,
-                    );
-                }
+                enc_writer.write_all(&buffer[..num]).await?;
             }
         }
 
