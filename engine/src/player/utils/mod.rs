@@ -573,12 +573,7 @@ pub fn get_delta(config: &PlayoutConfig, begin: &f64) -> (f64, f64) {
     (current_delta, total_delta)
 }
 
-pub fn insert_readrate(
-    options: &[String],
-    args: &mut Vec<String>,
-    rate: f64,
-    catchup: Option<f64>,
-) {
+pub fn insert_readrate(options: &[String], args: &mut Vec<String>, rate: f64) {
     let mut i = 0;
     while i < args.len() {
         if args[i] == "-i" {
@@ -586,7 +581,7 @@ pub fn insert_readrate(
             args.insert(i, "-readrate".to_string());
 
             if options.contains(&"-readrate_catchup".to_string()) {
-                args.insert(i, catchup.unwrap_or(1.5).to_string());
+                args.insert(i, 1.5.to_string());
                 args.insert(i, "-readrate_catchup".to_string());
                 i += 2;
             }

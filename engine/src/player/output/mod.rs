@@ -34,7 +34,7 @@ async fn play(
     let playlist_init = manager.list_init.clone();
     let is_alive = manager.is_alive.clone();
     let ingest_is_alive = manager.ingest_is_alive.clone();
-    let mut buffer = vec![0u8; 4096];
+    let mut buffer = vec![0u8; 64 * 1024]; // Linux pipe buffer size
     let mut live_on = false;
 
     // get source iterator
@@ -156,6 +156,7 @@ async fn play(
                     let num = ingest_stdout.read(&mut buffer[..]).await?;
 
                     if num == 0 {
+                        enc_writer.flush().await?;
                         continue;
                     }
 
@@ -173,6 +174,7 @@ async fn play(
                 let num = decoder_stdout.read(&mut buffer[..]).await?;
 
                 if num == 0 {
+                    enc_writer.flush().await?;
                     break;
                 }
 

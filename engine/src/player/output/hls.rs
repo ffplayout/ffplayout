@@ -225,7 +225,7 @@ async fn write(manager: &ChannelManager, ff_log_format: &str) -> Result<(), Serv
             }
         }
 
-        insert_readrate(&config.general.ffmpeg_options, &mut cmd, read_rate, None);
+        insert_readrate(&config.general.ffmpeg_options, &mut cmd, read_rate);
 
         dec_prefix.append(&mut cmd);
         let dec_cmd = prepare_output_cmd(&config, dec_prefix, &node.filter);

@@ -63,7 +63,7 @@ async fn main() {
 
     let mut writer = ffmpeg_out.stdin.take().expect("failed to open stdin");
 
-    let mut buffer = vec![0u8; 4 * 1024];
+    let mut buffer = vec![0u8; 64 * 1024];
     let mut total = 0;
 
     println!("⏳ Streaming...");
