@@ -42,7 +42,7 @@ Compile to your target system with cargo or cross, and run:
 
 ```Bash
 # for debian based systems:
-cargo deb --no-build --target=x86_64-unknown-linux-gnu
+cargo deb --no-build --target=x86_64-unknown-linux-musl
 
 # for armhf
 cargo deb --no-build --target=armv7-unknown-linux-gnueabihf --variant=armhf -p ffplayout --manifest-path=ffplayout-engine/Cargo.toml
@@ -51,7 +51,7 @@ cargo deb --no-build --target=armv7-unknown-linux-gnueabihf --variant=armhf -p f
 cargo deb --no-build --target=aarch64-unknown-linux-gnu --variant=arm64 -p ffplayout --manifest-path=ffplayout-engine/Cargo.toml
 
 # for rhel based systems:
-cargo generate-rpm --target=x86_64-unknown-linux-gnu
+cargo generate-rpm --target=x86_64-unknown-linux-musl
 ```
 
 ## Generate types for Frontend
