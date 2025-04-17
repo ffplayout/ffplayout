@@ -1,6 +1,6 @@
 FROM nvidia/cuda:12.5.0-runtime-rockylinux9
 
-ARG FFPLAYOUT_VERSION=0.24.4
+ARG FFPLAYOUT_VERSION=0.25.0
 
 ENV DB=/db \
     EXTRA_CFLAGS=-march=generic \
