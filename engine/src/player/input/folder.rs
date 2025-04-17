@@ -42,7 +42,7 @@ impl FolderSource {
 
         for path in &path_list {
             if !path.is_dir() {
-                error!(target: Target::file_mail(), channel = id; "Path not exists: <b><magenta>{path:?}</></b>");
+                error!(target: Target::file_mail(), channel = id; "Path not exists: <span class=\"log-addr\">{path:?}</span>");
             }
 
             let mut entries = WalkDir::new(path);
@@ -57,7 +57,7 @@ impl FolderSource {
 
         if media_list.is_empty() {
             error!(target: Target::file_mail(), channel = id;
-                "no playable files found under: <b><magenta>{:?}</></b>",
+                "no playable files found under: <span class=\"log-addr\">{:?}</span>",
                 path_list
             );
         }

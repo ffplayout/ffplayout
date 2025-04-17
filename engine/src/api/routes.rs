@@ -28,6 +28,7 @@ use argon2::{
     Argon2, PasswordHasher,
 };
 use chrono::{DateTime, Datelike, Local, NaiveDateTime, TimeDelta, TimeZone, Utc};
+use chrono_tz::Tz;
 use log::*;
 use path_clean::PathClean;
 use regex::Regex;
@@ -49,6 +50,7 @@ use crate::{
             JsonPlaylist,
         },
     },
+    sse::broadcast::Broadcaster,
     utils::{
         advanced_config::AdvancedConfig,
         channels::{create_channel, delete_channel},
@@ -58,7 +60,7 @@ use crate::{
         mail::MailQueue,
         naive_date_time_from_str,
         playlist::{delete_playlist, generate_playlist, read_playlist, write_playlist},
-        public_path, read_log_file, system, TextFilter,
+        public_path, read_log_file, TextFilter,
     },
     vec_strings,
 };
@@ -67,6 +69,16 @@ use crate::{
 pub struct DateObj {
     #[serde(default)]
     date: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct LogReq {
+    #[serde(default)]
+    date: String,
+    #[serde(default)]
+    timezone: Tz,
+    #[serde(default)]
+    download: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -1299,11 +1311,11 @@ pub async fn del_playlist(
 )]
 pub async fn get_log(
     id: web::Path<i32>,
-    log: web::Query<DateObj>,
+    log: web::Query<LogReq>,
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
 ) -> Result<impl Responder, ServiceError> {
-    read_log_file(&id, &log.date).await
+    read_log_file(&id, &log.date, log.timezone, log.download).await
 }
 
 /// ### File Operations
@@ -1740,6 +1752,7 @@ async fn get_program(
 )]
 pub async fn get_system_stat(
     id: web::Path<i32>,
+    broadcaster: web::Data<Broadcaster>,
     controllers: web::Data<Mutex<ChannelController>>,
     role: AuthDetails<Role>,
     user: web::ReqData<UserMeta>,
@@ -1752,7 +1765,7 @@ pub async fn get_system_stat(
         .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
     let config = manager.config.lock().await.clone();
 
-    let stat = web::block(move || system::stat(&config)).await?;
+    let stat = broadcaster.system.stat(&config).await;
 
     Ok(web::Json(stat))
 }

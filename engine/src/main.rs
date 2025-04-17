@@ -64,7 +64,7 @@ async fn main() -> Result<(), ProcessError> {
     set_mock_time(&ARGS.fake_time)?;
     init_globales(&pool).await?;
 
-    // LoggerHandle should be kept alive until the end
+    // logger handle should be kept alive until the end
     let _logger = init_logging(mail_queues.clone());
 
     let channel_controllers = Arc::new(Mutex::new(ChannelController::new()));
@@ -118,8 +118,7 @@ async fn main() -> Result<(), ProcessError> {
             let auth = HttpAuthentication::bearer(validator);
             let db_pool = web::Data::new(db_clone.clone());
             // Customize logging format to get IP though proxies.
-            let logger = Logger::new("%{r}a \"%r\" %s %b \"%{Referer}i\" \"%{User-Agent}i\" %T")
-                .exclude_regex(r"/_nuxt/*");
+            let logger = Logger::new("%{r}a \"%r\" %s %b \"%{Referer}i\" \"%{User-Agent}i\" %T");
 
             let mut web_app = App::new()
                 .app_data(db_pool)
@@ -233,7 +232,7 @@ async fn main() -> Result<(), ProcessError> {
                         .with_extension("json");
                 }
 
-                debug!("Read: <b><magenta>{playlist_path:?}</></b>");
+                debug!("Read: <span class=\"log-addr\">{playlist_path:?}</span>");
 
                 let mut f = File::options()
                     .read(true)

@@ -64,7 +64,7 @@ pub struct ChannelManager {
     pub decoder: Arc<Mutex<Option<Child>>>,
     pub encoder: Arc<Mutex<Option<Child>>>,
     pub ingest: Arc<Mutex<Option<Child>>>,
-    pub ingest_stdout: Arc<Mutex<Option<ChildStdout>>>,
+    pub ingest_reader: Arc<Mutex<Option<ChildStdout>>>,
     pub ingest_is_alive: Arc<AtomicBool>,
     pub is_alive: Arc<AtomicBool>,
     pub is_processing: Arc<AtomicBool>,
@@ -109,7 +109,7 @@ impl ChannelManager {
             decoder: Arc::new(Mutex::new(None)),
             encoder: Arc::new(Mutex::new(None)),
             ingest: Arc::new(Mutex::new(None)),
-            ingest_stdout: Arc::new(Mutex::new(None)),
+            ingest_reader: Arc::new(Mutex::new(None)),
             ingest_is_alive: Arc::new(AtomicBool::new(false)),
             is_processing: Arc::new(AtomicBool::new(false)),
             filter_chain: None,
@@ -184,13 +184,15 @@ impl ChannelManager {
                         retry_delay = Duration::from_secs(1);
                     }
 
-                    let retry_msg =
-                        format!("Retry in <yellow>{}</> seconds", retry_delay.as_secs());
+                    let retry_msg = format!(
+                        "Retry in <span class=\"log-number\">{}</span> seconds",
+                        retry_delay.as_secs()
+                    );
 
-                    error!(target: Target::all(), channel = channel_id; "Run channel <yellow>{channel_id}</> failed: {e} | {retry_msg}");
+                    error!(target: Target::all(), channel = channel_id; "Run channel <span class=\"log-number\">{channel_id}</span> failed: {e} | {retry_msg}");
 
                     trace!(
-                        "Runtime has <yellow>{}</> active tasks",
+                        "Runtime has <span class=\"log-number\">{}</span> active tasks",
                         tokio::runtime::Handle::current()
                             .metrics()
                             .num_alive_tasks()
@@ -224,7 +226,7 @@ impl ChannelManager {
         } else {
             tokio::spawn(async move {
                 if let Err(e) = run_channel(self_clone).await {
-                    error!(target: Target::all(), channel = channel_id; "Run channel <yellow>{channel_id}</> failed: {e}");
+                    error!(target: Target::all(), channel = channel_id; "Run channel <span class=\"log-number\">{channel_id}</span> failed: {e}");
                 };
             });
         }
@@ -296,14 +298,14 @@ impl ChannelManager {
 
         if permanent {
             if self.is_alive.load(Ordering::SeqCst) {
-                debug!(target: Target::all(), channel = channel_id; "Deactivate playout and stop all child processes from channel: <yellow>{channel_id}</>");
+                debug!(target: Target::all(), channel = channel_id; "Deactivate playout and stop all child processes from channel: <span class=\"log-number\">{channel_id}</span>");
             }
 
             if let Err(e) = handles::update_player(&self.db_pool, channel_id, false).await {
                 error!(target: Target::all(), channel = channel_id; "Player status cannot be written: {e}");
             };
         } else {
-            debug!(target: Target::all(), channel = channel_id; "Stop all child processes from channel: <yellow>{channel_id}</>");
+            debug!(target: Target::all(), channel = channel_id; "Stop all child processes from channel: <span class=\"log-number\">{channel_id}</span>");
         }
 
         self.is_alive.store(false, Ordering::SeqCst);
@@ -371,7 +373,7 @@ async fn run_channel(manager: ChannelManager) -> Result<(), ServiceError> {
 
     drain_hls_path(&config.channel.public).await?;
 
-    debug!(target: Target::all(), channel = channel_id; "Start ffplayout v{VERSION}, channel: <yellow>{channel_id}</>");
+    debug!(target: Target::all(), channel = channel_id; "Start ffplayout v{VERSION}, channel: <span class=\"log-number\">{channel_id}</span>");
 
     // Fill filler list, can also be a single file.
     // INFO: Was running in a thread, but when it runs in a tokio task and

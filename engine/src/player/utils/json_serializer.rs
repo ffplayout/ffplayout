@@ -14,7 +14,7 @@ use crate::player::utils::{
 use crate::utils::{config::DUMMY_LEN, logging::Target};
 
 /// This is our main playlist object, it holds all necessary information for the current day.
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Default, Serialize, Deserialize, Clone)]
 pub struct JsonPlaylist {
     #[serde(default = "default_channel")]
     pub channel: String,
@@ -205,7 +205,7 @@ pub async fn read_json(
         return playlist;
     }
 
-    error!(target: Target::file_mail(), channel = id; "Playlist <b><magenta>{current_file}</></b> not exist!");
+    error!(target: Target::file_mail(), channel = id; "Playlist <span class=\"log-addr\">{current_file}</span> not exist!");
 
     JsonPlaylist::new(date, start_sec)
 }

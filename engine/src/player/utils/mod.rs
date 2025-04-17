@@ -38,9 +38,9 @@ use crate::player::{
     filter::{filter_chains, Filters},
 };
 use crate::utils::{
-    config::{OutputMode::*, PlayoutConfig, FFMPEG_IGNORE_ERRORS, FFMPEG_UNRECOVERABLE_ERRORS},
+    config::{OutputMode::*, PlayoutConfig, FFMPEG_IGNORE_ERRORS},
     errors::ServiceError,
-    logging::Target,
+    logging::{LogDedup, Target},
     time_machine::time_now,
 };
 pub use json_serializer::{read_json, JsonPlaylist};
@@ -573,13 +573,33 @@ pub fn get_delta(config: &PlayoutConfig, begin: &f64) -> (f64, f64) {
     (current_delta, total_delta)
 }
 
+pub fn insert_readrate(options: &[String], args: &mut Vec<String>, rate: f64) {
+    let mut i = 0;
+    while i < args.len() {
+        if args[i] == "-i" {
+            args.insert(i, rate.to_string());
+            args.insert(i, "-readrate".to_string());
+
+            if options.contains(&"-readrate_catchup".to_string()) {
+                args.insert(i, 1.5.to_string());
+                args.insert(i, "-readrate_catchup".to_string());
+                i += 2;
+            }
+
+            i += 2;
+        }
+
+        i += 1;
+    }
+}
+
 /// Loop image until target duration is reached.
 pub fn loop_image(config: &PlayoutConfig, node: &Media) -> Vec<String> {
     let duration = node.out - node.seek;
     let mut source_cmd: Vec<String> = vec_strings!["-loop", "1", "-i", node.source.clone()];
 
     info!(
-        "Loop image <b><magenta>{}</></b>, total duration: <yellow>{duration:.2}</>",
+        "Loop image <span class=\"log-addr\">{}</span>, total duration: <span class=\"log-number\">{duration:.2}</span>",
         node.source
     );
 
@@ -627,12 +647,19 @@ pub fn loop_filler(config: &PlayoutConfig, node: &Media) -> Vec<String> {
     let mut source_cmd = vec![];
 
     if loop_count > 1 {
-        info!("Loop <b><magenta>{}</></b> <yellow>{loop_count}</> times, total duration: <yellow>{:.2}</>", node.source, node.out);
+        info!("Loop <span class=\"log-addr\">{}</span> <span class=\"log-number\">{loop_count}</span> times, total duration: <span class=\"log-number\">{:.2}</span>", node.source, node.out);
 
-        source_cmd.append(&mut vec_strings!["-stream_loop", loop_count]);
+        source_cmd.append(&mut vec_strings![
+            "-stream_loop",
+            loop_count,
+            "-i",
+            node.source,
+            "-t",
+            node.out
+        ]);
+    } else {
+        source_cmd.append(&mut vec_strings!["-i", node.source]);
     }
-
-    source_cmd.append(&mut vec_strings!["-i", node.source, "-t", node.out]);
 
     if config.processing.vtt_enable {
         let vtt_file = Path::new(&node.source).with_extension("vtt");
@@ -678,7 +705,10 @@ pub fn seek_and_length(config: &PlayoutConfig, node: &mut Media) -> Vec<String> 
     }
 
     if loop_count > 1 {
-        info!("Loop <b><magenta>{}</></b> <yellow>{loop_count}</> times, total duration: <yellow>{:.2}</>", node.source, node.out);
+        info!(
+            "Loop <span class=\"log-addr\">{}</span> <span class=\"log-number\">{loop_count}</span> times, total duration: <span class=\"log-number\">{:.2}</span>",
+            node.source, node.out
+        );
 
         source_cmd.append(&mut vec_strings!["-stream_loop", loop_count]);
     }
@@ -724,7 +754,7 @@ pub fn seek_and_length(config: &PlayoutConfig, node: &mut Media) -> Vec<String> 
         } else if vtt_dummy.is_file() {
             Some(vtt_dummy.to_string_lossy())
         } else {
-            error!("<b><magenta>{:?}</></b> not found!", vtt_dummy);
+            error!("<span class=\"log-addr\">{:?}</span> not found!", vtt_dummy);
             None
         } {
             if vtt_file.is_file() && loop_count > 1 {
@@ -860,6 +890,7 @@ pub async fn stderr_reader(
     channel_id: i32,
 ) -> Result<(), ServiceError> {
     let mut lines = buffer.lines();
+    let mut debup = LogDedup::new(suffix, channel_id);
 
     while let Some(line) = lines.next_line().await? {
         if FFMPEG_IGNORE_ERRORS.iter().any(|i| line.contains(*i))
@@ -868,34 +899,10 @@ pub async fn stderr_reader(
             continue;
         }
 
-        if line.contains("[info]") {
-            info!(target: Target::file_mail(), channel = channel_id;
-                "<bright black>[{suffix}]</> {}",
-                line.replace("[info] ", "")
-            );
-        } else if line.contains("[warning]") {
-            warn!(target: Target::file_mail(), channel = channel_id;
-                "<bright black>[{suffix}]</> {}",
-                line.replace("[warning] ", "")
-            );
-        } else if line.contains("[error]") || line.contains("[fatal]") {
-            error!(target: Target::file_mail(), channel = channel_id;
-                "<bright black>[{suffix}]</> {}",
-                line.replace("[error] ", "").replace("[fatal] ", "")
-            );
-
-            if FFMPEG_UNRECOVERABLE_ERRORS
-                .iter()
-                .any(|i| line.contains(*i))
-                || (line.contains("No such file or directory")
-                    && !line.contains("failed to delete old segment"))
-            {
-                return Err(ServiceError::Conflict(
-                    "Hit unrecoverable error!".to_string(),
-                ));
-            }
-        }
+        debup.log(&line)?;
     }
+
+    debup.flush()?;
 
     Ok(())
 }
@@ -918,7 +925,7 @@ async fn is_in_system(name: &str) -> Result<(), String> {
     Ok(())
 }
 
-async fn ffmpeg_filter_and_libs(config: &mut PlayoutConfig) -> Result<(), String> {
+async fn ffmpeg_info(config: &mut PlayoutConfig) -> Result<(), String> {
     let id = config.general.channel_id;
     let ignore_flags = [
         "--enable-gpl",
@@ -985,6 +992,36 @@ async fn ffmpeg_filter_and_libs(config: &mut PlayoutConfig) -> Result<(), String
         error!(target: Target::file_mail(), channel = id; "{e}");
     };
 
+    let mut ff_proc = match Command::new("ffmpeg")
+        .args(["-h", "long", "-hide_banner"])
+        .kill_on_drop(true)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+    {
+        Err(e) => {
+            return Err(format!("couldn't spawn ffmpeg process: {e}"));
+        }
+        Ok(proc) => proc,
+    };
+
+    let out_buffer = BufReader::new(ff_proc.stdout.take().unwrap());
+
+    // stdout shows options from ffmpeg
+    // get options
+    let mut lines = out_buffer.lines();
+    while let Ok(Some(line)) = lines.next_line().await {
+        if line.starts_with('-') {
+            if let Some((opt, _)) = line.split_once([' ', '[']) {
+                config.general.ffmpeg_options.push(opt.to_string());
+            }
+        }
+    }
+
+    if let Err(e) = ff_proc.wait().await {
+        error!(target: Target::file_mail(), channel = id; "{e}");
+    };
+
     Ok(())
 }
 
@@ -999,7 +1036,7 @@ pub async fn validate_ffmpeg(config: &mut PlayoutConfig) -> Result<(), String> {
         is_in_system("ffplay").await?;
     }
 
-    ffmpeg_filter_and_libs(config).await?;
+    ffmpeg_info(config).await?;
 
     if config
         .output
@@ -1083,7 +1120,7 @@ pub fn get_date_range(id: i32, date_range: &[String]) -> Vec<String> {
     let start = match NaiveDate::parse_from_str(&date_range[0], "%Y-%m-%d") {
         Ok(s) => s,
         Err(_) => {
-            error!(target: Target::file_mail(), channel = id; "date format error in: <yellow>{:?}</>", date_range[0]);
+            error!(target: Target::file_mail(), channel = id; "date format error in: <span class=\"log-number\">{:?}</span>", date_range[0]);
             exit(1);
         }
     };
@@ -1091,7 +1128,7 @@ pub fn get_date_range(id: i32, date_range: &[String]) -> Vec<String> {
     let end = match NaiveDate::parse_from_str(&date_range[2], "%Y-%m-%d") {
         Ok(e) => e,
         Err(_) => {
-            error!(target: Target::file_mail(), channel = id; "date format error in: <yellow>{:?}</>", date_range[2]);
+            error!(target: Target::file_mail(), channel = id; "date format error in: <span class=\"log-number\">{:?}</span>", date_range[2]);
             exit(1);
         }
     };

@@ -1,4 +1,5 @@
 {
+    "editor.defaultColorDecorators": "always",
     "eslint.useFlatConfig": true,
     "prettier.tabWidth": 4,
     "prettier.printWidth": 120,
@@ -20,6 +21,9 @@
     "rust-analyzer.inlayHints.parameterHints.enable": false,
     "rust-analyzer.inlayHints.typeHints.enable": false,
     "rust-analyzer.diagnostics.disabled": ["unresolved-proc-macro"],
+    "files.associations": {
+        "*.css": "tailwindcss"
+    },
     "[dockercompose]": {
         "editor.defaultFormatter": "esbenp.prettier-vscode"
     },
@@ -52,6 +56,7 @@
         "actix",
         "aevalsrc",
         "afade",
+        "ansi",
         "anull",
         "apad",
         "asplit",
@@ -60,7 +65,10 @@
         "canonicalize",
         "cgop",
         "coeffs",
+        "colorspace",
         "cuda",
+        "debup",
+        "Deque",
         "ffpengine",
         "flexi",
         "fontcolor",
@@ -84,6 +92,7 @@
         "neli",
         "nuxt",
         "paris",
+        "readrate",
         "Referer",
         "reqwest",
         "rsplit",
@@ -100,5 +109,6 @@
         "uuids",
         "webm",
         "zerolatency"
-    ]
+    ],
+    "vue3snippets.enable-compile-vue-file-on-did-save-code": false
 }

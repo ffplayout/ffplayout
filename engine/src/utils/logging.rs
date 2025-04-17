@@ -1,11 +1,13 @@
 use std::{
-    collections::{hash_map, HashMap},
+    collections::{hash_map, HashMap, VecDeque},
     env,
     io::{self, ErrorKind, Write},
     path::PathBuf,
     sync::{Arc, RwLock},
 };
 
+use chrono::{DateTime, FixedOffset};
+use chrono_tz::Tz;
 use flexi_logger::{
     writers::{FileLogWriter, LogWriter},
     Age, Cleanup, Criterion, DeferredNow, FileSpec, Level, LogSpecification, Logger, Naming,
@@ -13,17 +15,20 @@ use flexi_logger::{
 };
 
 use log::{kv::Value, *};
-use paris::formatter::colorize_string;
-use regex::Regex;
+use regex::{Captures, Regex};
 use tokio::sync::Mutex;
 
 use super::ARGS;
 
 use crate::db::GLOBAL_SETTINGS;
 use crate::utils::{
+    config::FFMPEG_UNRECOVERABLE_ERRORS,
     mail::{mail_queue, MailQueue},
     time_machine::time_now,
+    ServiceError,
 };
+
+use crate::player::controller::ProcessUnit;
 
 const TIME_FORMAT: &str = "%Y-%m-%d %H:%M:%S%.6f%:z";
 
@@ -203,19 +208,113 @@ fn strip_tags(input: &str) -> String {
     re.replace_all(input, "").to_string()
 }
 
-fn console_formatter(w: &mut dyn Write, now: &mut DeferredNow, record: &Record) -> io::Result<()> {
-    let log_line = match record.level() {
-        Level::Debug => colorize_string(format!("<bright-blue>[DEBUG]</> {}", record.args())),
-        Level::Error => colorize_string(format!("<bright-red>[ERROR]</> {}", record.args())),
-        Level::Info => colorize_string(format!("<bright-green>[ INFO]</> {}", record.args())),
-        Level::Trace => colorize_string(format!(
-            "<bright-yellow>[TRACE]</> {}:{} {}",
+fn format_level(record: &Record) -> String {
+    match record.level() {
+        Level::Trace => format!(
+            "<span class=\"level-trace\">[TRACE]</span> {}:{} {}",
             record.file().unwrap_or_default(),
             record.line().unwrap_or_default(),
             record.args()
-        )),
-        Level::Warn => colorize_string(format!("<yellow>[ WARN]</> {}", record.args())),
-    };
+        ),
+        Level::Debug => format!(
+            "<span class=\"level-debug\">[DEBUG]</span> {}",
+            record.args()
+        ),
+        Level::Info => format!(
+            "<span class=\"level-info\">[ INFO]</span> {}",
+            record.args()
+        ),
+        Level::Warn => format!(
+            "<span class=\"level-warning\">[ WARN]</span> {}",
+            record.args()
+        ),
+        Level::Error => format!(
+            "<span class=\"level-error\">[ERROR]</span> {}",
+            record.args()
+        ),
+    }
+}
+
+fn html_to_ansi(input: &str) -> String {
+    let mut output = input.to_string();
+
+    let replacements = vec![
+        (
+            r#"<span class="level-trace">([^<]+)</span>"#,
+            "\x1b[93m$1\x1b[0m",
+        ), // level bright yellow
+        (
+            r#"<span class="level-debug">([^<]+)</span>"#,
+            "\x1b[94m$1\x1b[0m",
+        ), // level bright blue
+        (
+            r#"<span class="level-info">([^<]+)</span>"#,
+            "\x1b[92m$1\x1b[0m",
+        ), // level green
+        (
+            r#"<span class="level-warning">([^<]+)</span>"#,
+            "\x1b[33m$1\x1b[0m",
+        ), // level yellow
+        (
+            r#"<span class="level-error">([^<]+)</span>"#,
+            "\x1b[31m$1\x1b[0m",
+        ), // level red
+        // text and number formatting
+        (
+            r#"<span class="log-gray">([^<]+)</span>"#,
+            "\x1b[90m$1\x1b[0m",
+        ), // bright black
+        (
+            r#"<span class="log-addr">([^<]+)</span>"#,
+            "\x1b[1;35m$1\x1b[0m",
+        ), // bold magenta
+        (
+            r#"<span class="log-cmd">([^<]+)</span>"#,
+            "\x1b[94m$1\x1b[0m",
+        ), // bright blue
+        (
+            r#"<span class="log-number">([^<]+)</span>"#,
+            "\x1b[33m$1\x1b[0m",
+        ), // yellow
+    ];
+
+    for (pattern, replacement) in replacements {
+        let re = Regex::new(pattern).unwrap();
+        output = re.replace_all(&output, replacement).to_string();
+    }
+
+    output
+}
+
+pub fn remove_html(input: &str) -> String {
+    let tag_re = Regex::new(r"<[^>]*>").unwrap();
+    let space_re = Regex::new(r"\s{2,}").unwrap();
+
+    let no_tags = tag_re.replace_all(input, "");
+    let cleaned = space_re.replace_all(&no_tags, " ");
+
+    cleaned.to_string()
+}
+
+pub fn timestamps_to_timezone(input: &str, target_tz: Tz) -> String {
+    let re = Regex::new(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d+)?[+-]\d{2}:\d{2}").unwrap();
+
+    re.replace_all(input, |caps: &Captures| {
+        let ts_str = &caps[0];
+        match ts_str.parse::<DateTime<FixedOffset>>() {
+            Ok(original_dt) => {
+                let converted = original_dt.with_timezone(&target_tz);
+
+                converted.format("%Y-%m-%d %H:%M:%S%.6f").to_string()
+            }
+            Err(_) => ts_str.to_string(),
+        }
+    })
+    .to_string()
+}
+
+fn console_formatter(w: &mut dyn Write, now: &mut DeferredNow, record: &Record) -> io::Result<()> {
+    let log_line = html_to_ansi(&format_level(record));
 
     if ARGS.log_timestamp {
         let time = if ARGS.fake_time.is_some() {
@@ -227,7 +326,7 @@ fn console_formatter(w: &mut dyn Write, now: &mut DeferredNow, record: &Record) 
         write!(
             w,
             "{} {}",
-            colorize_string(format!("<bright black>[{time}]</>")),
+            html_to_ansi(&format!("<span class=\"log-gray\">[{time}]</span>")),
             log_line
         )
     } else {
@@ -240,13 +339,13 @@ fn file_formatter(
     now: &mut DeferredNow,
     record: &Record,
 ) -> std::io::Result<()> {
-    write!(
-        w,
-        "[{}] [{:>5}] {}",
-        now.now().format(TIME_FORMAT),
-        record.level(),
-        record.args()
-    )
+    let time = format!(
+        "<span class=\"log-gray\">[{}]</span>",
+        now.now().format(TIME_FORMAT)
+    );
+    let log_line = format_level(record);
+
+    write!(w, "{time} {log_line}")
 }
 
 pub fn log_file_path() -> PathBuf {
@@ -328,22 +427,22 @@ pub fn init_logging(
 /// Format ingest and HLS logging output
 pub fn log_line(id: i32, line: &str, level: &str) {
     if line.contains("[info]") && level.to_lowercase() == "info" {
-        info!(target: Target::file_mail(), channel = id; "<bright black>[Server]</> {}", line.replace("[info] ", ""));
+        info!(target: Target::file_mail(), channel = id; "<span class=\"log-gray\">[Server]</span> {}", line.replace("[info] ", ""));
     } else if line.contains("[warning]")
         && (level.to_lowercase() == "warning" || level.to_lowercase() == "info")
     {
         warn!(
             target: Target::file_mail(), channel = id;
-            "<bright black>[Server]</> {}",
+            "<span class=\"log-gray\">[Server]</span> {}",
             line.replace("[warning] ", "")
         );
     } else if line.contains("[error]")
         && !line.contains("Input/output error")
         && !line.contains("Broken pipe")
     {
-        error!(target: Target::file_mail(), channel = id; "<bright black>[Server]</> {}", line.replace("[error] ", ""));
+        error!(target: Target::file_mail(), channel = id; "<span class=\"log-gray\">[Server]</span> {}", line.replace("[error] ", ""));
     } else if line.contains("[fatal]") {
-        error!(target: Target::file_mail(), channel = id; "<bright black>[Server]</> {}", line.replace("[fatal] ", ""));
+        error!(target: Target::file_mail(), channel = id; "<span class=\"log-gray\">[Server]</span> {}", line.replace("[fatal] ", ""));
     }
 }
 
@@ -381,4 +480,91 @@ pub fn fmt_cmd(cmd: &[String]) -> String {
     }
 
     formatted_cmd.join(" ")
+}
+
+/// Deduplicate log lines
+/// This struct is used for ffmpeg logging because it can happen that too many repeated lines are written in a very short time.
+pub struct LogDedup {
+    repeat_counts: HashMap<String, usize>,
+    seen_recently: VecDeque<String>,
+    suffix: ProcessUnit,
+    channel_id: i32,
+}
+
+impl LogDedup {
+    pub fn new(suffix: ProcessUnit, channel_id: i32) -> Self {
+        Self {
+            repeat_counts: HashMap::new(),
+            seen_recently: VecDeque::with_capacity(5),
+            suffix,
+            channel_id,
+        }
+    }
+
+    pub fn log(&mut self, msg: &str) -> Result<(), ServiceError> {
+        if self.seen_recently.contains(&msg.to_string()) {
+            *self.repeat_counts.entry(msg.to_string()).or_insert(1) += 1;
+
+            return Ok(());
+        }
+
+        for (msg, count) in self.repeat_counts.drain() {
+            if count > 1 {
+                let result = format!("{msg} (repeated <span class=\"log-number\">{count}x</span>)");
+                stderr_log(&result, self.suffix, self.channel_id)?;
+            }
+        }
+
+        stderr_log(msg, self.suffix, self.channel_id)?;
+
+        if self.seen_recently.len() == 5 {
+            self.seen_recently.pop_front();
+        }
+        self.seen_recently.push_back(msg.to_string());
+
+        Ok(())
+    }
+
+    pub fn flush(&mut self) -> Result<(), ServiceError> {
+        for (msg, count) in self.repeat_counts.drain() {
+            if count > 1 {
+                let result = format!("{msg} (repeated <span class=\"log-number\">{count}x</span>)");
+                stderr_log(&result, self.suffix, self.channel_id)?;
+            }
+        }
+
+        Ok(())
+    }
+}
+
+pub fn stderr_log(line: &str, suffix: ProcessUnit, channel_id: i32) -> Result<(), ServiceError> {
+    if line.contains("[info]") {
+        info!(target: Target::file_mail(), channel = channel_id;
+            "<span class=\"log-gray\">[{suffix}]</span> {}",
+            line.replace("[info] ", "")
+        );
+    } else if line.contains("[warning]") {
+        warn!(target: Target::file_mail(), channel = channel_id;
+            "<span class=\"log-gray\">[{suffix}]</span> {}",
+            line.replace("[warning] ", "")
+        );
+    } else if line.contains("[error]") || line.contains("[fatal]") {
+        error!(target: Target::file_mail(), channel = channel_id;
+            "<span class=\"log-gray\">[{suffix}]</span> {}",
+            line.replace("[error] ", "").replace("[fatal] ", "")
+        );
+
+        if FFMPEG_UNRECOVERABLE_ERRORS
+            .iter()
+            .any(|i| line.contains(*i))
+            || (line.contains("No such file or directory")
+                && !line.contains("failed to delete old segment"))
+        {
+            return Err(ServiceError::Conflict(
+                "Hit unrecoverable error!".to_string(),
+            ));
+        }
+    }
+
+    Ok(())
 }

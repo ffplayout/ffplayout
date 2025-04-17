@@ -11,7 +11,7 @@ use crate::vec_strings;
 use crate::{
     player::{
         controller::ProcessUnit::*,
-        utils::{prepare_output_cmd, Media},
+        utils::{insert_readrate, prepare_output_cmd, Media},
     },
     utils::errors::ServiceError,
 };
@@ -32,12 +32,14 @@ pub async fn output(config: &PlayoutConfig, log_format: &str) -> Result<Child, S
         enc_prefix.append(&mut input_cmd.clone());
     }
 
-    enc_prefix.append(&mut vec_strings!["-re", "-i", "pipe:0"]);
+    enc_prefix.append(&mut vec_strings!["-i", "pipe:0"]);
+
+    insert_readrate(&config.general.ffmpeg_options, &mut enc_prefix, 1.0);
 
     let enc_cmd = prepare_output_cmd(config, enc_prefix, &media.filter);
 
     debug!(target: Target::file_mail(), channel = id;
-        "Encoder CMD: <bright-blue>ffmpeg {}</>",
+        "Encoder CMD: <span class=\"log-cmd\">ffmpeg {}</span>",
         fmt_cmd(&enc_cmd)
     );
 

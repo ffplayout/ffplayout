@@ -32,8 +32,8 @@ use crate::{
         controller::{ChannelManager, ProcessUnit::*},
         input::source_generator,
         utils::{
-            get_delta, is_free_tcp_port, prepare_output_cmd, sec_to_time, stderr_reader,
-            valid_stream, Media,
+            get_delta, insert_readrate, is_free_tcp_port, prepare_output_cmd, sec_to_time,
+            stderr_reader, valid_stream, Media,
         },
     },
     utils::{
@@ -41,18 +41,6 @@ use crate::{
         logging::{fmt_cmd, Target},
     },
 };
-
-fn insert_readrate(args: &mut Vec<String>, rate: f64) {
-    let mut i = 0;
-    while i < args.len() {
-        if args[i] == "-i" {
-            args.insert(i, rate.to_string());
-            args.insert(i, "-readrate".to_string());
-            i += 2;
-        }
-        i += 1;
-    }
-}
 
 /// Ingest Server for HLS
 async fn ingest_writer(manager: ChannelManager) -> Result<(), ServiceError> {
@@ -96,7 +84,7 @@ async fn ingest_writer(manager: ChannelManager) -> Result<(), ServiceError> {
                 break;
             }
 
-            error!(target: Target::file_mail(), channel = id; "Address <b><magenta>{url}</></b> already in use!");
+            error!(target: Target::file_mail(), channel = id; "Address <span class=\"log-addr\">{url}</span> already in use!");
 
             manager.stop(Ingest).await;
 
@@ -109,11 +97,11 @@ async fn ingest_writer(manager: ChannelManager) -> Result<(), ServiceError> {
             tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
         }
 
-        info!(target: Target::file_mail(), channel = id; "Start ingest server, listening on: <b><magenta>{url}</></b>");
+        info!(target: Target::file_mail(), channel = id; "Start ingest server, listening on: <span class=\"log-addr\">{url}</span>");
     };
 
     debug!(target: Target::file_mail(), channel = id;
-        "Server CMD: <bright-blue>ffmpeg {}</>",
+        "Server CMD: <span class=\"log-cmd\">ffmpeg {}</span>",
         fmt_cmd(&server_cmd)
     );
 
@@ -197,7 +185,7 @@ async fn write(manager: &ChannelManager, ff_log_format: &str) -> Result<(), Serv
         }
 
         info!(target: Target::file_mail(), channel = id;
-            "Play for <yellow>{}</>: <b><magenta>{}</></b>",
+            "Play for <span class=\"log-number\">{}</span>: <span class=\"log-addr\">{}</span>",
             sec_to_time(node.out - node.seek),
             node.source
         );
@@ -209,7 +197,7 @@ async fn write(manager: &ChannelManager, ff_log_format: &str) -> Result<(), Serv
                 tokio::spawn(task_runner::run(manager3));
             } else {
                 error!(target: Target::file_mail(), channel = id;
-                    "<bright-blue>{:?}</> executable not exists!",
+                    "<span class=\"log-cmd\">{:?}</span> executable not exists!",
                     config.task.path
                 );
             }
@@ -237,13 +225,13 @@ async fn write(manager: &ChannelManager, ff_log_format: &str) -> Result<(), Serv
             }
         }
 
-        insert_readrate(&mut cmd, read_rate);
+        insert_readrate(&config.general.ffmpeg_options, &mut cmd, read_rate);
 
         dec_prefix.append(&mut cmd);
         let dec_cmd = prepare_output_cmd(&config, dec_prefix, &node.filter);
 
         debug!(target: Target::file_mail(), channel = id;
-            "HLS writer CMD: <bright-blue>ffmpeg {}</>",
+            "HLS writer CMD: <span class=\"log-cmd\">ffmpeg {}</span>",
             fmt_cmd(&dec_cmd)
         );
 

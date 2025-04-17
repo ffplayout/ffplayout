@@ -16,6 +16,7 @@ use ts_rs::TS;
 
 use crate::db::{handles, models};
 use crate::file::norm_abs_path;
+use crate::player::utils::validate_ffmpeg;
 use crate::utils::{gen_tcp_socket, time_to_sec};
 use crate::vec_strings;
 use crate::AdvancedConfig;
@@ -30,7 +31,7 @@ pub const IMAGE_FORMAT: [&str; 21] = [
 ];
 
 // Some well known errors can be safely ignore
-pub const FFMPEG_IGNORE_ERRORS: [&str; 13] = [
+pub const FFMPEG_IGNORE_ERRORS: [&str; 14] = [
     "ac-tex damaged",
     "codec s302m, is muxed as a private data stream",
     "corrupt decoded frame in stream",
@@ -44,6 +45,7 @@ pub const FFMPEG_IGNORE_ERRORS: [&str; 13] = [
     "timestamp discontinuity",
     "Warning MVs not available",
     "frame size not set",
+    "Error parsing Opus packet header.",
 ];
 
 pub const FFMPEG_UNRECOVERABLE_ERRORS: [&str; 9] = [
@@ -229,6 +231,9 @@ pub struct General {
     pub ffmpeg_libs: Vec<String>,
     #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
+    pub ffmpeg_options: Vec<String>,
+    #[ts(skip)]
+    #[serde(skip_serializing, skip_deserializing)]
     pub template: Option<Template>,
     #[ts(skip)]
     #[serde(skip_serializing, skip_deserializing)]
@@ -247,6 +252,7 @@ impl General {
             generate: None,
             ffmpeg_filters: vec![],
             ffmpeg_libs: vec![],
+            ffmpeg_options: vec![],
             template: None,
             skip_validation: false,
             validate: false,
@@ -667,6 +673,13 @@ impl PlayoutConfig {
             let buff_size = format!("{}k", (processing.width * processing.height / 16) / 2);
 
             process_cmd.append(&mut vec_strings![
+                // could be an option, but needs modified scale filter, check player/filter/mod.rs
+                // "-colorspace",
+                // "bt709",
+                // "-color_trc",
+                // "bt709",
+                // "-color_primaries",
+                // "bt709",
                 "-pix_fmt",
                 "yuv420p",
                 "-r",
@@ -883,6 +896,9 @@ pub async fn get_config(
     channel_id: i32,
 ) -> Result<PlayoutConfig, ServiceError> {
     let mut config = PlayoutConfig::new(pool, channel_id).await?;
+
+    validate_ffmpeg(&mut config).await?;
+
     let args = ARGS.clone();
 
     config.general.generate = args.generate;

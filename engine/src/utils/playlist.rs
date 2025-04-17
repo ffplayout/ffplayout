@@ -21,9 +21,13 @@ pub async fn read_playlist(
         .join(date.clone())
         .with_extension("json");
 
+    if !playlist_path.is_file() {
+        return Err(ServiceError::NoContent());
+    }
+
     match json_reader(&playlist_path).await {
         Ok(p) => Ok(p),
-        Err(e) => Err(ServiceError::NoContent(e.to_string())),
+        Err(e) => Err(ServiceError::Conflict(e.to_string())),
     }
 }
 

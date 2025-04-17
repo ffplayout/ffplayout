@@ -3,23 +3,19 @@ use std::{
     time::Duration,
 };
 
-use actix_web::web;
 use actix_web_lab::{
     sse::{self, Sse},
     util::InfallibleStream,
 };
 use tokio::{
-    sync::{
-        mpsc::{self, error::SendError},
-        Mutex,
-    },
+    sync::{mpsc, Mutex},
     time::interval,
 };
 use tokio_stream::wrappers::ReceiverStream;
 
 use crate::player::{controller::ChannelManager, utils::get_data_map};
 use crate::sse::Endpoint;
-use crate::utils::system;
+use crate::utils::system::SystemStat;
 
 #[derive(Debug, Clone)]
 struct Client {
@@ -40,6 +36,7 @@ impl Client {
 
 pub struct Broadcaster {
     inner: Mutex<BroadcasterInner>,
+    pub system: SystemStat,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -52,6 +49,7 @@ impl Broadcaster {
     pub fn create() -> Arc<Self> {
         let this = Arc::new(Self {
             inner: Mutex::new(BroadcasterInner::default()),
+            system: SystemStat::new(),
         });
 
         Self::spawn_ping(Arc::clone(&this));
@@ -95,8 +93,6 @@ impl Broadcaster {
 
         // every client needs its own stats
         for (index, client) in inner.clients.iter().enumerate() {
-            let mut sender_result = Err(SendError(sse::Event::Comment("closed".into())));
-
             match client.endpoint {
                 Endpoint::Playout => {
                     let media_map = get_data_map(&client.manager).await;
@@ -107,22 +103,28 @@ impl Broadcaster {
                         "not running".to_string()
                     };
 
-                    sender_result = client.sender.send(sse::Data::new(message).into()).await;
+                    if client
+                        .sender
+                        .send(sse::Data::new(message).into())
+                        .await
+                        .is_err()
+                    {
+                        failed_clients.push(index);
+                    };
                 }
                 Endpoint::System => {
                     let config = client.manager.config.lock().await.clone();
+                    let stat = self.system.stat(&config).await;
 
-                    if let Ok(stat) = web::block(move || system::stat(&config)).await {
-                        sender_result = client
-                            .sender
-                            .send(sse::Data::new(stat.to_string()).into())
-                            .await;
-                    }
+                    if client
+                        .sender
+                        .send(sse::Data::new(stat.to_string()).into())
+                        .await
+                        .is_err()
+                    {
+                        failed_clients.push(index);
+                    };
                 }
-            }
-
-            if sender_result.is_err() {
-                failed_clients.push(index);
             }
         }
 

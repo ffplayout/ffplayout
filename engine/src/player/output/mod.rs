@@ -2,7 +2,7 @@ use std::{process::Stdio, sync::atomic::Ordering};
 
 use log::*;
 use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter},
+    io::{AsyncReadExt, AsyncWriteExt, BufReader},
     process::{ChildStdin, Command},
 };
 
@@ -26,7 +26,7 @@ use crate::vec_strings;
 
 async fn play(
     manager: ChannelManager,
-    mut enc_writer: BufWriter<ChildStdin>,
+    mut enc_writer: ChildStdin,
     ff_log_format: &str,
 ) -> Result<(), ServiceError> {
     let config = manager.config.lock().await.clone();
@@ -34,7 +34,7 @@ async fn play(
     let playlist_init = manager.list_init.clone();
     let is_alive = manager.is_alive.clone();
     let ingest_is_alive = manager.ingest_is_alive.clone();
-    let mut buffer = vec![0u8; 64 * 1024];
+    let mut buffer = vec![0u8; 64 * 1024]; // Linux pipe buffer size
     let mut live_on = false;
 
     // get source iterator
@@ -74,7 +74,7 @@ async fn play(
         };
 
         info!(target: Target::file_mail(), channel = id;
-            "Play for <yellow>{}</>{c_index}: <b><magenta>{}  {}</></b>",
+            "Play for <span class=\"log-number\">{}</span>{c_index}: <span class=\"log-addr\">{}  {}</span>",
             sec_to_time(node.out - node.seek),
             node.source,
             node.audio
@@ -87,7 +87,7 @@ async fn play(
                 tokio::spawn(task_runner::run(channel_mgr_3));
             } else {
                 error!(target: Target::file_mail(), channel = id;
-                    "<bright-blue>{:?}</> executable not exists!",
+                    "<span class=\"log-cmd\">{:?}</span> executable not exists!",
                     config.task.path
                 );
             }
@@ -121,7 +121,7 @@ async fn play(
         }
 
         debug!(target: Target::file_mail(), channel = id;
-            "Decoder CMD: <bright-blue>ffmpeg {}</>",
+            "Decoder CMD: <span class=\"log-cmd\">ffmpeg {}</span>",
             fmt_cmd(&dec_cmd)
         );
 
@@ -151,11 +151,12 @@ async fn play(
                     live_on = true;
                 }
 
-                let mut ingest_stdout_guard = manager.ingest_stdout.lock().await;
-                if let Some(ref mut ingest_stdout) = *ingest_stdout_guard {
+                let mut ingest_reader_guard = manager.ingest_reader.lock().await;
+                if let Some(ref mut ingest_stdout) = *ingest_reader_guard {
                     let num = ingest_stdout.read(&mut buffer[..]).await?;
 
                     if num == 0 {
+                        enc_writer.flush().await?;
                         continue;
                     }
 
@@ -173,6 +174,7 @@ async fn play(
                 let num = decoder_stdout.read(&mut buffer[..]).await?;
 
                 if num == 0 {
+                    enc_writer.flush().await?;
                     break;
                 }
 
@@ -205,23 +207,21 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
     let ignore_enc = config.logging.ignore_lines.clone();
     let channel_id = config.general.channel_id;
 
-    if config.output.mode == HLS {
-        hls::writer(&manager, &ff_log_format).await?;
-        manager.stop_all(false).await;
-
-        return Ok(());
-    }
-
     // get ffmpeg output instance
     let mut enc_proc = match config.output.mode {
         Desktop => desktop::output(&config, &ff_log_format).await?,
         Null => null::output(&config, &ff_log_format).await?,
         Stream => stream::output(&config, &ff_log_format).await?,
-        _ => panic!("Output mode doesn't exists!"),
+        HLS => {
+            hls::writer(&manager, &ff_log_format).await?;
+            manager.stop_all(false).await;
+
+            return Ok(());
+        }
     };
 
     let enc_err = BufReader::new(enc_proc.stderr.take().unwrap());
-    let enc_writer = BufWriter::new(enc_proc.stdin.take().unwrap());
+    let enc_writer = enc_proc.stdin.take().unwrap();
 
     *manager.encoder.lock().await = Some(enc_proc);
     let mgr_clone2 = manager.clone();
@@ -229,7 +229,7 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
     // spawn a task to log ffmpeg output error messages
     let handle_enc_stderr = tokio::spawn(stderr_reader(enc_err, ignore_enc, Encoder, channel_id));
 
-    // spawn a task for ffmpeg ingest server and create a channel for package sending
+    // spawn a task for a ffmpeg ingest server
     let handle_ingest = if config.ingest.enable {
         Some(tokio::spawn(ingest_server(config_clone, mgr_clone2)))
     } else {
@@ -251,7 +251,7 @@ pub async fn player(manager: ChannelManager) -> Result<(), ServiceError> {
             result?;
         }
 
-        result = play(manager.clone(), enc_writer, &ff_log_format) => {
+        result = play(manager, enc_writer, &ff_log_format) => {
             result?;
         }
     }

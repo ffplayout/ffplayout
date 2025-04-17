@@ -266,7 +266,7 @@ impl Filters {
             let v_map = "0:v".to_string();
 
             if !o_map.contains(&v_map) {
-                o_map.append(&mut vec_strings!["-map", v_map]);
+                o_map.splice(0..0, vec_strings!["-map", v_map]);
             };
         }
 
@@ -398,6 +398,8 @@ fn fps(config: &PlayoutConfig, chain: &mut Filters, fps: f64) {
 }
 
 fn scale(config: &PlayoutConfig, chain: &mut Filters, width: Option<i64>, height: Option<i64>) {
+    // could be an option: out_color_matrix=bt709:out_primaries=bt709:out_transfer=bt709
+    // but then the scale filter must always be applied.
     if let Some(scale) = &config.advanced.filter.scale {
         chain.add(
             &custom_format(
@@ -804,8 +806,8 @@ pub async fn filter_chains(
             {
                 extend_audio(config, &mut filters, node, i);
             } else if node.unit == Decoder && !node.source.contains("color=c=") {
-                warn!(target: Target::file_mail(), channel = config.general.channel_id;
-                    "Missing audio track (id {i}) from <b><magenta>{}</></b>",
+                error!(target: Target::file_mail(), channel = config.general.channel_id;
+                    "Missing audio track (id {i}) from <span class=\"log-addr\">{}</span>",
                     node.source
                 );
 

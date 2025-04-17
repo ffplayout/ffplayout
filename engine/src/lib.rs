@@ -1,10 +1,9 @@
-use std::sync::{Arc, LazyLock, Mutex};
+use std::sync::LazyLock;
 
 use actix_web::{dev::ServiceRequest, Error, HttpMessage};
 use actix_web_grants::authorities::AttachAuthorities;
 use actix_web_httpauth::extractors::bearer::BearerAuth;
 use clap::Parser;
-use sysinfo::{Disks, Networks, System};
 
 pub mod api;
 pub mod db;
@@ -20,12 +19,6 @@ use utils::advanced_config::AdvancedConfig;
 use utils::args_parse::Args;
 
 pub static ARGS: LazyLock<Args> = LazyLock::new(Args::parse);
-pub static DISKS: LazyLock<Arc<Mutex<Disks>>> =
-    LazyLock::new(|| Arc::new(Mutex::new(Disks::new_with_refreshed_list())));
-pub static NETWORKS: LazyLock<Arc<Mutex<Networks>>> =
-    LazyLock::new(|| Arc::new(Mutex::new(Networks::new_with_refreshed_list())));
-pub static SYS: LazyLock<Arc<Mutex<System>>> =
-    LazyLock::new(|| Arc::new(Mutex::new(System::new_all())));
 
 pub async fn validator(
     req: ServiceRequest,

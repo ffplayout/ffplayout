@@ -22,8 +22,11 @@ pub enum ServiceError {
     #[display("Unauthorized: {_0}")]
     Unauthorized(String),
 
-    #[display("NoContent: {_0}")]
-    NoContent(String),
+    #[display("NoContent")]
+    NoContent(),
+
+    #[display("NotFound: {_0}")]
+    NotFound(String),
 
     #[display("ServiceUnavailable: {_0}")]
     ServiceUnavailable(String),
@@ -40,7 +43,8 @@ impl ResponseError for ServiceError {
             Self::Conflict(message) => HttpResponse::Conflict().json(message),
             Self::Forbidden(message) => HttpResponse::Forbidden().json(message),
             Self::Unauthorized(message) => HttpResponse::Unauthorized().json(message),
-            Self::NoContent(message) => HttpResponse::NoContent().json(message),
+            Self::NoContent() => HttpResponse::NoContent().into(),
+            Self::NotFound(message) => HttpResponse::NotFound().json(message),
             Self::ServiceUnavailable(message) => HttpResponse::ServiceUnavailable().json(message),
         }
     }
@@ -66,12 +70,12 @@ impl From<actix_multipart::MultipartError> for ServiceError {
 
 impl From<std::io::Error> for ServiceError {
     fn from(err: std::io::Error) -> Self {
-        Self::NoContent(err.to_string())
+        Self::Conflict(err.to_string())
     }
 }
 impl From<chrono::ParseError> for ServiceError {
     fn from(err: chrono::ParseError) -> Self {
-        Self::NoContent(err.to_string())
+        Self::Conflict(err.to_string())
     }
 }
 

@@ -56,7 +56,7 @@ pub async fn output(config: &PlayoutConfig, log_format: &str) -> Result<Child, S
     if config.text.add_text && !config.text.text_from_filename && !config.processing.audio_only {
         if let Some(socket) = config.text.zmq_stream_socket.clone() {
             debug!(target: Target::file_mail(), channel = config.general.channel_id;
-                "Using drawtext filter, listening on address: <yellow>{}</>",
+                "Using drawtext filter, listening on address: <span class=\"log-number\">{}</span>",
                 socket
             );
 
@@ -69,7 +69,7 @@ pub async fn output(config: &PlayoutConfig, log_format: &str) -> Result<Child, S
     enc_cmd.append(&mut enc_filter);
 
     debug!(target: Target::file_mail(), channel = config.general.channel_id;
-        "Encoder CMD: <bright-blue>ffplay {}</>",
+        "Encoder CMD: <span class=\"log-cmd\">ffplay {}</span>",
         fmt_cmd(&enc_cmd)
     );
 

@@ -2,21 +2,6 @@
 
 For compiling use always the news Rust version, the best is to install it from [rustup](https://rustup.rs/).
 
-### Static Linking
-
-Running `cargo build` ends up in a binary which depend on **libc.so**. But you can compile also the binary totally static:
-
-- install musl compiler:
-    - `dnf install musl-gcc`
-- add target:
-    - `rustup target add x86_64-unknown-linux-musl`
-
-Compile with: `cargo build --release --target=x86_64-unknown-linux-musl`.
-
-This release should run on any Linux distro.
-
-**Note: You can also create a static version with Cross Toolchain. For this, follow the next steps.**
-
 ### Cross Compile
 
 For cross compiling install docker or podman and latest [cross-rs](https://github.com/cross-rs/cross):
@@ -57,7 +42,7 @@ Compile to your target system with cargo or cross, and run:
 
 ```Bash
 # for debian based systems:
-cargo deb --no-build --target=x86_64-unknown-linux-musl
+cargo deb --no-build --target=x86_64-unknown-linux-gnu
 
 # for armhf
 cargo deb --no-build --target=armv7-unknown-linux-gnueabihf --variant=armhf -p ffplayout --manifest-path=ffplayout-engine/Cargo.toml
@@ -66,7 +51,7 @@ cargo deb --no-build --target=armv7-unknown-linux-gnueabihf --variant=armhf -p f
 cargo deb --no-build --target=aarch64-unknown-linux-gnu --variant=arm64 -p ffplayout --manifest-path=ffplayout-engine/Cargo.toml
 
 # for rhel based systems:
-cargo generate-rpm --target=x86_64-unknown-linux-musl
+cargo generate-rpm --target=x86_64-unknown-linux-gnu
 ```
 
 ## Generate types for Frontend
@@ -91,7 +76,7 @@ pnpm install --shamefully-hoist
 
 ## Development Server
 
-Start the development server on http://localhost:3000
+Start the development server on http://127.0.0.1:5757
 
 ```bash
 npm run dev
@@ -105,20 +90,13 @@ Build the application for production:
 npm run build
 ```
 
-Locally preview production build:
-
-```bash
-npm run preview
-```
-
-Check out the [deployment documentation](https://nuxt.com/docs/getting-started/deployment) for more information.
+Check out the [deployment documentation](https://vuejs.org/guide/quick-start.html) for more information.
 
 ## Run ffplayout in development mode
 
 1. initialize database: `cargo run -- -i`
 2. run backend: `cargo run -- -l 127.0.0.1:8787`
 3. in second terminal:
-    1. `cd frontend`
-    2. install packages: `npm i`
-    3. run frontend: `npm run dev`
-4. in browser navigate to: `127.0.0.1:3000`
+    1. install packages: `npm i`
+    2. run frontend: `npm run dev`
+4. in browser navigate to: `127.0.0.1:5757`
