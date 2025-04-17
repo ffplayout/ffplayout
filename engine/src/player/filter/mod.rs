@@ -398,6 +398,8 @@ fn fps(config: &PlayoutConfig, chain: &mut Filters, fps: f64) {
 }
 
 fn scale(config: &PlayoutConfig, chain: &mut Filters, width: Option<i64>, height: Option<i64>) {
+    // could be an option: out_color_matrix=bt709:out_primaries=bt709:out_transfer=bt709
+    // but then the scale filter must always be applied.
     if let Some(scale) = &config.advanced.filter.scale {
         chain.add(
             &custom_format(

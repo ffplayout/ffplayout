@@ -673,6 +673,13 @@ impl PlayoutConfig {
             let buff_size = format!("{}k", (processing.width * processing.height / 16) / 2);
 
             process_cmd.append(&mut vec_strings![
+                // could be an option, but needs modified scale filter, check player/filter/mod.rs
+                // "-colorspace",
+                // "bt709",
+                // "-color_trc",
+                // "bt709",
+                // "-color_primaries",
+                // "bt709",
                 "-pix_fmt",
                 "yuv420p",
                 "-r",

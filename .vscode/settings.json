@@ -65,6 +65,7 @@
         "canonicalize",
         "cgop",
         "coeffs",
+        "colorspace",
         "cuda",
         "debup",
         "Deque",
