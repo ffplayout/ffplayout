@@ -133,6 +133,7 @@ import dayjs from 'dayjs'
 import { cloneDeep, isEqual } from 'lodash-es'
 
 import GenericModal from '@/components/GenericModal.vue'
+import SvgIcon from '@/components/SvgIcon.vue'
 
 import { useAuth } from '@/stores/auth'
 import { useIndex } from '@/stores/index'

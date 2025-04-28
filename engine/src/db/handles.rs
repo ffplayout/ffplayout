@@ -7,7 +7,7 @@ use rand::{distr::Alphanumeric, Rng};
 use sqlx::{sqlite::SqliteQueryResult, Pool, Row, Sqlite};
 
 use super::models::{AdvancedConfiguration, Configuration};
-use crate::db::models::{Channel, GlobalSettings, Role, TextPreset, User};
+use crate::db::models::{Channel, GlobalSettings, Output, Role, TextPreset, User};
 use crate::utils::{
     advanced_config::AdvancedConfig,
     config::PlayoutConfig,
@@ -313,6 +313,17 @@ pub async fn update_configuration(
         .bind(config.output.output_param)
         .execute(conn)
         .await?;
+
+    Ok(result)
+}
+
+pub async fn select_outputs(
+    conn: &Pool<Sqlite>,
+    channel: i32,
+) -> Result<Vec<Output>, ProcessError> {
+    const QUERY: &str = "SELECT * FROM outputs WHERE channel_id = $1";
+
+    let result = sqlx::query_as(QUERY).bind(channel).fetch_all(conn).await?;
 
     Ok(result)
 }

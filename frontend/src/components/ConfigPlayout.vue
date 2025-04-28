@@ -510,8 +510,8 @@
                 </label>
                 <fieldset class="fieldset">
                     <legend class="fieldset-legend">Mode</legend>
-                    <select v-model="configStore.playout.output.mode" class="select select-sm w-full max-w-xs">
-                        <option v-for="mode in outputMode" :key="mode" :value="mode">{{ mode }}</option>
+                    <select v-model="output" class="select select-sm w-full max-w-xs">
+                        <option v-for="output in configStore.outputs" :key="output.id" :value="output.name">{{ output.name }}</option>
                     </select>
                 </fieldset>
                 <fieldset class="fieldset">
@@ -551,7 +551,6 @@ const indexStore = useIndex()
 
 const logLevels = ['INFO', 'WARNING', 'ERROR']
 const processingMode = ['folder', 'playlist']
-const outputMode = ['desktop', 'hls', 'stream', 'null']
 
 const extensions = computed({
     get() {
@@ -560,6 +559,18 @@ const extensions = computed({
 
     set(value: string) {
         configStore.playout.storage.extensions = value.replace(' ', '').split(/,|;/)
+    },
+})
+
+const output = computed({
+    get() {
+        return configStore.outputs.find(o => o.id === configStore.playout.output.id)?.name
+    },
+
+    set(value: string) {
+        const output = configStore.outputs.find(o => o.name === value)
+        configStore.playout.output.output_param = output?.parameters ?? ''
+        configStore.playout.output.id = output?.id ?? 0
     },
 })
 

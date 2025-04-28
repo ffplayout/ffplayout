@@ -143,6 +143,7 @@ async fn main() -> Result<(), ProcessError> {
                         .service(update_advanced_config)
                         .service(get_playout_config)
                         .service(update_playout_config)
+                        .service(get_playout_outputs)
                         .service(add_preset)
                         .service(get_presets)
                         .service(update_preset)

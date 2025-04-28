@@ -792,6 +792,32 @@ async fn update_playout_config(
     Ok(web::Json("Update success"))
 }
 
+/// **Get Output**
+///
+/// ```BASH
+/// curl -X GET http://127.0.0.1:8787/api/playout/output/1 -H 'Authorization: Bearer <TOKEN>'
+/// ```
+///
+/// Response is a JSON object
+#[get("/playout/outputs/{id}")]
+#[protect(
+    any("Role::GlobalAdmin", "Role::ChannelAdmin", "Role::User"),
+    ty = "Role",
+    expr = "user.channels.contains(&*id) || role.has_authority(&Role::GlobalAdmin)"
+)]
+async fn get_playout_outputs(
+    pool: web::Data<Pool<Sqlite>>,
+    id: web::Path<i32>,
+    role: AuthDetails<Role>,
+    user: web::ReqData<UserMeta>,
+) -> Result<impl Responder, ServiceError> {
+    if let Ok(outputs) = handles::select_outputs(&pool, *id).await {
+        return Ok(web::Json(outputs));
+    }
+
+    Err(ServiceError::InternalServerError)
+}
+
 /// #### Text Presets
 ///
 /// Text presets are made for sending text messages to the ffplayout engine, to overlay them as a lower third.

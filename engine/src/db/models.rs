@@ -346,8 +346,7 @@ pub struct Configuration {
     pub task_enable: bool,
     pub task_path: String,
 
-    pub output_mode: String,
-    pub output_param: String,
+    pub output_mode: i32,
 }
 
 impl Configuration {
@@ -401,10 +400,17 @@ impl Configuration {
             text_regex: config.text.regex,
             task_enable: config.task.enable,
             task_path: config.task.path.to_string_lossy().to_string(),
-            output_mode: config.output.mode.to_string(),
-            output_param: config.output.output_param,
+            output_mode: config.output.id,
         }
     }
+}
+
+#[derive(Clone, Default, Debug, Deserialize, Serialize, sqlx::FromRow)]
+pub struct Output {
+    pub id: i32,
+    pub name: String,
+    pub parameters: String,
+    pub channel_id: i32,
 }
 
 fn default_track_index() -> i32 {
