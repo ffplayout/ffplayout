@@ -4,7 +4,10 @@ use log::*;
 use sqlx::{Pool, Sqlite};
 use tokio::sync::Mutex;
 
-use crate::db::{handles, models::Channel};
+use crate::db::{
+    handles,
+    models::{self, Channel},
+};
 use crate::player::controller::{ChannelController, ChannelManager};
 use crate::utils::{
     advanced_config::{AdvancedConfig, DecoderConfig, FilterConfig, IngestConfig},
@@ -12,6 +15,8 @@ use crate::utils::{
     errors::ServiceError,
     mail::MailQueue,
 };
+
+use super::config::OutputMode;
 
 async fn map_global_admins(conn: &Pool<Sqlite>) -> Result<(), ServiceError> {
     let channels = handles::select_related_channels(conn, None).await?;
@@ -48,7 +53,9 @@ const QSV_FILTER_SCALE: &str = "scale_qsv={}:{}";
 const QSV_FILTER_LOGO_SCALE: &str = "scale_qsv={}";
 const QSV_FILTER_OVERLAY: &str = "overlay_qsv={}:shortest=1";
 
-const OUTPUT_PARM: &str = "-c:v libx264 -crf 23 -x264-params keyint=50:min-keyint=25:scenecut=-1 -maxrate 1300k -bufsize 2600k -preset faster -tune zerolatency -profile:v Main -level 3.1 -c:a aac -ar 44100 -b:a 128k -flags +cgop -f hls -hls_time 6 -hls_list_size 600 -hls_flags append_list+delete_segments+omit_endlist -hls_segment_filename live/stream-%d.ts live/stream.m3u8";
+const OUTPUT_HLS: &str = "-c:v libx264 -crf 23 -x264-params keyint=50:min-keyint=25:scenecut=-1 -maxrate 1300k -bufsize 2600k -preset faster -tune zerolatency -profile:v Main -level 3.1 -c:a aac -ar 44100 -b:a 128k -flags +cgop -f hls -hls_time 6 -hls_list_size 600 -hls_flags append_list+delete_segments+omit_endlist -hls_segment_filename live/stream-%d.ts live/stream.m3u8";
+const OUTPUT_STREAM: &str = "-c:v libx264 -crf 23 -x264-params keyint=50:min-keyint=25:scenecut=-1 -maxrate 1300k -bufsize 2600k -preset faster -tune zerolatency -profile:v Main -level 3.1 -c:a aac -ar 44100 -b:a 128k -flags +global_header -f flv rtmp://127.0.0.1/live/stream";
+const OUTPUT_NULL: &str = "-f null -";
 
 pub async fn create_channel(
     conn: &Pool<Sqlite>,
@@ -57,6 +64,12 @@ pub async fn create_channel(
     target_channel: Channel,
 ) -> Result<Channel, ServiceError> {
     let channel = handles::insert_channel(conn, target_channel).await?;
+    let outputs = [
+        models::Output::new(channel.id, OutputMode::HLS, OUTPUT_HLS.to_string()),
+        models::Output::new(channel.id, OutputMode::Stream, OUTPUT_STREAM.to_string()),
+        models::Output::new(channel.id, OutputMode::Desktop, String::new()),
+        models::Output::new(channel.id, OutputMode::Null, OUTPUT_NULL.to_string()),
+    ];
 
     handles::new_channel_presets(conn, channel.id).await?;
     handles::update_channel(conn, channel.id, channel.clone()).await?;
@@ -70,7 +83,18 @@ pub async fn create_channel(
         },
     )
     .await?;
-    handles::insert_configuration(conn, channel.id, OUTPUT_PARM).await?;
+
+    let mut output_id = 1;
+
+    for (index, output) in outputs.iter().enumerate() {
+        let id = handles::insert_output(conn, channel.id, output).await?;
+
+        if index == 0 {
+            output_id = id;
+        }
+    }
+
+    handles::insert_configuration(conn, channel.id, output_id).await?;
     handles::insert_advanced_configuration(
         conn,
         channel.id,

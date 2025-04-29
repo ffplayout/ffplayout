@@ -611,6 +611,7 @@ async function onSubmitPlayout() {
                 }
 
                 await configStore.getPlayoutConfig()
+                await configStore.getPlayoutOutputs()
             })
             .catch((e) => {
                 indexStore.msgAlert('error', e.data, 3)

@@ -270,6 +270,7 @@ async function addUpdateChannel() {
         }
 
         await configStore.getPlayoutConfig()
+        await configStore.getPlayoutOutputs()
         await configStore.getUserConfig()
         await mediaStore.getTree('')
     }
@@ -299,11 +300,12 @@ async function deleteChannel() {
 
     await configStore.getChannelConfig()
     await configStore.getPlayoutConfig()
+    await configStore.getPlayoutOutputs()
     await configStore.getUserConfig()
     await mediaStore.getTree('')
 
     if (response.status === 200) {
-        indexStore.msgAlert('success', t('config.errorChannelDelete'), 2)
+        indexStore.msgAlert('success', t('config.deleteChannelSuccess'), 2)
     } else {
         indexStore.msgAlert('error', t('config.deleteChannelFailed'), 2)
     }

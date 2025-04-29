@@ -567,7 +567,7 @@ impl Output {
     fn new(config: &models::Configuration, outputs: Vec<models::Output>) -> Self {
         let output = outputs
             .iter()
-            .find(|output| output.id == config.output_mode)
+            .find(|output| output.id == config.output_id)
             .cloned()
             .unwrap_or_default();
 

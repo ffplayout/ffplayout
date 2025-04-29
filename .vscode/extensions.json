@@ -4,6 +4,7 @@
         "dbaeumer.vscode-eslint",
         "esbenp.prettier-vscode",
         "hollowtree.vue-snippets",
+        "inferrinizzard.prettier-sql-vscode",
         "rust-lang.rust-analyzer",
         "statiolake.vscode-rustfmt",
         "tamasfe.even-better-toml",

@@ -227,6 +227,7 @@ function selectChannel(index: number) {
     }
 
     configStore.getPlayoutConfig()
+    configStore.getPlayoutOutputs()
 }
 
 function toggleTheme() {

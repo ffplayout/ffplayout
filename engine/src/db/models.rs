@@ -8,8 +8,8 @@ use serde::{
 };
 use sqlx::{sqlite::SqliteRow, FromRow, Pool, Row, Sqlite};
 
-use crate::db::handles;
 use crate::utils::config::PlayoutConfig;
+use crate::{db::handles, utils::config::OutputMode};
 
 #[derive(Clone, Default, Debug, Deserialize, Serialize, sqlx::FromRow)]
 pub struct GlobalSettings {
@@ -346,7 +346,7 @@ pub struct Configuration {
     pub task_enable: bool,
     pub task_path: String,
 
-    pub output_mode: i32,
+    pub output_id: i32,
 }
 
 impl Configuration {
@@ -400,7 +400,7 @@ impl Configuration {
             text_regex: config.text.regex,
             task_enable: config.task.enable,
             task_path: config.task.path.to_string_lossy().to_string(),
-            output_mode: config.output.id,
+            output_id: config.output.id,
         }
     }
 }
@@ -408,9 +408,20 @@ impl Configuration {
 #[derive(Clone, Default, Debug, Deserialize, Serialize, sqlx::FromRow)]
 pub struct Output {
     pub id: i32,
+    pub channel_id: i32,
     pub name: String,
     pub parameters: String,
-    pub channel_id: i32,
+}
+
+impl Output {
+    pub fn new(channel_id: i32, mode: OutputMode, parameters: String) -> Self {
+        Self {
+            id: 0,
+            channel_id,
+            name: mode.to_string(),
+            parameters,
+        }
+    }
 }
 
 fn default_track_index() -> i32 {

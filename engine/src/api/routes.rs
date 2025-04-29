@@ -770,6 +770,7 @@ async fn update_playout_config(
     data.storage.filler = filler;
     data.text.font = font;
 
+    handles::update_output(&pool, data.output.id, *id, &data.output.output_param).await?;
     handles::update_configuration(&pool, config_id, data.into_inner()).await?;
     let new_config = get_config(&pool, *id).await?;
     let mut queues = mail_queues.lock().await;
