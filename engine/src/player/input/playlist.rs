@@ -558,7 +558,7 @@ impl CurrentProgram {
                 node.cmd = Some(loop_image(&self.config, &node));
             } else {
                 if node.seek > 0.0 && node.out > node.duration {
-                    warn!(target: Target::file_mail(), channel = self.channel_id; "Clip loops and has seek value: duplicate clip to separate loop and seek.");
+                    warn!(target: Target::file_mail(), channel = self.channel_id; "Clip loops and has seek value, duplicate clip to separate loop and seek.");
                     self.duplicate_for_seek_and_loop(&mut node).await;
                 }
 
