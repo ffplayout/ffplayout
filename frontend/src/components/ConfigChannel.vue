@@ -133,6 +133,7 @@ import dayjs from 'dayjs'
 import { cloneDeep, isEqual } from 'lodash-es'
 
 import GenericModal from '@/components/GenericModal.vue'
+import SvgIcon from '@/components/SvgIcon.vue'
 
 import { useAuth } from '@/stores/auth'
 import { useIndex } from '@/stores/index'
@@ -269,6 +270,7 @@ async function addUpdateChannel() {
         }
 
         await configStore.getPlayoutConfig()
+        await configStore.getPlayoutOutputs()
         await configStore.getUserConfig()
         await mediaStore.getTree('')
     }
@@ -298,11 +300,12 @@ async function deleteChannel() {
 
     await configStore.getChannelConfig()
     await configStore.getPlayoutConfig()
+    await configStore.getPlayoutOutputs()
     await configStore.getUserConfig()
     await mediaStore.getTree('')
 
     if (response.status === 200) {
-        indexStore.msgAlert('success', t('config.errorChannelDelete'), 2)
+        indexStore.msgAlert('success', t('config.deleteChannelSuccess'), 2)
     } else {
         indexStore.msgAlert('error', t('config.deleteChannelFailed'), 2)
     }

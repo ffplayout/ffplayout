@@ -549,6 +549,7 @@ impl Task {
 #[derive(Debug, Default, Clone, Deserialize, Serialize, TS)]
 #[ts(export, export_to = "playout_config.d.ts")]
 pub struct Output {
+    pub id: i32,
     pub mode: OutputMode,
     pub output_param: String,
     #[ts(skip)]
@@ -563,10 +564,17 @@ pub struct Output {
 }
 
 impl Output {
-    fn new(config: &models::Configuration) -> Self {
+    fn new(config: &models::Configuration, outputs: Vec<models::Output>) -> Self {
+        let output = outputs
+            .iter()
+            .find(|output| output.id == config.output_id)
+            .cloned()
+            .unwrap_or_default();
+
         Self {
-            mode: OutputMode::new(&config.output_mode),
-            output_param: config.output_param.clone(),
+            id: output.id,
+            mode: OutputMode::new(&output.name),
+            output_param: output.parameters.clone(),
             output_count: 0,
             output_filter: None,
             output_cmd: None,
@@ -612,6 +620,7 @@ impl PlayoutConfig {
         let channel = handles::select_channel(pool, &channel_id).await?;
         let config = handles::select_configuration(pool, channel_id).await?;
         let adv_config = handles::select_advanced_configuration(pool, channel_id).await?;
+        let outputs = handles::select_outputs(pool, channel_id).await?;
 
         let channel = Channel::new(&global, channel);
         let advanced = AdvancedConfig::new(adv_config);
@@ -623,7 +632,7 @@ impl PlayoutConfig {
         let mut playlist = Playlist::new(&config);
         let mut text = Text::new(&config);
         let task = Task::new(&config);
-        let mut output = Output::new(&config);
+        let mut output = Output::new(&config, outputs);
         let mut storage = Storage::new(&config, channel.storage.clone(), channel.shared);
 
         if !channel.playlists.is_dir() {

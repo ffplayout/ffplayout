@@ -21,6 +21,13 @@ declare global {
         playlist: PlaylistExt
     }
 
+    interface PlayoutOutput {
+        id: number
+        name: string
+        parameters: string
+        channel_id: number
+    }
+
     interface Token {
         access: string
         refresh: string

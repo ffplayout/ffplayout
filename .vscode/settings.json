@@ -110,5 +110,7 @@
         "webm",
         "zerolatency"
     ],
-    "vue3snippets.enable-compile-vue-file-on-did-save-code": false
+    "vue3snippets.enable-compile-vue-file-on-did-save-code": false,
+    "Prettier-SQL.expressionWidth": 80,
+    "Prettier-SQL.tabSizeOverride": 4
 }

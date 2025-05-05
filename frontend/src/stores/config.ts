@@ -6,7 +6,6 @@ import { useAuth } from './auth'
 import { useIndex } from './index'
 import { i18n } from '../i18n'
 import type { AdvancedConfig } from '../types/advanced_config'
-
 import { stringFormatter } from '../composables/helper'
 
 export const useConfig = defineStore('config', {
@@ -19,6 +18,7 @@ export const useConfig = defineStore('config', {
         playlistLength: 86400.0,
         advanced: {} as AdvancedConfig,
         playout: {} as PlayoutConfigExt,
+        outputs: [] as PlayoutOutput[],
         currentUser: 0,
         configUser: {} as User,
         timezone: 'UTC',
@@ -37,6 +37,7 @@ export const useConfig = defineStore('config', {
                 await authStore.obtainUuid()
                 await this.getChannelConfig().then(async () => {
                     await this.getPlayoutConfig()
+                    await this.getPlayoutOutputs()
                     await this.getUserConfig()
 
                     if (authStore.role === 'global_admin') {
@@ -119,6 +120,25 @@ export const useConfig = defineStore('config', {
                     data.playlist.lengthInSec = timeToSeconds(data.playlist.length ?? this.playlistLength)
 
                     this.playout = data
+                })
+                .catch(() => {
+                    indexStore.msgAlert('error', i18n.t('config.noPlayoutConfig'), 3)
+                })
+        },
+
+        async getPlayoutOutputs() {
+            const authStore = useAuth()
+            const indexStore = useIndex()
+            const channel = this.channels[this.i].id
+
+            await fetch(`/api/playout/outputs/${channel}`, {
+                method: 'GET',
+                headers: authStore.authHeader,
+            })
+                .then((resp) => resp.json())
+                .then((data: PlayoutOutput[]) => {
+
+                    this.outputs = data
                 })
                 .catch(() => {
                     indexStore.msgAlert('error', i18n.t('config.noPlayoutConfig'), 3)

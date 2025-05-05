@@ -770,6 +770,7 @@ async fn update_playout_config(
     data.storage.filler = filler;
     data.text.font = font;
 
+    handles::update_output(&pool, data.output.id, *id, &data.output.output_param).await?;
     handles::update_configuration(&pool, config_id, data.into_inner()).await?;
     let new_config = get_config(&pool, *id).await?;
     let mut queues = mail_queues.lock().await;
@@ -790,6 +791,32 @@ async fn update_playout_config(
     manager.update_config(new_config).await;
 
     Ok(web::Json("Update success"))
+}
+
+/// **Get Output**
+///
+/// ```BASH
+/// curl -X GET http://127.0.0.1:8787/api/playout/output/1 -H 'Authorization: Bearer <TOKEN>'
+/// ```
+///
+/// Response is a JSON object
+#[get("/playout/outputs/{id}")]
+#[protect(
+    any("Role::GlobalAdmin", "Role::ChannelAdmin", "Role::User"),
+    ty = "Role",
+    expr = "user.channels.contains(&*id) || role.has_authority(&Role::GlobalAdmin)"
+)]
+async fn get_playout_outputs(
+    pool: web::Data<Pool<Sqlite>>,
+    id: web::Path<i32>,
+    role: AuthDetails<Role>,
+    user: web::ReqData<UserMeta>,
+) -> Result<impl Responder, ServiceError> {
+    if let Ok(outputs) = handles::select_outputs(&pool, *id).await {
+        return Ok(web::Json(outputs));
+    }
+
+    Err(ServiceError::InternalServerError)
 }
 
 /// #### Text Presets

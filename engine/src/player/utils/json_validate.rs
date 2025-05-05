@@ -19,7 +19,8 @@ use tokio::{
 
 use crate::player::filter::FilterType::Audio;
 use crate::player::utils::{
-    is_close, is_remote, loop_image, sec_to_time, seek_and_length, time_to_sec, JsonPlaylist, Media,
+    is_close, is_remote, loop_image, sec_to_time, seek_and_length, time_in_seconds, time_to_sec,
+    JsonPlaylist, Media,
 };
 use crate::utils::{
     config::{OutputMode::Null, PlayoutConfig, FFMPEG_IGNORE_ERRORS, IMAGE_FORMAT},
@@ -216,8 +217,13 @@ pub async fn validate_playlist(
 
     let mut length = config.playlist.length_sec.unwrap();
     let mut begin = config.playlist.start_sec.unwrap();
+    let mut time_sec = time_in_seconds(&config.channel.timezone);
 
     length += begin;
+
+    if time_sec < config.playlist.start_sec.unwrap_or_default() {
+        time_sec += 86400.0;
+    }
 
     debug!(target: Target::file_mail(), channel = id; "Validate playlist from: <span class=\"log-number\">{date}</span>");
     let timer = Instant::now();
@@ -228,6 +234,12 @@ pub async fn validate_playlist(
         }
 
         let pos = index + 1;
+
+        if begin < time_sec {
+            // Do not validate clips that are being passed.
+            begin += item.out - item.seek;
+            continue;
+        }
 
         if !is_remote(&item.source) {
             if item.audio.is_empty() {

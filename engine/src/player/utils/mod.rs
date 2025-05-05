@@ -669,10 +669,6 @@ pub fn loop_filler(config: &PlayoutConfig, node: &Media) -> Vec<String> {
             .join(config.processing.vtt_dummy.clone().unwrap_or_default());
 
         if vtt_file.is_file() {
-            if loop_count > 1 {
-                source_cmd.append(&mut vec_strings!["-stream_loop", loop_count]);
-            }
-
             source_cmd.append(&mut vec_strings![
                 "-i",
                 vtt_file.to_string_lossy(),
@@ -757,10 +753,6 @@ pub fn seek_and_length(config: &PlayoutConfig, node: &mut Media) -> Vec<String> 
             error!("<span class=\"log-addr\">{:?}</span> not found!", vtt_dummy);
             None
         } {
-            if vtt_file.is_file() && loop_count > 1 {
-                source_cmd.append(&mut vec_strings!["-stream_loop", loop_count]);
-            }
-
             source_cmd.append(&mut vec_strings![
                 "-i",
                 vtt_path,
