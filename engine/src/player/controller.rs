@@ -2,8 +2,8 @@ use std::{
     cmp, fmt,
     path::Path,
     sync::{
-        atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc,
+        atomic::{AtomicBool, AtomicUsize, Ordering},
     },
 };
 
@@ -17,12 +17,12 @@ use tokio::{
     io::{self, AsyncReadExt},
     process::{Child, ChildStdout},
     sync::Mutex,
-    time::{sleep, Duration, Instant},
+    time::{Duration, Instant, sleep},
 };
 use tokio_stream::StreamExt;
 
-use crate::utils::{config::PlayoutConfig, errors::ServiceError};
 use crate::ARGS;
+use crate::utils::{config::PlayoutConfig, errors::ServiceError};
 use crate::{
     db::{handles, models::Channel},
     utils::logging::Target,

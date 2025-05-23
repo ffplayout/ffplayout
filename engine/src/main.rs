@@ -1,10 +1,10 @@
 use std::{
     collections::HashSet,
-    sync::{atomic::AtomicBool, Arc},
+    sync::{Arc, atomic::AtomicBool},
     thread,
 };
 
-use actix_web::{middleware::Logger, web, App, HttpServer};
+use actix_web::{App, HttpServer, middleware::Logger, web};
 use actix_web_httpauth::middleware::HttpAuthentication;
 
 #[cfg(any(debug_assertions, not(feature = "embed_frontend")))]
@@ -17,13 +17,14 @@ use log::*;
 use tokio::{fs::File, io::AsyncReadExt, sync::Mutex};
 
 use ffplayout::{
+    ARGS,
     api::routes::*,
     db::{db_drop, db_pool, handles, init_globales},
     player::{
         controller::{ChannelController, ChannelManager},
-        utils::{get_date, is_remote, json_validate::validate_playlist, JsonPlaylist},
+        utils::{JsonPlaylist, get_date, is_remote, json_validate::validate_playlist},
     },
-    sse::{broadcast::Broadcaster, routes::*, SseAuthState},
+    sse::{SseAuthState, broadcast::Broadcaster, routes::*},
     utils::{
         args_parse::init_args,
         config::get_config,
@@ -33,7 +34,7 @@ use ffplayout::{
         playlist::generate_playlist,
         time_machine::set_mock_time,
     },
-    validator, ARGS,
+    validator,
 };
 
 #[cfg(any(debug_assertions, not(feature = "embed_frontend")))]

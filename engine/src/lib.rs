@@ -1,6 +1,6 @@
 use std::sync::LazyLock;
 
-use actix_web::{dev::ServiceRequest, Error, HttpMessage};
+use actix_web::{Error, HttpMessage, dev::ServiceRequest};
 use actix_web_grants::authorities::AttachAuthorities;
 use actix_web_httpauth::extractors::bearer::BearerAuth;
 use clap::Parser;

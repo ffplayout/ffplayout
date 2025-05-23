@@ -1,8 +1,8 @@
 use std::{
     path::Path,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     },
 };
 
@@ -12,15 +12,15 @@ use crate::db::handles;
 use crate::player::{
     controller::ChannelManager,
     utils::{
-        gen_dummy, get_delta, is_close, is_remote,
+        JsonPlaylist, Media, gen_dummy, get_delta, is_close, is_remote,
         json_serializer::{read_json, set_defaults},
         loop_filler, loop_image, modified_time,
         probe::MediaProbe,
-        seek_and_length, time_in_seconds, JsonPlaylist, Media,
+        seek_and_length, time_in_seconds,
     },
 };
 use crate::utils::{
-    config::{PlayoutConfig, IMAGE_FORMAT},
+    config::{IMAGE_FORMAT, PlayoutConfig},
     logging::Target,
 };
 
@@ -689,9 +689,7 @@ impl CurrentProgram {
 
         trace!(
             "return gen_source: {}, seek: {}, out: {}",
-            node.source,
-            node.seek,
-            node.out,
+            node.source, node.seek, node.out,
         );
 
         self.current_node = node;

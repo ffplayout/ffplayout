@@ -5,13 +5,13 @@ use tokio::process::{Child, Command};
 
 use crate::utils::{
     config::PlayoutConfig,
-    logging::{fmt_cmd, Target},
+    logging::{Target, fmt_cmd},
 };
 use crate::vec_strings;
 use crate::{
     player::{
         controller::ProcessUnit::*,
-        utils::{insert_readrate, prepare_output_cmd, Media},
+        utils::{Media, insert_readrate, prepare_output_cmd},
     },
     utils::errors::ServiceError,
 };

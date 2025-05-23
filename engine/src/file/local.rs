@@ -1,6 +1,6 @@
 use std::{
     path::{Path, PathBuf},
-    sync::{atomic::AtomicBool, Arc},
+    sync::{Arc, atomic::AtomicBool},
 };
 
 #[cfg(target_family = "unix")]
@@ -9,14 +9,14 @@ use std::os::unix::fs::MetadataExt;
 use actix_multipart::Multipart;
 use async_walkdir::WalkDir;
 // use futures_util::TryStreamExt as _;
-use lexical_sort::{natural_lexical_cmp, PathSort};
+use lexical_sort::{PathSort, natural_lexical_cmp};
 use log::*;
-use rand::{distr::Alphanumeric, rngs::StdRng, seq::SliceRandom, Rng, SeedableRng};
+use rand::{Rng, SeedableRng, distr::Alphanumeric, rngs::StdRng, seq::SliceRandom};
 use tokio::{fs, io::AsyncWriteExt, sync::Mutex, task::JoinHandle};
 use tokio_stream::StreamExt;
 
-use crate::file::{norm_abs_path, watcher::watch, MoveObject, PathObject, VideoFile};
-use crate::player::utils::{file_extension, include_file_extension, probe::MediaProbe, Media};
+use crate::file::{MoveObject, PathObject, VideoFile, norm_abs_path, watcher::watch};
+use crate::player::utils::{Media, file_extension, include_file_extension, probe::MediaProbe};
 use crate::utils::{config::PlayoutConfig, errors::ServiceError, logging::Target};
 
 #[derive(Clone, Debug)]

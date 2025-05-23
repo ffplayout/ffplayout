@@ -1,5 +1,5 @@
 use std::{
-    collections::{hash_map, HashMap, VecDeque},
+    collections::{HashMap, VecDeque, hash_map},
     env,
     io::{self, Write},
     path::PathBuf,
@@ -9,9 +9,9 @@ use std::{
 use chrono::{DateTime, FixedOffset};
 use chrono_tz::Tz;
 use flexi_logger::{
-    writers::{FileLogWriter, LogWriter},
     Age, Cleanup, Criterion, DeferredNow, FileSpec, Level, LogSpecification, Logger, Naming,
     WriteMode,
+    writers::{FileLogWriter, LogWriter},
 };
 
 use log::{kv::Value, *};
@@ -22,10 +22,10 @@ use super::ARGS;
 
 use crate::db::GLOBAL_SETTINGS;
 use crate::utils::{
-    config::FFMPEG_UNRECOVERABLE_ERRORS,
-    mail::{mail_queue, MailQueue},
-    time_machine::time_now,
     ServiceError,
+    config::FFMPEG_UNRECOVERABLE_ERRORS,
+    mail::{MailQueue, mail_queue},
+    time_machine::time_now,
 };
 
 use crate::player::controller::ProcessUnit;

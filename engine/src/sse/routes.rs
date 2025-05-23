@@ -1,12 +1,12 @@
-use actix_web::{get, post, web, Responder};
+use actix_web::{Responder, get, post, web};
 use actix_web_grants::proc_macro::protect;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
-use super::{check_uuid, prune_uuids, SseAuthState, UuidData};
+use super::{SseAuthState, UuidData, check_uuid, prune_uuids};
 use crate::db::models::Role;
 use crate::player::controller::ChannelController;
-use crate::sse::{broadcast::Broadcaster, Endpoint};
+use crate::sse::{Endpoint, broadcast::Broadcaster};
 use crate::utils::errors::ServiceError;
 
 #[derive(Deserialize, Serialize)]

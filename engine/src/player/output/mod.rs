@@ -19,7 +19,7 @@ use crate::player::{
 use crate::utils::{
     config::OutputMode::*,
     errors::ServiceError,
-    logging::{fmt_cmd, Target},
+    logging::{Target, fmt_cmd},
     task_runner,
 };
 use crate::vec_strings;

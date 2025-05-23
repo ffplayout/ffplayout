@@ -11,21 +11,21 @@
 use std::{
     env,
     path::{Path, PathBuf},
-    sync::{atomic::Ordering, Arc},
+    sync::{Arc, atomic::Ordering},
 };
 
 use actix_files;
 use actix_multipart::Multipart;
 use actix_web::{
-    delete, get,
+    HttpRequest, HttpResponse, Responder, delete, get,
     http::header::{ContentDisposition, DispositionType},
-    patch, post, put, web, HttpRequest, HttpResponse, Responder,
+    patch, post, put, web,
 };
 use actix_web_grants::{authorities::AuthDetails, proc_macro::protect};
 
 use argon2::{
-    password_hash::{rand_core::OsRng, SaltString},
     Argon2, PasswordHasher,
+    password_hash::{SaltString, rand_core::OsRng},
 };
 use chrono::{DateTime, Datelike, Local, NaiveDateTime, TimeDelta, TimeZone, Utc};
 use chrono_tz::Tz;
@@ -42,25 +42,26 @@ use crate::{
         handles,
         models::{Channel, Role, TextPreset, User, UserMeta},
     },
-    file::{norm_abs_path, MoveObject, PathObject},
+    file::{MoveObject, PathObject, norm_abs_path},
     player::{
         controller::ChannelController,
         utils::{
-            get_data_map, get_date_range, import::import_file, sec_to_time, time_to_sec,
-            JsonPlaylist,
+            JsonPlaylist, get_data_map, get_date_range, import::import_file, sec_to_time,
+            time_to_sec,
         },
     },
     sse::broadcast::Broadcaster,
     utils::{
+        TextFilter,
         advanced_config::AdvancedConfig,
         channels::{create_channel, delete_channel},
-        config::{get_config, PlayoutConfig, Template},
-        control::{control_state, send_message, ControlParams, Process, ProcessCtl},
+        config::{PlayoutConfig, Template, get_config},
+        control::{ControlParams, Process, ProcessCtl, control_state, send_message},
         errors::ServiceError,
         mail::MailQueue,
         naive_date_time_from_str,
         playlist::{delete_playlist, generate_playlist, read_playlist, write_playlist},
-        public_path, read_log_file, TextFilter,
+        public_path, read_log_file,
     },
     vec_strings,
 };

@@ -1,5 +1,5 @@
 use std::{
-    sync::{atomic::Ordering, Arc},
+    sync::{Arc, atomic::Ordering},
     time::Duration,
 };
 
@@ -8,7 +8,7 @@ use actix_web_lab::{
     util::InfallibleStream,
 };
 use tokio::{
-    sync::{mpsc, Mutex},
+    sync::{Mutex, mpsc},
     time::interval,
 };
 use tokio_stream::wrappers::ReceiverStream;

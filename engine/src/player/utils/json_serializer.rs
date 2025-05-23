@@ -1,6 +1,6 @@
 use std::{
     path::Path,
-    sync::{atomic::AtomicBool, Arc},
+    sync::{Arc, atomic::AtomicBool},
 };
 
 use log::*;
@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
 use tokio::{fs::File, io::AsyncReadExt, sync::Mutex};
 
 use crate::player::utils::{
-    get_date, is_remote, json_validate::validate_playlist, modified_time, time_from_header, Media,
-    PlayoutConfig,
+    Media, PlayoutConfig, get_date, is_remote, json_validate::validate_playlist, modified_time,
+    time_from_header,
 };
 use crate::utils::{config::DUMMY_LEN, logging::Target};
 

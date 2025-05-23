@@ -1,13 +1,13 @@
 use std::sync::Arc;
 
 use lettre::{
-    message::header, transport::smtp::authentication::Credentials, AsyncSmtpTransport,
-    AsyncTransport, Message, Tokio1Executor,
+    AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor, message::header,
+    transport::smtp::authentication::Credentials,
 };
 use log::*;
 use tokio::{
     sync::Mutex,
-    time::{interval, Duration},
+    time::{Duration, interval},
 };
 
 use crate::utils::{config::Mail, errors::ProcessError, round_to_nearest_ten};

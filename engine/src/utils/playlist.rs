@@ -5,7 +5,7 @@ use tokio::fs;
 
 use crate::file::norm_abs_path;
 use crate::player::controller::ChannelManager;
-use crate::player::utils::{json_reader, json_writer, JsonPlaylist};
+use crate::player::utils::{JsonPlaylist, json_reader, json_writer};
 use crate::utils::{config::PlayoutConfig, errors::ServiceError, generator::playlist_generator};
 
 pub async fn read_playlist(

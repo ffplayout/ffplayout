@@ -8,9 +8,9 @@ use std::io::Error;
 
 use async_walkdir::WalkDir;
 use chrono::Timelike;
-use lexical_sort::{natural_lexical_cmp, StringSort};
+use lexical_sort::{StringSort, natural_lexical_cmp};
 use log::*;
-use rand::{rng, seq::SliceRandom, Rng};
+use rand::{Rng, rng, seq::SliceRandom};
 use tokio::fs;
 use tokio_stream::StreamExt;
 
@@ -18,7 +18,7 @@ use crate::player::{
     controller::ChannelManager,
     input::folder::FolderSource,
     utils::{
-        get_date_range, include_file_extension, json_serializer::JsonPlaylist, sum_durations, Media,
+        Media, get_date_range, include_file_extension, json_serializer::JsonPlaylist, sum_durations,
     },
 };
 use crate::utils::{

@@ -2,8 +2,8 @@ use std::{
     path::Path,
     process::Stdio,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     },
     time::Instant,
 };
@@ -19,11 +19,11 @@ use tokio::{
 
 use crate::player::filter::FilterType::Audio;
 use crate::player::utils::{
-    is_close, is_remote, loop_image, sec_to_time, seek_and_length, time_in_seconds, time_to_sec,
-    JsonPlaylist, Media,
+    JsonPlaylist, Media, is_close, is_remote, loop_image, sec_to_time, seek_and_length,
+    time_in_seconds, time_to_sec,
 };
 use crate::utils::{
-    config::{OutputMode::Null, PlayoutConfig, FFMPEG_IGNORE_ERRORS, IMAGE_FORMAT},
+    config::{FFMPEG_IGNORE_ERRORS, IMAGE_FORMAT, OutputMode::Null, PlayoutConfig},
     errors::ProcessError,
     logging::Target,
 };

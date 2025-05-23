@@ -2,11 +2,11 @@
 use std::{io::Error, path::Path};
 
 use tokio::{
-    fs::{create_dir_all, File},
+    fs::{File, create_dir_all},
     io::{AsyncBufReadExt, BufReader},
 };
 
-use crate::player::utils::{json_reader, json_serializer::JsonPlaylist, json_writer, Media};
+use crate::player::utils::{Media, json_reader, json_serializer::JsonPlaylist, json_writer};
 
 pub async fn import_file(
     playlist_root: &Path,

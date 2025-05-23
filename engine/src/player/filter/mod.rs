@@ -10,7 +10,7 @@ pub mod v_drawtext;
 
 use crate::player::{
     controller::ProcessUnit::{self, *},
-    utils::{calc_aspect, custom_format, fps_calc, fraction, is_close, Media},
+    utils::{Media, calc_aspect, custom_format, fps_calc, fraction, is_close},
 };
 use crate::utils::{
     config::{OutputMode::*, PlayoutConfig},
@@ -493,9 +493,10 @@ fn overlay(config: &PlayoutConfig, chain: &mut Filters, node: &mut Media) {
             .replace(':', "\\\\:");
 
         let movie = match &config.advanced.filter.logo {
-            Some(logo) => {
-                custom_format(logo, &[logo_path, config.processing.logo_opacity.to_string()])
-        },
+            Some(logo) => custom_format(
+                logo,
+                &[logo_path, config.processing.logo_opacity.to_string()],
+            ),
             None => format!(
                 "movie={logo_path}:loop=0,setpts=N/(FRAME_RATE*TB),format=rgba,colorchannelmixer=aa={}",
                 config.processing.logo_opacity,

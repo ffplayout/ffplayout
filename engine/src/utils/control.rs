@@ -2,7 +2,7 @@ use std::{error::Error, fmt, str::FromStr, sync::atomic::Ordering};
 
 use log::*;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 use sqlx::{Pool, Sqlite};
 use zeromq::{Socket, SocketRecv, SocketSend, ZmqMessage};
 
@@ -11,7 +11,7 @@ use crate::player::{
     controller::{ChannelManager, ProcessUnit::*},
     utils::{get_delta, get_media_map},
 };
-use crate::utils::{config::OutputMode::*, errors::ServiceError, logging::Target, TextFilter};
+use crate::utils::{TextFilter, config::OutputMode::*, errors::ServiceError, logging::Target};
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 struct TextParams {

@@ -32,13 +32,13 @@ use crate::{
         controller::{ChannelManager, ProcessUnit::*},
         input::source_generator,
         utils::{
-            get_delta, insert_readrate, is_free_tcp_port, prepare_output_cmd, sec_to_time,
-            stderr_reader, valid_stream, Media,
+            Media, get_delta, insert_readrate, is_free_tcp_port, prepare_output_cmd, sec_to_time,
+            stderr_reader, valid_stream,
         },
     },
     utils::{
         errors::ServiceError,
-        logging::{fmt_cmd, Target},
+        logging::{Target, fmt_cmd},
     },
 };
 

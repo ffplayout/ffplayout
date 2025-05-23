@@ -5,7 +5,7 @@ use sqlx::sqlite::SqlitePoolOptions;
 use ffplayout::db::handles;
 use ffplayout::player::{
     controller::{ChannelManager, ProcessUnit::*},
-    utils::{prepare_output_cmd, seek_and_length, Media},
+    utils::{Media, prepare_output_cmd, seek_and_length},
 };
 use ffplayout::utils::config::{OutputMode::*, PlayoutConfig};
 use ffplayout::vec_strings;
@@ -47,11 +47,13 @@ async fn video_audio_input() {
     let mut media = Media::new(0, "./assets/media_mix/with_audio.mp4", true).await;
     media.add_filter(&config, &None).await;
 
-    let test_filter_cmd =
-        vec_strings![
-            "-filter_complex",
-            format!("[0:v:0]scale=1024:576[v];movie={}:loop=0,setpts=N/(FRAME_RATE*TB),format=rgba,colorchannelmixer=aa=0.7[l];[v][l]overlay=W-w-12:12:shortest=1[vout0];[0:a:0]anull[aout0]", config.processing.logo_path)
-        ];
+    let test_filter_cmd = vec_strings![
+        "-filter_complex",
+        format!(
+            "[0:v:0]scale=1024:576[v];movie={}:loop=0,setpts=N/(FRAME_RATE*TB),format=rgba,colorchannelmixer=aa=0.7[l];[v][l]overlay=W-w-12:12:shortest=1[vout0];[0:a:0]anull[aout0]",
+            config.processing.logo_path
+        )
+    ];
 
     let test_filter_map = vec_strings!["-map", "[vout0]", "-map", "[aout0]"];
 
@@ -155,11 +157,10 @@ async fn dual_audio_aevalsrc_input() {
     let mut media = Media::new(0, "./assets/media_mix/with_audio.mp4", true).await;
     media.add_filter(&config, &None).await;
 
-    let test_filter_cmd =
-        vec_strings![
-            "-filter_complex",
-            "[0:v:0]scale=1024:576[vout0];[0:a:0]anull[aout0];aevalsrc=0:channel_layout=stereo:duration=30:sample_rate=48000,anull[aout1]"
-        ];
+    let test_filter_cmd = vec_strings![
+        "-filter_complex",
+        "[0:v:0]scale=1024:576[vout0];[0:a:0]anull[aout0];aevalsrc=0:channel_layout=stereo:duration=30:sample_rate=48000,anull[aout1]"
+    ];
 
     let test_filter_map = vec_strings!["-map", "[vout0]", "-map", "[aout0]", "-map", "[aout1]"];
 
@@ -435,7 +436,9 @@ async fn video_audio_filter2_stream() {
         "-i",
         "pipe:0",
         "-filter_complex",
-        format!("[0:v:0]zmq=b=tcp\\\\://'{socket}',drawtext@dyntext=text='',gblur=2[vout0];[0:a]volume=0.2[aout0]"),
+        format!(
+            "[0:v:0]zmq=b=tcp\\\\://'{socket}',drawtext@dyntext=text='',gblur=2[vout0];[0:a]volume=0.2[aout0]"
+        ),
         "-map",
         "[vout0]",
         "-map",
@@ -524,7 +527,9 @@ async fn video_audio_filter3_stream() {
         "-i",
         "pipe:0",
         "-filter_complex",
-        format!("[0:v:0]zmq=b=tcp\\\\://'{socket}',drawtext@dyntext=text='',null[o];movie=/path/to/lower_third.png[l];[o][l]overlay=shortest=1[vout0]"),
+        format!(
+            "[0:v:0]zmq=b=tcp\\\\://'{socket}',drawtext@dyntext=text='',null[o];movie=/path/to/lower_third.png[l];[o][l]overlay=shortest=1[vout0]"
+        ),
         "-map",
         "[vout0]",
         "-map",
@@ -613,7 +618,9 @@ async fn video_audio_filter4_stream() {
         "-i",
         "pipe:0",
         "-filter_complex",
-        format!("[0:v:0]zmq=b=tcp\\\\://'{socket}',drawtext@dyntext=text='',null[o];movie=/path/to/lower_third.png[l];[o][l]overlay=shortest=1[vout0];[0:a:0]volume=0.2[aout0]"),
+        format!(
+            "[0:v:0]zmq=b=tcp\\\\://'{socket}',drawtext@dyntext=text='',null[o];movie=/path/to/lower_third.png[l];[o][l]overlay=shortest=1[vout0];[0:a:0]volume=0.2[aout0]"
+        ),
         "-map",
         "[vout0]",
         "-map",
@@ -1072,7 +1079,9 @@ async fn video_audio_text_multi_stream() {
         "-i",
         "pipe:0",
         "-filter_complex",
-        format!("[0:v:0]zmq=b=tcp\\\\://'{socket}',drawtext@dyntext=text='',split=2[vout_0_0][vout_0_1]"),
+        format!(
+            "[0:v:0]zmq=b=tcp\\\\://'{socket}',drawtext@dyntext=text='',split=2[vout_0_0][vout_0_1]"
+        ),
         "-map",
         "[vout_0_0]",
         "-map",
@@ -1200,7 +1209,9 @@ async fn video_dual_audio_multi_filter_stream() {
         "-i",
         "pipe:0",
         "-filter_complex",
-        format!("[0:v:0]zmq=b=tcp\\\\://'{socket}',drawtext@dyntext=text='',split=2[vout_0_0][vout_0_1]"),
+        format!(
+            "[0:v:0]zmq=b=tcp\\\\://'{socket}',drawtext@dyntext=text='',split=2[vout_0_0][vout_0_1]"
+        ),
         "-map",
         "[vout_0_0]",
         "-map",
@@ -1329,7 +1340,9 @@ async fn video_audio_text_filter_stream() {
         "-i",
         "pipe:0",
         "-filter_complex",
-        format!("[0:v:0]zmq=b=tcp\\\\://'{socket}',drawtext@dyntext=text='',split=2[vout_0_0][vout_0_1]"),
+        format!(
+            "[0:v:0]zmq=b=tcp\\\\://'{socket}',drawtext@dyntext=text='',split=2[vout_0_0][vout_0_1]"
+        ),
         "-map",
         "[vout_0_0]",
         "-map",

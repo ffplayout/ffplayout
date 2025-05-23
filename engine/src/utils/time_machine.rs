@@ -7,7 +7,7 @@ use std::{
     sync::{Arc, LazyLock, RwLock},
 };
 
-use chrono::{prelude::*, TimeDelta};
+use chrono::{TimeDelta, prelude::*};
 use chrono_tz::Tz;
 
 // Thread-local storage for time offset when mocking the time

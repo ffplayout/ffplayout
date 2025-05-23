@@ -7,14 +7,14 @@ use tokio::{
 };
 
 use crate::utils::{
-    config::{PlayoutConfig, FFMPEG_IGNORE_ERRORS, FFMPEG_UNRECOVERABLE_ERRORS},
-    logging::{log_line, Target},
+    config::{FFMPEG_IGNORE_ERRORS, FFMPEG_UNRECOVERABLE_ERRORS, PlayoutConfig},
+    logging::{Target, log_line},
 };
 use crate::vec_strings;
 use crate::{
     player::{
         controller::{ChannelManager, ProcessUnit::*},
-        utils::{is_free_tcp_port, valid_stream, Media},
+        utils::{Media, is_free_tcp_port, valid_stream},
     },
     utils::{errors::ServiceError, logging::fmt_cmd},
 };

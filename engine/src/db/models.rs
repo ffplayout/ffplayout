@@ -3,10 +3,10 @@ use std::{error::Error, fmt, str::FromStr};
 use chrono_tz::Tz;
 use regex::Regex;
 use serde::{
-    de::{self, Visitor},
     Deserialize, Serialize,
+    de::{self, Visitor},
 };
-use sqlx::{sqlite::SqliteRow, FromRow, Pool, Row, Sqlite};
+use sqlx::{FromRow, Pool, Row, Sqlite, sqlite::SqliteRow};
 
 use crate::utils::config::PlayoutConfig;
 use crate::{db::handles, utils::config::OutputMode};
