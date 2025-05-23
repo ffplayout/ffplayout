@@ -1,8 +1,5 @@
 /// Import text/m3u file and create a playlist out of it
-use std::{
-    io::{Error, ErrorKind},
-    path::Path,
-};
+use std::{io::Error, path::Path};
 
 use tokio::{
     fs::{create_dir_all, File},
@@ -30,13 +27,9 @@ pub async fn import_file(
     };
 
     if !playlist_root.is_dir() {
-        return Err(Error::new(
-            ErrorKind::Other,
-            format!(
-                "Playlist folder <span class=\"log-addr\">{:?}</span> not exists!",
-                playlist_root,
-            ),
-        ));
+        return Err(Error::other(format!(
+            "Playlist folder <span class=\"log-addr\">{playlist_root:?}</span> not exists!"
+        )));
     }
 
     let d: Vec<&str> = date.split('-').collect();
@@ -76,6 +69,6 @@ pub async fn import_file(
 
     match json_writer(playlist_file, playlist).await {
         Ok(_) => Ok(msg),
-        Err(e) => Err(Error::new(ErrorKind::Other, e)),
+        Err(e) => Err(Error::other(e)),
     }
 }

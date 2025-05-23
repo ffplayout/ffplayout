@@ -1,7 +1,7 @@
 use std::{
     collections::{hash_map, HashMap, VecDeque},
     env,
-    io::{self, ErrorKind, Write},
+    io::{self, Write},
     path::PathBuf,
     sync::{Arc, RwLock},
 };
@@ -112,7 +112,7 @@ impl MultiFileLogger {
                 Cleanup::KeepLogFiles(ARGS.log_backup_count.unwrap_or(14)),
             )
             .try_build()
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+            .map_err(|e| io::Error::other(e.to_string()))?;
 
             let arc_writer = Arc::new(writer);
             entry.insert(arc_writer.clone());
@@ -419,7 +419,7 @@ pub fn init_logging(
         .add_writer("file", file_logger())
         .add_writer("mail", Box::new(LogMailer::new(mail_queues)))
         .start()
-        .map_err(|e| io::Error::new(ErrorKind::Other, e.to_string()))?;
+        .map_err(|e| io::Error::other(e.to_string()))?;
 
     Ok(logger)
 }

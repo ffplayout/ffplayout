@@ -299,11 +299,9 @@ async fn update_user(
         let password_hash = web::block(move || {
             let salt = SaltString::generate(&mut OsRng);
 
-            let argon = Argon2::default()
+            Argon2::default()
                 .hash_password(data.password.clone().as_bytes(), &salt)
-                .map(|p| p.to_string());
-
-            argon
+                .map(|p| p.to_string())
         })
         .await?
         .map_err(|e| ServiceError::Conflict(e.to_string()))?;
