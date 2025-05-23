@@ -36,10 +36,10 @@ use crate::vec_strings;
 /// - Check if Metadata exists
 /// - Check if the file is not silent
 async fn check_media(
+    config: &PlayoutConfig,
     mut node: Media,
     pos: usize,
     begin: f64,
-    config: &PlayoutConfig,
 ) -> Result<(), ProcessError> {
     let id = config.general.channel_id;
     let mut dec_cmd = vec_strings!["-hide_banner", "-nostats", "-v", "level+info"];
@@ -258,40 +258,48 @@ pub async fn validate_playlist(
         }
 
         if item.probe.is_some() {
-            if let Err(e) = check_media(item.clone(), pos, begin, &config).await {
-                error!(target: Target::file_mail(), channel = id; "{e}");
-            } else if config.general.validate {
-                debug!(target: Target::file_mail(), channel = id;
-                    "<span class=\"log-gray\">[Validation]</span> Source at <span class=\"log-number\">{}</span>, seems fine: <span class=\"log-addr\">{}</span>",
-                    sec_to_time(begin),
-                    item.source
-                );
-            } else if let Ok(mut list) = current_list.try_lock() {
-                // Filter out same item in current playlist, then add the probe to it.
-                // Check also if duration differs with playlist value, log error if so and adjust that value.
-                list.iter_mut().filter(|list_item| list_item.source == item.source).for_each(|o| {
-                    o.probe.clone_from(&item.probe);
+            match check_media(&config, item.clone(), pos, begin).await {
+                Err(e) => {
+                    error!(target: Target::file_mail(), channel = id; "{e}");
+                }
+                Ok(()) => {
+                    if config.general.validate {
+                        debug!(
+                            target: Target::file_mail(), channel = id;
+                            "<span class=\"log-gray\">[Validation]</span> Source at <span class=\"log-number\">{}</span>, seems fine: <span class=\"log-addr\">{}</span>",
+                            sec_to_time(begin),
+                            item.source
+                        );
+                    } else if let Ok(mut list) = current_list.try_lock() {
+                        // Filter out same item in current playlist, then add the probe to it.
+                        // Check also if duration differs with playlist value, log error if so and adjust that value.
+                        for o in list.iter_mut().filter(|o| o.source == item.source) {
+                            o.probe.clone_from(&item.probe);
 
-                    if let Some(dur) =
-                        item.probe.as_ref().and_then(|f| f.format.duration)
-                    {
-                        let probe_duration = dur;
+                            if let Some(probe_duration) =
+                                item.probe.as_ref().and_then(|f| f.format.duration)
+                            {
+                                if !is_close(o.duration, probe_duration, 1.2) {
+                                    error!(
+                                        target: Target::file_mail(),
+                                        channel = id;
+                                        "<span class=\"log-gray\">[Validation]</span> File duration (at: <span class=\"log-number\">{}</span>) differs from playlist value. File duration: <span class=\"log-number\">{}</span>, playlist value: <span class=\"log-number\">{}</span>, source <span class=\"log-addr\">{}</span>",
+                                        sec_to_time(o.begin.unwrap_or_default()),
+                                        sec_to_time(probe_duration),
+                                        sec_to_time(o.duration),
+                                        o.source
+                                    );
+                                    o.duration = probe_duration;
+                                }
+                            }
 
-                        if !is_close(o.duration, probe_duration, 1.2) {
-                            error!(target: Target::file_mail(), channel = id;
-                                "<span class=\"log-gray\">[Validation]</span> File duration (at: <span class=\"log-number\">{}</span>) differs from playlist value. File duration: <span class=\"log-number\">{}</span>, playlist value: <span class=\"log-number\">{}</span>, source <span class=\"log-addr\">{}</span>",
-                                sec_to_time(o.begin.unwrap_or_default()), sec_to_time(probe_duration), sec_to_time(o.duration), o.source
-                            );
-
-                            o.duration = probe_duration;
+                            if o.audio == item.audio && item.probe_audio.is_some() {
+                                o.probe_audio.clone_from(&item.probe_audio);
+                                o.duration_audio = item.duration_audio;
+                            }
                         }
                     }
-
-                    if o.audio == item.audio && item.probe_audio.is_some() {
-                        o.probe_audio.clone_from(&item.probe_audio);
-                        o.duration_audio = item.duration_audio;
-                    }
-                });
+                }
             }
 
             if config.processing.vtt_enable {
