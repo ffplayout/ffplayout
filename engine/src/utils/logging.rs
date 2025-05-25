@@ -172,26 +172,27 @@ impl LogWriter for LogMailer {
         let level = record.level();
         let mail_queues = self.mail_queues.clone();
         let now = now.now().format("%Y-%m-%d %H:%M:%S");
+        let msg = strip_tags(&message);
 
-        tokio::spawn(async move {
-            let mut queues = mail_queues.lock().await;
+        tokio::spawn({
+            async move {
+                let mut queues_guard = mail_queues.lock().await;
 
-            for queue in queues.iter_mut() {
-                let mut q_lock = queue.lock().await;
+                for queue_arc in queues_guard.iter_mut() {
+                    let mut queue = queue_arc.lock().await;
 
-                let msg = strip_tags(&message);
+                    if queue.id == id && queue.level_eq(level) && !queue.raw_lines.contains(&msg) {
+                        queue.push_raw(msg.clone());
+                        queue.push(format!("[{now}] [{:>5}] {}", level, msg));
 
-                if q_lock.id == id && q_lock.level_eq(level) && !q_lock.raw_lines.contains(&msg) {
-                    q_lock.push_raw(msg.clone());
-                    q_lock.push(format!("[{now}] [{:>5}] {}", level, msg));
+                        if queue.raw_lines.len() > 1000 {
+                            let last = queue.raw_lines.pop().unwrap();
+                            queue.clear_raw();
+                            queue.push_raw(last);
+                        }
 
-                    break;
-                }
-
-                if q_lock.raw_lines.len() > 1000 {
-                    let last = q_lock.raw_lines.pop().unwrap();
-                    q_lock.clear_raw();
-                    q_lock.push_raw(last);
+                        break;
+                    }
                 }
             }
         });

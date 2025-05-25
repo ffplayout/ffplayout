@@ -79,12 +79,11 @@ async fn event_stream(
 
     check_uuid(&mut uuids, user.uuid.as_str())?;
 
-    let manager = controllers
-        .lock()
-        .await
-        .get(*id)
-        .await
-        .ok_or(ServiceError::BadRequest("Channel not found".to_string()))?;
+    let manager = {
+        let guard = controllers.lock().await;
+        guard.get(*id)
+    }
+    .ok_or_else(|| ServiceError::BadRequest(format!("Channel {id} not found!")))?;
 
     Ok(broadcaster
         .new_client(manager.clone(), user.endpoint.clone())

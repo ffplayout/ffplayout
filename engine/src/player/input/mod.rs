@@ -26,7 +26,7 @@ impl SourceIterator {
 
 /// Create a source iterator from playlist, or from folder.
 pub async fn source_generator(manager: ChannelManager) -> SourceIterator {
-    let config = manager.config.lock().await.clone();
+    let config = manager.config.read().await.clone();
     let id = config.general.channel_id;
     let is_alive = manager.is_alive.clone();
     let current_list = manager.current_list.clone();

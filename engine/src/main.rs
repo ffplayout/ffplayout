@@ -268,7 +268,12 @@ async fn main() -> Result<(), ProcessError> {
         );
     }
 
-    for manager in &channel_controllers.lock().await.managers {
+    let managers = {
+        let guard = channel_controllers.lock().await;
+        guard.managers.clone()
+    };
+
+    for manager in &managers {
         manager.channel.lock().await.active = false;
         manager.stop_all(false).await;
     }

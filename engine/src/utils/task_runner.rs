@@ -6,7 +6,7 @@ use crate::player::utils::get_data_map;
 use crate::player::controller::ChannelManager;
 
 pub async fn run(manager: ChannelManager) {
-    let task_path = manager.config.lock().await.task.path.clone();
+    let task_path = manager.config.read().await.task.path.clone();
 
     let obj = serde_json::to_string(&get_data_map(&manager).await).unwrap();
     trace!("Run task: {obj}");

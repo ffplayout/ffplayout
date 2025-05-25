@@ -163,7 +163,7 @@ pub async fn get_data_map(manager: &ChannelManager) -> Map<String, Value> {
         .clone()
         .unwrap_or_else(Media::default);
     let channel = manager.channel.lock().await.clone();
-    let config = manager.config.lock().await.processing.clone();
+    let config = manager.config.read().await.processing.clone();
     let ingest_is_alive = manager.ingest_is_alive.load(Ordering::SeqCst);
 
     let mut data_map = Map::new();

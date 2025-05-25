@@ -113,7 +113,7 @@ impl Broadcaster {
                     };
                 }
                 Endpoint::System => {
-                    let config = client.manager.config.lock().await.clone();
+                    let config = client.manager.config.read().await.clone();
                     let stat = self.system.stat(&config).await;
 
                     if client

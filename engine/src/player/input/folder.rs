@@ -118,7 +118,7 @@ impl FolderSource {
 /// Create iterator for folder source
 impl FolderSource {
     pub async fn next(&mut self) -> Option<Media> {
-        let config = self.manager.config.lock().await.clone();
+        let config = self.manager.config.read().await.clone();
         let id = config.general.id;
 
         if self.manager.current_index.load(Ordering::SeqCst)

@@ -86,25 +86,31 @@ pub async fn write_playlist(
 }
 
 pub async fn generate_playlist(manager: ChannelManager) -> Result<JsonPlaylist, ServiceError> {
-    let mut config = manager.config.lock().await;
+    let (template, storage_root) = {
+        let mut config = manager.config.write().await;
+        (
+            config.general.template.take(),
+            config.channel.storage.clone(),
+        )
+    };
 
-    if let Some(mut template) = config.general.template.take() {
+    if let Some(mut template) = template {
         for source in &mut template.sources {
-            let mut paths = vec![];
+            let mut resolved_paths = Vec::with_capacity(source.paths.len());
 
             for path in &source.paths {
-                let (safe_path, _, _) =
-                    norm_abs_path(&config.channel.storage, &path.to_string_lossy())?;
-                paths.push(safe_path);
+                let (safe_path, _, _) = norm_abs_path(&storage_root, &path.to_string_lossy())?;
+                resolved_paths.push(safe_path);
             }
 
-            source.paths = paths;
+            source.paths = resolved_paths;
         }
 
-        config.general.template = Some(template);
+        {
+            let mut config = manager.config.write().await;
+            config.general.template = Some(template);
+        }
     }
-
-    drop(config);
 
     match playlist_generator(&manager).await {
         Ok(playlists) => {

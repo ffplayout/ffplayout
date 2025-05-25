@@ -141,7 +141,7 @@ async fn check_media(
             "<span class=\"log-gray\">[Validator]</span> ffmpeg error on position <span class=\"log-number\">{pos}</span> - {}: <span class=\"log-addr\">{}</span>: {}",
             sec_to_time(begin),
             node.source,
-            error_list.join("\n")
+            error_list.join("\n    ")
         );
     }
 

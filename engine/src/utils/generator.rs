@@ -200,7 +200,7 @@ pub async fn generate_from_template(
 
 /// Generate playlists
 pub async fn playlist_generator(manager: &ChannelManager) -> Result<Vec<JsonPlaylist>, Error> {
-    let config = manager.config.lock().await.clone();
+    let config = manager.config.read().await.clone();
     let id = config.general.channel_id;
     let channel_name = manager.channel.lock().await.name.clone();
 

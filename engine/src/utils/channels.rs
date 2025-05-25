@@ -174,7 +174,7 @@ pub async fn delete_channel(
 ) -> Result<(), ServiceError> {
     let channel = handles::select_channel(conn, &id).await?;
     handles::delete_channel(conn, &channel.id).await?;
-    controllers.lock().await.remove(id).await;
+    controllers.lock().await.remove(id);
     let mut queue_guard = queue.lock().await;
     let mut new_queue = Vec::with_capacity(queue_guard.len());
 

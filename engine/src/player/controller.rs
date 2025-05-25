@@ -16,7 +16,7 @@ use tokio::{
     fs,
     io::{self, AsyncReadExt},
     process::{Child, ChildStdout},
-    sync::Mutex,
+    sync::{Mutex, RwLock},
     time::{Duration, Instant, sleep},
 };
 use tokio_stream::StreamExt;
@@ -59,7 +59,7 @@ use ProcessUnit::*;
 pub struct ChannelManager {
     pub id: i32,
     pub db_pool: Pool<Sqlite>,
-    pub config: Arc<Mutex<PlayoutConfig>>,
+    pub config: Arc<RwLock<PlayoutConfig>>,
     pub channel: Arc<Mutex<Channel>>,
     pub decoder: Arc<Mutex<Option<Child>>>,
     pub encoder: Arc<Mutex<Option<Child>>>,
@@ -98,8 +98,8 @@ impl ChannelManager {
             id: channel.id,
             db_pool,
             is_alive: Arc::new(AtomicBool::new(false)),
+            config: Arc::new(RwLock::new(config)),
             channel: Arc::new(Mutex::new(channel)),
-            config: Arc::new(Mutex::new(config)),
             list_init: Arc::new(AtomicBool::new(true)),
             current_media: Arc::new(Mutex::new(None)),
             current_list: Arc::new(Mutex::new(vec![Media::default()])),
@@ -129,9 +129,11 @@ impl ChannelManager {
         channel.time_shift.clone_from(&other.time_shift);
         channel.timezone.clone_from(&other.timezone);
 
-        let s_path = Path::new(&channel.storage);
+        let channel_storage = channel.storage.clone();
+        let s_path = Path::new(&channel_storage);
         let channel_extensions = channel.extra_extensions.clone();
-        let mut extensions = self.config.lock().await.storage.extensions.clone();
+        drop(channel);
+        let mut extensions = self.config.read().await.storage.extensions.clone();
         let mut extra_extensions = channel_extensions
             .split(',')
             .map(Into::into)
@@ -144,7 +146,7 @@ impl ChannelManager {
     }
 
     pub async fn update_config(&self, new_config: PlayoutConfig) {
-        let mut config = self.config.lock().await;
+        let mut config = self.config.write().await;
         *config = new_config;
     }
 
@@ -163,7 +165,16 @@ impl ChannelManager {
             let mut elapsed = Duration::from_secs(5);
             let mut retry_delay = Duration::from_millis(500);
 
-            while self_clone.channel.lock().await.active {
+            loop {
+                let active = {
+                    let channel = self_clone.channel.lock().await;
+                    channel.active
+                };
+
+                if !active {
+                    break;
+                }
+
                 self_clone.is_alive.store(true, Ordering::SeqCst);
                 self_clone.list_init.store(true, Ordering::SeqCst);
 
@@ -172,7 +183,12 @@ impl ChannelManager {
                 if let Err(e) = run_channel(self_clone.clone()).await {
                     self_clone.stop_all(false).await;
 
-                    if !self_clone.channel.lock().await.active {
+                    let active = {
+                        let channel = self_clone.channel.lock().await;
+                        channel.active
+                    };
+
+                    if !active {
                         break;
                     }
 
@@ -331,22 +347,16 @@ impl ChannelController {
         self.managers.push(manager);
     }
 
-    pub async fn get(&self, id: i32) -> Option<ChannelManager> {
-        for manager in &self.managers {
-            if manager.channel.lock().await.id == id {
-                return Some(manager.clone());
-            }
-        }
-
-        None
+    pub fn get(&self, id: i32) -> Option<ChannelManager> {
+        self.managers.iter().find(|m| m.id == id).cloned()
     }
 
-    pub async fn remove(&mut self, channel_id: i32) {
+    pub fn remove(&mut self, id: i32) {
         let mut indices = Vec::new();
 
         for (i, manager) in self.managers.iter().enumerate() {
-            let channel = manager.channel.lock().await;
-            if channel.id == channel_id {
+            let channel_id = manager.id;
+            if channel_id == id {
                 indices.push(i);
             }
         }
@@ -367,7 +377,11 @@ impl ChannelController {
 }
 
 async fn run_channel(manager: ChannelManager) -> Result<(), ServiceError> {
-    let config = manager.config.lock().await.clone();
+    let config = {
+        let guard = manager.config.read().await;
+        guard.clone()
+    };
+
     let filler_list = manager.filler_list.clone();
     let channel_id = config.general.channel_id;
 
@@ -375,19 +389,24 @@ async fn run_channel(manager: ChannelManager) -> Result<(), ServiceError> {
 
     debug!(target: Target::all(), channel = channel_id; "Start ffplayout v{VERSION}, channel: <span class=\"log-number\">{channel_id}</span>");
 
-    // Fill filler list, can also be a single file.
-    // INFO: Was running in a thread, but when it runs in a tokio task and
-    // after start a filler is needed, the first one will be ignored because the list is not filled.
+    let need_fill = {
+        let list = filler_list.lock().await;
+        list.is_empty()
+    };
 
-    if filler_list.lock().await.is_empty() {
-        manager
-            .storage
-            .lock()
-            .await
-            .fill_filler_list(&config, Some(filler_list))
+    if need_fill {
+        // Fill filler list, can also be a single file.
+        // INFO: Was running in a thread, but when it runs in a tokio task and
+        // after start a filler is needed, the first one will be ignored because the list is not filled.
+        let storage = manager.storage.clone();
+        let mut storage_guard = storage.lock().await;
+
+        storage_guard
+            .fill_filler_list(&config, Some(filler_list.clone()))
             .await;
     }
 
+    // 4. Player starten
     player(manager).await
 }
 

@@ -714,7 +714,7 @@ pub async fn filter_chains(
 ) -> Filters {
     let mut filters = Filters::new(config.clone(), node.unit, 0);
 
-    if config.processing.override_filter {
+    if config.processing.override_filter && !config.processing.custom_filter.is_empty() {
         //override hole filtering
         if node.unit == Ingest && !config.ingest.custom_filter.is_empty() {
             filters.output_chain = split(&config.ingest.custom_filter).unwrap_or_default();

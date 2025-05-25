@@ -117,7 +117,7 @@ pub async fn send_message(
 ) -> Result<Map<String, Value>, ServiceError> {
     let filter = message.to_string();
     let mut data_map = Map::new();
-    let config = manager.config.lock().await.clone();
+    let config = manager.config.read().await.clone();
 
     if config.text.zmq_stream_socket.is_some() {
         if let Some(clips_filter) = manager.filter_chain.clone() {
@@ -167,7 +167,7 @@ pub async fn control_state(
     manager: &ChannelManager,
     command: &PlayerCtl,
 ) -> Result<Map<String, Value>, ServiceError> {
-    let config = manager.config.lock().await.clone();
+    let config = manager.config.read().await.clone();
     let id = config.general.channel_id;
     let current_date = manager.current_date.lock().await.clone();
     let current_list = manager.current_list.lock().await.clone();
