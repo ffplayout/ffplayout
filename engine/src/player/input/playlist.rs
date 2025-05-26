@@ -228,16 +228,14 @@ impl CurrentProgram {
     // Check if last and/or next clip is a advertisement.
     async fn last_next_ad(&mut self, node: &mut Media) {
         let index = self.manager.current_index.load(Ordering::SeqCst);
-        let current_list = self.manager.current_list.lock().await;
+        let list = self.manager.current_list.lock().await;
+        let length = list.len();
 
-        if index + 1 < current_list.len() && &current_list[index + 1].category == "advertisement" {
+        if index + 1 < length && &list[index + 1].category == "advertisement" {
             node.next_ad = true;
         }
 
-        if index > 0
-            && index < current_list.len()
-            && &current_list[index - 1].category == "advertisement"
-        {
+        if index > 0 && index < length && &list[index - 1].category == "advertisement" {
             node.last_ad = true;
         }
     }
@@ -577,8 +575,8 @@ impl CurrentProgram {
             }
 
             let filler = {
-                let fillers = self.manager.filler_list.lock().await;
                 self.manager.list_init.store(true, Ordering::SeqCst);
+                let fillers = self.manager.filler_list.lock().await;
 
                 if self.config.storage.filler_path.is_dir() && !fillers.is_empty() {
                     let index = self
@@ -699,7 +697,6 @@ impl CurrentProgram {
     }
 
     async fn duplicate_for_seek_and_loop(&mut self, node: &mut Media) {
-        let mut nodes = self.manager.current_list.lock().await;
         let index = node.index.unwrap_or_default();
 
         let mut node_duplicate = node.clone();
@@ -722,6 +719,7 @@ impl CurrentProgram {
             node_duplicate.begin =
                 Some(node_duplicate.begin.unwrap_or_default() + (node.out - node.seek));
 
+            let mut nodes = self.manager.current_list.lock().await;
             nodes.insert(index + 1, node_duplicate);
 
             for (i, item) in nodes.iter_mut().enumerate() {

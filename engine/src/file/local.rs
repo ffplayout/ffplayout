@@ -12,7 +12,12 @@ use async_walkdir::WalkDir;
 use lexical_sort::{PathSort, natural_lexical_cmp};
 use log::*;
 use rand::{Rng, SeedableRng, distr::Alphanumeric, rngs::StdRng, seq::SliceRandom};
-use tokio::{fs, io::AsyncWriteExt, sync::Mutex, task::JoinHandle};
+use tokio::{
+    fs,
+    io::AsyncWriteExt,
+    sync::{Mutex, RwLock},
+    task::JoinHandle,
+};
 use tokio_stream::StreamExt;
 
 use crate::file::{MoveObject, PathObject, VideoFile, norm_abs_path, watcher::watch};
@@ -21,8 +26,8 @@ use crate::utils::{config::PlayoutConfig, errors::ServiceError, logging::Target}
 
 #[derive(Clone, Debug)]
 pub struct LocalStorage {
-    pub root: PathBuf,
-    pub extensions: Vec<String>,
+    pub root: Arc<RwLock<PathBuf>>,
+    pub extensions: Arc<RwLock<Vec<String>>>,
     pub watch_handler: Arc<Mutex<Option<JoinHandle<()>>>>,
 }
 
@@ -35,8 +40,8 @@ impl LocalStorage {
         }
 
         Self {
-            root,
-            extensions,
+            root: Arc::new(RwLock::new(root)),
+            extensions: Arc::new(RwLock::new(extensions)),
             watch_handler: Arc::new(Mutex::new(None)),
         }
     }
@@ -58,11 +63,12 @@ impl Drop for LocalStorage {
 
 impl LocalStorage {
     pub async fn browser(&self, path_obj: &PathObject) -> Result<PathObject, ServiceError> {
-        let (path, parent, path_component) = norm_abs_path(&self.root, &path_obj.source)?;
+        let (path, parent, path_component) =
+            norm_abs_path(&self.root.read().await, &path_obj.source)?;
         let mut parent_folders = vec![];
 
         let parent_path = if path_component.is_empty() {
-            self.root.clone()
+            self.root.read().await.clone()
         } else {
             path.parent().unwrap().to_path_buf()
         };
@@ -115,7 +121,12 @@ impl LocalStorage {
                 );
             } else if f_meta.is_file() && !path_obj.folders_only {
                 if let Some(ext) = file_extension(&child.path()) {
-                    if self.extensions.contains(&ext.to_string().to_lowercase()) {
+                    if self
+                        .extensions
+                        .read()
+                        .await
+                        .contains(&ext.to_string().to_lowercase())
+                    {
                         files.push(child.path());
                     }
                 }
@@ -148,7 +159,7 @@ impl LocalStorage {
     }
 
     pub async fn mkdir(&self, path_obj: &PathObject) -> Result<(), ServiceError> {
-        let (path, _, _) = norm_abs_path(&self.root, &path_obj.source)?;
+        let (path, _, _) = norm_abs_path(&self.root.read().await, &path_obj.source)?;
 
         if let Err(e) = fs::create_dir_all(&path).await {
             return Err(ServiceError::BadRequest(e.to_string()));
@@ -163,8 +174,9 @@ impl LocalStorage {
     }
 
     pub async fn rename(&self, move_object: &MoveObject) -> Result<MoveObject, ServiceError> {
-        let (source_path, _, _) = norm_abs_path(&self.root, &move_object.source)?;
-        let (mut target_path, _, _) = norm_abs_path(&self.root, &move_object.target)?;
+        let root = self.root.read().await.clone();
+        let (source_path, _, _) = norm_abs_path(&root, &move_object.source)?;
+        let (mut target_path, _, _) = norm_abs_path(&root, &move_object.target)?;
 
         if !source_path.exists() {
             return Err(ServiceError::BadRequest("Source file not exist!".into()));
@@ -194,7 +206,7 @@ impl LocalStorage {
     }
 
     pub async fn remove(&self, source_path: &str, recursive: bool) -> Result<(), ServiceError> {
-        let (source, _, _) = norm_abs_path(&self.root, source_path)?;
+        let (source, _, _) = norm_abs_path(&self.root.read().await, source_path)?;
 
         if !source.exists() {
             return Err(ServiceError::BadRequest("Source does not exists!".into()));
@@ -252,7 +264,8 @@ impl LocalStorage {
             let filepath = if is_abs {
                 path.to_path_buf()
             } else {
-                let (target_path, _, _) = norm_abs_path(&self.root, &path.to_string_lossy())?;
+                let (target_path, _, _) =
+                    norm_abs_path(&self.root.read().await, &path.to_string_lossy())?;
 
                 target_path.join(filename)
             };
@@ -290,26 +303,28 @@ impl LocalStorage {
     }
 
     pub async fn watchman(
-        &mut self,
+        &self,
         config: PlayoutConfig,
         is_alive: Arc<AtomicBool>,
         sources: Arc<Mutex<Vec<Media>>>,
     ) {
-        self.watch_handler = Arc::new(Mutex::new(Some(tokio::spawn(async {
-            watch(config, is_alive, sources).await;
-        }))));
+        if let Some(old_handle) = self.watch_handler.lock().await.take() {
+            old_handle.abort();
+        }
+
+        let handle = tokio::spawn(watch(config, is_alive, sources));
+
+        *self.watch_handler.lock().await = Some(handle);
     }
 
-    pub async fn stop_watch(&mut self) {
-        let mut watch_handler = self.watch_handler.lock().await;
-
-        if let Some(handler) = watch_handler.as_mut() {
-            handler.abort();
+    pub async fn stop_watch(&self) {
+        if let Some(handle) = self.watch_handler.lock().await.take() {
+            handle.abort();
         }
     }
 
     pub async fn fill_filler_list(
-        &mut self,
+        &self,
         config: &PlayoutConfig,
         fillers: Option<Arc<Mutex<Vec<Media>>>>,
     ) -> Vec<Media> {
@@ -373,8 +388,9 @@ impl LocalStorage {
     }
 
     pub async fn copy_assets(&self) -> Result<(), std::io::Error> {
-        if self.root.is_dir() {
-            let target = self.root.join("00-assets");
+        let root = self.root.read().await.clone();
+        if root.is_dir() {
+            let target = root.join("00-assets");
             let mut dummy_source = Path::new("/usr/share/ffplayout/dummy.vtt");
             let mut font_source = Path::new("/usr/share/ffplayout/DejaVuSans.ttf");
             let mut logo_source = Path::new("/usr/share/ffplayout/logo.png");
@@ -402,7 +418,7 @@ impl LocalStorage {
                 #[cfg(target_family = "unix")]
                 {
                     let uid = nix::unistd::Uid::current();
-                    let parent_owner = self.root.metadata().unwrap().uid();
+                    let parent_owner = root.metadata().unwrap().uid();
 
                     if uid.is_root() && uid.to_string() != parent_owner.to_string() {
                         let user = nix::unistd::User::from_uid(parent_owner.into())

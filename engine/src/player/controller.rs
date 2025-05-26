@@ -76,7 +76,7 @@ pub struct ChannelManager {
     pub filler_list: Arc<Mutex<Vec<Media>>>,
     pub current_index: Arc<AtomicUsize>,
     pub filler_index: Arc<AtomicUsize>,
-    pub storage: Arc<Mutex<LocalStorage>>,
+    pub storage: LocalStorage,
 }
 
 impl ChannelManager {
@@ -90,9 +90,7 @@ impl ChannelManager {
 
         extensions.append(&mut extra_extensions);
 
-        let storage = Arc::new(Mutex::new(
-            init_storage(config.channel.storage.clone(), extensions).await,
-        ));
+        let storage = init_storage(config.channel.storage.clone(), extensions).await;
 
         Self {
             id: channel.id,
@@ -130,9 +128,11 @@ impl ChannelManager {
         channel.timezone.clone_from(&other.timezone);
 
         let channel_storage = channel.storage.clone();
-        let s_path = Path::new(&channel_storage);
         let channel_extensions = channel.extra_extensions.clone();
+
         drop(channel);
+
+        let s_path = Path::new(&channel_storage);
         let mut extensions = self.config.read().await.storage.extensions.clone();
         let mut extra_extensions = channel_extensions
             .split(',')
@@ -140,9 +140,8 @@ impl ChannelManager {
             .collect::<Vec<String>>();
 
         extensions.append(&mut extra_extensions);
-        let mut storage = self.storage.lock().await;
-
-        *storage = init_storage(s_path.to_path_buf(), extensions).await;
+        *self.storage.root.write().await = s_path.to_path_buf();
+        *self.storage.extensions.write().await = extensions;
     }
 
     pub async fn update_config(&self, new_config: PlayoutConfig) {
@@ -156,7 +155,7 @@ impl ChannelManager {
         }
 
         let self_clone = self.clone();
-        let channel_id = self.channel.lock().await.id;
+        let channel_id = self.id;
 
         handles::update_player(&self.db_pool, channel_id, true).await?;
 
@@ -233,7 +232,7 @@ impl ChannelManager {
         self.list_init.store(true, Ordering::SeqCst);
 
         let self_clone = self.clone();
-        let channel_id = self.channel.lock().await.id;
+        let channel_id = self.id;
 
         handles::update_player(&self.db_pool, channel_id, true).await?;
 
@@ -251,7 +250,7 @@ impl ChannelManager {
     }
 
     pub async fn stop(&self, unit: ProcessUnit) {
-        self.storage.lock().await.stop_watch().await;
+        self.storage.stop_watch().await;
 
         let child = match unit {
             Decoder => &self.decoder,
@@ -310,7 +309,7 @@ impl ChannelManager {
 
     /// No matter what is running, terminate them all.
     pub async fn stop_all(&self, permanent: bool) {
-        let channel_id = self.channel.lock().await.id;
+        let channel_id = self.id;
 
         if permanent {
             if self.is_alive.load(Ordering::SeqCst) {
@@ -398,10 +397,8 @@ async fn run_channel(manager: ChannelManager) -> Result<(), ServiceError> {
         // Fill filler list, can also be a single file.
         // INFO: Was running in a thread, but when it runs in a tokio task and
         // after start a filler is needed, the first one will be ignored because the list is not filled.
-        let storage = manager.storage.clone();
-        let mut storage_guard = storage.lock().await;
-
-        storage_guard
+        manager
+            .storage
             .fill_filler_list(&config, Some(filler_list.clone()))
             .await;
     }

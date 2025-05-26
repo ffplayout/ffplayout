@@ -96,12 +96,7 @@ pub async fn filler_list(
     manager: &ChannelManager,
     total_length: f64,
 ) -> Vec<Media> {
-    let filler_list = manager
-        .storage
-        .lock()
-        .await
-        .fill_filler_list(config, None)
-        .await;
+    let filler_list = manager.storage.fill_filler_list(config, None).await;
     let mut index = 0;
     let mut filler_clip_list: Vec<Media> = vec![];
     let mut target_duration = 0.0;

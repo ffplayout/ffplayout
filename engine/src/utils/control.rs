@@ -120,7 +120,7 @@ pub async fn send_message(
     let config = manager.config.read().await.clone();
 
     if config.text.zmq_stream_socket.is_some() {
-        if let Some(clips_filter) = manager.filter_chain.clone() {
+        if let Some(ref clips_filter) = manager.filter_chain {
             *clips_filter.lock().await = vec![filter.clone()];
         }
 

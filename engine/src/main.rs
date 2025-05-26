@@ -14,7 +14,11 @@ use actix_files::Files;
 use actix_web_static_files::ResourceFiles;
 
 use log::*;
-use tokio::{fs::File, io::AsyncReadExt, sync::Mutex};
+use tokio::{
+    fs::File,
+    io::AsyncReadExt,
+    sync::{Mutex, RwLock},
+};
 
 use ffplayout::{
     ARGS,
@@ -68,7 +72,7 @@ async fn main() -> Result<(), ProcessError> {
     // logger handle should be kept alive until the end
     let _logger = init_logging(mail_queues.clone());
 
-    let channel_controllers = Arc::new(Mutex::new(ChannelController::new()));
+    let channel_controllers = Arc::new(RwLock::new(ChannelController::new()));
 
     if let Some(conn) = &ARGS.listen {
         let channels = handles::select_related_channels(&pool, None).await?;
@@ -80,7 +84,7 @@ async fn main() -> Result<(), ProcessError> {
             let manager = ChannelManager::new(pool.clone(), channel, config).await;
 
             if init {
-                if let Err(e) = manager.storage.lock().await.copy_assets().await {
+                if let Err(e) = manager.storage.copy_assets().await {
                     error!("{e}");
                 };
 
@@ -93,7 +97,7 @@ async fn main() -> Result<(), ProcessError> {
                 manager.start().await?;
             }
 
-            channel_controllers.lock().await.add(manager);
+            channel_controllers.write().await.add(manager);
         }
 
         let (addr, port) = conn
@@ -213,7 +217,7 @@ async fn main() -> Result<(), ProcessError> {
             if ARGS.foreground {
                 let m_queue = Arc::new(Mutex::new(MailQueue::new(*channel_id, config.mail)));
 
-                channel_controllers.lock().await.add(manager.clone());
+                channel_controllers.write().await.add(manager.clone());
                 mail_queues.lock().await.push(m_queue);
 
                 manager.foreground_start(index).await?;
@@ -268,10 +272,7 @@ async fn main() -> Result<(), ProcessError> {
         );
     }
 
-    let managers = {
-        let guard = channel_controllers.lock().await;
-        guard.managers.clone()
-    };
+    let managers = channel_controllers.read().await.managers.clone();
 
     for manager in &managers {
         manager.channel.lock().await.active = false;

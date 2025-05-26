@@ -36,11 +36,10 @@ pub async fn source_generator(manager: ChannelManager) -> SourceIterator {
             info!(target: Target::file_mail(), channel = id; "Playout in folder mode");
             let config_clone = config.clone();
 
-            // Spawn a task to monitor folder for file changes.
-            {
-                let mut storage = manager.storage.lock().await;
-                storage.watchman(config_clone, is_alive, current_list).await;
-            }
+            manager
+                .storage
+                .watchman(config_clone, is_alive, current_list)
+                .await;
 
             let folder_source = FolderSource::new(&config, manager);
 
