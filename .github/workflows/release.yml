@@ -49,8 +49,8 @@ jobs:
           rustup target add x86_64-unknown-linux-musl
           rustup target add aarch64-unknown-linux-gnu
           ./scripts/man_create.sh
-          cargo install --version 2.0.4 cargo-deb
-          cargo install --version 0.15.2 cargo-generate-rpm
+          cargo install --version 2.12.1 cargo-deb
+          cargo install --version 0.16.1 cargo-generate-rpm
           cargo build --release --target=x86_64-unknown-linux-musl
           cargo build --release --target=aarch64-unknown-linux-gnu
           tar --transform 's/\.\/target\/.*\///g' -czvf "ffplayout-${{ github.ref_name }}_x86_64-unknown-linux-musl.tar.gz" --exclude='*.db' --exclude='*.db-shm' --exclude='*.db-wal' assets docker docs LICENSE README.md CHANGELOG.md ./target/x86_64-unknown-linux-musl/release/ffplayout
